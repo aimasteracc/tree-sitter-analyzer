@@ -53,7 +53,7 @@ Categories of CLI surface:
 ### Project-Level
 - `--project-overview` — snapshot
 - `--project-health` — health-score distribution
-- `--smart-context [--query "X"]` — SMART workflow context
+- `--smart-context` / `smart-context FILE` — SMART workflow context
 - `--change-impact` — blast radius (`--change-impact-resource-profile local_low_impact` emits nice/xdist-capped local pytest commands plus the original CI command)
 - `--call-graph` — caller/callee graph
 
@@ -112,15 +112,20 @@ Categories of CLI surface:
 
 ## Output Format Selection
 
-`--format toon|json|table|csv|yaml`:
+`--format toon|json` (global machine-readable envelope alias):
 
 | Format | Default for | Token cost | Notes |
 |---|---|---|---|
 | `toon` | MCP | -73% vs JSON | LLM-optimized, lossless |
 | `json` | CLI | baseline | jq-pipe friendly |
+| `text` | `--output-format text` | n/a | human-readable output for legacy text paths |
 | `table` | `--table` flag | n/a | Box-drawing chars, terminal only |
 | `csv` | `--table csv` | n/a | spreadsheet ingestion |
-| `yaml` | optional | larger than JSON | human-readable structured |
+
+`--format` is intentionally narrower than `--output-format` and `--table`:
+use `--format json|toon` for agent envelopes, `--output-format text` for the
+remaining human-readable text paths, and `--table csv|full|compact|json|toon`
+for table rendering. There is no global `--format yaml` mode.
 
 ## File Output
 

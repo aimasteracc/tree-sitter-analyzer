@@ -88,6 +88,17 @@ class AgentWorkflowTool(BaseMCPTool):
         # planning output stable while only the MCP envelope is
         # normalised.
         _canonicalize_workflow_verdict(result)
+        # Blocked results (success=False) lack the full workflow envelope
+        # that _build_toon_response expects.  Return them directly so TOON
+        # callers don't get a KeyError; include format and toon_content for
+        # parity with the normal TOON shape.
+        if not result.get("success", True):
+            if arguments.get("output_format", "toon") == "toon":
+                result["format"] = "toon"
+                result["toon_content"] = (
+                    f"blocked: {result.get('error', 'invalid target_path')}"
+                )
+            return result
         if arguments.get("output_format", "toon") == "toon":
             return _build_toon_response(result)
         # Strip ``toon_content`` from the JSON path — wastes ~2 KB per

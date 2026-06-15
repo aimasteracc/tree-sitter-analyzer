@@ -110,6 +110,7 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
     # --- Variables ---
     "variable": """
     (variable_declaration) @variable
+    (field_definition) @variable
     """,
     "var_declaration": """
     (variable_declaration
@@ -551,6 +552,10 @@ VARIABLES = """
     (variable_declarator
         name: (identifier) @variable.name
         value: (_)? @variable.value)) @variable.lexical
+
+(field_definition
+    property: (_) @variable.name
+    value: (_)? @variable.value) @variable.field
 """
 
 IMPORTS = """

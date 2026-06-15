@@ -51,7 +51,7 @@ Reading the tables:
 | --- | --- | --- | --- |
 | `analyze` | `file_path`*, `format_type`, `language`, `output_file`, `output_format`, `suppress_output` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--structure` |
 | `ast_path` | `file_path`*, `language`, `line`, `max_depth`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-path` |
-| `class_detail` | `class_name`* (`symbol` aliases `class_name`), `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--class-inspect` |
+| `class_detail` | `class_name`* (or `query`/`symbol` as alias), `language`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--class-inspect` |
 | `class_tree` | `class_name` (`symbol` aliases `class_name`), `max_depth`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--class-hierarchy` |
 | `explore` | `includeCode`, `maxFiles`, `maxSymbols`, `output_format`, `query`, `symbol`, `symbols` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-explore` |
 | `outline` | `file_path`*, `include_fields`, `include_imports`, `language`, `listed_cap`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--outline` |

@@ -1,11 +1,11 @@
 {
   "counts_by_type": {
     "Class": 1,
-    "Function": 32,
+    "Function": 34,
     "Import": 2,
-    "Variable": 10
+    "Variable": 13
   },
-  "element_total": 45,
+  "element_total": 50,
   "names_by_type": {
     "Class": [
       "ModernComponent"
@@ -30,7 +30,9 @@
       "getHeaders",
       "getToken",
       "handleAction",
+      "handleClick",
       "handleResponse",
+      "handleSubmit",
       "html",
       "loadModule",
       "multiParamArrow",
@@ -48,6 +50,8 @@
       "useCallback"
     ],
     "Variable": [
+      "#privateCounter",
+      "#secretKey",
       "API_BASE_URL",
       "AppModule",
       "apiClient",
@@ -56,6 +60,7 @@
       "legacyVariable",
       "response",
       "result",
+      "state",
       "url",
       "user"
     ]

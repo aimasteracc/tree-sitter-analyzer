@@ -28,6 +28,6 @@
 | UserRepositoryInterface::delete | (User):void | + | 155-155 | 1 | - |
 | Loggable::log | (string):void | + | 165-171 | 1 | - |
 | Loggable::getLogs | ():array | + | 173-176 | 1 | - |
-| label | ():string | + | 189-197 | 1 | - |
-| App\Models\createUser | (string, string):User | + | 203-206 | 1 | - |
-| App\Models\hashPassword | (string):string | + | 211-214 | 1 | - |
+| UserStatus::label | ():string | + | 189-197 | 1 | - |
+| createUser | (string, string):User | + | 203-206 | 1 | - |
+| hashPassword | (string):string | + | 211-214 | 1 | - |

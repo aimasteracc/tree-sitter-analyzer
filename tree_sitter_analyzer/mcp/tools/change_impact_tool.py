@@ -210,11 +210,13 @@ TOOL_SCHEMA: dict[str, Any] = {
         "resource_profile": {
             "type": "string",
             "enum": ["default", "local_low_impact"],
-            "default": "default",
+            "default": "local_low_impact",
             "description": (
-                "Verification command resource profile. default preserves existing "
-                "commands; local_low_impact emits nice/xdist-capped local pytest "
-                "commands plus the original CI verification command."
+                "Verification command resource profile. "
+                "local_low_impact (MCP default): emits nice/xdist-capped local pytest "
+                "commands plus a ci_verification_command for CI or queue boundaries — "
+                "safe for AI-agent sessions where aggressive parallelism stalls the machine. "
+                "default: preserves the original broad verification command unchanged."
             ),
         },
         "output_format": {
@@ -351,7 +353,9 @@ class ChangeImpactTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
         scope_paths = arguments.get("scope_paths") or []
         scope_mode = arguments.get("scope_mode", "report")
-        resource_profile = arguments.get("resource_profile", "default")
+        # MCP callers are always AI agents; default to low-impact so verification
+        # commands don't stall the local machine. CLI uses its own default (#731).
+        resource_profile = arguments.get("resource_profile", "local_low_impact")
         agent_summary_only = bool(arguments.get("agent_summary_only", False))
         compact_only = bool(arguments.get("compact_only", False))
 

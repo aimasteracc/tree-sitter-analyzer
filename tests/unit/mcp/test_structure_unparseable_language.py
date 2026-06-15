@@ -33,6 +33,26 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
 from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import GetCodeOutlineTool
 from tree_sitter_analyzer.models.result import AnalysisResult
 
+# ---------------------------------------------------------------------------
+# C++ content in .py (issue #707): tree-sitter parses via the Python grammar
+# and sprinkles ERROR nodes throughout. The outline must surface parse_errors
+# and escalate the verdict to WARN so agents don't trust the outline symbols.
+# ---------------------------------------------------------------------------
+_CPP_CONTENT = """\
+#include <iostream>
+int main() {
+    std::cout << "hello world" << std::endl;
+    return 0;
+}
+"""
+
+# ---------------------------------------------------------------------------
+# NUL bytes (issue #707): raw 0x00 in a Python source file shifts line spans
+# and may corrupt symbol names. The outline must surface null_bytes +
+# encoding_warning and escalate to WARN.
+# ---------------------------------------------------------------------------
+_PY_WITH_NUL = b"x = 1\x00\nprint(x)\n"
+
 # Existing, non-empty file (so path checks pass); the mocked engine below is
 # what simulates the "detected but unparseable" condition.
 TARGET_FILE = "examples/Sample.java"
@@ -149,3 +169,83 @@ async def test_structure_boundary_classifies_as_language_unsupported() -> None:
         assert env.get("error_type") == "language_unsupported", (
             f"{action}: error_type={env.get('error_type')!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Issue #707 acceptance tests: parse-error / encoding diagnostics surfaced by
+# get_code_outline via _attach_input_diagnostics.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_outline_cpp_in_py_file_surfaces_parse_errors(tmp_path) -> None:
+    """#707: C++ content in a .py file must set parse_errors=True, verdict=WARN.
+
+    The Python tree-sitter grammar cannot parse C++ constructs (int main(),
+    std::cout, etc.) and marks ERROR nodes in the tree.  The outline tool must
+    surface this so agents don't trust phantom symbols.
+    """
+    py_file = tmp_path / "wrong_language.py"
+    py_file.write_text(_CPP_CONTENT)
+    tool = GetCodeOutlineTool(project_root=str(tmp_path))
+    result = await tool.execute({"file_path": str(py_file), "output_format": "json"})
+    assert result["success"] is True
+    assert result.get("parse_errors") is True, (
+        f"parse_errors must be True for C++-in-.py; got result keys={list(result)}"
+    )
+    assert result.get("verdict") == "WARN", (
+        f"verdict must be WARN for parse errors; got {result.get('verdict')!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_outline_cpp_in_py_agent_summary_warns(tmp_path) -> None:
+    """#707: agent_summary also carries verdict=WARN for parse-error files."""
+    py_file = tmp_path / "wrong_language.py"
+    py_file.write_text(_CPP_CONTENT)
+    tool = GetCodeOutlineTool(project_root=str(tmp_path))
+    result = await tool.execute({"file_path": str(py_file), "output_format": "json"})
+    summary = result.get("agent_summary") or {}
+    assert summary.get("verdict") == "WARN", (
+        f"agent_summary.verdict must be WARN; got {summary.get('verdict')!r}"
+    )
+    next_step = summary.get("next_step", "")
+    assert "parse error" in next_step.lower(), (
+        f"agent_summary.next_step must mention parse errors; got {next_step!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_outline_nul_bytes_surfaces_encoding_warning(tmp_path) -> None:
+    """#707: .py file with NUL bytes must set null_bytes=True, encoding_warning=True, verdict=WARN."""
+    py_file = tmp_path / "has_nul.py"
+    py_file.write_bytes(_PY_WITH_NUL)
+    tool = GetCodeOutlineTool(project_root=str(tmp_path))
+    result = await tool.execute({"file_path": str(py_file), "output_format": "json"})
+    assert result["success"] is True
+    assert result.get("null_bytes") is True, (
+        f"null_bytes must be True for file with NUL bytes; got {list(result)}"
+    )
+    assert result.get("encoding_warning") is True, (
+        "encoding_warning must be True for file with NUL bytes"
+    )
+    assert result.get("verdict") == "WARN", (
+        f"verdict must be WARN for encoding warnings; got {result.get('verdict')!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_outline_nul_bytes_agent_summary_warns(tmp_path) -> None:
+    """#707: agent_summary carries verdict=WARN + NUL-byte next_step for NUL files."""
+    py_file = tmp_path / "has_nul.py"
+    py_file.write_bytes(_PY_WITH_NUL)
+    tool = GetCodeOutlineTool(project_root=str(tmp_path))
+    result = await tool.execute({"file_path": str(py_file), "output_format": "json"})
+    summary = result.get("agent_summary") or {}
+    assert summary.get("verdict") == "WARN", (
+        f"agent_summary.verdict must be WARN; got {summary.get('verdict')!r}"
+    )
+    next_step = summary.get("next_step", "")
+    assert "nul" in next_step.lower(), (
+        f"agent_summary.next_step must mention NUL bytes; got {next_step!r}"
+    )

@@ -160,8 +160,18 @@ class JavaScriptPlugin(LanguagePlugin):
             "class": ["class_declaration", "class_expression"],
             "classes": ["class_declaration", "class_expression"],
             # Variable-related queries
-            "variable": ["variable_declaration", "lexical_declaration"],
-            "variables": ["variable_declaration", "lexical_declaration"],
+            # Issue #891: field_definition covers class field declarations
+            # (e.g. `name = 'x'`) which are distinct from var/let/const.
+            "variable": [
+                "variable_declaration",
+                "lexical_declaration",
+                "field_definition",
+            ],
+            "variables": [
+                "variable_declaration",
+                "lexical_declaration",
+                "field_definition",
+            ],
             # Import/Export-related queries
             "import": ["import_statement"],
             "imports": ["import_statement"],

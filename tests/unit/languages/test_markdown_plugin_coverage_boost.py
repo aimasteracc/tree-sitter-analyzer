@@ -85,7 +85,9 @@ def test_fenced_code_block_extracts_language_and_line_count():
     assert block.element_type == "code_block"
     assert block.language_info == "python"
     assert block.language == "python"
-    assert block.line_count == 2
+    assert (
+        block.line_count == 4
+    )  # end_point row 3 → end_line 4, start_point row 0 → start_line 1; 4-1+1=4
     assert block.type == "code_block"
 
 
@@ -139,7 +141,9 @@ def test_fenced_code_block_without_language_uses_unknown_name_and_text_language(
     assert block.name == "Code Block (unknown)"
     assert block.language_info == ""
     assert block.language == "text"
-    assert block.line_count == 1
+    assert (
+        block.line_count == 3
+    )  # end_point row 2 → end_line 3, start_point row 0 → start_line 1; 3-1+1=3
 
 
 def test_fenced_code_block_extraction_swallows_single_node_failure():

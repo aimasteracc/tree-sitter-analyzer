@@ -547,3 +547,176 @@ class TestQ5ProjectHealthAgentSummaryFileCount:
 
         assert result["agent_summary"]["file_count"] == result["total_files"]
         assert result["agent_summary"]["file_count"] == 4
+
+
+class TestBug783VerdictCoherence:
+    """Bug #783: top-level verdict must equal agent_summary.verdict for every
+    grade distribution — they must never diverge.
+
+    The fix sets ``verdict`` explicitly in the payload from the same
+    ``_project_risk_to_verdict(_project_risk(...))`` call that feeds
+    ``agent_summary``, eliminating any dependency on bidirectional mirroring
+    that could leave them out of sync.
+    """
+
+    @staticmethod
+    def _result(grades: list[str]) -> dict:
+        scores = [_score(f"src/{g}_{i}.py", g, 50.0) for i, g in enumerate(grades)]
+        return _build_project_health_result("/repo", scores, "D", 20)
+
+    def test_all_a_verdict_safe(self) -> None:
+        result = self._result(["A", "A", "A"])
+        assert result["verdict"] == "SAFE"
+        assert result["agent_summary"]["verdict"] == "SAFE"
+
+    def test_d_grade_verdict_review(self) -> None:
+        result = self._result(["A", "B", "D"])
+        assert result["verdict"] == "REVIEW"
+        assert result["agent_summary"]["verdict"] == "REVIEW"
+
+    def test_f_grade_verdict_review(self) -> None:
+        result = self._result(["A", "F"])
+        assert result["verdict"] == "REVIEW"
+        assert result["agent_summary"]["verdict"] == "REVIEW"
+
+    def test_c_only_verdict_caution(self) -> None:
+        result = self._result(["C", "C"])
+        assert result["verdict"] == "CAUTION"
+        assert result["agent_summary"]["verdict"] == "CAUTION"
+
+    def test_top_verdict_equals_agent_verdict_all_grades(self) -> None:
+        """Top-level verdict and agent_summary.verdict must always agree."""
+        for grades in [
+            ["A"],
+            ["B"],
+            ["C"],
+            ["D"],
+            ["F"],
+            ["A", "B", "C", "D", "F"],
+        ]:
+            result = self._result(grades)
+            assert result["verdict"] == result["agent_summary"]["verdict"], (
+                f"divergence for grades={grades}: "
+                f"top={result['verdict']!r}, "
+                f"agent={result['agent_summary']['verdict']!r}"
+            )
+
+
+class TestBug783SignalCoherence:
+    """Bug #783 (signal leg): top-level signal must not say 'healthy' when
+    agent_summary.verdict says 'REVIEW' (D/F grades present).
+
+    The dimension-average signal can say 'healthy' on a large project where
+    most files are A/B even though one D-grade file exists. _project_signal()
+    overrides the dimension signal to 'grade_risk_high'/'grade_risk_critical'
+    when the grade-distribution risk is 'high'/'critical'.
+    """
+
+    @staticmethod
+    def _mostly_a_with_d() -> dict:
+        """999 A-grade files + 1 D-grade file; dimension averages stay >= 70."""
+        healthy_dims = {"complexity": 90.0, "size": 90.0}
+        a_scores = [
+            _score(f"src/a_{i}.py", "A", 90.0, healthy_dims) for i in range(999)
+        ]
+        d_score = _score("src/bad.py", "D", 50.0, {"complexity": 50.0, "size": 90.0})
+        return _build_project_health_result("/repo", [*a_scores, d_score], "D", 20)
+
+    @staticmethod
+    def _mostly_a_with_f() -> dict:
+        """999 A-grade files + 1 F-grade file."""
+        healthy_dims = {"complexity": 90.0, "size": 90.0}
+        a_scores = [
+            _score(f"src/a_{i}.py", "A", 90.0, healthy_dims) for i in range(999)
+        ]
+        f_score = _score("src/awful.py", "F", 10.0, {"complexity": 10.0, "size": 90.0})
+        return _build_project_health_result("/repo", [*a_scores, f_score], "D", 20)
+
+    def test_d_grade_signal_not_healthy(self) -> None:
+        """signal must not be 'healthy' when a D-grade file forces verdict=REVIEW."""
+        result = self._mostly_a_with_d()
+        assert result["verdict"] == "REVIEW"
+        assert result["signal"] != "healthy", (
+            f"signal={result['signal']!r} says 'healthy' but verdict='REVIEW' — "
+            "contradictory signals in one envelope"
+        )
+
+    def test_f_grade_signal_not_healthy(self) -> None:
+        """signal must not be 'healthy' when an F-grade file forces verdict=REVIEW."""
+        result = self._mostly_a_with_f()
+        assert result["verdict"] == "REVIEW"
+        assert result["signal"] != "healthy"
+
+    def test_d_grade_signal_value(self) -> None:
+        """signal should be 'grade_risk_high' when risk='high' (D-grade files)."""
+        result = self._mostly_a_with_d()
+        assert result["signal"] == "grade_risk_high"
+
+    def test_f_grade_signal_value(self) -> None:
+        """signal should be 'grade_risk_critical' when risk='critical' (F-grade files)."""
+        result = self._mostly_a_with_f()
+        assert result["signal"] == "grade_risk_critical"
+
+    def test_all_a_signal_stays_healthy(self) -> None:
+        """When only A grades exist, signal must remain 'healthy'."""
+        healthy_dims = {"complexity": 90.0, "size": 90.0}
+        a_scores = [_score(f"src/a_{i}.py", "A", 90.0, healthy_dims) for i in range(5)]
+        result = _build_project_health_result("/repo", a_scores, "D", 20)
+        assert result["signal"] == "healthy"
+        assert result["verdict"] == "SAFE"
+
+
+class TestBug785MatchingFileCount:
+    """Bug #785: PROJECT_HEALTH_SOURCE_EXTS must include all extensions
+    supported by the analyzer, not just a stale hand-maintained subset.
+
+    The fix derives PROJECT_HEALTH_SOURCE_EXTS from the canonical
+    EXT_TO_LANG map so bash/scala/swift-interface/hxx files are no longer
+    silently excluded from the project health scan.
+    """
+
+    def test_bash_extensions_included(self) -> None:
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        for ext in (".bash", ".sh", ".zsh"):
+            assert ext in PROJECT_HEALTH_SOURCE_EXTS, (
+                f"{ext} (bash) must be in PROJECT_HEALTH_SOURCE_EXTS"
+            )
+
+    def test_scala_extension_included(self) -> None:
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        assert ".scala" in PROJECT_HEALTH_SOURCE_EXTS, (
+            ".scala must be in PROJECT_HEALTH_SOURCE_EXTS"
+        )
+
+    def test_swiftinterface_extension_included(self) -> None:
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        assert ".swiftinterface" in PROJECT_HEALTH_SOURCE_EXTS, (
+            ".swiftinterface must be in PROJECT_HEALTH_SOURCE_EXTS"
+        )
+
+    def test_hxx_extension_included(self) -> None:
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        assert ".hxx" in PROJECT_HEALTH_SOURCE_EXTS, (
+            ".hxx must be in PROJECT_HEALTH_SOURCE_EXTS"
+        )
+
+    def test_source_exts_equals_canonical_ext_to_lang_keys(self) -> None:
+        """PROJECT_HEALTH_SOURCE_EXTS must equal EXT_TO_LANG.keys() exactly —
+        no extensions missing, none added beyond what the indexer supports."""
+        from tree_sitter_analyzer._lang_extension_map import EXT_TO_LANG
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        assert frozenset(PROJECT_HEALTH_SOURCE_EXTS) == frozenset(EXT_TO_LANG.keys())
+
+    def test_non_code_extensions_excluded(self) -> None:
+        """Markup/doc extensions not in EXT_TO_LANG must stay out."""
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        for ext in (".md", ".yaml", ".yml", ".html", ".css", ".sql", ".txt"):
+            assert ext not in PROJECT_HEALTH_SOURCE_EXTS, (
+                f"{ext} is not code and must not be in PROJECT_HEALTH_SOURCE_EXTS"
+            )

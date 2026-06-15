@@ -225,6 +225,9 @@ class PHPElementExtractor(ElementExtractor):
         """
         self.source_code = source_code
         self.content_lines = source_code.splitlines()
+        # #765: set current_namespace so the result is order-independent —
+        # same regardless of whether extract_classes was called first.
+        self._extract_namespace(tree.root_node)
 
         functions: list[Function] = []
 
@@ -243,12 +246,15 @@ class PHPElementExtractor(ElementExtractor):
                 if func_elem:
                     functions.append(func_elem)
 
-            # Track parent class for methods
+            # Track parent class for methods.
+            # enum_declaration added (#763): enum methods had receiver_type=None
+            # because enum was not tracked as a parent container.
             new_parent = parent_class
             if node.type in (
                 "class_declaration",
                 "interface_declaration",
                 "trait_declaration",
+                "enum_declaration",
             ):
                 name_node = node.child_by_field_name("name")
                 if name_node:
@@ -501,6 +507,7 @@ class PHPPlugin(LanguagePlugin):
                 file_path=file_path,
                 success=True,
                 elements=all_elements,
+                line_count=len(content.splitlines()),
                 node_count=self._count_nodes(tree.root_node),
             )
         except Exception as e:

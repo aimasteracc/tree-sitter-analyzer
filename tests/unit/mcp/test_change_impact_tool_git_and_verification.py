@@ -14,17 +14,20 @@ from tree_sitter_analyzer.mcp.tools.utils.verification_command import DefaultTes
 def test_change_impact_schema_accepts_resource_profile():
     """MCP callers need the same resource profile knob as the CLI."""
     schema = ChangeImpactTool().get_tool_schema()
+    prop = schema["properties"]["resource_profile"]
+    assert prop["type"] == "string"
+    assert set(prop["enum"]) == {"default", "local_low_impact"}
+    # MCP defaults to local_low_impact so AI-agent sessions don't stall machines (#731)
+    assert prop["default"] == "local_low_impact"
 
-    assert schema["properties"]["resource_profile"] == {
-        "type": "string",
-        "enum": ["default", "local_low_impact"],
-        "default": "default",
-        "description": (
-            "Verification command resource profile. default preserves existing "
-            "commands; local_low_impact emits nice/xdist-capped local pytest "
-            "commands plus the original CI verification command."
-        ),
-    }
+
+def test_mcp_default_resource_profile_is_local_low_impact():
+    """#731: MCP entrypoint defaults to local_low_impact without explicit arg."""
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import TOOL_SCHEMA
+
+    assert (
+        TOOL_SCHEMA["properties"]["resource_profile"]["default"] == "local_low_impact"
+    )
 
 
 def test_diff_mode_includes_untracked_files(monkeypatch):
@@ -273,8 +276,11 @@ def test_verification_strategy_recommends_focused_then_default_for_dirty_worktre
     )
 
 
-def test_low_impact_profile_rewrites_focused_pytest_for_local_agents():
+def test_low_impact_profile_rewrites_focused_pytest_for_local_agents(monkeypatch):
     """Local agents should get a nice/xdist-capped command without losing CI intent."""
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     plan = verification_tool._build_verification_plan(
         ["tree_sitter_analyzer/cli_main.py", "tree_sitter_analyzer/runtime.py"],
         ["tests/unit/cli/test_cli_main_module.py"],
@@ -311,8 +317,11 @@ def test_low_impact_profile_rewrites_focused_pytest_for_local_agents():
     ]
 
 
-def test_low_impact_profile_caps_default_pytest_for_local_agents():
+def test_low_impact_profile_caps_default_pytest_for_local_agents(monkeypatch):
     """Unmapped runtime diffs still avoid xdist=auto on the local machine."""
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     plan = verification_tool._build_verification_plan(
         ["tree_sitter_analyzer/new_runtime.py"],
         [],
@@ -377,8 +386,13 @@ def test_low_impact_profile_leaves_non_pytest_strategy_unchanged():
     }
 
 
-def test_low_impact_pytest_command_handles_pytest_binary_and_bad_shell_quote():
+def test_low_impact_pytest_command_handles_pytest_binary_and_bad_shell_quote(
+    monkeypatch,
+):
     """Command rewriting should be conservative for malformed shell strings."""
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     assert (
         change_impact_tool._low_impact_pytest_command("pytest tests/unit/test_a.py -q")
         == "nice -n 15 pytest tests/unit/test_a.py -n 2 -q"
@@ -393,8 +407,11 @@ def test_low_impact_pytest_command_handles_pytest_binary_and_bad_shell_quote():
     )
 
 
-def test_low_impact_pytest_command_replaces_existing_worker_flags():
+def test_low_impact_pytest_command_replaces_existing_worker_flags(monkeypatch):
     """Existing xdist settings should not survive the local-low-impact rewrite."""
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     command = (
         "uv run pytest tests/unit/test_a.py -n auto --numprocesses 4 "
         "--numprocesses=auto -q"
@@ -632,3 +649,44 @@ def test_build_test_plan_returns_sorted_runnable_tests():
         verification_tool.AUTO_DISCOVER_TEST_HINT
     ]
     assert tests_to_run == ["tests/unit/cli/test_cli_main_module.py"]
+
+
+def test_cli_path_always_passes_resource_profile_explicitly():
+    """CLI builder must always set resource_profile so the MCP fallback never overrides it (#925 P2)."""
+    from unittest.mock import MagicMock
+
+    from tree_sitter_analyzer.cli.commands.mcp_commands._builders import (
+        _build_change_impact_tool_args,
+    )
+
+    args = MagicMock()
+    args.change_impact_mode = "diff"
+    args.pr_url = ""
+    args.change_impact_include_tests = True
+    args.change_impact_scope = None
+    args.change_impact_scope_mode = "report"
+    args.change_impact_full = False
+    args.compact_toon = False
+    args.change_impact_resource_profile = "default"
+
+    tool_args = _build_change_impact_tool_args(args, "json")
+    assert "resource_profile" in tool_args, (
+        "CLI must always pass resource_profile explicitly to prevent MCP fallback override"
+    )
+    assert tool_args["resource_profile"] == "default"
+
+
+def test_low_impact_pytest_command_portable_on_windows(monkeypatch):
+    """#925 P2: _low_impact_pytest_command must not emit 'nice' on Windows."""
+    import sys
+
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        _low_impact_pytest_command,
+    )
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    result = _low_impact_pytest_command("uv run pytest tests/unit/ -q")
+    assert not result.startswith("nice"), (
+        f"nice(1) must not appear on Windows; got {result!r}"
+    )
+    assert "uv run pytest" in result

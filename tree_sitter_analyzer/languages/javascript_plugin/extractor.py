@@ -187,6 +187,83 @@ class JavaScriptElementExtractor(
             log_debug(f"Failed to extract property info: {e}")
             return None
 
+    def _extract_field_definition_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Variable | None:
+        """Extract class field declaration (public and private, not arrow methods)."""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            field_name = None
+            field_value = None
+            has_arrow_value = False
+            is_static = False
+
+            is_private_field = False
+            found_assignment = False  # True once we pass the '=' separator
+            for child in node.children:
+                if child.type == "=":
+                    # Everything after '=' is the value, not the key.
+                    found_assignment = True
+                elif not found_assignment:
+                    # Key section: pick up the name node before the '='.
+                    if child.type == "static":
+                        is_static = True
+                    elif child.type == "private_property_identifier":
+                        field_name = self._get_node_text_optimized(child)
+                        is_private_field = True
+                    elif child.type == "property_identifier":
+                        field_name = self._get_node_text_optimized(child)
+                    elif child.type in ("string", "number"):
+                        # Issue #892: string-literal keys ('key' = val) and
+                        # numeric keys (0 = 'zero') — strip surrounding quotes.
+                        raw = self._get_node_text_optimized(child)
+                        field_name = raw.strip("'\"") if child.type == "string" else raw
+                    elif child.type == "computed_property_name":
+                        # Issue #892: computed property names (['x'] = val).
+                        # Use the full bracket text, e.g. "['x']".
+                        field_name = self._get_node_text_optimized(child)
+                else:
+                    # Value section: only detect arrow function values.
+                    if child.type == "arrow_function":
+                        has_arrow_value = True
+
+            # Arrow function class fields are captured in the function extraction pass
+            # (via field_definition in container_node_types + _arrow_function_name fix).
+            if has_arrow_value:
+                return None
+
+            if not field_name:
+                return None
+
+            # Use the named "value" field for the initializer so non-primitive RHS
+            # expressions (objects, arrays, calls, identifiers) are preserved
+            # intact instead of being silently dropped (Codex P2 on #746).
+            value_node = node.child_by_field_name("value")
+            if value_node is not None:
+                field_value = self._get_node_text_optimized(value_node)
+
+            raw_text = self._get_node_text_optimized(node)
+            # Private fields (#name) are private; all others are public (Codex P2 #746).
+            visibility = "private" if is_private_field else "public"
+
+            return Variable(
+                name=field_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="javascript",
+                variable_type=self._infer_type_from_value(field_value),
+                is_static=is_static,
+                is_constant=False,
+                initializer=field_value,
+                visibility=visibility,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract field definition: {e}")
+            return None
+
     def _extract_variables_from_declaration(
         self, node: "tree_sitter.Node", kind: str
     ) -> list[Variable]:

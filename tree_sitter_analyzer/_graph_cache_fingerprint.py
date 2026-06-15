@@ -22,7 +22,9 @@ Both are stable across processes (no in-memory state).
 from __future__ import annotations
 
 import os
+import sqlite3
 from collections.abc import Iterable
+from pathlib import Path
 from typing import NamedTuple
 
 from .constants import EXCLUDE_DIRS
@@ -164,3 +166,42 @@ def _process_entry(
         # Skip files we can't stat; they don't break the fingerprint.
         pass
     return file_count, max_mtime_ns
+
+
+def is_ast_index_stale(project_root: str) -> bool:
+    """Authoritative, language-complete staleness check for the AST index.
+
+    Queries the ast_index table for every indexed file's recorded mtime_ns
+    and compares it against the current on-disk mtime. Returns True if ANY
+    indexed file has been modified since it was indexed — regardless of
+    language extension. This supersedes the _SOURCE_EXTS-limited
+    compute_graph_fingerprint approach for #703.
+
+    Returns False (not stale / unknown) when the index does not exist or
+    cannot be read — callers fall back to their existing staleness signal.
+    """
+    db_path = Path(project_root) / ".ast-cache" / "index.db"
+    if not db_path.is_file():
+        return False
+    try:
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        try:
+            rows = conn.execute("SELECT file_path, mtime_ns FROM ast_index").fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+
+    for file_path, recorded_mtime_ns in rows:
+        abs_path = (
+            Path(project_root) / file_path
+            if not Path(file_path).is_absolute()
+            else Path(file_path)
+        )
+        try:
+            current_mtime_ns = abs_path.stat().st_mtime_ns
+        except OSError:
+            continue
+        if current_mtime_ns > recorded_mtime_ns:
+            return True
+    return False

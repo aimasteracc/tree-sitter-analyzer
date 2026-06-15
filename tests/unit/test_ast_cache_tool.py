@@ -325,3 +325,53 @@ class TestExecute:
         ):
             result = await tool.execute({"mode": "invalidate", "file_path": "test.py"})
         assert result["invalidated"] is True
+
+
+class TestAstCacheSearchTruncated:
+    """#737: ast_cache mode=search must report truncated=True when results hit the limit."""
+
+    @pytest.mark.asyncio
+    async def test_search_not_truncated_when_below_limit(self, tmp_path):
+        tool = ASTCacheTool(str(tmp_path))
+        mock_cache = MagicMock()
+        mock_cache.fts_search_ranked.return_value = [{"name": "foo"}]
+        mock_cache.fts5_available = True
+        mock_cache.project_root = str(tmp_path)
+        with patch.object(tool, "_get_cache", return_value=mock_cache):
+            result = await tool.execute({"mode": "search", "query": "foo", "limit": 10})
+        assert result["count"] == 1
+        assert result["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_search_truncated_when_results_equal_limit(self, tmp_path):
+        tool = ASTCacheTool(str(tmp_path))
+        mock_cache = MagicMock()
+        mock_cache.fts_search_ranked.return_value = [
+            {"name": f"sym{i}"} for i in range(5)
+        ]
+        mock_cache.fts5_available = True
+        mock_cache.project_root = str(tmp_path)
+        with patch.object(tool, "_get_cache", return_value=mock_cache):
+            result = await tool.execute({"mode": "search", "query": "sym", "limit": 5})
+        assert result["count"] == 5
+        assert result["truncated"] is True
+
+    @pytest.mark.asyncio
+    async def test_search_truncated_measured_before_split_expansion(self, tmp_path):
+        """#737: truncated is measured on raw_results BEFORE _apply_legacy_import_split.
+
+        A single raw row whose name is 'a,b' expands to 2 after split.
+        If truncated were measured after split, count==2 with limit==2 would
+        falsely report truncated=True — but the DB only returned 1 row.
+        """
+        tool = ASTCacheTool(str(tmp_path))
+        mock_cache = MagicMock()
+        # 1 raw row that will be split into 2 by _apply_legacy_import_split
+        mock_cache.fts_search.return_value = [{"name": "a, b", "type": "import"}]
+        mock_cache.fts_search_ranked.return_value = [{"name": "a, b", "type": "import"}]
+        mock_cache.fts5_available = True
+        mock_cache.project_root = str(tmp_path)
+        with patch.object(tool, "_get_cache", return_value=mock_cache):
+            # limit=2 — raw_results has 1 row < 2, so truncated must be False
+            result = await tool.execute({"mode": "search", "query": "a", "limit": 2})
+        assert result["truncated"] is False

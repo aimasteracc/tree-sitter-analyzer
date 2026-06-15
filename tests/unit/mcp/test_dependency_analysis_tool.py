@@ -416,3 +416,56 @@ class TestUnknownMode:
     def test_unknown_mode_raises(self, tool, project):
         with pytest.raises(ValueError, match="Unknown mode"):
             _run(tool.execute({"mode": "nonexistent", "output_format": "json"}))
+
+
+class TestBug784CyclesScope:
+    """Bug #784: cycles mode must include a scope label explaining that its
+    count may differ from health action=imports mode=cycles because the two
+    tools walk different graphs (file-dependency vs import-resolution).
+
+    The fix adds ``scope`` and ``scope_note`` to the cycles response so agents
+    and humans understand the difference without reading source code.
+    """
+
+    def test_cycles_response_has_scope_field(self, tmp_path):
+        _write(tmp_path, "a.py", "import b\n")
+        _write(tmp_path, "b.py", "import a\n")
+        t = DependencyAnalysisTool(project_root=str(tmp_path))
+        t.set_project_path(str(tmp_path))
+        result = _run(t.execute({"mode": "cycles", "output_format": "json"}))
+        assert result["scope"] == "file_dependency_graph"
+
+    def test_cycles_response_has_scope_note(self, tmp_path):
+        _write(tmp_path, "x.py", "import os\n")
+        t = DependencyAnalysisTool(project_root=str(tmp_path))
+        t.set_project_path(str(tmp_path))
+        result = _run(t.execute({"mode": "cycles", "output_format": "json"}))
+        assert "scope_note" in result
+        assert "import" in result["scope_note"].lower()
+
+    def test_cycles_helper_has_scope(self, tmp_path):
+        """_cycles() helper must include scope at the dict level."""
+        _write(tmp_path, "main.py", "import os\n")
+        graph = DependencyGraph(str(tmp_path))
+        result = _cycles(graph)
+        assert result["scope"] == "file_dependency_graph"
+        assert "scope_note" in result
+
+    def test_summary_response_has_scope_field(self, tmp_path):
+        """summary mode must also include scope so a consumer comparing
+        cycle_count from summary vs import-graph-summary sees an explanation."""
+        _write(tmp_path, "a.py", "import b\n")
+        _write(tmp_path, "b.py", "import a\n")
+        t = DependencyAnalysisTool(project_root=str(tmp_path))
+        t.set_project_path(str(tmp_path))
+        result = _run(t.execute({"mode": "summary", "output_format": "json"}))
+        assert result["scope"] == "file_dependency_graph"
+
+    def test_summary_response_has_scope_note(self, tmp_path):
+        """summary mode scope_note must reference the import-graph alternative."""
+        _write(tmp_path, "x.py", "import os\n")
+        t = DependencyAnalysisTool(project_root=str(tmp_path))
+        t.set_project_path(str(tmp_path))
+        result = _run(t.execute({"mode": "summary", "output_format": "json"}))
+        assert "scope_note" in result
+        assert "import" in result["scope_note"].lower()
