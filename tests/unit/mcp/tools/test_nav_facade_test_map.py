@@ -440,6 +440,52 @@ async def test_test_map_edge_count_vs_unique_function_count_divergence() -> None
     assert result["test_functions"] == ["tests/test_shared.py::test_shared_behaviour"]
 
 
+@pytest.mark.asyncio
+async def test_test_map_shared_helper_edge_count_counts_both_targets() -> None:
+    """Two targets share ONE helper called by ONE test → edge_count==2 (#967).
+
+    ``fn_a`` and ``fn_b`` are each reached only via the non-collectible helper
+    ``_setup``; ``_setup`` is called by a single ``test_shared``. Each
+    (target, helper→test) pair is a genuine coverage edge, so edge_count must be
+    2 even though ``test_shared`` appears once in test_functions. Previously the
+    global dedupe branch fired before the second target's edge was counted,
+    undercounting edge_count to 1.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_a = _make_func("fn_a", "src/mod_a.py")
+    target_b = _make_func("fn_b", "src/mod_b.py")
+    helper = _make_func("_setup", "tests/test_shared.py", 5)
+    real_test = _make_func("test_shared", "tests/test_shared.py", 20)
+
+    def _callers(func: FunctionRef):
+        # Both fn_a and fn_b are called ONLY by the shared _setup helper;
+        # _setup is called by the single test_shared function.
+        if func.name in ("fn_a", "fn_b"):
+            return [helper]
+        if func.name == "_setup":
+            return [real_test]
+        return []
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_a, target_b]
+    mock_graph.caller_refs_of.side_effect = _callers
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "fn_a", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    # Two genuine coverage edges: (fn_a → test_shared), (fn_b → test_shared).
+    assert result["edge_count"] == 2
+    # The test function is deduped in the SET — appears exactly once.
+    assert result["unique_function_count"] == 1
+    assert result["test_functions"] == ["tests/test_shared.py::test_shared"]
+
+
 # ---------------------------------------------------------------------------
 # 8. P3 output_format threading — TOON / JSON
 # ---------------------------------------------------------------------------
@@ -669,6 +715,49 @@ async def test_test_map_preserves_go_test_callers() -> None:
     assert result["edge_count"] == 1
     assert result["unique_function_count"] == 1
     assert result["test_functions"] == ["pkg/server_test.go::TestHandle"]
+
+
+@pytest.mark.asyncio
+async def test_test_map_go_helper_walks_up_to_test_func() -> None:
+    """Go helper ``setupServer`` is NOT a test func → walk up to ``TestServer`` (#967).
+
+    A direct caller in ``*_test.go`` whose name does not match Go's
+    ``Test``/``Benchmark``/``Example``/``Fuzz`` convention (e.g. ``setupServer``)
+    is a helper that ``go test`` never runs directly. It must be treated like a
+    Python ``_run`` helper: the route walks up ONE hop to the convention-matching
+    ``TestServer`` that calls it. The helper itself must NOT be recorded.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("Handle", "pkg/server.go", language="go")
+    helper = _make_func("setupServer", "pkg/server_test.go", 5, language="go")
+    real_test = _make_func("TestServer", "pkg/server_test.go", 20, language="go")
+
+    def _callers(func: FunctionRef):
+        # Handle is called ONLY by setupServer; setupServer by TestServer.
+        if func.name == "Handle":
+            return [helper]
+        if func.name == "setupServer":
+            return [real_test]
+        return []
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.side_effect = _callers
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "Handle", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["edge_count"] == 1
+    assert result["unique_function_count"] == 1
+    # The helper is excluded; only the TestXxx entry point is reported.
+    assert result["test_functions"] == ["pkg/server_test.go::TestServer"]
+    assert all("setupServer" not in fn for fn in result["test_functions"])
 
 
 @pytest.mark.asyncio

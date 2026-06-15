@@ -838,6 +838,29 @@ class TestScssVariableExtraction:
         names = [v.name for v in results]
         assert names == ["$live"]
 
+    def test_extract_scss_variables_literal_slash_star_in_string(self):
+        """Bug #967: a literal ``/*`` inside a quoted value must NOT open a comment.
+
+        ``$glob: "src/*";`` contains ``/*`` with no same-line ``*/``. The naive
+        raw-line scan set ``in_block_comment`` and silently dropped every
+        following declaration. The string-aware scan must keep BOTH variables.
+        """
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = '$glob: "src/*";\n$color: red;\n'
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$glob", "$color"]
+
+    def test_extract_scss_variables_single_quoted_slash_star(self):
+        """A single-quoted ``'a/*b'`` literal also must not open a block comment."""
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = "$path: 'a/*b';\n$size: 1rem;\n"
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$path", "$size"]
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
