@@ -772,6 +772,7 @@ code/
             # Should detect interference from subdirectory .gitignore
             assert result is True
 
+    @pytest.mark.slow_ok  # Creates 100+ real temp dirs/files; Windows I/O makes this > 5s
     def test_performance_with_large_directory_structure(self, detector):
         """Test performance with large directory structure."""
         with tempfile.TemporaryDirectory() as temp_dir:

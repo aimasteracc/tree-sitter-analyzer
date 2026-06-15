@@ -366,6 +366,7 @@ class TestR37uTopLevelVerdictMirror:
     ``result["agent_summary"]["verdict"]``.
     """
 
+    @pytest.mark.slow_ok  # Real tool.execute() involves index scan; Windows exceeds 5s budget
     def test_top_level_verdict_mirrors_agent_summary_when_found(self, tool, tmp_path):
         _write_py(
             tmp_path,
