@@ -10,12 +10,34 @@ from ._legacy_table_formatter_common import get_visibility_symbol
 def compact_table_header(
     package_name: str,
     classes: list[dict[str, Any]],
+    file_path: str = "",
 ) -> str:
-    """Build the legacy compact-table header."""
-    class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
-    if package_name:
+    """Build the legacy compact-table header.
+
+    When *classes* is empty (e.g. Bash, Go scripts without class constructs)
+    fall back to the filename stem derived from *file_path* instead of the
+    placeholder string ``"Unknown"`` that confused agents.  When *file_path*
+    is also absent the header is simply empty, which is still better than
+    mis-labelling every class-less file as "Unknown".
+    """
+    if classes:
+        class_name = str(classes[0].get("name", "Unknown"))
+    else:
+        # No class: derive a sensible header from the file name.
+        if file_path:
+            basename = file_path.replace("\\", "/").split("/")[-1]
+            # Strip the extension (only the last dot-segment).
+            class_name = basename.rsplit(".", 1)[0] if "." in basename else basename
+        else:
+            class_name = ""
+
+    if package_name and class_name:
         return f"{package_name}.{class_name}"
-    return str(class_name)
+    if class_name:
+        return class_name
+    if package_name:
+        return package_name
+    return ""
 
 
 def append_compact_info_section(
