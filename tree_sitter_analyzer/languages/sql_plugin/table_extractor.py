@@ -11,6 +11,18 @@ from ...models import SQLColumn, SQLConstraint, SQLTable
 from ...utils import log_debug
 from .identifier_validator import is_valid_identifier
 
+# ---------------------------------------------------------------------------
+# Regex fallback for CREATE TABLE inside ERROR nodes (#808)
+# ---------------------------------------------------------------------------
+
+# Matches: CREATE [TEMPORARY] TABLE [IF NOT EXISTS] [schema.]table_name
+# Group 1 = optional schema name, Group 2 = table name
+_CREATE_TABLE_RE = re.compile(
+    r"CREATE\s+(?:TEMPORARY\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    r"(?:([a-zA-Z_][a-zA-Z0-9_]*)\.)?([a-zA-Z_][a-zA-Z0-9_]*)",
+    re.IGNORECASE,
+)
+
 
 def extract_sql_tables(
     root_node: "tree_sitter.Node",
@@ -154,6 +166,105 @@ def extract_table_columns(
     for node in traverse_nodes(table_node):
         if node.type == "column_definition":
             _process_column_node(node, columns, get_node_text)
+
+
+def _is_in_sql_comment(source: str, pos: int) -> bool:
+    """Return True if ``pos`` falls inside a SQL line (``--``) or block (``/* */``) comment."""
+    # Line comment: check for -- between the start of the current line and pos.
+    line_start = source.rfind("\n", 0, pos) + 1
+    if "--" in source[line_start:pos]:
+        return True
+    # Block comment: the most recent /* before pos has no matching */ before pos.
+    block_start = source.rfind("/*", 0, pos)
+    if block_start != -1:
+        block_end = source.find("*/", block_start)
+        if block_end == -1 or block_end > pos:
+            return True
+    return False
+
+
+def fill_missing_sql_tables_from_regex(
+    source_code: str,
+    sql_elements: list[Any],
+) -> None:
+    """Regex fallback: add CREATE TABLE statements absorbed by ERROR nodes (#808).
+
+    tree-sitter parse-recovery can absorb an entire CREATE TABLE statement into
+    an ERROR node when a preceding multi-line FOREIGN KEY clause (with ON DELETE /
+    ON UPDATE) triggers grammar ambiguity.  The AST traversal then sees an ERROR
+    node instead of a ``create_table`` node and the table is silently dropped.
+
+    This function scans the raw source text for ``CREATE TABLE`` patterns and
+    appends any tables that the AST pass missed.  It never removes tables already
+    found, so it is safe to call unconditionally.
+
+    De-duplicates by ``(schema_name, table_name)`` so that the same table name
+    in two different schemas (e.g. ``tenant_a.users`` and ``tenant_b.users``) is
+    not collapsed into one entry.  Matches inside SQL comments are skipped.
+    """
+    found_keys: set[tuple[str | None, str]] = {
+        (
+            e.schema_name.lower() if e.schema_name else None,
+            e.name.lower(),
+        )
+        for e in sql_elements
+        if isinstance(e, SQLTable)
+    }
+    for match in _CREATE_TABLE_RE.finditer(source_code):
+        if _is_in_sql_comment(source_code, match.start()):
+            continue
+        schema_name = match.group(1)  # optional, may be None
+        table_name = match.group(2)
+        if not table_name or not is_valid_identifier(table_name):
+            continue
+        key = (schema_name.lower() if schema_name else None, table_name.lower())
+        if key in found_keys:
+            continue
+        start_line = source_code[: match.start()].count("\n") + 1
+        end_line = _find_statement_end_line(source_code, match.start())
+        raw_text = _extract_statement_text(source_code, match.start())
+        try:
+            sql_elements.append(
+                SQLTable(
+                    name=table_name,
+                    start_line=start_line,
+                    end_line=end_line,
+                    raw_text=raw_text,
+                    language="sql",
+                    schema_name=schema_name,
+                )
+            )
+        except Exception as exc:
+            log_debug(f"regex fallback: failed to append table {table_name!r}: {exc}")
+        found_keys.add(key)
+
+
+def _find_statement_end_line(source: str, start: int) -> int:
+    """Return the 1-based line number of the closing ``;`` for the statement at ``start``."""
+    depth = 0
+    for i in range(start, len(source)):
+        ch = source[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == ";" and depth <= 0:
+            return source[: i + 1].count("\n") + 1
+    return source.count("\n") + 1
+
+
+def _extract_statement_text(source: str, start: int) -> str:
+    """Return the full CREATE TABLE statement text starting at ``start``."""
+    depth = 0
+    for i in range(start, len(source)):
+        ch = source[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == ";" and depth <= 0:
+            return source[start : i + 1]
+    return source[start : start + 2000]
 
 
 def _split_column_definitions(content: str) -> list[str]:

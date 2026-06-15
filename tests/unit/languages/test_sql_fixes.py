@@ -6,6 +6,8 @@ Tests for SQL extraction bugs:
 RED tests written before the fix; each asserts EXACT values (no >= bounds).
 """
 
+from typing import Any
+
 import pytest
 
 try:
@@ -17,6 +19,10 @@ except ImportError:
     TREE_SITTER_SQL_AVAILABLE = False
 
 from tree_sitter_analyzer.languages.sql_plugin import SQLElementExtractor
+from tree_sitter_analyzer.languages.sql_plugin.table_extractor import (
+    _is_in_sql_comment,
+    fill_missing_sql_tables_from_regex,
+)
 from tree_sitter_analyzer.models import SQLFunction, SQLTable
 
 
@@ -209,3 +215,158 @@ class TestCreateTableAsSelect:
         tables = [e for e in elements if isinstance(e, SQLTable)]
         assert len(tables) == 1
         assert tables[0].name == "archive_users"
+
+
+# ---------------------------------------------------------------------------
+# Bug #808 — CREATE TABLE silently dropped when FOREIGN KEY + ON DELETE/UPDATE
+#            triggers tree-sitter parse-recovery ERROR node cascade
+# ---------------------------------------------------------------------------
+
+# Minimal Chinook-style DDL that reproduces the cascade:
+# Artist → Album (FK with ON DELETE RESTRICT) → Customer
+# tree-sitter SQL grammar creates an ERROR node that absorbs Customer when
+# it encounters the multi-line ON DELETE/ON UPDATE clause.  The regex
+# fallback in fill_missing_sql_tables_from_regex must recover it.
+_SQL_FOREIGN_KEY_CASCADE = """
+CREATE TABLE Artist (
+    ArtistId INT NOT NULL,
+    Name VARCHAR(120),
+    CONSTRAINT PK_Artist PRIMARY KEY (ArtistId)
+);
+
+CREATE TABLE Album (
+    AlbumId INT NOT NULL,
+    Title VARCHAR(160) NOT NULL,
+    ArtistId INT NOT NULL,
+    CONSTRAINT PK_Album PRIMARY KEY (AlbumId),
+    FOREIGN KEY (ArtistId) REFERENCES Artist (ArtistId)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION
+);
+
+CREATE TABLE Customer (
+    CustomerId INT NOT NULL,
+    FirstName VARCHAR(40) NOT NULL,
+    LastName VARCHAR(20) NOT NULL,
+    CONSTRAINT PK_Customer PRIMARY KEY (CustomerId)
+);
+"""
+
+
+class TestCreateTableErrorNodeCascade:
+    """#808: CREATE TABLE absorbed into ERROR node must be recovered via regex fallback."""
+
+    def test_all_three_tables_extracted(self):
+        """Artist + Album + Customer must all appear — Customer is the cascade victim."""
+        elements = _extract(_SQL_FOREIGN_KEY_CASCADE)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        names = {t.name for t in tables}
+        assert names == {"Artist", "Album", "Customer"}
+
+    def test_table_count_is_exactly_three(self):
+        """Exact count — ensures no duplicates from regex + AST overlap."""
+        elements = _extract(_SQL_FOREIGN_KEY_CASCADE)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 3
+
+    def test_customer_table_name_correct(self):
+        """Customer table must have name='Customer', not 'CustomerId' or similar."""
+        elements = _extract(_SQL_FOREIGN_KEY_CASCADE)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        customer = next((t for t in tables if t.name == "Customer"), None)
+        assert customer is not None
+        assert customer.name == "Customer"
+
+    def test_no_schema_name_on_simple_tables(self):
+        """None of the three tables use schema-qualified names — schema_name must be None."""
+        elements = _extract(_SQL_FOREIGN_KEY_CASCADE)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        for table in tables:
+            assert table.schema_name is None, (
+                f"{table.name} has unexpected schema_name={table.schema_name!r}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Codex P2 fixes — comment detection and schema-aware deduplication
+# ---------------------------------------------------------------------------
+
+
+class TestIsInSqlComment:
+    """Unit tests for _is_in_sql_comment helper."""
+
+    def test_not_in_comment_plain_text(self):
+        src = "CREATE TABLE foo (id INT);"
+        assert _is_in_sql_comment(src, 0) is False
+
+    def test_inside_line_comment(self):
+        src = "-- CREATE TABLE foo (id INT);"
+        assert _is_in_sql_comment(src, 3) is True
+
+    def test_after_line_comment_on_same_line(self):
+        src = "-- removed\nCREATE TABLE foo (id INT);"
+        pos = src.index("CREATE")
+        assert _is_in_sql_comment(src, pos) is False
+
+    def test_inside_block_comment(self):
+        src = "/* CREATE TABLE foo (id INT); */"
+        assert _is_in_sql_comment(src, 3) is True
+
+    def test_after_closed_block_comment(self):
+        src = "/* removed */\nCREATE TABLE foo (id INT);"
+        pos = src.index("CREATE")
+        assert _is_in_sql_comment(src, pos) is False
+
+
+class TestFillMissingTablesCommentSkip:
+    """Regex fallback must not add tables found only inside SQL comments."""
+
+    def test_commented_create_table_is_ignored(self):
+        sql = (
+            "-- CREATE TABLE dropped_users (id INT);\n"
+            "CREATE TABLE real_users (id INT);\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        names = {t.name for t in tables}
+        assert "dropped_users" not in names
+        assert "real_users" in names
+
+    def test_block_commented_create_table_is_ignored(self):
+        sql = (
+            "/* CREATE TABLE old_schema (id INT); */\n"
+            "CREATE TABLE new_schema (id INT);\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        names = {t.name for t in tables}
+        assert "old_schema" not in names
+        assert "new_schema" in names
+
+
+class TestFillMissingTablesSchemaDeduplciation:
+    """Regex fallback must distinguish same table name in different schemas."""
+
+    def test_same_name_different_schemas_both_recovered(self):
+        sql = (
+            "CREATE TABLE tenant_a.users (id INT);\n"
+            "CREATE TABLE tenant_b.users (id INT);\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 2
+        schemas = {t.schema_name for t in tables}
+        assert schemas == {"tenant_a", "tenant_b"}
+
+    def test_duplicate_same_schema_not_added_twice(self):
+        sql = (
+            "CREATE TABLE myschema.orders (id INT);\n"
+            "CREATE TABLE myschema.orders (id INT);\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
