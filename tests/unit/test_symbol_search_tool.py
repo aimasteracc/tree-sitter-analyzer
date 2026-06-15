@@ -92,7 +92,10 @@ class TestCodeGraphSymbolSearchExecution:
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "~user", "output_format": "json"})
         assert result["success"] is True
-        assert result["match_count"] == 3
+        # Fixture has UserService, get_user, _find_user, format_user = 4 symbols
+        # containing "user". After #739 fix (prefix matching), UserService is
+        # now found via user* prefix on the token "userservice".
+        assert result["match_count"] == 4
 
     async def test_wildcard_match(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
@@ -210,6 +213,29 @@ class TestCodeGraphSymbolSearchExecution:
             )
             score = hit["relevance_score"]
             assert 0.0 <= score <= 1.0, f"score out of range: {score}"
+
+    async def test_fuzzy_prefix_finds_camelcase_class(self, indexed_project):
+        """#739: ~User must match UserService via FTS5 prefix (user*), not exact-token."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "~User", "output_format": "json"})
+        assert result["success"] is True
+        names = [r["name"] for r in result["results"]]
+        assert "UserService" in names, (
+            f"~User must find UserService via prefix match; got {names}"
+        )
+
+    async def test_fuzzy_special_chars_do_not_crash(self, indexed_project):
+        """Codex P2 / #739: ~foo-bar must not raise sqlite3.OperationalError.
+
+        Plain term* drops quoting, so FTS5 special chars (-, ., :) in the query
+        cause a syntax error.  Quoted-prefix ("term"*) is always safe.
+        """
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        for bad_query in ["~foo-bar", "~foo.bar", "~foo:bar"]:
+            result = await tool.execute({"query": bad_query, "output_format": "json"})
+            assert result["success"] is True, (
+                f"Query {bad_query!r} must not crash; got {result}"
+            )
 
     async def test_plain_query_cascade_fuzzy_finds_typo(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))

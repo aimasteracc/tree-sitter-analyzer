@@ -264,7 +264,10 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         if cache.fts5_available:
             terms = substring.split()
             if terms:
-                fts_query = " OR ".join(f'"{t}"' for t in terms)
+                # Use quoted-prefix matching ("term"*) so "SecurityVal" matches
+                # "SecurityValidator" — plain term* drops quoting and crashes on
+                # inputs with FTS5 special chars (-, ., :); "term"* is safe (#739).
+                fts_query = " OR ".join(f'"{t.lower()}"*' for t in terms)
 
                 conn = cache.get_conn()
                 # Weighted BM25 (name col 10x) — hardcoded constant, no injection risk.
