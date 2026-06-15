@@ -14,6 +14,11 @@ _CONTAINER_NODE_TYPES = frozenset(
         "union_specifier",
         "declaration_list",
         "field_declaration_list",
+        # field_declaration is required so that nested class/struct/union types
+        # declared as members of a class body are reachable.  Without it, the
+        # traversal stops at field_declaration_list children and never descends
+        # into member declarations that contain a type specifier (bug #751).
+        "field_declaration",
         "compound_statement",
         "template_declaration",
         "declaration",

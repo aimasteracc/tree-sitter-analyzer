@@ -382,6 +382,31 @@ class TestRubyVariableExtraction:
 
         assert variables == []
 
+    def test_scoped_constant_assignment_not_dropped(self):
+        """#902 Codex P2: Config::TIMEOUT = 30 must not be silently dropped.
+
+        tree-sitter reports the LHS of a scope_resolution assignment as
+        ``scope_resolution``, not ``constant``.  Without the guard the
+        scoped constant was filtered out by the phantom-field fix (#770).
+        """
+        code = """
+class MyApp
+  Config::DEFAULT_TIMEOUT = 30
+  Config::MAX_RETRIES = 5
+end
+"""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        variables = extractor.extract_variables(tree, code)
+
+        names = [v.name for v in variables]
+        assert "Config::DEFAULT_TIMEOUT" in names
+        assert "Config::MAX_RETRIES" in names
+        # Scoped constants are treated as constants (public, is_constant=True)
+        for v in variables:
+            assert v.is_constant is True
+
 
 class TestRubyImportExtraction:
     """Test Ruby require statement extraction."""
@@ -571,6 +596,17 @@ class TestRubyPluginAnalyzeFile:
 
         assert result.node_count == 77
 
+    @pytest.mark.asyncio
+    async def test_analyze_file_line_count_nonzero(self, tmp_path):
+        """#769: line_count must reflect actual file line count, not default 0."""
+        rb_file = tmp_path / "test.rb"
+        rb_file.write_text(SIMPLE_CLASS_CODE, encoding="utf-8")
+
+        plugin = RubyPlugin()
+        result = await plugin.analyze_file(str(rb_file), None)
+
+        assert result.line_count == len(SIMPLE_CLASS_CODE.splitlines())
+
 
 class TestRubyIntegration:
     """Integration tests for Ruby plugin."""
@@ -709,3 +745,43 @@ end
         user_methods = [f for f in functions if f.receiver_type == "User"]
         method_names = [f.name for f in user_methods]
         assert "initialize" in method_names
+
+
+_OPTIONAL_PARAM_CODE = """\
+class AdminUser
+  def initialize(username, email, permissions = [])
+    @username = username
+    @email = email
+    @permissions = permissions
+  end
+
+  def configure(mode: :strict, timeout: 30)
+    @mode = mode
+    @timeout = timeout
+  end
+end
+"""
+
+
+class TestRubyOptionalParamExtraction:
+    """#768: optional/keyword parameters must appear in .parameters (not silently dropped)."""
+
+    def test_optional_parameter_included_with_default(self):
+        """permissions = [] must appear as 'permissions = []', not be silently dropped."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(_OPTIONAL_PARAM_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, _OPTIONAL_PARAM_CODE)
+
+        init = next(f for f in functions if f.name == "initialize")
+        assert init.parameters == ["username", "email", "permissions = []"]
+
+    def test_keyword_parameter_included_with_default(self):
+        """mode: :strict must appear as 'mode: :strict', not be silently dropped."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(_OPTIONAL_PARAM_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, _OPTIONAL_PARAM_CODE)
+
+        configure = next(f for f in functions if f.name == "configure")
+        assert configure.parameters == ["mode: :strict", "timeout: 30"]

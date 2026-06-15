@@ -137,7 +137,7 @@ def analyze_file():
             )
         )
         assert result["success"] is True
-        assert result["matches_found"] >= 1
+        assert result["matches_found"] == 1
         defs = result.get("definitions", [])
         names = [d["name"] for d in defs]
         assert "HealthScorer" in names
@@ -147,7 +147,7 @@ def analyze_file():
             tool_with_project.execute({"symbol": "*Tool", "output_format": "json"})
         )
         assert result["success"] is True
-        assert result["matches_found"] >= 3
+        assert result["matches_found"] == 3
         defs = result.get("definitions", [])
         names = [d["name"] for d in defs]
         assert any("Tool" in n for n in names)
@@ -155,7 +155,7 @@ def analyze_file():
     def test_fuzzy_search_finds_matches(self, tool_with_project):
         result = asyncio.run(tool_with_project.execute({"symbol": "~scorer"}))
         assert result["success"] is True
-        assert result["matches_found"] >= 1
+        assert result["matches_found"] == 1
 
     def test_type_filter_classes_only(self, tool_with_project):
         result = asyncio.run(
@@ -223,7 +223,7 @@ class HealthScorer:
             ref_project.execute({"symbol": "HealthScorer", "find_references": True})
         )
         assert result["success"] is True
-        assert result.get("callers_count", 0) >= 0
+        assert result.get("callers_count") == 1
         assert "total_usages" in result
 
     def test_find_references_empty_symbol_raises(self):

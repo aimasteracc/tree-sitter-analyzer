@@ -56,11 +56,14 @@ def _table_name_from_children(
     get_node_text: Callable[..., str],
     is_valid_identifier: Callable[[str], bool],
 ) -> str | None:
-    """Extract a table name from object_reference children."""
+    """Extract a table name from object_reference children.
+
+    For ``schema.table`` patterns the LAST identifier is the table name.
+    """
     for child in node.children:
         if child.type != "object_reference":
             continue
-        table_name = _identifier_from_object_reference(
+        table_name = _last_identifier_from_object_reference(
             child,
             get_node_text,
             is_valid_identifier,
@@ -70,16 +73,21 @@ def _table_name_from_children(
     return None
 
 
-def _identifier_from_object_reference(
+def _last_identifier_from_object_reference(
     node: tree_sitter.Node,
     get_node_text: Callable[..., str],
     is_valid_identifier: Callable[[str], bool],
 ) -> str | None:
-    """Extract the first valid identifier from an object_reference node."""
-    for subchild in node.children:
-        if subchild.type != "identifier":
-            continue
-        table_name = get_node_text(subchild).strip()
-        if table_name and is_valid_identifier(table_name):
-            return table_name
-    return None
+    """Extract the LAST valid identifier from an object_reference node.
+
+    For a plain ``tablename`` reference there is one identifier child.
+    For a ``schema.tablename`` reference there are two; we return the last.
+    """
+    valid = [
+        get_node_text(subchild).strip()
+        for subchild in node.children
+        if subchild.type == "identifier"
+        and get_node_text(subchild).strip()
+        and is_valid_identifier(get_node_text(subchild).strip())
+    ]
+    return valid[-1] if valid else None

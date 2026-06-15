@@ -24,7 +24,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..models import Class, Function, Import, Variable
+from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 from ..utils.tree_sitter_compat import get_node_text_safe
@@ -66,6 +66,9 @@ from .csharp_helpers import (
 )
 from .csharp_helpers import (
     extract_using_directive as _extract_using_standalone,
+)
+from .csharp_helpers import (
+    find_owning_class_name as _find_owning_class_name,
 )
 
 
@@ -277,14 +280,23 @@ class CSharpElementExtractor(ElementExtractor):
             if node.type == "method_declaration":
                 func = self._extract_method(node)
                 if func:
+                    func.receiver_type = _find_owning_class_name(
+                        node, self._get_node_text_optimized
+                    )
                     functions.append(func)
             elif node.type == "constructor_declaration":
                 func = self._extract_constructor(node)
                 if func:
+                    func.receiver_type = _find_owning_class_name(
+                        node, self._get_node_text_optimized
+                    )
                     functions.append(func)
             elif node.type == "property_declaration":
                 func = self._extract_property(node)
                 if func:
+                    func.receiver_type = _find_owning_class_name(
+                        node, self._get_node_text_optimized
+                    )
                     functions.append(func)
 
         # Sort by start line for deterministic output
@@ -420,6 +432,54 @@ class CSharpElementExtractor(ElementExtractor):
     def _extract_using_directive(self, node: tree_sitter.Node) -> Import | None:
         """Extract a using directive."""
         return _extract_using_standalone(node, self._get_node_text_optimized)
+
+    def extract_packages(
+        self, tree: tree_sitter.Tree | None, source_code: str
+    ) -> list[Package]:
+        """
+        Extract the C# namespace declaration as a Package element.
+
+        Bug #767 — the namespace was captured internally into
+        ``current_namespace`` but never surfaced as a ``Package`` element,
+        so ``package.name`` always appeared as ``'unknown'``.
+
+        Args:
+            tree: Tree-sitter AST tree parsed from C# source
+            source_code: Original C# source code as string
+
+        Returns:
+            List with at most one Package element (the first namespace found)
+        """
+        self.source_code = source_code or ""
+        self._reset_caches()
+
+        packages: list[Package] = []
+
+        if tree is None or tree.root_node is None:
+            return packages
+
+        for node in self._traverse_iterative(tree.root_node):
+            if node.type != "namespace_declaration":
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            ns_name = self._get_node_text_optimized(name_node)
+            if not ns_name:
+                continue
+            packages.append(
+                Package(
+                    name=ns_name,
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    raw_text=ns_name,
+                    language="csharp",
+                )
+            )
+            # Only capture the outermost (first) namespace per file
+            break
+
+        return packages
 
 
 class CSharpPlugin(LanguagePlugin):
@@ -602,6 +662,7 @@ class CSharpPlugin(LanguagePlugin):
 
             extractor = self.create_extractor()
             elements: list[Any] = []
+            elements.extend(extractor.extract_packages(tree, source_code))
             elements.extend(extractor.extract_classes(tree, source_code))
             elements.extend(extractor.extract_functions(tree, source_code))
             elements.extend(extractor.extract_variables(tree, source_code))

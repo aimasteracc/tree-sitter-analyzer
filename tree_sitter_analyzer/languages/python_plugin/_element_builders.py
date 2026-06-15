@@ -122,6 +122,8 @@ class FunctionBuildInput:
     complexity_score: int
     framework_type: str
     is_constructor: bool = False
+    is_method: bool = False
+    parent_class: str | None = None
 
 
 def build_function_element(data: FunctionBuildInput) -> Function:
@@ -140,6 +142,7 @@ def build_function_element(data: FunctionBuildInput) -> Function:
         is_generator="yield" in data.raw_text,
         docstring=data.docstring,
         complexity_score=data.complexity_score,
+        decorators=data.decorators,
         modifiers=data.decorators,
         is_static=has_staticmethod,
         is_staticmethod=has_staticmethod,
@@ -149,6 +152,8 @@ def build_function_element(data: FunctionBuildInput) -> Function:
         is_property="property" in data.decorators,
         is_classmethod="classmethod" in data.decorators,
         is_constructor=data.is_constructor,
+        is_method=data.is_method,
+        parent_class=data.parent_class,
     )
 
 
@@ -181,6 +186,7 @@ def build_detailed_function_element(data: DetailedFunctionBuildInput) -> Functio
         language="python",
         parameters=data.parameters,
         return_type=data.return_type or "Any",
+        decorators=data.decorators,
         modifiers=data.decorators,
         is_static="staticmethod" in data.decorators,
         is_private=visibility == "private",

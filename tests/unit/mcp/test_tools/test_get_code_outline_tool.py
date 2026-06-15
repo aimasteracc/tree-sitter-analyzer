@@ -851,6 +851,84 @@ class TestGetCodeOutlineToolExecute:
 
 
 # ---------------------------------------------------------------------------
+# Issue #741: top_level_functions must NOT be duplicated as methods[]
+# ---------------------------------------------------------------------------
+
+
+class TestAssembleOutlineResponseNoMethodsDuplication:
+    """_assemble_outline_response must not copy top_level_functions into methods[].
+
+    Issue #741: lines 514-516 of get_code_outline_tool.py added
+    ``result["methods"] = fns_capped`` which made every top-level function
+    appear twice — once under ``top_level_functions`` and once under
+    ``methods``.  The ``methods`` alias must be absent from the response dict.
+    """
+
+    def _make_outline(self, top_fns: list, classes: list | None = None) -> dict:
+        return {
+            "classes": classes or [],
+            "top_level_functions": top_fns,
+            "statistics": {
+                "class_count": len(classes or []),
+                "method_count": len(top_fns),
+                "field_count": 0,
+                "import_count": 0,
+            },
+            "total_lines": 50,
+            "language": "python",
+        }
+
+    def test_no_top_level_methods_key_when_functions_present(self):
+        """result must not have a top-level 'methods' key (Issue #741)."""
+        fns = [{"name": "main", "line_start": 1, "line_end": 10}]
+        outline = self._make_outline(fns)
+        result = GetCodeOutlineTool._assemble_outline_response(
+            file_path="/proj/foo.py", language="python", outline=outline
+        )
+        assert "methods" not in result, (
+            "'methods' key must not appear in the response — "
+            "top-level functions belong only in 'top_level_functions'"
+        )
+
+    def test_no_top_level_methods_key_when_no_functions(self):
+        """result must not have a 'methods' key even when top_level_functions is empty."""
+        outline = self._make_outline([])
+        result = GetCodeOutlineTool._assemble_outline_response(
+            file_path="/proj/empty.py", language="python", outline=outline
+        )
+        assert "methods" not in result
+
+    def test_top_level_functions_not_duplicated(self):
+        """top_level_functions and methods must not carry the same items (#741)."""
+        fns = [
+            {"name": "foo", "line_start": 1, "line_end": 5},
+            {"name": "bar", "line_start": 7, "line_end": 12},
+        ]
+        outline = self._make_outline(fns)
+        result = GetCodeOutlineTool._assemble_outline_response(
+            file_path="/proj/mod.py", language="python", outline=outline
+        )
+        assert result["top_level_functions"] == fns[:2]
+        # If 'methods' were present it would be a duplicated alias — must be absent.
+        assert "methods" not in result
+
+    def test_class_methods_stay_in_classes_not_top_level_methods(self):
+        """Methods belonging to a class must only appear inside classes[i].methods."""
+        cls = {
+            "name": "MyClass",
+            "line_start": 1,
+            "line_end": 30,
+            "methods": [{"name": "my_method", "line_start": 5, "line_end": 10}],
+        }
+        outline = self._make_outline(top_fns=[], classes=[cls])
+        result = GetCodeOutlineTool._assemble_outline_response(
+            file_path="/proj/cls.py", language="python", outline=outline
+        )
+        assert "methods" not in result
+        assert result["classes"][0]["methods"][0]["name"] == "my_method"
+
+
+# ---------------------------------------------------------------------------
 # 工具定义测试
 # ---------------------------------------------------------------------------
 

@@ -30,6 +30,42 @@ def extract_enum_definition(
     )
 
 
+def _is_anonymous_nested_member(node: Any, get_node_text: Callable[..., str]) -> bool:
+    """Return True when ``node`` is an anonymous container (struct/union/enum
+    with no ``type_identifier`` child) that appears as a typed member inside
+    another struct/union body via ``field_declaration``.
+
+    These are *anonymous member containers* (e.g. ``union { int a; float b; }
+    data;``).  They have no independent identity as a named type and must be
+    skipped rather than emitted with a synthetic ``anonymous_union_N`` name
+    (bug #753).  Named nested types (``struct Inner { int x; }``) DO have a
+    ``type_identifier`` child and therefore return False.
+    """
+    # Must have no direct type name of its own.
+    if _direct_type_name(node, get_node_text) is not None:
+        return False
+    # Must not be the primary type in a typedef (handled elsewhere).
+    if node.parent and node.parent.type == "type_definition":
+        return False
+    # Must be the specifier inside a field_declaration (a struct/union member).
+    return bool(node.parent and node.parent.type == "field_declaration")
+
+
+def _has_body(node: Any) -> bool:
+    """Return True when ``node`` (struct/union/enum specifier) has a definition
+    body.  A specifier without a body is a type *reference* (e.g. the type of
+    a field declaration ``struct Point top_left;``) and must not be emitted as
+    a class definition."""
+    for child in node.children:
+        if child.type in (
+            "field_declaration_list",
+            "enumerator_list",
+            "declaration_list",
+        ):
+            return True
+    return False
+
+
 def _extract_type_definition(
     node: Any,
     get_node_text: Callable[..., str],
@@ -39,6 +75,23 @@ def _extract_type_definition(
     error_label: str,
 ) -> Class | None:
     try:
+        # Skip type *references* (specifiers with no body).  A struct/union/enum
+        # that appears as a field type (``struct Point top_left;``) is a
+        # reference, not a definition — it has no field_declaration_list.
+        # Exception: typedef targets may have no explicit type name yet still
+        # be valid definitions (anonymous struct typedef).
+        if not _has_body(node) and (
+            not node.parent or node.parent.type != "type_definition"
+        ):
+            return None
+
+        # Skip anonymous containers that are just typed members of another
+        # struct/union body — they have no meaningful type name and emitting
+        # them with a synthetic ``anonymous_union_N`` name pollutes the class
+        # list (bug #753).
+        if _is_anonymous_nested_member(node, get_node_text):
+            return None
+
         start_line, end_line = _node_line_range(node)
         name, start_line, end_line = _type_name_and_range(
             node, get_node_text, start_line, end_line, anonymous_prefix

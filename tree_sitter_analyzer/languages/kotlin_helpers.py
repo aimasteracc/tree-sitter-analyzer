@@ -440,6 +440,9 @@ def extract_kotlin_primary_constructor(
                             parameters.append(f"{param_name}: {param_type or 'Any'}")
                 break
 
+        # Issue #761: constructors have no return type in Kotlin.
+        # Previously emitted return_type="void" which is wrong — Kotlin
+        # constructors are not functions with a void return; use None.
         return Function(
             name=name,
             start_line=start_line,
@@ -447,7 +450,7 @@ def extract_kotlin_primary_constructor(
             raw_text=raw_text,
             language="kotlin",
             parameters=parameters,
-            return_type="void",
+            return_type=None,
             visibility="public",
             is_constructor=True,
         )
@@ -600,6 +603,10 @@ def _extract_kotlin_property_name(
     r37ci (dogfood): extracted from ``extract_kotlin_property`` so the
     three lookup forms (``name`` field / ``variable_declaration`` /
     ``simple_identifier``) read as a flat chain.
+
+    Issues #758/#760: the installed grammar emits ``identifier`` (not
+    ``simple_identifier``) as the name child inside ``variable_declaration``.
+    Accept both so the helper works across grammar versions.
     """
     name_node = node.child_by_field_name("name")
     if name_node:
@@ -607,11 +614,53 @@ def _extract_kotlin_property_name(
     for child in node.children:
         if child.type == "variable_declaration":
             for grandchild in child.children:
-                if grandchild.type == "simple_identifier":
+                if grandchild.type in ("simple_identifier", "identifier"):
                     return str(get_node_text(grandchild))
-        elif child.type == "simple_identifier":
+        elif child.type in ("simple_identifier", "identifier"):
             return str(get_node_text(child))
     return "unknown"
+
+
+# Modifier keyword sets for Kotlin properties (#760)
+_KOTLIN_PROPERTY_VISIBILITY_MODIFIERS = frozenset(
+    {"private", "protected", "internal", "public"}
+)
+_KOTLIN_PROPERTY_OTHER_MODIFIERS = frozenset(
+    {"override", "lateinit", "const", "open", "abstract", "final", "suspend"}
+)
+
+
+def _extract_kotlin_property_modifiers(
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> tuple[str, list[str]]:
+    """Return ``(visibility, modifiers_list)`` from a property_declaration node.
+
+    Issue #760: ``child_by_field_name("modifiers")`` always returns None for
+    the Kotlin grammar — the field is not named in the grammar's node-types.
+    Scan children by type instead.  Each modifier keyword is a separate leaf
+    node inside the ``modifiers`` container.
+    """
+    visibility = "public"
+    modifiers: list[str] = []
+
+    for child in node.children:
+        if child.type != "modifiers":
+            continue
+        # Walk all descendants of the modifiers node to collect keywords.
+        # Direct children are modifier wrappers (visibility_modifier,
+        # member_modifier, etc.) whose own children are the keyword tokens.
+        for mod_child in child.children:
+            keyword = get_node_text(mod_child).strip()
+            if not keyword:
+                continue
+            if keyword in _KOTLIN_PROPERTY_VISIBILITY_MODIFIERS:
+                visibility = keyword
+            if keyword in _KOTLIN_PROPERTY_OTHER_MODIFIERS:
+                modifiers.append(keyword)
+        break  # only one modifiers node per declaration
+
+    return visibility, modifiers
 
 
 # Extract elements from AST: extract_kotlin_property
@@ -619,15 +668,30 @@ def extract_kotlin_property(
     node: Any,
     get_node_text: Callable[..., str],
 ) -> Variable | None:
-    """Extract Kotlin property declaration."""
+    """Extract Kotlin property declaration.
+
+    Fixes applied:
+    - #758: val/var/const detection from AST token, not raw-text prefix.
+    - #759: Local val/var inside function bodies are blocked at the traversal
+      level; this function only sees class-body / top-level properties.
+    - #760: Capture modifiers by scanning children instead of
+      child_by_field_name (which the grammar doesn't populate).
+    - ``is_static`` / ``is_readonly``: set True for ``const val`` properties
+      (Kotlin ``const`` implies compile-time constant = static & immutable).
+    """
     try:
+        # Detect val/var from AST token children, not raw text.
+        # When modifiers precede the keyword (e.g. "private val") the text
+        # does NOT start with "val " — always scan by child type.
         is_val = False
         is_var = False
-        text = get_node_text(node)
-        if text.startswith("val "):
-            is_val = True
-        elif text.startswith("var "):
-            is_var = True
+        for child in node.children:
+            if child.type == "val":
+                is_val = True
+                break
+            if child.type == "var":
+                is_var = True
+                break
 
         # r37ci (dogfood): extracted to drop nesting from 7 to ≤3.
         name = _extract_kotlin_property_name(node, get_node_text)
@@ -635,12 +699,22 @@ def extract_kotlin_property(
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
 
+        # Extract declared type from variable_declaration children.
+        # Grammar shape:  variable_declaration → identifier ':' user_type
+        # Falls back to "Inferred" when no type annotation is present.
         prop_type = "Inferred"
+        for child in node.children:
+            if child.type == "variable_declaration":
+                for grandchild in child.children:
+                    if "type" in grandchild.type or grandchild.type == "user_type":
+                        prop_type = get_node_text(grandchild)
+                        break
+                break
 
-        visibility = "public"
-        modifiers_node = node.child_by_field_name("modifiers")
-        if modifiers_node:
-            visibility = determine_visibility(get_node_text(modifiers_node))
+        # child_by_field_name("modifiers") always returns None for the Kotlin
+        # grammar; use the child-type scan helper instead (#760).
+        visibility, modifiers = _extract_kotlin_property_modifiers(node, get_node_text)
+        is_const = "const" in modifiers
 
         raw_text = get_node_text(node)
 
@@ -652,9 +726,14 @@ def extract_kotlin_property(
             language="kotlin",
             variable_type=prop_type,
             visibility=visibility,
+            modifiers=modifiers,
         )
         var.is_val = is_val
         var.is_var = is_var
+        # Kotlin `const val` is a compile-time constant: static and readonly.
+        if is_const:
+            var.is_static = True
+            var.is_readonly = True
 
         return var
 

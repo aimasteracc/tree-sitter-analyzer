@@ -7,6 +7,19 @@ from ..models import Variable
 from ..utils import log_error
 from ._go_common_helpers import go_visibility
 
+_GO_FIELD_TYPE_NODES = {
+    "type_identifier",
+    "pointer_type",
+    "array_type",
+    "slice_type",
+    "map_type",
+    "channel_type",
+    "qualified_type",
+    "interface_type",
+    "struct_type",
+    "func_type",
+}
+
 _GO_VAR_TYPE_NODES = {
     "type_identifier",
     "pointer_type",
@@ -96,3 +109,81 @@ def _iter_var_const_specs(node: Any) -> list[Any]:
     return [
         child for child in node.children if child.type in ("const_spec", "var_spec")
     ]
+
+
+def extract_struct_fields(
+    type_declaration_node: Any,
+    get_node_text: Callable[..., str],
+) -> list[Variable]:
+    """Extract field declarations from a Go struct type_declaration node.
+
+    Walks: type_declaration → type_spec → struct_type → field_declaration_list
+    → field_declaration nodes, yielding one Variable per field with
+    ``receiver_type`` set to the owning struct name.
+    """
+    results: list[Variable] = []
+    try:
+        for type_spec in type_declaration_node.children:
+            if type_spec.type != "type_spec":
+                continue
+            name_node = type_spec.child_by_field_name("name")
+            if name_node is None:
+                continue
+            struct_name = get_node_text(name_node)
+
+            type_body = type_spec.child_by_field_name("type")
+            if type_body is None or type_body.type != "struct_type":
+                continue
+
+            for child in type_body.children:
+                if child.type != "field_declaration_list":
+                    continue
+                for field_node in child.children:
+                    if field_node.type != "field_declaration":
+                        continue
+                    field_var = _extract_one_field(
+                        field_node, struct_name, get_node_text
+                    )
+                    if field_var is not None:
+                        results.append(field_var)
+    except Exception as e:
+        log_error(f"Error extracting Go struct fields: {e}")
+    return results
+
+
+def _extract_one_field(
+    field_node: Any,
+    struct_name: str,
+    get_node_text: Callable[..., str],
+) -> Variable | None:
+    """Extract a single field_declaration into a Variable.
+
+    Go grammar: field_declaration has named fields "name" (field_identifier)
+    and "type" (any type node).  Embedded fields (anonymous fields) have no
+    "name" child — skip them for now.
+    """
+    try:
+        name_node = field_node.child_by_field_name("name")
+        type_node = field_node.child_by_field_name("type")
+        if name_node is None or type_node is None:
+            return None
+
+        name = get_node_text(name_node)
+        field_type = get_node_text(type_node)
+        raw_text = get_node_text(field_node)
+        visibility = go_visibility(name)
+
+        return Variable(
+            name=name,
+            start_line=field_node.start_point[0] + 1,
+            end_line=field_node.end_point[0] + 1,
+            raw_text=raw_text,
+            language="go",
+            variable_type=field_type,
+            visibility=visibility,
+            is_constant=False,
+            receiver_type=struct_name,
+        )
+    except Exception as e:
+        log_error(f"Error extracting Go field declaration: {e}")
+        return None

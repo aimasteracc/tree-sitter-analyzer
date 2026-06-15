@@ -52,6 +52,9 @@ from .go_helpers import (
     extract_return_type as _extract_return_type_standalone,
 )
 from .go_helpers import (
+    extract_struct_fields as _extract_struct_fields_standalone,
+)
+from .go_helpers import (
     extract_var_spec as _extract_var_spec_standalone,
 )
 
@@ -123,11 +126,12 @@ class GoElementExtractor(ElementExtractor):
         extractors = {
             "const_declaration": self._extract_const_declaration,
             "var_declaration": self._extract_var_declaration,
+            "type_declaration": self._extract_struct_fields,
         }
 
         self._traverse_and_extract(tree.root_node, extractors, variables)
 
-        log_debug(f"Extracted {len(variables)} Go const/var declarations")
+        log_debug(f"Extracted {len(variables)} Go const/var/field declarations")
         return variables
 
     # Extract elements from AST: extract_imports
@@ -302,6 +306,11 @@ class GoElementExtractor(ElementExtractor):
     ) -> list[Variable]:
         """Extract single var/const spec"""
         return _extract_var_spec_standalone(node, is_const, self._get_node_text)
+
+    # Extract elements from AST: _extract_struct_fields
+    def _extract_struct_fields(self, node: tree_sitter.Node) -> list[Variable]:
+        """Extract struct field declarations from a type_declaration node."""
+        return _extract_struct_fields_standalone(node, self._get_node_text)
 
     # Extract elements from AST: _extract_goroutine
     def _extract_goroutine(self, node: tree_sitter.Node) -> None:

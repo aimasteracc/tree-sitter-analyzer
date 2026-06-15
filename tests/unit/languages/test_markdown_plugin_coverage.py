@@ -451,7 +451,6 @@ class TestMarkdownElementAttributes:
         )
         elem.text = "content"
         elem.type = "test_type"
-        elem.line_count = 5
         elem.alt = "alt_value"
         elem.list_type = "ordered"
         elem.item_count = 10
@@ -465,7 +464,7 @@ class TestMarkdownElementAttributes:
         assert elem.is_checked is True
         assert elem.text == "content"
         assert elem.type == "test_type"
-        assert elem.line_count == 5
+        assert elem.line_count == 2  # computed: end_line(2) - start_line(1) + 1
         assert elem.alt == "alt_value"
         assert elem.list_type == "ordered"
         assert elem.item_count == 10
@@ -487,7 +486,7 @@ class TestMarkdownElementAttributes:
         assert elem.is_checked is None
         assert elem.text is None
         assert elem.type is None
-        assert elem.line_count is None
+        assert elem.line_count == 2  # computed: end_line(2) - start_line(1) + 1
         assert elem.alt is None
         assert elem.list_type is None
         assert elem.item_count is None

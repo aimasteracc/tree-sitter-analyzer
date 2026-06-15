@@ -18,7 +18,8 @@ _TRIGGER_NAME_REGEX = re.compile(
     r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE
 )
 _FUNCTION_NAME_REGEX = re.compile(
-    r"CREATE\s+FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE
+    r"CREATE\s+FUNCTION\s+(?:[a-zA-Z_][a-zA-Z0-9_]*\.)*([a-zA-Z_][a-zA-Z0-9_]*)",
+    re.IGNORECASE,
 )
 _CREATE_VIEW_LINE_REGEX = re.compile(
     r"^\s*CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS",

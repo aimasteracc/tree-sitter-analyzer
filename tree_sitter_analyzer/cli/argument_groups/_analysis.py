@@ -159,6 +159,19 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
             "need verification_command, raw_files, raw_test_paths, etc."
         ),
     )
+    parser.add_argument(
+        "--change-impact-fail-on-risk",
+        nargs="?",
+        const="review",
+        default=None,
+        metavar="THRESHOLD",
+        choices=["review", "caution", "unsafe"],
+        help=(
+            "Exit 1 when change-impact verdict reaches THRESHOLD or higher "
+            "(review | caution | unsafe). Omitting THRESHOLD defaults to "
+            "review. Does not change the output — only the exit code."
+        ),
+    )
 
 
 def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:

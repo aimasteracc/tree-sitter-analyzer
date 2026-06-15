@@ -318,8 +318,8 @@ class TestResolveCrossFile:
                     "AND callee_resolved_file != '' "
                     "AND callee_resolved_file != file_path"
                 ).fetchone()["c"]
-                assert count > 0, (
-                    "expected at least one cross-file 'project' edge after "
+                assert count == 1, (
+                    "expected exactly one cross-file 'project' edge after "
                     "indexing a.py + b.py"
                 )
         finally:
@@ -732,15 +732,15 @@ class TestRFC0002DistinctSymbolIds:
             resolved_files = {
                 r["callee_resolved_file"] for r in rows if r["callee_resolved_file"]
             }
-            assert len(rows) >= 2, (
-                f"expected >=2 resolved 'helper' call edges, got {len(rows)}"
+            assert len(rows) == 2, (
+                f"expected exactly 2 resolved 'helper' call edges, got {len(rows)}"
             )
-            assert len(symbol_ids) >= 2, (
+            assert len(symbol_ids) == 2, (
                 "RFC-0002 criterion 4: same-named functions in different files "
                 f"must have distinct callee_symbol_ids — got single id: {symbol_ids}"
             )
-            assert len(resolved_files) >= 2, (
-                f"expected >=2 distinct resolved files, got: {resolved_files}"
+            assert len(resolved_files) == 2, (
+                f"expected exactly 2 distinct resolved files, got: {resolved_files}"
             )
         finally:
             cache.close()

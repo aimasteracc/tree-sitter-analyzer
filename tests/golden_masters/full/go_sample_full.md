@@ -74,4 +74,17 @@ import ""time""
 | StatusRunning | - | exported | 38 |
 | StatusCompleted | - | exported | 39 |
 | StatusFailed | - | exported | 40 |
+| Host | string | exported | 45 |
+| Port | int | exported | 46 |
+| Timeout | time.Duration | exported | 47 |
+| Debug | bool | exported | 48 |
+| metadata | map[string]string | unexported | 49 |
+| name | string | unexported | 72 |
+| config | *Config | unexported | 73 |
+| running | bool | unexported | 74 |
+| mu | sync.RWMutex | unexported | 75 |
+| done | chan struct{} | unexported | 76 |
+| workers | int | unexported | 207 |
+| jobs | chan func() | unexported | 208 |
+| wg | sync.WaitGroup | unexported | 209 |
 | lastErr | error | unexported | 281 |

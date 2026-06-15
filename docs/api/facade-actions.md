@@ -38,7 +38,7 @@ Reading the tables:
 | `co_change` | `symbol` or `file_path` (one required), `max_commits` (default 500), `min_shared` (default 3), `max_results` (default 20), `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--co-change` |
 | `context` | `task`* (or `symbol`/`query` as alias), `max_nodes`, `max_code_blocks`, `include_graph`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-context` |
 | `impact` | `mode`*, `depth`, `file_path`, `function_name` (`symbol` aliases `function_name`), `function_names`, `include_tests`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-impact` |
-| `lineage` | `symbol`*, `max_depth`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--symbol-lineage` |
+| `lineage` | `symbol`*, `file_paths`, `max_depth`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--symbol-lineage` |
 | `navigate` | `symbol`*, `depth`, `file_path`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-navigate` |
 | `resolve` | `symbol`*, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--symbol-resolve` |
 | `test_map` | `symbol`* (or `function_name` as alias), `file_path`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--test-map` |
@@ -51,7 +51,7 @@ Reading the tables:
 | --- | --- | --- | --- |
 | `analyze` | `file_path`*, `format_type`, `language`, `output_file`, `output_format`, `suppress_output` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--structure` |
 | `ast_path` | `file_path`*, `language`, `line`, `max_depth`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-path` |
-| `class_detail` | `class_name`* (`symbol` aliases `class_name`), `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--class-inspect` |
+| `class_detail` | `class_name`* (or `query`/`symbol` as alias), `language`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--class-inspect` |
 | `class_tree` | `class_name` (`symbol` aliases `class_name`), `max_depth`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--class-hierarchy` |
 | `explore` | `includeCode`, `maxFiles`, `maxSymbols`, `output_format`, `query`, `symbol`, `symbols` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-explore` |
 | `outline` | `file_path`*, `include_fields`, `include_imports`, `language`, `listed_cap`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--outline` |

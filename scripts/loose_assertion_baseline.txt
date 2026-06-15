@@ -88,7 +88,30 @@
 #   result len rewritten as !=''; base_formatter rows ==3; legacy rows ==4),
 #   test_legacy_table_formatter_core.py (CSV lines ==1; rows ==2 x3);
 #   no exemptions).
+#   batch-37 (AST): 402 -> 374, 2026-06-15 (27 exact pins + 1 nondeterministic
+#   exemption in 7 files: test_csharp_plugin_integration.py (classes==5/
+#   functions==12/imports==3/len(code)==2650), test_csharp_plugin_extraction.py
+#   (constructor_names==0/param_names==1/constructors==1/complexity==7),
+#   test_csharp_plugin_details.py (static_imports==1/import start_lines==[2,3]/
+#   complexity==7/nodes==98), test_swift_plugin.py (classes==4/functions==5/
+#   variables==3/node_count==207), test_python_plugin_edge_cases.py (imports==0
+#   x2/concurrent_cache exempt-nondeterministic/complexity loop restructured to
+#   per-case dict), test_plugins_base_core.py (functions==0/unicode_len==2/
+#   node_name_len==4/traverse_functions==1), test_typescript_formatter_core.py
+#   (full==879/compact==416/csv==402/csv_lines==8)).
+#   batch-39 (AST): further pins in formatter/CLI/security tests
+#   (test_cli_table_partial_query.py, test_cli_queries.py,
+#   test_temporal_activation.py, test_file_health_blocks.py,
+#   test_codegraph_metrics_tool.py, test_change_impact_analysis.py,
+#   test_cached_call_graph.py, test_mcp_security.py, test_error_handler.py,
+#   test_safe_to_edit_tool.py, test_project_health_tool.py).
+#   batch-39 (AST): 337 -> 302, 2026-06-15 (35 exact pins in 11 files:
+#   test_cli_table_partial_query.py, test_cli_queries.py,
+#   test_temporal_activation.py, test_file_health_blocks.py,
+#   test_codegraph_metrics_tool.py, test_change_impact_analysis.py,
+#   test_cached_call_graph.py, test_mcp_security.py, test_error_handler.py,
+#   test_safe_to_edit_tool.py, test_project_health_tool.py).
 
-BASELINE_COUNT=402
-MEASUREMENT_DATE=2026-06-13
+BASELINE_COUNT=302
+MEASUREMENT_DATE=2026-06-15
 MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"
