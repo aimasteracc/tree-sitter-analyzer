@@ -264,18 +264,18 @@ def _collect_path_functions(
 
 
 def _lang_hint_for_path(path: str) -> str:
-    """Language hint for ``path``, treating ``.h`` headers as ``cpp``.
+    """Language hint for ``path``, returning empty string for ``.h`` headers.
 
     Plain C headers (``.h``) map to ``"c"`` via ``language_from_path``, but
-    headers are included by both C and C++ callers.  Using ``"c"`` as a
-    path-level fallback hint blocks C++ definitions via the directional rule
-    ``languages_compatible("c", "cpp") == False``.  Mapping ``.h`` → ``"cpp"``
-    keeps the hint permissive: ``languages_compatible("cpp", "c")`` is True, so
-    pure-C definitions are still accepted. (#865)
+    headers are included by both C and C++ callers.  Using ``"c"`` blocks C++
+    definitions via ``languages_compatible("c","cpp") == False``; using ``"cpp"``
+    risks selecting C++ definitions in pure-C projects when names collide.
+    Returning ``""`` (falsy) lets ``_resolve_def`` skip the language filter
+    entirely for header file hints, accepting any same-named candidate. (#865)
     """
     lang = language_from_path(path)
     if lang == "c" and path.lower().endswith(".h"):
-        return "cpp"
+        return ""
     return lang
 
 
@@ -315,7 +315,12 @@ def inline_path_bodies(
     path_lang_hint = next((lg for lg in path_langs if lg), None)
 
     for name, file_hint in functions:
-        lang_hint = language_from_path(file_hint) if file_hint else path_lang_hint
+        # Use _lang_hint_for_path so explicit .h callee_file hints are also
+        # treated as language-neutral (falsy ""), matching the path-level hint
+        # logic above.  Without this, a callee with callee_file="include/foo.h"
+        # gets lang_hint="c" from language_from_path and C++ bodies are still
+        # filtered out even when path_lang_hint correctly signals "cpp". (#865)
+        lang_hint = _lang_hint_for_path(file_hint) if file_hint else path_lang_hint
         defn = _resolve_def(index, name, file_hint, lang_hint=lang_hint)
         if defn is None:
             continue
