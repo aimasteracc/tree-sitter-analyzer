@@ -16,12 +16,22 @@ from .identifier_validator import is_valid_identifier
 # ---------------------------------------------------------------------------
 
 # Matches: CREATE [TEMPORARY] TABLE [IF NOT EXISTS] [schema.]table_name
+# Handles bare identifiers plus ANSI ("name"), MySQL (`name`), SQL Server ([name]) quoting.
 # Group 1 = optional schema name, Group 2 = table name
+_QUOTED_OR_BARE = r'(?:[a-zA-Z_][a-zA-Z0-9_]*|"[^"]+"|`[^`]+`|\[[^\]]+\])'
 _CREATE_TABLE_RE = re.compile(
     r"CREATE\s+(?:TEMPORARY\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-    r"(?:([a-zA-Z_][a-zA-Z0-9_]*)\.)?([a-zA-Z_][a-zA-Z0-9_]*)",
+    rf"(?:({_QUOTED_OR_BARE})\.)?"
+    rf"({_QUOTED_OR_BARE})",
     re.IGNORECASE,
 )
+
+
+def _strip_sql_delimiters(name: str) -> str:
+    """Strip ANSI/MySQL/SQL Server identifier delimiters from a quoted name."""
+    if len(name) >= 2 and name[0] in ('"', "`", "["):
+        return name[1:-1]
+    return name
 
 
 def extract_sql_tables(
@@ -213,16 +223,28 @@ def fill_missing_sql_tables_from_regex(
     for match in _CREATE_TABLE_RE.finditer(source_code):
         if _is_in_sql_comment(source_code, match.start()):
             continue
-        schema_name = match.group(1)  # optional, may be None
-        table_name = match.group(2)
-        if not table_name or not is_valid_identifier(table_name):
+        raw_schema = match.group(1)  # optional, may be None; may be quoted
+        raw_table = match.group(2)
+        if not raw_table or not is_valid_identifier(raw_table):
             continue
-        key = (schema_name.lower() if schema_name else None, table_name.lower())
+        schema_name = _strip_sql_delimiters(raw_schema) if raw_schema else None
+        table_name = _strip_sql_delimiters(raw_table)
+        # Quoted identifiers are case-sensitive; bare identifiers fold to lowercase (Codex P2)
+        schema_key = (
+            schema_name
+            if raw_schema and raw_schema[0] in ('"', "`", "[")
+            else (schema_name.lower() if schema_name else None)
+        )
+        table_key = (
+            table_name if raw_table[0] in ('"', "`", "[") else table_name.lower()
+        )
+        key = (schema_key, table_key)
         if key in found_keys:
             continue
         start_line = source_code[: match.start()].count("\n") + 1
         end_line = _find_statement_end_line(source_code, match.start())
         raw_text = _extract_statement_text(source_code, match.start())
+        columns = _parse_columns_from_raw_text(raw_text)
         try:
             sql_elements.append(
                 SQLTable(
@@ -232,6 +254,7 @@ def fill_missing_sql_tables_from_regex(
                     raw_text=raw_text,
                     language="sql",
                     schema_name=schema_name,
+                    columns=columns,
                 )
             )
         except Exception as exc:
@@ -265,6 +288,35 @@ def _extract_statement_text(source: str, start: int) -> str:
         elif ch == ";" and depth <= 0:
             return source[start : i + 1]
     return source[start : start + 2000]
+
+
+def _parse_columns_from_raw_text(raw_text: str) -> list[SQLColumn]:
+    """Extract SQLColumn list from a CREATE TABLE raw text string (#880)."""
+    # CTAS (CREATE TABLE ... AS SELECT ...) has no column definition list (Codex P2)
+    if re.search(r"\bAS\s+(?:SELECT\b|\()", raw_text, re.IGNORECASE):
+        return []
+    body_match = re.search(r"\(\s*(.*?)\s*\)(?:\s*;)?$", raw_text, re.DOTALL)
+    if not body_match:
+        return []
+    columns: list[SQLColumn] = []
+    for col_def in _split_column_definitions(body_match.group(1)):
+        col_def = col_def.strip()
+        if not col_def or col_def.upper().startswith(
+            (
+                "PRIMARY KEY",
+                "FOREIGN KEY",
+                "UNIQUE",
+                "INDEX",
+                "KEY",
+                "CONSTRAINT",
+                "CHECK",
+            )
+        ):
+            continue
+        column = _parse_column_definition(col_def)
+        if column:
+            columns.append(column)
+    return columns
 
 
 def _split_column_definitions(content: str) -> list[str]:
