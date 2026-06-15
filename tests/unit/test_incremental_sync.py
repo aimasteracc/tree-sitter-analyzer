@@ -371,7 +371,7 @@ class TestSavepointRollbackOnPartialWrite:
         with patch.object(cache, "_write_imports_for_file", side_effect=_fail_once):
             first_result = sync.sync()
 
-        assert first_result.errors >= 1
+        assert first_result.errors == 1
 
         # Second sync must index fragile.py as NEW (not see it as unchanged).
         second_result = sync.sync()
