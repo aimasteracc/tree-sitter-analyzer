@@ -747,6 +747,8 @@ class TestPHPPluginAnalyzeFile:
         # 3 functions (__construct/getName/getAge), 2 variables (name/age),
         # 2 imports (UserInterface/HasTimestamps — extracted since #617).
         assert len(result.elements) == 8
+        # #769: line_count must be non-zero (was always 0 before this fix)
+        assert result.line_count == len(SIMPLE_CLASS_CODE.splitlines())
 
 
 class TestPHPIntegration:

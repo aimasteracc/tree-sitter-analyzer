@@ -675,6 +675,7 @@ class RubyPlugin(LanguagePlugin):
                 file_path=file_path,
                 success=True,
                 elements=all_elements,
+                line_count=len(content.splitlines()),
                 node_count=self._count_nodes(tree.root_node),
             )
         except Exception as e:
