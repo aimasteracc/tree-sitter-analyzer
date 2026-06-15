@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shlex
+from pathlib import Path
 from typing import Any
 
 PHASE_ORDER = ("set", "map", "analyze", "retrieve", "trace")
@@ -42,11 +43,50 @@ PHASE_ROUTING: tuple[dict[str, str], ...] = (
 )
 
 
+def _check_target_path(project_root: str, target_path: str) -> str | None:
+    """Return an error message if ``target_path`` is invalid, else ``None``.
+
+    Checks:
+    1. The resolved path must sit inside ``project_root`` (boundary guard).
+    2. The file must exist.
+    """
+    root = Path(project_root).resolve()
+    candidate = Path(target_path).expanduser()
+    resolved = candidate if candidate.is_absolute() else root / candidate
+    try:
+        resolved.resolve().relative_to(root)
+    except ValueError:
+        return f"target_path '{target_path}' is outside the project root"
+    if not resolved.exists():
+        return f"target_path '{target_path}' does not exist"
+    return None
+
+
 def build_agent_workflow_pack(
     project_root: str,
     target_path: str | None = None,
 ) -> dict[str, Any]:
     """Build a SMART workflow command pack for agents and humans."""
+    if target_path:
+        err = _check_target_path(project_root, target_path)
+        if err:
+            return {
+                "success": False,
+                "risk": "blocked",
+                "error": err,
+                "target_path": target_path,
+                "project_root": project_root,
+                "current_phase": "set",
+                "recommended_commands": [],
+                "verdict": "BLOCKED",
+                "agent_summary": {
+                    "verdict": "BLOCKED",
+                    "risk": "blocked",
+                    "summary_line": f"agent_workflow blocked: {err}",
+                    "next_step": "Provide a valid target_path within the project root.",
+                    "current_phase": "set",
+                },
+            }
     target = target_path or "path/to/file.py"
     steps = _build_steps(target)
     queue_boundary = _build_queue_boundary_commands()
@@ -360,9 +400,7 @@ def _build_evaluator_checks(
         checks.append(
             {
                 "name": "queue_ledger",
-                "command": _scoped_change_impact_command(
-                    _shell_safe_path(target_path)
-                ),
+                "command": _scoped_change_impact_command(_shell_safe_path(target_path)),
                 "required": False,
                 "purpose": (
                     "Emit scoped change-impact so evaluator can approve the handoff "
