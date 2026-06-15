@@ -246,3 +246,37 @@ def test_backend_normalizes_callers_and_callees_from_cache_rows() -> None:
     )
     cache.query_callers.assert_called_once_with("run", "main.py", max_depth=2)
     cache.query_callees.assert_called_once_with("run", "main.py", max_depth=1)
+
+
+def test_backend_resolves_enum_as_definition() -> None:
+    """#961 split: ``enum`` rows are definition sites (added to kind filter)."""
+    conn = _connect()
+    conn.execute(
+        """CREATE TABLE ast_symbol_rows (
+            name TEXT,
+            kind TEXT,
+            file_path TEXT,
+            language TEXT,
+            line INTEGER,
+            end_line INTEGER
+        )"""
+    )
+    conn.execute(
+        "INSERT INTO ast_symbol_rows VALUES (?, ?, ?, ?, ?, ?)",
+        ("Color", "enum", "colors.rs", "rust", 4, 9),
+    )
+    backend = CodeGraphQueryBackend(RowCache(conn))
+
+    results = backend.resolve_definitions("Color")
+
+    assert results == [
+        {
+            "file": "colors.rs",
+            "name": "Color",
+            "kind": "enum",
+            "line": 4,
+            "end_line": 9,
+            "language": "rust",
+            "confidence": 1.0,
+        }
+    ]

@@ -7,7 +7,11 @@
 import asyncio
 from pathlib import Path
 
-from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import SymbolLineageTool
+from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
+    SymbolLineageTool,
+    _filter_references_to_scope,
+    _normalize_scope_file_paths,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -381,3 +385,50 @@ class TestRefCountIncludesCallers:
         result = asyncio.run(tool.execute({"symbol": "gone", "output_format": "json"}))
 
         assert not any(r["type"] == "call_site" for r in result["references"])
+
+
+# ---------------------------------------------------------------------------
+# scope-path normalization edge branches (#961 split helpers)
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeScopeFilePaths:
+    """Edge branches of the new scope-path helpers."""
+
+    def test_falsy_entries_are_skipped(self, tmp_path):
+        """Empty/None entries are dropped (the ``continue`` branch)."""
+        result = _normalize_scope_file_paths(str(tmp_path), ["", None, "src/a.py"])
+        assert result == {"src/a.py"}
+
+    def test_absolute_path_outside_root_is_kept_verbatim(self, tmp_path):
+        """An absolute path not under root keeps its text (ValueError branch)."""
+        outside = "/some/other/root/b.py"
+        result = _normalize_scope_file_paths(str(tmp_path), [outside])
+        assert result == {"/some/other/root/b.py"}
+
+    def test_absolute_path_inside_root_is_relativized(self, tmp_path):
+        """An absolute path under root is made relative."""
+        inside = tmp_path / "pkg" / "c.py"
+        result = _normalize_scope_file_paths(str(tmp_path), [str(inside)])
+        assert result == {"pkg/c.py"}
+
+    def test_dot_slash_prefix_is_stripped(self, tmp_path):
+        """A leading ``./`` is stripped from relative paths."""
+        result = _normalize_scope_file_paths(str(tmp_path), ["./d.py"])
+        assert result == {"d.py"}
+
+
+class TestFilterReferencesToScope:
+    """Edge branches of _filter_references_to_scope."""
+
+    def test_empty_scope_returns_references_unchanged(self):
+        """Empty scope set short-circuits and returns the input list."""
+        refs = [{"file": "a.py"}, {"file": "b.py"}]
+        result = _filter_references_to_scope(refs, set())
+        assert result is refs
+
+    def test_only_in_scope_references_are_kept(self):
+        """Backslash paths normalize before matching the scope set."""
+        refs = [{"file": "src\\a.py"}, {"file": "src/b.py"}]
+        result = _filter_references_to_scope(refs, {"src/a.py"})
+        assert result == [{"file": "src\\a.py"}]

@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer.cli.commands.constraint_check_command import (
     _compute_verdict,
     _evaluate_with_explicit_file,
@@ -440,6 +442,7 @@ class TestRunAndPersist:
         assert violations == []
         assert edge_count == 0
 
+    @pytest.mark.slow_ok  # Windows xdist-load budget exemption; test logic is trivial, no perf claim (#976)
     def test_empty_call_edges_table_returns_empty(self, tmp_path):
         db = tmp_path / "index.db"
         conn = sqlite3.connect(str(db))
