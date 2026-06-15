@@ -122,8 +122,9 @@ class StructureCommand(BaseCommand):
                 getattr(m, "start_line", 0),
                 getattr(m, "end_line", 0),
             ),
-            "class_name": getattr(m, "class_name", None),
-            "is_method": getattr(m, "is_method", None),
+            # Codex P2 fix: Function model stores owner as parent_class, not class_name.
+            "class_name": getattr(m, "parent_class", None),
+            "is_method": getattr(m, "is_method", False),
         }
 
     @staticmethod

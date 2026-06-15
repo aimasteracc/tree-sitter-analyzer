@@ -209,7 +209,9 @@ class TestStructureCommandConvertToLegacyFormat:
         mock_method.start_line = 10
         mock_method.end_line = 20
         mock_method.element_type = ELEMENT_TYPE_FUNCTION
-        mock_method.class_name = "Parser"
+        mock_method.parent_class = (
+            "Parser"  # Function model uses parent_class, not class_name
+        )
         mock_method.is_method = True
 
         analysis_result = MagicMock()
@@ -562,3 +564,26 @@ class TestR37aaStructureCanonicalEnvelope:
 
         legacy = command._convert_to_legacy_format(analysis_result)
         assert legacy.get("success") is True
+
+    def test_method_row_class_name_uses_parent_class_field(self, command):
+        """Codex P2 #742: real Function elements store owner in parent_class, not class_name.
+
+        Verifies the row builder reads the correct field, not a mock attribute.
+        """
+
+        from tree_sitter_analyzer.models import Function
+
+        # Build a real Function element the same way extractors do
+        fn = Function(
+            name="parse",
+            visibility="public",
+            start_line=5,
+            end_line=10,
+            is_method=True,
+            parent_class="Parser",
+        )
+        row = StructureCommand._legacy_method_row(fn)
+        assert row["class_name"] == "Parser", (
+            "class_name must come from parent_class, not a missing class_name attribute"
+        )
+        assert row["is_method"] is True
