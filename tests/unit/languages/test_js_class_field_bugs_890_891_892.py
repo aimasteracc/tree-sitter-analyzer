@@ -37,7 +37,7 @@ from tree_sitter_analyzer.queries.javascript import VARIABLES
 
 pytestmark = pytest.mark.skipif(
     not _TREE_SITTER_AVAILABLE,
-    reason="tree-sitter-javascript not installed",
+    reason="tree-sitter-javascript not installed (tracked: #891 environment dependency)",
 )
 
 # ---------------------------------------------------------------------------
