@@ -26,7 +26,7 @@ def extract_sql_tables(
     for node in traverse_nodes(root_node):
         if node.type != "create_table":
             continue
-        table_name = _find_table_name(node, get_node_text)
+        table_name, schema_name = _find_table_name(node, get_node_text)
         columns: list[SQLColumn] = []
         constraints: list[SQLConstraint] = []
         extract_table_columns(node, columns, constraints, traverse_nodes, get_node_text)
@@ -42,6 +42,7 @@ def extract_sql_tables(
                     language="sql",
                     columns=columns,
                     constraints=constraints,
+                    schema_name=schema_name,
                 )
             )
         except Exception as e:
@@ -51,34 +52,46 @@ def extract_sql_tables(
 def _find_table_name(
     create_table_node: "tree_sitter.Node",
     get_node_text: Callable[..., str],
-) -> str | None:
-    """Walk a ``create_table`` AST node and return its table-identifier text.
+) -> tuple[str | None, str | None]:
+    """Walk a ``create_table`` AST node and return (table_name, schema_name).
+
+    For ``schema.table`` patterns the object_reference node contains two
+    identifiers separated by a dot.  The LAST identifier is the table name;
+    any preceding identifier is the schema name.
 
     r37by: extracted from ``extract_sql_tables`` so the per-object_reference
-    inner loop reads as a focused 8-line helper instead of a depth-8
-    nested block.
+    inner loop reads as a focused helper instead of a depth-8 nested block.
     """
     for child in create_table_node.children:
         if child.type != "object_reference":
             continue
-        name = _first_valid_identifier(child, get_node_text)
+        name, schema = _last_valid_identifier(child, get_node_text)
         if name:
-            return name
-    return None
+            return name, schema
+    return None, None
 
 
-def _first_valid_identifier(
+def _last_valid_identifier(
     object_reference: "tree_sitter.Node",
     get_node_text: Callable[..., str],
-) -> str | None:
-    """Return the first valid identifier under an ``object_reference`` node."""
-    for subchild in object_reference.children:
-        if subchild.type != "identifier":
-            continue
-        text = get_node_text(subchild).strip()
-        if text and is_valid_identifier(text):
-            return text
-    return None
+) -> tuple[str | None, str | None]:
+    """Return (table_name, schema_name) from an ``object_reference`` node.
+
+    When the reference is ``schema.table`` there are two identifier children.
+    We return the LAST valid identifier as the table name and the second-to-last
+    as the schema name.  For a simple ``table`` reference, schema_name is None.
+    """
+    identifiers = [
+        get_node_text(subchild).strip()
+        for subchild in object_reference.children
+        if subchild.type == "identifier"
+    ]
+    valid = [t for t in identifiers if t and is_valid_identifier(t)]
+    if not valid:
+        return None, None
+    table_name = valid[-1]
+    schema_name = valid[-2] if len(valid) >= 2 else None
+    return table_name, schema_name
 
 
 def _process_column_node(
