@@ -104,6 +104,42 @@ class TestElementToDict:
         result = element_to_dict(elem)
         assert result["type"] == "class"
 
+    def test_enum_class_type_surfaces_as_type_enum(self):
+        """#795: Class element with class_type='enum' must output type='enum', not 'class'."""
+        elem = _make_elem(cls_name="Class", class_type="enum")
+        result = element_to_dict(elem)
+        assert result["type"] == "enum"
+
+    def test_interface_class_type_surfaces_as_type_interface(self):
+        """#795: Class element with class_type='interface' must output type='interface'."""
+        elem = _make_elem(cls_name="Class", class_type="interface")
+        result = element_to_dict(elem)
+        assert result["type"] == "interface"
+
+    def test_type_alias_class_type_surfaces_as_type_type(self):
+        """#795: Class element with class_type='type' must output type='type'."""
+        elem = _make_elem(cls_name="Class", class_type="type")
+        result = element_to_dict(elem)
+        assert result["type"] == "type"
+
+    def test_namespace_class_type_surfaces_as_type_namespace(self):
+        """#795: Class element with class_type='namespace' must output type='namespace'."""
+        elem = _make_elem(cls_name="Class", class_type="namespace")
+        result = element_to_dict(elem)
+        assert result["type"] == "namespace"
+
+    def test_abstract_class_type_surfaces_as_type_abstract_class(self):
+        """#795: Class element with class_type='abstract_class' must output type='abstract_class'."""
+        elem = _make_elem(cls_name="Class", class_type="abstract_class")
+        result = element_to_dict(elem)
+        assert result["type"] == "abstract_class"
+
+    def test_plain_class_with_default_class_type_stays_class(self):
+        """#795: Class element with class_type='class' (default) must still output type='class'."""
+        elem = _make_elem(cls_name="Class", class_type="class")
+        result = element_to_dict(elem)
+        assert result["type"] == "class"
+
     def test_sql_parameter_dataclass_is_serialized_to_dict(self):
         """SQLParameter dataclass instances in parameters[] must become plain dicts.
 
