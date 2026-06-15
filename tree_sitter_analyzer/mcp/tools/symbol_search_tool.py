@@ -369,7 +369,11 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         kind: str,
         limit: int,
     ) -> list[dict[str, Any]]:
-        results = cache.search_symbols(query, language=language)
+        # Use the raw linear scan (reads ast_index.symbols_json) rather than
+        # cache.search_symbols() which dispatches to FTS5 when available — the
+        # FTS5 path already ran in the caller and returned nothing, so calling
+        # it again here would still miss suffix-style substring matches (#919).
+        results = cache._search_symbols_linear(query, language)
         filtered = self._apply_kind_filter(results, kind)
         return filtered[:limit]
 

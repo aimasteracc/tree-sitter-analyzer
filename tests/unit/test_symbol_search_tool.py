@@ -211,6 +211,23 @@ class TestCodeGraphSymbolSearchExecution:
             score = hit["relevance_score"]
             assert 0.0 <= score <= 1.0, f"score out of range: {score}"
 
+    async def test_fuzzy_suffix_finds_camelcase_class(self, indexed_project):
+        """#919: ~Service must match UserService via linear fallback when FTS5 is present.
+
+        FTS5 prefix matching ("service"*) only matches tokens that START with
+        "service" — it misses "userservice" because that token starts with "user".
+        _linear_search must bypass cache.search_symbols() (which re-dispatches to
+        FTS5) and call cache._search_symbols_linear() directly for true substring
+        matching.
+        """
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "~Service", "output_format": "json"})
+        assert result["success"] is True
+        names = [r["name"] for r in result["results"]]
+        assert "UserService" in names, (
+            f"~Service must find UserService via linear infix fallback; got {names}"
+        )
+
     async def test_plain_query_cascade_fuzzy_finds_typo(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute(
@@ -339,7 +356,7 @@ class TestCodeGraphSymbolSearchSourceContext:
         class LinearOnlyCache:
             fts5_available = False
 
-            def search_symbols(self, query, language=None):
+            def _search_symbols_linear(self, query, language=None):
                 assert query == "UserService"
                 assert language == "python"
                 return [
