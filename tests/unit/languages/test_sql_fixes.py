@@ -209,3 +209,73 @@ class TestCreateTableAsSelect:
         tables = [e for e in elements if isinstance(e, SQLTable)]
         assert len(tables) == 1
         assert tables[0].name == "archive_users"
+
+
+# ---------------------------------------------------------------------------
+# Bug #808 — CREATE TABLE silently dropped when FOREIGN KEY + ON DELETE/UPDATE
+#            triggers tree-sitter parse-recovery ERROR node cascade
+# ---------------------------------------------------------------------------
+
+# Minimal Chinook-style DDL that reproduces the cascade:
+# Artist → Album (FK with ON DELETE RESTRICT) → Customer
+# tree-sitter SQL grammar creates an ERROR node that absorbs Customer when
+# it encounters the multi-line ON DELETE/ON UPDATE clause.  The regex
+# fallback in fill_missing_sql_tables_from_regex must recover it.
+_SQL_FOREIGN_KEY_CASCADE = """
+CREATE TABLE Artist (
+    ArtistId INT NOT NULL,
+    Name VARCHAR(120),
+    CONSTRAINT PK_Artist PRIMARY KEY (ArtistId)
+);
+
+CREATE TABLE Album (
+    AlbumId INT NOT NULL,
+    Title VARCHAR(160) NOT NULL,
+    ArtistId INT NOT NULL,
+    CONSTRAINT PK_Album PRIMARY KEY (AlbumId),
+    FOREIGN KEY (ArtistId) REFERENCES Artist (ArtistId)
+        ON DELETE NO ACTION
+        ON UPDATE NO ACTION
+);
+
+CREATE TABLE Customer (
+    CustomerId INT NOT NULL,
+    FirstName VARCHAR(40) NOT NULL,
+    LastName VARCHAR(20) NOT NULL,
+    CONSTRAINT PK_Customer PRIMARY KEY (CustomerId)
+);
+"""
+
+
+class TestCreateTableErrorNodeCascade:
+    """#808: CREATE TABLE absorbed into ERROR node must be recovered via regex fallback."""
+
+    def test_all_three_tables_extracted(self):
+        """Artist + Album + Customer must all appear — Customer is the cascade victim."""
+        elements = _extract(_SQL_FOREIGN_KEY_CASCADE)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        names = {t.name for t in tables}
+        assert names == {"Artist", "Album", "Customer"}
+
+    def test_table_count_is_exactly_three(self):
+        """Exact count — ensures no duplicates from regex + AST overlap."""
+        elements = _extract(_SQL_FOREIGN_KEY_CASCADE)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 3
+
+    def test_customer_table_name_correct(self):
+        """Customer table must have name='Customer', not 'CustomerId' or similar."""
+        elements = _extract(_SQL_FOREIGN_KEY_CASCADE)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        customer = next((t for t in tables if t.name == "Customer"), None)
+        assert customer is not None
+        assert customer.name == "Customer"
+
+    def test_no_schema_name_on_simple_tables(self):
+        """None of the three tables use schema-qualified names — schema_name must be None."""
+        elements = _extract(_SQL_FOREIGN_KEY_CASCADE)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        for table in tables:
+            assert table.schema_name is None, (
+                f"{table.name} has unexpected schema_name={table.schema_name!r}"
+            )
