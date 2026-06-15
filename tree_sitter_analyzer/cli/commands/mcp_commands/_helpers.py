@@ -66,6 +66,25 @@ def _build_error_envelope(
     return envelope
 
 
+# Verdict severity order — INFO is lowest, UNSAFE is highest.
+_VERDICT_ORDER = ("INFO", "REVIEW", "CAUTION", "UNSAFE")
+
+
+def _verdict_exit_code(result: dict[str, Any], threshold: str) -> int:
+    """Return 1 if result verdict >= threshold in severity, else 0."""
+    verdict = (result.get("verdict") or "INFO").upper()
+    threshold = threshold.upper()
+    try:
+        verdict_idx = _VERDICT_ORDER.index(verdict)
+    except ValueError:
+        verdict_idx = 0
+    try:
+        threshold_idx = _VERDICT_ORDER.index(threshold)
+    except ValueError:
+        threshold_idx = 0
+    return 1 if verdict_idx >= threshold_idx else 0
+
+
 def _run_tool(
     args: Any,
     tool_cls: Callable[..., Any],
@@ -74,6 +93,7 @@ def _run_tool(
     output_json_fn: Callable[[dict[str, Any]], None],
     output_error_fn: Callable[[str], None],
     output_format_fn: Callable[[], str],
+    fail_on_verdict_worse_than: str | None = None,
 ) -> int:
     """Helper: instantiate tool, run execute(), print output."""
     try:
@@ -85,7 +105,11 @@ def _run_tool(
             print(result.get("toon_content", ""))
         else:
             output_json_fn(result)
-        return 0 if result.get("success", False) else 1
+        if not result.get("success", False):
+            return 1
+        if fail_on_verdict_worse_than is not None:
+            return _verdict_exit_code(result, fail_on_verdict_worse_than)
+        return 0
     except Exception as e:
         output_error_fn(f"{label} failed: {e}")
         return 1
