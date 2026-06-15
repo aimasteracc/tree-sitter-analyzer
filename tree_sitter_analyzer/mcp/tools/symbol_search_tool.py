@@ -145,6 +145,10 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         cache = self._get_cache()
 
         raw_results = self._search(cache, query, language, kind, limit)
+        # #736: measure truncation BEFORE folding — folding can reduce duplicates
+        # below limit and produce a false-positive; checking the raw DB row count
+        # correctly signals that the query hit the cap.
+        truncated = len(raw_results) >= limit
 
         results = self._apply_kind_filter(raw_results, kind)
         # Issue #443: fold duplicate imports and rank definitions first
@@ -163,10 +167,6 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 by_file[extra_fp] = by_file.get(extra_fp, 0) + 0
             fp = r.get("file", "")
             by_file[fp] = by_file.get(fp, 0) + 1
-
-        # #736: detect truncation — if result count equals limit the result set
-        # was capped; agents must know so they don't treat the cap as a total.
-        truncated = len(results) >= limit
 
         # Pain #25 (dogfood pass 3): symbol_search emitted no verdict.
         # NOT_FOUND on zero matches so agents stop chasing; INFO otherwise.
