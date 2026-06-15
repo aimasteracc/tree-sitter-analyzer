@@ -123,6 +123,13 @@ class JavaScriptFunctionExtractionMixin:
                     # so private methods like #logActivity yielded name="".
                     name = self._get_node_text_optimized(child)
                     is_constructor = name == "constructor"
+                elif child.type == "computed_property_name":
+                    # Issue #748: computed-property methods like `[post](){}` or
+                    # `[Symbol.iterator](){}` have a `computed_property_name` node
+                    # instead of a `property_identifier`.  Use the full bracket
+                    # text (e.g. "[post]", "[Symbol.iterator]") as the name so
+                    # it is non-empty and self-documenting.
+                    name = self._get_node_text_optimized(child)
                 elif child.type == "formal_parameters":
                     parameters = self._extract_parameters(child)
 
