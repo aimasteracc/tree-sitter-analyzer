@@ -819,6 +819,11 @@ def _c_declarator_name(declarator: Any, source: str, depth: int) -> str | None:
     return None
 
 
+_WALK_MAX_DEPTH = (
+    100  # #779: DoS protection — functions nested beyond this are dropped.
+)
+
+
 def _walk_for_symbols(
     node: Any,
     source: str,
@@ -826,6 +831,7 @@ def _walk_for_symbols(
     language: str,
     depth: int = 0,
     enclosed: bool = False,
+    _truncated_flag: list[bool] | None = None,
 ) -> None:
     """Walk the AST collecting symbol dicts.
 
@@ -839,8 +845,14 @@ def _walk_for_symbols(
     including ``if``/``try``-wrapped module-level assignments, and
     JS/TS/Java/C# function-local declarators must NOT produce
     kind="variable" rows.
+
+    ``_truncated_flag`` is an optional single-element list.  When the depth
+    guard fires the list is set to ``[True]`` so the caller can detect that
+    deeply nested functions were silently dropped (#779).
     """
-    if depth > 20:
+    if depth > _WALK_MAX_DEPTH:
+        if _truncated_flag is not None:
+            _truncated_flag[0] = True
         return
     node_type = node.type
     name_node = node.child_by_field_name("name")
@@ -978,16 +990,25 @@ def _walk_for_symbols(
         or (language == "csharp" and node_type in _CSHARP_SCOPE_BODY_NODES)
     )
     for child in node.children:
-        _walk_for_symbols(child, source, symbols, language, depth + 1, child_enclosed)
+        _walk_for_symbols(
+            child, source, symbols, language, depth + 1, child_enclosed, _truncated_flag
+        )
 
 
 def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, Any]:
     symbols: list[dict[str, Any]] = []
     if tree is None:
-        return {"symbols": symbols, "node_count": 0}
+        return {"symbols": symbols, "node_count": 0, "truncated_depth": False}
     root = tree.root_node
-    _walk_for_symbols(root, source_code, symbols, language)
-    return {"symbols": symbols, "node_count": _count_nodes(root)}
+    truncated_flag: list[bool] = [False]
+    _walk_for_symbols(
+        root, source_code, symbols, language, _truncated_flag=truncated_flag
+    )
+    return {
+        "symbols": symbols,
+        "node_count": _count_nodes(root),
+        "truncated_depth": truncated_flag[0],
+    }
 
 
 def _extract_imports(symbols: dict[str, Any]) -> list[str]:
