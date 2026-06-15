@@ -51,9 +51,9 @@ TOOL_SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {"type": "string"},
             "description": (
-                "Informational only — symbol-lineage always searches the whole "
-                "project. Passing file_paths adds a scope_note to the response "
-                "to signal that this parameter is not a scope filter here."
+                "Optional scope filter for references/call sites. Definitions "
+                "are still resolved project-wide so the symbol location remains "
+                "available."
             ),
         },
     },
@@ -156,6 +156,35 @@ def _verdict_and_next_step(risk_level: str) -> tuple[str, str]:
     return verdict, next_step
 
 
+def _normalize_scope_file_paths(project_root: str, file_paths: list[Any]) -> set[str]:
+    root = Path(project_root).resolve()
+    normalized: set[str] = set()
+    for raw_path in file_paths:
+        if not raw_path:
+            continue
+        path = Path(str(raw_path))
+        try:
+            rel = path.resolve().relative_to(root) if path.is_absolute() else path
+        except ValueError:
+            rel = path
+        rel_text = str(rel).replace("\\", "/")
+        normalized.add(rel_text[2:] if rel_text.startswith("./") else rel_text)
+    return normalized
+
+
+def _filter_references_to_scope(
+    references: list[dict[str, Any]],
+    scope_files: set[str],
+) -> list[dict[str, Any]]:
+    if not scope_files:
+        return references
+    return [
+        ref
+        for ref in references
+        if str(ref.get("file", "")).replace("\\", "/") in scope_files
+    ]
+
+
 def _build_agent_summary_block(
     summary_line: str,
     next_step: str,
@@ -180,7 +209,7 @@ class SymbolLineageTool(BaseMCPTool):
         # Lazy graph + per-symbol response cache. Built on the first call,
         # reset on project_root rebind via _on_project_root_changed.
         self._dep_graph: DependencyGraph | None = None
-        self._symbol_cache: dict[tuple[str, int], dict[str, Any]] = {}
+        self._symbol_cache: dict[tuple[str, int, tuple[str, ...]], dict[str, Any]] = {}
         # H4 fix: fingerprint snapshot for the cached graph + symbol cache.
         # When the source tree changes, both the graph and the per-symbol
         # response cache are invalidated together — the symbol responses
@@ -302,12 +331,9 @@ class SymbolLineageTool(BaseMCPTool):
         symbol = arguments["symbol"].strip()
         max_depth = int(arguments.get("max_depth", 3))
         output_format = arguments.get("output_format", "toon")
-        # #756: file_paths is accepted in the schema (so MCP callers don't
-        # get schema-validation errors) but symbol-lineage is always
-        # project-wide — it does not scope results to listed paths.
-        file_paths = arguments.get("file_paths") or []
-
         self._validate_project_root()
+        file_paths = arguments.get("file_paths") or []
+        scope_files = _normalize_scope_file_paths(str(self.project_root), file_paths)
         # H4 fix: refresh dep graph (clears _symbol_cache on rebuild) before
         # the cache lookup below.
         graph = self._get_dep_graph()
@@ -319,11 +345,14 @@ class SymbolLineageTool(BaseMCPTool):
         # warm lineage response never hides stale hierarchy/index_hint data.
         self._invalidate_symbol_cache_on_stale_ast_index()
 
-        cached_response = self._try_cached_lineage(symbol, max_depth, started)
+        cache_key = (symbol, max_depth, tuple(sorted(scope_files)))
+        cached_response = self._try_cached_lineage(cache_key, started)
         if cached_response is not None:
             return apply_toon_format_to_response(cached_response, output_format)
 
         definitions, references = await self._collect_definitions_and_refs(symbol)
+        if scope_files:
+            references = _filter_references_to_scope(references, scope_files)
         all_symbol_files = self._collect_symbol_files(definitions, references)
         downstream_files, upstream_files = self._compute_blast_radius(
             graph, all_symbol_files
@@ -357,18 +386,18 @@ class SymbolLineageTool(BaseMCPTool):
             hierarchy=self._hierarchy_for(symbol),
         )
 
-        # #756: when the caller provided file_paths, emit a scope_note so they
-        # know results are project-wide and file_paths is not a scope filter
-        # for symbol-lineage.
-        if file_paths:
+        if scope_files:
+            response["scope_filter"] = sorted(scope_files)
+            response["scope_filtered"] = True
             response["scope_note"] = (
-                "symbol-lineage always searches the whole project. "
-                "file_paths is not a scope filter here — all project files "
-                "are included in the result regardless of this parameter."
+                "file_paths filters references and call sites; definitions "
+                "remain project-wide so the symbol location is preserved."
             )
+        else:
+            response["scope_filtered"] = False
 
         return self._finalize_and_cache_response(
-            response, (symbol, max_depth), started, output_format
+            response, cache_key, started, output_format
         )
 
     def _validate_project_root(self) -> None:
@@ -381,17 +410,16 @@ class SymbolLineageTool(BaseMCPTool):
 
     def _try_cached_lineage(
         self,
-        symbol: str,
-        max_depth: int,
+        cache_key: tuple[str, int, tuple[str, ...]],
         started: float,
     ) -> dict[str, Any] | None:
         """Return a deep-copied cached response if one exists, else ``None``.
 
         Per-symbol response cache — the tool does an expensive cross-file
         walk + dep-graph traversal that orchestrators repeat. Cache key
-        is ``(symbol, max_depth)``; reset on project_root rebind.
+        includes ``(symbol, max_depth, scope_files)``; reset on project_root
+        rebind.
         """
-        cache_key = (symbol, max_depth)
         cached = self._symbol_cache.get(cache_key)
         if cached is None:
             return None
@@ -643,7 +671,7 @@ class SymbolLineageTool(BaseMCPTool):
     def _finalize_and_cache_response(
         self,
         response: dict[str, Any],
-        cache_key: tuple[str, int],
+        cache_key: tuple[str, int, tuple[str, ...]],
         started: float,
         output_format: str,
     ) -> dict[str, Any]:
@@ -928,15 +956,16 @@ def _enrich_references_with_callers(
 
     Returns a new list (immutable input) with call-site rows appended.
     """
-    bare_name = symbol.rsplit(".", 1)[-1]
     try:
         from ...ast_cache import ASTCache
 
+        if is_ast_index_stale(project_root):
+            return references
         cache = ASTCache(project_root)
         if not cache.has_call_edges():
             cache.close()
             return references
-        raw_callers = cache.query_callers(bare_name)
+        raw_callers = cache.query_callers(symbol)
         cache.close()
     except Exception:  # nosec BLE001 — degrade gracefully; no callers added
         return references
@@ -953,12 +982,12 @@ def _enrich_references_with_callers(
     for edge in raw_callers:
         caller_name = edge.get("caller_name", "")
         caller_file = edge.get("caller_file", "")
-        caller_line = int(edge.get("caller_line", 0))
+        call_site_line = int(edge.get("callee_line") or edge.get("caller_line") or 0)
         # Skip unattributed call sites (module-level callers with no
         # enclosing function — same rule as callers_tool #638 fix).
         if not caller_name or not caller_file:
             continue
-        key = (caller_file, caller_line)
+        key = (caller_file, call_site_line)
         if key in seen:
             continue
         seen.add(key)
@@ -967,8 +996,8 @@ def _enrich_references_with_callers(
                 "name": caller_name,
                 "type": "call_site",
                 "file": caller_file,
-                "start_line": caller_line,
-                "end_line": caller_line,
+                "start_line": call_site_line,
+                "end_line": call_site_line,
                 "role": "caller",
             }
         )

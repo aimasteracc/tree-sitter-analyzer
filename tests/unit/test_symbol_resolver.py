@@ -118,6 +118,43 @@ class TestSymbolResolverEngine:
         assert result.definitions[0].name == "APP_NAME"
         assert result.definitions[0].kind == "variable"
 
+    def test_find_defs_in_file_returns_enum(self):
+        """#961 split: ``enum`` is a definition kind in _find_defs_in_file."""
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE ast_symbol_rows (
+                name TEXT,
+                kind TEXT,
+                file_path TEXT,
+                language TEXT,
+                line INTEGER,
+                end_line INTEGER
+            )"""
+        )
+        conn.execute(
+            "INSERT INTO ast_symbol_rows VALUES (?, ?, ?, ?, ?, ?)",
+            ("Color", "enum", "colors.rs", "rust", 4, 9),
+        )
+
+        class Cache:
+            _fts5_available = False
+            fts5_available = False
+
+            @staticmethod
+            def get_conn():
+                return conn
+
+            @staticmethod
+            def _get_conn():  # backward-compat alias
+                return Cache.get_conn()
+
+        resolver = SymbolResolver(Cache())
+        defs = resolver._find_defs_in_file("colors.rs", "Color")
+        assert len(defs) == 1
+        assert defs[0].name == "Color"
+        assert defs[0].kind == "enum"
+
     def test_resolve_nonexistent(self, indexed_project):
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)

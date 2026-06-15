@@ -130,6 +130,15 @@ class TestPluginModuleConstants:
         )
         assert names == ["A_ONE", "B_TWO"]
 
+    def test_single_line_semicolon_assignments_capture_every_constant(self):
+        source = "A_ONE = 1; B_TWO = 2\n"
+        result = Parser().parse_code(source, "python")
+        names = sorted(
+            v.name
+            for v in PythonElementExtractor().extract_variables(result.tree, source)
+        )
+        assert names == ["A_ONE", "B_TWO"]
+
     def test_none_tree_yields_no_constants(self):
         assert extract_module_constants(None, "") == []
 

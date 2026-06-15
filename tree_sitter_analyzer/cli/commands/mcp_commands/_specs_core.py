@@ -131,9 +131,8 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "symbol": getattr(args, "symbol_lineage", "") or "",
             "max_depth": getattr(args, "max_depth", 3),
             "output_format": output_format,
-            # #756: pass file_paths when present so the tool can emit a
-            # scope_note warning that lineage is project-wide.  Omit when
-            # None to avoid triggering the note unnecessarily.
+            # Pass file_paths only when present so symbol-lineage scopes
+            # references/call sites without adding a scope note unnecessarily.
             **(
                 {"file_paths": getattr(args, "file_paths", None)}
                 if getattr(args, "file_paths", None)
