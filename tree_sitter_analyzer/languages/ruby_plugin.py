@@ -358,19 +358,7 @@ class RubyElementExtractor(ElementExtractor):
         for param in params_node.children:
             if param.type not in self._RUBY_PARAMETER_NODE_TYPES:
                 continue
-            # #768: optional_parameter ("name = default") and keyword_parameter
-            # ("name: default") have a named "name" child — extract only that
-            # so "permissions = []" yields "permissions", not "[]" or "permissions =".
-            if param.type in ("optional_parameter", "keyword_parameter"):
-                name_node = param.child_by_field_name("name")
-                text = (
-                    self._get_node_text_optimized(name_node)
-                    if name_node
-                    else self._get_node_text_optimized(param)
-                )
-            else:
-                text = self._get_node_text_optimized(param)
-            parameters.append(text)
+            parameters.append(self._get_node_text_optimized(param))
         return parameters
 
     def _extract_singleton_method_element(

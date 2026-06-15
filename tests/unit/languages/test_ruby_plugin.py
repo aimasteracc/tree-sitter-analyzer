@@ -764,24 +764,24 @@ end
 
 
 class TestRubyOptionalParamExtraction:
-    """#768: optional/keyword parameter names must not include the default value."""
+    """#768: optional/keyword parameters must appear in .parameters (not silently dropped)."""
 
-    def test_optional_parameter_name_only(self):
-        """permissions = [] must extract as 'permissions', not '[]' or 'permissions ='."""
+    def test_optional_parameter_included_with_default(self):
+        """permissions = [] must appear as 'permissions = []', not be silently dropped."""
         plugin = RubyPlugin()
         tree = get_tree_for_code(_OPTIONAL_PARAM_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, _OPTIONAL_PARAM_CODE)
 
         init = next(f for f in functions if f.name == "initialize")
-        assert init.parameters == ["username", "email", "permissions"]
+        assert init.parameters == ["username", "email", "permissions = []"]
 
-    def test_keyword_parameter_name_only(self):
-        """mode: :strict must extract as 'mode', timeout: 30 as 'timeout'."""
+    def test_keyword_parameter_included_with_default(self):
+        """mode: :strict must appear as 'mode: :strict', not be silently dropped."""
         plugin = RubyPlugin()
         tree = get_tree_for_code(_OPTIONAL_PARAM_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, _OPTIONAL_PARAM_CODE)
 
         configure = next(f for f in functions if f.name == "configure")
-        assert configure.parameters == ["mode", "timeout"]
+        assert configure.parameters == ["mode: :strict", "timeout: 30"]
