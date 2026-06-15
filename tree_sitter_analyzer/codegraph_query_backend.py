@@ -9,7 +9,9 @@ from typing import Any
 from .semantic_search import SemanticSymbolSearch
 
 # #610: "constant" — Python module-level constants are definition sites.
-_DEFINITION_KINDS = frozenset({"function", "class", "method", "variable", "constant"})
+_DEFINITION_KINDS = frozenset(
+    {"function", "class", "enum", "method", "variable", "constant"}
+)
 
 
 class CodeGraphQueryBackend:
@@ -92,7 +94,7 @@ class CodeGraphQueryBackend:
             rows = conn.execute(
                 """SELECT name, kind, file_path, language, line, end_line
                    FROM ast_symbol_rows
-                   WHERE name = ? AND kind IN ('function', 'class', 'method', 'variable', 'constant')
+                   WHERE name = ? AND kind IN ('function', 'class', 'enum', 'method', 'variable', 'constant')
                    ORDER BY file_path, line""",
                 (symbol,),
             ).fetchall()
