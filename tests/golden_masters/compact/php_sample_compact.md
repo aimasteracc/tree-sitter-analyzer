@@ -1,4 +1,4 @@
-# Sample.php
+# sample.php
 
 ## Info
 | Property | Value |

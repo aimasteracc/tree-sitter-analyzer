@@ -1,4 +1,4 @@
-file_path: examples/Sample.php
+file_path: examples/sample.php
 language: php
 package: null
 classes:
