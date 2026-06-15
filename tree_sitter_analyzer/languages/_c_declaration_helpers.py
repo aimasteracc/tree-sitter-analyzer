@@ -100,7 +100,7 @@ def _field_parts(
         elif child.type == "type_qualifier":
             _append_modifier(modifiers, child, get_node_text)
         elif child.type == "field_identifier":
-            field_names.append(get_node_text(child))
+            _append_nonempty_name(field_names, child, get_node_text)
         elif child.type == "array_declarator":
             field_type = _append_array_fields(
                 child, field_names, field_type, get_node_text
@@ -154,7 +154,7 @@ def _append_initializer_fields(
 ) -> None:
     for grandchild in node.children:
         if grandchild.type in {"field_identifier", "identifier"}:
-            field_names.append(get_node_text(grandchild))
+            _append_nonempty_name(field_names, grandchild, get_node_text)
 
 
 def _append_pointer_fields(
@@ -188,8 +188,18 @@ def _append_child_names(
     initial_len = len(names)
     for child in node.children:
         if child.type == node_type:
-            names.append(get_node_text(child))
+            _append_nonempty_name(names, child, get_node_text)
     return len(names) > initial_len
+
+
+def _append_nonempty_name(
+    names: list[str],
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> None:
+    name = get_node_text(node)
+    if name:
+        names.append(name)
 
 
 def _append_modifier(

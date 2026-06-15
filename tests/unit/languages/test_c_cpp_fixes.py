@@ -127,6 +127,46 @@ class Outer {
         assert outer.class_type == "class"
         assert inner.class_type == "struct"
 
+    def test_field_type_reference_is_not_nested_class(self) -> None:
+        """struct Point field references inside Rect must not emit bogus nested Point."""
+        code = """\
+struct Point { int x; int y; };
+struct Rect { struct Point br; };
+"""
+        tree = _parse_cpp(code)
+        ext = CppElementExtractor()
+        classes = ext.extract_classes(tree, code)
+        names = [c.name for c in classes]
+
+        assert names.count("Point") == 1
+        assert not any(c.name == "Point" and c.parent_class == "Rect" for c in classes)
+
+    def test_template_nested_struct_has_parent_class(self) -> None:
+        code = """\
+class Outer {
+public:
+    template <typename T> struct Inner {};
+};
+"""
+        tree = _parse_cpp(code)
+        ext = CppElementExtractor()
+        inner = next(c for c in ext.extract_classes(tree, code) if c.name == "Inner")
+
+        assert inner.parent_class == "Outer"
+        assert "template" in inner.modifiers
+
+    def test_union_nested_struct_has_parent_class(self) -> None:
+        code = """\
+union Outer {
+    struct Inner { int x; };
+};
+"""
+        tree = _parse_cpp(code)
+        ext = CppElementExtractor()
+        inner = next(c for c in ext.extract_classes(tree, code) if c.name == "Inner")
+
+        assert inner.parent_class == "Outer"
+
 
 # ---------------------------------------------------------------------------
 # Bug #752 — C typedef struct regression guard (no duplicate entries)
@@ -241,3 +281,23 @@ class TestBug753CAnonymousNestedContainerSkipped:
 
         names = sorted(c.name for c in classes)
         assert names == ["Inner", "Outer"]
+
+
+class TestBitfields:
+    """Unnamed C/C++ bitfields are padding, not addressable field symbols."""
+
+    def test_c_unnamed_bitfield_is_skipped(self) -> None:
+        code = "struct Flags { unsigned : 1; unsigned enabled : 1; };\n"
+        tree = _parse_c(code)
+        ext = CElementExtractor()
+        names = [v.name for v in ext.extract_variables(tree, code)]
+
+        assert names == ["enabled"]
+
+    def test_cpp_unnamed_bitfield_is_skipped(self) -> None:
+        code = "struct Flags { unsigned : 1; unsigned enabled : 1; };\n"
+        tree = _parse_cpp(code)
+        ext = CppElementExtractor()
+        names = [v.name for v in ext.extract_variables(tree, code)]
+
+        assert names == ["enabled"]
