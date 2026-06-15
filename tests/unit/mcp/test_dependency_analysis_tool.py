@@ -450,3 +450,22 @@ class TestBug784CyclesScope:
         result = _cycles(graph)
         assert result["scope"] == "file_dependency_graph"
         assert "scope_note" in result
+
+    def test_summary_response_has_scope_field(self, tmp_path):
+        """summary mode must also include scope so a consumer comparing
+        cycle_count from summary vs import-graph-summary sees an explanation."""
+        _write(tmp_path, "a.py", "import b\n")
+        _write(tmp_path, "b.py", "import a\n")
+        t = DependencyAnalysisTool(project_root=str(tmp_path))
+        t.set_project_path(str(tmp_path))
+        result = _run(t.execute({"mode": "summary", "output_format": "json"}))
+        assert result["scope"] == "file_dependency_graph"
+
+    def test_summary_response_has_scope_note(self, tmp_path):
+        """summary mode scope_note must reference the import-graph alternative."""
+        _write(tmp_path, "x.py", "import os\n")
+        t = DependencyAnalysisTool(project_root=str(tmp_path))
+        t.set_project_path(str(tmp_path))
+        result = _run(t.execute({"mode": "summary", "output_format": "json"}))
+        assert "scope_note" in result
+        assert "import" in result["scope_note"].lower()
