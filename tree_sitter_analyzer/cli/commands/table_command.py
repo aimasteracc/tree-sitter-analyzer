@@ -359,6 +359,8 @@ class TableCommand(BaseCommand):
             "parameters": processed_params,
             "is_constructor": getattr(element, "is_constructor", False),
             "is_static": getattr(element, "is_static", False),
+            "is_async": getattr(element, "is_async", False),
+            "is_abstract": getattr(element, "is_abstract", False),
             "complexity_score": getattr(element, "complexity_score", 1),
             "line_range": {
                 "start": getattr(element, "start_line", 0),
