@@ -390,6 +390,16 @@ class ASTCache:
                 self._post_index_backfill(stats)
                 if self._completed_full_index_sweep(stats):
                     _mark_call_graph_built(self._get_conn())
+            # #978: a fully-cached re-run (indexed == 0) over an already-complete
+            # index never reaches the branch above, so a project whose marker was
+            # cleared (e.g. predates #708) would stay permanently un-stamped and
+            # leave callers/lineage hinting "--full-index". Stamp it when the
+            # index actually covers the whole source set.
+            # _indexed_source_files_are_complete() returns False for an empty,
+            # truncated, errored, or otherwise incomplete index, so this keeps
+            # #970's false-positive guard intact.
+            elif self._indexed_source_files_are_complete():
+                _mark_call_graph_built(self._get_conn())
             if force:
                 stats["db_maintenance"] = _reclaim_storage_after_full_rebuild(
                     conn, self.db_path
