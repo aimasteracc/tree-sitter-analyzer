@@ -90,6 +90,7 @@ def extract_go_interface_methods(
             func = _build_go_function(method_name, child, get_node_text, content_lines)
             func.receiver_type = interface_name
             func.is_method = True
+            func.is_abstract = True  # interface specs have no body (#749)
             methods.append(func)
         return methods
     except Exception as e:
