@@ -6,6 +6,8 @@ Tests for SQL extraction bugs:
 RED tests written before the fix; each asserts EXACT values (no >= bounds).
 """
 
+from typing import Any
+
 import pytest
 
 try:
@@ -17,6 +19,10 @@ except ImportError:
     TREE_SITTER_SQL_AVAILABLE = False
 
 from tree_sitter_analyzer.languages.sql_plugin import SQLElementExtractor
+from tree_sitter_analyzer.languages.sql_plugin.table_extractor import (
+    _is_in_sql_comment,
+    fill_missing_sql_tables_from_regex,
+)
 from tree_sitter_analyzer.models import SQLFunction, SQLTable
 
 
@@ -279,3 +285,88 @@ class TestCreateTableErrorNodeCascade:
             assert table.schema_name is None, (
                 f"{table.name} has unexpected schema_name={table.schema_name!r}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Codex P2 fixes — comment detection and schema-aware deduplication
+# ---------------------------------------------------------------------------
+
+
+class TestIsInSqlComment:
+    """Unit tests for _is_in_sql_comment helper."""
+
+    def test_not_in_comment_plain_text(self):
+        src = "CREATE TABLE foo (id INT);"
+        assert _is_in_sql_comment(src, 0) is False
+
+    def test_inside_line_comment(self):
+        src = "-- CREATE TABLE foo (id INT);"
+        assert _is_in_sql_comment(src, 3) is True
+
+    def test_after_line_comment_on_same_line(self):
+        src = "-- removed\nCREATE TABLE foo (id INT);"
+        pos = src.index("CREATE")
+        assert _is_in_sql_comment(src, pos) is False
+
+    def test_inside_block_comment(self):
+        src = "/* CREATE TABLE foo (id INT); */"
+        assert _is_in_sql_comment(src, 3) is True
+
+    def test_after_closed_block_comment(self):
+        src = "/* removed */\nCREATE TABLE foo (id INT);"
+        pos = src.index("CREATE")
+        assert _is_in_sql_comment(src, pos) is False
+
+
+class TestFillMissingTablesCommentSkip:
+    """Regex fallback must not add tables found only inside SQL comments."""
+
+    def test_commented_create_table_is_ignored(self):
+        sql = (
+            "-- CREATE TABLE dropped_users (id INT);\n"
+            "CREATE TABLE real_users (id INT);\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        names = {t.name for t in tables}
+        assert "dropped_users" not in names
+        assert "real_users" in names
+
+    def test_block_commented_create_table_is_ignored(self):
+        sql = (
+            "/* CREATE TABLE old_schema (id INT); */\n"
+            "CREATE TABLE new_schema (id INT);\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        names = {t.name for t in tables}
+        assert "old_schema" not in names
+        assert "new_schema" in names
+
+
+class TestFillMissingTablesSchemaDeduplciation:
+    """Regex fallback must distinguish same table name in different schemas."""
+
+    def test_same_name_different_schemas_both_recovered(self):
+        sql = (
+            "CREATE TABLE tenant_a.users (id INT);\n"
+            "CREATE TABLE tenant_b.users (id INT);\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 2
+        schemas = {t.schema_name for t in tables}
+        assert schemas == {"tenant_a", "tenant_b"}
+
+    def test_duplicate_same_schema_not_added_twice(self):
+        sql = (
+            "CREATE TABLE myschema.orders (id INT);\n"
+            "CREATE TABLE myschema.orders (id INT);\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1

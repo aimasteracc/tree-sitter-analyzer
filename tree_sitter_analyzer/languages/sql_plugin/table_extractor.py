@@ -168,6 +168,21 @@ def extract_table_columns(
             _process_column_node(node, columns, get_node_text)
 
 
+def _is_in_sql_comment(source: str, pos: int) -> bool:
+    """Return True if ``pos`` falls inside a SQL line (``--``) or block (``/* */``) comment."""
+    # Line comment: check for -- between the start of the current line and pos.
+    line_start = source.rfind("\n", 0, pos) + 1
+    if "--" in source[line_start:pos]:
+        return True
+    # Block comment: the most recent /* before pos has no matching */ before pos.
+    block_start = source.rfind("/*", 0, pos)
+    if block_start != -1:
+        block_end = source.find("*/", block_start)
+        if block_end == -1 or block_end > pos:
+            return True
+    return False
+
+
 def fill_missing_sql_tables_from_regex(
     source_code: str,
     sql_elements: list[Any],
@@ -182,14 +197,28 @@ def fill_missing_sql_tables_from_regex(
     This function scans the raw source text for ``CREATE TABLE`` patterns and
     appends any tables that the AST pass missed.  It never removes tables already
     found, so it is safe to call unconditionally.
+
+    De-duplicates by ``(schema_name, table_name)`` so that the same table name
+    in two different schemas (e.g. ``tenant_a.users`` and ``tenant_b.users``) is
+    not collapsed into one entry.  Matches inside SQL comments are skipped.
     """
-    found_names = {e.name.lower() for e in sql_elements if isinstance(e, SQLTable)}
+    found_keys: set[tuple[str | None, str]] = {
+        (
+            e.schema_name.lower() if e.schema_name else None,
+            e.name.lower(),
+        )
+        for e in sql_elements
+        if isinstance(e, SQLTable)
+    }
     for match in _CREATE_TABLE_RE.finditer(source_code):
+        if _is_in_sql_comment(source_code, match.start()):
+            continue
         schema_name = match.group(1)  # optional, may be None
         table_name = match.group(2)
         if not table_name or not is_valid_identifier(table_name):
             continue
-        if table_name.lower() in found_names:
+        key = (schema_name.lower() if schema_name else None, table_name.lower())
+        if key in found_keys:
             continue
         start_line = source_code[: match.start()].count("\n") + 1
         end_line = _find_statement_end_line(source_code, match.start())
@@ -207,7 +236,7 @@ def fill_missing_sql_tables_from_regex(
             )
         except Exception as exc:
             log_debug(f"regex fallback: failed to append table {table_name!r}: {exc}")
-        found_names.add(table_name.lower())
+        found_keys.add(key)
 
 
 def _find_statement_end_line(source: str, start: int) -> int:
