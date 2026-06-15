@@ -86,7 +86,7 @@ class TestSafeToEditTool:
     def test_execute_includes_pre_edit_checklist(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         assert "pre_edit_checklist" in result
-        assert len(result["pre_edit_checklist"]) == 5
+        assert len(result["pre_edit_checklist"]) == 4
 
     def test_execute_includes_structured_agent_workflow(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
