@@ -65,6 +65,26 @@ def _is_pytest_collectible(name: str) -> bool:
     return name.startswith("test_")
 
 
+def _is_python_file(file_path: str) -> bool:
+    """True for Python source files (where the pytest ``test_`` rule applies)."""
+    return file_path.endswith(".py")
+
+
+def _is_collectible_caller(file_path: str, name: str) -> bool:
+    """Decide whether a test-file caller is an accepted test entry point.
+
+    The pytest ``test_`` name rule is Python-specific. Go (``TestFoo``),
+    Java (``shouldHandleFoo``), and JS/TS (``*.test.ts``) use different
+    naming conventions, so applying the pytest filter to them drops valid
+    cross-language test callers (Bug #807). For non-Python files we trust
+    ``is_test_file`` (already checked by the caller) and accept the caller
+    without a Python-style name filter.
+    """
+    if _is_python_file(file_path):
+        return _is_pytest_collectible(name)
+    return True
+
+
 def _test_map_next_step(
     test_files: list[str],
     *,
@@ -337,19 +357,43 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         test_funcs: list[str] = []  # "file::name" strings, pre-dedup
         test_file_set: set[str] = set()
         total_edge_count = 0
+        # Non-collectible Python helpers (e.g. ``_run``) in test files, kept for
+        # a deferred one-hop walk-up after all direct callers are known (#807).
+        helper_refs: list[Any] = []
+
+        def _record(file_path: str, name: str) -> None:
+            nonlocal total_edge_count
+            total_edge_count += 1
+            key = f"{file_path}::{name}"
+            if key not in seen_qualified:
+                seen_qualified.add(key)
+                test_funcs.append(key)
+                test_file_set.add(file_path)
 
         for target in targets:
             for ref in graph.caller_refs_of(target):
                 if not is_test_file(ref.file_path):
                     continue
-                if not _is_pytest_collectible(ref.name):
+                if _is_collectible_caller(ref.file_path, ref.name):
+                    _record(ref.file_path, ref.name)
+                else:
+                    helper_refs.append(ref)
+
+        # Bug #807: a direct caller in a Python test file whose name is not
+        # pytest-collectible (e.g. a ``_run`` helper) hides the real test_*
+        # entry point. Walk up ONE hop to the test_* function that calls the
+        # helper. Only record parents not already captured as direct callers —
+        # so a helper whose test_* is also a direct caller adds no extra edge.
+        # The walk is capped at a single hop to avoid cost blowups.
+        for helper in helper_refs:
+            for parent in graph.caller_refs_of(helper):
+                if not is_test_file(parent.file_path):
                     continue
-                total_edge_count += 1
-                key = f"{ref.file_path}::{ref.name}"
-                if key not in seen_qualified:
-                    seen_qualified.add(key)
-                    test_funcs.append(key)
-                    test_file_set.add(ref.file_path)
+                if not _is_collectible_caller(parent.file_path, parent.name):
+                    continue
+                if f"{parent.file_path}::{parent.name}" in seen_qualified:
+                    continue
+                _record(parent.file_path, parent.name)
 
         test_funcs_sorted = sorted(test_funcs)
         test_files_sorted = sorted(test_file_set)

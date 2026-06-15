@@ -51,7 +51,20 @@ def _extract_scss_variables(file_path: str, content: str) -> list[Variable]:
     lines = content.splitlines()
     seen: set[str] = set()
     variables: list[Variable] = []
+    in_block_comment = False
     for lineno_0, line in enumerate(lines):
+        # Track ``/* ... */`` block comments so commented-out declarations
+        # like ``/* $old: red; */`` are not picked up as phantom variables.
+        if in_block_comment:
+            close_idx = line.find("*/")
+            if close_idx == -1:
+                continue
+            in_block_comment = False
+            line = line[close_idx + 2 :]
+        open_idx = line.find("/*")
+        if open_idx != -1 and "*/" not in line[open_idx:]:
+            in_block_comment = True
+            line = line[:open_idx]
         m = _SCSS_VAR_RE.match(line)
         if not m:
             continue

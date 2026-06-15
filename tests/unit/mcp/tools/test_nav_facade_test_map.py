@@ -634,3 +634,163 @@ async def test_test_map_excludes_non_test_prefixed_public_helpers() -> None:
     assert result["edge_count"] == 1
     assert result["unique_function_count"] == 1
     assert result["test_functions"] == ["tests/test_c.py::test_scenario"]
+
+
+# ---------------------------------------------------------------------------
+# 10. #807 cross-language: non-Python test callers must NOT be dropped by the
+#     pytest ``test_`` name filter (Go TestFoo, Java shouldHandleFoo, JS .test.ts)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_test_map_preserves_go_test_callers() -> None:
+    """Go ``TestFoo`` in a ``*_test.go`` file is a valid test caller (#807).
+
+    pytest's ``test_`` rule is Python-specific. Go's convention is ``TestXxx``
+    in ``*_test.go`` — applying the pytest filter wrongly dropped it.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("Handle", "pkg/server.go", language="go")
+    go_test = _make_func("TestHandle", "pkg/server_test.go", 10, language="go")
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = [go_test]
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "Handle", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["edge_count"] == 1
+    assert result["unique_function_count"] == 1
+    assert result["test_functions"] == ["pkg/server_test.go::TestHandle"]
+
+
+@pytest.mark.asyncio
+async def test_test_map_preserves_js_and_java_test_callers() -> None:
+    """JS ``*.test.ts`` and Java test-tree callers are preserved (#807).
+
+    Java ``shouldHandleFoo`` lives under ``src/test/`` and JS specs are
+    ``*.test.ts`` — neither matches the pytest ``test_`` rule, but both are
+    valid test entry points for their language.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("render", "src/render.ts", language="typescript")
+    js_test = _make_func(
+        "renders correctly", "src/render.test.ts", 4, language="typescript"
+    )
+    java_test = _make_func(
+        "shouldHandleFoo", "src/test/java/FooTest.java", 12, language="java"
+    )
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = [js_test, java_test]
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "render", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["edge_count"] == 2
+    assert result["unique_function_count"] == 2
+    assert result["test_functions"] == [
+        "src/render.test.ts::renders correctly",
+        "src/test/java/FooTest.java::shouldHandleFoo",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# 11. #807 helper resolution: walk up ONE hop from a non-collectible Python
+#     helper (``_run``) to the ``test_*`` function that drives it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_test_map_walks_up_one_hop_from_helper_to_test() -> None:
+    """``test_foo`` → ``_run`` → prod fn: the test_* caller is recovered (#807).
+
+    The production function is only reached via the ``_run`` helper, so the
+    direct caller is the non-collectible ``_run``. The route walks up one hop
+    to ``test_foo`` so the function is not reported as uncovered.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("prod_fn", "src/prod.py")
+    helper = _make_func("_run", "tests/test_helpers.py", 5)
+    real_test = _make_func("test_foo", "tests/test_helpers.py", 20)
+
+    def _callers(func: FunctionRef):
+        # prod_fn is called ONLY by _run; _run is called by test_foo.
+        if func.name == "prod_fn":
+            return [helper]
+        if func.name == "_run":
+            return [real_test]
+        return []
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.side_effect = _callers
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "prod_fn", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["edge_count"] == 1
+    assert result["unique_function_count"] == 1
+    assert result["test_functions"] == ["tests/test_helpers.py::test_foo"]
+
+
+@pytest.mark.asyncio
+async def test_test_map_walk_up_capped_at_one_hop() -> None:
+    """The helper walk-up is capped at ONE hop — a 2-hop chain is NOT followed.
+
+    ``prod_fn`` → ``_inner`` → ``_outer`` → ``test_foo``: only one hop up from
+    ``_inner`` is taken, reaching ``_outer`` (non-collectible) and stopping.
+    ``test_foo`` two hops away is NOT recovered.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("prod_fn", "src/prod.py")
+    inner = _make_func("_inner", "tests/test_chain.py", 3)
+    outer = _make_func("_outer", "tests/test_chain.py", 8)
+    real_test = _make_func("test_foo", "tests/test_chain.py", 30)
+
+    def _callers(func: FunctionRef):
+        if func.name == "prod_fn":
+            return [inner]
+        if func.name == "_inner":
+            return [outer]
+        if func.name == "_outer":
+            return [real_test]
+        return []
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.side_effect = _callers
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "prod_fn", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    # No collectible test reachable within one hop → nothing recorded.
+    assert result["edge_count"] == 0
+    assert result["unique_function_count"] == 0
+    assert result["test_functions"] == []

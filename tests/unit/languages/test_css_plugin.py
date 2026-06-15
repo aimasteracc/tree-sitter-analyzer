@@ -816,6 +816,28 @@ class TestScssVariableExtraction:
         assert results[0].name == "$color"
         assert results[0].start_line == 1
 
+    def test_extract_scss_variables_skips_block_comments(self):
+        """Bug #790: ``$var`` inside a ``/* ... */`` block comment is skipped.
+
+        A commented-out declaration must NOT yield a phantom Variable, whether
+        the comment spans multiple lines or sits inline on a single line.
+        """
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = "$live: #fff;\n/*\n$old: red;\n$older: blue;\n*/\n$also_live: 1rem;\n"
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$live", "$also_live"]
+
+    def test_extract_scss_variables_skips_inline_block_comment(self):
+        """A single-line ``/* $old: red; */`` block comment yields no Variable."""
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = "/* $old: red; */\n$live: #fff;\n"
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$live"]
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
