@@ -563,6 +563,25 @@ class TestPythonModuleConstants:
         syms = _symbols_for("X_A, Y_B = 1, 2\n", "python")
         assert [s for s in syms if s["kind"] == "constant"] == []
 
+    def test_single_letter_all_caps_extracted(self):
+        # Issue #793 — single-letter ALL_CAPS names (A, N, X …) are valid
+        # Python constants and must be captured.  Old pattern ^_?[A-Z][A-Z0-9_]+$
+        # required ≥2 chars after the uppercase start; fixed to ``*`` (#793).
+        syms = _symbols_for("A = 1\nN = 100\nX = 'value'\n", "python")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == ["A", "N", "X"]
+
+    def test_single_letter_prefixed_all_caps_extracted(self):
+        # _N = 100 — underscore-prefixed single-letter constant must also match.
+        syms = _symbols_for("_N = 100\n", "python")
+        consts = [s["name"] for s in syms if s["kind"] == "constant"]
+        assert consts == ["_N"]
+
+    def test_single_letter_lowercase_not_extracted(self):
+        # Lowercase single-letter names (n, x, a) are NOT constants.
+        syms = _symbols_for("n = 100\nx = 'v'\n", "python")
+        assert [s for s in syms if s["kind"] == "constant"] == []
+
 
 # ---------------------------------------------------------------------------
 # Issue #613: Go package-level constants indexed as kind="constant"

@@ -211,10 +211,15 @@ _VAR_DECL_LIKE = frozenset(
 # ``assignment`` nodes (with a ``left`` field, not ``name``), so they never
 # matched _VAR_DECL_LIKE and were invisible to ast_symbol_rows. Scope rule
 # (approved on #610): module-scope simple assignments whose target is
-# const-style (``^_?[A-Z][A-Z0-9_]+$``), annotated (``x: T = ...``), or a
-# dunder (``^__\w+__$``) — emitted as kind="constant".
-# Const-style name pattern, shared by the Python (#610) and Go (#613) rules.
+# const-style, annotated (``x: T = ...``), or a dunder (``^__\w+__$``) —
+# emitted as kind="constant".
+# Const-style name pattern used by the Go (#613) rule: requires ≥2 chars
+# (``+``) to avoid capturing single-letter package-level vars like ``var F``.
 _CONST_STYLE_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]+$")
+# Issue #793 — Python-only pattern: single-letter ALL_CAPS names (N, A, X …)
+# are valid Python constants (e.g. ``N = 100``) and must be captured.
+# Uses ``*`` (zero-or-more) so a single uppercase letter matches.
+_PY_CONST_STYLE_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]*$")
 _PY_DUNDER_NAME = re.compile(r"^__\w+__$")
 
 # Node types that open a non-module scope: an ``assignment`` nested under any
@@ -471,7 +476,9 @@ def _python_module_constant(node: Any, source: str) -> dict[str, Any] | None:
         return None  # bare annotation (``x: int``) — not a definition site
     name = _node_text(left, source)
     annotated = node.child_by_field_name("type") is not None
-    if not (annotated or _CONST_STYLE_NAME.match(name) or _PY_DUNDER_NAME.match(name)):
+    if not (
+        annotated or _PY_CONST_STYLE_NAME.match(name) or _PY_DUNDER_NAME.match(name)
+    ):
         return None
     return {
         "kind": "constant",

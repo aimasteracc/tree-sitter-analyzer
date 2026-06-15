@@ -3,9 +3,10 @@
     "Class": 4,
     "Function": 19,
     "Import": 3,
+    "Package": 1,
     "Variable": 3
   },
-  "element_total": 29,
+  "element_total": 30,
   "names_by_type": {
     "Class": [
       "IUserRepository",
@@ -39,6 +40,9 @@
       "System.Collections.Generic",
       "System.Linq"
     ],
+    "Package": [
+      "MyApp.Models"
+    ],
     "Variable": [
       "MaxNameLength",
       "_createdBy",
@@ -49,6 +53,7 @@
     "Class",
     "Function",
     "Import",
+    "Package",
     "Variable"
   ]
 }
