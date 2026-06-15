@@ -4,9 +4,9 @@
     "Function": 12,
     "Import": 1,
     "Package": 1,
-    "Variable": 4
+    "Variable": 3
   },
-  "element_total": 26,
+  "element_total": 25,
   "names_by_type": {
     "Class": [
       "Config",
@@ -39,7 +39,6 @@
     ],
     "Variable": [
       "MAX_USERS",
-      "manager",
       "userCount",
       "version"
     ]
