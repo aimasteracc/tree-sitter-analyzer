@@ -547,12 +547,13 @@ def test_search_facade_schema_declares_kind_with_enum() -> None:
     from tree_sitter_analyzer.mcp.tools.symbol_search_tool import SYMBOL_SEARCH_KINDS
 
     # The authoritative enum: exactly the kinds _extract_symbols emits into
-    # ast_symbol_rows (function/method/class/variable/import/constant) plus
+    # ast_symbol_rows (function/method/class/enum/variable/import/constant) plus
     # the "any" no-filter default. Exact pin — extraction changes must re-pin.
     assert SYMBOL_SEARCH_KINDS == (
         "function",
         "method",
         "class",
+        "enum",
         "variable",
         "import",
         "constant",

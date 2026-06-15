@@ -233,6 +233,16 @@ class Foo {
     assert fn.decorators == []
 
 
+def test_property_decorator_column() -> None:
+    """@Column() on a class field must be captured in Variable.decorators."""
+    tree = _parse(_DECORATOR_CLASS_CODE)
+    extractor = TypeScriptElementExtractor()
+    variables = extractor.extract_variables(tree, _DECORATOR_CLASS_CODE)
+    name_field = next(v for v in variables if v.name == "name")
+
+    assert "Column" in name_field.decorators
+
+
 def test_class_without_decorator_has_empty_list() -> None:
     code = """\
 class Foo {}
@@ -287,3 +297,317 @@ def test_enum_kind_in_ast_extraction() -> None:
         assert sym["kind"] == "enum", (
             f"Expected kind='enum' for {sym['name']!r}, got {sym['kind']!r}"
         )
+
+
+def test_exported_enum_interface_and_type_are_detected() -> None:
+    code = """\
+export enum Status { Active, Inactive }
+export interface Shape {}
+export type Id = string
+class Local {}
+export { Local }
+"""
+    classes = {c.name: c for c in _classes(code)}
+
+    assert classes["Status"].is_exported is True
+    assert classes["Shape"].is_exported is True
+    assert classes["Id"].is_exported is True
+    assert classes["Local"].is_exported is True
+
+
+def test_enum_export_surface_includes_members() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import get_all_exports
+    from tree_sitter_analyzer.models import AnalysisResult
+
+    code = "export enum Status { Active = 'active', Inactive = 'inactive' }"
+    result = AnalysisResult(
+        file_path="status.ts",
+        language="typescript",
+        elements=_classes(code),
+        source_code=code,
+    )
+    exports = get_all_exports(result)
+    enum_export = next(e for e in exports if e["name"] == "Status")
+
+    assert enum_export["kind"] == "enum"
+    assert enum_export["members"] == ["Active", "Inactive"]
+
+
+def test_enum_kind_is_available_in_symbol_search_filters() -> None:
+    from tree_sitter_analyzer.mcp.tools.symbol_search_tool import SYMBOL_SEARCH_KINDS
+
+    assert "enum" in SYMBOL_SEARCH_KINDS
+
+
+# ---------------------------------------------------------------------------
+# #975 — enum member split must respect quoted / parenthesised commas
+#   _enum_members_from_raw_text split the raw body on every ',', so a comma
+#   inside a quoted string value (or a call-expr value) fabricated a phantom
+#   member from the value text. e.g. { A = "x,y", B } returned ['A','y','B'].
+# ---------------------------------------------------------------------------
+
+
+def test_enum_members_phantom_from_quoted_comma() -> None:
+    """A comma inside a quoted value must NOT fabricate a phantom member."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _enum_members_from_raw_text,
+    )
+
+    assert _enum_members_from_raw_text('A = "x,y", B = "z"') == ["A", "B"]
+
+
+def test_enum_members_phantom_from_call_expr_comma() -> None:
+    """A comma inside a call-expression value must NOT fabricate a member."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _enum_members_from_raw_text,
+    )
+
+    assert _enum_members_from_raw_text("A = f(1, 2), B") == ["A", "B"]
+
+
+def test_enum_members_plain_string_values_regression() -> None:
+    """Common string-valued enum still splits correctly."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _enum_members_from_raw_text,
+    )
+
+    assert _enum_members_from_raw_text(
+        '{ Active = "active", Inactive = "inactive" }'
+    ) == ["Active", "Inactive"]
+
+
+def test_enum_export_surface_no_phantom_member() -> None:
+    """End-to-end through get_all_exports: quoted comma must not add a member."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import get_all_exports
+    from tree_sitter_analyzer.models import AnalysisResult
+
+    code = 'export enum E { A = "x,y", B = "z" }'
+    result = AnalysisResult(
+        file_path="e.ts",
+        language="typescript",
+        elements=_classes(code),
+        source_code=code,
+    )
+    enum_export = next(e for e in get_all_exports(result) if e["name"] == "E")
+    assert enum_export["members"] == ["A", "B"]
+
+
+# ---------------------------------------------------------------------------
+# #975 (P3) — is_exported_class re-export form must tolerate spacing/multi-name
+# ---------------------------------------------------------------------------
+
+
+def test_reexport_no_inner_spaces() -> None:
+    code = "class Local {}\nexport {Local}\n"
+    assert {c.name: c for c in _classes(code)}["Local"].is_exported is True
+
+
+def test_reexport_multi_name() -> None:
+    code = "class Local {}\nclass Other {}\nexport { Local, Other }\n"
+    by_name = {c.name: c for c in _classes(code)}
+    assert by_name["Local"].is_exported is True
+    assert by_name["Other"].is_exported is True
+
+
+def test_reexport_aliased() -> None:
+    code = "class Local {}\nexport { Local as Foo }\n"
+    assert {c.name: c for c in _classes(code)}["Local"].is_exported is True
+
+
+# ---------------------------------------------------------------------------
+# #975 — _is_named_reexport / is_exported_class negative branches
+#   The whole-word match must NOT fire on a longer name that merely *contains*
+#   the target (Local vs LocalThing), and a file with no export at all must
+#   return False (both the plain pattern and the alias pattern miss).
+# ---------------------------------------------------------------------------
+
+
+def test_reexport_name_is_substring_does_not_match() -> None:
+    """`export { LocalThing }` must NOT report `Local` as re-exported."""
+    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+        _is_named_reexport,
+    )
+
+    assert _is_named_reexport("Local", "export { LocalThing }") is False
+
+
+def test_reexport_alias_lhs_substring_does_not_match() -> None:
+    """`{ LocalThing as Foo }` must NOT report `Local` (alias-pattern miss)."""
+    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+        _is_named_reexport,
+    )
+
+    assert _is_named_reexport("Local", "export { LocalThing as Foo }") is False
+
+
+def test_reexport_no_export_block_returns_false() -> None:
+    """A source with no `export { ... }` block at all returns False."""
+    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+        _is_named_reexport,
+    )
+
+    assert _is_named_reexport("Local", "class Local {}\nconst x = 1\n") is False
+
+
+def test_reexport_alias_form_direct() -> None:
+    """`{ Local as Foo }` reports the LHS `Local` via the alias pattern."""
+    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+        _is_named_reexport,
+    )
+
+    assert _is_named_reexport("Local", "export { Local as Foo }") is True
+
+
+def test_is_exported_class_unexported_returns_false() -> None:
+    """A locally-declared, never-exported class is not reported as exported."""
+    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+        is_exported_class,
+    )
+
+    assert is_exported_class("Local", "class Local {}\n") is False
+
+
+def test_is_exported_class_interface_prefix() -> None:
+    """`export interface X` is recognised via the interface prefix."""
+    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+        is_exported_class,
+    )
+
+    assert is_exported_class("Shape", "export interface Shape {}\n") is True
+
+
+def test_is_exported_class_default_export() -> None:
+    """`export default X` is recognised."""
+    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+        is_exported_class,
+    )
+
+    assert (
+        is_exported_class("Widget", "class Widget {}\nexport default Widget\n") is True
+    )
+
+
+# ---------------------------------------------------------------------------
+# #975 — _split_top_level_commas: quote / bracket / escape scanner branches
+#   The scanner must ignore commas inside '..', ".." and `..` strings (with
+#   backslash escapes) and inside (), [], {} nesting, and must never let depth
+#   go negative on an unbalanced closing bracket.
+# ---------------------------------------------------------------------------
+
+
+def test_split_single_quote_string_with_comma() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _split_top_level_commas,
+    )
+
+    assert _split_top_level_commas("A = 'x,y', B") == ["A = 'x,y'", " B"]
+
+
+def test_split_double_quote_string_with_comma() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _split_top_level_commas,
+    )
+
+    assert _split_top_level_commas('A = "x,y", B') == ['A = "x,y"', " B"]
+
+
+def test_split_backtick_template_with_comma() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _split_top_level_commas,
+    )
+
+    assert _split_top_level_commas("A = `x,y`, B") == ["A = `x,y`", " B"]
+
+
+def test_split_escaped_quote_inside_string() -> None:
+    """A backslash-escaped quote does not close the string early."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _split_top_level_commas,
+    )
+
+    # The escaped `\"` stays inside the string, so the inner comma is protected
+    # and the string only closes at the final unescaped `"`.
+    assert _split_top_level_commas('A = "a\\",b", B') == ['A = "a\\",b"', " B"]
+
+
+def test_split_nested_paren_brackets() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _split_top_level_commas,
+    )
+
+    assert _split_top_level_commas("A = f(1, 2), B") == ["A = f(1, 2)", " B"]
+
+
+def test_split_nested_square_brackets() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _split_top_level_commas,
+    )
+
+    assert _split_top_level_commas("A = [1, 2], B") == ["A = [1, 2]", " B"]
+
+
+def test_split_nested_curly_brackets() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _split_top_level_commas,
+    )
+
+    assert _split_top_level_commas("A = {x: 1, y: 2}, B") == ["A = {x: 1, y: 2}", " B"]
+
+
+def test_split_empty_body() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _split_top_level_commas,
+    )
+
+    assert _split_top_level_commas("") == [""]
+
+
+def test_split_trailing_comma_yields_empty_segment() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _split_top_level_commas,
+    )
+
+    assert _split_top_level_commas("A, B,") == ["A", " B", ""]
+
+
+def test_split_unbalanced_close_bracket_depth_never_negative() -> None:
+    """A stray closing bracket must not drive depth below zero, so a following
+    top-level comma still splits (the depth-never-negative guard)."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _split_top_level_commas,
+    )
+
+    assert _split_top_level_commas("A), B") == ["A)", " B"]
+
+
+# ---------------------------------------------------------------------------
+# #975 — _enum_members_from_raw_text: empty-candidate + no-identifier branches
+# ---------------------------------------------------------------------------
+
+
+def test_enum_members_trailing_comma_skips_empty_candidate() -> None:
+    """A trailing comma produces an empty segment that is skipped (continue)."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _enum_members_from_raw_text,
+    )
+
+    assert _enum_members_from_raw_text("{ A, B, }") == ["A", "B"]
+
+
+def test_enum_members_segment_without_identifier_skipped() -> None:
+    """A segment whose candidate has no leading identifier is skipped."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _enum_members_from_raw_text,
+    )
+
+    # The `123` segment has no valid identifier head -> regex miss -> skipped.
+    assert _enum_members_from_raw_text("{ A, 123, B }") == ["A", "B"]
+
+
+def test_enum_members_no_braces_uses_raw_text() -> None:
+    """With no `{...}` wrapper the whole raw text is split directly."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _enum_members_from_raw_text,
+    )
+
+    assert _enum_members_from_raw_text("A, B") == ["A", "B"]

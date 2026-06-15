@@ -9,6 +9,7 @@ plugin system so that all 15 supported languages get full MCP tool value.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 from typing import Any
 
@@ -137,14 +138,18 @@ def get_all_exports(result: AnalysisResult) -> list[dict[str, Any]]:
     for e in result.elements:
         if is_element_of_type(e, ELEMENT_TYPE_CLASS):
             methods = getattr(e, "methods", [])
-            exports.append(
-                {
-                    "name": e.name,
-                    "kind": "class",
-                    "line": e.start_line,
-                    "methods": len(methods),
-                }
-            )
+            class_type = getattr(e, "class_type", "class")
+            export: dict[str, Any] = {
+                "name": e.name,
+                "kind": "enum" if class_type == "enum" else "class",
+                "line": e.start_line,
+                "methods": len(methods),
+            }
+            if class_type == "enum":
+                export["members"] = _enum_members_from_raw_text(
+                    getattr(e, "raw_text", "")
+                )
+            exports.append(export)
             seen_names.add(e.name)
         elif is_element_of_type(e, ELEMENT_TYPE_FUNCTION):
             if not e.name.startswith("_"):
@@ -180,6 +185,62 @@ def get_all_exports(result: AnalysisResult) -> list[dict[str, Any]]:
             seen_names.add(reexport["name"])
 
     return exports
+
+
+def _split_top_level_commas(body: str) -> list[str]:
+    """Split ``body`` on commas that are NOT inside quotes or brackets.
+
+    Respects single/double/backtick string literals (with backslash escapes)
+    and ``()``/``[]``/``{}`` nesting, so a comma inside a quoted value
+    (``A = "x,y"``) or a call-expression value (``A = f(1, 2)``) does not
+    fabricate a phantom member. Returns the raw top-level segments.
+    """
+    segments: list[str] = []
+    current: list[str] = []
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for ch in body:
+        if quote is not None:
+            current.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"', "`"):
+            quote = ch
+            current.append(ch)
+        elif ch in ("(", "[", "{"):
+            depth += 1
+            current.append(ch)
+        elif ch in (")", "]", "}"):
+            if depth > 0:
+                depth -= 1
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            segments.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    segments.append("".join(current))
+    return segments
+
+
+def _enum_members_from_raw_text(raw_text: str) -> list[str]:
+    body_match = re.search(r"\{(?P<body>.*)\}", raw_text, flags=re.DOTALL)
+    body = body_match.group("body") if body_match else raw_text
+    members: list[str] = []
+    for part in _split_top_level_commas(body):
+        candidate = part.split("=", 1)[0].strip()
+        if not candidate:
+            continue
+        name = re.match(r"[A-Za-z_$][\w$]*", candidate)
+        if name:
+            members.append(name.group(0))
+    return members
 
 
 def _extract_all_reexports(file_path: str) -> list[dict[str, Any]]:
