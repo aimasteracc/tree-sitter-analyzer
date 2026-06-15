@@ -137,12 +137,9 @@ class RustElementExtractor(ElementExtractor):
 
         variables: list[Variable] = []
 
-        # Pass 1: struct fields via generic traversal
-        self._traverse_and_extract(
-            tree.root_node,
-            {"field_declaration": self._extract_field},
-            variables,
-        )
+        # Pass 1: struct fields only. Do not recurse into enum_item because
+        # struct-like enum variants also contain field_declaration nodes (#960).
+        self._collect_struct_fields(tree.root_node, variables)
 
         # Pass 2: enum variants — collect directly, skip field_declaration recursion
         self._collect_enum_variants(tree.root_node, variables)
@@ -169,6 +166,20 @@ class RustElementExtractor(ElementExtractor):
             return
         for child in node.children:
             self._collect_enum_variants(child, results)
+
+    def _collect_struct_fields(
+        self, node: tree_sitter.Node, results: list[Variable]
+    ) -> None:
+        """Walk the AST for real struct fields, skipping enum variant bodies."""
+        if node.type == "enum_item":
+            return
+        if node.type == "field_declaration":
+            field = self._extract_field(node)
+            if field is not None:
+                results.append(field)
+            return
+        for child in node.children:
+            self._collect_struct_fields(child, results)
 
     def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """Extract Rust use declarations"""
@@ -651,6 +662,7 @@ class RustElementExtractor(ElementExtractor):
             if name_node is None:
                 return None
             enum_name = self._get_node_text(name_node)
+            enum_visibility = self._extract_visibility(node)
 
             # Walk children looking for the enum_variant_list node.
             variant_list = None
@@ -680,6 +692,7 @@ class RustElementExtractor(ElementExtractor):
                     raw_text=raw_text,
                     language="rust",
                     variable_type="enum_variant",
+                    visibility=enum_visibility,
                     receiver_type=enum_name,
                 )
                 variants.append(var)

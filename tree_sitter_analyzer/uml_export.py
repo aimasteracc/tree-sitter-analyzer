@@ -152,6 +152,26 @@ def _clamp_edges(
     return sorted_edges[:max_edges], len(sorted_edges) > max_edges
 
 
+def _dedupe_edges_by_signature(edges: Iterable[UMLEdge]) -> list[UMLEdge]:
+    """Deduplicate edges that share (source, target, label), preserving order."""
+    merged: dict[tuple[str, str, str], UMLEdge] = {}
+    order: list[tuple[str, str, str]] = []
+    for edge in edges:
+        key = (edge.source, edge.target, edge.label)
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = edge
+            order.append(key)
+        else:
+            merged[key] = UMLEdge(
+                source=edge.source,
+                target=edge.target,
+                label=edge.label,
+                weight=existing.weight + edge.weight,
+            )
+    return [merged[key] for key in order]
+
+
 def render_class_mermaid(
     nodes: Iterable[str],
     edges: Iterable[UMLEdge],
@@ -478,13 +498,14 @@ class UMLExporter:
             remaining = max_edges - len(prod_edges)
             if remaining > 0:
                 test_edges, test_truncated = _clamp_edges(raw_test_edges, remaining)
-                edges = prod_edges + test_edges
+                edges = _dedupe_edges_by_signature(prod_edges + test_edges)
                 truncated = prod_truncated or test_truncated
             else:
-                edges = prod_edges
+                edges = _dedupe_edges_by_signature(prod_edges)
                 truncated = prod_truncated or bool(raw_test_edges)
         else:
             edges, truncated = _clamp_edges(raw_edges, max_edges)
+            edges = _dedupe_edges_by_signature(edges)
         rendered_nodes = sorted(
             {n for edge in edges for n in (edge.source, edge.target)}
         )
@@ -602,6 +623,9 @@ class UMLExporter:
             hop.get("callee_file") for path in paths for hop in path.get("hops", [])
         )
         source_label = "call_path+synapse_resolved" if has_resolved else "call_path"
+        path_search_truncated = bool(
+            getattr(result, "truncated", False) and len(paths) >= max_paths
+        )
         return UMLDiagram(
             diagram_type="sequence",
             mermaid_type="sequenceDiagram",
@@ -612,7 +636,7 @@ class UMLExporter:
             # the rendered diagram (len > max_hops). result.truncated refers to
             # BFS path-count truncation, not hop truncation — inheriting it
             # causes truncated=True on a 2-node/1-edge complete path.
-            truncated=len(first_hops) > max_hops,
+            truncated=path_search_truncated or len(first_hops) > max_hops,
             metadata={
                 "source": source_label,
                 "analysis_kind": "static_approximation",

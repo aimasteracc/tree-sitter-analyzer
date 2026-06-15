@@ -36,6 +36,34 @@ logger = logging.getLogger(__name__)
 _SCSS_VAR_RE = re.compile(r"^\s*(\$[\w-]+)\s*:", re.MULTILINE)
 
 
+def _blank_quoted_ranges(line: str) -> str:
+    """Replace the contents of quoted strings with spaces (markers excluded).
+
+    A literal ``/*`` inside an SCSS value like ``$glob: "src/*";`` must NOT be
+    treated as the start of a block comment (Bug #967). We blank out single- and
+    double-quoted ranges before scanning for ``/*``/``*/`` markers, preserving
+    overall length so column offsets stay valid for the comment scan. Quote
+    characters themselves are kept; only their interior is blanked.
+    """
+    out: list[str] = []
+    quote: str | None = None
+    for ch in line:
+        if quote is None:
+            if ch in ('"', "'"):
+                quote = ch
+                out.append(ch)
+            else:
+                out.append(ch)
+        else:
+            if ch == quote:
+                quote = None
+                out.append(ch)
+            else:
+                # Blank the interior so embedded /* or */ is not seen as a marker.
+                out.append(" ")
+    return "".join(out)
+
+
 def _extract_scss_variables(file_path: str, content: str) -> list[Variable]:
     """Return a ``Variable`` element for every SCSS ``$variable`` declaration.
 
@@ -51,7 +79,26 @@ def _extract_scss_variables(file_path: str, content: str) -> list[Variable]:
     lines = content.splitlines()
     seen: set[str] = set()
     variables: list[Variable] = []
+    in_block_comment = False
     for lineno_0, line in enumerate(lines):
+        # Track ``/* ... */`` block comments so commented-out declarations
+        # like ``/* $old: red; */`` are not picked up as phantom variables.
+        # Comment markers are detected on a copy with quoted-string interiors
+        # blanked, so a literal ``/*`` inside a value like ``$glob: "src/*";``
+        # does not falsely open a block comment (Bug #967). Offsets are
+        # length-preserving, so indices map back onto the real ``line``.
+        scan = _blank_quoted_ranges(line)
+        if in_block_comment:
+            close_idx = scan.find("*/")
+            if close_idx == -1:
+                continue
+            in_block_comment = False
+            line = line[close_idx + 2 :]
+            scan = scan[close_idx + 2 :]
+        open_idx = scan.find("/*")
+        if open_idx != -1 and "*/" not in scan[open_idx:]:
+            in_block_comment = True
+            line = line[:open_idx]
         m = _SCSS_VAR_RE.match(line)
         if not m:
             continue

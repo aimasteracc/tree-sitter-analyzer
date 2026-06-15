@@ -204,6 +204,27 @@ class TestUniversalOverviewMethodCap:
             or overview.get("methods_truncated") is False
         )
 
+    def test_complexity_hotspots_are_capped_with_metadata(self):
+        """#960: hotspots must be capped separately from the methods list."""
+        elements = [
+            _make_fn_element(
+                f"hotspot_{i}",
+                start_line=i * 10,
+                end_line=i * 10 + 5,
+                complexity=12,
+            )
+            for i in range(60)
+        ]
+        result = _make_analysis_result_universal(elements)
+        overview = extract_structural_overview_universal(result)
+
+        assert len(overview["complexity_hotspots"]) == 50
+        assert overview["total_complexity_hotspots"] == 60
+        assert overview["complexity_hotspots_truncated"] is True
+        assert [h["name"] for h in overview["complexity_hotspots"]] == [
+            f"hotspot_{i}" for i in range(50)
+        ]
+
 
 # ---------------------------------------------------------------------------
 # extract_structural_overview (Java/Python path) — cap behaviour
@@ -256,3 +277,22 @@ class TestJavaOverviewMethodCap:
             or overview.get("methods_truncated") is False
         )
         assert overview["total_methods"] == 50
+
+    def test_complexity_hotspots_are_capped_with_metadata(self):
+        elements = [
+            _make_java_fn_element(
+                f"hotspot_{i}",
+                start_line=i * 10,
+                complexity_score=12,
+            )
+            for i in range(60)
+        ]
+        result = self._make_result(elements)
+        overview = extract_structural_overview(result)
+
+        assert len(overview["complexity_hotspots"]) == 50
+        assert overview["total_complexity_hotspots"] == 60
+        assert overview["complexity_hotspots_truncated"] is True
+        assert [h["name"] for h in overview["complexity_hotspots"]] == [
+            f"hotspot_{i}" for i in range(50)
+        ]

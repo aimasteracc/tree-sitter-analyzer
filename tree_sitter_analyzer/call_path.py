@@ -326,6 +326,30 @@ def _make_chain(path: list[dict[str, Any]]) -> CallChain:
     )
 
 
+def _path_signature(
+    path: list[dict[str, Any]],
+) -> tuple[tuple[str, str, str, str], ...]:
+    """Stable signature for a hop list, used to dedup equivalent paths.
+
+    #968: the signature must incorporate each node's file identity, not just the
+    bare symbol name.  Two genuinely distinct chains that differ only by the file
+    of an intermediate node — e.g. ``s -> pkg1.py:worker -> t`` vs
+    ``s -> pkg2.py:worker -> t`` — share the same ``(caller, callee)`` name pairs
+    and would otherwise collapse to one signature, silently dropping a real path.
+    Including ``caller_file`` / ``callee_file`` keeps distinct-by-file chains
+    while still deduping genuinely identical ones.
+    """
+    return tuple(
+        (
+            hop.get("caller", ""),
+            hop.get("caller_file", ""),
+            hop.get("callee", ""),
+            hop.get("callee_file", ""),
+        )
+        for hop in path
+    )
+
+
 class CallPathFinder:
     """Find execution paths between two functions via BFS on call edges.
 
@@ -517,6 +541,9 @@ class CallPathFinder:
             [(target_function, target_file)]
         )
         paths: list[CallChain] = []
+        # #951: dedup paths by their hop signature so a meeting node discovered
+        # by both the forward and backward pass in the same round is recorded once.
+        seen_paths: set[tuple[tuple[str, str, str, str], ...]] = set()
         depth = 0
         half_depth = max(1, max_depth // 2)
         while forward_queue or backward_queue:
@@ -531,20 +558,38 @@ class CallPathFinder:
                     # #735: definition file, not call-site file.
                     callee_file = row.get("callee_resolved_file") or ""
                     state = (callee_name, callee_file or None)
+                    # #968: when current_file is unknown (e.g. the source seed had
+                    # no file), fall back to the row's caller_file (file_path is the
+                    # call-site/caller file).  This keeps the caller_file consistent
+                    # with what the backward pass resolves for the same node, so the
+                    # file-aware path signature dedups a chain found by both passes
+                    # instead of treating "" vs the resolved file as two paths.
+                    caller_file = current_file or row.get("caller_file") or ""
                     hop = {
                         "caller": current_name,
-                        "caller_file": current_file or "",
+                        "caller_file": caller_file,
                         "callee": callee_name,
                         "callee_file": callee_file,
                         "line": row.get("callee_line", 0),
                     }
                     parent_path = forward_visited.get((current_name, current_file), [])
                     forward_visited[state] = parent_path + [hop]
-                    # #797: only check for a meeting in backward_visited to stop
-                    # further exploration of this callee.  Paths are recorded
-                    # exclusively by the backward pass to prevent duplicates when
-                    # both passes discover the same meeting node in the same round.
-                    if _lookup_in_visited(state, backward_visited)[0]:
+                    # #797/#951: when the frontier first meets during the forward
+                    # expansion, record the path here in the correctly-ordered
+                    # form (forward segment to the meeting node, then the backward
+                    # segment from the meeting node) and stop exploring this callee.
+                    # Relying on the later backward pass to record it rebuilds the
+                    # chain in the wrong order for 3+ hop paths.
+                    found, bwd_path = _lookup_in_visited(state, backward_visited)
+                    if found:
+                        # backward_visited stores hops in forward (caller->callee)
+                        # order via ``[hop] + parent_path``, so the backward segment
+                        # is appended as-is — reversing it scrambles 2+ hop tails.
+                        full_path = forward_visited[state] + bwd_path
+                        sig = _path_signature(full_path)
+                        if sig not in seen_paths:
+                            seen_paths.add(sig)
+                            paths.append(_make_chain(full_path))
                         # Terminal node reached: stop exploring its callees.
                         continue
                     next_forward.append(state)
@@ -573,8 +618,13 @@ class CallPathFinder:
                     backward_visited[state] = [hop] + list(parent_path)
                     found, fwd_path = _lookup_in_visited(state, forward_visited)
                     if found:
-                        full_path = fwd_path + list(reversed(backward_visited[state]))
-                        paths.append(_make_chain(full_path))
+                        # backward_visited stores hops in forward (caller->callee)
+                        # order, so append the backward segment as-is.
+                        full_path = fwd_path + backward_visited[state]
+                        sig = _path_signature(full_path)
+                        if sig not in seen_paths:
+                            seen_paths.add(sig)
+                            paths.append(_make_chain(full_path))
                         continue
                     next_backward.append(state)
             backward_queue = next_backward
@@ -684,9 +734,18 @@ class CallPathFinder:
                 max_paths,
                 paths,
             )
-        # #797: bidirectional fallback must also try backward when forward found
-        # nothing (mirrors the SQL bidirectional that tries both frontiers).
-        if direction in ("backward", "bidirectional") and len(paths) < max_paths:
+        # #968: reconcile the backward pass.  The original gate (#797/#951) skipped
+        # backward the moment forward found ANY path — but ``_bfs_graph_core`` marks
+        # intermediate states visited within one direction, so the forward pass can
+        # return only ONE chain through a shared meeting node and miss other,
+        # genuinely-distinct chains.  The gate's real intent was to avoid DUPLICATE
+        # paths, not to drop distinct ones.  So for bidirectional we now ALSO run
+        # the backward pass when there's still room for more paths, collect its
+        # chains separately, and merge only those whose (file-aware) signature is
+        # not already present — adding distinct chains while the signature dedup
+        # prevents the duplicate inflation the gate was added to fix.  A pure
+        # backward search still runs backward unconditionally (forward never ran).
+        if direction == "backward":
             self._bfs_graph_backward(
                 graph,
                 source_function,
@@ -697,6 +756,26 @@ class CallPathFinder:
                 max_paths,
                 paths,
             )
+        elif direction == "bidirectional" and len(paths) < max_paths:
+            backward_paths: list[CallChain] = []
+            self._bfs_graph_backward(
+                graph,
+                source_function,
+                target_function,
+                source_file,
+                target_file,
+                max_depth,
+                max_paths,
+                backward_paths,
+            )
+            seen = {_path_signature(p.hops) for p in paths}
+            for chain in backward_paths:
+                if len(paths) >= max_paths:
+                    break
+                sig = _path_signature(chain.hops)
+                if sig not in seen:
+                    seen.add(sig)
+                    paths.append(chain)
         return CallPathResult(
             source=source_function,
             target=target_function,

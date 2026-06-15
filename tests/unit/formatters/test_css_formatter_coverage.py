@@ -427,6 +427,48 @@ class TestHelperMethods:
         element = {"element_type": "at_rule", "element_class": "at_rule"}
         assert formatter._is_rule(element) is False
 
+    def test_is_rule_excludes_scss_variable(self, formatter):
+        """Bug #790: SCSS Variable elements must NOT be counted as CSS rules."""
+        element = {"element_type": "variable", "name": "$primary", "selector": ""}
+        assert formatter._is_rule(element) is False
+
+    def test_is_rule_requires_selector_for_non_rule_type(self, formatter):
+        """A non-``rule`` element with no selector is not a rule (blank-row guard)."""
+        element = {"element_type": "css_rule", "element_class": "other", "selector": ""}
+        assert formatter._is_rule(element) is False
+
+    def test_is_rule_css_rule_with_selector(self, formatter):
+        """A ``css_rule`` StyleElement with a selector IS a rule."""
+        element = {
+            "element_type": "css_rule",
+            "element_class": "layout",
+            "selector": ".box",
+        }
+        assert formatter._is_rule(element) is True
+
+    def test_is_rule_with_style_element_object(self, formatter):
+        """Object (non-dict) path: a ``css_rule`` StyleElement with a selector IS a rule."""
+        element = StyleElement(
+            name=".box",
+            start_line=1,
+            end_line=3,
+            element_type="css_rule",
+            selector=".box",
+            element_class="class_selector",
+        )
+        assert formatter._is_rule(element) is True
+
+    def test_is_rule_with_style_element_object_variable(self, formatter):
+        """Object path: a Variable StyleElement (``$var``) is NOT a rule."""
+        element = StyleElement(
+            name="$primary",
+            start_line=1,
+            end_line=1,
+            element_type="variable",
+            selector="",
+        )
+        assert formatter._is_rule(element) is False
+
     def test_is_at_rule_with_dict(self, formatter):
         """Test _is_at_rule with dictionary element."""
         element = {"element_class": "at_rule"}
