@@ -183,6 +183,16 @@ _CLASS_LIKE = frozenset(
     | _ENUM_LIKE
 )
 
+_SCALA_CLASS_LIKE = frozenset(
+    {
+        "object_definition",
+        "trait_definition",
+        "enum_definition",
+        "given_definition",
+        "type_definition",
+    }
+)
+
 _IMPORT_LIKE = frozenset(
     {
         "import_statement",
@@ -204,7 +214,6 @@ _VAR_DECL_LIKE = frozenset(
         "variable_declaration",
         "const_declaration",
         "let_declaration",
-        "variable_assignment",
     }
 )
 
@@ -833,19 +842,47 @@ def _c_declarator_name(declarator: Any, source: str, depth: int) -> str | None:
     return None
 
 
-def _bash_subscript_base(subscript: Any) -> Any:
-    """Return the base ``variable_name`` node of a Bash ``subscript`` target.
+def _scala_symbol_from_node(node: Any, source: str) -> dict[str, Any] | None:
+    node_type = node.type
+    if node_type not in _SCALA_CLASS_LIKE:
+        return None
+    name = _scala_symbol_name(node, source)
+    if not name:
+        return None
+    return {
+        "kind": "enum" if node_type == "enum_definition" else "class",
+        "name": name,
+        "line": node.start_point[0] + 1,
+        "end_line": node.end_point[0] + 1,
+        "language": "scala",
+    }
 
-    For ``arr[0]=x`` tree-sitter-bash nests the base variable under the
-    subscript's ``name`` field (``arr``). Fall back to the first
-    ``variable_name`` / ``word`` child if the field is absent.
-    """
-    base = subscript.child_by_field_name("name")
-    if base is not None:
-        return base
-    for child in subscript.children:
-        if child.type in ("variable_name", "word"):
-            return child
+
+def _scala_symbol_name(node: Any, source: str) -> str | None:
+    name_node = node.child_by_field_name("name")
+    if name_node is not None:
+        return _node_text(name_node, source)
+    for child in node.children:
+        if child.type in ("identifier", "type_identifier"):
+            return _node_text(child, source)
+    if node.type == "given_definition":
+        type_name = _scala_given_type_text(node, source)
+        if type_name:
+            return f"given {type_name}"
+        return f"anonymous_given_{node.start_point[0] + 1}"
+    return None
+
+
+def _scala_given_type_text(node: Any, source: str) -> str | None:
+    for child in node.children:
+        if child.type in (
+            "generic_type",
+            "type_identifier",
+            "stable_type_identifier",
+            "tuple_type",
+            "function_type",
+        ):
+            return _node_text(child, source)
     return None
 
 
@@ -928,6 +965,10 @@ def _walk_for_symbols(
             sym["kind"] = "method"
             sym["class"] = parent_cls
         symbols.append(sym)
+    elif language == "scala" and node_type in _SCALA_CLASS_LIKE:
+        scala_sym = _scala_symbol_from_node(node, source)
+        if scala_sym is not None:
+            symbols.append(scala_sym)
     elif node_type in _CLASS_LIKE and name_node is not None:
         name = _node_text(name_node, source)
         parents = _extract_parent_classes(node, source, language)
@@ -966,24 +1007,9 @@ def _walk_for_symbols(
         and not (
             language in ("javascript", "typescript", "java", "csharp") and enclosed
         )
-        # #949 Codex P2: ``FOO=bar make`` makes tree-sitter-bash emit
-        # ``FOO=bar`` as a variable_assignment *child of a command* node — a
-        # transient per-command env override, not a script-level variable.
-        # Skip those; only standalone assignments (parent is the
-        # program/compound/list) are real symbols.
-        and not (
-            node_type == "variable_assignment"
-            and node.parent is not None
-            and node.parent.type == "command"
-        )
     ):
-        # Bash array/associative assignments (``arr[0]=x``) expose the target
-        # as a ``subscript`` node, not a bare ``variable_name``. Unwrap to the
-        # base variable so the symbol is the variable name, not ``arr[0]``.
-        if name_node.type == "subscript":
-            name_node = _bash_subscript_base(name_node)
-        name = _node_text(name_node, source) if name_node is not None else ""
-        if name and (not name.startswith("_") or depth < 3):
+        name = _node_text(name_node, source)
+        if not name.startswith("_") or depth < 3:
             symbols.append(
                 {
                     "kind": "variable",

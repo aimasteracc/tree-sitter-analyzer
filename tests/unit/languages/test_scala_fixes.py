@@ -133,6 +133,29 @@ class TestEnumCaseExtraction:
         classes = _classes(_ENUM_WITH_PARAMS)
         assert classes["Mercury"].parent_class == "Planet"
 
+    def test_full_enum_cases_with_constructor_params_are_extracted(self) -> None:
+        code = """\
+enum Command:
+  case Quit
+  case Move(dx: Int, dy: Int)
+  case Error(code: Int) extends Command
+"""
+        classes = _classes(code)
+        assert classes["Move"].class_type == "enum_member"
+        assert classes["Move"].parent_class == "Command"
+        assert "dx: Int" in classes["Move"].raw_text
+        assert classes["Error"].superclass == "Command"
+
+    def test_enum_modifiers_are_preserved(self) -> None:
+        classes = _classes(
+            """\
+private enum Secret:
+  case Token
+"""
+        )
+        assert classes["Secret"].visibility == "private"
+        assert "private" in classes["Secret"].modifiers
+
 
 # ---------------------------------------------------------------------------
 # Bug #764: given/type/extension inside object/trait must carry parent_class
@@ -239,3 +262,84 @@ class TestGivenTypeParentClass:
     def test_nested_type_alias_parent_class(self) -> None:
         classes = _classes(_NESTED_MIX)
         assert classes["AliasT"].parent_class == "Outer"
+
+    def test_local_given_and_type_inside_method_are_not_members(self) -> None:
+        classes = _classes(
+            """\
+object Ops:
+  def configure(): Unit =
+    given localOrdering: Ordering[Int] = Ordering.Int
+    type LocalAlias = String
+"""
+        )
+        assert "localOrdering" not in classes
+        assert "LocalAlias" not in classes
+
+    def test_given_and_type_modifiers_are_preserved(self) -> None:
+        classes = _classes(
+            """\
+object Api:
+  private given secret: String = "s"
+  protected type Hidden = Int
+"""
+        )
+        assert classes["secret"].visibility == "private"
+        assert "private" in classes["secret"].modifiers
+        assert classes["Hidden"].visibility == "protected"
+        assert "protected" in classes["Hidden"].modifiers
+
+    def test_anonymous_givens_use_distinct_type_based_names(self) -> None:
+        classes = _classes(
+            """\
+object Instances:
+  given Ordering[Int] = Ordering.Int
+  given Ordering[String] = Ordering.String
+"""
+        )
+        assert "given Ordering[Int]" in classes
+        assert "given Ordering[String]" in classes
+
+    def test_abstract_type_members_are_not_reported_as_aliases(self) -> None:
+        classes = _classes(
+            """\
+trait Api:
+  type Out
+  type In <: String
+  type Alias = Int
+"""
+        )
+        assert classes["Out"].class_type == "type_member"
+        assert classes["In"].class_type == "type_member"
+        assert classes["Alias"].class_type == "type_alias"
+
+    def test_extension_symbol_and_method_keep_owner_context(self) -> None:
+        code = """\
+object Ops:
+  extension (s: String)
+    def shout: String = s.toUpperCase
+"""
+        classes = _classes(code)
+        functions = _functions(code)
+        assert classes["extension[String]"].class_type == "extension"
+        assert classes["extension[String]"].parent_class == "Ops"
+        assert functions["shout"].parent_class == "Ops"
+        assert functions["shout"].receiver_type == "String"
+
+
+def test_scala_ast_cache_symbol_path_indexes_new_constructs() -> None:
+    from tree_sitter_analyzer._ast_extraction import _extract_symbols
+
+    code = """\
+object Instances:
+  given Ordering[Int] = Ordering.Int
+  type Alias = Int
+
+enum Color:
+  case Red
+"""
+    symbols = _extract_symbols(_parse(code), code, "scala")["symbols"]
+    by_name = {s["name"]: s for s in symbols}
+    assert by_name["Instances"]["kind"] == "class"
+    assert by_name["given Ordering[Int]"]["kind"] == "class"
+    assert by_name["Alias"]["kind"] == "class"
+    assert by_name["Color"]["kind"] == "enum"
