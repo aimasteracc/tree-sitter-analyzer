@@ -96,12 +96,14 @@ class TestHandleSpecialCommandsBranchCoverage:
         assert payload["skills"][0]["acceptance_criteria_present"] is True
 
     @patch("tree_sitter_analyzer.output_manager.output_json")
-    def test_handle_agent_workflow_outputs_pack(self, mock_output_json):
+    def test_handle_agent_workflow_outputs_pack(self, mock_output_json, tmp_path):
         """Agent workflow returns a structured SMART command pack."""
+        target = tmp_path / "target.py"
+        target.write_text("def run(): pass\n")
         args = argparse.Namespace(
             agent_workflow=True,
             file_path="target.py",
-            project_root="/repo",
+            project_root=str(tmp_path),
             format="json",
         )
 

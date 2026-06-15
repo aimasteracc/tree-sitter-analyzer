@@ -495,3 +495,54 @@ async def test_agent_workflow_tool_envelope_holds_for_both_formats(tmp_path):
                 args["target_path"] = target_path
             result = await tool.execute(args)
             _assert_envelope_holds(result, target_path, output_format)
+
+
+# ---------------------------------------------------------------------------
+# CLI builder path validation (#862)
+# ---------------------------------------------------------------------------
+
+
+def test_cli_builder_blocks_missing_file(tmp_path):
+    """build_agent_workflow_pack returns risk=blocked for non-existent target.
+
+    The CLI planner must validate the target path before building an analyze
+    plan — a missing file produces blocked result, not an analyze plan that
+    will fail downstream.
+    """
+    result = agent_workflow.build_agent_workflow_pack(
+        project_root=str(tmp_path),
+        target_path="no_such_file.py",
+    )
+    assert result["success"] is False
+    assert result.get("risk") == "blocked"
+    assert "no_such_file.py" in result.get("error", "")
+    assert result.get("current_phase") != "analyze"
+    assert result.get("recommended_commands", []) == []
+
+
+def test_cli_builder_blocks_path_outside_project(tmp_path):
+    """build_agent_workflow_pack returns risk=blocked for an external absolute path.
+
+    A path that resolves outside project_root is rejected so the planner
+    cannot generate commands referencing system-level files.
+    """
+    result = agent_workflow.build_agent_workflow_pack(
+        project_root=str(tmp_path),
+        target_path="/tmp/outside.py",
+    )
+    assert result["success"] is False
+    assert result.get("risk") == "blocked"
+    assert result.get("recommended_commands", []) == []
+
+
+def test_cli_builder_succeeds_for_existing_file(tmp_path):
+    """build_agent_workflow_pack proceeds normally when target file exists."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "service.py").write_text("def run(): pass\n")
+
+    result = agent_workflow.build_agent_workflow_pack(
+        project_root=str(tmp_path),
+        target_path="src/service.py",
+    )
+    assert result["success"] is True
+    assert result["current_phase"] == "analyze"
