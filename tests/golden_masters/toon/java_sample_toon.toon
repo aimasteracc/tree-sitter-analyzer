@@ -1,4 +1,4 @@
-file_path: examples/Sample.java
+file_path: examples/sample.java
 language: java
 package:
   name: com.example
