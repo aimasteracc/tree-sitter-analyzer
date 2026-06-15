@@ -200,15 +200,17 @@ class JavaScriptElementExtractor(
             has_arrow_value = False
             is_static = False
 
+            is_private_field = False
             for child in node.children:
-                if child.type in ("property_identifier", "private_property_identifier"):
+                if child.type == "private_property_identifier":
+                    field_name = self._get_node_text_optimized(child)
+                    is_private_field = True
+                elif child.type == "property_identifier":
                     field_name = self._get_node_text_optimized(child)
                 elif child.type == "static":
                     is_static = True
                 elif child.type == "arrow_function":
                     has_arrow_value = True
-                elif child.type in ("string", "number", "true", "false", "null"):
-                    field_value = self._get_node_text_optimized(child)
 
             # Arrow function class fields are captured in the function extraction pass
             # (via field_definition in container_node_types + _arrow_function_name fix).
@@ -218,7 +220,16 @@ class JavaScriptElementExtractor(
             if not field_name:
                 return None
 
+            # Use the named "value" field for the initializer so non-primitive RHS
+            # expressions (objects, arrays, calls, identifiers) are preserved
+            # intact instead of being silently dropped (Codex P2 on #746).
+            value_node = node.child_by_field_name("value")
+            if value_node is not None:
+                field_value = self._get_node_text_optimized(value_node)
+
             raw_text = self._get_node_text_optimized(node)
+            # Private fields (#name) are private; all others are public (Codex P2 #746).
+            visibility = "private" if is_private_field else "public"
 
             return Variable(
                 name=field_name,
@@ -230,6 +241,7 @@ class JavaScriptElementExtractor(
                 is_static=is_static,
                 is_constant=False,
                 initializer=field_value,
+                visibility=visibility,
             )
         except Exception as e:
             log_debug(f"Failed to extract field definition: {e}")

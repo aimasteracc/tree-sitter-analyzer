@@ -28,7 +28,8 @@ from tree_sitter_analyzer.languages.javascript_plugin.extractor import (
 )
 
 pytestmark = pytest.mark.skipif(
-    not _TREE_SITTER_AVAILABLE, reason="tree-sitter-javascript not installed"
+    not _TREE_SITTER_AVAILABLE,
+    reason="tree-sitter-javascript not installed — tracked: #746",
 )
 
 _CLASS_WITH_FIELDS = """\
@@ -143,4 +144,49 @@ class TestClassFieldArrowMethodExtraction:
         anon = [f for f in functions if f.name == "anonymous"]
         assert len(anon) == 0, (
             f"No anonymous functions expected for named class fields; got {[f.name for f in anon]}"
+        )
+
+
+class TestClassFieldVisibility:
+    """Codex P2 on #746 — visibility must reflect JS privacy rules."""
+
+    def test_public_field_has_public_visibility(self, extractor, js_parser):
+        """count = 0 is public; visibility must be 'public' not 'private'."""
+        tree = js_parser.parse(_CLASS_WITH_FIELDS.encode())
+        variables = extractor.extract_variables(tree, _CLASS_WITH_FIELDS)
+        by_name = {v.name: v for v in variables}
+        field = by_name.get("count")
+        assert field is not None, "'count' not found"
+        assert field.visibility == "public", (
+            f"public field 'count' must have visibility='public'; got {field.visibility!r}"
+        )
+
+    def test_private_field_has_private_visibility(self, extractor, js_parser):
+        """#privateCounter = 0 is private; visibility must be 'private'."""
+        tree = js_parser.parse(_CLASS_WITH_FIELDS.encode())
+        variables = extractor.extract_variables(tree, _CLASS_WITH_FIELDS)
+        by_name = {v.name: v for v in variables}
+        field = by_name.get("#privateCounter")
+        assert field is not None, "'#privateCounter' not found"
+        assert field.visibility == "private", (
+            f"private field '#privateCounter' must have visibility='private'; "
+            f"got {field.visibility!r}"
+        )
+
+
+class TestClassFieldInitializer:
+    """Codex P2 on #746 — non-primitive initializers must not be silently dropped."""
+
+    def test_object_initializer_preserved(self, extractor, js_parser):
+        """state = { running: false } must have a non-None initializer."""
+        tree = js_parser.parse(_CLASS_WITH_FIELDS.encode())
+        variables = extractor.extract_variables(tree, _CLASS_WITH_FIELDS)
+        by_name = {v.name: v for v in variables}
+        field = by_name.get("state")
+        assert field is not None, "'state' not found"
+        assert field.initializer is not None, (
+            "Object-initialised class field 'state' must have initializer != None"
+        )
+        assert "running" in (field.initializer or ""), (
+            f"Initializer should contain 'running'; got {field.initializer!r}"
         )
