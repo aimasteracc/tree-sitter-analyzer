@@ -446,6 +446,29 @@ class TestHelperMethods:
         }
         assert formatter._is_rule(element) is True
 
+    def test_is_rule_with_style_element_object(self, formatter):
+        """Object (non-dict) path: a ``css_rule`` StyleElement with a selector IS a rule."""
+        element = StyleElement(
+            name=".box",
+            start_line=1,
+            end_line=3,
+            element_type="css_rule",
+            selector=".box",
+            element_class="class_selector",
+        )
+        assert formatter._is_rule(element) is True
+
+    def test_is_rule_with_style_element_object_variable(self, formatter):
+        """Object path: a Variable StyleElement (``$var``) is NOT a rule."""
+        element = StyleElement(
+            name="$primary",
+            start_line=1,
+            end_line=1,
+            element_type="variable",
+            selector="",
+        )
+        assert formatter._is_rule(element) is False
+
     def test_is_at_rule_with_dict(self, formatter):
         """Test _is_at_rule with dictionary element."""
         element = {"element_class": "at_rule"}

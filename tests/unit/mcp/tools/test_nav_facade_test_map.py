@@ -16,7 +16,14 @@ import pytest
 
 from tree_sitter_analyzer.call_graph import FunctionRef
 from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import CodeGraphImpactTool
-from tree_sitter_analyzer.mcp.tools.nav_facade import _MAX_TEST_MAP, build_nav_facade
+from tree_sitter_analyzer.mcp.tools.nav_facade import (
+    _MAX_TEST_MAP,
+    _is_collectible_caller,
+    _is_go_test_func,
+    _is_java_test_method,
+    _is_js_test_func,
+    build_nav_facade,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -883,3 +890,102 @@ async def test_test_map_walk_up_capped_at_one_hop() -> None:
     assert result["edge_count"] == 0
     assert result["unique_function_count"] == 0
     assert result["test_functions"] == []
+
+
+# ---------------------------------------------------------------------------
+# 12. Per-language test-name helpers — direct unit coverage of every branch
+#     (#967). Each helper is a pure predicate; assert the exact boolean.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_test_map_walk_up_skips_helper_parent_in_non_test_file() -> None:
+    """Walk-up ignores a helper's parent that lives in a NON-test file (#967).
+
+    ``prod_fn`` is reached only via the test-file helper ``_run``; ``_run`` is
+    itself called from a PRODUCTION file (``src/driver.py``), not a test. The
+    one-hop walk-up must skip that non-test parent, so no coverage edge is
+    recorded.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("prod_fn", "src/prod.py")
+    helper = _make_func("_run", "tests/test_helpers.py", 5)
+    prod_caller = _make_func("driver", "src/driver.py", 20)
+
+    def _callers(func: FunctionRef):
+        # prod_fn called only by the test-file helper _run; _run called only
+        # from a production (non-test) file.
+        if func.name == "prod_fn":
+            return [helper]
+        if func.name == "_run":
+            return [prod_caller]
+        return []
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.side_effect = _callers
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "prod_fn", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    # The only helper parent is in a non-test file → skipped, nothing recorded.
+    assert result["edge_count"] == 0
+    assert result["unique_function_count"] == 0
+    assert result["test_functions"] == []
+
+
+def test_is_go_test_func_accepts_test_and_benchmark_example_fuzz() -> None:
+    """Go test entry-point prefixes followed by uppercase / empty → True."""
+    assert _is_go_test_func("TestHandle") is True
+    assert _is_go_test_func("BenchmarkParse") is True
+    assert _is_go_test_func("ExampleServer") is True
+    assert _is_go_test_func("FuzzDecode") is True
+    # Bare prefix with no suffix is a valid Go example/test name.
+    assert _is_go_test_func("Example") is True
+
+
+def test_is_go_test_func_rejects_lowercase_suffix_and_non_prefix() -> None:
+    """``Testing``-style lowercase suffix and plain helpers → False."""
+    # Starts with ``Test`` but suffix is lowercase alpha → not a test func.
+    assert _is_go_test_func("Testing") is False
+    # Lowercase helper with no recognised prefix → False.
+    assert _is_go_test_func("setupServer") is False
+
+
+def test_is_js_test_func_whitespace_description_is_test() -> None:
+    """A spec description containing whitespace → True (no prefix check)."""
+    assert _is_js_test_func("renders correctly") is True
+
+
+def test_is_js_test_func_known_prefixes_are_tests() -> None:
+    """``test``/``it``/``should``/``when``/``describe`` prefixes → True."""
+    assert _is_js_test_func("testRender") is True
+    assert _is_js_test_func("itWorks") is True
+    assert _is_js_test_func("shouldRender") is True
+    assert _is_js_test_func("whenClicked") is True
+    assert _is_js_test_func("describeFlow") is True
+
+
+def test_is_js_test_func_bare_camelcase_helper_is_not_test() -> None:
+    """A bare camelCase / underscore helper identifier → False (walk up)."""
+    assert _is_js_test_func("mountComponent") is False
+    assert _is_js_test_func("_helper") is False
+
+
+def test_is_java_test_method_public_vs_private() -> None:
+    """Any public (non-underscore) Java method → True; ``_``-leading → False."""
+    assert _is_java_test_method("shouldHandleFoo") is True
+    assert _is_java_test_method("_privateHelper") is False
+
+
+def test_is_collectible_caller_unknown_language_accepts() -> None:
+    """A non-Python file with no recognised convention → accept the caller."""
+    assert _is_collectible_caller("src/mod.rb", "anything", "ruby") is True
+    # No language hint and an unrecognised extension also accepts.
+    assert _is_collectible_caller("src/mod.xyz", "whatever", "") is True
