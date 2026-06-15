@@ -635,3 +635,44 @@ def test_build_test_plan_returns_sorted_runnable_tests():
         verification_tool.AUTO_DISCOVER_TEST_HINT
     ]
     assert tests_to_run == ["tests/unit/cli/test_cli_main_module.py"]
+
+
+def test_cli_path_always_passes_resource_profile_explicitly():
+    """CLI builder must always set resource_profile so the MCP fallback never overrides it (#925 P2)."""
+    from unittest.mock import MagicMock
+
+    from tree_sitter_analyzer.cli.commands.mcp_commands._builders import (
+        _build_change_impact_tool_args,
+    )
+
+    args = MagicMock()
+    args.change_impact_mode = "diff"
+    args.pr_url = ""
+    args.change_impact_include_tests = True
+    args.change_impact_scope = None
+    args.change_impact_scope_mode = "report"
+    args.change_impact_full = False
+    args.compact_toon = False
+    args.change_impact_resource_profile = "default"
+
+    tool_args = _build_change_impact_tool_args(args, "json")
+    assert "resource_profile" in tool_args, (
+        "CLI must always pass resource_profile explicitly to prevent MCP fallback override"
+    )
+    assert tool_args["resource_profile"] == "default"
+
+
+def test_low_impact_pytest_command_portable_on_windows(monkeypatch):
+    """#925 P2: _low_impact_pytest_command must not emit 'nice' on Windows."""
+    import sys
+
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        _low_impact_pytest_command,
+    )
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    result = _low_impact_pytest_command("uv run pytest tests/unit/ -q")
+    assert not result.startswith("nice"), (
+        f"nice(1) must not appear on Windows; got {result!r}"
+    )
+    assert "uv run pytest" in result

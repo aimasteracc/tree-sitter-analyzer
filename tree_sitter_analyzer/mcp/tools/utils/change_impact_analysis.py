@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import shlex
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -382,7 +383,9 @@ def _low_impact_pytest_command(command: str) -> str:
         return command
 
     normalized_rest = _drop_pytest_quiet_and_worker_flags(rest)
-    return shlex.join(["nice", "-n", "15", *prefix, *normalized_rest, "-n", "2", "-q"])
+    # nice(1) is POSIX-only; skip the prefix on Windows to keep commands runnable.
+    nice_prefix = [] if sys.platform == "win32" else ["nice", "-n", "15"]
+    return shlex.join([*nice_prefix, *prefix, *normalized_rest, "-n", "2", "-q"])
 
 
 def _drop_pytest_quiet_and_worker_flags(parts: list[str]) -> list[str]:
