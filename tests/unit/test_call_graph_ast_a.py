@@ -284,11 +284,35 @@ class TestWalkTree:
         assert method_node is not None
         assert _find_receiver_type_go(method_node) == "Engine"
 
+    def test_find_receiver_type_go_generic_pointer(self):
+        source = "package main\n\ntype Stack[T any] struct{}\n\nfunc (s *Stack[T]) Push() {}\n"
+        root, src = _parse_source(source, "go")
+        method_node = next(c for c in root.children if c.type == "method_declaration")
+        assert _find_receiver_type_go(method_node) == "Stack"
+
+    def test_find_receiver_type_go_generic_multiline_pointer(self):
+        source = (
+            "package main\n\n"
+            "type Stack[T any] struct{}\n\n"
+            "func (s *Stack[\n"
+            "    T,\n"
+            "]) Clear() {}\n"
+        )
+        root, src = _parse_source(source, "go")
+        method_node = next(c for c in root.children if c.type == "method_declaration")
+        assert _find_receiver_type_go(method_node) == "Stack"
+
     def test_find_receiver_type_go_value_receiver(self):
         source = "package main\n\nfunc (e Engine) Run() {}\n"
         root, src = _parse_source(source, "go")
         method_node = next(c for c in root.children if c.type == "method_declaration")
         assert _find_receiver_type_go(method_node) == "Engine"
+
+    def test_find_receiver_type_go_unnamed_pointer_receiver(self):
+        source = "package main\n\ntype Counter struct{}\n\nfunc (*Counter) Run() {}\n"
+        root, src = _parse_source(source, "go")
+        method_node = next(c for c in root.children if c.type == "method_declaration")
+        assert _find_receiver_type_go(method_node) == "Counter"
 
     def test_find_receiver_type_go_none_for_non_method(self):
         assert _find_receiver_type_go(None) is None

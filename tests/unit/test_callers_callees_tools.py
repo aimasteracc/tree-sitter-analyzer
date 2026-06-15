@@ -559,8 +559,15 @@ class TestEmptyIndexHint:
     async def test_callers_non_empty_index_no_spurious_hint(
         self, tiny_project_root
     ) -> None:
-        """When the index has call edges, NOT_FOUND for unknown symbol does NOT
-        mention --full-index (it's the symbol that's missing, not the index)."""
+        """When a built index has call edges, an unknown symbol gets no hint."""
+        cache = ASTCache(tiny_project_root)
+        try:
+            cache.index_project(workers=0)
+            assert cache.call_graph_built() is True
+            assert cache.has_call_edges() is True
+        finally:
+            cache.close()
+
         tool = CodeGraphCallersTool(tiny_project_root)
         result = await tool.execute(
             {
@@ -568,11 +575,10 @@ class TestEmptyIndexHint:
                 "output_format": "json",
             }
         )
-        # tiny_project_root has foo→bar edges, so the call graph is populated
         assert result["verdict"] == "NOT_FOUND"
         next_step = result.get("next_step", "")
         assert "--full-index" not in next_step, (
-            f"--full-index hint must NOT appear when index has edges; "
+            f"--full-index hint must NOT appear when built index has edges; "
             f"got: {next_step!r}"
         )
 
