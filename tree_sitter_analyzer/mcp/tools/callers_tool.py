@@ -147,7 +147,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         call_graph_built = (
             self._cache_call_graph_built(cache) if cache is not None else False
         )
-        call_graph_indexed = cache is not None and cache.has_call_edges()
+        call_graph_indexed = (
+            cache is not None and call_graph_built and cache.has_call_edges()
+        )
         if call_graph_indexed and not is_qualified:
             callers, unattributed_call_sites = self._sql_native_callers(
                 cache, func_name, file_path, include_activation
@@ -159,14 +161,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callers = graph.callers_of(func_name, file_path)
             data_source = self._data_source
             self._enrich_callers_with_resolution(callers)
-            # Suppress the --full-index hint when either:
-            #   (a) the index was built (data_source=="cache") — even if it
-            #       has zero call edges, the user already ran --full-index; or
-            #   (b) the parse fallback itself found call edges — the project
-            #       has calls, so the symbol just isn't there.
-            # Only fire the hint when the index is absent AND the parse found
-            # no edges at all (truly empty/unbuilt state).
-            has_any_call_edges = call_graph_built or len(graph.call_edges()) > 0
+            # Only the persisted built marker proves that --full-index
+            # completed. Partial/stale edge rows must still surface the hint.
+            has_any_call_edges = call_graph_built
 
         warnings_list: list[str] = []
         if _is_stale_resolution(callers):

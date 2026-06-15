@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools._graph_cache_fingerprint import is_ast_index_stale
 from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
     SymbolLineageTool,
     _assess_risk,
@@ -401,6 +402,136 @@ class TestInheritanceLineage:
             "authoritative ast_index mtime check"
         )
         assert "index_hint" in hier
+
+    def test_execute_invalidates_symbol_cache_when_ast_index_is_stale(
+        self, tool, tmp_path
+    ):
+        """#932: a warm lineage response must not hide stale AST-index data."""
+        import os
+        import time
+
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        kt_path = tmp_path / "Main.kt"
+        kt_path.write_text("class Main {\n    fun run() {}\n}\n")
+        _write_py(tmp_path, "main_wrapper.py", "class MainWrapper:\n    pass\n")
+
+        past_s = time.time() - 60
+        os.utime(str(kt_path), (past_s, past_s))
+        os.utime(str(tmp_path / "main_wrapper.py"), (past_s, past_s))
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+
+        first = asyncio.run(
+            tool.execute({"symbol": "MainWrapper", "output_format": "json"})
+        )
+        assert first["from_cache"] is False
+        assert first["hierarchy"]["index_stale"] is False
+
+        future_ns = int(time.time() * 1e9) + 10_000_000_000
+        future_s = future_ns / 1e9
+        os.utime(str(kt_path), (future_s, future_s))
+
+        second = asyncio.run(
+            tool.execute({"symbol": "MainWrapper", "output_format": "json"})
+        )
+        assert second["from_cache"] is False
+        assert second["hierarchy"]["index_stale"] is True
+        assert "index_hint" in second["hierarchy"]
+
+
+class TestAstIndexStaleness:
+    def test_empty_ast_index_is_unknown_not_stale(self, tool, tmp_path):
+        """An empty DB created by a read path is not a completed stale index."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(tmp_path, "pkg/a.py", "class A:\n    pass\n")
+        ASTCache(str(tmp_path)).close()
+
+        assert is_ast_index_stale(str(tmp_path)) is False
+
+    def test_stale_when_supported_source_file_is_added_after_index(
+        self, tool, tmp_path
+    ):
+        """#931: newly added supported files must invalidate the AST index."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        _write_py(tmp_path, "pkg/a.py", "class A:\n    pass\n")
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+        assert is_ast_index_stale(str(tmp_path)) is False
+
+        _write_py(tmp_path, "pkg/b.py", "class B:\n    pass\n")
+
+        assert is_ast_index_stale(str(tmp_path)) is True
+
+    def test_stale_when_indexed_source_file_is_deleted(self, tool, tmp_path):
+        """#933: deleted indexed files must make the AST index stale."""
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        source_path = tmp_path / "pkg" / "a.py"
+        _write_py(tmp_path, "pkg/a.py", "class A:\n    pass\n")
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+        assert is_ast_index_stale(str(tmp_path)) is False
+
+        source_path.unlink()
+
+        assert is_ast_index_stale(str(tmp_path)) is True
+
+
+class TestGraphCacheFingerprintHelpers:
+    """Direct coverage for the freshness-walk helper branches (#970)."""
+
+    def test_indexed_abs_and_rel_path_absolute_outside_root_falls_back(self, tmp_path):
+        """An absolute indexed path outside root → relative_to raises ValueError,
+        so the helper falls back to the path's own posix form."""
+        from pathlib import Path
+
+        from tree_sitter_analyzer._graph_cache_fingerprint import (
+            _indexed_abs_and_rel_path,
+        )
+
+        outside = tmp_path.parent / "elsewhere" / "foreign.py"
+        abs_path, rel_path = _indexed_abs_and_rel_path(tmp_path, str(outside))
+
+        assert abs_path == Path(str(outside))
+        assert rel_path == outside.as_posix()
+
+    def test_indexed_abs_and_rel_path_relative_inside_root(self, tmp_path):
+        """A relative indexed path is resolved against root and stays relative."""
+        from pathlib import Path
+
+        from tree_sitter_analyzer._graph_cache_fingerprint import (
+            _indexed_abs_and_rel_path,
+        )
+
+        abs_path, rel_path = _indexed_abs_and_rel_path(tmp_path, "pkg/a.py")
+
+        assert abs_path == Path(tmp_path) / "pkg" / "a.py"
+        assert rel_path == "pkg/a.py"
+
+    def test_walk_supported_source_paths_skips_dotfiles_excluded_and_unsupported(
+        self, tmp_path
+    ):
+        """The walker yields only supported, non-dot files outside EXCLUDE_DIRS."""
+        from tree_sitter_analyzer._graph_cache_fingerprint import (
+            _walk_supported_source_paths,
+        )
+
+        # Supported, should be yielded.
+        _write_py(tmp_path, "pkg/a.py", "class A:\n    pass\n")
+        # Dotfile — skipped by the fname.startswith(".") branch.
+        (tmp_path / ".hidden.py").write_text("x = 1\n")
+        # Unsupported extension — skipped by the ext-not-in-EXT_TO_LANG branch.
+        (tmp_path / "notes.txt").write_text("hello\n")
+        # Excluded directory — pruned from dirnames.
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "node_modules" / "dep.py").write_text("y = 2\n")
+        # Dot-directory — pruned from dirnames.
+        (tmp_path / ".cache_dir").mkdir()
+        (tmp_path / ".cache_dir" / "c.py").write_text("z = 3\n")
+
+        found = set(_walk_supported_source_paths(tmp_path))
+
+        assert found == {"pkg/a.py"}
 
 
 class TestR37uTopLevelVerdictMirror:
