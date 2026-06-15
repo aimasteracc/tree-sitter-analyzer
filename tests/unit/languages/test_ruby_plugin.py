@@ -596,6 +596,17 @@ class TestRubyPluginAnalyzeFile:
 
         assert result.node_count == 77
 
+    @pytest.mark.asyncio
+    async def test_analyze_file_line_count_nonzero(self, tmp_path):
+        """#769: line_count must reflect actual file line count, not default 0."""
+        rb_file = tmp_path / "test.rb"
+        rb_file.write_text(SIMPLE_CLASS_CODE, encoding="utf-8")
+
+        plugin = RubyPlugin()
+        result = await plugin.analyze_file(str(rb_file), None)
+
+        assert result.line_count == len(SIMPLE_CLASS_CODE.splitlines())
+
 
 class TestRubyIntegration:
     """Integration tests for Ruby plugin."""

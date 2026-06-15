@@ -54,6 +54,6 @@ statistics:
   method_count: 21
   field_count: 12
   import_count: 2
-  total_lines: 0
+  total_lines: 214
 effective_table: toon
 requested_table: toon
