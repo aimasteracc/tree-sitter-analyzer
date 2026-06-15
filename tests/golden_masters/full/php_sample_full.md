@@ -1,4 +1,4 @@
-# sample.php
+# Sample.php
 
 ## Imports
 ```php
