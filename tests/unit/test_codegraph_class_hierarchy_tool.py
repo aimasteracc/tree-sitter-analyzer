@@ -80,9 +80,11 @@ class TestToolDefinition:
 
     def test_schema_mode_enum(self, tool):
         mode = tool.get_tool_schema()["properties"]["mode"]
+        # 'supers' is a documented alias for 'superclasses' (#802).
         assert set(mode["enum"]) == {
             "subclasses",
             "superclasses",
+            "supers",
             "tree",
             "impact",
             "all",
