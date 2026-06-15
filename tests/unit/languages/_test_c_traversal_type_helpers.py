@@ -218,26 +218,35 @@ class TestCTraverseAndExtract:
 
 class TestDirectTypeName:
     def test_finds_type_identifier(self) -> None:
-        node = FakeNode("struct_specifier", children=[
-            FakeNode("type_identifier", text="Point"),
-        ])
+        node = FakeNode(
+            "struct_specifier",
+            children=[
+                FakeNode("type_identifier", text="Point"),
+            ],
+        )
         result = _direct_type_name(node, _get_node_text)
         assert result == "Point"
 
     def test_no_type_identifier(self) -> None:
-        node = FakeNode("struct_specifier", children=[
-            FakeNode("field_declaration_list"),
-        ])
+        node = FakeNode(
+            "struct_specifier",
+            children=[
+                FakeNode("field_declaration_list"),
+            ],
+        )
         result = _direct_type_name(node, _get_node_text)
         assert result is None
 
 
 class TestTypedefTypeName:
     def test_typedef_parent(self) -> None:
-        typedef_parent = FakeNode("type_definition", children=[
-            FakeNode("struct_specifier"),
-            FakeNode("type_identifier", text="MyStruct"),
-        ])
+        typedef_parent = FakeNode(
+            "type_definition",
+            children=[
+                FakeNode("struct_specifier"),
+                FakeNode("type_identifier", text="MyStruct"),
+            ],
+        )
         node = typedef_parent.children[0]
         node.parent = typedef_parent
         result = _typedef_type_name(node, _get_node_text)
@@ -276,9 +285,12 @@ class TestNodeLineRange:
 
 class TestTypeNameAndRange:
     def test_direct_name(self) -> None:
-        node = FakeNode("struct_specifier", children=[
-            FakeNode("type_identifier", text="Point"),
-        ])
+        node = FakeNode(
+            "struct_specifier",
+            children=[
+                FakeNode("type_identifier", text="Point"),
+            ],
+        )
         name, start, end = _type_name_and_range(node, _get_node_text, 1, 5, "anon")
         assert name == "Point"
         assert start == 1
@@ -300,10 +312,15 @@ class TestTypeNameAndRange:
         assert name == "Handle"
 
     def test_anonymous(self) -> None:
-        node = FakeNode("struct_specifier", children=[
-            FakeNode("field_declaration_list"),
-        ])
-        name, start, end = _type_name_and_range(node, _get_node_text, 7, 10, "anonymous_struct")
+        node = FakeNode(
+            "struct_specifier",
+            children=[
+                FakeNode("field_declaration_list"),
+            ],
+        )
+        name, start, end = _type_name_and_range(
+            node, _get_node_text, 7, 10, "anonymous_struct"
+        )
         assert name == "anonymous_struct_7"
 
 
@@ -319,9 +336,16 @@ class TestExtractStructDefinition:
                 FakeNode("field_declaration_list"),
             ],
         )
-        result = extract_struct_definition(node, _get_node_text, [
-            "struct Point {", "    int x;", "    int y;", "};",
-        ])
+        result = extract_struct_definition(
+            node,
+            _get_node_text,
+            [
+                "struct Point {",
+                "    int x;",
+                "    int y;",
+                "};",
+            ],
+        )
         assert result is not None
         assert result.name == "Point"
         assert result.class_type == "struct"
@@ -335,9 +359,15 @@ class TestExtractStructDefinition:
             end_point=(5, 1),
             children=[FakeNode("field_declaration_list")],
         )
-        result = extract_struct_definition(node, _get_node_text, [
-            "struct {", "    int x;", "};",
-        ])
+        result = extract_struct_definition(
+            node,
+            _get_node_text,
+            [
+                "struct {",
+                "    int x;",
+                "};",
+            ],
+        )
         assert result is not None
         assert "anonymous_struct" in result.name
 
@@ -357,11 +387,16 @@ class TestExtractEnumDefinition:
             end_point=(0, 29),
             children=[
                 FakeNode("type_identifier", text="Color"),
+                FakeNode("enumerator_list"),
             ],
         )
-        result = extract_enum_definition(node, _get_node_text, [
-            "enum Color { RED, GREEN, BLUE };",
-        ])
+        result = extract_enum_definition(
+            node,
+            _get_node_text,
+            [
+                "enum Color { RED, GREEN, BLUE };",
+            ],
+        )
         assert result is not None
         assert result.name == "Color"
         assert result.class_type == "enum"
@@ -372,11 +407,15 @@ class TestExtractEnumDefinition:
             text="enum { A, B };",
             start_point=(2, 0),
             end_point=(2, 13),
-            children=[],
+            children=[FakeNode("enumerator_list")],
         )
-        result = extract_enum_definition(node, _get_node_text, [
-            "enum { A, B };",
-        ])
+        result = extract_enum_definition(
+            node,
+            _get_node_text,
+            [
+                "enum { A, B };",
+            ],
+        )
         assert result is not None
         assert "anonymous_enum" in result.name
 
@@ -398,8 +437,12 @@ class TestExtractEnumDefinition:
         )
         node = typedef_parent.children[0]
         node.parent = typedef_parent
-        result = extract_enum_definition(node, _get_node_text, [
-            "typedef enum { OK, ERR } StatusCode;",
-        ])
+        result = extract_enum_definition(
+            node,
+            _get_node_text,
+            [
+                "typedef enum { OK, ERR } StatusCode;",
+            ],
+        )
         assert result is not None
         assert result.name == "StatusCode"
