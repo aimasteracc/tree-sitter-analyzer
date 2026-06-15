@@ -225,9 +225,6 @@ class BashElementExtractor(ElementExtractor):
 
         variables: list[Variable] = []
 
-        if tree is None or tree.root_node is None:
-            return variables
-
         try:
             extractors = {
                 "variable_assignment": self._extract_variable,
