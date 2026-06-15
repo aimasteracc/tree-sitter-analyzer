@@ -26,7 +26,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.facade_tool import FacadeTool
-from tree_sitter_analyzer.mcp.tools.index_facade import build_index_facade
+from tree_sitter_analyzer.mcp.tools.index_facade import (
+    _INDEX_DESCRIPTION,
+    build_index_facade,
+)
 
 # ---------------------------------------------------------------------------
 # Expected action set (6 index lifecycle actions)
@@ -51,6 +54,19 @@ def test_build_index_facade_returns_facade_tool() -> None:
     facade = build_index_facade(project_root=None)
     assert isinstance(facade, FacadeTool)
     assert facade.facade_name == "index"
+
+
+def test_cache_action_description_lists_mutating_modes() -> None:
+    """#992: action=cache also exposes mutating modes (index/sync/watch_*).
+
+    The description must advertise the real ASTCacheTool capability surface,
+    not just read-only query params, and must surface the ``mode`` param.
+    """
+    for mode_name in ("watch_start", "watch_stop", "sync", "invalidate", "index"):
+        assert mode_name in _INDEX_DESCRIPTION, (
+            f"index facade description omits cache mode {mode_name!r}"
+        )
+    assert "mode" in _INDEX_DESCRIPTION
 
 
 def test_all_6_actions_registered() -> None:

@@ -59,7 +59,7 @@ allowed-tools:
 Call these in ONE message:
 
 1. `health action=project` with `min_grade: "D"` and `max_files: 20` — F/D files + per-file `weakest_dimension`
-2. `health action=dead` with `limit: 200` — symbol-level dead candidates, grouped by file
+2. `health action=dead` with `max_dead: 200` — symbol-level dead candidates, grouped by file
 3. `health action=heatmap` with `top_n: 20` — complexity-weighted file list (covers structural smell)
 
 The three responses overlap on file path. Joining on `file_path` gives a
@@ -264,7 +264,7 @@ top_5:
     note: <one-line caveat>
 provenance:
   health_call: health action=project{min_grade=D, max_files=20}
-  dead_call: health action=dead{limit=200}
+  dead_call: health action=dead{max_dead=200}
   churn_source: ast_symbol_activation  # see tsa-temporal
   git_state_seen: [tracked, ...]  # warn if "shallow" appears
 ```

@@ -46,7 +46,7 @@ allowed-tools:
 
 Call these 3 tools in ONE message:
 
-1. `edit action=safe` with `file_path: "<the file>"` and `edit_type: "<refactor|rename|delete|bugfix>"`
+1. `edit action=safe` with `file_path: "<the file>"` and `edit_type: "<refactor|add_feature|fix_bug|rename>"`
 2. `edit action=impact` with `mode: "staged"` (or `"branch"` if pre-stage), scope to the file
 3. `health action=file` with `file_path: "<the file>"`
 
