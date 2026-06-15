@@ -93,7 +93,8 @@ class TestCodeGraphSymbolSearchExecution:
         result = await tool.execute({"query": "~user", "output_format": "json"})
         assert result["success"] is True
         # 4 symbols contain "user": get_user, _find_user, format_user, UserService.
-        # Previously 3 because FTS early-returned before linear scan found UserService (#922 fix).
+        # UserService found via user* prefix on token "userservice" (#739) AND via
+        # linear-scan supplement that catches suffix matches FTS misses (#922).
         assert result["match_count"] == 4
 
     async def test_wildcard_match(self, indexed_project):
@@ -214,21 +215,42 @@ class TestCodeGraphSymbolSearchExecution:
             assert 0.0 <= score <= 1.0, f"score out of range: {score}"
 
     async def test_fuzzy_suffix_finds_camelcase_class(self, indexed_project):
-        """#919: ~Service must match UserService via linear fallback when FTS5 is present.
+        """#919: ~Service must match UserService via linear supplement when FTS5 is present.
 
         FTS5 prefix matching ("service"*) only matches tokens that START with
         "service" — it misses "userservice" because that token starts with "user".
-        _linear_search must bypass cache.search_symbols() (which re-dispatches to
-        FTS5) and call cache._search_symbols_linear() directly for true substring
-        matching.
+        _linear_search supplements FTS5 results to catch suffix matches FTS misses.
         """
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "~Service", "output_format": "json"})
         assert result["success"] is True
         names = [r["name"] for r in result["results"]]
         assert "UserService" in names, (
-            f"~Service must find UserService via linear infix fallback; got {names}"
+            f"~Service must find UserService via linear infix supplement; got {names}"
         )
+
+    async def test_fuzzy_prefix_finds_camelcase_class(self, indexed_project):
+        """#739: ~User must match UserService via FTS5 prefix (user*), not exact-token."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute({"query": "~User", "output_format": "json"})
+        assert result["success"] is True
+        names = [r["name"] for r in result["results"]]
+        assert "UserService" in names, (
+            f"~User must find UserService via prefix match; got {names}"
+        )
+
+    async def test_fuzzy_special_chars_do_not_crash(self, indexed_project):
+        """Codex P2 / #739: ~foo-bar must not raise sqlite3.OperationalError.
+
+        Plain term* drops quoting, so FTS5 special chars (-, ., :) in the query
+        cause a syntax error.  Quoted-prefix ("term"*) is always safe.
+        """
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        for bad_query in ["~foo-bar", "~foo.bar", "~foo:bar"]:
+            result = await tool.execute({"query": bad_query, "output_format": "json"})
+            assert result["success"] is True, (
+                f"Query {bad_query!r} must not crash; got {result}"
+            )
 
     async def test_plain_query_cascade_fuzzy_finds_typo(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
