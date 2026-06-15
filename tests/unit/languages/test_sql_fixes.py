@@ -426,6 +426,16 @@ class TestQuotedTableNameRegex:
         assert len(tables) == 1
         assert tables[0].name == "orders"
 
+    def test_case_sensitive_quoted_names_not_deduped(self):
+        """Quoted table names differing only in case must both be recovered (Codex P2)."""
+        sql = 'CREATE TABLE "Foo" (id INT);\nCREATE TABLE "foo" (id INT);\n'
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 2
+        names = {t.name for t in tables}
+        assert names == {"Foo", "foo"}
+
 
 # ---------------------------------------------------------------------------
 # Bug #880 — fill_missing_sql_tables_from_regex creates SQLTable without columns
@@ -485,6 +495,15 @@ class TestRegexFallbackColumnsPopulated:
     def test_table_without_column_list_has_empty_columns(self):
         """AS SELECT form produces 0 columns (no column-list body)."""
         sql = "CREATE TABLE archive AS SELECT * FROM users;\n"
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        assert len(tables[0].columns) == 0
+
+    def test_ctas_with_parenthesized_select_expression_produces_no_columns(self):
+        """CTAS with CAST(...) in SELECT must not produce bogus columns (Codex P2)."""
+        sql = "CREATE TABLE archive AS SELECT CAST(id AS INT) FROM users;\n"
         elements: list[Any] = []
         fill_missing_sql_tables_from_regex(sql, elements)
         tables = [e for e in elements if isinstance(e, SQLTable)]

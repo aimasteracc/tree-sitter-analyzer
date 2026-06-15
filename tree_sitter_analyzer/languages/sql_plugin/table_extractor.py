@@ -229,7 +229,16 @@ def fill_missing_sql_tables_from_regex(
             continue
         schema_name = _strip_sql_delimiters(raw_schema) if raw_schema else None
         table_name = _strip_sql_delimiters(raw_table)
-        key = (schema_name.lower() if schema_name else None, table_name.lower())
+        # Quoted identifiers are case-sensitive; bare identifiers fold to lowercase (Codex P2)
+        schema_key = (
+            schema_name
+            if raw_schema and raw_schema[0] in ('"', "`", "[")
+            else (schema_name.lower() if schema_name else None)
+        )
+        table_key = (
+            table_name if raw_table[0] in ('"', "`", "[") else table_name.lower()
+        )
+        key = (schema_key, table_key)
         if key in found_keys:
             continue
         start_line = source_code[: match.start()].count("\n") + 1
@@ -283,6 +292,9 @@ def _extract_statement_text(source: str, start: int) -> str:
 
 def _parse_columns_from_raw_text(raw_text: str) -> list[SQLColumn]:
     """Extract SQLColumn list from a CREATE TABLE raw text string (#880)."""
+    # CTAS (CREATE TABLE ... AS SELECT ...) has no column definition list (Codex P2)
+    if re.search(r"\bAS\s+(?:SELECT\b|\()", raw_text, re.IGNORECASE):
+        return []
     body_match = re.search(r"\(\s*(.*?)\s*\)(?:\s*;)?$", raw_text, re.DOTALL)
     if not body_match:
         return []
