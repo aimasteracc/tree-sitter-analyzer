@@ -26,7 +26,7 @@
 | User#validate_email | (): | + | 81-83 | 1 | - |
 | User#generate_token | (): | + | 85-87 | 1 | - |
 | AdminUser#permissions | (): | + | 92-92 | 1 | - |
-| AdminUser#initialize | (Any, Any, permissions =): | + | 94-97 | 1 | - |
+| AdminUser#initialize | (Any, Any, Any): | + | 94-97 | 1 | - |
 | AdminUser#has_permission? | (Any): | + | 99-101 | 1 | - |
 | AdminUser#grant_permission | (Any): | + | 103-105 | 1 | - |
 | AdminUser#revoke_permission | (Any): | + | 107-109 | 1 | - |

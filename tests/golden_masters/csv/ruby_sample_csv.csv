@@ -31,7 +31,7 @@ Method,User.create_with_password,(username:Any, email:Any, password:Any): [stati
 Method,User#validate_email,():,public,81-83,1,-
 Method,User#generate_token,():,public,85-87,1,-
 Method,AdminUser#permissions,():,public,92-92,1,-
-Constructor,AdminUser#initialize,(username:Any, email:Any, []:permissions =):,public,94-97,1,-
+Constructor,AdminUser#initialize,(username:Any, email:Any, permissions:Any):,public,94-97,1,-
 Method,AdminUser#has_permission?,(permission:Any):,public,99-101,1,-
 Method,AdminUser#grant_permission,(permission:Any):,public,103-105,1,-
 Method,AdminUser#revoke_permission,(permission:Any):,public,107-109,1,-
