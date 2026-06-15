@@ -78,7 +78,13 @@ def test_ast_cache_indexes_sh_file() -> None:
         cache.index_project()
         conn = cache.get_conn()
         count = conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0]
-        assert count == 11, f"expected exactly 11 bash symbols indexed, got {count}"
+        # 11 function_definition rows + 48 variable_assignment rows (Bash
+        # variables wired into _VAR_DECL_LIKE, with subscript targets like
+        # ``arr[0]=x`` unwrapped to the base variable name). Exact pin
+        # (user rule 2026-06-10: no >=-style approximate assertions) — a
+        # grammar-version bump that shifts this count MUST fail and force a
+        # conscious re-pin.
+        assert count == 59, f"expected exactly 59 bash symbols indexed, got {count}"
         cache.close()
     finally:
         shutil.rmtree(d, ignore_errors=True)

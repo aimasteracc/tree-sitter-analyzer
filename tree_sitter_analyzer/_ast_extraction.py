@@ -192,6 +192,7 @@ _VAR_DECL_LIKE = frozenset(
         "variable_declaration",
         "const_declaration",
         "let_declaration",
+        "variable_assignment",
     }
 )
 
@@ -473,6 +474,22 @@ def _c_declarator_name(declarator: Any, source: str, depth: int) -> str | None:
     return None
 
 
+def _bash_subscript_base(subscript: Any) -> Any:
+    """Return the base ``variable_name`` node of a Bash ``subscript`` target.
+
+    For ``arr[0]=x`` tree-sitter-bash nests the base variable under the
+    subscript's ``name`` field (``arr``). Fall back to the first
+    ``variable_name`` / ``word`` child if the field is absent.
+    """
+    base = subscript.child_by_field_name("name")
+    if base is not None:
+        return base
+    for child in subscript.children:
+        if child.type in ("variable_name", "word"):
+            return child
+    return None
+
+
 def _walk_for_symbols(
     node: Any,
     source: str,
@@ -537,8 +554,13 @@ def _walk_for_symbols(
             }
         )
     elif node_type in _VAR_DECL_LIKE and name_node is not None:
-        name = _node_text(name_node, source)
-        if not name.startswith("_") or depth < 3:
+        # Bash array/associative assignments (``arr[0]=x``) expose the target
+        # as a ``subscript`` node, not a bare ``variable_name``. Unwrap to the
+        # base variable so the symbol is the variable name, not ``arr[0]``.
+        if name_node.type == "subscript":
+            name_node = _bash_subscript_base(name_node)
+        name = _node_text(name_node, source) if name_node is not None else ""
+        if name and (not name.startswith("_") or depth < 3):
             symbols.append(
                 {
                     "kind": "variable",
