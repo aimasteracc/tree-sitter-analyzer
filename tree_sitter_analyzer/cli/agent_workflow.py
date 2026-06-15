@@ -427,7 +427,7 @@ def _scoped_change_impact_command(target: str) -> str:
 
 
 _SHELL_SAFE_CHARS: frozenset[str] = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/\\:"
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/:"
 )
 
 
@@ -436,12 +436,19 @@ def _shell_safe_path(path: str | None) -> str:
 
     Double quotes work on Windows CMD, PowerShell, and Unix shells (#875).
     shlex.quote() uses single quotes which fail in Windows CMD.
+
+    Inside double quotes: `"` and POSIX-expanding characters ($, `) are
+    escaped with a backslash.  Backslash itself is NOT escaped because both
+    POSIX shells (where `\\X` → `\\X` for non-special X) and Windows CMD
+    (which does not interpret `\\` as an escape) handle a bare `\\` correctly
+    inside double quotes.
     """
     if not path:
         return ""
     if all(c in _SHELL_SAFE_CHARS for c in path):
         return path
-    return '"' + path.replace('"', '\\"') + '"'
+    escaped = path.replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
+    return '"' + escaped + '"'
 
 
 def _build_toon_content(result: dict[str, Any]) -> str:
