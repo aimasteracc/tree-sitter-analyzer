@@ -545,3 +545,112 @@ class TestQ5ProjectHealthAgentSummaryFileCount:
 
         assert result["agent_summary"]["file_count"] == result["total_files"]
         assert result["agent_summary"]["file_count"] == 4
+
+
+class TestBug783VerdictCoherence:
+    """Bug #783: top-level verdict must equal agent_summary.verdict for every
+    grade distribution — they must never diverge.
+
+    The fix sets ``verdict`` explicitly in the payload from the same
+    ``_project_risk_to_verdict(_project_risk(...))`` call that feeds
+    ``agent_summary``, eliminating any dependency on bidirectional mirroring
+    that could leave them out of sync.
+    """
+
+    @staticmethod
+    def _result(grades: list[str]) -> dict:
+        scores = [_score(f"src/{g}_{i}.py", g, 50.0) for i, g in enumerate(grades)]
+        return _build_project_health_result("/repo", scores, "D", 20)
+
+    def test_all_a_verdict_safe(self) -> None:
+        result = self._result(["A", "A", "A"])
+        assert result["verdict"] == "SAFE"
+        assert result["agent_summary"]["verdict"] == "SAFE"
+
+    def test_d_grade_verdict_review(self) -> None:
+        result = self._result(["A", "B", "D"])
+        assert result["verdict"] == "REVIEW"
+        assert result["agent_summary"]["verdict"] == "REVIEW"
+
+    def test_f_grade_verdict_review(self) -> None:
+        result = self._result(["A", "F"])
+        assert result["verdict"] == "REVIEW"
+        assert result["agent_summary"]["verdict"] == "REVIEW"
+
+    def test_c_only_verdict_caution(self) -> None:
+        result = self._result(["C", "C"])
+        assert result["verdict"] == "CAUTION"
+        assert result["agent_summary"]["verdict"] == "CAUTION"
+
+    def test_top_verdict_equals_agent_verdict_all_grades(self) -> None:
+        """Top-level verdict and agent_summary.verdict must always agree."""
+        for grades in [
+            ["A"],
+            ["B"],
+            ["C"],
+            ["D"],
+            ["F"],
+            ["A", "B", "C", "D", "F"],
+        ]:
+            result = self._result(grades)
+            assert result["verdict"] == result["agent_summary"]["verdict"], (
+                f"divergence for grades={grades}: "
+                f"top={result['verdict']!r}, "
+                f"agent={result['agent_summary']['verdict']!r}"
+            )
+
+
+class TestBug785MatchingFileCount:
+    """Bug #785: PROJECT_HEALTH_SOURCE_EXTS must include all extensions
+    supported by the analyzer, not just a stale hand-maintained subset.
+
+    The fix derives PROJECT_HEALTH_SOURCE_EXTS from the canonical
+    EXT_TO_LANG map so bash/scala/swift-interface/hxx files are no longer
+    silently excluded from the project health scan.
+    """
+
+    def test_bash_extensions_included(self) -> None:
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        for ext in (".bash", ".sh", ".zsh"):
+            assert ext in PROJECT_HEALTH_SOURCE_EXTS, (
+                f"{ext} (bash) must be in PROJECT_HEALTH_SOURCE_EXTS"
+            )
+
+    def test_scala_extension_included(self) -> None:
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        assert ".scala" in PROJECT_HEALTH_SOURCE_EXTS, (
+            ".scala must be in PROJECT_HEALTH_SOURCE_EXTS"
+        )
+
+    def test_swiftinterface_extension_included(self) -> None:
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        assert ".swiftinterface" in PROJECT_HEALTH_SOURCE_EXTS, (
+            ".swiftinterface must be in PROJECT_HEALTH_SOURCE_EXTS"
+        )
+
+    def test_hxx_extension_included(self) -> None:
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        assert ".hxx" in PROJECT_HEALTH_SOURCE_EXTS, (
+            ".hxx must be in PROJECT_HEALTH_SOURCE_EXTS"
+        )
+
+    def test_source_exts_equals_canonical_ext_to_lang_keys(self) -> None:
+        """PROJECT_HEALTH_SOURCE_EXTS must equal EXT_TO_LANG.keys() exactly —
+        no extensions missing, none added beyond what the indexer supports."""
+        from tree_sitter_analyzer._lang_extension_map import EXT_TO_LANG
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        assert frozenset(PROJECT_HEALTH_SOURCE_EXTS) == frozenset(EXT_TO_LANG.keys())
+
+    def test_non_code_extensions_excluded(self) -> None:
+        """Markup/doc extensions not in EXT_TO_LANG must stay out."""
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        for ext in (".md", ".yaml", ".yml", ".html", ".css", ".sql", ".txt"):
+            assert ext not in PROJECT_HEALTH_SOURCE_EXTS, (
+                f"{ext} is not code and must not be in PROJECT_HEALTH_SOURCE_EXTS"
+            )
