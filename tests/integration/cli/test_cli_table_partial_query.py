@@ -28,7 +28,7 @@ class TestCLITableOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert len(output) == 807
 
         assert "Total Methods" in output
         assert "Total Fields" in output
@@ -100,7 +100,7 @@ class TestCLITableOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert len(output) == 312
 
     def test_table_option_csv(self, monkeypatch, sample_java_file):
         sample_dir = str(Path(sample_java_file).parent)
@@ -117,7 +117,7 @@ class TestCLITableOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert len(output) == 199
 
     def test_table_option_analysis_failure(self, monkeypatch, sample_java_file):
         sample_dir = str(Path(sample_java_file).parent)
@@ -180,7 +180,7 @@ class TestCLIPartialReadOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert len(output) == 1089
 
     def test_partial_read_missing_start_line(self, monkeypatch, sample_java_file):
         sample_dir = str(Path(sample_java_file).parent)

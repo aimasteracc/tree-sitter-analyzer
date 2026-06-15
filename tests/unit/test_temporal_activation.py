@@ -230,7 +230,7 @@ class TestSymbolAttribution:
         symbols = [_sym("first", 5, 25, 1), _sym("second", 30, 40, 2)]
         rows = ga.compute_symbol_activation("mod.py", symbols)
         by_id = {r.symbol_id: r for r in rows}
-        assert by_id[1].mod_count_all >= 1  # "first" was touched
+        assert by_id[1].mod_count_all == 1  # "first" was touched
         assert by_id[2].mod_count_all == 0  # "second" untouched
 
     def test_follow_tracks_renamed_file(self, tmp_path, monkeypatch):
@@ -280,7 +280,7 @@ class TestWindowing:
         assert row.mod_count_30d == 0
         assert row.mod_count_90d == 0
         # SPEC: "For older commits, count all without hunk attribution."
-        assert row.mod_count_all >= 1
+        assert row.mod_count_all == 1
 
 
 # --- cold start / failure modes --------------------------------------------
@@ -349,7 +349,7 @@ class TestReindexIdempotence:
         rows_first = [
             r for r in _read_activation_rows(db_path) if r["file_path"] == "a.py"
         ]
-        assert len(rows_first) >= 1
+        assert len(rows_first) == 1
         first_count_all = rows_first[0]["mod_count_all"]
 
         # Add another commit touching the same body.
@@ -364,7 +364,7 @@ class TestReindexIdempotence:
             r for r in _read_activation_rows(db_path) if r["file_path"] == "a.py"
         ]
         assert len(rows_second) == len(rows_first)
-        assert rows_second[0]["mod_count_all"] >= first_count_all + 1
+        assert rows_second[0]["mod_count_all"] == first_count_all + 1
 
 
 # --- env knob ---------------------------------------------------------------

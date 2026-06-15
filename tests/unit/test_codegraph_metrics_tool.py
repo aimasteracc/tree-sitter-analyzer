@@ -149,7 +149,7 @@ class TestCallGraphMetricsSanity:
         m = tool._collect_call_graph_metrics(cache)
         assert m["status"] == "computed", m
         total = m["total_functions"]
-        assert total >= 2, m
+        assert total == 3, m
         # The bug made all three equal to total. A real graph with a call edge
         # (caller -> helper) must classify helper as NON-dead and NON-entry.
         assert m["dead_code_candidates"] < total, (
@@ -157,7 +157,7 @@ class TestCallGraphMetricsSanity:
             "— F1 key-mismatch regression"
         )
         assert m["entry_points"] < total, m
-        assert m["total_call_edges"] > 0, m
+        assert m["total_call_edges"] == 1, m
 
     def test_files_with_functions_reflects_real_paths(self, tmp_path):
         cache = self._index(tmp_path)
@@ -166,7 +166,7 @@ class TestCallGraphMetricsSanity:
         # The bug collapsed every function path to "" -> files_with_functions == 1
         # regardless of how many files define functions. a.py and b.py both
         # define functions, so a correct collector reports >= 2 distinct files.
-        assert m["files_with_functions"] >= 2, (
+        assert m["files_with_functions"] == 2, (
             f"files_with_functions={m['files_with_functions']} — paths collapsed "
             "to empty string (F1 key-mismatch regression)"
         )
