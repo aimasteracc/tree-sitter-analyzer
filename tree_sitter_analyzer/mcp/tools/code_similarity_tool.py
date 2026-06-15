@@ -149,19 +149,31 @@ class CodeGraphSimilarityTool(BaseMCPTool):
         else:
             verdict = "CAUTION"
 
-        # Cap functions[] per group in compact mode to prevent token overflow (#801).
-        # include_bodies=True is opt-in for large output; compact default must stay bounded.
-        _COMPACT_FUNCTIONS_CAP = 10
+        # Compact mode: strip per-function metadata, show only summary + sample files (#801).
+        # Full functions[] with bodies is opt-in via include_bodies=True.
+        _COMPACT_SAMPLE_FILES = 3
 
         def _group_to_dict(group: Any) -> dict[str, Any]:
             d: dict[str, Any] = group.to_dict(include_bodies=include_bodies)
-            if (
-                not include_bodies
-                and len(d.get("functions", [])) > _COMPACT_FUNCTIONS_CAP
-            ):
-                d["functions"] = d["functions"][:_COMPACT_FUNCTIONS_CAP]
-                d["truncated"] = True
-            return d
+            if include_bodies:
+                return d
+            # Compact: replace full functions list with up to 3 representative file paths.
+            seen: set[str] = set()
+            sample_files: list[str] = []
+            for f in d.get("functions", []):
+                path = f.get("file", "")
+                if path and path not in seen:
+                    seen.add(path)
+                    sample_files.append(path)
+                    if len(sample_files) >= _COMPACT_SAMPLE_FILES:
+                        break
+            return {
+                "fingerprint": d["fingerprint"],
+                "method": d["method"],
+                "similarity": d["similarity"],
+                "function_count": d["function_count"],
+                "sample_files": sample_files,
+            }
 
         response: dict[str, Any] = {
             "success": True,
