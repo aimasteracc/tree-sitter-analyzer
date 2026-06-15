@@ -29,6 +29,10 @@ TYPE_SUFFIX_LANGUAGES = {
     "typescript",
     "ts",
     "scala",
+    # JS has no type annotations; routing through the suffix path preserves
+    # destructuring patterns (e.g. { x, y }) without mangling (#745).
+    "javascript",
+    "js",
 }
 
 PACKAGED_LANGUAGES = {"java", "kotlin", "scala", "csharp", "cpp", "c++"}
@@ -324,6 +328,13 @@ def _process_type_suffix_parameter(param: str) -> dict[str, str]:
 
 def _process_type_prefix_parameter(param: str) -> dict[str, str]:
     """Process type-first parameter syntax, such as Java."""
+    # JS-style object destructuring arrives here for non-JS languages that share
+    # parameter-string processing; no type-prefix language uses { at the start
+    # of a parameter string, so this guard is universally safe (#745).
+    # NOTE: [ is intentionally NOT guarded — C# attributes ([FromBody], etc.)
+    # and C++ attributes ([[maybe_unused]]) must be parsed as type-prefix strings.
+    if param.startswith("{"):
+        return {"name": param, "type": ""}
     last_space_idx = param.rfind(" ")
     if last_space_idx == -1:
         return {"name": param, "type": "Any"}
