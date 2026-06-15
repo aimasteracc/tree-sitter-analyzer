@@ -382,6 +382,31 @@ class TestRubyVariableExtraction:
 
         assert variables == []
 
+    def test_scoped_constant_assignment_not_dropped(self):
+        """#902 Codex P2: Config::TIMEOUT = 30 must not be silently dropped.
+
+        tree-sitter reports the LHS of a scope_resolution assignment as
+        ``scope_resolution``, not ``constant``.  Without the guard the
+        scoped constant was filtered out by the phantom-field fix (#770).
+        """
+        code = """
+class MyApp
+  Config::DEFAULT_TIMEOUT = 30
+  Config::MAX_RETRIES = 5
+end
+"""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(code, plugin)
+        extractor = plugin.create_extractor()
+        variables = extractor.extract_variables(tree, code)
+
+        names = [v.name for v in variables]
+        assert "Config::DEFAULT_TIMEOUT" in names
+        assert "Config::MAX_RETRIES" in names
+        # Scoped constants are treated as constants (public, is_constant=True)
+        for v in variables:
+            assert v.is_constant is True
+
 
 class TestRubyImportExtraction:
     """Test Ruby require statement extraction."""
