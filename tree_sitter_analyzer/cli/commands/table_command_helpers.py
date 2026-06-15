@@ -33,6 +33,10 @@ TYPE_SUFFIX_LANGUAGES = {
     # destructuring patterns (e.g. { x, y }) without mangling (#745).
     "javascript",
     "js",
+    # Ruby has no type annotations; routing through the suffix path prevents
+    # rfind-based mangling of default-valued params (`permissions = []` → #768).
+    "ruby",
+    "rb",
 }
 
 PACKAGED_LANGUAGES = {"java", "kotlin", "scala", "csharp", "cpp", "c++"}
@@ -320,6 +324,13 @@ def _process_single_parameter(param: Any, language: str) -> dict[str, str]:
 
 def _process_type_suffix_parameter(param: str) -> dict[str, str]:
     """Process name-first parameter syntax, such as Python or TypeScript."""
+    # Strip `= default` when the `=` appears before any type annotation (`:`).
+    # This handles Ruby `permissions = []` → name="permissions" (#768) and
+    # Python bare-name defaults like `limit = 10`.
+    colon_idx = param.find(":")
+    eq_idx = param.find("=")
+    if eq_idx != -1 and (colon_idx == -1 or eq_idx < colon_idx):
+        param = param[:eq_idx].strip()
     if ":" not in param:
         return {"name": param, "type": "Any"}
     name, param_type = param.split(":", 1)
