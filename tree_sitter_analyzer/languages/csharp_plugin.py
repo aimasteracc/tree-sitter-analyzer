@@ -243,11 +243,65 @@ class CSharpElementExtractor(ElementExtractor):
 
         return classes
 
+    def _enclosing_namespace(self, node: tree_sitter.Node) -> str:
+        """Compute a node's fully-qualified enclosing namespace.
+
+        Walks up ``node.parent`` collecting every ancestor
+        ``namespace_declaration`` name, then joins them outermost-first with
+        ``.``. This attributes each class to its OWN namespace (bug #977) rather
+        than the first namespace found in the file, and handles nested block
+        namespaces. A ``file_scoped_namespace_declaration`` is a *sibling* that
+        precedes the class (not an ancestor), so it is resolved separately.
+        Returns "" at module scope.
+        """
+        names: list[str] = []
+        parent = getattr(node, "parent", None)
+        while parent is not None:
+            if parent.type == "namespace_declaration":
+                name_node = parent.child_by_field_name("name")
+                if name_node:
+                    names.append(self._get_node_text_optimized(name_node))
+            parent = getattr(parent, "parent", None)
+
+        # File-scoped namespace: applies to the rest of the compilation unit and
+        # appears as a preceding sibling, never an ancestor. Only relevant when
+        # no enclosing block namespace was found.
+        if not names:
+            file_scoped = self._file_scoped_namespace(node)
+            if file_scoped:
+                names.append(file_scoped)
+
+        return ".".join(reversed(names))
+
+    def _file_scoped_namespace(self, node: tree_sitter.Node) -> str:
+        """Return the file-scoped namespace name in effect for ``node``, if any.
+
+        Walks to the ``compilation_unit`` and returns the name of the first
+        ``file_scoped_namespace_declaration`` whose declaration starts before
+        ``node``. Returns "" when there is none.
+        """
+        top = node
+        parent = getattr(top, "parent", None)
+        while parent is not None and parent.type != "compilation_unit":
+            top = parent
+            parent = getattr(parent, "parent", None)
+        if parent is None:
+            return ""
+        for child in parent.children:
+            if (
+                child.type == "file_scoped_namespace_declaration"
+                and child.start_byte <= node.start_byte
+            ):
+                name_node = child.child_by_field_name("name")
+                if name_node:
+                    return self._get_node_text_optimized(name_node)
+        return ""
+
     def _extract_class_declaration(self, node: tree_sitter.Node) -> Class | None:
         """Extract a single class declaration."""
         return _extract_class_standalone(
             node,
-            self.current_namespace,
+            self._enclosing_namespace(node),
             self._get_node_text_optimized,
             self._extract_modifiers,
             self._extract_attributes,

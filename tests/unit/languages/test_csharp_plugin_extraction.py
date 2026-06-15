@@ -560,3 +560,76 @@ class TestCSharpNamespacePackageExtraction:
 
         assert len(packages) == 1
         assert packages[0].name == "MyApp.Interfaces"
+
+
+class TestCSharpPerClassNamespaceFqn:
+    """Bug #977 — each class's FQN must reflect its OWN enclosing namespace."""
+
+    def test_multiple_block_namespaces(self):
+        """Classes in the 2nd+ namespace get that namespace, not the first."""
+        src = "namespace A { class X {} } namespace B { class Y {} }\n"
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        classes = plugin.extractor.extract_classes(tree, src)
+
+        by_name = {c.name: c for c in classes}
+        assert by_name["X"].full_qualified_name == "A.X"
+        assert by_name["Y"].full_qualified_name == "B.Y"
+
+    def test_nested_block_namespaces(self):
+        """Nested block namespaces concatenate with '.'."""
+        src = "namespace Outer { namespace Inner { class C {} } }\n"
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        classes = plugin.extractor.extract_classes(tree, src)
+
+        by_name = {c.name: c for c in classes}
+        assert by_name["C"].full_qualified_name == "Outer.Inner.C"
+
+    def test_single_block_namespace_regression(self):
+        """A single block namespace still produces the correct FQN."""
+        src = "namespace App.Models { public class Person {} }\n"
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        classes = plugin.extractor.extract_classes(tree, src)
+
+        by_name = {c.name: c for c in classes}
+        assert by_name["Person"].full_qualified_name == "App.Models.Person"
+
+    def test_file_scoped_namespace_regression(self):
+        """A file-scoped namespace still produces the correct FQN."""
+        src = "namespace App.Models;\npublic class Person {}\n"
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        classes = plugin.extractor.extract_classes(tree, src)
+
+        by_name = {c.name: c for c in classes}
+        assert by_name["Person"].full_qualified_name == "App.Models.Person"
+
+    def test_no_namespace_regression(self):
+        """A class with no enclosing namespace keeps its bare name."""
+        src = "public class Bare {}\n"
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        classes = plugin.extractor.extract_classes(tree, src)
+
+        by_name = {c.name: c for c in classes}
+        assert by_name["Bare"].full_qualified_name == "Bare"
+
+    def test_nested_class_under_file_scoped_namespace(self):
+        """A class nested inside another class under a file-scoped namespace.
+
+        The inner class node is two levels below the compilation unit, so the
+        walk-to-compilation-unit loop iterates before resolving the file-scoped
+        namespace. Outer/Inner are both attributed to the file-scoped namespace
+        (nested-class containment is not part of the FQN here, matching prior
+        behaviour).
+        """
+        src = "namespace App.Models;\npublic class Outer { class Inner {} }\n"
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        classes = plugin.extractor.extract_classes(tree, src)
+
+        by_name = {c.name: c for c in classes}
+        assert by_name["Outer"].full_qualified_name == "App.Models.Outer"
+        assert by_name["Inner"].full_qualified_name == "App.Models.Inner"
