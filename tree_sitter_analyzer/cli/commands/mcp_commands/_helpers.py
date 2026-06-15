@@ -67,7 +67,9 @@ def _build_error_envelope(
 
 
 # Verdict severity order — INFO is lowest, UNSAFE is highest.
-_VERDICT_ORDER = ("INFO", "REVIEW", "CAUTION", "UNSAFE")
+# Must match _JOURNAL_VERDICT_RANK in change_impact_tool.py:
+# INFO=0 < CAUTION=1 < REVIEW=2 < WARN=3 < UNSAFE=5
+_VERDICT_ORDER = ("INFO", "CAUTION", "REVIEW", "WARN", "UNSAFE")
 
 
 def _verdict_exit_code(result: dict[str, Any], threshold: str) -> int:

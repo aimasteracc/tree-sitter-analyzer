@@ -817,6 +817,50 @@ def test_change_impact_no_fail_on_risk_exits_0_on_any_verdict(monkeypatch) -> No
     assert result == 0
 
 
+def test_change_impact_fail_on_risk_review_exits_1_for_warn(monkeypatch) -> None:
+    """--change-impact-fail-on-risk review: WARN (above REVIEW) must exit 1."""
+
+    class FakeChangeImpactTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            pass
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            return {"success": True, "verdict": "WARN", "changed_files": []}
+
+    monkeypatch.setattr(mcp_commands, "ChangeImpactTool", FakeChangeImpactTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(change_impact=True, change_impact_fail_on_risk="review"),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 1
+
+
+def test_change_impact_fail_on_risk_review_exits_0_for_caution(monkeypatch) -> None:
+    """--change-impact-fail-on-risk review: CAUTION (below REVIEW) must exit 0."""
+
+    class FakeChangeImpactTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            pass
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            return {"success": True, "verdict": "CAUTION", "changed_files": []}
+
+    monkeypatch.setattr(mcp_commands, "ChangeImpactTool", FakeChangeImpactTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(change_impact=True, change_impact_fail_on_risk="review"),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+
+
 def test_callers_cli_delegates_to_callers_tool(monkeypatch) -> None:
     seen: dict[str, Any] = {}
 
