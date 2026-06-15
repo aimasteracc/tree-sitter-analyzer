@@ -816,6 +816,51 @@ class TestScssVariableExtraction:
         assert results[0].name == "$color"
         assert results[0].start_line == 1
 
+    def test_extract_scss_variables_skips_block_comments(self):
+        """Bug #790: ``$var`` inside a ``/* ... */`` block comment is skipped.
+
+        A commented-out declaration must NOT yield a phantom Variable, whether
+        the comment spans multiple lines or sits inline on a single line.
+        """
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = "$live: #fff;\n/*\n$old: red;\n$older: blue;\n*/\n$also_live: 1rem;\n"
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$live", "$also_live"]
+
+    def test_extract_scss_variables_skips_inline_block_comment(self):
+        """A single-line ``/* $old: red; */`` block comment yields no Variable."""
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = "/* $old: red; */\n$live: #fff;\n"
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$live"]
+
+    def test_extract_scss_variables_literal_slash_star_in_string(self):
+        """Bug #967: a literal ``/*`` inside a quoted value must NOT open a comment.
+
+        ``$glob: "src/*";`` contains ``/*`` with no same-line ``*/``. The naive
+        raw-line scan set ``in_block_comment`` and silently dropped every
+        following declaration. The string-aware scan must keep BOTH variables.
+        """
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = '$glob: "src/*";\n$color: red;\n'
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$glob", "$color"]
+
+    def test_extract_scss_variables_single_quoted_slash_star(self):
+        """A single-quoted ``'a/*b'`` literal also must not open a block comment."""
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = "$path: 'a/*b';\n$size: 1rem;\n"
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$path", "$size"]
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

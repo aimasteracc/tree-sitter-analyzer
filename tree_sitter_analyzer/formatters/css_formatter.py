@@ -382,15 +382,32 @@ class CSSFormatter(BaseFormatter):
 
     # Helper methods for extracting data from elements (handles both dict and object)
     def _is_rule(self, element: Any) -> bool:
-        """Check if element is a CSS rule."""
+        """Check if element is a CSS rule.
+
+        SCSS ``$variable`` declarations are emitted as ``Variable`` elements
+        (``element_type == "variable"``) with no selector. They must NOT be
+        counted as CSS rules — doing so inflates rule counts and produces
+        blank-selector rows. Variables and selector-less non-rule elements
+        are excluded.
+        """
         if isinstance(element, dict):
             element_type = element.get("element_type", "")
             element_class = element.get("element_class", "")
+            selector = element.get("selector", "")
         else:
             element_type = getattr(element, "element_type", "")
             element_class = getattr(element, "element_class", "")
+            selector = getattr(element, "selector", "")
 
-        return bool(element_type == "rule" or element_class != "at_rule")
+        # SCSS ``$var`` declarations surface as Variable elements — never rules.
+        if element_type == "variable":
+            return False
+        # An element explicitly typed as a rule is always a rule.
+        if element_type == "rule":
+            return True
+        # Otherwise it's a rule only if it is a non-at-rule WITH a selector,
+        # so blank-selector / non-style elements are not miscounted.
+        return bool(element_class != "at_rule" and selector)
 
     def _is_at_rule(self, element: Any) -> bool:
         """Check if element is an at-rule."""

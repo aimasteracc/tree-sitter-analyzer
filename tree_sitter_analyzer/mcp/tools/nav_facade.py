@@ -65,6 +65,106 @@ def _is_pytest_collectible(name: str) -> bool:
     return name.startswith("test_")
 
 
+def _is_python_file(file_path: str) -> bool:
+    """True for Python source files (where the pytest ``test_`` rule applies)."""
+    return file_path.endswith(".py")
+
+
+def _is_go_test_func(name: str) -> bool:
+    """True for Go test entry points: ``TestXxx``/``BenchmarkXxx``/``ExampleXxx``/``FuzzXxx``.
+
+    ``go test`` runs only top-level functions whose name starts with one of
+    these four prefixes followed by an uppercase letter (or nothing, e.g.
+    ``Example``). A bare ``Test`` with no suffix is also valid. Helpers like
+    ``setupServer`` are NOT run directly by ``go test`` and must walk up.
+    """
+    for prefix in ("Test", "Benchmark", "Example", "Fuzz"):
+        if name.startswith(prefix):
+            rest = name[len(prefix) :]
+            # ``TestFoo`` (uppercase suffix) or bare ``Test``/``Example`` are
+            # collected; ``Testing``-style lowercase suffixes are not test funcs
+            # per the gotest convention (suffix must start uppercase or be empty).
+            if rest == "" or rest[0].isupper() or not rest[0].isalpha():
+                return True
+    return False
+
+
+def _is_js_test_func(name: str) -> bool:
+    """Heuristic for JS/TS test functions inside a test file.
+
+    JS/TS test runners (jest/vitest/mocha) register cases via ``test(...)`` /
+    ``it(...)`` callbacks whose recorded name is the spec description (e.g.
+    ``renders correctly``) rather than a function identifier. The call graph
+    surfaces those descriptions as the caller ``name``. We treat any name that
+    is NOT a plain private-helper identifier as a test entry point: i.e. accept
+    unless it looks like a bare ``_helper``/``camelCaseHelper`` identifier.
+    A name containing whitespace is a spec description → always a test.
+    """
+    if " " in name:
+        return True
+    # ``test``/``it``/``should``/``when`` prefixed identifiers are test-like.
+    lowered = name.lower()
+    if lowered.startswith(("test", "it", "should", "when", "describe")):
+        return True
+    # A bare identifier (e.g. ``setup``, ``_helper``, ``mountComponent``) is a
+    # helper, not a test entry point → defer to the walk-up.
+    return False
+
+
+def _is_java_test_method(name: str) -> bool:
+    """Heuristic for JUnit test methods (annotation-based, no name rule).
+
+    JUnit identifies tests by the ``@Test`` annotation, not by name, so there
+    is no reliable name convention. We accept the common BDD-style prefixes
+    (``test*``/``should*``/``when*``) AND any other public (non-underscore)
+    method as a reasonable heuristic — JUnit test methods are public and the
+    call graph only surfaces methods physically inside the test file. A private
+    helper (leading underscore — rare in Java but possible in generated code)
+    defers to the walk-up.
+
+    NOTE (lead, correct if wrong): chose "accept any public method" over a
+    strict prefix list because @Test names are arbitrary (``shouldHandleFoo``,
+    ``rendersOnInit``); a strict list would drop valid tests. Underscore-leading
+    names are the only ones treated as helpers.
+    """
+    return not name.startswith("_")
+
+
+def _is_collectible_caller(file_path: str, name: str, language: str = "") -> bool:
+    """Decide whether a test-file caller is an accepted test entry point.
+
+    The pytest ``test_`` name rule is Python-specific. Other languages use
+    different conventions, so applying the pytest filter to them drops valid
+    cross-language test callers — but accepting EVERY function in a non-Python
+    test file over-accepts helpers (e.g. a Go ``setupServer`` that ``go test``
+    never runs directly), bypassing the 1-hop walk-up (Bug #807 follow-up).
+
+    Per-language convention:
+      - Python: pytest ``test_`` prefix (module funcs and methods).
+      - Go: ``TestXxx``/``BenchmarkXxx``/``ExampleXxx``/``FuzzXxx``.
+      - JS/TS: spec descriptions / ``test``/``it``/``should``/``when`` names.
+      - Java/JUnit: any public (non-underscore) method (annotation-based).
+      - Unknown language: accept (no convention to apply).
+
+    A caller that does NOT match its language convention is treated as a
+    non-collectible helper, so the caller code applies the SAME 1-hop walk-up
+    used for Python helpers to find the convention-matching test above it.
+    """
+    if _is_python_file(file_path):
+        return _is_pytest_collectible(name)
+    lang = (language or "").lower()
+    if lang == "go" or file_path.endswith(".go"):
+        return _is_go_test_func(name)
+    if lang in ("javascript", "typescript", "js", "ts", "jsx", "tsx") or (
+        file_path.endswith((".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"))
+    ):
+        return _is_js_test_func(name)
+    if lang == "java" or file_path.endswith(".java"):
+        return _is_java_test_method(name)
+    # Unknown language with no recognised convention → accept the caller.
+    return True
+
+
 def _test_map_next_step(
     test_files: list[str],
     *,
@@ -337,19 +437,65 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         test_funcs: list[str] = []  # "file::name" strings, pre-dedup
         test_file_set: set[str] = set()
         total_edge_count = 0
+        # Per-(target, test) coverage edges already counted, so a test that is
+        # both a direct caller AND (via a helper) a walk-up parent of the SAME
+        # target is not double-counted — while a DIFFERENT target sharing the
+        # same test still counts its own genuine coverage edge (P2 undercount).
+        counted_edges: set[tuple[str, str]] = set()
+        # Non-collectible helpers (Python ``_run``, Go ``setupServer``, …) in
+        # test files, paired with the target they were reached from, for a
+        # deferred one-hop walk-up after all direct callers are known (#807).
+        helper_refs: list[tuple[Any, Any]] = []
+
+        def _add_to_set(file_path: str, name: str) -> None:
+            key = f"{file_path}::{name}"
+            if key not in seen_qualified:
+                seen_qualified.add(key)
+                test_funcs.append(key)
+                test_file_set.add(file_path)
+
+        def _record_edge(target: Any, file_path: str, name: str) -> None:
+            """Count one (target → test) coverage edge, deduped per target."""
+            nonlocal total_edge_count
+            edge_key = (target.qualified_name(), f"{file_path}::{name}")
+            if edge_key in counted_edges:
+                return
+            counted_edges.add(edge_key)
+            total_edge_count += 1
+            _add_to_set(file_path, name)
 
         for target in targets:
             for ref in graph.caller_refs_of(target):
                 if not is_test_file(ref.file_path):
                     continue
-                if not _is_pytest_collectible(ref.name):
+                if _is_collectible_caller(
+                    ref.file_path, ref.name, getattr(ref, "language", "")
+                ):
+                    _record_edge(target, ref.file_path, ref.name)
+                else:
+                    helper_refs.append((target, ref))
+
+        # Bug #807: a direct caller in a test file whose name does not match the
+        # language test convention (e.g. a Python ``_run`` helper or a Go
+        # ``setupServer``) hides the real test entry point. Walk up ONE hop to
+        # the convention-matching test that calls the helper. The walk is capped
+        # at a single hop to avoid cost blowups.
+        #
+        # P2 undercount fix: edge_count counts genuine (target, helper→test)
+        # coverage edges. When ONE test function reaches TWO targets via a shared
+        # helper, both edges are counted (each keyed by its own target) even
+        # though the test appears once in test_functions. _record_edge dedupes
+        # only per (target, test) — mirroring the direct-caller path which counts
+        # a raw edge per (target, caller) pair before deduping the function set.
+        for target, helper in helper_refs:
+            for parent in graph.caller_refs_of(helper):
+                if not is_test_file(parent.file_path):
                     continue
-                total_edge_count += 1
-                key = f"{ref.file_path}::{ref.name}"
-                if key not in seen_qualified:
-                    seen_qualified.add(key)
-                    test_funcs.append(key)
-                    test_file_set.add(ref.file_path)
+                if not _is_collectible_caller(
+                    parent.file_path, parent.name, getattr(parent, "language", "")
+                ):
+                    continue
+                _record_edge(target, parent.file_path, parent.name)
 
         test_funcs_sorted = sorted(test_funcs)
         test_files_sorted = sorted(test_file_set)

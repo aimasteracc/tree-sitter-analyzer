@@ -37,7 +37,10 @@ def _parse_rust(code: str):
     return tree, lang
 
 
-@pytest.mark.skipif(not _TS_RUST_AVAILABLE, reason="tree-sitter-rust not installed")
+@pytest.mark.skipif(
+    not _TS_RUST_AVAILABLE,
+    reason="#960: tree-sitter-rust not installed",
+)
 class TestRustEnumVariantExtraction:
     """extract_variables() must yield one Variable per enum variant."""
 
@@ -142,6 +145,50 @@ class TestRustEnumVariantExtraction:
         assert variant_names == {"North", "South"}, (
             f"Enum variants wrong: {variant_names}"
         )
+
+    def test_struct_like_enum_variant_fields_do_not_leak(self):
+        """Struct-like enum body fields are not ordinary struct fields (#960)."""
+        from tree_sitter_analyzer.languages.rust_plugin import RustElementExtractor
+
+        code = (
+            "struct Point { px: f64, py: f64 }\n"
+            "enum Event { Move { x: i32, y: i32 }, Quit }\n"
+        )
+        tree, _ = _parse_rust(code)
+        extractor = RustElementExtractor()
+        variables = extractor.extract_variables(tree, code)
+
+        field_names = [
+            v.name
+            for v in variables
+            if getattr(v, "variable_type", None) != "enum_variant"
+        ]
+        variant_names = [
+            v.name
+            for v in variables
+            if getattr(v, "variable_type", None) == "enum_variant"
+        ]
+
+        assert field_names == ["px", "py"]
+        assert variant_names == ["Move", "Quit"]
+
+    def test_enum_variant_visibility_inherits_enum_visibility(self):
+        """Variants inherit the enclosing enum visibility for API consumers (#960)."""
+        from tree_sitter_analyzer.languages.rust_plugin import RustElementExtractor
+
+        code = "pub enum Direction { North, South }"
+        tree, _ = _parse_rust(code)
+        extractor = RustElementExtractor()
+        variables = extractor.extract_variables(tree, code)
+
+        variants = [
+            v for v in variables if getattr(v, "variable_type", None) == "enum_variant"
+        ]
+
+        assert [(v.name, v.visibility) for v in variants] == [
+            ("North", "pub"),
+            ("South", "pub"),
+        ]
 
     def test_enum_variant_line_range_within_enum_span(self):
         """Variant start_line must be within the enclosing enum's line span."""

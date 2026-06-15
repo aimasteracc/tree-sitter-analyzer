@@ -136,12 +136,111 @@ class TestReturnTypeAndParamsSerialized:
 
 
 class TestExtractorVersionBump:
-    def test_extractor_version_is_11_in_both_sites(self):
-        # v11: #638 — call edges keep ALL same-named definition spans.
+    def test_extractor_version_is_13_in_both_sites(self):
+        # v13: #949 — bash variable_assignment indexing (skip command-prefix
+        # env vars, unwrap subscript only for assignment targets); bump forces
+        # re-index.
         from tree_sitter_analyzer import _ast_cache_indexer, ast_cache
 
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 11
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 11
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 13
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 13
+
+
+class TestBashVariableAssignmentScope:
+    """#949 Codex P2 — bash variable_assignment extraction edge cases."""
+
+    def test_command_prefix_env_var_not_recorded(self):
+        # ``FOO=bar make`` makes tree-sitter-bash emit ``FOO=bar`` as a
+        # variable_assignment child of a ``command`` node — a transient env
+        # override for that one command, not a script-level variable. It must
+        # NOT be recorded as a symbol.
+        syms = {
+            s["name"] for s in _symbols_for("FOO=bar make\n", "bash") if "name" in s
+        }
+        assert "FOO" not in syms
+
+    def test_standalone_assignment_recorded(self):
+        # A real standalone assignment (parent is the program) IS recorded.
+        syms = {s["name"] for s in _symbols_for("X=1\n", "bash") if "name" in s}
+        assert "X" in syms
+
+    def test_subscript_assignment_target_unwrapped_to_base(self):
+        # ``arr[0]=x`` exposes the target as a subscript; unwrap to the base
+        # variable so the symbol is ``arr``.
+        syms = {s["name"] for s in _symbols_for("arr[0]=x\n", "bash") if "name" in s}
+        assert "arr" in syms
+
+
+class _FakeChild:
+    """Minimal stand-in for a tree-sitter child node (only ``.type`` is read)."""
+
+    def __init__(self, type_: str) -> None:
+        self.type = type_
+
+
+class _FakeSubscript:
+    """Minimal stand-in for a ``subscript`` node exercising the fallback path.
+
+    ``_bash_subscript_base`` first tries ``child_by_field_name("name")`` and,
+    only when that returns ``None``, scans ``children`` for the first
+    ``variable_name``/``word``. Real tree-sitter-bash always populates the
+    ``name`` field, so this synthetic node is the only way to drive the
+    documented defensive fallback (#949).
+    """
+
+    def __init__(self, named_base, children) -> None:
+        self._named_base = named_base
+        self.children = children
+
+    def child_by_field_name(self, field: str):
+        return self._named_base if field == "name" else None
+
+
+class TestBashSubscriptBaseFallback:
+    """#949 — ``_bash_subscript_base`` field-vs-fallback-vs-None branches."""
+
+    def test_name_field_present_returns_field_node(self):
+        # When the ``name`` field is set, return it directly (no child scan).
+        from tree_sitter_analyzer._ast_extraction import _bash_subscript_base
+
+        base = _FakeChild("variable_name")
+        sub = _FakeSubscript(
+            named_base=base,
+            children=[_FakeChild("variable_name"), _FakeChild("[")],
+        )
+        assert _bash_subscript_base(sub) is base
+
+    def test_no_name_field_falls_back_to_variable_name_child(self):
+        # No ``name`` field: scan children, return the first ``variable_name``.
+        from tree_sitter_analyzer._ast_extraction import _bash_subscript_base
+
+        var_child = _FakeChild("variable_name")
+        sub = _FakeSubscript(
+            named_base=None,
+            children=[_FakeChild("["), var_child, _FakeChild("]")],
+        )
+        assert _bash_subscript_base(sub) is var_child
+
+    def test_no_name_field_falls_back_to_word_child(self):
+        # No ``name`` field, no ``variable_name``: first ``word`` child wins.
+        from tree_sitter_analyzer._ast_extraction import _bash_subscript_base
+
+        word_child = _FakeChild("word")
+        sub = _FakeSubscript(
+            named_base=None,
+            children=[_FakeChild("["), word_child],
+        )
+        assert _bash_subscript_base(sub) is word_child
+
+    def test_no_base_anywhere_returns_none(self):
+        # Neither a ``name`` field nor a ``variable_name``/``word`` child.
+        from tree_sitter_analyzer._ast_extraction import _bash_subscript_base
+
+        sub = _FakeSubscript(
+            named_base=None,
+            children=[_FakeChild("["), _FakeChild("number"), _FakeChild("]")],
+        )
+        assert _bash_subscript_base(sub) is None
 
 
 class TestCodexP2sOn621:

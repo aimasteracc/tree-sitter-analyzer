@@ -81,7 +81,11 @@ logger = logging.getLogger(__name__)
 # v10: #628 — C# function-local variables no longer over-captured.
 # v11: #638 — call edges keep ALL same-named definition spans; calls inside
 #      the earlier of two same-named methods regain their enclosing caller.
-_AST_CACHE_EXTRACTOR_VERSION = 11
+# v12: #779 — walker depth cap raised 20 -> 100; bump forces re-index of files
+#      cached under the old cap so deeply nested symbols are no longer truncated.
+# v13: #949 — bash variable_assignment indexing: skip command-prefix env vars
+#      (``FOO=bar make``) and unwrap subscript only for assignment targets.
+_AST_CACHE_EXTRACTOR_VERSION = 13
 
 
 class SchemaIntegrityError(RuntimeError):
