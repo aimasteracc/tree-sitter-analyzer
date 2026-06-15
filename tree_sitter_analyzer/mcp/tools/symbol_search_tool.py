@@ -315,11 +315,22 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                         )
                         all_results.append(entry)
                     if len(all_results) >= limit:
-                        return all_results
-                if all_results:
-                    return all_results
+                        break
 
-        return self._linear_search(cache, substring, language, kind, limit)
+        # Always supplement with linear scan: FTS tokenization misses suffix-
+        # style matches (e.g. "service" token matches "Service" but not
+        # "UserService" whose token is "userservice"). Merge deduped by name+file.
+        linear = self._linear_search(cache, substring, language, kind, limit)
+        if not all_results:
+            return linear
+        seen = {(r["name"], r.get("file", "")) for r in all_results}
+        for r in linear:
+            if (r["name"], r.get("file", "")) not in seen:
+                seen.add((r["name"], r.get("file", "")))
+                all_results.append(r)
+                if len(all_results) >= limit:
+                    break
+        return all_results
 
     def _wildcard_search(
         self,
@@ -372,7 +383,12 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         kind: str,
         limit: int,
     ) -> list[dict[str, Any]]:
-        results = cache.search_symbols(query, language=language)
+        # Use the raw linear scan (reads ast_index.symbols_json) rather than
+        # cache.search_symbols() which dispatches to FTS5 when available — the
+        # FTS5 path uses token matching that misses suffix-style substrings (#919).
+        # Called by _fuzzy_search both as a fallback (no FTS5) and as a supplement
+        # (to catch suffix matches FTS5's tokenizer skips).
+        results = cache._search_symbols_linear(query, language)
         filtered = self._apply_kind_filter(results, kind)
         return filtered[:limit]
 
