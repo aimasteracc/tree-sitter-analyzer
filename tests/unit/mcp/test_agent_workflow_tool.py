@@ -18,7 +18,6 @@ path interpolation, and envelope mirroring.
 from __future__ import annotations
 
 import asyncio
-import shlex
 
 import pytest
 
@@ -294,7 +293,9 @@ async def test_agent_workflow_tool_quotes_target_with_spaces_in_cli_commands(tmp
     target.parent.mkdir()
     target.write_text("def run():\\n    return 1\\n", encoding="utf-8")
     target_path = "src/space file.py"
-    safe_target = shlex.quote(target_path)
+    # double-quoted: the new helper wraps paths with spaces in double quotes
+    # so commands work on Windows CMD, PowerShell, and POSIX shells (#875).
+    safe_target = '"src/space file.py"'
 
     result = await AgentWorkflowTool(str(tmp_path)).execute(
         {"target_path": target_path, "output_format": "json"}
