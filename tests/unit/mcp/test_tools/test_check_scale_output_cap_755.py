@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from tree_sitter_analyzer.mcp.tools.analyze_scale_helpers import (
     METHODS_OUTPUT_CAP,
     extract_structural_overview,
@@ -158,6 +160,7 @@ class TestUniversalOverviewMethodCap:
             f"total_methods must reflect the full count, got {overview['total_methods']}"
         )
 
+    @pytest.mark.slow_ok  # 20k MagicMocks is legitimately slow on Windows
     def test_large_method_count_capped_exactly(self):
         """20 000 methods: list stays at 50, total_methods = 20 000."""
         elements = self._make_n_methods(20_000)
