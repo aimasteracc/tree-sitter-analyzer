@@ -16,7 +16,7 @@ Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/ba
 | C++ | `languages/cpp_plugin.py` | `_cpp_*_helpers.py` ×11 | classes, templates, namespaces; nested template/union type parent metadata and field-reference guards |
 | C# | `languages/csharp_plugin.py` | `languages/csharp_helpers.py` | records, async/await, attributes; block and file-scoped namespaces surface as packages |
 | Go | `languages/go_plugin.py` | `_go_*_helpers.py` ×6 | structs, interfaces, goroutines |
-| Rust | `languages/rust_plugin.py` | inline | traits, impl, macros, derive |
+| Rust | `languages/rust_plugin.py` | inline | traits, impl, macros, derive, enum variants as variables |
 | Kotlin | `languages/kotlin_plugin.py` | `languages/kotlin_helpers.py` | data classes, coroutines |
 | Scala | `languages/scala_plugin.py` | inline | objects/traits, scaladoc; Scala 3 enum cases, givens, type members, extensions, and AST-cache symbol rows |
 | Swift | `languages/swift_plugin.py` | `_swift_plugin_*.py` ×3 | classes, structs, protocols; `.swift` + `.swiftinterface` (issue #131) |

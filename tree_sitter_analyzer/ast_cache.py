@@ -219,13 +219,28 @@ class ASTCache:
         except OSError as e:
             return {"file": rel_path, "status": "error", "reason": str(e)}
         conn = self._get_conn()
+        had_built_marker = self.call_graph_built()
         cached_or_source = self._check_cache_or_read(conn, rel_path, abs_path, stat)
         if isinstance(cached_or_source, dict):
+            self._mark_single_file_index_complete_if_needed(
+                had_built_marker, cached_or_source
+            )
             return cached_or_source
         source_code, content_hash = cached_or_source
-        return self._parse_and_write(
+        result = self._parse_and_write(
             conn, abs_path, rel_path, language, stat, source_code, content_hash
         )
+        self._mark_single_file_index_complete_if_needed(had_built_marker, result)
+        return result
+
+    def _mark_single_file_index_complete_if_needed(
+        self, had_built_marker: bool, result: dict[str, Any]
+    ) -> None:
+        """Refresh the built marker after a successful single-file reindex."""
+        if result.get("status") not in {"indexed", "cached"}:
+            return
+        if had_built_marker or self._indexed_source_files_are_complete():
+            _mark_call_graph_built(self._get_conn())
 
     def _check_cache_or_read(
         self,
@@ -320,7 +335,6 @@ class ASTCache:
             synapse = self._run_synapse_backfill()
             edge_store_refresh = self._refresh_graph_edges_from_cache()
             unresolved = self._run_unresolved_refs_backfill()
-            _mark_call_graph_built(self._get_conn())
             return {
                 "mode_used": "resolve_only",
                 "resolve_only": True,
@@ -374,7 +388,8 @@ class ASTCache:
             stats["workers"] = workers
             if stats["indexed"] > 0:
                 self._post_index_backfill(stats)
-                _mark_call_graph_built(self._get_conn())
+                if self._completed_full_index_sweep(stats):
+                    _mark_call_graph_built(self._get_conn())
             if force:
                 stats["db_maintenance"] = _reclaim_storage_after_full_rebuild(
                     conn, self.db_path
@@ -401,6 +416,27 @@ class ASTCache:
             _AST_CACHE_EXTRACTOR_VERSION,
             _make_error_entry,
         )
+
+    @staticmethod
+    def _completed_full_index_sweep(stats: dict[str, Any]) -> bool:
+        """True when this run processed the whole source set without gaps."""
+        return (
+            not stats.get("truncated_by_max_files", False)
+            and stats.get("errors", 0) == 0
+            and stats.get("skipped", 0) == 0
+        )
+
+    def _indexed_source_files_are_complete(self) -> bool:
+        """Return True when ast_index covers exactly the current source set."""
+        source_files = {
+            os.path.relpath(path, self.project_root).replace("\\", "/")
+            for path in _walk_source_files(self.project_root)
+        }
+        if not source_files:
+            return False
+        rows = self._get_conn().execute("SELECT file_path FROM ast_index").fetchall()
+        indexed_files = {str(row["file_path"]).replace("\\", "/") for row in rows}
+        return indexed_files == source_files
 
     @staticmethod
     def _resolve_worker_count(workers: int | None, candidates: list[Any]) -> int:

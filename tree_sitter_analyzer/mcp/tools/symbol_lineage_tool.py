@@ -340,6 +340,10 @@ class SymbolLineageTool(BaseMCPTool):
         # #568: also clear the per-symbol cache when the AST index changed
         # (hierarchy is index-derived; the source fingerprint above can't see it).
         self._invalidate_symbol_cache_on_index_change()
+        # #932: an unchanged index DB can still be stale relative to source
+        # edits/adds/deletes. Check before serving the per-symbol cache so a
+        # warm lineage response never hides stale hierarchy/index_hint data.
+        self._invalidate_symbol_cache_on_stale_ast_index()
 
         cache_key = (symbol, max_depth, tuple(sorted(scope_files)))
         cached_response = self._try_cached_lineage(cache_key, started)
@@ -530,6 +534,14 @@ class SymbolLineageTool(BaseMCPTool):
         """
         if self._index_signature() != self._ast_index_mtime_ns:
             self._symbol_cache = {}
+
+    def _invalidate_symbol_cache_on_stale_ast_index(self) -> None:
+        """Clear cached lineage responses when source has outpaced ast_index."""
+        if not self.project_root:
+            return
+        if is_ast_index_stale(str(self.project_root)):
+            self._symbol_cache = {}
+            self._cache_invalidated_reason = "ast_index_stale"
 
     def _hierarchy_for(self, symbol: str) -> dict[str, Any] | None:
         """#568: the advertised inheritance/override lineage.

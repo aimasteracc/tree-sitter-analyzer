@@ -105,6 +105,33 @@ def test_sequence_truncated_false_when_no_paths(monkeypatch) -> None:
     assert diagram.truncated is False
 
 
+def test_sequence_truncated_true_when_path_search_clipped(monkeypatch) -> None:
+    """Bug #959: path-count truncation must survive when hops are not clipped."""
+
+    class FakeFinder:
+        def __init__(self, project_root, cache=None):
+            pass
+
+        def find_path(self, source_function, target_function, max_depth, max_paths):
+            assert max_paths == 1
+            return _make_call_path_result(
+                truncated=True,
+                hops=[{"caller": "entry", "callee": "service"}],
+            )
+
+    monkeypatch.setattr(uml_export, "CallPathFinder", FakeFinder)
+
+    exporter = UMLExporter("/repo", cache=object())
+    diagram = exporter.sequence_diagram(
+        source="entry",
+        target="service",
+        max_hops=12,
+        max_paths=1,
+    )
+
+    assert diagram.truncated is True
+
+
 # ── Bug #788 — activity empty Mermaid on None/empty body ──────────────────────
 
 
@@ -140,8 +167,8 @@ def test_activity_empty_body_returns_nonempty_mermaid(tmp_path) -> None:
         "empty_body must not produce a bare 'flowchart TD\\n' — "
         f"got: {diagram.mermaid!r}"
     )
-    # There should be a visible node or note in the mermaid
-    assert len(diagram.mermaid) > len("flowchart TD\n"), (
+    # Pin the exact length so deterministic Mermaid drift fails loudly.
+    assert len(diagram.mermaid) == 50, (
         f"mermaid is too short to be useful: {diagram.mermaid!r}"
     )
 
@@ -283,6 +310,26 @@ def test_include_tests_production_first_when_all_fit(monkeypatch) -> None:
     assert ("A", "B") in pairs, "Production edge A→B must be present"
     assert ("A", "TestX") in pairs, "Test edge A→TestX must also be present"
     assert diagram.truncated is False
+
+
+def test_include_tests_deduplicates_identical_production_and_test_edges(
+    monkeypatch,
+) -> None:
+    """Bug #959: prod/test allocation must not emit duplicate class edges."""
+    classes = [
+        {"name": "Base", "parents": [], "file": "src/base.py"},
+        {"name": "Worker", "parents": ["Base"], "file": "src/worker.py"},
+        {"name": "Worker", "parents": ["Base"], "file": "tests/unit/test_worker.py"},
+    ]
+    monkeypatch.setattr(uml_export, "ClassHierarchy", _make_hierarchy_factory(classes))
+
+    exporter = UMLExporter("/repo", cache=object())
+    diagram = exporter.class_diagram(max_edges=10, include_tests=True)
+
+    edge_signatures = [
+        (edge.source, edge.target, edge.label, edge.weight) for edge in diagram.edges
+    ]
+    assert edge_signatures == [("Base", "Worker", "inherits", 2)]
 
 
 def test_include_tests_false_excludes_test_classes_unchanged(monkeypatch) -> None:

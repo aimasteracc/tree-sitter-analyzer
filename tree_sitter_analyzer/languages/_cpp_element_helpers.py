@@ -29,7 +29,9 @@ class CppClassExtractionContext:
     extract_comment_for_line: Callable[[int], str | None]
 
 
-_CPP_CLASS_NODE_TYPES = frozenset({"class_specifier", "struct_specifier"})
+_CPP_CLASS_NODE_TYPES = frozenset(
+    {"class_specifier", "struct_specifier", "union_specifier"}
+)
 _CPP_CLASS_PARENT_WALK_LIMIT = 12
 _CPP_NAMESPACE_PARENT_WALK_LIMIT = 16
 _CPP_NAMESPACE_NAME_NODE_TYPES = frozenset(
@@ -194,30 +196,48 @@ def extract_cpp_function(
 
 def _cpp_direct_parent_class_name(node: Any) -> str | None:
     """Return the enclosing class/struct name when ``node`` is a nested type
-    declared directly inside a class body (one level up via field_declaration).
+    declared directly inside a class body.
 
-    Walk: node → field_declaration → field_declaration_list → class/struct/union_specifier
-    with a hard cap to avoid infinite walks on mocked nodes.
+    Handles both ordinary declarations and templated nested types:
+    ``node → field_declaration → field_declaration_list → owner`` and
+    ``node → template_declaration → field_declaration_list → owner``.
+    The hard cap avoids infinite walks on mocked nodes.
     """
-    parent = getattr(node, "parent", None)
-    if parent is None or getattr(parent, "type", "") != "field_declaration":
-        return None
-    grandparent = getattr(parent, "parent", None)
-    if (
-        grandparent is None
-        or getattr(grandparent, "type", "") != "field_declaration_list"
-    ):
-        return None
-    great = getattr(grandparent, "parent", None)
-    if great is None or getattr(great, "type", "") not in _CPP_CLASS_NODE_TYPES:
-        return None
-    for child in getattr(great, "children", ()):
+    current = getattr(node, "parent", None)
+    depth = 0
+    while current is not None and depth < _CPP_CLASS_PARENT_WALK_LIMIT:
+        if getattr(current, "type", "") == "field_declaration_list":
+            owner = getattr(current, "parent", None)
+            if getattr(owner, "type", "") in _CPP_CLASS_NODE_TYPES:
+                return _cpp_type_name(owner)
+            return None
+        current = getattr(current, "parent", None)
+        depth += 1
+    return None
+
+
+def _cpp_type_name(node: Any) -> str | None:
+    for child in getattr(node, "children", ()):
         if getattr(child, "type", "") == "type_identifier":
             text = getattr(child, "text", b"")
             if isinstance(text, bytes):
                 return text.decode("utf-8", errors="replace")
             return str(text)
     return None
+
+
+def _cpp_has_definition_body(node: Any) -> bool:
+    return any(
+        getattr(child, "type", "")
+        in {"field_declaration_list", "declaration_list", "enumerator_list"}
+        for child in getattr(node, "children", ())
+    )
+
+
+def _is_cpp_field_type_reference(node: Any) -> bool:
+    return getattr(
+        getattr(node, "parent", None), "type", ""
+    ) == "field_declaration" and not _cpp_has_definition_body(node)
 
 
 def extract_cpp_class(
@@ -232,6 +252,8 @@ def extract_cpp_class(
             node, ctx.get_node_text, ctx.extract_base_classes
         )
         if not class_name:
+            return None
+        if _is_cpp_field_type_reference(node):
             return None
 
         start_line = node.start_point[0] + 1

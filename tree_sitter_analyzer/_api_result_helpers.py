@@ -18,6 +18,7 @@ _OPTIONAL_ELEM_FIELDS = [
     "is_static",
     "is_constructor",
     "is_method",
+    "is_abstract",
     "complexity_score",
     "superclass",
     # Theme-C (2026-06-10): implements/mixins were collected by plugins but

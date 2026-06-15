@@ -154,7 +154,7 @@ class CSharpElementExtractor(ElementExtractor):
         Args:
             node: Root node of the AST
         """
-        if node.type == "namespace_declaration":
+        if node.type in ("namespace_declaration", "file_scoped_namespace_declaration"):
             name_node = node.child_by_field_name("name")
             if name_node:
                 self.current_namespace = self._get_node_text_optimized(name_node)
@@ -162,7 +162,10 @@ class CSharpElementExtractor(ElementExtractor):
 
         # Recursively search for namespace
         for child in node.children:
-            if child.type == "namespace_declaration":
+            if child.type in (
+                "namespace_declaration",
+                "file_scoped_namespace_declaration",
+            ):
                 name_node = child.child_by_field_name("name")
                 if name_node:
                     self.current_namespace = self._get_node_text_optimized(name_node)
@@ -459,7 +462,10 @@ class CSharpElementExtractor(ElementExtractor):
             return packages
 
         for node in self._traverse_iterative(tree.root_node):
-            if node.type != "namespace_declaration":
+            if node.type not in (
+                "namespace_declaration",
+                "file_scoped_namespace_declaration",
+            ):
                 continue
             name_node = node.child_by_field_name("name")
             if name_node is None:
@@ -476,10 +482,19 @@ class CSharpElementExtractor(ElementExtractor):
                     language="csharp",
                 )
             )
-            # Only capture the outermost (first) namespace per file
-            break
-
         return packages
+
+    def extract_elements(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> dict[str, list[Any]]:
+        """Extract grouped C# elements, including namespace packages."""
+        return {
+            "functions": self.extract_functions(tree, source_code),
+            "classes": self.extract_classes(tree, source_code),
+            "variables": self.extract_variables(tree, source_code),
+            "imports": self.extract_imports(tree, source_code),
+            "packages": self.extract_packages(tree, source_code),
+        }
 
 
 class CSharpPlugin(LanguagePlugin):

@@ -646,16 +646,69 @@ def find_receiver_type_go(node: Any) -> str | None:
     """Extract the receiver type from a Go method_declaration node."""
     if node is None or node.type != "method_declaration":
         return None
-    for child in node.children:
-        if child.type == "parameter_list":
-            for param in child.children:
-                for sub in param.children if hasattr(param, "children") else []:
-                    if sub.type in ("type_identifier", "generic_type", "pointer_type"):
-                        return _node_text_value(sub).lstrip("*")
-                    for leaf in sub.children if hasattr(sub, "children") else []:
-                        if leaf.type in ("type_identifier", "generic_type"):
-                            return _node_text_value(leaf).lstrip("*")
+
+    receiver_node = node.child_by_field_name("receiver")
+    if receiver_node is None:
+        return None
+
+    for child in receiver_node.children:
+        if child.type != "parameter_declaration":
+            continue
+
+        type_text = None
+        for sub in child.children if hasattr(child, "children") else []:
+            if sub.type in (
+                "type_identifier",
+                "generic_type",
+                "pointer_type",
+                "qualified_type",
+            ):
+                type_text = _node_text_value(sub)
+                break
+            for leaf in sub.children if hasattr(sub, "children") else []:
+                if leaf.type in (
+                    "type_identifier",
+                    "generic_type",
+                    "qualified_type",
+                ):
+                    type_text = _node_text_value(leaf)
+                    break
+            if type_text is not None:
+                break
+
+        normalized = _normalize_go_receiver_type_for_graph(type_text)
+        if normalized is not None:
+            return normalized
     return None
+
+
+def _normalize_go_receiver_type_for_graph(receiver_type: str | None) -> str | None:
+    """Normalize Go receiver type for class matching in call graphs."""
+    if not receiver_type:
+        return None
+
+    base = receiver_type.strip().lstrip("*").strip()
+    if not base:
+        return None
+    if "[" not in base:
+        return base
+
+    idx = len(base) - 1
+    while idx >= 0 and base[idx].isspace():
+        idx -= 1
+    if idx < 0 or base[idx] != "]":
+        return base
+
+    depth = 0
+    for i in range(idx, -1, -1):
+        if base[i] == "]":
+            depth += 1
+        elif base[i] == "[":
+            depth -= 1
+            if depth == 0:
+                stripped = base[:i].rstrip()
+                return stripped or None
+    return base
 
 
 def _node_text_value(node: Any) -> str:
