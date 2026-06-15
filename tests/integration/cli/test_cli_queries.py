@@ -74,10 +74,9 @@ class TestCLITableOption:
             main()
 
         output = mock_stdout.getvalue()
-        # Verify table contains expected content
         assert "Total Methods" in output
         assert "Total Fields" in output
-        assert "Public Methods" in output or "Methods" in output
+        assert "Methods" in output
 
     def test_table_option_full_strict(self, monkeypatch, sample_java_file):
         """Test --table option with strict content validation"""

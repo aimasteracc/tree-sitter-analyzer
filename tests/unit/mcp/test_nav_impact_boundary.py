@@ -215,3 +215,46 @@ class TestNavImpactBoundary:
         risk = body.get("risk", {})
         assert "tests" in risk
         assert risk["tests"]["test_callers_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_symbol_sets_flag_and_unknown_level(self, tmp_path) -> None:
+        """#799: when resolve_targets returns >1 result with no file_path qualifier,
+        risk_score must set ambiguous=True, level='unknown', candidate_count>=2,
+        and next_step must NOT say 'proceed with edit'.
+        """
+        func_ref_a = _make_ref("execute", "src/tool_a.py")
+        func_ref_b = _make_ref("execute", "src/tool_b.py")
+        # Mock graph returns two candidates — simulates overloaded name
+        graph = MagicMock()
+        graph.resolve_targets.return_value = [func_ref_a, func_ref_b]
+        graph.caller_refs_of.return_value = []
+        graph.callee_refs_of.return_value = []
+        graph.call_chain.return_value = []
+
+        server = TreeSitterAnalyzerMCPServer(str(tmp_path))
+        handler = _capture_call_tool_handler(server)
+
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.codegraph_impact_tool"
+                ".CodeGraphImpactTool._get_call_graph",
+                return_value=graph,
+            ),
+            patch.object(graph, "build", return_value=None),
+        ):
+            raw = await handler(
+                "nav",
+                {
+                    "action": "impact",
+                    "mode": "risk_score",
+                    "function_name": "execute",
+                    "output_format": "json",
+                },
+            )
+
+        body = json.loads(raw[0].text)
+        assert body["success"] is True
+        assert body.get("ambiguous") is True
+        assert body.get("candidate_count") == 2
+        assert body.get("level") == "unknown"
+        assert "proceed with edit" not in body.get("next_step", "")

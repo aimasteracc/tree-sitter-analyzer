@@ -30,7 +30,7 @@ class TestCLITableOption:
         output = mock_stdout.getvalue()
         assert "Total Methods" in output
         assert "Total Fields" in output
-        assert "Public Methods" in output or "Methods" in output
+        assert "Methods" in output
 
     def test_table_option_full_strict(self, monkeypatch, sample_java_file):
         sample_dir = str(Path(sample_java_file).parent)
@@ -100,6 +100,7 @@ class TestCLITableOption:
         output = mock_stdout.getvalue()
         assert "Methods" in output
         assert "Fields" in output
+        assert "| 2 |" in output or "2" in output
 
     def test_table_option_csv(self, monkeypatch, sample_java_file):
         sample_dir = str(Path(sample_java_file).parent)
