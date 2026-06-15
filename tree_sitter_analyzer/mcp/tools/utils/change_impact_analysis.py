@@ -702,6 +702,8 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     # CURRENT activation state, not the freshly-recomputed one.
     result = _attach_hot_zone_risk(result, request)
 
+    result = _attach_doc_drift_hints(result, request.changed_files)
+
     if request.agent_summary_only:
         return _attach_constraint_violations(result, request, affected)
 
@@ -822,6 +824,80 @@ def _hot_zone_symbols_for_files(
                 conn.close()
             except Exception:  # noqa: BLE001
                 pass
+
+
+_CLI_SURFACE_FILES = frozenset(
+    {
+        "tree_sitter_analyzer/cli_main.py",
+        "tree_sitter_analyzer/cli/argument_parser_builder.py",
+        "tree_sitter_analyzer/mcp/_tool_registry.py",
+    }
+)
+# Directories that, when any .py file changes, indicate CLI surface edits.
+_CLI_SURFACE_PREFIXES = ("tree_sitter_analyzer/cli/argument_groups/",)
+# Files that contribute to facade-actions.md generation but live outside mcp/tools/.
+_FACADE_DOC_FILES = frozenset(
+    {
+        "tree_sitter_analyzer/mcp/facade_map.py",
+        "tree_sitter_analyzer/mcp/_tool_registry.py",
+    }
+)
+_FACADE_TOOL_PREFIX = "tree_sitter_analyzer/mcp/tools/"
+_FACADE_TOOL_EXCLUDE = frozenset(
+    {
+        "tree_sitter_analyzer/mcp/tools/utils",
+        "tree_sitter_analyzer/mcp/tools/__pycache__",
+    }
+)
+
+
+def _attach_doc_drift_hints(
+    result: dict[str, Any],
+    changed_files: list[str],
+) -> dict[str, Any]:
+    """Append deterministic doc-drift verification steps for known CLI/MCP surfaces.
+
+    Resolves Issue #732: when CLI argument registration or facade action
+    parameters change, change-impact must surface the follow-up obligations:
+    - cli_main.py / argument_groups/*.py / _tool_registry.py → README count contracts
+    - mcp/tools/*.py / facade_map.py / _tool_registry.py → facade-actions.md regen
+    """
+    normalized = [f.replace("\\", "/") for f in changed_files]
+    cli_changed = any(
+        f in _CLI_SURFACE_FILES
+        or any(f.startswith(pfx) and f.endswith(".py") for pfx in _CLI_SURFACE_PREFIXES)
+        for f in normalized
+    )
+    facade_changed = any(
+        f in _FACADE_DOC_FILES
+        or (
+            f.startswith(_FACADE_TOOL_PREFIX)
+            and not any(f.startswith(ex) for ex in _FACADE_TOOL_EXCLUDE)
+            and f.endswith(".py")
+        )
+        for f in normalized
+    )
+
+    extra_steps: list[str] = []
+    if cli_changed:
+        extra_steps.append(
+            "uv run pytest tests/unit/test_agent_contracts.py::test_readme_counts_match_registry -x"
+        )
+    if facade_changed:
+        extra_steps.append(
+            "uv run python scripts/generate_facade_actions_doc.py && "
+            "uv run pytest tests/unit/docs/test_facade_actions_doc_drift.py -x"
+        )
+
+    if not extra_steps:
+        return result
+
+    result["doc_drift_checks"] = extra_steps
+    # Append to the top-level verification_steps list that agents consume.
+    # (verification_strategy is a string label, not a nested dict.)
+    steps = result.get("verification_steps") or []
+    result["verification_steps"] = list(steps) + extra_steps
+    return result
 
 
 def _attach_constraint_violations(
