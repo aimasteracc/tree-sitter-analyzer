@@ -30,5 +30,5 @@ Method,UserRepositoryInterface::delete,($user:User):void,public,155-155,1,-
 Method,Loggable::log,($message:string):void,public,165-171,1,-
 Method,Loggable::getLogs,():array,public,173-176,1,-
 Method,UserStatus::label,():string,public,189-197,1,-
-Method,App\Models\createUser,($username:string, $email:string):User,public,203-206,1,-
-Method,App\Models\hashPassword,($password:string):string,public,211-214,1,-
+Method,createUser,($username:string, $email:string):User,public,203-206,1,-
+Method,hashPassword,($password:string):string,public,211-214,1,-

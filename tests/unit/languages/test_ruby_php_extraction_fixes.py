@@ -283,8 +283,8 @@ function helper(): void {}
 
 
 def test_php_top_level_function_name_consistent_when_called_standalone() -> None:
-    """extract_functions called standalone must include the file namespace in
-    top-level function names (App\\Services\\helper), not bare 'helper'."""
+    """#765: top-level functions in namespaced files use bare names (not qualified).
+    Calling extract_functions standalone must return 'helper', not 'App\\Services\\helper'."""
     parser = _php_parser()
     tree = parser.parse(PHP_NS_FUNC_SRC)
     src = PHP_NS_FUNC_SRC.decode()
@@ -294,12 +294,12 @@ def test_php_top_level_function_name_consistent_when_called_standalone() -> None
     funcs = extractor.extract_functions(tree, src)
 
     helper = next(f for f in funcs if "helper" in f.name)
-    assert helper.name == "App\\Services\\helper"
+    assert helper.name == "helper"
 
 
 def test_php_top_level_function_name_consistent_after_extract_classes() -> None:
-    """extract_functions called AFTER extract_classes must yield the same name
-    as when called standalone (order-independence)."""
+    """#765: order-independence — result must be bare name whether or not
+    extract_classes (which sets current_namespace) ran first."""
     parser = _php_parser()
     tree = parser.parse(PHP_NS_FUNC_SRC)
     src = PHP_NS_FUNC_SRC.decode()
@@ -309,7 +309,7 @@ def test_php_top_level_function_name_consistent_after_extract_classes() -> None:
     funcs = extractor.extract_functions(tree, src)
 
     helper = next(f for f in funcs if "helper" in f.name)
-    assert helper.name == "App\\Services\\helper"
+    assert helper.name == "helper"
 
 
 def test_php_no_namespace_function_has_bare_name() -> None:
