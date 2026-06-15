@@ -197,6 +197,37 @@ class TestStructureCommandConvertToLegacyFormat:
         assert result["methods"][0]["name"] == "testMethod"
         assert result["methods"][0]["visibility"] == "public"
 
+    def test_convert_to_legacy_format_method_has_class_name_and_is_method(
+        self, command
+    ):
+        """#742: methods[] entries must carry class_name and is_method for --advanced parity."""
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_FUNCTION
+
+        mock_method = MagicMock()
+        mock_method.name = "parse_file"
+        mock_method.visibility = "public"
+        mock_method.start_line = 10
+        mock_method.end_line = 20
+        mock_method.element_type = ELEMENT_TYPE_FUNCTION
+        mock_method.parent_class = (
+            "Parser"  # Function model uses parent_class, not class_name
+        )
+        mock_method.is_method = True
+
+        analysis_result = MagicMock()
+        analysis_result.file_path = "parser.py"
+        analysis_result.language = "python"
+        analysis_result.line_count = 50
+        analysis_result.elements = [mock_method]
+        analysis_result.node_count = 1
+        analysis_result.success = True
+        analysis_result.analysis_time = 0.1
+
+        result = command._convert_to_legacy_format(analysis_result)
+        row = result["methods"][0]
+        assert row["class_name"] == "Parser"
+        assert row["is_method"] is True
+
     def test_convert_to_legacy_format_with_fields(self, command):
         """Test _convert_to_legacy_format with field elements."""
         from tree_sitter_analyzer.constants import ELEMENT_TYPE_VARIABLE
@@ -533,3 +564,26 @@ class TestR37aaStructureCanonicalEnvelope:
 
         legacy = command._convert_to_legacy_format(analysis_result)
         assert legacy.get("success") is True
+
+    def test_method_row_class_name_uses_parent_class_field(self, command):
+        """Codex P2 #742: real Function elements store owner in parent_class, not class_name.
+
+        Verifies the row builder reads the correct field, not a mock attribute.
+        """
+
+        from tree_sitter_analyzer.models import Function
+
+        # Build a real Function element the same way extractors do
+        fn = Function(
+            name="parse",
+            visibility="public",
+            start_line=5,
+            end_line=10,
+            is_method=True,
+            parent_class="Parser",
+        )
+        row = StructureCommand._legacy_method_row(fn)
+        assert row["class_name"] == "Parser", (
+            "class_name must come from parent_class, not a missing class_name attribute"
+        )
+        assert row["is_method"] is True

@@ -262,3 +262,101 @@ class TestVisualizeIndexedProject:
         assert result["success"] is True
         assert "mermaid" in result
         assert "helper" in result["mermaid"]
+
+
+class TestBug786TruncatedFlag:
+    """Bug #786: when edge collection is capped at max_edges, the response
+    must include ``stats.truncated=True`` and ``stats.max_edges=N`` so agents
+    know the graph is incomplete rather than assuming it is the full picture.
+
+    When edges fit within the cap, ``truncated`` must be absent (no spurious
+    warning for complete graphs).
+    """
+
+    @pytest.mark.asyncio
+    async def test_full_mode_truncated_flag_set_when_cap_hit(
+        self, tiny_call_project: str
+    ) -> None:
+        """Requesting max_edges=1 on a project with more than 1 edge must
+        set truncated=True in stats."""
+        tool = CodeGraphVisualizeTool(tiny_call_project)
+        result = await tool.execute(
+            {
+                "mode": "full",
+                "max_edges": 1,
+                "output_format": "json",
+            }
+        )
+        assert result["success"] is True
+        assert result["stats"]["edge_count"] == 1
+        assert result["stats"]["truncated"] is True
+        assert result["stats"]["max_edges"] == 1
+
+    @pytest.mark.asyncio
+    async def test_full_mode_no_truncated_flag_when_all_edges_fit(
+        self, tiny_call_project: str
+    ) -> None:
+        """When max_edges is large enough to hold the whole graph, truncated
+        must NOT appear in stats (don't warn about completeness needlessly)."""
+        tool = CodeGraphVisualizeTool(tiny_call_project)
+        result = await tool.execute(
+            {
+                "mode": "full",
+                "max_edges": 1000,
+                "output_format": "json",
+            }
+        )
+        assert result["success"] is True
+        assert "truncated" not in result["stats"]
+
+    @pytest.mark.asyncio
+    async def test_mocked_full_mode_truncated_flag(self) -> None:
+        """Mock-based test so we can force exactly max_edges edges out of a
+        larger virtual graph and verify truncated is reported correctly."""
+        tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
+        from tree_sitter_analyzer.call_graph import FunctionRef
+
+        # Build enough callee-caller pairs to exceed max_edges=2
+        fn_refs = [FunctionRef(f"f{i}.py", f"fn{i}", i, "python") for i in range(5)]
+        cg = MagicMock()
+        cg.function_refs.return_value = fn_refs
+        # Each function has one caller — that gives us 5 potential edges total
+        cg.caller_refs_of.side_effect = lambda f: [
+            FunctionRef("caller.py", "caller_fn", 0, "python")
+        ]
+
+        with patch.object(tool, "get_call_graph", return_value=cg):
+            result = await tool.execute(
+                {"mode": "full", "max_edges": 2, "output_format": "json"}
+            )
+        assert result["success"] is True
+        assert result["stats"]["edge_count"] == 2
+        assert result["stats"]["truncated"] is True
+        assert result["stats"]["max_edges"] == 2
+
+    @pytest.mark.asyncio
+    async def test_function_mode_no_truncation_flag_on_small_graph(self) -> None:
+        """mode=function on a small graph (fewer edges than max_edges) must
+        not emit a truncated flag."""
+        tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
+        from tree_sitter_analyzer.call_graph import FunctionRef
+
+        fn_a = FunctionRef("a.py", "alpha", 1, "python")
+        fn_b = FunctionRef("b.py", "beta", 5, "python")
+        cg = MagicMock()
+        cg.resolve_targets.return_value = [fn_a]
+        cg.callee_refs_of.side_effect = lambda f: [fn_b] if f is fn_a else []
+        cg.caller_refs_of.return_value = []
+
+        with patch.object(tool, "get_call_graph", return_value=cg):
+            result = await tool.execute(
+                {
+                    "mode": "function",
+                    "function": "alpha",
+                    "depth": 2,
+                    "max_edges": 100,
+                    "output_format": "json",
+                }
+            )
+        assert result["success"] is True
+        assert "truncated" not in result["stats"]

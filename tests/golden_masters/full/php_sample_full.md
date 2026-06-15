@@ -94,5 +94,5 @@ import App\Traits\Timestampable
 ## Functions
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
-| App\Models\createUser | ($username:string, $email:string):User | + | 203-206 | 1 | - |
-| App\Models\hashPassword | ($password:string):string | + | 211-214 | 1 | - |
+| createUser | ($username:string, $email:string):User | + | 203-206 | 1 | - |
+| hashPassword | ($password:string):string | + | 211-214 | 1 | - |

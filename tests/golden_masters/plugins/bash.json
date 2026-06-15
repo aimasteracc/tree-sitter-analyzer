@@ -1,14 +1,14 @@
 {
   "counts_by_type": {
-    "Expression": 10,
-    "Function": 3
+    "Expression": 9,
+    "Function": 3,
+    "Variable": 2
   },
-  "element_total": 13,
+  "element_total": 14,
   "names_by_type": {
     "Expression": [
       "case_item",
       "case_statement",
-      "comment",
       "do_group",
       "extglob_pattern",
       "for_loop",
@@ -19,10 +19,15 @@
       "log",
       "main",
       "prepare"
+    ],
+    "Variable": [
+      "APP_NAME",
+      "TARGET_DIR"
     ]
   },
   "types": [
     "Expression",
-    "Function"
+    "Function",
+    "Variable"
   ]
 }

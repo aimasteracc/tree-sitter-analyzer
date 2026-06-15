@@ -287,6 +287,51 @@ async def test_agent_workflow_tool_unsupported_extension_still_plans(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_agent_workflow_tool_quotes_target_with_spaces_in_cli_commands(tmp_path):
+    """Path tokens in generated workflow commands are shell-safe for spaces."""
+    target = tmp_path / "src" / "space file.py"
+    target.parent.mkdir()
+    target.write_text("def run():\\n    return 1\\n", encoding="utf-8")
+    target_path = "src/space file.py"
+    # double-quoted: the new helper wraps paths with spaces in double quotes
+    # so commands work on Windows CMD, PowerShell, and POSIX shells (#875).
+    safe_target = '"src/space file.py"'
+
+    result = await AgentWorkflowTool(str(tmp_path)).execute(
+        {"target_path": target_path, "output_format": "json"}
+    )
+
+    analyze_step = next(step for step in result["steps"] if step["step"] == "analyze")
+    retrieve_step = next(step for step in result["steps"] if step["step"] == "retrieve")
+    trace_step = next(step for step in result["steps"] if step["step"] == "trace")
+
+    assert analyze_step["cli_commands"][0] == (
+        f"uv run tree-sitter-analyzer smart-context {safe_target} --format json"
+    )
+    assert analyze_step["cli_commands"][1] == (
+        f"uv run tree-sitter-analyzer file-health {safe_target} --format json"
+    )
+    assert retrieve_step["cli_commands"][0] == (
+        f"uv run tree-sitter-analyzer {safe_target} --structure --output-format json"
+    )
+    assert trace_step["cli_commands"][0] == (
+        f"uv run tree-sitter-analyzer {safe_target} --dependencies file_deps --format json"
+    )
+    assert result["agent_summary"]["next_step"] == (
+        "uv run tree-sitter-analyzer safe-to-edit "
+        f"{safe_target} --edit-type refactor --format json"
+    )
+    assert result["agent_summary"]["queue_ledger_command"] == (
+        "uv run tree-sitter-analyzer change-impact "
+        f"--change-impact-scope {safe_target} --agent-summary-only --format json"
+    )
+    assert (
+        trace_step["cli_commands"][-1]
+        == result["agent_summary"]["queue_ledger_command"]
+    )
+
+
+@pytest.mark.asyncio
 async def test_agent_workflow_tool_phase_selection_responds_to_target_presence(
     tmp_path,
 ):
@@ -451,3 +496,54 @@ async def test_agent_workflow_tool_envelope_holds_for_both_formats(tmp_path):
                 args["target_path"] = target_path
             result = await tool.execute(args)
             _assert_envelope_holds(result, target_path, output_format)
+
+
+# ---------------------------------------------------------------------------
+# CLI builder path validation (#862)
+# ---------------------------------------------------------------------------
+
+
+def test_cli_builder_blocks_missing_file(tmp_path):
+    """build_agent_workflow_pack returns risk=blocked for non-existent target.
+
+    The CLI planner must validate the target path before building an analyze
+    plan — a missing file produces blocked result, not an analyze plan that
+    will fail downstream.
+    """
+    result = agent_workflow.build_agent_workflow_pack(
+        project_root=str(tmp_path),
+        target_path="no_such_file.py",
+    )
+    assert result["success"] is False
+    assert result.get("risk") == "blocked"
+    assert "no_such_file.py" in result.get("error", "")
+    assert result.get("current_phase") != "analyze"
+    assert result.get("recommended_commands", []) == []
+
+
+def test_cli_builder_blocks_path_outside_project(tmp_path):
+    """build_agent_workflow_pack returns risk=blocked for an external absolute path.
+
+    A path that resolves outside project_root is rejected so the planner
+    cannot generate commands referencing system-level files.
+    """
+    result = agent_workflow.build_agent_workflow_pack(
+        project_root=str(tmp_path),
+        target_path="/tmp/outside.py",
+    )
+    assert result["success"] is False
+    assert result.get("risk") == "blocked"
+    assert result.get("recommended_commands", []) == []
+
+
+def test_cli_builder_succeeds_for_existing_file(tmp_path):
+    """build_agent_workflow_pack proceeds normally when target file exists."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "service.py").write_text("def run(): pass\n")
+
+    result = agent_workflow.build_agent_workflow_pack(
+        project_root=str(tmp_path),
+        target_path="src/service.py",
+    )
+    assert result["success"] is True
+    assert result["current_phase"] == "analyze"

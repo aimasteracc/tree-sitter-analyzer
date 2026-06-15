@@ -203,7 +203,7 @@ class TestErrorHandler:
         assert handler.error_counts == {}
         assert handler.error_history == []
         assert handler.max_history_size == 1000
-        assert len(handler.recovery_strategies) > 0  # Default strategies registered
+        assert len(handler.recovery_strategies) == 3
 
     def test_register_recovery_strategy(self):
         """Test registering custom recovery strategy"""
@@ -387,8 +387,8 @@ class TestErrorHandler:
         handler = ErrorHandler()
         handler.handle_error(ValueError("Test"), {}, "test")
 
-        assert len(handler.error_history) > 0
-        assert len(handler.error_counts) > 0
+        assert len(handler.error_history) == 1
+        assert len(handler.error_counts) == 3
 
         handler.clear_history()
 

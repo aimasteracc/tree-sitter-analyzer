@@ -14,7 +14,6 @@ from tree_sitter_analyzer.legacy_table_formatter import LegacyTableFormatter
 
 
 class TestPlatformNewlines:
-
     def test_get_platform_newline(self) -> None:
         formatter = LegacyTableFormatter()
         newline = formatter._get_platform_newline()
@@ -40,7 +39,6 @@ class TestPlatformNewlines:
 
 
 class TestEdgeCases:
-
     def test_none_classes(self) -> None:
         formatter = LegacyTableFormatter(format_type="full")
         data = {"classes": None}
@@ -156,7 +154,6 @@ class TestEdgeCases:
 
 
 class TestDetailedFormatting:
-
     @pytest.fixture
     def formatter_with_javadoc(self) -> LegacyTableFormatter:
         return LegacyTableFormatter(format_type="full", include_javadoc=True)
@@ -229,7 +226,6 @@ class TestDetailedFormatting:
 
 
 class TestLanguageSpecificFormatting:
-
     def test_python_language_formatting(self) -> None:
         formatter = LegacyTableFormatter(format_type="full", language="python")
         data = {
@@ -259,7 +255,6 @@ class TestLanguageSpecificFormatting:
 
 
 class TestFullTableMultiClassParamTypes:
-
     def _multi_class_data(self, methods: list[dict]) -> dict[str, Any]:
         return {
             "classes": [
@@ -313,7 +308,6 @@ class TestFullTableMultiClassParamTypes:
 
 
 class TestCSVFieldAndParamCoverage:
-
     def test_csv_with_field_rows(self) -> None:
         formatter = LegacyTableFormatter(format_type="csv")
         data: dict[str, Any] = {
@@ -451,7 +445,6 @@ class TestCSVFieldAndParamCoverage:
 
 
 class TestCreateFullSignatureBranches:
-
     def test_static_method_signature(self) -> None:
         formatter = LegacyTableFormatter(format_type="full")
         result = formatter._create_full_signature(
@@ -490,7 +483,6 @@ class TestCreateFullSignatureBranches:
 
 
 class TestAbbreviateTypeAdvanced:
-
     def test_generic_type_map(self) -> None:
         formatter = LegacyTableFormatter(format_type="compact")
         result = formatter._abbreviate_type("Map<String, Object>")
@@ -518,8 +510,9 @@ class TestAbbreviateTypeAdvanced:
 
 
 class TestCompactTableClassesNone:
-
     def test_compact_with_none_classes(self) -> None:
+        # Bug #778 fixed: classes=None no longer yields '# Unknown'.
+        # When no file_path is supplied the header is blank (but no phantom label).
         formatter = LegacyTableFormatter(format_type="compact")
         data: dict[str, Any] = {
             "classes": None,
@@ -527,7 +520,7 @@ class TestCompactTableClassesNone:
             "fields": [],
         }
         result = formatter.format_structure(data)
-        assert "# Unknown" in result
+        assert "# Unknown" not in result
 
     def test_compact_no_package(self) -> None:
         formatter = LegacyTableFormatter(format_type="compact")
@@ -573,7 +566,6 @@ class TestCompactTableClassesNone:
 
 
 class TestShortenTypeBranches:
-
     def test_none_type(self) -> None:
         formatter = LegacyTableFormatter(format_type="full")
         assert formatter._shorten_type(None) == "O"
@@ -609,7 +601,6 @@ class TestShortenTypeBranches:
 
 
 class TestDocSummaryAndCSVText:
-
     def test_extract_doc_with_javadoc(self) -> None:
         formatter = LegacyTableFormatter(include_javadoc=True)
         result = formatter._extract_doc_summary("/**This is a test. More text.*/")

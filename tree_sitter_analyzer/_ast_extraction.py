@@ -161,6 +161,13 @@ _FUNCTION_LIKE = frozenset(
     }
 )
 
+_ENUM_LIKE = frozenset(
+    {
+        "enum_declaration",
+        "enum",
+    }
+)
+
 _CLASS_LIKE = frozenset(
     {
         "class_definition",
@@ -168,13 +175,12 @@ _CLASS_LIKE = frozenset(
         "class",
         "interface_declaration",
         "struct_item",
-        "enum_declaration",
-        "enum",
         "trait_declaration",
         "impl_item",
         "struct_declaration",
         "type_declaration",
     }
+    | _ENUM_LIKE
 )
 
 _IMPORT_LIKE = frozenset(
@@ -205,10 +211,15 @@ _VAR_DECL_LIKE = frozenset(
 # ``assignment`` nodes (with a ``left`` field, not ``name``), so they never
 # matched _VAR_DECL_LIKE and were invisible to ast_symbol_rows. Scope rule
 # (approved on #610): module-scope simple assignments whose target is
-# const-style (``^_?[A-Z][A-Z0-9_]+$``), annotated (``x: T = ...``), or a
-# dunder (``^__\w+__$``) — emitted as kind="constant".
-# Const-style name pattern, shared by the Python (#610) and Go (#613) rules.
+# const-style, annotated (``x: T = ...``), or a dunder (``^__\w+__$``) —
+# emitted as kind="constant".
+# Const-style name pattern used by the Go (#613) rule: requires ≥2 chars
+# (``+``) to avoid capturing single-letter package-level vars like ``var F``.
 _CONST_STYLE_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]+$")
+# Issue #793 — Python-only pattern: single-letter ALL_CAPS names (N, A, X …)
+# are valid Python constants (e.g. ``N = 100``) and must be captured.
+# Uses ``*`` (zero-or-more) so a single uppercase letter matches.
+_PY_CONST_STYLE_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]*$")
 _PY_DUNDER_NAME = re.compile(r"^__\w+__$")
 
 # Node types that open a non-module scope: an ``assignment`` nested under any
@@ -465,7 +476,9 @@ def _python_module_constant(node: Any, source: str) -> dict[str, Any] | None:
         return None  # bare annotation (``x: int``) — not a definition site
     name = _node_text(left, source)
     annotated = node.child_by_field_name("type") is not None
-    if not (annotated or _CONST_STYLE_NAME.match(name) or _PY_DUNDER_NAME.match(name)):
+    if not (
+        annotated or _PY_CONST_STYLE_NAME.match(name) or _PY_DUNDER_NAME.match(name)
+    ):
         return None
     return {
         "kind": "constant",
@@ -902,7 +915,7 @@ def _walk_for_symbols(
         name = _node_text(name_node, source)
         parents = _extract_parent_classes(node, source, language)
         cls_sym: dict[str, Any] = {
-            "kind": "class",
+            "kind": "enum" if node_type in _ENUM_LIKE else "class",
             "name": name,
             "line": node.start_point[0] + 1,
             "end_line": node.end_point[0] + 1,
@@ -1021,7 +1034,7 @@ def _extract_structure(symbols: dict[str, Any]) -> dict[str, Any]:
     for s in symbols.get("symbols", []):
         if s["kind"] in ("function", "method"):
             functions.append({"name": s["name"], "line": s["line"]})
-        elif s["kind"] == "class":
+        elif s["kind"] in ("class", "enum"):
             classes.append({"name": s["name"], "line": s["line"]})
     return {"functions": functions, "classes": classes}
 
