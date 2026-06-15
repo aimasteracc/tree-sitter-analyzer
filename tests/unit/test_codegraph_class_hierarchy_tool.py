@@ -504,3 +504,126 @@ class TestSameNameDifferentBaseCollision:
         assert [(s["file"]) for s in base_subs] == ["a.py"]
         other_subs = h.subclasses_of("Other")
         assert [(s["file"]) for s in other_subs] == ["b.py"]
+
+
+@pytest.mark.asyncio
+class TestAgentSummaryPresence:
+    """#733: class_hierarchy must include agent_summary in every mode's response."""
+
+    @pytest.fixture
+    def tool_with_monkeypatched_hierarchy(self, tool, monkeypatch):
+        from tree_sitter_analyzer.class_hierarchy import ClassHierarchy
+
+        h = ClassHierarchy.__new__(ClassHierarchy)
+        h._class_map = {
+            "Animal": type(
+                "CI",
+                (),
+                {
+                    "name": "Animal",
+                    "file": "a.py",
+                    "line": 1,
+                    "end_line": 5,
+                    "parents": [],
+                    "language": "python",
+                },
+            )(),
+            "Dog": type(
+                "CI",
+                (),
+                {
+                    "name": "Dog",
+                    "file": "b.py",
+                    "line": 1,
+                    "end_line": 5,
+                    "parents": ["Animal"],
+                    "language": "python",
+                },
+            )(),
+        }
+        h._built = True
+        h.build = lambda: None
+
+        def _has_class(name):
+            return name in h._class_map
+
+        def _subclasses_of(name, max_depth=10):
+            return (
+                [
+                    {"name": "Dog", "file": "b.py", "line": 1}
+                    for n in h._class_map
+                    if name == "Animal"
+                ]
+                if name == "Animal"
+                else []
+            )
+
+        def _superclasses_of(name):
+            return (
+                [{"name": "Animal", "file": "a.py", "line": 1}] if name == "Dog" else []
+            )
+
+        def _hierarchy_tree(name):
+            return {"name": name, "children": []}
+
+        def _all_classes(self=None):
+            return ["Animal", "Dog"]
+
+        def _summary(self=None):
+            return {"total_classes": 2, "total_relationships": 1}
+
+        h.has_class = _has_class
+        h.subclasses_of = _subclasses_of
+        h.superclasses_of = _superclasses_of
+        h.hierarchy_tree = _hierarchy_tree
+        h.all_classes = _all_classes
+        h.summary = _summary
+        monkeypatch.setattr(tool, "_hierarchy", h)
+        monkeypatch.setattr(tool, "_get_hierarchy", lambda: h)
+        return tool
+
+    async def test_subclasses_has_agent_summary(
+        self, tool_with_monkeypatched_hierarchy
+    ):
+        result = await tool_with_monkeypatched_hierarchy.execute(
+            {"mode": "subclasses", "class_name": "Animal", "output_format": "json"}
+        )
+        assert "agent_summary" in result
+        assert "summary_line" in result["agent_summary"]
+        assert "next_step" in result["agent_summary"]
+        assert "verdict" in result["agent_summary"]
+
+    async def test_superclasses_has_agent_summary(
+        self, tool_with_monkeypatched_hierarchy
+    ):
+        result = await tool_with_monkeypatched_hierarchy.execute(
+            {"mode": "superclasses", "class_name": "Dog", "output_format": "json"}
+        )
+        assert "agent_summary" in result
+
+    async def test_tree_has_agent_summary(self, tool_with_monkeypatched_hierarchy):
+        result = await tool_with_monkeypatched_hierarchy.execute(
+            {"mode": "tree", "class_name": "Animal", "output_format": "json"}
+        )
+        assert "agent_summary" in result
+
+    async def test_all_has_agent_summary(self, tool_with_monkeypatched_hierarchy):
+        result = await tool_with_monkeypatched_hierarchy.execute(
+            {"mode": "all", "output_format": "json"}
+        )
+        assert "agent_summary" in result
+
+    async def test_summary_has_agent_summary(self, tool_with_monkeypatched_hierarchy):
+        result = await tool_with_monkeypatched_hierarchy.execute(
+            {"mode": "summary", "output_format": "json"}
+        )
+        assert "agent_summary" in result
+
+    async def test_unknown_mode_has_agent_summary(
+        self, tool_with_monkeypatched_hierarchy
+    ):
+        result = await tool_with_monkeypatched_hierarchy.execute(
+            {"mode": "nonexistent_mode", "output_format": "json"}
+        )
+        assert "agent_summary" in result
+        assert result["agent_summary"]["verdict"] == "ERROR"
