@@ -818,3 +818,65 @@ def test_doc_drift_hints_util_file_not_treated_as_facade_tool():
         {}, ["tree_sitter_analyzer/mcp/tools/utils/change_impact_analysis.py"]
     )
     assert "doc_drift_checks" not in result
+
+
+def test_doc_drift_hints_argument_groups_file_triggers_readme_count_check():
+    """Adding a flag in cli/argument_groups/*.py must trigger README-count check (P2 #924)."""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        _attach_doc_drift_hints,
+    )
+
+    result = _attach_doc_drift_hints(
+        {}, ["tree_sitter_analyzer/cli/argument_groups/_analysis.py"]
+    )
+    assert "doc_drift_checks" in result
+    assert any(
+        "test_readme_counts_match_registry" in step
+        for step in result["doc_drift_checks"]
+    )
+
+
+def test_doc_drift_hints_facade_map_triggers_facade_doc_regen():
+    """Changing facade_map.py must trigger facade-actions.md regen (P2 #924)."""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        _attach_doc_drift_hints,
+    )
+
+    result = _attach_doc_drift_hints({}, ["tree_sitter_analyzer/mcp/facade_map.py"])
+    assert "doc_drift_checks" in result
+    assert any(
+        "generate_facade_actions_doc" in step for step in result["doc_drift_checks"]
+    )
+
+
+def test_doc_drift_hints_tool_registry_triggers_both_checks():
+    """_tool_registry.py drives both README counts and facade-actions.md (P2 #924)."""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        _attach_doc_drift_hints,
+    )
+
+    result = _attach_doc_drift_hints({}, ["tree_sitter_analyzer/mcp/_tool_registry.py"])
+    assert any(
+        "test_readme_counts_match_registry" in step
+        for step in result["doc_drift_checks"]
+    )
+    assert any(
+        "generate_facade_actions_doc" in step for step in result["doc_drift_checks"]
+    )
+
+
+def test_doc_drift_hints_appends_to_verification_steps():
+    """doc-drift checks must appear in verification_steps, not just doc_drift_checks (P2 #924)."""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+        _attach_doc_drift_hints,
+    )
+
+    result = _attach_doc_drift_hints(
+        {"verification_steps": ["uv run pytest tests/unit/ -x"]},
+        ["tree_sitter_analyzer/cli_main.py"],
+    )
+    assert len(result["verification_steps"]) == 2
+    assert any(
+        "test_readme_counts_match_registry" in step
+        for step in result["verification_steps"]
+    )

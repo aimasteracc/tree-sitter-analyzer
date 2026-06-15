@@ -829,6 +829,16 @@ def _hot_zone_symbols_for_files(
 _CLI_SURFACE_FILES = frozenset(
     {
         "tree_sitter_analyzer/cli_main.py",
+        "tree_sitter_analyzer/cli/argument_parser_builder.py",
+        "tree_sitter_analyzer/mcp/_tool_registry.py",
+    }
+)
+# Directories that, when any .py file changes, indicate CLI surface edits.
+_CLI_SURFACE_PREFIXES = ("tree_sitter_analyzer/cli/argument_groups/",)
+# Files that contribute to facade-actions.md generation but live outside mcp/tools/.
+_FACADE_DOC_FILES = frozenset(
+    {
+        "tree_sitter_analyzer/mcp/facade_map.py",
         "tree_sitter_analyzer/mcp/_tool_registry.py",
     }
 )
@@ -849,15 +859,23 @@ def _attach_doc_drift_hints(
 
     Resolves Issue #732: when CLI argument registration or facade action
     parameters change, change-impact must surface the follow-up obligations:
-    - cli_main.py / _tool_registry.py → README count contracts
-    - mcp/tools/*.py → facade-actions.md regeneration
+    - cli_main.py / argument_groups/*.py / _tool_registry.py → README count contracts
+    - mcp/tools/*.py / facade_map.py / _tool_registry.py → facade-actions.md regen
     """
-    cli_changed = any(f.replace("\\", "/") in _CLI_SURFACE_FILES for f in changed_files)
+    normalized = [f.replace("\\", "/") for f in changed_files]
+    cli_changed = any(
+        f in _CLI_SURFACE_FILES
+        or any(f.startswith(pfx) and f.endswith(".py") for pfx in _CLI_SURFACE_PREFIXES)
+        for f in normalized
+    )
     facade_changed = any(
-        f.replace("\\", "/").startswith(_FACADE_TOOL_PREFIX)
-        and not any(f.replace("\\", "/").startswith(ex) for ex in _FACADE_TOOL_EXCLUDE)
-        and f.endswith(".py")
-        for f in changed_files
+        f in _FACADE_DOC_FILES
+        or (
+            f.startswith(_FACADE_TOOL_PREFIX)
+            and not any(f.startswith(ex) for ex in _FACADE_TOOL_EXCLUDE)
+            and f.endswith(".py")
+        )
+        for f in normalized
     )
 
     extra_steps: list[str] = []
@@ -875,16 +893,10 @@ def _attach_doc_drift_hints(
         return result
 
     result["doc_drift_checks"] = extra_steps
-    strategy = result.get("verification_strategy", {})
-    if isinstance(strategy, dict):
-        steps = strategy.get("verification_steps") or []
-        strategy["verification_steps"] = list(steps) + extra_steps
-    else:
-        hint = result.get("verification_hint", "")
-        if hint:
-            result["verification_hint"] = (
-                hint + " Also check: " + "; ".join(extra_steps)
-            )
+    # Append to the top-level verification_steps list that agents consume.
+    # (verification_strategy is a string label, not a nested dict.)
+    steps = result.get("verification_steps") or []
+    result["verification_steps"] = list(steps) + extra_steps
     return result
 
 
