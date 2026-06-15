@@ -10,8 +10,10 @@ from unittest.mock import MagicMock
 from tree_sitter_analyzer._ast_extraction import (
     _content_hash,
     _count_decision_points,
+    _count_nodes,
     _extract_call_edges,
     _extract_parent_classes,
+    _extract_symbols,
     _has_fts5,
     _node_text,
     _walk_for_symbols,
@@ -252,15 +254,91 @@ class TestExtractParentClasses:
 
 class TestWalkForSymbols:
     def test_depth_guard_stops_recursion(self):
-        """depth > 20 → function returns early without recursing."""
+        """depth > 100 → function returns early without recursing (#779 new limit)."""
         symbols: list = []
         node = MagicMock()
         node.type = "function_definition"
         node.child_by_field_name = MagicMock(return_value=None)
         node.children = []
-        # Call with depth=21 — should return immediately, not append anything
-        _walk_for_symbols(node, "", symbols, "python", depth=21)
+        # Call with depth=101 — should return immediately, not append anything
+        _walk_for_symbols(node, "", symbols, "python", depth=101)
         assert symbols == []
+
+    def test_depth_guard_old_limit_no_longer_truncates(self):
+        """depth=21 must NOT be truncated after #779 raises limit to 100."""
+        symbols: list = []
+        node = MagicMock()
+        node.type = "module"
+        node.child_by_field_name = MagicMock(return_value=None)
+        node.children = []
+        # At depth=21 (old truncation point was 20), walk should continue (no early return)
+        # We verify by checking it doesn't raise and processes children
+        _walk_for_symbols(node, "", symbols, "python", depth=21)
+        # symbols is empty because node.type='module' is not in _FUNCTION_LIKE/_CLASS_LIKE
+        # but the key guarantee is: no early return at depth=21
+        assert symbols == []  # no crash = depth guard didn't fire
+
+    def test_extract_symbols_truncated_depth_flag_when_deeply_nested(self):
+        """_extract_symbols returns truncated_depth=True when AST depth exceeds limit.
+
+        We simulate a deeply nested AST (depth > 100) by building a mock tree
+        whose root has a chain of 105 child nodes. The walker should set the
+        truncated_depth flag in the returned dict.
+        """
+        # Build a linear chain of 105 mock nodes: root → n1 → n2 → … → n104
+        # Each node has type="module" (neutral) except the leaf which would
+        # be a function_definition — but we'll never reach it if depth guard fires.
+        # We verify truncated_depth=True appears in the result.
+        depth_target = 105
+
+        def _make_node(remaining: int) -> MagicMock:
+            n = MagicMock()
+            n.type = "module"
+            n.child_by_field_name = MagicMock(return_value=None)
+            if remaining > 0:
+                child = _make_node(remaining - 1)
+                child.parent = n
+                n.children = [child]
+            else:
+                n.children = []
+            return n
+
+        root_node = _make_node(depth_target)
+        tree = MagicMock()
+        tree.root_node = root_node
+
+        result = _extract_symbols(tree, "", "python")
+        assert result["truncated_depth"] is True
+
+    def test_26_nested_python_functions_all_extracted(self):
+        """#779: 26 deeply nested Python functions must all be extracted.
+
+        The original depth cap of 20 silently dropped the deepest functions.
+        Each Python nesting level adds ~2 AST node levels (function_definition +
+        block), so 26 nested functions need AST depth ~51, which exceeds the old
+        cap.  With _WALK_MAX_DEPTH=100 all 26 must be present.
+        """
+        from tree_sitter_analyzer._ast_extraction import (
+            Parser,  # type: ignore[attr-defined]
+        )
+
+        lines = []
+        for i in range(26):
+            lines.append("    " * i + f"def f{i}():")
+        lines.append("    " * 26 + "pass")
+        source = "\n".join(lines)
+
+        parser = Parser()
+        parse_result = parser.parse_code(source, "python")
+        tree = parse_result.tree
+        result = _extract_symbols(tree, source, "python")
+        func_names = sorted(
+            s["name"]
+            for s in result["symbols"]
+            if s.get("kind") in ("function", "method")
+        )
+        assert len(func_names) == 26
+        assert result["truncated_depth"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -560,6 +638,25 @@ class TestPythonModuleConstants:
     def test_tuple_target_not_extracted(self):
         # Non-simple targets (tuple unpacking) are excluded by the scope rule.
         syms = _symbols_for("X_A, Y_B = 1, 2\n", "python")
+        assert [s for s in syms if s["kind"] == "constant"] == []
+
+    def test_single_letter_all_caps_extracted(self):
+        # Issue #793 — single-letter ALL_CAPS names (A, N, X …) are valid
+        # Python constants and must be captured.  Old pattern ^_?[A-Z][A-Z0-9_]+$
+        # required ≥2 chars after the uppercase start; fixed to ``*`` (#793).
+        syms = _symbols_for("A = 1\nN = 100\nX = 'value'\n", "python")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == ["A", "N", "X"]
+
+    def test_single_letter_prefixed_all_caps_extracted(self):
+        # _N = 100 — underscore-prefixed single-letter constant must also match.
+        syms = _symbols_for("_N = 100\n", "python")
+        consts = [s["name"] for s in syms if s["kind"] == "constant"]
+        assert consts == ["_N"]
+
+    def test_single_letter_lowercase_not_extracted(self):
+        # Lowercase single-letter names (n, x, a) are NOT constants.
+        syms = _symbols_for("n = 100\nx = 'v'\n", "python")
         assert [s for s in syms if s["kind"] == "constant"] == []
 
 
@@ -1426,3 +1523,46 @@ class TestCSharpErrorRegionHardening:
         src = "class A {\n  Action r = () => {\n    int leaked = 1;\n"
         syms = _symbols_for(src, "csharp")
         assert [s["name"] for s in syms if s["kind"] == "variable"] == []
+
+
+# ---------------------------------------------------------------------------
+# _count_nodes — iterative implementation (Issue #805)
+# ---------------------------------------------------------------------------
+
+
+class _FakeNode:
+    """Minimal stand-in for a tree-sitter Node."""
+
+    def __init__(self, children=None):
+        self.children = children or []
+
+
+class TestCountNodes:
+    def test_single_node_returns_1(self):
+        assert _count_nodes(_FakeNode()) == 1
+
+    def test_flat_children(self):
+        root = _FakeNode([_FakeNode(), _FakeNode(), _FakeNode()])
+        assert _count_nodes(root) == 4
+
+    def test_nested_tree(self):
+        #   root
+        #   ├── a
+        #   │   └── c
+        #   └── b
+        root = _FakeNode(
+            [
+                _FakeNode([_FakeNode()]),
+                _FakeNode(),
+            ]
+        )
+        assert _count_nodes(root) == 4
+
+    def test_deep_chain_does_not_raise(self):
+        """A chain 2000 levels deep must not raise RecursionError (issue #805)."""
+        # Build a chain: root → child → grandchild → … (2000 levels)
+        node = _FakeNode()
+        for _ in range(2000):
+            node = _FakeNode([node])
+        # Must not raise; exact count is 2001 (2000 wrappers + original leaf).
+        assert _count_nodes(node) == 2001

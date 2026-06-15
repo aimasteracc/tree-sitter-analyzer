@@ -161,6 +161,13 @@ _FUNCTION_LIKE = frozenset(
     }
 )
 
+_ENUM_LIKE = frozenset(
+    {
+        "enum_declaration",
+        "enum",
+    }
+)
+
 _CLASS_LIKE = frozenset(
     {
         "class_definition",
@@ -168,13 +175,12 @@ _CLASS_LIKE = frozenset(
         "class",
         "interface_declaration",
         "struct_item",
-        "enum_declaration",
-        "enum",
         "trait_declaration",
         "impl_item",
         "struct_declaration",
         "type_declaration",
     }
+    | _ENUM_LIKE
 )
 
 _IMPORT_LIKE = frozenset(
@@ -205,10 +211,15 @@ _VAR_DECL_LIKE = frozenset(
 # ``assignment`` nodes (with a ``left`` field, not ``name``), so they never
 # matched _VAR_DECL_LIKE and were invisible to ast_symbol_rows. Scope rule
 # (approved on #610): module-scope simple assignments whose target is
-# const-style (``^_?[A-Z][A-Z0-9_]+$``), annotated (``x: T = ...``), or a
-# dunder (``^__\w+__$``) — emitted as kind="constant".
-# Const-style name pattern, shared by the Python (#610) and Go (#613) rules.
+# const-style, annotated (``x: T = ...``), or a dunder (``^__\w+__$``) —
+# emitted as kind="constant".
+# Const-style name pattern used by the Go (#613) rule: requires ≥2 chars
+# (``+``) to avoid capturing single-letter package-level vars like ``var F``.
 _CONST_STYLE_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]+$")
+# Issue #793 — Python-only pattern: single-letter ALL_CAPS names (N, A, X …)
+# are valid Python constants (e.g. ``N = 100``) and must be captured.
+# Uses ``*`` (zero-or-more) so a single uppercase letter matches.
+_PY_CONST_STYLE_NAME = re.compile(r"^_?[A-Z][A-Z0-9_]*$")
 _PY_DUNDER_NAME = re.compile(r"^__\w+__$")
 
 # Node types that open a non-module scope: an ``assignment`` nested under any
@@ -465,7 +476,9 @@ def _python_module_constant(node: Any, source: str) -> dict[str, Any] | None:
         return None  # bare annotation (``x: int``) — not a definition site
     name = _node_text(left, source)
     annotated = node.child_by_field_name("type") is not None
-    if not (annotated or _CONST_STYLE_NAME.match(name) or _PY_DUNDER_NAME.match(name)):
+    if not (
+        annotated or _PY_CONST_STYLE_NAME.match(name) or _PY_DUNDER_NAME.match(name)
+    ):
         return None
     return {
         "kind": "constant",
@@ -653,9 +666,14 @@ def _node_text(node: Any, source: str) -> str:
 
 
 def _count_nodes(node: Any) -> int:
-    count = 1
-    for child in node.children:
-        count += _count_nodes(child)
+    """Count AST nodes iteratively to avoid RecursionError on deeply-nested trees."""
+    count = 0
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        count += 1
+        for child in current.children:
+            stack.append(child)
     return count
 
 
@@ -814,6 +832,11 @@ def _c_declarator_name(declarator: Any, source: str, depth: int) -> str | None:
     return None
 
 
+_WALK_MAX_DEPTH = (
+    100  # #779: DoS protection — functions nested beyond this are dropped.
+)
+
+
 def _walk_for_symbols(
     node: Any,
     source: str,
@@ -821,6 +844,7 @@ def _walk_for_symbols(
     language: str,
     depth: int = 0,
     enclosed: bool = False,
+    _truncated_flag: list[bool] | None = None,
 ) -> None:
     """Walk the AST collecting symbol dicts.
 
@@ -834,8 +858,14 @@ def _walk_for_symbols(
     including ``if``/``try``-wrapped module-level assignments, and
     JS/TS/Java/C# function-local declarators must NOT produce
     kind="variable" rows.
+
+    ``_truncated_flag`` is an optional single-element list.  When the depth
+    guard fires the list is set to ``[True]`` so the caller can detect that
+    deeply nested functions were silently dropped (#779).
     """
-    if depth > 20:
+    if depth > _WALK_MAX_DEPTH:
+        if _truncated_flag is not None:
+            _truncated_flag[0] = True
         return
     node_type = node.type
     name_node = node.child_by_field_name("name")
@@ -885,7 +915,7 @@ def _walk_for_symbols(
         name = _node_text(name_node, source)
         parents = _extract_parent_classes(node, source, language)
         cls_sym: dict[str, Any] = {
-            "kind": "class",
+            "kind": "enum" if node_type in _ENUM_LIKE else "class",
             "name": name,
             "line": node.start_point[0] + 1,
             "end_line": node.end_point[0] + 1,
@@ -973,16 +1003,25 @@ def _walk_for_symbols(
         or (language == "csharp" and node_type in _CSHARP_SCOPE_BODY_NODES)
     )
     for child in node.children:
-        _walk_for_symbols(child, source, symbols, language, depth + 1, child_enclosed)
+        _walk_for_symbols(
+            child, source, symbols, language, depth + 1, child_enclosed, _truncated_flag
+        )
 
 
 def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, Any]:
     symbols: list[dict[str, Any]] = []
     if tree is None:
-        return {"symbols": symbols, "node_count": 0}
+        return {"symbols": symbols, "node_count": 0, "truncated_depth": False}
     root = tree.root_node
-    _walk_for_symbols(root, source_code, symbols, language)
-    return {"symbols": symbols, "node_count": _count_nodes(root)}
+    truncated_flag: list[bool] = [False]
+    _walk_for_symbols(
+        root, source_code, symbols, language, _truncated_flag=truncated_flag
+    )
+    return {
+        "symbols": symbols,
+        "node_count": _count_nodes(root),
+        "truncated_depth": truncated_flag[0],
+    }
 
 
 def _extract_imports(symbols: dict[str, Any]) -> list[str]:
@@ -995,7 +1034,7 @@ def _extract_structure(symbols: dict[str, Any]) -> dict[str, Any]:
     for s in symbols.get("symbols", []):
         if s["kind"] in ("function", "method"):
             functions.append({"name": s["name"], "line": s["line"]})
-        elif s["kind"] == "class":
+        elif s["kind"] in ("class", "enum"):
             classes.append({"name": s["name"], "line": s["line"]})
     return {"functions": functions, "classes": classes}
 

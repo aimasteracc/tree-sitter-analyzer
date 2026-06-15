@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Legacy table formatter boost2 — compact signatures, abbreviate, visibility, compact table."""
 
-
 from tree_sitter_analyzer.legacy_table_formatter import LegacyTableFormatter
 
 
@@ -155,11 +154,11 @@ class TestCompactTableEdgeCases:
     """Tests for _format_compact_table edge cases."""
 
     def test_classes_is_none(self) -> None:
-        """Lines 640-641: classes is None -> classes = []."""
+        """Bug #778 fixed: classes=None must not produce '# Unknown'."""
         formatter = LegacyTableFormatter(format_type="compact")
         data = {"classes": None, "methods": [], "fields": []}
         result = formatter.format_structure(data)
-        assert "# Unknown" in result
+        assert "# Unknown" not in result
 
     def test_with_package_name(self) -> None:
         """Lines 645-646, 658-659: with package name."""
@@ -183,10 +182,11 @@ class TestCompactTableEdgeCases:
         assert "| Package | com.example |" in result
 
     def test_classes_empty_list(self) -> None:
+        # Bug #778 fixed: empty classes list must not produce '# Unknown'.
         formatter = LegacyTableFormatter(format_type="compact")
         data = {"classes": [], "methods": [], "fields": []}
         result = formatter.format_structure(data)
-        assert "# Unknown" in result
+        assert "# Unknown" not in result
 
     def test_compact_with_methods(self) -> None:
         """Compact table with methods (hits _format_compact_method_row)."""
@@ -232,5 +232,3 @@ class TestCompactTableEdgeCases:
 # ============================================================================
 # _format_csv (lines 705-813)
 # ============================================================================
-
-

@@ -44,7 +44,7 @@ methods:
     hash_password,public,(191,193)
     with_transaction,public,(205,214)
 fields:
-  [25]{name,type,line_range(a,b)}:
+  [12]{name,type,line_range(a,b)}:
     STATUS_ACTIVE,,(13,13)
     STATUS_INACTIVE,,(14,14)
     MAX_LOGIN_ATTEMPTS,,(15,15)
@@ -54,22 +54,9 @@ fields:
     created_at,,(29,29)
     password_hash,,(30,30)
     last_login_at,,(31,31)
-    email,,(44,44)
-    username,,(45,45)
-    status,,(56,56)
-    deactivated_at,,(57,57)
-    user,,(73,73)
-    user.password_hash,,(74,74)
     permissions,,(96,96)
-    permissions,,(114,114)
     database,,(144,144)
     cache,,(145,145)
-    user,,(151,151)
-    "cache[id]",,(152,152)
-    validate_email,,(196,196)
-    format_username,,(197,197)
-    log_action,,(200,202)
-    user,,(218,218)
 imports:
   [3]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
     date,,import date,false,false,(1,1),[],import date
@@ -78,8 +65,8 @@ imports:
 statistics:
   class_count: 5
   method_count: 33
-  field_count: 25
+  field_count: 12
   import_count: 3
-  total_lines: 0
+  total_lines: 220
 effective_table: toon
 requested_table: toon

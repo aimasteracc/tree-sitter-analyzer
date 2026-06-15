@@ -81,7 +81,7 @@ class TestSmartContextTool:
         assert summary["change_impact_command"].endswith(
             f"--change-impact-scope {TARGET_FILE} --format json"
         )
-        assert summary["downstream_count"] >= 0
+        assert summary["downstream_count"] == 0
 
     def test_health_has_grade_and_score(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
@@ -114,7 +114,7 @@ class TestSmartContextTool:
 
     def test_line_count(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE}))
-        assert result["line_count"] > 0
+        assert result["line_count"] == 7
 
     def test_language_detected(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE}))
@@ -190,7 +190,7 @@ class TestExportExtraction:
         assert result is not None
         exports = get_all_exports(result)
         classes = [e for e in exports if e["kind"] == "class"]
-        assert len(classes) > 0
+        assert len(classes) == 9
 
     def test_excludes_private_functions(self):
         result = extract_elements(
@@ -209,7 +209,7 @@ class TestStructureExtraction:
         )
         assert result is not None
         structure = get_structure(result)
-        assert len(structure) > 0
+        assert len(structure) == 13
         kinds = {s["kind"] for s in structure}
         assert "class" in kinds or "function" in kinds
 

@@ -28,18 +28,17 @@ methods:
     get,public,(59,59)
     main,public,(62,65)
 fields:
-  [4]{name,type,line_range(a,b)}:
-    unknown,,(30,31)
-    unknown,,(48,48)
-    unknown,,(49,49)
-    unknown,,(63,63)
+  [3]{name,type,line_range(a,b)}:
+    userCount,,(30,31)
+    MAX_USERS,,(48,48)
+    version,,(49,49)
 imports:
   [1]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
     java.util.Collections,java.util.Collections,import java.util.Collections,false,false,(3,3),[],import java.util.Collections
 statistics:
   class_count: 8
   method_count: 12
-  field_count: 4
+  field_count: 3
   import_count: 1
   total_lines: 65
 effective_table: toon

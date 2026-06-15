@@ -192,6 +192,34 @@ def extract_cpp_function(
         return None
 
 
+def _cpp_direct_parent_class_name(node: Any) -> str | None:
+    """Return the enclosing class/struct name when ``node`` is a nested type
+    declared directly inside a class body (one level up via field_declaration).
+
+    Walk: node → field_declaration → field_declaration_list → class/struct/union_specifier
+    with a hard cap to avoid infinite walks on mocked nodes.
+    """
+    parent = getattr(node, "parent", None)
+    if parent is None or getattr(parent, "type", "") != "field_declaration":
+        return None
+    grandparent = getattr(parent, "parent", None)
+    if (
+        grandparent is None
+        or getattr(grandparent, "type", "") != "field_declaration_list"
+    ):
+        return None
+    great = getattr(grandparent, "parent", None)
+    if great is None or getattr(great, "type", "") not in _CPP_CLASS_NODE_TYPES:
+        return None
+    for child in getattr(great, "children", ()):
+        if getattr(child, "type", "") == "type_identifier":
+            text = getattr(child, "text", b"")
+            if isinstance(text, bytes):
+                return text.decode("utf-8", errors="replace")
+            return str(text)
+    return None
+
+
 def extract_cpp_class(
     node: Any,
     context: CppClassExtractionContext | Callable[..., str],
@@ -214,6 +242,8 @@ def extract_cpp_class(
             else class_name
         )
 
+        parent_class = _cpp_direct_parent_class_name(node)
+
         return Class(
             name=class_name,
             start_line=start_line,
@@ -227,6 +257,7 @@ def extract_cpp_class(
             interfaces=superclasses[1:] if len(superclasses) > 1 else [],
             modifiers=[],
             docstring=ctx.extract_comment_for_line(start_line),
+            parent_class=parent_class,
         )
     except Exception as exc:
         log_debug(f"Failed to extract class info: {exc}")

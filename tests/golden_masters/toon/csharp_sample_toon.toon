@@ -1,6 +1,8 @@
 file_path: examples/Sample.cs
 language: csharp
-package: null
+package:
+  name: MyApp.Models
+  line_range: (5, 106)
 classes:
   [4]{name,visibility,line_range(a,b)}:
     User,public,(10,65)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 PHASE_ORDER = ("set", "map", "analyze", "retrieve", "trace")
@@ -41,11 +42,58 @@ PHASE_ROUTING: tuple[dict[str, str], ...] = (
 )
 
 
+def _check_target_path(project_root: str, target_path: str) -> str | None:
+    """Return an error message if ``target_path`` is invalid, else ``None``.
+
+    Checks:
+    1. The resolved path must sit inside ``project_root`` (boundary guard).
+    2. The path must be an existing file (not a directory).
+
+    Windows-style separators are normalised to ``/`` so POSIX hosts do not
+    report ``src\\file.py`` as missing when ``src/file.py`` exists.
+    """
+    root = Path(project_root).resolve()
+    # Normalise Windows separators before constructing the Path so that
+    # ``src\service.py`` resolves correctly on POSIX hosts.
+    normalised = target_path.replace("\\", "/")
+    candidate = Path(normalised).expanduser()
+    resolved = candidate if candidate.is_absolute() else root / candidate
+    try:
+        resolved.resolve().relative_to(root)
+    except ValueError:
+        return f"target_path '{target_path}' is outside the project root"
+    if not resolved.is_file():
+        if resolved.is_dir():
+            return f"target_path '{target_path}' is a directory, not a file"
+        return f"target_path '{target_path}' does not exist"
+    return None
+
+
 def build_agent_workflow_pack(
     project_root: str,
     target_path: str | None = None,
 ) -> dict[str, Any]:
     """Build a SMART workflow command pack for agents and humans."""
+    if target_path:
+        err = _check_target_path(project_root, target_path)
+        if err:
+            return {
+                "success": False,
+                "risk": "blocked",
+                "error": err,
+                "target_path": target_path,
+                "project_root": project_root,
+                "current_phase": "set",
+                "recommended_commands": [],
+                "verdict": "ERROR",
+                "agent_summary": {
+                    "verdict": "ERROR",
+                    "risk": "blocked",
+                    "summary_line": f"agent_workflow blocked: {err}",
+                    "next_step": "Provide a valid target_path within the project root.",
+                    "current_phase": "set",
+                },
+            }
     target = target_path or "path/to/file.py"
     steps = _build_steps(target)
     queue_boundary = _build_queue_boundary_commands()
@@ -98,12 +146,13 @@ def build_agent_workflow_pack(
 
 def _build_steps(target: str) -> list[dict[str, Any]]:
     """Build all SMART workflow steps."""
+    safe_target = _shell_safe_path(target)
     steps = [
         _set_step(),
         _map_step(),
-        _analyze_step(target),
-        _retrieve_step(target),
-        _trace_step(target),
+        _analyze_step(safe_target),
+        _retrieve_step(safe_target),
+        _trace_step(safe_target),
     ]
     return _build_step_handoffs(steps)
 
@@ -217,7 +266,10 @@ def _analyze_step(target: str) -> dict[str, Any]:
         "cli_commands": [
             f"uv run tree-sitter-analyzer smart-context {target} --format json",
             f"uv run tree-sitter-analyzer file-health {target} --format json",
-            f"uv run tree-sitter-analyzer safe-to-edit {target} --edit-type refactor --format json",
+            (
+                "uv run tree-sitter-analyzer safe-to-edit "
+                f"{target} --edit-type refactor --format json"
+            ),
             f"uv run tree-sitter-analyzer refactor {target} --format json",
         ],
         "stop_condition": "Queue head, edit boundary, and verification hints are clear.",
@@ -270,13 +322,17 @@ def _build_agent_summary(
     recommended_commands: list[str],
 ) -> dict[str, Any]:
     """Build the compact decision surface for the workflow pack."""
+    safe_target_path = (
+        _shell_safe_path(target_path) if target_path else "path/to/file.py"
+    )
     first_command = (
-        f"uv run tree-sitter-analyzer safe-to-edit {target_path} --edit-type refactor --format json"
+        "uv run tree-sitter-analyzer safe-to-edit "
+        f"{safe_target_path} --edit-type refactor --format json"
         if target_path
         else "uv run tree-sitter-analyzer overview --format json"
     )
     queue_ledger_command = (
-        _scoped_change_impact_command(target_path) if target_path else ""
+        _scoped_change_impact_command(safe_target_path) if target_path else ""
     )
     next_phase = _build_next_phase(current_phase)
     # G8: build summary_line + verdict so this planning tool obeys the
@@ -351,7 +407,7 @@ def _build_evaluator_checks(
         checks.append(
             {
                 "name": "queue_ledger",
-                "command": _scoped_change_impact_command(target_path),
+                "command": _scoped_change_impact_command(_shell_safe_path(target_path)),
                 "required": False,
                 "purpose": (
                     "Emit scoped change-impact so evaluator can approve the handoff "
@@ -368,6 +424,31 @@ def _scoped_change_impact_command(target: str) -> str:
         "uv run tree-sitter-analyzer change-impact "
         f"--change-impact-scope {target} --agent-summary-only --format json"
     )
+
+
+_SHELL_SAFE_CHARS: frozenset[str] = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/:"
+)
+
+
+def _shell_safe_path(path: str | None) -> str:
+    """Return a shell-safe token for user-provided file paths.
+
+    Double quotes work on Windows CMD, PowerShell, and Unix shells (#875).
+    shlex.quote() uses single quotes which fail in Windows CMD.
+
+    Inside double quotes: `"` and POSIX-expanding characters ($, `) are
+    escaped with a backslash.  Backslash itself is NOT escaped because both
+    POSIX shells (where `\\X` → `\\X` for non-special X) and Windows CMD
+    (which does not interpret `\\` as an escape) handle a bare `\\` correctly
+    inside double quotes.
+    """
+    if not path:
+        return ""
+    if all(c in _SHELL_SAFE_CHARS for c in path):
+        return path
+    escaped = path.replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
+    return '"' + escaped + '"'
 
 
 def _build_toon_content(result: dict[str, Any]) -> str:

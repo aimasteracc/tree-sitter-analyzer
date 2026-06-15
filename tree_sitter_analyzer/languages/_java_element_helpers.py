@@ -126,6 +126,7 @@ def extract_java_method(
             complexity_score=calculate_complexity(node),
             is_abstract="abstract" in modifiers,
             is_final="final" in modifiers,
+            is_method=True,
         )
     except (AttributeError, ValueError, TypeError) as e:
         log_debug_func(f"Failed to extract method info: {e}")

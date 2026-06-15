@@ -116,13 +116,29 @@ def query_execution_result(
     }
 
 
+# All type strings that are conceptually "a class" — PR #795 expanded the
+# type field beyond the literal "class" string.  Callers that filter with
+# element_types=["class"] must still receive these subtypes for backward
+# compatibility (Codex P2 on PR #901).
+_CLASS_FAMILY_TYPES = frozenset(
+    {"class", "abstract_class", "interface", "enum", "namespace", "type"}
+)
+
+
 def filter_elements_by_type(
     elements: list[dict[str, Any]],
     element_types: list[str] | None,
 ) -> list[dict[str, Any]]:
-    """Filter extracted elements by fuzzy type match."""
+    """Filter extracted elements by fuzzy type match.
+
+    ``element_types=["class"]`` matches all class-family types
+    (interface, enum, namespace, abstract_class, type) in addition to
+    plain "class" for backward compatibility after PR #795.
+    """
     if not element_types:
         return elements
+
+    wants_class_family = any(t.lower() == "class" for t in element_types)
 
     return [
         element
@@ -131,4 +147,5 @@ def filter_elements_by_type(
             element_type.lower() in element.get("type", "").lower()
             for element_type in element_types
         )
+        or (wants_class_family and element.get("type", "") in _CLASS_FAMILY_TYPES)
     ]

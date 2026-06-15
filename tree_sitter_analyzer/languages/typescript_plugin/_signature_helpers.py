@@ -113,9 +113,9 @@ def parse_method_signature(
     try:
         node_text = get_node_text(node)
         parts = _MethodSignatureParts(
-            is_async="async" in node_text,
-            is_static="static" in node_text,
-            visibility=_visibility_from_text(node_text),
+            is_async=_is_async_from_node(node),
+            is_static=_is_static_from_node(node),
+            visibility=_visibility_from_node(node),
         )
 
         for child in node.children:
@@ -169,6 +169,50 @@ def _apply_method_child(
         parts.return_type = get_node_text(child).lstrip(": ")
     elif child.type == "type_parameters":
         parts.generics = extract_generics(child)
+
+
+def _visibility_from_node(node: tree_sitter.Node) -> str:
+    """Read visibility from the ``accessibility_modifier`` AST child.
+
+    Inspecting direct children avoids false positives from string literals,
+    comments, or variable names in the method body that contain 'private'
+    or 'protected' (#772).
+    """
+    for child in node.children:
+        if child.type == "accessibility_modifier" and child.text:
+            text = (
+                child.text.decode("utf-8")
+                if isinstance(child.text, bytes)
+                else child.text
+            )
+            if "private" in text:
+                return "private"
+            if "protected" in text:
+                return "protected"
+            if "public" in text:
+                return "public"
+    return "public"
+
+
+def _is_async_from_node(node: tree_sitter.Node) -> bool:
+    """Check for ``async`` keyword as a direct AST child of the method node.
+
+    Text search on the full node text causes false positives when the method
+    body contains the word 'async' in a string literal, comment, or call
+    expression (#774).
+    """
+    for child in node.children:
+        if child.type == "async":
+            return True
+    return False
+
+
+def _is_static_from_node(node: tree_sitter.Node) -> bool:
+    """Check for ``static`` keyword as a direct AST child of the method node."""
+    for child in node.children:
+        if child.type == "static":
+            return True
+    return False
 
 
 def _visibility_from_text(node_text: str) -> str:

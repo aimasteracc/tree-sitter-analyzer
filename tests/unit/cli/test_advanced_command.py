@@ -466,3 +466,70 @@ class TestR37yCanonicalEnvelope:
 
         assert "mode=full" in full_captured["summary_line"]
         assert "mode=stats" in stats_captured["summary_line"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #795 — _build_elements_payload must use class_type for TS subtypes
+# ---------------------------------------------------------------------------
+
+
+class TestBuildElementsPayloadClassType:
+    """#795: enum/interface/type-alias mislabeled as type='class' in --advanced.
+
+    _build_elements_payload previously overwrote type with get_element_type()
+    which always returns ELEMENT_TYPE_CLASS ('class') for any Class model
+    object.  The fix uses class_type when available so TypeScript-specific
+    subtypes surface correctly.
+    """
+
+    def _make_class(self, class_type: str = "class") -> object:
+        from tree_sitter_analyzer.models import Class
+
+        return Class(
+            name="Test",
+            start_line=1,
+            end_line=5,
+            raw_text="",
+            language="typescript",
+            class_type=class_type,
+        )
+
+    def _build(self, elements: list) -> list:
+        from tree_sitter_analyzer.cli.commands.advanced_command import (
+            _build_elements_payload,
+        )
+
+        return _build_elements_payload(elements)
+
+    def test_interface_type_preserved(self):
+        payload = self._build([self._make_class("interface")])
+        assert payload[0]["type"] == "interface"
+
+    def test_enum_type_preserved(self):
+        payload = self._build([self._make_class("enum")])
+        assert payload[0]["type"] == "enum"
+
+    def test_type_alias_preserved(self):
+        payload = self._build([self._make_class("type")])
+        assert payload[0]["type"] == "type"
+
+    def test_namespace_type_preserved(self):
+        payload = self._build([self._make_class("namespace")])
+        assert payload[0]["type"] == "namespace"
+
+    def test_actual_class_still_class(self):
+        payload = self._build([self._make_class("class")])
+        assert payload[0]["type"] == "class"
+
+    def test_function_unaffected(self):
+        from tree_sitter_analyzer.models import Function
+
+        fn = Function(
+            name="do_thing",
+            start_line=1,
+            end_line=3,
+            raw_text="",
+            language="typescript",
+        )
+        payload = self._build([fn])
+        assert payload[0]["type"] == "function"

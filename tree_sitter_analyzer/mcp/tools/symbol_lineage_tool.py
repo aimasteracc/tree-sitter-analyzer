@@ -20,7 +20,11 @@ from ...project_graph import BlastRadius, DependencyGraph
 from ...utils import setup_logger
 from ...utils.test_detection import is_test_file as _is_test_file
 from ..utils.format_helper import apply_toon_format_to_response
-from ._graph_cache_fingerprint import GraphFingerprint, compute_graph_fingerprint
+from ._graph_cache_fingerprint import (
+    GraphFingerprint,
+    compute_graph_fingerprint,
+    is_ast_index_stale,
+)
 from .base_tool import BaseMCPTool
 from .query_symbol_search import execute_find_references
 
@@ -42,6 +46,15 @@ TOOL_SCHEMA: dict[str, Any] = {
             "type": "string",
             "enum": ["json", "toon"],
             "default": "toon",
+        },
+        "file_paths": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Informational only — symbol-lineage always searches the whole "
+                "project. Passing file_paths adds a scope_note to the response "
+                "to signal that this parameter is not a scope filter here."
+            ),
         },
     },
     "required": ["symbol"],
@@ -289,6 +302,10 @@ class SymbolLineageTool(BaseMCPTool):
         symbol = arguments["symbol"].strip()
         max_depth = int(arguments.get("max_depth", 3))
         output_format = arguments.get("output_format", "toon")
+        # #756: file_paths is accepted in the schema (so MCP callers don't
+        # get schema-validation errors) but symbol-lineage is always
+        # project-wide — it does not scope results to listed paths.
+        file_paths = arguments.get("file_paths") or []
 
         self._validate_project_root()
         # H4 fix: refresh dep graph (clears _symbol_cache on rebuild) before
@@ -336,6 +353,16 @@ class SymbolLineageTool(BaseMCPTool):
             hierarchy=self._hierarchy_for(symbol),
         )
 
+        # #756: when the caller provided file_paths, emit a scope_note so they
+        # know results are project-wide and file_paths is not a scope filter
+        # for symbol-lineage.
+        if file_paths:
+            response["scope_note"] = (
+                "symbol-lineage always searches the whole project. "
+                "file_paths is not a scope filter here — all project files "
+                "are included in the result regardless of this parameter."
+            )
+
         return self._finalize_and_cache_response(
             response, (symbol, max_depth), started, output_format
         )
@@ -374,7 +401,7 @@ class SymbolLineageTool(BaseMCPTool):
     async def _collect_definitions_and_refs(
         self, symbol: str
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Find references, reclassify (H12), then run K3 grep fallback for missing defs."""
+        """Find references, reclassify (H12), K3 grep fallback, and #757 caller enrichment."""
         ref_args = {"symbol": symbol, "output_format": "json"}
         refs_result = await execute_find_references(self.project_root, ref_args)
 
@@ -397,6 +424,15 @@ class SymbolLineageTool(BaseMCPTool):
             definitions, references = _apply_grep_fallback_defs(
                 definitions, references, str(self.project_root), symbol
             )
+
+        # #757: ``execute_find_references`` walks AST *elements* (imports,
+        # definitions) but NOT call-site edges — so reference_count only
+        # counts import statements, not actual callers.  Enrich with the
+        # call graph to surface real call sites.
+        references = _enrich_references_with_callers(
+            references, str(self.project_root), symbol
+        )
+
         return definitions, references
 
     @staticmethod
@@ -505,19 +541,16 @@ class SymbolLineageTool(BaseMCPTool):
             # (WinError 32: index.db locked at tmp teardown otherwise).
             if cache is not None:
                 cache.close()
-        # #692: freshness signal — compare source max mtime against index mtime.
-        # Prefer the already-computed dep-graph fingerprint (avoids a second
-        # tree walk); fall back to compute_graph_fingerprint if not available.
-        if self._dep_graph_fingerprint is not None:
-            source_max_mtime_ns = self._dep_graph_fingerprint.max_mtime_ns
-        else:
-            source_max_mtime_ns = compute_graph_fingerprint(
-                str(self.project_root)
-            ).max_mtime_ns
+        # #703: authoritative staleness — query each indexed file's recorded
+        # mtime_ns and compare against on-disk. Language-complete: covers Kotlin,
+        # Ruby, PHP, Swift, etc. that _SOURCE_EXTS-based fingerprinting missed.
+        # Falls back to the old fingerprint approach if the index is absent.
         index_mtime_ns = self._index_signature()
-        # Treat index_mtime_ns == 0 as stale (hierarchy was built from an
-        # in-memory cache; we can't verify freshness without a real index file).
-        stale = source_max_mtime_ns > index_mtime_ns or index_mtime_ns == 0
+        if index_mtime_ns == 0:
+            # No index at all → stale (hierarchy built from in-memory cache).
+            stale = True
+        else:
+            stale = is_ast_index_stale(str(self.project_root))
         hier: dict[str, Any] = {
             "subclasses": subs[:_HIER_LIMIT],
             "subclass_count": len(subs),
@@ -862,6 +895,72 @@ def _assess_risk(
         level = "high"
 
     return {"level": level, "score": score, "reasons": reasons}
+
+
+def _enrich_references_with_callers(
+    references: list[dict[str, Any]],
+    project_root: str,
+    symbol: str,
+) -> list[dict[str, Any]]:
+    """#757: augment AST-element references with real call-site callers.
+
+    ``execute_find_references`` walks AST *elements* (imports, definitions)
+    but not call-edge rows, so its references[] contains only import
+    statements — never actual call sites.  The call graph (populated by
+    ``index_project``) stores every call edge as a row with
+    ``caller_name / caller_file / caller_line``.  Querying it yields the
+    real callers that the AST-element walk misses.
+
+    Deduplication is by ``(file, start_line)`` so an AST import hit at
+    the same position as a call-graph edge is not double-counted.
+
+    Returns a new list (immutable input) with call-site rows appended.
+    """
+    bare_name = symbol.rsplit(".", 1)[-1]
+    try:
+        from ...ast_cache import ASTCache
+
+        cache = ASTCache(project_root)
+        if not cache.has_call_edges():
+            cache.close()
+            return references
+        raw_callers = cache.query_callers(bare_name)
+        cache.close()
+    except Exception:  # nosec BLE001 — degrade gracefully; no callers added
+        return references
+
+    if not raw_callers:
+        return references
+
+    # Build a seen-key set from existing references to avoid duplicates.
+    seen: set[tuple[str, int]] = {
+        (r.get("file", ""), int(r.get("start_line", 0))) for r in references
+    }
+
+    new_refs = list(references)
+    for edge in raw_callers:
+        caller_name = edge.get("caller_name", "")
+        caller_file = edge.get("caller_file", "")
+        caller_line = int(edge.get("caller_line", 0))
+        # Skip unattributed call sites (module-level callers with no
+        # enclosing function — same rule as callers_tool #638 fix).
+        if not caller_name or not caller_file:
+            continue
+        key = (caller_file, caller_line)
+        if key in seen:
+            continue
+        seen.add(key)
+        new_refs.append(
+            {
+                "name": caller_name,
+                "type": "call_site",
+                "file": caller_file,
+                "start_line": caller_line,
+                "end_line": caller_line,
+                "role": "caller",
+            }
+        )
+    return new_refs
 
 
 # K3 fallback: project-wide text scan for definition sites. Used when

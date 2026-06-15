@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -203,3 +204,180 @@ class TestContentHashComparison:
         os.utime(str(main_py), times=None)
         result = sync.sync()
         assert result.updated_files == 0
+
+
+class TestRecursionErrorHandling:
+    """Issue #805: RecursionError from deeply-nested AST must not abort sync."""
+
+    def test_recursion_error_in_one_file_does_not_abort_sync(self, project, cache):
+        """A RecursionError in index_file must be caught per-file; sibling files
+        must still be indexed and the error count must equal exactly 1."""
+        src = project / "src"
+        # pathological.py triggers RecursionError; good.py must still be indexed.
+        (src / "pathological.py").write_text("x = 1\n")
+        (src / "good.py").write_text("def ok(): pass\n")
+
+        original_index_file = cache.index_file
+
+        def _boom_on_pathological(path, language=None):
+            if "pathological" in path:
+                raise RecursionError("maximum recursion depth exceeded")
+            return original_index_file(path, language)
+
+        sync = IncrementalSync(cache)
+        with patch.object(cache, "index_file", side_effect=_boom_on_pathological):
+            result = sync.sync()
+
+        # Exactly 1 file must have errored — not more, not less.
+        assert result.errors == 1
+        # The total new-file attempts includes all files; the pathological one
+        # is counted as an attempt but ends in error.
+        # good.py (+ the original 3 fixtures) must have been attempted and
+        # succeeded; the pathological file must appear in details as an error.
+        error_details = [d for d in result.details if d.get("status") == "error"]
+        assert len(error_details) == 1
+        assert "pathological" in error_details[0]["file"]
+        # The error detail must carry exception type and message (Issue #806).
+        assert "RecursionError" in error_details[0].get("error_type", "")
+        assert error_details[0].get("error_message") != ""
+
+    def test_recursion_error_detail_has_file_attribution(self, project, cache):
+        """Error envelope must contain file path (Issue #806 partial fix)."""
+        src = project / "src"
+        (src / "deep_nest.py").write_text("y = 2\n")
+
+        original_index_file = cache.index_file
+
+        def _boom(path, language=None):
+            if "deep_nest" in path:
+                raise RecursionError("max depth")
+            return original_index_file(path, language)
+
+        sync = IncrementalSync(cache)
+        with patch.object(cache, "index_file", side_effect=_boom):
+            result = sync.sync()
+
+        error_details = [d for d in result.details if d.get("status") == "error"]
+        assert len(error_details) == 1
+        detail = error_details[0]
+        assert "deep_nest" in detail["file"]
+        assert detail.get("error_type") == "RecursionError"
+
+
+class TestAnyExceptionDoesNotAbortSync:
+    """Issue #806: non-RecursionError per-file exceptions must not abort the whole sync."""
+
+    def test_value_error_in_one_file_does_not_abort_sync(self, project, cache):
+        """A ValueError in index_file must be caught; sibling files must still be indexed."""
+        src = project / "src"
+        (src / "bad.py").write_text("x = 1\n")
+        (src / "good.py").write_text("def ok(): pass\n")
+
+        original_index_file = cache.index_file
+
+        def _boom_on_bad(path, language=None):
+            if "bad.py" in path:
+                raise ValueError("unexpected content")
+            return original_index_file(path, language)
+
+        sync = IncrementalSync(cache)
+        with patch.object(cache, "index_file", side_effect=_boom_on_bad):
+            result = sync.sync()
+
+        assert result.errors == 1
+        error_details = [d for d in result.details if d.get("status") == "error"]
+        assert len(error_details) == 1
+        assert "bad.py" in error_details[0]["file"]
+        assert error_details[0].get("error_type") == "ValueError"
+        assert error_details[0].get("error_message") == "unexpected content"
+
+    def test_os_error_in_one_file_does_not_abort_sync(self, project, cache):
+        """An OSError in index_file must be caught; remaining files still indexed."""
+        src = project / "src"
+        (src / "unreadable.py").write_text("y = 2\n")
+
+        original_index_file = cache.index_file
+
+        def _boom_os(path, language=None):
+            if "unreadable" in path:
+                raise OSError("permission denied")
+            return original_index_file(path, language)
+
+        sync = IncrementalSync(cache)
+        with patch.object(cache, "index_file", side_effect=_boom_os):
+            result = sync.sync()
+
+        assert result.errors == 1
+        error_details = [d for d in result.details if d.get("status") == "error"]
+        assert len(error_details) == 1
+        assert "unreadable" in error_details[0]["file"]
+        assert error_details[0].get("error_type") == "OSError"
+
+
+class TestSavepointRollbackOnPartialWrite:
+    """Issue #886: savepoint must roll back partial ast_index writes on mid-write failure.
+
+    Scenario: index_file inserts into ast_index then raises before conn.commit().
+    Without a savepoint, the outer sync's final commit picks up the partial row —
+    the file then appears as "unchanged" on the next sync, hiding missing symbols.
+    """
+
+    def test_partial_write_rolled_back_so_next_sync_treats_file_as_new(
+        self, project, cache
+    ):
+        src = project / "src"
+        (src / "flaky.py").write_text("def boom(): pass\n")
+
+        original_write_imports = cache._write_imports_for_file
+
+        def _fail_after_ast_index(conn, rel_path, language, imports):
+            if "flaky.py" in rel_path:
+                # Simulate failure AFTER ast_index INSERT but BEFORE conn.commit().
+                raise RuntimeError("simulated mid-write failure")
+            return original_write_imports(conn, rel_path, language, imports)
+
+        sync = IncrementalSync(cache)
+        with patch.object(
+            cache, "_write_imports_for_file", side_effect=_fail_after_ast_index
+        ):
+            result = sync.sync()
+
+        assert result.errors == 1
+
+        # #886: savepoint must have rolled back the partial ast_index row so
+        # the file does NOT silently appear unchanged on the next sync.
+        conn = cache.get_conn()
+        row = conn.execute(
+            "SELECT file_path FROM ast_index WHERE file_path LIKE '%flaky.py'",
+        ).fetchone()
+        assert row is None, (
+            "ast_index must have no row for flaky.py after a mid-write rollback"
+        )
+
+    def test_second_sync_reindexes_file_after_savepoint_rollback(self, project, cache):
+        src = project / "src"
+        (src / "fragile.py").write_text("def ok(): pass\n")
+
+        original_write_imports = cache._write_imports_for_file
+        call_count = {"n": 0}
+
+        def _fail_once(conn, rel_path, language, imports):
+            if "fragile.py" in rel_path and call_count["n"] == 0:
+                call_count["n"] += 1
+                raise RuntimeError("first attempt fails")
+            return original_write_imports(conn, rel_path, language, imports)
+
+        sync = IncrementalSync(cache)
+        with patch.object(cache, "_write_imports_for_file", side_effect=_fail_once):
+            first_result = sync.sync()
+
+        assert first_result.errors == 1
+
+        # Second sync must index fragile.py as NEW (not see it as unchanged).
+        second_result = sync.sync()
+        new_file_names = [
+            d["file"] for d in second_result.details if d.get("considered") == "indexed"
+        ]
+        assert any("fragile.py" in f for f in new_file_names), (
+            f"fragile.py must be re-indexed as new on second sync; got {new_file_names}"
+        )

@@ -37,6 +37,11 @@ _TRUNCATION_NOTE = (
     "%% Pass a higher max_edges value to see more, or use file_path / class_name to scope."
 )
 
+# Bug #788: error paths in activity_diagram must NOT emit a bare "flowchart TD\n"
+# because consumers cannot distinguish it from a valid empty diagram. Use this
+# sentinel string instead so the mermaid is always parseable and self-describing.
+_ACTIVITY_NOT_FOUND_MERMAID = 'flowchart TD\n  not_found["No activity flow found"]'
+
 
 @dataclass(frozen=True)
 class UMLEdge:
@@ -371,7 +376,7 @@ class UMLExporter:
         return UMLDiagram(
             diagram_type="activity",
             mermaid_type="flowchart",
-            mermaid="flowchart TD\n",
+            mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
             nodes=[],
             edges=[],
             metadata={
@@ -417,6 +422,8 @@ class UMLExporter:
 
         internal_names = {c.get("name", "") for c in classes if c.get("name")}
         raw_edges: list[UMLEdge] = []
+        # Bug #789: track test edges separately for whole-project include_tests view
+        raw_test_edges: list[UMLEdge] = []
         nodes: set[str] = set()
 
         # Determine scope label for metadata
@@ -449,15 +456,35 @@ class UMLExporter:
                     continue
 
             nodes.add(child)
+            child_is_test = is_test_file(cls.get("file"))
             for parent_text in cls.get("parents") or []:
                 parent = str(parent_text).rsplit(".", 1)[-1]
                 if parent in internal_names or (
                     include_external_bases and parent in _EXTERNAL_BASES
                 ):
                     nodes.add(parent)
-                    raw_edges.append(UMLEdge(parent, child, "inherits"))
+                    edge = UMLEdge(parent, child, "inherits")
+                    # Bug #789: when include_tests=True in whole-project view,
+                    # separate test-child edges so production edges are prioritised
+                    # first during clamping. Test classes fill remaining slots.
+                    if include_tests and scope == "whole_project" and child_is_test:
+                        raw_test_edges.append(edge)
+                    else:
+                        raw_edges.append(edge)
 
-        edges, truncated = _clamp_edges(raw_edges, max_edges)
+        # Bug #789: production edges first; test edges fill remaining capacity.
+        if raw_test_edges:
+            prod_edges, prod_truncated = _clamp_edges(raw_edges, max_edges)
+            remaining = max_edges - len(prod_edges)
+            if remaining > 0:
+                test_edges, test_truncated = _clamp_edges(raw_test_edges, remaining)
+                edges = prod_edges + test_edges
+                truncated = prod_truncated or test_truncated
+            else:
+                edges = prod_edges
+                truncated = prod_truncated or bool(raw_test_edges)
+        else:
+            edges, truncated = _clamp_edges(raw_edges, max_edges)
         rendered_nodes = sorted(
             {n for edge in edges for n in (edge.source, edge.target)}
         )
@@ -581,7 +608,11 @@ class UMLExporter:
             mermaid=render_sequence_mermaid(paths, max_hops),
             nodes=nodes,
             edges=edges,
-            truncated=result.truncated or len(first_hops) > max_hops,
+            # Bug #787: truncated reflects only whether hop list was clipped in
+            # the rendered diagram (len > max_hops). result.truncated refers to
+            # BFS path-count truncation, not hop truncation — inheriting it
+            # causes truncated=True on a 2-node/1-edge complete path.
+            truncated=len(first_hops) > max_hops,
             metadata={
                 "source": source_label,
                 "analysis_kind": "static_approximation",
@@ -638,7 +669,9 @@ class UMLExporter:
                 return UMLDiagram(
                     diagram_type="activity",
                     mermaid_type="flowchart",
-                    mermaid="flowchart TD\n",
+                    # Bug #788: use non-degenerate mermaid so consumers see a
+                    # self-describing diagram, not a bare "flowchart TD\n".
+                    mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
                     nodes=[],
                     edges=[],
                     metadata={
@@ -655,7 +688,7 @@ class UMLExporter:
                 return UMLDiagram(
                     diagram_type="activity",
                     mermaid_type="flowchart",
-                    mermaid="flowchart TD\n",
+                    mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
                     nodes=[],
                     edges=[],
                     metadata={
@@ -671,7 +704,7 @@ class UMLExporter:
                 return UMLDiagram(
                     diagram_type="activity",
                     mermaid_type="flowchart",
-                    mermaid="flowchart TD\n",
+                    mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
                     nodes=[],
                     edges=[],
                     metadata={
@@ -688,7 +721,7 @@ class UMLExporter:
             return UMLDiagram(
                 diagram_type="activity",
                 mermaid_type="flowchart",
-                mermaid="flowchart TD\n",
+                mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
                 nodes=[],
                 edges=[],
                 metadata={

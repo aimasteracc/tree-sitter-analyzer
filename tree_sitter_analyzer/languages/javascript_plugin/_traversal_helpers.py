@@ -77,6 +77,7 @@ def _container_node_types() -> set[str]:
         "lexical_declaration",
         "variable_declarator",
         "assignment_expression",
+        "field_definition",
     }
 
 

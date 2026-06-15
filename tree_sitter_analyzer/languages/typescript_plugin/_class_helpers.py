@@ -35,6 +35,86 @@ class _InterfaceParts:
     interfaces: list[str] = field(default_factory=list)
 
 
+def _extract_decorator_names(node: tree_sitter.Node) -> list[str]:
+    """Return decorator names (without '@') from direct decorator children of *node*.
+
+    Handles both bare decorators (``@Singleton``) and call-expression decorators
+    (``@Injectable()``).  Only direct ``decorator`` children are inspected so
+    that decorators on nested constructs are not double-counted.
+    """
+    names: list[str] = []
+    for child in node.children:
+        if child.type == "decorator":
+            for grandchild in child.children:
+                if grandchild.type == "identifier":
+                    text = grandchild.text
+                    if text:
+                        names.append(
+                            text.decode("utf-8") if isinstance(text, bytes) else text
+                        )
+                    break
+                elif grandchild.type == "call_expression":
+                    for ggc in grandchild.children:
+                        if ggc.type == "identifier":
+                            text = ggc.text
+                            if text:
+                                names.append(
+                                    text.decode("utf-8")
+                                    if isinstance(text, bytes)
+                                    else text
+                                )
+                        break
+                    break
+    return names
+
+
+def _extract_preceding_decorator_names(node: tree_sitter.Node) -> list[str]:
+    """Return decorator names that appear as siblings immediately before *node*.
+
+    For method decorators the tree-sitter grammar places ``decorator`` nodes
+    as siblings in the enclosing ``class_body``, not as children of the
+    ``method_definition`` itself.  We walk backwards from *node* through its
+    parent's children, collecting consecutive ``decorator`` siblings.
+    """
+    parent = node.parent
+    if parent is None:
+        return []
+
+    children = parent.children
+    try:
+        idx = children.index(node)
+    except ValueError:
+        return []
+
+    names: list[str] = []
+    for sibling in reversed(children[:idx]):
+        if sibling.type != "decorator":
+            break
+        for child in sibling.children:
+            if child.type == "identifier":
+                text = child.text
+                if text:
+                    names.insert(
+                        0,
+                        text.decode("utf-8") if isinstance(text, bytes) else text,
+                    )
+                break
+            elif child.type == "call_expression":
+                for ggc in child.children:
+                    if ggc.type == "identifier":
+                        text = ggc.text
+                        if text:
+                            names.insert(
+                                0,
+                                text.decode("utf-8")
+                                if isinstance(text, bytes)
+                                else text,
+                            )
+                    break
+                break
+    return names
+
+
 def extract_class(
     node: tree_sitter.Node,
     get_node_text: TextExtractor,
@@ -67,6 +147,7 @@ def extract_class(
             framework_type=framework_type,
             is_exported=is_exported_class(parts.name),
             is_abstract=parts.is_abstract,
+            decorators=_extract_decorator_names(node),
         )
     except Exception as e:
         log_debug(f"Failed to extract class info: {e}")

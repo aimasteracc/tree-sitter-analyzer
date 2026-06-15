@@ -339,6 +339,7 @@ class RubyElementExtractor(ElementExtractor):
         "splat_parameter",
         "hash_splat_parameter",
         "block_parameter",
+        "keyword_parameter",  # #768: name: default — was silently dropped
     )
 
     def _extract_ruby_parameters(
@@ -431,13 +432,15 @@ class RubyElementExtractor(ElementExtractor):
 
         variables: list[Variable] = []
 
-        # Iterative traversal
-        stack: list[tuple[tree_sitter.Node, str]] = [(tree.root_node, "")]
+        # Stack carries (node, parent_class, in_non_init_method).
+        # in_non_init_method=True means we are inside a method body that is
+        # NOT initialize — assignments there are local state, not fields (#770).
+        stack: list[tuple[tree_sitter.Node, str, bool]] = [(tree.root_node, "", False)]
 
         while stack:
-            node, parent_class = stack.pop()
+            node, parent_class, in_non_init_method = stack.pop()
 
-            if node.type == "assignment":
+            if node.type == "assignment" and not in_non_init_method:
                 var_elem = self._extract_assignment_variable(node, parent_class)
                 if var_elem:
                     variables.append(var_elem)
@@ -449,9 +452,21 @@ class RubyElementExtractor(ElementExtractor):
                 if resolved_name is not None:
                     new_parent = resolved_name
 
+            # Determine whether children are inside a non-initialize method.
+            # singleton_method is always a class method — never a field source.
+            new_in_non_init = in_non_init_method
+            if node.type == "method":
+                name_node = node.child_by_field_name("name")
+                method_name = (
+                    self._get_node_text_optimized(name_node) if name_node else ""
+                )
+                new_in_non_init = method_name != "initialize"
+            elif node.type == "singleton_method":
+                new_in_non_init = True
+
             # Add children to stack
             for child in reversed(node.children):
-                stack.append((child, new_parent))
+                stack.append((child, new_parent, new_in_non_init))
 
         return variables
 
@@ -474,13 +489,24 @@ class RubyElementExtractor(ElementExtractor):
             if not left_node:
                 return None
 
+            # #770: only emit real Ruby fields — @ivar, @@cvar, CONSTANT.
+            # Silently drop local identifiers, qualified targets (recv.attr=),
+            # and element-reference targets (recv[key]=).
+            # #902 Codex P2: also allow scope_resolution for scoped constant
+            # assignments such as ``Config::DEFAULT_TIMEOUT = 30``.
+            if left_node.type not in (
+                "instance_variable",
+                "class_variable",
+                "constant",
+                "scope_resolution",
+            ):
+                return None
+
             var_text = self._get_node_text_optimized(left_node)
 
             # Determine variable type
-            is_constant = left_node.type == "constant"
-            # is_instance_var = var_text.startswith("@") and not var_text.startswith("@@")  # Reserved for future use
-            is_class_var = var_text.startswith("@@")
-            # is_global = var_text.startswith("$")  # Reserved for future use
+            is_constant = left_node.type in ("constant", "scope_resolution")
+            is_class_var = left_node.type == "class_variable"
 
             # Clean variable name
             name = var_text.lstrip("@$")
@@ -649,6 +675,7 @@ class RubyPlugin(LanguagePlugin):
                 file_path=file_path,
                 success=True,
                 elements=all_elements,
+                line_count=len(content.splitlines()),
                 node_count=self._count_nodes(tree.root_node),
             )
         except Exception as e:

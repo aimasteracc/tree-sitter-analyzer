@@ -88,10 +88,10 @@ class TestFindLongBlocksHeuristic:
     def test_long_function_detected(self) -> None:
         lines = ["def long_fn():"] + ["    x = 1"] * 60
         result = find_long_blocks_heuristic(lines, threshold=50)
-        assert len(result) >= 1
+        assert len(result) == 1
         name, start, length = result[0]
         assert name == "long_fn"
-        assert length > 50
+        assert length == 61
 
     def test_multiple_functions_tracks_each(self) -> None:
         lines = (
@@ -107,7 +107,7 @@ class TestFindLongBlocksHeuristic:
     def test_async_def_detected(self) -> None:
         lines = ["async def long_async():"] + ["    await x"] * 60
         result = find_long_blocks_heuristic(lines, threshold=50)
-        assert len(result) >= 1
+        assert len(result) == 1
         assert result[0][0] == "long_async"
 
     def test_results_sorted_by_length_descending(self) -> None:

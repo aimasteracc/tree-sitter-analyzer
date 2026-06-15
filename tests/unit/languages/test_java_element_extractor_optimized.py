@@ -79,6 +79,8 @@ def _assert_method_extracted(result) -> None:
     assert result.complexity_score == 2
     assert result.is_abstract is False
     assert result.is_final is False
+    # #740: Java methods inside a class must have is_method=True
+    assert result.is_method is True
 
 
 def _assert_field_extracted(result) -> None:
@@ -576,6 +578,7 @@ class UserConfig {
             assert result.name == "UserService"
             assert result.is_constructor is True
             assert result.return_type == "void"
+            assert result.is_method is True
 
     def test_extract_field_optimized_complete(self, extractor):
         """Test complete field extraction"""

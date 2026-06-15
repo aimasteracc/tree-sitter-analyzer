@@ -268,7 +268,18 @@ class KotlinElementExtractor(ElementExtractor):
         )
 
     def _extract_property(self, node: tree_sitter.Node) -> Variable | None:
-        """Extract property declaration"""
+        """Extract property declaration.
+
+        Issue #759: Local val/var declarations inside function bodies share the
+        same ``property_declaration`` node type as class fields.  The recursive
+        traversal visits them all.  Skip any property whose immediate parent is
+        a ``block`` node — that is the body of a function, if-branch, or loop.
+        Class-body properties live directly under ``class_body``; top-level
+        properties live directly under ``source_file``.
+        """
+        parent = node.parent
+        if parent is not None and parent.type == "block":
+            return None
         return _extract_prop_standalone(node, self._get_node_text)
 
     def _extract_import(self, node: tree_sitter.Node) -> Import | None:

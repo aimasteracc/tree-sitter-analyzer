@@ -75,7 +75,9 @@ def test_scala_corpus_extracts_symbols() -> None:
     # grammar-version bump that changes these counts MUST fail the test
     # and force a conscious re-pin, not pass silently.
     assert len(elements["functions"]) == 66
-    assert len(elements["classes"]) == 33
+    assert (
+        len(elements["classes"]) == 38
+    )  # +5 from enum/given/type extraction (#762 #764)
     assert len(elements["imports"]) == 3
 
 

@@ -585,7 +585,9 @@ class ASTCache:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         if not self._fts5_available:
-            return self._search_symbols_linear(query, language)
+            # Linear fallback has no SQL LIMIT — cap here so truncation
+            # detection in callers (len >= limit) is reliable.
+            return self._search_symbols_linear(query, language)[:limit]
         return _fts_search(self._get_conn(), query, language, limit)
 
     def fts_search_ranked(
@@ -600,7 +602,7 @@ class ASTCache:
         Results include a ``relevance_score`` field in [0.0, 1.0].
         """
         if not self._fts5_available or len(query) < 2:
-            return self._search_symbols_linear(query, language)
+            return self._search_symbols_linear(query, language)[:limit]
         return _fts_search_ranked(self._get_conn(), query, language, limit)
 
     def _search_symbols_linear(

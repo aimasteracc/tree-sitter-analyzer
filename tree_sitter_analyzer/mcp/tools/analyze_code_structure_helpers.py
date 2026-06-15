@@ -88,10 +88,47 @@ def _parse_string_parameter(param_str: str) -> dict[str, str] | None:
     Handles the default-valued forms #533 introduced (Codex P2 on #581):
     ``limit = 10`` and ``breed: str = "Mixed"`` must not be whitespace-split
     into ``{"name": "10", "type": "limit ="}``.
+
+    Destructuring patterns (``{ x, y }`` / ``[a, b]``) are preserved whole
+    as the parameter name so they are not torn apart by whitespace splitting
+    (issue #745).
     """
     text = param_str.strip()
     if not text:
         return None
+    # Destructuring patterns must not be whitespace-split (#745).
+    # Parse optional `: Type` or `= default` that may follow the closing bracket.
+    if text.startswith("{") or text.startswith("["):
+        open_char = text[0]
+        close_char = "}" if open_char == "{" else "]"
+        depth = 0
+        close_idx = -1
+        for i, ch in enumerate(text):
+            if ch == open_char:
+                depth += 1
+            elif ch == close_char:
+                depth -= 1
+                if depth == 0:
+                    close_idx = i
+                    break
+        if close_idx >= 0:
+            pattern = text[: close_idx + 1].strip()
+            rest = text[close_idx + 1 :].strip()
+            entry_d: dict[str, str] = {"name": pattern, "type": ""}
+            if rest.startswith("="):
+                entry_d["default"] = rest[1:].strip()
+            elif rest.startswith(":"):
+                type_and_default = rest[1:].strip()
+                if "=" in type_and_default:
+                    type_part, default_part = (
+                        s.strip() for s in type_and_default.split("=", 1)
+                    )
+                    entry_d["type"] = type_part
+                    entry_d["default"] = default_part
+                else:
+                    entry_d["type"] = type_and_default
+            return entry_d
+        return {"name": text, "type": ""}
     default: str | None = None
     if "=" in text:
         head, default = (s.strip() for s in text.split("=", 1))
