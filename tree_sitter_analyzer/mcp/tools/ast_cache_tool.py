@@ -494,6 +494,10 @@ class ASTCacheTool(BaseMCPTool):
             raw_results = cache.fts_search_ranked(query, language=language, limit=limit)
         else:
             raw_results = cache.fts_search(query, language=language, limit=limit)
+        # #737: measure truncation BEFORE _apply_legacy_import_split — that helper
+        # can expand rows (multi-symbol imports), so post-split len may exceed limit
+        # even without the DB capping results, producing a false positive.
+        truncated = len(raw_results) >= limit
         # K7: defensively split legacy multi-symbol import rows.
         results = _apply_legacy_import_split(raw_results)
         summary_line = (
@@ -521,6 +525,7 @@ class ASTCacheTool(BaseMCPTool):
             "query": query,
             "results": results,
             "count": len(results),
+            "truncated": truncated,
             "fts5_available": fts5_available,
         }
         if use_ranked and results:
