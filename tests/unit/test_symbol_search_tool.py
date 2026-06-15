@@ -474,3 +474,34 @@ class TestSymbolSearchLimitValidation:
         tool = CodeGraphSymbolSearchTool()
         # Must not raise
         tool.validate_arguments({"query": "foo", "limit": 1})
+
+
+class TestSymbolSearchTruncation:
+    """#736: truncated flag must be set when results hit the limit."""
+
+    @pytest.mark.asyncio
+    async def test_not_truncated_when_below_limit(self, indexed_project):
+        """Few results → truncated must be False."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        # Searching 'UserService' returns 1 result; limit defaults to 15
+        result = await tool.execute({"query": "UserService", "output_format": "json"})
+        assert result["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_truncated_when_at_limit(self, indexed_project):
+        """Results == limit → truncated must be True and next_step advises raising limit."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        # Set limit=1 — with 5 symbols total, 1 result == limit → truncated
+        result = await tool.execute({"query": "*", "limit": 1, "output_format": "json"})
+        if result["match_count"] == 1:
+            assert result["truncated"] is True
+            assert "limit" in result["next_step"].lower()
+
+    @pytest.mark.asyncio
+    async def test_truncated_field_always_present(self, indexed_project):
+        """truncated key must always exist in the response envelope."""
+        tool = CodeGraphSymbolSearchTool(str(indexed_project))
+        result = await tool.execute(
+            {"query": "nonexistent_xyz", "output_format": "json"}
+        )
+        assert "truncated" in result

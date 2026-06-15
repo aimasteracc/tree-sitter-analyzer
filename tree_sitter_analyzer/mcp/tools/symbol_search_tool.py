@@ -145,6 +145,10 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         cache = self._get_cache()
 
         raw_results = self._search(cache, query, language, kind, limit)
+        # #736: measure truncation BEFORE folding — folding can reduce duplicates
+        # below limit and produce a false-positive; checking the raw DB row count
+        # correctly signals that the query hit the cap.
+        truncated = len(raw_results) >= limit
 
         results = self._apply_kind_filter(raw_results, kind)
         # Issue #443: fold duplicate imports and rank definitions first
@@ -177,11 +181,17 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             # actions. ``match_count`` stays for back-compat.
             "count": len(results),
             "file_count": len(by_file),
+            "truncated": truncated,
             "results": results,
             "data_source": "fts5" if cache.fts5_available else "linear_scan",
         }
         if results:
-            if search_deterrent:
+            if truncated:
+                result["next_step"] = (
+                    f"Results capped at limit={limit}. Raise --symbol-search-limit "
+                    f"(or the `limit` parameter) to see more matches."
+                )
+            elif search_deterrent:
                 result["next_step"] = search_deterrent
             else:
                 result["next_step"] = (
