@@ -288,6 +288,22 @@ object Api:
         assert classes["Hidden"].visibility == "protected"
         assert "protected" in classes["Hidden"].modifiers
 
+    def test_qualified_access_class_visibility_is_private(self) -> None:
+        # #961 regression: ``_scala_modifiers`` yields the literal token
+        # ``private[pkg]`` (not bare ``private``), so the exact-membership
+        # check reported ``public``. Match the keyword as a prefix instead.
+        classes = _classes("private[pkg] class Secret(x: Int)\n")
+        assert classes["Secret"].visibility == "private"
+
+    def test_qualified_access_protected_def_visibility(self) -> None:
+        functions = _functions(
+            """\
+object O:
+  protected[this] def f(): Int = 1
+"""
+        )
+        assert functions["f"].visibility == "protected"
+
     def test_anonymous_givens_use_distinct_type_based_names(self) -> None:
         classes = _classes(
             """\

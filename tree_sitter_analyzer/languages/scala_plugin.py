@@ -827,11 +827,17 @@ class ScalaElementExtractor(ElementExtractor):
         Scans for the first ``modifiers`` child and checks its text for
         the explicit keywords. Defaults to ``public`` when no modifiers
         node is present or contains neither keyword.
+
+        Qualified-access modifiers such as ``private[pkg]`` /
+        ``protected[this]`` are emitted by ``_scala_modifiers`` as the
+        single literal token ``private[pkg]`` (not a bare ``private``), so
+        match the keyword as a prefix rather than by exact membership —
+        otherwise ``private[pkg] class Secret`` is misreported as public.
         """
         modifiers = self._scala_modifiers(node)
-        if "private" in modifiers:
+        if any(m == "private" or m.startswith("private[") for m in modifiers):
             return "private"
-        if "protected" in modifiers:
+        if any(m == "protected" or m.startswith("protected[") for m in modifiers):
             return "protected"
         return "public"
 

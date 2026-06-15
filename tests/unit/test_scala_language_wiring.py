@@ -98,3 +98,36 @@ def test_ast_cache_indexes_scala_file() -> None:
         cache.close()
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+def test_ast_cache_path_excludes_method_local_given_and_type() -> None:
+    """#961: the shared ast_cache walk (``_extract_symbols``) must NOT emit a
+    ``given``/``type`` declared inside a method body as a top-level symbol —
+    matching the plugin path (``test_local_given_and_type_inside_method_are_
+    not_members``). Top-level constructs in the same file still ARE emitted.
+    """
+    import tree_sitter
+
+    from tree_sitter_analyzer._ast_extraction import _extract_symbols
+    from tree_sitter_analyzer.languages.scala_plugin import ScalaPlugin
+
+    code = """object Ops:
+  def configure(): Unit =
+    given localOrdering: Ordering[Int] = Ordering.Int
+    type LocalAlias = String
+
+  given topGiven: Int = 1
+  type TopAlias = String
+"""
+    lang = ScalaPlugin().get_tree_sitter_language()
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(code.encode("utf-8"))
+    names = [s["name"] for s in _extract_symbols(tree, code, "scala")["symbols"]]
+
+    # Method-local declarations must NOT leak as top-level symbols.
+    assert "localOrdering" not in names
+    assert "LocalAlias" not in names
+    # Top-level constructs in the same file are still emitted.
+    assert "Ops" in names
+    assert "topGiven" in names
+    assert "TopAlias" in names
