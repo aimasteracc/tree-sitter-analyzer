@@ -260,6 +260,33 @@ def test_dependency_matrix_unstable_cli(monkeypatch) -> None:
     assert seen["arguments"]["threshold"] == 0.8
 
 
+def test_symbol_lineage_empty_string_returns_error_not_usage_dump() -> None:
+    """#863: --symbol-lineage "" must emit a clean validation error, not a usage dump."""
+    errors: list[str] = []
+    result = mcp_commands.handle_mcp_commands(
+        _args(symbol_lineage=""),
+        lambda payload: None,
+        errors.append,
+        lambda: "json",
+    )
+    assert result == 1
+    assert len(errors) == 1
+    assert "symbol" in errors[0].lower() or "empty" in errors[0].lower()
+
+
+def test_symbol_lineage_whitespace_only_returns_error() -> None:
+    """#863: --symbol-lineage '   ' is treated the same as empty."""
+    errors: list[str] = []
+    result = mcp_commands.handle_mcp_commands(
+        _args(symbol_lineage="   "),
+        lambda payload: None,
+        errors.append,
+        lambda: "json",
+    )
+    assert result == 1
+    assert len(errors) == 1
+
+
 def test_dependency_matrix_file_cli(monkeypatch) -> None:
     seen: dict[str, Any] = {}
 

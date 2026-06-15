@@ -125,6 +125,8 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="symbol_lineage",
         tool_attr="SymbolLineageTool",
         label="Symbol lineage and impact preview",
+        value_arg_name="symbol_lineage",
+        required_value_error="--symbol-lineage: symbol must not be empty",
         build_tool_args=lambda args, output_format: {
             "symbol": getattr(args, "symbol_lineage", "") or "",
             "max_depth": getattr(args, "max_depth", 3),

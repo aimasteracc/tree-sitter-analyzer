@@ -263,6 +263,22 @@ def _collect_path_functions(
     return ordered
 
 
+def _lang_hint_for_path(path: str) -> str:
+    """Language hint for ``path``, treating ``.h`` headers as ``cpp``.
+
+    Plain C headers (``.h``) map to ``"c"`` via ``language_from_path``, but
+    headers are included by both C and C++ callers.  Using ``"c"`` as a
+    path-level fallback hint blocks C++ definitions via the directional rule
+    ``languages_compatible("c", "cpp") == False``.  Mapping ``.h`` → ``"cpp"``
+    keeps the hint permissive: ``languages_compatible("cpp", "c")`` is True, so
+    pure-C definitions are still accepted. (#865)
+    """
+    lang = language_from_path(path)
+    if lang == "c" and path.lower().endswith(".h"):
+        return "cpp"
+    return lang
+
+
 def inline_path_bodies(
     project_root: str,
     cache: Any,
@@ -292,7 +308,10 @@ def inline_path_bodies(
     # missing-file source symbol (e.g. 'execute' with no caller_file) does not
     # fall back to a same-named symbol in a completely unrelated language (e.g.
     # Go runtime proc.go when the path is Python). (#800)
-    path_langs = [language_from_path(fh) for _, fh in functions if fh]
+    # #865: .h headers are ambiguous — included by both C and C++ callers.
+    # Use "cpp" for .h files so the path hint doesn't gate out C++ definitions
+    # via the directional rule languages_compatible("c","cpp") == False.
+    path_langs = [_lang_hint_for_path(fh) for _, fh in functions if fh]
     path_lang_hint = next((lg for lg in path_langs if lg), None)
 
     for name, file_hint in functions:
