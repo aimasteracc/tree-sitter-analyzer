@@ -239,12 +239,13 @@ class IncrementalSync:
         # the cache refused. ``action`` is preserved as a back-compat alias.
         try:
             index_result = self._cache.index_file(abs_path)
-        except RecursionError as exc:
-            # Issue #805: deeply-nested AST triggers unbounded recursion.
-            # Catch per-file so the rest of the sync continues.
+        except Exception as exc:
+            # Issue #806/#805: catch all per-file errors so one pathological
+            # file cannot abort the whole sync and discard accumulated results.
             logger.error(
-                "RecursionError indexing %s (AST too deeply nested): %s",
+                "Error indexing %s (%s): %s",
                 rel_path,
+                type(exc).__name__,
                 exc,
             )
             return {
@@ -272,11 +273,12 @@ class IncrementalSync:
         self._cache.invalidate(abs_path)
         try:
             index_result = self._cache.index_file(abs_path)
-        except RecursionError as exc:
-            # Issue #805: same guard for re-index path.
+        except Exception as exc:
+            # Issue #806/#805: same broad guard for re-index path.
             logger.error(
-                "RecursionError re-indexing %s (AST too deeply nested): %s",
+                "Error re-indexing %s (%s): %s",
                 rel_path,
+                type(exc).__name__,
                 exc,
             )
             return {

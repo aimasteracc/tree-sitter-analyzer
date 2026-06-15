@@ -262,3 +262,53 @@ class TestRecursionErrorHandling:
         detail = error_details[0]
         assert "deep_nest" in detail["file"]
         assert detail.get("error_type") == "RecursionError"
+
+
+class TestAnyExceptionDoesNotAbortSync:
+    """Issue #806: non-RecursionError per-file exceptions must not abort the whole sync."""
+
+    def test_value_error_in_one_file_does_not_abort_sync(self, project, cache):
+        """A ValueError in index_file must be caught; sibling files must still be indexed."""
+        src = project / "src"
+        (src / "bad.py").write_text("x = 1\n")
+        (src / "good.py").write_text("def ok(): pass\n")
+
+        original_index_file = cache.index_file
+
+        def _boom_on_bad(path, language=None):
+            if "bad.py" in path:
+                raise ValueError("unexpected content")
+            return original_index_file(path, language)
+
+        sync = IncrementalSync(cache)
+        with patch.object(cache, "index_file", side_effect=_boom_on_bad):
+            result = sync.sync()
+
+        assert result.errors == 1
+        error_details = [d for d in result.details if d.get("status") == "error"]
+        assert len(error_details) == 1
+        assert "bad.py" in error_details[0]["file"]
+        assert error_details[0].get("error_type") == "ValueError"
+        assert error_details[0].get("error_message") == "unexpected content"
+
+    def test_os_error_in_one_file_does_not_abort_sync(self, project, cache):
+        """An OSError in index_file must be caught; remaining files still indexed."""
+        src = project / "src"
+        (src / "unreadable.py").write_text("y = 2\n")
+
+        original_index_file = cache.index_file
+
+        def _boom_os(path, language=None):
+            if "unreadable" in path:
+                raise OSError("permission denied")
+            return original_index_file(path, language)
+
+        sync = IncrementalSync(cache)
+        with patch.object(cache, "index_file", side_effect=_boom_os):
+            result = sync.sync()
+
+        assert result.errors == 1
+        error_details = [d for d in result.details if d.get("status") == "error"]
+        assert len(error_details) == 1
+        assert "unreadable" in error_details[0]["file"]
+        assert error_details[0].get("error_type") == "OSError"
