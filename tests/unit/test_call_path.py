@@ -408,3 +408,78 @@ class TestCallPathFinderCLI:
             assert False, "Should have raised"
         except ValueError as e:
             assert "target_function" in str(e)
+
+
+class TestCallPathHopCalleFile:
+    """#735: hop callee_file must be the DEFINITION file, not the call-site file."""
+
+    def test_hop_callee_file_is_definition_file_not_caller_file(self, tmp_path):
+        """When callee_resolved_file is set, callee_file in the hop must use it."""
+        edges = [
+            {
+                "caller_name": "index_project",
+                "caller_file": "ast_cache.py",
+                "callee_name": "_commit_index_results",
+                "callee_resolved_file": "_ast_cache_helpers.py",
+            }
+        ]
+        cache = _make_cache_with_edges(tmp_path, edges)
+        finder = CallPathFinder(str(tmp_path), cache=cache)
+        result = finder.find_path(
+            "index_project",
+            "_commit_index_results",
+            source_file="ast_cache.py",
+            direction="forward",
+        )
+        assert len(result.paths) == 1
+        hop = result.paths[0].hops[0]
+        # callee_file must be the definition file, not the call-site file
+        assert hop["callee_file"] == "_ast_cache_helpers.py"
+        assert hop["caller_file"] == "ast_cache.py"
+
+    def test_hop_callee_file_empty_when_resolution_unknown(self, tmp_path):
+        """When callee_resolved_file is empty, callee_file must be '' not the caller's file."""
+        edges = [
+            {
+                "caller_name": "caller_fn",
+                "caller_file": "caller.py",
+                "callee_name": "unknown_callee",
+                "callee_resolved_file": "",  # resolution failed
+            }
+        ]
+        cache = _make_cache_with_edges(tmp_path, edges)
+        finder = CallPathFinder(str(tmp_path), cache=cache)
+        result = finder.find_path(
+            "caller_fn",
+            "unknown_callee",
+            source_file="caller.py",
+            direction="forward",
+        )
+        assert len(result.paths) == 1
+        hop = result.paths[0].hops[0]
+        # When resolution is unknown, callee_file must be '' not 'caller.py'
+        assert hop["callee_file"] == ""
+        assert hop["caller_file"] == "caller.py"
+
+    def test_bidirectional_hop_callee_file_is_definition_file(self, tmp_path):
+        """Same fix must apply in the bidirectional BFS path."""
+        edges = [
+            {
+                "caller_name": "entry",
+                "caller_file": "main.py",
+                "callee_name": "helper",
+                "callee_resolved_file": "lib.py",
+            }
+        ]
+        cache = _make_cache_with_edges(tmp_path, edges)
+        finder = CallPathFinder(str(tmp_path), cache=cache)
+        result = finder.find_path(
+            "entry",
+            "helper",
+            source_file="main.py",
+            direction="bidirectional",
+        )
+        assert len(result.paths) == 1
+        hop = result.paths[0].hops[0]
+        assert hop["callee_file"] == "lib.py"
+        assert hop["caller_file"] == "main.py"
