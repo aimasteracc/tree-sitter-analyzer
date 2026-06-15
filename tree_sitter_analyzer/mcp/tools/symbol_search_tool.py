@@ -29,7 +29,7 @@ DEFAULT_SYMBOL_SEARCH_LIMIT = 15
 
 # Authoritative ``kind`` filter values. Must mirror exactly what
 # ``_extract_symbols`` (tree_sitter_analyzer/_ast_extraction.py) writes into
-# ``ast_symbol_rows`` — function/method/class/variable/import/constant — plus
+# ``ast_symbol_rows`` — function/method/class/enum/variable/import/constant — plus
 # the "any" no-filter default. Exported so the CLI (`--symbol-search-kind`
 # choices) and the ``search`` facade public schema stay in lock-step with this
 # tool's schema (#640: ``kind`` worked at runtime but was undiscoverable).
@@ -37,6 +37,7 @@ SYMBOL_SEARCH_KINDS: tuple[str, ...] = (
     "function",
     "method",
     "class",
+    "enum",
     "variable",
     "import",
     "constant",

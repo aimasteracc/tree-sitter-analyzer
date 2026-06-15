@@ -233,6 +233,16 @@ class Foo {
     assert fn.decorators == []
 
 
+def test_property_decorator_column() -> None:
+    """@Column() on a class field must be captured in Variable.decorators."""
+    tree = _parse(_DECORATOR_CLASS_CODE)
+    extractor = TypeScriptElementExtractor()
+    variables = extractor.extract_variables(tree, _DECORATOR_CLASS_CODE)
+    name_field = next(v for v in variables if v.name == "name")
+
+    assert "Column" in name_field.decorators
+
+
 def test_class_without_decorator_has_empty_list() -> None:
     code = """\
 class Foo {}
@@ -287,3 +297,43 @@ def test_enum_kind_in_ast_extraction() -> None:
         assert sym["kind"] == "enum", (
             f"Expected kind='enum' for {sym['name']!r}, got {sym['kind']!r}"
         )
+
+
+def test_exported_enum_interface_and_type_are_detected() -> None:
+    code = """\
+export enum Status { Active, Inactive }
+export interface Shape {}
+export type Id = string
+class Local {}
+export { Local }
+"""
+    classes = {c.name: c for c in _classes(code)}
+
+    assert classes["Status"].is_exported is True
+    assert classes["Shape"].is_exported is True
+    assert classes["Id"].is_exported is True
+    assert classes["Local"].is_exported is True
+
+
+def test_enum_export_surface_includes_members() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import get_all_exports
+    from tree_sitter_analyzer.models import AnalysisResult
+
+    code = "export enum Status { Active = 'active', Inactive = 'inactive' }"
+    result = AnalysisResult(
+        file_path="status.ts",
+        language="typescript",
+        elements=_classes(code),
+        source_code=code,
+    )
+    exports = get_all_exports(result)
+    enum_export = next(e for e in exports if e["name"] == "Status")
+
+    assert enum_export["kind"] == "enum"
+    assert enum_export["members"] == ["Active", "Inactive"]
+
+
+def test_enum_kind_is_available_in_symbol_search_filters() -> None:
+    from tree_sitter_analyzer.mcp.tools.symbol_search_tool import SYMBOL_SEARCH_KINDS
+
+    assert "enum" in SYMBOL_SEARCH_KINDS
