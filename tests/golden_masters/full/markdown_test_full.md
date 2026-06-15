@@ -65,8 +65,8 @@
 
 | Language | Lines | Line Range |
 |----------|-------|------------|
-| python | 7 | 62-71 |
-| text | 2 | 73-77 |
+| python | 10 | 62-71 |
+| text | 5 | 73-77 |
 | text | 6 | 80-85 |
 
 ## Tables

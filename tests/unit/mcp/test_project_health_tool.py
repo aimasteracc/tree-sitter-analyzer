@@ -340,7 +340,7 @@ class TestF9DescriptionAndBudget:
         # No actual_seconds passed → only the estimate should appear.
         assert "estimated_seconds=" in summary["summary_line"]
         assert "actual_seconds=" not in summary["summary_line"]
-        assert summary["budget_seconds"]["estimated"] > 0
+        assert summary["budget_seconds"]["estimated"] == 90
         assert summary["budget_seconds"]["actual"] is None
 
     def test_agent_summary_summary_line_includes_actual_seconds_when_measured(
@@ -360,7 +360,9 @@ class TestF9DescriptionAndBudget:
         )
         assert "estimated_seconds=" in summary["summary_line"]
         assert "actual_seconds=287.4" in summary["summary_line"]
-        assert summary["budget_seconds"]["estimated"] >= 240  # 3k+ files bucket
+        assert (
+            summary["budget_seconds"]["estimated"] == 360
+        )  # 4.5k files → 5min+ bucket
         assert summary["budget_seconds"]["actual"] == 287.4
 
     def test_estimate_seconds_scales_with_project_size(self) -> None:
@@ -374,7 +376,7 @@ class TestF9DescriptionAndBudget:
         assert _estimate_seconds(500) <= _estimate_seconds(2500)
         assert _estimate_seconds(2500) <= _estimate_seconds(5000)
         # 4k-file repo (round-16b case) should land in the 5min+ bucket.
-        assert _estimate_seconds(4500) >= 300
+        assert _estimate_seconds(4500) == 360
 
 
 class TestQ4ProjectHealthExcludesNonCode:
@@ -598,6 +600,70 @@ class TestBug783VerdictCoherence:
                 f"top={result['verdict']!r}, "
                 f"agent={result['agent_summary']['verdict']!r}"
             )
+
+
+class TestBug783SignalCoherence:
+    """Bug #783 (signal leg): top-level signal must not say 'healthy' when
+    agent_summary.verdict says 'REVIEW' (D/F grades present).
+
+    The dimension-average signal can say 'healthy' on a large project where
+    most files are A/B even though one D-grade file exists. _project_signal()
+    overrides the dimension signal to 'grade_risk_high'/'grade_risk_critical'
+    when the grade-distribution risk is 'high'/'critical'.
+    """
+
+    @staticmethod
+    def _mostly_a_with_d() -> dict:
+        """999 A-grade files + 1 D-grade file; dimension averages stay >= 70."""
+        healthy_dims = {"complexity": 90.0, "size": 90.0}
+        a_scores = [
+            _score(f"src/a_{i}.py", "A", 90.0, healthy_dims) for i in range(999)
+        ]
+        d_score = _score("src/bad.py", "D", 50.0, {"complexity": 50.0, "size": 90.0})
+        return _build_project_health_result("/repo", [*a_scores, d_score], "D", 20)
+
+    @staticmethod
+    def _mostly_a_with_f() -> dict:
+        """999 A-grade files + 1 F-grade file."""
+        healthy_dims = {"complexity": 90.0, "size": 90.0}
+        a_scores = [
+            _score(f"src/a_{i}.py", "A", 90.0, healthy_dims) for i in range(999)
+        ]
+        f_score = _score("src/awful.py", "F", 10.0, {"complexity": 10.0, "size": 90.0})
+        return _build_project_health_result("/repo", [*a_scores, f_score], "D", 20)
+
+    def test_d_grade_signal_not_healthy(self) -> None:
+        """signal must not be 'healthy' when a D-grade file forces verdict=REVIEW."""
+        result = self._mostly_a_with_d()
+        assert result["verdict"] == "REVIEW"
+        assert result["signal"] != "healthy", (
+            f"signal={result['signal']!r} says 'healthy' but verdict='REVIEW' — "
+            "contradictory signals in one envelope"
+        )
+
+    def test_f_grade_signal_not_healthy(self) -> None:
+        """signal must not be 'healthy' when an F-grade file forces verdict=REVIEW."""
+        result = self._mostly_a_with_f()
+        assert result["verdict"] == "REVIEW"
+        assert result["signal"] != "healthy"
+
+    def test_d_grade_signal_value(self) -> None:
+        """signal should be 'grade_risk_high' when risk='high' (D-grade files)."""
+        result = self._mostly_a_with_d()
+        assert result["signal"] == "grade_risk_high"
+
+    def test_f_grade_signal_value(self) -> None:
+        """signal should be 'grade_risk_critical' when risk='critical' (F-grade files)."""
+        result = self._mostly_a_with_f()
+        assert result["signal"] == "grade_risk_critical"
+
+    def test_all_a_signal_stays_healthy(self) -> None:
+        """When only A grades exist, signal must remain 'healthy'."""
+        healthy_dims = {"complexity": 90.0, "size": 90.0}
+        a_scores = [_score(f"src/a_{i}.py", "A", 90.0, healthy_dims) for i in range(5)]
+        result = _build_project_health_result("/repo", a_scores, "D", 20)
+        assert result["signal"] == "healthy"
+        assert result["verdict"] == "SAFE"
 
 
 class TestBug785MatchingFileCount:

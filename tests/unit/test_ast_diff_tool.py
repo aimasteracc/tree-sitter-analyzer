@@ -442,10 +442,11 @@ class TestASTDiffNodeBudget:
         default_bytes = _stable_bytes(default_result)
         bodies_bytes = _stable_bytes(bodies_result)
 
-        # Cost invariant (CLAUDE.md rule 11) pinned exactly: 496 < 1627 — the
+        # Cost invariant (CLAUDE.md rule 11) pinned exactly: 746 < 1877 — the
         # default is dramatically smaller than the full-body opt-in.
-        assert default_bytes == 496
-        assert bodies_bytes == 1627
+        # Re-pinned after Codex P2 made agent_summary a dict (next_step+verdict).
+        assert default_bytes == 746
+        assert bodies_bytes == 1877
 
     @pytest.mark.asyncio
     async def test_include_node_bodies_true_has_children(self, tool):
@@ -494,3 +495,69 @@ class TestASTDiffNodeBudget:
         # Exact pin (deterministic for this fixture at budget=1): the omitted
         # bytes equal full-body minus compact = 1627 - 496 = 1131.
         assert result["bytes_omitted"] == 1131
+
+
+class TestAstDiffAgentSummaryEnvelope:
+    """#744: ast_diff must include agent_summary and summary_line in response."""
+
+    @pytest.fixture
+    def tool(self):
+        return ASTDiffTool()
+
+    @pytest.mark.asyncio
+    async def test_response_has_agent_summary_with_hunks(self, tool):
+        """When diff produces hunks, agent_summary is a dict with count in summary_line."""
+        result = await tool.execute(
+            {
+                "mode": "diff_strings",
+                "old_source": _OLD_SRC,
+                "new_source": _NEW_SRC,
+                "language": _LANG,
+                "output_format": "json",
+            }
+        )
+        assert "agent_summary" in result, "agent_summary missing from envelope"
+        assert "summary_line" in result, "summary_line missing from envelope"
+        # Codex P2: agent_summary must be a dict, not a string
+        assert isinstance(result["agent_summary"], dict), "agent_summary must be a dict"
+        assert result["agent_summary"]["summary_line"] == result["summary_line"]
+        assert "verdict" in result["agent_summary"]
+        # There are hunks — summary must mention count, not "No AST changes"
+        assert "No AST changes" not in result["agent_summary"]["summary_line"]
+
+    @pytest.mark.asyncio
+    async def test_response_has_agent_summary_no_hunks(self, tool):
+        """When old == new (no hunks), agent_summary dict says 'No AST changes'."""
+        result = await tool.execute(
+            {
+                "mode": "diff_strings",
+                "old_source": _OLD_SRC,
+                "new_source": _OLD_SRC,  # identical → no hunks
+                "language": _LANG,
+                "output_format": "json",
+            }
+        )
+        assert "agent_summary" in result, "agent_summary missing from envelope"
+        assert isinstance(result["agent_summary"], dict), "agent_summary must be a dict"
+        assert "No AST changes" in result["agent_summary"]["summary_line"]
+
+    @pytest.mark.asyncio
+    async def test_response_has_agent_summary_parse_failure(self, tool):
+        """When both sources fail to parse (unsupported language), verdict is ERROR."""
+        result = await tool.execute(
+            {
+                "mode": "diff_strings",
+                "old_source": "a = 1",
+                "new_source": "b = 2",
+                # 'cobol' is unsupported → both parse calls return success=False
+                # → ASTDiffer emits a single error sentinel hunk with no old/new
+                "language": "cobol",
+                "output_format": "json",
+            }
+        )
+        assert "agent_summary" in result
+        assert isinstance(result["agent_summary"], dict)
+        # Parse failure → error hunk → verdict ERROR, not the generic "INFO"
+        assert result["verdict"] == "ERROR"
+        assert result["agent_summary"]["verdict"] == "ERROR"
+        assert result["agent_summary"]["summary_line"] == "Both sources failed to parse"

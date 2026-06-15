@@ -45,7 +45,6 @@ class MarkdownElement(CodeElement):
 
         self.text: str | None = None
         self.type: str | None = None
-        self.line_count: int | None = None
         self.alt: str | None = None
         self.list_type: str | None = None
         self.item_count: int | None = None
@@ -200,6 +199,6 @@ def _build_markdown_code_block_element(
         language_info=language_info,
     )
     code_block.language = language_info or "text"
-    code_block.line_count = line_count
+    # line_count is a computed property on CodeElement (end_line - start_line + 1)
     code_block.type = "code_block"
     return code_block

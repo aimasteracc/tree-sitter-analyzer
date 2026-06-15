@@ -182,6 +182,7 @@ class JavaScriptPublicExtractionMixin:
             "variable_declaration": self._extract_variable_optimized,
             "lexical_declaration": self._extract_lexical_variable_optimized,
             "property_definition": self._extract_property_optimized,
+            "field_definition": self._extract_field_definition_optimized,
         }
 
         self._traverse_and_extract_iterative(

@@ -207,6 +207,130 @@ def test_inline_path_bodies_returns_verbatim_bodies(tmp_path):
     assert "def gamma" in gamma["content"]
 
 
+def test_inline_path_bodies_cpp_header_callee_lang_hint(tmp_path):
+    """#865: .h callee must not gate out C++ caller definitions.
+
+    Path: caller_func (no caller_file) → foo (include/foo.h).
+    caller_func is indexed as "cpp".  Before the fix, path_lang_hint="c"
+    from the .h callee caused _resolve_def to reject the cpp candidate via
+    the directional rule languages_compatible("c","cpp") == False.
+    """
+    (tmp_path / "caller.cpp").write_text("void caller_func() { foo(); }\n")
+
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute(
+        "CREATE TABLE ast_index"
+        " (file_path TEXT PRIMARY KEY, symbols_json TEXT, language TEXT)"
+    )
+    db.execute(
+        "INSERT INTO ast_index (file_path, symbols_json, language) VALUES (?,?,?)",
+        (
+            "caller.cpp",
+            json.dumps(
+                {
+                    "symbols": [
+                        {
+                            "name": "caller_func",
+                            "kind": "function",
+                            "line": 1,
+                            "end_line": 1,
+                        }
+                    ]
+                }
+            ),
+            "cpp",
+        ),
+    )
+    db.commit()
+
+    cache = MagicMock()
+    cache.has_call_edges.return_value = True
+    cache.get_conn.return_value = db
+
+    paths = [
+        {
+            "hops": [
+                {
+                    "caller": "caller_func",
+                    "caller_file": "",  # source_file not provided
+                    "callee": "foo",
+                    "callee_file": "include/foo.h",  # .h → "c" without fix
+                    "line": 1,
+                }
+            ]
+        }
+    ]
+
+    bodies, _ = enrich.inline_path_bodies(str(tmp_path), cache, paths)
+    names = {b["name"] for b in bodies}
+    # Without fix: lang_hint="c" from .h gates out the cpp definition → names={}
+    # With fix: "" (neutral) used as path_lang_hint → no lang filter → caller_func inlined
+    assert "caller_func" in names
+
+
+def test_inline_path_bodies_cpp_with_explicit_h_callee_file(tmp_path):
+    """.h as explicit callee_file must not gate out C++ caller definitions (#865 P2).
+
+    Codex P2: when callee_file is an explicit ".h" path (not just the fallback
+    path_lang_hint), the per-function lang_hint was still derived from
+    language_from_path("foo.h") = "c", blocking C++ callers via
+    languages_compatible("c","cpp") == False.
+    Fix: _lang_hint_for_path returns "" for .h so _resolve_def skips language filter.
+    """
+    (tmp_path / "caller.cpp").write_text("void caller_func() { foo(); }\n")
+
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute(
+        "CREATE TABLE ast_index"
+        " (file_path TEXT PRIMARY KEY, symbols_json TEXT, language TEXT)"
+    )
+    db.execute(
+        "INSERT INTO ast_index (file_path, symbols_json, language) VALUES (?,?,?)",
+        (
+            "caller.cpp",
+            json.dumps(
+                {
+                    "symbols": [
+                        {
+                            "name": "caller_func",
+                            "kind": "function",
+                            "line": 1,
+                            "end_line": 1,
+                        }
+                    ]
+                }
+            ),
+            "cpp",
+        ),
+    )
+    db.commit()
+
+    cache = MagicMock()
+    cache.has_call_edges.return_value = True
+    cache.get_conn.return_value = db
+
+    paths = [
+        {
+            "hops": [
+                {
+                    "caller": "caller_func",
+                    "caller_file": "src/main.cpp",  # explicit .cpp caller_file
+                    "callee": "foo",
+                    "callee_file": "include/foo.h",  # explicit .h callee_file
+                    "line": 1,
+                }
+            ]
+        }
+    ]
+
+    bodies, _ = enrich.inline_path_bodies(str(tmp_path), cache, paths)
+    names = {b["name"] for b in bodies}
+    # caller_func body must be inlined even when callee_file is an explicit .h path
+    assert "caller_func" in names
+
+
 def test_inline_path_bodies_dedupes(tmp_path):
     cache = _build_cache(tmp_path)
     # Two paths that share the alpha->beta prefix.

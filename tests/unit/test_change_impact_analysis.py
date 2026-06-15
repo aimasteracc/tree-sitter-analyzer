@@ -204,7 +204,7 @@ class TestEnsureASTCache:
         try:
             assert cache is not None
             stats = cache.get_stats()
-            assert stats["total_files"] >= 1
+            assert stats["total_files"] == 1
         finally:
             if cache is not None:
                 cache.close()
@@ -232,7 +232,7 @@ class TestEnrichWithCacheSymbols:
             result = _enrich_with_cache_symbols(["mod.py"], cache)
             assert len(result) == 1
             assert result[0]["file"] == "mod.py"
-            assert result[0]["symbol_count"] >= 2
+            assert result[0]["symbol_count"] == 2
             assert any(s["name"] == "foo" for s in result[0]["symbols"])
             assert any(s["name"] == "Bar" for s in result[0]["symbols"])
         finally:
@@ -259,7 +259,7 @@ class TestFindAffectedSymbols:
         cache.index_file(str(dep))
         try:
             result = _find_affected_symbols({"dep.py"}, cache)
-            assert len(result) >= 1
+            assert len(result) == 1
             assert any(s["name"] == "helper" for s in result)
         finally:
             cache.close()

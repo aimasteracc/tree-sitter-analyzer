@@ -209,7 +209,7 @@ class TestStructureExtraction:
         )
         assert result is not None
         structure = get_structure(result)
-        assert len(structure) == 12
+        assert len(structure) == 13
         kinds = {s["kind"] for s in structure}
         assert "class" in kinds or "function" in kinds
 

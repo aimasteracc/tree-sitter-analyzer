@@ -80,6 +80,12 @@ def extract_arrow_function(
         end_line = node.end_point[0] + 1
         node_text = get_node_text(node)
 
+        # Issue #890: arrow functions that are class field values
+        # (parent is field_definition inside a class_body) are class methods.
+        is_method, parent_class, is_static = _arrow_class_field_context(
+            node, get_node_text
+        )
+
         return Function(
             name=_arrow_function_name(node, get_node_text),
             start_line=start_line,
@@ -93,7 +99,9 @@ def extract_arrow_function(
             docstring=extract_jsdoc(start_line),
             complexity_score=calculate_complexity(node),
             is_arrow=True,
-            is_method=False,
+            is_method=is_method,
+            is_static=is_static,
+            parent_class=parent_class,
             framework_type=framework_type,
         )
     except Exception as e:
@@ -304,13 +312,65 @@ def _raw_text_for_lines(
 
 def _arrow_function_name(node: tree_sitter.Node, get_node_text: TextExtractor) -> str:
     parent = node.parent
-    if not parent or parent.type != "variable_declarator":
+    if not parent:
         return "anonymous"
-
-    for child in parent.children:
-        if child.type == "identifier":
-            return get_node_text(child)
+    if parent.type == "variable_declarator":
+        for child in parent.children:
+            if child.type == "identifier":
+                return get_node_text(child)
+    elif parent.type == "field_definition":
+        for child in parent.children:
+            if child.type in ("property_identifier", "private_property_identifier"):
+                return get_node_text(child)
+            elif child.type == "string":
+                # 'run' = () => {} → strip surrounding quotes
+                return get_node_text(child).strip("'\"`")
+            elif child.type == "number":
+                return get_node_text(child)
+            elif child.type == "computed_property_name":
+                # ['run'] = () => {} → "[run]"
+                inner_parts = [
+                    get_node_text(c) for c in child.children if c.type not in ("[", "]")
+                ]
+                return f"[{''.join(inner_parts)}]" if inner_parts else "anonymous"
     return "anonymous"
+
+
+def _arrow_class_field_context(
+    node: tree_sitter.Node,
+    get_node_text: TextExtractor,
+) -> tuple[bool, str | None, bool]:
+    """Return (is_method, parent_class, is_static) for arrow-function class fields.
+
+    An arrow function is a class field method when its immediate parent is a
+    ``field_definition`` node inside a ``class_body``.  In that case we walk up
+    to the enclosing ``class_declaration`` or ``class_expression`` to extract
+    the class name.  ``is_static`` is True when the ``field_definition`` carries
+    a ``static`` keyword child (#892).
+
+    Returns (False, None, False) for arrow functions that are not class fields.
+    """
+    parent = node.parent
+    if not parent or parent.type != "field_definition":
+        return False, None, False
+
+    grandparent = parent.parent
+    if not grandparent or grandparent.type != "class_body":
+        return False, None, False
+
+    is_static = any(c.type == "static" for c in parent.children)
+
+    # Walk up to class_declaration / class_expression to find the class name.
+    class_node = grandparent.parent
+    if not class_node:
+        return True, None, is_static
+
+    if class_node.type in ("class_declaration", "class_expression"):
+        for child in class_node.children:
+            if child.type == "identifier":
+                return True, get_node_text(child), is_static
+
+    return True, None, is_static
 
 
 def _arrow_parameters(

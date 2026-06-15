@@ -268,6 +268,12 @@ def _summary(graph: DependencyGraph) -> dict[str, Any]:
     return {
         "success": True,
         "mode": "summary",
+        "scope": "file_dependency_graph",
+        "scope_note": (
+            "Counts cycles in the file-level dependency graph. "
+            "Use health action=imports mode=summary for import-resolution statistics "
+            "(different graph, legitimately different cycle_count)."
+        ),
         "node_count": node_count,
         "edge_count": edge_count,
         "top_hub_files": [{"file": f, "dependents": c} for f, c in hubs if c > 0],

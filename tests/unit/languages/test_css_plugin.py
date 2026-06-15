@@ -665,5 +665,157 @@ class TestCssIntegration:
         assert element.properties["text-decoration"] == "underline"
 
 
+class TestScssVariableExtraction:
+    """Tests for SCSS ``$variable`` extraction (Bug #807).
+
+    ``tree-sitter-css`` does not parse SCSS ``$var: value;`` syntax — it
+    emits ERROR nodes and the CSS plugin previously returned 0 elements for
+    any ``.scss`` file.  The fix adds a regex pass for ``.scss``/``.sass``
+    files that produces ``Variable`` elements for each ``$name`` declaration.
+    """
+
+    @pytest.mark.asyncio
+    async def test_scss_variables_extracted_from_file(self):
+        """3 SCSS ``$variable`` declarations → 3 Variable elements."""
+        import tempfile
+
+        from tree_sitter_analyzer.models import Variable
+
+        plugin = CssPlugin()
+
+        class MockRequest:
+            include_source = True
+            query_filters = {}
+
+        scss_content = (
+            "$primary-color: #0d6efd;\n"
+            "$font-size-base: 1rem;\n"
+            "$spacer: 1rem;\n"
+            ".foo { color: $primary-color; }\n"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".scss", delete=False) as f:
+            f.write(scss_content)
+            temp_path = f.name
+
+        try:
+            result = await plugin.analyze_file(temp_path, MockRequest())
+            assert result.success is True
+            var_elements = [e for e in result.elements if isinstance(e, Variable)]
+            assert len(var_elements) == 3
+            var_names = {e.name for e in var_elements}
+            assert var_names == {"$primary-color", "$font-size-base", "$spacer"}
+        finally:
+            Path(temp_path).unlink()
+
+    @pytest.mark.asyncio
+    async def test_scss_variables_have_correct_line_numbers(self):
+        """Each Variable element's start_line matches its source line."""
+        import tempfile
+
+        from tree_sitter_analyzer.models import Variable
+
+        plugin = CssPlugin()
+
+        class MockRequest:
+            include_source = True
+            query_filters = {}
+
+        scss_content = "// comment\n$blue: #0d6efd;\n$red: #dc3545;\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".scss", delete=False) as f:
+            f.write(scss_content)
+            temp_path = f.name
+
+        try:
+            result = await plugin.analyze_file(temp_path, MockRequest())
+            var_elements = [e for e in result.elements if isinstance(e, Variable)]
+            assert len(var_elements) == 2
+            by_name = {e.name: e for e in var_elements}
+            assert by_name["$blue"].start_line == 2
+            assert by_name["$red"].start_line == 3
+        finally:
+            Path(temp_path).unlink()
+
+    @pytest.mark.asyncio
+    async def test_scss_no_variables_returns_css_rules_only(self):
+        """SCSS file with no ``$var`` declarations → 0 Variable elements."""
+        import tempfile
+
+        from tree_sitter_analyzer.models import Variable
+
+        plugin = CssPlugin()
+
+        class MockRequest:
+            include_source = True
+            query_filters = {}
+
+        scss_content = ".foo { color: red; }\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".scss", delete=False) as f:
+            f.write(scss_content)
+            temp_path = f.name
+
+        try:
+            result = await plugin.analyze_file(temp_path, MockRequest())
+            var_elements = [e for e in result.elements if isinstance(e, Variable)]
+            assert len(var_elements) == 0
+        finally:
+            Path(temp_path).unlink()
+
+    @pytest.mark.asyncio
+    async def test_plain_css_file_unaffected_by_scss_extraction(self):
+        """Plain ``.css`` file: no Variable elements, only CSS rules."""
+        import tempfile
+
+        from tree_sitter_analyzer.models import Variable
+
+        plugin = CssPlugin()
+
+        class MockRequest:
+            include_source = True
+            query_filters = {}
+
+        css_content = ":root { --primary: #fff; }\n.bar { color: var(--primary); }\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".css", delete=False) as f:
+            f.write(css_content)
+            temp_path = f.name
+
+        try:
+            result = await plugin.analyze_file(temp_path, MockRequest())
+            var_elements = [e for e in result.elements if isinstance(e, Variable)]
+            assert len(var_elements) == 0
+        finally:
+            Path(temp_path).unlink()
+
+    def test_extract_scss_variables_unit(self):
+        """Unit test for ``_extract_scss_variables`` helper directly."""
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+        from tree_sitter_analyzer.models import Variable
+
+        content = (
+            "$alpha: #fff;\n"
+            "$beta-color: rgba(0, 0, 0, 0.5);\n"
+            "// not a variable\n"
+            "$gamma: 1rem;\n"
+        )
+        results = _extract_scss_variables("dummy.scss", content)
+        assert len(results) == 3
+        assert all(isinstance(v, Variable) for v in results)
+        names = [v.name for v in results]
+        assert names == ["$alpha", "$beta-color", "$gamma"]
+
+    def test_extract_scss_variables_deduplicates_on_first_occurrence(self):
+        """Reassignment of ``$var`` in nested scope → only first occurrence kept."""
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = "$color: #fff;\n.nested {\n  $color: #000;\n}\n"
+        results = _extract_scss_variables("dummy.scss", content)
+        assert len(results) == 1
+        assert results[0].name == "$color"
+        assert results[0].start_line == 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

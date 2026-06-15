@@ -1,5 +1,6 @@
 """Result-shaping helpers for the public API facade."""
 
+import dataclasses
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -37,9 +38,16 @@ def element_to_dict(
     elem: Any, all_elements: Sequence[Any] | None = None
 ) -> dict[str, Any]:
     """Convert an analysis element to the stable API dict representation."""
+    python_type = type(elem).__name__.lower()
+    # #795: Class objects carry a class_type that distinguishes enum/interface/type/namespace
+    # from plain "class".  Surface that specificity in the output type field.
+    if python_type == "class":
+        output_type = getattr(elem, "class_type", "class") or "class"
+    else:
+        output_type = python_type
     result: dict[str, Any] = {
         "name": elem.name,
-        "type": type(elem).__name__.lower(),
+        "type": output_type,
         "start_line": elem.start_line,
         "end_line": elem.end_line,
         "raw_text": elem.raw_text,
@@ -47,7 +55,16 @@ def element_to_dict(
     }
     for field in _OPTIONAL_ELEM_FIELDS:
         if hasattr(elem, field):
-            result[field] = getattr(elem, field)
+            value = getattr(elem, field)
+            # SQL plugin stores parameters as list[SQLParameter] (dataclasses).
+            # JSON cannot serialize dataclass instances; convert them to plain
+            # dicts so all output formats (JSON, TOON, text) stay consistent.
+            if field == "parameters" and isinstance(value, list):
+                value = [
+                    dataclasses.asdict(p) if dataclasses.is_dataclass(p) else p
+                    for p in value
+                ]
+            result[field] = value
 
     if result["type"] == "function" and all_elements:
         # A LOCAL function (innermost container is another function, e.g.

@@ -277,8 +277,10 @@ class TestBoundingParams801:
         )
         assert result["success"] is True
 
-    async def test_compact_large_group_capped_at_10(self, tool_with_large_group):
-        """Compact mode (include_bodies=False) must cap functions[] to 10 entries."""
+    async def test_compact_large_group_has_no_functions_key(
+        self, tool_with_large_group
+    ):
+        """Compact mode (include_bodies=False) strips functions[]; exposes sample_files + function_count."""
         result = await tool_with_large_group.execute({"output_format": "json"})
         assert result["success"] is True
         groups = result["groups"]
@@ -286,13 +288,13 @@ class TestBoundingParams801:
             len(groups) == 2
         )  # 15 identical funcs → 1 structural + 1 textual clone group
         for group in groups:
-            funcs = group["functions"]
-            assert len(funcs) == 10, (
-                f"Expected exactly 10 functions (capped); got {len(funcs)}"
+            assert "functions" not in group, (
+                "compact mode must not include functions[] key"
             )
-            assert group.get("truncated") is True, (
-                "truncated flag must be True when functions[] was capped"
-            )
+            assert "sample_files" in group, "compact mode must include sample_files key"
+            assert isinstance(group["sample_files"], list)
+            assert len(group["sample_files"]) <= 3
+            assert group["function_count"] == 15
 
     async def test_include_bodies_true_not_capped(self, tool_with_large_group):
         """include_bodies=True must NOT cap functions[] — all 15 returned."""
@@ -309,13 +311,13 @@ class TestBoundingParams801:
             f"include_bodies=True should return all 15 functions; got max={max_funcs}"
         )
 
-    async def test_no_truncated_flag_when_under_10(self, tool_with_clones):
-        """When group has <= 10 functions, truncated flag must be absent or False."""
+    async def test_no_truncated_flag_in_compact_mode(self, tool_with_clones):
+        """Compact mode never sets 'truncated' — it strips functions[] entirely instead."""
         result = await tool_with_clones.execute({"output_format": "json"})
         assert result["success"] is True
         for group in result["groups"]:
-            assert not group.get("truncated"), (
-                "truncated must not be set when functions count <= 10"
+            assert "truncated" not in group, (
+                "compact mode must not set truncated flag (functions[] is stripped entirely)"
             )
 
 
