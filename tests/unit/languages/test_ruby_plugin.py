@@ -745,3 +745,43 @@ end
         user_methods = [f for f in functions if f.receiver_type == "User"]
         method_names = [f.name for f in user_methods]
         assert "initialize" in method_names
+
+
+_OPTIONAL_PARAM_CODE = """\
+class AdminUser
+  def initialize(username, email, permissions = [])
+    @username = username
+    @email = email
+    @permissions = permissions
+  end
+
+  def configure(mode: :strict, timeout: 30)
+    @mode = mode
+    @timeout = timeout
+  end
+end
+"""
+
+
+class TestRubyOptionalParamExtraction:
+    """#768: optional/keyword parameters must appear in .parameters (not silently dropped)."""
+
+    def test_optional_parameter_included_with_default(self):
+        """permissions = [] must appear as 'permissions = []', not be silently dropped."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(_OPTIONAL_PARAM_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, _OPTIONAL_PARAM_CODE)
+
+        init = next(f for f in functions if f.name == "initialize")
+        assert init.parameters == ["username", "email", "permissions = []"]
+
+    def test_keyword_parameter_included_with_default(self):
+        """mode: :strict must appear as 'mode: :strict', not be silently dropped."""
+        plugin = RubyPlugin()
+        tree = get_tree_for_code(_OPTIONAL_PARAM_CODE, plugin)
+        extractor = plugin.create_extractor()
+        functions = extractor.extract_functions(tree, _OPTIONAL_PARAM_CODE)
+
+        configure = next(f for f in functions if f.name == "configure")
+        assert configure.parameters == ["mode: :strict", "timeout: 30"]
