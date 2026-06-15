@@ -11,6 +11,7 @@ from ._function_helpers import (
     extract_function,
     extract_generator_function,
     extract_method,
+    extract_prototype_method,
 )
 
 
@@ -65,6 +66,19 @@ class JavaScriptFunctionExtractionMixin:
             self.framework_type,
         )
 
+    def _extract_prototype_method_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Function | None:
+        """Extract a prototype-assignment method: ``X.prototype.m = function(){}``."""
+        return extract_prototype_method(
+            node,
+            self._extract_parameters,
+            self._extract_jsdoc_for_line,
+            self._calculate_complexity_optimized,
+            self._get_node_text_optimized,
+            self.framework_type,
+        )
+
     def _parse_function_signature_optimized(
         self, node: "tree_sitter.Node"
     ) -> tuple[str, list[str], bool, bool] | None:
@@ -109,6 +123,13 @@ class JavaScriptFunctionExtractionMixin:
                     # so private methods like #logActivity yielded name="".
                     name = self._get_node_text_optimized(child)
                     is_constructor = name == "constructor"
+                elif child.type == "computed_property_name":
+                    # Issue #748: computed-property methods like `[post](){}` or
+                    # `[Symbol.iterator](){}` have a `computed_property_name` node
+                    # instead of a `property_identifier`.  Use the full bracket
+                    # text (e.g. "[post]", "[Symbol.iterator]") as the name so
+                    # it is non-empty and self-documenting.
+                    name = self._get_node_text_optimized(child)
                 elif child.type == "formal_parameters":
                     parameters = self._extract_parameters(child)
 

@@ -10,9 +10,11 @@ selector parsing, and property analysis.
 from __future__ import annotations
 
 import logging
+import os
+import re
 from typing import TYPE_CHECKING, Any
 
-from ..models import AnalysisResult, StyleElement
+from ..models import AnalysisResult, StyleElement, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_info
 from .css_helpers import (
@@ -28,6 +30,47 @@ if TYPE_CHECKING:
     from ..core.analysis_engine import AnalysisRequest
 
 logger = logging.getLogger(__name__)
+
+# SCSS variable declaration: ``$varname: value;`` or ``$varname: value`` (no semicolon).
+# The regex matches ``$name`` (identifier allowing hyphens) followed by a colon.
+_SCSS_VAR_RE = re.compile(r"^\s*(\$[\w-]+)\s*:", re.MULTILINE)
+
+
+def _extract_scss_variables(file_path: str, content: str) -> list[Variable]:
+    """Return a ``Variable`` element for every SCSS ``$variable`` declaration.
+
+    ``tree-sitter-css`` does not recognise SCSS ``$var: value;`` syntax —
+    it emits ERROR nodes.  This regex-based extractor runs over the raw
+    source and captures each ``$name`` at the start of a declaration line.
+
+    Only the first occurrence of each variable name is emitted (SCSS allows
+    re-assignment of ``$var`` in nested scopes, but the declaration that
+    matters for tools is the defining one at the outermost scope, which
+    always appears first in the file).
+    """
+    lines = content.splitlines()
+    seen: set[str] = set()
+    variables: list[Variable] = []
+    for lineno_0, line in enumerate(lines):
+        m = _SCSS_VAR_RE.match(line)
+        if not m:
+            continue
+        var_name = m.group(1)
+        if var_name in seen:
+            continue
+        seen.add(var_name)
+        variables.append(
+            Variable(
+                name=var_name,
+                start_line=lineno_0 + 1,
+                end_line=lineno_0 + 1,
+                language="scss",
+                element_type="variable",
+                visibility="private",
+                raw_text=line.strip(),
+            )
+        )
+    return variables
 
 
 def _css_error_result(file_path: str, exc: Exception) -> AnalysisResult:
@@ -353,7 +396,14 @@ class CssPlugin(LanguagePlugin):
             return _css_error_result(file_path, e)
 
     def _analyze_with_tree_sitter(self, file_path: str, content: str) -> AnalysisResult:
-        """Parse via ``tree-sitter-css``; may raise ``ImportError`` if missing."""
+        """Parse via ``tree-sitter-css``; may raise ``ImportError`` if missing.
+
+        For ``.scss`` and ``.sass`` files, ``tree-sitter-css`` is used for
+        CSS-compatible constructs (selectors, at-rules), and a regex pass
+        extracts SCSS ``$variable`` declarations that the CSS grammar emits as
+        ERROR nodes.  The two result sets are merged so callers see both
+        StyleElement rules and Variable elements in a single AnalysisResult.
+        """
         import tree_sitter
         import tree_sitter_css as ts_css
 
@@ -363,8 +413,18 @@ class CssPlugin(LanguagePlugin):
         tree = parser.parse(content.encode("utf-8"))
 
         extractor = self.create_extractor()
-        elements = extractor.extract_css_rules(tree, content)
-        log_info(f"Extracted {len(elements)} CSS rules from {file_path}")
+        elements: list = extractor.extract_css_rules(tree, content)
+
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in (".scss", ".sass"):
+            scss_vars = _extract_scss_variables(file_path, content)
+            elements = scss_vars + elements
+            log_info(
+                f"Extracted {len(scss_vars)} SCSS variables + "
+                f"{len(elements) - len(scss_vars)} CSS rules from {file_path}"
+            )
+        else:
+            log_info(f"Extracted {len(elements)} CSS rules from {file_path}")
 
         return AnalysisResult(
             file_path=file_path,

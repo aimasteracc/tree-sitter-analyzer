@@ -15,12 +15,11 @@
       "App\\Models\\UserStatus"
     ],
     "Function": [
-      "App\\Models\\createUser",
-      "App\\Models\\hashPassword",
       "__construct",
       "__get",
       "__set",
       "authenticate",
+      "createUser",
       "delete",
       "find",
       "findByEmail",
@@ -30,6 +29,7 @@
       "getUsername",
       "grantPermission",
       "hasPermission",
+      "hashPassword",
       "label",
       "log",
       "save",

@@ -364,7 +364,7 @@ class TestPythonPluginEdgeCases:
         result = extractor.extract_imports(mock_tree, "import os")
         assert isinstance(result, list)
         # Will use fallback manual extraction
-        assert len(result) >= 0
+        assert len(result) == 0
 
     def test_extract_imports_with_query_exception(self, extractor):
         """Test import extraction when query raises exception"""
@@ -379,7 +379,7 @@ class TestPythonPluginEdgeCases:
         result = extractor.extract_imports(mock_tree, "import os")
         assert isinstance(result, list)
         # Should use fallback manual extraction
-        assert len(result) >= 0
+        assert len(result) == 0
 
     def test_traverse_and_extract_with_none_root(self, extractor):
         """Test traversal with None root node"""
@@ -647,7 +647,9 @@ class TestPythonPluginEdgeCases:
             thread.join()
 
         # Should complete without errors
-        assert len(extractor._node_text_cache) > 0
+        assert (
+            len(extractor._node_text_cache) > 0
+        )  # ratchet: nondeterministic — concurrent threads race on cache writes
 
     def test_extract_with_corrupted_encoding(self, extractor):
         """Test extraction with corrupted encoding"""
@@ -673,24 +675,26 @@ class TestPythonPluginEdgeCases:
 
     def test_complexity_calculation_edge_cases(self, extractor):
         """Test complexity calculation edge cases"""
-        test_cases = [
-            ("", 1),  # Empty code - base complexity
-            ("pass", 1),  # Simple statement
-            ("if if if:", 1),  # Keywords in strings/comments
-            ("# if elif while for", 1),  # Keywords in comments
-            ("'if elif while'", 1),  # Keywords in strings
-            ("if True: pass", 1),  # Real keyword - but complexity calculation may vary
-        ]
+        # Exact measured complexities per input (text-keyword counting ignores context)
+        expected_by_code = {
+            "": 1,
+            "pass": 1,
+            "if if if:": 4,
+            "# if elif while for": 5,
+            "'if elif while'": 4,
+            "if True: pass": 2,
+        }
 
-        for code, _expected_complexity in test_cases:
+        for code, expected_complexity in expected_by_code.items():
             mock_node = Mock()
 
             with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:
                 mock_get_text.return_value = code
 
                 result = extractor._calculate_complexity_optimized(mock_node)
-                # Complexity should be at least the base complexity (1)
-                assert result >= 1
+                assert result == expected_complexity, (
+                    f"code={code!r}: expected {expected_complexity}, got {result}"
+                )
 
     def test_docstring_extraction_edge_cases(self, extractor):
         """Test docstring extraction edge cases"""

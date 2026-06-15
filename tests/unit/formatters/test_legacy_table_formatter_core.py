@@ -317,10 +317,11 @@ class TestCompactTableFormat:
         return LegacyTableFormatter(format_type="compact", language="java")
 
     def test_compact_format_empty(self, formatter: LegacyTableFormatter) -> None:
+        # Bug #778 fixed: empty data must not produce '# Unknown'.
         data: dict[str, Any] = {}
         result = formatter.format_structure(data)
 
-        assert "# Unknown" in result
+        assert "# Unknown" not in result
         assert "## Info" in result
 
     def test_compact_format_basic(self, formatter: LegacyTableFormatter) -> None:

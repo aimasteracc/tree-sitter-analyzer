@@ -123,10 +123,8 @@ class TestElementExtractor:
         functions = extractor.extract_functions(mock_tree, source_code)
 
         assert isinstance(functions, list)
-        # The function should be extracted
-        assert (
-            len(functions) >= 0
-        )  # May be 0 if node structure doesn't match expectations
+        # DefaultExtractor with mock tree returns empty (node structure doesn't match expectations)
+        assert len(functions) == 0
 
     def test_extract_classes(
         self, extractor: DefaultExtractor, mock_tree: Mock
@@ -263,8 +261,8 @@ class TestElementExtractor:
         source_code = "こんにちは"
         result = extractor._extract_node_text(mock_node, source_code)
 
-        # Should handle UTF-8 encoding correctly
-        assert len(result) > 0
+        # Should handle UTF-8 encoding correctly (bytes 0-6 = "こん", 2 chars)
+        assert len(result) == 2
 
     def test_extract_node_text_error_handling(
         self, extractor: DefaultExtractor
@@ -292,9 +290,9 @@ class TestElementExtractor:
         source_code = "def test():"
         result = extractor._extract_node_name(mock_node, source_code)
 
-        # Should extract identifier or fallback name
+        # Should extract identifier or fallback name ("test" from bytes 4-8)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result) == 4
 
     def test_extract_node_name_no_identifier(self, extractor: DefaultExtractor) -> None:
         """Test _extract_node_name without identifier child"""
@@ -352,7 +350,7 @@ class TestDefaultExtractorTraversalDirect:
         )
 
         # Should add function to list
-        assert len(functions) >= 0  # May be 0 if extraction fails
+        assert len(functions) == 1
 
     def test_traverse_for_functions_with_children(
         self, extractor: DefaultExtractor

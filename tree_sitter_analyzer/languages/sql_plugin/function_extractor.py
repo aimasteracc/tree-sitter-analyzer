@@ -13,7 +13,7 @@ from .identifier_validator import is_valid_identifier
 from .procedure_extractor import extract_procedure_parameters
 
 _FUNCTION_PATTERN = re.compile(
-    r"^\s*CREATE\s+FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(",
+    r"^\s*CREATE\s+FUNCTION\s+(?:[a-zA-Z_][a-zA-Z0-9_]*\.)*([a-zA-Z_][a-zA-Z0-9_]*)\s*\(",
     re.IGNORECASE,
 )
 
@@ -172,15 +172,19 @@ def _function_name_from_ast(
 def _function_name_from_object_reference(
     node: "tree_sitter.Node", get_node_text: Callable[..., str]
 ) -> str | None:
-    for subchild in node.children:
-        if subchild.type != "identifier":
-            continue
+    """Return the function name from an object_reference node.
 
-        func_name = get_node_text(subchild).strip()
-        if func_name and is_valid_identifier(func_name):
-            return func_name
-
-    return None
+    For ``schema.funcname`` references the LAST identifier is the function
+    name; any preceding identifier is the schema qualifier.
+    """
+    valid = [
+        get_node_text(subchild).strip()
+        for subchild in node.children
+        if subchild.type == "identifier"
+        and get_node_text(subchild).strip()
+        and is_valid_identifier(get_node_text(subchild).strip())
+    ]
+    return valid[-1] if valid else None
 
 
 def _function_already_extracted(sql_elements: list[Any], func_name: str) -> bool:
@@ -335,8 +339,14 @@ def _legacy_function_name_from_text(
     raw_text: str,
     is_valid_identifier_fn: Callable[[str], bool],
 ) -> str | None:
-    """Extract a function name with regex fallback."""
-    match = re.search(r"CREATE\s+FUNCTION\s+(\w+)\s*\(", raw_text, re.IGNORECASE)
+    """Extract a function name with regex fallback.
+
+    Handles both plain ``FUNCTION foo(`` and schema-qualified
+    ``FUNCTION schema.foo(`` patterns; always returns the local name.
+    """
+    match = re.search(
+        r"CREATE\s+FUNCTION\s+(?:\w+\.)*(\w+)\s*\(", raw_text, re.IGNORECASE
+    )
     if not match:
         return None
     potential_name = match.group(1).strip()

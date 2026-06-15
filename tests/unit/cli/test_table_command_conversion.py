@@ -329,6 +329,71 @@ class TestTableCommandConvertFunctionElement:
         result = command._convert_function_element(mock_function, "python")
         assert result["javadoc"] == "Test function"
 
+    def test_convert_function_element_is_async_propagated(self, command):
+        """#774: is_async must appear in the table-command method dict."""
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_FUNCTION
+
+        mock_function = MagicMock()
+        mock_function.name = "fetchData"
+        mock_function.visibility = "public"
+        mock_function.return_type = "Promise<void>"
+        mock_function.parameters = []
+        mock_function.start_line = 10
+        mock_function.end_line = 15
+        mock_function.is_constructor = False
+        mock_function.is_static = False
+        mock_function.is_async = True
+        mock_function.is_abstract = False
+        mock_function.complexity_score = 1
+        mock_function.element_type = ELEMENT_TYPE_FUNCTION
+
+        result = command._convert_function_element(mock_function, "typescript")
+        assert result["is_async"] is True
+        assert result["is_abstract"] is False
+
+    def test_convert_function_element_is_abstract_propagated(self, command):
+        """#774: is_abstract must appear in the table-command method dict."""
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_FUNCTION
+
+        mock_function = MagicMock()
+        mock_function.name = "validate"
+        mock_function.visibility = "public"
+        mock_function.return_type = "boolean"
+        mock_function.parameters = []
+        mock_function.start_line = 5
+        mock_function.end_line = 5
+        mock_function.is_constructor = False
+        mock_function.is_static = False
+        mock_function.is_async = False
+        mock_function.is_abstract = True
+        mock_function.complexity_score = 1
+        mock_function.element_type = ELEMENT_TYPE_FUNCTION
+
+        result = command._convert_function_element(mock_function, "typescript")
+        assert result["is_abstract"] is True
+        assert result["is_async"] is False
+
+    def test_convert_function_element_default_false_when_absent(self, command):
+        """#774: is_async/is_abstract default to False when not set on element."""
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_FUNCTION
+
+        class MinimalElement:
+            name = "foo"
+            visibility = "public"
+            return_type = "void"
+            parameters = []
+            start_line = 1
+            end_line = 3
+            is_constructor = False
+            is_static = False
+            complexity_score = 1
+            element_type = ELEMENT_TYPE_FUNCTION
+            is_private = False
+
+        result = command._convert_function_element(MinimalElement(), "python")
+        assert result["is_async"] is False
+        assert result["is_abstract"] is False
+
 
 class TestTableCommandConvertVariableElement:
     """Tests for TableCommand._convert_variable_element method."""

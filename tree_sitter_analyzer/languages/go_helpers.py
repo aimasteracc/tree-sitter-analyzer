@@ -22,7 +22,11 @@ from ._go_type_helpers import (
     extract_go_type_spec,
     extract_type_declaration,
 )
-from ._go_variable_helpers import extract_var_or_const, extract_var_spec
+from ._go_variable_helpers import (
+    extract_struct_fields,
+    extract_var_or_const,
+    extract_var_spec,
+)
 
 __all__ = [
     "_extract_import_declaration",
@@ -38,6 +42,7 @@ __all__ = [
     "extract_method_receiver",
     "extract_parameters",
     "extract_return_type",
+    "extract_struct_fields",
     "extract_type_declaration",
     "extract_var_or_const",
     "extract_var_spec",

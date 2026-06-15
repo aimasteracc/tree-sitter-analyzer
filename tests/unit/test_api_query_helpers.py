@@ -261,3 +261,42 @@ class TestFilterElementsByType:
         elements = [{"type": "function"}]
         result = filter_elements_by_type(elements, ["class"])
         assert result == []
+
+    # --- #795 backward-compat: element_types=["class"] must include subtypes ---
+
+    def test_class_filter_includes_interface(self):
+        """#795 P2: filtering by 'class' must still return interface elements."""
+        elements = [{"type": "interface"}, {"type": "function"}]
+        result = filter_elements_by_type(elements, ["class"])
+        assert len(result) == 1
+        assert result[0]["type"] == "interface"
+
+    def test_class_filter_includes_enum(self):
+        elements = [{"type": "enum"}, {"type": "function"}]
+        result = filter_elements_by_type(elements, ["class"])
+        assert len(result) == 1
+        assert result[0]["type"] == "enum"
+
+    def test_class_filter_includes_namespace(self):
+        elements = [{"type": "namespace"}, {"type": "function"}]
+        result = filter_elements_by_type(elements, ["class"])
+        assert len(result) == 1
+        assert result[0]["type"] == "namespace"
+
+    def test_class_filter_includes_type_alias(self):
+        elements = [{"type": "type"}, {"type": "function"}]
+        result = filter_elements_by_type(elements, ["class"])
+        assert len(result) == 1
+        assert result[0]["type"] == "type"
+
+    def test_class_filter_includes_abstract_class(self):
+        elements = [{"type": "abstract_class"}, {"type": "class"}]
+        result = filter_elements_by_type(elements, ["class"])
+        assert len(result) == 2
+
+    def test_interface_filter_does_not_widen_to_all_class_family(self):
+        """Filtering by 'interface' should NOT return plain 'class' elements."""
+        elements = [{"type": "class"}, {"type": "interface"}, {"type": "enum"}]
+        result = filter_elements_by_type(elements, ["interface"])
+        assert len(result) == 1
+        assert result[0]["type"] == "interface"

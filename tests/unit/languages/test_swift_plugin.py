@@ -141,9 +141,9 @@ class TestSwiftExtraction:
     def test_extract_elements(self, plugin: SwiftPlugin, tree) -> None:
         elements = plugin.extract_elements(tree, SWIFT_SAMPLE)
         assert len(elements["imports"]) == 2
-        assert len(elements["classes"]) >= 4
-        assert len(elements["functions"]) >= 5
-        assert len(elements["variables"]) >= 3
+        assert len(elements["classes"]) == 4
+        assert len(elements["functions"]) == 5
+        assert len(elements["variables"]) == 3
 
     @pytest.mark.asyncio
     async def test_analyze_file(self, plugin: SwiftPlugin, tmp_path) -> None:
@@ -154,7 +154,7 @@ class TestSwiftExtraction:
 
         assert result.success is True
         assert result.language == "swift"
-        assert result.node_count > 0
+        assert result.node_count == 207
         assert any(element.name == "User" for element in result.elements)
 
 

@@ -4,9 +4,9 @@
     "Function": 20,
     "Import": 5,
     "Package": 1,
-    "Variable": 9
+    "Variable": 22
   },
-  "element_total": 45,
+  "element_total": 58,
   "names_by_type": {
     "Class": [
       "Config",
@@ -52,15 +52,28 @@
       "sample"
     ],
     "Variable": [
+      "Debug",
       "DefaultTimeout",
       "ErrNotFound",
+      "Host",
       "MaxRetries",
+      "Port",
       "RetryInterval",
       "StatusCompleted",
       "StatusFailed",
       "StatusPending",
       "StatusRunning",
-      "lastErr"
+      "Timeout",
+      "config",
+      "done",
+      "jobs",
+      "lastErr",
+      "metadata",
+      "mu",
+      "name",
+      "running",
+      "wg",
+      "workers"
     ]
   },
   "types": [

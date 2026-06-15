@@ -75,6 +75,7 @@ class TestCodeGraphCallersTool:
         assert result["success"] is True
 
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # Real call-graph build on Windows I/O exceeds 5s budget
     async def test_execute_toon_format(self, tiny_project_root):
         callers_tool = CodeGraphCallersTool(tiny_project_root)
         result = await callers_tool.execute(
@@ -162,6 +163,7 @@ class TestCodeGraphCalleesTool:
         assert "no Read needed" in result["next_step"]
 
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok  # Real call-graph build on Windows I/O exceeds 5s budget
     async def test_execute_toon_format(self, tiny_project_root):
         callees_tool = CodeGraphCalleesTool(tiny_project_root)
         result = await callees_tool.execute(

@@ -11,6 +11,15 @@ _C_CONTAINER_NODE_TYPES = frozenset(
         "struct_specifier",
         "union_specifier",
         "field_declaration_list",
+        # field_declaration is required so that named nested struct/union/enum
+        # types declared as members of a struct body are reachable.  Without
+        # it the traversal stops at field_declaration_list's children and
+        # never descends into the specifier embedded in a member declaration
+        # (e.g. ``struct Inner { int x; };`` inside ``struct Outer``).
+        # Anonymous nested containers (union/struct with no type_identifier)
+        # are handled by skipping them in _c_type_definition_helpers — they
+        # must not be emitted with synthetic line-number names (bug #753).
+        "field_declaration",
         "declaration_list",
         "type_definition",
         # Preprocessor conditional branches — without these the traversal

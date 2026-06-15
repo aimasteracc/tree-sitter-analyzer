@@ -163,19 +163,26 @@ class CodeGraphVisualizeTool(BaseMCPTool):
             )
 
         if mode == "full":
-            edges = self._edges_full(cg, max_edges)
+            edges, truncated = self._edges_full(cg, max_edges)
         elif mode == "file":
-            edges = self._edges_file(cg, file_path, max_edges)
+            edges, truncated = self._edges_file(cg, file_path, max_edges)
         else:
-            edges = self._edges_function(cg, function, file_path, depth, max_edges)
+            edges, truncated = self._edges_function(
+                cg, function, file_path, depth, max_edges
+            )
 
         mermaid = _render_mermaid(edges, direction)
 
-        stats = {
+        stats: dict[str, Any] = {
             "mode": mode,
             "node_count": len({e[0] for e in edges} | {e[2] for e in edges}),
             "edge_count": len(edges),
         }
+        # Bug #786 fix: when edge collection was capped at max_edges, signal
+        # truncation explicitly so agents don't assume the graph is complete.
+        if truncated:
+            stats["truncated"] = True
+            stats["max_edges"] = max_edges
 
         extra: dict[str, Any] = {}
         if mode == "function":
@@ -194,7 +201,12 @@ class CodeGraphVisualizeTool(BaseMCPTool):
 
     def _edges_full(
         self, cg: CallGraph, max_edges: int
-    ) -> list[tuple[str, str, str, str]]:
+    ) -> tuple[list[tuple[str, str, str, str]], bool]:
+        """Return (edges, truncated) for mode=full.
+
+        ``truncated`` is True when the edge cap was reached and there may be
+        more edges in the graph that were not included.
+        """
         cg.build()
         edges: list[tuple[str, str, str, str]] = []
         seen: set[tuple[str, str]] = set()
@@ -218,13 +230,15 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                     )
                 if len(seen) >= max_edges:
                     break
-        return edges
+        truncated = len(seen) >= max_edges
+        return edges, truncated
 
     def _edges_file(
         self, cg: CallGraph, file_path: str | None, max_edges: int
-    ) -> list[tuple[str, str, str, str]]:
+    ) -> tuple[list[tuple[str, str, str, str]], bool]:
+        """Return (edges, truncated) for mode=file."""
         if not file_path:
-            return []
+            return [], False
         cg.build()
         normalized = file_path.replace("\\", "/")
         edges: list[tuple[str, str, str, str]] = []
@@ -260,7 +274,8 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                             flabel,
                         )
                     )
-        return edges
+        truncated = len(seen) >= max_edges
+        return edges, truncated
 
     def _edges_function(
         self,
@@ -269,13 +284,14 @@ class CodeGraphVisualizeTool(BaseMCPTool):
         file_path: str | None,
         depth: int,
         max_edges: int,
-    ) -> list[tuple[str, str, str, str]]:
+    ) -> tuple[list[tuple[str, str, str, str]], bool]:
+        """Return (edges, truncated) for mode=function."""
         if not function:
-            return []
+            return [], False
         cg.build()
         targets = cg.resolve_targets(function, file_path)
         if not targets:
-            return []
+            return [], False
 
         edges: list[tuple[str, str, str, str]] = []
         seen_edges: set[tuple[str, str]] = set()
@@ -329,4 +345,5 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                         if d + 1 < depth:
                             queue.append((caller, d + 1))
 
-        return edges
+        truncated = len(seen_edges) >= max_edges
+        return edges, truncated

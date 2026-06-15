@@ -356,7 +356,7 @@ class TestCSharpImportExtraction:
 
         # Should find static using for System.Math
         static_imports = [i for i in imports if i.is_static]
-        assert len(static_imports) >= 0  # May have static import
+        assert len(static_imports) == 1
 
     def test_extract_imports_empty_tree(self):
         """Test import extraction with empty tree."""
@@ -370,7 +370,7 @@ class TestCSharpImportExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         imports = plugin.extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
 
-        assert all(i.start_line > 0 for i in imports)
+        assert [i.start_line for i in imports] == [2, 3]
         assert all(i.end_line >= i.start_line for i in imports)
 
 
@@ -412,7 +412,7 @@ class TestCSharpComplexityCalculation:
         calculate = next((f for f in functions if f.name == "Calculate"), None)
         assert calculate is not None
         # if, else if, else, for, while, switch, try/catch all add complexity
-        assert calculate.complexity_score >= 5
+        assert calculate.complexity_score == 7
 
     def test_simple_method_low_complexity(self):
         """Test that simple method has low complexity."""
@@ -469,7 +469,7 @@ class TestCSharpExtractorHelpers:
         extractor = CSharpElementExtractor()
 
         nodes = list(extractor._traverse_iterative(tree.root_node))
-        assert len(nodes) > 0
+        assert len(nodes) == 98
         # Should traverse all nodes in the tree
 
     def test_cache_invalidation(self):

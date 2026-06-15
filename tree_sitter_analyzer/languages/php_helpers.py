@@ -344,10 +344,11 @@ def extract_php_function_element(
         if return_type_node:
             return_type = get_node_text(return_type_node)
 
-        full_name = f"{current_namespace}\\{name}" if current_namespace else name
-
+        # #765: use bare name — consistent with class methods (always bare,
+        # receiver_type carries owner). Namespace-prefixed names broke symbol
+        # search ("createUser" not found when file has a namespace).
         return Function(
-            name=full_name,
+            name=name,
             start_line=node.start_point[0] + 1,
             end_line=node.end_point[0] + 1,
             visibility="public",

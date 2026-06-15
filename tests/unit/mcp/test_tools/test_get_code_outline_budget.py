@@ -486,8 +486,8 @@ class TestByteBudgetDifferentialInvariant:
 # uncapped (80/80 classes, 5 methods each): 158804 B  (ratio 1.60x)
 # Re-measure and re-pin if response envelope fields change.
 # ---------------------------------------------------------------------------
-_EXPECTED_CAPPED_BYTES: int = 99217
-_EXPECTED_UNCAPPED_BYTES: int = 158804
+_EXPECTED_CAPPED_BYTES: int = 99202
+_EXPECTED_UNCAPPED_BYTES: int = 158789
 
 
 # ---------------------------------------------------------------------------

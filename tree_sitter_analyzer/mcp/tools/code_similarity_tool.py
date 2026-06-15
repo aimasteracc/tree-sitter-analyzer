@@ -115,9 +115,10 @@ class CodeGraphSimilarityTool(BaseMCPTool):
             }
 
         mode = arguments.get("mode", "all")
-        min_lines = arguments.get("min_lines", 5)
-        min_group_size = arguments.get("min_group_size", 2)
-        max_groups = arguments.get("max_groups", 20)
+        # Coerce int params — MCP transport may deliver them as strings (#801).
+        min_lines = int(arguments.get("min_lines", 5))
+        min_group_size = int(arguments.get("min_group_size", 2))
+        max_groups = int(arguments.get("max_groups", 20))
         use_cache = arguments.get("use_cache", True)
         include_bodies = arguments.get("include_bodies", False)
         output_format = arguments.get("output_format", "toon")
@@ -148,12 +149,38 @@ class CodeGraphSimilarityTool(BaseMCPTool):
         else:
             verdict = "CAUTION"
 
+        # Compact mode: strip per-function metadata, show only summary + sample files (#801).
+        # Full functions[] with bodies is opt-in via include_bodies=True.
+        _COMPACT_SAMPLE_FILES = 3
+
+        def _group_to_dict(group: Any) -> dict[str, Any]:
+            d: dict[str, Any] = group.to_dict(include_bodies=include_bodies)
+            if include_bodies:
+                return d
+            # Compact: replace full functions list with up to 3 representative file paths.
+            seen: set[str] = set()
+            sample_files: list[str] = []
+            for f in d.get("functions", []):
+                path = f.get("file", "")
+                if path and path not in seen:
+                    seen.add(path)
+                    sample_files.append(path)
+                    if len(sample_files) >= _COMPACT_SAMPLE_FILES:
+                        break
+            return {
+                "fingerprint": d["fingerprint"],
+                "method": d["method"],
+                "similarity": d["similarity"],
+                "function_count": d["function_count"],
+                "sample_files": sample_files,
+            }
+
         response: dict[str, Any] = {
             "success": True,
             "verdict": verdict,
             "project_root": self.project_root,
             "stats": result.stats,
-            "groups": [g.to_dict(include_bodies=include_bodies) for g in result.groups],
+            "groups": [_group_to_dict(g) for g in result.groups],
         }
 
         from ..utils.format_helper import apply_toon_format_to_response

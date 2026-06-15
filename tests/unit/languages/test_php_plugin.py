@@ -747,6 +747,8 @@ class TestPHPPluginAnalyzeFile:
         # 3 functions (__construct/getName/getAge), 2 variables (name/age),
         # 2 imports (UserInterface/HasTimestamps — extracted since #617).
         assert len(result.elements) == 8
+        # #769: line_count must be non-zero (was always 0 before this fix)
+        assert result.line_count == len(SIMPLE_CLASS_CODE.splitlines())
 
 
 class TestPHPIntegration:
@@ -935,3 +937,52 @@ enum Suit
         consts = [v for v in variables if v.name == "ENUM_C"]
         assert len(consts) == 1
         assert consts[0].receiver_type == "Suit"
+
+
+class TestPHPTopLevelFunctionNamespace:
+    """#765: Top-level PHP functions in namespaced files must use bare names."""
+
+    CODE_WITH_NS = """<?php
+namespace App\\Models;
+
+function createUser(string $name): int
+{
+    return 1;
+}
+
+function hashPassword(string $pwd): string
+{
+    return md5($pwd);
+}
+"""
+
+    CODE_WITHOUT_NS = """<?php
+function topLevelOne(): void {}
+function topLevelTwo(int $x): int { return $x; }
+"""
+
+    def _parse(self, code: str):
+        import tree_sitter
+        import tree_sitter_php
+
+        from tree_sitter_analyzer.languages.php_plugin import PHPElementExtractor
+
+        lang = tree_sitter.Language(tree_sitter_php.language_php())
+        tree = tree_sitter.Parser(lang).parse(code.encode())
+        extractor = PHPElementExtractor()
+        return extractor.extract_functions(tree, code)
+
+    def test_namespaced_file_uses_bare_names(self):
+        funcs = self._parse(self.CODE_WITH_NS)
+        names = [f.name for f in funcs]
+        assert "createUser" in names
+        assert "hashPassword" in names
+        # Namespace must NOT be embedded in Function.name (#765)
+        assert not any("\\" in n for n in names), (
+            f"Namespace leaked into names: {names}"
+        )
+
+    def test_no_namespace_file_uses_bare_names(self):
+        funcs = self._parse(self.CODE_WITHOUT_NS)
+        names = [f.name for f in funcs]
+        assert names == ["topLevelOne", "topLevelTwo"]

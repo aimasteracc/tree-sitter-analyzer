@@ -51,6 +51,20 @@ from .facade_tool import FacadeTool
 _MAX_TEST_MAP = 50
 
 
+def _is_pytest_collectible(name: str) -> bool:
+    """Return True only for pytest-collectible function/method names.
+
+    pytest collects functions and methods whose name starts with ``test_``
+    (case-sensitive). Private helpers (``_run``, ``_helper``, etc.) and
+    non-prefixed utilities are not collected by pytest even when they appear
+    inside test files.
+
+    This filter is intentionally narrow: ``name.startswith("test_")`` is the
+    exact rule pytest uses for both module-level functions and class methods.
+    """
+    return name.startswith("test_")
+
+
 def _test_map_next_step(
     test_files: list[str],
     *,
@@ -327,6 +341,8 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         for target in targets:
             for ref in graph.caller_refs_of(target):
                 if not is_test_file(ref.file_path):
+                    continue
+                if not _is_pytest_collectible(ref.name):
                     continue
                 total_edge_count += 1
                 key = f"{ref.file_path}::{ref.name}"
