@@ -551,6 +551,10 @@ VARIABLES = """
     (variable_declarator
         name: (identifier) @variable.name
         value: (_)? @variable.value)) @variable.lexical
+
+(field_definition
+    name: (_) @variable.name
+    value: (_)? @variable.value) @variable.field
 """
 
 IMPORTS = """

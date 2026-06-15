@@ -80,6 +80,10 @@ def extract_arrow_function(
         end_line = node.end_point[0] + 1
         node_text = get_node_text(node)
 
+        # Issue #890: arrow functions that are class field values
+        # (parent is field_definition inside a class_body) are class methods.
+        is_method, parent_class = _arrow_class_field_context(node, get_node_text)
+
         return Function(
             name=_arrow_function_name(node, get_node_text),
             start_line=start_line,
@@ -93,7 +97,8 @@ def extract_arrow_function(
             docstring=extract_jsdoc(start_line),
             complexity_score=calculate_complexity(node),
             is_arrow=True,
-            is_method=False,
+            is_method=is_method,
+            parent_class=parent_class,
             framework_type=framework_type,
         )
     except Exception as e:
@@ -315,6 +320,40 @@ def _arrow_function_name(node: tree_sitter.Node, get_node_text: TextExtractor) -
             if child.type in ("property_identifier", "private_property_identifier"):
                 return get_node_text(child)
     return "anonymous"
+
+
+def _arrow_class_field_context(
+    node: tree_sitter.Node,
+    get_node_text: TextExtractor,
+) -> tuple[bool, str | None]:
+    """Return (is_method, parent_class) when an arrow function is a class field value.
+
+    An arrow function is a class field method when its immediate parent is a
+    ``field_definition`` node inside a ``class_body``.  In that case we walk up
+    to the enclosing ``class_declaration`` or ``class_expression`` to extract
+    the class name.
+
+    Returns (False, None) for arrow functions that are not class fields.
+    """
+    parent = node.parent
+    if not parent or parent.type != "field_definition":
+        return False, None
+
+    grandparent = parent.parent
+    if not grandparent or grandparent.type != "class_body":
+        return False, None
+
+    # Walk up to class_declaration / class_expression to find the class name.
+    class_node = grandparent.parent
+    if not class_node:
+        return True, None
+
+    if class_node.type in ("class_declaration", "class_expression"):
+        for child in class_node.children:
+            if child.type == "identifier":
+                return True, get_node_text(child)
+
+    return True, None
 
 
 def _arrow_parameters(
