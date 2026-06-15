@@ -14,17 +14,20 @@ from tree_sitter_analyzer.mcp.tools.utils.verification_command import DefaultTes
 def test_change_impact_schema_accepts_resource_profile():
     """MCP callers need the same resource profile knob as the CLI."""
     schema = ChangeImpactTool().get_tool_schema()
+    prop = schema["properties"]["resource_profile"]
+    assert prop["type"] == "string"
+    assert set(prop["enum"]) == {"default", "local_low_impact"}
+    # MCP defaults to local_low_impact so AI-agent sessions don't stall machines (#731)
+    assert prop["default"] == "local_low_impact"
 
-    assert schema["properties"]["resource_profile"] == {
-        "type": "string",
-        "enum": ["default", "local_low_impact"],
-        "default": "default",
-        "description": (
-            "Verification command resource profile. default preserves existing "
-            "commands; local_low_impact emits nice/xdist-capped local pytest "
-            "commands plus the original CI verification command."
-        ),
-    }
+
+def test_mcp_default_resource_profile_is_local_low_impact():
+    """#731: MCP entrypoint defaults to local_low_impact without explicit arg."""
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import TOOL_SCHEMA
+
+    assert (
+        TOOL_SCHEMA["properties"]["resource_profile"]["default"] == "local_low_impact"
+    )
 
 
 def test_diff_mode_includes_untracked_files(monkeypatch):

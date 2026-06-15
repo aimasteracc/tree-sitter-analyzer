@@ -178,7 +178,15 @@ def test_execute_supports_agent_summary_only(monkeypatch):
 
     tool = tool_module.ChangeImpactTool(project_root="/repo")
     result = asyncio.run(
-        tool.execute({"output_format": "json", "agent_summary_only": True})
+        tool.execute(
+            {
+                "output_format": "json",
+                "agent_summary_only": True,
+                # Use default profile so this test stays focused on agent_summary_only
+                # behaviour, independent of the MCP resource_profile default (#731).
+                "resource_profile": "default",
+            }
+        )
     )
 
     assert result["agent_summary_only"] is True
@@ -216,7 +224,16 @@ def test_execute_test_only_diff_skips_expensive_analysis(monkeypatch):
     )
 
     tool = tool_module.ChangeImpactTool()
-    result = asyncio.run(tool.execute({"output_format": "json"}))
+    result = asyncio.run(
+        tool.execute(
+            {
+                "output_format": "json",
+                # Use default profile to isolate test-only fast-path behaviour from
+                # the MCP resource_profile default change (#731).
+                "resource_profile": "default",
+            }
+        )
+    )
 
     assert result["analysis_fast_path"] == "test_only"
     assert result["risk_level"] == "low"
