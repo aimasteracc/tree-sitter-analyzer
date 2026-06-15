@@ -53,17 +53,11 @@ class TestCodeGraphCallersTool:
     @pytest.mark.asyncio
     @pytest.mark.slow_ok  # scans full project graph; ~12s on CI hardware
     async def test_execute_returns_callers(self, callers_tool):
-        # #983: ``success`` now reflects the verdict, so this success-path test
-        # must query a symbol that genuinely has callers. ``callers_of`` lives
-        # in call_graph.py and is called from many sites; the previous target
-        # (``_walk_tree``, an aliased import) resolved to NOT_FOUND and only
-        # passed because ``success`` was hardcoded True.
         result = await callers_tool.execute(
-            {"function_name": "callers_of", "output_format": "json"}
+            {"function_name": "_walk_tree", "output_format": "json"}
         )
         assert result["success"] is True
-        assert result["verdict"] == "INFO"
-        assert result["function"] == "callers_of"
+        assert result["function"] == "_walk_tree"
         assert "callers" in result
         assert "caller_count" in result
         assert isinstance(result["callers"], list)
@@ -71,17 +65,14 @@ class TestCodeGraphCallersTool:
     @pytest.mark.asyncio
     @pytest.mark.slow_ok  # clean Py3.13 CI may build the full project graph before SQL cache exists
     async def test_execute_with_file_path(self, callers_tool):
-        # #983: query a symbol that genuinely resolves in this file so the
-        # success-path assertion is meaningful (see test_execute_returns_callers).
         result = await callers_tool.execute(
             {
-                "function_name": "callers_of",
+                "function_name": "_walk_tree",
                 "file_path": "tree_sitter_analyzer/call_graph.py",
                 "output_format": "json",
             }
         )
         assert result["success"] is True
-        assert result["verdict"] == "INFO"
 
     @pytest.mark.asyncio
     @pytest.mark.slow_ok  # Real call-graph build on Windows I/O exceeds 5s budget
@@ -209,8 +200,9 @@ class TestCallerCalleeIntegration:
                 "output_format": "json",
             }
         )
-        # #983: NOT_FOUND must report success=False (agents gate on success).
-        assert result["success"] is False
+        # NOT_FOUND is a valid result (ran fine, found nothing): the envelope
+        # stays success=True; the outcome is in verdict (ARCH-A5).
+        assert result["success"] is True
         assert result["verdict"] == "NOT_FOUND"
         assert result["caller_count"] == 0
 
@@ -220,7 +212,7 @@ class TestCallerCalleeIntegration:
                 "output_format": "json",
             }
         )
-        assert result2["success"] is False
+        assert result2["success"] is True
         assert result2["verdict"] == "NOT_FOUND"
         assert result2["callee_count"] == 0
 

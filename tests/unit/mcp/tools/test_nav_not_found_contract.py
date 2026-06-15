@@ -1,11 +1,15 @@
-"""Contract: the NOT_FOUND envelope of the nav call-graph tools (#981, #983).
+"""Contract: the NOT_FOUND envelope of the nav call-graph tools (#981).
 
 Two locked invariants, parametrized over the four nav tools that emit a
 verdict for a single symbol lookup:
 
-  #983 — ``success`` must reflect the verdict. A missing symbol returns
-         ``verdict == "NOT_FOUND"``; the envelope must therefore report
-         ``success is False`` (agents gate on ``success``).
+  ARCH-A5 — ``success`` means "the tool ran without an internal error", NOT
+         "it found what you asked". NOT_FOUND is a valid *result* (ran fine,
+         found nothing), so it stays ``success is True``; the semantic
+         outcome is carried by ``verdict == "NOT_FOUND"``. (The originally
+         bundled #983 success-flip was reverted — it broke the envelope
+         contract, which requires ``error: str`` whenever ``success`` is
+         False.)
 
   #981 — the not-found hint must be edge-aware. When the index actually
          holds call edges, a missing symbol must NOT be mislabelled
@@ -86,9 +90,10 @@ _TOOL_LABELS = ["callers", "callees", "impact", "navigate"]
 async def test_missing_symbol_in_populated_index_contract(
     tmp_path: Any, tool_label: str
 ) -> None:
-    """#981 + #983: missing symbol, BUILT index WITH edges.
+    """#981: missing symbol, BUILT index WITH edges.
 
-    success is False, verdict is NOT_FOUND, and the hint does not claim the
+    verdict is NOT_FOUND, the envelope stays success=True (ARCH-A5: NOT_FOUND
+    is a valid result, not an internal error), and the hint does not claim the
     index is empty.
     """
     _make_built_index_with_edges(tmp_path)
@@ -96,7 +101,7 @@ async def test_missing_symbol_in_populated_index_contract(
     result = await _run_missing(tool_label, str(tmp_path))
 
     assert result["verdict"] == "NOT_FOUND"
-    assert result["success"] is False
+    assert result["success"] is True
     next_step = result.get("next_step", "")
     for fragment in _FORBIDDEN_HINT_FRAGMENTS:
         assert fragment not in next_step, (
@@ -140,7 +145,7 @@ async def test_edges_without_built_marker_no_empty_index_hint(
     result = await tool.execute({"function_name": _MISSING, "output_format": "json"})
 
     assert result["verdict"] == "NOT_FOUND"
-    assert result["success"] is False
+    assert result["success"] is True
     next_step = result.get("next_step", "")
     for fragment in _FORBIDDEN_HINT_FRAGMENTS:
         assert fragment not in next_step, (

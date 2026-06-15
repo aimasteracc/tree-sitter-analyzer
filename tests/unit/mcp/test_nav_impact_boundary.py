@@ -311,8 +311,7 @@ class TestNavImpactBoundary:
             )
 
         body = json.loads(raw[0].text)
-        # #983: NOT_FOUND now reports success=False (envelope aligned to verdict).
-        assert body["success"] is False
+        assert body["success"] is True
         assert body.get("verdict") == "NOT_FOUND"
         next_step = body.get("next_step", "")
         assert "mismatch" in next_step.lower(), (

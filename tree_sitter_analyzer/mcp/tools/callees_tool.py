@@ -172,12 +172,8 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # agent answers from content, not coordinates — no Read per file:line.
         next_step = self._inline_callee_bodies(cache, callees)
 
-        callees_verdict = "INFO" if callees or total_callees else "NOT_FOUND"
         result = build_response(
-            verdict=callees_verdict,
-            # #983: align the envelope with the verdict — agents gate on
-            # `success`, so NOT_FOUND must NOT report success=True.
-            success=callees_verdict != "NOT_FOUND",
+            verdict="INFO" if callees or total_callees else "NOT_FOUND",
             warnings=warnings_list or None,
             data_source=data_source,
             function=func_name,

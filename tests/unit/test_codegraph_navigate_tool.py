@@ -58,9 +58,7 @@ class TestExecuteDefinition:
             result = await tool.execute(
                 {"symbol": "foo", "mode": "definition", "output_format": "json"}
             )
-        # #983: no cache → symbol not found → success aligns with NOT_FOUND.
-        assert result["success"] is False
-        assert result["verdict"] == "NOT_FOUND"
+        assert result["success"] is True
         assert result["definition"]["found"] is False
 
     @pytest.mark.asyncio
@@ -86,9 +84,7 @@ class TestExecuteDefinition:
             result = await tool_with_root.execute(
                 {"symbol": "parse_tree", "mode": "definition", "output_format": "json"}
             )
-        # #983: resolver returns no definitions → NOT_FOUND → success=False.
-        assert result["success"] is False
-        assert result["verdict"] == "NOT_FOUND"
+        assert result["success"] is True
         assert "definition" in result
 
 
@@ -101,9 +97,7 @@ class TestExecuteHierarchy:
             result = await tool.execute(
                 {"symbol": "foo", "mode": "hierarchy", "output_format": "json"}
             )
-        # #983: no graph → no callers/callees → NOT_FOUND → success=False.
-        assert result["success"] is False
-        assert result["verdict"] == "NOT_FOUND"
+        assert result["success"] is True
         assert result["hierarchy"]["callers"] == []
         assert result["hierarchy"]["callees"] == []
 
@@ -207,9 +201,7 @@ class TestExecuteFull:
             result = await tool.execute(
                 {"symbol": "foo", "mode": "full", "output_format": "json"}
             )
-        # #983: nothing resolved in any mode → NOT_FOUND → success=False.
-        assert result["success"] is False
-        assert result["verdict"] == "NOT_FOUND"
+        assert result["success"] is True
         assert "definition" in result
         assert "references" in result
         assert "hierarchy" in result

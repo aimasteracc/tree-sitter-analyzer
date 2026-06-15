@@ -183,12 +183,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # agent answers from content, not coordinates — no Read per file:line.
         next_step = self._inline_caller_bodies(cache, callers)
 
-        callers_verdict = "INFO" if callers or total_callers else "NOT_FOUND"
         result = build_response(
-            verdict=callers_verdict,
-            # #983: align the envelope with the verdict — agents gate on
-            # `success`, so NOT_FOUND must NOT report success=True.
-            success=callers_verdict != "NOT_FOUND",
+            verdict="INFO" if callers or total_callers else "NOT_FOUND",
             warnings=warnings_list or None,
             data_source=data_source,
             function=func_name,

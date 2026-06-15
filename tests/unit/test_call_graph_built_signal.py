@@ -268,7 +268,8 @@ async def test_existing_edges_without_call_graph_marker_no_empty_index_hint(
     result = await tool.execute({"function_name": "missing", "output_format": "json"})
 
     assert result["verdict"] == "NOT_FOUND"
-    assert result["success"] is False
+    # NOT_FOUND ran fine and found nothing → envelope stays success=True (ARCH-A5).
+    assert result["success"] is True
     assert result[count_key] == 0
     assert "--full-index" not in result["next_step"]
     assert "not in the index" in result["next_step"]
@@ -300,11 +301,9 @@ def test_cli_callers_partial_ast_cache_matches_mcp_full_index_hint(
         check=False,
     )
 
-    # #983: NOT_FOUND now reports success=False, which the CLI maps to exit
-    # code 1 (parity with --agent-workflow). The envelope + hint are unchanged.
-    assert proc.returncode == 1, proc.stderr
+    assert proc.returncode == 0, proc.stderr
     result: dict[str, Any] = json.loads(proc.stdout)
-    assert result["success"] is False
+    assert result["success"] is True
     assert result["verdict"] == "NOT_FOUND"
     assert result["caller_count"] == 0
     assert "--full-index" in result["next_step"]

@@ -204,9 +204,6 @@ class CodeGraphNavigateTool(BaseMCPTool):
         hi_found = bool(hi.get("callers")) or bool(hi.get("callees"))
         verdict = "INFO" if (def_found or ref_found or hi_found) else "NOT_FOUND"
         result["verdict"] = verdict
-        # #983: align the envelope with the verdict — agents gate on `success`,
-        # so a NOT_FOUND symbol must NOT report success=True.
-        result["success"] = verdict != "NOT_FOUND"
 
         if not result.get("definition") and not result.get("references"):
             if not hi_found:

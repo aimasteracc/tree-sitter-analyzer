@@ -592,9 +592,7 @@ class CodeGraphImpactTool(BaseMCPTool):
                 "Low risk change — proceed with edit; run nearest test file afterwards."
             )
         response: dict[str, Any] = {
-            # #983: align the envelope with the verdict — agents gate on
-            # `success`, so NOT_FOUND must NOT report success=True.
-            "success": verdict != "NOT_FOUND",
+            "success": True,
             "mode": mode,
             "verdict": verdict,
             "next_step": next_step,
