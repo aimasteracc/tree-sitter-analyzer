@@ -197,6 +197,35 @@ class TestStructureCommandConvertToLegacyFormat:
         assert result["methods"][0]["name"] == "testMethod"
         assert result["methods"][0]["visibility"] == "public"
 
+    def test_convert_to_legacy_format_method_has_class_name_and_is_method(
+        self, command
+    ):
+        """#742: methods[] entries must carry class_name and is_method for --advanced parity."""
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_FUNCTION
+
+        mock_method = MagicMock()
+        mock_method.name = "parse_file"
+        mock_method.visibility = "public"
+        mock_method.start_line = 10
+        mock_method.end_line = 20
+        mock_method.element_type = ELEMENT_TYPE_FUNCTION
+        mock_method.class_name = "Parser"
+        mock_method.is_method = True
+
+        analysis_result = MagicMock()
+        analysis_result.file_path = "parser.py"
+        analysis_result.language = "python"
+        analysis_result.line_count = 50
+        analysis_result.elements = [mock_method]
+        analysis_result.node_count = 1
+        analysis_result.success = True
+        analysis_result.analysis_time = 0.1
+
+        result = command._convert_to_legacy_format(analysis_result)
+        row = result["methods"][0]
+        assert row["class_name"] == "Parser"
+        assert row["is_method"] is True
+
     def test_convert_to_legacy_format_with_fields(self, command):
         """Test _convert_to_legacy_format with field elements."""
         from tree_sitter_analyzer.constants import ELEMENT_TYPE_VARIABLE

@@ -110,7 +110,11 @@ class StructureCommand(BaseCommand):
 
     @staticmethod
     def _legacy_method_row(m: Any) -> dict[str, Any]:
-        """Return the legacy ``methods[]`` dict row for one method element."""
+        """Return the legacy ``methods[]`` dict row for one method element.
+
+        #742: class_name and is_method are now included so --structure parity
+        with --advanced is maintained.
+        """
         return {
             "name": getattr(m, "name", "unknown"),
             "visibility": getattr(m, "visibility", ""),
@@ -118,6 +122,8 @@ class StructureCommand(BaseCommand):
                 getattr(m, "start_line", 0),
                 getattr(m, "end_line", 0),
             ),
+            "class_name": getattr(m, "class_name", None),
+            "is_method": getattr(m, "is_method", None),
         }
 
     @staticmethod
