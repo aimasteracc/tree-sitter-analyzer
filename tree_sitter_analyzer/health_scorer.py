@@ -266,11 +266,14 @@ DECISION_NODE_TYPES: dict[str, set[str]] = {
         "do_statement",
     },
     # bash node names verified by parsing a sample with tree-sitter-bash.
+    # Each ``case`` arm is one ``case_item`` (a branch); the wrapping
+    # ``case_statement`` is not itself a decision point. A 10-arm dispatch
+    # must add 10 CC points, not 1 — so we count ``case_item`` per arm.
     "bash": {
         "if_statement",
         "while_statement",
         "for_statement",
-        "case_statement",
+        "case_item",
         "elif_clause",
     },
     # scala node names verified by parsing samples with tree-sitter-scala.
@@ -304,6 +307,36 @@ _DEPENDENCY_ANALYZABLE_LANGS: set[str] = {
     "java",
 }
 _NEUTRAL_DEP_SCORE = 50.0
+
+# Node types that constitute a function/method *body* across the grammars we
+# score. A declaration with one of these as a child (or under the ``body``
+# field) is a concrete definition; one without it is an abstract/no-body
+# declaration (Scala trait method = ``function_declaration`` with no block;
+# Swift protocol requirement = ``init_declaration`` with no body). No-body
+# declarations contribute 0 branches but would otherwise inflate ``n_funcs``
+# in the average-CC path, diluting the average and making files look healthier
+# than they are — so they are skipped from the function count.
+_BODY_NODE_TYPES: frozenset[str] = frozenset(
+    {"block", "function_body", "statements", "compound_statement"}
+)
+
+
+def _has_function_body(node: Any) -> bool:
+    """Return True when a function/method node has an actual code body.
+
+    Checks the ``body`` field first (Scala/Swift name it ``body``), then falls
+    back to scanning immediate children for a known body/block node type so a
+    grammar that does not label the field is still handled.
+    """
+    try:
+        if node.child_by_field_name("body") is not None:
+            return True
+    except Exception:  # pragma: no cover - defensive: non-tree-sitter node
+        pass
+    children = getattr(node, "children", None)
+    if children:
+        return any(getattr(c, "type", None) in _BODY_NODE_TYPES for c in children)
+    return False
 
 
 @dataclass
@@ -748,7 +781,12 @@ def score_complexity(file_path: str, source: str, language: str | None) -> float
             if hasattr(node, "type"):
                 if node.type in decision_types:
                     cc += 1
-                if node.type in function_types:
+                # Only count declarations that actually have a body block.
+                # No-body abstract declarations (Scala trait methods, Swift
+                # protocol requirements) contribute 0 branches; counting them
+                # in ``n_funcs`` would dilute the average-CC denominator and
+                # inflate the health score for multi-function files.
+                if node.type in function_types and _has_function_body(node):
                     n_funcs += 1
             if hasattr(node, "children"):
                 for child in node.children:
@@ -809,7 +847,17 @@ def find_project_root(path: Path) -> Path:
 
 
 def _score_deps_fallback(file_path: str) -> float:
-    """Fallback: score based on raw import count."""
+    """Fallback: score based on raw import count.
+
+    Applies the same neutral-language guard as ``score_dependencies``: a
+    file in a language ``DependencyGraph`` cannot analyze (bash / scala /
+    swift / ...) would otherwise resolve to zero imports and a false-perfect
+    100 here too. Returning the neutral score keeps the ``fast_dependencies``
+    fast path consistent with the full-graph path.
+    """
+    language = _EXT_TO_LANG.get(Path(file_path).suffix.lower())
+    if language is not None and language not in _DEPENDENCY_ANALYZABLE_LANGS:
+        return _NEUTRAL_DEP_SCORE
     try:
         from .project_graph import extract_imports_from_file
 

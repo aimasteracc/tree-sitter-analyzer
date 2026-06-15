@@ -392,7 +392,7 @@ class TestHealthScorer:
             "if_statement",
             "while_statement",
             "for_statement",
-            "case_statement",
+            "case_item",
             "elif_clause",
         }
         assert FUNCTION_NODE_TYPES["bash"] == {"function_definition"}
@@ -421,8 +421,10 @@ class TestHealthScorer:
         }
 
     def test_bash_complexity_counts_decision_nodes(self, scorer, tmp_path):
-        """A bash function with 11 decision branches must yield CC=11
-        (was CC=1 -> flat 100 before bash node types existed)."""
+        """A bash function with these branches must yield CC=12: 4 if + 2
+        while + 2 for + 2 case_item (the 2-arm case) + 1 elif = 11 decision
+        nodes, +1 base. The 2-arm case contributes 2 (one per arm) now that
+        ``case_item`` replaced the wrapping ``case_statement``."""
         from tree_sitter_analyzer.core.parser import Parser
         from tree_sitter_analyzer.health_scorer import (
             DECISION_NODE_TYPES,
@@ -462,7 +464,7 @@ class TestHealthScorer:
                 walk(child)
 
         walk(result.tree.root_node)
-        assert cc == 11
+        assert cc == 12
         assert n_funcs == 1
 
     def test_dependencies_neutral_for_unanalyzable_languages(self, tmp_path):
@@ -478,6 +480,107 @@ class TestHealthScorer:
             f = tmp_path / name
             f.write_text(body, encoding="utf-8")
             assert score_dependencies(str(f)) == 50.0
+
+    def test_fast_dependencies_neutral_for_unanalyzable_language(self, tmp_path):
+        """The ``fast_dependencies=True`` path (``_score_deps_fallback``) must
+        apply the SAME neutral-language guard as ``score_dependencies`` — a
+        ``.sh`` file gets 50, not a false-perfect 100."""
+        from tree_sitter_analyzer.health_scorer import _score_deps_fallback
+
+        sh = tmp_path / "tool.sh"
+        sh.write_text("#!/bin/bash\necho hi\n", encoding="utf-8")
+        assert _score_deps_fallback(str(sh)) == 50.0
+
+    def test_bash_case_scores_one_decision_per_arm(self, tmp_path):
+        """A K-arm bash ``case`` dispatch must score K decision points (one
+        ``case_item`` per arm), not 1 for the whole ``case_statement``. A
+        10-arm case therefore yields CC = 1 + 10 = 11."""
+        from tree_sitter_analyzer.core.parser import Parser
+        from tree_sitter_analyzer.health_scorer import (
+            DECISION_NODE_TYPES,
+            FUNCTION_NODE_TYPES,
+        )
+
+        arms = "\n".join(f"    {i}) echo {i} ;;" for i in range(1, 11))
+        sh = tmp_path / "dispatch.sh"
+        sh.write_text(
+            '#!/bin/bash\ndispatch() {\n  case "$1" in\n' + arms + "\n  esac\n}\n",
+            encoding="utf-8",
+        )
+        parser = Parser()
+        result = parser.parse_file(str(sh), "bash")
+        decision = DECISION_NODE_TYPES["bash"]
+        function = FUNCTION_NODE_TYPES["bash"]
+        cc = 1
+        n_funcs = 0
+        n_case_items = 0
+
+        def walk(node):
+            nonlocal cc, n_funcs, n_case_items
+            if node.type in decision:
+                cc += 1
+            if node.type == "case_item":
+                n_case_items += 1
+            if node.type in function:
+                n_funcs += 1
+            for child in node.children:
+                walk(child)
+
+        walk(result.tree.root_node)
+        assert n_case_items == 10
+        assert cc == 11
+        assert n_funcs == 1
+
+    def test_scala_avg_cc_skips_no_body_abstract_methods(self, tmp_path):
+        """A Scala trait with N abstract methods (``function_declaration``,
+        no body) + M concrete methods (``function_definition``, with body)
+        must average CC over only the M concrete ones. Abstract methods carry
+        0 branches; counting them in ``n_funcs`` would dilute the average and
+        inflate the score."""
+        from tree_sitter_analyzer.core.parser import Parser
+        from tree_sitter_analyzer.health_scorer import (
+            DECISION_NODE_TYPES,
+            FUNCTION_NODE_TYPES,
+            _has_function_body,
+        )
+
+        scala = tmp_path / "T.scala"
+        # 2 abstract (no body) + 3 concrete (each has one `if` -> 1 branch).
+        scala.write_text(
+            "trait T {\n"
+            "  def a1(x: Int): Int\n"
+            "  def a2(x: Int): Int\n"
+            "  def c1(x: Int): Int = { if (x > 0) x else -x }\n"
+            "  def c2(x: Int): Int = { if (x > 0) x else -x }\n"
+            "  def c3(x: Int): Int = { if (x > 0) x else -x }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        parser = Parser()
+        result = parser.parse_file(str(scala), "scala")
+        decision = DECISION_NODE_TYPES["scala"]
+        function = FUNCTION_NODE_TYPES["scala"]
+        cc = 1
+        n_funcs = 0
+        n_funcs_all = 0
+
+        def walk(node):
+            nonlocal cc, n_funcs, n_funcs_all
+            if node.type in decision:
+                cc += 1
+            if node.type in function:
+                n_funcs_all += 1
+                if _has_function_body(node):
+                    n_funcs += 1
+            for child in node.children:
+                walk(child)
+
+        walk(result.tree.root_node)
+        # 5 declarations exist, but only 3 have bodies.
+        assert n_funcs_all == 5
+        assert n_funcs == 3
+        # 3 `if` branches + base 1.
+        assert cc == 4
 
     def test_duplication_penalizes_repeated_code(self, scorer, tmp_path):
         """Files with repeated code blocks should have lower duplication score."""
