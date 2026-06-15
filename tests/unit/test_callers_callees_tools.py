@@ -200,7 +200,10 @@ class TestCallerCalleeIntegration:
                 "output_format": "json",
             }
         )
-        assert result["success"]
+        # NOT_FOUND is a valid result (ran fine, found nothing): the envelope
+        # stays success=True; the outcome is in verdict (ARCH-A5).
+        assert result["success"] is True
+        assert result["verdict"] == "NOT_FOUND"
         assert result["caller_count"] == 0
 
         result2 = await callees_tool.execute(
@@ -209,7 +212,8 @@ class TestCallerCalleeIntegration:
                 "output_format": "json",
             }
         )
-        assert result2["success"]
+        assert result2["success"] is True
+        assert result2["verdict"] == "NOT_FOUND"
         assert result2["callee_count"] == 0
 
 

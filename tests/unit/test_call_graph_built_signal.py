@@ -253,19 +253,26 @@ async def test_partial_ast_cache_without_call_graph_marker_hints_full_index(
         (CodeGraphCalleesTool, "callee_count"),
     ],
 )
-async def test_existing_edges_without_call_graph_marker_still_hint_full_index(
+async def test_existing_edges_without_call_graph_marker_no_empty_index_hint(
     tmp_path: Path,
     tool_cls: type[CodeGraphCallersTool] | type[CodeGraphCalleesTool],
     count_key: str,
 ) -> None:
+    # #981: when the built marker is a false-negative but the index actually
+    # holds call edges, a missing symbol must NOT be mislabelled "index empty".
+    # The edge probe (has_call_edges) overrides the cleared marker so the hint
+    # is the "check spelling / browse" phrasing, not "--full-index".
     _seed_call_edges_without_built_marker(tmp_path)
 
     tool = tool_cls(str(tmp_path))
     result = await tool.execute({"function_name": "missing", "output_format": "json"})
 
     assert result["verdict"] == "NOT_FOUND"
+    # NOT_FOUND ran fine and found nothing → envelope stays success=True (ARCH-A5).
+    assert result["success"] is True
     assert result[count_key] == 0
-    assert "--full-index" in result["next_step"]
+    assert "--full-index" not in result["next_step"]
+    assert "not in the index" in result["next_step"]
     assert result["agent_summary"]["next_step"] == result["next_step"]
 
 
@@ -296,6 +303,7 @@ def test_cli_callers_partial_ast_cache_matches_mcp_full_index_hint(
 
     assert proc.returncode == 0, proc.stderr
     result: dict[str, Any] = json.loads(proc.stdout)
+    assert result["success"] is True
     assert result["verdict"] == "NOT_FOUND"
     assert result["caller_count"] == 0
     assert "--full-index" in result["next_step"]
