@@ -44,6 +44,15 @@ class CodeElement(ABC):
     element_type: str = "unknown"
     node_type: str | None = None  # Tree-sitter node type for grammar coverage tracking
 
+    @property
+    def line_count(self) -> int:
+        """Number of source lines spanned: end_line - start_line + 1.
+
+        Computed on-the-fly so callers using ``getattr(elem, "line_count", 0)``
+        get the real value instead of the fallback 0. (#769)
+        """
+        return self.end_line - self.start_line + 1
+
     def get(self, key: str, default: Any = None) -> Any:
         """Dict-style attribute access so formatters can use e.get('element_type')
         interchangeably on both CodeElement objects and plain dicts."""
