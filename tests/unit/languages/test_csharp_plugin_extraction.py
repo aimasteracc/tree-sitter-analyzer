@@ -509,6 +509,35 @@ class TestCSharpNamespacePackageExtraction:
         assert len(packages) == 1
         assert packages[0].name == "MyApp"
 
+    def test_file_scoped_namespace_produces_package_element(self):
+        """C# 10 file-scoped namespace declarations use a distinct node type."""
+        src = "namespace MyApp.Services;\npublic class Foo {}\n"
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        packages = plugin.extractor.extract_packages(tree, src)
+
+        assert len(packages) == 1
+        assert packages[0].name == "MyApp.Services"
+
+    def test_multiple_block_namespaces_are_all_extracted(self):
+        src = (
+            "namespace First { public class A {} }\n"
+            "namespace Second { public class B {} }\n"
+        )
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(src, plugin)
+        packages = plugin.extractor.extract_packages(tree, src)
+
+        assert [pkg.name for pkg in packages] == ["First", "Second"]
+
+    def test_grouped_extract_elements_includes_packages(self):
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
+        grouped = plugin.extract_elements(tree, SIMPLE_CLASS_CODE)
+
+        assert "packages" in grouped
+        assert grouped["packages"][0].name == "MyApp.Models"
+
     def test_no_namespace_returns_empty(self):
         """A C# file without a namespace declaration returns no Package."""
         src = "public class Bare {}\n"
