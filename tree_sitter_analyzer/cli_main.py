@@ -192,6 +192,7 @@ def main() -> None:
     parser = create_argument_parser()
     args = parser.parse_args(_normalize_agent_command_aliases(sys.argv[1:]))
     _apply_format_alias(args)
+    _validate_ast_cache_mode_wiring(args, parser)
     _configure_logging(args)
 
     special_result = handle_special_commands(args)
@@ -230,6 +231,27 @@ def _apply_format_alias(args: argparse.Namespace) -> None:
     """Mirror --format into --output-format after parsing."""
     if hasattr(args, "format") and args.format:
         args.output_format = args.format
+
+
+def _validate_ast_cache_mode_wiring(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> None:
+    """Fail fast when ``--ast-cache-mode`` is used without its trigger (#982).
+
+    ``--ast-cache-mode`` is a mode *selector* with a default of ``stats``; the
+    actual trigger is the boolean ``--ast-cache`` (or the ``--watch``
+    shortcut). Because the mode has a default, a user who passes only
+    ``--ast-cache-mode <mode>`` silently dropped the mode and fell through to
+    single-file analysis ("File path not specified"). Detect explicit
+    supply via the raw ``sys.argv`` token — robust against the default — and
+    emit a clear ``parser.error`` (exit code 2) naming the missing flag.
+    """
+    if "--ast-cache-mode" not in sys.argv:
+        return
+    if getattr(args, "ast_cache", False) or getattr(args, "watch", False):
+        return
+    parser.error("--ast-cache-mode requires --ast-cache")
 
 
 def _configure_logging(args: argparse.Namespace) -> None:
