@@ -16,7 +16,14 @@ import pytest
 
 from tree_sitter_analyzer.call_graph import FunctionRef
 from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import CodeGraphImpactTool
-from tree_sitter_analyzer.mcp.tools.nav_facade import _MAX_TEST_MAP, build_nav_facade
+from tree_sitter_analyzer.mcp.tools.nav_facade import (
+    _MAX_TEST_MAP,
+    _is_collectible_caller,
+    _is_go_test_func,
+    _is_java_test_method,
+    _is_js_test_func,
+    build_nav_facade,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -440,6 +447,52 @@ async def test_test_map_edge_count_vs_unique_function_count_divergence() -> None
     assert result["test_functions"] == ["tests/test_shared.py::test_shared_behaviour"]
 
 
+@pytest.mark.asyncio
+async def test_test_map_shared_helper_edge_count_counts_both_targets() -> None:
+    """Two targets share ONE helper called by ONE test → edge_count==2 (#967).
+
+    ``fn_a`` and ``fn_b`` are each reached only via the non-collectible helper
+    ``_setup``; ``_setup`` is called by a single ``test_shared``. Each
+    (target, helper→test) pair is a genuine coverage edge, so edge_count must be
+    2 even though ``test_shared`` appears once in test_functions. Previously the
+    global dedupe branch fired before the second target's edge was counted,
+    undercounting edge_count to 1.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_a = _make_func("fn_a", "src/mod_a.py")
+    target_b = _make_func("fn_b", "src/mod_b.py")
+    helper = _make_func("_setup", "tests/test_shared.py", 5)
+    real_test = _make_func("test_shared", "tests/test_shared.py", 20)
+
+    def _callers(func: FunctionRef):
+        # Both fn_a and fn_b are called ONLY by the shared _setup helper;
+        # _setup is called by the single test_shared function.
+        if func.name in ("fn_a", "fn_b"):
+            return [helper]
+        if func.name == "_setup":
+            return [real_test]
+        return []
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_a, target_b]
+    mock_graph.caller_refs_of.side_effect = _callers
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "fn_a", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    # Two genuine coverage edges: (fn_a → test_shared), (fn_b → test_shared).
+    assert result["edge_count"] == 2
+    # The test function is deduped in the SET — appears exactly once.
+    assert result["unique_function_count"] == 1
+    assert result["test_functions"] == ["tests/test_shared.py::test_shared"]
+
+
 # ---------------------------------------------------------------------------
 # 8. P3 output_format threading — TOON / JSON
 # ---------------------------------------------------------------------------
@@ -634,3 +687,305 @@ async def test_test_map_excludes_non_test_prefixed_public_helpers() -> None:
     assert result["edge_count"] == 1
     assert result["unique_function_count"] == 1
     assert result["test_functions"] == ["tests/test_c.py::test_scenario"]
+
+
+# ---------------------------------------------------------------------------
+# 10. #807 cross-language: non-Python test callers must NOT be dropped by the
+#     pytest ``test_`` name filter (Go TestFoo, Java shouldHandleFoo, JS .test.ts)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_test_map_preserves_go_test_callers() -> None:
+    """Go ``TestFoo`` in a ``*_test.go`` file is a valid test caller (#807).
+
+    pytest's ``test_`` rule is Python-specific. Go's convention is ``TestXxx``
+    in ``*_test.go`` — applying the pytest filter wrongly dropped it.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("Handle", "pkg/server.go", language="go")
+    go_test = _make_func("TestHandle", "pkg/server_test.go", 10, language="go")
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = [go_test]
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "Handle", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["edge_count"] == 1
+    assert result["unique_function_count"] == 1
+    assert result["test_functions"] == ["pkg/server_test.go::TestHandle"]
+
+
+@pytest.mark.asyncio
+async def test_test_map_go_helper_walks_up_to_test_func() -> None:
+    """Go helper ``setupServer`` is NOT a test func → walk up to ``TestServer`` (#967).
+
+    A direct caller in ``*_test.go`` whose name does not match Go's
+    ``Test``/``Benchmark``/``Example``/``Fuzz`` convention (e.g. ``setupServer``)
+    is a helper that ``go test`` never runs directly. It must be treated like a
+    Python ``_run`` helper: the route walks up ONE hop to the convention-matching
+    ``TestServer`` that calls it. The helper itself must NOT be recorded.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("Handle", "pkg/server.go", language="go")
+    helper = _make_func("setupServer", "pkg/server_test.go", 5, language="go")
+    real_test = _make_func("TestServer", "pkg/server_test.go", 20, language="go")
+
+    def _callers(func: FunctionRef):
+        # Handle is called ONLY by setupServer; setupServer by TestServer.
+        if func.name == "Handle":
+            return [helper]
+        if func.name == "setupServer":
+            return [real_test]
+        return []
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.side_effect = _callers
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "Handle", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["edge_count"] == 1
+    assert result["unique_function_count"] == 1
+    # The helper is excluded; only the TestXxx entry point is reported.
+    assert result["test_functions"] == ["pkg/server_test.go::TestServer"]
+    assert all("setupServer" not in fn for fn in result["test_functions"])
+
+
+@pytest.mark.asyncio
+async def test_test_map_preserves_js_and_java_test_callers() -> None:
+    """JS ``*.test.ts`` and Java test-tree callers are preserved (#807).
+
+    Java ``shouldHandleFoo`` lives under ``src/test/`` and JS specs are
+    ``*.test.ts`` — neither matches the pytest ``test_`` rule, but both are
+    valid test entry points for their language.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("render", "src/render.ts", language="typescript")
+    js_test = _make_func(
+        "renders correctly", "src/render.test.ts", 4, language="typescript"
+    )
+    java_test = _make_func(
+        "shouldHandleFoo", "src/test/java/FooTest.java", 12, language="java"
+    )
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = [js_test, java_test]
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "render", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["edge_count"] == 2
+    assert result["unique_function_count"] == 2
+    assert result["test_functions"] == [
+        "src/render.test.ts::renders correctly",
+        "src/test/java/FooTest.java::shouldHandleFoo",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# 11. #807 helper resolution: walk up ONE hop from a non-collectible Python
+#     helper (``_run``) to the ``test_*`` function that drives it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_test_map_walks_up_one_hop_from_helper_to_test() -> None:
+    """``test_foo`` → ``_run`` → prod fn: the test_* caller is recovered (#807).
+
+    The production function is only reached via the ``_run`` helper, so the
+    direct caller is the non-collectible ``_run``. The route walks up one hop
+    to ``test_foo`` so the function is not reported as uncovered.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("prod_fn", "src/prod.py")
+    helper = _make_func("_run", "tests/test_helpers.py", 5)
+    real_test = _make_func("test_foo", "tests/test_helpers.py", 20)
+
+    def _callers(func: FunctionRef):
+        # prod_fn is called ONLY by _run; _run is called by test_foo.
+        if func.name == "prod_fn":
+            return [helper]
+        if func.name == "_run":
+            return [real_test]
+        return []
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.side_effect = _callers
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "prod_fn", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["edge_count"] == 1
+    assert result["unique_function_count"] == 1
+    assert result["test_functions"] == ["tests/test_helpers.py::test_foo"]
+
+
+@pytest.mark.asyncio
+async def test_test_map_walk_up_capped_at_one_hop() -> None:
+    """The helper walk-up is capped at ONE hop — a 2-hop chain is NOT followed.
+
+    ``prod_fn`` → ``_inner`` → ``_outer`` → ``test_foo``: only one hop up from
+    ``_inner`` is taken, reaching ``_outer`` (non-collectible) and stopping.
+    ``test_foo`` two hops away is NOT recovered.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("prod_fn", "src/prod.py")
+    inner = _make_func("_inner", "tests/test_chain.py", 3)
+    outer = _make_func("_outer", "tests/test_chain.py", 8)
+    real_test = _make_func("test_foo", "tests/test_chain.py", 30)
+
+    def _callers(func: FunctionRef):
+        if func.name == "prod_fn":
+            return [inner]
+        if func.name == "_inner":
+            return [outer]
+        if func.name == "_outer":
+            return [real_test]
+        return []
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.side_effect = _callers
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "prod_fn", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    # No collectible test reachable within one hop → nothing recorded.
+    assert result["edge_count"] == 0
+    assert result["unique_function_count"] == 0
+    assert result["test_functions"] == []
+
+
+# ---------------------------------------------------------------------------
+# 12. Per-language test-name helpers — direct unit coverage of every branch
+#     (#967). Each helper is a pure predicate; assert the exact boolean.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_test_map_walk_up_skips_helper_parent_in_non_test_file() -> None:
+    """Walk-up ignores a helper's parent that lives in a NON-test file (#967).
+
+    ``prod_fn`` is reached only via the test-file helper ``_run``; ``_run`` is
+    itself called from a PRODUCTION file (``src/driver.py``), not a test. The
+    one-hop walk-up must skip that non-test parent, so no coverage edge is
+    recorded.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("prod_fn", "src/prod.py")
+    helper = _make_func("_run", "tests/test_helpers.py", 5)
+    prod_caller = _make_func("driver", "src/driver.py", 20)
+
+    def _callers(func: FunctionRef):
+        # prod_fn called only by the test-file helper _run; _run called only
+        # from a production (non-test) file.
+        if func.name == "prod_fn":
+            return [helper]
+        if func.name == "_run":
+            return [prod_caller]
+        return []
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.side_effect = _callers
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "prod_fn", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    # The only helper parent is in a non-test file → skipped, nothing recorded.
+    assert result["edge_count"] == 0
+    assert result["unique_function_count"] == 0
+    assert result["test_functions"] == []
+
+
+def test_is_go_test_func_accepts_test_and_benchmark_example_fuzz() -> None:
+    """Go test entry-point prefixes followed by uppercase / empty → True."""
+    assert _is_go_test_func("TestHandle") is True
+    assert _is_go_test_func("BenchmarkParse") is True
+    assert _is_go_test_func("ExampleServer") is True
+    assert _is_go_test_func("FuzzDecode") is True
+    # Bare prefix with no suffix is a valid Go example/test name.
+    assert _is_go_test_func("Example") is True
+
+
+def test_is_go_test_func_rejects_lowercase_suffix_and_non_prefix() -> None:
+    """``Testing``-style lowercase suffix and plain helpers → False."""
+    # Starts with ``Test`` but suffix is lowercase alpha → not a test func.
+    assert _is_go_test_func("Testing") is False
+    # Lowercase helper with no recognised prefix → False.
+    assert _is_go_test_func("setupServer") is False
+
+
+def test_is_js_test_func_whitespace_description_is_test() -> None:
+    """A spec description containing whitespace → True (no prefix check)."""
+    assert _is_js_test_func("renders correctly") is True
+
+
+def test_is_js_test_func_known_prefixes_are_tests() -> None:
+    """``test``/``it``/``should``/``when``/``describe`` prefixes → True."""
+    assert _is_js_test_func("testRender") is True
+    assert _is_js_test_func("itWorks") is True
+    assert _is_js_test_func("shouldRender") is True
+    assert _is_js_test_func("whenClicked") is True
+    assert _is_js_test_func("describeFlow") is True
+
+
+def test_is_js_test_func_bare_camelcase_helper_is_not_test() -> None:
+    """A bare camelCase / underscore helper identifier → False (walk up)."""
+    assert _is_js_test_func("mountComponent") is False
+    assert _is_js_test_func("_helper") is False
+
+
+def test_is_java_test_method_public_vs_private() -> None:
+    """Any public (non-underscore) Java method → True; ``_``-leading → False."""
+    assert _is_java_test_method("shouldHandleFoo") is True
+    assert _is_java_test_method("_privateHelper") is False
+
+
+def test_is_collectible_caller_unknown_language_accepts() -> None:
+    """A non-Python file with no recognised convention → accept the caller."""
+    assert _is_collectible_caller("src/mod.rb", "anything", "ruby") is True
+    # No language hint and an unrecognised extension also accepts.
+    assert _is_collectible_caller("src/mod.xyz", "whatever", "") is True
