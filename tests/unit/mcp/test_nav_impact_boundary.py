@@ -257,4 +257,61 @@ class TestNavImpactBoundary:
         assert body.get("ambiguous") is True
         assert body.get("candidate_count") == 2
         assert body.get("level") == "unknown"
-        assert "proceed with edit" not in body.get("next_step", "")
+        # #866: ambiguity message must fire BEFORE the NOT_FOUND branch
+        next_step = body.get("next_step", "")
+        assert "proceed with edit" not in next_step
+        assert "Ambiguous" in next_step, f"Expected ambiguity hint, got: {next_step!r}"
+        assert "not found" not in next_step.lower(), (
+            f"Got NOT_FOUND message instead of ambiguity hint: {next_step!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_file_path_mismatch_gives_candidate_hint(self, tmp_path) -> None:
+        """#867: when file_path is set but doesn't match, warn with candidate files."""
+        func_ref_a = _make_ref("execute", "src/tool_a.py")
+        graph = MagicMock()
+
+        # With file_path set: returns nothing (mismatch)
+        # Without file_path: returns the real candidate
+        def resolve_side_effect(name, fp=None):
+            if fp is not None:
+                return []
+            return [func_ref_a]
+
+        graph.resolve_targets.side_effect = resolve_side_effect
+        graph.caller_refs_of.return_value = []
+        graph.callee_refs_of.return_value = []
+        graph.call_chain.return_value = []
+
+        server = TreeSitterAnalyzerMCPServer(str(tmp_path))
+        handler = _capture_call_tool_handler(server)
+
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.codegraph_impact_tool"
+                ".CodeGraphImpactTool._get_call_graph",
+                return_value=graph,
+            ),
+            patch.object(graph, "build", return_value=None),
+        ):
+            raw = await handler(
+                "nav",
+                {
+                    "action": "impact",
+                    "mode": "risk_score",
+                    "function_name": "execute",
+                    "file_path": "src/wrong_file.py",
+                    "output_format": "json",
+                },
+            )
+
+        body = json.loads(raw[0].text)
+        assert body["success"] is True
+        assert body.get("verdict") == "NOT_FOUND"
+        next_step = body.get("next_step", "")
+        assert "mismatch" in next_step.lower(), (
+            f"Expected file_path mismatch hint, got: {next_step!r}"
+        )
+        assert "src/tool_a.py" in next_step, (
+            f"Expected candidate file in hint, got: {next_step!r}"
+        )

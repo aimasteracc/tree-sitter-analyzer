@@ -120,12 +120,20 @@ def _compute_risk_score(
 ) -> dict[str, Any]:
     targets = graph.resolve_targets(func_name, file_path)
     if not targets:
-        return {
+        base: dict[str, Any] = {
             "score": 0,
             "level": "unknown",
             "factors": {},
             "tests": {"test_callers_count": 0, "test_callees_count": 0},
         }
+        # #867: when file_path was given but no match, check without it so we
+        # can warn the caller about the mismatch rather than silently NOT_FOUND.
+        if file_path is not None:
+            unconstrained = graph.resolve_targets(func_name, None)
+            if unconstrained:
+                base["file_path_mismatch"] = True
+                base["candidate_files"] = [t.file_path for t in unconstrained[:5]]
+        return base
 
     # Ambiguity guard (#799): multiple definitions of the same name exist.
     # Picking targets[0] silently would produce misleading low-risk verdicts for
@@ -495,20 +503,43 @@ class CodeGraphImpactTool(BaseMCPTool):
             level = result.get("level", "unknown")
             summary_line = f"impact: risk_score={score} level={level}"
 
-        if verdict == "NOT_FOUND":
-            next_step = (
-                "Symbol not found in the call graph. "
-                "Check the function name or run index action=auto."
-            )
-        elif result.get("ambiguous"):
-            # #799: multiple definitions; the picked candidate may not be the
-            # intended one — do NOT say "proceed with edit".
-            candidate_count = result.get("candidate_count", 2)
+        # #866: ambiguous flag lives at top level for risk_score, nested under
+        # "risk" for function_impact. Check BEFORE NOT_FOUND because level="unknown"
+        # (set when ambiguous) makes _impact_verdict return NOT_FOUND, which would
+        # shadow the ambiguity message if we checked NOT_FOUND first.
+        is_ambiguous = result.get("ambiguous") or result.get("risk", {}).get(
+            "ambiguous"
+        )
+        if is_ambiguous:
+            candidate_count = result.get("candidate_count") or result.get(
+                "risk", {}
+            ).get("candidate_count", 2)
+            verdict = "CAUTION"
             next_step = (
                 f"Ambiguous symbol — {candidate_count} definitions found. "
                 "Re-run with file_path to disambiguate "
                 "(e.g. nav action=impact mode=risk_score "
                 "function_name=execute file_path=path/to/file.py)."
+            )
+        elif result.get("file_path_mismatch") or result.get("risk", {}).get(
+            "file_path_mismatch"
+        ):
+            # #867: file_path was given but doesn't match any definition.
+            risk_or_result = (
+                result if result.get("file_path_mismatch") else result.get("risk", {})
+            )
+            candidate_files = risk_or_result.get("candidate_files", [])
+            files_hint = ", ".join(candidate_files) if candidate_files else "unknown"
+            verdict = "NOT_FOUND"
+            next_step = (
+                f"file_path mismatch — symbol not found at '{file_path}'. "
+                f"Known definitions: {files_hint}. "
+                "Re-run with the correct file_path or omit it to use ambiguity resolution."
+            )
+        elif verdict == "NOT_FOUND":
+            next_step = (
+                "Symbol not found in the call graph. "
+                "Check the function name or run index action=auto."
             )
         elif verdict in ("CAUTION", "REVIEW"):
             next_step = (
@@ -523,6 +554,7 @@ class CodeGraphImpactTool(BaseMCPTool):
             "success": True,
             "mode": mode,
             "verdict": verdict,
+            "next_step": next_step,
             **result,
             "agent_summary": {
                 "summary_line": summary_line,
