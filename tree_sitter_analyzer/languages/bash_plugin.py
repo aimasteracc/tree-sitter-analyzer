@@ -28,7 +28,7 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import AnalysisResult, CodeElement, Expression, Function
+from ..models import AnalysisResult, CodeElement, Expression, Function, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
@@ -207,8 +207,66 @@ class BashElementExtractor(ElementExtractor):
         return []
 
     def extract_variables(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
-        """Bash variable extraction not implemented in this phase"""
-        return []
+        """Extract Bash variable assignments.
+
+        Bug #776: this method was a no-op stub, so variables were never
+        returned from the pipeline.  We now walk the AST and collect
+        ``variable_assignment`` nodes, extracting the variable name from the
+        ``variable_name`` child and the raw text as the initializer.
+
+        Nodes inside ``declaration_command`` (``declare``, ``export``,
+        ``readonly``, ``local``) are also included — they wrap
+        ``variable_assignment`` children that the top-level traversal reaches
+        automatically.
+        """
+        self.source_code = source_code or ""
+        self.content_lines = self.source_code.split("\n")
+        self._reset_caches()
+
+        variables: list[Variable] = []
+
+        try:
+            extractors = {
+                "variable_assignment": self._extract_variable,
+            }
+            self._traverse_and_extract_iterative(
+                tree.root_node, extractors, variables, "variable"
+            )
+            log_debug(f"Extracted {len(variables)} Bash variables")
+        except Exception as e:
+            log_debug(f"Error during variable extraction: {e}")
+            return []
+
+        return variables
+
+    def _extract_variable(self, node: tree_sitter.Node) -> Variable | None:
+        """Extract a Bash variable from a ``variable_assignment`` node."""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            raw_text = self._get_node_text_optimized(node)
+
+            # The first child of variable_assignment is variable_name.
+            name: str | None = None
+            for child in node.children:
+                if child.type == "variable_name":
+                    name = child.text.decode("utf-8") if child.text else None
+                    break
+
+            if not name:
+                return None
+
+            return Variable(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="bash",
+                initializer=raw_text,
+            )
+        except Exception as e:
+            log_error(f"Failed to extract Bash variable: {e}")
+            return None
 
     def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
         """Bash does not have traditional imports (source statements are handled separately)"""
@@ -592,11 +650,22 @@ class BashElementExtractor(ElementExtractor):
             return None
 
     def _extract_comment(self, node: tree_sitter.Node) -> Expression | None:
-        """Extract comment nodes"""
+        """Extract comment nodes, skipping shebang lines (#!).
+
+        Bug #777: tree-sitter-bash represents ``#!/usr/bin/env bash`` as a
+        ``comment`` node (the grammar treats it as a hash-prefixed line).
+        Emitting it as a code element is misleading — shebang is interpreter
+        metadata, not a symbolic comment worth indexing.  Skip any comment
+        whose text starts with ``#!``.
+        """
         try:
+            raw_text = self._get_node_text_optimized(node)
+            # Skip shebang lines.
+            if raw_text.startswith("#!"):
+                return None
+
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text_optimized(node)
             preview = raw_text[:50].replace("\n", " ") if raw_text else ""
 
             return Expression(
@@ -776,6 +845,8 @@ class BashPlugin(LanguagePlugin):
                 all_elements: list[CodeElement] = []
                 all_elements.extend(extractor.extract_functions(tree, source_code))
                 all_elements.extend(extractor.extract_expressions(tree, source_code))
+                # Bug #776: wire variables into the async pipeline as well.
+                all_elements.extend(extractor.extract_variables(tree, source_code))
 
                 from ..utils.tree_sitter_compat import count_nodes_iterative
 

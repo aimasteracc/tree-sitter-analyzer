@@ -86,7 +86,10 @@ class TestSafeToEditTool:
     def test_execute_includes_pre_edit_checklist(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         assert "pre_edit_checklist" in result
-        assert len(result["pre_edit_checklist"]) >= 2
+        checklist = "\n".join(result["pre_edit_checklist"])
+        assert "RISK" in checklist
+        assert "Run existing tests FIRST" in checklist
+        assert "Run same verification AFTER editing" in checklist
 
     def test_execute_includes_structured_agent_workflow(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
@@ -206,7 +209,7 @@ class TestSafeToEditTool:
     def test_well_connected_file_has_downstream(self, tool):
         result = _run(tool.execute({"file_path": SERVER_FILE}))
         # server.py is widely imported, should have downstream
-        assert result["downstream_count"] >= 0
+        assert "downstream_count" in result
 
 
 class TestRiskComputation:
@@ -221,7 +224,7 @@ class TestRiskComputation:
         )
         assert risk == "safe"
         good_factors = [f for f in factors if f["severity"] == "good"]
-        assert len(good_factors) >= 1
+        assert len(good_factors) == 1
 
     def test_caution_with_moderate_downstream(self):
         risk, factors = _compute_risk(

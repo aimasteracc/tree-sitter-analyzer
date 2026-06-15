@@ -121,7 +121,10 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
         try:
             sync_result = sync.sync(max_files=max_files)
         except Exception as exc:
-            result = build_error(error=f"Sync failed: {exc}")
+            logger.exception("Incremental sync raised %s", type(exc).__name__)
+            result = build_error(
+                error=f"Sync failed ({type(exc).__name__}): {exc}",
+            )
             return apply_toon_format_to_response(result, output_format)
 
         result = build_response(

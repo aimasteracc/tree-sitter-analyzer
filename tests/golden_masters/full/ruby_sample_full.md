@@ -59,7 +59,7 @@ import concerns/timestampable
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
-| AdminUser#initialize | (username:Any, email:Any, []:permissions =): | + | 94-97 | 1 | - |
+| AdminUser#initialize | (username:Any, email:Any, permissions:Any): | + | 94-97 | 1 | - |
 | AdminUser#permissions | (): | + | 92-92 | 1 | - |
 | AdminUser#has_permission? | (permission:Any): | + | 99-101 | 1 | - |
 | AdminUser#grant_permission | (permission:Any): | + | 103-105 | 1 | - |

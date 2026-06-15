@@ -78,10 +78,11 @@ _STRUCTURE_DESCRIPTION = (
     "directory for the whole project.\n"
     "- action=class_tree — class inheritance/subclass hierarchy "
     "(codegraph_class_hierarchy equivalent). "
-    "Params: class_name, mode (subclasses|supers|tree).\n"
+    "Params: class_name, mode (subclasses|superclasses|supers|tree|impact|all|summary). "
+    "'supers' is an alias for 'superclasses'.\n"
     "- action=class_detail — detailed class inspection: fields, methods, "
     "visibility, inherited members (codegraph_class_inspect equivalent). "
-    "Params: class_name, language.\n"
+    "Params: class_name (or query as alias), language.\n"
     "- action=explore — multi-symbol source explorer: show source of several "
     "related symbols grouped in one capped response "
     "(codegraph_explore equivalent). Params: symbols (list) or "
@@ -203,6 +204,27 @@ def build_structure_facade(project_root: str | None = None) -> FacadeTool:
         return await _read_tool.execute(full_args)
 
     # ------------------------------------------------------------------
+    # class_detail bespoke route — aliases ``query`` and ``symbol`` to
+    # ``class_name`` (#804: class_name was undiscoverable in the facade
+    # schema; now class_name is in extra_public_params AND query/symbol
+    # work as aliases so agents using either spelling succeed).
+    # ------------------------------------------------------------------
+    _class_detail_tool = ClassInspectTool(project_root)
+
+    async def _class_detail_route(args: dict[str, Any]) -> Any:
+        """Bespoke route: normalise query/symbol → class_name before dispatch."""
+        # Prefer explicit class_name; fall back to query, then symbol.
+        if not args.get("class_name"):
+            alias = args.get("query") or args.get("symbol")
+            if alias:
+                args = dict(args)
+                args["class_name"] = alias
+        # Strip keys the inner doesn't declare so its strict guard is happy.
+        inner_props = set(_class_detail_tool.get_tool_schema().get("properties", {}))
+        projected = {k: v for k, v in args.items() if k in inner_props}
+        return await _class_detail_tool.execute(projected)
+
+    # ------------------------------------------------------------------
     # Build the facade
     # ------------------------------------------------------------------
     facade = FacadeTool(
@@ -213,16 +235,24 @@ def build_structure_facade(project_root: str | None = None) -> FacadeTool:
             "ast_path": CodeGraphASTPathTool(project_root),
             "sitemap": CodeGraphSitemapTool(project_root),
             "class_tree": ClassHierarchyTool(project_root),
-            "class_detail": ClassInspectTool(project_root),
             "explore": CodeGraphExploreTool(project_root),
         },
         bespoke_map={
+            "class_detail": _class_detail_route,  # #804: query/symbol→class_name alias
             "read": _read_route,  # F5: single/batch reshape via ReadPartialTool
             "signatures": _signatures_route,  # lightweight method-directory
         },
         description=_STRUCTURE_DESCRIPTION,
         annotations=_STRUCTURE_ANNOTATIONS,
         project_root=project_root,
+        # Declare class_name explicitly so schema-reading agents discover it
+        # for class_tree and class_detail actions (#804).
+        extra_public_params={
+            "class_name": {
+                "type": "string",
+                "description": "Class name for class_tree and class_detail actions.",
+            }
+        },
     )
 
     # G3: register bespoke inners so set_project_path reaches them.
@@ -230,4 +260,5 @@ def build_structure_facade(project_root: str | None = None) -> FacadeTool:
     # registration.
     facade.register_bespoke_inner(_read_tool)
     facade.register_bespoke_inner(_analyze_tool)
+    facade.register_bespoke_inner(_class_detail_tool)
     return facade

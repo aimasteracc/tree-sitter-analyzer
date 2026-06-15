@@ -145,6 +145,10 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         cache = self._get_cache()
 
         raw_results = self._search(cache, query, language, kind, limit)
+        # #736: measure truncation BEFORE folding — folding can reduce duplicates
+        # below limit and produce a false-positive; checking the raw DB row count
+        # correctly signals that the query hit the cap.
+        truncated = len(raw_results) >= limit
 
         results = self._apply_kind_filter(raw_results, kind)
         # Issue #443: fold duplicate imports and rank definitions first
@@ -177,11 +181,17 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             # actions. ``match_count`` stays for back-compat.
             "count": len(results),
             "file_count": len(by_file),
+            "truncated": truncated,
             "results": results,
             "data_source": "fts5" if cache.fts5_available else "linear_scan",
         }
         if results:
-            if search_deterrent:
+            if truncated:
+                result["next_step"] = (
+                    f"Results capped at limit={limit}. Raise --symbol-search-limit "
+                    f"(or the `limit` parameter) to see more matches."
+                )
+            elif search_deterrent:
                 result["next_step"] = search_deterrent
             else:
                 result["next_step"] = (
@@ -254,7 +264,10 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         if cache.fts5_available:
             terms = substring.split()
             if terms:
-                fts_query = " OR ".join(f'"{t}"' for t in terms)
+                # Use quoted-prefix matching ("term"*) so "SecurityVal" matches
+                # "SecurityValidator" — plain term* drops quoting and crashes on
+                # inputs with FTS5 special chars (-, ., :); "term"* is safe (#739).
+                fts_query = " OR ".join(f'"{t.lower()}"*' for t in terms)
 
                 conn = cache.get_conn()
                 # Weighted BM25 (name col 10x) — hardcoded constant, no injection risk.
@@ -302,11 +315,22 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                         )
                         all_results.append(entry)
                     if len(all_results) >= limit:
-                        return all_results
-                if all_results:
-                    return all_results
+                        break
 
-        return self._linear_search(cache, substring, language, kind, limit)
+        # Always supplement with linear scan: FTS tokenization misses suffix-
+        # style matches (e.g. "service" token matches "Service" but not
+        # "UserService" whose token is "userservice"). Merge deduped by name+file.
+        linear = self._linear_search(cache, substring, language, kind, limit)
+        if not all_results:
+            return linear
+        seen = {(r["name"], r.get("file", "")) for r in all_results}
+        for r in linear:
+            if (r["name"], r.get("file", "")) not in seen:
+                seen.add((r["name"], r.get("file", "")))
+                all_results.append(r)
+                if len(all_results) >= limit:
+                    break
+        return all_results
 
     def _wildcard_search(
         self,
@@ -359,7 +383,12 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         kind: str,
         limit: int,
     ) -> list[dict[str, Any]]:
-        results = cache.search_symbols(query, language=language)
+        # Use the raw linear scan (reads ast_index.symbols_json) rather than
+        # cache.search_symbols() which dispatches to FTS5 when available — the
+        # FTS5 path uses token matching that misses suffix-style substrings (#919).
+        # Called by _fuzzy_search both as a fallback (no FTS5) and as a supplement
+        # (to catch suffix matches FTS5's tokenizer skips).
+        results = cache._search_symbols_linear(query, language)
         filtered = self._apply_kind_filter(results, kind)
         return filtered[:limit]
 

@@ -11,7 +11,7 @@ Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/ba
 | Java | `languages/java_plugin.py` | `_java_*_helpers.py` ×4 | Spring/JPA awareness; **fixture file — DO NOT refactor** (see CLAUDE.md memory rule) |
 | Python | `python_plugin/` | submodules | Type annotations, decorators, async |
 | TypeScript | `typescript_plugin/` | submodules | Interfaces, types, TSX/JSX |
-| JavaScript | `javascript_plugin/` | submodules | ES6+, JSX |
+| JavaScript | `javascript_plugin/` | submodules | ES6+, JSX; `_function_helpers.py` handles class-field arrow methods (is_method, is_static, computed/string/number key names — #890/#892); `queries/javascript.py` VARIABLES + "variable" query include `field_definition` (#891) |
 | C | `languages/c_plugin.py` | `_c_*_helpers.py` ×8 | functions, structs, unions, enums, preprocessor |
 | C++ | `languages/cpp_plugin.py` | `_cpp_*_helpers.py` ×11 | classes, templates, namespaces |
 | C# | `languages/csharp_plugin.py` | `languages/csharp_helpers.py` | records, async/await, attributes |
@@ -24,7 +24,7 @@ Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/ba
 | PHP | `languages/php_plugin.py` | `languages/php_helpers.py` | PHP 8+ attributes, traits |
 | HTML | `languages/html_plugin.py` | `languages/html_helpers.py` | DOM elements with role classification |
 | CSS | `languages/css_plugin.py` | `languages/css_helpers.py` | selectors + properties |
-| SQL | `sql_plugin/` | submodules | tables, views, procedures, triggers |
+| SQL | `sql_plugin/` | submodules | tables, views, procedures, triggers; `table_extractor.py` regex fallback supports ANSI/MySQL/SQL-Server quoted identifiers and populates columns; CTAS (`AS SELECT`) guarded; case-sensitive dedup for quoted names (#880/#881) |
 | YAML | `languages/yaml_plugin.py` | `languages/yaml_helpers.py` | anchors, aliases, multi-doc |
 | Markdown | `markdown_plugin/` | submodules | headings, code blocks, tables |
 | JSON | `languages/json_plugin.py` | inline | basic structure |

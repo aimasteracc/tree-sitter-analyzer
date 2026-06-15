@@ -261,8 +261,17 @@ def _build_project_health_result(
     from .base_tool import mirror_summary_line
 
     agg = _compute_project_health_aggregates(all_scores, min_grade, max_files)
+    # Bug #783 fix: compute verdict once from the grade distribution and set it
+    # at the top level explicitly so top-level verdict and agent_summary.verdict
+    # are guaranteed to agree. Previously the top-level verdict was populated
+    # solely by mirror_summary_line() which only runs when one side was missing;
+    # if both were already set (e.g. by the canonical envelope hook) and they
+    # happened to differ, neither side was updated.
+    risk = _project_risk(agg.grade_distribution)
+    verdict = _project_risk_to_verdict(risk)
     payload: dict[str, Any] = {
         "success": True,
+        "verdict": verdict,
         "project_root": root,
         "total_files": len(all_scores),
         "matching_file_count": len(agg.worst),
@@ -270,7 +279,7 @@ def _build_project_health_result(
         "detail_count": len(agg.files),
         "hidden_detail_count": max(0, len(agg.worst) - len(agg.files)),
         "grade_distribution": agg.grade_distribution,
-        "signal": _build_signal(agg.signal_dims),
+        "signal": _project_signal(_build_signal(agg.signal_dims), risk),
         "average_dimensions": agg.dim_avgs,
         "coverage_status": _coverage_status(agg.dim_avgs),
         "weakest_dimension": agg.weakest_dim,
@@ -634,6 +643,20 @@ def _project_queue_head(queue_head: dict[str, Any]) -> dict[str, Any]:
         "signal": queue_head["signal"],
         "weakest_dimension": queue_head["weakest_dimension"],
     }
+
+
+def _project_signal(dim_signal: str, risk: str) -> str:
+    """Return a project-level signal consistent with the grade-distribution risk.
+
+    Bug #783: dimension-average signal can say "healthy" while grade-distribution
+    risk says "high" (D-grade files exist), causing agent_summary.verdict="REVIEW"
+    to contradict signal="healthy" in the same envelope.  When risk is "high" or
+    "critical" and the dimension signal is "healthy", override it so the two
+    models can never point opposite directions.
+    """
+    if dim_signal == "healthy" and risk in ("high", "critical"):
+        return f"grade_risk_{risk}"
+    return dim_signal
 
 
 def _project_risk(grade_distribution: dict[str, int]) -> str:

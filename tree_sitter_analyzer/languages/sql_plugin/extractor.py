@@ -59,6 +59,7 @@ from .table_extractor import (
     _parse_column_definition,
     _split_column_definitions,
     extract_sql_tables,
+    fill_missing_sql_tables_from_regex,
 )
 from .trigger_extractor import (
     extract_legacy_triggers,
@@ -112,6 +113,12 @@ class SQLElementExtractor(ElementExtractor):
 
         try:
             self._extract_sql_tables(tree.root_node, sql_elements)
+            # #808: regex fallback for CREATE TABLE statements absorbed into
+            # ERROR nodes by tree-sitter parse-recovery (FOREIGN KEY + ON
+            # DELETE/UPDATE multi-line clauses trigger the cascade).  Called
+            # immediately after the AST pass so missing tables are added before
+            # the element-validation step.
+            fill_missing_sql_tables_from_regex(self.source_code, sql_elements)
             self._extract_sql_views(tree.root_node, sql_elements)
             self._extract_sql_procedures(tree.root_node, sql_elements)
             self._extract_sql_functions_enhanced(tree.root_node, sql_elements)

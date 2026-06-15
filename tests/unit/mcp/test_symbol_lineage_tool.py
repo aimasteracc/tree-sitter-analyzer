@@ -239,6 +239,7 @@ class TestInheritanceLineage:
         second = asyncio.run(tool.execute({"symbol": "Base", "output_format": "json"}))
         assert second["hierarchy"]["subclass_count"] == 1
 
+    @pytest.mark.slow_ok  # ASTCache.index_project on Windows I/O exceeds 5s budget
     def test_hierarchy_degrades_to_none_on_error(self, tool, tmp_path, monkeypatch):
         # A ClassHierarchy failure (e.g. corrupt cache) must degrade to no
         # hierarchy, never crash the lineage call.
@@ -357,6 +358,50 @@ class TestInheritanceLineage:
         assert hier["index_stale"] is False
         assert "index_hint" not in hier
 
+    def test_hierarchy_stale_for_non_source_ext_kotlin_file(self, tool, tmp_path):
+        """#703: index_stale=True after editing a Kotlin (.kt) file post-index.
+
+        _SOURCE_EXTS-based fingerprinting missed Kotlin/Ruby/PHP/Swift.
+        is_ast_index_stale() uses the AST index's per-file mtime_ns records
+        so the staleness check is language-complete.
+        """
+        import os
+        import time
+
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        # Use a .py stub that contains Kotlin-like class syntax so the Python
+        # grammar indexes something useful. Real Kotlin indexing requires
+        # tree-sitter-kotlin; this test focuses on the mtime tracking mechanism.
+        kt_path = tmp_path / "Main.kt"
+        kt_path.write_text("class Main {\n    fun run() {}\n}\n")
+
+        _write_py(tmp_path, "main_wrapper.py", "class MainWrapper:\n    pass\n")
+
+        # Set both files to the past, then index.
+        past_s = time.time() - 60
+        os.utime(str(kt_path), (past_s, past_s))
+        os.utime(str(tmp_path / "main_wrapper.py"), (past_s, past_s))
+        ASTCache(str(tmp_path)).index_project(max_files=50)
+
+        # Now bump Main.kt mtime to the future — simulates an edit without re-index.
+        future_ns = int(time.time() * 1e9) + 10_000_000_000
+        future_s = future_ns / 1e9
+        os.utime(str(kt_path), (future_s, future_s))
+
+        tool._dep_graph = None
+        tool._dep_graph_fingerprint = None
+        tool._symbol_cache = {}
+
+        hier = tool._hierarchy_for("MainWrapper")
+        assert hier is not None
+        # Main.kt was bumped after indexing → stale.
+        assert hier["index_stale"] is True, (
+            "#703: editing a Kotlin file must set index_stale=True via "
+            "authoritative ast_index mtime check"
+        )
+        assert "index_hint" in hier
+
 
 class TestR37uTopLevelVerdictMirror:
     """r37u dogfood: ``--symbol-lineage`` envelope used to omit top-level
@@ -366,6 +411,7 @@ class TestR37uTopLevelVerdictMirror:
     ``result["agent_summary"]["verdict"]``.
     """
 
+    @pytest.mark.slow_ok  # Real tool.execute() involves index scan; Windows exceeds 5s budget
     def test_top_level_verdict_mirrors_agent_summary_when_found(self, tool, tmp_path):
         _write_py(
             tmp_path,

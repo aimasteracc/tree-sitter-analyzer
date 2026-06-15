@@ -106,6 +106,8 @@ class Function(CodeElement):
     # When decorated, the line of the first decorator (outer node start).
     # start_line remains the `def` line for go-to-definition compatibility.
     decorator_start_line: int | None = None
+    # TypeScript/JavaScript decorator names (without '@'), e.g. ['Get', 'Validate']
+    decorators: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=False)
@@ -140,6 +142,8 @@ class Class(CodeElement):
     # When decorated, the line of the first decorator (outer node start).
     # start_line remains the `class` line for go-to-definition compatibility.
     decorator_start_line: int | None = None
+    # TypeScript/JavaScript decorator names (without '@'), e.g. ['Injectable', 'Singleton']
+    decorators: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=False)
