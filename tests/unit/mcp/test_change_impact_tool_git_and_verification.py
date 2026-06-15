@@ -276,8 +276,11 @@ def test_verification_strategy_recommends_focused_then_default_for_dirty_worktre
     )
 
 
-def test_low_impact_profile_rewrites_focused_pytest_for_local_agents():
+def test_low_impact_profile_rewrites_focused_pytest_for_local_agents(monkeypatch):
     """Local agents should get a nice/xdist-capped command without losing CI intent."""
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     plan = verification_tool._build_verification_plan(
         ["tree_sitter_analyzer/cli_main.py", "tree_sitter_analyzer/runtime.py"],
         ["tests/unit/cli/test_cli_main_module.py"],
@@ -314,8 +317,11 @@ def test_low_impact_profile_rewrites_focused_pytest_for_local_agents():
     ]
 
 
-def test_low_impact_profile_caps_default_pytest_for_local_agents():
+def test_low_impact_profile_caps_default_pytest_for_local_agents(monkeypatch):
     """Unmapped runtime diffs still avoid xdist=auto on the local machine."""
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     plan = verification_tool._build_verification_plan(
         ["tree_sitter_analyzer/new_runtime.py"],
         [],
@@ -380,8 +386,13 @@ def test_low_impact_profile_leaves_non_pytest_strategy_unchanged():
     }
 
 
-def test_low_impact_pytest_command_handles_pytest_binary_and_bad_shell_quote():
+def test_low_impact_pytest_command_handles_pytest_binary_and_bad_shell_quote(
+    monkeypatch,
+):
     """Command rewriting should be conservative for malformed shell strings."""
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     assert (
         change_impact_tool._low_impact_pytest_command("pytest tests/unit/test_a.py -q")
         == "nice -n 15 pytest tests/unit/test_a.py -n 2 -q"
@@ -396,8 +407,11 @@ def test_low_impact_pytest_command_handles_pytest_binary_and_bad_shell_quote():
     )
 
 
-def test_low_impact_pytest_command_replaces_existing_worker_flags():
+def test_low_impact_pytest_command_replaces_existing_worker_flags(monkeypatch):
     """Existing xdist settings should not survive the local-low-impact rewrite."""
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     command = (
         "uv run pytest tests/unit/test_a.py -n auto --numprocesses 4 "
         "--numprocesses=auto -q"
