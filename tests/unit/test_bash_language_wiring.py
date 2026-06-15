@@ -67,6 +67,50 @@ def test_bash_corpus_extracts_functions() -> None:
     assert len(elements["functions"]) == 11
 
 
+def test_subscript_read_not_relabeled_to_base_variable() -> None:
+    """#949 Codex P2 — a subscript *read* (``echo ${arr[0]}``) must keep its
+    ``subscript`` expression name/kind, NOT be unwrapped to the base variable
+    ``arr``. The base-name unwrap is reserved for assignment targets only."""
+    import tree_sitter
+
+    from tree_sitter_analyzer.languages.bash_plugin import (
+        BashElementExtractor,
+        BashPlugin,
+    )
+
+    plugin = BashPlugin()
+    lang = plugin.get_tree_sitter_language()
+    parser = tree_sitter.Parser(lang)
+    src = "echo ${arr[0]}\n"
+    tree = parser.parse(src.encode())
+    exprs = BashElementExtractor().extract_expressions(tree, src)
+    subscripts = [e for e in exprs if e.expression_kind == "subscript"]
+    # Exactly one subscript expression, and it is NOT relabeled to ``arr``.
+    assert len(subscripts) == 1
+    assert subscripts[0].name == "subscript"
+
+
+def test_subscript_assignment_target_unwrapped_to_base_variable() -> None:
+    """#949 — an assignment target (``arr[0]=x``) DOES unwrap to the base
+    variable ``arr`` in the subscript expression."""
+    import tree_sitter
+
+    from tree_sitter_analyzer.languages.bash_plugin import (
+        BashElementExtractor,
+        BashPlugin,
+    )
+
+    plugin = BashPlugin()
+    lang = plugin.get_tree_sitter_language()
+    parser = tree_sitter.Parser(lang)
+    src = "arr[0]=x\n"
+    tree = parser.parse(src.encode())
+    exprs = BashElementExtractor().extract_expressions(tree, src)
+    subscripts = [e for e in exprs if e.expression_kind == "subscript"]
+    assert len(subscripts) == 1
+    assert subscripts[0].name == "arr"
+
+
 def test_ast_cache_indexes_sh_file() -> None:
     """The project indexer must index .sh files without errors."""
     from tree_sitter_analyzer.ast_cache import ASTCache

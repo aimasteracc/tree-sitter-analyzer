@@ -568,12 +568,26 @@ class BashElementExtractor(ElementExtractor):
             raw_text = self._get_node_text_optimized(node)
             preview = raw_text[:50].replace("\n", " ") if raw_text else ""
 
-            base = node.child_by_field_name("name")
-            if base is None:
-                for child in node.children:
-                    if child.type in ("variable_name", "word"):
-                        base = child
-                        break
+            # #949 Codex P2: the base-name unwrap is only correct for an
+            # assignment *target* (left side of a variable_assignment, e.g.
+            # ``arr[0]=x``). A subscript *read* (``echo ${arr[0]}``) — whose
+            # parent is an ``expansion``/command, not a variable_assignment —
+            # must keep the ``subscript`` label, not be relabeled to ``arr``.
+            parent = node.parent
+            name_field = (
+                parent.child_by_field_name("name")
+                if parent is not None and parent.type == "variable_assignment"
+                else None
+            )
+            is_assignment_target = name_field is not None and name_field.id == node.id
+            base = None
+            if is_assignment_target:
+                base = node.child_by_field_name("name")
+                if base is None:
+                    for child in node.children:
+                        if child.type in ("variable_name", "word"):
+                            base = child
+                            break
             name = self._get_node_text_optimized(base) if base is not None else ""
             if not name:
                 name = "subscript"

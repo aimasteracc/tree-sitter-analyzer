@@ -966,6 +966,16 @@ def _walk_for_symbols(
         and not (
             language in ("javascript", "typescript", "java", "csharp") and enclosed
         )
+        # #949 Codex P2: ``FOO=bar make`` makes tree-sitter-bash emit
+        # ``FOO=bar`` as a variable_assignment *child of a command* node — a
+        # transient per-command env override, not a script-level variable.
+        # Skip those; only standalone assignments (parent is the
+        # program/compound/list) are real symbols.
+        and not (
+            node_type == "variable_assignment"
+            and node.parent is not None
+            and node.parent.type == "command"
+        )
     ):
         # Bash array/associative assignments (``arr[0]=x``) expose the target
         # as a ``subscript`` node, not a bare ``variable_name``. Unwrap to the

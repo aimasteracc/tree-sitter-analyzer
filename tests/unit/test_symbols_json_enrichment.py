@@ -136,12 +136,39 @@ class TestReturnTypeAndParamsSerialized:
 
 
 class TestExtractorVersionBump:
-    def test_extractor_version_is_12_in_both_sites(self):
-        # v12: #779 — walker depth cap raised 20 -> 100; bump forces re-index.
+    def test_extractor_version_is_13_in_both_sites(self):
+        # v13: #949 — bash variable_assignment indexing (skip command-prefix
+        # env vars, unwrap subscript only for assignment targets); bump forces
+        # re-index.
         from tree_sitter_analyzer import _ast_cache_indexer, ast_cache
 
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 12
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 12
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 13
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 13
+
+
+class TestBashVariableAssignmentScope:
+    """#949 Codex P2 — bash variable_assignment extraction edge cases."""
+
+    def test_command_prefix_env_var_not_recorded(self):
+        # ``FOO=bar make`` makes tree-sitter-bash emit ``FOO=bar`` as a
+        # variable_assignment child of a ``command`` node — a transient env
+        # override for that one command, not a script-level variable. It must
+        # NOT be recorded as a symbol.
+        syms = {
+            s["name"] for s in _symbols_for("FOO=bar make\n", "bash") if "name" in s
+        }
+        assert "FOO" not in syms
+
+    def test_standalone_assignment_recorded(self):
+        # A real standalone assignment (parent is the program) IS recorded.
+        syms = {s["name"] for s in _symbols_for("X=1\n", "bash") if "name" in s}
+        assert "X" in syms
+
+    def test_subscript_assignment_target_unwrapped_to_base(self):
+        # ``arr[0]=x`` exposes the target as a subscript; unwrap to the base
+        # variable so the symbol is ``arr``.
+        syms = {s["name"] for s in _symbols_for("arr[0]=x\n", "bash") if "name" in s}
+        assert "arr" in syms
 
 
 class TestCodexP2sOn621:
