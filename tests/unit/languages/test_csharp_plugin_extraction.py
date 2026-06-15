@@ -352,7 +352,7 @@ class TestCSharpClassExtraction:
             for m in person_class.methods
             if "Person" in m.name or m.name == "__init__"
         ]
-        assert len(constructor_names) >= 0  # Might be 0 if not extracted
+        assert len(constructor_names) == 0
 
     def test_extract_empty_tree(self):
         """Test extraction with empty/None tree."""
@@ -413,7 +413,7 @@ class TestCSharpFunctionExtraction:
         assert add_item is not None
         # Should have 'item' parameter
         param_names = [p.name if hasattr(p, "name") else p for p in add_item.parameters]
-        assert len(param_names) >= 0  # Parameter extraction may vary
+        assert len(param_names) == 1
 
     def test_extract_constructor(self):
         """Test constructor extraction."""
@@ -426,7 +426,7 @@ class TestCSharpFunctionExtraction:
             f for f in functions if f.name == "Person" or ".ctor" in str(f.raw_text)
         ]
         # Constructor should exist
-        assert len(constructors) >= 0  # Extraction behavior may vary
+        assert len(constructors) == 1
 
     def test_extract_method_modifiers(self):
         """Test extraction of method modifiers."""
@@ -470,4 +470,4 @@ class TestCSharpFunctionExtraction:
         calculate = next((f for f in functions if f.name == "Calculate"), None)
         assert calculate is not None
         # Method with if/for/while/switch should have higher complexity_score
-        assert calculate.complexity_score >= 1
+        assert calculate.complexity_score == 7

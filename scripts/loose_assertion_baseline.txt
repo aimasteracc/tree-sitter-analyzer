@@ -88,19 +88,18 @@
 #   result len rewritten as !=''; base_formatter rows ==3; legacy rows ==4),
 #   test_legacy_table_formatter_core.py (CSV lines ==1; rows ==2 x3);
 #   no exemptions).
-#   batch-38 (AST): 398 -> 365, 2026-06-15 (27 exact pins + 6 nondeterministic
-#   exemptions in 10 files: test_xref.py (4 pins), test_synapse_resolution.py
-#   (4 pins incl cross-file edge count + same-named function distinct ids),
-#   test_fts_fast_path.py (4 pins), test_call_graph_ast_a.py (4 pins incl
-#   java_method_defs == {main,foo}), test_utils_init.py (4 pins incl logger
-#   name lengths and __all__ count), test_fixture_detector.py (5 pins incl
-#   confidence 0.85/0.7 exact), test_language_detector_markdown.py (5 pins
-#   incl pattern count ==8 and per-pattern weight dict), test_smart_context_tool.py
-#   (4 pins: downstream_count==0, line_count==7, classes==9, structure==12),
-#   test_query_symbol_search.py (4 pins incl callers_count==1 replacing >= 0
-#   tautology), test_get_code_outline_token_savings.py (6 nondeterministic
-#   exemptions — permanently-skipped test class, token ratios not measurable)).
+#   batch-37 (AST): 402 -> 374, 2026-06-15 (27 exact pins + 1 nondeterministic
+#   exemption in 7 files: test_csharp_plugin_integration.py (classes==5/
+#   functions==12/imports==3/len(code)==2650), test_csharp_plugin_extraction.py
+#   (constructor_names==0/param_names==1/constructors==1/complexity==7),
+#   test_csharp_plugin_details.py (static_imports==1/import start_lines==[2,3]/
+#   complexity==7/nodes==98), test_swift_plugin.py (classes==4/functions==5/
+#   variables==3/node_count==207), test_python_plugin_edge_cases.py (imports==0
+#   x2/concurrent_cache exempt-nondeterministic/complexity loop restructured to
+#   per-case dict), test_plugins_base_core.py (functions==0/unicode_len==2/
+#   node_name_len==4/traverse_functions==1), test_typescript_formatter_core.py
+#   (full==879/compact==416/csv==402/csv_lines==8)).
 
-BASELINE_COUNT=365
+BASELINE_COUNT=337
 MEASUREMENT_DATE=2026-06-15
 MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"
