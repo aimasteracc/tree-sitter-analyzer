@@ -20,12 +20,12 @@ import java.util.Collections
 ## Functions
 | Function | Signature | Vis | Lines | Suspend | Doc |
 |----------|-----------|-----|-------|---------|-----|
-| User | fun(id: Long, username: String, email: String, active: Boolean): void | pub | 8-13 | - | - |
+| User | fun(id: Long, username: String, email: String, active: Boolean) | pub | 8-13 | - | - |
 | display | fun(): String | pub | 16-16 | - | - |
 | summary | fun(): String | pub | 18-20 | - | - |
-| Success | fun(data: T): void | pub | 24-24 | - | - |
-| Error | fun(message: String): void | pub | 25-25 | - | - |
-| UserManager | fun(db: Any?): void | pub | 28-28 | - | - |
+| Success | fun(data: T) | pub | 24-24 | - | - |
+| Error | fun(message: String) | pub | 25-25 | - | - |
+| UserManager | fun(db: Any?) | pub | 28-28 | - | - |
 | getUser | fun(id: Long): User? | pub | 33-35 | - | - |
 | fetchUserAsync | fun(id: Long): Result<User> | pub | 37-40 | - | - |
 | display | fun(): String | pub | 42-44 | - | - |
@@ -39,4 +39,3 @@ import java.util.Collections
 | userCount | Int | pub | - | 30 | - |
 | MAX_USERS | Inferred | pub | - | 48 | - |
 | version | Inferred | pub | - | 49 | - |
-| manager | Inferred | pub | - | 63 | - |
