@@ -477,6 +477,63 @@ class TestAstIndexStaleness:
         assert is_ast_index_stale(str(tmp_path)) is True
 
 
+class TestGraphCacheFingerprintHelpers:
+    """Direct coverage for the freshness-walk helper branches (#970)."""
+
+    def test_indexed_abs_and_rel_path_absolute_outside_root_falls_back(self, tmp_path):
+        """An absolute indexed path outside root → relative_to raises ValueError,
+        so the helper falls back to the path's own posix form."""
+        from pathlib import Path
+
+        from tree_sitter_analyzer._graph_cache_fingerprint import (
+            _indexed_abs_and_rel_path,
+        )
+
+        outside = tmp_path.parent / "elsewhere" / "foreign.py"
+        abs_path, rel_path = _indexed_abs_and_rel_path(tmp_path, str(outside))
+
+        assert abs_path == Path(str(outside))
+        assert rel_path == outside.as_posix()
+
+    def test_indexed_abs_and_rel_path_relative_inside_root(self, tmp_path):
+        """A relative indexed path is resolved against root and stays relative."""
+        from pathlib import Path
+
+        from tree_sitter_analyzer._graph_cache_fingerprint import (
+            _indexed_abs_and_rel_path,
+        )
+
+        abs_path, rel_path = _indexed_abs_and_rel_path(tmp_path, "pkg/a.py")
+
+        assert abs_path == Path(tmp_path) / "pkg" / "a.py"
+        assert rel_path == "pkg/a.py"
+
+    def test_walk_supported_source_paths_skips_dotfiles_excluded_and_unsupported(
+        self, tmp_path
+    ):
+        """The walker yields only supported, non-dot files outside EXCLUDE_DIRS."""
+        from tree_sitter_analyzer._graph_cache_fingerprint import (
+            _walk_supported_source_paths,
+        )
+
+        # Supported, should be yielded.
+        _write_py(tmp_path, "pkg/a.py", "class A:\n    pass\n")
+        # Dotfile — skipped by the fname.startswith(".") branch.
+        (tmp_path / ".hidden.py").write_text("x = 1\n")
+        # Unsupported extension — skipped by the ext-not-in-EXT_TO_LANG branch.
+        (tmp_path / "notes.txt").write_text("hello\n")
+        # Excluded directory — pruned from dirnames.
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "node_modules" / "dep.py").write_text("y = 2\n")
+        # Dot-directory — pruned from dirnames.
+        (tmp_path / ".cache_dir").mkdir()
+        (tmp_path / ".cache_dir" / "c.py").write_text("z = 3\n")
+
+        found = set(_walk_supported_source_paths(tmp_path))
+
+        assert found == {"pkg/a.py"}
+
+
 class TestR37uTopLevelVerdictMirror:
     """r37u dogfood: ``--symbol-lineage`` envelope used to omit top-level
     ``verdict`` even though ``agent_summary.verdict`` was populated.
