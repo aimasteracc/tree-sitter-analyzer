@@ -18,6 +18,7 @@ path interpolation, and envelope mirroring.
 from __future__ import annotations
 
 import asyncio
+import shlex
 
 import pytest
 
@@ -284,6 +285,49 @@ async def test_agent_workflow_tool_unsupported_extension_still_plans(tmp_path):
     # Agent_summary surface populated (next_step references the path so
     # callers can branch even on unsupported languages).
     assert "src/service.unknownext" in result["agent_summary"]["next_step"]
+
+
+@pytest.mark.asyncio
+async def test_agent_workflow_tool_quotes_target_with_spaces_in_cli_commands(tmp_path):
+    """Path tokens in generated workflow commands are shell-safe for spaces."""
+    target = tmp_path / "src" / "space file.py"
+    target.parent.mkdir()
+    target.write_text("def run():\\n    return 1\\n", encoding="utf-8")
+    target_path = "src/space file.py"
+    safe_target = shlex.quote(target_path)
+
+    result = await AgentWorkflowTool(str(tmp_path)).execute(
+        {"target_path": target_path, "output_format": "json"}
+    )
+
+    analyze_step = next(step for step in result["steps"] if step["step"] == "analyze")
+    retrieve_step = next(step for step in result["steps"] if step["step"] == "retrieve")
+    trace_step = next(step for step in result["steps"] if step["step"] == "trace")
+
+    assert analyze_step["cli_commands"][0] == (
+        f"uv run tree-sitter-analyzer smart-context {safe_target} --format json"
+    )
+    assert analyze_step["cli_commands"][1] == (
+        f"uv run tree-sitter-analyzer file-health {safe_target} --format json"
+    )
+    assert retrieve_step["cli_commands"][0] == (
+        f"uv run tree-sitter-analyzer {safe_target} --structure --output-format json"
+    )
+    assert trace_step["cli_commands"][0] == (
+        f"uv run tree-sitter-analyzer {safe_target} --dependencies file_deps --format json"
+    )
+    assert result["agent_summary"]["next_step"] == (
+        "uv run tree-sitter-analyzer safe-to-edit "
+        f"{safe_target} --edit-type refactor --format json"
+    )
+    assert result["agent_summary"]["queue_ledger_command"] == (
+        "uv run tree-sitter-analyzer change-impact "
+        f"--change-impact-scope {safe_target} --agent-summary-only --format json"
+    )
+    assert (
+        trace_step["cli_commands"][-1]
+        == result["agent_summary"]["queue_ledger_command"]
+    )
 
 
 @pytest.mark.asyncio

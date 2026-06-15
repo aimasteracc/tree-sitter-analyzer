@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from typing import Any
 
 PHASE_ORDER = ("set", "map", "analyze", "retrieve", "trace")
@@ -98,12 +99,13 @@ def build_agent_workflow_pack(
 
 def _build_steps(target: str) -> list[dict[str, Any]]:
     """Build all SMART workflow steps."""
+    safe_target = _shell_safe_path(target)
     steps = [
         _set_step(),
         _map_step(),
-        _analyze_step(target),
-        _retrieve_step(target),
-        _trace_step(target),
+        _analyze_step(safe_target),
+        _retrieve_step(safe_target),
+        _trace_step(safe_target),
     ]
     return _build_step_handoffs(steps)
 
@@ -217,7 +219,10 @@ def _analyze_step(target: str) -> dict[str, Any]:
         "cli_commands": [
             f"uv run tree-sitter-analyzer smart-context {target} --format json",
             f"uv run tree-sitter-analyzer file-health {target} --format json",
-            f"uv run tree-sitter-analyzer safe-to-edit {target} --edit-type refactor --format json",
+            (
+                "uv run tree-sitter-analyzer safe-to-edit "
+                f"{target} --edit-type refactor --format json"
+            ),
             f"uv run tree-sitter-analyzer refactor {target} --format json",
         ],
         "stop_condition": "Queue head, edit boundary, and verification hints are clear.",
@@ -270,13 +275,17 @@ def _build_agent_summary(
     recommended_commands: list[str],
 ) -> dict[str, Any]:
     """Build the compact decision surface for the workflow pack."""
+    safe_target_path = (
+        _shell_safe_path(target_path) if target_path else "path/to/file.py"
+    )
     first_command = (
-        f"uv run tree-sitter-analyzer safe-to-edit {target_path} --edit-type refactor --format json"
+        "uv run tree-sitter-analyzer safe-to-edit "
+        f"{safe_target_path} --edit-type refactor --format json"
         if target_path
         else "uv run tree-sitter-analyzer overview --format json"
     )
     queue_ledger_command = (
-        _scoped_change_impact_command(target_path) if target_path else ""
+        _scoped_change_impact_command(safe_target_path) if target_path else ""
     )
     next_phase = _build_next_phase(current_phase)
     # G8: build summary_line + verdict so this planning tool obeys the
@@ -351,7 +360,9 @@ def _build_evaluator_checks(
         checks.append(
             {
                 "name": "queue_ledger",
-                "command": _scoped_change_impact_command(target_path),
+                "command": _scoped_change_impact_command(
+                    _shell_safe_path(target_path)
+                ),
                 "required": False,
                 "purpose": (
                     "Emit scoped change-impact so evaluator can approve the handoff "
@@ -368,6 +379,13 @@ def _scoped_change_impact_command(target: str) -> str:
         "uv run tree-sitter-analyzer change-impact "
         f"--change-impact-scope {target} --agent-summary-only --format json"
     )
+
+
+def _shell_safe_path(path: str | None) -> str:
+    """Return a shell-safe token for user-provided file paths."""
+    if path is None:
+        return ""
+    return shlex.quote(path)
 
 
 def _build_toon_content(result: dict[str, Any]) -> str:
