@@ -416,7 +416,8 @@ async def test_test_map_edge_count_vs_unique_function_count_divergence() -> None
 
     target_a = _make_func("fn_a", "src/mod_a.py")
     target_b = _make_func("fn_b", "src/mod_b.py")
-    shared_caller = _make_func("shared_test", "tests/test_shared.py", 10)
+    # Must use test_ prefix — the collectible filter now applies (#790 fix).
+    shared_caller = _make_func("test_shared_behaviour", "tests/test_shared.py", 10)
 
     mock_graph = MagicMock()
     mock_graph.resolve_targets.return_value = [target_a, target_b]
@@ -436,7 +437,7 @@ async def test_test_map_edge_count_vs_unique_function_count_divergence() -> None
     assert result["unique_function_count"] == 1
     # Cap not hit — unique_function_count (1) <= 50
     assert result["truncated"] is False
-    assert result["test_functions"] == ["tests/test_shared.py::shared_test"]
+    assert result["test_functions"] == ["tests/test_shared.py::test_shared_behaviour"]
 
 
 # ---------------------------------------------------------------------------
@@ -518,3 +519,118 @@ async def test_test_map_output_format_json_no_toon_content() -> None:
     assert result["success"] is True
     assert result["edge_count"] == 0
     assert result["unique_function_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 9. #790 regression: private helpers (``_run``) must be excluded
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_test_map_excludes_private_helper_functions() -> None:
+    """Private helpers like ``_run`` must be excluded from test_map results.
+
+    Bug #790: ``_run`` in ``test_b1_reader_edge_parity.py`` was returned as a
+    test function because it lives in a test file, but pytest does NOT collect
+    functions whose name does not start with ``test_``.  The filter must
+    exclude any caller whose name does not start with ``test_``.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("get_call_edges", "src/ast_cache.py")
+    # _run is a private helper — present in test file but NOT pytest-collectible
+    private_helper = _make_func("_run", "tests/unit/test_b1_reader_edge_parity.py", 10)
+    # test_parity IS pytest-collectible
+    real_test = _make_func(
+        "test_parity_ok", "tests/unit/test_b1_reader_edge_parity.py", 50
+    )
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = [private_helper, real_test]
+    mock_graph.build = MagicMock()
+
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "get_call_edges", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    # Only the real test function counts
+    assert result["edge_count"] == 1
+    assert result["unique_function_count"] == 1
+    # _run must NOT appear in test_functions
+    assert all("_run" not in fn for fn in result["test_functions"])
+    # The real test IS present
+    assert (
+        "tests/unit/test_b1_reader_edge_parity.py::test_parity_ok"
+        in result["test_functions"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_test_map_excludes_all_underscore_prefixed_helpers() -> None:
+    """All ``_``-prefixed helpers in test files are excluded, not just ``_run``.
+
+    Helpers like ``_helper``, ``_setup``, ``_common_check`` are test-file
+    utilities, not pytest-collectible test functions.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("my_fn", "src/core.py")
+    helpers = [
+        _make_func("_run", "tests/test_a.py", 1),
+        _make_func("_helper", "tests/test_a.py", 5),
+        _make_func("_setup_graph", "tests/test_b.py", 3),
+    ]
+    real_test = _make_func("test_ok", "tests/test_a.py", 10)
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = helpers + [real_test]
+    mock_graph.build = MagicMock()
+
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "my_fn", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["edge_count"] == 1
+    assert result["unique_function_count"] == 1
+    assert result["test_functions"] == ["tests/test_a.py::test_ok"]
+
+
+@pytest.mark.asyncio
+async def test_test_map_excludes_non_test_prefixed_public_helpers() -> None:
+    """Public helpers without ``test_`` prefix are also excluded.
+
+    ``run_scenario``, ``check_result``, etc. live in test files but are NOT
+    collected by pytest.  Only ``test_*`` names pass the filter.
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("fn", "src/mod.py")
+    public_helper = _make_func("run_scenario", "tests/test_c.py", 2)
+    real_test = _make_func("test_scenario", "tests/test_c.py", 20)
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = [public_helper, real_test]
+    mock_graph.build = MagicMock()
+
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "fn", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["edge_count"] == 1
+    assert result["unique_function_count"] == 1
+    assert result["test_functions"] == ["tests/test_c.py::test_scenario"]
