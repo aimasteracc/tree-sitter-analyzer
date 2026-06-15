@@ -38,9 +38,16 @@ def element_to_dict(
     elem: Any, all_elements: Sequence[Any] | None = None
 ) -> dict[str, Any]:
     """Convert an analysis element to the stable API dict representation."""
+    python_type = type(elem).__name__.lower()
+    # #795: Class objects carry a class_type that distinguishes enum/interface/type/namespace
+    # from plain "class".  Surface that specificity in the output type field.
+    if python_type == "class":
+        output_type = getattr(elem, "class_type", "class") or "class"
+    else:
+        output_type = python_type
     result: dict[str, Any] = {
         "name": elem.name,
-        "type": type(elem).__name__.lower(),
+        "type": output_type,
         "start_line": elem.start_line,
         "end_line": elem.end_line,
         "raw_text": elem.raw_text,
