@@ -1,12 +1,12 @@
-# Migration Guide: v1.x → v2.0 (63 Tools → 8 Facades)
+# Migration Guide: v1.x → v2.0 (66 Tools → 8 Facades)
 
-## Why 63 → 8?
+## Why 66 → 8?
 
-Tree-sitter Analyzer v1.x registered **63 discrete MCP tools** into every connected client.
+Tree-sitter Analyzer v1.x registered **66 discrete MCP tools** into every connected client.
 That worked on the CLI and in curl-style clients, but it created two real problems:
 
 **Token cost.** Every MCP client (Roo Code, Cline, Copilot, Cursor) injects all tool
-definitions into every prompt. With 63 tools the eager payload hit **24,318 tokens of
+definitions into every prompt. With 66 tools the eager payload hit **24,318 tokens of
 pure tool-definition overhead per session** — exactly the waste that TOON output was
 designed to avoid. The irony: the server that saved 50-70% on *response* tokens was
 burning 24k tokens on *discovery*.
@@ -17,7 +17,7 @@ degraded tool-selection accuracy above ~50 tools because the LLM's tool picker i
 overwhelmed by near-duplicate names (`codegraph_callers` vs
 `codegraph_call_graph mode=callers`).
 
-v2.0 collapses all 63 tools into **8 domain facades** (`search`, `nav`, `structure`,
+v2.0 collapses all 66 tools into **8 domain facades** (`search`, `nav`, `structure`,
 `health`, `edit`, `project`, `index`, `viz`). Each facade exposes an `action` parameter
 that routes to the same inner logic. **No capability is removed** — every tool is
 reachable via `(facade, action)`. The token cost drops to **~4,873 tokens (~80% less)**
@@ -30,7 +30,7 @@ Comparison (tool count in eager MCP surface):
 | CodeGraph | ~12 |
 | Rhizome / mycelium | 1 (unified) |
 | **Tree-sitter Analyzer v2.0** | **8 (rich-output: verdict + TOON)** |
-| Tree-sitter Analyzer v1.x | 63 |
+| Tree-sitter Analyzer v1.x | 66 |
 
 ---
 
@@ -70,7 +70,7 @@ tree-sitter-analyzer = { version = "<2" }
 
 ---
 
-## Old → New crosswalk (all 63 legacy tools)
+## Old → New crosswalk (all 66 legacy tools)
 
 The table below is the canonical mapping maintained in
 `tree_sitter_analyzer/mcp/facade_map.py`. The shim is derived from this same table.
@@ -101,6 +101,8 @@ The table below is the canonical mapping maintained in
 | `codegraph_callers` | `nav` `action=callers` (default `scope=point`) |
 | `codegraph_callees` | `nav` `action=callees` (default `scope=point`) |
 | `codegraph_call_graph` | `nav` `action=callers` `scope=graph` |
+| `codegraph_callee_tree` | `nav` `action=callee_tree` |
+| `codegraph_caller_tree` | `nav` `action=caller_tree` |
 
 ### structure facade
 
@@ -130,6 +132,7 @@ The table below is the canonical mapping maintained in
 | `detect_routes` | `health` `action=routes` |
 | `codegraph_overview` | `health` `action=overview` |
 | `analyze_dependencies` | `health` `action=deps` |
+| `codegraph_test_gap` | `health` `action=test_gap` |
 
 ### edit facade
 
@@ -236,8 +239,8 @@ The bundled `tsa-*` skills are updated in v2.0 as part of Wave D / G1.
 
 | Version | Status |
 |---|---|
-| v1.x | All 63 tools live, no deprecation |
-| **v2.0** | 8 facades live; shim forwards 63 legacy names with `deprecation` field |
+| v1.x | All 66 tools live, no deprecation |
+| **v2.0** | 8 facades live; shim forwards 66 legacy names with `deprecation` field |
 | v2.1 | Shim still present; legacy names emit louder stderr warning |
 | **v2.2** | Shim removed; legacy names return `NOT_FOUND` |
 

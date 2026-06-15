@@ -29,11 +29,23 @@ from ._ast_cache_query import (
     search_symbols_linear as _search_symbols_linear,
 )
 from ._ast_cache_search import search_symbols_cascade as _search_symbols_cascade
+from ._ast_cache_build_state import (
+    clear_build_in_progress as _clear_build_in_progress,
+    mark_build_in_progress as _mark_build_in_progress,
+)
+from ._ast_cache_callgraph_state import (
+    call_graph_built as _call_graph_built,
+    clear_call_graph_built as _clear_call_graph_built,
+    mark_call_graph_built as _mark_call_graph_built,
+)
 from ._ast_cache_helpers import (
     _build_function_entry,
     _commit_index_results,
     _make_error_entry,
     _project_index_activation_enabled,
+)
+from ._ast_cache_maintenance import (
+    reclaim_storage_after_full_rebuild as _reclaim_storage_after_full_rebuild,
 )
 from ._ast_cache_schema import (
     EXPECTED_SCHEMA_VERSIONS as _EXPECTED_SCHEMA_VERSIONS,
@@ -48,6 +60,7 @@ from ._ast_cache_schema import (
     apply_migration_v9 as _apply_migration_v9,
     apply_migration_v10 as _apply_migration_v10,
     apply_migration_v11 as _apply_migration_v11,
+    apply_migration_v12 as _apply_migration_v12,
     backfill_schema_version_row as _backfill_schema_version_row,
     check_schema_expectations as _check_schema_expectations,
     clear_activation_for_file as _clear_activation_for_file_fn,
@@ -58,7 +71,17 @@ from .project_graph import _language_from_ext
 
 logger = logging.getLogger(__name__)
 
-_AST_CACHE_EXTRACTOR_VERSION = 2
+# v3: #610 — Python module-level constants extracted as kind="constant".
+# v4: #613 — Go package-level const/var specs extracted as kind="constant".
+# v5: #613 — Rust const/static items extracted as kind="constant".
+# v6: #614 — docstring/return_type/params serialized into symbols_json.
+# v7: #624 — PHP const declarations extracted as kind="constant".
+# v8: #626 — JS/TS function-local variables no longer over-captured.
+# v9: #626 — Java function-local variables no longer over-captured.
+# v10: #628 — C# function-local variables no longer over-captured.
+# v11: #638 — call edges keep ALL same-named definition spans; calls inside
+#      the earlier of two same-named methods regain their enclosing caller.
+_AST_CACHE_EXTRACTOR_VERSION = 11
 
 
 class SchemaIntegrityError(RuntimeError):
@@ -143,6 +166,7 @@ class ASTCache:
             (9, _apply_migration_v9),
             (10, _apply_migration_v10),
             (11, _apply_migration_v11),
+            (12, _apply_migration_v12),
         ]
         self._fts5_available = _schema_init_db(
             conn, self._fts5_available, _has_fts5, migrations
@@ -292,6 +316,7 @@ class ASTCache:
             synapse = self._run_synapse_backfill()
             edge_store_refresh = self._refresh_graph_edges_from_cache()
             unresolved = self._run_unresolved_refs_backfill()
+            _mark_call_graph_built(self._get_conn())
             return {
                 "mode_used": "resolve_only",
                 "resolve_only": True,
@@ -305,31 +330,55 @@ class ASTCache:
                 "unresolved_refs_backfill": unresolved,
                 "activation_enabled": activation_enabled,
             }
-        if force:
+        try:
+            if force:
+                # #578: a full rebuild empties ast_index up front (the DELETE
+                # below commits), then re-populates in bounded batches over
+                # ~70 s. Stamp a persisted marker across that window so
+                # concurrent readers on other connections/processes warn
+                # instead of trusting the half-built table. MARK + DELETE live
+                # INSIDE the try so the finally clears the marker even if the
+                # DELETE/commit itself raises (e.g. SQLITE_FULL) — otherwise a
+                # failed rebuild would leave a stuck marker until TTL expiry.
+                conn = self._get_conn()
+                _mark_build_in_progress(conn)
+                _clear_call_graph_built(conn)
+                conn.execute("DELETE FROM ast_index")
+                conn.commit()
+            stats, candidates, count = self._walk_and_partition(
+                max_files, force, activation_enabled
+            )
+            workers = self._resolve_worker_count(workers, candidates)
+            if workers and workers >= 2 and len(candidates) >= 2:
+                results = self._index_parallel(candidates, workers)
+            else:
+                results = [
+                    _worker_index_file((p, self.project_root, lang))
+                    for p, lang in candidates
+                ]
             conn = self._get_conn()
-            conn.execute("DELETE FROM ast_index")
-            conn.commit()
-        stats, candidates, count = self._walk_and_partition(
-            max_files, force, activation_enabled
-        )
-        workers = self._resolve_worker_count(workers, candidates)
-        if workers and workers >= 2 and len(candidates) >= 2:
-            results = self._index_parallel(candidates, workers)
-        else:
-            results = [
-                _worker_index_file((p, self.project_root, lang))
-                for p, lang in candidates
-            ]
-        conn = self._get_conn()
-        indexed_at = datetime.now(timezone.utc).isoformat()
-        _commit_index_results(
-            conn, results, stats, self._insert_index_row, indexed_at, activation_enabled
-        )
-        stats["total_files"] = count
-        stats["workers"] = workers
-        if stats["indexed"] > 0:
-            self._post_index_backfill(stats)
-        return stats
+            indexed_at = datetime.now(timezone.utc).isoformat()
+            _commit_index_results(
+                conn,
+                results,
+                stats,
+                self._insert_index_row,
+                indexed_at,
+                activation_enabled,
+            )
+            stats["total_files"] = count
+            stats["workers"] = workers
+            if stats["indexed"] > 0:
+                self._post_index_backfill(stats)
+                _mark_call_graph_built(self._get_conn())
+            if force:
+                stats["db_maintenance"] = _reclaim_storage_after_full_rebuild(
+                    conn, self.db_path
+                )
+            return stats
+        finally:
+            if force:
+                _clear_build_in_progress(self._get_conn())
 
     def _walk_and_partition(
         self, max_files: int, force: bool, activation_enabled: bool
@@ -536,7 +585,9 @@ class ASTCache:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         if not self._fts5_available:
-            return self._search_symbols_linear(query, language)
+            # Linear fallback has no SQL LIMIT — cap here so truncation
+            # detection in callers (len >= limit) is reliable.
+            return self._search_symbols_linear(query, language)[:limit]
         return _fts_search(self._get_conn(), query, language, limit)
 
     def fts_search_ranked(
@@ -551,7 +602,7 @@ class ASTCache:
         Results include a ``relevance_score`` field in [0.0, 1.0].
         """
         if not self._fts5_available or len(query) < 2:
-            return self._search_symbols_linear(query, language)
+            return self._search_symbols_linear(query, language)[:limit]
         return _fts_search_ranked(self._get_conn(), query, language, limit)
 
     def _search_symbols_linear(
@@ -788,6 +839,10 @@ class ASTCache:
             )
         except sqlite3.OperationalError:
             return False
+
+    def call_graph_built(self) -> bool:
+        """True iff the cache explicitly records a completed call-graph build."""
+        return _call_graph_built(self._get_conn())
 
     def get_cross_file_resolver(self) -> Any:
         """Get (or build) the CrossFileResolver for import-aware resolution."""

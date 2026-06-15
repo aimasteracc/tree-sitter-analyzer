@@ -1,6 +1,6 @@
 # RFC-0015: 瞬間 UML 图族 — Instant UML Family
 
-- **Status**: draft
+- **Status**: implemented (Phase 1 #462; P2-A #472; P2-B #475; all in v1.23.0)
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-11
 - **Last updated**: 2026-06-11 (adversarial review round 1 — lead-triaged verdicts applied)
@@ -824,46 +824,46 @@ into the Phase 1 PR — it is a one-line metadata annotation requiring no separa
 
 ### Phase 1 (shippable independently)
 
-- [ ] `CodeGraphUMLTool.get_tool_schema()` declares `file_path`, `class_name`, and `include_tests` in `properties`.
-- [ ] `_validate_positive_int` extracted to shared util; used by `uml_tool.py` and `codegraph_sitemap_tool.py`.
-- [ ] `validate_arguments` accepts `max_edges=30.0` (coerced to `int`); rejects `max_edges=True`, `max_edges=False`, `max_edges=30.5`.
-- [ ] `UMLExporter.class_diagram(file_path="...")` returns only in-file classes plus their direct bases (`metadata["scope"] == "file"`).
-- [ ] `UMLExporter.class_diagram(class_name="...")` returns the neighbourhood subgraph (`metadata["scope"] == "class_neighbourhood"`).
-- [ ] `UMLExporter.class_diagram()` (no scoping params) excludes test-corpus classes by default; `include_tests=True` restores them.
-- [ ] `viz action=uml diagram=class file_path="..."` passes `file_path` through the facade to the inner (viz-08 closed).
-- [ ] Whole-project TSA class diagram node count is exactly N (N to be pinned from post-fix measurement; previously 209, test-corpus now excluded).
-- [ ] Truncated diagrams include `%% NOTE: diagram truncated` Mermaid comment; non-truncated diagrams do not.
-- [ ] `_DEFAULT_MAX_EDGES = 200` replaced with per-diagram constants.
-- [ ] CLI flags `--uml-file-path`, `--uml-class-name`, `--uml-include-tests` added and wired via `_build_uml_tool_args`.
-- [ ] `sequence_diagram` metadata `source` is `"call_path+synapse_resolved"` when resolved hops present, `"call_path"` otherwise (P1-E one-liner).
-- [ ] `test_uml_tool_schema_lists_diagrams` still asserts `== ["class", "package", "component", "sequence"]` (Phase 1 does not add activity/state).
-- [ ] `test_class_diagram_execute_with_mock_exporter` FakeExporter kwargs updated to accept `file_path`, `class_name`, `include_tests`.
-- [ ] Cost invariant skeleton in `test_output_cost_invariants.py`: scoped class diagram bytes < unscoped bytes (full test wired in integration phase).
-- [ ] All Phase-1 tests RED-first then GREEN.
-- [ ] CLI<->MCP parity test for Phase-1 flags GREEN.
-- [ ] Docs/CODEMAPS updated.
+- [x] `CodeGraphUMLTool.get_tool_schema()` declares `file_path`, `class_name`, and `include_tests` in `properties`. (shipped #462)
+- [x] `_validate_positive_int` extracted to shared util; used by `uml_tool.py` and `codegraph_sitemap_tool.py`. (shipped #462)
+- [x] `validate_arguments` accepts `max_edges=30.0` (coerced to `int`); rejects `max_edges=True`, `max_edges=False`, `max_edges=30.5`. (shipped #462)
+- [x] `UMLExporter.class_diagram(file_path="...")` returns only in-file classes plus their direct bases (`metadata["scope"] == "file"`). (shipped #462)
+- [x] `UMLExporter.class_diagram(class_name="...")` returns the neighbourhood subgraph (`metadata["scope"] == "class_neighbourhood"`). (shipped #462)
+- [x] `UMLExporter.class_diagram()` (no scoping params) excludes test-corpus classes by default; `include_tests=True` restores them. (shipped #462)
+- [x] `viz action=uml diagram=class file_path="..."` passes `file_path` through the facade to the inner (viz-08 closed). (shipped #462)
+- [x] Whole-project TSA class diagram node count is exactly N (N to be pinned from post-fix measurement; previously 209, test-corpus now excluded). (shipped #462)
+- [x] Truncated diagrams include `%% NOTE: diagram truncated` Mermaid comment; non-truncated diagrams do not. (shipped #462)
+- [x] `_DEFAULT_MAX_EDGES = 200` replaced with per-diagram constants. (shipped #462)
+- [x] CLI flags `--uml-file-path`, `--uml-class-name`, `--uml-include-tests` added and wired via `_build_uml_tool_args`. (shipped #462)
+- [x] `sequence_diagram` metadata `source` is `"call_path+synapse_resolved"` when resolved hops present, `"call_path"` otherwise (P1-E one-liner). (shipped #462)
+- [x] `test_uml_tool_schema_lists_diagrams` still asserts `== ["class", "package", "component", "sequence"]` (Phase 1 does not add activity/state). (shipped #462)
+- [x] `test_class_diagram_execute_with_mock_exporter` FakeExporter kwargs updated to accept `file_path`, `class_name`, `include_tests`. (shipped #462)
+- [x] Cost invariant skeleton in `test_output_cost_invariants.py`: scoped class diagram bytes < unscoped bytes (full test wired in integration phase). (shipped #462)
+- [x] All Phase-1 tests RED-first then GREEN. (shipped #462)
+- [x] CLI<->MCP parity test for Phase-1 flags GREEN. (shipped #462)
+- [x] Docs/CODEMAPS updated. (shipped #462)
 
 ### Phase 2 — activity
 
-- [x] `diagram` enum includes `"activity"` in schema.
-- [x] `UMLExporter.activity_diagram(function_name, file_path, max_nodes)` implemented: `mermaid_type="flowchart"`, `%% NOTE: activity` comment in Mermaid.
-- [x] Zero CFG nodes -> `verdict="NOT_FOUND"` + `next_step`.
-- [x] Stale file -> parse current content + `metadata["note"]`; missing file -> `NOT_FOUND`.
-- [x] `test_uml_tool_schema_lists_diagrams` re-pinned to 6-element enum (5 in P2-A: ["class","package","component","sequence","activity"]).
-- [x] `test_class_diagram_execute_with_mock_exporter` FakeExporter still accepts new params (no regression from Phase 1 re-pin).
-- [x] CLI flags `--uml-function`, `--uml-max-nodes` added and wired.
-- [x] Latency invariant: activity diagram triggers exactly 1 tree-sitter parse (assertion count == 1).
-- [x] All Phase-2 activity tests RED-first then GREEN.
+- [x] `diagram` enum includes `"activity"` in schema. (shipped #472)
+- [x] `UMLExporter.activity_diagram(function_name, file_path, max_nodes)` implemented: `mermaid_type="flowchart"`, `%% NOTE: activity` comment in Mermaid. (shipped #472)
+- [x] Zero CFG nodes -> `verdict="NOT_FOUND"` + `next_step`. (shipped #472)
+- [x] Stale file -> parse current content + `metadata["note"]`; missing file -> `NOT_FOUND`. (shipped #472)
+- [x] `test_uml_tool_schema_lists_diagrams` re-pinned to 6-element enum (5 in P2-A: ["class","package","component","sequence","activity"]). (shipped #472)
+- [x] `test_class_diagram_execute_with_mock_exporter` FakeExporter still accepts new params (no regression from Phase 1 re-pin). (shipped #472)
+- [x] CLI flags `--uml-function`, `--uml-max-nodes` added and wired. (shipped #472)
+- [x] Latency invariant: activity diagram triggers exactly 1 tree-sitter parse (assertion count == 1). (shipped #472)
+- [x] All Phase-2 activity tests RED-first then GREEN. (shipped #472)
 
 ### Phase 2 — state
 
-- [ ] `diagram` enum includes `"state"` in schema.
-- [ ] `UMLExporter.state_diagram(class_name, file_path, max_nodes)` implemented: `mermaid_type="stateDiagram-v2"`, `analysis_kind="static_approximation"`.
-- [ ] Zero transitions -> `verdict="NOT_FOUND"` + `next_step`.
-- [ ] Stale/missing file behavior same as activity.
-- [ ] CLI<->MCP parity test for Phase-2 flags GREEN.
-- [ ] All Phase-2 state tests RED-first then GREEN.
-- [ ] Docs/CODEMAPS updated.
+- [x] `diagram` enum includes `"state"` in schema. (shipped #475)
+- [x] `UMLExporter.state_diagram(class_name, file_path, max_nodes)` implemented: `mermaid_type="stateDiagram-v2"`, `analysis_kind="static_approximation"`. (shipped #475)
+- [x] Zero transitions -> ~~`verdict="NOT_FOUND"`~~ shipped as `verdict="INFO"` + honest "no transitions detected" note — criterion superseded by the #480 clarification (#498): states found is not a miss. (shipped #475, amended #498)
+- [x] Stale/missing file behavior same as activity. (shipped #475)
+- [x] CLI<->MCP parity test for Phase-2 flags GREEN. (shipped #475)
+- [x] All Phase-2 state tests RED-first then GREEN. (shipped #475)
+- [ ] Docs/CODEMAPS updated — `docs/CODEMAPS/mcp-tools.md` uml row still omits `state` (open; flagged by Codex review on the sync PR).
 
 ## What this RFC does NOT do (deferred)
 

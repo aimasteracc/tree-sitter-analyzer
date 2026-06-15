@@ -2,6 +2,7 @@
 
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from tree_sitter_analyzer.mcp.tools.utils.test_discovery import (
     detect_language_from_ext,
@@ -535,6 +536,111 @@ class TestFindTestFilesJava:
 
             results = find_test_files(str(source), tmp)
             assert any("CalculatorTest.java" in r for r in results)
+
+
+class TestFindTestFilesPythonPublicSymbolReferences:
+    def test_finds_tests_referencing_public_symbols_even_when_filename_differs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "src" / "format_helper.py"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "def apply_toon_format_to_response(data):\n"
+                "    return data\n\n"
+                "def _private_helper():\n"
+                "    return None\n",
+                encoding="utf-8",
+            )
+
+            exact_test = root / "tests" / "test_output_cost_invariants.py"
+            exact_test.parent.mkdir(parents=True)
+            exact_test.write_text(
+                "from src.format_helper import apply_toon_format_to_response\n\n"
+                "def test_budget():\n"
+                "    assert apply_toon_format_to_response({}) == {}\n",
+                encoding="utf-8",
+            )
+            private_only = root / "tests" / "test_private_only.py"
+            private_only.write_text(
+                "def test_private_name_text():\n"
+                "    assert '_private_helper' in 'doc only'\n",
+                encoding="utf-8",
+            )
+
+            results = find_test_files(str(source), tmp)
+
+            assert "tests/test_output_cost_invariants.py" in results
+            assert "tests/test_private_only.py" not in results
+
+    def test_symbol_reference_scan_skips_unreadable_test_files(self, monkeypatch):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "src" / "format_helper.py"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "def apply_toon_format_to_response(data):\n    return data\n",
+                encoding="utf-8",
+            )
+
+            readable = root / "tests" / "test_output_cost_invariants.py"
+            unreadable = root / "tests" / "test_unreadable.py"
+            readable.parent.mkdir(parents=True)
+            readable.write_text(
+                "def test_budget():\n"
+                "    assert apply_toon_format_to_response({}) == {}\n",
+                encoding="utf-8",
+            )
+            unreadable.write_text(
+                "def test_unreadable():\n"
+                "    assert apply_toon_format_to_response({}) == {}\n",
+                encoding="utf-8",
+            )
+
+            original_read_text = Path.read_text
+
+            def fake_read_text(path: Path, *args: Any, **kwargs: Any) -> str:
+                if path == unreadable:
+                    raise OSError("permission denied")
+                return original_read_text(path, *args, **kwargs)
+
+            monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+            results = find_test_files(str(source), tmp)
+
+            assert "tests/test_output_cost_invariants.py" in results
+            assert "tests/test_unreadable.py" not in results
+
+    def test_symbol_reference_scan_treats_unreadable_source_as_no_symbols(
+        self, monkeypatch
+    ):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "src" / "format_helper.py"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "def apply_toon_format_to_response(data):\n    return data\n",
+                encoding="utf-8",
+            )
+            test = root / "tests" / "test_output_cost_invariants.py"
+            test.parent.mkdir(parents=True)
+            test.write_text(
+                "def test_budget():\n"
+                "    assert apply_toon_format_to_response({}) == {}\n",
+                encoding="utf-8",
+            )
+
+            original_read_text = Path.read_text
+
+            def fake_read_text(path: Path, *args: Any, **kwargs: Any) -> str:
+                if path == source:
+                    raise OSError("permission denied")
+                return original_read_text(path, *args, **kwargs)
+
+            monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+            results = find_test_files(str(source), tmp)
+
+            assert "tests/test_output_cost_invariants.py" not in results
 
 
 class TestFindTestFilesGo:

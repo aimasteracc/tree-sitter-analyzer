@@ -1,6 +1,8 @@
 file_path: examples/sample.rs
 language: rust
-package: null
+package:
+  name: sample_module
+  line_range: (2, 88)
 classes:
   [5]{name,visibility,line_range(a,b)}:
     User,pub,(7,12)
@@ -9,7 +11,8 @@ classes:
     Container,pub,(67,69)
     BorrowedItem,pub,(77,79)
 methods:
-  [8]{name,visibility,line_range(a,b)}:
+  [9]{name,visibility,line_range(a,b)}:
+    display,private,(25,25)
     summary,private,(27,29)
     new,pub,(34,41)
     deactivate,pub,(44,46)
@@ -19,20 +22,24 @@ methods:
     new,pub,(72,74)
     main,private,(91,93)
 fields:
-  [6]{name,type,line_range(a,b)}:
+  [10]{name,type,line_range(a,b)}:
     id,,(8,8)
     username,,(9,9)
     email,,(10,10)
     active,,(11,11)
     item,,(68,68)
     name,,(78,78)
+    Admin,,(17,17)
+    Moderator,,(18,18)
+    User,,(19,19)
+    Guest,,(20,20)
 imports:
   [1]{name,module_name,statement,is_static,is_wildcard,line_range(a,b),imported_names,raw_text}:
     "use std::collections::HashMap;",,"use std::collections::HashMap;",false,false,(3,3),[],"use std::collections::HashMap;"
 statistics:
   class_count: 5
-  method_count: 8
-  field_count: 6
+  method_count: 9
+  field_count: 10
   import_count: 1
   total_lines: 93
 effective_table: toon

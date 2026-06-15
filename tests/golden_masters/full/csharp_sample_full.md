@@ -38,15 +38,15 @@ using System.Linq;
 | PhoneNumber | ():string? | + | 29-29 | 1 | - |
 | DisplayName | ():string | + | 32-32 | 1 | - |
 | UpdateEmail | (newEmail:string):void | + | 44-52 | 2 | - |
-| IsValid | ():void | + | 54-59 | 1 | - |
-| ToString | ():void | + | 61-64 | 1 | - |
+| IsValid | ():bool | + | 54-59 | 1 | - |
+| ToString | ():string | + | 61-64 | 1 | - |
 
 ## IUserRepository (70-77)
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
-| GetById | (id:int):void | + | 72-72 | 1 | - |
-| GetAll | ():void | + | 73-73 | 1 | - |
+| GetById | (id:int):User | + | 72-72 | 1 | - |
+| GetAll | ():IEnumerable<User> | + | 73-73 | 1 | - |
 | Add | (user:User):void | + | 74-74 | 1 | - |
 | Update | (user:User):void | + | 75-75 | 1 | - |
 | Delete | (id:int):void | + | 76-76 | 1 | - |

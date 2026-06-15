@@ -51,7 +51,7 @@ async def test_fd_21_glob_searches(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 2
+    assert result1["count"] == 2
 
     # Test glob pattern for test files
     result2 = await tool.execute(
@@ -59,7 +59,7 @@ async def test_fd_21_glob_searches(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 2
+    assert result2["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -107,7 +107,7 @@ async def test_fd_22_full_path_glob_searches(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -153,7 +153,7 @@ async def test_fd_23_smart_case_glob_searches(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 3
+    assert result1["count"] == 3
 
     # Test smart case glob (uppercase is exact)
     result2 = await tool.execute(
@@ -161,7 +161,7 @@ async def test_fd_23_smart_case_glob_searches(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 1
+    assert result2["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -203,7 +203,7 @@ async def test_fd_24_case_sensitive_glob_searches(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -252,7 +252,7 @@ async def test_fd_25_glob_searches_with_extension(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -290,7 +290,7 @@ async def test_fd_29_hidden_files(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 1
+    assert result1["count"] == 1
 
     # Test with hidden files
     result2 = await tool.execute(
@@ -298,7 +298,7 @@ async def test_fd_29_hidden_files(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 4
+    assert result2["count"] == 4
 
 
 @pytest.mark.asyncio
@@ -330,7 +330,7 @@ async def test_fd_30_hidden_file_attribute(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 2
+    assert result["count"] == 2
 
 
 @pytest.mark.asyncio
@@ -389,7 +389,7 @@ async def test_fd_31_type_filtering(tmp_path, monkeypatch):
     )
 
     assert result1["success"] is True
-    assert result1["count"] >= 2
+    assert result1["count"] == 3
 
     # Test directories only
     result2 = await tool.execute(
@@ -397,7 +397,7 @@ async def test_fd_31_type_filtering(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True
-    assert result2["count"] >= 1
+    assert result2["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -437,4 +437,4 @@ async def test_fd_32_type_executable(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True
-    assert result["count"] >= 0  # May be 0 if no executable support
+    assert result["count"] == 1

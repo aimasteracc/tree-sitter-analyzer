@@ -100,6 +100,23 @@ class TestToolDefinition:
         assert tool.validate_arguments(args) is True
         assert args["query"] == "FooBar"
 
+    def test_symbols_list_maps_to_query(self, tool):
+        # The facade documents explore as multi-symbol: "Params: symbols" (#515)
+        args = {"symbols": ["legacy_to_facade", "is_facade_name"]}
+        assert tool.validate_arguments(args) is True
+        assert args["query"] == "legacy_to_facade is_facade_name"
+
+    def test_symbol_accepts_list_too(self, tool):
+        # Strict-param hint sends agents from symbols→symbol; a list there
+        # must not produce "query is required" (#515 confusing-error repro)
+        args = {"symbol": ["legacy_to_facade", "is_facade_name"]}
+        assert tool.validate_arguments(args) is True
+        assert args["query"] == "legacy_to_facade is_facade_name"
+
+    def test_symbols_in_schema(self, tool):
+        props = tool.get_tool_schema()["properties"]
+        assert props["symbols"]["type"] == "array"
+
     def test_missing_query_and_symbol_raises(self, tool):
         with pytest.raises(ValueError, match="query is required"):
             tool.validate_arguments({})

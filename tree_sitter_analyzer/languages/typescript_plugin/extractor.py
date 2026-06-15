@@ -169,10 +169,15 @@ class TypeScriptElementExtractor(ElementExtractor):
 
         variables: list[Variable] = []
 
-        # Handle all TypeScript variable declaration types
+        # Handle all TypeScript variable declaration types.
+        # Issue #771: public_field_definition is the correct node for class
+        # member declarations (e.g. `private foo: string`).  variable_declaration
+        # and lexical_declaration are guarded to skip nodes inside
+        # function/method bodies (parent type == statement_block).
         extractors = {
             "variable_declaration": self._extract_variable_optimized,
             "lexical_declaration": self._extract_lexical_variable_optimized,
+            "public_field_definition": self._extract_public_field_optimized,
             "property_definition": self._extract_property_optimized,
             "property_signature": self._extract_property_signature_optimized,
         }
@@ -374,18 +379,45 @@ class TypeScriptElementExtractor(ElementExtractor):
             self.framework_type,
         )
 
+    @staticmethod
+    def _is_inside_function_body(node: "tree_sitter.Node") -> bool:
+        """Return True when node is a direct child of a function/method body.
+
+        A lexical_declaration or variable_declaration whose immediate parent is
+        a statement_block lives inside a function or method body and must NOT
+        be reported as a class field (issue #771).
+        """
+        parent = node.parent
+        return parent is not None and parent.type == "statement_block"
+
     def _extract_variable_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
-        """Extract var declaration variables"""
+        """Extract var declaration variables (top-level / class-body only)."""
+        if self._is_inside_function_body(node):
+            return []
         return self._extract_variables_from_declaration(node, "var")
 
     def _extract_lexical_variable_optimized(
         self, node: "tree_sitter.Node"
     ) -> list[Variable]:
-        """Extract let/const declaration variables"""
+        """Extract let/const declaration variables (top-level / class-body only)."""
+        if self._is_inside_function_body(node):
+            return []
         # Determine if it's let or const
         node_text = self._get_node_text_optimized(node)
         kind = "let" if node_text.strip().startswith("let") else "const"
         return self._extract_variables_from_declaration(node, kind)
+
+    def _extract_public_field_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Variable | None:
+        """Extract a class member declaration (public_field_definition node).
+
+        This is the correct tree-sitter node type for TypeScript class property
+        declarations such as ``private foo: string`` or ``private static instance: T``.
+        Previously these were silently dropped because the extractor only targeted
+        the JavaScript-style ``property_definition`` node type (issue #771).
+        """
+        return extract_property(node, self._get_node_text_optimized)
 
     def _extract_property_optimized(self, node: "tree_sitter.Node") -> Variable | None:
         """Extract class property definition"""

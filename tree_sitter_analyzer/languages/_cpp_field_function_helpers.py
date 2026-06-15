@@ -47,6 +47,10 @@ def extract_function_from_field_declaration(
 
         start_line = node.start_point[0] + 1
         is_global = ctx.is_global_scope(node)
+        # Header-only constructor DECLARATIONS come through this path too
+        # (Codex P2 on #567) — same name-vs-enclosing-class rule.
+        from ._cpp_element_helpers import _is_cpp_constructor
+
         return Function(
             name=parts.name,
             start_line=start_line,
@@ -61,6 +65,7 @@ def extract_function_from_field_declaration(
             ),
             docstring=ctx.extract_comment_for_line(start_line),
             complexity_score=1,
+            is_constructor=_is_cpp_constructor(parts.name, node),
         )
     except Exception as exc:
         log_debug(f"Failed to extract function from field declaration: {exc}")
@@ -166,6 +171,10 @@ def extract_function_declaration(
         if not name:
             return None
 
+        # Header-only constructor declarations reach this path (Codex P2 on
+        # #567) — same name-vs-enclosing-class rule as definitions.
+        from ._cpp_element_helpers import _is_cpp_constructor
+
         return Function(
             name=name,
             start_line=node.start_point[0] + 1,
@@ -175,6 +184,7 @@ def extract_function_declaration(
             parameters=parameters,
             return_type="void",
             modifiers=[],
+            is_constructor=_is_cpp_constructor(name, node),
         )
     except Exception as exc:
         log_debug(f"Failed to extract function declaration: {exc}")

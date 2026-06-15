@@ -68,7 +68,7 @@ def indexed_complex_project(complex_project):
 
     cache = ASTCache(str(complex_project))
     result = cache.index_project()
-    assert result["indexed"] >= 2
+    assert result["indexed"] == 4
     cache.close()
     return complex_project
 
@@ -85,10 +85,10 @@ class TestComplexityEngine:
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
 
         funcs = analyze_file_complexity(str(complex_project / "complex.py"), "python")
-        assert len(funcs) >= 3
+        assert len(funcs) == 3
         nested = [f for f in funcs if f.name == "deeply_nested"]
         assert len(nested) == 1
-        assert nested[0].complexity >= 6
+        assert nested[0].complexity == 8
 
     def test_class_method_detection(self, complex_project):
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
@@ -97,7 +97,7 @@ class TestComplexityEngine:
         process = [f for f in funcs if f.name == "process"]
         assert len(process) == 1
         assert process[0].class_name == "DataProcessor"
-        assert process[0].complexity >= 3
+        assert process[0].complexity == 5
 
     def test_empty_file(self, complex_project):
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
@@ -109,10 +109,10 @@ class TestComplexityEngine:
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
 
         funcs = analyze_file_complexity(str(complex_project / "mixed.js"), "javascript")
-        assert len(funcs) >= 1
+        assert len(funcs) == 1
         fetch = [f for f in funcs if f.name == "fetchData"]
         assert len(fetch) == 1
-        assert fetch[0].complexity >= 3
+        assert fetch[0].complexity == 5
 
     def test_risk_bands(self):
         from tree_sitter_analyzer.complexity_heatmap import _risk_band
@@ -130,9 +130,9 @@ class TestComplexityEngine:
         from tree_sitter_analyzer.complexity_heatmap import analyze_project_heatmap
 
         heatmap = analyze_project_heatmap(str(complex_project))
-        assert heatmap["total_files_analyzed"] >= 2
-        assert heatmap["total_functions"] >= 3
-        assert heatmap["total_cyclomatic_complexity"] > 0
+        assert heatmap["total_files_analyzed"] == 3
+        assert heatmap["total_functions"] == 6
+        assert heatmap["total_cyclomatic_complexity"] == 21
         assert "risk_distribution" in heatmap
         assert "top_hotspots" in heatmap
         assert "file_heatmaps" in heatmap
@@ -153,7 +153,7 @@ class TestComplexityEngine:
         from tree_sitter_analyzer.complexity_heatmap import analyze_project_heatmap
 
         heatmap = analyze_project_heatmap(str(complex_project), directory_filter=".")
-        assert heatmap["total_files_analyzed"] >= 1
+        assert heatmap["total_files_analyzed"] == 3
 
     def test_decision_points_populated(self, complex_project):
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
@@ -175,10 +175,10 @@ class TestCacheBackedComplexity:
         funcs = analyze_file_complexity_from_cache(
             cache, str(indexed_complex_project / "complex.py")
         )
-        assert len(funcs) >= 3
+        assert len(funcs) == 3
         nested = [f for f in funcs if f.name == "deeply_nested"]
         assert len(nested) == 1
-        assert nested[0].complexity >= 6
+        assert nested[0].complexity == 8
         cache.close()
 
     def test_cache_backed_fallback(self, complex_project):
@@ -201,8 +201,8 @@ class TestCacheBackedComplexity:
 
         cache = ASTCache(str(indexed_complex_project))
         heatmap = analyze_project_heatmap(str(indexed_complex_project), cache=cache)
-        assert heatmap["total_files_analyzed"] >= 2
-        assert heatmap["total_functions"] >= 3
+        assert heatmap["total_files_analyzed"] == 3
+        assert heatmap["total_functions"] == 6
         cache.close()
 
 
@@ -220,7 +220,7 @@ class TestComplexityHeatmapTool:
         result = await tool.execute({"mode": "project", "output_format": "json"})
         assert result["success"] is True
         assert result["mode"] == "project"
-        assert result["total_functions"] >= 3
+        assert result["total_functions"] == 6
         assert "risk_distribution" in result
         assert "risk_bands" in result
         assert result["verdict"] in ("INFO", "REVIEW")
@@ -237,7 +237,7 @@ class TestComplexityHeatmapTool:
         )
         assert result["success"] is True
         assert result["mode"] == "file"
-        assert result["function_count"] >= 3
+        assert result["function_count"] == 3
         assert "functions" in result
         for fn in result["functions"]:
             assert "complexity" in fn
@@ -257,7 +257,7 @@ class TestComplexityHeatmapTool:
         assert result["success"] is True
         assert result["mode"] == "function"
         assert result["name"] == "deeply_nested"
-        assert result["complexity"] >= 6
+        assert result["complexity"] == 8
         assert "decision_points" in result
 
     @pytest.mark.asyncio
@@ -329,11 +329,13 @@ class TestComplexityCLI:
 
         from tree_sitter_analyzer.cli_main import main
 
+        # Pass --project-root so the heatmap scans the tmp fixture, not os.getcwd()
         monkeypatch.setattr(
             sys,
             "argv",
             [
                 "tsa",
+                "--project-root",
                 str(indexed_complex_project),
                 "--codegraph-complexity-heatmap",
                 "--format",
@@ -348,7 +350,7 @@ class TestComplexityCLI:
         data = json.loads(buf.getvalue())
         assert data["success"] is True
         assert data["mode"] == "project"
-        assert data["total_functions"] > 0
+        assert data["total_functions"] == 6
         assert "risk_distribution" in data
 
     @pytest.mark.skipif(
@@ -383,7 +385,7 @@ class TestComplexityCLI:
         data = json.loads(buf.getvalue())
         assert data["success"] is True
         assert data["mode"] == "file"
-        assert data["function_count"] > 0
+        assert data["function_count"] == 3
         assert "deeply_nested" in {f["name"] for f in data["functions"]}
 
     @pytest.mark.skipif(
@@ -421,4 +423,4 @@ class TestComplexityCLI:
         assert data["success"] is True
         assert data["mode"] == "function"
         assert data["name"] == "deeply_nested"
-        assert data["complexity"] > 1
+        assert data["complexity"] == 8

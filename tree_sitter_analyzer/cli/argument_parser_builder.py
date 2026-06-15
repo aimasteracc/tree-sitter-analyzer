@@ -98,6 +98,7 @@ CLI_EPILOG = (
     "  tree-sitter-analyzer file.py --safe-to-edit --edit-type refactor\n"
     "  tree-sitter-analyzer file.py --refactor              Refactoring suggestions with plans\n"
     "  tree-sitter-analyzer --change-impact                 Git diff impact (trimmed surface by default)\n"
+    "  tree-sitter-analyzer --change-impact --change-impact-resource-profile local_low_impact\n"
     "  tree-sitter-analyzer --change-impact --change-impact-full   Full verbose envelope (~145 KB)\n"
     "  tree-sitter-analyzer change-impact --change-impact-mode staged\n"
     "\n"

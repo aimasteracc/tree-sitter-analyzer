@@ -50,6 +50,53 @@ from .facade_tool import FacadeTool
 # RFC-0014 Phase B: cap for test_map test_functions list (matches _MAX_LISTED).
 _MAX_TEST_MAP = 50
 
+
+def _is_pytest_collectible(name: str) -> bool:
+    """Return True only for pytest-collectible function/method names.
+
+    pytest collects functions and methods whose name starts with ``test_``
+    (case-sensitive). Private helpers (``_run``, ``_helper``, etc.) and
+    non-prefixed utilities are not collected by pytest even when they appear
+    inside test files.
+
+    This filter is intentionally narrow: ``name.startswith("test_")`` is the
+    exact rule pytest uses for both module-level functions and class methods.
+    """
+    return name.startswith("test_")
+
+
+def _test_map_next_step(
+    test_files: list[str],
+    *,
+    listed_function_count: int,
+    unique_function_count: int,
+    truncated: bool,
+) -> str:
+    """Build an honest next step for ``nav action=test_map``.
+
+    The result carries every test file but caps ``test_functions``. Recommend
+    per-file pytest runs so agents do not mistake a capped function preview for
+    the complete verification surface.
+    """
+    if not test_files:
+        return (
+            "No test coverage found via call-graph edges. "
+            "Consider running pytest --cov to detect coverage."
+        )
+
+    command = f"pytest {' '.join(test_files)}"
+    if truncated:
+        return (
+            f"Run per-file tests: {command}. Listed {listed_function_count} of "
+            f"{unique_function_count} test function(s); test_files contains the "
+            "complete file-level surface."
+        )
+    return (
+        f"Run per-file tests: {command}. Covers {unique_function_count} "
+        "test function(s)."
+    )
+
+
 _NAV_ANNOTATIONS: dict[str, Any] = {
     "readOnlyHint": True,
     "destructiveHint": False,
@@ -295,6 +342,8 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             for ref in graph.caller_refs_of(target):
                 if not is_test_file(ref.file_path):
                     continue
+                if not _is_pytest_collectible(ref.name):
+                    continue
                 total_edge_count += 1
                 key = f"{ref.file_path}::{ref.name}"
                 if key not in seen_qualified:
@@ -303,6 +352,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
                     test_file_set.add(ref.file_path)
 
         test_funcs_sorted = sorted(test_funcs)
+        test_files_sorted = sorted(test_file_set)
         unique_function_count = len(test_funcs_sorted)
         truncated = unique_function_count > _MAX_TEST_MAP
         capped = test_funcs_sorted[:_MAX_TEST_MAP]
@@ -312,17 +362,17 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         result: dict = {
             "success": True,
             "symbol": symbol,
-            "test_files": sorted(test_file_set),
+            "test_files": test_files_sorted,
             "test_functions": capped,
             "edge_count": total_edge_count,
             "unique_function_count": unique_function_count,
             "truncated": truncated,
             "agent_summary": {
-                "next_step": (
-                    f"Run: pytest {' '.join(capped[:5])}"
-                    if capped
-                    else "No test coverage found via call-graph edges. "
-                    "Consider running pytest --cov to detect coverage."
+                "next_step": _test_map_next_step(
+                    test_files_sorted,
+                    listed_function_count=len(capped),
+                    unique_function_count=unique_function_count,
+                    truncated=truncated,
                 ),
             },
         }

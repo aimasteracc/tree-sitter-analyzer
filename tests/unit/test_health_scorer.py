@@ -56,8 +56,7 @@ class TestHealthScorer:
         empty = tmp_path / "empty.py"
         empty.write_text("")
         result = scorer.score_file(str(empty))
-        assert result.total >= 0
-        assert result.total <= 100
+        assert result.total == 87.5
 
     def test_score_nonexistent_file(self, scorer):
         """Nonexistent file returns 0 score."""
@@ -67,7 +66,7 @@ class TestHealthScorer:
     def test_score_project(self, scorer):
         """Can score an entire project directory."""
         results = scorer.score_project(str(HEALTH_PROJECT))
-        assert len(results) >= 2, f"Expected >=2 results, got {len(results)}"
+        assert len(results) == 2
         for r in results:
             assert 0 <= r.total <= 100
 
@@ -232,7 +231,7 @@ class TestHealthScorer:
 
         assert {Path(score.file_path).name for score in scores} == {"main.py"}
         assert stats["total_files_scanned"] == 1
-        assert stats["skip_reasons"]["excluded_dir"] >= 2
+        assert stats["skip_reasons"]["excluded_dir"] == 2
 
     def test_large_file_gets_penalized(self, scorer, tmp_path):
         """Files over 500 lines should have lower size score."""
@@ -361,23 +360,24 @@ class TestHealthScorer:
         """All major languages should have CC decision node definitions."""
         from tree_sitter_analyzer.health_scorer import DECISION_NODE_TYPES
 
-        for lang in [
-            "python",
-            "javascript",
-            "typescript",
-            "java",
-            "c",
-            "cpp",
-            "go",
-            "rust",
-            "ruby",
-            "php",
-            "kotlin",
-            "csharp",
-        ]:
+        expected_counts = {
+            "python": 14,
+            "javascript": 11,
+            "typescript": 11,
+            "java": 8,
+            "c": 8,
+            "cpp": 10,
+            "go": 6,
+            "rust": 8,
+            "ruby": 12,
+            "php": 9,
+            "kotlin": 9,
+            "csharp": 10,
+        }
+        for lang, expected in expected_counts.items():
             assert lang in DECISION_NODE_TYPES, f"Missing CC nodes for {lang}"
-            assert len(DECISION_NODE_TYPES[lang]) >= 5, (
-                f"{lang} has too few decision node types"
+            assert len(DECISION_NODE_TYPES[lang]) == expected, (
+                f"{lang} has {len(DECISION_NODE_TYPES[lang])} decision node types, expected {expected}"
             )
 
     def test_duplication_penalizes_repeated_code(self, scorer, tmp_path):
@@ -403,10 +403,8 @@ class TestHealthScorer:
         f = tmp_path / "test.py"
         f.write_text("x = 1\n")
         result = scorer.score_file(str(f))
-        # tmp_path may or may not be in a git repo, so hotspot can be present or absent
-        # Just verify it doesn't crash and score is valid
-        assert result.total >= 0
-        assert result.total <= 100
+        # Single-line file with no complexity/deps/duplication → all dims score 100.0
+        assert result.total == 100.0
 
     def test_git_hotspot_uses_repo_relative_pathspec(self, monkeypatch, tmp_path):
         """Git hotspot should query from repo root with a repo-relative path."""
@@ -474,7 +472,7 @@ class TestHealthScore:
         )
         assert score.file_path == "test.py"
         assert score.total == 75.0
-        assert len(score.dimensions) >= 3
+        assert len(score.dimensions) == 4
 
     def test_health_score_to_dict(self):
         from tree_sitter_analyzer.health_scorer import HealthScore

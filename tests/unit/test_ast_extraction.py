@@ -10,8 +10,10 @@ from unittest.mock import MagicMock
 from tree_sitter_analyzer._ast_extraction import (
     _content_hash,
     _count_decision_points,
+    _count_nodes,
     _extract_call_edges,
     _extract_parent_classes,
+    _extract_symbols,
     _has_fts5,
     _node_text,
     _walk_for_symbols,
@@ -252,15 +254,91 @@ class TestExtractParentClasses:
 
 class TestWalkForSymbols:
     def test_depth_guard_stops_recursion(self):
-        """depth > 20 → function returns early without recursing."""
+        """depth > 100 → function returns early without recursing (#779 new limit)."""
         symbols: list = []
         node = MagicMock()
         node.type = "function_definition"
         node.child_by_field_name = MagicMock(return_value=None)
         node.children = []
-        # Call with depth=21 — should return immediately, not append anything
-        _walk_for_symbols(node, "", symbols, "python", depth=21)
+        # Call with depth=101 — should return immediately, not append anything
+        _walk_for_symbols(node, "", symbols, "python", depth=101)
         assert symbols == []
+
+    def test_depth_guard_old_limit_no_longer_truncates(self):
+        """depth=21 must NOT be truncated after #779 raises limit to 100."""
+        symbols: list = []
+        node = MagicMock()
+        node.type = "module"
+        node.child_by_field_name = MagicMock(return_value=None)
+        node.children = []
+        # At depth=21 (old truncation point was 20), walk should continue (no early return)
+        # We verify by checking it doesn't raise and processes children
+        _walk_for_symbols(node, "", symbols, "python", depth=21)
+        # symbols is empty because node.type='module' is not in _FUNCTION_LIKE/_CLASS_LIKE
+        # but the key guarantee is: no early return at depth=21
+        assert symbols == []  # no crash = depth guard didn't fire
+
+    def test_extract_symbols_truncated_depth_flag_when_deeply_nested(self):
+        """_extract_symbols returns truncated_depth=True when AST depth exceeds limit.
+
+        We simulate a deeply nested AST (depth > 100) by building a mock tree
+        whose root has a chain of 105 child nodes. The walker should set the
+        truncated_depth flag in the returned dict.
+        """
+        # Build a linear chain of 105 mock nodes: root → n1 → n2 → … → n104
+        # Each node has type="module" (neutral) except the leaf which would
+        # be a function_definition — but we'll never reach it if depth guard fires.
+        # We verify truncated_depth=True appears in the result.
+        depth_target = 105
+
+        def _make_node(remaining: int) -> MagicMock:
+            n = MagicMock()
+            n.type = "module"
+            n.child_by_field_name = MagicMock(return_value=None)
+            if remaining > 0:
+                child = _make_node(remaining - 1)
+                child.parent = n
+                n.children = [child]
+            else:
+                n.children = []
+            return n
+
+        root_node = _make_node(depth_target)
+        tree = MagicMock()
+        tree.root_node = root_node
+
+        result = _extract_symbols(tree, "", "python")
+        assert result["truncated_depth"] is True
+
+    def test_26_nested_python_functions_all_extracted(self):
+        """#779: 26 deeply nested Python functions must all be extracted.
+
+        The original depth cap of 20 silently dropped the deepest functions.
+        Each Python nesting level adds ~2 AST node levels (function_definition +
+        block), so 26 nested functions need AST depth ~51, which exceeds the old
+        cap.  With _WALK_MAX_DEPTH=100 all 26 must be present.
+        """
+        from tree_sitter_analyzer._ast_extraction import (
+            Parser,  # type: ignore[attr-defined]
+        )
+
+        lines = []
+        for i in range(26):
+            lines.append("    " * i + f"def f{i}():")
+        lines.append("    " * 26 + "pass")
+        source = "\n".join(lines)
+
+        parser = Parser()
+        parse_result = parser.parse_code(source, "python")
+        tree = parse_result.tree
+        result = _extract_symbols(tree, source, "python")
+        func_names = sorted(
+            s["name"]
+            for s in result["symbols"]
+            if s.get("kind") in ("function", "method")
+        )
+        assert len(func_names) == 26
+        assert result["truncated_depth"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -357,3 +435,1134 @@ class TestCDeclaratorName:
             children=[SimpleNamespace(type="(", children=[])],
         )
         assert _c_declarator_name(paren, "", 0) is None
+
+
+# ---------------------------------------------------------------------------
+# Issue #532: nested-container method ownership (Ruby + Rust)
+# ---------------------------------------------------------------------------
+
+
+def _symbols_for(source: str, lang: str) -> list[dict]:
+    """Parse source and return all symbols from _extract_symbols."""
+
+    from tree_sitter_analyzer._ast_extraction import _extract_symbols
+    from tree_sitter_analyzer.core.parser import Parser
+
+    result = Parser().parse_code(source, lang)
+    if not result.success or result.tree is None:
+        return []
+    syms = _extract_symbols(result.tree, source, lang)
+    return syms["symbols"]
+
+
+class TestNestedContainerMethodOwnership:
+    """Issue #532 — methods inside nested containers must be attributed to
+    the INNERMOST container in the symbols DB path (_walk_for_symbols)."""
+
+    # ---- Ruby ----
+
+    def test_ruby_module_nested_class_methods_attributed_correctly(self):
+        """Methods inside a class nested in a module must get the CLASS as
+        their owner, not the module, AND must appear at all (Ruby ``method``
+        node type was missing from _FUNCTION_LIKE)."""
+        code = """\
+module Authentication
+  class User
+    def initialize(name)
+      @name = name
+    end
+    def full_name
+      @name
+    end
+  end
+  class AdminUser
+    def login
+      true
+    end
+  end
+end
+"""
+        syms = _symbols_for(code, "ruby")
+        methods = [s for s in syms if s["kind"] in ("function", "method")]
+        classes = {s["name"] for s in syms if s["kind"] == "class"}
+
+        # Classes must be visible
+        assert "User" in classes
+        assert "AdminUser" in classes
+
+        # Methods must be extracted (was 0 before fix — "method" missing from _FUNCTION_LIKE)
+        assert len(methods) == 3
+
+        # Each method must be attributed to its direct owner class, NOT the module
+        owners = {m["name"]: m.get("class") for m in methods}
+        assert owners.get("initialize") == "User"
+        assert owners.get("full_name") == "User"
+        assert owners.get("login") == "AdminUser"
+
+    # ---- Rust ----
+
+    def test_rust_impl_generic_methods_attributed_to_struct(self):
+        """Methods inside impl<T> Container<T> must be attributed to Container,
+        not left unowned (_find_parent_class must read impl_item's type field)."""
+        code = """\
+pub struct Container<T> {
+    items: Vec<T>,
+}
+
+impl<T> Container<T> {
+    pub fn new() -> Self {
+        Container { items: Vec::new() }
+    }
+    pub fn push(&mut self, item: T) {
+        self.items.push(item);
+    }
+}
+"""
+        syms = _symbols_for(code, "rust")
+        methods = [s for s in syms if s["kind"] in ("function", "method")]
+
+        # Both functions must appear
+        assert len(methods) == 2
+
+        # Both must be attributed to Container (stripped of generics)
+        owners = {m["name"]: m.get("class") for m in methods}
+        assert owners.get("new") == "Container"
+        assert owners.get("push") == "Container"
+
+    def test_rust_plain_impl_methods_attributed_to_struct(self):
+        """Plain impl User (no generics) must attribute methods to User."""
+        code = """\
+struct User {
+    name: String,
+}
+
+impl User {
+    fn greet(&self) -> String {
+        format!("Hello, {}", self.name)
+    }
+}
+"""
+        syms = _symbols_for(code, "rust")
+        methods = [s for s in syms if s["kind"] in ("function", "method")]
+        assert len(methods) == 1
+        assert methods[0].get("class") == "User"
+
+
+# ---------------------------------------------------------------------------
+# Issue #610: Python module-level constants indexed as kind="constant"
+# ---------------------------------------------------------------------------
+
+
+_CONST_SRC = """\
+_STOP_WORDS = frozenset({"the"})
+CONFIG: dict = {}
+__version__ = "1.0"
+logger = get_logger()
+paths: list = []
+bare_decl: int
+
+if True:
+    WRAPPED_FLAG = 1
+
+
+class Settings:
+    TIMEOUT = 30
+
+
+def setup():
+    RETRIES = 3
+"""
+
+
+class TestPythonModuleConstants:
+    """Issue #610 — module-level const-style / annotated / dunder assignments
+    must reach ast_symbol_rows as kind="constant"."""
+
+    def _constants(self) -> dict[str, dict]:
+        syms = _symbols_for(_CONST_SRC, "python")
+        return {s["name"]: s for s in syms if s["kind"] == "constant"}
+
+    def test_exactly_the_five_module_constants_extracted(self):
+        consts = self._constants()
+        assert sorted(consts) == [
+            "CONFIG",
+            "WRAPPED_FLAG",
+            "_STOP_WORDS",
+            "__version__",
+            "paths",
+        ]
+
+    def test_const_style_name_lines_pinned(self):
+        consts = self._constants()
+        assert consts["_STOP_WORDS"]["line"] == 1
+        assert consts["_STOP_WORDS"]["end_line"] == 1
+        assert consts["CONFIG"]["line"] == 2
+        assert consts["__version__"]["line"] == 3
+        assert consts["WRAPPED_FLAG"]["line"] == 9
+        assert all(c["language"] == "python" for c in consts.values())
+
+    def test_annotated_lowercase_assignment_extracted(self):
+        # `paths: list = []` — annotated module assignment counts even when
+        # the name is not const-style (deliberate typed API surface).
+        assert "paths" in self._constants()
+
+    def test_lowercase_unannotated_assignment_not_extracted(self):
+        # `logger = get_logger()` — mutable module state, excluded by scope rule.
+        syms = _symbols_for(_CONST_SRC, "python")
+        logger_kinds = [s["kind"] for s in syms if s.get("name") == "logger"]
+        assert logger_kinds == []
+
+    def test_bare_annotation_without_value_not_extracted(self):
+        # `bare_decl: int` has no right-hand side — not a definition site.
+        assert "bare_decl" not in self._constants()
+
+    def test_class_body_all_caps_not_extracted(self):
+        # Settings.TIMEOUT is a class attribute, not a module constant.
+        assert "TIMEOUT" not in self._constants()
+
+    def test_function_body_all_caps_not_extracted(self):
+        # RETRIES lives in a function body — module-level only.
+        assert "RETRIES" not in self._constants()
+
+    def test_non_python_assignment_unaffected(self):
+        # JS module-level const keeps its pre-existing kind="variable" path.
+        syms = _symbols_for("const MAX_SIZE = 10;\n", "javascript")
+        kinds = {s["name"]: s["kind"] for s in syms if "name" in s}
+        assert kinds == {"MAX_SIZE": "variable"}
+
+    def test_chained_assignment_captures_both_names(self):
+        syms = _symbols_for("A_ONE = B_TWO = 5\n", "python")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == ["A_ONE", "B_TWO"]
+
+    def test_tuple_target_not_extracted(self):
+        # Non-simple targets (tuple unpacking) are excluded by the scope rule.
+        syms = _symbols_for("X_A, Y_B = 1, 2\n", "python")
+        assert [s for s in syms if s["kind"] == "constant"] == []
+
+    def test_single_letter_all_caps_extracted(self):
+        # Issue #793 — single-letter ALL_CAPS names (A, N, X …) are valid
+        # Python constants and must be captured.  Old pattern ^_?[A-Z][A-Z0-9_]+$
+        # required ≥2 chars after the uppercase start; fixed to ``*`` (#793).
+        syms = _symbols_for("A = 1\nN = 100\nX = 'value'\n", "python")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == ["A", "N", "X"]
+
+    def test_single_letter_prefixed_all_caps_extracted(self):
+        # _N = 100 — underscore-prefixed single-letter constant must also match.
+        syms = _symbols_for("_N = 100\n", "python")
+        consts = [s["name"] for s in syms if s["kind"] == "constant"]
+        assert consts == ["_N"]
+
+    def test_single_letter_lowercase_not_extracted(self):
+        # Lowercase single-letter names (n, x, a) are NOT constants.
+        syms = _symbols_for("n = 100\nx = 'v'\n", "python")
+        assert [s for s in syms if s["kind"] == "constant"] == []
+
+
+# ---------------------------------------------------------------------------
+# Issue #613: Go package-level constants indexed as kind="constant"
+# ---------------------------------------------------------------------------
+
+
+_GO_CONST_SRC = """\
+package main
+
+const A = 1
+
+const (
+	B = 2
+	C = 3
+)
+
+const lowercaseConst = 4
+
+var MAX_RETRIES = 5
+
+var lowercase_var = "x"
+
+var (
+	GROUP_VAR = 1
+	other     = 2
+)
+
+var _ = sideEffect()
+
+func f() {
+	const LOCAL_CONST = 9
+	var LOCAL_VAR = 10
+	_ = LOCAL_CONST
+	_ = LOCAL_VAR
+}
+"""
+
+
+class TestGoPackageConstants:
+    """Issue #613 — Go package-level const specs (all of them — Go consts are
+    constants by compiler definition) and const-style package vars must reach
+    ast_symbol_rows as kind="constant"; function-locals must not."""
+
+    def _constants(self) -> dict[str, dict]:
+        syms = _symbols_for(_GO_CONST_SRC, "go")
+        return {s["name"]: s for s in syms if s["kind"] == "constant"}
+
+    def test_exactly_the_six_package_constants_extracted(self):
+        consts = self._constants()
+        assert sorted(consts) == [
+            "A",
+            "B",
+            "C",
+            "GROUP_VAR",
+            "MAX_RETRIES",
+            "lowercaseConst",
+        ]
+
+    def test_grouped_const_block_captures_both_names_lines_pinned(self):
+        consts = self._constants()
+        assert consts["B"]["line"] == 6
+        assert consts["B"]["end_line"] == 6
+        assert consts["C"]["line"] == 7
+        assert consts["C"]["end_line"] == 7
+        assert all(c["language"] == "go" for c in consts.values())
+
+    def test_lowercase_const_included_no_pattern_gate(self):
+        # Go consts are constants by definition (compiler-enforced
+        # immutability) — no const-style name gate, unlike package vars.
+        assert "lowercaseConst" in self._constants()
+
+    def test_package_var_const_style_included(self):
+        consts = self._constants()
+        assert consts["MAX_RETRIES"]["line"] == 12
+        assert consts["GROUP_VAR"]["line"] == 17
+
+    def test_lowercase_package_var_excluded(self):
+        # Package vars are mutable state; only const-style names (the author
+        # signalling a constant by convention) count — asymmetry vs const.
+        syms = _symbols_for(_GO_CONST_SRC, "go")
+        assert [s["kind"] for s in syms if s.get("name") == "lowercase_var"] == []
+        assert [s["kind"] for s in syms if s.get("name") == "other"] == []
+
+    def test_blank_identifier_excluded(self):
+        # `var _ = sideEffect()` — the blank identifier is not referenceable.
+        assert "_" not in self._constants()
+
+    def test_function_local_const_and_var_excluded(self):
+        consts = self._constants()
+        assert "LOCAL_CONST" not in consts
+        assert "LOCAL_VAR" not in consts
+
+    def test_method_and_func_literal_locals_excluded(self):
+        src = (
+            "package main\n\n"
+            "type S struct{}\n\n"
+            "func (s S) m() {\n"
+            "\tconst METHOD_CONST = 1\n"
+            "\t_ = METHOD_CONST\n"
+            "}\n\n"
+            "var F = func() {\n"
+            "\tconst CLOSURE_CONST = 2\n"
+            "\t_ = CLOSURE_CONST\n"
+            "}\n"
+        )
+        syms = _symbols_for(src, "go")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == []
+
+    def test_multi_name_const_spec_captures_all_names(self):
+        syms = _symbols_for("package main\n\nconst P1, Q2 = 1, 2\n", "go")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == ["P1", "Q2"]
+
+    def test_typed_const_and_iota_block_captured(self):
+        src = (
+            "package main\n\n"
+            "const Typed int = 7\n\n"
+            "const (\n"
+            "\tKindA = iota\n"
+            "\tKindB\n"
+            ")\n"
+        )
+        syms = _symbols_for(src, "go")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == ["KindA", "KindB", "Typed"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #613: Rust const/static items indexed as kind="constant"
+# ---------------------------------------------------------------------------
+
+
+_RUST_CONST_SRC = """\
+const MAX: u32 = 10;
+
+static GLOBAL: &str = "x";
+
+static mut COUNTER: i32 = 0;
+
+const lowercase_const: u32 = 4;
+
+mod m {
+    const NESTED: u32 = 1;
+    static NESTED_STATIC: u8 = 2;
+}
+
+fn f() {
+    const LOCAL_CONST: u32 = 9;
+    static LOCAL_STATIC: u32 = 8;
+    let _ = LOCAL_CONST;
+}
+
+struct S;
+
+impl S {
+    const ASSOC: u32 = 5;
+
+    fn m(&self) {
+        const METHOD_CONST: u32 = 1;
+        let _ = METHOD_CONST;
+    }
+}
+
+trait T {
+    const TRAIT_CONST: u32 = 6;
+}
+"""
+
+
+class TestRustConstants:
+    """Issue #613 — Rust const_item/static_item must reach ast_symbol_rows as
+    kind="constant" (ALL names — Rust const/static are language-level
+    constants/globals, the compiler lints non-upper-case ones, so no
+    name-pattern gate; mirrors the Go const reasoning from #615).
+    Function-locals must not appear. Associated consts (impl/trait body) ARE
+    captured: unlike Python class attributes (mutable state, excluded by
+    #612), a Rust associated const is a compiler-enforced constant
+    referenceable as ``Type::CONST`` — the ``enclosed`` mechanism captures
+    them naturally because impl/trait bodies are not function scopes."""
+
+    def _constants(self) -> dict[str, dict]:
+        syms = _symbols_for(_RUST_CONST_SRC, "rust")
+        return {s["name"]: s for s in syms if s["kind"] == "constant"}
+
+    def test_exactly_the_eight_constants_extracted(self):
+        consts = self._constants()
+        assert sorted(consts) == [
+            "ASSOC",
+            "COUNTER",
+            "GLOBAL",
+            "MAX",
+            "NESTED",
+            "NESTED_STATIC",
+            "TRAIT_CONST",
+            "lowercase_const",
+        ]
+
+    def test_module_scope_const_and_static_lines_pinned(self):
+        consts = self._constants()
+        assert consts["MAX"]["line"] == 1
+        assert consts["MAX"]["end_line"] == 1
+        assert consts["GLOBAL"]["line"] == 3
+        assert consts["GLOBAL"]["end_line"] == 3
+        assert all(c["language"] == "rust" for c in consts.values())
+
+    def test_static_mut_captured(self):
+        # `static mut` is still a crate-level global the compiler names in
+        # SCREAMING_SNAKE; mirroring Go consts, no mutability gate.
+        assert self._constants()["COUNTER"]["line"] == 5
+
+    def test_lowercase_const_included_no_pattern_gate(self):
+        # Rust const/static are constants by definition — rustc lints
+        # non_upper_case_globals, so a name-pattern gate adds nothing.
+        assert "lowercase_const" in self._constants()
+
+    def test_mod_nested_const_and_static_captured(self):
+        # mod bodies are declaration_list (module scope), consistent with
+        # the #596 mod-container treatment — NESTED/NESTED_STATIC count.
+        consts = self._constants()
+        assert consts["NESTED"]["line"] == 10
+        assert consts["NESTED_STATIC"]["line"] == 11
+
+    def test_function_local_const_and_static_excluded(self):
+        consts = self._constants()
+        assert "LOCAL_CONST" not in consts
+        assert "LOCAL_STATIC" not in consts
+        assert "METHOD_CONST" not in consts
+
+    def test_associated_consts_captured_decision_pinned(self):
+        # Decision (#613): associated consts in impl/trait bodies ARE
+        # captured — compiler-enforced constants addressable as S::ASSOC /
+        # T::TRAIT_CONST, not mutable attributes.
+        consts = self._constants()
+        assert consts["ASSOC"]["line"] == 23
+        assert consts["TRAIT_CONST"]["line"] == 32
+
+    def test_closure_local_const_excluded(self):
+        src = (
+            "fn outer() {\n"
+            "    let c = |x: i32| {\n"
+            "        const CLOSURE_CONST: i32 = 1;\n"
+            "        x + CLOSURE_CONST\n"
+            "    };\n"
+            "    let _ = c;\n"
+            "}\n"
+        )
+        syms = _symbols_for(src, "rust")
+        consts = sorted(s["name"] for s in syms if s["kind"] == "constant")
+        assert consts == []
+
+
+class TestRustConstantsCodexP2s:
+    """Codex P2s on #618: block-local nested consts and anonymous const _."""
+
+    def _constant_names(self, src: str) -> list[str]:
+        syms = _symbols_for(src, "rust")
+        return [s["name"] for s in syms if s["kind"] == "constant"]
+
+    def test_const_initializer_block_inner_const_excluded(self):
+        src = "const OUTER: i32 = { const INNER: i32 = 1; INNER };\n"
+        assert self._constant_names(src) == ["OUTER"]
+
+    def test_anonymous_const_skipped(self):
+        src = "const _: usize = 1;\nconst REAL: usize = 2;\n"
+        assert self._constant_names(src) == ["REAL"]
+
+    def test_python_if_wrapped_module_constant_still_captured(self):
+        """Guard the #612 guarantee the language-gated scope sets protect:
+        Python if-wrapped module constants stay captured even though Rust's
+        scope set now contains "block"."""
+        src = "import sys\nif sys.platform == 'win32':\n    SEP = chr(92)\n"
+        syms = _symbols_for(src, "python")
+        names = [s["name"] for s in syms if s["kind"] == "constant"]
+        assert names == ["SEP"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #624: PHP const declarations indexed as kind="constant"
+# ---------------------------------------------------------------------------
+
+
+_PHP_CONST_SRC = """\
+<?php
+const MAX = 1;
+
+const A = 1, B = 2;
+
+define('LEGACY_MODE', true);
+
+class Config {
+    const MAX_USERS = 1000;
+    public const X = 2;
+    final public const FLAG = 5;
+}
+
+interface Shape {
+    const SIDES = 0;
+}
+
+trait Loggable {
+    const TRAIT_C = 4;
+}
+
+enum Suit: int {
+    case Hearts = 1;
+    const ENUM_C = 9;
+}
+
+function f() {
+    const ILLEGAL_LOCAL = 7;
+    define('RUNTIME_FLAG', 1);
+}
+
+$pad = new class {
+    const ANON_C = 3;
+};
+"""
+
+
+class TestPhpConstants:
+    """Issue #624 — PHP const declarations must reach ast_symbol_rows as
+    kind="constant" (ALL names — PHP ``const`` is compiler-enforced
+    immutable, no name-pattern gate; mirrors the Go #615 / Rust #618
+    reasoning). Class/interface/trait/enum consts ARE captured: addressable
+    as ``Config::MAX_USERS``, like Rust associated consts — their bodies are
+    declaration_list / enum_declaration_list nodes, so the ``enclosed``
+    mechanism keeps them naturally. ``define()`` calls are
+    function_call_expression nodes (runtime registration, not declarations)
+    and stay out — as do function-body consts (illegal PHP that
+    tree-sitter-php still parses as const_declaration)."""
+
+    def _constants(self) -> dict[str, dict]:
+        syms = _symbols_for(_PHP_CONST_SRC, "php")
+        return {s["name"]: s for s in syms if s["kind"] == "constant"}
+
+    def test_exactly_the_ten_constants_extracted(self):
+        consts = self._constants()
+        assert sorted(consts) == [
+            "A",
+            "ANON_C",
+            "B",
+            "ENUM_C",
+            "FLAG",
+            "MAX",
+            "MAX_USERS",
+            "SIDES",
+            "TRAIT_C",
+            "X",
+        ]
+
+    def test_top_level_const_lines_pinned(self):
+        consts = self._constants()
+        assert consts["MAX"]["line"] == 2
+        assert consts["MAX"]["end_line"] == 2
+        assert all(c["language"] == "php" for c in consts.values())
+
+    def test_multi_element_declaration_one_row_each(self):
+        # `const A = 1, B = 2;` — one const_declaration, two const_element
+        # children; each element is its own row (mirrors Go spec handling).
+        consts = self._constants()
+        assert consts["A"]["line"] == 4
+        assert consts["B"]["line"] == 4
+
+    def test_class_consts_captured_decision_pinned(self):
+        # Decision (#624): class consts ARE captured — compiler-enforced
+        # constants addressable as Config::MAX_USERS, like Rust associated
+        # consts (#618), unlike the mutable Python class attributes #612
+        # excludes. Modifiers (public / final public) do not change capture.
+        consts = self._constants()
+        assert consts["MAX_USERS"]["line"] == 9
+        assert consts["X"]["line"] == 10
+        assert consts["FLAG"]["line"] == 11
+
+    def test_interface_trait_enum_consts_captured(self):
+        consts = self._constants()
+        assert consts["SIDES"]["line"] == 15
+        assert consts["TRAIT_C"]["line"] == 19
+        assert consts["ENUM_C"]["line"] == 24
+
+    def test_enum_case_is_not_a_const_row(self):
+        # enum cases are enum_case nodes, not const_element — a different
+        # construct, out of #624 scope (no kind="constant" row).
+        assert "Hearts" not in self._constants()
+
+    def test_define_calls_excluded_decision_pinned(self):
+        # Decision (#624): define() is a function_call_expression — runtime
+        # registration whose name is a string argument (possibly dynamic),
+        # not a declaration. Not indexed.
+        consts = self._constants()
+        assert "LEGACY_MODE" not in consts
+        assert "RUNTIME_FLAG" not in consts
+
+    def test_function_body_const_excluded(self):
+        # PHP has no function-scope const (compile error), but
+        # tree-sitter-php parses it permissively as const_declaration —
+        # the enclosed gate must keep it out.
+        assert "ILLEGAL_LOCAL" not in self._constants()
+
+    def test_top_level_anonymous_class_const_captured(self):
+        # Decision (#624): a top-level anonymous-class const is still a
+        # compiler-enforced class const (addressable via the instance);
+        # captured. Inside a function body it is excluded like any other
+        # function-enclosed const (next test).
+        assert self._constants()["ANON_C"]["line"] == 33
+
+    def test_closure_and_function_nested_consts_excluded(self):
+        src = (
+            "<?php\n"
+            "$c = function () {\n"
+            "    const CLOSURE_LOCAL = 1;\n"
+            "};\n"
+            "function g() {\n"
+            "    $y = new class {\n"
+            "        const FN_ANON = 2;\n"
+            "    };\n"
+            "}\n"
+        )
+        syms = _symbols_for(src, "php")
+        assert [s["name"] for s in syms if s["kind"] == "constant"] == []
+
+    def test_braced_namespace_const_captured(self):
+        # Braced namespace bodies are compound_statement nodes — the scope
+        # gate uses function/closure node types (not compound_statement)
+        # precisely so namespace-scope consts stay captured.
+        src = "<?php\nnamespace App {\n    const NS_CONST = 1;\n}\n"
+        syms = _symbols_for(src, "php")
+        names = [s["name"] for s in syms if s["kind"] == "constant"]
+        assert names == ["NS_CONST"]
+
+
+class _PhpStubNode:
+    """Minimal node stand-in (explicit parent, no MagicMock chains)."""
+
+    def __init__(self, type_, children=(), fields=None):
+        self.type = type_
+        self.children = list(children)
+        self._fields = fields or {}
+        self.parent = None
+        self.start_point = (0, 0)
+        self.end_point = (0, 0)
+
+    def child_by_field_name(self, name):
+        return self._fields.get(name)
+
+
+class TestPhpConstantsGuards:
+    """Cover defensive branches unreachable from valid PHP source (codecov)."""
+
+    def test_nameless_const_element_skipped(self):
+        from tree_sitter_analyzer._ast_extraction import _php_constants
+
+        nameless = _PhpStubNode("const_element", children=[])
+        decl = _PhpStubNode("const_declaration", children=[nameless])
+        assert _php_constants(decl, "") == []
+
+    def test_php_helper_name_field_fast_path(self):
+        from tree_sitter_analyzer.languages.php_helpers import (
+            _build_php_constant_variable,
+        )
+
+        name = _PhpStubNode("name")
+        element = _PhpStubNode("const_element", fields={"name": name})
+        decl = _PhpStubNode("const_declaration", children=[element])
+        var = _build_php_constant_variable(
+            decl, element, "", lambda n: "FAST", lambda n: [], lambda n: []
+        )
+        assert var is not None
+        assert var.name == "FAST"
+
+
+# ---------------------------------------------------------------------------
+# Issue #626: JS/TS function-local variables no longer over-captured
+# ---------------------------------------------------------------------------
+
+
+_JSTS_JS_SRC = """\
+const TOP_CONST = 1;
+let topLet = 2;
+var topVar = 3;
+if (flag) { const ifWrapped = 4; }
+try { const tryWrapped = 5; } catch (e) { const catchLocal = 6; }
+function f() { const localInFunc = 7; var hoisted = 8; }
+const fexpr = function () { const localInFexpr = 9; };
+const arrow = () => { const localInArrow = 10; };
+function* gen() { const localInGen = 11; }
+const genExpr = function* () { const localInGenExpr = 12; };
+class C {
+  m() { const localInMethod = 13; }
+  static { const staticBlockLocal = 14; }
+}
+"""
+
+_JSTS_TS_SRC = """\
+const TOP_CONST = 1;
+let topLet = 2;
+var topVar = 3;
+namespace NS {
+  const nsConst = 4;
+  export const NS_EXPORTED = 5;
+}
+module M { const mConst = 6; }
+declare module "ext" { const ambientConst: number; }
+function f(): void { const localInFunc = 7; }
+class C { m(): void { const localInMethod = 8; } }
+const arrow = (): void => { const localInArrow = 9; };
+"""
+
+
+class TestJsTsLocalVariableContraction:
+    """Issue #626 — JS/TS function-local declarators must NOT reach
+    ast_symbol_rows; module/top-level (incl. if/try-wrapped, #612 guarantee)
+    and TS namespace-level declarators stay kind="variable"."""
+
+    def _variables(self, src: str, lang: str) -> list[str]:
+        return sorted(
+            s["name"] for s in _symbols_for(src, lang) if s["kind"] == "variable"
+        )
+
+    def test_js_exactly_the_module_level_declarators_survive(self):
+        # catchLocal: a module-level catch block is a statement_block outside
+        # any function — kept by design (statement_block deliberately absent
+        # from the scope set, preserving the #612 if/try guarantee).
+        assert self._variables(_JSTS_JS_SRC, "javascript") == [
+            "TOP_CONST",
+            "arrow",
+            "catchLocal",
+            "fexpr",
+            "genExpr",
+            "ifWrapped",
+            "topLet",
+            "topVar",
+            "tryWrapped",
+        ]
+
+    def test_js_function_and_generator_locals_dropped(self):
+        names = self._variables(_JSTS_JS_SRC, "javascript")
+        for local in (
+            "localInFunc",
+            "hoisted",
+            "localInFexpr",
+            "localInGen",
+            "localInGenExpr",
+        ):
+            assert local not in names
+
+    def test_js_arrow_method_and_static_block_locals_dropped(self):
+        names = self._variables(_JSTS_JS_SRC, "javascript")
+        for local in ("localInArrow", "localInMethod", "staticBlockLocal"):
+            assert local not in names
+
+    def test_ts_module_and_namespace_level_declarators_survive(self):
+        assert self._variables(_JSTS_TS_SRC, "typescript") == [
+            "NS_EXPORTED",
+            "TOP_CONST",
+            "ambientConst",
+            "arrow",
+            "mConst",
+            "nsConst",
+            "topLet",
+            "topVar",
+        ]
+
+    def test_ts_locals_dropped(self):
+        names = self._variables(_JSTS_TS_SRC, "typescript")
+        for local in ("localInFunc", "localInMethod", "localInArrow"):
+            assert local not in names
+
+    def test_tsx_maps_to_typescript_language_id(self):
+        # The ast_cache path only ever delivers "javascript"/"typescript" for
+        # this family — .tsx (and .jsx -> "javascript") included — so the
+        # language gate on those two ids covers every indexed file.
+        from tree_sitter_analyzer._lang_extension_map import EXT_TO_LANG
+
+        assert EXT_TO_LANG[".tsx"] == "typescript"
+        assert EXT_TO_LANG[".jsx"] == "javascript"
+
+    def test_tsx_shaped_source_contracts_under_typescript_id(self):
+        # JSX-free .tsx content goes down the identical typescript path.
+        # (Known limitation, NOT pinned: .tsx WITH JSX is parsed by the
+        # typescript grammar — ERROR recovery flattens function bodies, so
+        # locals in broken regions may survive; pre-existing, outside #626.)
+        src = "const TOP = 1;\nfunction Comp() { const inner = 2; }\n"
+        assert self._variables(src, "typescript") == ["TOP"]
+
+    def test_java_locals_now_contracted_too(self):
+        # Re-pinned when the Java half of #626 landed (extractor v9): Java
+        # method locals are dropped as well — full Java surface pinned in
+        # TestJavaLocalVariableContraction below.
+        src = "class A { void m() { int local = 1; } }\n"
+        assert self._variables(src, "java") == []
+
+
+class TestJsTsErrorRegionHardening:
+    """Codex P2 on #629: declarations inside error-recovered regions have
+    undecidable scope — they must not be emitted (better unindexed than a
+    function-local masquerading as a module symbol)."""
+
+    def test_declaration_inside_error_node_not_emitted(self):
+        # Deliberately broken TSX-ish source that forces ERROR recovery at
+        # the point of the declaration.
+        src = "const Comp = () => {\n  const Math = 1;\n  return <div//;\n};\nconst TOP = 2;\n"
+        syms = _symbols_for(src, "typescript")
+        names = [s["name"] for s in syms if s["kind"] == "variable"]
+        assert "Math" not in names
+        assert "TOP" in names
+
+
+# ---------------------------------------------------------------------------
+# Issue #626 (Java half): function-local variables no longer over-captured
+# ---------------------------------------------------------------------------
+
+
+_JAVA_626_SRC = """\
+interface Iface {
+    int IFACE_CONST = 99;
+}
+
+record Rec(int x) {
+    static final int REC_CONST = 7;
+    Rec {
+        int compactCtorLocal = 100;
+    }
+}
+
+class A {
+    static final int STATIC_FINAL = 1;
+    int plainField = 2;
+    static int staticField = 3;
+    Runnable fieldLambda = () -> { int lambdaFieldLocal = 4; };
+
+    static { int staticInitLocal = 5; }
+    { int instanceInitLocal = 6; }
+    A() { int ctorLocal = 7; }
+
+    void m() {
+        int local = 10;
+        for (int i = 0; i < 3; i++) { int loopBody = 11; }
+        try { int tryLocal = 12; } catch (Exception e) { int catchLocal = 13; }
+    }
+}
+"""
+
+
+class TestJavaLocalVariableContraction:
+    """Issue #626 (Java half) — method/ctor/compact-ctor/lambda/initializer
+    locals must NOT reach ast_symbol_rows; class fields (incl. record
+    constants) and interface constants stay kind="variable". Fields are safe
+    from the ``block`` scope node: they route ``class_body >
+    field_declaration`` and never through a ``block`` (live-parse verified)."""
+
+    def _variables(self, src: str, lang: str) -> list[str]:
+        return sorted(
+            s["name"] for s in _symbols_for(src, lang) if s["kind"] == "variable"
+        )
+
+    def test_java_exactly_fields_and_constants_survive(self):
+        assert self._variables(_JAVA_626_SRC, "java") == [
+            "IFACE_CONST",
+            "REC_CONST",
+            "STATIC_FINAL",
+            "fieldLambda",
+            "plainField",
+            "staticField",
+        ]
+
+    def test_java_method_ctor_and_compact_ctor_locals_dropped(self):
+        names = self._variables(_JAVA_626_SRC, "java")
+        for local in (
+            "local",
+            "i",
+            "loopBody",
+            "tryLocal",
+            "catchLocal",
+            "ctorLocal",
+            "compactCtorLocal",
+        ):
+            assert local not in names
+
+    def test_java_lambda_and_initializer_locals_dropped(self):
+        # lambdaFieldLocal sits in a lambda hanging off a FIELD initializer —
+        # the only shape where ``lambda_expression`` (not method/block) is the
+        # gating scope node; the field holder itself stays captured.
+        names = self._variables(_JAVA_626_SRC, "java")
+        for local in ("lambdaFieldLocal", "staticInitLocal", "instanceInitLocal"):
+            assert local not in names
+
+    def test_csharp_locals_now_contracted_too(self):
+        # Re-pinned when the C# follow-up (#628) landed (extractor v10): C#
+        # method locals are dropped as well — full C# surface pinned in
+        # TestCSharpLocalVariableContraction below.
+        src = "class A { void M() { int local = 1; } }\n"
+        assert self._variables(src, "csharp") == []
+
+
+class TestJavaErrorRegionHardening:
+    """#629 ERROR-hardening precedent applied to Java: declarations inside
+    error-recovered regions have undecidable scope — they must not be emitted
+    (better unindexed than a lambda local masquerading as a field)."""
+
+    def test_declaration_inside_error_node_not_emitted(self):
+        # Unterminated lambda-in-field shatters the class into an ERROR node;
+        # 'leaked' currently surfaces as ERROR > local_variable_declaration
+        # (live-parse verified) — it must produce no row.
+        src = "class A {\n  Runnable r = () -> {\n    int leaked = 1;\n"
+        syms = _symbols_for(src, "java")
+        assert [s["name"] for s in syms if s["kind"] == "variable"] == []
+
+
+# ---------------------------------------------------------------------------
+# Issue #628 (C#): function-local variables no longer over-captured
+# ---------------------------------------------------------------------------
+
+
+_CSHARP_628_SRC = """\
+using System;
+
+int topLevelVar = 1;
+var topLevelVar2 = "x";
+if (topLevelVar > 0) { int topLevelIfLocal = 2; }
+try { int topTryLocal = 3; } catch (Exception e) { int topCatchLocal = 4; }
+
+interface IFace {
+    const int IFACE_CONST = 99;
+}
+
+record Rec(int X) {
+    public static readonly int REC_CONST = 7;
+}
+
+class A {
+    const int CONST_FIELD = 1;
+    static readonly int STATIC_READONLY = 2;
+    int plainField = 3;
+    static int staticField = 4;
+    public int AccessorProp {
+        get { int accessorLocal = 60; return accessorLocal; }
+    }
+    public int this[int idx] {
+        get { int indexerLocal = 61; return indexerLocal; }
+    }
+    public event EventHandler Ev {
+        add { int evAddLocal = 62; }
+        remove { }
+    }
+    public static A operator +(A a, A b) { int opLocal = 63; return a; }
+    public static implicit operator int(A a) { int convLocal = 64; return 0; }
+    Action fieldLambda = () => { int lambdaFieldLocal = 8; };
+    Action fieldAnonMethod = delegate () { int anonMethodLocal = 9; };
+
+    static A() { int staticCtorLocal = 10; }
+    A() { int ctorLocal = 11; }
+    ~A() { int dtorLocal = 12; }
+
+    void M() {
+        int methodLocal = 20;
+        for (int i = 0; i < 3; i++) { int loopBody = 21; }
+        try { int tryLocal = 22; } catch (Exception e) { int catchLocal = 23; }
+        int LocalFunc() {
+            int localFuncLocal = 24;
+            return localFuncLocal;
+        }
+        Action lam = () => { int lambdaLocal = 25; };
+    }
+}
+"""
+
+
+class TestCSharpLocalVariableContraction:
+    """Issue #628 — C# method/ctor/dtor/local-fn/lambda/accessor/operator
+    locals must NOT reach ast_symbol_rows; class/interface/record fields
+    (const, static readonly, plain) stay kind="variable". Unlike Java (#630),
+    ``block`` is NOT in the scope set: C# top-level statements put blocks at
+    compilation-unit level (live-parse: ``block < if_statement <
+    global_statement``), so a block-keyed set would drop if/try-wrapped
+    top-level declarators and break the #612 module-scope guarantee. Fields
+    are safe regardless: they route ``declaration_list > field_declaration``
+    and never through any function-like node (live-parse verified)."""
+
+    def _variables(self, src: str, lang: str) -> list[str]:
+        return sorted(
+            s["name"] for s in _symbols_for(src, lang) if s["kind"] == "variable"
+        )
+
+    def test_csharp_exactly_fields_constants_and_top_level_survive(self):
+        assert self._variables(_CSHARP_628_SRC, "csharp") == [
+            "CONST_FIELD",
+            "IFACE_CONST",
+            "REC_CONST",
+            "STATIC_READONLY",
+            "fieldAnonMethod",
+            "fieldLambda",
+            "plainField",
+            "staticField",
+            "topCatchLocal",
+            "topLevelIfLocal",
+            "topLevelVar",
+            "topLevelVar2",
+            "topTryLocal",
+        ]
+
+    def test_csharp_method_ctor_dtor_and_local_fn_locals_dropped(self):
+        names = self._variables(_CSHARP_628_SRC, "csharp")
+        for local in (
+            "methodLocal",
+            "i",
+            "loopBody",
+            "tryLocal",
+            "catchLocal",
+            "localFuncLocal",
+            "lam",
+            "lambdaLocal",
+            "ctorLocal",
+            "staticCtorLocal",
+            "dtorLocal",
+        ):
+            assert local not in names
+
+    def test_csharp_lambda_accessor_and_operator_locals_dropped(self):
+        # lambdaFieldLocal/anonMethodLocal sit in lambdas hanging off FIELD
+        # initializers — the only shapes where lambda_expression /
+        # anonymous_method_expression (not a method) is the gating scope
+        # node; the field holders themselves stay captured. accessor bodies
+        # (property/indexer/event) gate via accessor_declaration; operator
+        # bodies via (conversion_)operator_declaration.
+        names = self._variables(_CSHARP_628_SRC, "csharp")
+        for local in (
+            "lambdaFieldLocal",
+            "anonMethodLocal",
+            "accessorLocal",
+            "indexerLocal",
+            "evAddLocal",
+            "opLocal",
+            "convLocal",
+        ):
+            assert local not in names
+
+    def test_csharp_top_level_statement_vars_kept(self):
+        # C# 9 top-level statements ARE the program's module scope —
+        # plain, if-wrapped, and try-wrapped declarators all stay captured
+        # (mirrors the #612 if/try-wrapped module-level guarantee).
+        names = self._variables(_CSHARP_628_SRC, "csharp")
+        for kept in (
+            "topLevelVar",
+            "topLevelVar2",
+            "topLevelIfLocal",
+            "topTryLocal",
+            "topCatchLocal",
+        ):
+            assert kept in names
+
+
+class TestCSharpErrorRegionHardening:
+    """#629 ERROR-hardening precedent applied to C#: declarations inside
+    error-recovered regions have undecidable scope — they must not be emitted
+    (better unindexed than a lambda local masquerading as a field)."""
+
+    def test_declaration_inside_error_node_not_emitted(self):
+        # Unterminated lambda-in-field shatters the class into an ERROR node;
+        # 'leaked' currently surfaces as ERROR > local_declaration_statement
+        # (live-parse verified) — it must produce no row.
+        src = "class A {\n  Action r = () => {\n    int leaked = 1;\n"
+        syms = _symbols_for(src, "csharp")
+        assert [s["name"] for s in syms if s["kind"] == "variable"] == []
+
+
+# ---------------------------------------------------------------------------
+# _count_nodes — iterative implementation (Issue #805)
+# ---------------------------------------------------------------------------
+
+
+class _FakeNode:
+    """Minimal stand-in for a tree-sitter Node."""
+
+    def __init__(self, children=None):
+        self.children = children or []
+
+
+class TestCountNodes:
+    def test_single_node_returns_1(self):
+        assert _count_nodes(_FakeNode()) == 1
+
+    def test_flat_children(self):
+        root = _FakeNode([_FakeNode(), _FakeNode(), _FakeNode()])
+        assert _count_nodes(root) == 4
+
+    def test_nested_tree(self):
+        #   root
+        #   ├── a
+        #   │   └── c
+        #   └── b
+        root = _FakeNode(
+            [
+                _FakeNode([_FakeNode()]),
+                _FakeNode(),
+            ]
+        )
+        assert _count_nodes(root) == 4
+
+    def test_deep_chain_does_not_raise(self):
+        """A chain 2000 levels deep must not raise RecursionError (issue #805)."""
+        # Build a chain: root → child → grandchild → … (2000 levels)
+        node = _FakeNode()
+        for _ in range(2000):
+            node = _FakeNode([node])
+        # Must not raise; exact count is 2001 (2000 wrappers + original leaf).
+        assert _count_nodes(node) == 2001

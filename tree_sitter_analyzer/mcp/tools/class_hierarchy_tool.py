@@ -18,7 +18,11 @@ from typing import Any
 from ...ast_cache import ASTCache
 from ...class_hierarchy import ClassHierarchy
 from ...utils import setup_logger
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, mirror_summary_line
+from .index_rebuild_signal import (
+    is_index_rebuilding,
+    rebuild_in_progress_next_step,
+)
 
 logger = setup_logger(__name__)
 
@@ -73,6 +77,7 @@ class ClassHierarchyTool(BaseMCPTool):
                     "enum": [
                         "subclasses",
                         "superclasses",
+                        "supers",
                         "tree",
                         "impact",
                         "all",
@@ -80,7 +85,8 @@ class ClassHierarchyTool(BaseMCPTool):
                     ],
                     "description": (
                         "Query mode. Optional: when omitted, defaults to 'tree' "
-                        "if class_name is given, else the global 'summary'."
+                        "if class_name is given, else the global 'summary'. "
+                        "'supers' is an alias for 'superclasses'."
                     ),
                 },
                 "class_name": {
@@ -108,8 +114,23 @@ class ClassHierarchyTool(BaseMCPTool):
             "additionalProperties": False,
         }
 
-    @staticmethod
-    def _resolve_mode(arguments: dict[str, Any]) -> str:
+    # Canonical mode names and short aliases (#802).
+    _MODE_ALIASES: dict[str, str] = {
+        "supers": "superclasses",
+        "parents": "superclasses",
+        "subs": "subclasses",
+    }
+    _VALID_MODES: tuple[str, ...] = (
+        "subclasses",
+        "superclasses",
+        "tree",
+        "impact",
+        "all",
+        "summary",
+    )
+
+    @classmethod
+    def _resolve_mode(cls, arguments: dict[str, Any]) -> str:
         """Effective query mode.
 
         When the caller did not specify a mode, default to a CLASS-SCOPED view
@@ -119,14 +140,28 @@ class ClassHierarchyTool(BaseMCPTool):
         mode ignores ``class_name`` and returns a confident project-wide result
         for a class that may not even exist. ``tree`` instead returns
         ``NOT_FOUND`` for an unknown class.
+
+        Short aliases (``supers``, ``parents``, ``subs``) are normalised to
+        their canonical forms (#802).
         """
         mode = arguments.get("mode")
-        if mode:
-            return str(mode)
-        return "tree" if arguments.get("class_name") else "summary"
+        if not mode:
+            return "tree" if arguments.get("class_name") else "summary"
+        mode = str(mode)
+        return cls._MODE_ALIASES.get(mode, mode)
+
+    @staticmethod
+    def _normalize_mode(mode: str) -> str:
+        """Resolve mode aliases to their canonical form.
+
+        'supers' is a documented alias for 'superclasses' (#802).
+        """
+        if mode == "supers":
+            return "superclasses"
+        return mode
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        mode = self._resolve_mode(arguments)
+        mode = self._normalize_mode(self._resolve_mode(arguments))
         if mode in ("subclasses", "superclasses", "tree", "impact"):
             if not arguments.get("class_name"):
                 raise ValueError(f"class_name is required for mode '{mode}'")
@@ -135,10 +170,31 @@ class ClassHierarchyTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
-        mode = self._resolve_mode(arguments)
+        mode = self._normalize_mode(self._resolve_mode(arguments))
         class_name = arguments.get("class_name", "")
         max_depth = arguments.get("max_depth", 10)
         output_format = arguments.get("output_format", "toon")
+
+        if is_index_rebuilding(self.project_root):
+            rebuild_next_step = rebuild_in_progress_next_step()
+            rebuild_response = {
+                "success": True,
+                "mode": mode,
+                "class_name": class_name,
+                "verdict": "WARN",
+                "index_rebuilding": True,
+                "next_step": rebuild_next_step,
+                "agent_summary": {
+                    "summary_line": (
+                        f"class_hierarchy: {mode} unavailable during full rebuild"
+                    ),
+                    "verdict": "WARN",
+                    "next_step": rebuild_next_step,
+                },
+            }
+            from ..utils.format_helper import apply_toon_format_to_response
+
+            return apply_toon_format_to_response(rebuild_response, output_format)
 
         hierarchy = self._get_hierarchy()
         hierarchy.build()
@@ -146,6 +202,19 @@ class ClassHierarchyTool(BaseMCPTool):
         result: Any
         if mode == "subclasses":
             result = hierarchy.subclasses_of(class_name, max_depth=max_depth)
+            verdict = (
+                "INFO" if result or hierarchy.has_class(class_name) else "NOT_FOUND"
+            )
+            summary_line = (
+                f"class_hierarchy subclasses={len(result)} class={class_name}"
+            )
+            next_step = (
+                f"Found {len(result)} subclass(es) of {class_name}"
+                if result
+                else f"{class_name} has no subclasses"
+                if hierarchy.has_class(class_name)
+                else f"{class_name} not found — check class name with class_hierarchy mode=all"
+            )
             response: dict[str, Any] = {
                 "success": True,
                 "mode": "subclasses",
@@ -155,12 +224,29 @@ class ClassHierarchyTool(BaseMCPTool):
                 # Wave 1b (audit structure-01): NOT_FOUND means the class is
                 # unknown — an existing class with zero subclasses is a valid
                 # INFO result, not a missing one.
-                "verdict": (
-                    "INFO" if result or hierarchy.has_class(class_name) else "NOT_FOUND"
-                ),
+                "verdict": verdict,
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": next_step,
+                    "verdict": verdict,
+                },
             }
         elif mode == "superclasses":
             result = hierarchy.superclasses_of(class_name)
+            verdict = (
+                "INFO" if result or hierarchy.has_class(class_name) else "NOT_FOUND"
+            )
+            summary_line = (
+                f"class_hierarchy superclasses={len(result)} class={class_name}"
+            )
+            next_step = (
+                f"Found {len(result)} superclass(es) of {class_name}"
+                if result
+                else f"{class_name} is a root class (no parents)"
+                if hierarchy.has_class(class_name)
+                else f"{class_name} not found — check class name with class_hierarchy mode=all"
+            )
             response = {
                 "success": True,
                 "mode": "superclasses",
@@ -169,13 +255,26 @@ class ClassHierarchyTool(BaseMCPTool):
                 "superclasses": result,
                 # Wave 1b: same existence-vs-emptiness distinction — a root
                 # class with no parents exists and is INFO, not NOT_FOUND.
-                "verdict": (
-                    "INFO" if result or hierarchy.has_class(class_name) else "NOT_FOUND"
-                ),
+                "verdict": verdict,
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": next_step,
+                    "verdict": verdict,
+                },
             }
         elif mode == "tree":
             result = hierarchy.hierarchy_tree(class_name)
             all_subs = hierarchy.subclasses_of(class_name, max_depth=max_depth)
+            verdict = "INFO" if hierarchy.has_class(class_name) else "NOT_FOUND"
+            summary_line = (
+                f"class_hierarchy tree subclasses={len(all_subs)} class={class_name}"
+            )
+            next_step = (
+                f"Hierarchy tree for {class_name} with {len(all_subs)} subclass(es)"
+                if hierarchy.has_class(class_name)
+                else f"{class_name} not found — check class name with class_hierarchy mode=all"
+            )
             response = {
                 "success": True,
                 "mode": "tree",
@@ -187,45 +286,91 @@ class ClassHierarchyTool(BaseMCPTool):
                 # class (e.g. a concrete final class) must not read as
                 # NOT_FOUND just because nothing inherits from it. ``tree`` is
                 # the default mode for a named class, so this is the common path.
-                "verdict": "INFO" if hierarchy.has_class(class_name) else "NOT_FOUND",
+                "verdict": verdict,
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": next_step,
+                    "verdict": verdict,
+                },
             }
         elif mode == "impact":
             impact = hierarchy.hierarchy_impact(class_name)
+            verdict = (
+                "CAUTION"
+                if impact.risk_level in ("high", "critical")
+                else "REVIEW"
+                if impact.risk_level == "medium"
+                else "INFO"
+            )
+            summary_line = (
+                f"class_hierarchy impact risk={impact.risk_level} class={class_name}"
+            )
+            next_step = f"Impact analysis for {class_name}: risk={impact.risk_level}"
             response = {
                 "success": True,
                 "mode": "impact",
-                "verdict": (
-                    "CAUTION"
-                    if impact.risk_level in ("high", "critical")
-                    else "REVIEW"
-                    if impact.risk_level == "medium"
-                    else "INFO"
-                ),
+                "verdict": verdict,
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": next_step,
+                    "verdict": verdict,
+                },
                 **impact.to_dict(),
             }
         elif mode == "all":
             classes = hierarchy.all_classes()
+            summary_line = f"class_hierarchy all classes={len(classes)}"
+            next_step = f"Found {len(classes)} class(es) in the hierarchy"
             response = {
                 "success": True,
                 "mode": "all",
                 "class_count": len(classes),
                 "classes": classes,
                 "verdict": "INFO",
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": next_step,
+                    "verdict": "INFO",
+                },
             }
         elif mode == "summary":
+            hier_summary = hierarchy.summary()
+            total = hier_summary.get("total_classes", 0)
+            summary_line = f"class_hierarchy summary total_classes={total}"
+            next_step = f"Hierarchy has {total} class(es)"
             response = {
                 "success": True,
                 "mode": "summary",
                 "verdict": "INFO",
-                **hierarchy.summary(),
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": next_step,
+                    "verdict": "INFO",
+                },
+                **hier_summary,
             }
         else:
+            valid = ", ".join(self._VALID_MODES)
+            summary_line = f"class_hierarchy unknown mode={mode!r}"
             response = {
                 "success": False,
-                "error": f"Unknown mode: {mode}",
+                "error": f"Unknown mode: '{mode}'. Valid modes: {valid}",
+                "error_type": "validation",
                 "verdict": "ERROR",
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": f"Use one of: {valid}",
+                    "verdict": "ERROR",
+                },
             }
 
         from ..utils.format_helper import apply_toon_format_to_response
 
-        return apply_toon_format_to_response(response, output_format)
+        return mirror_summary_line(
+            apply_toon_format_to_response(response, output_format)
+        )

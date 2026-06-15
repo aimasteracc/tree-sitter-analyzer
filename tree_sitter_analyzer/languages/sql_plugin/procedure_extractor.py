@@ -57,6 +57,10 @@ def extract_procedure_parameters(
         param_name = match.group(2)
         data_type = match.group(3)
 
+        # Filter out SQL DML keywords that can appear as false-positive param
+        # names when the regex matches body text instead of the param list.
+        # Keep only unambiguous reserved words — common column names like
+        # STATUS, NAME, EMAIL, ID are valid parameter identifiers (#775).
         if param_name.upper() in (
             "SELECT",
             "FROM",
@@ -67,12 +71,6 @@ def extract_procedure_parameters(
             "UPDATE",
             "INSERT",
             "DELETE",
-            "CREATED_AT",
-            "UPDATED_AT",
-            "ID",
-            "NAME",
-            "EMAIL",
-            "STATUS",
             "IN",
             "OUT",
             "INOUT",
@@ -88,9 +86,13 @@ def extract_procedure_parameters(
 
 
 def _extract_parameter_section(proc_text: str) -> str:
-    """Return the balanced parameter section for a procedure/function."""
+    """Return the balanced parameter section for a procedure/function.
+
+    Handles both simple names (``FUNCTION foo(``) and schema-qualified names
+    (``FUNCTION schema.foo(``).
+    """
     header_match = re.search(
-        r"(?:PROCEDURE|FUNCTION)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\(",
+        r"(?:PROCEDURE|FUNCTION)\s+(?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[a-zA-Z_][a-zA-Z0-9_]*\s*\(",
         proc_text,
         re.IGNORECASE,
     )

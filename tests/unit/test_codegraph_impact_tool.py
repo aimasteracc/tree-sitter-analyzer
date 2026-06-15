@@ -14,6 +14,7 @@ from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import (
     _compute_risk_score,
     _compute_transitive_callees,
     _compute_transitive_callers,
+    _impact_verdict,
     _partition_refs,
 )
 
@@ -470,3 +471,363 @@ class TestImpactTestPartition:
         names = {r["name"] for r in result}
         assert "real_dep" in names
         assert "fake_dep" in names
+
+
+# ---------------------------------------------------------------------------
+# #656 — blast_radius transitive propagation (FunctionRef dict-key identity)
+# ---------------------------------------------------------------------------
+
+
+class TestBlastRadiusPropagation:
+    """#656: blast_radius must propagate transitively, not just return the seed.
+
+    The graph walks caller_refs_of(current) where *current* may come from a
+    previous iteration's caller list.  With __hash__/__eq__ keyed on
+    (file_path, name, start_line), a FunctionRef VALUE retrieved from _callers
+    can be used as a KEY for the next-level lookup even if it is a different
+    object instance — the dict lookup succeeds because hashes match.
+    """
+
+    def test_transitive_caller_chain_propagates(self):
+        """Seed←B←C: total_affected_functions == 3 (seed + 2 transitive callers)."""
+        seed = _make_func("seed", "a.py")
+        b = _make_func("b", "b.py", 5)
+        c = _make_func("c", "c.py", 10)
+
+        graph = MagicMock()
+        graph.resolve_targets.return_value = [seed]
+        callers_map = {seed: [b], b: [c], c: []}
+        callees_map = {seed: [], b: [], c: []}
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+
+        result = _blast_radius_for_functions(graph, ["seed"], depth=5)
+        assert result["total_affected_functions"] == 3
+
+    def test_four_direct_callers_are_all_counted(self):
+        """seed with 4 direct callers: total_affected_functions == 5 (seed + 4)."""
+        seed = _make_func("seed", "core.py")
+        callers = [_make_func(f"c{i}", f"mod{i}.py", i + 10) for i in range(4)]
+
+        graph = MagicMock()
+        graph.resolve_targets.return_value = [seed]
+        callers_map: dict = {seed: callers}
+        for c in callers:
+            callers_map[c] = []
+        callees_map: dict = {seed: []}
+        for c in callers:
+            callees_map[c] = []
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+
+        result = _blast_radius_for_functions(graph, ["seed"], depth=5)
+        assert result["total_affected_functions"] == 5
+
+
+# ---------------------------------------------------------------------------
+# #657 — singular function_name accepted as alias for blast_radius
+# ---------------------------------------------------------------------------
+
+
+class TestBlastRadiusSingularAlias:
+    """#657: blast_radius should accept function_name (singular) and wrap it."""
+
+    def test_validate_accepts_singular_function_name(self):
+        """validate_arguments must NOT raise when function_name (singular) is given."""
+        tool = CodeGraphImpactTool()
+        # Should not raise
+        assert tool.validate_arguments({"mode": "blast_radius", "function_name": "foo"})
+
+    def test_validate_still_raises_when_both_absent(self):
+        """validate_arguments must still raise when neither name form is provided."""
+        tool = CodeGraphImpactTool()
+        with pytest.raises(ValueError, match="function_names is required"):
+            tool.validate_arguments({"mode": "blast_radius"})
+
+    @pytest.mark.asyncio
+    async def test_execute_singular_wraps_to_list(self):
+        """execute with function_name=X for blast_radius passes [X] to blast fn."""
+        tool = CodeGraphImpactTool(project_root="/tmp/nonexistent")
+        seed = _make_func("solo_fn", "x.py")
+        mock_graph = MagicMock()
+        mock_graph.resolve_targets.return_value = [seed]
+        mock_graph.caller_refs_of.return_value = []
+        mock_graph.callee_refs_of.return_value = []
+        with patch.object(tool, "get_call_graph", return_value=mock_graph):
+            result = await tool.execute(
+                {
+                    "mode": "blast_radius",
+                    "function_name": "solo_fn",  # singular, not function_names
+                    "output_format": "json",
+                }
+            )
+        assert result["success"] is True
+        assert result["mode"] == "blast_radius"
+        # seed only: total_affected_functions == 1
+        assert result["total_affected_functions"] == 1
+
+    def test_schema_mentions_blast_radius_function_names(self):
+        """Schema description for function_names must reference blast_radius mode."""
+        tool = CodeGraphImpactTool()
+        schema = tool.get_tool_schema()
+        desc = schema["properties"]["function_names"]["description"]
+        assert "blast_radius" in desc
+
+    def test_schema_describes_singular_alias(self):
+        """function_name schema description must mention blast_radius alias."""
+        tool = CodeGraphImpactTool()
+        schema = tool.get_tool_schema()
+        desc = schema["properties"]["function_name"]["description"]
+        # Must document that singular is accepted for blast_radius too
+        assert "blast_radius" in desc
+
+
+# ---------------------------------------------------------------------------
+# #658 — transitive_count_is_capped flag when _MAX_TRANSITIVE cap hit
+# ---------------------------------------------------------------------------
+
+
+class TestTransitiveCapFlag:
+    """#658: transitive_caller_count == _MAX_TRANSITIVE must expose is_capped flag."""
+
+    def _graph_with_n_transitive_callers(self, n: int) -> MagicMock:
+        """Return a mock graph whose BFS yields exactly n unique callers."""
+
+        graph = MagicMock()
+        hub = _make_func("hub", "hub.py")
+        graph.resolve_targets.return_value = [hub]
+        callers = [_make_func(f"c{i}", f"f{i}.py", i) for i in range(n)]
+        # All callers are direct (depth 1), no second-level callers.
+        callers_map: dict = {hub: callers}
+        for c in callers:
+            callers_map[c] = []
+        graph.caller_refs_of.side_effect = lambda f: callers_map.get(f, [])
+        graph.callee_refs_of.return_value = []
+        graph.callers_of.return_value = [c.to_dict() for c in callers]
+        graph.callees_of.return_value = []
+        graph.call_chain.return_value = []
+        return graph
+
+    def test_capped_flag_absent_below_limit(self):
+        """transitive_count_is_capped absent when caller count < _MAX_TRANSITIVE."""
+        from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import _MAX_TRANSITIVE
+
+        tool = CodeGraphImpactTool()
+        n = _MAX_TRANSITIVE - 1
+        graph = self._graph_with_n_transitive_callers(n)
+        result = tool._function_impact(graph, "hub", None, 10)
+        assert result["transitive_caller_count"] == n
+        assert "transitive_count_is_capped" not in result
+
+    def test_capped_flag_present_at_limit(self):
+        """transitive_count_is_capped: True when transitive_caller_count == _MAX_TRANSITIVE."""
+        from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import _MAX_TRANSITIVE
+
+        tool = CodeGraphImpactTool()
+        n = _MAX_TRANSITIVE
+        graph = self._graph_with_n_transitive_callers(n)
+        result = tool._function_impact(graph, "hub", None, 10)
+        assert result["transitive_caller_count"] == _MAX_TRANSITIVE
+        assert result["transitive_count_is_capped"] is True
+
+    def _graph_with_n_transitive_callees(self, n: int) -> MagicMock:
+        """Return a mock graph whose callee BFS yields exactly n unique callees."""
+
+        graph = MagicMock()
+        hub = _make_func("hub", "hub.py")
+        graph.resolve_targets.return_value = [hub]
+        callees = [_make_func(f"d{i}", f"g{i}.py", i) for i in range(n)]
+        callees_map: dict = {hub: callees}
+        for d in callees:
+            callees_map[d] = []
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        graph.caller_refs_of.return_value = []
+        graph.callers_of.return_value = []
+        graph.callees_of.return_value = [d.to_dict() for d in callees]
+        graph.call_chain.return_value = []
+        return graph
+
+    def test_callee_capped_flag_absent_below_limit(self):
+        """transitive_callee_count_is_capped absent when callee count < _MAX_TRANSITIVE."""
+        from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import _MAX_TRANSITIVE
+
+        tool = CodeGraphImpactTool()
+        n = _MAX_TRANSITIVE - 1
+        graph = self._graph_with_n_transitive_callees(n)
+        result = tool._function_impact(graph, "hub", None, 10)
+        assert result["transitive_callee_count"] == n
+        assert "transitive_callee_count_is_capped" not in result
+
+    def test_callee_capped_flag_present_at_limit(self):
+        """transitive_callee_count_is_capped: True when count == _MAX_TRANSITIVE."""
+        from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import _MAX_TRANSITIVE
+
+        tool = CodeGraphImpactTool()
+        n = _MAX_TRANSITIVE
+        graph = self._graph_with_n_transitive_callees(n)
+        result = tool._function_impact(graph, "hub", None, 10)
+        assert result["transitive_callee_count"] == _MAX_TRANSITIVE
+        assert result["transitive_callee_count_is_capped"] is True
+
+
+# ---------------------------------------------------------------------------
+# #668 — blast_radius file-only call: recovery_hint guides to nav xref
+# ---------------------------------------------------------------------------
+
+
+class TestBlastRadiusFileOnlyRecoveryHint:
+    """#668: when blast_radius is called with file_path only (no function_names),
+    the error message must contain actionable guidance to nav action=xref mode=file.
+
+    The recovery_hint is derived from the ValueError message by
+    error_recovery._classify().  A specific rule matching 'blast_radius' must
+    be installed BEFORE the generic 'required' rule so the hint is contextual.
+    """
+
+    def test_blast_radius_error_message_contains_xref_hint(self):
+        """validate_arguments raises; error message mentions 'xref'."""
+        tool = CodeGraphImpactTool()
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments(
+                {"mode": "blast_radius", "file_path": "src/_ast_extraction.py"}
+            )
+        msg = str(exc_info.value)
+        assert "xref" in msg
+
+    def test_blast_radius_error_message_mentions_file_mode(self):
+        """Error message must reference mode=file so the agent knows which xref mode."""
+        tool = CodeGraphImpactTool()
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments(
+                {"mode": "blast_radius", "file_path": "src/module.py"}
+            )
+        msg = str(exc_info.value)
+        assert "mode=file" in msg
+
+    def test_blast_radius_with_no_args_error_still_mentions_xref(self):
+        """Even with no file_path provided, the blast_radius error hints at xref."""
+        tool = CodeGraphImpactTool()
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments({"mode": "blast_radius"})
+        msg = str(exc_info.value)
+        assert "xref" in msg
+
+
+# ---------------------------------------------------------------------------
+# BUG 2 follow-up after #577 — blast_radius unknown seed must yield NOT_FOUND
+# ---------------------------------------------------------------------------
+
+
+class TestBlastRadiusUnknownSeedVerdict:
+    """blast_radius with an unresolved seed must yield verdict=NOT_FOUND and
+    must NOT advise the caller to proceed with an edit.
+
+    BUG: when resolve_targets returns [] (seed not in call graph),
+    _blast_radius_for_functions returns total_affected_functions=0 and no
+    'risk' key.  _impact_verdict reads result.get("risk", result) → risk=result
+    (the whole dict), then result.get("level") → None → falls through to
+    return "INFO".  So the agent_summary says "proceed with edit" for a symbol
+    that was never found — dangerous for an agent relying on it as a safety gate.
+
+    FIX: detect zero affected functions + unresolved targets → return NOT_FOUND.
+    """
+
+    def _make_tool(self, tmp_path) -> CodeGraphImpactTool:
+        return CodeGraphImpactTool(str(tmp_path))
+
+    def _mock_empty_graph(self) -> MagicMock:
+        mg = MagicMock()
+        mg.resolve_targets.return_value = []  # seed not found
+        mg.caller_refs_of.return_value = []
+        mg.callee_refs_of.return_value = []
+        mg.callers_of.return_value = []
+        mg.callees_of.return_value = []
+        mg.call_chain.return_value = []
+        return mg
+
+    @pytest.mark.asyncio
+    async def test_unknown_seed_verdict_is_not_found(self, tmp_path):
+        """blast_radius with unresolved seed → verdict == 'NOT_FOUND', not 'INFO'."""
+        tool = self._make_tool(tmp_path)
+        mg = self._mock_empty_graph()
+        with patch.object(tool, "get_call_graph", return_value=mg):
+            result = await tool.execute(
+                {
+                    "mode": "blast_radius",
+                    "function_name": "nonexistent_fn_xyz",
+                    "output_format": "json",
+                }
+            )
+        verdict = result.get("verdict")
+        assert verdict == "NOT_FOUND", (
+            f"blast_radius unknown seed must yield verdict='NOT_FOUND'; got {verdict!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unknown_seed_agent_summary_verdict_is_not_found(self, tmp_path):
+        """agent_summary.verdict for unknown seed must be 'NOT_FOUND', not 'INFO'."""
+        tool = self._make_tool(tmp_path)
+        mg = self._mock_empty_graph()
+        with patch.object(tool, "get_call_graph", return_value=mg):
+            result = await tool.execute(
+                {
+                    "mode": "blast_radius",
+                    "function_name": "nonexistent_fn_xyz",
+                    "output_format": "json",
+                }
+            )
+        agent_summary = result.get("agent_summary", {})
+        assert agent_summary.get("verdict") == "NOT_FOUND", (
+            f"agent_summary.verdict must be 'NOT_FOUND' for unknown seed; "
+            f"got {agent_summary.get('verdict')!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unknown_seed_next_step_does_not_advise_edit(self, tmp_path):
+        """blast_radius unknown seed must NOT tell caller to 'proceed with edit'."""
+        tool = self._make_tool(tmp_path)
+        mg = self._mock_empty_graph()
+        with patch.object(tool, "get_call_graph", return_value=mg):
+            result = await tool.execute(
+                {
+                    "mode": "blast_radius",
+                    "function_name": "nonexistent_fn_xyz",
+                    "output_format": "json",
+                }
+            )
+        next_step = result.get("agent_summary", {}).get("next_step", "")
+        assert "proceed" not in next_step.lower(), (
+            f"next_step must NOT advise proceeding for an unresolved seed; "
+            f"got: {next_step!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# #798 — risk.level "critical" must NOT map to verdict INFO ("proceed")
+# ---------------------------------------------------------------------------
+
+
+class TestImpactVerdictCriticalLevel:
+    """_compute_risk_score emits 4 levels (critical>=60, high>=40, medium>=20,
+    low<20), but _impact_verdict had no ``critical`` branch, so a critical-risk
+    symbol fell through to ``return "INFO"`` — and INFO drives the
+    "Low risk change — proceed with edit" next_step. The single highest-blast-
+    radius functions therefore read as safe-to-edit (same false-green family as
+    #754/#780). Fix: map critical -> CAUTION. The no-level fallthrough (INFO) is
+    left unchanged on purpose — it is the blast_radius result shape, out of
+    scope here.
+    """
+
+    def test_critical_level_is_caution_not_info(self):
+        assert _impact_verdict({"risk": {"level": "critical"}}) == "CAUTION"
+
+    def test_known_levels_unchanged(self):
+        assert _impact_verdict({"risk": {"level": "high"}}) == "CAUTION"
+        assert _impact_verdict({"risk": {"level": "medium"}}) == "REVIEW"
+        assert _impact_verdict({"risk": {"level": "low"}}) == "INFO"
+        assert _impact_verdict({"risk": {"level": "unknown"}}) == "NOT_FOUND"
+
+    def test_no_level_fallthrough_stays_info(self):
+        # blast_radius result shape has no "level" key; preserve its existing
+        # INFO fallthrough (this fix must not change blast_radius semantics).
+        assert _impact_verdict({"total_affected_functions": 5}) == "INFO"

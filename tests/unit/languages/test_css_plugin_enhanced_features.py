@@ -371,7 +371,7 @@ class TestCssAnimationRecognition:
         elements = plugin.create_extractor().extract_css_rules(tree, ANIMATION_CODE)
 
         keyframes = [e for e in elements if e.selector.startswith("@keyframes")]
-        assert len(keyframes) >= 1
+        assert len(keyframes) == 3
 
     def test_extract_multiple_keyframes(self):
         """Test extraction of multiple @keyframes."""
@@ -380,7 +380,7 @@ class TestCssAnimationRecognition:
         elements = plugin.create_extractor().extract_css_rules(tree, ANIMATION_CODE)
 
         keyframes = [e for e in elements if e.selector.startswith("@keyframes")]
-        assert len(keyframes) >= 3
+        assert len(keyframes) == 3
 
     def test_extract_keyframes_name(self):
         """Test that keyframes name is captured."""
@@ -414,7 +414,7 @@ class TestCssAnimationRecognition:
         transition_elements = [
             e for e in elements if "transition" in str(e.raw_text).lower()
         ]
-        assert len(transition_elements) >= 1
+        assert len(transition_elements) == 2
 
     def test_keyframes_keyframes(self):
         """Test that keyframes percentages are captured."""
@@ -503,7 +503,7 @@ class TestCssComplexStructures:
         )
 
         import_elements = [e for e in elements if e.selector.startswith("@import")]
-        assert len(import_elements) >= 0
+        assert len(import_elements) == 1
 
     def test_extract_layer_rules(self):
         """Test extraction of @layer rules."""
@@ -514,7 +514,7 @@ class TestCssComplexStructures:
         )
 
         layer_elements = [e for e in elements if e.selector.startswith("@layer")]
-        assert len(layer_elements) >= 0
+        assert len(layer_elements) == 3
 
     def test_extract_grid_template_areas(self):
         """Test extraction of grid-template-areas."""
@@ -565,7 +565,7 @@ class TestCssComplexStructures:
         )
 
         not_selectors = [e for e in elements if ":not(" in e.selector]
-        assert len(not_selectors) >= 0
+        assert len(not_selectors) == 1
 
 
 class TestCssQueryAccuracy:
@@ -577,9 +577,21 @@ class TestCssQueryAccuracy:
         tree = get_tree_for_code(SELECTOR_CODE, plugin)
         elements = plugin.create_extractor().extract_css_rules(tree, SELECTOR_CODE)
 
-        for element in elements:
-            assert element.selector is not None
-            assert len(element.selector) > 0
+        assert [e.selector for e in elements] == [
+            "body",
+            ".class-selector",
+            "#id-selector",
+            'input[type="text"]',
+            'a[href^="https"]',
+            "a:hover",
+            "input:focus",
+            "p::before",
+            "p::after",
+            "div p",
+            "div > p",
+            "div + p",
+            "div ~ p",
+        ]
 
     def test_property_query_accuracy(self):
         """Test that property query accurately identifies properties."""
@@ -600,7 +612,7 @@ class TestCssQueryAccuracy:
         elements = plugin.create_extractor().extract_css_rules(tree, MEDIA_QUERY_CODE)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 4
+        assert len(media_queries) == 4
 
     def test_keyframes_query_accuracy(self):
         """Test that keyframes query accurately identifies animations."""
@@ -609,7 +621,7 @@ class TestCssQueryAccuracy:
         elements = plugin.create_extractor().extract_css_rules(tree, ANIMATION_CODE)
 
         keyframes = [e for e in elements if e.selector.startswith("@keyframes")]
-        assert len(keyframes) >= 3
+        assert len(keyframes) == 3
 
     def test_variable_query_accuracy(self):
         """Test that variable query accurately identifies variables."""
@@ -647,9 +659,14 @@ class TestCssQueryAccuracy:
         tree = get_tree_for_code(PROPERTY_CODE, plugin)
         elements = plugin.create_extractor().extract_css_rules(tree, PROPERTY_CODE)
 
-        for element in elements:
-            assert element.start_line > 0
-            assert element.end_line >= element.start_line
+        assert [(e.start_line, e.end_line) for e in elements] == [
+            (3, 7),
+            (10, 17),
+            (20, 29),
+            (32, 39),
+            (42, 49),
+            (52, 57),
+        ]
 
     def test_element_classification_accuracy(self):
         """Test that element classification is accurate."""
@@ -658,7 +675,7 @@ class TestCssQueryAccuracy:
         elements = plugin.create_extractor().extract_css_rules(tree, PROPERTY_CODE)
 
         layout_elements = [e for e in elements if e.element_class == "layout"]
-        assert len(layout_elements) >= 1
+        assert len(layout_elements) == 1
 
         text_element = next((e for e in elements if e.selector == ".text"), None)
         if text_element:

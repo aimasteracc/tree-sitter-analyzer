@@ -17,9 +17,8 @@ tree-sitter-analyzer/
 │   │   ├── test_enum.ts        # TypeScript enum テスト
 │   │   ├── test_class.js       # JavaScript class テスト
 │   │   └── test_class.py       # Python class テスト
-│   └── test_golden_master_regression.py  # リグレッションテスト
-├── scripts/
-│   └── update_baselines.py  # ゴールデンマスター更新スクリプト
+├── regression/
+│   └── test_plugin_golden_masters.py  # プラグインゴールデンマスターリグレッションテスト
 └── examples/                    # サンプルファイル（テスト入力としても使用）
     ├── Sample.java
     └── BigService.java
@@ -35,10 +34,10 @@ tree-sitter-analyzer/
 #### ステップ2: リグレッションテストを実行
 ```bash
 # 全てのゴールデンマスターテストを実行
-uv run pytest tests/test_golden_master_regression.py -v
+uv run pytest tests/regression/test_plugin_golden_masters.py -v
 
-# 特定のテストだけ実行
-uv run pytest tests/test_golden_master_regression.py::TestGoldenMasterRegression::test_enum_members_extracted -v
+# 特定のプラグインだけ実行（パラメタライズド test_plugin_golden_master を -k で絞る）
+uv run pytest "tests/regression/test_plugin_golden_masters.py::test_plugin_golden_master" -v -k "java"
 ```
 
 #### ステップ3: 結果を確認
@@ -49,11 +48,14 @@ uv run pytest tests/test_golden_master_regression.py::TestGoldenMasterRegression
 
 #### ステップ4: ゴールデンマスターの更新（必要な場合）
 ```bash
-# 全てのゴールデンマスターを更新
-uv run python scripts/update_baselines.py
+# プラグイン・ゴールデンマスターを更新（意図した出力変更を受け入れる）
+TSA_UPDATE_GOLDEN=1 uv run pytest tests/regression/test_plugin_golden_masters.py -q
 
-# 更新後、再度テストを実行して確認
-uv run pytest tests/test_golden_master_regression.py -v
+# （参考）フォーマッタ・ベースライン（tests/golden_masters/{full,compact,csv}）は別系統:
+# uv run python tests/integration/formatters/update_baselines.py
+
+# 更新後、環境変数なしで再度テストを実行して確認
+uv run pytest tests/regression/test_plugin_golden_masters.py -v
 ```
 
 ### 2. 新しいテストケースの追加

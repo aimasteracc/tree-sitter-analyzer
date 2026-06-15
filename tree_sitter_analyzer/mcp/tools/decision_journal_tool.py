@@ -27,6 +27,7 @@ from ...decision_journal import (
     JournalValidationError,
 )
 from ..utils.format_helper import apply_toon_format_to_response
+from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
 _VALID_MODES = ("record", "get", "search", "supersede")
@@ -204,9 +205,7 @@ class DecisionJournalTool(BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "search")
         if mode not in _VALID_MODES:
-            raise ValueError(
-                f"Invalid mode '{mode}'; expected one of: {', '.join(_VALID_MODES)}"
-            )
+            raise invalid_enum_error("mode", mode, list(_VALID_MODES))
         if mode == "record":
             if not arguments.get("title") or not arguments.get("rationale"):
                 raise ValueError("record mode requires title and rationale")

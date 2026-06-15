@@ -414,6 +414,12 @@ coverage.json
 .mycelium/
 .gstack/
 
+# mutmut mutation testing artifacts (RFC-0017) — per-run cache, NEVER commit.
+# Only tests/effectiveness/BASELINE.md (curated summary) is tracked.
+.mutmut-cache
+mutants/
+html/mutmut/
+
 # Local validation / benchmark / dogfood artifacts — NEVER commit
 .codegraph/
 .rhizome/

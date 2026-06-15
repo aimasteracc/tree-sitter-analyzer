@@ -206,7 +206,7 @@ class TestEnhancedJavaScriptElementExtractor:
         )
 
         complexity = extractor._calculate_complexity_optimized(mock_node)
-        assert complexity >= 4  # Base 1 + if + while + for
+        assert complexity == 4  # Base 1 + if + while + for
 
     def test_get_variable_kind_const(self, extractor):
         """Test variable kind detection for const"""
@@ -246,7 +246,7 @@ class TestEnhancedJavaScriptElementExtractor:
 
         exports = extractor._extract_commonjs_exports(mock_tree, source_code)
 
-        assert len(exports) >= 1
+        assert len(exports) == 2
         # Check that at least one export was found
         export_names = [exp.get("names", []) for exp in exports]
         assert any("MyClass" in names for names in export_names)
@@ -345,7 +345,7 @@ class TestJavaScriptComplexityAnalysis:
         )
 
         complexity = extractor._calculate_complexity_optimized(mock_node)
-        assert complexity >= 3  # Base 1 + if + else if
+        assert complexity == 4  # Base 1 + if + else if
 
     def test_complexity_with_loops(self, extractor, mocker):
         """Test complexity calculation with loops"""
@@ -355,7 +355,7 @@ class TestJavaScriptComplexityAnalysis:
         )
 
         complexity = extractor._calculate_complexity_optimized(mock_node)
-        assert complexity >= 3  # Base 1 + for + while
+        assert complexity == 3  # Base 1 + for + while
 
     def test_complexity_with_logical_operators(self, extractor, mocker):
         """Test complexity calculation with logical operators"""
@@ -365,7 +365,7 @@ class TestJavaScriptComplexityAnalysis:
         )
 
         complexity = extractor._calculate_complexity_optimized(mock_node)
-        assert complexity >= 3  # Base 1 + && + ||
+        assert complexity == 3  # Base 1 + && + ||
 
 
 class TestJavaScriptFrameworkDetection:

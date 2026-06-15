@@ -27,8 +27,8 @@ class TestSQLQueries:
 
     def test_sql_queries_exist(self):
         """Test that SQL queries are properly defined."""
-        assert len(SQL_QUERIES) > 0
-        assert len(SQL_QUERY_DESCRIPTIONS) > 0
+        assert len(SQL_QUERIES) == 61
+        assert len(SQL_QUERY_DESCRIPTIONS) == 61
 
         # Check that all queries have descriptions
         for query_name in SQL_QUERIES:
@@ -69,7 +69,7 @@ class TestSQLQueries:
         """Test getting all queries."""
         all_queries = get_all_queries()
         assert isinstance(all_queries, dict)
-        assert len(all_queries) > 0
+        assert len(all_queries) == 71
 
         # Check structure
         for _query_name, query_data in all_queries.items():
@@ -82,7 +82,7 @@ class TestSQLQueries:
         """Test listing all query names."""
         query_names = list_queries()
         assert isinstance(query_names, list)
-        assert len(query_names) > 0
+        assert len(query_names) == 71
         assert "table" in query_names
         assert "view" in query_names
         assert "procedure" in query_names
@@ -92,7 +92,7 @@ class TestSQLQueries:
         """Test getting available SQL queries."""
         sql_queries = get_available_sql_queries()
         assert isinstance(sql_queries, list)
-        assert len(sql_queries) > 0
+        assert len(sql_queries) == 61
         assert "table" in sql_queries
         assert "view" in sql_queries
 
@@ -309,7 +309,9 @@ class TestSQLQueryIntegration:
                 query_name="table", file_path=sample_sql_file, language="sql"
             )
             # Should find tables in sample_database.sql
-            assert len(results) > 0
+            assert (
+                len(results) > 0
+            )  # ratchet: nondeterministic environment-dependent (tree-sitter-sql availability)
         except Exception as e:
             # If tree-sitter-sql is not available, skip the test
             pytest.skip(f"SQL parsing not available: {e}")

@@ -64,7 +64,7 @@ class TestCppQueries:
         """Test getting all queries"""
         all_queries = get_all_queries()
         assert isinstance(all_queries, dict)
-        assert len(all_queries) > 0
+        assert len(all_queries) == 52
         assert "class" in all_queries
         assert "query" in all_queries["class"]
         assert "description" in all_queries["class"]
@@ -73,7 +73,7 @@ class TestCppQueries:
         """Test listing all query names"""
         query_names = list_queries()
         assert isinstance(query_names, list)
-        assert len(query_names) > 0
+        assert len(query_names) == 52
         assert "class" in query_names
         assert "function" in query_names
 
@@ -81,45 +81,52 @@ class TestCppQueries:
         """Test getting available C++ queries"""
         available_queries = get_available_cpp_queries()
         assert isinstance(available_queries, list)
-        assert len(available_queries) > 0
+        assert len(available_queries) == 47
         assert "class" in available_queries
         assert "function" in available_queries
 
     def test_cpp_queries_structure(self) -> None:
         """Test CPP_QUERIES dictionary structure"""
         assert isinstance(CPP_QUERIES, dict)
-        assert len(CPP_QUERIES) > 0
+        assert len(CPP_QUERIES) == 47
 
-        essential_queries = [
-            "class",
-            "struct",
-            "enum",
-            "function",
-            "namespace",
-            "template",
-            "include",
-            "variable",
-        ]
-        for query_name in essential_queries:
+        # Exact stripped lengths (update when query strings change)
+        essential_query_lens = {
+            "class": 24,
+            "struct": 26,
+            "enum": 22,
+            "function": 31,
+            "namespace": 33,
+            "template": 32,
+            "include": 26,
+            "variable": 23,
+        }
+        for query_name, expected_len in essential_query_lens.items():
             assert query_name in CPP_QUERIES
             assert isinstance(CPP_QUERIES[query_name], str)
-            assert len(CPP_QUERIES[query_name].strip()) > 0
+            assert len(CPP_QUERIES[query_name].strip()) == expected_len
 
     def test_cpp_query_descriptions_structure(self) -> None:
         """Test CPP_QUERY_DESCRIPTIONS dictionary structure"""
         assert isinstance(CPP_QUERY_DESCRIPTIONS, dict)
-        assert len(CPP_QUERY_DESCRIPTIONS) > 0
+        assert len(CPP_QUERY_DESCRIPTIONS) == 47
 
-        essential_queries = ["class", "function", "namespace", "template"]
-        for query_name in essential_queries:
+        # Exact stripped lengths (update when descriptions change)
+        essential_description_lens = {
+            "class": 30,
+            "function": 32,
+            "namespace": 33,
+            "template": 33,
+        }
+        for query_name, expected_len in essential_description_lens.items():
             assert query_name in CPP_QUERY_DESCRIPTIONS
             assert isinstance(CPP_QUERY_DESCRIPTIONS[query_name], str)
-            assert len(CPP_QUERY_DESCRIPTIONS[query_name].strip()) > 0
+            assert len(CPP_QUERY_DESCRIPTIONS[query_name].strip()) == expected_len
 
     def test_all_queries_structure(self) -> None:
         """Test ALL_QUERIES dictionary structure"""
         assert isinstance(ALL_QUERIES, dict)
-        assert len(ALL_QUERIES) > 0
+        assert len(ALL_QUERIES) == 52
 
         for query_data in ALL_QUERIES.values():
             assert isinstance(query_data, dict)

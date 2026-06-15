@@ -216,7 +216,7 @@ class TestRustIntegration:
         ):
             result = await plugin.analyze_file("test.rs", None)
             assert result.language == "rust"
-            assert len(result.elements) > 0
+            assert len(result.elements) == 5
 
             funcs = [e for e in result.elements if isinstance(e, Function)]
             structs = [e for e in result.elements if isinstance(e, Class)]
@@ -247,7 +247,7 @@ fn main() {
             result = await plugin.analyze_file("test.rs", None)
             assert result.language == "rust"
             imports = [e for e in result.elements if isinstance(e, Import)]
-            assert len(imports) >= 2, f"Expected >=2 imports, got {len(imports)}"
+            assert len(imports) == 2, f"Expected 2 imports, got {len(imports)}"
             assert any("std::collections::HashMap" in imp.name for imp in imports)
 
     @pytest.mark.asyncio
@@ -321,7 +321,7 @@ impl Rectangle {
             result = await plugin.analyze_file("test.rs", None)
             assert result.language == "rust"
             variables = [e for e in result.elements if isinstance(e, Variable)]
-            assert len(variables) >= 3, f"Expected >=3 variables, got {len(variables)}"
+            assert len(variables) == 3, f"Expected 3 variables, got {len(variables)}"
             names = {v.name for v in variables}
             assert "name" in names
             assert "version" in names
@@ -385,6 +385,6 @@ struct Point { x: f64, y: f64 }
             pytest.skip("tree-sitter-rust parse failed")
         plugin = RustPlugin()
         result = plugin.extract_elements(tree, code)
-        assert len(result["functions"]) >= 1
-        assert len(result["classes"]) >= 1
+        assert len(result["functions"]) == 1
+        assert len(result["classes"]) == 1
         assert any(f.name == "add" for f in result["functions"])

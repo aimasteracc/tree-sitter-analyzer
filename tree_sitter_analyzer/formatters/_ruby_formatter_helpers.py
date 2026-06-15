@@ -383,7 +383,9 @@ def _compact_method_name(method: dict[str, Any]) -> str:
         return method_name
 
     method_type = method.get("metadata", {}).get("method_type", "instance")
-    prefix = "." if method_type == "class" else "#"
+    # is_static carries the singleton (def self.x) signal after #535 moved
+    # owners out of names — honor it like the other choosers (Codex P2).
+    prefix = "." if method_type == "class" or method.get("is_static") else "#"
     return f"{parent_class}{prefix}{method_name}"
 
 
@@ -409,6 +411,10 @@ def _append_csv_methods(lines: list[str], methods: list[dict[str, Any]]) -> None
 def _csv_method_row(method: dict[str, Any]) -> str:
     method_name = str(method.get("name", "Unknown"))
     method_type = method.get("metadata", {}).get("method_type", "instance")
+    # is_static carries the singleton signal post-#535 (Codex P2): def self.x
+    # must render User.x, not User#x.
+    if method.get("is_static"):
+        method_type = "class"
     full_name = _csv_method_name(
         method_name, method.get("parent_class", ""), method_type
     )

@@ -1,0 +1,39 @@
+{
+  "counts_by_type": {
+    "Class": 3,
+    "Function": 3,
+    "Import": 1,
+    "Package": 1,
+    "Variable": 3
+  },
+  "element_total": 11,
+  "names_by_type": {
+    "Class": [
+      "Job",
+      "Runner",
+      "SampleApp"
+    ],
+    "Function": [
+      "main",
+      "run"
+    ],
+    "Import": [
+      "scala"
+    ],
+    "Package": [
+      "examples"
+    ],
+    "Variable": [
+      "defaultJob",
+      "result",
+      "selected"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Import",
+    "Package",
+    "Variable"
+  ]
+}

@@ -192,7 +192,7 @@ if True
 
         # Should still return metrics even for malformed code
         assert "metrics" in result
-        assert result["metrics"]["lines_total"] > 0
+        assert result["metrics"]["lines_total"] == 11
 
     @pytest.mark.asyncio
     async def test_analyze_with_encoding_issues(self, temp_project_dir):
@@ -234,7 +234,7 @@ if True
         result = await server._analyze_code_scale(arguments)
 
         assert result["metrics"]["lines_total"] == 3
-        assert result["metrics"]["lines_code"] >= 2
+        assert result["metrics"]["lines_code"] == 2
 
 
 class TestMCPServerFileMetricsEdgeCases:
@@ -252,7 +252,7 @@ class TestMCPServerFileMetricsEdgeCases:
         metrics = server._calculate_file_metrics(str(test_file), "python")
 
         # Should handle mixed line endings gracefully
-        assert metrics["total_lines"] > 0
+        assert metrics["total_lines"] == 4
 
     def test_calculate_metrics_with_only_comments(self, temp_project_dir):
         """Test file metrics with only comments."""
@@ -280,7 +280,7 @@ class TestMCPServerFileMetricsEdgeCases:
 
         metrics = server._calculate_file_metrics(str(test_file), "python")
 
-        assert metrics["blank_lines"] >= 4
+        assert metrics["blank_lines"] == 6
         assert metrics["code_lines"] == 0
         assert metrics["comment_lines"] == 0
 
@@ -304,8 +304,8 @@ function test() {
 
         metrics = server._calculate_file_metrics(str(test_file), "javascript")
 
-        assert metrics["comment_lines"] > 0
-        assert metrics["code_lines"] > 0
+        assert metrics["comment_lines"] == 8
+        assert metrics["code_lines"] == 1
 
     def test_calculate_metrics_with_nested_comments(self, temp_project_dir):
         """Test file metrics with nested comment patterns."""
@@ -325,8 +325,8 @@ function test() {
 
         metrics = server._calculate_file_metrics(str(test_file), "javascript")
 
-        assert metrics["comment_lines"] >= 4
-        assert metrics["code_lines"] >= 3
+        assert metrics["comment_lines"] == 4
+        assert metrics["code_lines"] == 3
 
 
 class TestMCPServerToolHandlingEdgeCases:

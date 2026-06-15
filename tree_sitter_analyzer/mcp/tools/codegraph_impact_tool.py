@@ -120,12 +120,53 @@ def _compute_risk_score(
 ) -> dict[str, Any]:
     targets = graph.resolve_targets(func_name, file_path)
     if not targets:
-        return {
+        base: dict[str, Any] = {
             "score": 0,
             "level": "unknown",
             "factors": {},
             "tests": {"test_callers_count": 0, "test_callees_count": 0},
         }
+        # #867: when file_path was given but no match, check without it so we
+        # can warn the caller about the mismatch rather than silently NOT_FOUND.
+        if file_path is not None:
+            unconstrained = graph.resolve_targets(func_name, None)
+            if unconstrained:
+                base["file_path_mismatch"] = True
+                base["candidate_files"] = [t.file_path for t in unconstrained[:5]]
+        return base
+
+    # #873: CallGraph._resolve_targets falls back to unscoped candidates when
+    # the requested file_path doesn't match any definition.  Targets is
+    # therefore non-empty even for a wrong file_path, so the empty-targets
+    # branch above never fires.  Detect the fallback by checking whether any
+    # returned target actually lives in the requested file.
+    # Codex P2: normalise paths (strip leading ./, os.sep variants, empty)
+    # before comparing so ./src/a.py, src/a.py, and src\a.py all match.
+    import os as _os
+
+    def _norm(p: str | None) -> str:
+        if not p:
+            return ""
+        return _os.path.normpath(p).replace("\\", "/")
+
+    if file_path is not None and not any(
+        _norm(getattr(t, "file_path", None)) == _norm(file_path) for t in targets
+    ):
+        return {
+            "score": 0,
+            "level": "unknown",
+            "factors": {},
+            "tests": {"test_callers_count": 0, "test_callees_count": 0},
+            "file_path_mismatch": True,
+            "candidate_files": [t.file_path for t in targets[:5]],
+        }
+
+    # Ambiguity guard (#799): multiple definitions of the same name exist.
+    # Picking targets[0] silently would produce misleading low-risk verdicts for
+    # highly-overloaded names (e.g. 'execute' across 30+ MCP tool classes).
+    # Surface candidate_count and ambiguous flag so callers can warn the user.
+    candidate_count = len(targets)
+    ambiguous = candidate_count > 1 and file_path is None
 
     target = targets[0]
     all_callers = graph.caller_refs_of(target)
@@ -195,7 +236,7 @@ def _compute_risk_score(
         tests_bucket["test_caller_files"] = sorted({r.file_path for r in test_callers})
         tests_bucket["test_callee_files"] = sorted({r.file_path for r in test_callees})
 
-    return {
+    result: dict[str, Any] = {
         "score": score,
         "level": level,
         "factors": factors,
@@ -203,6 +244,14 @@ def _compute_risk_score(
         "file": target.file_path,
         "tests": tests_bucket,
     }
+    if ambiguous:
+        # Do NOT emit a confident verdict — the picked candidate may not be the
+        # one the caller intended. Flip level to "unknown" so the facade emits
+        # a warning next_step instead of "low risk, proceed".
+        result["ambiguous"] = True
+        result["candidate_count"] = candidate_count
+        result["level"] = "unknown"
+    return result
 
 
 def _blast_radius_for_functions(
@@ -361,12 +410,20 @@ class CodeGraphImpactTool(BaseMCPTool):
                 },
                 "function_name": {
                     "type": "string",
-                    "description": "Target function name (required for function_impact and risk_score)",
+                    "description": (
+                        "Target function name. Required for function_impact and "
+                        "risk_score modes. Also accepted as a singular alias for "
+                        "blast_radius (wrap in list automatically)."
+                    ),
                 },
                 "function_names": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of function names for blast_radius mode",
+                    "description": (
+                        "List of function names for blast_radius mode. "
+                        "Use function_names (plural) for blast_radius; "
+                        "function_name (singular) is also accepted and wrapped."
+                    ),
                 },
                 "file_path": {
                     "type": "string",
@@ -405,8 +462,15 @@ class CodeGraphImpactTool(BaseMCPTool):
             "function_name"
         ):
             raise ValueError(f"function_name is required for mode '{mode}'")
-        if mode == "blast_radius" and not arguments.get("function_names"):
-            raise ValueError("function_names is required for blast_radius mode")
+        if mode == "blast_radius":
+            # Accept function_names (plural) OR function_name (singular alias).
+            if not arguments.get("function_names") and not arguments.get(
+                "function_name"
+            ):
+                raise ValueError(
+                    "function_names is required for blast_radius mode; "
+                    "for file-level dependents use nav action=xref mode=file"
+                )
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -429,9 +493,11 @@ class CodeGraphImpactTool(BaseMCPTool):
                 graph, func_name, file_path, depth, include_tests
             )
         elif mode == "blast_radius":
-            result = _blast_radius_for_functions(
-                graph, arguments["function_names"], file_path, depth
+            # #657: accept function_name (singular) as alias — wrap in list.
+            func_names: list[str] = arguments.get("function_names") or (
+                [arguments["function_name"]] if arguments.get("function_name") else []
             )
+            result = _blast_radius_for_functions(graph, func_names, file_path, depth)
         elif mode == "risk_score":
             if not func_name:
                 raise ValueError("function_name required for risk_score mode")
@@ -444,11 +510,83 @@ class CodeGraphImpactTool(BaseMCPTool):
         # to the canonical agent-facing vocabulary so the tsa-landing /
         # safe-to-edit gates branch correctly.
         verdict = _impact_verdict(result)
+        # blast_radius: if no affected functions were found the seed(s) could
+        # not be resolved in the call graph — treat this as NOT_FOUND so agents
+        # don't receive "proceed with edit" for an unknown symbol.
+        if mode == "blast_radius" and result.get("total_affected_functions", 0) == 0:
+            verdict = "NOT_FOUND"
+        # #577: uniform agent_summary across all facade actions.
+        if mode == "function_impact":
+            func = result.get("function") or func_name or "?"
+            risk_level = (result.get("risk") or {}).get("level", "unknown")
+            summary_line = f"impact: {func!r} risk={risk_level} verdict={verdict}"
+        elif mode == "blast_radius":
+            total_affected = result.get("total_affected_functions", 0)
+            summary_line = f"impact: blast_radius affected_functions={total_affected}"
+        else:
+            # risk_score
+            score = result.get("score", 0)
+            level = result.get("level", "unknown")
+            summary_line = f"impact: risk_score={score} level={level}"
+
+        # #866: ambiguous flag lives at top level for risk_score, nested under
+        # "risk" for function_impact. Check BEFORE NOT_FOUND because level="unknown"
+        # (set when ambiguous) makes _impact_verdict return NOT_FOUND, which would
+        # shadow the ambiguity message if we checked NOT_FOUND first.
+        is_ambiguous = result.get("ambiguous") or result.get("risk", {}).get(
+            "ambiguous"
+        )
+        if is_ambiguous:
+            candidate_count = result.get("candidate_count") or result.get(
+                "risk", {}
+            ).get("candidate_count", 2)
+            verdict = "CAUTION"
+            next_step = (
+                f"Ambiguous symbol — {candidate_count} definitions found. "
+                "Re-run with file_path to disambiguate "
+                "(e.g. nav action=impact mode=risk_score "
+                "function_name=execute file_path=path/to/file.py)."
+            )
+        elif result.get("file_path_mismatch") or result.get("risk", {}).get(
+            "file_path_mismatch"
+        ):
+            # #867: file_path was given but doesn't match any definition.
+            risk_or_result = (
+                result if result.get("file_path_mismatch") else result.get("risk", {})
+            )
+            candidate_files = risk_or_result.get("candidate_files", [])
+            files_hint = ", ".join(candidate_files) if candidate_files else "unknown"
+            verdict = "NOT_FOUND"
+            next_step = (
+                f"file_path mismatch — symbol not found at '{file_path}'. "
+                f"Known definitions: {files_hint}. "
+                "Re-run with the correct file_path or omit it to use ambiguity resolution."
+            )
+        elif verdict == "NOT_FOUND":
+            next_step = (
+                "Symbol not found in the call graph. "
+                "Check the function name or run index action=auto."
+            )
+        elif verdict in ("CAUTION", "REVIEW"):
+            next_step = (
+                "High risk change — trace callers with nav action=callers "
+                "and run the listed test files before editing."
+            )
+        else:
+            next_step = (
+                "Low risk change — proceed with edit; run nearest test file afterwards."
+            )
         response: dict[str, Any] = {
             "success": True,
             "mode": mode,
             "verdict": verdict,
+            "next_step": next_step,
             **result,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "verdict": verdict,
+                "next_step": next_step,
+            },
         }
 
         from ..utils.format_helper import apply_toon_format_to_response
@@ -490,7 +628,7 @@ class CodeGraphImpactTool(BaseMCPTool):
             or len(transitive_callers) > _MAX_LISTED
             or len(transitive_callees) > _MAX_LISTED
         )
-        return {
+        out: dict[str, Any] = {
             "function": func_name,
             "file": self_file,
             "direct_callers": direct_callers[:_MAX_LISTED],
@@ -507,6 +645,13 @@ class CodeGraphImpactTool(BaseMCPTool):
             "listed_cap": _MAX_LISTED,
             "risk": risk,
         }
+        # #658 honest-truncation: flag when the _MAX_TRANSITIVE cap was hit so
+        # agents don't report the cap (200) as a precise total.
+        if len(transitive_callers) >= _MAX_TRANSITIVE:
+            out["transitive_count_is_capped"] = True
+        if len(transitive_callees) >= _MAX_TRANSITIVE:
+            out["transitive_callee_count_is_capped"] = True
+        return out
 
 
 def _impact_verdict(result: dict[str, Any]) -> str:
@@ -523,10 +668,19 @@ def _impact_verdict(result: dict[str, Any]) -> str:
         # call graph at all — agents should treat this as NOT_FOUND so they
         # don't act on stale assumptions.
         return "NOT_FOUND"
+    if level == "critical":
+        # #798: _compute_risk_score emits "critical" (score >= 60) but this
+        # mapper had no branch for it, so the highest-blast-radius symbols fell
+        # through to INFO and read as "proceed with edit" — a dangerous false
+        # green. Map critical to CAUTION (matching the sister _compute_verdict
+        # convention) so next_step becomes the high-risk "trace callers" advice.
+        return "CAUTION"
     if level == "high":
         return "CAUTION"
     if level == "medium":
         return "REVIEW"
     if level == "low":
         return "INFO"
+    # No "level" key (e.g. the blast_radius result shape) keeps the pre-existing
+    # INFO fallthrough — changing blast_radius semantics is out of #798 scope.
     return "INFO"

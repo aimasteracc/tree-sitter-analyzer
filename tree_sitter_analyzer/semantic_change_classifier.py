@@ -108,14 +108,14 @@ class ClassifiedHunk:
     confidence: float
     reason: str
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, include_children: bool = False) -> dict[str, Any]:
         return {
             "category": self.category.value,
             "label": _CATEGORY_LABELS[self.category],
             "risk": _RISK_LEVELS[self.category],
             "confidence": round(self.confidence, 2),
             "reason": self.reason,
-            "hunk": self.hunk.to_dict(),
+            "hunk": self.hunk.to_dict(include_children=include_children),
         }
 
 
@@ -127,14 +127,17 @@ class SemanticClassification:
     change_summary: str = ""
     category_counts: dict[str, int] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, include_children: bool = False) -> dict[str, Any]:
         return {
             "dominant_category": self.dominant_category.value,
             "dominant_label": _CATEGORY_LABELS[self.dominant_category],
             "risk_level": self.risk_level,
             "change_summary": self.change_summary,
             "category_counts": self.category_counts,
-            "classifications": [c.to_dict() for c in self.classifications],
+            "classifications": [
+                c.to_dict(include_children=include_children)
+                for c in self.classifications
+            ],
         }
 
 

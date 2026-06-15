@@ -2,26 +2,26 @@
 
 **[English](README.md)** | **日本語** | **[简体中文](README_zh.md)**
 
-AI エージェントのためのコード インテリジェンス: 事前インデックス済みのトークン効率の良い MCP サーバー — **8 MCP ツール** + CLI、100% ローカル動作。
+[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/) [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) [![Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer) [![対応: Claude Code · Cursor · MCP](https://img.shields.io/badge/対応-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20MCP-6f42c1.svg)](#supported-agents)
 
-* **即時の構造的回答。** 誰がこれを呼ぶ？何が壊れる？UML 図を生成。1 回の呼び出しで全ての答えが返る — grep ループ不要。
-* **トークン バジェット意識。** TOON 出力は bulk/tabular ペイロードを生 JSON 比 ~50-70% 削減（[実測済み不変量](tests/unit/mcp/test_output_cost_invariants.py); RFC-0012 で代表的な決定ツールにて 0.52× を計測）。
-* **安全な編集。** `safe_to_edit` + `change_impact` + 制約 DSL が全ての変更を事前にゲート; コール グラフの[異言語誤結線 ≈0](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)。
+**AI エージェントが信頼できるコード インテリジェンス** — 20+ 言語にわたる正確なクロスランゲージ構造解析、エージェントネイティブ設計（MCP + CLI）。
 
-> **100% ローカル** とは、インデックスがリポジトリ内の `.ast-cache/` に保存され、テレメトリや外部呼び出しが一切ないことを意味します。全 MCP レスポンスおよび CLI 出力は SQLite+FTS5 キャッシュからローカルで生成されます。
+TSA は tree-sitter でコードベースをインデックスし、正確なコール グラフ・シンボル検索・構造クエリを AI コーディング エージェントへ提供します — 完全ローカル、テレメトリなし。AI エージェントのためのコード インテリジェンス: 事前インデックス済みのトークン効率の良い MCP サーバー — **8 MCP ツール** + CLI、100% ローカル動作。
+
+**なぜ違うのか：**
+* **クロスランゲージ正確性がモート（堀）。** 名前照合のみのインデックスは Python `sorted()` を Swift `func sorted` に結線する。TSA はしない。競合ツール比 ~390× 少ないクロスランゲージ誤結線（[再現可能な監査](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)）。
+* **エージェントネイティブ。** **8 MCP ツール**、TOON 出力（bulk レスポンスが JSON より ~50-70% 小さい）、verdict エンベロープ、13 のキュレーテッド Skills — Claude Code・Cursor・任意の MCP クライアント向け設計。
+* **広くかつ正確に分類。** 13 言語のフルコールグラフ インデックス（Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP）、他 8 言語はシンボル インデックスまたは CLI 経由でアクセス可。
+
+> **実測値：** HuggingFace `tokenizers`（Rust+Python+JS+TS）において名前照合リゾルバは **1,259** コール エッジを誤結線 — TSA は **0**。自分のリポジトリで確認: `uvx --from tree-sitter-analyzer miswire-audit .`
 
 > v1.x からの移行は [docs/MIGRATION.md](docs/MIGRATION.md) を参照。
-
-[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-19300%20passed-brightgreen.svg)](#-品質とテスト)
-[![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
-[![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ---
 
 ## はじめに
+
+> **Python 3.10 以上が必要です**（確認: `python3 --version`）。必要に応じて [python.org](https://www.python.org/downloads/) からインストールしてください。
 
 **Claude Code** へワンライナーでインストール:
 
@@ -98,7 +98,7 @@ name-only な code index(多くのツールが採る設計)なら、何件の呼
 * **Verdict エンベロープ**。すべての応答に `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND` が付き、オーケストレーターは再プロンプトなしで結果ごとに分岐可能。
 * **プロジェクト健全性 A-F グレーディング**。他のオープンソース ツールには無い — サイズ / 複雑度 / カバレッジ / 重複 / 依存 / 構造 / git-ホットスポットの 7 次元でプロジェクト全体を採点。
 * **13 のキュレーション済みワークフロー (Skills)**。「シンボル検索」「コール チェーン追跡」「健全性評価」「リファクター前の安全チェック」「PR レビュー」などの典型シナリオに対応するツール サブセットを事前パッケージ化。
-* **5 層の安全保護**。`safe_to_edit` + `modification_guard` + 制約 DSL + `change_impact` + verdict エンベロープ — エージェントが手を入れる前にリスクを *知る* よう設計。
+* **5 層の安全保護**。`edit action=safe` + `edit action=guard` + 制約 DSL + `edit action=impact` + verdict エンベロープ — エージェントが手を入れる前にリスクを *知る* よう設計。
 * **CodeGraph の厳密な CLI 上位互換・高速インデックス・一発クエリ DSL** ── 正直なコスト比較は[下記](#codegraph-との比較)。
 
 ---
@@ -152,7 +152,7 @@ CodeGraph には skill システムが存在しない。本ツールは `.claude
 
 各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要が無い。
 
-### 287 の CLI フラグ
+### 294 の CLI フラグ
 
 CodeGraph の CLI の厳密な上位互換。主なもの:
 
@@ -160,6 +160,8 @@ CodeGraph の CLI の厳密な上位互換。主なもの:
 tree-sitter-analyzer --table full <file>          # メソッド/シグネチャ/複雑度テーブル
 tree-sitter-analyzer --partial-read --start-line N --end-line M <file>
 tree-sitter-analyzer --project-health             # プロジェクト A-F グレーディング
+# 注意: --callers / --callees はコールグラフインデックスが必要 — 先に --full-index を実行
+tree-sitter-analyzer --full-index                 # コールグラフインデックスを構築（一度だけ）
 tree-sitter-analyzer --callers <symbol>           # 呼び出し元
 tree-sitter-analyzer --codegraph-impact <fn>      # blast radius + リスク
 tree-sitter-analyzer --affected <file...>         # 影響を受けるテスト
@@ -398,7 +400,7 @@ uv run python check_quality.py --new-code-only  # 品質ゲート
 
 | 症状 | 修正 |
 |---|---|
-| `.swift / .kt / .rb / .php / .cs` で `unsupported language` | ≥ 1.12.x へ更新 — 5 言語 gap は commit `50e99a8f` で修正済み |
+| `.swift / .kt / .rb / .php / .cs` で `unsupported language` | ≥ 1.12.x へ更新 — 5 言語 gap は commit `50e99a8f` で修正済み。extras 区分の文法モジュールはベースインストールに同梱されません。`pip install "tree-sitter-analyzer[swift]"`(または `kotlin`、`ruby`、`php`、`csharp`)で追加してください |
 | MCP サーバーがクライアントに表示されない | `TREE_SITTER_PROJECT_ROOT` は**絶対パス**必須; 設定編集後にクライアント再起動 |
 | `database is locked` | `.ast-cache/index.db` を保持する他プロセスを停止; 継続する場合は `rm -rf .ast-cache && tree-sitter-analyzer --autoindex` |
 | 初回呼び出しが遅い | 初回はインデックスを構築。後続はサブ秒。事前に `--full-index` を実行すれば償却可能 |

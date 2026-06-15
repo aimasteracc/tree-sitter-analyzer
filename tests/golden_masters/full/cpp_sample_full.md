@@ -108,7 +108,7 @@ using StringList = vector<string>;
 ## Global Functions
 | Method | Signature | Vis | Lines | Cols | Cx | Doc |
 |--------|-----------|-----|-------|------|----|----|
-| max | (a:T, b:T):T | + | 25-27 | 5-6 | 2 | - |
+| math::max | (a:T, b:T):T | + | 25-27 | 5-6 | 2 | - |
 | operator<< | (os:ostream&, c:const Circle&):ostream& | + | 160-163 | 5-6 | 1 | - |
 | swap_values | (a:T&, b:T&):void | + | 176-180 | 5-6 | 1 | - |
 | add | (a:int, 0:int b =):int | + | 185-187 | 5-6 | 1 | - |

@@ -123,7 +123,7 @@ class TestGenerateCorpusByCategory:
     def test_python_corpus_structure(self) -> None:
         """测试 Python 语料库结构"""
         corpus = generate_corpus_by_category("python")
-        assert len(corpus) > 0
+        assert len(corpus) == 5  # 模板表驱动，精确钉死（measured 2026-06-13）
         # 检查是否有函数、类、语句等分类
         assert any("functions" in path for path in corpus.keys())
         assert any("classes" in path for path in corpus.keys())
@@ -147,7 +147,7 @@ class TestGenerateCorpusByCategory:
     def test_javascript_corpus_structure(self) -> None:
         """测试 JavaScript 语料库结构"""
         corpus = generate_corpus_by_category("javascript")
-        assert len(corpus) > 0
+        assert len(corpus) == 6  # 模板表驱动，精确钉死（measured 2026-06-13）
         assert any("functions" in path for path in corpus.keys())
         assert any("classes" in path for path in corpus.keys())
 
@@ -160,7 +160,7 @@ class TestGenerateCorpusByCategory:
     def test_java_corpus_structure(self) -> None:
         """测试 Java 语料库结构"""
         corpus = generate_corpus_by_category("java")
-        assert len(corpus) > 0
+        assert len(corpus) == 4  # 模板表驱动，精确钉死（measured 2026-06-13）
         assert any("methods" in path or "classes" in path for path in corpus.keys())
 
     def test_java_corpus_file_extensions(self) -> None:
@@ -185,7 +185,10 @@ class TestSaveCorpusFiles:
             saved_paths = save_corpus_files("python", corpus, tmpdir)
             assert len(saved_paths) == 1
             assert saved_paths[0].exists()
-            assert saved_paths[0].read_text(encoding="utf-8") == corpus["functions/test.py"]
+            assert (
+                saved_paths[0].read_text(encoding="utf-8")
+                == corpus["functions/test.py"]
+            )
 
     def test_save_multiple_files(self) -> None:
         """测试保存多个文件"""
@@ -227,8 +230,9 @@ class TestGenerateAndSaveCorpus:
             paths, success, failed = generate_and_save_corpus(
                 "python", tmpdir, validate=True
             )
-            assert len(paths) > 0
-            assert success > 0
+            # 5 个模板文件全部生成且全部通过验证（measured 2026-06-13）
+            assert len(paths) == 5
+            assert success == 5
             assert all(path.exists() for path in paths)
 
     def test_javascript_end_to_end(self) -> None:
@@ -237,8 +241,9 @@ class TestGenerateAndSaveCorpus:
             paths, success, failed = generate_and_save_corpus(
                 "javascript", tmpdir, validate=True
             )
-            assert len(paths) > 0
-            assert success > 0
+            # 6 个模板文件全部生成且全部通过验证（measured 2026-06-13）
+            assert len(paths) == 6
+            assert success == 6
             assert all(path.exists() for path in paths)
 
     def test_java_end_to_end(self) -> None:
@@ -247,8 +252,9 @@ class TestGenerateAndSaveCorpus:
             paths, success, failed = generate_and_save_corpus(
                 "java", tmpdir, validate=True
             )
-            assert len(paths) > 0
-            assert success > 0
+            # 4 个模板文件全部生成且全部通过验证（measured 2026-06-13）
+            assert len(paths) == 4
+            assert success == 4
             assert all(path.exists() for path in paths)
 
     def test_without_validation(self) -> None:
@@ -257,7 +263,7 @@ class TestGenerateAndSaveCorpus:
             paths, success, failed = generate_and_save_corpus(
                 "python", tmpdir, validate=False
             )
-            assert len(paths) > 0
+            assert len(paths) == 5  # 5 个模板文件（measured 2026-06-13）
             assert success == 0  # No validation performed
             assert failed == 0
 
@@ -285,9 +291,9 @@ class TestCorpusValidation:
             ]
             clean_code = "\n".join(code_lines)
             if clean_code.strip():  # 只验证非空代码
-                assert validate_generated_code(
-                    "python", clean_code
-                ), f"Invalid code in {relative_path}"
+                assert validate_generated_code("python", clean_code), (
+                    f"Invalid code in {relative_path}"
+                )
 
     def test_all_javascript_templates_valid(self) -> None:
         """测试所有 JavaScript 模板都是有效的"""
@@ -298,9 +304,9 @@ class TestCorpusValidation:
             ]
             clean_code = "\n".join(code_lines)
             if clean_code.strip():
-                assert validate_generated_code(
-                    "javascript", clean_code
-                ), f"Invalid code in {relative_path}"
+                assert validate_generated_code("javascript", clean_code), (
+                    f"Invalid code in {relative_path}"
+                )
 
     def test_all_java_templates_valid(self) -> None:
         """测试所有 Java 模板都是有效的"""
@@ -311,6 +317,6 @@ class TestCorpusValidation:
             ]
             clean_code = "\n".join(code_lines)
             if clean_code.strip():
-                assert validate_generated_code(
-                    "java", clean_code
-                ), f"Invalid code in {relative_path}"
+                assert validate_generated_code("java", clean_code), (
+                    f"Invalid code in {relative_path}"
+                )

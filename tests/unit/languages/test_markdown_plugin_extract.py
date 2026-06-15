@@ -224,8 +224,9 @@ class TestExtractInlineHTML:
         )
         elems = []
         ext._extract_inline_html(root, elems)
-        assert len(elems) >= 1
-        assert any(e.element_type == "html_inline" for e in elems)
+        # <span> and </span> each produce one html_inline element
+        assert len(elems) == 2
+        assert all(e.element_type == "html_inline" for e in elems)
 
     def test_inline_html_br_tag(self):
         ext = _setup_extractor("text<br>more")
@@ -331,8 +332,9 @@ class TestExtractPipeTables:
         assert len(tables) == 1
         assert tables[0].element_type == "table"
         assert tables[0].type == "table"
-        assert tables[0].row_count >= 1
-        assert tables[0].column_count >= 1
+        # header row + one data row (separator excluded); two columns a/b
+        assert tables[0].row_count == 2
+        assert tables[0].column_count == 2
 
     def test_pipe_table_no_pipe_node(self):
         ext = _setup_extractor("plain")
@@ -364,7 +366,7 @@ class TestExtractEmphasisElements:
         elems = []
         ext._extract_emphasis_elements(root, elems)
         bold = [e for e in elems if e.element_type == "strong_emphasis"]
-        assert len(bold) >= 1
+        assert len(bold) == 1
         assert bold[0].text == "bold text"
 
     def test_bold_underscore(self):
@@ -383,7 +385,7 @@ class TestExtractEmphasisElements:
         elems = []
         ext._extract_emphasis_elements(root, elems)
         bold = [e for e in elems if e.element_type == "strong_emphasis"]
-        assert len(bold) >= 1
+        assert len(bold) == 1
 
     def test_italic(self):
         ext = _setup_extractor("*italic text*")
@@ -401,7 +403,7 @@ class TestExtractEmphasisElements:
         elems = []
         ext._extract_emphasis_elements(root, elems)
         italic = [e for e in elems if e.element_type == "emphasis"]
-        assert len(italic) >= 1
+        assert len(italic) == 1
         assert italic[0].text == "italic text"
 
     def test_italic_underscore(self):
@@ -420,7 +422,7 @@ class TestExtractEmphasisElements:
         elems = []
         ext._extract_emphasis_elements(root, elems)
         italic = [e for e in elems if e.element_type == "emphasis"]
-        assert len(italic) >= 1
+        assert len(italic) == 1
 
     def test_no_inline(self):
         ext = _setup_extractor("plain")
@@ -451,7 +453,7 @@ class TestExtractStrikethrough:
         )
         elems = []
         ext._extract_strikethrough_elements(root, elems)
-        assert len(elems) >= 1
+        assert len(elems) == 1
         assert elems[0].element_type == "strikethrough"
         assert elems[0].text == "struck text"
 

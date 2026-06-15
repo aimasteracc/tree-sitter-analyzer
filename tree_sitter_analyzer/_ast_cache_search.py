@@ -7,6 +7,7 @@ import sqlite3
 from typing import Any
 
 from ._ast_cache_query import fts_search_ranked
+from .utils.test_detection import query_wants_tests, rank_tier
 
 _KIND_BONUS = {
     "class": 0.08,
@@ -31,6 +32,13 @@ def search_symbols_cascade(
     Returned rows include ``match_tier`` plus a rescored ``relevance_score``.
     The fuzzy tier catches small typos and casing/boundary mismatches such as
     ``HandlerFunc`` matching ``handleFunc``.
+
+    Test-file demotion is the PRIMARY sort key (issue #607): the fts5 tier
+    feeds from ``fts_search_ranked`` which already demotes test files, but a
+    final re-sort by pure relevance_score let long descriptive ``test_*``
+    names (better BM25 on conceptual queries) re-bury every production
+    symbol below the truncation window. Demotion is skipped when the query
+    itself asks about tests (``query_wants_tests``).
     """
     query = query.strip()
     if not query or limit <= 0:
@@ -75,8 +83,11 @@ def search_symbols_cascade(
         )
 
     _apply_file_colocation_bonus(results)
+    wants_tests = query_wants_tests(query)
     results.sort(
         key=lambda row: (
+            # Negated because of reverse=True: production (tier 0) first.
+            -rank_tier(str(row.get("file", "")), wants_tests=wants_tests),
             float(row.get("relevance_score", 0.0)),
             _tier_rank(str(row.get("match_tier", ""))),
             str(row.get("name", "")),

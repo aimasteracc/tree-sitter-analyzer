@@ -54,7 +54,7 @@ class TestPythonQueries:
         """Test getting all queries"""
         all_queries = get_all_queries()
         assert isinstance(all_queries, dict)
-        assert len(all_queries) > 0
+        assert len(all_queries) == 88
         assert "functions" in all_queries
         assert "query" in all_queries["functions"]
         assert "description" in all_queries["functions"]
@@ -63,14 +63,14 @@ class TestPythonQueries:
         """Test listing all query names"""
         query_names = list_queries()
         assert isinstance(query_names, list)
-        assert len(query_names) > 0
+        assert len(query_names) == 88
         assert "functions" in query_names
         assert "classes" in query_names
 
     def test_all_queries_structure(self) -> None:
         """Test ALL_QUERIES dictionary structure"""
         assert isinstance(ALL_QUERIES, dict)
-        assert len(ALL_QUERIES) > 0
+        assert len(ALL_QUERIES) == 88
 
         # Test essential queries exist
         essential_queries = ["functions", "classes", "variables", "imports", "comments"]
@@ -83,10 +83,17 @@ class TestPythonQueries:
 
     def test_query_constants(self) -> None:
         """Test that query constants are properly defined"""
-        constants = [FUNCTIONS, CLASSES, VARIABLES, IMPORTS, COMMENTS]
-        for constant in constants:
+        # Exact stripped lengths (update when query strings change)
+        constant_lens = [
+            (FUNCTIONS, 159),
+            (CLASSES, 156),
+            (VARIABLES, 322),
+            (IMPORTS, 445),
+            (COMMENTS, 66),
+        ]
+        for constant, expected_len in constant_lens:
             assert isinstance(constant, str)
-            assert len(constant.strip()) > 0
+            assert len(constant.strip()) == expected_len
 
     def test_functions_query(self) -> None:
         """Test functions query content"""
@@ -118,10 +125,13 @@ class TestPythonQueries:
         for _query_name, query_data in ALL_QUERIES.items():
             description = query_data["description"]
             assert isinstance(description, str)
-            assert len(description) > 0
             assert (
                 "search" in description.lower()
             )  # All descriptions should mention "search"
+
+        # Pin minimum observed description length (exact fact; update when
+        # descriptions change)
+        assert min(len(d["description"]) for d in ALL_QUERIES.values()) == 16
 
     def test_query_consistency(self) -> None:
         """Test consistency between constants and ALL_QUERIES"""
@@ -171,25 +181,26 @@ class TestGetPythonQuery:
         assert "function_definition" in query
 
     def test_valid_query_various_names(self) -> None:
-        names = [
-            "class_definition",
-            "async_function",
-            "lambda",
-            "constructor",
-            "import_from",
-            "decorator_call",
-            "try_statement",
-            "list_comprehension",
-            "type_hint",
-            "match_statement",
-            "f_string",
-            "django_model",
-            "dataclass",
-        ]
-        for name in names:
+        # Exact stripped query-source lengths (update when query strings change)
+        name_lens = {
+            "class_definition": 156,
+            "async_function": 183,
+            "lambda": 114,
+            "constructor": 199,
+            "import_from": 126,
+            "decorator_call": 148,
+            "try_statement": 181,
+            "list_comprehension": 186,
+            "type_hint": 68,
+            "match_statement": 34,
+            "f_string": 66,
+            "django_model": 235,
+            "dataclass": 229,
+        }
+        for name, expected_len in name_lens.items():
             query = get_python_query(name)
             assert isinstance(query, str)
-            assert len(query.strip()) > 0
+            assert len(query.strip()) == expected_len
 
     def test_invalid_query_name_raises(self) -> None:
         with pytest.raises(ValueError) as exc_info:
@@ -209,13 +220,16 @@ class TestGetPythonQueryDescription:
     def test_known_query_description(self) -> None:
         desc = get_python_query_description("function")
         assert isinstance(desc, str)
-        assert len(desc) > 0
+        assert desc == "Search Python function definitions"
 
     def test_all_descriptions_are_strings(self) -> None:
         for name in PYTHON_QUERIES:
             desc = get_python_query_description(name)
             assert isinstance(desc, str)
-            assert len(desc) > 0
+
+        # Pin minimum observed description length (exact fact; update when
+        # descriptions change)
+        assert min(len(get_python_query_description(n)) for n in PYTHON_QUERIES) == 16
 
     def test_unknown_query_returns_default(self) -> None:
         desc = get_python_query_description("totally_fake_query")
@@ -228,7 +242,7 @@ class TestGetAvailablePythonQueries:
     def test_returns_list(self) -> None:
         result = get_available_python_queries()
         assert isinstance(result, list)
-        assert len(result) > 0
+        assert len(result) == 70
 
     def test_contains_essential_queries(self) -> None:
         result = set(get_available_python_queries())
@@ -361,3 +375,57 @@ class TestPythonQueriesDictCompleteness:
         ]
         for cat in categories:
             assert cat in PYTHON_QUERIES
+
+
+class TestFunctionsQueryNoDuplicate:
+    """Regression test: FUNCTIONS query must not double-capture every function.
+
+    Bug #557: the second pattern (@function.async) was byte-identical to the
+    first (@function.definition), so every function_definition node matched
+    BOTH patterns, doubling all captures.  After the fix the query must yield
+    exactly N captures for a fixture with N function definitions.
+    """
+
+    def test_functions_query_no_double_capture(self) -> None:
+        """FUNCTIONS query yields exactly 3 captures for a 3-function fixture."""
+        try:
+            import tree_sitter_python
+            from tree_sitter import Language, Parser
+
+            from tree_sitter_analyzer.utils.tree_sitter_compat import (
+                TreeSitterQueryCompat,
+            )
+        except ImportError:
+            pytest.skip(
+                "tree-sitter or tree_sitter_python not available; "
+                "tracked: optional tree-sitter grammar dependency"
+            )
+
+        py_language = Language(tree_sitter_python.language())
+        parser = Parser(py_language)
+
+        # 3 function definitions: 2 sync + 1 async
+        code = b"def foo():\n    pass\n\ndef bar():\n    pass\n\nasync def baz():\n    pass\n"
+        tree = parser.parse(code)
+
+        from tree_sitter_analyzer.queries.python import FUNCTIONS
+
+        captures = TreeSitterQueryCompat.safe_execute_query(
+            py_language, FUNCTIONS, tree.root_node
+        )
+
+        # Count only the primary/anchor captures (function.definition or
+        # function.async) — one per function definition.  After the fix only
+        # @function.definition exists and each function produces exactly 1.
+        anchor_captures = [
+            name
+            for _node, name in captures
+            if name in ("function.definition", "function.async")
+        ]
+        assert len(anchor_captures) == 3  # was 6 before fix (double-capture bug)
+
+    def test_functions_query_no_async_capture_name(self) -> None:
+        """After the fix @function.async capture no longer exists in FUNCTIONS."""
+        from tree_sitter_analyzer.queries.python import FUNCTIONS
+
+        assert "@function.async" not in FUNCTIONS

@@ -260,6 +260,49 @@ class TestBuildOutlineBasic:
         assert outline["top_level_functions"][0]["name"] == "main"
         assert len(outline["classes"][0]["methods"]) == 1
 
+    # --- Issue #534: nested functions must NOT appear in top_level_functions ---
+
+    def test_nested_function_not_in_top_level(self):
+        """Issue #534: functions nested inside another function are not top-level.
+
+        my_decorator (lines 3-7) contains wrapper (lines 5-6).
+        top_level_fn (lines 10-11) is truly top-level.
+        Only top_level_fn should appear in top_level_functions.
+        """
+        # outer function
+        outer_fn = self._make_method_elem("my_decorator", 3, 7)
+        # nested function strictly inside outer_fn
+        nested_fn = self._make_method_elem("wrapper", 5, 6)
+        # truly top-level function (no enclosing function)
+        top_fn = self._make_method_elem("top_level_fn", 10, 11)
+        elements = [outer_fn, nested_fn, top_fn]
+        result = _make_analysis_result(elements=elements)
+
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+
+        top_names = [f["name"] for f in outline["top_level_functions"]]
+        assert top_names == ["my_decorator", "top_level_fn"]
+        assert "wrapper" not in top_names
+
+    def test_nested_function_same_start_not_promoted(self):
+        """Issue #534: a function starting at the same line as its outer function
+        but ending strictly inside it is still nested (edge case for span check)."""
+        outer_fn = self._make_method_elem("outer", 5, 10)
+        # starts same line as outer, ends inside — strictly contained
+        nested_fn = self._make_method_elem("inner", 6, 9)
+        top_fn = self._make_method_elem("standalone", 20, 25)
+        elements = [outer_fn, nested_fn, top_fn]
+        result = _make_analysis_result(elements=elements)
+
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+
+        top_names = [f["name"] for f in outline["top_level_functions"]]
+        assert "inner" not in top_names
+        assert "outer" in top_names
+        assert "standalone" in top_names
+
     def test_package_extracted(self):
         """package 元素应被提取到 outline.package。"""
         pkg = self._make_pkg_elem("com.example.service")
@@ -369,6 +412,172 @@ class TestBuildOutlineBasic:
         assert cls_out["extends"] == "AbstractFoo"
         assert "IFoo" in cls_out["implements"]
         assert "Serializable" in cls_out["implements"]
+
+    # ------------------------------------------------------------------
+    # Issue #530: plugins that set ``superclass`` / ``interfaces`` (not
+    # the Java-spelling ``extends_class`` / ``implements_interfaces``)
+    # must also surface in the outline.  One test per failing language.
+    # ------------------------------------------------------------------
+
+    def _make_class_superclass(
+        self, name, start, end, superclass=None, interfaces=None
+    ):
+        """Build a Class mock using the non-Java field spellings."""
+        elem = _make_element(
+            "class",
+            name,
+            start,
+            end,
+            class_type="class",
+            # Use the non-Java spellings (JS/TS/Python/Ruby/PHP/C++/C#/Go).
+            superclass=superclass,
+            interfaces=interfaces or [],
+            # Leave extends_class / implements_interfaces at their MagicMock
+            # defaults so getattr(cls, "extends_class", None) returns a Mock
+            # truthy value — we must NOT set them to sentinel values that
+            # accidentally satisfy the truthiness check.  We force them to
+            # None / [] explicitly to reproduce the pre-fix behaviour.
+            extends_class=None,
+            implements_interfaces=[],
+        )
+        return elem
+
+    def test_js_superclass_field_surfaces_as_extends(self):
+        """JS plugin sets superclass=... — outline must surface it as extends."""
+        cls = self._make_class_superclass("Dog", 1, 20, superclass="Animal")
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/dog.js", language="javascript"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "Animal"
+        assert cls_out["implements"] == []
+
+    def test_ts_superclass_and_interfaces_surface_correctly(self):
+        """TS plugin sets superclass= and interfaces=[] — both must surface."""
+        cls = self._make_class_superclass(
+            "AppComponent",
+            1,
+            30,
+            superclass="BaseComponent",
+            interfaces=["OnInit", "OnDestroy"],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/app.ts", language="typescript"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "BaseComponent"
+        assert cls_out["implements"] == ["OnInit", "OnDestroy"]
+
+    def test_python_superclass_and_interfaces_surface_correctly(self):
+        """Python plugin maps first parent to superclass, rest to interfaces."""
+        cls = self._make_class_superclass(
+            "MyView",
+            1,
+            40,
+            superclass="View",
+            interfaces=["LoginRequiredMixin"],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/views.py", language="python"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "View"
+        assert cls_out["implements"] == ["LoginRequiredMixin"]
+
+    def test_ruby_superclass_field_surfaces_as_extends(self):
+        """Ruby plugin sets superclass= only (no implements in Ruby)."""
+        cls = self._make_class_superclass("Dog", 1, 15, superclass="Animal")
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/dog.rb", language="ruby"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "Animal"
+        assert cls_out["implements"] == []
+
+    def test_php_superclass_and_interfaces_surface_correctly(self):
+        """PHP plugin sets superclass= and interfaces= — both must surface."""
+        cls = self._make_class_superclass(
+            "OrderController",
+            1,
+            50,
+            superclass="AbstractController",
+            interfaces=["LoggerAwareInterface"],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/OrderController.php", language="php"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "AbstractController"
+        assert cls_out["implements"] == ["LoggerAwareInterface"]
+
+    def test_cpp_superclass_and_interfaces_surface_correctly(self):
+        """C++ plugin sets superclass= (first base) and interfaces= (extras)."""
+        cls = self._make_class_superclass(
+            "ConcreteWidget",
+            1,
+            60,
+            superclass="Widget",
+            interfaces=["Paintable"],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/widget.cpp", language="cpp"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "Widget"
+        assert cls_out["implements"] == ["Paintable"]
+
+    def test_csharp_superclass_and_interfaces_surface_correctly(self):
+        """C# plugin sets superclass= and interfaces= — both must surface."""
+        cls = self._make_class_superclass(
+            "OrderService",
+            1,
+            80,
+            superclass="BaseService",
+            interfaces=["IOrderService", "IDisposable"],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/OrderService.cs", language="csharp"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] == "BaseService"
+        assert cls_out["implements"] == ["IOrderService", "IDisposable"]
+
+    def test_rust_implements_interfaces_field_surfaces_correctly(self):
+        """Rust plugin sets implements_interfaces= (derives) — must surface."""
+        cls = _make_element(
+            "class",
+            "MyStruct",
+            1,
+            20,
+            class_type="struct",
+            # Rust sets implements_interfaces for derives; no superclass.
+            extends_class=None,
+            implements_interfaces=["Debug", "Clone"],
+            superclass=None,
+            interfaces=[],
+        )
+        result = _make_analysis_result(
+            elements=[cls], file_path="/p/lib.rs", language="rust"
+        )
+        with self._patch_is_element_of_type():
+            outline = self.tool._build_outline(result, False, False)
+        cls_out = outline["classes"][0]
+        assert cls_out["extends"] is None
+        assert cls_out["implements"] == ["Debug", "Clone"]
 
     def test_method_string_parameters(self):
         """当 parameters 是字符串列表时，应原样保留到大纲。"""
@@ -596,6 +805,127 @@ class TestGetCodeOutlineToolExecute:
         assert isinstance(response, dict)
         assert "fields" in response["outline"]["classes"][0]
         assert response["outline"]["classes"][0]["fields"][0]["name"] == "count"
+
+    @pytest.mark.asyncio
+    async def test_wrong_language_file_flags_parse_errors(self, tmp_path):
+        """#707: outline must not return phantom symbols as a clean INFO."""
+        target = tmp_path / "evil.py"
+        target.write_text("class Foo { public: int x; void bar() {} };\n")
+
+        tool = GetCodeOutlineTool(project_root=str(tmp_path))
+        result = await tool.execute({"file_path": "evil.py", "output_format": "json"})
+
+        assert result["parse_errors"] is True
+        assert result["verdict"] == "WARN"
+        assert result["agent_summary"]["verdict"] == "WARN"
+
+    @pytest.mark.asyncio
+    async def test_non_utf8_file_flags_encoding_warning(self, tmp_path):
+        """#707: non-UTF8 source must carry an explicit encoding signal."""
+        target = tmp_path / "latin1.py"
+        target.write_bytes("def café():\n    return 'ok'\n".encode("cp1252"))
+
+        tool = GetCodeOutlineTool(project_root=str(tmp_path))
+        result = await tool.execute({"file_path": "latin1.py", "output_format": "json"})
+
+        assert result["encoding_warning"] is True
+        assert result["non_utf8_bytes"] is True
+        assert result["encoding_warnings"] == ["non_utf8_bytes"]
+        assert result["verdict"] == "WARN"
+        assert result["agent_summary"]["verdict"] == "WARN"
+
+    @pytest.mark.asyncio
+    async def test_null_byte_file_flags_encoding_warning(self, tmp_path):
+        """#707: raw NUL bytes affect line spans, so outline must warn."""
+        target = tmp_path / "nul.py"
+        target.write_bytes(b"def outer():\n    value = 1\x00\n    return value\n")
+
+        tool = GetCodeOutlineTool(project_root=str(tmp_path))
+        result = await tool.execute({"file_path": "nul.py", "output_format": "json"})
+
+        assert result["encoding_warning"] is True
+        assert result["null_bytes"] is True
+        assert result["encoding_warnings"] == ["null_bytes"]
+        assert result["verdict"] == "WARN"
+        assert result["agent_summary"]["verdict"] == "WARN"
+
+
+# ---------------------------------------------------------------------------
+# Issue #741: top_level_functions must NOT be duplicated as methods[]
+# ---------------------------------------------------------------------------
+
+
+class TestAssembleOutlineResponseNoMethodsDuplication:
+    """_assemble_outline_response must not copy top_level_functions into methods[].
+
+    Issue #741: lines 514-516 of get_code_outline_tool.py added
+    ``result["methods"] = fns_capped`` which made every top-level function
+    appear twice — once under ``top_level_functions`` and once under
+    ``methods``.  The ``methods`` alias must be absent from the response dict.
+    """
+
+    def _make_outline(self, top_fns: list, classes: list | None = None) -> dict:
+        return {
+            "classes": classes or [],
+            "top_level_functions": top_fns,
+            "statistics": {
+                "class_count": len(classes or []),
+                "method_count": len(top_fns),
+                "field_count": 0,
+                "import_count": 0,
+            },
+            "total_lines": 50,
+            "language": "python",
+        }
+
+    def test_no_top_level_methods_key_when_functions_present(self):
+        """result must not have a top-level 'methods' key (Issue #741)."""
+        fns = [{"name": "main", "line_start": 1, "line_end": 10}]
+        outline = self._make_outline(fns)
+        result = GetCodeOutlineTool._assemble_outline_response(
+            file_path="/proj/foo.py", language="python", outline=outline
+        )
+        assert "methods" not in result, (
+            "'methods' key must not appear in the response — "
+            "top-level functions belong only in 'top_level_functions'"
+        )
+
+    def test_no_top_level_methods_key_when_no_functions(self):
+        """result must not have a 'methods' key even when top_level_functions is empty."""
+        outline = self._make_outline([])
+        result = GetCodeOutlineTool._assemble_outline_response(
+            file_path="/proj/empty.py", language="python", outline=outline
+        )
+        assert "methods" not in result
+
+    def test_top_level_functions_not_duplicated(self):
+        """top_level_functions and methods must not carry the same items (#741)."""
+        fns = [
+            {"name": "foo", "line_start": 1, "line_end": 5},
+            {"name": "bar", "line_start": 7, "line_end": 12},
+        ]
+        outline = self._make_outline(fns)
+        result = GetCodeOutlineTool._assemble_outline_response(
+            file_path="/proj/mod.py", language="python", outline=outline
+        )
+        assert result["top_level_functions"] == fns[:2]
+        # If 'methods' were present it would be a duplicated alias — must be absent.
+        assert "methods" not in result
+
+    def test_class_methods_stay_in_classes_not_top_level_methods(self):
+        """Methods belonging to a class must only appear inside classes[i].methods."""
+        cls = {
+            "name": "MyClass",
+            "line_start": 1,
+            "line_end": 30,
+            "methods": [{"name": "my_method", "line_start": 5, "line_end": 10}],
+        }
+        outline = self._make_outline(top_fns=[], classes=[cls])
+        result = GetCodeOutlineTool._assemble_outline_response(
+            file_path="/proj/cls.py", language="python", outline=outline
+        )
+        assert "methods" not in result
+        assert result["classes"][0]["methods"][0]["name"] == "my_method"
 
 
 # ---------------------------------------------------------------------------

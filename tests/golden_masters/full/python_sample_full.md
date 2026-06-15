@@ -12,7 +12,7 @@ from functools import reduce
 | Class | Type | Visibility | Lines | Methods | Fields |
 |-------|------|------------|-------|---------|--------|
 | Person | class | public | 14-28 | 2 | 1 |
-| Animal | class | public | 31-45 | 3 | 0 |
+| Animal | abstract_class | public | 31-45 | 3 | 0 |
 | Dog | class | public | 48-61 | 3 | 0 |
 | Cat | class | public | 64-78 | 3 | 0 |
 
@@ -35,7 +35,7 @@ from functools import reduce
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----| 
-| __init__ | (self:Any, name:str):Any | + | 51-53 | 1 | - |
+| __init__ | (self:Any, name:str, breed:str = "Mixed"):Any | + | 51-53 | 1 | - |
 | make_sound | (self:Any):str | + | 55-57 | 1 | Dogs bark. |
 | fetch | (self:Any, item:str):str | + | 59-61 | 1 | Dogs can fetch items. |
 
@@ -43,7 +43,7 @@ from functools import reduce
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----| 
-| __init__ | (self:Any, name:str):Any | + | 67-69 | 1 | - |
+| __init__ | (self:Any, name:str, indoor:bool = True):Any | + | 67-69 | 1 | - |
 | make_sound | (self:Any):str | + | 71-73 | 1 | Cats meow. |
 | purr | ():str [static] | + | 76-78 | 1 | Cats can purr. |
 

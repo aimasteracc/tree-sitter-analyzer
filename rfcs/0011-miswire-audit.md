@@ -81,10 +81,19 @@ resolution logic it reports on already has full CLI↔MCP parity (the resolver).
       ruff+mypy clean; 3 RED-first tests green.
 - [ ] `tree-sitter-analyzer miswire-audit` CLI subcommand (parity follow-up).
 - [ ] Pre-seed `--card` results for 5 well-known repos under
-      `benchmarks/codegraph_compare/results/` so the README shows results before
-      anyone clones.
+      `benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md` so the README shows
+      results before anyone clones. *(path correction 2026-06-12: the 5-repo table
+      lives in `benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md`, not `results/`)*
 - [ ] README surgery: make the `miswire-audit` one-liner the first runnable block
       above the fold; lead with the scorecard.
+
+  *Clarification (2026-06-12):* This criterion now conflicts with the #501
+  README structure decision (`docs(readme): one-sentence lede, merged quick-start,
+  comparison after features`), which established that the lede + quick-start go
+  first and the comparison section follows features. Reordering the README to lead
+  with the miswire scorecard would revert that structure. **This criterion needs an
+  owner re-decision before implementation.** Do NOT reorder the README in the
+  meantime; the #501 structure is the current baseline.
 
 ## Open questions
 

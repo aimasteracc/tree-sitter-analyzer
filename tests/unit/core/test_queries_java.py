@@ -64,7 +64,7 @@ class TestJavaQueries:
         """Test getting all queries"""
         all_queries = get_all_queries()
         assert isinstance(all_queries, dict)
-        assert len(all_queries) > 0
+        assert len(all_queries) == 70
         assert "class" in all_queries
         assert "query" in all_queries["class"]
         assert "description" in all_queries["class"]
@@ -73,7 +73,7 @@ class TestJavaQueries:
         """Test listing all query names"""
         query_names = list_queries()
         assert isinstance(query_names, list)
-        assert len(query_names) > 0
+        assert len(query_names) == 70
         assert "class" in query_names
         assert "method" in query_names
 
@@ -81,38 +81,50 @@ class TestJavaQueries:
         """Test getting available Java queries"""
         available_queries = get_available_java_queries()
         assert isinstance(available_queries, list)
-        assert len(available_queries) > 0
+        assert len(available_queries) == 65
         assert "class" in available_queries
         assert "method" in available_queries
 
     def test_java_queries_structure(self) -> None:
         """Test JAVA_QUERIES dictionary structure"""
         assert isinstance(JAVA_QUERIES, dict)
-        assert len(JAVA_QUERIES) > 0
+        assert len(JAVA_QUERIES) == 65
 
-        # Test some essential queries exist
-        essential_queries = ["class", "method", "field", "import", "package"]
-        for query_name in essential_queries:
+        # Test some essential queries exist (exact stripped source lengths)
+        essential_query_lens = {
+            "class": 26,
+            "method": 28,
+            "field": 26,
+            "import": 28,
+            "package": 30,
+        }
+        for query_name, expected_len in essential_query_lens.items():
             assert query_name in JAVA_QUERIES
             assert isinstance(JAVA_QUERIES[query_name], str)
-            assert len(JAVA_QUERIES[query_name].strip()) > 0
+            assert len(JAVA_QUERIES[query_name].strip()) == expected_len
 
     def test_java_query_descriptions_structure(self) -> None:
         """Test JAVA_QUERY_DESCRIPTIONS dictionary structure"""
         assert isinstance(JAVA_QUERY_DESCRIPTIONS, dict)
-        assert len(JAVA_QUERY_DESCRIPTIONS) > 0
+        assert len(JAVA_QUERY_DESCRIPTIONS) == 65
 
-        # Test some essential descriptions exist
-        essential_queries = ["class", "method", "field", "import", "package"]
-        for query_name in essential_queries:
+        # Test some essential descriptions exist (exact stripped lengths)
+        essential_description_lens = {
+            "class": 31,
+            "method": 32,
+            "field": 31,
+            "import": 30,
+            "package": 33,
+        }
+        for query_name, expected_len in essential_description_lens.items():
             assert query_name in JAVA_QUERY_DESCRIPTIONS
             assert isinstance(JAVA_QUERY_DESCRIPTIONS[query_name], str)
-            assert len(JAVA_QUERY_DESCRIPTIONS[query_name].strip()) > 0
+            assert len(JAVA_QUERY_DESCRIPTIONS[query_name].strip()) == expected_len
 
     def test_all_queries_structure(self) -> None:
         """Test ALL_QUERIES dictionary structure"""
         assert isinstance(ALL_QUERIES, dict)
-        assert len(ALL_QUERIES) > 0
+        assert len(ALL_QUERIES) == 70
 
         # Test structure of each query entry
         for _query_name, query_data in ALL_QUERIES.items():
@@ -155,18 +167,18 @@ class TestJavaQueries:
 
     def test_detailed_queries(self) -> None:
         """Test detailed information extraction queries"""
-        detailed_queries = [
-            "method_parameters_detailed",
-            "class_inheritance_detailed",
-            "annotation_detailed",
-            "import_detailed",
-            "package_detailed",
-            "constructor_detailed",
-        ]
-        for query_name in detailed_queries:
+        detailed_query_lens = {
+            "method_parameters_detailed": 237,
+            "class_inheritance_detailed": 279,
+            "annotation_detailed": 219,
+            "import_detailed": 109,
+            "package_detailed": 79,
+            "constructor_detailed": 189,
+        }
+        for query_name, expected_len in detailed_query_lens.items():
             assert query_name in JAVA_QUERIES
             query = JAVA_QUERIES[query_name]
-            assert len(query.strip()) > 0
+            assert len(query.strip()) == expected_len
 
     def test_modifier_specific_queries(self) -> None:
         """Test modifier-specific queries"""

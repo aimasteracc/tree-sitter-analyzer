@@ -265,7 +265,7 @@ class TestCLIRegression:
             assert returncode == 0, (
                 f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
             )
-            assert len(stdout) > 0, f"Command {' '.join(cmd_args)} produced no output"
+            assert stdout, f"Command {' '.join(cmd_args)} produced no output"
 
     def test_error_handling_consistency(self):
         """Test that error conditions are handled consistently"""
@@ -418,7 +418,7 @@ class TestCLIRegression:
         assert isinstance(data, list)
 
         # Verify public methods with no parameters found
-        assert len(data) >= 2  # Should find multiple public no-param methods
+        assert len(data) == 3  # Should find multiple public no-param methods
 
         # Verify all results contain public methods
         for result in data:
@@ -490,7 +490,7 @@ class TestCLIRegression:
             assert returncode == 0, (
                 f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
             )
-            assert len(stdout) > 0, f"Command {' '.join(cmd_args)} produced no output"
+            assert stdout, f"Command {' '.join(cmd_args)} produced no output"
 
     # Markdown-specific tests
     @pytest.mark.skip(
@@ -586,7 +586,7 @@ class TestCLIRegression:
         assert data["file_path"] == test_markdown_path
         assert data["language"] == "markdown"
         assert data["line_count"] == 160
-        assert data["element_count"] >= 40  # Many elements in comprehensive test file
+        assert data["element_count"] == 68  # Many elements in comprehensive test file
         assert data["success"] is True
 
         # Verify document metrics
@@ -660,7 +660,7 @@ class TestCLIRegression:
             assert returncode == 0, (
                 f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
             )
-            assert len(stdout) > 0, f"Command {' '.join(cmd_args)} produced no output"
+            assert stdout, f"Command {' '.join(cmd_args)} produced no output"
 
 
 if __name__ == "__main__":

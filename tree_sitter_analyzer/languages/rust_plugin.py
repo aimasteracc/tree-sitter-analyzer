@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Function, Import, Variable
+from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
@@ -64,10 +64,14 @@ class RustElementExtractor(ElementExtractor):
 
         functions: list[Function] = []
 
-        # Use tree traversal to find function_item
+        # Use tree traversal to find function_item (implemented) and
+        # function_signature_item (abstract / trait-required method with no body).
         self._traverse_and_extract(
             tree.root_node,
-            {"function_item": self._extract_function},
+            {
+                "function_item": self._extract_function,
+                "function_signature_item": self._extract_function_signature,
+            },
             functions,
         )
 
@@ -111,26 +115,60 @@ class RustElementExtractor(ElementExtractor):
     def extract_variables(
         self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
-        """Extract Rust struct fields"""
+        """Extract Rust struct fields and enum variants.
+
+        Bug #796: enum variants (e.g. ``None``, ``Some``, ``North``) are now
+        extracted as Variable entries with ``variable_type="enum_variant"``
+        and ``parent_class`` set to the enclosing enum name.
+
+        Implementation note: struct-field extraction and enum-variant
+        extraction are run as two separate passes. Running them together in
+        a single ``_traverse_and_extract`` call would cause struct-like enum
+        variant bodies (``enum Foo { Bar { x: i32 } }``) to emit their
+        ``field_declaration`` children as if they were ordinary struct
+        fields. Separate passes avoid this:
+        - Pass 1 collects ``field_declaration`` nodes only (struct fields).
+        - Pass 2 collects ``enum_item`` nodes and extracts their variants
+          directly, without recursing into the variant bodies.
+        """
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
 
         variables: list[Variable] = []
 
-        # We extract fields from struct definitions
-        extractors = {
-            "field_declaration": self._extract_field,
-        }
-
+        # Pass 1: struct fields via generic traversal
         self._traverse_and_extract(
             tree.root_node,
-            extractors,
+            {"field_declaration": self._extract_field},
             variables,
         )
 
-        log_debug(f"Extracted {len(variables)} Rust fields")
+        # Pass 2: enum variants — collect directly, skip field_declaration recursion
+        self._collect_enum_variants(tree.root_node, variables)
+
+        log_debug(f"Extracted {len(variables)} Rust fields/variants")
         return variables
+
+    def _collect_enum_variants(
+        self, node: tree_sitter.Node, results: list[Variable]
+    ) -> None:
+        """Walk the AST and extract enum variants from every ``enum_item``.
+
+        Unlike ``_traverse_and_extract``, this walk recurses into
+        non-enum-item children (to find enums nested inside mod blocks), but
+        does NOT recurse into ``enum_item`` children — so
+        ``field_declaration`` nodes inside struct-like variant bodies are
+        never picked up here.
+        """
+        if node.type == "enum_item":
+            variants = self._extract_enum_variants(node)
+            if variants:
+                results.extend(variants)
+            # Do not recurse further: the enum body is fully handled above.
+            return
+        for child in node.children:
+            self._collect_enum_variants(child, results)
 
     def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """Extract Rust use declarations"""
@@ -153,6 +191,47 @@ class RustElementExtractor(ElementExtractor):
 
         log_debug(f"Extracted {len(imports)} Rust imports")
         return imports
+
+    def extract_packages(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> list[Package]:
+        """Extract Rust ``mod`` blocks as Package containers (issue #589).
+
+        Mirrors the C++ namespace → Package convention. Declaration-only
+        mods (``mod tests;`` — no body) are emitted too: their span is the
+        declaration line, which is the only trace of the file-module
+        mapping and cannot mis-claim nested items.
+        """
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        packages: list[Package] = []
+        self._traverse_and_extract(
+            tree.root_node,
+            {"mod_item": self._extract_mod_package},
+            packages,
+        )
+
+        log_debug(f"Extracted {len(packages)} Rust modules")
+        return packages
+
+    def _extract_mod_package(self, node: tree_sitter.Node) -> Package | None:
+        """Build a Package element from a ``mod_item`` node."""
+        try:
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                return None
+            return Package(
+                name=self._get_node_text(name_node),
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text(node),
+                language="rust",
+            )
+        except Exception as e:
+            log_error(f"Error extracting Rust mod as package: {e}")
+            return None
 
     def _extract_import(self, node: tree_sitter.Node) -> Import | None:
         """Extract import statement (use declaration)"""
@@ -197,11 +276,25 @@ class RustElementExtractor(ElementExtractor):
         extractors: dict[str, Any],
         results: list[Any],
     ) -> None:
-        """Recursive traversal to find and extract elements"""
+        """Recursive traversal to find and extract elements.
+
+        When an extractor returns a list, all items in the list are added
+        to ``results`` (extends rather than appends). Single-item returns
+        are appended as before. Recursion always continues so that nested
+        structures (e.g. nested ``mod_item`` inside a mod body) are
+        discovered. Extractors that need to suppress child traversal (e.g.
+        enum variants preventing struct-like variant fields from leaking as
+        struct fields) do so by specifying their own ``no_recurse_types``
+        set — an internal contract between the extractor dict and the
+        caller, not the traversal itself.
+        """
         if node.type in extractors:
             element = extractors[node.type](node)
-            if element:
-                results.append(element)
+            if element is not None:
+                if isinstance(element, list):
+                    results.extend(element)
+                else:
+                    results.append(element)
 
         for child in node.children:
             self._traverse_and_extract(child, extractors, results)
@@ -310,6 +403,24 @@ class RustElementExtractor(ElementExtractor):
             log_error(f"Error extracting Rust function: {e}")
             return None
 
+    def _inside_trait(self, node: tree_sitter.Node) -> bool:
+        """True when *node* sits inside a ``trait_item`` body.
+
+        Depth-capped for the same reason as ``_find_impl_owner`` (MagicMock
+        endless-parent-chain OOM, 2026-06-10). ``impl_item`` / ``foreign_mod_item``
+        terminate the walk early: a signature inside them is not trait-required.
+        """
+        parent = node.parent
+        for _ in range(256):
+            if parent is None:
+                return False
+            if parent.type == "trait_item":
+                return True
+            if parent.type in ("impl_item", "foreign_mod_item"):
+                return False
+            parent = parent.parent
+        return False
+
     def _find_impl_owner(self, node: tree_sitter.Node) -> str | None:
         """Return the impl target type name for a fn nested in an impl block.
 
@@ -354,6 +465,64 @@ class RustElementExtractor(ElementExtractor):
                 if pattern is not None and self._get_node_text(pattern) == "self":
                     return self._get_node_text(child)
         return None
+
+    def _extract_function_signature(self, node: tree_sitter.Node) -> Function | None:
+        """Extract a trait abstract method (``function_signature_item``).
+
+        These are required-method declarations inside a trait body that carry
+        no default implementation — they end with ``;`` rather than a block.
+        The ``function_item`` handler covers default-impl methods; this one
+        covers the missing half (issue #538, Rust N2).
+
+        ``extern`` blocks also emit ``function_signature_item`` for foreign
+        function declarations — those are linked FFI APIs, not trait-required
+        methods, so only nodes inside a ``trait_item`` are extracted here
+        (Codex P2 on #583).
+        """
+        try:
+            if not self._inside_trait(node):
+                return None
+
+            name_node = node.child_by_field_name("name")
+            if not name_node:
+                return None
+
+            name = self._get_node_text(name_node)
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            parameters = self._extract_rust_parameters(
+                node.child_by_field_name("parameters")
+            )
+            return_type = "()"
+            ret_node = node.child_by_field_name("return_type")
+            if ret_node:
+                return_type = self._get_node_text(ret_node)
+                if return_type.startswith("->"):
+                    return_type = return_type[2:].strip()
+
+            visibility = self._extract_visibility(node)
+            raw_text = self._get_node_text(node)
+
+            func = Function(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="rust",
+                parameters=parameters,
+                return_type=return_type,
+                visibility=visibility,
+            )
+            func.is_abstract = True
+
+            # No receiver binding here: _inside_trait guarantees the node is
+            # trait-contained, and _find_impl_owner only matches impl_item —
+            # trait-body declarations carry no impl owner (same as the
+            # function_item path for trait default methods).
+            return func
+        except Exception as e:
+            log_error(f"Error extracting Rust abstract function: {e}")
+            return None
 
     def _extract_struct(self, node: tree_sitter.Node) -> Class | None:
         """Extract struct information"""
@@ -460,6 +629,63 @@ class RustElementExtractor(ElementExtractor):
             )
         except Exception as e:
             log_error(f"Error extracting Rust field: {e}")
+            return None
+
+    def _extract_enum_variants(self, node: tree_sitter.Node) -> list[Variable] | None:
+        """Extract each enum variant from an ``enum_item`` node as a Variable.
+
+        For an enum like ``enum Direction { North, South }`` this yields two
+        Variable entries with ``variable_type="enum_variant"`` and
+        ``parent_class`` set to the enum name (e.g. ``"Direction"``).
+
+        The method returns a *list* (possibly empty), not a single Variable.
+        ``_traverse_and_extract`` checks for list returns and extends the
+        accumulator rather than appending.
+
+        Bug #796: enum variants were previously invisible — the ``enum_item``
+        node was only visited by ``extract_classes`` (which emits the enum as
+        a Class), while ``extract_variables`` skipped it entirely.
+        """
+        try:
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                return None
+            enum_name = self._get_node_text(name_node)
+
+            # Walk children looking for the enum_variant_list node.
+            variant_list = None
+            for child in node.children:
+                if child.type == "enum_variant_list":
+                    variant_list = child
+                    break
+            if variant_list is None:
+                return None
+
+            variants: list[Variable] = []
+            for child in variant_list.children:
+                if child.type != "enum_variant":
+                    continue
+                variant_name_node = child.child_by_field_name("name")
+                if variant_name_node is None:
+                    continue
+                variant_name = self._get_node_text(variant_name_node)
+                start_line = child.start_point[0] + 1
+                end_line = child.end_point[0] + 1
+                raw_text = self._get_node_text(child)
+
+                var = Variable(
+                    name=variant_name,
+                    start_line=start_line,
+                    end_line=end_line,
+                    raw_text=raw_text,
+                    language="rust",
+                    variable_type="enum_variant",
+                    receiver_type=enum_name,
+                )
+                variants.append(var)
+            return variants if variants else None
+        except Exception as e:
+            log_error(f"Error extracting Rust enum variants: {e}")
             return None
 
     def _extract_rust_parameters(
@@ -642,6 +868,7 @@ class RustPlugin(LanguagePlugin):
             all_elements.extend(extractor.extract_classes(tree, file_content))
             all_elements.extend(extractor.extract_variables(tree, file_content))
             all_elements.extend(extractor.extract_imports(tree, file_content))
+            all_elements.extend(extractor.extract_packages(tree, file_content))
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
@@ -727,6 +954,7 @@ class RustPlugin(LanguagePlugin):
                 "classes": extractor.extract_classes(tree, source_code),
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
+                "packages": extractor.extract_packages(tree, source_code),
             }
 
             return result

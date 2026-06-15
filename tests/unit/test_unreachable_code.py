@@ -39,16 +39,19 @@ def _write_py(tmp_path: Path, name: str, code: str) -> str:
 class TestIsFalseLiteral:
     def test_python_false(self, mocker):
         node = mocker.MagicMock()
+        node.parent = None  # tree-sitter Node mocks: no MagicMock parent chain
         node.text = b"False"
         assert _is_false_literal(node, "") is True
 
     def test_js_false(self, mocker):
         node = mocker.MagicMock()
+        node.parent = None  # tree-sitter Node mocks: no MagicMock parent chain
         node.text = b"false"
         assert _is_false_literal(node, "") is True
 
     def test_null_is_false(self, mocker):
         node = mocker.MagicMock()
+        node.parent = None  # tree-sitter Node mocks: no MagicMock parent chain
         node.text = b"null"
         assert _is_false_literal(node, "") is True
 
@@ -57,6 +60,7 @@ class TestIsFalseLiteral:
 
     def test_truthy_value_returns_false(self, mocker):
         node = mocker.MagicMock()
+        node.parent = None  # tree-sitter Node mocks: no MagicMock parent chain
         node.text = b"x"
         assert _is_false_literal(node, "") is False
 
@@ -64,16 +68,19 @@ class TestIsFalseLiteral:
 class TestIsTrueLiteral:
     def test_python_true(self, mocker):
         node = mocker.MagicMock()
+        node.parent = None  # tree-sitter Node mocks: no MagicMock parent chain
         node.text = b"True"
         assert _is_true_literal(node, "") is True
 
     def test_js_true(self, mocker):
         node = mocker.MagicMock()
+        node.parent = None  # tree-sitter Node mocks: no MagicMock parent chain
         node.text = b"true"
         assert _is_true_literal(node, "") is True
 
     def test_integer_one(self, mocker):
         node = mocker.MagicMock()
+        node.parent = None  # tree-sitter Node mocks: no MagicMock parent chain
         node.text = b"1"
         assert _is_true_literal(node, "") is True
 
@@ -82,6 +89,7 @@ class TestIsTrueLiteral:
 
     def test_false_value_returns_false(self, mocker):
         node = mocker.MagicMock()
+        node.parent = None  # tree-sitter Node mocks: no MagicMock parent chain
         node.text = b"False"
         assert _is_true_literal(node, "") is False
 
@@ -107,7 +115,7 @@ class TestAnalyzeFileUnreachable:
         assert isinstance(result, UnreachableCodeResult)
         assert result.errors == 0
         assert result.unreachable_blocks == []
-        assert result.functions_analyzed >= 1
+        assert result.functions_analyzed == 1
 
     def test_code_after_return_is_flagged(self, tmp_path):
         path = _write_py(
@@ -121,7 +129,7 @@ class TestAnalyzeFileUnreachable:
         )
         result = analyze_file_unreachable(path)
         assert result.errors == 0
-        assert len(result.unreachable_blocks) >= 1
+        assert len(result.unreachable_blocks) == 1
         reasons = [b.reason for b in result.unreachable_blocks]
         assert any("return" in r for r in reasons)
 
@@ -176,12 +184,12 @@ class TestAnalyzeFileUnreachable:
         f = tmp_path / "data.xyz"
         f.write_bytes(b"nothing")
         result = analyze_file_unreachable(str(f))
-        assert result.errors >= 1
+        assert result.errors == 1
         assert result.language == "unknown"
 
     def test_nonexistent_file_returns_error(self, tmp_path):
         result = analyze_file_unreachable(str(tmp_path / "missing.py"))
-        assert result.errors >= 1
+        assert result.errors == 1
 
     def test_language_override(self, tmp_path):
         path = _write_py(
@@ -249,8 +257,8 @@ class TestAnalyzeFileUnreachable:
         """,
         )
         result = analyze_file_unreachable(path)
-        assert result.functions_analyzed >= 2
-        assert len(result.unreachable_blocks) >= 2
+        assert result.functions_analyzed == 2
+        assert len(result.unreachable_blocks) == 2
 
     def test_nested_function_detected(self, tmp_path):
         path = _write_py(
@@ -265,9 +273,10 @@ class TestAnalyzeFileUnreachable:
         """,
         )
         result = analyze_file_unreachable(path)
-        assert result.functions_analyzed >= 1
+        # both outer and inner are analyzed
+        assert result.functions_analyzed == 2
         # inner has unreachable code
-        assert len(result.unreachable_blocks) >= 1
+        assert len(result.unreachable_blocks) == 1
 
     def test_severity_is_warning_for_after_return(self, tmp_path):
         path = _write_py(
@@ -314,7 +323,7 @@ class TestAnalyzeProjectUnreachable:
         """,
         )
         results = analyze_project_unreachable(str(tmp_path))
-        assert len(results) >= 1
+        assert len(results) == 1
         assert results[0].unreachable_blocks
 
     def test_test_files_excluded_by_default(self, tmp_path):
@@ -346,7 +355,7 @@ class TestAnalyzeProjectUnreachable:
             encoding="utf-8",
         )
         results = analyze_project_unreachable(str(tmp_path), include_test_files=True)
-        assert len(results) >= 1
+        assert len(results) == 1
 
     def test_max_files_respected(self, tmp_path):
         for i in range(10):
@@ -360,8 +369,8 @@ class TestAnalyzeProjectUnreachable:
             """,
             )
         results = analyze_project_unreachable(str(tmp_path), max_files=3)
-        # At most 3 files were scanned (only files with findings are returned)
-        assert len(results) <= 3
+        # Exactly 3 files were scanned and every scanned file has findings
+        assert len(results) == 3
 
     def test_excludes_dot_dirs(self, tmp_path):
         hidden = tmp_path / ".git"

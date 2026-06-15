@@ -20,6 +20,10 @@ from .codegraph_relation_tool import (
     _is_stale_resolution,
     classify_callee_resolution,
 )
+from .index_rebuild_signal import (
+    is_index_rebuilding,
+    rebuild_in_progress_next_step,
+)
 
 logger = setup_logger(__name__)
 
@@ -108,6 +112,24 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         include_activation = bool(arguments.get("include_activation", False))
         listed_cap = int(arguments.get("limit", 50))
 
+        if is_index_rebuilding(self.project_root):
+            rebuild_next_step = rebuild_in_progress_next_step()
+            result = build_response(
+                verdict="WARN",
+                data_source="cache_rebuilding",
+                function=func_name,
+                index_rebuilding=True,
+                next_step=rebuild_next_step,
+                agent_summary={
+                    "summary_line": f"callers: {func_name!r} unavailable during full rebuild",
+                    "verdict": "WARN",
+                    "next_step": rebuild_next_step,
+                },
+            )
+            from ..utils.format_helper import apply_toon_format_to_response
+
+            return apply_toon_format_to_response(result, output_format)
+
         # Detect "ClassName.method_name" qualified lookup.  The SQL fast-path
         # stores bare callee names and can't filter by receiver class, so we
         # fall through to the in-memory CallGraph which does handle qualified
@@ -120,17 +142,31 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             and func_name.rpartition(".")[0]  # non-empty class part
         )
 
+        unattributed_call_sites = 0
         cache = self._try_get_cache()
-        if cache is not None and cache.has_call_edges() and not is_qualified:
-            callers = self._sql_native_callers(
+        call_graph_built = (
+            self._cache_call_graph_built(cache) if cache is not None else False
+        )
+        call_graph_indexed = cache is not None and cache.has_call_edges()
+        if call_graph_indexed and not is_qualified:
+            callers, unattributed_call_sites = self._sql_native_callers(
                 cache, func_name, file_path, include_activation
             )
             data_source = "sql"
+            has_any_call_edges = True  # SQL path only runs when edges exist
         else:
             graph = self._get_call_graph()
             callers = graph.callers_of(func_name, file_path)
             data_source = self._data_source
             self._enrich_callers_with_resolution(callers)
+            # Suppress the --full-index hint when either:
+            #   (a) the index was built (data_source=="cache") — even if it
+            #       has zero call edges, the user already ran --full-index; or
+            #   (b) the parse fallback itself found call edges — the project
+            #       has calls, so the symbol just isn't there.
+            # Only fire the hint when the index is absent AND the parse found
+            # no edges at all (truly empty/unbuilt state).
+            has_any_call_edges = call_graph_built or len(graph.call_edges()) > 0
 
         warnings_list: list[str] = []
         if _is_stale_resolution(callers):
@@ -157,6 +193,11 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             truncated=truncated,
             callers=callers,
         )
+        if unattributed_call_sites:
+            # #638: module-level call sites have no enclosing function — they
+            # are counted here instead of being emitted as un-navigable ghost
+            # rows ({name: '', line: 0}).
+            result["unattributed_call_sites"] = unattributed_call_sites
         if truncated:
             trunc_note = (
                 f"showing {len(callers)} of {total_callers} callers — raise limit, "
@@ -165,8 +206,38 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             )
             # Combine truncation note with any body-inlining deterrent.
             next_step = f"{trunc_note}. {next_step}" if next_step else trunc_note
+        # #548: when the call-graph has no edges at all (NOT_FOUND AND the graph
+        # itself is empty), surface a --full-index hint so users know why
+        # results are empty.  We deliberately skip the hint when the graph has
+        # edges but the specific symbol was simply not found.
+        if result.get("verdict") == "NOT_FOUND" and not has_any_call_edges:
+            index_hint = (
+                "Call-graph index is empty or has not been built yet. "
+                "Run `tree-sitter-analyzer --full-index` first, then retry."
+            )
+            next_step = f"{index_hint} {next_step}" if next_step else index_hint
         if next_step:
             result["next_step"] = next_step
+
+        # #546 seam 3 / #577 leftover: uniform agent_summary across all nav actions.
+        verdict = result.get("verdict", "NOT_FOUND")
+        if verdict == "NOT_FOUND":
+            as_summary_line = f"callers: {func_name!r} has 0 caller(s)"
+            as_next_step = result.get("next_step") or (
+                f"No callers found for '{func_name}'. "
+                "Check spelling or run --full-index to build the call graph."
+            )
+        else:
+            as_summary_line = f"callers: {func_name!r} has {total_callers} caller(s)"
+            as_next_step = result.get("next_step") or (
+                "Review callers above, run tests for affected paths, "
+                "or use nav action=caller_tree for the full blast-radius."
+            )
+        result["agent_summary"] = {
+            "summary_line": as_summary_line,
+            "verdict": verdict,
+            "next_step": as_next_step,
+        }
 
         from ..utils.format_helper import apply_toon_format_to_response
 
@@ -205,8 +276,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         func_name: str,
         file_path: str | None,
         include_activation: bool = False,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], int]:
         """Use SQL-native callers query — O(k) instead of full graph build.
+
+        Returns ``(callers, unattributed_call_sites)``.  Edges without an
+        enclosing function (module-level call sites store
+        ``caller_name='' / caller_line=0``) are never emitted as result rows
+        — they are counted instead (#638 ghost-caller fix).
 
         When ``include_activation`` is True, each entry gets an
         ``activation`` sub-dict carrying ``mod_count_30d`` and
@@ -214,12 +290,16 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         """
         raw = cache.query_callers(func_name, callee_file=file_path)
         results: list[dict[str, Any]] = []
+        unattributed = 0
         seen: set[str] = set()
         activation_map: dict[tuple[str, int], dict[str, Any]] = {}
         if include_activation:
             activation_map = self._fetch_activation_map(cache)
         for edge in raw:
-            key = f"{edge['caller_file']}:{edge['caller_name']}"
+            if not edge.get("caller_name"):
+                unattributed += 1
+                continue
+            key = f"{edge['caller_file']}:{edge['caller_name']}:{edge['caller_line']}"
             if key in seen:
                 continue
             seen.add(key)
@@ -247,7 +327,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     {"mod_count_30d": 0, "last_modified_at": None},
                 )
             results.append(entry)
-        return results
+        return results, unattributed
 
     @staticmethod
     def _enrich_callers_with_resolution(

@@ -143,12 +143,12 @@ def assert_sample_database_result(result: Any) -> None:
     )
 
     actual_functions = {func.name for func in elements_by_type["functions"]}
-    assert len(actual_functions & SAMPLE_DATABASE_EXPECTED_FUNCTIONS) > 0, (
+    assert actual_functions & SAMPLE_DATABASE_EXPECTED_FUNCTIONS, (
         f"No expected functions found. Got: {actual_functions}"
     )
 
     actual_indexes = {var.name for var in elements_by_type["variables"]}
-    assert len(actual_indexes & SAMPLE_DATABASE_EXPECTED_INDEXES) > 0, (
+    assert actual_indexes & SAMPLE_DATABASE_EXPECTED_INDEXES, (
         f"No expected indexes found. Got: {actual_indexes}"
     )
 
@@ -202,7 +202,7 @@ def assert_specific_sql_constructs(plugin: Any) -> None:
 
 def assert_table_metadata(sql_elements: list[Any]) -> None:
     """Assert at least one SQL table element exposes metadata fields."""
-    assert len(sql_elements) > 0
+    assert sql_elements
     tables = [elem for elem in sql_elements if hasattr(elem, "columns")]
     if tables:
         table = tables[0]
@@ -221,7 +221,7 @@ def assert_product_columns(sql_elements: list[Any]) -> None:
     if tables:
         actual_columns = {col.name for col in tables[0].columns}
         expected_columns = {"id", "name", "price", "category_id", "created_at"}
-        assert len(actual_columns & expected_columns) > 0
+        assert actual_columns & expected_columns
 
 
 def assert_view_dependencies(sql_elements: list[Any]) -> None:
@@ -344,7 +344,7 @@ def assert_e2e_sql_formatting(
     for formatter in formatters:
         formatted_result = formatter.format_elements(sql_elements, file_path)
         assert isinstance(formatted_result, str)
-        assert len(formatted_result) > 0
+        assert formatted_result
 
         if isinstance(formatter, SQLFullFormatter):
             assert "Database Schema Overview" in formatted_result

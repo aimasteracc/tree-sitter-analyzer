@@ -1,11 +1,12 @@
 {
   "counts_by_type": {
     "Class": 5,
-    "Function": 8,
+    "Function": 9,
     "Import": 1,
-    "Variable": 6
+    "Package": 1,
+    "Variable": 10
   },
-  "element_total": 20,
+  "element_total": 26,
   "names_by_type": {
     "Class": [
       "BorrowedItem",
@@ -26,7 +27,14 @@
     "Import": [
       "use std::collections::HashMap;"
     ],
+    "Package": [
+      "sample_module"
+    ],
     "Variable": [
+      "Admin",
+      "Guest",
+      "Moderator",
+      "User",
       "active",
       "email",
       "id",
@@ -39,6 +47,7 @@
     "Class",
     "Function",
     "Import",
+    "Package",
     "Variable"
   ]
 }

@@ -7,6 +7,7 @@ from typing import Any
 from ...models import Class, Variable
 from ...utils import log_debug, log_warning
 from ...utils.tree_sitter_compat import get_node_text_safe
+from ._element_builders import extract_module_constants
 from ._extractor_helpers import (
     ClassBodyQueryRuntime,
     ClassBuildInput,
@@ -44,7 +45,7 @@ class PythonClassExtractionMixin:
         return classes
 
     def extract_variables(self, tree: Any, source_code: str) -> list[Variable]:
-        """Extract Python variable definitions (class attributes only)."""
+        """Extract Python variables: class attributes + module constants (#639)."""
         variables: list[Variable] = []
 
         try:
@@ -70,6 +71,14 @@ class PythonClassExtractionMixin:
         except Exception as exc:
             log_warning(f"Could not extract Python class attributes: {exc}")
 
+        try:
+            # Issue #639 — structure-surface parity with the #612 ast_cache
+            # rule: module-level constants are fields too.
+            variables.extend(extract_module_constants(tree, source_code))
+        except Exception as exc:
+            log_warning(f"Could not extract Python module constants: {exc}")
+
+        variables.sort(key=lambda v: v.start_line)
         return variables
 
     def _extract_class_optimized(self, node: Any) -> Class | None:

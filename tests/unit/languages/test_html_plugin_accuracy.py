@@ -1,6 +1,5 @@
 """HTML plugin tests — query accuracy."""
 
-
 from tests.unit.languages._html_test_data import (
     ATTRIBUTE_CODE,
     FORM_CODE,
@@ -21,10 +20,45 @@ class TestHtmlQueryAccuracy:
         tree = get_tree_for_code(TAG_CODE, plugin)
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
-        # Should not extract non-tag elements
-        for element in elements:
-            assert element.tag_name is not None
-            assert len(element.tag_name) > 0
+        # Should not extract non-tag elements — exact full tag list of
+        # TAG_CODE in document order (update when the fixture changes)
+        assert [e.tag_name for e in elements] == [
+            "div",
+            "header",
+            "h1",
+            "nav",
+            "ul",
+            "li",
+            "a",
+            "li",
+            "a",
+            "li",
+            "a",
+            "main",
+            "section",
+            "h2",
+            "p",
+            "article",
+            "h3",
+            "p",
+            "aside",
+            "h4",
+            "p",
+            "footer",
+            "p",
+            "p",
+            "strong",
+            "em",
+            "p",
+            "mark",
+            "del",
+            "p",
+            "ins",
+            "sub",
+            "p",
+            "sup",
+            "small",
+        ]
 
     def test_attribute_query_accuracy(self):
         """Test that attribute query accurately identifies attributes."""
@@ -45,9 +79,9 @@ class TestHtmlQueryAccuracy:
         tree = get_tree_for_code(FORM_CODE, plugin)
         elements = plugin.create_extractor().extract_html_elements(tree, FORM_CODE)
 
-        # Should find form elements
+        # FORM_CODE contains exactly one <form>
         form_elements = [e for e in elements if e.tag_name == "form"]
-        assert len(form_elements) >= 1
+        assert len(form_elements) == 1
 
     def test_table_query_accuracy(self):
         """Test that table query accurately identifies table elements."""
@@ -55,9 +89,9 @@ class TestHtmlQueryAccuracy:
         tree = get_tree_for_code(TABLE_CODE, plugin)
         elements = plugin.create_extractor().extract_html_elements(tree, TABLE_CODE)
 
-        # Should find table elements
+        # TABLE_CODE contains exactly two <table> elements
         table_elements = [e for e in elements if e.tag_name == "table"]
-        assert len(table_elements) >= 1
+        assert len(table_elements) == 2
 
     def test_link_query_accuracy(self):
         """Test that link query accurately identifies links."""
@@ -67,9 +101,9 @@ class TestHtmlQueryAccuracy:
             tree, LINK_IMAGE_CODE
         )
 
-        # Should find anchor tags
+        # LINK_IMAGE_CODE contains exactly five <a> elements
         a_elements = [e for e in elements if e.tag_name == "a"]
-        assert len(a_elements) >= 1
+        assert len(a_elements) == 5
 
     def test_image_query_accuracy(self):
         """Test that image query accurately identifies images."""
@@ -79,9 +113,9 @@ class TestHtmlQueryAccuracy:
             tree, LINK_IMAGE_CODE
         )
 
-        # Should find img tags
+        # LINK_IMAGE_CODE contains exactly four <img> elements
         img_elements = [e for e in elements if e.tag_name == "img"]
-        assert len(img_elements) >= 1
+        assert len(img_elements) == 4
 
     def test_no_false_positives(self):
         """Test that queries don't produce false positives."""
@@ -112,9 +146,82 @@ class TestHtmlQueryAccuracy:
         tree = get_tree_for_code(TAG_CODE, plugin)
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
-        for element in elements:
-            assert element.start_line > 0
-            assert element.end_line >= element.start_line
+        # Exact 1-based line spans for TAG_CODE's 35 elements in document
+        # order (update when the fixture changes)
+        assert [e.start_line for e in elements] == [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            8,
+            9,
+            9,
+            10,
+            10,
+            14,
+            15,
+            16,
+            17,
+            19,
+            20,
+            21,
+            23,
+            24,
+            25,
+            28,
+            29,
+            34,
+            34,
+            34,
+            35,
+            35,
+            35,
+            36,
+            36,
+            36,
+            37,
+            37,
+            37,
+        ]
+        assert [e.end_line for e in elements] == [
+            31,
+            13,
+            5,
+            12,
+            11,
+            8,
+            8,
+            9,
+            9,
+            10,
+            10,
+            27,
+            18,
+            16,
+            17,
+            22,
+            20,
+            21,
+            26,
+            24,
+            25,
+            30,
+            29,
+            34,
+            34,
+            34,
+            35,
+            35,
+            35,
+            36,
+            36,
+            36,
+            37,
+            37,
+            37,
+        ]
 
     def test_element_classification_accuracy(self):
         """Test that element classification is accurate."""
@@ -122,10 +229,11 @@ class TestHtmlQueryAccuracy:
         tree = get_tree_for_code(TAG_CODE, plugin)
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
-        # Structure elements should be classified as structure
+        # Exactly 8 structure elements: div, header, nav, main, section,
+        # article, aside, footer
         structure_elements = [e for e in elements if e.element_class == "structure"]
-        assert len(structure_elements) >= 1
+        assert len(structure_elements) == 8
 
-        # Heading elements should be classified as heading
+        # Exactly 4 heading elements: h1, h2, h3, h4
         heading_elements = [e for e in elements if e.element_class == "heading"]
-        assert len(heading_elements) >= 1
+        assert len(heading_elements) == 4

@@ -97,7 +97,7 @@ class TestRefactoringSuggestionsTool:
         )
         suggestions = result["suggestions"]
         long_funcs = [s for s in suggestions if s["name"] == "long_function"]
-        assert len(long_funcs) >= 1
+        assert len(long_funcs) == 1
 
     def test_python_detects_deep_nesting(self, tool):
         result = _run(
@@ -105,7 +105,7 @@ class TestRefactoringSuggestionsTool:
         )
         suggestions = result["suggestions"]
         deep = [s for s in suggestions if s["name"] == "deep_nesting"]
-        assert len(deep) >= 1
+        assert len(deep) == 1
 
     def test_python_detects_large_class(self, tool):
         result = _run(
@@ -113,7 +113,7 @@ class TestRefactoringSuggestionsTool:
         )
         suggestions = result["suggestions"]
         large_classes = [s for s in suggestions if s["name"] == "reduce_class_size"]
-        assert len(large_classes) >= 1
+        assert len(large_classes) == 1
         assert "recipe" in large_classes[0]
         assert "move_methods" in large_classes[0]["recipe"]
 
@@ -131,7 +131,7 @@ class TestRefactoringSuggestionsTool:
         )
         summary = result["summary"]
         assert isinstance(summary, str)
-        assert len(summary) > 0
+        assert len(summary) == 47
 
     def test_agent_summary_surfaces_next_action(self, tool):
         result = _run(
@@ -193,7 +193,7 @@ class TestRefactoringSuggestionsTool:
 
     def test_server_file_analysis(self, tool):
         result = _run(tool.execute({"file_path": SAMPLE_GENERIC}))
-        assert result["total_suggestions"] >= 0
+        assert result["total_suggestions"] == 2
 
     def test_default_no_skeleton(self, tool):
         result = _run(
@@ -229,13 +229,13 @@ class TestRefactoringSuggestionsTool:
             tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
         )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
-        assert len(with_plans) >= 1
+        assert len(with_plans) == 1
         plan = with_plans[0]["precise_plan"]
         assert "function" in plan
         assert "function_lines" in plan
         assert "helper_module" in plan
         assert "extractions" in plan
-        assert len(plan["extractions"]) >= 1
+        assert len(plan["extractions"]) == 1
 
     def test_precise_plan_extraction_fields(self, tool):
         result = _run(
@@ -248,7 +248,7 @@ class TestRefactoringSuggestionsTool:
             )
         )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
-        assert len(with_plans) >= 1
+        assert len(with_plans) == 1
         ext = with_plans[0]["precise_plan"]["extractions"][0]
         assert "helper_name" in ext
         assert "extract_lines" in ext
@@ -264,17 +264,17 @@ class TestRefactoringSuggestionsTool:
             tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
         )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
-        assert len(with_plans) >= 1
+        assert len(with_plans) == 1
         plan = with_plans[0]["precise_plan"]
         assert "steps" in plan
-        assert len(plan["steps"]) >= 3
+        assert len(plan["steps"]) == 4
 
     def test_precise_plan_helper_module_name(self, tool):
         result = _run(
             tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
         )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
-        assert len(with_plans) >= 1
+        assert len(with_plans) == 1
         helper_mod = with_plans[0]["precise_plan"]["helper_module"]
         assert helper_mod.endswith("_helpers.py")
         assert "_java_plugin_helpers.py" in helper_mod
@@ -525,7 +525,7 @@ class TestRefactoringSuggestionsTool:
             )
         )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
-        assert len(with_plans) >= 1
+        assert len(with_plans) == 1
         for ext in with_plans[0]["precise_plan"]["extractions"]:
             import ast
 

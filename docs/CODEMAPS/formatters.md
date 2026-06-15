@@ -11,7 +11,7 @@ Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/f
 | `json` | `formatters/json_formatter.py` | **CLI** | `jq` piping, programmatic ingestion |
 | `table` | `formatters/table_formatter.py` (canonical, re-exports `LegacyTableFormatter`) + `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` | `--table` flag | Terminal viewing with box-drawing chars |
 | `csv` | via `tree_sitter_analyzer/_legacy_table_formatter_csv.py` | `--table csv` | Spreadsheet ingestion |
-| `signatures` | `formatters/_java_formatter_signatures_mixin.py` (Java); `formatters/_python_formatter_signatures_table.py` (Python); `default_table_formatter.py` (fallback) | `--table signatures` | Lightweight method-directory for large files — ~25-50% of full tokens; agent-first, then `--partial-read` for bodies |
+| `signatures` | `formatters/_java_formatter_signatures_mixin.py` (Java); `formatters/_python_formatter_signatures_table.py` (Python); `formatters/_typescript_formatter_signatures_table.py` (TypeScript); `default_table_formatter.py` (fallback) | `--table signatures` | Lightweight method-directory for large files — ~25-80% of full tokens; agent-first, then `--partial-read` for bodies |
 | `yaml` | `formatters/yaml_formatter.py` | explicit `--format yaml` | Human-readable structured |
 
 ## Why TOON for MCP, JSON for CLI?
@@ -71,6 +71,12 @@ Python formatter signatures module:
   `<module functions>` block for top-level functions; used by
   `PythonTableFormatter._format_signatures_table` via `structure action=signatures`)
 
+TypeScript formatter signatures module:
+- `_typescript_formatter_signatures_table.py` — `format_typescript_signatures_table`
+  (lightweight directory for .ts/.tsx/.d.ts files; interfaces count as grouping
+  containers; overloads each appear as separate lines; used by
+  `TypeScriptTableFormatter._format_signatures_table` via `structure action=signatures`)
+
 ## CSV Control-Char Safety
 
 `formatters/_csv_safety.py` (`csv_safe_row` / `csv_safe_cell`) strips
@@ -85,7 +91,7 @@ an unreadable CSV. Used by `CsvFormatter`, `format_html_csv`, and
 
 ## TOON Format
 
-TOON (Token-Optimized Object Notation) emits indentation-aware key:value lines without
+TOON (Token-Oriented Object Notation) emits indentation-aware key:value lines without
 JSON's punctuation overhead. Example:
 
 ```

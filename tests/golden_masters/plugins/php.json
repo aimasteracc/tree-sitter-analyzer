@@ -2,9 +2,10 @@
   "counts_by_type": {
     "Class": 5,
     "Function": 21,
-    "Variable": 9
+    "Import": 2,
+    "Variable": 12
   },
-  "element_total": 35,
+  "element_total": 40,
   "names_by_type": {
     "Class": [
       "App\\Models\\AdminUser",
@@ -14,43 +15,50 @@
       "App\\Models\\UserStatus"
     ],
     "Function": [
-      "AdminUser::__construct",
-      "AdminUser::grantPermission",
-      "AdminUser::hasPermission",
-      "App\\Models\\createUser",
-      "App\\Models\\hashPassword",
-      "Loggable::getLogs",
-      "Loggable::log",
-      "User::__construct",
-      "User::__get",
-      "User::__set",
-      "User::authenticate",
-      "User::findByEmail",
-      "User::getId",
-      "User::getInstanceCount",
-      "User::getUsername",
-      "User::setId",
-      "User::updateProfile",
-      "UserRepositoryInterface::delete",
-      "UserRepositoryInterface::find",
-      "UserRepositoryInterface::save",
-      "label"
+      "__construct",
+      "__get",
+      "__set",
+      "authenticate",
+      "createUser",
+      "delete",
+      "find",
+      "findByEmail",
+      "getId",
+      "getInstanceCount",
+      "getLogs",
+      "getUsername",
+      "grantPermission",
+      "hasPermission",
+      "hashPassword",
+      "label",
+      "log",
+      "save",
+      "setId",
+      "updateProfile"
+    ],
+    "Import": [
+      "App\\Contracts\\UserInterface",
+      "App\\Traits\\Timestampable"
     ],
     "Variable": [
-      "AdminUser::permissions",
-      "Loggable::logs",
-      "User::createdAt",
-      "User::email",
-      "User::id",
-      "User::instanceCount",
-      "User::lastLoginAt",
-      "User::passwordHash",
-      "User::username"
+      "MAX_LOGIN_ATTEMPTS",
+      "STATUS_ACTIVE",
+      "STATUS_INACTIVE",
+      "createdAt",
+      "email",
+      "id",
+      "instanceCount",
+      "lastLoginAt",
+      "logs",
+      "passwordHash",
+      "permissions",
+      "username"
     ]
   },
   "types": [
     "Class",
     "Function",
+    "Import",
     "Variable"
   ]
 }

@@ -41,26 +41,37 @@ def build_checklist(
     file_path: str = "",
     project_root: str | Path | None = None,
 ) -> list[str]:
-    """Build a pre-edit checklist for the AI agent."""
-    items = [_risk_instruction(risk)]
-    items.extend(_test_instructions(has_tests, test_files, project_root))
+    """Build a pre-edit checklist for the AI agent.
+
+    Items are numbered sequentially (1, 2, 3, …) after filtering — items whose
+    condition is False are simply absent, so the remaining items are always
+    contiguous. Previously items 4/5/6 were hardcoded, causing gaps like
+    [1, 2, 3, 5] when downstream_count == 0 (issue #641).
+    """
+    raw: list[str] = [_risk_instruction(risk)]
+    raw.extend(_test_instructions(has_tests, test_files, project_root))
 
     if downstream_count > 0:
-        items.append(
-            f"4. {downstream_count} downstream file(s) - verify imports still resolve"
+        raw.append(
+            f"{downstream_count} downstream file(s) - verify imports still resolve"
         )
     if edit_type == "rename":
-        items.append(
-            "5. After rename: run find_and_grep(old_name) to find all references"
-        )
+        raw.append("After rename: run find_and_grep(old_name) to find all references")
     if edit_type == "refactor":
-        items.append("5. Keep public API signatures unchanged during refactor")
+        raw.append("Keep public API signatures unchanged during refactor")
     if health_grade in ("D", "F") and file_path:
-        items.append(
-            f"6. File is grade {health_grade} - run refactoring_suggestions(file_path='{file_path}') for extraction plans"
+        raw.append(
+            f"File is grade {health_grade} - run refactoring_suggestions(file_path='{file_path}') for extraction plans"
         )
 
-    return items
+    # Strip any pre-existing leading "N. " prefixes from helper functions so
+    # renumbering is idempotent, then apply sequential 1-based numbers.
+    import re as _re
+
+    def _strip_number(text: str) -> str:
+        return _re.sub(r"^\d+\.\s*", "", text)
+
+    return [f"{i}. {_strip_number(item)}" for i, item in enumerate(raw, start=1)]
 
 
 def _add_downstream_factor(factors: list[RiskFactor], forward_count: int) -> int:
@@ -218,7 +229,7 @@ def _test_instructions(
     """Return checklist items for test coverage."""
     default_command = detect_default_test_command(project_root)
     if has_tests:
-        test_command = build_test_command(default_command, test_files[:3])
+        test_command = build_test_command(default_command, test_files)
         return [
             f"2. Run existing tests FIRST: {test_command}",
             f"3. Run same verification AFTER editing: {test_command}",

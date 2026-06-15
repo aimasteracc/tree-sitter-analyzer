@@ -20,7 +20,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Extractor version constant — kept in sync with ast_cache.py.
-_AST_CACHE_EXTRACTOR_VERSION = 2
+# v3: #610 — Python module-level constants extracted as kind="constant".
+# v4: #613 — Go package-level const/var specs extracted as kind="constant".
+# v5: #613 — Rust const/static items extracted as kind="constant".
+# v6: #614 — docstring/return_type/params serialized into symbols_json.
+# v7: #624 — PHP const declarations extracted as kind="constant".
+# v8: #626 — JS/TS function-local variables no longer over-captured.
+# v9: #626 — Java function-local variables no longer over-captured.
+# v10: #628 — C# function-local variables no longer over-captured.
+# v11: #638 — call edges keep ALL same-named definition spans; calls inside
+#      the earlier of two same-named methods regain their enclosing caller.
+_AST_CACHE_EXTRACTOR_VERSION = 11
 
 
 def check_cache_or_read(

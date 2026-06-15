@@ -74,12 +74,9 @@ class TestCLITableOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
-
-        # Verify table contains expected content
         assert "Total Methods" in output
         assert "Total Fields" in output
-        assert "Public Methods" in output or "Methods" in output
+        assert "Methods" in output
 
     def test_table_option_full_strict(self, monkeypatch, sample_java_file):
         """Test --table option with strict content validation"""
@@ -153,7 +150,8 @@ class TestCLITableOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert "Methods" in output
+        assert "Fields" in output
 
     def test_table_option_csv(self, monkeypatch, sample_java_file):
         """Test --table option with CSV format"""
@@ -171,7 +169,8 @@ class TestCLITableOption:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert "Type,Name" in output
+        assert "Field,field1" in output
 
     def test_table_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --table option when analysis fails"""
@@ -237,8 +236,14 @@ class TestCLIPartialReadOption:
         with contextlib.suppress(SystemExit):
             main()
 
+        import json
+
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        data = json.loads(output)
+        assert data["success"] is True
+        assert data["lines_extracted"] == 5
+        assert data["content_length"] == 52
+        assert data["verdict"] == "INFO"
 
     def test_partial_read_missing_start_line(self, monkeypatch, sample_java_file):
         """Test --partial-read option without required --start-line"""
