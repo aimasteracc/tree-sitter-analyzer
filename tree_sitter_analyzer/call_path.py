@@ -161,6 +161,35 @@ def _target_match(
     return True
 
 
+def _lookup_in_visited(
+    state: tuple[str, str | None],
+    visited: dict[tuple[str, str | None], list[dict[str, Any]]],
+) -> tuple[bool, list[dict[str, Any]]]:
+    """Lookup *state* in *visited*, also accepting a name-only (file=None) wildcard.
+
+    #797: bidirectional BFS stores visited nodes keyed by (name, file).  When
+    the caller did not specify a target file the backward frontier is seeded
+    with (target, None), but the forward frontier discovers the same node as
+    (target, resolved_file).  An exact dict lookup then misses the intersection.
+    This helper checks both the exact key and the name-only key so that a
+    missing file acts as a wildcard (i.e. any file matches when the other side
+    has no file constraint).
+
+    Only the (name, None) wildcard is checked — a state with a concrete file
+    never wildcards against another concrete file, so cross-file false matches
+    cannot occur.
+    """
+    if state in visited:
+        return True, visited[state]
+    # Wildcard: if visited has an entry with no file constraint for this name,
+    # treat it as a match regardless of our resolved file.
+    if state[1] is not None:
+        name_only = (state[0], None)
+        if name_only in visited:
+            return True, visited[name_only]
+    return False, []
+
+
 # ---------------------------------------------------------------------------
 # Generic BFS engines
 # ---------------------------------------------------------------------------
@@ -500,11 +529,12 @@ class CallPathFinder:
                     }
                     parent_path = forward_visited.get((current_name, current_file), [])
                     forward_visited[state] = parent_path + [hop]
-                    if state in backward_visited:
-                        full_path = forward_visited[state] + list(
-                            reversed(backward_visited[state])
-                        )
-                        paths.append(_make_chain(full_path))
+                    # #797: only check for a meeting in backward_visited to stop
+                    # further exploration of this callee.  Paths are recorded
+                    # exclusively by the backward pass to prevent duplicates when
+                    # both passes discover the same meeting node in the same round.
+                    if _lookup_in_visited(state, backward_visited)[0]:
+                        # Terminal node reached: stop exploring its callees.
                         continue
                     next_forward.append(state)
             forward_queue = next_forward
@@ -525,10 +555,9 @@ class CallPathFinder:
                     }
                     parent_path = backward_visited.get((current_name, current_file), [])
                     backward_visited[state] = [hop] + list(parent_path)
-                    if state in forward_visited:
-                        full_path = forward_visited[state] + list(
-                            reversed(backward_visited[state])
-                        )
+                    found, fwd_path = _lookup_in_visited(state, forward_visited)
+                    if found:
+                        full_path = fwd_path + list(reversed(backward_visited[state]))
                         paths.append(_make_chain(full_path))
                         continue
                     next_backward.append(state)
@@ -628,7 +657,9 @@ class CallPathFinder:
                 max_paths,
                 paths,
             )
-        if direction == "backward" and len(paths) < max_paths:
+        # #797: bidirectional fallback must also try backward when forward found
+        # nothing (mirrors the SQL bidirectional that tries both frontiers).
+        if direction in ("backward", "bidirectional") and len(paths) < max_paths:
             self._bfs_graph_backward(
                 graph,
                 source_function,

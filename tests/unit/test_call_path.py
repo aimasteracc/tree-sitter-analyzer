@@ -263,6 +263,45 @@ class TestCallPathFinderBidirectional:
         assert result.data_source == "sql"
         assert result.paths is not None
 
+    def test_direct_call_bidirectional_no_target_file(self, tmp_path):
+        """#797: bidirectional with no target_file must find a direct 1-hop call.
+
+        When source calls target directly (1 hop) and target_file is not
+        specified (None), the bidirectional BFS must still produce a path.
+        The bug was that backward_visited stored (target, None) but forward
+        BFS discovered (target, resolved_file), so the intersection test failed.
+        """
+        edges = [
+            {
+                "caller_name": "entry",
+                "caller_file": "src/a.py",
+                "callee_name": "helper",
+                "callee_resolved_file": "src/b.py",
+            }
+        ]
+        cache = _make_cache_with_edges(tmp_path, edges)
+        finder = CallPathFinder(str(tmp_path), cache=cache)
+        # No source_file or target_file — exercises the None-vs-resolved-file bug
+        result = finder.find_path("entry", "helper", direction="bidirectional")
+        assert result.data_source == "sql"
+        assert len(result.paths) == 1
+
+    def test_direct_call_forward_finds_path(self, tmp_path):
+        """Baseline: forward BFS always finds the direct 1-hop call."""
+        edges = [
+            {
+                "caller_name": "entry",
+                "caller_file": "src/a.py",
+                "callee_name": "helper",
+                "callee_resolved_file": "src/b.py",
+            }
+        ]
+        cache = _make_cache_with_edges(tmp_path, edges)
+        finder = CallPathFinder(str(tmp_path), cache=cache)
+        result = finder.find_path("entry", "helper", direction="forward")
+        assert result.data_source == "sql"
+        assert len(result.paths) == 1
+
 
 class TestCallPathFinderFallback:
     def test_no_cache_falls_back(self, tmp_path):
