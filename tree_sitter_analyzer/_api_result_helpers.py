@@ -1,5 +1,6 @@
 """Result-shaping helpers for the public API facade."""
 
+import dataclasses
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -47,7 +48,16 @@ def element_to_dict(
     }
     for field in _OPTIONAL_ELEM_FIELDS:
         if hasattr(elem, field):
-            result[field] = getattr(elem, field)
+            value = getattr(elem, field)
+            # SQL plugin stores parameters as list[SQLParameter] (dataclasses).
+            # JSON cannot serialize dataclass instances; convert them to plain
+            # dicts so all output formats (JSON, TOON, text) stay consistent.
+            if field == "parameters" and isinstance(value, list):
+                value = [
+                    dataclasses.asdict(p) if dataclasses.is_dataclass(p) else p
+                    for p in value
+                ]
+            result[field] = value
 
     if result["type"] == "function" and all_elements:
         # A LOCAL function (innermost container is another function, e.g.
