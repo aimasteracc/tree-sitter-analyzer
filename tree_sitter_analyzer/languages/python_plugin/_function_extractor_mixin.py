@@ -44,26 +44,47 @@ def _is_python_constructor(name: str, node: Any) -> bool:
     )
 
 
+_CLASS_BODY_TRAVERSABLE = frozenset(
+    {
+        "block",
+        "if_statement",
+        "else_clause",
+        "elif_clause",
+        "try_statement",
+        "except_clause",
+        "finally_clause",
+        "with_statement",
+        "for_statement",
+        "while_statement",
+    }
+)
+
+
 def _python_parent_class_name(node: Any) -> str | None:
     """Return the enclosing class name when ``node`` is a class method, else None.
 
-    Walks the parent chain: function_definition (or decorated_definition) →
-    block → class_definition → identifier child.  Returns None for module-level
-    functions (#740).
+    Walks the parent chain starting after the optional ``decorated_definition``
+    wrapper.  Passes through control-flow nodes (``if_statement``, ``try_statement``,
+    ``with_statement``, etc.) that may appear inside a class body so that
+    conditionally-defined methods are correctly tagged (Codex P2 on #740).
+    Returns None for module-level functions and nested functions (#740).
     """
-    parent = getattr(node, "parent", None)
-    if getattr(parent, "type", "") == "decorated_definition":
-        parent = getattr(parent, "parent", None)
-    if parent is None or getattr(parent, "type", "") != "block":
-        return None
-    class_node = getattr(parent, "parent", None)
-    if class_node is None or getattr(class_node, "type", "") != "class_definition":
-        return None
-    for child in getattr(class_node, "children", []):
-        if getattr(child, "type", "") == "identifier":
-            text = getattr(child, "text", None)
-            if text:
-                return text.decode("utf-8") if isinstance(text, bytes) else text
+    current = getattr(node, "parent", None)
+    if getattr(current, "type", "") == "decorated_definition":
+        current = getattr(current, "parent", None)
+    while current is not None:
+        node_type = getattr(current, "type", "")
+        if node_type == "class_definition":
+            for child in getattr(current, "children", []):
+                if getattr(child, "type", "") == "identifier":
+                    text = getattr(child, "text", None)
+                    if text:
+                        return text.decode("utf-8") if isinstance(text, bytes) else text
+            return None
+        if node_type in _CLASS_BODY_TRAVERSABLE:
+            current = getattr(current, "parent", None)
+            continue
+        break
     return None
 
 

@@ -21,7 +21,8 @@ from tree_sitter_analyzer.languages.python_plugin.extractor import (
 )
 
 pytestmark = pytest.mark.skipif(
-    not _TREE_SITTER_AVAILABLE, reason="tree-sitter-python not installed"
+    not _TREE_SITTER_AVAILABLE,
+    reason="tree-sitter-python not installed — tracked: #740",
 )
 
 _SOURCE = """\
@@ -118,3 +119,60 @@ class TestPythonParentClass:
         assert funcs["standalone_function"].parent_class is None, (
             "Module-level function must have parent_class=None"
         )
+
+
+_CONDITIONAL_SOURCE = """\
+import sys
+
+class Platform:
+    if sys.platform == "win32":
+        def win_method(self):
+            pass
+    else:
+        def posix_method(self):
+            pass
+
+    try:
+        def try_method(self):
+            pass
+    except Exception:
+        pass
+"""
+
+
+class TestPythonControlFlowMethods:
+    """Codex P2 on #740: methods inside if/try inside a class must be detected."""
+
+    def _get_functions(self, extractor, py_parser):
+        tree = py_parser.parse(_CONDITIONAL_SOURCE.encode())
+        return {
+            f.name: f for f in extractor.extract_functions(tree, _CONDITIONAL_SOURCE)
+        }
+
+    def test_if_branch_method_is_method(self, extractor, py_parser):
+        """win_method inside 'if sys.platform' must be is_method=True."""
+        funcs = self._get_functions(extractor, py_parser)
+        assert "win_method" in funcs, "'win_method' not extracted"
+        assert funcs["win_method"].is_method is True, (
+            "Method inside 'if' block in class body must have is_method=True"
+        )
+
+    def test_if_branch_method_parent_class(self, extractor, py_parser):
+        """win_method must know its parent is Platform."""
+        funcs = self._get_functions(extractor, py_parser)
+        assert funcs.get("win_method") is not None
+        assert funcs["win_method"].parent_class == "Platform", (
+            f"Expected parent_class='Platform', got {funcs['win_method'].parent_class!r}"
+        )
+
+    def test_else_branch_method_is_method(self, extractor, py_parser):
+        """posix_method inside 'else' must be is_method=True."""
+        funcs = self._get_functions(extractor, py_parser)
+        assert "posix_method" in funcs, "'posix_method' not extracted"
+        assert funcs["posix_method"].is_method is True
+
+    def test_try_block_method_is_method(self, extractor, py_parser):
+        """try_method inside 'try' block in class body must be is_method=True."""
+        funcs = self._get_functions(extractor, py_parser)
+        assert "try_method" in funcs, "'try_method' not extracted"
+        assert funcs["try_method"].is_method is True
