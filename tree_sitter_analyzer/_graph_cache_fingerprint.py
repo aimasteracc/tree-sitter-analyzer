@@ -27,6 +27,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
 
+from ._lang_extension_map import EXT_TO_LANG
 from .constants import EXCLUDE_DIRS
 
 # Use the shared exclude set so the fingerprint scope matches the graph walkers
@@ -183,6 +184,7 @@ def is_ast_index_stale(project_root: str) -> bool:
     db_path = Path(project_root) / ".ast-cache" / "index.db"
     if not db_path.is_file():
         return False
+    root = Path(project_root)
     try:
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
         try:
@@ -192,16 +194,44 @@ def is_ast_index_stale(project_root: str) -> bool:
     except sqlite3.Error:
         return False
 
+    if not rows:
+        return False
+
+    indexed_paths: set[str] = set()
     for file_path, recorded_mtime_ns in rows:
-        abs_path = (
-            Path(project_root) / file_path
-            if not Path(file_path).is_absolute()
-            else Path(file_path)
-        )
+        abs_path, rel_path = _indexed_abs_and_rel_path(root, str(file_path))
+        indexed_paths.add(rel_path)
         try:
             current_mtime_ns = abs_path.stat().st_mtime_ns
         except OSError:
-            continue
+            return True
         if current_mtime_ns > recorded_mtime_ns:
             return True
+    for rel_path in _walk_supported_source_paths(root):
+        if rel_path not in indexed_paths:
+            return True
     return False
+
+
+def _indexed_abs_and_rel_path(root: Path, file_path: str) -> tuple[Path, str]:
+    path = Path(file_path)
+    abs_path = path if path.is_absolute() else root / path
+    try:
+        rel_path = abs_path.relative_to(root).as_posix()
+    except ValueError:
+        rel_path = path.as_posix()
+    return abs_path, rel_path
+
+
+def _walk_supported_source_paths(root: Path) -> Iterable[str]:
+    """Yield project-relative paths accepted by the AST indexer."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
+        ]
+        for fname in filenames:
+            if fname.startswith("."):
+                continue
+            ext = Path(fname).suffix.lower()
+            if ext in EXT_TO_LANG:
+                yield (Path(dirpath) / fname).relative_to(root).as_posix()
