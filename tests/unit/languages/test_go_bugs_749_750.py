@@ -214,6 +214,40 @@ func (p Pair[A, B]) First() interface{} {
         assert by_name["First"].receiver_type == "Pair"
 
 
+class TestGenericReceiverMultilineAndUnnamed:
+    """Generic receivers may be multiline or omit the receiver variable (#958)."""
+
+    SRC = """\
+package main
+
+type Stack[T any] struct {
+    items []T
+}
+
+func (s *Stack[
+    T,
+]) Clear() {
+    s.items = nil
+}
+
+func (*Stack[T]) Len() int {
+    return 0
+}
+"""
+
+    def test_multiline_generic_receiver_type_strips_type_params(self) -> None:
+        functions = _parse_and_extract(self.SRC)
+        by_name = {f.name: f for f in functions}
+        assert by_name["Clear"].receiver == "s"
+        assert by_name["Clear"].receiver_type == "*Stack"
+
+    def test_unnamed_generic_receiver_keeps_type(self) -> None:
+        functions = _parse_and_extract(self.SRC)
+        by_name = {f.name: f for f in functions}
+        assert by_name["Len"].receiver is None
+        assert by_name["Len"].receiver_type == "*Stack"
+
+
 class TestNonGenericReceiverUnchanged:
     """Existing non-generic receivers must not be affected by the fix."""
 
@@ -277,6 +311,21 @@ class TestExtractMethodReceiverRegex:
         recv, rtype = self._extract("(p Pair[A, B])")
         assert recv == "p"
         assert rtype == "Pair"
+
+    def test_value_generic_multiline(self) -> None:
+        recv, rtype = self._extract("(p Pair[\n    A, B,\n])")
+        assert recv == "p"
+        assert rtype == "Pair"
+
+    def test_unnamed_pointer_generic(self) -> None:
+        recv, rtype = self._extract("(*Stack[T])")
+        assert recv is None
+        assert rtype == "*Stack"
+
+    def test_unnamed_pointer_generic_multiline(self) -> None:
+        recv, rtype = self._extract("(*Stack[\n    T,\n])")
+        assert recv is None
+        assert rtype == "*Stack"
 
     def test_non_generic_pointer_unchanged(self) -> None:
         recv, rtype = self._extract("(c *Counter)")
