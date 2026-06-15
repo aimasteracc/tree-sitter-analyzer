@@ -1,4 +1,4 @@
-# com.example.sample
+# com.example.Sample
 
 ## Info
 | Property | Value |
