@@ -380,6 +380,105 @@ class TestHealthScorer:
                 f"{lang} has too few decision node types"
             )
 
+    def test_bash_scala_have_complexity_node_types(self):
+        """bash/scala must have CC decision + function node types so newly
+        scanned shell/Scala files do not always score a perfect CC=1 100."""
+        from tree_sitter_analyzer.health_scorer import (
+            DECISION_NODE_TYPES,
+            FUNCTION_NODE_TYPES,
+        )
+
+        assert DECISION_NODE_TYPES["bash"] == {
+            "if_statement",
+            "while_statement",
+            "for_statement",
+            "case_statement",
+            "elif_clause",
+        }
+        assert FUNCTION_NODE_TYPES["bash"] == {"function_definition"}
+        assert DECISION_NODE_TYPES["scala"] == {
+            "if_expression",
+            "while_expression",
+            "for_expression",
+            "match_expression",
+            "case_clause",
+        }
+        assert FUNCTION_NODE_TYPES["scala"] == {
+            "function_definition",
+            "function_declaration",
+        }
+
+    def test_swift_has_function_node_types(self):
+        """swift had DECISION_NODE_TYPES but no FUNCTION_NODE_TYPES, so
+        multi-function Swift files skipped per-function CC normalization."""
+        from tree_sitter_analyzer.health_scorer import FUNCTION_NODE_TYPES
+
+        assert FUNCTION_NODE_TYPES["swift"] == {
+            "function_declaration",
+            "init_declaration",
+            "deinit_declaration",
+            "subscript_declaration",
+        }
+
+    def test_bash_complexity_counts_decision_nodes(self, scorer, tmp_path):
+        """A bash function with 11 decision branches must yield CC=11
+        (was CC=1 -> flat 100 before bash node types existed)."""
+        from tree_sitter_analyzer.core.parser import Parser
+        from tree_sitter_analyzer.health_scorer import (
+            DECISION_NODE_TYPES,
+            FUNCTION_NODE_TYPES,
+        )
+
+        sh = tmp_path / "branchy.sh"
+        sh.write_text(
+            "#!/bin/bash\n"
+            "mega() {\n"
+            "  if true; then echo 1; fi\n"
+            "  if true; then echo 2; fi\n"
+            "  if true; then echo 3; fi\n"
+            "  while true; do break; done\n"
+            "  while true; do break; done\n"
+            "  for i in 1 2 3; do echo $i; done\n"
+            "  for j in a b c; do echo $j; done\n"
+            '  case "$x" in 1) echo a;; 2) echo b;; esac\n'
+            "  if true; then echo 4; elif false; then echo 5; fi\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        parser = Parser()
+        result = parser.parse_file(str(sh), "bash")
+        decision = DECISION_NODE_TYPES["bash"]
+        function = FUNCTION_NODE_TYPES["bash"]
+        cc = 1
+        n_funcs = 0
+
+        def walk(node):
+            nonlocal cc, n_funcs
+            if node.type in decision:
+                cc += 1
+            if node.type in function:
+                n_funcs += 1
+            for child in node.children:
+                walk(child)
+
+        walk(result.tree.root_node)
+        assert cc == 11
+        assert n_funcs == 1
+
+    def test_dependencies_neutral_for_unanalyzable_languages(self, tmp_path):
+        """Languages DependencyGraph cannot resolve (bash/scala/swift) must
+        get a NEUTRAL dependency score, not a false-perfect 100."""
+        from tree_sitter_analyzer.health_scorer import score_dependencies
+
+        for name, body in (
+            ("a.sh", "#!/bin/bash\necho hi\n"),
+            ("b.scala", "object M { def f(): Int = 1 }\n"),
+            ("c.swift", "func f() {}\n"),
+        ):
+            f = tmp_path / name
+            f.write_text(body, encoding="utf-8")
+            assert score_dependencies(str(f)) == 50.0
+
     def test_duplication_penalizes_repeated_code(self, scorer, tmp_path):
         """Files with repeated code blocks should have lower duplication score."""
         # High duplication: same block repeated 10 times

@@ -95,6 +95,24 @@ FUNCTION_NODE_TYPES: dict[str, set[str]] = {
     "cpp": {"function_definition"},
     "rust": {"function_item"},
     "ruby": {"method", "singleton_method"},
+    # Swift: DECISION_NODE_TYPES already had a "swift" entry but FUNCTION
+    # types were missing, so multi-function Swift files fell back to
+    # absolute CC thresholds instead of per-function normalization. Node
+    # names verified against tree_sitter_analyzer/languages/_swift_plugin_extractor.py
+    # (function_declaration / init_declaration); deinit / subscript are
+    # real tree-sitter-swift grammar nodes that also carry a code body.
+    "swift": {
+        "function_declaration",
+        "init_declaration",
+        "deinit_declaration",
+        "subscript_declaration",
+    },
+    # bash node names verified by parsing a sample with tree-sitter-bash.
+    "bash": {"function_definition"},
+    # scala node names verified by parsing samples with tree-sitter-scala;
+    # function_definition = concrete (has body), function_declaration =
+    # abstract (trait method, no body).
+    "scala": {"function_definition", "function_declaration"},
 }
 
 
@@ -257,6 +275,22 @@ DECISION_NODE_TYPES: dict[str, set[str]] = {
         "try_statement",
         "do_statement",
     },
+    # bash node names verified by parsing a sample with tree-sitter-bash.
+    "bash": {
+        "if_statement",
+        "while_statement",
+        "for_statement",
+        "case_statement",
+        "elif_clause",
+    },
+    # scala node names verified by parsing samples with tree-sitter-scala.
+    "scala": {
+        "if_expression",
+        "while_expression",
+        "for_expression",
+        "match_expression",
+        "case_clause",
+    },
 }
 
 # Extension → language mapping
@@ -279,8 +313,37 @@ _EXT_TO_LANG: dict[str, str] = {
     ".php": "php",
     ".kt": "kotlin",
     ".swift": "swift",
+    ".swiftinterface": "swift",
     ".cs": "csharp",
+    # bash / scala resolve to a language so that when a caller scores these
+    # files (file_health, or a custom ``source_extensions`` scan) the
+    # complexity/structure dimensions use the real DECISION/FUNCTION node
+    # types above instead of falling back to ``language=None`` (a flat 50).
+    # Note: these are deliberately NOT added to PROJECT_HEALTH_SOURCE_EXTS —
+    # the default project scan stays code-only per CLAUDE.md §4.
+    ".sh": "bash",
+    ".bash": "bash",
+    ".zsh": "bash",
+    ".scala": "scala",
 }
+
+# Languages whose imports ``DependencyGraph`` can actually resolve into
+# file-level edges (mirrors ``project_graph._IMPORT_RESOLVERS``). Files in
+# any OTHER language produce an empty graph result (fan_out == fan_in == 0),
+# which the fan-out/fan-in scoring would read as a *perfect* 100 — a false
+# green for newly-scanned extensions (.sh / .scala / .swift, etc.). For those
+# we return a NEUTRAL score instead of pretending dependencies are clean.
+_DEPENDENCY_ANALYZABLE_LANGS: set[str] = {
+    "python",
+    "javascript",
+    "typescript",
+    "go",
+    "rust",
+    "c",
+    "cpp",
+    "java",
+}
+_NEUTRAL_DEP_SCORE = 50.0
 
 
 @dataclass
@@ -829,7 +892,17 @@ def _score_deps_fallback(file_path: str) -> float:
 
 
 def score_dependencies(file_path: str) -> float:
-    """Score based on real dependency graph (fan-out + fan-in)."""
+    """Score based on real dependency graph (fan-out + fan-in).
+
+    Returns a neutral score for files in a language ``DependencyGraph``
+    cannot analyze (bash / scala / swift / ruby / ...). Those produce an
+    empty graph result, and the fan-out/fan-in branches below would map
+    ``0`` dependencies to a perfect 100 — a false green. A neutral score
+    avoids rewarding "no dependencies we could even detect".
+    """
+    language = _EXT_TO_LANG.get(Path(file_path).suffix.lower())
+    if language is not None and language not in _DEPENDENCY_ANALYZABLE_LANGS:
+        return _NEUTRAL_DEP_SCORE
     try:
         from .project_graph import DependencyGraph
 
