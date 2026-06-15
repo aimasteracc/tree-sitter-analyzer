@@ -243,9 +243,18 @@ class ASTDiffTool(BaseMCPTool):
         # We deliberately don't escalate to REVIEW/CAUTION here — diff
         # severity is the semantic_classify tool's job.
         verdict = "NOT_FOUND" if not result_dict.get("hunks") else "INFO"
+        hunk_count = len(result_dict.get("hunks", []))
+        lang_str = result_dict.get("language", "unknown")
+        agent_summary_line = (
+            f"{hunk_count} AST change(s) in {lang_str}"
+            if hunk_count
+            else f"No AST changes in {lang_str}"
+        )
         response: dict[str, Any] = {
             "success": True,
             "verdict": verdict,
+            "summary_line": agent_summary_line,
+            "agent_summary": agent_summary_line,
             **result_dict,
         }
 

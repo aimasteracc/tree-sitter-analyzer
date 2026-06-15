@@ -155,9 +155,16 @@ class CodeGraphOverviewTool(BaseMCPTool):
         else:
             verdict = "INFO"
 
+        agent_summary_line = (
+            f"{fn_count} functions, {dead_count} dead code entries — "
+            f"{len(entry_points)} entry points, "
+            f"max call depth {depth_dist.get('max_depth', 0)}"
+        )
         result: dict[str, Any] = {
             "success": True,
             "verdict": verdict,
+            "summary_line": agent_summary_line,
+            "agent_summary": agent_summary_line,
             "project_root": self.project_root,
             "summary": {
                 "function_count": summary.get("function_count", 0),
