@@ -13,10 +13,14 @@ _CONTAINER_NODE_TYPES = frozenset(
         "function_definition",
         "decorated_definition",
         "if_statement",
+        "else_clause",
+        "elif_clause",
         "for_statement",
         "while_statement",
         "with_statement",
         "try_statement",
+        "except_clause",
+        "finally_clause",
         "block",
     }
 )
