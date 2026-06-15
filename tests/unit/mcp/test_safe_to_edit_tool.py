@@ -205,8 +205,11 @@ class TestSafeToEditTool:
 
     def test_well_connected_file_has_downstream(self, tool):
         result = _run(tool.execute({"file_path": SERVER_FILE}))
-        # server.py is widely imported, should have downstream
-        assert result["downstream_count"] >= 0
+        # In this temp fixture nothing imports server.py (server.py imports
+        # safe_to_edit_tool.py, not the reverse), so its downstream count is 0.
+        # Pin the exact value: a regression to None/str/negative must go red.
+        assert isinstance(result["downstream_count"], int)
+        assert result["downstream_count"] == 0
 
 
 class TestRiskComputation:
