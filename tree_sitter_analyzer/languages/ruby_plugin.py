@@ -489,13 +489,24 @@ class RubyElementExtractor(ElementExtractor):
             if not left_node:
                 return None
 
+            # #770: only emit real Ruby fields — @ivar, @@cvar, CONSTANT.
+            # Silently drop local identifiers, qualified targets (recv.attr=),
+            # and element-reference targets (recv[key]=).
+            # #902 Codex P2: also allow scope_resolution for scoped constant
+            # assignments such as ``Config::DEFAULT_TIMEOUT = 30``.
+            if left_node.type not in (
+                "instance_variable",
+                "class_variable",
+                "constant",
+                "scope_resolution",
+            ):
+                return None
+
             var_text = self._get_node_text_optimized(left_node)
 
             # Determine variable type
-            is_constant = left_node.type == "constant"
-            # is_instance_var = var_text.startswith("@") and not var_text.startswith("@@")  # Reserved for future use
-            is_class_var = var_text.startswith("@@")
-            # is_global = var_text.startswith("$")  # Reserved for future use
+            is_constant = left_node.type in ("constant", "scope_resolution")
+            is_class_var = left_node.type == "class_variable"
 
             # Clean variable name
             name = var_text.lstrip("@$")

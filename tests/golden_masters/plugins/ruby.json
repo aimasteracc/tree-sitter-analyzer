@@ -3,9 +3,9 @@
     "Class": 5,
     "Function": 33,
     "Import": 3,
-    "Variable": 16
+    "Variable": 12
   },
-  "element_total": 57,
+  "element_total": 53,
   "names_by_type": {
     "Class": [
       "AdminUser",
@@ -59,15 +59,11 @@
       "created_at",
       "database",
       "email",
-      "format_username",
       "instance_count",
       "last_login_at",
-      "log_action",
       "password_hash",
       "permissions",
-      "user",
-      "username",
-      "validate_email"
+      "username"
     ]
   },
   "types": [
