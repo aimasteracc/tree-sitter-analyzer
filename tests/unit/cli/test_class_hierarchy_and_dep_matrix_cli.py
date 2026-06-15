@@ -316,3 +316,31 @@ def test_dependency_matrix_file_cli(monkeypatch) -> None:
     assert result == 0
     assert seen["arguments"]["mode"] == "file"
     assert seen["arguments"]["file_path"] == "src/parser.py"
+
+
+def test_symbol_search_empty_string_returns_error_not_file_path_fallback() -> None:
+    """#738: --symbol-search "" must emit a clean validation error, not 'File path not specified'."""
+    errors: list[str] = []
+    result = mcp_commands.handle_mcp_commands(
+        _args(symbol_search=""),
+        lambda payload: None,
+        errors.append,
+        lambda: "json",
+    )
+    assert result == 1
+    assert len(errors) == 1
+    assert "symbol" in errors[0].lower() or "query" in errors[0].lower()
+    assert "file" not in errors[0].lower()
+
+
+def test_symbol_search_whitespace_only_returns_error() -> None:
+    """#738: --symbol-search '   ' is treated the same as empty."""
+    errors: list[str] = []
+    result = mcp_commands.handle_mcp_commands(
+        _args(symbol_search="   "),
+        lambda payload: None,
+        errors.append,
+        lambda: "json",
+    )
+    assert result == 1
+    assert len(errors) == 1
