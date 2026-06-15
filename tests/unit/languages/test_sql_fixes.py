@@ -370,3 +370,139 @@ class TestFillMissingTablesSchemaDeduplciation:
         fill_missing_sql_tables_from_regex(sql, elements)
         tables = [e for e in elements if isinstance(e, SQLTable)]
         assert len(tables) == 1
+
+
+# ---------------------------------------------------------------------------
+# Bug #881 — _CREATE_TABLE_RE misses quoted identifiers
+# ---------------------------------------------------------------------------
+
+
+class TestQuotedTableNameRegex:
+    """#881: regex fallback must match ANSI, MySQL, and SQL Server quoted table names."""
+
+    def test_ansi_double_quoted_name_extracted(self):
+        """ANSI SQL: CREATE TABLE "Order Details" (...) must be recovered."""
+        sql = 'CREATE TABLE "Order Details" (id INT, name TEXT);\n'
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        assert tables[0].name == "Order Details"
+
+    def test_mysql_backtick_quoted_name_extracted(self):
+        """MySQL style: CREATE TABLE `order details` (...) must be recovered."""
+        sql = "CREATE TABLE `order details` (id INT, qty INT);\n"
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        assert tables[0].name == "order details"
+
+    def test_sql_server_bracket_quoted_name_extracted(self):
+        """SQL Server: CREATE TABLE [Order Details] (...) must be recovered."""
+        sql = "CREATE TABLE [Order Details] (id INT);\n"
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        assert tables[0].name == "Order Details"
+
+    def test_quoted_schema_plus_quoted_table(self):
+        """ANSI: CREATE TABLE "my schema"."my table" (...) — both stripped."""
+        sql = 'CREATE TABLE "dbo"."Order Details" (id INT);\n'
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        assert tables[0].name == "Order Details"
+        assert tables[0].schema_name == "dbo"
+
+    def test_bare_identifier_still_works_after_regex_change(self):
+        """Regression: bare CREATE TABLE orders (...) still extracted."""
+        sql = "CREATE TABLE orders (id INT, total DECIMAL(10,2));\n"
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        assert tables[0].name == "orders"
+
+
+# ---------------------------------------------------------------------------
+# Bug #880 — fill_missing_sql_tables_from_regex creates SQLTable without columns
+# ---------------------------------------------------------------------------
+
+
+class TestRegexFallbackColumnsPopulated:
+    """#880: regex-recovered tables must have their columns populated, not empty."""
+
+    def test_recovered_table_has_correct_column_count(self):
+        """A 3-column table recovered via regex fallback must yield 3 columns."""
+        sql = (
+            "CREATE TABLE products (id INT NOT NULL, name TEXT, price DECIMAL(10,2));\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        assert len(tables[0].columns) == 3
+
+    def test_recovered_table_column_names(self):
+        """Column names must match the original DDL."""
+        sql = (
+            "CREATE TABLE products (id INT NOT NULL, name TEXT, price DECIMAL(10,2));\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        col_names = [c.name for c in tables[0].columns]
+        assert col_names == ["id", "name", "price"]
+
+    def test_recovered_table_column_types(self):
+        """Column data types must be captured."""
+        sql = (
+            "CREATE TABLE products (id INT NOT NULL, name TEXT, price DECIMAL(10,2));\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        col_types = [c.data_type.upper() for c in tables[0].columns]
+        assert col_types[0] == "INT"
+        assert col_types[1] == "TEXT"
+
+    def test_not_null_constraint_captured(self):
+        """NOT NULL constraint on a recovered column must set nullable=False."""
+        sql = "CREATE TABLE users (id INT NOT NULL, email TEXT);\n"
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        id_col = next((c for c in tables[0].columns if c.name == "id"), None)
+        assert id_col is not None
+        assert id_col.nullable is False
+
+    def test_table_without_column_list_has_empty_columns(self):
+        """AS SELECT form produces 0 columns (no column-list body)."""
+        sql = "CREATE TABLE archive AS SELECT * FROM users;\n"
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        assert len(tables[0].columns) == 0
+
+    def test_primary_key_constraint_line_excluded_from_columns(self):
+        """PRIMARY KEY constraint lines must not produce spurious columns."""
+        sql = (
+            "CREATE TABLE orders (\n"
+            "  id INT NOT NULL,\n"
+            "  total DECIMAL(10,2),\n"
+            "  PRIMARY KEY (id)\n"
+            ");\n"
+        )
+        elements: list[Any] = []
+        fill_missing_sql_tables_from_regex(sql, elements)
+        tables = [e for e in elements if isinstance(e, SQLTable)]
+        assert len(tables) == 1
+        col_names = [c.name for c in tables[0].columns]
+        assert col_names == ["id", "total"]
