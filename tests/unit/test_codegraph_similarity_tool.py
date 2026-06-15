@@ -214,3 +214,157 @@ class TestFacadeIncludeBodiesSurvivesRouting:
                 assert "snippet" not in func, (
                     "snippet must not appear in facade default (summary) response"
                 )
+
+
+# ---------------------------------------------------------------------------
+# Issue #801 — bounding params + compact cap + type coercion
+# ---------------------------------------------------------------------------
+
+
+def _large_group_fixture_body() -> str:
+    """Generate 15 structurally identical 5-line functions for cap tests."""
+    parts = []
+    for i in range(15):
+        parts.append(
+            f"def func_{i:02d}(x):\n"
+            "    if x > 0:\n"
+            "        y = x * 2\n"
+            "        z = y + 1\n"
+            "        return z\n"
+            "    return 0\n\n"
+        )
+    return "".join(parts)
+
+
+@pytest.fixture
+def tool_with_large_group(tmp_path):
+    """Project with 15 structurally identical functions in one file."""
+    (tmp_path / "large.py").write_text(_large_group_fixture_body())
+    return CodeSimilarityTool(str(tmp_path))
+
+
+@pytest.mark.asyncio
+class TestBoundingParams801:
+    """Issue #801 — max_groups / functions-cap / type coercion."""
+
+    async def test_max_groups_limits_output(self, tool_with_clones):
+        """max_groups=1 must limit the groups list to exactly 1 entry."""
+        result = await tool_with_clones.execute(
+            {"output_format": "json", "max_groups": 1}
+        )
+        assert result["success"] is True
+        assert len(result["groups"]) == 1
+
+    async def test_max_groups_string_coercion(self, tool_with_clones):
+        """max_groups passed as a string (MCP transport) must be coerced to int."""
+        result = await tool_with_clones.execute(
+            {"output_format": "json", "max_groups": "1"}
+        )
+        assert result["success"] is True
+        assert len(result["groups"]) == 1
+
+    async def test_min_lines_string_coercion(self, tool_with_clones):
+        """min_lines passed as string must not crash — coerced to int."""
+        result = await tool_with_clones.execute(
+            {"output_format": "json", "min_lines": "5"}
+        )
+        assert result["success"] is True
+
+    async def test_min_group_size_string_coercion(self, tool_with_clones):
+        """min_group_size passed as string must not crash — coerced to int."""
+        result = await tool_with_clones.execute(
+            {"output_format": "json", "min_group_size": "2"}
+        )
+        assert result["success"] is True
+
+    async def test_compact_large_group_capped_at_10(self, tool_with_large_group):
+        """Compact mode (include_bodies=False) must cap functions[] to 10 entries."""
+        result = await tool_with_large_group.execute({"output_format": "json"})
+        assert result["success"] is True
+        groups = result["groups"]
+        assert (
+            len(groups) == 2
+        )  # 15 identical funcs → 1 structural + 1 textual clone group
+        for group in groups:
+            funcs = group["functions"]
+            assert len(funcs) == 10, (
+                f"Expected exactly 10 functions (capped); got {len(funcs)}"
+            )
+            assert group.get("truncated") is True, (
+                "truncated flag must be True when functions[] was capped"
+            )
+
+    async def test_include_bodies_true_not_capped(self, tool_with_large_group):
+        """include_bodies=True must NOT cap functions[] — all 15 returned."""
+        result = await tool_with_large_group.execute(
+            {"output_format": "json", "include_bodies": True}
+        )
+        assert result["success"] is True
+        groups = result["groups"]
+        assert (
+            len(groups) == 2
+        )  # 15 identical funcs → 1 structural + 1 textual clone group
+        max_funcs = max(len(g["functions"]) for g in groups)
+        assert max_funcs == 15, (
+            f"include_bodies=True should return all 15 functions; got max={max_funcs}"
+        )
+
+    async def test_no_truncated_flag_when_under_10(self, tool_with_clones):
+        """When group has <= 10 functions, truncated flag must be absent or False."""
+        result = await tool_with_clones.execute({"output_format": "json"})
+        assert result["success"] is True
+        for group in result["groups"]:
+            assert not group.get("truncated"), (
+                "truncated must not be set when functions count <= 10"
+            )
+
+
+class TestFacadeSchemaExposesSimilarityParams801:
+    """Issue #801 — similarity bounding params must be discoverable in the viz facade schema."""
+
+    def test_viz_facade_schema_exposes_max_groups(self):
+        """max_groups must appear in the viz facade's public schema."""
+        from tree_sitter_analyzer.mcp.tools.viz_facade import build_viz_facade
+
+        facade = build_viz_facade(project_root=None)
+        schema = facade.get_tool_schema()
+        assert "max_groups" in schema["properties"], (
+            "max_groups must be in viz facade schema for agent discoverability"
+        )
+
+    def test_viz_facade_schema_exposes_min_lines(self):
+        """min_lines must appear in the viz facade's public schema."""
+        from tree_sitter_analyzer.mcp.tools.viz_facade import build_viz_facade
+
+        facade = build_viz_facade(project_root=None)
+        schema = facade.get_tool_schema()
+        assert "min_lines" in schema["properties"], (
+            "min_lines must be in viz facade schema for agent discoverability"
+        )
+
+    def test_viz_facade_schema_exposes_min_group_size(self):
+        """min_group_size must appear in the viz facade's public schema."""
+        from tree_sitter_analyzer.mcp.tools.viz_facade import build_viz_facade
+
+        facade = build_viz_facade(project_root=None)
+        schema = facade.get_tool_schema()
+        assert "min_group_size" in schema["properties"], (
+            "min_group_size must be in viz facade schema for agent discoverability"
+        )
+
+
+@pytest.mark.asyncio
+class TestFacadeRoutesSimilarityParams801:
+    """Issue #801 — similarity params must route through the viz facade correctly."""
+
+    async def test_max_groups_via_facade(self, tmp_path):
+        """max_groups=1 passed via viz facade must limit groups to exactly 1."""
+        from tree_sitter_analyzer.mcp.tools.viz_facade import build_viz_facade
+
+        (tmp_path / "a.py").write_text(_large_group_fixture_body())
+        facade = build_viz_facade(str(tmp_path))
+        result = await facade.execute(
+            {"action": "similarity", "output_format": "json", "max_groups": 1}
+        )
+        assert result["success"] is True
+        assert len(result["groups"]) == 1

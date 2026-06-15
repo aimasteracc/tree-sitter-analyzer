@@ -115,9 +115,10 @@ class CodeGraphSimilarityTool(BaseMCPTool):
             }
 
         mode = arguments.get("mode", "all")
-        min_lines = arguments.get("min_lines", 5)
-        min_group_size = arguments.get("min_group_size", 2)
-        max_groups = arguments.get("max_groups", 20)
+        # Coerce int params — MCP transport may deliver them as strings (#801).
+        min_lines = int(arguments.get("min_lines", 5))
+        min_group_size = int(arguments.get("min_group_size", 2))
+        max_groups = int(arguments.get("max_groups", 20))
         use_cache = arguments.get("use_cache", True)
         include_bodies = arguments.get("include_bodies", False)
         output_format = arguments.get("output_format", "toon")
@@ -148,12 +149,26 @@ class CodeGraphSimilarityTool(BaseMCPTool):
         else:
             verdict = "CAUTION"
 
+        # Cap functions[] per group in compact mode to prevent token overflow (#801).
+        # include_bodies=True is opt-in for large output; compact default must stay bounded.
+        _COMPACT_FUNCTIONS_CAP = 10
+
+        def _group_to_dict(group: Any) -> dict[str, Any]:
+            d: dict[str, Any] = group.to_dict(include_bodies=include_bodies)
+            if (
+                not include_bodies
+                and len(d.get("functions", [])) > _COMPACT_FUNCTIONS_CAP
+            ):
+                d["functions"] = d["functions"][:_COMPACT_FUNCTIONS_CAP]
+                d["truncated"] = True
+            return d
+
         response: dict[str, Any] = {
             "success": True,
             "verdict": verdict,
             "project_root": self.project_root,
             "stats": result.stats,
-            "groups": [g.to_dict(include_bodies=include_bodies) for g in result.groups],
+            "groups": [_group_to_dict(g) for g in result.groups],
         }
 
         from ..utils.format_helper import apply_toon_format_to_response
