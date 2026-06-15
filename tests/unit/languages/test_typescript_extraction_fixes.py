@@ -337,3 +337,78 @@ def test_enum_kind_is_available_in_symbol_search_filters() -> None:
     from tree_sitter_analyzer.mcp.tools.symbol_search_tool import SYMBOL_SEARCH_KINDS
 
     assert "enum" in SYMBOL_SEARCH_KINDS
+
+
+# ---------------------------------------------------------------------------
+# #975 — enum member split must respect quoted / parenthesised commas
+#   _enum_members_from_raw_text split the raw body on every ',', so a comma
+#   inside a quoted string value (or a call-expr value) fabricated a phantom
+#   member from the value text. e.g. { A = "x,y", B } returned ['A','y','B'].
+# ---------------------------------------------------------------------------
+
+
+def test_enum_members_phantom_from_quoted_comma() -> None:
+    """A comma inside a quoted value must NOT fabricate a phantom member."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _enum_members_from_raw_text,
+    )
+
+    assert _enum_members_from_raw_text('A = "x,y", B = "z"') == ["A", "B"]
+
+
+def test_enum_members_phantom_from_call_expr_comma() -> None:
+    """A comma inside a call-expression value must NOT fabricate a member."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _enum_members_from_raw_text,
+    )
+
+    assert _enum_members_from_raw_text("A = f(1, 2), B") == ["A", "B"]
+
+
+def test_enum_members_plain_string_values_regression() -> None:
+    """Common string-valued enum still splits correctly."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+        _enum_members_from_raw_text,
+    )
+
+    assert _enum_members_from_raw_text(
+        '{ Active = "active", Inactive = "inactive" }'
+    ) == ["Active", "Inactive"]
+
+
+def test_enum_export_surface_no_phantom_member() -> None:
+    """End-to-end through get_all_exports: quoted comma must not add a member."""
+    from tree_sitter_analyzer.mcp.tools.utils.element_extractor import get_all_exports
+    from tree_sitter_analyzer.models import AnalysisResult
+
+    code = 'export enum E { A = "x,y", B = "z" }'
+    result = AnalysisResult(
+        file_path="e.ts",
+        language="typescript",
+        elements=_classes(code),
+        source_code=code,
+    )
+    enum_export = next(e for e in get_all_exports(result) if e["name"] == "E")
+    assert enum_export["members"] == ["A", "B"]
+
+
+# ---------------------------------------------------------------------------
+# #975 (P3) — is_exported_class re-export form must tolerate spacing/multi-name
+# ---------------------------------------------------------------------------
+
+
+def test_reexport_no_inner_spaces() -> None:
+    code = "class Local {}\nexport {Local}\n"
+    assert {c.name: c for c in _classes(code)}["Local"].is_exported is True
+
+
+def test_reexport_multi_name() -> None:
+    code = "class Local {}\nclass Other {}\nexport { Local, Other }\n"
+    by_name = {c.name: c for c in _classes(code)}
+    assert by_name["Local"].is_exported is True
+    assert by_name["Other"].is_exported is True
+
+
+def test_reexport_aliased() -> None:
+    code = "class Local {}\nexport { Local as Foo }\n"
+    assert {c.name: c for c in _classes(code)}["Local"].is_exported is True

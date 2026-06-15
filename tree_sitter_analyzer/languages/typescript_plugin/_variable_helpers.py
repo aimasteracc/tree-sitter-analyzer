@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeAlias
@@ -157,8 +158,28 @@ def is_exported_class(class_name: str, source_code: str) -> bool:
             f"export {prefix} {class_name}" in source_code for prefix in export_prefixes
         )
         or f"export default {class_name}" in source_code
-        or f"export {{ {class_name} }}" in source_code
+        or _is_named_reexport(class_name, source_code)
     )
+
+
+def _is_named_reexport(class_name: str, source_code: str) -> bool:
+    """Detect ``export { ... }`` re-export of ``class_name``.
+
+    Matches the name as a whole word inside any ``export { ... }`` block,
+    tolerating inner spacing (``export {Local}``), multiple names
+    (``export { Local, Other }``), and aliases (``export { Local as Foo }``).
+    The name is matched on its own (word-boundary) so ``Local`` does not match
+    ``LocalThing``; an aliased name matches the LHS only (``{ Local as Foo }``
+    exports ``Local``, not ``Foo``).
+    """
+    pattern = r"export\s*\{[^}]*\b" + re.escape(class_name) + r"\b(?!\s+as\s)[^}]*\}"
+    if re.search(pattern, source_code):
+        return True
+    # Aliased form: `{ Local as Foo }` — class_name is the LHS of `as`.
+    alias_pattern = (
+        r"export\s*\{[^}]*\b" + re.escape(class_name) + r"\s+as\s+\w+[^}]*\}"
+    )
+    return bool(re.search(alias_pattern, source_code))
 
 
 def infer_type_from_value(value: str | None) -> str:

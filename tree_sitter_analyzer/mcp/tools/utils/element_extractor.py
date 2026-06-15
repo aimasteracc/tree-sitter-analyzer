@@ -187,12 +187,53 @@ def get_all_exports(result: AnalysisResult) -> list[dict[str, Any]]:
     return exports
 
 
+def _split_top_level_commas(body: str) -> list[str]:
+    """Split ``body`` on commas that are NOT inside quotes or brackets.
+
+    Respects single/double/backtick string literals (with backslash escapes)
+    and ``()``/``[]``/``{}`` nesting, so a comma inside a quoted value
+    (``A = "x,y"``) or a call-expression value (``A = f(1, 2)``) does not
+    fabricate a phantom member. Returns the raw top-level segments.
+    """
+    segments: list[str] = []
+    current: list[str] = []
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for ch in body:
+        if quote is not None:
+            current.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"', "`"):
+            quote = ch
+            current.append(ch)
+        elif ch in ("(", "[", "{"):
+            depth += 1
+            current.append(ch)
+        elif ch in (")", "]", "}"):
+            if depth > 0:
+                depth -= 1
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            segments.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    segments.append("".join(current))
+    return segments
+
+
 def _enum_members_from_raw_text(raw_text: str) -> list[str]:
     body_match = re.search(r"\{(?P<body>.*)\}", raw_text, flags=re.DOTALL)
-    if not body_match:
-        return []
+    body = body_match.group("body") if body_match else raw_text
     members: list[str] = []
-    for part in body_match.group("body").split(","):
+    for part in _split_top_level_commas(body):
         candidate = part.split("=", 1)[0].strip()
         if not candidate:
             continue
