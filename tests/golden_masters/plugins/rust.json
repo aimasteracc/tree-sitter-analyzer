@@ -4,9 +4,9 @@
     "Function": 9,
     "Import": 1,
     "Package": 1,
-    "Variable": 6
+    "Variable": 10
   },
-  "element_total": 22,
+  "element_total": 26,
   "names_by_type": {
     "Class": [
       "BorrowedItem",
@@ -31,6 +31,10 @@
       "sample_module"
     ],
     "Variable": [
+      "Admin",
+      "Guest",
+      "Moderator",
+      "User",
       "active",
       "email",
       "id",
