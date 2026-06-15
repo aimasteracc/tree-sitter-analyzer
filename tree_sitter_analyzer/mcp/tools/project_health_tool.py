@@ -261,8 +261,17 @@ def _build_project_health_result(
     from .base_tool import mirror_summary_line
 
     agg = _compute_project_health_aggregates(all_scores, min_grade, max_files)
+    # Bug #783 fix: compute verdict once from the grade distribution and set it
+    # at the top level explicitly so top-level verdict and agent_summary.verdict
+    # are guaranteed to agree. Previously the top-level verdict was populated
+    # solely by mirror_summary_line() which only runs when one side was missing;
+    # if both were already set (e.g. by the canonical envelope hook) and they
+    # happened to differ, neither side was updated.
+    risk = _project_risk(agg.grade_distribution)
+    verdict = _project_risk_to_verdict(risk)
     payload: dict[str, Any] = {
         "success": True,
+        "verdict": verdict,
         "project_root": root,
         "total_files": len(all_scores),
         "matching_file_count": len(agg.worst),

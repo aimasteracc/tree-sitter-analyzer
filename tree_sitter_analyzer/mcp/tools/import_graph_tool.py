@@ -195,6 +195,18 @@ class CodeGraphImportGraphTool(BaseMCPTool):
                 "success": True,
                 "verdict": "CAUTION" if graph_result.cycles else "INFO",
                 "mode": "cycles",
+                # Bug #784 fix: surface the detection scope so agents understand
+                # why this count may differ from ``health action=deps mode=cycles``.
+                # This tool walks the *ImportGraph* (ast_cache-backed, module-path
+                # resolved import chains).  ``health action=deps mode=cycles`` walks
+                # the *file-level DependencyGraph* (different edge types, different
+                # resolution).  Neither count is wrong; they measure different things.
+                "scope": "import_resolution_graph",
+                "scope_note": (
+                    "Counts cycles in the import-resolution graph. "
+                    "Use health action=deps mode=cycles for file-dependency cycles "
+                    "(different graph, legitimately different count)."
+                ),
                 "cycle_count": len(graph_result.cycles),
                 "cycles": graph_result.cycles,
             }
