@@ -123,7 +123,9 @@ class TestMCPResponseEnvelopeOnPerFileError:
         details = result.get("details", [])
         error_details = [d for d in details if d.get("status") == "error"]
         assert len(error_details) == 1
-        assert "pathological" in error_details[0]["file"]
+        # Exact path — substring match would pass if only a basename is returned,
+        # hiding loss of directory attribution (the core regression in #806).
+        assert error_details[0]["file"] == "src/pathological.py"
 
     async def test_response_error_detail_has_exception_type(self, mcp_tool, project):
         """Error detail must carry error_type=RecursionError (Issue #806)."""
@@ -220,3 +222,38 @@ class TestMCPOuterExceptionSurface:
 
         error_msg = result.get("error", "")
         assert "RuntimeError" in error_msg
+
+
+# ---------------------------------------------------------------------------
+# TOON default path: error attribution must survive TOON formatting (#806)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestMCPResponseEnvelopeOnPerFileErrorToon:
+    """Issue #806: per-file error detail must be visible in the default TOON path."""
+
+    async def test_toon_response_toon_content_contains_error_path(
+        self, mcp_tool, project
+    ):
+        """Default TOON format must preserve the failing file path in toon_content."""
+        controlled_result = _make_sync_result_with_one_error()
+
+        with patch.object(IncrementalSync, "sync", return_value=controlled_result):
+            # no output_format → defaults to TOON (the MCP default)
+            result = await mcp_tool.execute({"mode": "sync", "max_files": 100})
+
+        assert result.get("format") == "toon"
+        toon_content = result.get("toon_content", "")
+        # The failing file path must appear in the textual TOON summary so MCP
+        # callers that read toon_content can identify which file errored.
+        assert "pathological.py" in toon_content
+
+    async def test_toon_response_errors_field_surfaced(self, mcp_tool, project):
+        """errors=1 must be present in the TOON envelope (not stripped)."""
+        controlled_result = _make_sync_result_with_one_error()
+
+        with patch.object(IncrementalSync, "sync", return_value=controlled_result):
+            result = await mcp_tool.execute({"mode": "sync", "max_files": 100})
+
+        assert result.get("errors") == 1
