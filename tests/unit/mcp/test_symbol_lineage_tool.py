@@ -239,6 +239,7 @@ class TestInheritanceLineage:
         second = asyncio.run(tool.execute({"symbol": "Base", "output_format": "json"}))
         assert second["hierarchy"]["subclass_count"] == 1
 
+    @pytest.mark.slow_ok  # ASTCache.index_project on Windows I/O exceeds 5s budget
     def test_hierarchy_degrades_to_none_on_error(self, tool, tmp_path, monkeypatch):
         # A ClassHierarchy failure (e.g. corrupt cache) must degrade to no
         # hierarchy, never crash the lineage call.
