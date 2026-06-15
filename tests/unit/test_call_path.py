@@ -10,6 +10,7 @@ from tree_sitter_analyzer.call_path import (
     CallPathFinder,
     CallPathResult,
     _files_in_chain,
+    _path_signature,
 )
 from tree_sitter_analyzer.graph.edge_store import EdgeKind, symbol_node
 
@@ -508,6 +509,98 @@ _FOUR_HOP_EDGES = [
 ]
 
 
+# #968: two chains differing ONLY by the file of the intermediate ``worker``:
+#   s.py:s -> pkg1.py:worker -> t.py:t
+#   s.py:s -> pkg2.py:worker -> t.py:t
+# A name-only signature collapses both to (s,worker),(worker,t) and drops one.
+_DISTINCT_BY_FILE_EDGES = [
+    {
+        "caller_name": "s",
+        "caller_file": "s.py",
+        "callee_name": "worker",
+        "callee_resolved_file": "pkg1.py",
+    },
+    {
+        "caller_name": "s",
+        "caller_file": "s.py",
+        "callee_name": "worker",
+        "callee_resolved_file": "pkg2.py",
+    },
+    {
+        "caller_name": "worker",
+        "caller_file": "pkg1.py",
+        "callee_name": "t",
+        "callee_resolved_file": "t.py",
+    },
+    {
+        "caller_name": "worker",
+        "caller_file": "pkg2.py",
+        "callee_name": "t",
+        "callee_resolved_file": "t.py",
+    },
+]
+
+
+class TestPathSignatureFileAware:
+    """#968: dedup signature must distinguish chains by node file identity."""
+
+    def test_same_names_different_file_have_distinct_signatures(self):
+        chain_via_pkg1 = [
+            {
+                "caller": "s",
+                "caller_file": "s.py",
+                "callee": "worker",
+                "callee_file": "pkg1.py",
+            },
+            {
+                "caller": "worker",
+                "caller_file": "pkg1.py",
+                "callee": "t",
+                "callee_file": "t.py",
+            },
+        ]
+        chain_via_pkg2 = [
+            {
+                "caller": "s",
+                "caller_file": "s.py",
+                "callee": "worker",
+                "callee_file": "pkg2.py",
+            },
+            {
+                "caller": "worker",
+                "caller_file": "pkg2.py",
+                "callee": "t",
+                "callee_file": "t.py",
+            },
+        ]
+        assert _path_signature(chain_via_pkg1) != _path_signature(chain_via_pkg2)
+
+    def test_identical_chains_share_signature(self):
+        chain = [
+            {
+                "caller": "s",
+                "caller_file": "s.py",
+                "callee": "worker",
+                "callee_file": "pkg1.py",
+            },
+        ]
+        assert _path_signature(list(chain)) == _path_signature(list(chain))
+
+
+class TestBidirectionalDistinctByFile:
+    """#968: distinct-by-file chains must both survive the bidirectional BFS."""
+
+    def test_two_chains_differing_only_by_intermediate_file_preserved(self, tmp_path):
+        cache = _make_cache_with_edges(tmp_path, _DISTINCT_BY_FILE_EDGES)
+        finder = CallPathFinder(str(tmp_path), cache=cache)
+        result = finder.find_path("s", "t", direction="bidirectional")
+        assert result.data_source == "sql"
+        # Both worker-via-pkg1 and worker-via-pkg2 chains are kept.
+        assert len(result.paths) == 2
+        intermediate_files = sorted(p.hops[0]["callee_file"] for p in result.paths)
+        assert intermediate_files == ["pkg1.py", "pkg2.py"]
+
+
 class TestBidirectionalMeetingOrder:
     """#951: forward-side meetings must reconstruct in caller->callee order."""
 
@@ -535,9 +628,49 @@ class TestBidirectionalMeetingOrder:
 
 
 class TestFallbackBackwardGate:
-    """#951: parse-fallback backward search runs only when forward found none."""
+    """#968: parse-fallback backward pass runs and is merged with signature dedup.
 
-    def test_bidirectional_fallback_no_duplicate_when_forward_succeeds(self, tmp_path):
+    The earlier gate (#951) skipped backward entirely once forward found any path,
+    which dropped genuinely-distinct chains the forward pass missed because
+    ``_bfs_graph_core`` marks intermediate states visited.  Backward now runs, but
+    its chains are merged only when their (file-aware) signature is new, so an
+    identical chain re-found by both directions is still recorded exactly once.
+    """
+
+    def test_bidirectional_fallback_backward_duplicate_deduped(self, tmp_path):
+        from tree_sitter_analyzer.call_graph import CallGraph
+
+        graph = CallGraph(str(tmp_path))
+        graph.build = lambda: None  # type: ignore[method-assign]
+        finder = CallPathFinder(str(tmp_path), cache=None)
+
+        same_hop = [
+            {"caller": "s", "caller_file": "a.py", "callee": "t", "callee_file": "b.py"}
+        ]
+
+        def fake_forward(g, *a):  # noqa: ANN001, ANN002
+            paths = a[-1]
+            paths.append(CallChain(hops=list(same_hop), total_hops=1, files_crossed=2))
+
+        def fake_backward(g, *a):  # noqa: ANN001, ANN002
+            # Backward re-discovers the SAME chain (identical signature).
+            paths = a[-1]
+            paths.append(CallChain(hops=list(same_hop), total_hops=1, files_crossed=2))
+
+        finder._bfs_graph_forward = fake_forward  # type: ignore[assignment]
+        finder._bfs_graph_backward = fake_backward  # type: ignore[assignment]
+        import unittest.mock as _m
+
+        with _m.patch.object(
+            __import__("tree_sitter_analyzer.call_graph", fromlist=["CallGraph"]),
+            "CallGraph",
+            return_value=graph,
+        ):
+            result = finder._fallback_graph("s", "t", None, None, 6, 5, "bidirectional")
+        # Same chain found by both passes → recorded exactly once.
+        assert len(result.paths) == 1
+
+    def test_bidirectional_fallback_backward_adds_distinct_chain(self, tmp_path):
         from tree_sitter_analyzer.call_graph import CallGraph
 
         graph = CallGraph(str(tmp_path))
@@ -548,15 +681,39 @@ class TestFallbackBackwardGate:
             paths = a[-1]
             paths.append(
                 CallChain(
-                    hops=[{"caller": "s", "callee": "t"}], total_hops=1, files_crossed=1
+                    hops=[
+                        {
+                            "caller": "s",
+                            "caller_file": "a.py",
+                            "callee": "t",
+                            "callee_file": "b.py",
+                        }
+                    ],
+                    total_hops=1,
+                    files_crossed=2,
                 )
             )
 
-        def fail_backward(*a, **k):  # noqa: ANN002, ANN003
-            raise AssertionError("backward must not run when forward found paths")
+        def fake_backward(g, *a):  # noqa: ANN001, ANN002
+            # Backward finds a DISTINCT chain the forward pass missed.
+            paths = a[-1]
+            paths.append(
+                CallChain(
+                    hops=[
+                        {
+                            "caller": "s",
+                            "caller_file": "a.py",
+                            "callee": "t",
+                            "callee_file": "c.py",
+                        }
+                    ],
+                    total_hops=1,
+                    files_crossed=2,
+                )
+            )
 
         finder._bfs_graph_forward = fake_forward  # type: ignore[assignment]
-        finder._bfs_graph_backward = fail_backward  # type: ignore[assignment]
+        finder._bfs_graph_backward = fake_backward  # type: ignore[assignment]
         import unittest.mock as _m
 
         with _m.patch.object(
@@ -565,4 +722,5 @@ class TestFallbackBackwardGate:
             return_value=graph,
         ):
             result = finder._fallback_graph("s", "t", None, None, 6, 5, "bidirectional")
-        assert len(result.paths) == 1
+        # Distinct chain (differs by callee_file) is preserved, not dropped.
+        assert len(result.paths) == 2
