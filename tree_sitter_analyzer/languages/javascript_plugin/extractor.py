@@ -187,6 +187,54 @@ class JavaScriptElementExtractor(
             log_debug(f"Failed to extract property info: {e}")
             return None
 
+    def _extract_field_definition_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Variable | None:
+        """Extract class field declaration (public and private, not arrow methods)."""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            field_name = None
+            field_value = None
+            has_arrow_value = False
+            is_static = False
+
+            for child in node.children:
+                if child.type in ("property_identifier", "private_property_identifier"):
+                    field_name = self._get_node_text_optimized(child)
+                elif child.type == "static":
+                    is_static = True
+                elif child.type == "arrow_function":
+                    has_arrow_value = True
+                elif child.type in ("string", "number", "true", "false", "null"):
+                    field_value = self._get_node_text_optimized(child)
+
+            # Arrow function class fields are captured in the function extraction pass
+            # (via field_definition in container_node_types + _arrow_function_name fix).
+            if has_arrow_value:
+                return None
+
+            if not field_name:
+                return None
+
+            raw_text = self._get_node_text_optimized(node)
+
+            return Variable(
+                name=field_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="javascript",
+                variable_type=self._infer_type_from_value(field_value),
+                is_static=is_static,
+                is_constant=False,
+                initializer=field_value,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract field definition: {e}")
+            return None
+
     def _extract_variables_from_declaration(
         self, node: "tree_sitter.Node", kind: str
     ) -> list[Variable]:

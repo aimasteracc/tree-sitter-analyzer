@@ -304,12 +304,16 @@ def _raw_text_for_lines(
 
 def _arrow_function_name(node: tree_sitter.Node, get_node_text: TextExtractor) -> str:
     parent = node.parent
-    if not parent or parent.type != "variable_declarator":
+    if not parent:
         return "anonymous"
-
-    for child in parent.children:
-        if child.type == "identifier":
-            return get_node_text(child)
+    if parent.type == "variable_declarator":
+        for child in parent.children:
+            if child.type == "identifier":
+                return get_node_text(child)
+    elif parent.type == "field_definition":
+        for child in parent.children:
+            if child.type in ("property_identifier", "private_property_identifier"):
+                return get_node_text(child)
     return "anonymous"
 
 
