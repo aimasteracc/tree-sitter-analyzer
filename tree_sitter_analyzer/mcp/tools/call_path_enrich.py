@@ -30,7 +30,7 @@ import os
 import sqlite3
 from typing import Any
 
-from ..._language_family import languages_compatible
+from ..._language_family import language_from_path, languages_compatible
 from ._codegraph_explore_helpers import extract_snippet_from_lines, read_file_lines
 
 # ---------------------------------------------------------------------------
@@ -287,8 +287,17 @@ def inline_path_bodies(
     budget = [MAX_TOTAL_BODY_LINES]
     bodies: list[dict[str, Any]] = []
     any_truncated = False
+
+    # Derive a dominant language from the path's known files so that a
+    # missing-file source symbol (e.g. 'execute' with no caller_file) does not
+    # fall back to a same-named symbol in a completely unrelated language (e.g.
+    # Go runtime proc.go when the path is Python). (#800)
+    path_langs = [language_from_path(fh) for _, fh in functions if fh]
+    path_lang_hint = next((lg for lg in path_langs if lg), None)
+
     for name, file_hint in functions:
-        defn = _resolve_def(index, name, file_hint)
+        lang_hint = language_from_path(file_hint) if file_hint else path_lang_hint
+        defn = _resolve_def(index, name, file_hint, lang_hint=lang_hint)
         if defn is None:
             continue
         defn = {**defn, "name": name}
