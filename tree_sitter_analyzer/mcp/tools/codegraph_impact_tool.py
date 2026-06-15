@@ -563,10 +563,25 @@ class CodeGraphImpactTool(BaseMCPTool):
                 "Re-run with the correct file_path or omit it to use ambiguity resolution."
             )
         elif verdict == "NOT_FOUND":
-            next_step = (
-                "Symbol not found in the call graph. "
-                "Check the function name or run index action=auto."
-            )
+            # #981: make the not-found hint edge-aware. If the index actually
+            # holds call edges, the symbol is simply missing — don't tell the
+            # user to (re)build the graph. Only suggest a build when the graph
+            # is genuinely empty.
+            cache = self._try_get_cache()
+            has_edges = cache is not None and cache.has_call_edges()
+            if has_edges:
+                # blast_radius can NOT_FOUND without a singular func_name
+                # (function_names plural); only name the symbol when present.
+                symbol_phrase = f"Symbol {func_name!r} " if func_name else "Symbol "
+                next_step = (
+                    f"{symbol_phrase}not in the index. "
+                    "Check spelling or run --codegraph-navigate to browse."
+                )
+            else:
+                next_step = (
+                    "Symbol not found in the call graph. "
+                    "Check the function name or run index action=auto."
+                )
         elif verdict in ("CAUTION", "REVIEW"):
             next_step = (
                 "High risk change — trace callers with nav action=callers "
@@ -577,7 +592,9 @@ class CodeGraphImpactTool(BaseMCPTool):
                 "Low risk change — proceed with edit; run nearest test file afterwards."
             )
         response: dict[str, Any] = {
-            "success": True,
+            # #983: align the envelope with the verdict — agents gate on
+            # `success`, so NOT_FOUND must NOT report success=True.
+            "success": verdict != "NOT_FOUND",
             "mode": mode,
             "verdict": verdict,
             "next_step": next_step,

@@ -161,9 +161,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callers = graph.callers_of(func_name, file_path)
             data_source = self._data_source
             self._enrich_callers_with_resolution(callers)
-            # Only the persisted built marker proves that --full-index
-            # completed. Partial/stale edge rows must still surface the hint.
-            has_any_call_edges = call_graph_built
+            # #981 defense-in-depth: the built marker can be a false-negative
+            # (e.g. cleared while the index actually holds 125K call edges).
+            # Trust an actual edge probe in addition to the marker so a missing
+            # symbol in a populated index is never mislabelled "index empty".
+            has_any_call_edges = call_graph_built or (
+                cache is not None and cache.has_call_edges()
+            )
 
         warnings_list: list[str] = []
         if _is_stale_resolution(callers):
@@ -179,8 +183,12 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # agent answers from content, not coordinates — no Read per file:line.
         next_step = self._inline_caller_bodies(cache, callers)
 
+        callers_verdict = "INFO" if callers or total_callers else "NOT_FOUND"
         result = build_response(
-            verdict="INFO" if callers or total_callers else "NOT_FOUND",
+            verdict=callers_verdict,
+            # #983: align the envelope with the verdict — agents gate on
+            # `success`, so NOT_FOUND must NOT report success=True.
+            success=callers_verdict != "NOT_FOUND",
             warnings=warnings_list or None,
             data_source=data_source,
             function=func_name,
@@ -203,15 +211,23 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             )
             # Combine truncation note with any body-inlining deterrent.
             next_step = f"{trunc_note}. {next_step}" if next_step else trunc_note
-        # #548: when the call-graph has no edges at all (NOT_FOUND AND the graph
-        # itself is empty), surface a --full-index hint so users know why
-        # results are empty.  We deliberately skip the hint when the graph has
-        # edges but the specific symbol was simply not found.
-        if result.get("verdict") == "NOT_FOUND" and not has_any_call_edges:
-            index_hint = (
-                "Call-graph index is empty or has not been built yet. "
-                "Run `tree-sitter-analyzer --full-index` first, then retry."
-            )
+        # #548 / #981: split the NOT_FOUND hint by whether the index actually
+        # holds call edges.
+        #   - truly empty (no edges)  → --full-index hint (build the graph).
+        #   - populated (has edges)   → the symbol is just missing; port the
+        #     navigate phrasing (check spelling / browse) instead of the
+        #     misleading "index empty" message.
+        if result.get("verdict") == "NOT_FOUND":
+            if not has_any_call_edges:
+                index_hint = (
+                    "Call-graph index is empty or has not been built yet. "
+                    "Run `tree-sitter-analyzer --full-index` first, then retry."
+                )
+            else:
+                index_hint = (
+                    f"Symbol {func_name!r} not in the index. "
+                    "Check spelling or run --codegraph-navigate to browse."
+                )
             next_step = f"{index_hint} {next_step}" if next_step else index_hint
         if next_step:
             result["next_step"] = next_step
