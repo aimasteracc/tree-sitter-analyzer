@@ -3,9 +3,9 @@
     "Class": 1,
     "Function": 32,
     "Import": 2,
-    "Variable": 13
+    "Variable": 10
   },
-  "element_total": 48,
+  "element_total": 45,
   "names_by_type": {
     "Class": [
       "ModernComponent"
@@ -13,8 +13,8 @@
     "Function": [
       "#logActivity",
       "#validateData",
-      "<anonymous>",
       "FunctionalComponent",
+      "[`post`]",
       "blockArrow",
       "constructor",
       "createCounter",
@@ -51,16 +51,13 @@
       "API_BASE_URL",
       "AppModule",
       "apiClient",
-      "arrayData",
       "contentType",
       "globalCounter",
       "legacyVariable",
-      "options",
       "response",
       "result",
       "url",
-      "user",
-      "userProfile"
+      "user"
     ]
   },
   "types": [
