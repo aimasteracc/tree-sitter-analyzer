@@ -192,7 +192,7 @@ def main() -> None:
     parser = create_argument_parser()
     args = parser.parse_args(_normalize_agent_command_aliases(sys.argv[1:]))
     _apply_format_alias(args)
-    _validate_ast_cache_mode_wiring(args, parser)
+    _validate_mode_flag_wiring(args, parser)
     _configure_logging(args)
 
     special_result = handle_special_commands(args)
@@ -233,25 +233,71 @@ def _apply_format_alias(args: argparse.Namespace) -> None:
         args.output_format = args.format
 
 
-def _validate_ast_cache_mode_wiring(
+# Mode-selector flags whose paired boolean *trigger* must be present.
+#
+# Each entry is ``(mode_flag_token, trigger_dest, (exemption_dests, ...))``.
+# Every ``--X-mode`` selector carries a non-None default, so a user who passes
+# only ``--X-mode <value>`` (without ``--X``) used to silently drop the mode
+# and fall through to single-file analysis (the confusing "File path not
+# specified" error, often exit 0). Generalizes the one-off ``--ast-cache-mode``
+# guard from #982 to all ~20 pairs (#1000).
+#
+# The trigger dest is the mode flag's token minus the ``-mode`` suffix, with
+# hyphens normalized to underscores — verified 1:1 against argparse dests for
+# all 22 pairs. The only exemption is ``--watch``, a documented shortcut for
+# ``--ast-cache --ast-cache-mode watch_start``.
+_MODE_FLAG_WIRING: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("--ast-cache-mode", "ast_cache", ("watch",)),
+    ("--ast-diff-mode", "ast_diff", ()),
+    ("--ast-path-mode", "ast_path", ()),
+    ("--autoindex-mode", "autoindex", ()),
+    ("--change-impact-mode", "change_impact", ()),
+    ("--change-impact-scope-mode", "change_impact_scope", ()),
+    ("--class-hierarchy-mode", "class_hierarchy", ()),
+    ("--code-similarity-mode", "code_similarity", ()),
+    ("--codegraph-impact-mode", "codegraph_impact", ()),
+    ("--codegraph-navigate-mode", "codegraph_navigate", ()),
+    ("--codegraph-sitemap-mode", "codegraph_sitemap", ()),
+    ("--codegraph-visualize-mode", "codegraph_visualize", ()),
+    ("--codegraph-xref-mode", "codegraph_xref", ()),
+    ("--dead-code-mode", "dead_code", ()),
+    ("--decision-journal-mode", "decision_journal", ()),
+    ("--dependency-matrix-mode", "dependency_matrix", ()),
+    ("--detect-routes-mode", "detect_routes", ()),
+    ("--full-index-mode", "full_index", ()),
+    ("--import-graph-mode", "import_graph", ()),
+    ("--incremental-sync-mode", "incremental_sync", ()),
+    ("--symbol-resolve-mode", "symbol_resolve", ()),
+    ("--test-gap-mode", "test_gap", ()),
+)
+
+
+def _validate_mode_flag_wiring(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
 ) -> None:
-    """Fail fast when ``--ast-cache-mode`` is used without its trigger (#982).
+    """Fail fast when a ``--X-mode`` selector is used without its trigger (#1000).
 
-    ``--ast-cache-mode`` is a mode *selector* with a default of ``stats``; the
-    actual trigger is the boolean ``--ast-cache`` (or the ``--watch``
-    shortcut). Because the mode has a default, a user who passes only
-    ``--ast-cache-mode <mode>`` silently dropped the mode and fell through to
-    single-file analysis ("File path not specified"). Detect explicit
-    supply via the raw ``sys.argv`` token — robust against the default — and
-    emit a clear ``parser.error`` (exit code 2) naming the missing flag.
+    Many CLI operations use a two-flag pattern: a boolean *trigger* (``--X``)
+    plus a paired *mode selector* (``--X-mode``). Because every selector has a
+    non-None default, passing only ``--X-mode <value>`` silently dropped the
+    mode and fell through to default single-file analysis (the confusing "File
+    path not specified" error, often exit 0). Detect explicit supply via the
+    raw ``sys.argv`` token — robust against the default — and emit a clear
+    ``parser.error`` (exit code 2) naming the missing trigger flag.
+
+    Generalizes #982's single ``--ast-cache-mode`` guard to all pairs in
+    ``_MODE_FLAG_WIRING`` while preserving its ``--watch`` exemption.
     """
-    if "--ast-cache-mode" not in sys.argv:
-        return
-    if getattr(args, "ast_cache", False) or getattr(args, "watch", False):
-        return
-    parser.error("--ast-cache-mode requires --ast-cache")
+    for mode_flag, trigger_dest, exemption_dests in _MODE_FLAG_WIRING:
+        if mode_flag not in sys.argv:
+            continue
+        if getattr(args, trigger_dest, False):
+            continue
+        if any(getattr(args, exempt, False) for exempt in exemption_dests):
+            continue
+        trigger_flag = "--" + trigger_dest.replace("_", "-")
+        parser.error(f"{mode_flag} requires {trigger_flag}")
 
 
 def _configure_logging(args: argparse.Namespace) -> None:
