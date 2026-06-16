@@ -167,7 +167,15 @@ def _add_init_factor(factors: list[RiskFactor], is_init_file: bool) -> int:
 def _add_edit_type_factor(
     factors: list[RiskFactor], edit_type: str, forward_count: int
 ) -> int:
-    """Add risk based on the planned edit type."""
+    """Add risk based on the planned edit type.
+
+    Handles every value in the shared EDIT_KINDS vocabulary
+    (tree_sitter_analyzer.constants). The symbol-level kinds shared with
+    --modification-guard-type (delete / signature_change / behavior_change)
+    are scored at the file level too so no enum value is accepted-but-
+    unhandled (issue #985). add_feature / fix_bug stay risk-neutral here —
+    they add code rather than break the existing importer contract.
+    """
     if edit_type == "rename":
         factors.append(
             {
@@ -177,6 +185,33 @@ def _add_edit_type_factor(
             }
         )
         return 2
+    if edit_type == "delete":
+        factors.append(
+            {
+                "factor": "delete_risk",
+                "detail": "Deleting code breaks every importer - confirm all downstream callers first",
+                "severity": "caution",
+            }
+        )
+        return 2
+    if edit_type == "signature_change":
+        factors.append(
+            {
+                "factor": "signature_change_risk",
+                "detail": "Changing a signature requires updating every call site - check importers first",
+                "severity": "caution",
+            }
+        )
+        return 2
+    if edit_type == "behavior_change":
+        factors.append(
+            {
+                "factor": "behavior_change_risk",
+                "detail": "Behavior changes can silently break callers - verify tests cover the changed contract",
+                "severity": "caution",
+            }
+        )
+        return 1
     if edit_type == "refactor" and forward_count > 5:
         factors.append(
             {

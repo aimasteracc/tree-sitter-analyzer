@@ -486,3 +486,42 @@ class TestCodeGraphImpactCliParity:
         )
         tool_args = spec.build_tool_args(ns, "json")
         assert tool_args["include_tests"] is True
+
+
+def _choices_for_flag(flag: str) -> set[str]:
+    """Return the argparse ``choices`` set for a long flag on the full parser."""
+    parser = create_argument_parser()
+    for action in parser._actions:
+        if flag in action.option_strings:
+            assert action.choices is not None, f"{flag} has no choices"
+            return set(action.choices)
+    raise AssertionError(f"flag {flag} not found on the parser")
+
+
+class TestEditKindEnumParity:
+    """Issue #985 — --edit-type and --modification-guard-type must share one
+    canonical edit-kind vocabulary so they can never diverge again."""
+
+    def test_edit_type_and_modification_guard_type_enums_agree(self):
+        """The two flags' argparse choices sets must be exactly equal."""
+        edit_types = _choices_for_flag("--edit-type")
+        mg_types = _choices_for_flag("--modification-guard-type")
+        assert edit_types == mg_types
+
+    def test_canonical_edit_kinds_set_is_pinned(self):
+        """Lock the canonical set membership exactly so future drift goes red."""
+        from tree_sitter_analyzer.constants import EDIT_KINDS
+
+        assert set(EDIT_KINDS) == {
+            "add_feature",
+            "behavior_change",
+            "delete",
+            "fix_bug",
+            "refactor",
+            "rename",
+            "signature_change",
+        }
+        # No duplicates, and both flags expose exactly this set.
+        assert len(EDIT_KINDS) == 7
+        assert _choices_for_flag("--edit-type") == set(EDIT_KINDS)
+        assert _choices_for_flag("--modification-guard-type") == set(EDIT_KINDS)
