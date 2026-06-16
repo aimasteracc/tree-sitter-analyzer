@@ -13,6 +13,7 @@ from ._builders import (
     _build_dependency_tool_args,
     _build_detect_routes_tool_args,
     _build_parser_readiness_tool_args,
+    _build_safe_to_edit_tool_args,
     _dependency_mode_requires_file,
 )
 
@@ -53,12 +54,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="SafeToEditTool",
         label="Safe to edit",
         required_file_error="--safe-to-edit requires a file path",
-        build_tool_args=lambda args, output_format: {
-            "file_path": args.file_path,
-            "edit_type": getattr(args, "edit_type", "refactor") or "refactor",
-            "output_format": output_format,
-            "compact_only": bool(getattr(args, "compact_toon", False)),
-        },
+        build_tool_args=_build_safe_to_edit_tool_args,
     ),
     McpCommandSpec(
         flag_name="change_impact",
