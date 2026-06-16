@@ -85,6 +85,69 @@ def test_call_graph_built_supports_tuple_rows() -> None:
         conn.close()
 
 
+def _make_edges_table(conn: sqlite3.Connection, *, with_row: bool) -> None:
+    """Create a minimal ``edges`` table; optionally seed one CALLS row."""
+    conn.execute(
+        "CREATE TABLE edges ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "source_node_id TEXT NOT NULL, "
+        "target_node_id TEXT NOT NULL, "
+        "kind TEXT NOT NULL)"
+    )
+    if with_row:
+        conn.execute(
+            "INSERT INTO edges (source_node_id, target_node_id, kind) "
+            "VALUES ('caller', 'callee', 'calls')"
+        )
+    conn.commit()
+
+
+def test_call_graph_built_recovers_from_missing_marker_table() -> None:
+    # #1005 root cause: a legacy/crashed cache can hold a fully populated edges
+    # table with NO ast_call_graph_state marker. call_graph_built() must treat a
+    # populated edges table as a safety net and return True.
+    conn = sqlite3.connect(":memory:")
+    try:
+        _make_edges_table(conn, with_row=True)
+        # No marker table exists at all.
+        assert callgraph_state.call_graph_built(conn) is True
+    finally:
+        conn.close()
+
+
+def test_call_graph_built_marker_set_takes_fast_path() -> None:
+    # Marker explicitly set → True via the fast path (edges table irrelevant).
+    conn = sqlite3.connect(":memory:")
+    try:
+        callgraph_state.mark_call_graph_built(conn)
+        assert callgraph_state.call_graph_built(conn) is True
+    finally:
+        conn.close()
+
+
+def test_call_graph_built_recovers_when_marker_zero_but_edges_exist() -> None:
+    # Marker table exists but built=0, while real edges exist → recovered True.
+    # #1005 intent: "edges exist → the graph is usable", so the false-negative
+    # cleared marker is overridden by the populated edges safety net.
+    conn = sqlite3.connect(":memory:")
+    try:
+        callgraph_state.clear_call_graph_built(conn)  # built = 0
+        _make_edges_table(conn, with_row=True)
+        assert callgraph_state.call_graph_built(conn) is True
+    finally:
+        conn.close()
+
+
+def test_call_graph_built_false_when_no_marker_and_empty_edges() -> None:
+    # Empty edges table + no marker → still False (nothing to recover).
+    conn = sqlite3.connect(":memory:")
+    try:
+        _make_edges_table(conn, with_row=False)
+        assert callgraph_state.call_graph_built(conn) is False
+    finally:
+        conn.close()
+
+
 def _seed_partial_ast_cache_without_call_graph(root: Path) -> None:
     """Create an AST-cache row that predates the call-graph-built marker."""
     source = "def solo():\n    return 1\n"
@@ -128,7 +191,15 @@ def _seed_partial_ast_cache_without_call_graph(root: Path) -> None:
 
 
 def _seed_call_edges_without_built_marker(root: Path) -> None:
-    """Create real CALLS edges while leaving the authoritative marker false."""
+    """Create real CALLS edges with the marker row cleared (built = 0).
+
+    #1005: clearing the marker row is a false-negative — the edges-table
+    safety net in ``call_graph_built()`` recovers the signal to True, exactly
+    as it does when the marker table is dropped entirely
+    (see ``_seed_call_edges_with_marker_table_dropped``). The tool must still
+    treat the index as populated so a missing symbol is "not in the index",
+    never "index empty".
+    """
     source_path = root / "calls.py"
     source_path.write_text(
         "def caller():\n    target()\n\ndef target():\n    return 1\n",
@@ -139,8 +210,10 @@ def _seed_call_edges_without_built_marker(root: Path) -> None:
         result = cache.index_file(str(source_path))
         assert result["status"] == "indexed"
         assert cache.has_call_edges() is True
+        # Cleared marker row, but edges remain → edges-table safety net (#1005)
+        # recovers the signal to True.
         callgraph_state.clear_call_graph_built(cache.get_conn())
-        assert cache.call_graph_built() is False
+        assert cache.call_graph_built() is True
     finally:
         cache.close()
 
@@ -269,6 +342,62 @@ async def test_existing_edges_without_call_graph_marker_no_empty_index_hint(
 
     assert result["verdict"] == "NOT_FOUND"
     # NOT_FOUND ran fine and found nothing → envelope stays success=True (ARCH-A5).
+    assert result["success"] is True
+    assert result[count_key] == 0
+    assert "--full-index" not in result["next_step"]
+    assert "not in the index" in result["next_step"]
+    assert result["agent_summary"]["next_step"] == result["next_step"]
+
+
+def _seed_call_edges_with_marker_table_dropped(root: Path) -> None:
+    """Real CALLS edges but the marker table is entirely MISSING (#1005).
+
+    Mirrors a legacy/crashed cache: edges were written, but the
+    ``ast_call_graph_state`` marker table was never created (predates #708) —
+    so ``call_graph_built()`` must recover via the edges-table safety net.
+    """
+    source_path = root / "calls.py"
+    source_path.write_text(
+        "def caller():\n    target()\n\ndef target():\n    return 1\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(root))
+    try:
+        result = cache.index_file(str(source_path))
+        assert result["status"] == "indexed"
+        assert cache.has_call_edges() is True
+        conn = cache.get_conn()
+        conn.execute("DROP TABLE IF EXISTS ast_call_graph_state")
+        conn.commit()
+        # Root cause: missing marker table -> reported as not-built BEFORE the
+        # edges safety net; now recovered to True.
+        assert cache.call_graph_built() is True
+    finally:
+        cache.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_cls", "count_key"),
+    [
+        (CodeGraphCallersTool, "caller_count"),
+        (CodeGraphCalleesTool, "callee_count"),
+    ],
+)
+async def test_missing_marker_table_with_edges_no_empty_index_hint(
+    tmp_path: Path,
+    tool_cls: type[CodeGraphCallersTool] | type[CodeGraphCalleesTool],
+    count_key: str,
+) -> None:
+    # #1005: a cache with real edges but NO marker table must not mislabel a
+    # missing symbol as "index empty" — call_graph_built()'s edges safety net
+    # recovers the signal, so the hint is "not in the index", not "--full-index".
+    _seed_call_edges_with_marker_table_dropped(tmp_path)
+
+    tool = tool_cls(str(tmp_path))
+    result = await tool.execute({"function_name": "missing", "output_format": "json"})
+
+    assert result["verdict"] == "NOT_FOUND"
     assert result["success"] is True
     assert result[count_key] == 0
     assert "--full-index" not in result["next_step"]
