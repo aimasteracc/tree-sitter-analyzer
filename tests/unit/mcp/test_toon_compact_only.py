@@ -178,6 +178,8 @@ async def test_boundary_default_unaffected(tmp_path) -> None:
     assert "agent_summary" in body
 
 
+# Full-surface boundary walk (all facades/actions); ~16s on Windows under load.
+@pytest.mark.slow_ok
 @pytest.mark.asyncio
 async def test_boundary_compact_only_second_tool(tmp_path) -> None:
     """The boundary reduction is generic — exercise a second decision tool
@@ -196,6 +198,8 @@ async def test_boundary_compact_only_second_tool(tmp_path) -> None:
     assert "agent_summary" not in body
 
 
+# Full-surface boundary walk; budget-exempt under Windows full-matrix load.
+@pytest.mark.slow_ok
 @pytest.mark.asyncio
 async def test_boundary_compact_only_error_envelope_keeps_hint(tmp_path) -> None:
     """An ERROR response under compact_only must still carry the recovery
@@ -244,6 +248,8 @@ async def test_boundary_compact_only_legacy_keeps_deprecation(tmp_path) -> None:
     )
 
 
+# Full-surface boundary walk; budget-exempt under Windows full-matrix load.
+@pytest.mark.slow_ok
 @pytest.mark.asyncio
 async def test_boundary_reduction_is_idempotent(tmp_path) -> None:
     """Reducing an already-compact response at the boundary is a no-op — guards
