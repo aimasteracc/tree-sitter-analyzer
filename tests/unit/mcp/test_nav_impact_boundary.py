@@ -321,6 +321,7 @@ class TestNavImpactBoundary:
             f"Expected candidate file in hint, got: {next_step!r}"
         )
 
+    @pytest.mark.slow_ok  # Real MCP boundary path; Windows full-matrix load exceeds 5s.
     @pytest.mark.asyncio
     async def test_file_path_dot_prefix_does_not_false_positive(self, tmp_path) -> None:
         """Codex P2 (#873): ./src/tool_a.py and src/tool_a.py are the same file.
