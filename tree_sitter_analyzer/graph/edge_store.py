@@ -241,14 +241,45 @@ class EdgeStore:
         resolution columns) intact — used by the structural-edge refresh path,
         which has no extracted call-edge source to rebuild them from after the
         ``ast_call_edges`` table was dropped.
+
+        Performance (#990): the deletion is issued as three separate
+        index-driven statements rather than a single ``OR`` predicate. A single
+        ``file_path = ? OR source_node_id = ? OR source_node_id LIKE ?`` forces
+        SQLite into a full ``edges`` table SCAN — the trailing ``LIKE`` cannot
+        use any index and the ``OR`` poisons index selection for the whole
+        clause. On a warm 1900-file / 160k-edge cache that is ~1.8 s *per file*
+        (a full scan each), so the resolve-only refresh — which calls this once
+        per indexed file — took ~55 minutes and read as a hang. Split apart,
+        each statement uses an index: ``file_path`` → ``idx_edges_file_path``,
+        the ``file:`` node id → ``idx_edges_source_kind`` (equality), and the
+        symbol-prefixed sources via a half-open range scan (``>=`` / ``<``) over
+        the same index instead of a ``LIKE`` SCAN. Same row set, milliseconds
+        instead of seconds.
         """
         file_node_id = file_node(file_path)
-        symbol_prefix = _escape_like(f"{file_path}:")
         calls_clause = "" if not preserve_calls else "kind != 'calls' AND "
+        # Equality predicates — each uses an index (idx_edges_file_path /
+        # idx_edges_source_kind). Covers edges tagged with the file's real
+        # ``file_path`` column and edges whose source is the synthetic
+        # ``file:<path>`` node.
+        self._conn.execute(
+            f"DELETE FROM edges WHERE {calls_clause}file_path = ?",  # nosec B608
+            (file_path,),
+        )
+        self._conn.execute(
+            f"DELETE FROM edges WHERE {calls_clause}source_node_id = ?",  # nosec B608
+            (file_node_id,),
+        )
+        # Symbol-prefixed sources (``<path>:Class:method:line``): a half-open
+        # range scan over idx_edges_source_kind replaces ``LIKE '<path>:%'``.
+        # BINARY (default) collation makes ``source_node_id >= '<path>:' AND
+        # source_node_id < '<path>:' || char(0x10FFFF)`` an index range that
+        # matches exactly the rows the prefix ``LIKE`` matched.
+        prefix = f"{file_path}:"
         self._conn.execute(
             f"DELETE FROM edges WHERE {calls_clause}"  # nosec B608 — constant clause
-            "(file_path = ? OR source_node_id = ? OR source_node_id LIKE ? ESCAPE '\\')",
-            (file_path, file_node_id, f"{symbol_prefix}%"),
+            "source_node_id >= ? AND source_node_id < ?",
+            (prefix, prefix + "\U0010ffff"),
         )
         self.upsert_edges(edges)
 
@@ -541,10 +572,6 @@ def _edge_query_without_kind(
         "ORDER BY kind, source_node_id, target_node_id, line",
         (node_id, node_id),
     )
-
-
-def _escape_like(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _edge_from_row(row: sqlite3.Row) -> Edge:
