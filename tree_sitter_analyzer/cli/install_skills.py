@@ -17,6 +17,7 @@ class InstallReport(TypedDict):
     skipped_count: int
     installed: list[str]
     skipped: list[str]
+    destination: str
 
 
 def _bundled_skills_dir() -> Path:
@@ -80,6 +81,10 @@ def install_skills(
             "directory — refusing to self-copy."
         )
 
+    # #549: echo the resolved destination FIRST, so the user always knows
+    # where skills are going before anything is installed or skipped.
+    print(f"Installing skills into: {dest_root}", file=sys.stderr)
+
     try:
         dest_root.mkdir(parents=True, exist_ok=True)
     except PermissionError as exc:
@@ -107,4 +112,5 @@ def install_skills(
         skipped_count=len(skipped),
         installed=installed,
         skipped=skipped,
+        destination=str(dest_root),
     )

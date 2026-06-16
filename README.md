@@ -32,6 +32,7 @@ claude mcp add tree-sitter-analyzer \
 ```
 
 Restart your agent, then say: *"Run the `index` tool with action=status."*
+CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 
 > **PyPI / uvx users — install skills:** the 13 `tsa-*` skills are bundled in the wheel. Copy them once with:
 > ```bash
@@ -81,6 +82,7 @@ See **[Supported Agents](#supported-agents)**. Most clients want this MCP server
 ```
 
 After restart: *"Run the `index` tool with action=status."*
+CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 
 **See the correctness edge on your own repo** — no install, no CodeGraph (it re-indexes first; seconds on a small repo, a minute or two on a large one):
 
