@@ -1,5 +1,67 @@
 # Changelog
 
+## [1.24.0] - 2026-06-16
+
+Correctness & robustness release. 300 commits since 1.23.0 (208 fixes, 52
+test-hardening, 17 features) drove cross-language extraction accuracy across
+all 13 languages and made every agent-facing surface honest under real use:
+two multi-wave dogfood sweeps were triaged end-to-end (real bugs fixed,
+deliberate design decisions documented as won't-fix against their locked
+contracts). No agent-facing P0/P1 ships in this release.
+
+### Fixed
+
+- **Cross-language extraction correctness.** Targeted plugin fixes across
+  Ruby, PHP, Kotlin, C#, Scala, Python, Go, TypeScript, Rust, JavaScript,
+  C/C++, SQL, and CSS — phantom symbols, receiver/namespace attribution,
+  enum/variant handling, constants, and over-/under-capture. C# multi- and
+  nested-namespace classes now get the correct fully-qualified name.
+- **AST-cache warm-path P0.** `call_graph_built()` now falls back to the
+  edges table when the built marker is missing/zero, recovering legacy and
+  crash-interrupted caches that held real edges but were treated as empty —
+  the root cause behind a cluster of "index empty / not built" symptoms.
+- **Warm-cache hangs eliminated.** `EdgeStore.replace_edges_for_file` issued
+  an `OR` + `LIKE` DELETE that forced a full edges-table scan per file
+  (~55 min on a 159K-edge cache); split into three index-driven DELETEs.
+  `--codegraph-metrics` and `--incremental-sync` go from multi-minute hangs
+  to ~6s, and `--symbol-lineage` counts are now deterministic. A
+  query-plan-invariant test guards against re-introducing an unindexed scan.
+- **Agent-facing CLI honesty.** `--batch-search` returns a structured error
+  envelope instead of a raw traceback on bad input; `--safe-to-edit` /
+  `--agent-workflow` reject directory arguments with a clear error and a
+  non-zero exit; `--autoindex` reports a warm cache as indexed and populates
+  `cache_stats`; `clean-state` deletes only TSA artifacts (never sibling
+  Ruflo databases) and honors `--format json`.
+- **CLI flag-pair integrity.** Every `--X-mode` selector now requires its
+  `--X` trigger (22 pairs) — passing a mode without its trigger fails fast
+  naming the missing flag instead of silently falling through. `--edit-type`
+  and `--modification-guard-type` share one canonical edit-kind enum.
+- **Agent docs match reality.** Skill and facade descriptions corrected
+  against the actual registry/argparse/response fields (wrong param, mode,
+  field, and flag references), with the bundled package copies kept in sync.
+- **nav not-found envelope.** A missing symbol in a populated index gets a
+  "check spelling / browse" hint instead of a false "index empty / run
+  --full-index", via an edge-aware probe.
+
+### Added
+
+- **change-impact gating & agent ergonomics**: `--change-impact-fail-on-risk`
+  exit-code gate (#550); MCP `resource_profile` defaults to
+  `local_low_impact` for agents (#731); doc-drift verification steps surfaced
+  for CLI/MCP surface changes (#732).
+- **symbols_json enrichment**: module-level constants (Python #610, Go #613,
+  Rust #618, PHP #625) and docstring/return-type/params (#621) indexed as
+  symbols; FTS5 porter stemming so `dispatching` matches `dispatch` (#606).
+- **New CLI doors**: `--outline FILE` (#582) and `--check-scale FILE` (#527)
+  expose the rich MCP schemas to the CLI; TypeScript `--table` signatures
+  and a supported-language list in errors (#541).
+- **Honesty & guard rails**: byte budget + honest truncation for the
+  structure/outline surface (#542); stale-lineage flag when source is newer
+  than the index (#692); auto-generated facade-action parameter reference
+  with a CI drift ratchet (#602); agent envelope-contract guide with a drift
+  test (#520); AST-based loose-assertion ratchet that multiline asserts can
+  no longer evade (#586).
+
 ## [1.23.0] - 2026-06-12
 
 Agent-experience release: the "instant everything" diagram family lands
