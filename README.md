@@ -436,6 +436,10 @@ Mostly nothing. The defaults are designed so you can hook it into your agent and
 
 ```bash
 uv run pytest -q                                # full suite
+uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # fast local loop
+PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # one-worker mode for lower CPU load
+PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # two-worker balanced mode
+uv run pytest --lf --maxfail=1                  # rerun only failed tests from last run
 uv run python check_quality.py --new-code-only  # quality gate
 ```
 

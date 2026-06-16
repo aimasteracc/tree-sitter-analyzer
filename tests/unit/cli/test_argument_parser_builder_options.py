@@ -467,6 +467,12 @@ class TestAddAgentSkillsOptions:
         args = parser.parse_args(["--agent-skills"])
         assert args.agent_skills is True
 
+    def test_list_skills_alias(self):
+        parser = self._make_parser()
+        _add_agent_skills_options(parser)
+        args = parser.parse_args(["--list-skills"])
+        assert args.agent_skills is True
+
     def test_agent_skills_root(self):
         parser = self._make_parser()
         _add_agent_skills_options(parser)

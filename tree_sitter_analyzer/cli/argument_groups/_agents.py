@@ -9,6 +9,7 @@ def _add_agent_skills_options(parser: argparse.ArgumentParser) -> None:
     """Add the project-local agent skill inventory entrypoint."""
     parser.add_argument(
         "--agent-skills",
+        "--list-skills",
         action="store_true",
         help="List project-local .agents/skills metadata, gaps, and read order",
     )

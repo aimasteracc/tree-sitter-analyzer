@@ -393,6 +393,10 @@ CodeGraph 支持相近的集合；两者都还未发布的主流代码语言只�
 
 ```bash
 uv run pytest -q                                # 完整套件
+uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # 开发期快速循环
+PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # 降低 CPU 负载
+PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q --maxfail=1 -m "not slow and not full_language and not integration"  # 平衡并行度
+uv run pytest --lf --maxfail=1                  # 只重跑上次失败的测试
 uv run python check_quality.py --new-code-only  # 质量闸门
 ```
 
