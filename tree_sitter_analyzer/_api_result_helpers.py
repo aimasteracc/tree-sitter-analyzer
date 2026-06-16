@@ -35,6 +35,21 @@ _OPTIONAL_ELEM_FIELDS = [
 ]
 
 
+def normalize_parameters(value: Any) -> Any:
+    """Convert a parameters value to a JSON-safe representation.
+
+    SQL plugin stores parameters as ``list[SQLParameter]`` (dataclasses).
+    JSON cannot serialize dataclass instances; convert them to plain dicts
+    so all output formats (JSON, TOON, text) stay consistent. Non-list and
+    non-dataclass values are returned unchanged.
+    """
+    if isinstance(value, list):
+        return [
+            dataclasses.asdict(p) if dataclasses.is_dataclass(p) else p for p in value
+        ]
+    return value
+
+
 def element_to_dict(
     elem: Any, all_elements: Sequence[Any] | None = None
 ) -> dict[str, Any]:
@@ -57,14 +72,8 @@ def element_to_dict(
     for field in _OPTIONAL_ELEM_FIELDS:
         if hasattr(elem, field):
             value = getattr(elem, field)
-            # SQL plugin stores parameters as list[SQLParameter] (dataclasses).
-            # JSON cannot serialize dataclass instances; convert them to plain
-            # dicts so all output formats (JSON, TOON, text) stay consistent.
-            if field == "parameters" and isinstance(value, list):
-                value = [
-                    dataclasses.asdict(p) if dataclasses.is_dataclass(p) else p
-                    for p in value
-                ]
+            if field == "parameters":
+                value = normalize_parameters(value)
             result[field] = value
 
     if result["type"] == "function" and all_elements:
