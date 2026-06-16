@@ -108,6 +108,7 @@ def _collect_complexity_metrics(elements: Sequence[object]) -> dict[str, float]:
 
 def _build_elements_payload(
     elements: Sequence[object],
+    result_language: str | None = None,
 ) -> list[dict[str, object]]:
     """Convert AST elements to JSON-payload dicts via ``element_to_dict``.
 
@@ -121,7 +122,9 @@ def _build_elements_payload(
     payload: list[dict[str, object]] = []
     elements_list = list(elements)
     for element in elements_list:
-        elem_dict = element_to_dict(element, elements_list)
+        elem_dict = element_to_dict(
+            element, elements_list, result_language=result_language
+        )
         # For Class-model objects (enums/interfaces/type-aliases in TS/JS/etc.),
         # prefer the granular class_type over the generic "class" group key so
         # that type:"enum", type:"interface", type:"type" reach the caller.
@@ -280,7 +283,9 @@ class AdvancedCommand(BaseCommand):
             output_section("Advanced Analysis Results")
 
         complexity = _collect_complexity_metrics(analysis_result.elements)
-        elements_payload = _build_elements_payload(analysis_result.elements)
+        elements_payload = _build_elements_payload(
+            analysis_result.elements, result_language=analysis_result.language
+        )
         counts = _per_element_counts(analysis_result.elements)
         result_dict = _full_analysis_dict(
             analysis_result, elements_payload, counts, complexity
