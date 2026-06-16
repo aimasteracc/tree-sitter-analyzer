@@ -20,6 +20,7 @@ class FileMetrics:
     estimated_tokens: int
     file_size_bytes: int
     content_hash: str
+    max_nesting_depth: int = 0
 
     def as_dict(self) -> dict[str, int | str]:
         return {
@@ -30,6 +31,10 @@ class FileMetrics:
             "estimated_tokens": self.estimated_tokens,
             "file_size_bytes": self.file_size_bytes,
             "content_hash": self.content_hash,
+            # Feature #580: deepest block-nesting chain so scale callers get a
+            # deep-nesting pathology signal (a 500-level nested file parses
+            # fine but was invisible in scale's lines/tokens/size view).
+            "max_nesting_depth": self.max_nesting_depth,
         }
 
 
@@ -40,6 +45,22 @@ def _estimate_tokens(content: str) -> int:
     # Rough approximation used historically in AnalyzeScaleTool
     tokens = _TOKEN_RE.findall(content)
     return len([t for t in tokens if t.strip()])
+
+
+def _compute_max_nesting_depth(content: str) -> int:
+    """Return the deepest block-nesting depth (feature #580).
+
+    Reuses ``deepest_nesting_location`` — the same indentation-derived
+    block-depth signal the file-health ``deep_nesting`` smell uses — so the
+    scale view reports the deepest chain of nested blocks/scopes an agent
+    needs to flag a pathological file. The helper is O(n) over lines and
+    grammar-independent (so a tree-sitter version bump can't silently shift
+    the value). Returns the depth only; the line number is discarded here.
+    """
+    from ..tools.utils.file_health_locations import deepest_nesting_location
+
+    depth, _line = deepest_nesting_location(content.split("\n"))
+    return depth
 
 
 def _compute_line_metrics(
@@ -163,6 +184,7 @@ def compute_file_metrics(
     total_lines, code_lines, comment_lines, blank_lines = _compute_line_metrics(
         content, language
     )
+    max_nesting_depth = _compute_max_nesting_depth(content)
 
     metrics = FileMetrics(
         total_lines=total_lines,
@@ -172,6 +194,7 @@ def compute_file_metrics(
         estimated_tokens=estimated_tokens,
         file_size_bytes=file_size_bytes,
         content_hash=content_hash,
+        max_nesting_depth=max_nesting_depth,
     ).as_dict()
 
     shared_cache.set_metrics(cache_key, metrics, project_root=project_root)
