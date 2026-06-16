@@ -216,6 +216,9 @@ async def test_boundary_compact_only_error_envelope_keeps_hint(tmp_path) -> None
     assert "hint" in body
 
 
+# Same full-surface boundary walk as the slow_ok tests above; Windows
+# full-matrix load can push it past the 5s unit budget.
+@pytest.mark.slow_ok
 @pytest.mark.asyncio
 async def test_boundary_compact_only_legacy_keeps_deprecation(tmp_path) -> None:
     """Codex P2 #393: a LEGACY tool name (e.g. check_file_health) routed through
