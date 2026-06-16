@@ -40,6 +40,7 @@ def test_ast_cache_mode_alone_errors_naming_ast_cache(capsys):
     assert "File path not specified" not in err
 
 
+@pytest.mark.slow_ok  # Real CLI dispatch reaches AST cache stats; macOS CI can exceed 5s.
 def test_ast_cache_with_mode_still_dispatches():
     """``--ast-cache --ast-cache-mode stats`` → reaches the AST cache dispatch.
 
