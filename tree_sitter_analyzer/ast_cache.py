@@ -328,8 +328,16 @@ class ASTCache:
         workers: int | None = None,
         resolve_only: bool = False,
         include_activation: bool | None = None,
+        language_filter: str | None = None,
     ) -> dict[str, Any]:
-        """Index every source file under ``self.project_root``."""
+        """Index every source file under ``self.project_root``.
+
+        ``language_filter`` (#1018): when provided, restrict the walk to files
+        whose detected language equals it. Non-matching files (e.g. ``.swift``
+        when ``language_filter="python"``) are skipped before any parse, so a
+        language-scoped run never emits "grammar not installed" errors for
+        other languages.
+        """
         activation_enabled = _project_index_activation_enabled(include_activation)
         if resolve_only:
             synapse = self._run_synapse_backfill()
@@ -364,7 +372,7 @@ class ASTCache:
                 conn.execute("DELETE FROM ast_index")
                 conn.commit()
             stats, candidates, count = self._walk_and_partition(
-                max_files, force, activation_enabled
+                max_files, force, activation_enabled, language_filter
             )
             workers = self._resolve_worker_count(workers, candidates)
             if workers and workers >= 2 and len(candidates) >= 2:
@@ -410,7 +418,11 @@ class ASTCache:
                 _clear_build_in_progress(self._get_conn())
 
     def _walk_and_partition(
-        self, max_files: int, force: bool, activation_enabled: bool
+        self,
+        max_files: int,
+        force: bool,
+        activation_enabled: bool,
+        language_filter: str | None = None,
     ) -> tuple[dict[str, Any], list[tuple[str, str]], int]:
         """Walk source files and partition into (stats, candidates, count)."""
         from . import _ast_cache_indexer as _indexer
@@ -425,6 +437,7 @@ class ASTCache:
             _language_from_ext,
             _AST_CACHE_EXTRACTOR_VERSION,
             _make_error_entry,
+            language_filter,
         )
 
     @staticmethod

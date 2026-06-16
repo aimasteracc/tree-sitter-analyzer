@@ -435,10 +435,15 @@ class ASTCacheTool(BaseMCPTool):
             max_files = arguments.get("max_files", 20_000)
             force = arguments.get("force", False)
             include_activation = bool(arguments.get("include_activation", False))
+            # #1018: honor the language scope on the index path. Without this the
+            # filter was accepted but dropped, so e.g. --ast-cache-language python
+            # still parsed .swift files and emitted "grammar not installed" errors.
+            language_filter = arguments.get("language") or None
             result = cache.index_project(
                 max_files=max_files,
                 force=force,
                 include_activation=include_activation,
+                language_filter=language_filter,
             )
             files_indexed_fallback = result.get("files_indexed", 0)
             indexed_files = int(result.get("indexed", files_indexed_fallback) or 0)

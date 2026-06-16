@@ -161,8 +161,15 @@ def walk_and_partition(
     language_fn: Any,
     extractor_version: int,
     make_error_entry: Any,
+    language_filter: str | None = None,
 ) -> tuple[dict[str, Any], list[tuple[str, str]], int]:
-    """Walk source files and partition into (stats, candidates, count)."""
+    """Walk source files and partition into (stats, candidates, count).
+
+    ``language_filter`` (#1018): when set, only files whose detected language
+    equals it are considered; non-matching files are skipped BEFORE any parse
+    attempt, so a Python-scoped run never tries to load an optional grammar
+    (e.g. Swift) and never surfaces a "grammar not installed" error.
+    """
     candidates: list[tuple[str, str]] = []
     already_cached: list[dict[str, Any]] = []
     stats: dict[str, Any] = {
@@ -193,6 +200,9 @@ def walk_and_partition(
         count += 1
         lang = language_fn(abs_path)
         if lang is None:
+            stats["skipped"] += 1
+            continue
+        if language_filter is not None and lang != language_filter:
             stats["skipped"] += 1
             continue
         rel_path = os.path.relpath(abs_path, cache.project_root).replace("\\", "/")
