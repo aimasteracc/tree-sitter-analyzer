@@ -136,8 +136,10 @@ async def test_edges_without_built_marker_no_empty_index_hint(
         cache.index_project(workers=0)
         assert cache.has_call_edges() is True
         # Simulate the false-negative: clear the built marker while edges remain.
+        # #1005: the edges-table safety net recovers the cleared marker to True,
+        # so the populated index is never mislabelled "empty".
         callgraph_state.clear_call_graph_built(cache.get_conn())
-        assert cache.call_graph_built() is False
+        assert cache.call_graph_built() is True
     finally:
         cache.close()
 

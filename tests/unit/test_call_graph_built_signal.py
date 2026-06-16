@@ -191,7 +191,15 @@ def _seed_partial_ast_cache_without_call_graph(root: Path) -> None:
 
 
 def _seed_call_edges_without_built_marker(root: Path) -> None:
-    """Create real CALLS edges while leaving the authoritative marker false."""
+    """Create real CALLS edges with the marker row cleared (built = 0).
+
+    #1005: clearing the marker row is a false-negative — the edges-table
+    safety net in ``call_graph_built()`` recovers the signal to True, exactly
+    as it does when the marker table is dropped entirely
+    (see ``_seed_call_edges_with_marker_table_dropped``). The tool must still
+    treat the index as populated so a missing symbol is "not in the index",
+    never "index empty".
+    """
     source_path = root / "calls.py"
     source_path.write_text(
         "def caller():\n    target()\n\ndef target():\n    return 1\n",
@@ -202,8 +210,10 @@ def _seed_call_edges_without_built_marker(root: Path) -> None:
         result = cache.index_file(str(source_path))
         assert result["status"] == "indexed"
         assert cache.has_call_edges() is True
+        # Cleared marker row, but edges remain → edges-table safety net (#1005)
+        # recovers the signal to True.
         callgraph_state.clear_call_graph_built(cache.get_conn())
-        assert cache.call_graph_built() is False
+        assert cache.call_graph_built() is True
     finally:
         cache.close()
 
