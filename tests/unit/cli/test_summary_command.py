@@ -508,3 +508,59 @@ class TestR37zSummaryCanonicalEnvelope:
         ):
             command._output_summary_analysis(analysis_result)
         assert captured.get("success") is True
+
+
+class TestSummarySQLParameterSerialization:
+    """Regression for #1015: --summary --format json crashed on SQL methods.
+
+    SQL methods carry ``SQLParameter`` dataclass instances; the JSON path
+    emitted them raw and ``json.dumps`` raised
+    ``Object of type SQLParameter is not JSON serializable``. The fix
+    normalizes parameters to plain dicts via the API-style converter.
+    """
+
+    def test_sql_method_parameters_are_json_safe_dicts(self, command):
+        """Method params become plain dicts and the payload is JSON-serializable."""
+        import json
+
+        from tree_sitter_analyzer.models.sql_models import (
+            SQLElementType,
+            SQLFunction,
+            SQLParameter,
+        )
+
+        sql_function = SQLFunction(
+            name="get_user_orders",
+            start_line=1,
+            end_line=5,
+            language="sql",
+            sql_element_type=SQLElementType.FUNCTION,
+            parameters=[
+                SQLParameter(name="order_id_param", data_type="INT", direction="IN"),
+                SQLParameter(name="user_id_param", data_type="INT", direction="IN"),
+            ],
+        )
+        analysis_result = MagicMock()
+        analysis_result.file_path = "/test/db.sql"
+        analysis_result.language = "sql"
+        analysis_result.elements = [sql_function]
+
+        command.args.output_format = "json"
+        command.args.summary = "methods"
+
+        captured: dict[str, object] = {}
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_json",
+            side_effect=lambda d: captured.update(d),
+        ):
+            command._output_summary_analysis(analysis_result)
+
+        methods = captured["summary"]["methods"]
+        assert len(methods) == 1
+        params = methods[0]["parameters"]
+        assert params == [
+            {"name": "order_id_param", "data_type": "INT", "direction": "IN"},
+            {"name": "user_id_param", "data_type": "INT", "direction": "IN"},
+        ]
+        # The whole payload must round-trip through json.dumps without raising.
+        assert json.loads(json.dumps(captured)) == captured
