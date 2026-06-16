@@ -36,7 +36,8 @@ CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 
 > **PyPI / uvx users — install skills:** the 13 `tsa-*` skills are bundled in the wheel. Copy them once with:
 > ```bash
-> tree-sitter-analyzer --install-skills
+> tree-sitter-analyzer --install-skills              # into ./.claude/skills/ (this project)
+> tree-sitter-analyzer --install-skills-global       # into ~/.claude/skills/ (all projects)
 > ```
 > Git-clone users already have them under `.claude/skills/` — no action needed.
 
@@ -171,6 +172,15 @@ tree-sitter-analyzer --dead-code                  # transitive unreachable
 tree-sitter-analyzer --check-constraints          # architectural rules
 tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
 tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
+```
+
+Installing the package also registers three standalone search utilities (thin
+entry points over the same engine, handy in shell pipelines):
+
+```bash
+list-files <dir>          # fd-style file discovery
+search-content <pattern>  # ripgrep-style content search
+find-and-grep <pattern>   # two-stage fd + ripgrep
 ```
 
 See [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) for the full surface.
@@ -311,7 +321,8 @@ Verify: `claude mcp list`. The 13 `tsa-*` skills auto-discover from `.claude/ski
 
 **PyPI / uvx users** — install the bundled skills once with:
 ```bash
-tree-sitter-analyzer --install-skills
+tree-sitter-analyzer --install-skills              # into ./.claude/skills/ (this project)
+tree-sitter-analyzer --install-skills-global       # into ~/.claude/skills/ (all projects)
 ```
 Git-clone users already have them — no action needed.
 </details>
