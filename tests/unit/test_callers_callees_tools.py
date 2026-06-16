@@ -418,14 +418,21 @@ class TestStaleCacheWarning:
         ]
         assert _is_stale_resolution(entries) is True
 
-    def test_warning_message_recommends_resolve_mode(self) -> None:
+    def test_warning_message_recommends_valid_rebuild_command(self) -> None:
         from tree_sitter_analyzer.mcp.tools.callees_tool import _STALE_CACHE_WARNING
 
-        # The user-visible string must point at the right fix. Pinning
-        # the substring stops a future "minor wording cleanup" from
-        # dropping the actionable command.
-        assert "--mode resolve" in _STALE_CACHE_WARNING
+        # #1028: the user-visible string must point at a command that
+        # actually runs. The old text recommended `--ast-cache-mode force`
+        # and `--mode resolve`, neither of which is a valid flag/choice
+        # (argparse errors with "invalid choice"). Pin the VALID rebuild
+        # command and assert the invalid forms never come back.
         assert "stale_cache" in _STALE_CACHE_WARNING
+        assert (
+            "--ast-cache --ast-cache-mode index --ast-cache-force"
+            in _STALE_CACHE_WARNING
+        )
+        assert "--ast-cache-mode force" not in _STALE_CACHE_WARNING
+        assert "--mode resolve" not in _STALE_CACHE_WARNING
 
     @pytest.mark.asyncio
     async def test_callees_warning_omitted_when_callees_empty(

@@ -103,7 +103,7 @@ callee_symbol_id: null | <int FK to ast_symbol_rows>
 Filter rules of thumb:
 - `resolution=stdlib` → ignore for change-impact (won't be in this repo)
 - `resolution=local|project` with non-null `callee_symbol_id` → trustworthy edge
-- `resolution=unknown` → may need re-index: `uv run tree-sitter-analyzer --ast-cache --ast-cache-mode force`
+- `resolution=unknown` → may need re-index: `uv run tree-sitter-analyzer --ast-cache --ast-cache-mode index --ast-cache-force`
 
 ## CLI equivalents
 

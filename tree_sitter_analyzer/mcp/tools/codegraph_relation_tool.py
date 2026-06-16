@@ -85,8 +85,9 @@ _STALE_CACHE_UNKNOWN_RATIO = 0.8
 
 _STALE_CACHE_WARNING = (
     "stale_cache: most edges have callee_resolution='unknown'. "
-    "Run `uv run tree-sitter-analyzer --ast-cache --ast-cache-mode force` "
-    "or rebuild with `--mode resolve` to populate Synapse resolution columns."
+    "Run `uv run tree-sitter-analyzer --ast-cache --ast-cache-mode index "
+    "--ast-cache-force` to rebuild the index and populate Synapse "
+    "resolution columns."
 )
 
 
