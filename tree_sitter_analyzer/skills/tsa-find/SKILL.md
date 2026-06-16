@@ -36,6 +36,7 @@ allowed-tools:
 | Filename pattern only                     | `project action=files`      |
 | Content pattern only (regex / literal)    | `search action=content`     |
 | Filename pattern AND content              | `search action=grep`        |
+| Several patterns in one call (≥2)        | `search action=batch`       |
 | Read specific lines of one file           | `structure action=read`     |
 | "Is this file too big to read fully?"     | `health action=scale`       |
 
@@ -89,4 +90,5 @@ uv run tree-sitter-analyzer <file> --partial-read        # sized read with --sta
 
 - DON'T `Read` a large file before checking scale — burns tokens
 - DON'T `Bash grep -rn` for things `search action=content` handles — slower + noisier
+- DON'T call `search action=batch` with a single query — it enforces a ≥2-query minimum (raises "must be at least 2 queries"); use `search action=content` for one pattern
 - DON'T re-search the same query twice in one session — cache the result mentally

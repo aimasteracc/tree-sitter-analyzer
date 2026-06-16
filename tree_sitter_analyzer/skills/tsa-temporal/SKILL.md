@@ -131,12 +131,19 @@ uv run tree-sitter-analyzer --callees <FUNC> --output-format json | jq '.callees
 
 Or query the SQLite DB directly for batch reports:
 ```bash
-sqlite3 .ast-cache/index.db "
+# Portable: stdlib sqlite3 via `uv run python` (the `sqlite3` CLI is
+# frequently absent from PATH on Windows).
+uv run python -c "
+import sqlite3
+sql = '''
 SELECT s.name, s.file_path, a.mod_count_30d
 FROM ast_symbol_activation a
 JOIN ast_symbol_rows s ON s.id = a.symbol_id
 WHERE a.mod_count_30d >= 5
-ORDER BY a.mod_count_30d DESC LIMIT 20"
+ORDER BY a.mod_count_30d DESC LIMIT 20'''
+for r in sqlite3.connect('.ast-cache/index.db').execute(sql):
+    print(*r, sep='\t')
+"
 ```
 
 ## Anti-patterns
