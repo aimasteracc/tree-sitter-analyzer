@@ -8,6 +8,7 @@ import pytest
 from tree_sitter_analyzer.mcp.tools.query_symbol_search import (
     _build_match_fn,
     _build_type_filter,
+    _collect_source_files,
     execute_find_references,
     execute_symbol_search,
 )
@@ -136,7 +137,7 @@ def analyze_file():
             )
         )
         assert result["success"] is True
-        assert result["matches_found"] >= 1
+        assert result["matches_found"] == 1
         defs = result.get("definitions", [])
         names = [d["name"] for d in defs]
         assert "HealthScorer" in names
@@ -146,7 +147,7 @@ def analyze_file():
             tool_with_project.execute({"symbol": "*Tool", "output_format": "json"})
         )
         assert result["success"] is True
-        assert result["matches_found"] >= 3
+        assert result["matches_found"] == 3
         defs = result.get("definitions", [])
         names = [d["name"] for d in defs]
         assert any("Tool" in n for n in names)
@@ -154,7 +155,7 @@ def analyze_file():
     def test_fuzzy_search_finds_matches(self, tool_with_project):
         result = asyncio.run(tool_with_project.execute({"symbol": "~scorer"}))
         assert result["success"] is True
-        assert result["matches_found"] >= 1
+        assert result["matches_found"] == 1
 
     def test_type_filter_classes_only(self, tool_with_project):
         result = asyncio.run(
@@ -222,7 +223,7 @@ class HealthScorer:
             ref_project.execute({"symbol": "HealthScorer", "find_references": True})
         )
         assert result["success"] is True
-        assert result.get("callers_count", 0) >= 0
+        assert result.get("callers_count") == 1
         assert "total_usages" in result
 
     def test_find_references_empty_symbol_raises(self):
@@ -235,3 +236,69 @@ class HealthScorer:
         props = TOOL_SCHEMA["properties"]
         assert "find_references" in props
         assert props["find_references"]["type"] == "boolean"
+
+
+class TestCollectSourceFilesExcludes:
+    """#568: _collect_source_files must skip dotdirs AND shared EXCLUDE_DIRS members
+    so the 500-file scan budget is not eaten by vendored/build/dot trees."""
+
+    def _make_tree(self, tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+        """Create a fixture tree with:
+        - pkg/real.py  — real source that MUST be collected
+        - .vendored/decoy.py  — dotdir, must be EXCLUDED
+        - node_modules/decoy.py  — EXCLUDE_DIRS member, must be EXCLUDED
+        Returns (real_file, dotdir_decoy, node_modules_decoy, root).
+        """
+        real = tmp_path / "pkg" / "real.py"
+        real.parent.mkdir(parents=True)
+        real.write_text("class Widget:\n    pass\n")
+
+        dot_dir = tmp_path / ".vendored"
+        dot_dir.mkdir()
+        dot_decoy = dot_dir / "decoy.py"
+        dot_decoy.write_text("class Widget:\n    pass\n")
+
+        nm_dir = tmp_path / "node_modules"
+        nm_dir.mkdir()
+        nm_decoy = nm_dir / "decoy.py"
+        nm_decoy.write_text("class Widget:\n    pass\n")
+
+        return real, dot_decoy, nm_decoy, tmp_path
+
+    def test_excludes_dotdir_and_node_modules(self, tmp_path):
+        real, dot_decoy, nm_decoy, root = self._make_tree(tmp_path)
+        collected = _collect_source_files(root)
+        paths = [str(p) for p in collected]
+
+        assert str(real) in paths, "real source file must be collected"
+        assert str(dot_decoy) not in paths, ".vendored/ dotdir must be excluded"
+        assert str(nm_decoy) not in paths, "node_modules/ must be excluded"
+        # Exact count: only the one real source file is present
+        assert len(collected) == 1
+
+    def test_project_root_under_dotted_ancestor_still_collects(self, tmp_path):
+        # Codex P2 (#699): the exclude check must look only at parts BELOW the
+        # root. A project whose root lives under a dotted/excluded-named ancestor
+        # (e.g. ~/.local/share/proj, /build/proj) must NOT exclude all its files.
+        root = tmp_path / ".local" / "build" / "proj"  # dotted + excluded ancestors
+        real = root / "pkg" / "real.py"
+        real.parent.mkdir(parents=True)
+        real.write_text("class Widget:\n    pass\n")
+
+        collected = _collect_source_files(root)
+        # The dotted/excluded ANCESTOR names are above the root, so the one real
+        # file below the root is still collected.
+        assert [str(p) for p in collected] == [str(real)]
+        assert len(collected) == 1
+
+    def test_find_references_skips_dotdir_vendors(self, tmp_path):
+        """find_references must not scan files inside dotdirs (budget pollution)."""
+        real, _dot_decoy, _nm_decoy, root = self._make_tree(tmp_path)
+        result = asyncio.run(
+            execute_find_references(
+                str(root), {"symbol": "Widget", "output_format": "json"}
+            )
+        )
+        assert result["success"] is True
+        # Only the one real file is reachable — files_searched must be exactly 1
+        assert result["files_searched"] == 1

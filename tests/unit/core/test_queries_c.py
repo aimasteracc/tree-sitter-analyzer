@@ -64,7 +64,7 @@ class TestCQueries:
         """Test getting all queries"""
         all_queries = get_all_queries()
         assert isinstance(all_queries, dict)
-        assert len(all_queries) > 0
+        assert len(all_queries) == 54
         assert "function" in all_queries
         assert "query" in all_queries["function"]
         assert "description" in all_queries["function"]
@@ -73,7 +73,7 @@ class TestCQueries:
         """Test listing all query names"""
         query_names = list_queries()
         assert isinstance(query_names, list)
-        assert len(query_names) > 0
+        assert len(query_names) == 54
         assert "function" in query_names
         assert "struct" in query_names
 
@@ -81,45 +81,53 @@ class TestCQueries:
         """Test getting available C queries"""
         available_queries = get_available_c_queries()
         assert isinstance(available_queries, list)
-        assert len(available_queries) > 0
+        assert len(available_queries) == 49
         assert "function" in available_queries
         assert "struct" in available_queries
 
     def test_c_queries_structure(self) -> None:
         """Test C_QUERIES dictionary structure"""
         assert isinstance(C_QUERIES, dict)
-        assert len(C_QUERIES) > 0
+        assert len(C_QUERIES) == 49
 
-        essential_queries = [
-            "function",
-            "struct",
-            "enum",
-            "variable",
-            "include",
-            "define",
-            "typedef",
-            "if_statement",
-        ]
-        for query_name in essential_queries:
+        # Exact stripped lengths (update when query strings change)
+        essential_query_lens = {
+            "function": 31,
+            "struct": 26,
+            "enum": 22,
+            "variable": 23,
+            "include": 26,
+            "define": 21,
+            "typedef": 26,
+            "if_statement": 28,
+        }
+        for query_name, expected_len in essential_query_lens.items():
             assert query_name in C_QUERIES
             assert isinstance(C_QUERIES[query_name], str)
-            assert len(C_QUERIES[query_name].strip()) > 0
+            assert len(C_QUERIES[query_name].strip()) == expected_len
 
     def test_c_query_descriptions_structure(self) -> None:
         """Test C_QUERY_DESCRIPTIONS dictionary structure"""
         assert isinstance(C_QUERY_DESCRIPTIONS, dict)
-        assert len(C_QUERY_DESCRIPTIONS) > 0
+        assert len(C_QUERY_DESCRIPTIONS) == 49
 
-        essential_queries = ["function", "struct", "enum", "variable", "include"]
-        for query_name in essential_queries:
+        # Exact stripped lengths (update when descriptions change)
+        essential_description_lens = {
+            "function": 30,
+            "struct": 29,
+            "enum": 27,
+            "variable": 31,
+            "include": 28,
+        }
+        for query_name, expected_len in essential_description_lens.items():
             assert query_name in C_QUERY_DESCRIPTIONS
             assert isinstance(C_QUERY_DESCRIPTIONS[query_name], str)
-            assert len(C_QUERY_DESCRIPTIONS[query_name].strip()) > 0
+            assert len(C_QUERY_DESCRIPTIONS[query_name].strip()) == expected_len
 
     def test_all_queries_structure(self) -> None:
         """Test ALL_QUERIES dictionary structure"""
         assert isinstance(ALL_QUERIES, dict)
-        assert len(ALL_QUERIES) > 0
+        assert len(ALL_QUERIES) == 54
 
         for query_data in ALL_QUERIES.values():
             assert isinstance(query_data, dict)

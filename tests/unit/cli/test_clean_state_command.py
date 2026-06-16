@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -29,8 +30,8 @@ def _capture_errors() -> list[str]:
 
 
 def test_removes_present_file(tmp_path: Path, capsys) -> None:
-    """A present file should be unlinked and reported as ``removed``."""
-    target = tmp_path / "ruvector.db"
+    """A present TSA-owned file should be unlinked and reported as ``removed``."""
+    target = tmp_path / ".tree-sitter-cache"
     target.write_text("placeholder")
 
     errors = _capture_errors()
@@ -39,7 +40,7 @@ def test_removes_present_file(tmp_path: Path, capsys) -> None:
     assert exit_code == 0
     assert errors == []
     out = capsys.readouterr().out
-    assert "removed: ruvector.db" in out
+    assert "removed: .tree-sitter-cache" in out
     assert not target.exists()
 
 
@@ -130,3 +131,65 @@ def test_returns_failure_when_project_root_invalid(monkeypatch) -> None:
 
     assert exit_code == 1
     assert errors == ["--clean-state cannot resolve project_root: synthetic"]
+
+
+# --- #988: scope to TSA-owned artifacts only -------------------------------
+
+
+def test_allowlist_excludes_foreign_ruflo_artifacts() -> None:
+    """The ephemeral allowlist must never contain Ruflo-owned databases (#988)."""
+    forbidden = {"ruvector.db", "agentdb.rvf", "agentdb.rvf.lock"}
+    assert set(EPHEMERAL_STATE_PATHS) & forbidden == set()
+
+
+def test_clean_state_preserves_foreign_dbs_deletes_tsa_artifact(
+    tmp_path: Path,
+) -> None:
+    """Critical regression guard (#988).
+
+    With BOTH a TSA artifact and Ruflo's foreign DBs co-located, clean-state
+    must delete the TSA artifact and leave every foreign file untouched.
+    """
+    tsa_artifact = tmp_path / ".ast-cache"
+    tsa_artifact.mkdir()
+    (tsa_artifact / "index.db").write_text("tsa state")
+
+    foreign = [
+        tmp_path / "ruvector.db",
+        tmp_path / "agentdb.rvf",
+        tmp_path / "agentdb.rvf.wal",
+        tmp_path / "agentdb.rvf.lock",
+    ]
+    for path in foreign:
+        path.write_text("ruflo state")
+
+    errors = _capture_errors()
+    exit_code = run_clean_state(_args(tmp_path), errors.append)
+
+    assert exit_code == 0
+    assert errors == []
+    # TSA artifact gone.
+    assert tsa_artifact.exists() is False
+    # Every foreign file STILL present.
+    for path in foreign:
+        assert path.exists() is True
+
+
+def test_format_json_emits_structured_envelope(tmp_path: Path, capsys) -> None:
+    """``--format json`` must emit a parseable JSON envelope (#988)."""
+    target = tmp_path / ".ast-cache"
+    target.mkdir()
+    (target / "data.bin").write_text("x")
+
+    errors = _capture_errors()
+    exit_code = run_clean_state(
+        _args(tmp_path, format="json"),
+        errors.append,
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["success"] is True
+    assert payload["dry_run"] is False
+    assert payload["removed"] == [".ast-cache"]
+    assert payload["failed"] == []

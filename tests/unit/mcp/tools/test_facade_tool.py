@@ -500,6 +500,18 @@ def test_search_facade_builds_and_routes() -> None:
     assert "content" in facade.bespoke_map
 
 
+def test_search_facade_batch_description_documents_query_item_shape() -> None:
+    """#569: schema-reading agents must see batch query items use pattern."""
+    from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
+
+    definition = build_search_facade(project_root=None).get_tool_definition()
+    description = definition["description"]
+    assert "action=batch" in description
+    assert "queries (required array of 2-10 items" in description
+    assert "each item requires `pattern`" in description
+    assert "output_format" in description
+
+
 def test_search_facade_symbol_action_does_not_raise_strict(tmp_path: Any) -> None:
     """End-to-end: routing through the facade to the real symbol_search inner
     tool must not trip the inner's strict-param guard on ``action``.
@@ -523,6 +535,44 @@ def test_search_facade_symbol_action_does_not_raise_strict(tmp_path: Any) -> Non
         raise
     assert isinstance(result, dict)
     assert "success" in result
+
+
+def test_search_facade_schema_declares_kind_with_enum() -> None:
+    """#640: ``kind`` worked at runtime (additionalProperties) but was absent
+    from the search facade's public inputSchema — schema-reading agents could
+    not discover kind=constant filtering. The facade must declare ``kind``
+    with the authoritative enum, sourced from the symbol-search inner tool so
+    facade/inner/CLI can never drift apart."""
+    from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
+    from tree_sitter_analyzer.mcp.tools.symbol_search_tool import SYMBOL_SEARCH_KINDS
+
+    # The authoritative enum: exactly the kinds _extract_symbols emits into
+    # ast_symbol_rows (function/method/class/enum/variable/import/constant) plus
+    # the "any" no-filter default. Exact pin — extraction changes must re-pin.
+    assert SYMBOL_SEARCH_KINDS == (
+        "function",
+        "method",
+        "class",
+        "enum",
+        "variable",
+        "import",
+        "constant",
+        "any",
+    )
+
+    facade = build_search_facade(project_root=None)
+    schema = facade.get_tool_schema()
+    props = schema["properties"]
+    assert "kind" in props
+    assert props["kind"]["enum"] == list(SYMBOL_SEARCH_KINDS)
+    assert props["kind"]["type"] == "string"
+    # LOCKED facade convention (#397 family): required is exactly ["action"]
+    # — runtime-resolved params are NEVER added to required.
+    assert schema["required"] == ["action"]
+    # The inner symbol tool's own enum must carry the same authoritative set.
+    inner = facade.action_map["symbol"]
+    inner_kind = inner.get_tool_schema()["properties"]["kind"]
+    assert inner_kind["enum"] == list(SYMBOL_SEARCH_KINDS)
 
 
 if __name__ == "__main__":

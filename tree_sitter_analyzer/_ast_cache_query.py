@@ -12,6 +12,7 @@ import logging
 import sqlite3
 from typing import TYPE_CHECKING, Any, cast
 
+from ._ast_cache_maintenance import get_db_storage_stats
 from .utils.test_detection import query_wants_tests, rank_tier
 
 if TYPE_CHECKING:
@@ -376,9 +377,9 @@ def get_stats(
         "symbols_by_kind": symbols_by_kind,
         "symbols_by_language": symbols_by_language,
         "edges_by_kind": edges_by_kind,
-        "db_path": db_path,
         "fts5_available": bool(fts5_available),
     }
+    stats.update(get_db_storage_stats(conn, db_path))
     if fts5_available:
         stats["fts_indexed_symbols"] = total_symbols
     return stats

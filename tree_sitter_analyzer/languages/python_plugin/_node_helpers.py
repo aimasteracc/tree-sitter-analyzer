@@ -85,7 +85,8 @@ def _extract_superclass_arguments(
 ) -> list[str]:
     superclasses = []
     for arg in argument_list_node.children:
-        if arg.type == "identifier":
+        # "attribute" covers qualified bases such as abc.ABC (Codex P2 on #583)
+        if arg.type in ("identifier", "attribute"):
             superclasses.append(get_node_text_safe(arg, source_code))
     return superclasses
 

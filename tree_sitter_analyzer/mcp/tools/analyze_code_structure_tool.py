@@ -122,15 +122,16 @@ def _convert_parameters(parameters: Any) -> list[dict[str, str]]:
 
 
 def _parse_string_param(param_str: str) -> dict[str, str]:
-    """Parse a single 'type name' string into a parameter dict."""
-    parts = param_str.strip().split()
-    if len(parts) >= 2:
-        _prefix = parts[:-1]
-        _joined = " ".join(_prefix)
-        return {"name": parts[-1], "type": _joined}
-    if len(parts) == 1:
-        return {"name": "param", "type": parts[0]}
-    return {"name": "param", "type": "Object"}
+    """Parse a single parameter string into a parameter dict.
+
+    #576: this duplicate previously whitespace-split the string, mangling
+    ``result: dict[str, Any]`` into ``name='Any]', type='result: dict[str,'``.
+    Delegate to the shared helper (single source of truth) — it splits on the
+    first ``:`` and handles default values; fall back for the empty case.
+    """
+    from .analyze_code_structure_helpers import _parse_string_parameter
+
+    return _parse_string_parameter(param_str) or {"name": "param", "type": "Object"}
 
 
 def _get_method_parameters(method: Any) -> list[dict[str, str]]:
@@ -259,7 +260,42 @@ def _build_success_response(
     # post-hook (and direct ``execute()`` callers) see populated envelope
     # keys. Round-16b dogfood saw both as ``None`` here.
     _attach_agent_summary(response, options, metadata, next_steps)
+    _attach_parse_validity(response, options)
     return response
+
+
+def _attach_parse_validity(
+    response: dict[str, Any],
+    options: _ExecutionOptions,
+) -> None:
+    """#572: surface tree-sitter parse errors so a wrong-language or corrupt
+    file (e.g. C++ source in a ``.py``) is not reported as a clean ``INFO``
+    with phantom symbols an agent then trusts. When the file's parse has an
+    ``ERROR`` node, flag ``parse_errors`` and downgrade the verdict to ``WARN``.
+
+    Uses the cached ``Parser`` (LRU), so this reuses the parse the analysis
+    already did rather than incurring a fresh one. Only set on the broken path
+    — a clean parse leaves the INFO envelope untouched.
+    """
+    from .utils.parse_validity import is_file_parse_broken
+
+    # Use the resolved (absolute) path, not the raw file_path — with an MCP
+    # project_root + a project-relative file_path, is_file_parse_broken's
+    # Path(...).is_file() would fail on the relative path and skip the check
+    # (Codex #682 P1).
+    if not is_file_parse_broken(options.resolved_path, options.language):
+        return
+    response["parse_errors"] = True
+    response["verdict"] = "WARN"
+    # _attach_agent_summary (called just before) always sets agent_summary as a
+    # dict, so override its verdict + next_step directly.
+    agent_summary = response["agent_summary"]
+    agent_summary["verdict"] = "WARN"
+    agent_summary["next_step"] = (
+        "Parse errors detected — the extracted symbols may be phantom "
+        "(wrong language for the file extension, or corrupt source). "
+        "Verify the file's language before trusting this structure."
+    )
 
 
 def _safe_int(value: Any) -> int:

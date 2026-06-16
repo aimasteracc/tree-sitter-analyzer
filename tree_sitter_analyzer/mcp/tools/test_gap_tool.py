@@ -38,7 +38,12 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "file_path": {
             "type": "string",
-            "description": "File path for mode 'file' (relative to project root).",
+            "description": (
+                "Scope the analysis to one file (substring match, relative to "
+                "project root). Required for mode 'file'; in 'gaps'/'summary' it "
+                "narrows every reported figure (coverage_pct, totals, gaps) to "
+                "that file instead of the whole project."
+            ),
         },
         "language": {
             "type": "string",
@@ -130,6 +135,10 @@ class CodeGraphTestGapTool(BaseMCPTool):
                 max_files=max_files,
                 max_gaps=max_gaps,
                 include_covered=include_covered,
+                # #693: honor file_path in EVERY mode (not just mode=file).
+                # Previously it was echoed in summary_line but silently dropped
+                # in mode=gaps/summary — a no-op that looked scoped but wasn't.
+                target_file=target_file,
             )
         except Exception as exc:
             logger.error("test_gap analysis failed: %s", exc)

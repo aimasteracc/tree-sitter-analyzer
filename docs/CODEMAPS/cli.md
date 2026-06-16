@@ -53,8 +53,8 @@ Categories of CLI surface:
 ### Project-Level
 - `--project-overview` — snapshot
 - `--project-health` — health-score distribution
-- `--smart-context [--query "X"]` — SMART workflow context
-- `--change-impact` — blast radius
+- `--smart-context` / `smart-context FILE` — SMART workflow context
+- `--change-impact` — blast radius (`--change-impact-resource-profile local_low_impact` emits nice/xdist-capped local pytest commands plus the original CI command)
 - `--call-graph` — caller/callee graph
 
 ### Code Quality
@@ -112,15 +112,20 @@ Categories of CLI surface:
 
 ## Output Format Selection
 
-`--format toon|json|table|csv|yaml`:
+`--format toon|json` (global machine-readable envelope alias):
 
 | Format | Default for | Token cost | Notes |
 |---|---|---|---|
 | `toon` | MCP | -73% vs JSON | LLM-optimized, lossless |
 | `json` | CLI | baseline | jq-pipe friendly |
+| `text` | `--output-format text` | n/a | human-readable output for legacy text paths |
 | `table` | `--table` flag | n/a | Box-drawing chars, terminal only |
 | `csv` | `--table csv` | n/a | spreadsheet ingestion |
-| `yaml` | optional | larger than JSON | human-readable structured |
+
+`--format` is intentionally narrower than `--output-format` and `--table`:
+use `--format json|toon` for agent envelopes, `--output-format text` for the
+remaining human-readable text paths, and `--table csv|full|compact|json|toon`
+for table rendering. There is no global `--format yaml` mode.
 
 ## File Output
 
@@ -140,10 +145,15 @@ uv run python -m tree_sitter_analyzer --change-impact --format json
 
 The command is tailored to the change: `pytest <specific tests>`, `mypy <touched module>`,
 or `git diff --check` for non-code edits.
+For interactive agent work on a user's machine, add
+`--change-impact-resource-profile local_low_impact`; the local
+`verification_command` is capped with `nice -n 15` and `pytest -n 2`, while
+`ci_verification_command` keeps the original broader command for CI or a queue
+boundary.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (252 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (295 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks `cli/argument_parser_builder.py` changes without a `cli.md` update

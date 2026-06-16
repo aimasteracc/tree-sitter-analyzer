@@ -131,27 +131,23 @@ gitGraph
     ```bash
     # 创建临时的release消息文件（避免编码和符号错误）
     cat > release_message.md << 'EOF'
-    ## v1.7.2 - 文件输出优化和ROO规则文档
+    ## vX.Y.Z - <版本标题>
 
     ### 🎯 新增功能
-    - **文件输出优化**: MCP搜索工具新增`suppress_output`和`output_file`参数，大幅节省token消耗
-    - **自动格式检测**: 智能选择文件格式（JSON/Markdown），基于内容类型自动决定
-    - **ROO规则文档**: 新增完整的tree-sitter-analyzer MCP优化使用指南
+    - <描述新功能>
 
     ### 📊 质量指标
-    - 测试数量: 2675个测试（100%通过）
-    - 代码覆盖率: 78.85%
-    - 新增功能: 文件输出优化，大幅节省AI对话token消耗
+    - 测试数量: <来自release CI的测试数量>（100%通过）
+    - 代码覆盖率: <覆盖率%>
+    - <其他指标>
 
     ### 🔧 技术改进
-    - 响应大小减少高达99%（大型搜索结果文件输出时）
-    - 向后兼容，不影响现有功能使用
-    - 完整的测试覆盖，包含文件输出优化功能验证
+    - <描述技术改进>
     EOF
 
     # 使用gh CLI创建release
-    gh release create v1.7.2 \
-        --title "Release v1.7.2: File Output Optimization and ROO Rules Documentation" \
+    gh release create vX.Y.Z \
+        --title "Release vX.Y.Z: <版本标题>" \
         --notes-file release_message.md \
         --target main
 

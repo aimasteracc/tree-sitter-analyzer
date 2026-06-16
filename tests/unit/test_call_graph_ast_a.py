@@ -204,7 +204,7 @@ class TestWalkTree:
         root, src = _parse_source(source, "javascript")
         defs, calls = _walk_tree(root, src, "javascript")
         assert len(defs) == 1
-        assert len(calls) >= 2
+        assert len(calls) == 2
 
     def test_java_method_defs(self):
         source = (
@@ -217,15 +217,15 @@ class TestWalkTree:
         )
         root, src = _parse_source(source, "java")
         defs, calls = _walk_tree(root, src, "java")
-        assert len(defs) >= 1
+        assert len(defs) == 2
         names = {d["name"] for d in defs}
-        assert "main" in names or "foo" in names
+        assert names == {"main", "foo"}
 
     def test_go_function_defs(self):
         source = 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("hi")\n}\n\nfunc helper() int { return 1 }\n'
         root, src = _parse_source(source, "go")
         defs, calls = _walk_tree(root, src, "go")
-        assert len(defs) >= 2
+        assert len(defs) == 2
         names = {d["name"] for d in defs}
         assert "main" in names
         assert "helper" in names
@@ -284,11 +284,35 @@ class TestWalkTree:
         assert method_node is not None
         assert _find_receiver_type_go(method_node) == "Engine"
 
+    def test_find_receiver_type_go_generic_pointer(self):
+        source = "package main\n\ntype Stack[T any] struct{}\n\nfunc (s *Stack[T]) Push() {}\n"
+        root, src = _parse_source(source, "go")
+        method_node = next(c for c in root.children if c.type == "method_declaration")
+        assert _find_receiver_type_go(method_node) == "Stack"
+
+    def test_find_receiver_type_go_generic_multiline_pointer(self):
+        source = (
+            "package main\n\n"
+            "type Stack[T any] struct{}\n\n"
+            "func (s *Stack[\n"
+            "    T,\n"
+            "]) Clear() {}\n"
+        )
+        root, src = _parse_source(source, "go")
+        method_node = next(c for c in root.children if c.type == "method_declaration")
+        assert _find_receiver_type_go(method_node) == "Stack"
+
     def test_find_receiver_type_go_value_receiver(self):
         source = "package main\n\nfunc (e Engine) Run() {}\n"
         root, src = _parse_source(source, "go")
         method_node = next(c for c in root.children if c.type == "method_declaration")
         assert _find_receiver_type_go(method_node) == "Engine"
+
+    def test_find_receiver_type_go_unnamed_pointer_receiver(self):
+        source = "package main\n\ntype Counter struct{}\n\nfunc (*Counter) Run() {}\n"
+        root, src = _parse_source(source, "go")
+        method_node = next(c for c in root.children if c.type == "method_declaration")
+        assert _find_receiver_type_go(method_node) == "Counter"
 
     def test_find_receiver_type_go_none_for_non_method(self):
         assert _find_receiver_type_go(None) is None
@@ -311,8 +335,8 @@ class TestWalkTree:
         source = "int main(void) { return foo(); }\nint foo(void) { return 1; }\n"
         root, src = _parse_source(source, "c")
         defs, calls = _walk_tree(root, src, "c")
-        assert len(calls) >= 1
-        assert any(c["name"] == "foo" for c in calls)
+        assert len(calls) == 1
+        assert calls[0]["name"] == "foo"
 
     def test_unsupported_language(self):
         source = "def foo():\n    pass\n"

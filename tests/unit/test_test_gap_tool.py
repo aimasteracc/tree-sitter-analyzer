@@ -215,3 +215,83 @@ class TestPackageScopeCollectFiles:
         result = analyze_coverage_gaps(str(tmp_path), max_files=1000)
         # Only real_func is a production symbol; sample_func (×3) must not appear
         assert result.total_production_symbols == 1
+
+
+class TestFilePathScoping:
+    """Issue #693: file_path must scope the analysis, not be a silent no-op."""
+
+    def _two_file_project(self, tmp_path):
+        """Two production files with distinct symbol counts, no matching tests."""
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        # alpha.py: 3 functions
+        (pkg / "alpha.py").write_text(
+            "def a_one():\n    pass\n\ndef a_two():\n    pass\n\n"
+            "def a_three():\n    pass\n"
+        )
+        # beta.py: 1 function
+        (pkg / "beta.py").write_text("def b_one():\n    pass\n")
+        return tmp_path
+
+    def test_target_file_scopes_analyzer_totals(self, tmp_path):
+        """analyze_coverage_gaps(target_file=...) counts only that file's symbols."""
+        project = self._two_file_project(tmp_path)
+        full = analyze_coverage_gaps(str(project), max_files=1000)
+        scoped = analyze_coverage_gaps(
+            str(project), max_files=1000, target_file="alpha.py"
+        )
+        # 3 (alpha) + 1 (beta) project-wide; alpha.py alone has exactly 3.
+        assert full.total_production_symbols == 4
+        assert scoped.total_production_symbols == 3
+        assert scoped.summary["production_files"] == 1
+        assert {g.symbol.file_path for g in scoped.gaps} == {
+            str(project / "pkg" / "alpha.py")
+        }
+
+    def test_target_file_default_none_is_project_wide(self, tmp_path):
+        """Omitting target_file keeps the existing project-wide behavior."""
+        project = self._two_file_project(tmp_path)
+        assert (
+            analyze_coverage_gaps(str(project), max_files=1000).total_production_symbols
+            == 4
+        )
+
+    @pytest.mark.asyncio
+    async def test_file_path_honored_in_gaps_mode(self, tool, tmp_path):
+        """#693 core: file_path in the default (gaps) mode scopes the result —
+        it used to be echoed but silently ignored, so the body was identical
+        regardless of the path."""
+        project = self._two_file_project(tmp_path)
+        tool.set_project_path(str(project))
+        whole = await tool.execute({"mode": "gaps", "output_format": "json"})
+        scoped = await tool.execute(
+            {"mode": "gaps", "file_path": "alpha.py", "output_format": "json"}
+        )
+        assert whole["total_production_symbols"] == 4
+        assert scoped["total_production_symbols"] == 3
+        # The two responses must NOT be identical (the #693 trap).
+        assert scoped["gap_count"] != whole["gap_count"]
+        assert all("alpha.py" in g["file"] for g in scoped["gaps"])
+
+    def test_target_file_found_beyond_max_files_walk_order(self, tmp_path):
+        """Codex #713 P2: a scoped target later than max_files in walk order must
+        still be found. Filtering after the cap returned 0 symbols; pushing the
+        filter into the walk fixes it."""
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        # 20 production files that sort BEFORE the target alphabetically.
+        for i in range(20):
+            (pkg / f"a_mod{i:02d}.py").write_text(f"def fn{i}():\n    pass\n")
+        # The target sorts last and has 2 symbols.
+        (pkg / "zzz_target.py").write_text(
+            "def t_one():\n    pass\n\ndef t_two():\n    pass\n"
+        )
+        # max_files=5 would exhaust the production budget on a_mod00..04 before
+        # ever reaching zzz_target.py — the old post-cap filter returned 0.
+        scoped = analyze_coverage_gaps(
+            str(tmp_path), max_files=5, target_file="zzz_target.py"
+        )
+        assert scoped.total_production_symbols == 2
+        assert scoped.summary["production_files"] == 1

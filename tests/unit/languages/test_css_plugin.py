@@ -175,11 +175,13 @@ h1 {
             # Analyze the file
             result = await self.plugin.analyze_file(temp_path, request)
 
-            # Verify results
+            # Verify results. Exact pins measured on the inline fixture:
+            # 34 lines; 7 elements = body/.container/h1 + @media + its 2
+            # nested rules + @keyframes.
             assert result.success
             assert result.language == "css"
-            assert result.line_count > 0
-            assert len(result.elements) > 0
+            assert result.line_count == 34
+            assert len(result.elements) == 7
             assert result.source_code == css_content
 
             # Check that we have at least one element
@@ -223,7 +225,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         keyframes = [e for e in elements if e.selector.startswith("@keyframes")]
-        assert len(keyframes) >= 1
+        assert len(keyframes) == 1  # fixture declares exactly 1 @keyframes
         assert keyframes[0].selector == "@keyframes fadeIn"
         assert keyframes[0].name == "@keyframes fadeIn"
 
@@ -237,7 +239,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 1
+        assert len(media_queries) == 1  # fixture declares exactly 1 @media
         assert media_queries[0].selector == "@media (max-width: 768px)"
         assert media_queries[0].name == "@media (max-width: 768px)"
 
@@ -251,7 +253,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 1
+        assert len(media_queries) == 1  # fixture declares exactly 1 @media
         assert "screen" in media_queries[0].selector
         assert "min-width" in media_queries[0].selector
 
@@ -265,7 +267,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 1
+        assert len(media_queries) == 1  # fixture declares exactly 1 @media
         assert "min-width" in media_queries[0].selector
         assert "max-width" in media_queries[0].selector
 
@@ -279,7 +281,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 1
+        assert len(media_queries) == 1  # fixture declares exactly 1 @media
         assert "prefers-color-scheme" in media_queries[0].selector
         assert "dark" in media_queries[0].selector
 
@@ -293,7 +295,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         media_queries = [e for e in elements if e.selector.startswith("@media")]
-        assert len(media_queries) >= 1
+        assert len(media_queries) == 1  # fixture declares exactly 1 @media
         assert media_queries[0].selector == "@media print"
 
     def test_extract_multiple_keyframes(self):
@@ -318,7 +320,7 @@ class TestCssExtractAtRuleName:
         elements = self.extractor.extract_css_rules(tree, css_code)
 
         keyframes = [e for e in elements if e.selector.startswith("@keyframes")]
-        assert len(keyframes) >= 3
+        assert len(keyframes) == 3  # fixture declares exactly 3 @keyframes
 
         names = [e.name for e in keyframes]
         assert "@keyframes fadeIn" in names
@@ -534,7 +536,10 @@ class TestCssPluginAnalyzeFallback:
                     result = await plugin.analyze_file(temp_path, MockRequest())
                     assert result.success
                     assert result.language == "css"
-                    assert len(result.elements) >= 1
+                    # The regex fallback parser extracts 1 element from the
+                    # 2-rule fixture (measured live; documents the degraded
+                    # path's actual recall, not a hoped-for bound).
+                    assert len(result.elements) == 1
         finally:
             Path(temp_path).unlink()
 
@@ -658,6 +663,203 @@ class TestCssIntegration:
         assert element.selector == ".nav ul li a:hover"
         assert element.properties["color"] == "blue"
         assert element.properties["text-decoration"] == "underline"
+
+
+class TestScssVariableExtraction:
+    """Tests for SCSS ``$variable`` extraction (Bug #807).
+
+    ``tree-sitter-css`` does not parse SCSS ``$var: value;`` syntax — it
+    emits ERROR nodes and the CSS plugin previously returned 0 elements for
+    any ``.scss`` file.  The fix adds a regex pass for ``.scss``/``.sass``
+    files that produces ``Variable`` elements for each ``$name`` declaration.
+    """
+
+    @pytest.mark.asyncio
+    async def test_scss_variables_extracted_from_file(self):
+        """3 SCSS ``$variable`` declarations → 3 Variable elements."""
+        import tempfile
+
+        from tree_sitter_analyzer.models import Variable
+
+        plugin = CssPlugin()
+
+        class MockRequest:
+            include_source = True
+            query_filters = {}
+
+        scss_content = (
+            "$primary-color: #0d6efd;\n"
+            "$font-size-base: 1rem;\n"
+            "$spacer: 1rem;\n"
+            ".foo { color: $primary-color; }\n"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".scss", delete=False) as f:
+            f.write(scss_content)
+            temp_path = f.name
+
+        try:
+            result = await plugin.analyze_file(temp_path, MockRequest())
+            assert result.success is True
+            var_elements = [e for e in result.elements if isinstance(e, Variable)]
+            assert len(var_elements) == 3
+            var_names = {e.name for e in var_elements}
+            assert var_names == {"$primary-color", "$font-size-base", "$spacer"}
+        finally:
+            Path(temp_path).unlink()
+
+    @pytest.mark.asyncio
+    async def test_scss_variables_have_correct_line_numbers(self):
+        """Each Variable element's start_line matches its source line."""
+        import tempfile
+
+        from tree_sitter_analyzer.models import Variable
+
+        plugin = CssPlugin()
+
+        class MockRequest:
+            include_source = True
+            query_filters = {}
+
+        scss_content = "// comment\n$blue: #0d6efd;\n$red: #dc3545;\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".scss", delete=False) as f:
+            f.write(scss_content)
+            temp_path = f.name
+
+        try:
+            result = await plugin.analyze_file(temp_path, MockRequest())
+            var_elements = [e for e in result.elements if isinstance(e, Variable)]
+            assert len(var_elements) == 2
+            by_name = {e.name: e for e in var_elements}
+            assert by_name["$blue"].start_line == 2
+            assert by_name["$red"].start_line == 3
+        finally:
+            Path(temp_path).unlink()
+
+    @pytest.mark.asyncio
+    async def test_scss_no_variables_returns_css_rules_only(self):
+        """SCSS file with no ``$var`` declarations → 0 Variable elements."""
+        import tempfile
+
+        from tree_sitter_analyzer.models import Variable
+
+        plugin = CssPlugin()
+
+        class MockRequest:
+            include_source = True
+            query_filters = {}
+
+        scss_content = ".foo { color: red; }\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".scss", delete=False) as f:
+            f.write(scss_content)
+            temp_path = f.name
+
+        try:
+            result = await plugin.analyze_file(temp_path, MockRequest())
+            var_elements = [e for e in result.elements if isinstance(e, Variable)]
+            assert len(var_elements) == 0
+        finally:
+            Path(temp_path).unlink()
+
+    @pytest.mark.asyncio
+    async def test_plain_css_file_unaffected_by_scss_extraction(self):
+        """Plain ``.css`` file: no Variable elements, only CSS rules."""
+        import tempfile
+
+        from tree_sitter_analyzer.models import Variable
+
+        plugin = CssPlugin()
+
+        class MockRequest:
+            include_source = True
+            query_filters = {}
+
+        css_content = ":root { --primary: #fff; }\n.bar { color: var(--primary); }\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".css", delete=False) as f:
+            f.write(css_content)
+            temp_path = f.name
+
+        try:
+            result = await plugin.analyze_file(temp_path, MockRequest())
+            var_elements = [e for e in result.elements if isinstance(e, Variable)]
+            assert len(var_elements) == 0
+        finally:
+            Path(temp_path).unlink()
+
+    def test_extract_scss_variables_unit(self):
+        """Unit test for ``_extract_scss_variables`` helper directly."""
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+        from tree_sitter_analyzer.models import Variable
+
+        content = (
+            "$alpha: #fff;\n"
+            "$beta-color: rgba(0, 0, 0, 0.5);\n"
+            "// not a variable\n"
+            "$gamma: 1rem;\n"
+        )
+        results = _extract_scss_variables("dummy.scss", content)
+        assert len(results) == 3
+        assert all(isinstance(v, Variable) for v in results)
+        names = [v.name for v in results]
+        assert names == ["$alpha", "$beta-color", "$gamma"]
+
+    def test_extract_scss_variables_deduplicates_on_first_occurrence(self):
+        """Reassignment of ``$var`` in nested scope → only first occurrence kept."""
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = "$color: #fff;\n.nested {\n  $color: #000;\n}\n"
+        results = _extract_scss_variables("dummy.scss", content)
+        assert len(results) == 1
+        assert results[0].name == "$color"
+        assert results[0].start_line == 1
+
+    def test_extract_scss_variables_skips_block_comments(self):
+        """Bug #790: ``$var`` inside a ``/* ... */`` block comment is skipped.
+
+        A commented-out declaration must NOT yield a phantom Variable, whether
+        the comment spans multiple lines or sits inline on a single line.
+        """
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = "$live: #fff;\n/*\n$old: red;\n$older: blue;\n*/\n$also_live: 1rem;\n"
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$live", "$also_live"]
+
+    def test_extract_scss_variables_skips_inline_block_comment(self):
+        """A single-line ``/* $old: red; */`` block comment yields no Variable."""
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = "/* $old: red; */\n$live: #fff;\n"
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$live"]
+
+    def test_extract_scss_variables_literal_slash_star_in_string(self):
+        """Bug #967: a literal ``/*`` inside a quoted value must NOT open a comment.
+
+        ``$glob: "src/*";`` contains ``/*`` with no same-line ``*/``. The naive
+        raw-line scan set ``in_block_comment`` and silently dropped every
+        following declaration. The string-aware scan must keep BOTH variables.
+        """
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = '$glob: "src/*";\n$color: red;\n'
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$glob", "$color"]
+
+    def test_extract_scss_variables_single_quoted_slash_star(self):
+        """A single-quoted ``'a/*b'`` literal also must not open a block comment."""
+        from tree_sitter_analyzer.languages.css_plugin import _extract_scss_variables
+
+        content = "$path: 'a/*b';\n$size: 1rem;\n"
+        results = _extract_scss_variables("dummy.scss", content)
+        names = [v.name for v in results]
+        assert names == ["$path", "$size"]
 
 
 if __name__ == "__main__":

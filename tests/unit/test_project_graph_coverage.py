@@ -197,7 +197,7 @@ class TestDependencyGraphResolvePaths:
 
         graph = DependencyGraph(str(proj))
         edges = graph.edges()
-        assert len(edges) >= 1, f"Expected edges, got {edges}"
+        assert len(edges) == 1, f"Expected 1 edge, got {edges}"
 
     def test_ts_resolve(self, tmp_path):
         proj = tmp_path / "ts_proj"
@@ -206,12 +206,12 @@ class TestDependencyGraphResolvePaths:
         (proj / "lib.ts").write_text("export function bar() {}\n")
 
         graph = DependencyGraph(str(proj))
-        assert len(graph.edges()) >= 1
+        assert len(graph.edges()) == 1
 
     def test_go_resolve_from_fixture(self):
         graph = DependencyGraph(str(GO_PROJECT))
         nodes = graph.nodes()
-        assert len(nodes) >= 3, f"Expected >=3 Go nodes, got {nodes}"
+        assert len(nodes) == 3, f"Expected 3 Go nodes, got {nodes}"
 
     def test_go_absolute_import_no_resolve(self, tmp_path):
         proj = tmp_path / "go_proj2"
@@ -229,7 +229,7 @@ class TestDependencyGraphResolvePaths:
 
         graph = DependencyGraph(str(proj))
         nodes = graph.nodes()
-        assert len(nodes) >= 2
+        assert len(nodes) == 2
 
     def test_cpp_resolve_include(self, tmp_path):
         proj = tmp_path / "cpp_proj"
@@ -239,7 +239,7 @@ class TestDependencyGraphResolvePaths:
 
         graph = DependencyGraph(str(proj))
         edges = graph.edges()
-        assert len(edges) >= 1, f"Expected CPP edges, got {edges}"
+        assert len(edges) == 1, f"Expected 1 CPP edge, got {edges}"
 
     def test_java_resolve_package(self, tmp_path):
         proj = tmp_path / "java_proj"
@@ -252,7 +252,7 @@ class TestDependencyGraphResolvePaths:
 
         graph = DependencyGraph(str(proj))
         edges = graph.edges()
-        assert len(edges) >= 1, f"Expected Java edges, got {edges}"
+        assert len(edges) == 1, f"Expected 1 Java edge, got {edges}"
 
     def test_excluded_dirs_skipped(self, tmp_path):
         proj = tmp_path / "mixed_proj"

@@ -8,6 +8,8 @@ import os
 import re
 from pathlib import Path
 
+import pytest
+
 try:
     import tomllib  # Python 3.11+ stdlib
 except ImportError:  # Python 3.10 — fall back to the tomli back-port
@@ -804,7 +806,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("structure", "ast_path"): "CodeGraphASTPathTool",
         ("structure", "sitemap"): "CodeGraphSitemapTool",
         ("structure", "class_tree"): "ClassHierarchyTool",
-        ("structure", "class_detail"): "ClassInspectTool",
+        # class_detail is a bespoke route (#804) so query/symbol→class_name aliasing works.
+        ("structure", "class_detail"): "<bespoke>",
         ("structure", "explore"): "CodeGraphExploreTool",
         ("structure", "read"): "<bespoke>",
         ("health", "project"): "ProjectHealthTool",
@@ -1127,6 +1130,7 @@ def test_agent_docs_require_dogfood_feedback_memory_loop() -> None:
     assert "verification" in agents_text
 
 
+@pytest.mark.slow_ok  # scans the Python API source for warning-prone patterns; ~5-5.5s, tips the 5s budget under Windows full-matrix load
 def test_warning_prone_python_api_patterns_are_blocked() -> None:
     """Keep future agents from reintroducing known Python 3.14 warning sources."""
     blocked_patterns = {

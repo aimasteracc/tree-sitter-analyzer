@@ -128,7 +128,7 @@ class TestCLIInfoCommands:
             main()
 
         error_output = mock_stderr.getvalue()
-        assert len(error_output) > 0
+        assert error_output == "ERROR: File path not specified.\n"
 
 
 class TestCLIQueryCommands:
@@ -231,7 +231,9 @@ public class TestClass {
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert '"language": "java"' in output
+        assert '"class_count": 1' in output
+        assert '"method_count": 1' in output
 
     def test_analyze_with_query_key(self, monkeypatch, temp_java_file):
         """Test analyzing file with specific query"""
@@ -255,7 +257,8 @@ public class TestClass {
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert '"match_count": 1' in output
+        assert '"name": "TestClass"' in output
 
     def test_analyze_with_custom_query(self, monkeypatch, temp_java_file):
         """Test analyzing file with custom query string"""
@@ -280,7 +283,9 @@ public class TestClass {
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert '"capture_name": "class-name"' in output
+        assert '"content": "TestClass"' in output
+        assert '"match_count": 1' in output
 
     def test_output_format_json(self, monkeypatch, temp_java_file):
         """Test JSON output format"""
@@ -330,7 +335,9 @@ public class TestClass {
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert "--- Advanced Analysis Results ---" in output
+        assert "Classes: 1" in output
+        assert "Methods: 1" in output
 
 
 class TestCLILanguageHandling:
@@ -359,7 +366,8 @@ class TestCLILanguageHandling:
                 main()
 
             output = mock_stdout.getvalue()
-            assert len(output) > 0
+            assert '"language": "python"' in output
+            assert '"method_count": 1' in output
         finally:
             Path(temp_path).unlink(missing_ok=True)
 
@@ -392,10 +400,13 @@ class TestCLILanguageHandling:
             with contextlib.suppress(SystemExit):
                 main()
 
-            # CLI now emits "Language explicitly specified: java" plus
-            # a usage hint on stderr when no query/--advanced is given.
-            # Accept either stdout (legacy) or stderr (current).
-            assert len(mock_stdout.getvalue()) > 0 or len(mock_stderr.getvalue()) > 0
+            # CLI emits "Language explicitly specified: java" plus a usage
+            # hint on stderr when no query/--advanced is given; stdout is
+            # empty (the machine-readable channel stays clean).
+            assert mock_stdout.getvalue() == ""
+            error_output = mock_stderr.getvalue()
+            assert "Language explicitly specified: java" in error_output
+            assert "Please specify a query or --advanced option" in error_output
         finally:
             Path(temp_path).unlink(missing_ok=True)
 
@@ -447,8 +458,10 @@ class TestCLIErrorHandling:
                 main()
 
             error_output = mock_stderr.getvalue()
-            # This assertion depends on specific error message
-            assert len(error_output) > 0
+            assert (
+                "Query 'invalid_query_key' not found for language 'java'"
+                in error_output
+            )
         finally:
             Path(temp_path).unlink(missing_ok=True)
 

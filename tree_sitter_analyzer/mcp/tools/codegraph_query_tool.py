@@ -238,6 +238,14 @@ class CodeGraphQueryTool(BaseMCPTool):
                 symbols=[],
                 files=[],
                 relationships={"callers": {}, "callees": {}},
+                agent_summary={
+                    "summary_line": f"chain: parse error — {exc}",
+                    "verdict": "ERROR",
+                    "next_step": (
+                        "Fix the chain DSL syntax. Steps are separated by '.' "
+                        "(not '|'). Example: search('Foo').callers()."
+                    ),
+                },
             )
             return apply_toon_format_to_response(result, output_format)
 
@@ -274,8 +282,23 @@ class CodeGraphQueryTool(BaseMCPTool):
             ]
 
         has_evidence = bool(state.symbols or state.files)
+        verdict = "INFO" if has_evidence else "NOT_FOUND"
+        symbol_count = len(state.symbols)
+        file_count = len(state.files)
+        if has_evidence:
+            summary_line = (
+                f"chain: {query!r} → {symbol_count} symbol(s), {file_count} file(s)"
+            )
+            next_step = (
+                "Inspect symbols/files above; use nav action=navigate for details."
+            )
+        else:
+            summary_line = f"chain: {query!r} → no results"
+            next_step = (
+                "No symbols found. Try a broader query or check the index is built."
+            )
         result = build_response(
-            verdict="INFO" if has_evidence else "NOT_FOUND",
+            verdict=verdict,
             query=query,
             normalized_chain=[step_to_dict(step) for step in steps],
             symbols=symbols_payload,
@@ -297,6 +320,11 @@ class CodeGraphQueryTool(BaseMCPTool):
                 ),
             },
             warnings=warnings or None,
+            agent_summary={
+                "summary_line": summary_line,
+                "verdict": verdict,
+                "next_step": next_step,
+            },
         )
         return apply_toon_format_to_response(result, output_format)
 

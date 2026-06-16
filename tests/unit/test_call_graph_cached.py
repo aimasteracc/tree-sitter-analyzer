@@ -249,13 +249,19 @@ class TestFindEnclosingFuncRange:
         result = cg.find_enclosing_func(file_funcs, 15)
         assert result.name == "inner"
 
-    def test_fallback_closest_start(self):
+    def test_module_level_gap_returns_none(self):
+        """A call between two non-overlapping functions has no enclosing function.
+
+        Before #648: the fallback returned the nearest preceding function (foo).
+        After #648: returns None — the call is module-level and must not be
+        attributed to any function (mirrors the SQL tier's counted-exclusion).
+        """
         cg = CallGraph("/tmp")
         f1 = FunctionRef("a.py", "foo", 5, "python", end_line=5)
         f2 = FunctionRef("a.py", "bar", 15, "python", end_line=15)
         file_funcs = {"foo": f1, "bar": f2}
         result = cg.find_enclosing_func(file_funcs, 10)
-        assert result.name == "foo"
+        assert result is None
 
 
 # ============================================================

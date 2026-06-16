@@ -47,7 +47,7 @@ class TestJavaScriptQueries:
         """Test getting all queries"""
         all_queries = get_all_queries()
         assert isinstance(all_queries, dict)
-        assert len(all_queries) > 0
+        assert len(all_queries) == 87
         assert "functions" in all_queries
         assert "query" in all_queries["functions"]
         assert "description" in all_queries["functions"]
@@ -56,14 +56,14 @@ class TestJavaScriptQueries:
         """Test listing all query names"""
         query_names = list_queries()
         assert isinstance(query_names, list)
-        assert len(query_names) > 0
+        assert len(query_names) == 87
         assert "functions" in query_names
         assert "classes" in query_names
 
     def test_all_queries_structure(self) -> None:
         """Test ALL_QUERIES dictionary structure"""
         assert isinstance(ALL_QUERIES, dict)
-        assert len(ALL_QUERIES) > 0
+        assert len(ALL_QUERIES) == 87
 
         # Test essential queries exist
         essential_queries = ["functions", "classes", "variables", "imports", "exports"]
@@ -77,9 +77,9 @@ class TestJavaScriptQueries:
     def test_query_constants(self) -> None:
         """Test that query constants are properly defined"""
         constants = [FUNCTIONS, CLASSES, VARIABLES, IMPORTS, EXPORTS, OBJECTS, COMMENTS]
-        for constant in constants:
-            assert isinstance(constant, str)
-            assert len(constant.strip()) > 0
+        assert len(constants) == 7
+        assert all(isinstance(c, str) for c in constants)
+        assert min(len(c.strip()) for c in constants) == 18
 
     def test_functions_query(self) -> None:
         """Test functions query content"""
@@ -123,13 +123,11 @@ class TestJavaScriptQueries:
 
     def test_query_descriptions(self) -> None:
         """Test that all queries have meaningful descriptions"""
-        for _query_name, query_data in ALL_QUERIES.items():
-            description = query_data["description"]
-            assert isinstance(description, str)
-            assert len(description) > 0
-            assert (
-                "search" in description.lower()
-            )  # All descriptions should mention "search"
+        descriptions = [qd["description"] for qd in ALL_QUERIES.values()]
+        assert len(descriptions) == 87
+        assert all(isinstance(d, str) for d in descriptions)
+        assert min(len(d) for d in descriptions) == 15
+        assert all("search" in d.lower() for d in descriptions)
 
     def test_query_consistency(self) -> None:
         """Test consistency between constants and ALL_QUERIES"""
@@ -152,10 +150,10 @@ class TestJavaScriptQueryFunctions:
         assert "function_declaration" in result
 
     def test_get_javascript_query_all_keys(self) -> None:
-        for key in JAVASCRIPT_QUERIES:
-            result = get_javascript_query(key)
-            assert isinstance(result, str)
-            assert len(result.strip()) > 0
+        results = [get_javascript_query(key) for key in JAVASCRIPT_QUERIES]
+        assert len(results) == 78
+        assert all(isinstance(r, str) for r in results)
+        assert min(len(r.strip()) for r in results) == 16
 
     def test_get_javascript_query_invalid_raises(self) -> None:
         with pytest.raises(
@@ -172,10 +170,10 @@ class TestJavaScriptQueryFunctions:
         assert get_javascript_query_description("zzz_missing") == "No description"
 
     def test_get_javascript_query_description_all_keys(self) -> None:
-        for key in JAVASCRIPT_QUERIES:
-            desc = get_javascript_query_description(key)
-            assert isinstance(desc, str)
-            assert len(desc) > 0
+        descs = [get_javascript_query_description(key) for key in JAVASCRIPT_QUERIES]
+        assert len(descs) == 78
+        assert all(isinstance(d, str) for d in descs)
+        assert min(len(d) for d in descs) == 15
 
     def test_get_query_through_all_queries(self) -> None:
         for key in ALL_QUERIES:

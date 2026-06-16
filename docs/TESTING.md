@@ -35,10 +35,11 @@ tests/
 │   ├── data_generators.py     # Test data generators
 │   └── assertion_helpers.py   # Custom assertion functions
 ├── unit/                   # Unit tests
+│   ├── mcp/                # MCP-specific unit tests
+│   └── security/           # Security unit tests
 ├── integration/            # Integration tests
-├── mcp/                    # MCP-specific tests
-├── security/               # Security tests
-└── performance/            # Performance benchmarks
+├── regression/             # Regression tests
+└── benchmarks/             # Performance benchmarks
 ```
 
 ## Writing Tests
@@ -244,6 +245,16 @@ uv run python scripts/check_patch_coverage.py --base origin/develop --coverage-j
 uv run pytest -q
 ```
 
+### Run Faster During Development
+
+```bash
+# Skip known exhaustive suites first (recommended for iterative work):
+PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q -m "not slow and not full_language" --maxfail=1
+
+# If your machine is overloaded, force single-process mode:
+PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and not full_language"
+```
+
 ### Run with Coverage
 
 ```bash
@@ -276,11 +287,14 @@ uv run pytest tests/unit/test_exceptions_comprehensive.py::TestAnalysisError::te
 # Run only fast tests
 uv run pytest -m fast
 
-# Skip slow tests
+# Skip slow tests (still keep full-language suites)
 uv run pytest -m "not slow"
 
-# Run integration tests
+# Run integration tests only
 uv run pytest -m integration
+
+# Skip full-language exhaustive suites (biggest speed win for quick local loops)
+uv run pytest -q -m "not full_language and not slow"
 ```
 
 ### Run Tests in Parallel
@@ -289,8 +303,10 @@ uv run pytest -m integration
 # The default pytest config uses pytest-xdist.
 uv run pytest -q
 
-# Override worker scheduling when needed.
-uv run pytest -q --numprocesses=auto --dist=loadfile
+# On some hosts, --numprocesses=auto can resolve to a single worker.
+# Pin workers explicitly when you want predictable throughput.
+PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q               # parallel (default-ish, explicit)
+PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q               # force single-process (lighter on local machine)
 
 # Benchmark-only runs should disable xdist and the 5-minute session limit.
 uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0

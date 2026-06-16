@@ -28,6 +28,11 @@ from .codegraph_query_backend import CodeGraphQueryBackend
 
 logger = logging.getLogger(__name__)
 
+# SQLite's default SQLITE_MAX_VARIABLE_NUMBER is 999. Each inbound xref query
+# binds the file's symbol-name list plus 2 file_path params, so chunk the names
+# well under that ceiling (mirrors the portability chunking in _route_cache.py).
+_XREF_NAME_CHUNK = 900
+
 
 @dataclass
 class XRefResult:
@@ -308,29 +313,75 @@ class XRefEngine:
                     break
         return results
 
+    def _file_defined_names(
+        self,
+        conn: sqlite3.Connection,
+        file_path: str,
+    ) -> list[str]:
+        """Callable symbol names defined in ``file_path`` (function/method/class).
+
+        Inbound xref (callers / file-dependents) resolves by these names — the
+        same name-based precision symbol-mode ``_find_callers`` uses.
+        """
+        return [s["name"] for s in self._file_symbols(conn, file_path) if s.get("name")]
+
+    def _inbound_edge_rows(
+        self,
+        conn: sqlite3.Connection,
+        names: list[str],
+        file_path: str,
+        prefix: str,
+        suffix: str,
+    ) -> list[sqlite3.Row]:
+        """Run a chunked inbound-edge query and concatenate the rows.
+
+        ``names`` is chunked under SQLite's 999 bound-variable cap so a file
+        with ~1000+ symbols doesn't raise ``too many SQL variables``. Each chunk
+        binds ``(*chunk, file_path, file_path)``. ``prefix``/``suffix`` are
+        constant SQL fragments (B608: no user data in the string); callers
+        dedup + order + cap across chunks.
+        """
+        rows: list[sqlite3.Row] = []
+        for start in range(0, len(names), _XREF_NAME_CHUNK):
+            chunk = names[start : start + _XREF_NAME_CHUNK]
+            placeholders = ",".join("?" * len(chunk))
+            rows.extend(
+                conn.execute(
+                    prefix + placeholders + suffix,
+                    (*chunk, file_path, file_path),
+                ).fetchall()
+            )
+        return rows
+
     def _find_file_dependents(
         self,
         conn: sqlite3.Connection,
         file_path: str,
     ) -> list[dict[str, Any]]:
-        rows = conn.execute(
-            "SELECT file_path AS caller_file, callee_name, "
-            "json_extract(metadata, '$.callee_full') AS callee_full "
-            "FROM edges "
-            "WHERE kind = 'calls' AND file_path = ? "
-            "GROUP BY caller_file LIMIT 50",
-            (file_path,),
-        ).fetchall()
-
-        seen: set[str] = set()
-        results: list[dict[str, Any]] = []
-        for row in rows:
-            caller_file = row["caller_file"]
-            if caller_file == file_path or caller_file in seen:
-                continue
-            seen.add(caller_file)
-            results.append({"file": caller_file})
-        return results
+        # Inbound: distinct OTHER files whose call edges target a symbol defined
+        # in this file. (The prior query selected edges where this file is the
+        # CALLER, then discarded every row as same-file — always empty.)
+        names = self._file_defined_names(conn, file_path)
+        if not names:
+            return []
+        # Bind a ``?``-only placeholders variable between named prefix/suffix
+        # constants (no user data in the SQL string) so the security scanner
+        # doesn't flag the SELECT — same B608 convention as _route_cache.py.
+        _fd_prefix = (
+            "SELECT DISTINCT file_path AS caller_file FROM edges "
+            "WHERE kind = 'calls' AND callee_name IN ("
+        )
+        # callee_resolved_file gate (Codex P2): count ONLY edges the resolver
+        # tied to THIS file. No unresolved ('') fallback — an unresolved
+        # `'x'.format()` call would otherwise inflate any file defining `format`
+        # (resolved inbound only; under-count beats over-count for blast radius).
+        _fd_suffix = (
+            ") AND file_path != ? AND callee_resolved_file = ? ORDER BY caller_file"
+        )
+        rows = self._inbound_edge_rows(conn, names, file_path, _fd_prefix, _fd_suffix)
+        # Distinct caller files across chunks, deterministically ordered, capped.
+        caller_files = sorted({row["caller_file"] for row in rows})
+        return [{"file": cf} for cf in caller_files[:50]]
 
     def _file_symbols(
         self,
@@ -364,15 +415,39 @@ class XRefEngine:
         conn: sqlite3.Connection,
         file_path: str,
     ) -> list[dict[str, Any]]:
-        rows = conn.execute(
+        # Inbound call sites in OTHER files whose callee resolves to a symbol
+        # defined in this file. (The prior `file_path = ? AND file_path != ?`
+        # predicate bound both to the same value — structurally always empty.)
+        names = self._file_defined_names(conn, file_path)
+        if not names:
+            return []
+        # ``?``-only placeholders between named prefix/suffix — B608 convention.
+        _fc_prefix = (
             "SELECT DISTINCT caller_name, file_path AS caller_file, "
-            "json_extract(metadata, '$.caller_line') AS caller_line "
-            "FROM edges "
-            "WHERE kind = 'calls' AND file_path = ? AND file_path != ? "
-            "LIMIT 50",
-            (file_path, file_path),
-        ).fetchall()
-        return [dict(row) for row in rows]
+            "json_extract(metadata, '$.caller_line') AS caller_line, callee_name "
+            "FROM edges WHERE kind = 'calls' AND callee_name IN ("
+        )
+        # callee_resolved_file gate (Codex P2): resolved-to-this-file rows ONLY,
+        # no unresolved ('') fallback (an unresolved str.format() call would
+        # otherwise be credited to any file defining `format`).
+        _fc_suffix = (
+            ") AND file_path != ? AND callee_resolved_file = ? "
+            "ORDER BY caller_file, caller_line"
+        )
+        rows = self._inbound_edge_rows(conn, names, file_path, _fc_prefix, _fc_suffix)
+        # Dedup identical (file, caller, line) call sites across chunks (a caller
+        # row matches only its single callee_name, so dups arise only if two
+        # chunks return the same site), deterministically ordered, capped.
+        by_site: dict[tuple[str, str, Any], dict[str, Any]] = {}
+        for row in sorted(
+            rows, key=lambda r: (r["caller_file"], r["caller_line"] or 0)
+        ):
+            by_site.setdefault(
+                (row["caller_file"], row["caller_name"], row["caller_line"]),
+                dict(row),
+            )
+        out = list(by_site.values())[:50]
+        return out
 
     def _file_callees(
         self,

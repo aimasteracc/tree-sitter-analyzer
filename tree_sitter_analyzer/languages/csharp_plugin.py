@@ -24,7 +24,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..models import Class, Function, Import, Variable
+from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 from ..utils.tree_sitter_compat import get_node_text_safe
@@ -66,6 +66,9 @@ from .csharp_helpers import (
 )
 from .csharp_helpers import (
     extract_using_directive as _extract_using_standalone,
+)
+from .csharp_helpers import (
+    find_owning_class_name as _find_owning_class_name,
 )
 
 
@@ -151,7 +154,7 @@ class CSharpElementExtractor(ElementExtractor):
         Args:
             node: Root node of the AST
         """
-        if node.type == "namespace_declaration":
+        if node.type in ("namespace_declaration", "file_scoped_namespace_declaration"):
             name_node = node.child_by_field_name("name")
             if name_node:
                 self.current_namespace = self._get_node_text_optimized(name_node)
@@ -159,7 +162,10 @@ class CSharpElementExtractor(ElementExtractor):
 
         # Recursively search for namespace
         for child in node.children:
-            if child.type == "namespace_declaration":
+            if child.type in (
+                "namespace_declaration",
+                "file_scoped_namespace_declaration",
+            ):
                 name_node = child.child_by_field_name("name")
                 if name_node:
                     self.current_namespace = self._get_node_text_optimized(name_node)
@@ -237,11 +243,65 @@ class CSharpElementExtractor(ElementExtractor):
 
         return classes
 
+    def _enclosing_namespace(self, node: tree_sitter.Node) -> str:
+        """Compute a node's fully-qualified enclosing namespace.
+
+        Walks up ``node.parent`` collecting every ancestor
+        ``namespace_declaration`` name, then joins them outermost-first with
+        ``.``. This attributes each class to its OWN namespace (bug #977) rather
+        than the first namespace found in the file, and handles nested block
+        namespaces. A ``file_scoped_namespace_declaration`` is a *sibling* that
+        precedes the class (not an ancestor), so it is resolved separately.
+        Returns "" at module scope.
+        """
+        names: list[str] = []
+        parent = getattr(node, "parent", None)
+        while parent is not None:
+            if parent.type == "namespace_declaration":
+                name_node = parent.child_by_field_name("name")
+                if name_node:
+                    names.append(self._get_node_text_optimized(name_node))
+            parent = getattr(parent, "parent", None)
+
+        # File-scoped namespace: applies to the rest of the compilation unit and
+        # appears as a preceding sibling, never an ancestor. Only relevant when
+        # no enclosing block namespace was found.
+        if not names:
+            file_scoped = self._file_scoped_namespace(node)
+            if file_scoped:
+                names.append(file_scoped)
+
+        return ".".join(reversed(names))
+
+    def _file_scoped_namespace(self, node: tree_sitter.Node) -> str:
+        """Return the file-scoped namespace name in effect for ``node``, if any.
+
+        Walks to the ``compilation_unit`` and returns the name of the first
+        ``file_scoped_namespace_declaration`` whose declaration starts before
+        ``node``. Returns "" when there is none.
+        """
+        top = node
+        parent = getattr(top, "parent", None)
+        while parent is not None and parent.type != "compilation_unit":
+            top = parent
+            parent = getattr(parent, "parent", None)
+        if parent is None:
+            return ""
+        for child in parent.children:
+            if (
+                child.type == "file_scoped_namespace_declaration"
+                and child.start_byte <= node.start_byte
+            ):
+                name_node = child.child_by_field_name("name")
+                if name_node:
+                    return self._get_node_text_optimized(name_node)
+        return ""
+
     def _extract_class_declaration(self, node: tree_sitter.Node) -> Class | None:
         """Extract a single class declaration."""
         return _extract_class_standalone(
             node,
-            self.current_namespace,
+            self._enclosing_namespace(node),
             self._get_node_text_optimized,
             self._extract_modifiers,
             self._extract_attributes,
@@ -277,14 +337,23 @@ class CSharpElementExtractor(ElementExtractor):
             if node.type == "method_declaration":
                 func = self._extract_method(node)
                 if func:
+                    func.receiver_type = _find_owning_class_name(
+                        node, self._get_node_text_optimized
+                    )
                     functions.append(func)
             elif node.type == "constructor_declaration":
                 func = self._extract_constructor(node)
                 if func:
+                    func.receiver_type = _find_owning_class_name(
+                        node, self._get_node_text_optimized
+                    )
                     functions.append(func)
             elif node.type == "property_declaration":
                 func = self._extract_property(node)
                 if func:
+                    func.receiver_type = _find_owning_class_name(
+                        node, self._get_node_text_optimized
+                    )
                     functions.append(func)
 
         # Sort by start line for deterministic output
@@ -420,6 +489,66 @@ class CSharpElementExtractor(ElementExtractor):
     def _extract_using_directive(self, node: tree_sitter.Node) -> Import | None:
         """Extract a using directive."""
         return _extract_using_standalone(node, self._get_node_text_optimized)
+
+    def extract_packages(
+        self, tree: tree_sitter.Tree | None, source_code: str
+    ) -> list[Package]:
+        """
+        Extract the C# namespace declaration as a Package element.
+
+        Bug #767 — the namespace was captured internally into
+        ``current_namespace`` but never surfaced as a ``Package`` element,
+        so ``package.name`` always appeared as ``'unknown'``.
+
+        Args:
+            tree: Tree-sitter AST tree parsed from C# source
+            source_code: Original C# source code as string
+
+        Returns:
+            List with at most one Package element (the first namespace found)
+        """
+        self.source_code = source_code or ""
+        self._reset_caches()
+
+        packages: list[Package] = []
+
+        if tree is None or tree.root_node is None:
+            return packages
+
+        for node in self._traverse_iterative(tree.root_node):
+            if node.type not in (
+                "namespace_declaration",
+                "file_scoped_namespace_declaration",
+            ):
+                continue
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            ns_name = self._get_node_text_optimized(name_node)
+            if not ns_name:
+                continue
+            packages.append(
+                Package(
+                    name=ns_name,
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    raw_text=ns_name,
+                    language="csharp",
+                )
+            )
+        return packages
+
+    def extract_elements(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> dict[str, list[Any]]:
+        """Extract grouped C# elements, including namespace packages."""
+        return {
+            "functions": self.extract_functions(tree, source_code),
+            "classes": self.extract_classes(tree, source_code),
+            "variables": self.extract_variables(tree, source_code),
+            "imports": self.extract_imports(tree, source_code),
+            "packages": self.extract_packages(tree, source_code),
+        }
 
 
 class CSharpPlugin(LanguagePlugin):
@@ -602,6 +731,7 @@ class CSharpPlugin(LanguagePlugin):
 
             extractor = self.create_extractor()
             elements: list[Any] = []
+            elements.extend(extractor.extract_packages(tree, source_code))
             elements.extend(extractor.extract_classes(tree, source_code))
             elements.extend(extractor.extract_functions(tree, source_code))
             elements.extend(extractor.extract_variables(tree, source_code))

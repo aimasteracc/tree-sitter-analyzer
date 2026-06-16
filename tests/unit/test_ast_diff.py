@@ -152,7 +152,7 @@ class TestDiffStrings:
         old = "def foo():\n    pass\n"
         new = "def foo():\n    pass\n\ndef bar():\n    pass\n"
         result = differ.diff_strings(old, new, "python")
-        assert result.summary_stats["added"] >= 1
+        assert result.summary_stats["added"] == 1
         added_kinds = [
             h.node_kind for h in result.hunks if h.diff_kind == DiffKind.NODE_ADDED
         ]
@@ -162,43 +162,43 @@ class TestDiffStrings:
         old = "def foo():\n    pass\n\ndef bar():\n    pass\n"
         new = "def foo():\n    pass\n"
         result = differ.diff_strings(old, new, "python")
-        assert result.summary_stats["removed"] >= 1
+        assert result.summary_stats["removed"] == 1
 
     def test_changed_body(self, differ):
         old = "def greet():\n    print('hello')\n"
         new = "def greet():\n    print('world')\n"
         result = differ.diff_strings(old, new, "python")
-        assert len(result.hunks) > 0
+        assert len(result.hunks) == 11
         body_hunks = [h for h in result.hunks if h.diff_kind == DiffKind.BODY_CHANGED]
-        assert len(body_hunks) >= 1
+        assert len(body_hunks) == 1
 
     def test_changed_signature(self, differ):
         old = "def add(a, b):\n    return a + b\n"
         new = "def add(a, b, c):\n    return a + b + c\n"
         result = differ.diff_strings(old, new, "python")
-        assert len(result.hunks) > 0
+        assert len(result.hunks) == 22
 
     def test_added_class(self, differ):
         old = "x = 1\n"
         new = "class Foo:\n    pass\n"
         result = differ.diff_strings(old, new, "python")
-        assert result.summary_stats["added"] >= 1
+        assert result.summary_stats["added"] == 1
 
     def test_javascript_diff(self, differ):
         old = "function add(a, b) {\n  return a + b;\n}\n"
         new = "function add(a, b, c) {\n  return a + b + c;\n}\n"
         result = differ.diff_strings(old, new, "javascript")
-        assert len(result.hunks) > 0
+        assert len(result.hunks) == 20
 
     def test_import_added(self, differ):
         old = "def foo():\n    pass\n"
         new = "import os\n\ndef foo():\n    pass\n"
         result = differ.diff_strings(old, new, "python")
-        assert result.summary_stats["added"] >= 1
+        assert result.summary_stats["added"] == 1
 
     def test_both_parse_fail(self, differ):
         result = differ.diff_strings("", "", "python")
-        assert len(result.hunks) >= 0
+        assert len(result.hunks) == 0
 
     def test_to_dict_roundtrip(self, differ):
         old = "def foo():\n    pass\n"
@@ -224,10 +224,10 @@ class TestDiffFiles:
     def test_diff_changed_file(self, differ, tmp_path):
         old_p = tmp_path / "old.py"
         new_p = tmp_path / "new.py"
-        old_p.write_text("def foo():\n    pass\n")
-        new_p.write_text("def foo():\n    return 1\n")
+        old_p.write_text("def foo():\n    pass\n", newline="\n")
+        new_p.write_text("def foo():\n    return 1\n", newline="\n")
         result = differ.diff_files(str(old_p), str(new_p))
-        assert len(result.hunks) > 0
+        assert len(result.hunks) == 11
 
     def test_diff_unsupported_language(self, differ, tmp_path):
         old_p = tmp_path / "old.xyz"
@@ -239,9 +239,9 @@ class TestDiffFiles:
 
     def test_diff_nonexistent_file(self, differ, tmp_path):
         new_p = tmp_path / "new.py"
-        new_p.write_text("def foo():\n    pass\n")
+        new_p.write_text("def foo():\n    pass\n", newline="\n")
         result = differ.diff_files("/nonexistent/file.py", str(new_p))
-        assert result.summary_stats["added"] >= 1
+        assert result.summary_stats["added"] == 1
 
 
 class TestDiffStringPairs:

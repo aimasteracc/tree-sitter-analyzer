@@ -33,10 +33,14 @@ _VALUE_NODE_TYPES = {
 }
 
 
+_DESTRUCTURING_PATTERN_TYPES = {"object_pattern", "array_pattern"}
+
+
 @dataclass
 class _VariableParts:
     name: str | None = None
     value: str | None = None
+    is_destructuring: bool = False
 
 
 def parse_variable_declarator(
@@ -48,9 +52,17 @@ def parse_variable_declarator(
     infer_type: TypeInferer,
     extract_jsdoc: JsdocExtractor,
 ) -> Variable | None:
-    """Parse an individual JavaScript variable declarator."""
+    """Parse an individual JavaScript variable declarator.
+
+    Destructuring declarations (``const { a } = obj``, ``const [x] = arr``)
+    are skipped entirely — they bind names via patterns rather than declaring a
+    single named variable, and the RHS identifier (``obj``, ``arr``) must not
+    be reported as a phantom variable name.
+    """
     try:
         parts = _parse_variable_parts(node, get_node_text)
+        if parts.is_destructuring:
+            return None
         if not parts.name or _has_arrow_function_child(node):
             return None
 
@@ -115,7 +127,13 @@ def _apply_variable_child(
     child: tree_sitter.Node,
     get_node_text: TextExtractor,
 ) -> None:
-    if child.type == "identifier":
+    if child.type in _DESTRUCTURING_PATTERN_TYPES:
+        # Mark as destructuring so the RHS identifier is not used as the name.
+        parts.is_destructuring = True
+    elif child.type == "identifier" and not parts.is_destructuring:
+        # Only treat a bare identifier as the declared name when no destructuring
+        # pattern has been seen yet.  After a pattern like `{ a, b }` or `[x]`,
+        # any subsequent identifier is the RHS source, not the declared name.
         parts.name = get_node_text(child)
     elif child.type == "=" and child.next_sibling:
         parts.value = get_node_text(child.next_sibling)

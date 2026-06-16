@@ -10,8 +10,8 @@ Field,static_value,static_value:int,private,170-170,,-
 Field,APP_NAME,APP_NAME:string,public,171-171,,-
 Field,MAX_SIZE,MAX_SIZE:int,public,172-172,,-
 Method,max,"(a:T, b:T):T",public,25-27,2,-
-Method,Container,():void,public,33-33,1,-
-Method,Container,(value:T):void,public,34-34,1,-
+Constructor,Container,():void,public,33-33,1,-
+Constructor,Container,(value:T):void,public,34-34,1,-
 Method,~Container,():void,public,35-35,1,-
 Method,get,():T,public,37-37,2,-
 Method,set,(value:T):void,public,38-41,1,-
@@ -20,9 +20,9 @@ Method,~Shape,():void,public,75-75,1,-
 Method,area,():double,public,78-78,1,-
 Method,perimeter,():double,public,79-79,1,-
 Method,name,():string,public,82-82,1,-
-Method,Rectangle,"(w:double, h:double):void",public,89-89,1,-
-Method,Rectangle,(other:const Rectangle&):void,public,92-92,1,-
-Method,Rectangle,(other:Rectangle&&):void,public,95-98,1,-
+Constructor,Rectangle,"(w:double, h:double):void",public,89-89,1,-
+Constructor,Rectangle,(other:const Rectangle&):void,public,92-92,1,-
+Constructor,Rectangle,(other:Rectangle&&):void,public,95-98,1,-
 Method,~Rectangle,():void,public,101-101,1,-
 Method,area,():double,public,104-104,1,-
 Method,perimeter,():double,public,105-105,1,-
@@ -33,7 +33,7 @@ Method,operator==,(other:const Rectangle&):bool,public,113-115,1,-
 Method,square,(side:double):Rectangle [static],public,118-120,1,-
 Method,print,():void,public,136-136,1,-
 Method,~Printable,():void,public,137-137,1,-
-Method,Circle,(r:double):void,public,142-142,1,-
+Constructor,Circle,(r:double):void,public,142-142,1,-
 Method,area,():double,public,144-144,1,-
 Method,perimeter,():double,public,145-145,1,-
 Method,name,():string,public,146-146,1,-

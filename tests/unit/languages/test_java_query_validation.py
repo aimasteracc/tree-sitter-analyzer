@@ -108,7 +108,9 @@ class TestMatchPredicateFix:
     def test_spring_controller_finds_owner_controller(self, petclinic_server):
         """spring_controller must find @Controller annotated OwnerController."""
         results = query(petclinic_server, OWNER_CONTROLLER, "spring_controller")
-        assert len(results) >= 1, (
+        # 1 @Controller match x 3 captures (spring_controller, annotation_name,
+        # controller_name) — measured on upstream HEAD 2026-06-13.
+        assert len(results) == 3, (
             f"spring_controller query must find OwnerController (@Controller). "
             f"Got {len(results)} results. "
             "Bug: #match? predicate not applied in tree-sitter 0.25 QueryCursor."
@@ -121,7 +123,9 @@ class TestMatchPredicateFix:
     def test_jpa_entity_finds_vet(self, petclinic_server):
         """jpa_entity must find @Entity annotated Vet class."""
         results = query(petclinic_server, VET, "jpa_entity")
-        assert len(results) >= 1, (
+        # 1 @Entity match x 3 captures (jpa_entity, annotation_name,
+        # entity_name) — measured on upstream HEAD 2026-06-13.
+        assert len(results) == 3, (
             f"jpa_entity query must find Vet (@Entity). Got {len(results)} results. "
             "Bug: #match? predicate silently returns 0."
         )
@@ -129,7 +133,8 @@ class TestMatchPredicateFix:
     def test_jpa_entity_finds_owner(self, petclinic_server):
         """jpa_entity must find @Entity annotated Owner class."""
         results = query(petclinic_server, OWNER, "jpa_entity")
-        assert len(results) >= 1, (
+        # 1 @Entity match x 3 captures — measured on upstream HEAD 2026-06-13.
+        assert len(results) == 3, (
             f"jpa_entity query must find Owner (@Entity). Got {len(results)} results."
         )
 
@@ -165,20 +170,25 @@ class TestSpringBeanQuery:
     def test_spring_bean_finds_cache_advisor(self, spring_server):
         """spring_bean must find @Bean methods in ProxyCachingConfiguration."""
         results = query(spring_server, PROXY_CACHING, "spring_bean")
-        assert len(results) >= 1, (
+        # 3 @Bean matches x 3 captures (spring_bean, annotation_name,
+        # method_name) — measured on upstream HEAD 2026-06-13.
+        assert len(results) == 9, (
             f"ProxyCachingConfiguration has 3 @Bean methods (cacheAdvisor, "
             f"cacheOperationSource, cacheInterceptor). Got {len(results)}. "
             "Query 'spring_bean' not yet implemented."
         )
-        assert len(results) >= 3, (
-            f"Expected ≥3 @Bean methods, got {len(results)}: "
-            f"{[r.get('content', '')[:40] for r in results]}"
+        bean_captures = [r for r in results if r.get("capture_name") == "spring_bean"]
+        assert len(bean_captures) == 3, (
+            f"Expected exactly 3 @Bean methods, got {len(bean_captures)}: "
+            f"{[r.get('content', '')[:40] for r in bean_captures]}"
         )
 
     def test_spring_configuration_finds_proxy_caching(self, spring_server):
         """spring_configuration must find @Configuration classes."""
         results = query(spring_server, PROXY_CACHING, "spring_configuration")
-        assert len(results) >= 1, (
+        # 1 @Configuration match x 3 captures (spring_configuration,
+        # annotation_name, class_name) — measured on upstream HEAD 2026-06-13.
+        assert len(results) == 3, (
             f"ProxyCachingConfiguration is @Configuration. Got {len(results)}. "
             "Query 'spring_configuration' not yet implemented."
         )
@@ -193,8 +203,13 @@ class TestSpringBeanQuery:
         if not tx_file.exists():
             pytest.skip("Transaction file not found")
         results = query(spring_server, tx_file, "spring_transactional")
-        assert len(results) >= 0, "Query should not crash"
-        # The file itself may not have @Transactional but the query must not error
+        # The `>= 0` form was a tautology. The file declares no @Transactional
+        # methods (it *parses* the annotation) — measured 0 matches on
+        # upstream HEAD 2026-06-13; the query must not error.
+        assert len(results) == 0, (
+            f"AnnotationTransactionAttributeSource has no @Transactional "
+            f"methods. Got {len(results)} results."
+        )
 
 
 @pytest.mark.skipif(not PETCLINIC_BASE.exists(), reason="spring-petclinic not cloned")
@@ -210,8 +225,10 @@ class TestJUnit5Queries:
         if not test_file.exists():
             pytest.skip("Test file not found")
         results = query(petclinic_server, test_file, "junit5_test")
-        assert len(results) >= 1, (
-            f"OwnerControllerTests has @Test methods. Got {len(results)}. "
+        # 13 @Test methods x 3 captures (junit5_test, annotation_name,
+        # method_name) — measured on upstream HEAD 2026-06-13.
+        assert len(results) == 39, (
+            f"OwnerControllerTests has 13 @Test methods. Got {len(results)}. "
             "Query 'junit5_test' not yet implemented."
         )
 
@@ -223,8 +240,10 @@ class TestConcurrencyQueries:
     def test_volatile_field_finds_caffeine_fields(self, caffeine_server):
         """volatile_field must find volatile fields in BoundedLocalCache."""
         results = query(caffeine_server, BOUNDED_LOCAL_CACHE, "volatile_field")
-        assert len(results) >= 1, (
-            f"BoundedLocalCache has volatile fields. Got {len(results)}. "
+        # 2 volatile fields x 3 captures (volatile_field, modifier,
+        # field_name) — measured on upstream HEAD 2026-06-13.
+        assert len(results) == 6, (
+            f"BoundedLocalCache has 2 volatile fields. Got {len(results)}. "
             "Query 'volatile_field' not yet implemented."
         )
 
@@ -267,7 +286,9 @@ public record Point(int x, int y) {
         os.unlink(tmp_path)
 
         results = r.get("results", [])
-        assert len(results) >= 1, (
+        # 1 record match x 2 captures (record_declaration, record_name) —
+        # measured locally 2026-06-13 (this test has no external-repo gate).
+        assert len(results) == 2, (
             f"Should find 'Point' record declaration. Got {len(results)}. "
             "Query 'record_declaration' not yet implemented."
         )

@@ -377,3 +377,64 @@ async def test_ready_zero_matches_reports_indexed_file_count() -> None:
     next_step = result["agent_summary"]["next_step"]
     assert "indexed file(s)" in next_step
     assert "run index action=auto to complete the index" in next_step
+
+
+# ─── Issue #540 — Leg 3: selector echo cap ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_selector_echo_capped_at_200_chars() -> None:
+    """A 16 KB selector must be echoed back truncated to ≤ ~250 chars."""
+    tool = _tool()
+    long_selector = ".function" + ("x" * 16000)  # 16009 chars total
+    result = await tool.execute({"selector": long_selector, "output_format": "json"})
+    # selector processing is unchanged — only the echo is capped
+    echoed = result["selector"]
+    assert len(echoed) <= 250, (
+        f"Echoed selector length {len(echoed)} exceeds 250-char cap"
+    )
+    # The ellipsis marker must be present so the agent knows it was truncated
+    assert "…" in echoed or "..." in echoed, (
+        "Truncated selector echo must contain an ellipsis marker"
+    )
+    # The total length must be reported in the echo
+    assert "chars total" in echoed, (
+        "Truncated selector echo must include total char count"
+    )
+
+
+@pytest.mark.asyncio
+async def test_short_selector_not_truncated() -> None:
+    """A short selector (≤ 200 chars) must be echoed verbatim."""
+    tool = _tool()
+    short_selector = ".method:calls(#UserRepo)"
+    result = await tool.execute({"selector": short_selector, "output_format": "json"})
+    assert result["selector"] == short_selector, (
+        "Short selector must be echoed verbatim (no truncation)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_summary_line_uses_capped_echo() -> None:
+    """A long but VALID selector must not flood agent_summary.summary_line
+    (Codex P2 on #553: the success path interpolated the raw selector)."""
+    tool = _tool()
+    long_valid = ".function" + ("x" * 16000)
+    result = await tool.execute({"selector": long_valid, "output_format": "json"})
+    summary_line = result["agent_summary"]["summary_line"]
+    assert len(summary_line) <= 300
+    assert "(16009 chars total)" in summary_line
+
+
+@pytest.mark.asyncio
+async def test_syntax_error_branch_caps_echo_too() -> None:
+    """The 16KB GARBAGE selector from the dogfood report hits the
+    syntax-error branch — that echo must be capped as well (lead review:
+    the original fix only covered the success path)."""
+    tool = _tool()
+    garbage = "x" * 16384  # lexes to IDENT, rejected by the grammar
+    result = await tool.execute({"selector": garbage, "output_format": "json"})
+    assert result["success"] is False
+    echoed = result["selector"]
+    assert len(echoed) <= 250
+    assert "(16384 chars total)" in echoed

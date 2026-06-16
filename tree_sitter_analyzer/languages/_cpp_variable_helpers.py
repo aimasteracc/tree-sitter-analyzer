@@ -10,6 +10,7 @@ from ..utils import log_debug
 _TYPE_NODES_CPP = frozenset(
     {
         "primitive_type",
+        "sized_type_specifier",
         "type_identifier",
         "qualified_identifier",
         "template_type",
@@ -118,7 +119,7 @@ def _apply_variable_child(
     elif child.type in ("storage_class_specifier", "type_qualifier"):
         _append_text_modifier(parts.modifiers, child, get_node_text)
     elif child.type in declarator_name_types:
-        parts.names.append(get_node_text(child))
+        _append_nonempty_name(parts.names, child, get_node_text)
     elif child.type == "init_declarator":
         parts.names.extend(
             _init_declarator_names(child, get_node_text, declarator_name_types)
@@ -138,11 +139,21 @@ def _init_declarator_names(
     get_node_text: Callable[..., str],
     declarator_name_types: tuple[str, ...],
 ) -> list[str]:
-    return [
-        get_node_text(child)
-        for child in node.children
-        if child.type in declarator_name_types
-    ]
+    names: list[str] = []
+    for child in node.children:
+        if child.type in declarator_name_types:
+            _append_nonempty_name(names, child, get_node_text)
+    return names
+
+
+def _append_nonempty_name(
+    names: list[str],
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> None:
+    name = get_node_text(node)
+    if name:
+        names.append(name)
 
 
 def _build_variables(

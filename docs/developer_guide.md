@@ -22,12 +22,12 @@
 
 一般的な開発フローは以下の通りです。
 
-1. `main`ブランチから最新の変更を取得します。
-2. 機能追加やバグ修正のための新しいブランチを作成します（例: `feature/new-parser`, `fix/query-bug`）。
+1. `develop`ブランチから最新の変更を取得します。
+2. `develop`ブランチを起点として機能追加やバグ修正のための新しいブランチを作成します（例: `feature/new-parser`, `fix/query-bug`）。
 3. コードを修正・追加し、関連するテストを作成または更新します。
 4. `pre-commit`フックを実行して、コーディングスタイルと静的解析をチェックします。
-5. プルリクエストを作成し、レビューを受けます。
-6. 承認後、`main`ブランチにマージします。
+5. プルリクエストを作成し、レビューを受けます（PRの向き先は`develop`ブランチ）。
+6. 承認後、`develop`ブランチにマージします。
 
 ## 4. 型安全性のベストプラクティス
 
@@ -66,6 +66,12 @@
 - **テストの実行**: プロジェクト全体のテストは、プロジェクト環境と5分以内の実行契約を使うため `uv run pytest -q` で実行します。
   ```bash
   uv run pytest -q
+  ```
+
+  開発中の反復確認は、重い全言語/高速化しきれない suite を外すと体感が安定します。
+  ```bash
+  PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q -m "not slow and not full_language"
+  PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and not full_language"
   ```
 - **カバレッジ**: コードの変更には、可能な限り高いテストカバレッジを維持することが求められます。
 

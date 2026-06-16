@@ -100,7 +100,7 @@ class TestTryFts5FastPath:
         cache = ASTCache(str(tmp_path))
         cache.index_project(max_files=100)
         stats = cache.get_stats()
-        assert stats["total_files"] >= 1
+        assert stats["total_files"] == 1
         cache.close()
 
         result = try_fts5_fast_path(
@@ -112,7 +112,7 @@ class TestTryFts5FastPath:
         assert isinstance(result, dict)
         assert result["success"] is True
         assert result["data_source"] == "fts5"
-        assert result["total_matches"] >= 1
+        assert result["total_matches"] == 1
         found_names = [r["name"] for r in result["results"]]
         assert "MyClass" in found_names
 
@@ -134,7 +134,7 @@ class TestTryFts5FastPath:
         # total_only returns a success envelope dict with total_matches count
         assert isinstance(result, dict)
         assert result.get("success") is True
-        assert result.get("total_matches", 0) >= 1
+        assert result.get("total_matches") == 1
 
     def test_count_only_mode(self, tmp_path):
         _write_py_file(
@@ -225,7 +225,7 @@ class TestTryFts5FastPath:
             "normal",
         )
         assert result is not None
-        assert result["total_matches"] >= 1
+        assert result["total_matches"] == 1
 
 
 class TestSearchContentFtsIntegration:

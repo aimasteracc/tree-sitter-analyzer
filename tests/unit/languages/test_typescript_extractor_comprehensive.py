@@ -137,9 +137,27 @@ class TestTypeScriptElementExtractorComprehensive:
         assert is_generator is True
 
     def test_parse_method_signature_optimized(self, extractor):
-        """Test method signature parsing"""
+        """Test method signature parsing.
+
+        AST-child-based detection (fixes #772/#774): is_async, is_static, and
+        visibility are now read from direct AST children (``async``, ``static``,
+        ``accessibility_modifier``) rather than from the raw node text.  The
+        mock must include those children for the assertions to hold.
+        """
         mock_node = Mock()
-        mock_node.children = []
+
+        # accessibility_modifier child → visibility="public"
+        access_mod = Mock()
+        access_mod.type = "accessibility_modifier"
+        access_mod.text = b"public"
+
+        # static keyword child
+        static_child = Mock()
+        static_child.type = "static"
+
+        # async keyword child
+        async_child = Mock()
+        async_child.type = "async"
 
         # Mock property identifier
         prop_id = Mock()
@@ -154,7 +172,14 @@ class TestTypeScriptElementExtractorComprehensive:
         type_annotation = Mock()
         type_annotation.type = "type_annotation"
 
-        mock_node.children = [prop_id, params, type_annotation]
+        mock_node.children = [
+            access_mod,
+            static_child,
+            async_child,
+            prop_id,
+            params,
+            type_annotation,
+        ]
 
         extractor._get_node_text_optimized = Mock(
             side_effect=lambda n: {

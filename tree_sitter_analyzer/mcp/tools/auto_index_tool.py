@@ -24,6 +24,7 @@ from ..utils.auto_index_guard import (
 )
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
+from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -82,8 +83,9 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "status")
-        if mode not in ("status", "warm", "reset"):
-            raise ValueError(f"Invalid mode: {mode}")
+        valid_modes = ["status", "warm", "reset"]
+        if mode not in valid_modes:
+            raise invalid_enum_error("mode", mode, valid_modes)
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -109,21 +111,32 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
             )
             return apply_toon_format_to_response(result, output_format)
 
-        indexed = is_indexed(self.project_root)
+        # #1004: ``indexed`` must reflect whether the ON-DISK cache actually
+        # holds rows, not whether THIS process happened to warm it. The old
+        # code keyed ``indexed`` off ``is_indexed()`` — the in-memory guard
+        # marker — so a fresh process facing a fully-built cache reported
+        # ``indexed: false`` + ``cache_stats: null``, lying to agents that
+        # use ``--autoindex`` as the AGENTS.md entry point. We read the real
+        # cache stats and derive ``indexed`` from the row count, and expose
+        # the in-memory guard separately as ``built_marker`` so the two
+        # signals are never conflated.
         cache_stats = None
-        if indexed:
-            try:
-                from ...ast_cache import ASTCache
+        try:
+            from ...ast_cache import ASTCache
 
-                cache = ASTCache(self.project_root)
-                cache_stats = cache.get_stats()
-            except Exception:
-                pass
+            cache = ASTCache(self.project_root)
+            cache_stats = cache.get_stats()
+        except Exception:
+            cache_stats = None
+
+        indexed = bool(cache_stats and cache_stats.get("total_files", 0) > 0)
+        built_marker = is_indexed(self.project_root)
 
         result = build_response(
             verdict="INFO",
             project_root=self.project_root,
             indexed=indexed,
+            built_marker=built_marker,
             cache_stats=cache_stats,
         )
         return apply_toon_format_to_response(result, output_format)

@@ -50,11 +50,13 @@ class MyClass:
 
         try:
             # Get covered types from plugin
-            covered_types = await _get_covered_node_types_from_plugin(temp_path, "python")
+            covered_types = await _get_covered_node_types_from_plugin(
+                temp_path, "python"
+            )
 
             # Verify we got some covered types
             assert isinstance(covered_types, set)
-            assert len(covered_types) > 0
+            assert len(covered_types) == 4
 
             # Python plugin should detect these common node types
             # Note: Actual node types depend on plugin implementation
@@ -95,7 +97,9 @@ class MyClass:
 
         try:
             # Should return empty set or minimal types for empty file
-            covered_types = await _get_covered_node_types_from_plugin(temp_path, "python")
+            covered_types = await _get_covered_node_types_from_plugin(
+                temp_path, "python"
+            )
             assert isinstance(covered_types, set)
             # Empty file may have 0 or minimal types (like "module")
 
@@ -119,7 +123,7 @@ class TestValidatorWithRealCorpus:
         node_types = _parse_corpus_file(corpus_path, "python")
 
         assert isinstance(node_types, dict)
-        assert len(node_types) > 0
+        assert len(node_types) == 57
 
         # Python corpus should have common node types
         # The exact types depend on corpus content
@@ -132,7 +136,9 @@ class TestValidatorWithRealCorpus:
         # Try to find the Python corpus file
         project_root = Path(__file__).parent.parent.parent.parent
         corpus_path = project_root / "tests" / "golden" / "corpus_python.py"
-        expected_path = project_root / "tests" / "golden" / "corpus_python_expected.json"
+        expected_path = (
+            project_root / "tests" / "golden" / "corpus_python_expected.json"
+        )
 
         if not corpus_path.exists() or not expected_path.exists():
             pytest.skip(
@@ -145,8 +151,8 @@ class TestValidatorWithRealCorpus:
         # Verify report structure
         assert isinstance(report, CoverageReport)
         assert report.language == "python"
-        assert report.total_node_types > 0
-        assert report.covered_node_types >= 0
+        assert report.total_node_types == 57
+        assert report.covered_node_types == 4
         assert 0.0 <= report.coverage_percentage <= 100.0
         assert isinstance(report.uncovered_types, list)
         assert report.corpus_file == str(corpus_path)
@@ -159,7 +165,9 @@ class TestValidatorWithRealCorpus:
         # Try to find the Python corpus file
         project_root = Path(__file__).parent.parent.parent.parent
         corpus_path = project_root / "tests" / "golden" / "corpus_python.py"
-        expected_path = project_root / "tests" / "golden" / "corpus_python_expected.json"
+        expected_path = (
+            project_root / "tests" / "golden" / "corpus_python_expected.json"
+        )
 
         if not corpus_path.exists() or not expected_path.exists():
             pytest.skip(
@@ -172,8 +180,8 @@ class TestValidatorWithRealCorpus:
         # Verify report structure
         assert isinstance(report, CoverageReport)
         assert report.language == "python"
-        assert report.total_node_types > 0
-        assert report.covered_node_types >= 0
+        assert report.total_node_types == 57
+        assert report.covered_node_types == 4
 
     def test_generate_coverage_report_format(self):
         """Test coverage report generation format"""
@@ -234,6 +242,8 @@ class TestErrorHandling:
         """Test with invalid file path"""
         invalid_path = Path("/nonexistent/file.py")
         # Should handle gracefully and return empty set
-        covered_types = await _get_covered_node_types_from_plugin(invalid_path, "python")
+        covered_types = await _get_covered_node_types_from_plugin(
+            invalid_path, "python"
+        )
         assert isinstance(covered_types, set)
         assert len(covered_types) == 0

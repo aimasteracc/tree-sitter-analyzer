@@ -27,7 +27,7 @@ class TestEnhancedJavaScriptQueries:
     def test_javascript_queries_structure(self) -> None:
         """Test JAVASCRIPT_QUERIES dictionary structure"""
         assert isinstance(JAVASCRIPT_QUERIES, dict)
-        assert len(JAVASCRIPT_QUERIES) > 50  # Should have many queries now
+        assert len(JAVASCRIPT_QUERIES) == 78
 
         # Test essential modern JavaScript queries exist
         essential_queries = [
@@ -58,20 +58,24 @@ class TestEnhancedJavaScriptQueries:
         for query_name in essential_queries:
             assert query_name in JAVASCRIPT_QUERIES
             assert isinstance(JAVASCRIPT_QUERIES[query_name], str)
-            assert len(JAVASCRIPT_QUERIES[query_name].strip()) > 0
+        # Shortest essential query body, measured exactly (non-empty invariant)
+        assert min(len(JAVASCRIPT_QUERIES[q].strip()) for q in essential_queries) == 26
 
     def test_javascript_query_descriptions(self) -> None:
         """Test JAVASCRIPT_QUERY_DESCRIPTIONS dictionary"""
         assert isinstance(JAVASCRIPT_QUERY_DESCRIPTIONS, dict)
-        assert len(JAVASCRIPT_QUERY_DESCRIPTIONS) > 50
+        assert len(JAVASCRIPT_QUERY_DESCRIPTIONS) == 78
 
         # Test that all queries have descriptions
         for query_name in JAVASCRIPT_QUERIES:
             assert query_name in JAVASCRIPT_QUERY_DESCRIPTIONS
             description = JAVASCRIPT_QUERY_DESCRIPTIONS[query_name]
             assert isinstance(description, str)
-            assert len(description) > 0
             assert "search" in description.lower()
+        # Shortest description, measured exactly (non-empty invariant)
+        assert (
+            min(len(JAVASCRIPT_QUERY_DESCRIPTIONS[q]) for q in JAVASCRIPT_QUERIES) == 15
+        )
 
     def test_get_javascript_query_valid(self) -> None:
         """Test getting valid JavaScript queries"""
@@ -103,7 +107,7 @@ class TestEnhancedJavaScriptQueries:
         """Test getting valid query descriptions"""
         desc = get_javascript_query_description("function")
         assert isinstance(desc, str)
-        assert len(desc) > 0
+        assert desc == "Search JavaScript function declarations"
 
         desc = get_javascript_query_description("async_function")
         assert "async" in desc.lower()
@@ -117,7 +121,7 @@ class TestEnhancedJavaScriptQueries:
         """Test getting list of available JavaScript queries"""
         queries = get_available_javascript_queries()
         assert isinstance(queries, list)
-        assert len(queries) > 50
+        assert len(queries) == 78
 
         # Test essential queries are included
         essential = [
@@ -133,7 +137,7 @@ class TestEnhancedJavaScriptQueries:
     def test_all_queries_integration(self) -> None:
         """Test ALL_QUERIES integration with enhanced queries"""
         assert isinstance(ALL_QUERIES, dict)
-        assert len(ALL_QUERIES) > 60  # Should include both new and legacy queries
+        assert len(ALL_QUERIES) == 87  # 78 enhanced + 9 legacy-only
 
         # Test new queries are included
         new_queries = [
@@ -157,7 +161,8 @@ class TestEnhancedJavaScriptQueries:
             assert "query" in query_data
             assert "description" in query_data
             assert isinstance(query_data["query"], str)
-            assert len(query_data["query"]) > 0
+        # Shortest legacy query body, measured exactly (non-empty invariant)
+        assert min(len(ALL_QUERIES[q]["query"]) for q in legacy_queries) == 150
 
     def test_function_queries_comprehensive(self) -> None:
         """Test comprehensive function query coverage"""
@@ -273,8 +278,8 @@ class TestEnhancedJavaScriptQueries:
 
         for query_name in modern_queries:
             assert query_name in JAVASCRIPT_QUERIES
-            query = JAVASCRIPT_QUERIES[query_name]
-            assert len(query.strip()) > 0
+        # Shortest modern query body, measured exactly (non-empty invariant)
+        assert min(len(JAVASCRIPT_QUERIES[q].strip()) for q in modern_queries) == 32
 
     def test_jsx_queries(self) -> None:
         """Test JSX-related queries"""
@@ -301,8 +306,8 @@ class TestEnhancedJavaScriptQueries:
 
         for query_name in framework_queries:
             assert query_name in JAVASCRIPT_QUERIES
-            query = JAVASCRIPT_QUERIES[query_name]
-            assert len(query.strip()) > 0
+        # Shortest framework query body, measured exactly (non-empty invariant)
+        assert min(len(JAVASCRIPT_QUERIES[q].strip()) for q in framework_queries) == 112
 
     def test_control_flow_queries(self) -> None:
         """Test control flow queries"""
@@ -383,8 +388,8 @@ class TestEnhancedJavaScriptQueries:
 
         for query_name in advanced_queries:
             assert query_name in JAVASCRIPT_QUERIES
-            query = JAVASCRIPT_QUERIES[query_name]
-            assert len(query.strip()) > 0
+        # Shortest advanced query body, measured exactly (non-empty invariant)
+        assert min(len(JAVASCRIPT_QUERIES[q].strip()) for q in advanced_queries) == 78
 
     def test_name_extraction_queries(self) -> None:
         """Test name-only extraction queries"""
@@ -398,6 +403,9 @@ class TestEnhancedJavaScriptQueries:
 
     def test_query_consistency_with_descriptions(self) -> None:
         """Test consistency between queries and descriptions"""
+        # Shortest query/description across the whole library, measured exactly
+        assert min(len(q.strip()) for q in JAVASCRIPT_QUERIES.values()) == 16
+        assert min(len(d.strip()) for d in JAVASCRIPT_QUERY_DESCRIPTIONS.values()) == 15
         for query_name in JAVASCRIPT_QUERIES:
             assert query_name in JAVASCRIPT_QUERY_DESCRIPTIONS
 
@@ -407,8 +415,6 @@ class TestEnhancedJavaScriptQueries:
             # Basic consistency checks
             assert isinstance(query, str)
             assert isinstance(description, str)
-            assert len(query.strip()) > 0
-            assert len(description.strip()) > 0
 
             # Description should be relevant to query name
             if "function" in query_name:
@@ -446,8 +452,9 @@ class TestEnhancedJavaScriptQueries:
         for query_name in modern_queries:
             query = get_query(query_name)
             assert isinstance(query, str)
-            assert len(query) > 0
             assert query == JAVASCRIPT_QUERIES[query_name]
+        # Shortest of the three, measured exactly (non-empty invariant)
+        assert min(len(get_query(q)) for q in modern_queries) == 118
 
     def test_list_queries_includes_all(self) -> None:
         """Test that list_queries includes all available queries"""

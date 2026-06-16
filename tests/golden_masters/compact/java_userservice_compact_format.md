@@ -1,22 +1,16 @@
-# UserService
+# com.example.service.TestClass
 
 ## Info
 | Property | Value |
 |----------|-------|
-| Type | class |
+| Package | com.example.service |
 | Methods | 4 |
 | Fields | 2 |
 
 ## Methods
-| Name | Return Type | Access | Line |
-|------|-------------|--------|------|
-| UserService | void | public | 10 |
-| findUserById | User | public | 14 |
-| createUser | User | public | 21 |
-| validateUser | boolean | private | 27 |
-
-## Fields
-| Name | Type | Access | Line |
-|------|------|--------|------|
-| userRepository | UserRepository | private | 7 |
-| logger | Logger | private | 8 |
+| Method | Sig | V | L | Cx | Doc |
+|--------|-----|---|---|----|----|
+| UserService | (UserRepository):void | + | 10-12 | 1 | - |
+| findUserById | (Long):User | + | 14-19 | 2 | - |
+| createUser | (S,S):User | + | 21-25 | 1 | - |
+| validateUser | (User):b | - | 27-35 | 3 | - |

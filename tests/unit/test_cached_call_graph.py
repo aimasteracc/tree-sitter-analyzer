@@ -131,7 +131,7 @@ class TestCachedVsFreshParity:
 class TestASTCacheCallEdgeStorage:
     def test_call_edges_stored(self, project_with_calls, cached_index):
         edges = cached_index.get_call_edges()
-        assert len(edges) > 0
+        assert len(edges) == 3
         callee_names = {e["callee_name"] for e in edges}
         assert "beta" in callee_names
         assert "gamma" in callee_names
@@ -143,7 +143,7 @@ class TestASTCacheCallEdgeStorage:
         assert names == {"alpha", "beta", "gamma", "delta"}
 
     def test_invalidate_clears_edges(self, project_with_calls, cached_index):
-        assert len(cached_index.get_call_edges()) > 0
+        assert len(cached_index.get_call_edges()) == 3
         cached_index.invalidate(str(project_with_calls / "example.py"))
         assert len(cached_index.get_call_edges()) == 0
         assert len(cached_index.get_functions()) == 0
@@ -164,6 +164,6 @@ class TestASTCacheCallEdgeStorage:
         cache = ASTCache(str(tmp_path))
         cache.index_file(str(src), "javascript")
         edges = cache.get_call_edges()
-        assert len(edges) > 0
+        assert len(edges) == 3
         callee_names = {e["callee_name"] for e in edges}
         assert "helper" in callee_names

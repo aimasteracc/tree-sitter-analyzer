@@ -292,6 +292,19 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         help="Semantic change classification (api_change/refactor/feature/...).",
     )
     parser.add_argument(
+        "--classify-include-ast-nodes",
+        action="store_true",
+        help="Include full AST node subtrees per classified hunk "
+        "(large; stripped by default — #528 byte budget).",
+    )
+    parser.add_argument(
+        "--classify-hunk-cap",
+        type=int,
+        default=50,
+        help="Max classifications listed for --semantic-classify (default: 50). "
+        "Response reports the pre-cap total and truncated flag.",
+    )
+    parser.add_argument(
         "--callers-file",
         help="File path to disambiguate overloaded functions for --callers",
     )
@@ -390,8 +403,11 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--import-graph-mode",
         choices=["summary", "deps", "dependents", "blast_radius", "cycles", "coupling"],
-        default="summary",
-        help="Mode for --import-graph (default: summary)",
+        default=None,
+        help=(
+            "Mode for --import-graph. Omit to infer: 'deps' when "
+            "--import-graph-file is given, else 'summary' (#575)."
+        ),
     )
     parser.add_argument(
         "--import-graph-file",

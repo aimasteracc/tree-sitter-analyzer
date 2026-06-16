@@ -13,6 +13,7 @@ from ._builders import (
     _build_dependency_tool_args,
     _build_detect_routes_tool_args,
     _build_parser_readiness_tool_args,
+    _build_safe_to_edit_tool_args,
     _dependency_mode_requires_file,
 )
 
@@ -53,12 +54,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="SafeToEditTool",
         label="Safe to edit",
         required_file_error="--safe-to-edit requires a file path",
-        build_tool_args=lambda args, output_format: {
-            "file_path": args.file_path,
-            "edit_type": getattr(args, "edit_type", "refactor") or "refactor",
-            "output_format": output_format,
-            "compact_only": bool(getattr(args, "compact_toon", False)),
-        },
+        build_tool_args=_build_safe_to_edit_tool_args,
     ),
     McpCommandSpec(
         flag_name="change_impact",
@@ -100,11 +96,14 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="outline",
         tool_attr="GetCodeOutlineTool",
         label="Code outline",
-        required_file_error="--outline requires a file path",
+        value_arg_name="outline",
+        required_value_error="--outline requires a FILE path",
         build_tool_args=lambda args, output_format: {
-            "file_path": args.file_path,
+            "file_path": getattr(args, "outline", None)
+            or getattr(args, "file_path", ""),
             "include_fields": getattr(args, "outline_include_fields", False),
             "include_imports": getattr(args, "outline_include_imports", False),
+            "listed_cap": int(getattr(args, "outline_listed_cap", 50) or 50),
             "output_format": output_format,
         },
     ),
@@ -122,10 +121,19 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="symbol_lineage",
         tool_attr="SymbolLineageTool",
         label="Symbol lineage and impact preview",
+        value_arg_name="symbol_lineage",
+        required_value_error="--symbol-lineage: symbol must not be empty",
         build_tool_args=lambda args, output_format: {
             "symbol": getattr(args, "symbol_lineage", "") or "",
             "max_depth": getattr(args, "max_depth", 3),
             "output_format": output_format,
+            # Pass file_paths only when present so symbol-lineage scopes
+            # references/call sites without adding a scope note unnecessarily.
+            **(
+                {"file_paths": getattr(args, "file_paths", None)}
+                if getattr(args, "file_paths", None)
+                else {}
+            ),
         },
     ),
     McpCommandSpec(
@@ -236,6 +244,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "old_ref": getattr(args, "ast_diff_old_ref", "HEAD~1"),
             "new_ref": getattr(args, "ast_diff_new_ref", "HEAD"),
             "language": getattr(args, "ast_diff_language", None),
+            "include_node_bodies": getattr(args, "ast_diff_include_bodies", False),
             "output_format": output_format,
         },
     ),
@@ -243,6 +252,12 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="symbol_search",
         tool_attr="CodeGraphSymbolSearchTool",
         label="FTS5-powered instant symbol search (CodeGraph parity)",
+        # #738: value_arg_name is required so find_selected_mcp_command() uses
+        # the non-empty string check instead of truthiness — empty string ""
+        # is falsy and would cause the spec to be skipped entirely, routing
+        # the call to the file-path fallback with a misleading error.
+        value_arg_name="symbol_search",
+        required_value_error="--symbol-search requires a non-empty query string",
         build_tool_args=lambda args, output_format: {
             # Pain #21 (dogfood pass 3): same dest-name bug as #17. --symbol-search QUERY
             # stores into args.symbol_search; reading symbol_search_query was always None

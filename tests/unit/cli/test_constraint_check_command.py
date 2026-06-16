@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer.cli.commands.constraint_check_command import (
     _compute_verdict,
     _evaluate_with_explicit_file,
@@ -440,6 +442,7 @@ class TestRunAndPersist:
         assert violations == []
         assert edge_count == 0
 
+    @pytest.mark.slow_ok  # Windows xdist-load budget exemption; test logic is trivial, no perf claim (#976)
     def test_empty_call_edges_table_returns_empty(self, tmp_path):
         db = tmp_path / "index.db"
         conn = sqlite3.connect(str(db))
@@ -497,6 +500,56 @@ class TestRunAndPersist:
         rule_ids = [r[0] for r in rows]
         assert "OLD" not in rule_ids
         assert "NEW" in rule_ids
+
+    def test_duplicate_pk_violations_do_not_crash_persist(self, tmp_path):
+        """Regression for #544: two violations with the same PK must not crash.
+
+        If ``evaluate()`` returns two ``Violation`` objects that share the
+        same ``(rule_id, caller_file, caller_line, callee_name)`` PRIMARY
+        KEY (e.g., one call site resolved to two ``callee_file`` targets),
+        the old ``executemany`` would raise
+        ``UNIQUE constraint failed: ast_constraint_violations.rule_id, ...``.
+
+        After the fix the persist path must succeed and write exactly 1 row
+        (the dedup is in ``evaluate()``, so ``_run_and_persist`` receives a
+        clean list — this test verifies the full stack from mock to DB).
+        """
+        db = self._db_with_edges(tmp_path)
+        # Two violations with identical PK but different callee_file.
+        dup_v1 = _v(
+            rule_id="R1",
+            caller_file="a.py",
+            caller_line=10,
+            callee_name="bar",
+            callee_file="b.py",
+            detected_at=1,
+        )
+        dup_v2 = _v(
+            rule_id="R1",
+            caller_file="a.py",
+            caller_line=10,
+            callee_name="bar",
+            callee_file="c.py",
+            detected_at=1,
+        )
+
+        # We intentionally bypass the real evaluate() and inject the two
+        # duplicates directly to test the persist layer in isolation.
+        with patch(_EVALUATE, return_value=[dup_v1, dup_v2]):
+            # Must NOT raise sqlite3.IntegrityError.
+            violations, edge_count = _run_and_persist(db, ["c"])
+
+        conn = sqlite3.connect(str(db))
+        rows = conn.execute(
+            "SELECT rule_id, caller_file, caller_line, callee_name "
+            "FROM ast_constraint_violations"
+        ).fetchall()
+        conn.close()
+        # Exactly 1 row persisted (PK is unique); the constraint did not crash.
+        assert len(rows) == 1, (
+            f"Expected exactly 1 persisted row after dedup, got {len(rows)}: {rows}"
+        )
+        assert rows[0] == ("R1", "a.py", 10, "bar")
 
 
 # ---------------------------------------------------------------------------

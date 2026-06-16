@@ -206,7 +206,7 @@ class TestCSharpClassRecognition:
         tree = get_tree_for_code(COMPLEX_STRUCTURE_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, COMPLEX_STRUCTURE_CODE)
 
-        assert len(classes) >= 1
+        assert len(classes) == 4
         entity_class = next((c for c in classes if c.name == "BaseEntity"), None)
         assert entity_class is not None
         assert "abstract" in entity_class.modifiers
@@ -312,7 +312,7 @@ class TestCSharpMethodRecognition:
         functions = plugin.extractor.extract_functions(tree, ASYNC_CODE)
 
         async_methods = [f for f in functions if "Async" in f.name]
-        assert len(async_methods) >= 2
+        assert len(async_methods) == 3
         assert "GetDataAsync" in [f.name for f in async_methods]
 
     def test_extract_generic_method(self):
@@ -322,7 +322,7 @@ class TestCSharpMethodRecognition:
         functions = plugin.extractor.extract_functions(tree, GENERIC_CODE)
 
         # Should find methods with generic type parameters
-        assert len(functions) >= 3
+        assert len(functions) == 4
 
     def test_method_return_type(self):
         """Test that method return type is extracted."""
@@ -368,8 +368,8 @@ class TestCSharpMethodRecognition:
             (f for f in functions if f.name == "CalculateTotal"), None
         )
         assert calculate_total is not None
-        # Method with LINQ should have some complexity
-        assert calculate_total.complexity_score >= 1
+        # Single-statement LINQ body: base complexity only
+        assert calculate_total.complexity_score == 1
 
     def test_extract_interface_method(self):
         """Test extraction of interface methods."""
@@ -378,7 +378,7 @@ class TestCSharpMethodRecognition:
         functions = plugin.extractor.extract_functions(tree, INTERFACE_CODE)
 
         # Should find methods in interfaces
-        assert len(functions) >= 5
+        assert len(functions) == 5
 
 
 class TestCSharpPropertyRecognition:
@@ -534,7 +534,7 @@ class TestCSharpInterfaceRecognition:
         functions = plugin.extractor.extract_functions(tree, INTERFACE_CODE)
 
         # Should find methods in interfaces
-        assert len(functions) >= 5
+        assert len(functions) == 5
 
     def test_interface_visibility(self):
         """Test that interfaces have public visibility."""
@@ -613,7 +613,7 @@ class TestCSharpComplexStructures:
         classes = plugin.extractor.extract_classes(tree, COMPLEX_STRUCTURE_CODE)
 
         # Just verify extraction works
-        assert len(classes) >= 1
+        assert len(classes) == 4
 
     def test_extract_class_with_operators(self):
         """Test extraction of class with operators (if present)."""
@@ -622,7 +622,7 @@ class TestCSharpComplexStructures:
         classes = plugin.extractor.extract_classes(tree, COMPLEX_STRUCTURE_CODE)
 
         # Just verify extraction works
-        assert len(classes) >= 1
+        assert len(classes) == 4
 
     def test_extract_generic_constraints(self):
         """Test extraction of generic type constraints."""
@@ -657,9 +657,12 @@ class TestCSharpQueryAccuracy:
         classes = plugin.extractor.extract_classes(tree, COMPLEX_STRUCTURE_CODE)
 
         # Should not extract non-class elements
-        for cls in classes:
-            assert cls.name is not None
-            assert len(cls.name) > 0
+        assert [c.name for c in classes] == [
+            "BaseEntity",
+            "Order",
+            "OrderItem",
+            "OrderEventArgs",
+        ]
 
     def test_method_query_accuracy(self):
         """Test that method query accurately identifies methods."""
@@ -668,9 +671,18 @@ class TestCSharpQueryAccuracy:
         functions = plugin.extractor.extract_functions(tree, COMPLEX_STRUCTURE_CODE)
 
         # Should not extract non-method elements
-        for func in functions:
-            assert func.name is not None
-            assert len(func.name) > 0
+        assert [f.name for f in functions] == [
+            "Id",
+            "CreatedAt",
+            "TotalOrders",
+            "Order",
+            "CalculateTotal",
+            "CompareTo",
+            "Name",
+            "Price",
+            "Quantity",
+            "Order",
+        ]
 
     def test_property_query_accuracy(self):
         """Test that property query accurately identifies properties."""
@@ -747,9 +759,12 @@ class TestCSharpQueryAccuracy:
         tree = get_tree_for_code(COMPLEX_STRUCTURE_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, COMPLEX_STRUCTURE_CODE)
 
-        for cls in classes:
-            assert cls.start_line > 0
-            assert cls.end_line >= cls.start_line
+        assert [(c.name, c.start_line, c.end_line) for c in classes] == [
+            ("BaseEntity", 8, 13),
+            ("Order", 15, 37),
+            ("OrderItem", 39, 44),
+            ("OrderEventArgs", 46, 49),
+        ]
 
     def test_complexity_calculation_accuracy(self):
         """Test that complexity calculation is accurate."""
@@ -761,5 +776,5 @@ class TestCSharpQueryAccuracy:
             (f for f in functions if f.name == "CalculateTotal"), None
         )
         assert calculate_total is not None
-        # LINQ query should have reasonable complexity
-        assert calculate_total.complexity_score >= 1
+        # Single-statement LINQ body: base complexity only
+        assert calculate_total.complexity_score == 1

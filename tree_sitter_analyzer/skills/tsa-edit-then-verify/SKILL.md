@@ -77,7 +77,7 @@ covers the blast radius the AST sees.
 
 Call these in ONE message (parallel tool use):
 
-1. `edit action=safe` with `file_path: "<file>"` and `edit_type: "<refactor|rename|delete|bugfix|feature>"`
+1. `edit action=safe` with `file_path: "<file>"` and `edit_type: "<refactor|add_feature|fix_bug|rename>"`
 2. `health action=file` with `file_path: "<file>"` — **record the grade. This is your baseline.**
 3. (Optional, only if file is unfamiliar to you in this session)
    `project action=smart` with `file_path: "<file>"` and `query: "<what you intend to change>"`
@@ -147,7 +147,7 @@ health-grading rubric.
 
 ```
 PARALLEL BATCH (one message):
-  → edit action=safe file_path="tree_sitter_analyzer/health_scorer.py" edit_type="feature"
+  → edit action=safe file_path="tree_sitter_analyzer/health_scorer.py" edit_type="add_feature"
   → health action=file file_path="tree_sitter_analyzer/health_scorer.py"
   → project action=smart file_path="tree_sitter_analyzer/health_scorer.py"
 
@@ -239,7 +239,7 @@ Run pre-edit (Phase A) in parallel:
 
 ```bash
 uv run tree-sitter-analyzer tree_sitter_analyzer/health_scorer.py \
-  --safe-to-edit --edit-type feature --output-format json
+  --safe-to-edit --edit-type add_feature --output-format json
 uv run tree-sitter-analyzer tree_sitter_analyzer/health_scorer.py \
   --file-health --output-format json
 uv run tree-sitter-analyzer tree_sitter_analyzer/health_scorer.py \

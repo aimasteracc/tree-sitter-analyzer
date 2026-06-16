@@ -1,5 +1,6 @@
 """Result-shaping helpers for the public API facade."""
 
+import dataclasses
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ _OPTIONAL_ELEM_FIELDS = [
     "is_static",
     "is_constructor",
     "is_method",
+    "is_abstract",
     "complexity_score",
     "superclass",
     # Theme-C (2026-06-10): implements/mixins were collected by plugins but
@@ -37,9 +39,16 @@ def element_to_dict(
     elem: Any, all_elements: Sequence[Any] | None = None
 ) -> dict[str, Any]:
     """Convert an analysis element to the stable API dict representation."""
+    python_type = type(elem).__name__.lower()
+    # #795: Class objects carry a class_type that distinguishes enum/interface/type/namespace
+    # from plain "class".  Surface that specificity in the output type field.
+    if python_type == "class":
+        output_type = getattr(elem, "class_type", "class") or "class"
+    else:
+        output_type = python_type
     result: dict[str, Any] = {
         "name": elem.name,
-        "type": type(elem).__name__.lower(),
+        "type": output_type,
         "start_line": elem.start_line,
         "end_line": elem.end_line,
         "raw_text": elem.raw_text,
@@ -47,25 +56,66 @@ def element_to_dict(
     }
     for field in _OPTIONAL_ELEM_FIELDS:
         if hasattr(elem, field):
-            result[field] = getattr(elem, field)
+            value = getattr(elem, field)
+            # SQL plugin stores parameters as list[SQLParameter] (dataclasses).
+            # JSON cannot serialize dataclass instances; convert them to plain
+            # dicts so all output formats (JSON, TOON, text) stay consistent.
+            if field == "parameters" and isinstance(value, list):
+                value = [
+                    dataclasses.asdict(p) if dataclasses.is_dataclass(p) else p
+                    for p in value
+                ]
+            result[field] = value
 
-    if result.get("is_method") and result["type"] == "function" and all_elements:
-        result["class_name"] = find_class_name(elem, all_elements)
+    if result["type"] == "function" and all_elements:
+        # A LOCAL function (innermost container is another function, e.g.
+        # Kotlin `fun inner` inside a method) is deliberately unowned —
+        # only class-owned methods get class_name (Codex P2 on #570).
+        if not _contained_in_other_function(elem, all_elements):
+            class_name = find_class_name(elem, all_elements)
+            if class_name is not None:
+                result["class_name"] = class_name
 
     return result
 
 
-def find_class_name(elem: Any, elements: Sequence[Any]) -> str | None:
-    """Find the containing class name for a method element."""
+def _contained_in_other_function(elem: Any, elements: Sequence[Any]) -> bool:
+    """True when another function's span strictly contains ``elem``'s."""
     for other in elements:
+        if other is elem or type(other).__name__.lower() != "function":
+            continue
+        if not (hasattr(other, "start_line") and hasattr(other, "end_line")):
+            continue
         if (
-            type(other).__name__.lower() == "class"
-            and hasattr(other, "start_line")
-            and hasattr(other, "end_line")
-            and other.start_line <= elem.start_line <= other.end_line
+            other.start_line <= elem.start_line
+            and elem.end_line <= other.end_line
+            and (other.start_line, other.end_line) != (elem.start_line, elem.end_line)
         ):
-            return other.name
-    return None
+            return True
+    return False
+
+
+def find_class_name(elem: Any, elements: Sequence[Any]) -> str | None:
+    """Find the containing class name for a method element.
+
+    When multiple classes contain the element's line range (e.g. an inner
+    class nested inside an outer class, or a class inside a namespace), the
+    INNERMOST class — the one with the smallest line span — wins.  This
+    mirrors the single-ownership rule from #474/#484/#532.
+    """
+    best_name: str | None = None
+    best_span: int | None = None
+    for other in elements:
+        if type(other).__name__.lower() != "class":
+            continue
+        if not (hasattr(other, "start_line") and hasattr(other, "end_line")):
+            continue
+        if other.start_line <= elem.start_line <= other.end_line:
+            span = other.end_line - other.start_line
+            if best_span is None or span < best_span:
+                best_span = span
+                best_name = other.name
+    return best_name
 
 
 def file_analysis_result(

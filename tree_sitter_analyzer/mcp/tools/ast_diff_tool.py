@@ -17,6 +17,19 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Byte-budget constant for include_node_bodies opt-in (Issue #552)
+#
+# When include_node_bodies=True the full children subtree is inlined.
+# This cap prevents any single large added/removed node (e.g. a big schema
+# dict literal) from dumping megabytes into the response.  When the budget
+# is exceeded children_truncated=True and bytes_omitted=<int> are added
+# to the response for transparency.  Patched to 1 in tests to force
+# truncation.  Default matches the sibling get_code_outline tool's spirit
+# (~32 KB is enough for any practical per-diff inspection need).
+# ---------------------------------------------------------------------------
+NODE_BODIES_BUDGET: int = 32_768  # 32 KB
+
 
 class ASTDiffTool(BaseMCPTool):
     """MCP Tool for structural AST diffing."""
@@ -60,7 +73,13 @@ class ASTDiffTool(BaseMCPTool):
                 "mode": {
                     "type": "string",
                     "enum": ["diff_files", "diff_strings", "diff_git"],
-                    "description": "Diff mode (default: diff_files)",
+                    # mode is runtime-resolved from arg shape (issue #529) —
+                    # NOT in required; an absent mode is inferred from the args.
+                    "description": "Diff mode — inferred when omitted: "
+                    "old_ref/new_ref → diff_git; "
+                    "old_source/new_source → diff_strings; "
+                    "old_file/new_file → diff_files. "
+                    "Explicit value always wins.",
                     "default": "diff_files",
                 },
                 "old_file": {
@@ -103,13 +122,65 @@ class ASTDiffTool(BaseMCPTool):
                     "description": "Output format: 'toon' (default, token-efficient) or 'json'",
                     "default": "toon",
                 },
+                # Issue #552 — opt-in full node body (default: compact summaries only)
+                "include_node_bodies": {
+                    "type": "boolean",
+                    "description": (
+                        "Include the full recursive children subtree in each hunk's "
+                        "old/new node. Off by default — the default response keeps only "
+                        "the compact node summary (type, kind, name, line, end_line, "
+                        "text_hash, preview, child_count) which is 70-99% smaller. "
+                        "Enable only when you need to inspect exact AST sub-structure. "
+                        "A 32 KB byte budget is enforced; when exceeded, "
+                        "children_truncated=true and bytes_omitted=<int> are set. "
+                        "NEVER mark this required — runtime-resolved param."
+                    ),
+                    "default": False,
+                },
             },
-            "required": ["mode"],
+            # mode is runtime-resolved from arg shape (issue #529 / the 6×-recurred
+            # facade trap) — it is NOT required. Declaring it required causes strict
+            # MCP clients to reject valid calls like {old_ref, new_ref, file_path}.
+            "required": [],
             "additionalProperties": False,
         }
 
+    @staticmethod
+    def _resolve_mode(arguments: dict[str, Any]) -> str:
+        """Effective mode — inferred from argument shape when omitted.
+
+        Issue #529 (schema honesty / mode inference):
+        - Explicit ``mode`` always wins.
+        - old_source/new_source present → diff_strings
+        - old_file/new_file present → diff_files
+        - old_ref/new_ref + file_path → diff_git
+        - None of the above → returns empty string (validate_arguments will raise)
+
+        Source/file signatures are checked BEFORE refs because callers that
+        materialize schema defaults (the CLI bridge fills old_ref/new_ref
+        with HEAD~1/HEAD) carry ref fields on every call — refs alone must
+        not steal the inference from an explicit string/file diff. The git
+        signature additionally requires its file_path discriminator
+        (Codex P2 on #551).
+        """
+        mode = arguments.get("mode")
+        if mode:
+            return str(mode)
+        if (
+            arguments.get("old_source") is not None
+            or arguments.get("new_source") is not None
+        ):
+            return "diff_strings"
+        if arguments.get("old_file") or arguments.get("new_file"):
+            return "diff_files"
+        if (arguments.get("old_ref") or arguments.get("new_ref")) and arguments.get(
+            "file_path"
+        ):
+            return "diff_git"
+        return ""
+
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        mode = arguments.get("mode", "diff_files")
+        mode = self._resolve_mode(arguments)
         if mode == "diff_files":
             if not arguments.get("old_file") or not arguments.get("new_file"):
                 raise ValueError(
@@ -128,13 +199,23 @@ class ASTDiffTool(BaseMCPTool):
         elif mode == "diff_git":
             if not arguments.get("file_path"):
                 raise ValueError("file_path is required for diff_git mode")
+        else:
+            raise ValueError(
+                "Cannot infer mode from arguments. "
+                "Provide one of the following mode signatures:\n"
+                "  diff_files:   old_file + new_file\n"
+                "  diff_strings: old_source + new_source + language\n"
+                "  diff_git:     old_ref + new_ref + file_path\n"
+                "Or pass mode= explicitly."
+            )
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
-        mode = arguments.get("mode", "diff_files")
+        mode = self._resolve_mode(arguments)
         output_format = arguments.get("output_format", "toon")
+        include_node_bodies = bool(arguments.get("include_node_bodies", False))
         differ = self._get_differ()
 
         if mode == "diff_files":
@@ -154,17 +235,70 @@ class ASTDiffTool(BaseMCPTool):
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
-        result_dict = result.to_dict()
+        result_dict = result.to_dict(
+            include_children=include_node_bodies, with_child_count=True
+        )
         # pain #5 (dogfood): ast-diff had no verdict. NOT_FOUND when the two
         # sides are identical (zero hunks), INFO when there are real changes.
         # We deliberately don't escalate to REVIEW/CAUTION here — diff
         # severity is the semantic_classify tool's job.
-        verdict = "NOT_FOUND" if not result_dict.get("hunks") else "INFO"
+        hunks_raw = result_dict.get("hunks", [])
+        hunk_count = len(hunks_raw)
+        lang_str = result_dict.get("language", "unknown")
+
+        # Codex P2: surface parse failures — a hunk with neither "old" nor "new"
+        # key is an error sentinel (e.g. "Both sources failed to parse"), not a
+        # real edit. Real hunks always carry at least one of "old" / "new".
+        is_error_hunk = (
+            hunk_count == 1
+            and "old" not in hunks_raw[0]
+            and "new" not in hunks_raw[0]
+            and hunks_raw[0].get("summary")
+        )
+        if is_error_hunk:
+            agent_summary_line = hunks_raw[0]["summary"]
+            verdict = "ERROR"
+        elif hunk_count:
+            agent_summary_line = f"{hunk_count} AST change(s) in {lang_str}"
+            verdict = "INFO"
+        else:
+            agent_summary_line = f"No AST changes in {lang_str}"
+            verdict = "NOT_FOUND"
+
         response: dict[str, Any] = {
             "success": True,
             "verdict": verdict,
+            "summary_line": agent_summary_line,
+            # Codex P2: agent_summary must be a dict so direct execute() callers
+            # (CLI, tests) can read agent_summary["verdict"] without the MCP
+            # server normalizer running first.
+            "agent_summary": {
+                "summary_line": agent_summary_line,
+                "next_step": (
+                    "Inspect specific hunks to understand the changes. "
+                    "Use semantic_classify for severity rating of each hunk."
+                ),
+                "verdict": verdict,
+            },
             **result_dict,
         }
+
+        # Issue #552 — apply byte budget when include_node_bodies=True.
+        # When the hunks serialise to more than NODE_BODIES_BUDGET bytes,
+        # stop inlining children and set transparency flags.
+        if include_node_bodies:
+            import json
+
+            hunks_bytes = len(json.dumps(response.get("hunks", [])))
+            if hunks_bytes > NODE_BODIES_BUDGET:
+                # Rebuild without children and record how many bytes were saved
+                compact_dict = result.to_dict(
+                    include_children=False, with_child_count=True
+                )
+                compact_hunks_bytes = len(json.dumps(compact_dict.get("hunks", [])))
+                response["hunks"] = compact_dict["hunks"]
+                response["children_truncated"] = True
+                response["bytes_omitted"] = hunks_bytes - compact_hunks_bytes
 
         from ..utils.format_helper import apply_toon_format_to_response
 

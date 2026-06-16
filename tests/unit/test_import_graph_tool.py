@@ -221,3 +221,29 @@ class TestToonFormat:
         with patch.object(tool, "_get_graph", return_value=mock_graph):
             result = await tool.execute({"mode": "summary", "output_format": "toon"})
         assert "toon_content" in result
+
+
+class TestModeInferenceFromFilePath:
+    """#575: `imports file_path=X` without mode= must infer 'deps' (what that
+    file imports), not silently default to the project 'summary' that ignores
+    file_path — 'answered a different question than asked'."""
+
+    def test_file_path_infers_deps(self):
+        assert CodeGraphImportGraphTool._effective_mode({"file_path": "x.py"}) == "deps"
+
+    def test_no_file_path_is_summary(self):
+        assert CodeGraphImportGraphTool._effective_mode({}) == "summary"
+
+    def test_explicit_mode_wins_over_inference(self):
+        assert (
+            CodeGraphImportGraphTool._effective_mode(
+                {"mode": "cycles", "file_path": "x.py"}
+            )
+            == "cycles"
+        )
+
+    def test_mode_not_required_in_schema(self):
+        # #575: reconcile the required-with-default contradiction — mode has a
+        # default and is inferred, so it must NOT be in required.
+        defn = CodeGraphImportGraphTool().get_tool_definition()
+        assert "mode" not in defn["inputSchema"]["required"]

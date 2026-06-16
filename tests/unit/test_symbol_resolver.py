@@ -58,7 +58,7 @@ class TestSymbolResolverEngine:
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)
         result = resolver.resolve("handle_request")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0].name == "handle_request"
         assert result.definitions[0].kind == "function"
         assert "app.py" in result.definitions[0].file
@@ -68,7 +68,7 @@ class TestSymbolResolverEngine:
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)
         result = resolver.resolve("UserService")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0].name == "UserService"
         assert result.definitions[0].kind == "class"
         cache.close()
@@ -77,7 +77,7 @@ class TestSymbolResolverEngine:
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)
         result = resolver.resolve("get_user")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0].name == "get_user"
         cache.close()
 
@@ -114,9 +114,46 @@ class TestSymbolResolverEngine:
         cache = Cache()
         resolver = SymbolResolver(cache)
         result = resolver.resolve("APP_NAME")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0].name == "APP_NAME"
         assert result.definitions[0].kind == "variable"
+
+    def test_find_defs_in_file_returns_enum(self):
+        """#961 split: ``enum`` is a definition kind in _find_defs_in_file."""
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """CREATE TABLE ast_symbol_rows (
+                name TEXT,
+                kind TEXT,
+                file_path TEXT,
+                language TEXT,
+                line INTEGER,
+                end_line INTEGER
+            )"""
+        )
+        conn.execute(
+            "INSERT INTO ast_symbol_rows VALUES (?, ?, ?, ?, ?, ?)",
+            ("Color", "enum", "colors.rs", "rust", 4, 9),
+        )
+
+        class Cache:
+            _fts5_available = False
+            fts5_available = False
+
+            @staticmethod
+            def get_conn():
+                return conn
+
+            @staticmethod
+            def _get_conn():  # backward-compat alias
+                return Cache.get_conn()
+
+        resolver = SymbolResolver(Cache())
+        defs = resolver._find_defs_in_file("colors.rs", "Color")
+        assert len(defs) == 1
+        assert defs[0].name == "Color"
+        assert defs[0].kind == "enum"
 
     def test_resolve_nonexistent(self, indexed_project):
         cache = ASTCache(str(indexed_project))
@@ -131,8 +168,8 @@ class TestSymbolResolverEngine:
         result = resolver.resolve("UserService")
         d = result.to_dict()
         assert d["symbol"] == "UserService"
-        assert d["definition_count"] >= 1
-        assert len(d["definitions"]) >= 1
+        assert d["definition_count"] == 1
+        assert len(d["definitions"]) == 1
         assert "file" in d["definitions"][0]
         cache.close()
 
@@ -140,8 +177,8 @@ class TestSymbolResolverEngine:
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)
         result = resolver.find_references("get_user")
-        assert len(result.definitions) >= 1
-        assert len(result.references) >= 0
+        assert len(result.definitions) == 1
+        assert len(result.references) == 1
         d = result.to_dict()
         assert d["symbol"] == "get_user"
         assert "reference_count" in d
@@ -151,7 +188,7 @@ class TestSymbolResolverEngine:
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)
         result = resolver.resolve("UserService.get_user")
-        assert len(result.definitions) >= 1
+        assert len(result.definitions) == 1
         assert result.definitions[0].name == "get_user"
         cache.close()
 
@@ -231,8 +268,8 @@ class TestCodeGraphSymbolResolveExecution:
         )
         assert result["success"] is True
         assert result["symbol"] == "UserService"
-        assert result["definition_count"] >= 1
-        assert len(result["definitions"]) >= 1
+        assert result["definition_count"] == 1
+        assert len(result["definitions"]) == 1
         assert "file" in result["definitions"][0]
 
     async def test_references_mode(self, indexed_project):
@@ -241,8 +278,8 @@ class TestCodeGraphSymbolResolveExecution:
             {"symbol": "get_user", "mode": "references", "output_format": "json"}
         )
         assert result["success"] is True
-        assert result["definition_count"] >= 1
-        assert "reference_count" in result
+        assert result["definition_count"] == 1
+        assert result["reference_count"] == 1
         assert "references" in result
 
     async def test_nonexistent_symbol(self, indexed_project):
@@ -271,7 +308,7 @@ class TestCodeGraphSymbolResolveExecution:
         tool = CodeGraphSymbolResolveTool(str(indexed_project))
         result = await tool.execute({"symbol": "format_user", "output_format": "json"})
         assert result["success"] is True
-        assert result["definition_count"] >= 1
+        assert result["definition_count"] == 1
         defs = result["definitions"]
         assert any("utils.py" in d["file"] for d in defs)
 
@@ -279,6 +316,54 @@ class TestCodeGraphSymbolResolveExecution:
         tool = CodeGraphSymbolResolveTool(str(indexed_project))
         result = await tool.execute({"symbol": "User", "output_format": "json"})
         assert result["success"] is True
-        assert result["definition_count"] >= 1
+        assert result["definition_count"] == 1
         defs = result["definitions"]
         assert any("models.py" in d["file"] for d in defs)
+
+
+# ---------------------------------------------------------------------------
+# Issue #610: module-level constants are go-to-definition-able
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def constant_project(tmp_path):
+    project = tmp_path / "proj610"
+    project.mkdir()
+    (project / "consts.py").write_text(
+        '_STOP_WORDS = frozenset({"the"})\nMAX_RETRIES: int = 5\n__version__ = "1.0"\n'
+    )
+    (project / "main.py").write_text(
+        "from consts import _STOP_WORDS\n\ndef use_it():\n    return _STOP_WORDS\n"
+    )
+    cache = ASTCache(str(project))
+    cache.index_project(max_files=10)
+    cache.close()
+    return project
+
+
+class TestConstantNavigation:
+    """Issue #610 — kind=constant rows must be searchable AND navigable."""
+
+    def test_resolve_constant_definition(self, constant_project):
+        cache = ASTCache(str(constant_project))
+        resolver = SymbolResolver(cache)
+        result = resolver.resolve("_STOP_WORDS")
+        assert len(result.definitions) == 1
+        d = result.definitions[0]
+        assert d.name == "_STOP_WORDS"
+        assert d.kind == "constant"
+        assert d.file == "consts.py"
+        assert d.line == 1
+        cache.close()
+
+    def test_find_defs_in_file_kind_filter_includes_constant(self, constant_project):
+        # nav action=navigate import-following path goes through
+        # _find_defs_in_file, whose kind filter historically excluded constants.
+        cache = ASTCache(str(constant_project))
+        resolver = SymbolResolver(cache)
+        defs = resolver._find_defs_in_file("consts.py", "MAX_RETRIES")
+        assert len(defs) == 1
+        assert defs[0].kind == "constant"
+        assert defs[0].line == 2
+        cache.close()

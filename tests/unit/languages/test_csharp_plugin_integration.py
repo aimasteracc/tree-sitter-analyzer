@@ -312,9 +312,9 @@ class TestCSharpIntegration:
         variables = plugin.extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
         imports = plugin.extractor.extract_imports(tree, COMPLEX_CLASS_CODE)
 
-        assert len(classes) > 0
-        assert len(functions) > 0
-        assert len(imports) > 0
+        assert len(classes) == 5
+        assert len(functions) == 12
+        assert len(imports) == 3
         # Variables might be extracted within classes
         assert isinstance(variables, list)
 
@@ -363,4 +363,4 @@ class TestCSharpIntegration:
         with open(sample_path, encoding="utf-8") as f:
             code = f.read()
         # Just verify it can be read without errors
-        assert len(code) > 0
+        assert len(code) == 2650

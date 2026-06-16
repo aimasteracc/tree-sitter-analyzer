@@ -229,6 +229,152 @@ def test_edge_store_inheritance_tree_and_node_helpers(tmp_path: Path) -> None:
         store.close()
 
 
+def _insert_raw_edge(
+    conn: sqlite3.Connection,
+    source_node_id: str,
+    target_node_id: str,
+    kind: str,
+    file_path: str,
+) -> None:
+    """Insert one edge row with explicit source/file_path columns.
+
+    Bypasses ``upsert_edges`` so a test can craft the belt-and-braces case
+    where ``file_path`` is empty (pre-B1.1 rows) and only the ``source_node_id``
+    predicate matches — the path that justified keeping all three deletion
+    predicates in ``replace_edges_for_file``.
+    """
+    conn.execute(
+        "INSERT INTO edges (source_node_id, target_node_id, kind, file_path) "
+        "VALUES (?, ?, ?, ?)",
+        (source_node_id, target_node_id, kind, file_path),
+    )
+
+
+def test_replace_edges_for_file_deletes_all_predicate_kinds(tmp_path: Path) -> None:
+    """``replace_edges_for_file`` removes file_path / file-node / symbol-prefix
+    rows for the target file and leaves every other file's rows intact (#990).
+
+    The deletion was split from one ``OR`` predicate into three index-driven
+    statements; this pins the exact surviving row set so a future refactor that
+    drops a predicate (or mis-bounds the prefix range) goes red.
+    """
+    store = EdgeStore(str(tmp_path / "edges.db"))
+    conn = store.conn
+    try:
+        # Rows that MUST be deleted for "pkg/a.py":
+        _insert_raw_edge(conn, "file:pkg/a.py", "module:dep", "imports", "pkg/a.py")
+        _insert_raw_edge(
+            conn, "pkg/a.py:foo:10", "pkg/a.py:bar:11", "calls", "pkg/a.py"
+        )
+        # Symbol-prefixed row with EMPTY file_path — only the source-prefix
+        # range predicate catches it (the belt-and-braces fallback).
+        _insert_raw_edge(conn, "pkg/a.py:Baz:20", "class:Thing", "extends", "")
+        # Row whose file_path is pkg/a.py but source is another file's node —
+        # caught by the file_path equality predicate.
+        _insert_raw_edge(conn, "pkg/z.py:q:2", "pkg/a.py:r:3", "calls", "pkg/a.py")
+
+        # Rows that MUST survive (different file):
+        _insert_raw_edge(conn, "pkg/ab.py:x:1", "pkg/ab.py:y:2", "calls", "pkg/ab.py")
+        _insert_raw_edge(conn, "file:pkg/ab.py", "module:dep", "imports", "pkg/ab.py")
+        conn.commit()
+
+        store.replace_edges_for_file("pkg/a.py", [])
+
+        survivors = sorted(
+            row[0] for row in conn.execute("SELECT source_node_id FROM edges")
+        )
+        assert survivors == ["file:pkg/ab.py", "pkg/ab.py:x:1"]
+    finally:
+        store.close()
+
+
+def test_replace_edges_for_file_preserve_calls_keeps_calls_rows(
+    tmp_path: Path,
+) -> None:
+    """``preserve_calls=True`` deletes structural edges for the file but keeps
+    its CALLS rows (#990 — same three-predicate split must honor the clause)."""
+    store = EdgeStore(str(tmp_path / "edges.db"))
+    conn = store.conn
+    try:
+        _insert_raw_edge(conn, "file:pkg/a.py", "module:dep", "imports", "pkg/a.py")
+        _insert_raw_edge(
+            conn, "pkg/a.py:foo:10", "pkg/a.py:bar:11", "calls", "pkg/a.py"
+        )
+        _insert_raw_edge(conn, "pkg/a.py:Baz:20", "class:Thing", "extends", "")
+        conn.commit()
+
+        store.replace_edges_for_file("pkg/a.py", [], preserve_calls=True)
+
+        rows = sorted(
+            (row[0], row[1])
+            for row in conn.execute("SELECT source_node_id, kind FROM edges")
+        )
+        # Only the CALLS row survives; imports + extends are removed.
+        assert rows == [("pkg/a.py:foo:10", "calls")]
+    finally:
+        store.close()
+
+
+class _SQLCapturingConnection:
+    """Wraps a sqlite3 connection, recording every ``execute`` SQL/params.
+
+    Used to assert the EXACT statements ``replace_edges_for_file`` issues are
+    index-driven — so reintroducing the old single ``OR`` predicate (which the
+    planner turns into a full table SCAN) goes red here, not just in prod.
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    def execute(self, sql: str, params: tuple[Any, ...] = ()) -> Any:
+        self.calls.append((sql, params))
+        return self._conn.execute(sql, params)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
+
+
+def test_replace_edges_for_file_deletes_use_indexes_not_full_scan(
+    tmp_path: Path,
+) -> None:
+    """Every DELETE ``replace_edges_for_file`` issues must be index-driven (#990).
+
+    A single ``file_path = ? OR source_node_id = ? OR source_node_id LIKE ?``
+    forced a full ``edges`` SCAN — ~1.8 s per file on a 160k-edge warm cache,
+    so the per-file resolve refresh read as a hang. We capture the real SQL the
+    method runs and EXPLAIN each DELETE: any plan step that SCANs without an
+    index fails the test, so a regression reintroducing the OR goes red.
+    """
+    real_conn = sqlite3.connect(str(tmp_path / "edges.db"))
+    real_conn.row_factory = sqlite3.Row
+    store = EdgeStore(real_conn)
+    try:
+        capture = _SQLCapturingConnection(real_conn)
+        store._conn = capture  # type: ignore[assignment]
+
+        store.replace_edges_for_file("pkg/a.py", [])
+
+        delete_calls = [
+            (sql, params)
+            for sql, params in capture.calls
+            if sql.strip().upper().startswith("DELETE")
+        ]
+        # Exactly three index-driven deletes replace the one OR-scan.
+        assert len(delete_calls) == 3
+
+        scan_steps = []
+        for sql, params in delete_calls:
+            plan = real_conn.execute("EXPLAIN QUERY PLAN " + sql, params).fetchall()
+            for step in plan:
+                detail = step["detail"]
+                if "SCAN" in detail and "USING INDEX" not in detail:
+                    scan_steps.append(detail)
+        assert scan_steps == []
+    finally:
+        store.close()
+
+
 def test_edge_store_call_queries_and_node_parser(tmp_path: Path) -> None:
     db_path = tmp_path / "edges.db"
     store = EdgeStore(str(db_path))

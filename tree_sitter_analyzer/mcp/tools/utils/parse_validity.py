@@ -21,6 +21,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ....encoding_utils import EncodingManager
+
 # N9 (round-28 dogfood): null bytes inside Python (and other) string
 # literals are perfectly legal source — ``x = "\x00"`` compiles and runs.
 # Tree-sitter, however, treats the raw 0x00 byte as a tokenizer error
@@ -159,6 +161,82 @@ def is_file_parse_broken(file_path: str, language: str | None = None) -> bool:
     return True
 
 
+def file_input_diagnostics(
+    file_path: str,
+    language: str | None = None,
+) -> dict[str, Any]:
+    """Return parse/encoding signals for symbol-returning tools.
+
+    ``is_file_parse_broken`` deliberately suppresses raw-NUL false positives
+    when replacing NUL bytes with spaces yields a clean parse. That is correct
+    for the strict ``syntax_error`` gate, but outline-style navigation still
+    needs to warn: raw NUL bytes and non-UTF8 fallback decoding can shift symbol
+    spans or names while still producing a superficially successful outline.
+    """
+    diagnostics: dict[str, Any] = {}
+    byte_diagnostics = _file_byte_diagnostics(file_path)
+    diagnostics.update(byte_diagnostics)
+    if is_file_parse_broken(file_path, language):
+        diagnostics["parse_errors"] = True
+    return diagnostics
+
+
+def _file_byte_diagnostics(file_path: str) -> dict[str, Any]:
+    path = Path(file_path)
+    if not path.is_file():
+        return {}
+    try:
+        raw_bytes = path.read_bytes()
+    except OSError:
+        return {}
+    if not raw_bytes:
+        return {}
+
+    detected_encoding = EncodingManager.detect_encoding(raw_bytes, str(path))
+    warnings: list[str] = []
+    diagnostics: dict[str, Any] = {}
+
+    if not _is_utf8_decodable(raw_bytes):
+        warnings.append("non_utf8_bytes")
+        diagnostics["non_utf8_bytes"] = True
+
+    if _decode_replacement_used(raw_bytes, detected_encoding):
+        warnings.append("decode_replacement")
+        diagnostics["decode_replacement"] = True
+
+    if b"\x00" in raw_bytes:
+        warnings.append("null_bytes")
+        diagnostics["null_bytes"] = True
+
+    if not warnings:
+        return {}
+    diagnostics["encoding_warning"] = True
+    diagnostics["encoding_warnings"] = warnings
+    diagnostics["detected_encoding"] = detected_encoding
+    return diagnostics
+
+
+def _is_utf8_decodable(raw_bytes: bytes) -> bool:
+    try:
+        raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+def _decode_replacement_used(raw_bytes: bytes, detected_encoding: str) -> bool:
+    try:
+        raw_bytes.decode(detected_encoding)
+        return False
+    except (LookupError, UnicodeDecodeError):
+        pass
+    try:
+        decoded = EncodingManager.safe_decode(raw_bytes, detected_encoding)
+    except Exception:
+        decoded = raw_bytes.decode("utf-8", errors="replace")
+    return "\ufffd" in decoded
+
+
 def _is_null_byte_false_positive(file_path: str, language: str) -> bool:
     """Return ``True`` when ``file_path``'s ``has_error`` is caused only
     by raw 0x00 bytes — not by an actual syntax error.
@@ -248,6 +326,7 @@ def syntax_error_envelope(
 
 
 __all__ = [
+    "file_input_diagnostics",
     "is_parse_broken",
     "is_file_parse_broken",
     "syntax_error_envelope",

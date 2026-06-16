@@ -10,9 +10,11 @@ selector parsing, and property analysis.
 from __future__ import annotations
 
 import logging
+import os
+import re
 from typing import TYPE_CHECKING, Any
 
-from ..models import AnalysisResult, StyleElement
+from ..models import AnalysisResult, StyleElement, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_info
 from .css_helpers import (
@@ -28,6 +30,94 @@ if TYPE_CHECKING:
     from ..core.analysis_engine import AnalysisRequest
 
 logger = logging.getLogger(__name__)
+
+# SCSS variable declaration: ``$varname: value;`` or ``$varname: value`` (no semicolon).
+# The regex matches ``$name`` (identifier allowing hyphens) followed by a colon.
+_SCSS_VAR_RE = re.compile(r"^\s*(\$[\w-]+)\s*:", re.MULTILINE)
+
+
+def _blank_quoted_ranges(line: str) -> str:
+    """Replace the contents of quoted strings with spaces (markers excluded).
+
+    A literal ``/*`` inside an SCSS value like ``$glob: "src/*";`` must NOT be
+    treated as the start of a block comment (Bug #967). We blank out single- and
+    double-quoted ranges before scanning for ``/*``/``*/`` markers, preserving
+    overall length so column offsets stay valid for the comment scan. Quote
+    characters themselves are kept; only their interior is blanked.
+    """
+    out: list[str] = []
+    quote: str | None = None
+    for ch in line:
+        if quote is None:
+            if ch in ('"', "'"):
+                quote = ch
+                out.append(ch)
+            else:
+                out.append(ch)
+        else:
+            if ch == quote:
+                quote = None
+                out.append(ch)
+            else:
+                # Blank the interior so embedded /* or */ is not seen as a marker.
+                out.append(" ")
+    return "".join(out)
+
+
+def _extract_scss_variables(file_path: str, content: str) -> list[Variable]:
+    """Return a ``Variable`` element for every SCSS ``$variable`` declaration.
+
+    ``tree-sitter-css`` does not recognise SCSS ``$var: value;`` syntax —
+    it emits ERROR nodes.  This regex-based extractor runs over the raw
+    source and captures each ``$name`` at the start of a declaration line.
+
+    Only the first occurrence of each variable name is emitted (SCSS allows
+    re-assignment of ``$var`` in nested scopes, but the declaration that
+    matters for tools is the defining one at the outermost scope, which
+    always appears first in the file).
+    """
+    lines = content.splitlines()
+    seen: set[str] = set()
+    variables: list[Variable] = []
+    in_block_comment = False
+    for lineno_0, line in enumerate(lines):
+        # Track ``/* ... */`` block comments so commented-out declarations
+        # like ``/* $old: red; */`` are not picked up as phantom variables.
+        # Comment markers are detected on a copy with quoted-string interiors
+        # blanked, so a literal ``/*`` inside a value like ``$glob: "src/*";``
+        # does not falsely open a block comment (Bug #967). Offsets are
+        # length-preserving, so indices map back onto the real ``line``.
+        scan = _blank_quoted_ranges(line)
+        if in_block_comment:
+            close_idx = scan.find("*/")
+            if close_idx == -1:
+                continue
+            in_block_comment = False
+            line = line[close_idx + 2 :]
+            scan = scan[close_idx + 2 :]
+        open_idx = scan.find("/*")
+        if open_idx != -1 and "*/" not in scan[open_idx:]:
+            in_block_comment = True
+            line = line[:open_idx]
+        m = _SCSS_VAR_RE.match(line)
+        if not m:
+            continue
+        var_name = m.group(1)
+        if var_name in seen:
+            continue
+        seen.add(var_name)
+        variables.append(
+            Variable(
+                name=var_name,
+                start_line=lineno_0 + 1,
+                end_line=lineno_0 + 1,
+                language="scss",
+                element_type="variable",
+                visibility="private",
+                raw_text=line.strip(),
+            )
+        )
+    return variables
 
 
 def _css_error_result(file_path: str, exc: Exception) -> AnalysisResult:
@@ -353,7 +443,14 @@ class CssPlugin(LanguagePlugin):
             return _css_error_result(file_path, e)
 
     def _analyze_with_tree_sitter(self, file_path: str, content: str) -> AnalysisResult:
-        """Parse via ``tree-sitter-css``; may raise ``ImportError`` if missing."""
+        """Parse via ``tree-sitter-css``; may raise ``ImportError`` if missing.
+
+        For ``.scss`` and ``.sass`` files, ``tree-sitter-css`` is used for
+        CSS-compatible constructs (selectors, at-rules), and a regex pass
+        extracts SCSS ``$variable`` declarations that the CSS grammar emits as
+        ERROR nodes.  The two result sets are merged so callers see both
+        StyleElement rules and Variable elements in a single AnalysisResult.
+        """
         import tree_sitter
         import tree_sitter_css as ts_css
 
@@ -363,8 +460,18 @@ class CssPlugin(LanguagePlugin):
         tree = parser.parse(content.encode("utf-8"))
 
         extractor = self.create_extractor()
-        elements = extractor.extract_css_rules(tree, content)
-        log_info(f"Extracted {len(elements)} CSS rules from {file_path}")
+        elements: list = extractor.extract_css_rules(tree, content)
+
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in (".scss", ".sass"):
+            scss_vars = _extract_scss_variables(file_path, content)
+            elements = scss_vars + elements
+            log_info(
+                f"Extracted {len(scss_vars)} SCSS variables + "
+                f"{len(elements) - len(scss_vars)} CSS rules from {file_path}"
+            )
+        else:
+            log_info(f"Extracted {len(elements)} CSS rules from {file_path}")
 
         return AnalysisResult(
             file_path=file_path,

@@ -3,6 +3,7 @@
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
     AgentSummaryContext,
     ChangeImpactResponseContext,
+    apply_scope_validation,
     attach_queue_ledger,
     build_agent_summary,
     build_agent_summary_only_response,
@@ -140,6 +141,77 @@ class TestBuildAgentSummary:
         summary = build_agent_summary(ctx)
         assert summary["focused_test_command"] == "pytest test_a.py"
 
+    def test_local_low_impact_summary_uses_local_command(self):
+        ctx = AgentSummaryContext(
+            risk="low",
+            changed_files=["a.py"],
+            scope_paths=None,
+            verification=_make_verification(
+                verification_command="uv run pytest -q",
+                default_test_command="uv run pytest -q",
+            ),
+            strategy=_make_strategy(
+                focused_test_command="uv run pytest tests/unit/test_a.py -q",
+                low_impact_focused_test_command=(
+                    "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+                ),
+                local_verification_command=(
+                    "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+                ),
+                ci_verification_command="uv run pytest -q",
+                resource_profile="local_low_impact",
+                verification_strategy="local_low_impact_focused_then_ci",
+                verification_steps=[
+                    "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+                ],
+            ),
+            affected_count=1,
+            tests_to_run_count=1,
+        )
+
+        summary = build_agent_summary(ctx)
+
+        assert summary["verification_command"] == (
+            "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+        )
+        assert summary["local_verification_command"] == (
+            "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+        )
+        assert summary["low_impact_focused_test_command"] == (
+            "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+        )
+        assert summary["ci_verification_command"] == "uv run pytest -q"
+        assert summary["resource_profile"] == "local_low_impact"
+        assert "low-impact" in summary["next_step"]
+
+    def test_local_low_impact_summary_without_ci_command(self):
+        ctx = AgentSummaryContext(
+            risk="low",
+            changed_files=["a.py"],
+            scope_paths=None,
+            verification=_make_verification(
+                verification_command="nice -n 15 pytest tests/unit/test_a.py -n 2 -q"
+            ),
+            strategy=_make_strategy(
+                local_verification_command=(
+                    "nice -n 15 pytest tests/unit/test_a.py -n 2 -q"
+                ),
+                verification_steps=["nice -n 15 pytest tests/unit/test_a.py -n 2 -q"],
+            ),
+            affected_count=1,
+            tests_to_run_count=1,
+        )
+
+        summary = build_agent_summary(ctx)
+
+        assert summary["next_step"] == (
+            "Run low-impact local verification: "
+            "nice -n 15 pytest tests/unit/test_a.py -n 2 -q"
+        )
+        assert summary["stop_condition"] == (
+            "nice -n 15 pytest tests/unit/test_a.py -n 2 -q exits successfully locally."
+        )
+
     def test_next_step_with_focused_test(self):
         ctx = AgentSummaryContext(
             risk="low",
@@ -195,6 +267,104 @@ class TestBuildAgentSummaryOnlyResponse:
         assert response["risk_level"] == "low"
         assert response["affected_count"] == 3
         assert response["next_step"] == "Run tests"
+
+    def test_agent_summary_only_preserves_low_impact_fields(self):
+        result = {
+            "success": True,
+            "mode": "diff",
+            "scope_paths": [],
+            "scope_filtered": False,
+            "agent_summary": {
+                "risk": "medium",
+                "changed_count": 1,
+                "affected_count": 2,
+                "tests_to_run_count": 1,
+                "next_step": "Run low-impact local verification",
+                "verification_command": (
+                    "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+                ),
+                "focused_test_command": "uv run pytest tests/unit/test_a.py -q",
+                "low_impact_focused_test_command": (
+                    "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+                ),
+                "local_verification_command": (
+                    "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+                ),
+                "ci_verification_command": "uv run pytest -q",
+                "resource_profile": "local_low_impact",
+                "verification_strategy": "local_low_impact_focused_then_ci",
+                "stop_condition": "low-impact local verification passes",
+            },
+            "risk_level": "medium",
+            "changed_count": 1,
+            "affected_count": 2,
+            "tests_to_run_count": 1,
+            "verification_command": (
+                "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+            ),
+            "focused_test_command": "uv run pytest tests/unit/test_a.py -q",
+            "low_impact_focused_test_command": (
+                "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+            ),
+            "local_verification_command": (
+                "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+            ),
+            "ci_verification_command": "uv run pytest -q",
+            "resource_profile": "local_low_impact",
+            "verification_strategy": "local_low_impact_focused_then_ci",
+            "verification_steps": [
+                "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+            ],
+        }
+
+        response = build_agent_summary_only_response(result)
+
+        assert response["verification_command"] == (
+            "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+        )
+        assert response["local_verification_command"] == (
+            "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+        )
+        assert response["low_impact_focused_test_command"] == (
+            "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+        )
+        assert response["ci_verification_command"] == "uv run pytest -q"
+        assert response["resource_profile"] == "local_low_impact"
+
+    def test_agent_summary_only_does_not_emit_contradictory_legacy_scalars(self):
+        """Compact mode must not expose stale top-level fields that fight summary."""
+        result = {
+            "success": True,
+            "mode": "diff",
+            "scope_paths": [],
+            "scope_filtered": False,
+            "agent_summary": {
+                "risk": "high",
+                "changed_count": 1,
+                "affected_count": 8,
+                "tests_to_run_count": 2,
+                "changed_preview": ["tree_sitter_analyzer/example.py"],
+                "next_step": "Run verification",
+                "verification_command": "uv run pytest tests/unit/test_example.py -q",
+                "stop_condition": "focused tests pass",
+            },
+            "risk_level": "high",
+            "changed_count": 1,
+            "affected_count": 8,
+            "tests_to_run_count": 2,
+        }
+
+        response = build_agent_summary_only_response(result)
+
+        assert response["risk_level"] == "high"
+        assert response["changed_count"] == 1
+        assert response["verification_command"] == (
+            "uv run pytest tests/unit/test_example.py -q"
+        )
+        assert "pytest_required" not in response
+        assert "changed_files" not in response
+        assert "changed_preview" not in response
+        assert "impact_level" not in response
 
 
 class TestAttachQueueLedger:
@@ -335,6 +505,48 @@ class TestBuildChangeImpactResponse:
         assert response["tests_to_run_omitted_count"] == 1
         assert response["scope_filtered"] is True
 
+    def test_full_response_exposes_low_impact_local_and_ci_commands(self):
+        import types
+
+        request = types.SimpleNamespace(
+            mode="diff",
+            scope_paths=[],
+            changed_files=["src/a.py"],
+            diff_stat="+1",
+        )
+        local_command = "nice -n 15 uv run pytest tests/unit/test_a.py -n 2 -q"
+        ctx = ChangeImpactResponseContext(
+            request=request,
+            risk="low",
+            affected={"src/a.py"},
+            file_impacts=[{"file": "src/a.py"}],
+            visible_tests=["tests/unit/test_a.py"],
+            all_tests=["tests/unit/test_a.py"],
+            verification=_make_verification(
+                verification_command="uv run pytest -q",
+                default_test_command="uv run pytest -q",
+            ),
+            strategy=_make_strategy(
+                focused_test_command="uv run pytest tests/unit/test_a.py -q",
+                low_impact_focused_test_command=local_command,
+                local_verification_command=local_command,
+                ci_verification_command="uv run pytest -q",
+                resource_profile="local_low_impact",
+                verification_strategy="local_low_impact_focused_then_ci",
+                verification_steps=[local_command],
+            ),
+            test_mapping={"src/a.py": ["tests/unit/test_a.py"]},
+            agent_summary={"risk": "low", "verification_command": local_command},
+        )
+
+        response = build_change_impact_response(ctx)
+
+        assert response["verification_command"] == local_command
+        assert response["local_verification_command"] == local_command
+        assert response["low_impact_focused_test_command"] == local_command
+        assert response["ci_verification_command"] == "uv run pytest -q"
+        assert response["resource_profile"] == "local_low_impact"
+
     def test_empty_affected(self):
         import types
 
@@ -358,3 +570,86 @@ class TestBuildChangeImpactResponse:
         )
         response = build_change_impact_response(ctx)
         assert response["affected_files"] == []
+
+
+class TestVerdictReconciliation782:
+    """#782: top-level verdict and agent_summary.verdict must agree (more
+    severe wins) within one change-impact response — never INFO at one surface
+    while the other says REVIEW/UNSAFE.
+    """
+
+    def test_changed_files_lift_top_level_to_review(self):
+        # top=INFO (risk-derived) but changed_count>0 makes agent content-aware
+        # REVIEW; the top level must lift to REVIEW too.
+        result = {"verdict": "INFO", "changed_count": 20, "agent_summary": {}}
+        apply_scope_validation(result, [])
+        assert result["verdict"] == "REVIEW"
+        assert result["agent_summary"]["verdict"] == "REVIEW"
+
+    def test_constraint_escalation_is_not_downgraded(self):
+        # a constraint-escalated UNSAFE top level must survive and lift the
+        # agent_summary too (never downgrade to the content-aware REVIEW).
+        result = {
+            "verdict": "UNSAFE",
+            "changed_count": 5,
+            "agent_summary": {"verdict": "REVIEW"},
+        }
+        apply_scope_validation(result, [])
+        assert result["verdict"] == "UNSAFE"
+        assert result["agent_summary"]["verdict"] == "UNSAFE"
+
+    def test_no_changes_stays_benign_and_agrees(self):
+        result = {"verdict": "INFO", "changed_count": 0, "agent_summary": {}}
+        apply_scope_validation(result, [])
+        assert result["verdict"] == result["agent_summary"]["verdict"]
+
+    def test_reconcile_no_ops_when_a_verdict_is_missing(self):
+        # Early-return guard: a blank/missing verdict on either side must not
+        # crash and must leave the populated side intact (mirror fills the gap).
+        result = {"agent_summary": {}}
+        apply_scope_validation(result, [])  # no verdict either side → no-op
+        result2 = {"verdict": "REVIEW", "changed_count": 3, "agent_summary": {}}
+        # agent_summary gets REVIEW (changed>0); top already REVIEW → agree
+        apply_scope_validation(result2, [])
+        assert result2["verdict"] == result2["agent_summary"]["verdict"] == "REVIEW"
+
+    def test_compact_response_preserves_reconciled_verdict(self):
+        # The compact (agent_summary_only) path recomputes the top-level verdict
+        # from risk_level; it must NOT discard the reconciliation (#782 P1).
+        result = {
+            "verdict": "INFO",
+            "risk_level": "low",
+            "changed_count": 20,
+            "agent_summary": {},
+        }
+        apply_scope_validation(result, [])
+        compact = build_agent_summary_only_response(result)
+        assert compact["verdict"] == "REVIEW"
+        assert compact["agent_summary"]["verdict"] == "REVIEW"
+
+    def test_compact_response_keeps_constraint_unsafe(self):
+        result = {
+            "verdict": "UNSAFE",
+            "risk_level": "low",
+            "changed_count": 5,
+            "agent_summary": {"verdict": "REVIEW"},
+        }
+        apply_scope_validation(result, [])
+        compact = build_agent_summary_only_response(result)
+        assert compact["verdict"] == "UNSAFE"
+        assert compact["agent_summary"]["verdict"] == "UNSAFE"
+
+
+def test_verdict_severity_rank_matches_journal_rank():
+    """#782 drift guard: the locally-duplicated severity rank must stay
+    byte-identical to change_impact_tool._JOURNAL_VERDICT_RANK (duplicated only
+    to avoid a circular import).
+    """
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
+        _JOURNAL_VERDICT_RANK,
+    )
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+        _VERDICT_SEVERITY,
+    )
+
+    assert _VERDICT_SEVERITY == _JOURNAL_VERDICT_RANK

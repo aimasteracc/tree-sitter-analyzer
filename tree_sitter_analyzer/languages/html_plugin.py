@@ -239,6 +239,12 @@ class HtmlElementExtractor(ElementExtractor):
         elements.append(element)
         if hasattr(node, "children"):
             for child in node.children:
+                # #632: an element node wraps its self_closing_tag child
+                # (element > self_closing_tag); the parent capture above
+                # already carries the tag_name/attributes extracted from
+                # that child, so walking it would duplicate the entry.
+                if getattr(child, "type", None) == "self_closing_tag":
+                    continue
                 self._traverse_for_html_elements(child, elements, source_code, element)
         return True
 

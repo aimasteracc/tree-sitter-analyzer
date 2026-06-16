@@ -86,7 +86,10 @@ class TestSafeToEditTool:
     def test_execute_includes_pre_edit_checklist(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
         assert "pre_edit_checklist" in result
-        assert len(result["pre_edit_checklist"]) >= 2
+        checklist = "\n".join(result["pre_edit_checklist"])
+        assert "RISK" in checklist
+        assert "Run existing tests FIRST" in checklist
+        assert "Run same verification AFTER editing" in checklist
 
     def test_execute_includes_structured_agent_workflow(self, tool):
         result = _run(tool.execute({"file_path": TARGET_FILE, "output_format": "json"}))
@@ -205,8 +208,11 @@ class TestSafeToEditTool:
 
     def test_well_connected_file_has_downstream(self, tool):
         result = _run(tool.execute({"file_path": SERVER_FILE}))
-        # server.py is widely imported, should have downstream
-        assert result["downstream_count"] >= 0
+        # In this temp fixture nothing imports server.py (server.py imports
+        # safe_to_edit_tool.py, not the reverse), so its downstream count is 0.
+        # Pin the exact value: a regression to None/str/negative must go red.
+        assert isinstance(result["downstream_count"], int)
+        assert result["downstream_count"] == 0
 
 
 class TestRiskComputation:
@@ -221,7 +227,7 @@ class TestRiskComputation:
         )
         assert risk == "safe"
         good_factors = [f for f in factors if f["severity"] == "good"]
-        assert len(good_factors) >= 1
+        assert len(good_factors) == 1
 
     def test_caution_with_moderate_downstream(self):
         risk, factors = _compute_risk(
@@ -293,3 +299,88 @@ class TestHelperFunctions:
             str(PROJECT_ROOT),
         )
         assert isinstance(tests, list)
+
+
+# ---------------------------------------------------------------------------
+# Issue #641 — pre_edit_checklist numbering must be sequential (no gap)
+# ---------------------------------------------------------------------------
+
+
+class TestChecklistSequentialNumbering:
+    """build_checklist must emit 1, 2, 3, 4, ... without skipping any number.
+
+    Bug: when downstream_count == 0, item 4 is absent but items for
+    rename/refactor/health were hardcoded as 5/6. This left gaps like
+    [1, 2, 3, 5] in the rendered checklist.
+    """
+
+    def _checklist(self, **kwargs):
+        from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_risk import (
+            build_checklist,
+        )
+
+        return build_checklist(**kwargs)
+
+    def test_rename_no_downstream_sequential(self):
+        """rename + 0 downstream: must be [1, 2, 3, 4], not [1, 2, 3, 5]."""
+        items = self._checklist(
+            risk="safe",
+            downstream_count=0,
+            has_tests=True,
+            test_files=["tests/test_foo.py"],
+            edit_type="rename",
+        )
+        numbers = [item.split(".")[0] for item in items]
+        assert numbers == ["1", "2", "3", "4"]
+
+    def test_refactor_no_downstream_sequential(self):
+        """refactor + 0 downstream: must be [1, 2, 3, 4], not [1, 2, 3, 5]."""
+        items = self._checklist(
+            risk="safe",
+            downstream_count=0,
+            has_tests=True,
+            test_files=["tests/test_foo.py"],
+            edit_type="refactor",
+        )
+        numbers = [item.split(".")[0] for item in items]
+        assert numbers == ["1", "2", "3", "4"]
+
+    def test_rename_with_downstream_sequential(self):
+        """rename + 2 downstream: must be [1, 2, 3, 4, 5]."""
+        items = self._checklist(
+            risk="safe",
+            downstream_count=2,
+            has_tests=True,
+            test_files=["tests/test_foo.py"],
+            edit_type="rename",
+        )
+        numbers = [item.split(".")[0] for item in items]
+        assert numbers == ["1", "2", "3", "4", "5"]
+
+    def test_health_grade_no_downstream_sequential(self):
+        """poor health (D) + 0 downstream + no edit_type addon: [1, 2, 3, 4]."""
+        items = self._checklist(
+            risk="caution",
+            downstream_count=0,
+            has_tests=False,
+            test_files=[],
+            edit_type="fix_bug",
+            health_grade="D",
+            file_path="src/foo.py",
+        )
+        numbers = [item.split(".")[0] for item in items]
+        assert numbers == ["1", "2", "3", "4"]
+
+    def test_rename_downstream_and_health_sequential(self):
+        """rename + downstream + poor health: [1, 2, 3, 4, 5, 6]."""
+        items = self._checklist(
+            risk="caution",
+            downstream_count=3,
+            has_tests=True,
+            test_files=["tests/test_foo.py"],
+            edit_type="rename",
+            health_grade="D",
+            file_path="src/foo.py",
+        )
+        numbers = [item.split(".")[0] for item in items]
+        assert numbers == ["1", "2", "3", "4", "5", "6"]

@@ -45,7 +45,7 @@ allowed-tools:
 Fan out in one message:
 
 1. `health action=project` with `max_files: 20` — grade distribution + worst-20
-2. `health action=dead` with `limit: 50` — pruning candidates
+2. `health action=dead` with `max_dead: 50` — pruning candidates
 3. `health action=overview` — hub functions + entry points + 0-degree leaves
 
 Read the verdict. If `D/F` files exist in worst-20, drill into each with

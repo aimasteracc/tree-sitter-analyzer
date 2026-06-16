@@ -24,7 +24,7 @@ class TestGoQueriesDict:
 
     def test_go_queries_not_empty(self):
         """GO_QUERIES should not be empty."""
-        assert len(GO_QUERIES) > 0
+        assert len(GO_QUERIES) == 31
 
     def test_all_queries_are_strings(self):
         """All query values should be strings."""
@@ -110,7 +110,7 @@ class TestGoQueryDescriptions:
 
     def test_descriptions_not_empty(self):
         """GO_QUERY_DESCRIPTIONS should not be empty."""
-        assert len(GO_QUERY_DESCRIPTIONS) > 0
+        assert len(GO_QUERY_DESCRIPTIONS) == 31
 
     def test_all_descriptions_are_strings(self):
         """All description values should be strings."""
@@ -156,7 +156,7 @@ class TestGetGoQueryDescription:
         """get_go_query_description should return description for valid name."""
         result = get_go_query_description("function")
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result) == 32
 
     def test_get_all_descriptions(self):
         """get_go_query_description should work for all defined queries."""
@@ -179,7 +179,7 @@ class TestAllQueries:
 
     def test_all_queries_not_empty(self):
         """ALL_QUERIES should not be empty."""
-        assert len(ALL_QUERIES) > 0
+        assert len(ALL_QUERIES) == 38
 
     def test_all_queries_structure(self):
         """ALL_QUERIES should have correct structure."""
@@ -249,7 +249,7 @@ class TestListQueries:
     def test_not_empty(self):
         """list_queries should not be empty."""
         result = list_queries()
-        assert len(result) > 0
+        assert len(result) == 38
 
     def test_contains_all_query_names(self):
         """list_queries should contain all query names."""
@@ -269,7 +269,7 @@ class TestGetAvailableGoQueries:
     def test_not_empty(self):
         """get_available_go_queries should not be empty."""
         result = get_available_go_queries()
-        assert len(result) > 0
+        assert len(result) == 31
 
     def test_contains_all_query_names(self):
         """get_available_go_queries should contain all GO_QUERIES names."""

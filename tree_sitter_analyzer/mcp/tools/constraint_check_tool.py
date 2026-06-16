@@ -225,7 +225,7 @@ class ConstraintCheckTool(BaseMCPTool):
             now = int(time.time())
             conn.executemany(
                 """
-                INSERT INTO ast_constraint_violations
+                INSERT OR IGNORE INTO ast_constraint_violations
                     (rule_id, caller_file, caller_name, caller_line,
                      callee_name, callee_file, severity, detected_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)

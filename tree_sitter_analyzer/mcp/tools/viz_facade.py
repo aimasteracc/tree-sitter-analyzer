@@ -51,6 +51,25 @@ _VIZ_DESCRIPTION = (
 )
 
 
+# Similarity bounding params surfaced explicitly on the viz facade public schema
+# (#801: agents must be able to discover these to bound output size).
+# Wave D token-diet rule: only the most agent-critical params; terse descriptions.
+_VIZ_SIMILARITY_PARAMS: dict[str, dict] = {
+    "max_groups": {
+        "type": "integer",
+        "description": "action=similarity: max clone groups to return (default: 20).",
+    },
+    "min_lines": {
+        "type": "integer",
+        "description": "action=similarity: min function body lines to consider (default: 5).",
+    },
+    "min_group_size": {
+        "type": "integer",
+        "description": "action=similarity: min clone group size to report (default: 2).",
+    },
+}
+
+
 def build_viz_facade(project_root: str | None = None) -> FacadeTool:
     """Construct the ``viz`` facade wired to live inner tool instances.
 
@@ -73,5 +92,6 @@ def build_viz_facade(project_root: str | None = None) -> FacadeTool:
         description=_VIZ_DESCRIPTION,
         annotations=_VIZ_ANNOTATIONS,
         project_root=project_root,
+        extra_public_params=_VIZ_SIMILARITY_PARAMS,
     )
     return facade

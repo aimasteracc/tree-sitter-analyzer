@@ -53,6 +53,51 @@ def extract_go_method(
         return None
 
 
+def extract_go_interface_methods(
+    type_spec_node: Any,
+    get_node_text: Callable[..., str],
+    content_lines: list[str],
+) -> list[Function]:
+    """Extract interface method signatures as Functions owned by the interface.
+
+    ``type Reader interface { Read(p []byte) (n int, err error) }`` emits
+    ``method_elem`` children under ``interface_type``; each carries the same
+    ``name``/``parameters``/``result`` fields a function declaration does, so
+    the shared builder applies directly.  Ownership follows the receiver_type
+    convention used for struct methods (#532/#474): receiver_type = the
+    interface name, receiver stays None (signatures have no receiver var).
+    Embedded interfaces are ``type_elem`` nodes and are deliberately skipped
+    (no phantom methods — issue #588).
+    """
+    try:
+        name_node = type_spec_node.child_by_field_name("name")
+        type_node = type_spec_node.child_by_field_name("type")
+        if name_node is None or type_node is None:
+            return []
+        if type_node.type != "interface_type":
+            return []
+        interface_name = get_node_text(name_node)
+        if not interface_name:
+            return []
+
+        methods: list[Function] = []
+        for child in type_node.children:
+            if child.type != "method_elem":
+                continue
+            method_name = _go_function_name(child, get_node_text)
+            if not method_name:
+                continue
+            func = _build_go_function(method_name, child, get_node_text, content_lines)
+            func.receiver_type = interface_name
+            func.is_method = True
+            func.is_abstract = True  # interface specs have no body (#749)
+            methods.append(func)
+        return methods
+    except Exception as e:
+        log_error(f"Error extracting Go interface methods: {e}")
+        return []
+
+
 def _go_function_name(node: Any, get_node_text: Callable[..., str]) -> str | None:
     name_node = node.child_by_field_name("name")
     if not name_node:

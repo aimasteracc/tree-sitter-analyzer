@@ -287,15 +287,51 @@ def handle_mcp_commands(
         return 1
 
     output_format = output_format_fn()
+    fail_on_verdict = getattr(args, "change_impact_fail_on_risk", None)
+    # #1003: build_tool_args runs BEFORE _run_tool's try/except. Builders
+    # that read files / parse JSON / validate paths (e.g. --batch-search,
+    # --partial-read) raise here, and an unwrapped raise escapes as a raw
+    # Python traceback instead of a structured envelope. Wrap it so input
+    # errors surface the same {success: False, verdict: "ERROR"} shape and a
+    # non-zero exit code as runtime errors from execute().
+    try:
+        tool_args = build_mcp_tool_args(args, spec, output_format)
+    except Exception as exc:  # noqa: BLE001 — any builder error → envelope
+        return _emit_builder_error(
+            spec, exc, output_format, output_json_fn, output_error_fn
+        )
     return _run_tool(
         args,
         _get_tool_class(spec.tool_attr),
-        build_mcp_tool_args(args, spec, output_format),
+        tool_args,
         spec.label,
         output_json_fn,
         output_error_fn,
         output_format_fn,
+        fail_on_verdict_worse_than=fail_on_verdict,
     )
+
+
+def _emit_builder_error(
+    spec: McpCommandSpec,
+    exc: Exception,
+    output_format: str,
+    output_json_fn: Callable[[dict[str, Any]], None],
+    output_error_fn: Callable[[str], None],
+) -> int:
+    """Emit a structured error envelope for a build_tool_args failure (#1003).
+
+    Mirrors the ``--format json``/``toon`` vs human split used elsewhere: a
+    JSON/TOON caller gets the canonical ``_build_error_envelope`` shape on
+    stdout; a plain caller gets a clear stderr message. Always exit 1 — never
+    a raw traceback.
+    """
+    if output_format in {"json", "toon"}:
+        envelope = _build_error_envelope(spec.flag_name, spec.label, exc)
+        output_json_fn(envelope)
+    else:
+        output_error_fn(f"{spec.label}: {exc}")
+    return 1
 
 
 __all__ = [

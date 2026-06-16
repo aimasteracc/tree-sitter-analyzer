@@ -20,7 +20,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Extractor version constant — kept in sync with ast_cache.py.
-_AST_CACHE_EXTRACTOR_VERSION = 2
+# v3: #610 — Python module-level constants extracted as kind="constant".
+# v4: #613 — Go package-level const/var specs extracted as kind="constant".
+# v5: #613 — Rust const/static items extracted as kind="constant".
+# v6: #614 — docstring/return_type/params serialized into symbols_json.
+# v7: #624 — PHP const declarations extracted as kind="constant".
+# v8: #626 — JS/TS function-local variables no longer over-captured.
+# v9: #626 — Java function-local variables no longer over-captured.
+# v10: #628 — C# function-local variables no longer over-captured.
+# v11: #638 — call edges keep ALL same-named definition spans; calls inside
+#      the earlier of two same-named methods regain their enclosing caller.
+# v12: #779 — walker depth cap raised 20 -> 100; bump forces re-index of files
+#      cached under the old cap so deeply nested symbols are no longer truncated.
+# v13: #949 — bash variable_assignment indexing: skip command-prefix env vars
+#      (``FOO=bar make``) and unwrap subscript only for assignment targets.
+_AST_CACHE_EXTRACTOR_VERSION = 13
 
 
 def check_cache_or_read(
@@ -159,6 +173,7 @@ def walk_and_partition(
         "skipped": 0,
         "files": [],
         "activation_enabled": activation_enabled,
+        "truncated_by_max_files": False,
     }
     if force:
         indexed_map: dict[str, tuple[int, int, int]] = {}
@@ -173,6 +188,7 @@ def walk_and_partition(
     count = 0
     for abs_path in walk_fn(cache.project_root):
         if count >= max_files:
+            stats["truncated_by_max_files"] = True
             break
         count += 1
         lang = language_fn(abs_path)

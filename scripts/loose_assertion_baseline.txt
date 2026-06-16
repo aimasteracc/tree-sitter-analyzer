@@ -1,15 +1,117 @@
 # Loose assertion ratchet baseline (Layer 2 prep — informational, not yet CI-enforced)
 #
-# METHODOLOGY NOTE (2026-06-11, conscious change): the original plan
-# (.recon/ge-assertion-ratchet-plan.md) measured with a BROADER pattern
-# (incl. <= and < bounds): 2121 pre-batch-1 / 2096 post-batch-1.
-# The baseline now uses the ENFORCEMENT-ALIGNED pattern — the same family
-# the CI script (scripts/check_loose_assertions.sh) blocks — so the
-# ratchet is self-consistent: what we count is what we block.
+# METHODOLOGY NOTE (2026-06-12, conscious re-pin — AST counter supersedes grep):
 #
+# Counter history:
+#   grep (original, 2026-06-11)                  : 1230
+#   grep (post batch-13 PR #584)                  : 1180
+#   AST  (this PR, measured on same HEAD as #584) : 1083
+#
+# Why AST < grep (~97 fewer false positives removed by the AST approach):
+#   1. Multi-line asserts where ">=" appears on a continuation line were
+#      invisible to grep (it saw only the line with "assert", not the line
+#      with ">="). These are now caught — but many were already exact (==)
+#      chained compares or had exemption markers, so net new detections < 97.
+#   2. Lines containing "==" elsewhere on the same assert were skipped by
+#      the grep rule (any == → skip), but the AST checker skips only if
+#      the assert *test expression* contains an Eq compare. Some asserts had
+#      "==" in a different sub-expression and were counted by grep but not
+#      by AST.
+#   3. String literals containing ">=" (e.g. version specs) are naturally
+#      excluded by AST parsing; grep had a partial workaround that missed
+#      some cases.
+#
+# The AST count is the authoritative baseline going forward.
 # The count must only decrease (or stay equal). Each Layer-2 batch PR
 # re-measures and lowers it. Numbers are MEASURED, never hand-derived.
+#
+# History:
+#   batch-14 (AST): 1083 -> 1026, 2026-06-12 (56 pins in top-4 AST-ranked
+#   files; pre-batch measure on base ca8e9927 was 1082 — develop had
+#   already dropped 1 since the 1083 recording).
+#   batch-15 (AST): 1026 -> 977, 2026-06-13 (49 pins in top-4 AST-ranked
+#   files).
+#   batch-16 (AST): 977 -> 933, 2026-06-13 (44 pins in top-4 AST-ranked
+#   files).
+#   batch-17 (AST): 933 -> 892, 2026-06-13 (41 flagged pins in top-4
+#   AST-ranked files, plus 2 unflagged <= bounds pinned exact).
+#   batch-18 (AST): 892 -> 852, 2026-06-13 (40 pins in top-4 AST-ranked
+#   files).
+#   batch-19 (AST): 852 -> 816, 2026-06-13 (35 exact pins + 1 timing
+#   exemption in top-4 AST-ranked files).
+#   batch-20 (AST): 816 -> 780, 2026-06-13 (36 pins in top-4 AST-ranked
+#   files).
+#   batch-21 (AST): 780 -> 744, 2026-06-13 (36 pins in top-4 AST-ranked
+#   files).
+#   batch-22 (AST): 744 -> 711, 2026-06-13 (30 exact pins + 3 timing
+#   exemptions in top-4 AST-ranked files).
+#   batch-23 (AST): 711 -> 679, 2026-06-13 (32 exact pins in top-4
+#   AST-ranked files, no exemptions).
+#   batch-24 (AST): 679 -> 647, 2026-06-13 (32 exact pins in top-4
+#   AST-ranked files, no exemptions).
+#   batch-25 (AST): 647 -> 619, 2026-06-13 (28 exact pins in top-4
+#   AST-ranked files, no exemptions).
+#   batch-26 (AST): 619 -> 591, 2026-06-13 (28 exact pins in top-4
+#   AST-ranked files, no exemptions).
+#   batch-27 (AST): 591 -> 567, 2026-06-13 (14 exact pins + 10 timing/environment/hypothesis
+#   exemptions in top-4 AST-ranked files; property files excluded from baseline).
+#   batch-28 (AST): 567 -> 543, 2026-06-13 (24 exact pins in top-4 AST-ranked
+#   files, no exemptions).
+#   batch-29 (AST): 543 -> 519, 2026-06-13 (23 exact pins + 1 timing exemption
+#   in top-4 AST-ranked files).
+#   batch-30 (AST): 519 -> 499, 2026-06-13 (20 exact pins in top-4 AST-ranked
+#   files, no exemptions).
+#   batch-31 (AST): 499 -> 479, 2026-06-13 (14 exact pins + 3 truthy conversions
+#   + 3 timing exemptions in top-4 AST-ranked files; ran parallel to batch-30,
+#   reconciled on merge — both batches' 40 pins now in develop).
+#   batch-32 (AST): 479 -> 459, 2026-06-13 (18 exact pins + 2 truthy-set pins
+#   in top-4 AST-ranked files, no timing exemptions).
+#   batch-33 (AST): 459 -> 439, 2026-06-13 (20 exact pins in top-4 AST-ranked
+#   files, no exemptions; loop assert restructured to per-pattern dict).
+#   batch-34 (AST): 439 -> 434, 2026-06-13 (5 exact pins in test_logging.py;
+#   batch deliberately small — the next-ranked files were poor targets this
+#   round: integration_tests.py has 6 pre-existing failures (table_output
+#   missing from CSV TOON, filed separately) so its asserts are unreachable,
+#   and the CLI-output files need content-invariant pins, not byte counts that
+#   vary by platform temp-stem length — both deferred to batch-35).
+#   batch-35 (AST): 434 -> 418, 2026-06-13 (15 exact pins + 1 nondeterministic
+#   exemption in 4 files: test_parser_readiness_records.py/test_language_detector_helpers.py/
+#   test_parser.py/test_queries_ruby.py; loop assert in test_key_languages_have_patterns
+#   restructured to per-language exact dict; cache_maxsize pinned == 2000 (the
+#   deterministic CI default; env override is out-of-test); only mtime_ns exempt
+#   as a genuinely nondeterministic filesystem timestamp).
+#   batch-36 (AST): 418 -> 402, 2026-06-13 (16 pins in 4 files:
+#   test_query_library_coverage.py (list_queries==71 x2; in-loop description
+#   non-empty rewritten as !='' x2), test_csv_control_char_safety.py
+#   (parametrized result len rewritten as !=''; html_csv ==93; markdown_csv
+#   ==69; CR rows ==2), test_csv_control_char_safety_remaining.py (parametrized
+#   result len rewritten as !=''; base_formatter rows ==3; legacy rows ==4),
+#   test_legacy_table_formatter_core.py (CSV lines ==1; rows ==2 x3);
+#   no exemptions).
+#   batch-37 (AST): 402 -> 374, 2026-06-15 (27 exact pins + 1 nondeterministic
+#   exemption in 7 files: test_csharp_plugin_integration.py (classes==5/
+#   functions==12/imports==3/len(code)==2650), test_csharp_plugin_extraction.py
+#   (constructor_names==0/param_names==1/constructors==1/complexity==7),
+#   test_csharp_plugin_details.py (static_imports==1/import start_lines==[2,3]/
+#   complexity==7/nodes==98), test_swift_plugin.py (classes==4/functions==5/
+#   variables==3/node_count==207), test_python_plugin_edge_cases.py (imports==0
+#   x2/concurrent_cache exempt-nondeterministic/complexity loop restructured to
+#   per-case dict), test_plugins_base_core.py (functions==0/unicode_len==2/
+#   node_name_len==4/traverse_functions==1), test_typescript_formatter_core.py
+#   (full==879/compact==416/csv==402/csv_lines==8)).
+#   batch-39 (AST): further pins in formatter/CLI/security tests
+#   (test_cli_table_partial_query.py, test_cli_queries.py,
+#   test_temporal_activation.py, test_file_health_blocks.py,
+#   test_codegraph_metrics_tool.py, test_change_impact_analysis.py,
+#   test_cached_call_graph.py, test_mcp_security.py, test_error_handler.py,
+#   test_safe_to_edit_tool.py, test_project_health_tool.py).
+#   batch-39 (AST): 337 -> 302, 2026-06-15 (35 exact pins in 11 files:
+#   test_cli_table_partial_query.py, test_cli_queries.py,
+#   test_temporal_activation.py, test_file_health_blocks.py,
+#   test_codegraph_metrics_tool.py, test_change_impact_analysis.py,
+#   test_cached_call_graph.py, test_mcp_security.py, test_error_handler.py,
+#   test_safe_to_edit_tool.py, test_project_health_tool.py).
 
-BASELINE_COUNT=1792
-MEASUREMENT_DATE=2026-06-11
-MEASUREMENT_COMMAND="grep -rEn \"assert .*(>= [0-9]|> 0([^0-9]|\$))\" tests/ --include=\"*.py\" | grep -v \"ratchet: nondeterministic\" | wc -l"
+BASELINE_COUNT=302
+MEASUREMENT_DATE=2026-06-15
+MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"

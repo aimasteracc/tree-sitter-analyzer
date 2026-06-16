@@ -86,6 +86,10 @@ uv run tree-sitter-analyzer --ast-diff --ast-diff-file <file> --ast-diff-old-ref
 uv run tree-sitter-analyzer --parser-readiness swift
 uv run tree-sitter-analyzer --autoindex            # index action=auto
 uv run tree-sitter-analyzer --full-index           # index action=full
+# WARNING: slow — can exceed 60s on medium-large repos (~2000 files / 100K+ edges).
+# Prefer `--ast-cache --ast-cache-mode index` for an incremental refresh.
+# `--full-index` defaults to mode 'incremental'; pass `--full-index-mode full` for a
+# true full rebuild, and `--full-index-max-files N` (default 20000) to cap scope.
 ```
 
 ## Anti-patterns

@@ -9,22 +9,22 @@ Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/ba
 | Language | Plugin module | Extractor split | Notes |
 |---|---|---|---|
 | Java | `languages/java_plugin.py` | `_java_*_helpers.py` ×4 | Spring/JPA awareness; **fixture file — DO NOT refactor** (see CLAUDE.md memory rule) |
-| Python | `python_plugin/` | submodules | Type annotations, decorators, async |
-| TypeScript | `typescript_plugin/` | submodules | Interfaces, types, TSX/JSX |
-| JavaScript | `javascript_plugin/` | submodules | ES6+, JSX |
-| C | `languages/c_plugin.py` | `_c_*_helpers.py` ×8 | functions, structs, unions, enums, preprocessor |
-| C++ | `languages/cpp_plugin.py` | `_cpp_*_helpers.py` ×11 | classes, templates, namespaces |
-| C# | `languages/csharp_plugin.py` | `languages/csharp_helpers.py` | records, async/await, attributes |
+| Python | `python_plugin/` | submodules | Type annotations, decorators, async; module constants include chained and same-line assignments |
+| TypeScript | `typescript_plugin/` | submodules | Interfaces, types, TSX/JSX; enum kind/export parity and class-field decorators |
+| JavaScript | `javascript_plugin/` | submodules | ES6+, JSX; `_function_helpers.py` handles class-field arrow methods (is_method, is_static, computed/string/number key names — #890/#892); `queries/javascript.py` VARIABLES + "variable" query include `field_definition` (#891) |
+| C | `languages/c_plugin.py` | `_c_*_helpers.py` ×8 | functions, structs, unions, enums, preprocessor; unnamed bitfields are skipped as non-addressable fields |
+| C++ | `languages/cpp_plugin.py` | `_cpp_*_helpers.py` ×11 | classes, templates, namespaces; nested template/union type parent metadata and field-reference guards |
+| C# | `languages/csharp_plugin.py` | `languages/csharp_helpers.py` | records, async/await, attributes; block and file-scoped namespaces surface as packages |
 | Go | `languages/go_plugin.py` | `_go_*_helpers.py` ×6 | structs, interfaces, goroutines |
-| Rust | `languages/rust_plugin.py` | inline | traits, impl, macros, derive |
+| Rust | `languages/rust_plugin.py` | inline | traits, impl, macros, derive, enum variants as variables |
 | Kotlin | `languages/kotlin_plugin.py` | `languages/kotlin_helpers.py` | data classes, coroutines |
-| Scala | `languages/scala_plugin.py` | inline | objects/traits, scaladoc |
+| Scala | `languages/scala_plugin.py` | inline | objects/traits, scaladoc; Scala 3 enum cases, givens, type members, extensions, and AST-cache symbol rows |
 | Swift | `languages/swift_plugin.py` | `_swift_plugin_*.py` ×3 | classes, structs, protocols; `.swift` + `.swiftinterface` (issue #131) |
 | Ruby | `languages/ruby_plugin.py` | `languages/ruby_helpers.py` | Rails patterns, metaprogramming |
 | PHP | `languages/php_plugin.py` | `languages/php_helpers.py` | PHP 8+ attributes, traits |
 | HTML | `languages/html_plugin.py` | `languages/html_helpers.py` | DOM elements with role classification |
 | CSS | `languages/css_plugin.py` | `languages/css_helpers.py` | selectors + properties |
-| SQL | `sql_plugin/` | submodules | tables, views, procedures, triggers |
+| SQL | `sql_plugin/` | submodules | tables, views, procedures, triggers; `table_extractor.py` regex fallback supports ANSI/MySQL/SQL-Server quoted identifiers and populates columns; CTAS (`AS SELECT`) guarded; case-sensitive dedup for quoted names (#880/#881); schema-qualified `CREATE FUNCTION` now extracted (#775); CTAS table name extracted instead of schema name (#808) |
 | YAML | `languages/yaml_plugin.py` | `languages/yaml_helpers.py` | anchors, aliases, multi-doc |
 | Markdown | `markdown_plugin/` | submodules | headings, code blocks, tables |
 | JSON | `languages/json_plugin.py` | inline | basic structure |

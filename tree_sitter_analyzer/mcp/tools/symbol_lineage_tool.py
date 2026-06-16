@@ -20,7 +20,11 @@ from ...project_graph import BlastRadius, DependencyGraph
 from ...utils import setup_logger
 from ...utils.test_detection import is_test_file as _is_test_file
 from ..utils.format_helper import apply_toon_format_to_response
-from ._graph_cache_fingerprint import GraphFingerprint, compute_graph_fingerprint
+from ._graph_cache_fingerprint import (
+    GraphFingerprint,
+    compute_graph_fingerprint,
+    is_ast_index_stale,
+)
 from .base_tool import BaseMCPTool
 from .query_symbol_search import execute_find_references
 
@@ -43,6 +47,15 @@ TOOL_SCHEMA: dict[str, Any] = {
             "enum": ["json", "toon"],
             "default": "toon",
         },
+        "file_paths": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Optional scope filter for references/call sites. Definitions "
+                "are still resolved project-wide so the symbol location remains "
+                "available."
+            ),
+        },
     },
     "required": ["symbol"],
     "additionalProperties": False,
@@ -55,6 +68,7 @@ _REF_LIMIT = 30
 _DOWNSTREAM_LIMIT = 50
 _UPSTREAM_LIMIT = 20
 _TEST_LIMIT = 20
+_HIER_LIMIT = 50
 
 # Risk level → verdict mapping (canonical vocab per CLAUDE.md).
 # Lineage is an informational analyser, not a modification guard, so
@@ -142,6 +156,35 @@ def _verdict_and_next_step(risk_level: str) -> tuple[str, str]:
     return verdict, next_step
 
 
+def _normalize_scope_file_paths(project_root: str, file_paths: list[Any]) -> set[str]:
+    root = Path(project_root).resolve()
+    normalized: set[str] = set()
+    for raw_path in file_paths:
+        if not raw_path:
+            continue
+        path = Path(str(raw_path))
+        try:
+            rel = path.resolve().relative_to(root) if path.is_absolute() else path
+        except ValueError:
+            rel = path
+        rel_text = str(rel).replace("\\", "/")
+        normalized.add(rel_text[2:] if rel_text.startswith("./") else rel_text)
+    return normalized
+
+
+def _filter_references_to_scope(
+    references: list[dict[str, Any]],
+    scope_files: set[str],
+) -> list[dict[str, Any]]:
+    if not scope_files:
+        return references
+    return [
+        ref
+        for ref in references
+        if str(ref.get("file", "")).replace("\\", "/") in scope_files
+    ]
+
+
 def _build_agent_summary_block(
     summary_line: str,
     next_step: str,
@@ -166,7 +209,7 @@ class SymbolLineageTool(BaseMCPTool):
         # Lazy graph + per-symbol response cache. Built on the first call,
         # reset on project_root rebind via _on_project_root_changed.
         self._dep_graph: DependencyGraph | None = None
-        self._symbol_cache: dict[tuple[str, int], dict[str, Any]] = {}
+        self._symbol_cache: dict[tuple[str, int, tuple[str, ...]], dict[str, Any]] = {}
         # H4 fix: fingerprint snapshot for the cached graph + symbol cache.
         # When the source tree changes, both the graph and the per-symbol
         # response cache are invalidated together — the symbol responses
@@ -174,6 +217,12 @@ class SymbolLineageTool(BaseMCPTool):
         self._dep_graph_fingerprint: GraphFingerprint | None = None
         self._dep_graph_built_at: float | None = None
         self._cache_invalidated_reason: str | None = None
+        # #568: the hierarchy section is derived from the AST index (index.db),
+        # not the source tree, so it must invalidate the per-symbol cache on its
+        # own — else a lineage call made before indexing caches a no-hierarchy
+        # response that the source-only fingerprint can't refresh once the index
+        # is built (Codex P2).
+        self._ast_index_mtime_ns: int | None = None
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
@@ -183,6 +232,7 @@ class SymbolLineageTool(BaseMCPTool):
         self._dep_graph_fingerprint = None
         self._dep_graph_built_at = None
         self._cache_invalidated_reason = None
+        self._ast_index_mtime_ns = None
 
     def _get_dep_graph(self) -> DependencyGraph | None:
         """Return cached dependency graph, building it on first use.
@@ -281,17 +331,28 @@ class SymbolLineageTool(BaseMCPTool):
         symbol = arguments["symbol"].strip()
         max_depth = int(arguments.get("max_depth", 3))
         output_format = arguments.get("output_format", "toon")
-
         self._validate_project_root()
+        file_paths = arguments.get("file_paths") or []
+        scope_files = _normalize_scope_file_paths(str(self.project_root), file_paths)
         # H4 fix: refresh dep graph (clears _symbol_cache on rebuild) before
         # the cache lookup below.
         graph = self._get_dep_graph()
+        # #568: also clear the per-symbol cache when the AST index changed
+        # (hierarchy is index-derived; the source fingerprint above can't see it).
+        self._invalidate_symbol_cache_on_index_change()
+        # #932: an unchanged index DB can still be stale relative to source
+        # edits/adds/deletes. Check before serving the per-symbol cache so a
+        # warm lineage response never hides stale hierarchy/index_hint data.
+        self._invalidate_symbol_cache_on_stale_ast_index()
 
-        cached_response = self._try_cached_lineage(symbol, max_depth, started)
+        cache_key = (symbol, max_depth, tuple(sorted(scope_files)))
+        cached_response = self._try_cached_lineage(cache_key, started)
         if cached_response is not None:
             return apply_toon_format_to_response(cached_response, output_format)
 
         definitions, references = await self._collect_definitions_and_refs(symbol)
+        if scope_files:
+            references = _filter_references_to_scope(references, scope_files)
         all_symbol_files = self._collect_symbol_files(definitions, references)
         downstream_files, upstream_files = self._compute_blast_radius(
             graph, all_symbol_files
@@ -322,10 +383,21 @@ class SymbolLineageTool(BaseMCPTool):
             summary_line=summary_line,
             verdict=verdict,
             agent_summary=agent_summary,
+            hierarchy=self._hierarchy_for(symbol),
         )
 
+        if scope_files:
+            response["scope_filter"] = sorted(scope_files)
+            response["scope_filtered"] = True
+            response["scope_note"] = (
+                "file_paths filters references and call sites; definitions "
+                "remain project-wide so the symbol location is preserved."
+            )
+        else:
+            response["scope_filtered"] = False
+
         return self._finalize_and_cache_response(
-            response, (symbol, max_depth), started, output_format
+            response, cache_key, started, output_format
         )
 
     def _validate_project_root(self) -> None:
@@ -338,17 +410,16 @@ class SymbolLineageTool(BaseMCPTool):
 
     def _try_cached_lineage(
         self,
-        symbol: str,
-        max_depth: int,
+        cache_key: tuple[str, int, tuple[str, ...]],
         started: float,
     ) -> dict[str, Any] | None:
         """Return a deep-copied cached response if one exists, else ``None``.
 
         Per-symbol response cache — the tool does an expensive cross-file
         walk + dep-graph traversal that orchestrators repeat. Cache key
-        is ``(symbol, max_depth)``; reset on project_root rebind.
+        includes ``(symbol, max_depth, scope_files)``; reset on project_root
+        rebind.
         """
-        cache_key = (symbol, max_depth)
         cached = self._symbol_cache.get(cache_key)
         if cached is None:
             return None
@@ -362,7 +433,7 @@ class SymbolLineageTool(BaseMCPTool):
     async def _collect_definitions_and_refs(
         self, symbol: str
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Find references, reclassify (H12), then run K3 grep fallback for missing defs."""
+        """Find references, reclassify (H12), K3 grep fallback, and #757 caller enrichment."""
         ref_args = {"symbol": symbol, "output_format": "json"}
         refs_result = await execute_find_references(self.project_root, ref_args)
 
@@ -385,6 +456,15 @@ class SymbolLineageTool(BaseMCPTool):
             definitions, references = _apply_grep_fallback_defs(
                 definitions, references, str(self.project_root), symbol
             )
+
+        # #757: ``execute_find_references`` walks AST *elements* (imports,
+        # definitions) but NOT call-site edges — so reference_count only
+        # counts import statements, not actual callers.  Enrich with the
+        # call graph to surface real call sites.
+        references = _enrich_references_with_callers(
+            references, str(self.project_root), symbol
+        )
+
         return definitions, references
 
     @staticmethod
@@ -419,6 +499,113 @@ class SymbolLineageTool(BaseMCPTool):
                 upstream_files.update(rev)
         return downstream_files, upstream_files
 
+    def _index_signature(self) -> int:
+        """Max ``mtime_ns`` across the AST index DB and its WAL/SHM sidecars.
+
+        SQLite in WAL mode writes new rows to ``index.db-wal`` without
+        touching ``index.db``'s mtime until a checkpoint (Codex P2), so a
+        bare ``index.db`` stat misses index updates. Taking the max over all
+        three files makes the signature flip on any index write. Returns 0
+        when no index exists. Called only after ``_validate_project_root``.
+        """
+        assert self.project_root is not None  # guaranteed by _validate_project_root
+        cache_dir = Path(self.project_root) / ".ast-cache"
+        sig = 0
+        for name in ("index.db", "index.db-wal", "index.db-shm"):
+            try:
+                mtime = (cache_dir / name).stat().st_mtime_ns
+            except OSError:
+                continue
+            if mtime > sig:
+                sig = mtime
+        return sig
+
+    def _invalidate_symbol_cache_on_index_change(self) -> None:
+        """Clear the per-symbol cache when the AST index changed (#568).
+
+        The hierarchy section is derived from the AST index, which an
+        autoindex/build can refresh without touching source files — so the
+        source-tree fingerprint would otherwise serve a stale no-hierarchy hit.
+        The recorded signature is refreshed in ``_finalize_and_cache_response``
+        (AFTER this call's own index reads/writes), so a call that *creates*
+        the index as a side effect — ``find_references`` / ``_hierarchy_for``
+        both touch ``.ast-cache`` — does not spuriously evict the next call's
+        warm hit. Only called from ``execute`` after ``_validate_project_root``.
+        """
+        if self._index_signature() != self._ast_index_mtime_ns:
+            self._symbol_cache = {}
+
+    def _invalidate_symbol_cache_on_stale_ast_index(self) -> None:
+        """Clear cached lineage responses when source has outpaced ast_index."""
+        if not self.project_root:
+            return
+        if is_ast_index_stale(str(self.project_root)):
+            self._symbol_cache = {}
+            self._cache_invalidated_reason = "ast_index_stale"
+
+    def _hierarchy_for(self, symbol: str) -> dict[str, Any] | None:
+        """#568: the advertised inheritance/override lineage.
+
+        The lineage action documents "class/function inheritance and override
+        lineage" but only returned an impact profile. Ask ClassHierarchy
+        (extends edges) directly — its ``has_class`` is the authoritative gate,
+        which works regardless of how the definition was found (Codex P2s):
+
+        * the symbol is resolved to its BARE name (``pkg.Base`` -> ``Base``) —
+          ClassHierarchy stores classes by bare name from the AST cache;
+        * detection does NOT depend on the definition's ``kind``/``type``, so a
+          class found only via the K3 grep fallback (``type='definition'``, no
+          ``kind``) still gets its hierarchy.
+
+        Returns ``None`` for non-class symbols (or an empty/unbuilt index).
+        Only called from ``execute`` after ``_validate_project_root``.
+        """
+        bare = symbol.rsplit(".", 1)[-1]
+        cache = None
+        try:
+            from ...ast_cache import ASTCache
+            from ...class_hierarchy import ClassHierarchy
+
+            cache = ASTCache(str(self.project_root))
+            ch = ClassHierarchy(cache)
+            ch.build()
+            if not ch.has_class(bare):
+                return None
+            subs = ch.subclasses_of(bare)
+            supers = ch.superclasses_of(bare)
+        except Exception as exc:  # noqa: BLE001 — degrade to no hierarchy
+            logger.warning(f"lineage hierarchy lookup failed for {symbol}: {exc}")
+            return None
+        finally:
+            # Release the SQLite handle so Windows can delete the cache dir
+            # (WinError 32: index.db locked at tmp teardown otherwise).
+            if cache is not None:
+                cache.close()
+        # #703: authoritative staleness — query each indexed file's recorded
+        # mtime_ns and compare against on-disk. Language-complete: covers Kotlin,
+        # Ruby, PHP, Swift, etc. that _SOURCE_EXTS-based fingerprinting missed.
+        # Falls back to the old fingerprint approach if the index is absent.
+        index_mtime_ns = self._index_signature()
+        if index_mtime_ns == 0:
+            # No index at all → stale (hierarchy built from in-memory cache).
+            stale = True
+        else:
+            stale = is_ast_index_stale(str(self.project_root))
+        hier: dict[str, Any] = {
+            "subclasses": subs[:_HIER_LIMIT],
+            "subclass_count": len(subs),
+            "subclasses_truncated": len(subs) > _HIER_LIMIT,
+            "superclasses": supers,
+            "superclass_count": len(supers),
+            "index_stale": stale,
+        }
+        if stale:
+            hier["index_hint"] = (
+                "Source changed since last index; run project_index/index"
+                " action=auto to refresh inheritance."
+            )
+        return hier
+
     @staticmethod
     def _assemble_lineage_response(
         *,
@@ -433,6 +620,7 @@ class SymbolLineageTool(BaseMCPTool):
         summary_line: str,
         verdict: str,
         agent_summary: dict[str, Any],
+        hierarchy: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Assemble the canonical lineage envelope with G6 truncation + r37u verdict."""
         sorted_downstream = sorted(downstream_files)
@@ -475,17 +663,24 @@ class SymbolLineageTool(BaseMCPTool):
             "summary_line": summary_line,
             "verdict": verdict,  # r37u: top-level verdict mirror
             "agent_summary": agent_summary,
+            # #568: the advertised inheritance/override lineage — present only
+            # for class symbols (None for functions/non-classes, omitted below).
+            **({"hierarchy": hierarchy} if hierarchy else {}),
         }
 
     def _finalize_and_cache_response(
         self,
         response: dict[str, Any],
-        cache_key: tuple[str, int],
+        cache_key: tuple[str, int, tuple[str, ...]],
         started: float,
         output_format: str,
     ) -> dict[str, Any]:
         """Cache a deep copy, stamp elapsed/from_cache, apply TOON formatting."""
         self._symbol_cache[cache_key] = copy.deepcopy(response)
+        # #568: record the index signature AFTER this call's own index
+        # reads/writes so creating the index here doesn't evict the next
+        # warm hit (the invalidation check above compares against this).
+        self._ast_index_mtime_ns = self._index_signature()
 
         response["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
         response["from_cache"] = False
@@ -740,6 +935,73 @@ def _assess_risk(
         level = "high"
 
     return {"level": level, "score": score, "reasons": reasons}
+
+
+def _enrich_references_with_callers(
+    references: list[dict[str, Any]],
+    project_root: str,
+    symbol: str,
+) -> list[dict[str, Any]]:
+    """#757: augment AST-element references with real call-site callers.
+
+    ``execute_find_references`` walks AST *elements* (imports, definitions)
+    but not call-edge rows, so its references[] contains only import
+    statements — never actual call sites.  The call graph (populated by
+    ``index_project``) stores every call edge as a row with
+    ``caller_name / caller_file / caller_line``.  Querying it yields the
+    real callers that the AST-element walk misses.
+
+    Deduplication is by ``(file, start_line)`` so an AST import hit at
+    the same position as a call-graph edge is not double-counted.
+
+    Returns a new list (immutable input) with call-site rows appended.
+    """
+    try:
+        from ...ast_cache import ASTCache
+
+        if is_ast_index_stale(project_root):
+            return references
+        cache = ASTCache(project_root)
+        if not cache.has_call_edges():
+            cache.close()
+            return references
+        raw_callers = cache.query_callers(symbol)
+        cache.close()
+    except Exception:  # nosec BLE001 — degrade gracefully; no callers added
+        return references
+
+    if not raw_callers:
+        return references
+
+    # Build a seen-key set from existing references to avoid duplicates.
+    seen: set[tuple[str, int]] = {
+        (r.get("file", ""), int(r.get("start_line", 0))) for r in references
+    }
+
+    new_refs = list(references)
+    for edge in raw_callers:
+        caller_name = edge.get("caller_name", "")
+        caller_file = edge.get("caller_file", "")
+        call_site_line = int(edge.get("callee_line") or edge.get("caller_line") or 0)
+        # Skip unattributed call sites (module-level callers with no
+        # enclosing function — same rule as callers_tool #638 fix).
+        if not caller_name or not caller_file:
+            continue
+        key = (caller_file, call_site_line)
+        if key in seen:
+            continue
+        seen.add(key)
+        new_refs.append(
+            {
+                "name": caller_name,
+                "type": "call_site",
+                "file": caller_file,
+                "start_line": call_site_line,
+                "end_line": call_site_line,
+                "role": "caller",
+            }
+        )
+    return new_refs
 
 
 # K3 fallback: project-wide text scan for definition sites. Used when

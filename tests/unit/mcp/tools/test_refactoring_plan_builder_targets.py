@@ -251,7 +251,7 @@ class TestFindExtractableBlocks:
             "    return None",
         ]
         blocks = _find_extractable_blocks(lines, 1)
-        assert len(blocks) >= 1
+        assert len(blocks) == 1
         assert blocks[0][2] == "loop"
 
     def test_finds_conditional_block(self):
@@ -266,7 +266,7 @@ class TestFindExtractableBlocks:
             "    return None",
         ]
         blocks = _find_extractable_blocks(lines, 1)
-        assert len(blocks) >= 1
+        assert len(blocks) == 1
         assert blocks[0][2] == "conditional"
 
     def test_finds_computation_block_with_continuation(self):
@@ -281,7 +281,7 @@ class TestFindExtractableBlocks:
             "    return result",
         ]
         blocks = _find_extractable_blocks(lines, 1)
-        assert len(blocks) >= 1
+        assert len(blocks) == 1
 
     def test_blocks_sorted_by_size_descending(self):
         lines = [
@@ -324,7 +324,7 @@ class TestFindExtractableBlocks:
             "    return None",
         ]
         blocks = _find_extractable_blocks(lines, 10)
-        assert blocks[0][0] >= 10
+        assert blocks[0][0] == 11
 
 
 class TestNextExtractableBlock:
@@ -357,7 +357,7 @@ class TestNextExtractableBlock:
         block, idx = _next_extractable_block(lines, 0, 6, 4)
         assert block is not None
         assert block[2] == "loop"
-        assert idx > 0
+        assert idx == 6
 
 
 class TestScanBlockEnd:

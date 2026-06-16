@@ -144,7 +144,7 @@ class TestSummaryCommandOutputSummaryAnalysis:
             ) as mock_data:
                 command._output_summary_analysis(analysis_result)
                 mock_section.assert_called_once_with("Summary Results")
-                assert mock_data.call_count > 0
+                assert mock_data.call_count == 4
 
     def test_output_summary_analysis_json(self, command):
         """Test _output_summary_analysis with JSON format."""
@@ -228,7 +228,7 @@ class TestSummaryCommandOutputSummaryAnalysis:
             ) as mock_data:
                 command._output_summary_analysis(analysis_result)
                 mock_section.assert_called_once_with("Summary Results")
-                assert mock_data.call_count > 0
+                assert mock_data.call_count == 6
 
     def test_output_summary_analysis_custom_types(self, command):
         """Test _output_summary_analysis with custom types."""
@@ -265,7 +265,7 @@ class TestSummaryCommandOutputSummaryAnalysis:
             ) as mock_data:
                 command._output_summary_analysis(analysis_result)
                 mock_section.assert_called_once_with("Summary Results")
-                assert mock_data.call_count > 0
+                assert mock_data.call_count == 6
 
     def test_output_summary_analysis_all_types(self, command):
         """Test _output_summary_analysis with all types."""
@@ -312,7 +312,7 @@ class TestSummaryCommandOutputSummaryAnalysis:
             ) as mock_data:
                 command._output_summary_analysis(analysis_result)
                 mock_section.assert_called_once_with("Summary Results")
-                assert mock_data.call_count > 0
+                assert mock_data.call_count == 10
 
 
 class TestSummaryCommandOutputTextFormat:
@@ -333,7 +333,7 @@ class TestSummaryCommandOutputTextFormat:
             "tree_sitter_analyzer.cli.commands.summary_command.output_data"
         ) as mock_data:
             command._output_text_format(summary_data, requested_types)
-            assert mock_data.call_count > 0
+            assert mock_data.call_count == 4
 
     def test_output_text_format_with_classes(self, command):
         """Test _output_text_format with classes."""

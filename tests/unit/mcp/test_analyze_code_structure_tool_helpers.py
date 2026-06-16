@@ -395,3 +395,22 @@ class TestAnalyzeCodeStructureToolGetMethodParameters:
         assert result[0]["type"] == "str"
         assert result[1]["name"] == "param2"
         assert result[1]["type"] == "int"
+
+    def test_get_method_parameters_compound_generic_types(self):
+        """#576: ``name: <generic with spaces>`` must split on the FIRST ':',
+        not whitespace — otherwise ``result: dict[str, Any]`` parsed as
+        name='Any]', type='result: dict[str,'. Covers the modern typed-Python
+        forms (generics, nested brackets, defaults) that whitespace-splitting
+        mangled."""
+        mock_method = MagicMock()
+        mock_method.parameters = [
+            "result: dict[str, Any]",
+            "cb: Callable[[int], str]",
+            "items: list[tuple[int, str]]",
+            'breed: str = "Mixed"',
+        ]
+        result = _get_method_parameters(mock_method)
+        assert result[0] == {"name": "result", "type": "dict[str, Any]"}
+        assert result[1] == {"name": "cb", "type": "Callable[[int], str]"}
+        assert result[2] == {"name": "items", "type": "list[tuple[int, str]]"}
+        assert result[3] == {"name": "breed", "type": "str", "default": '"Mixed"'}

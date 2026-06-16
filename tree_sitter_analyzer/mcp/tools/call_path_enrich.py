@@ -30,7 +30,7 @@ import os
 import sqlite3
 from typing import Any
 
-from ..._language_family import languages_compatible
+from ..._language_family import language_from_path, languages_compatible
 from ._codegraph_explore_helpers import extract_snippet_from_lines, read_file_lines
 
 # ---------------------------------------------------------------------------
@@ -263,6 +263,22 @@ def _collect_path_functions(
     return ordered
 
 
+def _lang_hint_for_path(path: str) -> str:
+    """Language hint for ``path``, returning empty string for ``.h`` headers.
+
+    Plain C headers (``.h``) map to ``"c"`` via ``language_from_path``, but
+    headers are included by both C and C++ callers.  Using ``"c"`` blocks C++
+    definitions via ``languages_compatible("c","cpp") == False``; using ``"cpp"``
+    risks selecting C++ definitions in pure-C projects when names collide.
+    Returning ``""`` (falsy) lets ``_resolve_def`` skip the language filter
+    entirely for header file hints, accepting any same-named candidate. (#865)
+    """
+    lang = language_from_path(path)
+    if lang == "c" and path.lower().endswith(".h"):
+        return ""
+    return lang
+
+
 def inline_path_bodies(
     project_root: str,
     cache: Any,
@@ -287,8 +303,25 @@ def inline_path_bodies(
     budget = [MAX_TOTAL_BODY_LINES]
     bodies: list[dict[str, Any]] = []
     any_truncated = False
+
+    # Derive a dominant language from the path's known files so that a
+    # missing-file source symbol (e.g. 'execute' with no caller_file) does not
+    # fall back to a same-named symbol in a completely unrelated language (e.g.
+    # Go runtime proc.go when the path is Python). (#800)
+    # #865: .h headers are ambiguous — included by both C and C++ callers.
+    # Use "cpp" for .h files so the path hint doesn't gate out C++ definitions
+    # via the directional rule languages_compatible("c","cpp") == False.
+    path_langs = [_lang_hint_for_path(fh) for _, fh in functions if fh]
+    path_lang_hint = next((lg for lg in path_langs if lg), None)
+
     for name, file_hint in functions:
-        defn = _resolve_def(index, name, file_hint)
+        # Use _lang_hint_for_path so explicit .h callee_file hints are also
+        # treated as language-neutral (falsy ""), matching the path-level hint
+        # logic above.  Without this, a callee with callee_file="include/foo.h"
+        # gets lang_hint="c" from language_from_path and C++ bodies are still
+        # filtered out even when path_lang_hint correctly signals "cpp". (#865)
+        lang_hint = _lang_hint_for_path(file_hint) if file_hint else path_lang_hint
+        defn = _resolve_def(index, name, file_hint, lang_hint=lang_hint)
         if defn is None:
             continue
         defn = {**defn, "name": name}

@@ -2,34 +2,48 @@
 """CLI dispatcher for ``--clean-state`` / ``--clean-state-dry-run``.
 
 Removes ephemeral workspace state that accumulates from running the CLI
-(AST cache, tree-sitter cache, RuVector DB, AgentDB files, the literal
-``:memory:`` directory some legacy code creates, and the large test
-fixture directory).
+(AST cache, tree-sitter cache, the literal ``:memory:`` directory some
+legacy code creates, and the large test fixture directory).
+
+Scope (#988): clean-state removes ONLY tree-sitter-analyzer's own
+artifacts. It must never touch sibling tools' databases that happen to
+live in the same directory — e.g. Ruflo's ``ruvector.db`` and
+``agentdb.rvf*`` files. Those are owned by another tool and may hold
+irreplaceable state; a user consenting to reset TSA's cache did not
+consent to wiping Ruflo's memory.
 
 Each path is handled independently so a missing one doesn't stop the
 sweep. Output is one line per path: ``removed: <path>``, ``skipped (not
 present): <path>``, or ``failed: <path>: <error>`` — easy to grep and
-easy for tests to assert on.
+easy for tests to assert on. With ``--format json`` the sweep emits a
+structured envelope instead (``success`` / ``dry_run`` / ``removed`` /
+``skipped`` / ``failed``).
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-# Exact list of ephemeral paths from the PL-C brief. Relative to the
-# current project root (or CWD if --project-root is unset). Keep this
-# tuple frozen so callers and tests can introspect what the sweep
+from ..output_format import wants_json_output
+
+# Exact list of ephemeral paths owned by tree-sitter-analyzer. Relative
+# to the current project root (or CWD if --project-root is unset). Keep
+# this tuple frozen so callers and tests can introspect what the sweep
 # considers "ephemeral state".
+#
+# IMPORTANT (#988): this list MUST contain only TSA-owned artifacts.
+# Sibling-tool databases (Ruflo's ``ruvector.db`` / ``agentdb.rvf*``)
+# were historically bundled here from a co-located install and were
+# silently deleted on clean-state — a cross-tool data-loss bug. They
+# are deliberately NOT listed here.
 EPHEMERAL_STATE_PATHS: tuple[str, ...] = (
     ".ast-cache",
     ".tree-sitter-cache",
-    "ruvector.db",
-    "agentdb.rvf",
-    "agentdb.rvf.lock",
     # ``:memory:`` is created as a literal directory by some legacy code
     # paths that mis-pass the SQLite in-memory sentinel as a filesystem
     # path. Removing it as part of clean-state keeps re-runs clean.
@@ -65,9 +79,42 @@ def run_clean_state(args: Any, output_error: OutputErrorFn) -> int:
         return 1
 
     summary = _sweep(root_path, EPHEMERAL_STATE_PATHS, dry_run=dry_run)
-    for line in summary:
-        print(line)
+
+    if wants_json_output(args):
+        print(json.dumps(_build_json_payload(summary, dry_run=dry_run), indent=2))
+    else:
+        for line in summary:
+            print(line)
     return 0
+
+
+def _build_json_payload(summary: list[str], *, dry_run: bool) -> dict[str, Any]:
+    """Bucket the per-path status lines into a structured JSON envelope.
+
+    Each line is ``"<status>: <rel>"`` (failures are ``"failed: <rel>: <err>"``).
+    We split on the first ``": "`` to recover the relative path so the
+    envelope mirrors exactly what the text output reported. ``success`` is
+    ``True`` when no path failed.
+    """
+    removed: list[str] = []
+    skipped: list[str] = []
+    failed: list[str] = []
+    for line in summary:
+        status, _, rest = line.partition(": ")
+        if status in ("removed", "would_remove"):
+            removed.append(rest)
+        elif status == "failed":
+            # rest is "<rel>: <error>"; keep the whole detail.
+            failed.append(rest)
+        else:  # "skipped (not present)" / "would_skip (not present)"
+            skipped.append(rest)
+    return {
+        "success": not failed,
+        "dry_run": dry_run,
+        "removed": removed,
+        "skipped": skipped,
+        "failed": failed,
+    }
 
 
 def _sweep(

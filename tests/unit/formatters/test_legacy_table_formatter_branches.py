@@ -98,7 +98,8 @@ class TestCompactTableClassesNone:
             "fields": [],
         }
         result = formatter.format_structure(data)
-        assert "# Unknown" in result
+        # Bug #778 fixed: None classes must not render '# Unknown'.
+        assert "# Unknown" not in result
 
     def test_compact_no_package(self) -> None:
         formatter = LegacyTableFormatter(format_type="compact")

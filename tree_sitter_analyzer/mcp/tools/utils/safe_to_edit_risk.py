@@ -41,26 +41,37 @@ def build_checklist(
     file_path: str = "",
     project_root: str | Path | None = None,
 ) -> list[str]:
-    """Build a pre-edit checklist for the AI agent."""
-    items = [_risk_instruction(risk)]
-    items.extend(_test_instructions(has_tests, test_files, project_root))
+    """Build a pre-edit checklist for the AI agent.
+
+    Items are numbered sequentially (1, 2, 3, …) after filtering — items whose
+    condition is False are simply absent, so the remaining items are always
+    contiguous. Previously items 4/5/6 were hardcoded, causing gaps like
+    [1, 2, 3, 5] when downstream_count == 0 (issue #641).
+    """
+    raw: list[str] = [_risk_instruction(risk)]
+    raw.extend(_test_instructions(has_tests, test_files, project_root))
 
     if downstream_count > 0:
-        items.append(
-            f"4. {downstream_count} downstream file(s) - verify imports still resolve"
+        raw.append(
+            f"{downstream_count} downstream file(s) - verify imports still resolve"
         )
     if edit_type == "rename":
-        items.append(
-            "5. After rename: run find_and_grep(old_name) to find all references"
-        )
+        raw.append("After rename: run find_and_grep(old_name) to find all references")
     if edit_type == "refactor":
-        items.append("5. Keep public API signatures unchanged during refactor")
+        raw.append("Keep public API signatures unchanged during refactor")
     if health_grade in ("D", "F") and file_path:
-        items.append(
-            f"6. File is grade {health_grade} - run refactoring_suggestions(file_path='{file_path}') for extraction plans"
+        raw.append(
+            f"File is grade {health_grade} - run refactoring_suggestions(file_path='{file_path}') for extraction plans"
         )
 
-    return items
+    # Strip any pre-existing leading "N. " prefixes from helper functions so
+    # renumbering is idempotent, then apply sequential 1-based numbers.
+    import re as _re
+
+    def _strip_number(text: str) -> str:
+        return _re.sub(r"^\d+\.\s*", "", text)
+
+    return [f"{i}. {_strip_number(item)}" for i, item in enumerate(raw, start=1)]
 
 
 def _add_downstream_factor(factors: list[RiskFactor], forward_count: int) -> int:
@@ -156,7 +167,15 @@ def _add_init_factor(factors: list[RiskFactor], is_init_file: bool) -> int:
 def _add_edit_type_factor(
     factors: list[RiskFactor], edit_type: str, forward_count: int
 ) -> int:
-    """Add risk based on the planned edit type."""
+    """Add risk based on the planned edit type.
+
+    Handles every value in the shared EDIT_KINDS vocabulary
+    (tree_sitter_analyzer.constants). The symbol-level kinds shared with
+    --modification-guard-type (delete / signature_change / behavior_change)
+    are scored at the file level too so no enum value is accepted-but-
+    unhandled (issue #985). add_feature / fix_bug stay risk-neutral here —
+    they add code rather than break the existing importer contract.
+    """
     if edit_type == "rename":
         factors.append(
             {
@@ -166,6 +185,33 @@ def _add_edit_type_factor(
             }
         )
         return 2
+    if edit_type == "delete":
+        factors.append(
+            {
+                "factor": "delete_risk",
+                "detail": "Deleting code breaks every importer - confirm all downstream callers first",
+                "severity": "caution",
+            }
+        )
+        return 2
+    if edit_type == "signature_change":
+        factors.append(
+            {
+                "factor": "signature_change_risk",
+                "detail": "Changing a signature requires updating every call site - check importers first",
+                "severity": "caution",
+            }
+        )
+        return 2
+    if edit_type == "behavior_change":
+        factors.append(
+            {
+                "factor": "behavior_change_risk",
+                "detail": "Behavior changes can silently break callers - verify tests cover the changed contract",
+                "severity": "caution",
+            }
+        )
+        return 1
     if edit_type == "refactor" and forward_count > 5:
         factors.append(
             {
@@ -218,7 +264,7 @@ def _test_instructions(
     """Return checklist items for test coverage."""
     default_command = detect_default_test_command(project_root)
     if has_tests:
-        test_command = build_test_command(default_command, test_files[:3])
+        test_command = build_test_command(default_command, test_files)
         return [
             f"2. Run existing tests FIRST: {test_command}",
             f"3. Run same verification AFTER editing: {test_command}",

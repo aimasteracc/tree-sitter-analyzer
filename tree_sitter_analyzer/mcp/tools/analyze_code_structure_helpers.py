@@ -75,13 +75,84 @@ def get_method_parameters(method: Any) -> list[dict[str, str]]:
     if parameters and isinstance(parameters[0], str):
         result: list[dict[str, str]] = []
         for param_str in parameters:
-            parts = param_str.strip().split()
-            if len(parts) >= 2:
-                result.append({"name": parts[-1], "type": " ".join(parts[:-1])})
-            elif len(parts) == 1:
-                result.append({"name": "param", "type": parts[0]})
+            entry = _parse_string_parameter(param_str)
+            if entry:
+                result.append(entry)
         return result
     return convert_parameters(parameters)
+
+
+def _parse_string_parameter(param_str: str) -> dict[str, str] | None:
+    """Parse one string-form parameter into ``{name, type[, default]}``.
+
+    Handles the default-valued forms #533 introduced (Codex P2 on #581):
+    ``limit = 10`` and ``breed: str = "Mixed"`` must not be whitespace-split
+    into ``{"name": "10", "type": "limit ="}``.
+
+    Destructuring patterns (``{ x, y }`` / ``[a, b]``) are preserved whole
+    as the parameter name so they are not torn apart by whitespace splitting
+    (issue #745).
+    """
+    text = param_str.strip()
+    if not text:
+        return None
+    # Destructuring patterns must not be whitespace-split (#745).
+    # Parse optional `: Type` or `= default` that may follow the closing bracket.
+    if text.startswith("{") or text.startswith("["):
+        open_char = text[0]
+        close_char = "}" if open_char == "{" else "]"
+        depth = 0
+        close_idx = -1
+        for i, ch in enumerate(text):
+            if ch == open_char:
+                depth += 1
+            elif ch == close_char:
+                depth -= 1
+                if depth == 0:
+                    close_idx = i
+                    break
+        if close_idx >= 0:
+            pattern = text[: close_idx + 1].strip()
+            rest = text[close_idx + 1 :].strip()
+            entry_d: dict[str, str] = {"name": pattern, "type": ""}
+            if rest.startswith("="):
+                entry_d["default"] = rest[1:].strip()
+            elif rest.startswith(":"):
+                type_and_default = rest[1:].strip()
+                if "=" in type_and_default:
+                    type_part, default_part = (
+                        s.strip() for s in type_and_default.split("=", 1)
+                    )
+                    entry_d["type"] = type_part
+                    entry_d["default"] = default_part
+                else:
+                    entry_d["type"] = type_and_default
+            return entry_d
+        return {"name": text, "type": ""}
+    default: str | None = None
+    if "=" in text:
+        head, default = (s.strip() for s in text.split("=", 1))
+    else:
+        head = text
+    if ":" in head:
+        name, ptype = (s.strip() for s in head.split(":", 1))
+    else:
+        parts = head.split()
+        if len(parts) >= 2:
+            name, ptype = parts[-1], " ".join(parts[:-1])
+        elif len(parts) == 1:
+            # bare name (JS) — or bare type for legacy `Type` strings; the
+            # default-bearing form is always a name.
+            if default is not None:
+                name, ptype = parts[0], "Any"
+            else:
+                name, ptype = "param", parts[0]
+        else:
+            return None
+    entry: dict[str, str] = {"name": name, "type": ptype}
+    if default is not None:
+        entry["default"] = default
+    return entry
 
 
 # JSON Schema: input validation for analyze_code_structure tool
@@ -202,6 +273,33 @@ def extract_metadata(structure_dict: dict[str, Any]) -> dict[str, Any]:
 
 
 # _convert_class: implementation
+def _resolve_class_extends(cls: Any) -> str | None:
+    """Return the superclass name, checking both plugin spelling conventions.
+
+    Java plugin sets ``extends_class``; JS/TS/Python/Ruby/PHP/C++/C#/Go
+    plugins set ``superclass``.  Issue #530.
+    """
+    for attr in ("extends_class", "superclass"):
+        v = getattr(cls, attr, None)
+        # Strings only — Mock auto-attributes must not leak reprs (#560).
+        if isinstance(v, str) and v:
+            return v
+    return None
+
+
+def _resolve_class_implements(cls: Any) -> list[str]:
+    """Return implemented interfaces, checking both plugin spelling conventions.
+
+    Java/Rust plugins set ``implements_interfaces``; TS/Python/PHP/C++/C#/Go
+    plugins set ``interfaces``.  Issue #530.
+    """
+    for attr in ("implements_interfaces", "interfaces"):
+        v = getattr(cls, attr, None)
+        if isinstance(v, (list, tuple)) and v:
+            return [str(item) for item in v]
+    return []
+
+
 def _convert_class(cls: Any) -> dict[str, Any]:
     return {
         "name": getattr(cls, "name", "unknown"),
@@ -211,8 +309,8 @@ def _convert_class(cls: Any) -> dict[str, Any]:
         },
         "type": getattr(cls, "class_type", "class"),
         "visibility": getattr(cls, "visibility", "public"),
-        "extends": getattr(cls, "extends_class", None),
-        "implements": getattr(cls, "implements_interfaces", []),
+        "extends": _resolve_class_extends(cls),
+        "implements": _resolve_class_implements(cls),
         "annotations": getattr(cls, "annotations", []),
     }
 

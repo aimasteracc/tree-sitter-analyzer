@@ -24,6 +24,7 @@ from ._health_scorer_helpers import (
     read_source_file,
     round_available_scores,
 )
+from ._lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from .constants import EXCLUDE_DIRS
 from .core.parser import Parser
 
@@ -40,7 +41,7 @@ DIMENSION_WEIGHTS = {
     "git_hotspot": 10,
 }
 
-PROJECT_HEALTH_SOURCE_EXTS = {
+PROJECT_HEALTH_SOURCE_EXTS = frozenset(
     # Code-only. r34 Q4 narrowed this set to extensions that have a real
     # language plugin in ``_EXT_TO_LANG`` so the scorer never falls back
     # to ``language=None`` (which would grade docs/markup as if they were
@@ -48,25 +49,14 @@ PROJECT_HEALTH_SOURCE_EXTS = {
     # intentionally OFF here — see CLAUDE.md "Deliberate design
     # decisions" §4. If you want to score markdown structure, build a
     # separate ``markdown_health`` tool.
-    ".py",
-    ".java",
-    ".js",
-    ".ts",
-    ".jsx",
-    ".tsx",
-    ".go",
-    ".rs",
-    ".kt",
-    ".cs",
-    ".rb",
-    ".php",
-    ".c",
-    ".cpp",
-    ".h",
-    ".cc",
-    ".cxx",
-    ".hpp",
-}
+    #
+    # Bug #785 fix: derive directly from the canonical EXT_TO_LANG map so
+    # this set never drifts when new language plugins are added. Extensions
+    # intentionally excluded from the indexer (e.g. .css, .html, .md, .sql,
+    # .yaml, .yml — see _lang_extension_map.py) are also excluded here since
+    # they are not wired into EXT_TO_LANG.
+    _EXT_TO_LANG.keys()
+)
 
 # Thresholds for scoring
 SIZE_IDEAL = 200  # Files under 200 lines get full size score
@@ -95,6 +85,24 @@ FUNCTION_NODE_TYPES: dict[str, set[str]] = {
     "cpp": {"function_definition"},
     "rust": {"function_item"},
     "ruby": {"method", "singleton_method"},
+    # Swift: DECISION_NODE_TYPES already had a "swift" entry but FUNCTION
+    # types were missing, so multi-function Swift files fell back to
+    # absolute CC thresholds instead of per-function normalization. Node
+    # names verified against tree_sitter_analyzer/languages/_swift_plugin_extractor.py
+    # (function_declaration / init_declaration); deinit / subscript are
+    # real tree-sitter-swift grammar nodes that also carry a code body.
+    "swift": {
+        "function_declaration",
+        "init_declaration",
+        "deinit_declaration",
+        "subscript_declaration",
+    },
+    # bash node names verified by parsing a sample with tree-sitter-bash.
+    "bash": {"function_definition"},
+    # scala node names verified by parsing samples with tree-sitter-scala;
+    # function_definition = concrete (has body), function_declaration =
+    # abstract (trait method, no body).
+    "scala": {"function_definition", "function_declaration"},
 }
 
 
@@ -257,30 +265,78 @@ DECISION_NODE_TYPES: dict[str, set[str]] = {
         "try_statement",
         "do_statement",
     },
+    # bash node names verified by parsing a sample with tree-sitter-bash.
+    # Each ``case`` arm is one ``case_item`` (a branch); the wrapping
+    # ``case_statement`` is not itself a decision point. A 10-arm dispatch
+    # must add 10 CC points, not 1 — so we count ``case_item`` per arm.
+    "bash": {
+        "if_statement",
+        "while_statement",
+        "for_statement",
+        "case_item",
+        "elif_clause",
+    },
+    # scala node names verified by parsing samples with tree-sitter-scala.
+    "scala": {
+        "if_expression",
+        "while_expression",
+        "for_expression",
+        "match_expression",
+        "case_clause",
+    },
 }
 
-# Extension → language mapping
-_EXT_TO_LANG: dict[str, str] = {
-    ".py": "python",
-    ".js": "javascript",
-    ".ts": "typescript",
-    ".jsx": "javascript",
-    ".tsx": "typescript",
-    ".java": "java",
-    ".c": "c",
-    ".h": "c",
-    ".cpp": "cpp",
-    ".cc": "cpp",
-    ".cxx": "cpp",
-    ".hpp": "cpp",
-    ".go": "go",
-    ".rs": "rust",
-    ".rb": "ruby",
-    ".php": "php",
-    ".kt": "kotlin",
-    ".swift": "swift",
-    ".cs": "csharp",
+# _EXT_TO_LANG is imported from _lang_extension_map at the top of this module.
+# Bug #785 fix: using the canonical map eliminates the drift that caused bash,
+# scala, swiftinterface, and hxx files to be silently skipped by the scorer.
+
+# Languages whose imports ``DependencyGraph`` can actually resolve into
+# file-level edges (mirrors ``project_graph._IMPORT_RESOLVERS``). Files in
+# any OTHER language produce an empty graph result (fan_out == fan_in == 0),
+# which the fan-out/fan-in scoring would read as a *perfect* 100 — a false
+# green for newly-scanned extensions (.sh / .scala / .swift, etc.). For those
+# we return a NEUTRAL score instead of pretending dependencies are clean.
+_DEPENDENCY_ANALYZABLE_LANGS: set[str] = {
+    "python",
+    "javascript",
+    "typescript",
+    "go",
+    "rust",
+    "c",
+    "cpp",
+    "java",
 }
+_NEUTRAL_DEP_SCORE = 50.0
+
+# Node types that constitute a function/method *body* across the grammars we
+# score. A declaration with one of these as a child (or under the ``body``
+# field) is a concrete definition; one without it is an abstract/no-body
+# declaration (Scala trait method = ``function_declaration`` with no block;
+# Swift protocol requirement = ``init_declaration`` with no body). No-body
+# declarations contribute 0 branches but would otherwise inflate ``n_funcs``
+# in the average-CC path, diluting the average and making files look healthier
+# than they are — so they are skipped from the function count.
+_BODY_NODE_TYPES: frozenset[str] = frozenset(
+    {"block", "function_body", "statements", "compound_statement"}
+)
+
+
+def _has_function_body(node: Any) -> bool:
+    """Return True when a function/method node has an actual code body.
+
+    Checks the ``body`` field first (Scala/Swift name it ``body``), then falls
+    back to scanning immediate children for a known body/block node type so a
+    grammar that does not label the field is still handled.
+    """
+    try:
+        if node.child_by_field_name("body") is not None:
+            return True
+    except Exception:  # pragma: no cover - defensive: non-tree-sitter node
+        pass
+    children = getattr(node, "children", None)
+    if children:
+        return any(getattr(c, "type", None) in _BODY_NODE_TYPES for c in children)
+    return False
 
 
 @dataclass
@@ -725,7 +781,12 @@ def score_complexity(file_path: str, source: str, language: str | None) -> float
             if hasattr(node, "type"):
                 if node.type in decision_types:
                     cc += 1
-                if node.type in function_types:
+                # Only count declarations that actually have a body block.
+                # No-body abstract declarations (Scala trait methods, Swift
+                # protocol requirements) contribute 0 branches; counting them
+                # in ``n_funcs`` would dilute the average-CC denominator and
+                # inflate the health score for multi-function files.
+                if node.type in function_types and _has_function_body(node):
                     n_funcs += 1
             if hasattr(node, "children"):
                 for child in node.children:
@@ -786,7 +847,17 @@ def find_project_root(path: Path) -> Path:
 
 
 def _score_deps_fallback(file_path: str) -> float:
-    """Fallback: score based on raw import count."""
+    """Fallback: score based on raw import count.
+
+    Applies the same neutral-language guard as ``score_dependencies``: a
+    file in a language ``DependencyGraph`` cannot analyze (bash / scala /
+    swift / ...) would otherwise resolve to zero imports and a false-perfect
+    100 here too. Returning the neutral score keeps the ``fast_dependencies``
+    fast path consistent with the full-graph path.
+    """
+    language = _EXT_TO_LANG.get(Path(file_path).suffix.lower())
+    if language is not None and language not in _DEPENDENCY_ANALYZABLE_LANGS:
+        return _NEUTRAL_DEP_SCORE
     try:
         from .project_graph import extract_imports_from_file
 
@@ -829,7 +900,17 @@ def _score_deps_fallback(file_path: str) -> float:
 
 
 def score_dependencies(file_path: str) -> float:
-    """Score based on real dependency graph (fan-out + fan-in)."""
+    """Score based on real dependency graph (fan-out + fan-in).
+
+    Returns a neutral score for files in a language ``DependencyGraph``
+    cannot analyze (bash / scala / swift / ruby / ...). Those produce an
+    empty graph result, and the fan-out/fan-in branches below would map
+    ``0`` dependencies to a perfect 100 — a false green. A neutral score
+    avoids rewarding "no dependencies we could even detect".
+    """
+    language = _EXT_TO_LANG.get(Path(file_path).suffix.lower())
+    if language is not None and language not in _DEPENDENCY_ANALYZABLE_LANGS:
+        return _NEUTRAL_DEP_SCORE
     try:
         from .project_graph import DependencyGraph
 

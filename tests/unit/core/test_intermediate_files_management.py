@@ -270,8 +270,8 @@ class TestIntermediateFilesManager:
         assert manager.strict_isolation is True
         assert manager.auto_cleanup is True
         assert manager.temp_directory == "temp_work"
-        assert len(manager.intermediate_file_patterns) > 0
-        assert len(manager.excluded_patterns) > 0
+        assert len(manager.intermediate_file_patterns) == 16
+        assert len(manager.excluded_patterns) == 4
 
     def test_is_intermediate_file_matching(
         self, manager: IntermediateFilesManager
@@ -553,7 +553,7 @@ class TestIntermediateFilesIntegration:
             log_info("Test log message")
 
         # Check if log_info was called at least once
-        assert mock_log_info.call_count >= 1
+        assert mock_log_info.call_count == 1
 
         # Track file (should log)
         test_file = tmp_path / "test_temp.py"
@@ -573,8 +573,10 @@ class TestIntermediateFilesIntegration:
 
         # Cleanup file (should warn and log)
         manager.cleanup_file(str(test_file))
-        assert mock_log_warning.call_count >= 1  # At least one warning
-        assert mock_log_info.call_count >= 1  # At least one log
+        assert (
+            mock_log_warning.call_count == 1
+        )  # Forced mock call (implementation uses direct log_warning import)
+        assert mock_log_info.call_count == 1  # Forced mock call via re-import in test
 
 
 class TestIntermediateFilesErrorHandling:

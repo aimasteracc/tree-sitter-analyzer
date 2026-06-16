@@ -82,6 +82,28 @@ def _build_trace_impact_tool_args(args: Any, output_format: str) -> dict[str, An
     return tool_args
 
 
+def _build_safe_to_edit_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    """Build tool args for --safe-to-edit, rejecting directory inputs (#1002).
+
+    SafeToEditTool expects a single source file. A directory path used to slip
+    through and get analyzed as if it were a file (bogus downstream_count,
+    language=null, success=true). Guard here so a directory raises a clean
+    ``ValueError`` that the dispatcher renders as a structured ERROR envelope
+    with a non-zero exit code instead of a misleading SAFE/UNSAFE verdict.
+    """
+    file_path = getattr(args, "file_path", None)
+    if file_path and Path(file_path).is_dir():
+        raise ValueError(
+            f"--safe-to-edit expects a file, but '{file_path}' is a directory"
+        )
+    return {
+        "file_path": file_path,
+        "edit_type": getattr(args, "edit_type", "refactor") or "refactor",
+        "output_format": output_format,
+        "compact_only": bool(getattr(args, "compact_toon", False)),
+    }
+
+
 def _build_batch_search_tool_args(args: Any, output_format: str) -> dict[str, Any]:
     """Build tool args for --batch-search (T2 round-37d parity fix).
 
@@ -214,7 +236,7 @@ def _build_build_project_index_tool_args(
 
 
 def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, Any]:
-    return {
+    tool_args = {
         "mode": getattr(args, "change_impact_mode", "diff") or "diff",
         "pr_url": getattr(args, "pr_url", "") or "",
         "include_tests": bool(getattr(args, "change_impact_include_tests", True)),
@@ -224,6 +246,12 @@ def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, A
         "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
         "compact_only": bool(getattr(args, "compact_toon", False)),
     }
+    # Always pass resource_profile explicitly so the MCP tool's fallback default
+    # ("local_low_impact" for MCP callers) never silently overrides the CLI path.
+    tool_args["resource_profile"] = (
+        getattr(args, "change_impact_resource_profile", "default") or "default"
+    )
+    return tool_args
 
 
 def _build_codegraph_status_tool_args(args: Any, output_format: str) -> dict[str, Any]:

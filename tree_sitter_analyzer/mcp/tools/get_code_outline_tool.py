@@ -38,6 +38,40 @@ from .base_tool import (
 
 logger = setup_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Byte-budget constants (Issue #513 leg 3 — honest-truncation pattern)
+#
+# The MCP path applies a default cap on listed classes / top-level functions
+# so giant declaration files (e.g. vscode.d.ts, 21k lines) don't blow agent
+# context windows.  CLI output is UNAFFECTED — CLI defaults to JSON (full
+# output) and the user can pipe to jq.
+#
+# Statistics (class_count / method_count) are ALWAYS computed over ALL
+# elements BEFORE truncation — the cap only slices the listed arrays.
+# ---------------------------------------------------------------------------
+DEFAULT_OUTLINE_CLASSES_CAP: int = 50
+DEFAULT_OUTLINE_FUNCTIONS_CAP: int = 50
+
+
+def _outline_diagnostics_next_step(diagnostics: dict[str, Any]) -> str:
+    """Return the next action for parse/encoding diagnostic warnings."""
+    if diagnostics.get("parse_errors"):
+        return (
+            "Parse errors detected — outline symbols may be phantom "
+            "(wrong language for the file extension, or corrupt source). "
+            "Verify the file's language before trusting this outline."
+        )
+    warnings = diagnostics.get("encoding_warnings") or []
+    if "null_bytes" in warnings:
+        return (
+            "Raw NUL bytes detected — line spans may be unreliable. "
+            "Inspect or clean the source bytes before trusting this outline."
+        )
+    return (
+        "Non-UTF8 or replacement-decoded source detected — verify the file "
+        "encoding before trusting names and line spans from this outline."
+    )
+
 
 class GetCodeOutlineTool(BaseMCPTool):
     """
@@ -112,6 +146,18 @@ class GetCodeOutlineTool(BaseMCPTool):
                     ),
                     "default": "toon",
                 },
+                "listed_cap": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of classes (and top-level functions) to list in the "
+                        "response.  Default 50.  Raise for larger files; pre-cap totals "
+                        "(classes_total, top_level_functions_total) are always present so you "
+                        "know how many elements exist.  "
+                        "NEVER mark this required — runtime-resolved param."
+                    ),
+                    "default": 50,
+                    "minimum": 1,
+                },
             },
             "required": ["file_path"],
             "additionalProperties": False,
@@ -150,6 +196,12 @@ class GetCodeOutlineTool(BaseMCPTool):
             output_format = arguments["output_format"]
             if output_format not in ("json", "toon"):
                 return False  # 无效格式返回 False
+
+        # 验证 listed_cap
+        if "listed_cap" in arguments and arguments["listed_cap"] is not None:
+            cap = arguments["listed_cap"]
+            if not isinstance(cap, int) or isinstance(cap, bool) or cap < 1:
+                raise ValueError("listed_cap must be a positive integer")
 
         return True
 
@@ -203,10 +255,18 @@ class GetCodeOutlineTool(BaseMCPTool):
             for cls in classes
         ]
         class_names = [getattr(cls, "name", "") for cls in classes]
+        # Build function span ranges so nested functions can be excluded from
+        # top_level_functions.  A function is top-level only when NO other
+        # function's span strictly contains it (Issue #534 — span containment).
+        fn_spans = [
+            (getattr(m, "start_line", 0), getattr(m, "end_line", 0))
+            for m in all_methods
+        ]
         top_level_fns = [
             _method_entry(m)
-            for m in all_methods
+            for i, m in enumerate(all_methods)
             if not _in_class_ranges(m, class_ranges, class_names)
+            and not _in_function_spans(i, fn_spans)
         ]
         top_level_fns.sort(key=lambda x: x["line_start"])
 
@@ -224,6 +284,21 @@ class GetCodeOutlineTool(BaseMCPTool):
                 "import_count": len(imports),
             },
         }
+        # Module-level constants/fields (outside every class span) — without
+        # this, field_count includes them but no rendered section shows them
+        # (Codex P2 on #645; the #639 dogfood ask was to SEE them). Emitted
+        # only when non-empty (token budget; byte-pin tests stay untouched
+        # for constant-free files).
+        top_level_fields = sorted(
+            (
+                _field_entry(f)
+                for f in all_fields
+                if not _in_class_ranges(f, class_ranges, class_names)
+            ),
+            key=lambda x: x["line_start"],
+        )
+        if top_level_fields:
+            outline["top_level_fields"] = top_level_fields
         if include_imports:
             outline["imports"] = [
                 getattr(imp, "import_statement", getattr(imp, "name", ""))
@@ -247,6 +322,8 @@ class GetCodeOutlineTool(BaseMCPTool):
         ``_assemble_outline_response`` (canonical dict + field hoisting),
         ``_attach_outline_summary`` (summary_line + agent_summary).
         TOON default LOCKED — output_format default stays ``toon``.
+        Issue #513 leg 3: listed_cap caps classes + top_level_functions on the
+        MCP path; honest-truncation fields added to response.
         """
         try:
             self.validate_arguments(arguments)
@@ -256,6 +333,7 @@ class GetCodeOutlineTool(BaseMCPTool):
             include_fields = arguments.get("include_fields", False)
             include_imports = arguments.get("include_imports", False)
             output_format = arguments.get("output_format", "toon")
+            listed_cap = int(arguments.get("listed_cap") or DEFAULT_OUTLINE_CLASSES_CAP)
 
             resolved = self._resolve_outline_request(file_path, language, output_format)
             if "early_response" in resolved:
@@ -271,9 +349,10 @@ class GetCodeOutlineTool(BaseMCPTool):
             )
 
             result = self._assemble_outline_response(
-                file_path, resolved["language"], outline
+                file_path, resolved["language"], outline, listed_cap=listed_cap
             )
             self._attach_outline_summary(result, file_path)
+            self._attach_input_diagnostics(result, resolved["resolved_path"])
             return apply_toon_format_to_response(result, output_format)
 
         except Exception as e:
@@ -357,7 +436,10 @@ class GetCodeOutlineTool(BaseMCPTool):
 
     @staticmethod
     def _assemble_outline_response(
-        file_path: str, language: str | None, outline: Any
+        file_path: str,
+        language: str | None,
+        outline: Any,
+        listed_cap: int = DEFAULT_OUTLINE_CLASSES_CAP,
     ) -> dict[str, Any]:
         """Build the canonical response dict + hoist outline-level fields.
 
@@ -367,6 +449,10 @@ class GetCodeOutlineTool(BaseMCPTool):
         ``top_level_functions`` is also mirrored as ``methods`` (the
         natural name callers reach for). Count summaries from
         ``outline.statistics`` are also hoisted.
+
+        Issue #513 leg 3: honest-truncation cap on classes and top_level_functions.
+        Statistics (class_count / method_count) are hoisted from the PRE-cap
+        outline.statistics — the cap never corrupts totals (#505 lesson).
         """
         result: dict[str, Any] = {
             "success": True,
@@ -376,20 +462,58 @@ class GetCodeOutlineTool(BaseMCPTool):
         }
         if not isinstance(outline, dict):
             return result
-        # 1) Hoist outline-level fields.
-        for key in (
-            "classes",
-            "top_level_functions",
-            "imports",
-            "total_lines",
-            "package",
-        ):
+
+        # --- Honest-truncation cap (Issue #513 leg 3) ---
+        # Apply BEFORE hoisting so both `result` and the inlined `outline` dict
+        # carry the capped list.  Pre-cap totals are always recorded.
+        classes_all: list = outline.get("classes") or []
+        fns_all: list = outline.get("top_level_functions") or []
+
+        classes_total = len(classes_all)
+        fns_total = len(fns_all)
+
+        classes_listed_count = min(classes_total, listed_cap)
+        fns_listed_count = min(fns_total, listed_cap)
+        truncated = classes_total > listed_cap or fns_total > listed_cap
+
+        # Slice both lists (keep sorted order — _build_outline already sorts by
+        # start_line, so slicing preserves that invariant deterministically).
+        classes_capped = classes_all[:listed_cap]
+        fns_capped = fns_all[:listed_cap]
+
+        # Issue #571: the top-level cap above bounds the class COUNT, but a
+        # single wide class (10k methods in generated protobuf/ORM stubs)
+        # detonates the response (2.75MB, truncated=False). Cap each listed
+        # class's methods/fields under the same listed_cap with per-class totals.
+        per_class_truncated = False
+        new_classes_capped = []
+        for cls in classes_capped:
+            capped_cls, was_truncated = _cap_class_members(cls, listed_cap)
+            new_classes_capped.append(capped_cls)
+            per_class_truncated = per_class_truncated or was_truncated
+        classes_capped = new_classes_capped
+        truncated = truncated or per_class_truncated
+
+        # Patch the outline dict in-place (shallow copy to avoid mutating caller's
+        # reference — we create a new dict for outline to keep immutability).
+        outline = dict(outline)
+        outline["classes"] = classes_capped
+        outline["top_level_functions"] = fns_capped
+        result["outline"] = outline
+
+        # --- Hoist outline-level fields ---
+        # 1) Scalar fields first.
+        for key in ("imports", "total_lines", "package"):
             if key in outline and key not in result:
                 result[key] = outline[key]
-        # 2) ``top_level_functions`` also surfaces as ``methods``.
-        if "top_level_functions" in outline and "methods" not in result:
-            result["methods"] = outline["top_level_functions"]
-        # 3) Hoist the count summaries from outline.statistics.
+        # 2) Hoisted lists use the capped versions.
+        result["classes"] = classes_capped
+        result["top_level_functions"] = fns_capped
+        if outline.get("top_level_fields"):
+            result["top_level_fields"] = outline["top_level_fields"]
+        # 3) Hoist the count summaries from outline.statistics — PRE-cap totals
+        #    (aggregate-mode invariant: totals must equal the full element count,
+        #    never the capped slice).
         stats = outline.get("statistics")
         if isinstance(stats, dict):
             for key in (
@@ -400,6 +524,15 @@ class GetCodeOutlineTool(BaseMCPTool):
             ):
                 if key in stats and key not in result:
                     result[key] = stats[key]
+
+        # --- Honest-truncation fields (same pattern as DF-13 / DF-1) ---
+        result["classes_total"] = classes_total
+        result["classes_listed"] = classes_listed_count
+        result["top_level_functions_total"] = fns_total
+        result["top_level_functions_listed"] = fns_listed_count
+        result["listed_cap"] = listed_cap
+        result["truncated"] = truncated
+
         return result
 
     @staticmethod
@@ -409,6 +542,9 @@ class GetCodeOutlineTool(BaseMCPTool):
         r37w envelope ratchet: top-level verdict must equal
         ``agent_summary.verdict``. Both are pinned to ``INFO`` for the
         outline tool — outlines never raise alarms by themselves.
+
+        Issue #513 leg 3: when the response was truncated, the next_step
+        includes a narrowing hint (how to raise listed_cap or filter by type).
         """
         class_count = int(result.get("class_count") or 0)
         method_count = int(result.get("method_count") or 0)
@@ -419,13 +555,66 @@ class GetCodeOutlineTool(BaseMCPTool):
         )
         result["summary_line"] = summary_line
         result["verdict"] = "INFO"
+
+        # Honest-truncation next_step hint. Name whichever list(s) actually
+        # exceeded the cap — a function-heavy module with zero classes must
+        # not be told "showing 0 of 0 classes" (Codex P2 on #542).
+        truncated = result.get("truncated", False)
+        classes_total = result.get("classes_total", class_count)
+        classes_listed = result.get("classes_listed", class_count)
+        functions_total = result.get("top_level_functions_total", 0)
+        functions_listed = result.get("top_level_functions_listed", 0)
+        listed_cap = result.get("listed_cap", DEFAULT_OUTLINE_CLASSES_CAP)
+        if truncated:
+            overflow_parts = []
+            if classes_listed < classes_total:
+                overflow_parts.append(f"{classes_listed} of {classes_total} classes")
+            if functions_listed < functions_total:
+                overflow_parts.append(
+                    f"{functions_listed} of {functions_total} top-level functions"
+                )
+            # #571 (Codex P2): truncation can come ONLY from the per-class
+            # method/field cap, in which case the top-level counts above match
+            # and overflow_parts would be empty — losing the reason. Name the
+            # member-capped classes so the note is never reasonless.
+            member_capped = sum(
+                1
+                for c in (result.get("classes") or [])
+                if isinstance(c, dict) and ("methods_total" in c or "fields_total" in c)
+            )
+            if member_capped:
+                overflow_parts.append(
+                    f"methods/fields capped in {member_capped} class(es)"
+                )
+            next_step = (
+                f"truncated: showing {', '.join(overflow_parts)} "
+                f"(listed_cap={listed_cap}). "
+                "To see more, raise listed_cap or narrow with a specific element type. "
+                "Use extract_code_section with line ranges from the listed entries."
+            )
+        else:
+            next_step = "extract_code_section for the method you need (use line ranges from outline)"
+
         result["agent_summary"] = {
             "summary_line": summary_line,
-            "next_step": (
-                "extract_code_section for the method you need (use line ranges from outline)"
-            ),
+            "next_step": next_step,
             "verdict": "INFO",
         }
+
+    @staticmethod
+    def _attach_input_diagnostics(result: dict[str, Any], resolved_path: str) -> None:
+        """Attach parse/encoding warnings to a successful outline response."""
+        from .utils.parse_validity import file_input_diagnostics
+
+        diagnostics = file_input_diagnostics(resolved_path, result.get("language"))
+        if not diagnostics:
+            return
+        result.update(diagnostics)
+        result["verdict"] = "WARN"
+        agent_summary = result.get("agent_summary")
+        if isinstance(agent_summary, dict):
+            agent_summary["verdict"] = "WARN"
+            agent_summary["next_step"] = _outline_diagnostics_next_step(diagnostics)
 
     def get_tool_definition(self) -> dict[str, Any]:
         """返回 MCP tool 定义。"""
@@ -473,6 +662,28 @@ class GetCodeOutlineTool(BaseMCPTool):
 # ---------------------------------------------------------------------------
 
 
+def _cap_class_members(cls: dict[str, Any], cap: int) -> tuple[dict[str, Any], bool]:
+    """Cap a class outline's ``methods``/``fields`` lists to ``cap`` (#571).
+
+    A single wide class (e.g. a 10k-method generated stub) otherwise blows the
+    outline response past any byte budget with ``truncated=False``. When a list
+    exceeds ``cap`` it is sliced and the pre-cap total recorded as
+    ``<key>_total`` (the count is never corrupted — same #505 lesson as the
+    top-level cap). Returns ``(capped_class, was_truncated)``. ``cls`` is always
+    a ``_build_class_outlines`` dict.
+    """
+    capped = dict(cls)
+    was_truncated = False
+    for key in ("methods", "fields"):
+        members = capped.get(key)
+        if isinstance(members, list) and len(members) > cap:
+            capped[f"{key}_total"] = len(members)
+            capped[f"{key}_listed"] = cap
+            capped[key] = members[:cap]
+            was_truncated = True
+    return capped, was_truncated
+
+
 def _method_entry(m: Any) -> dict[str, Any]:
     """Convert a method element to an outline entry."""
     params = getattr(m, "parameters", [])
@@ -483,7 +694,7 @@ def _method_entry(m: Any) -> dict[str, Any]:
             f"{getattr(p, 'type', 'Object')} {getattr(p, 'name', 'param')}"
             for p in params
         ]
-    return {
+    entry = {
         "name": getattr(m, "name", "unknown"),
         "return_type": getattr(m, "return_type", "void"),
         "parameters": param_list,
@@ -493,6 +704,14 @@ def _method_entry(m: Any) -> dict[str, Any]:
         "line_start": getattr(m, "start_line", 0),
         "line_end": getattr(m, "end_line", 0),
     }
+    # Owner of out-of-class/receiver-bound definitions (#590, Codex P2 on
+    # #598): without this, `void math::Foo::bar()` outlines as a bare `bar`
+    # with no trace of its owner. Additive, only present when bound — same
+    # Theme-A convention as #429/#474.
+    receiver = getattr(m, "receiver_type", None)
+    if receiver:
+        entry["receiver_type"] = receiver
+    return entry
 
 
 def _field_entry(f: Any) -> dict[str, Any]:
@@ -558,6 +777,74 @@ def _in_class_ranges(
     return False
 
 
+def _in_function_spans(
+    fn_idx: int,
+    fn_spans: list[tuple[int, int]],
+) -> bool:
+    """Return True iff function at ``fn_idx`` is strictly nested inside another.
+
+    A function is nested when another function's span contains it entirely:
+    ``other_start <= fn_start and fn_end <= other_end`` and the spans are not
+    identical (prevents false-positive when two functions share the same lines,
+    e.g. a one-liner or same-line arrow functions).
+
+    Issue #534: without this check, decorator-helper functions (Python
+    ``wrapper`` inside ``my_decorator``), curried inner lambdas (TS), and Scala
+    ``loop`` all leaked into ``top_level_functions``.
+    """
+    fn_start, fn_end = fn_spans[fn_idx]
+    for j, (other_start, other_end) in enumerate(fn_spans):
+        if j == fn_idx:
+            continue
+        # fn is contained within other (non-identical spans)
+        if (
+            other_start <= fn_start
+            and fn_end <= other_end
+            and (other_start, other_end) != (fn_start, fn_end)
+        ):
+            return True
+    return False
+
+
+def _resolve_extends(cls: Any) -> str | None:
+    """Return the superclass name for a Class element.
+
+    Tries ``extends_class`` first (the Java plugin spelling, also set by the
+    Java plugin as the canonical alias) then falls back to ``superclass`` (the
+    spelling used by JS, TS, Python, Ruby, PHP, C++, C#, and Go plugins).
+
+    Issue #530: before this helper existed, ``_build_class_outlines`` only
+    checked ``extends_class``, so all plugins that write ``superclass`` silently
+    produced ``extends: null`` in the outline.
+    """
+    for attr in ("extends_class", "superclass"):
+        v = getattr(cls, attr, None)
+        # Strings only — a Mock's auto-generated attribute (or any odd
+        # object) must not leak its repr into the response (memory
+        # addresses made the byte-budget pins nondeterministic).
+        if isinstance(v, str) and v:
+            return v
+    return None
+
+
+def _resolve_implements(cls: Any) -> list[str]:
+    """Return the list of implemented interface names for a Class element.
+
+    Tries ``implements_interfaces`` first (the Java plugin spelling, also set
+    by the Rust plugin) then falls back to ``interfaces`` (the spelling used by
+    TS, Python, PHP, C++, C#, Go, and Ruby plugins).
+
+    Issue #530: before this helper existed, ``_build_class_outlines`` only
+    checked ``implements_interfaces``, so all plugins that write ``interfaces``
+    silently produced ``implements: []`` in the outline.
+    """
+    for attr in ("implements_interfaces", "interfaces"):
+        v = getattr(cls, attr, None)
+        if isinstance(v, (list, tuple)) and v:
+            return [str(item) for item in v]
+    return []
+
+
 def _build_class_outlines(
     classes: list[Any],
     all_methods: list[Any],
@@ -615,8 +902,8 @@ def _build_class_outlines(
             "type": getattr(cls, "class_type", "class"),
             "line_start": cls_start,
             "line_end": cls_end,
-            "extends": getattr(cls, "extends_class", None),
-            "implements": getattr(cls, "implements_interfaces", []),
+            "extends": _resolve_extends(cls),
+            "implements": _resolve_implements(cls),
             "methods": cls_methods,
         }
         if include_fields:

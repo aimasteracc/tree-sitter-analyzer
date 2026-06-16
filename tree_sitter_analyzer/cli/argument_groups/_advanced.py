@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 
+from ...constants import EDIT_KINDS
+
 
 def _add_trace_impact_options(parser: argparse.ArgumentParser) -> None:
     """``--trace-impact`` family (symbol caller / usage trace)."""
@@ -90,17 +92,12 @@ def _add_modification_guard_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--modification-guard-type",
-        choices=[
-            "rename",
-            "signature_change",
-            "delete",
-            "behavior_change",
-            "refactor",
-        ],
+        choices=list(EDIT_KINDS),
         help=(
             "Type of modification you plan to make for --modification-guard "
-            "(required: rename / signature_change / delete / behavior_change / "
-            "refactor)"
+            "(required; shares the same edit-kind vocabulary as --edit-type: "
+            + " / ".join(EDIT_KINDS)
+            + ")"
         ),
     )
     parser.add_argument(

@@ -173,11 +173,8 @@ class TestErrorHandlerImprovements:
             test_error = ValueError("Test error for logging")
             error_handler.handle_error(test_error, {}, "test_operation")
 
-        # Should have logged the error (ValueError gets LOW severity, which logs as INFO)
-        # Let's check for the actual log level used
-        assert len(caplog.records) >= 0  # May not capture if log level is different
-        # Alternative: check that the method was called without error
-        assert True  # Test passes if no exception was raised
+        # ValueError gets LOW severity (INFO); caplog at WARNING won't capture it.
+        # The real invariant: handle_error must not raise an exception (verified above).
 
     @pytest.mark.asyncio
     async def test_concurrent_error_handling(self):
@@ -242,10 +239,10 @@ class TestMCPErrorTypes:
             ErrorCategory.UNKNOWN,
         ]
 
-        # All categories should have string values
+        # All categories should have non-empty string values
         for category in categories:
             assert isinstance(category.value, str)
-            assert len(category.value) > 0
+            assert category.value
 
     def test_error_severity_enum(self):
         """Test ErrorSeverity enum values."""
@@ -256,10 +253,10 @@ class TestMCPErrorTypes:
             ErrorSeverity.CRITICAL,
         ]
 
-        # All severities should have string values
+        # All severities should have non-empty string values
         for severity in severities:
             assert isinstance(severity.value, str)
-            assert len(severity.value) > 0
+            assert severity.value
 
     def test_error_inheritance(self):
         """Test that MCPError properly inherits from Exception."""
@@ -286,7 +283,7 @@ class TestErrorHandlerStatistics:
 
         # Check statistics
         stats = error_handler.get_error_stats()
-        assert stats["total_errors"] >= 5
+        assert stats["total_errors"] == 5
 
     def test_error_history(self):
         """Test that error handler maintains error history."""
@@ -301,7 +298,7 @@ class TestErrorHandlerStatistics:
 
         # Check history
         history = error_handler.get_recent_errors()
-        assert len(history) >= 1
+        assert len(history) == 1
         assert any("Test error for history" in str(entry) for entry in history)
 
     def test_statistics_clearing(self):

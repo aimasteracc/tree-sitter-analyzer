@@ -268,6 +268,12 @@ def _summary(graph: DependencyGraph) -> dict[str, Any]:
     return {
         "success": True,
         "mode": "summary",
+        "scope": "file_dependency_graph",
+        "scope_note": (
+            "Counts cycles in the file-level dependency graph. "
+            "Use health action=imports mode=summary for import-resolution statistics "
+            "(different graph, legitimately different cycle_count)."
+        ),
         "node_count": node_count,
         "edge_count": edge_count,
         "top_hub_files": [{"file": f, "dependents": c} for f, c in hubs if c > 0],
@@ -284,6 +290,23 @@ def _cycles(graph: DependencyGraph) -> dict[str, Any]:
     return {
         "success": True,
         "mode": "cycles",
+        # Bug #784 fix: surface the detection scope so agents and humans
+        # understand why this count may differ from ``health action=imports
+        # mode=cycles``.  This tool walks the *file-level dependency graph*
+        # (DependencyGraph — edges from explicit import/require statements
+        # parsed by project_graph.py).  ``health action=imports mode=cycles``
+        # walks the *ImportGraph* (ast_cache-backed, module-path resolved).
+        # The two graphs use different resolution strategies and include
+        # different edge types, so their cycle counts are legitimately
+        # different; neither is wrong.  Use this tool for project-structure
+        # circular deps; use ``health action=imports mode=cycles`` for
+        # import-resolution circular deps.
+        "scope": "file_dependency_graph",
+        "scope_note": (
+            "Counts cycles in the file-level dependency graph. "
+            "Use health action=imports mode=cycles for import-resolution cycles "
+            "(different graph, legitimately different count)."
+        ),
         "cycle_count": len(cycles),
         "cycles": cycles[:20],
         "recommendation": (

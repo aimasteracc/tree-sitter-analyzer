@@ -39,7 +39,7 @@ def test_load_language_queries_java():
     """Test loading Java queries"""
     queries = query_loader.load_language_queries("java")
     assert isinstance(queries, dict)
-    assert len(queries) > 0
+    assert len(queries) == 71
 
     # Should have common queries
     assert "functions" in queries or "method" in queries
@@ -50,7 +50,7 @@ def test_load_language_queries_javascript():
     """Test loading JavaScript queries"""
     queries = query_loader.load_language_queries("javascript")
     assert isinstance(queries, dict)
-    assert len(queries) > 0
+    assert len(queries) == 87
 
     # Should have expected query types
     expected_queries = ["functions", "classes", "variables", "imports"]
@@ -62,7 +62,7 @@ def test_load_language_queries_python():
     """Test loading Python queries"""
     queries = query_loader.load_language_queries("python")
     assert isinstance(queries, dict)
-    assert len(queries) > 0
+    assert len(queries) == 88
 
     # Should have Python-specific queries
     expected_queries = ["functions", "classes", "imports", "decorators"]
@@ -74,7 +74,7 @@ def test_load_language_queries_typescript():
     """Test loading TypeScript queries"""
     queries = query_loader.load_language_queries("typescript")
     assert isinstance(queries, dict)
-    assert len(queries) > 0
+    assert len(queries) == 83
 
     # Should have TypeScript-specific queries
     expected_queries = ["functions", "classes", "interfaces", "type_aliases"]
@@ -91,17 +91,16 @@ def test_load_language_queries_unknown():
 
 def test_get_query_valid():
     """Test getting a valid query"""
-    # Test with Java
+    # Test with Java (the `if not None` guard was a dead branch: both
+    # languages ship a "functions" query, so assert the live values directly)
     java_query = query_loader.get_query("java", "functions")
-    if java_query is not None:
-        assert isinstance(java_query, str)
-        assert len(java_query) > 0
+    assert isinstance(java_query, str)
+    assert len(java_query) == 38
 
     # Test with JavaScript
     js_query = query_loader.get_query("javascript", "functions")
-    if js_query is not None:
-        assert isinstance(js_query, str)
-        assert len(js_query) > 0
+    assert isinstance(js_query, str)
+    assert len(js_query) == 658
 
 
 def test_get_query_invalid():
@@ -115,11 +114,9 @@ def test_get_query_invalid():
 
 def test_get_query_description():
     """Test getting query descriptions"""
-    # Test with valid query
+    # Test with valid query (guard removed: the description exists, pin it)
     desc = query_loader.get_query_description("javascript", "functions")
-    if desc is not None:
-        assert isinstance(desc, str)
-        assert len(desc) > 0
+    assert desc == "Search all function declarations, expressions, and methods"
 
     # Test with invalid query
     desc = query_loader.get_query_description("java", "nonexistent")
@@ -128,29 +125,33 @@ def test_get_query_description():
 
 def test_list_queries_for_language():
     """Test listing queries for specific languages"""
-    for language in ["java", "javascript", "python", "typescript"]:
+    # All four languages are supported, so the former `if supported` guard
+    # was a dead branch — pin the exact per-language query counts instead.
+    expected_counts = {"java": 71, "javascript": 87, "python": 88, "typescript": 83}
+    for language, expected in expected_counts.items():
+        assert language in query_loader.list_supported_languages()
         queries = query_loader.list_queries(language)
         assert isinstance(queries, list)
-        # Each language should have at least some queries
-        if language in query_loader.list_supported_languages():
-            assert len(queries) > 0
+        assert len(queries) == expected
 
 
 def test_get_common_queries():
     """Test getting common queries across languages"""
     common = query_loader.get_common_queries()
     assert isinstance(common, list)
+    assert len(common) == 4
 
-    # Should include functions and classes since we added aliases
-    if len(common) > 0:
-        # Common queries should exist in multiple languages
-        for query_name in common:
-            languages_with_query = []
-            for lang in query_loader.list_supported_languages():
-                if query_name in query_loader.list_queries(lang):
-                    languages_with_query.append(lang)
-            # Should be in at least 2 languages to be "common"
-            assert len(languages_with_query) >= 2
+    # Common queries should exist in multiple languages; pin the exact
+    # per-query language counts (sorted) instead of a loose >= 2 bound.
+    lang_counts = sorted(
+        sum(
+            1
+            for lang in query_loader.list_supported_languages()
+            if query_name in query_loader.list_queries(lang)
+        )
+        for query_name in common
+    )
+    assert lang_counts == [12, 13, 13, 13]
 
 
 def test_is_language_supported_function():
@@ -164,25 +165,34 @@ def test_is_language_supported_function():
 
 def test_get_all_queries_for_language():
     """Test getting all queries with descriptions"""
-    for language in ["java", "javascript", "python"]:
-        if query_loader.is_language_supported(language):
-            all_queries = query_loader.get_all_queries_for_language(language)
-            assert isinstance(all_queries, dict)
+    # All three languages are supported (former guard was a dead branch);
+    # pin exact query counts and the exact minimum query-string length.
+    expected = {"java": (71, 34), "javascript": (87, 20), "python": (88, 28)}
+    for language, (expected_count, expected_min_len) in expected.items():
+        assert query_loader.is_language_supported(language)
+        all_queries = query_loader.get_all_queries_for_language(language)
+        assert isinstance(all_queries, dict)
+        assert len(all_queries) == expected_count
 
-            for _query_name, (query_string, description) in all_queries.items():
-                assert isinstance(query_string, str)
-                assert isinstance(description, str)
-                assert len(query_string) > 0
+        lengths = []
+        for _query_name, (query_string, description) in all_queries.items():
+            assert isinstance(query_string, str)
+            assert isinstance(description, str)
+            lengths.append(len(query_string))
+        assert min(lengths) == expected_min_len
 
 
 def test_refresh_cache():
     """Test cache refresh functionality"""
+    # Start from a clean cache so the pinned count is order-independent
+    query_loader.refresh_cache()
+
     # Load some queries first
     query_loader.load_language_queries("java")
     query_loader.load_language_queries("javascript")
 
-    # Cache should have entries
-    assert len(query_loader._loaded_queries) > 0
+    # Cache should have exactly the two languages just loaded
+    assert len(query_loader._loaded_queries) == 2
 
     # Refresh cache
     query_loader.refresh_cache()

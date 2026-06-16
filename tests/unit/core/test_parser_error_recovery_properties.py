@@ -432,6 +432,7 @@ class TestEngineErrorRecoveryProperties:
     )
     @given(code=python_code_with_syntax_error())
     @pytest.mark.asyncio
+    @pytest.mark.slow_ok
     async def test_property_6_engine_returns_result_for_invalid_python(self, code: str):
         """
         **Feature: test-coverage-improvement, Property 6: Parser Error Recovery**

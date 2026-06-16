@@ -184,7 +184,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, "No output from CLI"
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
         # 関数が見つかることを確認（具体的な名前は実装依存）
         output = result.stdout.lower()
@@ -207,7 +207,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, "No output from CLI"
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
         # 関数が見つかることを確認（具体的な名前は実装依存）
         output = result.stdout.lower()
@@ -230,7 +230,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, "No output from CLI"
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
         # クラスが見つかることを確認（具体的な名前は実装依存）
         output = result.stdout.lower()
@@ -256,7 +256,9 @@ async function asyncFunction() {
             assert result.returncode == 0, (
                 f"CLI failed for file {i} with stderr: {result.stderr}"
             )
-            assert len(result.stdout) > 0, f"No output from CLI for file {i}"
+            assert (
+                len(result.stdout) > 0
+            )  # ratchet: nondeterministic uuid-in-output-path
 
     def test_output_format_json(self, sample_files):
         """JSON出力フォーマットのテスト"""
@@ -277,7 +279,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, "No output from CLI"
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
         # JSON形式の出力を確認
         try:
@@ -306,7 +308,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, "No output from CLI"
+        assert len(result.stdout) == 441, "Unexpected text format output length"
 
     def test_custom_query_string(self, sample_files):
         """カスタムクエリ文字列のテスト"""
@@ -325,7 +327,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, "No output from CLI"
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
     def test_filter_expression(self, sample_files):
         """フィルター式のテスト"""
@@ -347,7 +349,9 @@ async function asyncFunction() {
 
         # フィルターが実装されていない場合もあるので、エラーにはしない
         if result.returncode == 0:
-            assert len(result.stdout) > 0, "No output from CLI"
+            assert (
+                len(result.stdout) > 0
+            )  # ratchet: nondeterministic uuid-in-output-path
 
     def test_language_auto_detection(self, sample_files):
         """言語自動検出のテスト"""
@@ -367,7 +371,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, "No output from CLI"
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
     def test_explicit_language_specification(self, sample_files):
         """明示的な言語指定のテスト"""
@@ -388,7 +392,7 @@ async function asyncFunction() {
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, "No output from CLI"
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
     def test_error_cases_nonexistent_file(self):
         """エラーケース: 存在しないファイル"""
@@ -407,7 +411,9 @@ async function asyncFunction() {
         )
 
         assert result.returncode != 0, "CLI should fail for nonexistent file"
-        assert len(result.stderr) > 0, "No error message for nonexistent file"
+        assert len(result.stderr) == 78, (
+            "Unexpected error message length for nonexistent file"
+        )
 
         # エラーメッセージの確認
         error_msg = result.stderr.lower()
@@ -437,10 +443,10 @@ async function asyncFunction() {
         # 無効な言語の場合、エラーになるかデフォルト動作するかは実装依存
         # エラーになる場合
         if result.returncode != 0:
-            assert len(result.stderr) > 0, "No error message for invalid language"
-        # 正常終了する場合（デフォルト動作）
-        else:
-            assert len(result.stdout) >= 0, "Unexpected output for invalid language"
+            assert len(result.stderr) == 54, (
+                "Unexpected error message length for invalid language"
+            )
+        # 正常終了する場合（デフォルト動作）— dead branch: invalid_language always returns rc=1
 
     def test_error_cases_invalid_query_key(self, sample_files):
         """エラーケース: 無効なクエリキー"""
@@ -460,7 +466,9 @@ async function asyncFunction() {
 
         # 無効なクエリキーの場合、エラーになるか空結果を返すかは実装依存
         if result.returncode != 0:
-            assert len(result.stderr) > 0, "No error message for invalid query key"
+            assert len(result.stderr) == 1413, (
+                "Unexpected error message length for invalid query key"
+            )
         else:
             # 正常終了の場合、空結果または何らかの出力があることを確認
             pass
@@ -483,7 +491,9 @@ async function asyncFunction() {
 
         # 不正なクエリ文字列の場合、エラーになることを期待
         assert result.returncode != 0, "CLI should fail for malformed query string"
-        assert len(result.stderr) > 0, "No error message for malformed query string"
+        assert len(result.stderr) == 101, (
+            "Unexpected error message length for malformed query string"
+        )
 
     def test_help_command(self):
         """ヘルプコマンドのテスト"""
@@ -497,7 +507,9 @@ async function asyncFunction() {
         assert result.returncode == 0, (
             f"Help command failed with stderr: {result.stderr}"
         )
-        assert len(result.stdout) > 0, "No help output"
+        assert (
+            len(result.stdout) > 0
+        )  # ratchet: nondeterministic terminal-width-dependent
 
         # ヘルプ内容の確認
         help_text = result.stdout.lower()
@@ -516,7 +528,9 @@ async function asyncFunction() {
 
         # バージョンコマンドが実装されている場合
         if result.returncode == 0:
-            assert len(result.stdout) > 0, "No version output"
+            assert (
+                len(result.stdout) > 0
+            )  # ratchet: nondeterministic executable-name-in-version-string
         # 実装されていない場合はスキップ
 
     def test_concurrent_cli_execution(self, sample_files):
@@ -555,9 +569,9 @@ async function asyncFunction() {
             assert result.returncode == 0, (
                 f"Concurrent CLI execution {i} failed with stderr: {result.stderr}"
             )
-            assert len(result.stdout) > 0, (
-                f"No output from concurrent CLI execution {i}"
-            )
+            assert (
+                len(result.stdout) > 0
+            )  # ratchet: nondeterministic uuid-in-output-path
 
     def test_large_file_cli_processing(self):
         """大きなファイルのCLI処理テスト"""
@@ -599,7 +613,9 @@ class Class_{i}:
             assert result.returncode == 0, (
                 f"Large file CLI processing failed with stderr: {result.stderr}"
             )
-            assert len(result.stdout) > 0, "No output from large file CLI processing"
+            assert (
+                len(result.stdout) > 0
+            )  # ratchet: nondeterministic uuid-in-output-path
 
         finally:
             large_file.unlink(missing_ok=True)
@@ -639,7 +655,7 @@ class Class_{i}:
         duration = end_time - start_time
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
-        assert len(result.stdout) > 0, "No output from CLI"
+        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
 
         # パフォーマンス要件: 15秒以内 (Windows環境の遅延を考慮)
         assert duration < 15.0, f"CLI execution took too long: {duration:.2f}s"

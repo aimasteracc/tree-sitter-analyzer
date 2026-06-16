@@ -545,12 +545,12 @@ asyncio.run(main())
 
         assert result["success"] is True
         assert "results" in result
-        assert result["count"] > 0
+        assert result["count"] == 11
 
         method_names = [
             r["content"] for r in result["results"] if "initialize" in r["content"]
         ]
-        assert len(method_names) > 0
+        assert len(method_names) == 5
         print(f"✓ Javaメソッドクエリテスト成功: {result['count']}個のメソッド検出")
 
     @pytest.mark.asyncio
@@ -569,7 +569,7 @@ asyncio.run(main())
 
         assert result["success"] is True
         assert "captures" in result
-        assert result["total_count"] > 0
+        assert result["total_count"] == 6
 
         if "interface" in result["captures"]:
             interfaces = result["captures"]["interface"]["items"]
@@ -597,7 +597,7 @@ asyncio.run(main())
         )
 
         assert result["success"] is True
-        assert result["count"] > 0
+        assert result["count"] == 18
 
         class_contents = [r["content"] for r in result["results"]]
         class_names = []
@@ -626,14 +626,19 @@ asyncio.run(main())
         )
 
         assert result["success"] is True
+        assert result["count"] == 4
 
-        if result["count"] > 0:
-            constructor_found = any(
-                "constructor" in r["content"].lower() for r in result["results"]
-            )
-            assert (
-                constructor_found or result["count"] > 0
-            )
+        # 恒真陷阱 fixed: the old `constructor_found or result["count"] > 0`
+        # inside `if result["count"] > 0` was vacuously true — and the live
+        # value of constructor_found is False (Java constructor source never
+        # contains the literal "constructor"). Pin the real declarations.
+        constructor_names = [r["content"].split("(")[0] for r in result["results"]]
+        assert constructor_names == [
+            "public ComplexService",
+            "public ComplexService",
+            "public ServiceException",
+            "public ServiceException",
+        ]
 
         print(f"✓ カスタムクエリテスト成功: {result['count']}個の結果")
 
@@ -714,7 +719,9 @@ asyncio.run(main())
         with open(output_file, encoding="utf-8") as f:
             file_content = json.load(f)
             assert "results" in file_content
-            assert len(file_content["results"]) > 0
+            assert (
+                len(file_content["results"]) == 52
+            )  # was 104 (double-captured before #557); 52 is the correct single-capture count
 
         print(
             f"✓ ファイル出力最適化テスト成功: {result['count']}個の結果を{output_file.name}に保存"
@@ -735,7 +742,7 @@ asyncio.run(main())
         )
 
         assert result["success"] is True
-        assert result["total_count"] > 0
+        assert result["total_count"] == 12
 
         if "header" in result["captures"]:
             headers = result["captures"]["header"]["items"]

@@ -60,10 +60,17 @@ _SEARCH_DESCRIPTION = (
     "Params: query, roots, include_globs, ...\n"
     "- action=grep — two-stage fd (file discovery) + ripgrep search. "
     "Params: query, roots, ...\n"
-    "- action=batch — run multiple search queries in one call. Params: queries.\n"
-    "- action=chain — jQuery-style codegraph chain DSL: compose search → "
-    "explore → callers → callees in one process. "
-    "Params: chain/program, default_limit, include_source.\n"
+    "- action=batch — run multiple ripgrep searches in one call. "
+    "Params: queries (required array of 2-10 items; each item requires "
+    "`pattern` and may include roots/include_globs/exclude_globs/max_results/label), "
+    "output_format.\n"
+    "- action=chain — jQuery-style codegraph chain DSL: compose search / "
+    "explore / callers / callees in one process. Steps are separated by '.' "
+    "(NOT '|'), e.g. query=\"search('IndexShard').callers()\" or "
+    "\"explore('parse').related()\"; a plain string with no parentheses is "
+    "treated as explore(string).related(). "
+    "Params: query (required — the chain string), max_symbols, max_files, "
+    "include_code, compact.\n"
     "- action=select — Hyphae DSL, a CSS-selector-style graph query (RFC-0003). "
     "ONE selector replaces chains of navigate/callers/search: #name, .kind "
     "(.function/.method/.class), *, :calls(#X), :callees(#X), :not(sel), "
@@ -91,7 +98,7 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
     from .hyphae_subscribe_tool import HyphaeSubscribeTool, HyphaeUnsubscribeTool
     from .query_tool import QueryTool
     from .search_content_tool import SearchContentTool
-    from .symbol_search_tool import CodeGraphSymbolSearchTool
+    from .symbol_search_tool import SYMBOL_SEARCH_KINDS, CodeGraphSymbolSearchTool
 
     # Inner instance used by the bespoke ``content`` route. It is held so the
     # facade can rebind it on project-root changes (G3) just like action_map
@@ -130,6 +137,17 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
         description=_SEARCH_DESCRIPTION,
         annotations=_SEARCH_ANNOTATIONS,
         project_root=project_root,
+        # #640: ``kind`` is high-value for action=symbol (e.g. kind=constant)
+        # but was only reachable via additionalProperties — invisible to
+        # schema-reading agents. Surface it with the authoritative enum,
+        # sourced from the inner tool so facade/inner/CLI never drift.
+        extra_public_params={
+            "kind": {
+                "type": "string",
+                "enum": list(SYMBOL_SEARCH_KINDS),
+                "description": "Symbol kind filter for action=symbol (default: any).",
+            },
+        },
     )
 
     # G3: make the bespoke ``content`` tool rebind with the facade. The

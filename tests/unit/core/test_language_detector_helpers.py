@@ -20,7 +20,7 @@ class TestBuildExtensionConfidenceMap:
     def test_returns_dict(self) -> None:
         result = build_extension_confidence_map()
         assert isinstance(result, dict)
-        assert len(result) > 0
+        assert len(result) == 54
 
     def test_entry_structure(self) -> None:
         result = build_extension_confidence_map()
@@ -80,7 +80,7 @@ class TestBuildContentPatternWeights:
     def test_returns_dict(self) -> None:
         result = build_content_pattern_weights()
         assert isinstance(result, dict)
-        assert len(result) > 0
+        assert len(result) == 9
 
     def test_entry_structure(self) -> None:
         result = build_content_pattern_weights()
@@ -95,19 +95,22 @@ class TestBuildContentPatternWeights:
 
     def test_key_languages_have_patterns(self) -> None:
         p = build_content_pattern_weights()
-        for lang in (
-            "java",
-            "python",
-            "javascript",
-            "typescript",
-            "c",
-            "cpp",
-            "markdown",
-            "html",
-            "css",
-        ):
+        expected_counts = {
+            "java": 4,
+            "python": 4,
+            "javascript": 5,
+            "typescript": 4,
+            "c": 4,
+            "cpp": 4,
+            "markdown": 8,
+            "html": 8,
+            "css": 8,
+        }
+        for lang, expected in expected_counts.items():
             assert lang in p, f"Missing patterns for {lang}"
-            assert len(p[lang]) > 0, f"Empty pattern list for {lang}"
+            assert len(p[lang]) == expected, (
+                f"Pattern list for {lang}: expected {expected}, got {len(p[lang])}"
+            )
 
     def test_regex_patterns_compile(self) -> None:
         import re
@@ -198,7 +201,9 @@ class TestGetPathMtimeNs:
             result = get_path_mtime_ns(path)
             assert result is not None
             assert isinstance(result, int)
-            assert result > 0
+            assert (
+                result > 0
+            )  # ratchet: nondeterministic — mtime_ns is a real filesystem timestamp
         finally:
             os.unlink(path)
 
