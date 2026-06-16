@@ -42,9 +42,10 @@ health action=deps file_path="tree_sitter_analyzer/ast_cache.py" mode="file_deps
 ```
 
 `mode` options:
-- `summary` — project-wide dependency summary
-- `file_deps` — one file's graph
-- `package_deps` — by package, not file
+- `summary` — project-wide dependency summary (alias: `full`)
+- `file_deps` — one file's graph (requires `file_path`)
+- `blast_radius` — impact set for a file (alias: `blast`; requires `file_path`)
+- `cycles` — circular dependencies
 
 ### Import graph (project-level)
 
@@ -72,7 +73,7 @@ Useful as a "first look" right after `tsa-landing`.
 ```bash
 uv run tree-sitter-analyzer <file> --dependencies file_deps
 uv run tree-sitter-analyzer --dependencies summary
-uv run tree-sitter-analyzer --import-graph --language python
+uv run tree-sitter-analyzer --import-graph --import-graph-mode summary
 uv run tree-sitter-analyzer --codegraph-sitemap
 ```
 

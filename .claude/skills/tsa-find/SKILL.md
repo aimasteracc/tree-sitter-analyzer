@@ -56,7 +56,10 @@ Before reading a large file blind, use:
 
 ```yaml
 health action=scale file_path="tree_sitter_analyzer/ast_cache.py"
-# returns {lines: 2144, size_bytes: 79809, is_large: true, recommendation: "use structure action=read"}
+# returns {line_count: 938, file_metrics: {file_size_bytes: 38918, total_lines: 938, code_lines: 661, ...},
+#          llm_guidance: {analysis_strategy: "This is a large file...", recommended_tools: ["structure action=read", ...]}}
+# (there is no top-level is_large / recommendation — judge size from line_count / file_metrics.file_size_bytes,
+#  and read llm_guidance.recommended_tools for the next-step suggestion)
 ```
 
 Then extract only what you need:

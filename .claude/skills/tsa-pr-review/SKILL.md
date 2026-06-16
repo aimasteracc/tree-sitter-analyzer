@@ -91,7 +91,7 @@ In one message, call all three:
 
 For each changed file from Step 1, call:
 
-`edit action=safe file_path="<abs>" edit_type="<refactor|rename|delete|bugfix>"`
+`edit action=safe file_path="<abs>" edit_type="<refactor|add_feature|fix_bug|rename>"`
 
 Pick `edit_type` from the dominant change category in Step 1's
 `edit action=pr` output. Returns per-file verdict + `risk_factors`.
@@ -176,7 +176,7 @@ edit action=constraints path_filter="tree_sitter_analyzer/mcp/**"
 ```yaml
 edit action=safe file_path=".../safe_to_edit_tool.py" edit_type="refactor"
 # → verdict: REVIEW, risk_factors: [{factor: "high_caller_count", ...}]
-edit action=safe file_path=".../change_impact_tool.py" edit_type="bugfix"
+edit action=safe file_path=".../change_impact_tool.py" edit_type="fix_bug"
 # → verdict: SAFE
 ```
 

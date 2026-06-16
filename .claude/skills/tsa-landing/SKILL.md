@@ -62,9 +62,8 @@ Combine into single Decision Surface:
 {
   "project_card": {
     "name": <from project action=overview project_root basename>,
-    "purpose": <from project action=overview summary.purpose if present>,
-    "primary_language": <from project action=overview summary.by_language[0].name>,
-    "language_mix": <from project action=overview summary.by_language top 3>,
+    "primary_language": <key with the highest count in project action=overview summary.by_language — it is a {language: file_count} dict sorted descending, so the first key>,
+    "language_mix": <from project action=overview summary.by_language — first 3 keys of the {language: file_count} dict>,
     "size": {
       "files": <from project action=overview summary.total_files>,
       "loc": <from project action=overview summary.total_lines>

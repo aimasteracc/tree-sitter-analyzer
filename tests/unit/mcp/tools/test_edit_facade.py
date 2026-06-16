@@ -115,6 +115,17 @@ def test_edit_facade_builds() -> None:
     assert facade.facade_name == "edit"
 
 
+def test_impact_action_description_documents_mode_param() -> None:
+    """#998: action=impact supports a ``mode`` param (diff|staged|branch|pr).
+
+    Skills (tsa-edit-safety, tsa-pr-review, tsa-landing) pass mode=staged /
+    branch, so the facade description must advertise the param + its values.
+    """
+    from tree_sitter_analyzer.mcp.tools.edit_facade import _EDIT_DESCRIPTION
+
+    assert "mode (diff|staged|branch|pr" in _EDIT_DESCRIPTION
+
+
 def test_edit_facade_all_actions_present() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
