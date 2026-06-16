@@ -32,7 +32,7 @@ allowed-tools:
 | Goal                                           | Tool                              |
 |------------------------------------------------|-----------------------------------|
 | Status / stats of the AST cache                | `index action=cache` (mode=status) |
-| Force rebuild                                  | `index action=cache` (mode=force)  |
+| Force rebuild                                  | `index action=full`                |
 | Incremental refresh                            | `index action=cache` (mode=index)  |
 | Watch a directory and auto-refresh             | `index action=cache` (mode=watch_start) |
 | AST-level diff of one file across commits      | `edit action=ast_diff`            |
@@ -51,7 +51,7 @@ The auto-cache is usually correct. Force rebuild only when:
 - Files were renamed/moved en masse (mtime-based invalidation may miss this)
 
 ```bash
-uv run tree-sitter-analyzer --ast-cache --ast-cache-mode force
+uv run tree-sitter-analyzer --ast-cache --ast-cache-mode index --ast-cache-force
 # OR safer (preserves what works):
 uv run tree-sitter-analyzer --ast-cache --ast-cache-mode index
 ```
@@ -80,8 +80,8 @@ Avoid asking "why doesn't swift work" — query this first.
 ## CLI equivalents
 
 ```bash
-uv run tree-sitter-analyzer --ast-cache --ast-cache-mode status
-uv run tree-sitter-analyzer --ast-cache --ast-cache-mode force
+uv run tree-sitter-analyzer --ast-cache --ast-cache-mode stats
+uv run tree-sitter-analyzer --ast-cache --ast-cache-mode index --ast-cache-force
 uv run tree-sitter-analyzer --ast-diff --ast-diff-file <file> --ast-diff-old-ref HEAD~5 --ast-diff-new-ref HEAD
 uv run tree-sitter-analyzer --parser-readiness swift
 uv run tree-sitter-analyzer --autoindex            # index action=auto
