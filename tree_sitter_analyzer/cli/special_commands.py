@@ -132,7 +132,10 @@ def _handle_agent_workflow(
         target_path=getattr(args, "file_path", None),
     )
     _print_result(result, args, context.output_json)
-    return 0
+    # #1002 finding 3: a blocked workflow (e.g. target_path is a directory)
+    # emits verdict=ERROR but used to exit 0, so shells / set -e pipelines
+    # treated the failure as success. Map success=False to a non-zero exit.
+    return 0 if result.get("success", False) else 1
 
 
 def _effective_output_format(args: Any) -> str:
