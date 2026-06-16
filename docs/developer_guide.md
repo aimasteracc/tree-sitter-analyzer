@@ -67,6 +67,12 @@
   ```bash
   uv run pytest -q
   ```
+
+  開発中の反復確認は、重い全言語/高速化しきれない suite を外すと体感が安定します。
+  ```bash
+  PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q -m "not slow and not full_language"
+  PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and not full_language"
+  ```
 - **カバレッジ**: コードの変更には、可能な限り高いテストカバレッジを維持することが求められます。
 
 ---

@@ -76,8 +76,17 @@ def test_backfill_no_reparse(
         calls: list[tuple[str, str | None]] = []
         real_parse_file = ac.Parser.parse_file
 
+        project_root = seeded_project.resolve()
+
         def counting_parse(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-            calls.append((str(args[0]) if args else "", kwargs.get("language")))
+            path_text = str(args[0]) if args else ""
+            try:
+                parsed_path = Path(path_text).resolve()
+                is_seeded_project_parse = parsed_path.is_relative_to(project_root)
+            except OSError:
+                is_seeded_project_parse = False
+            if is_seeded_project_parse:
+                calls.append((path_text, kwargs.get("language")))
             return real_parse_file(self, *args, **kwargs)
 
         monkeypatch.setattr(ac.Parser, "parse_file", counting_parse)

@@ -18,6 +18,7 @@ from tree_sitter_analyzer._route_detector_helpers import (
 
 # ── unquote ──────────────────────────────────────────────────────────────
 
+
 class TestUnquote:
     def test_double_quoted(self):
         assert unquote('"hello"') == "hello"
@@ -33,7 +34,7 @@ class TestUnquote:
         assert unquote('"') == '"'
 
     def test_mismatched_quotes(self):
-        assert unquote('"hello\'') == '"hello\''
+        assert unquote("\"hello'") == "\"hello'"
 
     def test_whitespace_around_quotes(self):
         assert unquote('  "hello"  ') == "hello"
@@ -43,6 +44,7 @@ class TestUnquote:
 
 
 # ── unquote_java_string ──────────────────────────────────────────────────
+
 
 class TestUnquoteJavaString:
     def test_double_quoted(self):
@@ -63,6 +65,7 @@ class TestUnquoteJavaString:
 
 # ── parse_methods_list ───────────────────────────────────────────────────
 
+
 class TestParseMethodsList:
     def test_multiple_methods(self):
         assert parse_methods_list("methods=['GET', 'POST']") == ["GET", "POST"]
@@ -81,6 +84,7 @@ class TestParseMethodsList:
 
 
 # ── extract_django_handler ───────────────────────────────────────────────
+
 
 class TestExtractDjangoHandler:
     def test_dotted_path(self):
@@ -103,6 +107,7 @@ class TestExtractDjangoHandler:
 
 
 # ── extract_template_string ──────────────────────────────────────────────
+
 
 class TestExtractTemplateString:
     def test_string_child(self):
@@ -135,6 +140,7 @@ class TestExtractTemplateString:
 
 
 # ── extract_annotation_value ─────────────────────────────────────────────
+
 
 class TestExtractAnnotationValue:
     def test_parenthesized_string_literal(self):
@@ -190,6 +196,7 @@ class TestExtractAnnotationValue:
 
 # ── function_name_after_decorator ────────────────────────────────────────
 
+
 class TestFunctionNameAfterDecorator:
     def test_function_definition_with_name(self):
         func_def = Mock()
@@ -239,6 +246,7 @@ class TestFunctionNameAfterDecorator:
 
 # ── method_after_annotation ──────────────────────────────────────────────
 
+
 class TestMethodAfterAnnotation:
     def test_method_declaration_with_identifier(self):
         ident = Mock()
@@ -277,6 +285,7 @@ class TestMethodAfterAnnotation:
 
 # ── find_keyword ─────────────────────────────────────────────────────────
 
+
 class TestFindKeyword:
     def test_finds_keyword(self):
         ident = Mock()
@@ -314,6 +323,7 @@ class TestFindKeyword:
 
 
 # ── extract_js_handler ───────────────────────────────────────────────────
+
 
 class TestExtractJsHandler:
     def test_identifier_handler(self):
@@ -397,6 +407,7 @@ class TestExtractJsHandler:
 
 # ── walk ─────────────────────────────────────────────────────────────────
 
+
 class TestWalk:
     def test_walk_single_node(self):
         """walk should yield the root node at minimum."""
@@ -411,5 +422,5 @@ class TestWalk:
         node.walk.return_value = cursor
 
         results = list(walk(node))
-        assert len(results) >= 1
+        assert len(results) == 1
         assert results[0] is node

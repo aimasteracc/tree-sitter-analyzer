@@ -46,6 +46,14 @@ class TestCreateArgumentParserMixin:
         assert args.agent_skills is True
         assert args.file_path is None
 
+    def test_parser_accepts_list_skills_alias(self):
+        """`--list-skills` remains a compatibility alias for `--agent-skills`."""
+        parser = create_argument_parser()
+        args = parser.parse_args(["--list-skills"])
+
+        assert args.agent_skills is True
+        assert args.file_path is None
+
     def test_parser_accepts_change_impact_mode_and_test_toggle(self):
         """Change-impact CLI exposes the MCP mode and include_tests controls."""
         parser = create_argument_parser()

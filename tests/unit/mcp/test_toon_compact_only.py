@@ -123,6 +123,10 @@ def _capture_call_tool_handler(server: TreeSitterAnalyzerMCPServer):
             return captured["call_tool"]
 
 
+# Walks the full MCP tool surface through handle_call_tool + canonical-envelope
+# validation; ~15-19s on the Windows full-matrix under xdist+build load. Real
+# work, not a perf regression — exempt from the per-test budget.
+@pytest.mark.slow_ok
 @pytest.mark.asyncio
 async def test_boundary_compact_only_survives_canonical_envelope(tmp_path) -> None:
     """Through the FULL handle_call_tool boundary: a file_health call with
@@ -156,6 +160,8 @@ async def test_boundary_compact_only_survives_canonical_envelope(tmp_path) -> No
     assert len(legacy_res[0].text) > len(compact_res[0].text)
 
 
+# Same full-surface boundary walk as above; ~16s on Windows full-matrix load.
+@pytest.mark.slow_ok
 @pytest.mark.asyncio
 async def test_boundary_default_unaffected(tmp_path) -> None:
     """Without compact_only the boundary leaves the response shape as-is."""
@@ -210,6 +216,9 @@ async def test_boundary_compact_only_error_envelope_keeps_hint(tmp_path) -> None
     assert "hint" in body
 
 
+# Same full-surface boundary walk as the slow_ok tests above; Windows
+# full-matrix load can push it past the 5s unit budget.
+@pytest.mark.slow_ok
 @pytest.mark.asyncio
 async def test_boundary_compact_only_legacy_keeps_deprecation(tmp_path) -> None:
     """Codex P2 #393: a LEGACY tool name (e.g. check_file_health) routed through

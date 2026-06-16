@@ -513,6 +513,14 @@ class TestEvaluator:
             f"Benchmark setup expects 5 rules, got {len(constraints)}"
         )
 
+        import sys
+
+        if sys.gettrace() is not None:
+            pytest.skip(
+                "tracked: coverage instrumentation invalidates the 500 ms "
+                "wall-clock perf budget; non-coverage CI enforces it."
+            )
+
         conn = sqlite3.connect(str(db_path))
         try:
             t0 = time.monotonic()
