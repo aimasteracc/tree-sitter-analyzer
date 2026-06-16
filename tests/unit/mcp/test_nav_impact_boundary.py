@@ -62,6 +62,10 @@ def _make_mock_graph(func_ref: FunctionRef, callers=None, callees=None):
     return graph
 
 
+# Each test builds nav action=impact on a real tmp_path project (dependency
+# graph + test partition); ~5s+ each, tips the 5s unit budget under Windows
+# full-matrix xdist load. Real work, not a perf regression — budget-exempt.
+@pytest.mark.slow_ok
 class TestNavImpactBoundary:
     """RFC-0014 Phase A: boundary integration for nav action=impact.
 
