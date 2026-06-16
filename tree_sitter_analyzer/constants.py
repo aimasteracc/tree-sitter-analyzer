@@ -60,6 +60,35 @@ LEGACY_CLASS_MAPPING = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Canonical "what kind of edit am I about to make?" vocabulary.
+#
+# Single source of truth shared by BOTH edit-classification flags so they can
+# never diverge again (issue #985): the CLI's --edit-type (safe-to-edit, file
+# level) and --modification-guard-type (modification-guard, symbol level), plus
+# the matching MCP schemas (SafeToEditTool.edit_type, ModificationGuardTool /
+# edit facade modification_type).
+#
+# Every value here is handled by downstream logic:
+#   - safe_to_edit_risk._add_edit_type_factor / build_checklist branch on the
+#     file-level risk kinds and treat the rest as neutral.
+#   - modification_guard_tool adds type-specific actions for the symbol-level
+#     kinds (rename/signature_change/delete/behavior_change/refactor) and falls
+#     through to its caller-count verdict for the rest — no value is silently
+#     accepted-but-unhandled.
+# Adding a value here means adding its handling in BOTH tools.
+# ---------------------------------------------------------------------------
+EDIT_KINDS: tuple[str, ...] = (
+    "add_feature",
+    "behavior_change",
+    "delete",
+    "fix_bug",
+    "refactor",
+    "rename",
+    "signature_change",
+)
+
+
 def get_element_type(element: Any) -> str:
     """
     Get the element type from an element object.

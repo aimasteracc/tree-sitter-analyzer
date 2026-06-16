@@ -11,6 +11,7 @@ a risk assessment with specific warnings and a concrete pre-edit checklist.
 from pathlib import Path
 from typing import Any
 
+from ...constants import EDIT_KINDS
 from ...health_scorer import HealthScorer
 from ...project_graph import DependencyGraph
 from ...utils import setup_logger
@@ -37,7 +38,7 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "edit_type": {
             "type": "string",
-            "enum": ["refactor", "add_feature", "fix_bug", "rename"],
+            "enum": list(EDIT_KINDS),
             "description": "Type of edit planned (affects risk assessment)",
             "default": "refactor",
         },

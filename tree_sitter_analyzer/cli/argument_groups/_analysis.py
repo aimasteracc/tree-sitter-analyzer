@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 
+from ...constants import EDIT_KINDS
 from ._analysis_codegraph import _add_mcp_codegraph_map_options
 from ._analysis_graph_nav import _add_mcp_graph_nav_options
 
@@ -80,7 +81,7 @@ def _add_mcp_health_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--edit-type",
         default="refactor",
-        choices=["refactor", "add_feature", "fix_bug", "rename"],
+        choices=list(EDIT_KINDS),
         help="Planned edit type for --safe-to-edit risk scoring (default: refactor)",
     )
 

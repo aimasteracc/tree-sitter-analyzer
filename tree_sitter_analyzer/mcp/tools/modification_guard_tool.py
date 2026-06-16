@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ...constants import EDIT_KINDS
 from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
 from .base_tool import BaseMCPTool, format_summary_line, mirror_summary_line
@@ -46,16 +47,12 @@ _VERDICT_TO_RISK: dict[str, str] = {
     "UNSAFE": "high",
 }
 
-# Authoritative enum for the modification_type parameter.
-# Used by get_tool_schema, validate_arguments, and the edit facade's
-# extra_public_params — single source so they can never drift.
-MODIFICATION_TYPES: tuple[str, ...] = (
-    "behavior_change",
-    "delete",
-    "refactor",
-    "rename",
-    "signature_change",
-)
+# Enum for the modification_type parameter. Aliased to the canonical
+# EDIT_KINDS vocabulary (tree_sitter_analyzer.constants) so the MCP schema,
+# validate_arguments, the edit facade's extra_public_params, AND the two CLI
+# flags (--edit-type / --modification-guard-type) all share one source of
+# truth and can never diverge again (issue #985).
+MODIFICATION_TYPES: tuple[str, ...] = EDIT_KINDS
 
 CRITICAL_NODES_FILE = ".tree-sitter-cache/critical_nodes.json"
 
