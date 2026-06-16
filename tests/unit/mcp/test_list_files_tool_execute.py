@@ -351,6 +351,10 @@ class TestExecute:
 
                         assert call_kwargs["limit"] == fd_rg_utils.MAX_RESULTS_HARD_CAP
 
+    # Windows full-matrix under xdist load can exceed the 5s per-test budget
+    # (this test fabricates a large file list for truncation; ~13s with reruns).
+    # Logic is correct — exempt from the perf budget, not a perf claim.
+    @pytest.mark.slow_ok
     @pytest.mark.asyncio
     async def test_execute_truncation_defensive(self, tool, sample_project_structure):
         with patch(
