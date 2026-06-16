@@ -294,9 +294,27 @@ class TestExecute:
             max_files=100,
             force=True,
             include_activation=False,
+            language_filter=None,
         )
         # DF-9: verify summary includes the symbol count
         assert "symbols=100" in result["summary_line"]
+
+    @pytest.mark.asyncio
+    async def test_index_project_threads_language_filter(self, tool_with_mock_cache):
+        """#1018: --ast-cache-language / language arg reaches index_project."""
+        tool, mock_cache = tool_with_mock_cache
+        mock_cache.index_project.return_value = {"indexed": 1}
+        mock_cache.get_stats.return_value = {"total_symbols": 1, "total_files": 1}
+        result = await tool.execute(
+            {"mode": "index", "max_files": 100, "language": "python"}
+        )
+        assert result["success"] is True
+        mock_cache.index_project.assert_called_once_with(
+            max_files=100,
+            force=False,
+            include_activation=False,
+            language_filter="python",
+        )
 
     @pytest.mark.asyncio
     async def test_index_project_can_include_activation(self, tool_with_mock_cache):
@@ -314,6 +332,7 @@ class TestExecute:
             max_files=100,
             force=False,
             include_activation=True,
+            language_filter=None,
         )
 
     @pytest.mark.asyncio

@@ -230,6 +230,19 @@ class TestIndexProject:
         assert result["total_files"] == 2
         assert result["indexed"] == 2
 
+    def test_index_project_language_filter_indexes_only_matching(self, cache):
+        """#1018: language_filter restricts the walk to that language's files.
+
+        The fixture project has main.py + util.js (readme.md is an unsupported
+        extension and never counted). With language_filter="python", only the
+        single .py file is indexed; the .js file is skipped BEFORE any parse,
+        and no parse-error is produced for the filtered-out language.
+        """
+        result = cache.index_project(language_filter="python")
+        assert result["indexed"] == 1
+        assert result["skipped"] == 1
+        assert result["errors"] == 0
+
     def test_index_project_cached(self, cache):
         cache.index_project()
         result = cache.index_project()
