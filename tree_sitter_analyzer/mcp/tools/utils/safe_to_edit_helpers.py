@@ -181,7 +181,12 @@ def _format_safe_to_edit_result(
         risk_factors.extend(constraint_risk_factor(row) for row in violations)
     if fixture_fact.is_fixture:
         risk_factors.append(_fixture_risk_factor(fixture_fact, context.file_path))
-    recommendation = _format_recommendation(risk, facts, workflow)
+    # #1027: build the recommendation from the FINAL (possibly escalated)
+    # verdict, never the un-escalated ``risk``. A constraint/fixture
+    # promotion that lifts SAFE→UNSAFE must lift the recommendation too,
+    # otherwise the envelope self-contradicts (verdict=UNSAFE next to a
+    # "SAFE to edit" recommendation) and an agent reads opposite instructions.
+    recommendation = _format_recommendation(verdict, facts, workflow)
     # #781: pass the (possibly escalated) verdict so summary_line AND
     # summary["verdict"] are both built from it — never a CAUTION/UNSAFE split.
     summary = build_agent_summary(workflow_context, workflow, verdict_override=verdict)
@@ -288,20 +293,26 @@ def _fixture_risk_factor(fact: Any, file_path: str) -> dict[str, Any]:
 
 
 def _format_recommendation(
-    risk: str,
+    verdict: str,
     facts: SafeToEditFacts,
     workflow: dict[str, Any],
 ) -> str:
-    """One-line agent-readable summary of what to do next."""
+    """One-line agent-readable summary of what to do next.
+
+    #1027: built from the FINAL (possibly escalated) verdict so it can never
+    contradict the structured ``verdict`` field. ``ERROR`` collapses into the
+    UNSAFE bucket and ``REVIEW`` into the CAUTION bucket (mirroring
+    ``_VERDICT_SEVERITY``); everything else is the SAFE bucket.
+    """
     grade = facts.health.grade
     downstream = len(facts.dependents)
-    verdict = _risk_to_verdict(risk).lower()
-    if verdict == "unsafe":
+    verdict = (verdict or "").lower()
+    if verdict in ("unsafe", "error"):
         return (
             f"UNSAFE to edit: health grade {grade}, {downstream} downstream "
             f"file(s) depend on this. Refactor in stages with tests after each."
         )
-    if verdict == "caution":
+    if verdict in ("caution", "review"):
         return (
             f"CAUTION: health grade {grade}, {downstream} downstream file(s). "
             "Run tests in the affected scope before and after the edit."
