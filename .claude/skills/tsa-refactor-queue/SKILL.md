@@ -127,11 +127,16 @@ Run on `/Users/aisheng.yu/git-private/tree-sitter-analyzer`:
 # Parallel CLI batch (humans):
 uv run tree-sitter-analyzer --project-health --max-files 20 --output-format json > /tmp/health.json
 uv run tree-sitter-analyzer --dead-code --output-format json > /tmp/dead.json
-sqlite3 .ast-cache/index.db "
-  SELECT s.file_path, SUM(a.mod_count_30d) AS churn
-  FROM ast_symbol_activation a
-  JOIN ast_symbol_rows s ON s.id = a.symbol_id
-  GROUP BY s.file_path ORDER BY churn DESC LIMIT 50" > /tmp/churn.tsv
+uv run python -c "
+import sqlite3
+sql = '''
+SELECT s.file_path, SUM(a.mod_count_30d) AS churn
+FROM ast_symbol_activation a
+JOIN ast_symbol_rows s ON s.id = a.symbol_id
+GROUP BY s.file_path ORDER BY churn DESC LIMIT 50'''
+for r in sqlite3.connect('.ast-cache/index.db').execute(sql):
+    print(*r, sep='\t')
+" > /tmp/churn.tsv
 ```
 
 Expected shape after joining (truncated, illustrative — actual numbers vary
@@ -224,13 +229,18 @@ uv run tree-sitter-analyzer --dead-code --output-format json
 uv run tree-sitter-analyzer --overview --output-format json
 
 # 4. Per-file churn (no dedicated --temporal flag yet — query DB directly)
-sqlite3 .ast-cache/index.db "
-  SELECT s.file_path, SUM(a.mod_count_30d) AS churn_30d
-  FROM ast_symbol_activation a
-  JOIN ast_symbol_rows s ON s.id = a.symbol_id
-  WHERE a.git_state = 'tracked'
-  GROUP BY s.file_path
-  ORDER BY churn_30d DESC LIMIT 50"
+uv run python -c "
+import sqlite3
+sql = '''
+SELECT s.file_path, SUM(a.mod_count_30d) AS churn_30d
+FROM ast_symbol_activation a
+JOIN ast_symbol_rows s ON s.id = a.symbol_id
+WHERE a.git_state = 'tracked'
+GROUP BY s.file_path
+ORDER BY churn_30d DESC LIMIT 50'''
+for r in sqlite3.connect('.ast-cache/index.db').execute(sql):
+    print(*r, sep='\t')
+"
 
 # 5. Per-row enrichment (loop top 5)
 uv run tree-sitter-analyzer <file> --table --output-format json

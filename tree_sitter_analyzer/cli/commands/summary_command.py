@@ -7,6 +7,7 @@ Handles summary functionality with specified element types.
 
 from typing import TYPE_CHECKING, Any
 
+from ..._api_result_helpers import normalize_parameters
 from ...constants import (
     ELEMENT_TYPE_CLASS,
     ELEMENT_TYPE_FUNCTION,
@@ -167,7 +168,7 @@ class SummaryCommand(BaseCommand):
                     "end_line": getattr(m, "end_line", None),
                     "visibility": getattr(m, "visibility", None),
                     "modifiers": getattr(m, "modifiers", []),
-                    "parameters": getattr(m, "parameters", []),
+                    "parameters": normalize_parameters(getattr(m, "parameters", [])),
                     "return_type": getattr(m, "return_type", None),
                 }
                 for m in methods

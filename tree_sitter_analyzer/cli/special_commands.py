@@ -90,9 +90,10 @@ def _handle_install_skills(
         "skipped_count": report["skipped_count"],
         "installed": report["installed"],
         "skipped": report["skipped"],
+        "destination": report["destination"],
         "summary_line": (
             f"install_skills: {report['installed_count']} installed, "
-            f"{report['skipped_count']} skipped"
+            f"{report['skipped_count']} skipped into {report['destination']}"
         ),
     }
     context.output_json(summary)

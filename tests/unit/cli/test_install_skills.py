@@ -310,6 +310,8 @@ class TestInstallSkillsHandlerDispatch:
         assert captured["json"]["success"] is True
         assert captured["json"]["installed_count"] == 13
         assert captured["json"]["skipped_count"] == 0
+        # #549: JSON output echoes the resolved destination dir.
+        assert captured["json"]["destination"] == str(target / ".claude" / "skills")
         assert (target / ".claude" / "skills").is_dir()
 
     def test_handle_install_skills_with_dot_target(self, tmp_path, monkeypatch):
@@ -461,6 +463,21 @@ class TestInstallSkillsErrorHandling:
         assert "Installed:" in captured.err
         # path-separator agnostic (Windows prints backslashes)
         assert str(target / ".claude" / "skills" / "tsa-constraints") in captured.err
+
+    def test_destination_echoed_to_stderr_before_install(self, tmp_path, capsys):
+        """#549: the resolved destination dir is echoed to stderr first, so the
+        user always knows WHERE skills are going (no silent install/skip)."""
+        from tree_sitter_analyzer.cli.install_skills import install_skills
+
+        target = tmp_path / "proj"
+        target.mkdir()
+
+        report = install_skills(target_dir=target)
+
+        captured = capsys.readouterr()
+        dest = str(target / ".claude" / "skills")
+        assert f"Installing skills into: {dest}" in captured.err
+        assert report["destination"] == dest
 
 
 # ---------------------------------------------------------------------------

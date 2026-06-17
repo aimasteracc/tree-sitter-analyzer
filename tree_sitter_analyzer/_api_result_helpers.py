@@ -35,10 +35,38 @@ _OPTIONAL_ELEM_FIELDS = [
 ]
 
 
+def normalize_parameters(value: Any) -> Any:
+    """Convert a parameters value to a JSON-safe representation.
+
+    SQL plugin stores parameters as ``list[SQLParameter]`` (dataclasses).
+    JSON cannot serialize dataclass instances; convert them to plain dicts
+    so all output formats (JSON, TOON, text) stay consistent. Non-list and
+    non-dataclass values are returned unchanged.
+    """
+    if isinstance(value, list):
+        return [
+            dataclasses.asdict(p) if dataclasses.is_dataclass(p) else p for p in value
+        ]
+    return value
+
+
 def element_to_dict(
-    elem: Any, all_elements: Sequence[Any] | None = None
+    elem: Any,
+    all_elements: Sequence[Any] | None = None,
+    result_language: str | None = None,
 ) -> dict[str, Any]:
-    """Convert an analysis element to the stable API dict representation."""
+    """Convert an analysis element to the stable API dict representation.
+
+    ``result_language`` is the analyzer-detected language for the whole file
+    (``AnalysisResult.language``). When provided, it backfills an element's
+    ``language`` field for elements whose own ``.language`` is empty or the
+    sentinel ``"unknown"`` (#1019: some C#/PHP/Ruby/SQL element builders never
+    set ``.language``, so it defaulted to ``"unknown"`` instead of the real
+    analyzer language). The backfill fires ONLY for empty/``"unknown"`` values,
+    so a legitimately-different embedded language is preserved — e.g. Markdown
+    fenced code blocks always carry the embedded lang (``bash``/``json``/…) or
+    ``"text"`` for un-tagged fences, never ``"unknown"``, so they are untouched.
+    """
     python_type = type(elem).__name__.lower()
     # #795: Class objects carry a class_type that distinguishes enum/interface/type/namespace
     # from plain "class".  Surface that specificity in the output type field.
@@ -46,25 +74,22 @@ def element_to_dict(
         output_type = getattr(elem, "class_type", "class") or "class"
     else:
         output_type = python_type
+    elem_language = elem.language
+    if result_language and (not elem_language or elem_language == "unknown"):
+        elem_language = result_language
     result: dict[str, Any] = {
         "name": elem.name,
         "type": output_type,
         "start_line": elem.start_line,
         "end_line": elem.end_line,
         "raw_text": elem.raw_text,
-        "language": elem.language,
+        "language": elem_language,
     }
     for field in _OPTIONAL_ELEM_FIELDS:
         if hasattr(elem, field):
             value = getattr(elem, field)
-            # SQL plugin stores parameters as list[SQLParameter] (dataclasses).
-            # JSON cannot serialize dataclass instances; convert them to plain
-            # dicts so all output formats (JSON, TOON, text) stay consistent.
-            if field == "parameters" and isinstance(value, list):
-                value = [
-                    dataclasses.asdict(p) if dataclasses.is_dataclass(p) else p
-                    for p in value
-                ]
+            if field == "parameters":
+                value = normalize_parameters(value)
             result[field] = value
 
     if result["type"] == "function" and all_elements:
@@ -191,7 +216,11 @@ def _with_success_sections(
 
     if include_elements and hasattr(analysis_result, "elements"):
         result["elements"] = [
-            element_to_dict(elem, analysis_result.elements)
+            element_to_dict(
+                elem,
+                analysis_result.elements,
+                result_language=analysis_result.language,
+            )
             for elem in analysis_result.elements
         ]
 

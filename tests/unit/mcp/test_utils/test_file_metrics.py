@@ -13,6 +13,7 @@ import pytest
 from tree_sitter_analyzer.mcp.utils.file_metrics import (
     FileMetrics,
     _compute_line_metrics,
+    _compute_max_nesting_depth,
     _estimate_tokens,
     compute_file_metrics,
 )
@@ -278,8 +279,72 @@ class TestComputeLineMetrics:
         assert blank == 1
 
 
+class TestComputeMaxNestingDepth:
+    """Tests for _compute_max_nesting_depth (feature #580).
+
+    Block-nesting depth is derived from 4-space indentation levels of
+    executable lines — the same signal the file-health ``deep_nesting``
+    smell uses. Depths are pinned EXACTLY (CLAUDE.md exact-assertion lock):
+    a hand-counted fixture must produce the hand-counted number.
+    """
+
+    def test_flat_module_has_zero_depth(self):
+        """Top-level-only code has nesting depth 0."""
+        content = "import os\nx = 1\ny = 2\n"
+        assert _compute_max_nesting_depth(content) == 0
+
+    def test_five_level_nest_pins_exactly(self):
+        """A hand-built 5-level nest (def→if→if→while→for body) == 5.
+
+        Counting from column 0:
+          def f()            -> col 0
+            if a:            -> body at col 4  (depth 1)
+              if b:          -> body at col 8  (depth 2)
+                while c:     -> body at col 12 (depth 3)
+                  for d ...: -> body at col 16 (depth 4)
+                    return 1 -> col 20         (depth 5)
+        The deepest executable line ``return 1`` sits at 20 spaces -> 5.
+        """
+        content = (
+            "def f():\n"
+            "    if a:\n"
+            "        if b:\n"
+            "            while c:\n"
+            "                for d in e:\n"
+            "                    return 1\n"
+        )
+        assert _compute_max_nesting_depth(content) == 5
+
+    def test_empty_content_has_zero_depth(self):
+        """Empty content has nesting depth 0."""
+        assert _compute_max_nesting_depth("") == 0
+
+
 class TestComputeFileMetrics:
     """Tests for compute_file_metrics function."""
+
+    @patch("tree_sitter_analyzer.mcp.utils.file_metrics.read_file_safe")
+    @patch("tree_sitter_analyzer.mcp.utils.file_metrics.get_shared_cache")
+    def test_compute_file_metrics_max_nesting_depth(
+        self, mock_get_cache, mock_read_file
+    ):
+        """file_metrics carries max_nesting_depth pinned to the hand count (#580)."""
+        content = (
+            "def f():\n"
+            "    if a:\n"
+            "        if b:\n"
+            "            while c:\n"
+            "                for d in e:\n"
+            "                    return 1\n"
+        )
+        mock_read_file.return_value = (content, "utf-8")
+        mock_cache = MagicMock()
+        mock_cache.get_metrics.return_value = None
+        mock_get_cache.return_value = mock_cache
+
+        result = compute_file_metrics("/test/nested.py", language="python")
+
+        assert result["max_nesting_depth"] == 5
 
     @patch("tree_sitter_analyzer.mcp.utils.file_metrics.read_file_safe")
     @patch("tree_sitter_analyzer.mcp.utils.file_metrics.get_shared_cache")

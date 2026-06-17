@@ -1,5 +1,50 @@
 # Changelog
 
+## [1.25.0] - 2026-06-17
+
+Correctness & agent-honesty point release. 14 commits since 1.24.0 (6 fixes,
+1 feature, plus docs/test hardening) — every change is user-visible output
+correctness, CLI-flag behavior, or agent-facing documentation accuracy. No
+agent-facing P0/P1 ships in this release.
+
+### Added
+
+- **`max_nesting_depth` in `file_metrics`.** `--check-scale` (and the
+  `check_scale` surface) now reports the deepest nesting level per file
+  alongside the existing scale metrics. (#1026)
+
+### Fixed
+
+- **Language attribution for C#/PHP/Ruby/SQL.** Extracted elements no longer
+  report `language='unknown'` in `--advanced` output for these four
+  languages — a cross-language data-correctness bug that mislabeled real
+  symbols. (#1023)
+- **SQL parameter normalization in `--summary`.** SQL method parameters are
+  now normalized consistently in the `--summary` JSON output. (#1021)
+- **`--ast-cache-language` actually filters the index.** The flag now scopes
+  the index file-walk, skipping files for non-matching languages instead of
+  being ignored. (#1022)
+- **`--safe-to-edit` recommendation built from the escalated verdict.** The
+  recommendation is now derived from the escalated verdict rather than the
+  raw risk score, so the advice matches the final safety verdict. (#1030)
+- **Skills runtime commands corrected.** Replaced the invalid
+  `--ast-cache-mode force/status` recipe (which is not a real command) with
+  valid `--ast-cache` commands in the skill docs. (#1031)
+- **Onboarding clarity.** `--install-skills` now echoes its destination path,
+  with a README CLI-verification twin to keep the documented behavior
+  honest. (#1025)
+
+### Changed
+
+- **Docs re-synced to current code.** All 6 CODEMAPS regenerated for
+  doc-code alignment (#1049); README documents additional CLI entry points
+  and `--install-skills-global` (#1036); skill docs note the `batch_search`
+  `>=2` constraint and use portable `sqlite3` examples (#1035).
+- **Test hygiene.** De-duplicated the triplicated CLI info-command tests
+  (#1048); marked remaining heavy full-surface boundary tests `slow_ok` to
+  stabilize Windows budget flakes (#1024); regenerated `uv.lock` so
+  `--locked` passes (#1020).
+
 ## [1.24.0] - 2026-06-16
 
 Correctness & robustness release. 300 commits since 1.23.0 (208 fixes, 52

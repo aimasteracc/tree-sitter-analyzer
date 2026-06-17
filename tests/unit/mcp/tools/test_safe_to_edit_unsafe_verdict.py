@@ -159,6 +159,7 @@ def _make_change_impact_tool(project_root: Path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow_ok  # Real constraint-engine + dependency-graph walk; loaded CI runners can exceed 5s.
 class TestSafeToEditConstraintIntegration:
     """An error-severity violation on the target file must promote verdict."""
 
@@ -251,6 +252,42 @@ class TestSafeToEditConstraintIntegration:
         assert "summary_line" in result, sorted(result)
         assert f"verdict={verdict}" in result["summary_line"], result["summary_line"]
 
+    def test_recommendation_matches_escalated_verdict(self, tmp_path: Path) -> None:
+        """#1027: ``recommendation`` must agree with the escalated ``verdict``.
+
+        Before the fix, ``recommendation`` was rebuilt from the original,
+        un-escalated ``risk`` (``_risk_to_verdict(risk)``), while ``verdict``
+        was promoted to UNSAFE by a constraint violation. The result was a
+        self-contradicting envelope: ``verdict=UNSAFE`` next to a
+        ``recommendation`` that opened with "SAFE to edit". An agent reading
+        the two fields gets opposite instructions → false-positive work stop.
+        """
+        project = _scaffold_min_project(tmp_path)
+        _stage_dogfood_constraints(project)
+
+        db_path = project / ".ast-cache" / "index.db"
+        _init_violations_db(db_path)
+        _seed_violation(
+            db_path,
+            rule_id="mcp-no-cli",
+            caller_file=TARGET_FILE_REL,
+            severity="error",
+            caller_line=2,
+        )
+
+        tool = _make_safe_to_edit_tool(project)
+        result = _run(
+            tool.execute({"file_path": TARGET_FILE_REL, "output_format": "json"})
+        )
+
+        verdict = result["verdict"]
+        assert verdict == "UNSAFE", verdict
+        recommendation = result["recommendation"]
+        # The recommendation is escalated alongside the verdict: it must open
+        # with the UNSAFE phrasing and must NOT contain the SAFE-branch text.
+        assert recommendation.startswith("UNSAFE to edit"), recommendation
+        assert "SAFE to edit (health" not in recommendation, recommendation
+
     def test_safe_to_edit_emits_CAUTION_on_warn_violation(self, tmp_path: Path) -> None:
         """Only warn-severity → CAUTION (not the legacy ``REVIEW``).
 
@@ -286,6 +323,7 @@ class TestSafeToEditConstraintIntegration:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow_ok  # Real constraint-engine + dependency-graph walk; loaded CI runners can exceed 5s.
 class TestChangeImpactConstraintIntegration:
     """analyze_change_impact must expose ``constraint_violations``."""
 

@@ -20,6 +20,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "generate_facade_actions_doc.py"
 DOC_PATH = PROJECT_ROOT / "docs" / "api" / "facade-actions.md"
@@ -49,6 +51,7 @@ def test_facade_actions_doc_exists() -> None:
     )
 
 
+@pytest.mark.slow_ok  # Loads the full facade registry + inner schemas; loaded CI runners can exceed 5s.
 def test_facade_actions_doc_matches_generator() -> None:
     """Committed doc == in-memory regeneration (byte-for-byte)."""
     module = _load_generator()
@@ -60,6 +63,7 @@ def test_facade_actions_doc_matches_generator() -> None:
     )
 
 
+@pytest.mark.slow_ok  # Loads the full facade registry + inner schemas; loaded CI runners can exceed 5s.
 def test_facade_actions_surface_pins() -> None:
     """Exact pins on the documented surface (conscious re-pin on change).
 

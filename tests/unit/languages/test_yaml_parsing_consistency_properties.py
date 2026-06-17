@@ -207,6 +207,7 @@ def yaml_with_multi_documents(draw):
     return "\n".join(documents)
 
 
+@pytest.mark.slow_ok  # Hypothesis property tests (max_examples up to 100); loaded CI runners can exceed 5s.
 class TestYAMLParsingConsistencyProperties:
     """Property-based tests for YAML parsing consistency."""
 
