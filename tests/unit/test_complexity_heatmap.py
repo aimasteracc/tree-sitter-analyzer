@@ -226,6 +226,24 @@ class TestComplexityHeatmapTool:
         assert result["verdict"] in ("INFO", "REVIEW")
 
     @pytest.mark.asyncio
+    async def test_project_mode_string_max_files(self, complex_project):
+        """Project mode must coerce a string ``max_files`` to int.
+
+        The MCP boundary can deliver numeric params as strings (e.g.
+        ``"200"``). Before the coercion fix, ``_collect_source_files`` did
+        ``len(results) >= max_files`` and raised
+        ``TypeError: '>=' not supported between instances of 'int' and 'str'``.
+        The string path must behave identically to the int path.
+        """
+        tool = self._make_tool(complex_project)
+        result = await tool.execute(
+            {"mode": "project", "output_format": "json", "max_files": "200"}
+        )
+        assert result["success"] is True
+        assert result["mode"] == "project"
+        assert result["total_functions"] == 6
+
+    @pytest.mark.asyncio
     async def test_file_mode(self, complex_project):
         tool = self._make_tool(complex_project)
         result = await tool.execute(
