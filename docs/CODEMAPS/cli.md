@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-22 -->
+<!-- Generated: 2026-05-22; doc-code re-sync: 2026-06-17 -->
 # CLI Codemap
 
 Three console-script entry points + flag-based dispatch through `cli_main.py`.
@@ -29,8 +29,8 @@ cli/commands/
 ├── find_and_grep_cli.py        ← fd + ripgrep subcommands
 ├── list_files_cli.py           ← `list-files` subcommand
 ├── search_content_cli.py       ← `search-content` subcommand
-├── mcp_commands.py             ← MCP-equivalent CLI flags (parity contract)
-└── codegraph_index_commands.py ← cache trio: autoindex / full-index / incremental-sync / metrics
+├── mcp_commands/               ← MCP-equivalent CLI flags (parity contract; package)
+└── codegraph_index_commands.py ← cache commands: autoindex / full-index / incremental-sync / metrics
 ```
 
 ## Flag → Tool Mapping
@@ -51,7 +51,7 @@ Categories of CLI surface:
 - `--query "(method_declaration) @m"` — raw tree-sitter query
 
 ### Project-Level
-- `--project-overview` — snapshot
+- `--overview` — snapshot
 - `--project-health` — health-score distribution
 - `--smart-context` / `smart-context FILE` — SMART workflow context
 - `--change-impact` — blast radius (`--change-impact-resource-profile local_low_impact` emits nice/xdist-capped local pytest commands plus the original CI command)
@@ -88,7 +88,7 @@ Categories of CLI surface:
 - `--call-path FROM TO` — BFS path between two functions
 - `--symbol-resolve` — go-to-definition / find-all-references
 - `--ast-path FILE:LINE` — "what is at file:line?"
-- `--codegraph-symbol-search QUERY` — FTS5 symbol search
+- `--symbol-search QUERY` — FTS5 symbol search
 - `--codegraph-explore QUERY` — bulk-fetch N related symbols + relmap (CodeGraph parity)
 - `--codegraph-query CHAIN` — jQuery-style chained graph query (`semantic('auth handler').has(callees=True, name='auth').uml(direction='TD').answer(compact=True)`)
 - `--codegraph-query-compact` — trim duplicate source payloads and empty relationship fields in chained query answers

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-22 -->
+<!-- Generated: 2026-05-22; doc-code re-sync: 2026-06-17 -->
 # Architecture Codemap
 
 High-level topology of the `tree-sitter-analyzer` Python package.
@@ -17,8 +17,15 @@ tree_sitter_analyzer/
 ├── languages/        ← 21 tree-sitter plugins                (languages.md)
 ├── formatters/       ← TOON / JSON / table / CSV / YAML      (formatters.md)
 ├── core/             ← Parser, engine, AnalysisSession, AnalysisRequest
+├── models/           ← AnalysisResult + Class/Function/Variable/Import models
 ├── plugins/          ← LanguagePlugin / ElementExtractor base + registry
 ├── queries/          ← Per-language tree-sitter query files
+├── import_extractors/← Per-language import extraction (_python/_java/…)
+├── synapse_resolver/ ← Cross-file callee binder (primary call-edge resolution)
+├── graph/            ← edge_store.py — single-edge-table call-graph store (B1)
+├── constraints/      ← architectural-constraints.yml evaluator/parser/schema
+├── hyphae/           ← Hyphae selector DSL (lexer/parser/ast/evaluator) — RFC-0001 reactive push
+├── skills/           ← 13 bundled tsa-* agent skills
 ├── security/         ← Boundary manager, path validator      (security.md)
 ├── grammar_coverage/ ← Coverage validator + auto-discovery
 ├── platform_compat/  ← Cross-platform recorder + compare
@@ -50,10 +57,10 @@ stdout / stderr / file_output_factory
 
 ### Security boundary
 Every path is validated against `TREE_SITTER_PROJECT_ROOT` by `security/validator.py`.
-**No tool ever reads outside the project root.** `BoundaryManager` is the single source of truth.
+**No tool ever reads outside the project root.** `ProjectBoundaryManager` is the single source of truth.
 
 ### Token optimization
-- **TOON** is the default MCP output format — ~73% smaller than JSON.
+- **TOON** is the default MCP output format — 50-70% fewer tokens than JSON (see `CLAUDE.md` §1).
 - AST results are stored in **SQLite** via `ast_cache.py` (content-hash keyed).
 - `incremental_sync.py` reindexes only changed files (mtime + SHA-256).
 
@@ -74,14 +81,15 @@ contract violation.**
 |---|---|---|
 | `tree-sitter-analyzer` CLI | `cli_main.py` → `cli/` | Human-facing, JSON default |
 | `tree-sitter-analyzer-mcp` MCP stdio server | `mcp/server.py` | AI-agent-facing, TOON default |
-| `find-and-grep` | `cli/commands/find_and_grep_cli.py` | fd + ripgrep wrapper |
-| `tree-sitter-analyzer-cli` (Python API) | `api.py` | Embeddable |
+| `miswire-audit` | `miswire_audit.py` | Run-on-your-repo cross-language correctness demo |
+| `list-files` / `search-content` / `find-and-grep` | `cli/commands/*_cli.py` | fd / ripgrep / fd+rg standalone utilities |
+| Python API (no console script) | `api.py` | Embeddable library entry |
 
 ## Critical Invariants (do NOT change without reading [`CLAUDE.md`](../../CLAUDE.md))
 
 1. **MCP default `output_format` = `"toon"`** — locked. Flipping to JSON loses 50-70% token savings.
 2. **CLI default `output_format` = `"json"`** — locked. Humans pipe into `jq`.
-3. **`project_root` is resolved via `os.path.abspath`** — NOT `os.path.realpath` (macOS symlink trap).
+3. **`project_root` resolution must NOT be naively re-canonicalised in `BaseMCPTool.__init__`** — `SecurityValidator`, `PathResolver`, and the test fixtures already agree on a `Path.resolve()` (realpath) resolution; the macOS `/var → /private/var` symlink means a mismatched re-canonicalisation diverges. r36's attempt broke 164 tests on macOS (rolled back).
 4. **CLI diagnostic output → stderr; payload → stdout** — never mix.
 5. **markdown files** are NOT scored by `project_health` — use `markdown_health` for that.
 
