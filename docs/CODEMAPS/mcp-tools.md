@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-22; Wave C2 facade cutover: 2026-06-02 -->
+<!-- Generated: 2026-05-22; Wave C2 facade cutover: 2026-06-02; doc-code re-sync: 2026-06-17 -->
 # MCP Tools Codemap
 
 **8 facade tools** registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py)
@@ -15,7 +15,7 @@ Response-envelope semantics (verdict alphabet, truncation fields, `compact_only`
 |---|---|---|
 | `search` | symbol / query / content / grep / batch / chain / select / subscribe / unsubscribe | Code search: BM25 symbol lookup, tree-sitter .scm DSL, ripgrep, fd+rg, batch, graph-chain DSL, Hyphae DSL, reactive push subscriptions (RFC-0001) |
 | `nav` | navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees / callee_tree / caller_tree / test_map / co_change | Call-graph navigation + one-call symbol context; test_map = which tests exercise a function (RFC-0014 Phase B); co_change = git-history temporal coupling (RFC-0014 Phase C) |
-| `structure` | outline / analyze / ast_path / sitemap / class_tree / class_detail / explore / read | Structural AST analysis + partial file read |
+| `structure` | outline / analyze / ast_path / sitemap / class_tree / class_detail / explore / read / signatures | Structural AST analysis + partial file read + signature-only listing |
 | `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / routes / overview / deps / test_gap | Code health, complexity, dependency analysis, untested symbol discovery |
 | `edit` | safe / guard / impact / refactor / constraints / pr / classify / ast_diff | Edit-safety, blast-radius, refactor, PR review |
 | `project` | overview / files / smart / parser / tools / metrics / skills / workflow / journal / doc_sync | Project-intelligence hub |
@@ -47,7 +47,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `list_agent_skills` | `--list-skills` | Curated skill index for AI agents |
 | `get_agent_workflow` | `--smart-context` | SMART workflow (Set→Map→Analyze→Retrieve→Trace) |
 | `advise_parser_readiness` | `--parser-readiness` | Pre-flight check before parsing |
-| `get_project_overview` | `--project-overview` | One-screen project snapshot |
+| `get_project_overview` | `--overview` | One-screen project snapshot |
 | `build_project_index` | `--build-project-index` / `--build-project-index-roots` | Rebuild the persistent project index from scratch and save to disk |
 | `check_project_health` | `--project-health` | Health-score per file + grade distribution |
 | `check_file_health` | `--file-health` | One-file health score + actionable smells |
@@ -73,7 +73,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `codegraph_navigate` | `--codegraph-navigate` | PRIMARY symbol navigation hub (def + refs + hierarchy) |
 | `codegraph_explore` | `--codegraph-explore` | BULK fetch N related symbols' source + relationship map |
 | `codegraph_query` | `--codegraph-query` | jQuery-style chained graph query with lexical `search()`, offline `semantic()`, filter/exclude/has selection, cached relationship expansion, Mermaid `uml()` facets, compact answer packs, and evidence facets |
-| `codegraph_symbol_search` | `--codegraph-symbol-search` | FTS5-powered symbol search over indexed project |
+| `codegraph_symbol_search` | `--symbol-search` | FTS5-powered symbol search over indexed project |
 | `codegraph_resolve` | `--symbol-resolve` | Go-to-definition / find-all-references |
 | `codegraph_ast_path` | `--ast-path` | "What is at file:line?" AST path/scope |
 | **CodeGraph parity — call graph** | | |
@@ -144,7 +144,7 @@ All tools return:
 
 | File | Purpose |
 |---|---|
-| `mcp/utils/project_index.py` | Persistent project structure snapshot |
+| `mcp/utils/project_index/` | Persistent project structure snapshot |
 | `mcp/utils/search_cache.py` | LRU cache for fd/ripgrep results |
 | `mcp/utils/file_output_factory.py` | Atomic file output for large payloads |
 | `mcp/utils/error_handler.py` | Typed error envelopes |

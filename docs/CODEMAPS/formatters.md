@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-30 -->
+<!-- Generated: 2026-05-30; doc-code re-sync: 2026-06-17 -->
 # Formatters Codemap
 
 Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/formatters/`.
@@ -7,7 +7,7 @@ Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/f
 
 | Format | Module | Default for | Use case |
 |---|---|---|---|
-| `toon` | `formatters/toon_formatter.py` | **MCP** | LLM agents — 73% smaller than JSON |
+| `toon` | `formatters/toon_formatter.py` (+ `formatters/toon_encoder.py` engine) | **MCP** | LLM agents — 50-70% fewer tokens than JSON (see `CLAUDE.md` §1; enforced by `tests/unit/mcp/test_output_cost_invariants.py`) |
 | `json` | `formatters/json_formatter.py` | **CLI** | `jq` piping, programmatic ingestion |
 | `table` | `formatters/table_formatter.py` (canonical, re-exports `LegacyTableFormatter`) + `tree_sitter_analyzer/default_table_formatter.py` + `legacy_table_formatter.py` | `--table` flag | Terminal viewing with box-drawing chars |
 | `csv` | via `tree_sitter_analyzer/_legacy_table_formatter_csv.py` | `--table csv` | Spreadsheet ingestion |
@@ -20,7 +20,7 @@ Output formats supported by both CLI and MCP. Located in `tree_sitter_analyzer/f
 
 | | TOON | JSON |
 |---|---|---|
-| Token cost | -73% | baseline |
+| Token cost | -50-70% | baseline |
 | Loss | none | none |
 | `jq` friendliness | no | yes |
 | Human readability | medium | high |
@@ -39,8 +39,8 @@ Interfaces live in `formatters/_formatter_interface.py` (no upward imports — b
 | `IFormatter` | `HtmlFormatter`, `JsonFormatter`, `CsvFormatter`, … | `format(elements)` → str |
 | `IStructureFormatter` | legacy adapters | `format_structure(dict)` → str |
 
-`formatter_registry.py` re-exports both for backward compat.
-`html_formatter.py` imports directly from `_formatter_interface.py` to avoid the
+`formatters/formatter_registry.py` re-exports both for backward compat.
+`formatters/html_formatter.py` imports directly from `formatters/_formatter_interface.py` to avoid the
 `formatter_registry ↔ html_formatter` import cycle (fixed 2026-05-30).
 
 ## Formatter Architecture
@@ -49,9 +49,16 @@ Each formatter inherits from `formatters/base_formatter.py`:
 
 ```python
 class BaseFormatter(ABC):
-    def format(self, result: AnalysisResult) -> str: ...
-    def _format_full(self, ...) -> str: ...
-    def _format_compact(self, ...) -> str: ...
+    def format(self, data: Any) -> str: ...
+    def format_summary(self, analysis_result: dict) -> str: ...
+    def format_structure(self, analysis_result: dict) -> str: ...
+    def format_advanced(self, ...) -> str: ...
+    def format_table(self, ...) -> str: ...
+
+class BaseTableFormatter(BaseFormatter):
+    # table-flavour helpers live here, not on BaseFormatter
+    def _format_full_table(self, ...) -> str: ...
+    def _format_compact_table(self, ...) -> str: ...
     def _format_csv(self, ...) -> str: ...
 ```
 
@@ -60,19 +67,19 @@ Per-language formatter mixins live alongside (`_java_formatter_*_mixin.py`,
 classes via Python's MRO.
 
 Key mixins for the Java formatter:
-- `_java_formatter_full_mixin.py` — `_format_full_table`
-- `_java_formatter_compact_mixin.py` — `_format_compact_table`
-- `_java_formatter_signatures_mixin.py` — `_format_signatures_table` (lightweight
+- `formatters/_java_formatter_full_mixin.py` — `_format_full_table`
+- `formatters/_java_formatter_compact_mixin.py` — `_format_compact_table`
+- `formatters/_java_formatter_signatures_mixin.py` — `_format_signatures_table` (lightweight
   method-directory; lists methods as `name →returnType(Np) L-L`, no bodies)
 
 Python formatter signatures module:
-- `_python_formatter_signatures_table.py` — `format_python_signatures_table`
+- `formatters/_python_formatter_signatures_table.py` — `format_python_signatures_table`
   (same lightweight directory shape as Java; groups methods by class + emits
   `<module functions>` block for top-level functions; used by
   `PythonTableFormatter._format_signatures_table` via `structure action=signatures`)
 
 TypeScript formatter signatures module:
-- `_typescript_formatter_signatures_table.py` — `format_typescript_signatures_table`
+- `formatters/_typescript_formatter_signatures_table.py` — `format_typescript_signatures_table`
   (lightweight directory for .ts/.tsx/.d.ts files; interfaces count as grouping
   containers; overloads each appear as separate lines; used by
   `TypeScriptTableFormatter._format_signatures_table` via `structure action=signatures`)
@@ -106,7 +113,8 @@ classes:
         line: 14
 ```
 
-Same data in JSON: ~30% more chars, ~73% more tokens for typical AST outputs.
+Same data in JSON costs noticeably more tokens for typical AST outputs (the
+50-70% TOON saving cited above; the exact ratio is pinned by `tests/unit/mcp/test_output_cost_invariants.py`).
 
 Serialization helpers: `formatters/toon_formatter.py:_emit_*` (extracted in r37dm dogfood).
 
