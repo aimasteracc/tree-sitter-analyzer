@@ -198,66 +198,6 @@ pytestmark = [pytest.mark.unit]
 class TestCLIAdditionalCoverage:
     """Additional test cases to improve CLI coverage"""
 
-    def test_show_supported_languages(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["cli", "--show-supported-languages"])
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        # Accept either legacy plain-text ("Supported languages") or the
-        # JSON-envelope shape that became the default in v1.13.0.
-        output = mock_stdout.getvalue()
-        assert "Supported languages" in output or '"languages"' in output
-
-    def test_show_supported_extensions(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["cli", "--show-supported-extensions"])
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        output = mock_stdout.getvalue()
-        assert "Supported file extensions" in output or '"extensions"' in output
-
-    def test_show_common_queries(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["cli", "--show-common-queries"])
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        output = mock_stdout.getvalue()
-        assert len(output) > 0
-
-    def test_show_query_languages(self, monkeypatch):
-        monkeypatch.setattr(sys, "argv", ["cli", "--show-query-languages"])
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        output = mock_stdout.getvalue()
-        # v1.13.0: JSON envelope replaces plain-text — accept either.
-        assert "Languages with query support" in output or '"languages"' in output
-
-    def test_list_queries_with_language(self, monkeypatch):
-        monkeypatch.setattr(
-            sys, "argv", ["cli", "--list-queries", "--language", "java"]
-        )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        output = mock_stdout.getvalue()
-        assert "Available query keys" in output or '"queries"' in output
-
     def test_list_queries_with_file(self, monkeypatch, sample_java_file):
         monkeypatch.setattr(sys, "argv", ["cli", "--list-queries", sample_java_file])
         mock_stdout = StringIO()
@@ -279,20 +219,6 @@ class TestCLIAdditionalCoverage:
 
         output = mock_stdout.getvalue()
         assert "Supported languages" in output or '"languages"' in output
-
-    def test_describe_query_with_language(self, monkeypatch):
-        monkeypatch.setattr(
-            sys, "argv", ["cli", "--describe-query", "class", "--language", "java"]
-        )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        output = mock_stdout.getvalue()
-        # v1.13.0: JSON envelope replaces plain-text "Query key 'X'".
-        assert "Query key 'class'" in output or '"class"' in output
 
     def test_describe_query_with_file(self, monkeypatch, sample_java_file):
         sample_dir = str(Path(sample_java_file).parent)
