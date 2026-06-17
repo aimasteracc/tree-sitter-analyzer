@@ -156,7 +156,10 @@ class CodeGraphComplexityHeatmapTool(BaseMCPTool):
         assert self.project_root is not None, "project_root required"
         language = arguments.get("language")
         directory = arguments.get("directory")
-        max_files = arguments.get("max_files", 200)
+        # The MCP boundary can deliver numeric params as strings (e.g. "200").
+        # Coerce so ``len(results) >= max_files`` in _collect_source_files never
+        # hits ``int >= str`` (matches the int() pattern in _call_tree_tool).
+        max_files = int(arguments.get("max_files", 200))
         cache = self._get_cache()
 
         heatmap = analyze_project_heatmap(
