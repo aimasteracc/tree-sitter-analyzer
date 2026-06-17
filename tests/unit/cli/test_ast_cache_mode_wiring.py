@@ -54,6 +54,7 @@ def test_ast_cache_with_mode_still_dispatches():
     assert exc_info.value.code == 0
 
 
+@pytest.mark.slow_ok  # Real CLI dispatch reaches AST cache stats; macOS CI can exceed 5s.
 def test_bare_ast_cache_defaults_to_stats():
     """Bare ``--ast-cache`` (no mode) → still defaults to stats and dispatches.
 

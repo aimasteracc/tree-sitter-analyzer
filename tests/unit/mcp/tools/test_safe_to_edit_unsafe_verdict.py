@@ -159,6 +159,7 @@ def _make_change_impact_tool(project_root: Path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow_ok  # Real constraint-engine + dependency-graph walk; loaded CI runners can exceed 5s.
 class TestSafeToEditConstraintIntegration:
     """An error-severity violation on the target file must promote verdict."""
 
@@ -322,6 +323,7 @@ class TestSafeToEditConstraintIntegration:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow_ok  # Real constraint-engine + dependency-graph walk; loaded CI runners can exceed 5s.
 class TestChangeImpactConstraintIntegration:
     """analyze_change_impact must expose ``constraint_violations``."""
 
