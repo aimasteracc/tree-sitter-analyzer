@@ -247,10 +247,15 @@ class KotlinTableFormatter(BaseTableFormatter):
         return self._format_compact_table(analysis_result)
 
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
-        """Format structure analysis output for Kotlin"""
-        if self.format_type == "compact":
-            return self._format_compact_table(analysis_result)
-        return self._format_full_table(analysis_result)
+        """Format structure analysis output for Kotlin.
+
+        Delegates to the base dispatcher (like Go) so every format type is
+        handled consistently: full/compact/csv render, and an unsupported
+        type such as ``signatures`` raises the enumerable "supported
+        languages" error instead of silently falling through to the full
+        table.
+        """
+        return super().format_structure(analysis_result)
 
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"
