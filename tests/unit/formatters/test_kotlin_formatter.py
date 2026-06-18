@@ -3,7 +3,25 @@
 Tests for Kotlin-specific table formatter.
 """
 
+import pytest
+
 from tree_sitter_analyzer.formatters.kotlin_formatter import KotlinTableFormatter
+
+
+class TestKotlinFormatterSignaturesUnsupported:
+    """Kotlin does not support the signatures directory mode; it must raise the
+    same enumerable error as the base/Go formatter, not silently render the
+    full table (regression: it fell through to _format_full_table)."""
+
+    def test_format_structure_signatures_raises_enumerable(self):
+        formatter = KotlinTableFormatter(format_type="signatures")
+        data = {
+            "file_path": "Example.kt",
+            "methods": [],
+            "statistics": {"method_count": 0, "field_count": 0},
+        }
+        with pytest.raises(ValueError, match="signatures format not supported"):
+            formatter.format_structure(data)
 
 
 class TestKotlinFormatterInit:
