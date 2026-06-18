@@ -40,28 +40,28 @@ import ""time""
 | Middleware | exported | 254-254 |
 
 ## Functions
-| Func | Signature | Vis | Lines | Doc |
-|------|-----------|-----|-------|-----|
-| Read | (p []byte) (n int, err error) | exported | 55-55 | - |
-| Write | (p []byte) (n int, err error) | exported | 61-61 | - |
-| NewService | (name string, config *Config) *Service | exported | 80-86 | - |
-| Name | () string | exported | 89-91 | - |
-| IsRunning | () bool | exported | 94-98 | - |
-| Start | (ctx context.Context) error | exported | 101-114 | - |
-| run | (ctx context.Context) | unexported | 117-132 | - |
-| tick | (t time.Time) | unexported | 135-139 | - |
-| Stop | () error | exported | 142-153 | - |
-| stop | () | unexported | 156-160 | - |
-| ProcessData | (ctx context.Context, input <-chan []byte) (<-chan []byte, <-chan error) | exported | 163-193 | - |
-| process | (data []byte) []byte | unexported | 196-203 | - |
-| NewWorkerPool | (workers int) *WorkerPool | exported | 213-218 | - |
-| Start | () | exported | 221-226 | - |
-| worker | () | unexported | 229-234 | - |
-| Submit | (job func()) | exported | 237-239 | - |
-| Shutdown | () | exported | 242-245 | - |
-| Chain | (middlewares ...Middleware) Middleware | exported | 257-264 | - |
-| WithTimeout | (timeout time.Duration) Middleware | exported | 267-275 | - |
-| WithRetry | (maxRetries int) Middleware | exported | 278-293 | - |
+| Func | Signature | Vis | Lines | Cx | Doc |
+|------|-----------|-----|-------|----|-----|
+| Read | (p []byte) (n int, err error) | exported | 55-55 | 1 | - |
+| Write | (p []byte) (n int, err error) | exported | 61-61 | 1 | - |
+| NewService | (name string, config *Config) *Service | exported | 80-86 | 1 | - |
+| Name | () string | exported | 89-91 | 1 | - |
+| IsRunning | () bool | exported | 94-98 | 1 | - |
+| Start | (ctx context.Context) error | exported | 101-114 | 1 | - |
+| run | (ctx context.Context) | unexported | 117-132 | 1 | - |
+| tick | (t time.Time) | unexported | 135-139 | 1 | - |
+| Stop | () error | exported | 142-153 | 1 | - |
+| stop | () | unexported | 156-160 | 1 | - |
+| ProcessData | (ctx context.Context, input <-chan []byte) (<-chan []byte, <-chan error) | exported | 163-193 | 1 | - |
+| process | (data []byte) []byte | unexported | 196-203 | 1 | - |
+| NewWorkerPool | (workers int) *WorkerPool | exported | 213-218 | 1 | - |
+| Start | () | exported | 221-226 | 1 | - |
+| worker | () | unexported | 229-234 | 1 | - |
+| Submit | (job func()) | exported | 237-239 | 1 | - |
+| Shutdown | () | exported | 242-245 | 1 | - |
+| Chain | (middlewares ...Middleware) Middleware | exported | 257-264 | 1 | - |
+| WithTimeout | (timeout time.Duration) Middleware | exported | 267-275 | 1 | - |
+| WithRetry | (maxRetries int) Middleware | exported | 278-293 | 1 | - |
 
 ## Variables
 | Name | Type | Vis | Line |

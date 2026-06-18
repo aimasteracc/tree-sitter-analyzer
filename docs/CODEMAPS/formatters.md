@@ -66,6 +66,14 @@ Per-language formatter mixins live alongside (`_java_formatter_*_mixin.py`,
 `_cpp_formatter_*_mixin.py`, etc.) and are composed into the concrete formatter
 classes via Python's MRO.
 
+Standalone per-language formatters (self-contained, no mixin composition):
+- `formatters/go_formatter.py` — `GoTableFormatter`; full/compact/csv/json; renders
+  `| Func | Signature | Vis | Lines | Cx | Doc |` (functions) and
+  `| Receiver | Func | Signature | Vis | Lines | Cx | Doc |` (methods)
+- `formatters/bash_formatter.py` — `BashTableFormatter`; registered for "bash" / "sh";
+  renders `| Name | Signature | Vis | Lines | Cx | Doc |` (full) and
+  `| Name | Sig | V | L | Cx | Doc |` (compact)
+
 Key mixins for the Java formatter:
 - `formatters/_java_formatter_full_mixin.py` — `_format_full_table`
 - `formatters/_java_formatter_compact_mixin.py` — `_format_compact_table`

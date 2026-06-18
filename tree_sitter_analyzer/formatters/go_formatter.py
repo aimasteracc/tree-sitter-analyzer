@@ -84,9 +84,10 @@ class GoTableFormatter(BaseTableFormatter):
         vis = self._go_visibility(name)
         line_range = func.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        complexity = func.get("complexity_score", 1)
         doc = self._extract_doc_summary(func.get("docstring", "") or "")
 
-        return f"| {name} | {sig} | {vis} | {lines_str} | {doc or '-'} |"
+        return f"| {name} | {sig} | {vis} | {lines_str} | {complexity} | {doc or '-'} |"
 
     def _format_method_row(self, method: dict[str, Any]) -> str:
         """Format a method table row for Go (with receiver)"""
@@ -98,11 +99,10 @@ class GoTableFormatter(BaseTableFormatter):
         vis = self._go_visibility(name)
         line_range = method.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        complexity = method.get("complexity_score", 1)
         doc = self._extract_doc_summary(method.get("docstring", "") or "")
 
-        return (
-            f"| {receiver_type} | {name} | {sig} | {vis} | {lines_str} | {doc or '-'} |"
-        )
+        return f"| {receiver_type} | {name} | {sig} | {vis} | {lines_str} | {complexity} | {doc or '-'} |"
 
     def _create_go_signature(self, func: dict[str, Any]) -> str:
         """Create Go function signature"""
