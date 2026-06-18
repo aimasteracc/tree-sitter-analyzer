@@ -108,7 +108,7 @@ class GoTableFormatter(BaseTableFormatter):
         """Create Go function signature"""
         params = func.get("parameters", [])
         if isinstance(params, list):
-            params_str = ", ".join(str(p) for p in params)
+            params_str = ", ".join(self._format_go_param(p) for p in params)
         else:
             params_str = str(params)
 
@@ -116,6 +116,17 @@ class GoTableFormatter(BaseTableFormatter):
         if return_type:
             return f"({params_str}) {return_type}"
         return f"({params_str})"
+
+    @staticmethod
+    def _format_go_param(param: Any) -> str:
+        """Render one Go parameter as 'name type' (never a raw dict repr)."""
+        if isinstance(param, dict):
+            name = param.get("name", "")
+            ptype = param.get("type", "")
+            if name and ptype:
+                return f"{name} {ptype}"
+            return name or ptype or str(param)
+        return str(param)
 
     def _create_go_compact_signature(self, func: dict[str, Any]) -> str:
         """Create compact Go function signature"""

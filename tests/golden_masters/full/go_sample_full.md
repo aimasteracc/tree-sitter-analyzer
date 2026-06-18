@@ -42,26 +42,26 @@ import ""time""
 ## Functions
 | Func | Signature | Vis | Lines | Doc |
 |------|-----------|-----|-------|-----|
-| Read | ({'name': '[]byte', 'type': 'p'}) (n int, err error) | exported | 55-55 | - |
-| Write | ({'name': '[]byte', 'type': 'p'}) (n int, err error) | exported | 61-61 | - |
-| NewService | ({'name': 'string', 'type': 'name'}, {'name': '*Config', 'type': 'config'}) *Service | exported | 80-86 | - |
+| Read | (p []byte) (n int, err error) | exported | 55-55 | - |
+| Write | (p []byte) (n int, err error) | exported | 61-61 | - |
+| NewService | (name string, config *Config) *Service | exported | 80-86 | - |
 | Name | () string | exported | 89-91 | - |
 | IsRunning | () bool | exported | 94-98 | - |
-| Start | ({'name': 'context.Context', 'type': 'ctx'}) error | exported | 101-114 | - |
-| run | ({'name': 'context.Context', 'type': 'ctx'}) | unexported | 117-132 | - |
-| tick | ({'name': 'time.Time', 'type': 't'}) | unexported | 135-139 | - |
+| Start | (ctx context.Context) error | exported | 101-114 | - |
+| run | (ctx context.Context) | unexported | 117-132 | - |
+| tick | (t time.Time) | unexported | 135-139 | - |
 | Stop | () error | exported | 142-153 | - |
 | stop | () | unexported | 156-160 | - |
-| ProcessData | ({'name': 'context.Context', 'type': 'ctx'}, {'name': '[]byte', 'type': 'input <-chan'}) (<-chan []byte, <-chan error) | exported | 163-193 | - |
-| process | ({'name': '[]byte', 'type': 'data'}) []byte | unexported | 196-203 | - |
-| NewWorkerPool | ({'name': 'int', 'type': 'workers'}) *WorkerPool | exported | 213-218 | - |
+| ProcessData | (ctx context.Context, input <-chan []byte) (<-chan []byte, <-chan error) | exported | 163-193 | - |
+| process | (data []byte) []byte | unexported | 196-203 | - |
+| NewWorkerPool | (workers int) *WorkerPool | exported | 213-218 | - |
 | Start | () | exported | 221-226 | - |
 | worker | () | unexported | 229-234 | - |
-| Submit | ({'name': 'func()', 'type': 'job'}) | exported | 237-239 | - |
+| Submit | (job func()) | exported | 237-239 | - |
 | Shutdown | () | exported | 242-245 | - |
-| Chain | ({'name': '...Middleware', 'type': 'middlewares'}) Middleware | exported | 257-264 | - |
-| WithTimeout | ({'name': 'time.Duration', 'type': 'timeout'}) Middleware | exported | 267-275 | - |
-| WithRetry | ({'name': 'int', 'type': 'maxRetries'}) Middleware | exported | 278-293 | - |
+| Chain | (middlewares ...Middleware) Middleware | exported | 257-264 | - |
+| WithTimeout | (timeout time.Duration) Middleware | exported | 267-275 | - |
+| WithRetry | (maxRetries int) Middleware | exported | 278-293 | - |
 
 ## Variables
 | Name | Type | Vis | Line |
