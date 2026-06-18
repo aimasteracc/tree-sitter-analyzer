@@ -6,15 +6,18 @@
 #   * automatically on every PR open / new pushes (synchronize) / reopen
 #   * on demand when someone comments "@claude review" on a PR
 #
-# Auth: needs the ANTHROPIC_API_KEY repo secret (owner adds it under
-#   Settings → Secrets and variables → Actions). A CLAUDE_CODE_OAUTH_TOKEN
-#   secret works as an alternative — see the `with:` block below.
+# Auth: uses a Claude Pro/Max SUBSCRIPTION via an OAuth token (no API
+#   billing). Generate it once with `claude setup-token` locally, then add
+#   it as the repo secret CLAUDE_CODE_OAUTH_TOKEN under
+#   Settings → Secrets and variables → Actions. (An ANTHROPIC_API_KEY would
+#   work as an alternative, but this project authenticates by subscription.)
 #
-# The reviewer posts inline comments + a top-level summary using the
-# GitHub CLI and the action's inline-comment MCP tool. It is instructed
-# to honor the LOCKED design decisions in CLAUDE.md so it does not raise
-# findings the project has already settled (TOON default, exact-assertion
-# tests, etc.).
+# The reviewer posts a top-level summary via the GitHub CLI, plus inline
+# comments where possible. Note: inline-comment classification works best
+# with an API key; on a subscription token the summary path is the primary
+# channel. It is instructed to honor the LOCKED design decisions in
+# CLAUDE.md so it does not raise findings the project has already settled
+# (TOON default, exact-assertion tests, etc.).
 
 name: Claude PR Review
 
@@ -56,9 +59,9 @@ jobs:
       - name: Claude review
         uses: anthropics/claude-code-action@v1
         with:
-          # Owner must add ANTHROPIC_API_KEY (or swap in
-          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}).
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Subscription auth: token from `claude setup-token`, stored as
+          # the CLAUDE_CODE_OAUTH_TOKEN repo secret (no API key / no billing).
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           track_progress: true
           prompt: |
             REPO: ${{ github.repository }}
