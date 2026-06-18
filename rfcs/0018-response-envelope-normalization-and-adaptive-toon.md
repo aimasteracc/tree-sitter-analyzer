@@ -3,8 +3,12 @@
 - **Status**: draft (revised after 3-arm adversarial review, 2026-06-18)
 - **Author(s)**: @aisheng.yu (PM) + dogfood investigation 2026-06-18
 - **Created**: 2026-06-18
-- **Last updated**: 2026-06-18 (rev 2 — incorporates review findings; **Part B
-  "adaptive selection" DROPPED**, encoder-conformance promoted to a hard
+- **Last updated**: 2026-06-18 (rev 3 — 10-expert panel rulings folded in: new
+  rules R9 total_count-on-truncation, R10 no-duplicate-arrays/columns, R11 CI
+  token-ratchet; R3 reframed as schema-normalization; R4 methodology bug fixed
+  (semantic denylist) + deprecation window; R7 narrowed; wire decision = raw
+  TOON default + `output_format=json` escape hatch + `mimeType`. rev 2 — review
+  findings; Part B "adaptive selection" DROPPED, encoder-conformance promoted to
   prerequisite, Part A re-scoped to keep contract echoes)
 - **Tracking issue**: TBD
 - **Supersedes**: extends RFC-0012 (toon-json-dedup, implemented). RFC-0012's
@@ -205,6 +209,69 @@ dicts (no mutation, per coding-style immutability rule).
   than invent.
 - **RFC-0012**: established decision tools have no bulk arrays to strip; this RFC
   concludes the fix is the wire + payload hygiene, not more denylist tuning.
+
+## Rev 3 — 10-expert panel rulings (PM 拍板, 2026-06-18)
+
+A 10-expert panel (LLM context-engineering, serialization-format design, API/schema,
+MCP protocol, DX, information theory, columnar/query-result, SRE/contract-stability,
+agent-orchestration, measurement-rigor) stress-tested the design on the real 25-tool
+capture. Convergent findings forced these rulings.
+
+### Measurement correction (read first)
+All `_stats.json` ratios are **post-PR2 hypothetical** — the *current* wire is
+**~1.81× JSON** (json.dumps envelope + escaped toon_content), not 0.79×. The wire
+fix (PR2) alone saves ~847k tokens per full-tool sweep — larger than all payload
+rules combined. State current-vs-post-PR2 explicitly anywhere a ratio is quoted.
+
+### Wire decision (PM 拍板)
+Ship **raw TOON on the wire as the default** for `output_format="toon"` responses.
+`output_format="json"` is the documented **escape hatch** for any client that cannot
+read TOON. Set `mimeType: "application/toon"` so a non-TOON client gets a *detectable*
+content-type mismatch rather than a silent `json.loads` failure. We do **not** build
+opt-in capability negotiation — the format is already per-call selectable. Residual
+gap (accepted): `output_format=json` is per-call, so a TOON-unaware client's *first*
+call still gets TOON; this is acceptable given TSA's TOON-first positioning. §1 default
+literal untouched.
+
+### Rule rulings
+| Rule | Ruling | Key change from panel |
+|---|---|---|
+| R1 cap+paginate | MODIFY | **per-tool** caps (token-budget-derived, not global 50); **keyset cursor** not offset (SQLite OFFSET is O(n²)); mandatory `sort_by` |
+| R2 sitemap reshape | ADOPT | highest-certainty win (47,722 tok, frequency-independent); use **file-index** in flattened records; **keep trees as trees** (don't flatten call-trees) |
+| R3 repeated strings | REFRAME → **schema normalization** | not string-dedup (4 of 8 `edit.safe` copies are prose-wrapped, exact-match misses them). Collapse 8 command fields → 2 structured (`verification_command` + `run_verification:{pre,post,queue}`). ~720 tok (42% of edit.safe), no encoder/decoder dep, **standalone PR** |
+| R4 canonical key | MODIFY | **methodology bug fixed**: dup-detector matched on value, falsely grouped `success==truncated==True`. Semantic **denylist** (never merge success/truncated/verdict). Only merge true synonyms. **Mandatory dual-emit deprecation window** + `_deprecated` field + instrument live alias access before drop (blast radius: 104 test files / 1142 assertion lines) |
+| R5 agent_summary slim | ADOPT | strip non-locked echoes only |
+| R6 keep scalar dicts | ADOPT | unanimous (EAV anti-pattern) |
+| R7 drop empty/derivable | NARROW | drop **empty + zero-info echoes only**. **KEEP** `binary` (agent pre-filter), `non_source_match_count` (source-vs-test caller split), `top_directories` (scoping histogram), `data_source` (edge provenance). Per-field consumer check before any drop |
+| R8 locked contract | ADOPT unchanged | locked echoes stay; panel's "single authoritative location" rejected |
+
+### New rules adopted
+- **R9 — truncation completeness (correctness, not cosmetics):** any response with
+  `truncated=true` MUST carry a top-level `total_count: int` (and `sort_by`). Without
+  it an agent refactoring on "50 of unknown" ships broken work. Tree tools expose
+  `total_node_count` + `truncated_at_depth`.
+- **R10 — no duplicate top-level arrays / columns:** `nav.trace` ships `usages` AND
+  `results` as *identical* arrays (46.7% of the response) and `file==file_path`,
+  `line==line_number` columns inside them. R4 (scalar aliases) misses these.
+- **R11 — CI token ratchet (anti-regression keystone):** for every tool, two assertions
+  in `test_output_cost_invariants.py`: (a) `toon_tokens < json_tokens` (the disjoint
+  invariant — currently RED for sitemap), (b) `ratio <= PINNED_RATIOS[tool]` (a ratchet;
+  re-pin only via a conscious commit with measurement date). This is the §11
+  belief→executable-invariant fix. Also: round-trip oracle asserts **types** decode
+  correctly (`line`→int, `success`→bool), not just bytes.
+
+### Deferred to a future RFC (logged, not in scope)
+caller-driven projection (`fields=`/`verbosity=` param), verdict `status`/`action`
+split (the enum conflates outcome with directive), cross-response/session template
+dictionary (project_root + command templates re-sent every call).
+
+### Revised sequencing
+- **PR3a (standalone, highest ROI, zero wire/encoder dependency):** R3 `edit.safe`
+  command collapse + R2 sitemap reshape + R10 dup-array/column removal + R9 total_count
+  contract. Pure payload — ship first.
+- **PR3b (high risk, needs deprecation window):** R4 alias collapse (dual-emit +
+  instrumentation) + R5/R7 slimming.
+- PR1/PR2 as before; R11 ratchet spans all PRs.
 
 ## Test plan (RED-first)
 
