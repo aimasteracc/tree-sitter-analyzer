@@ -274,6 +274,57 @@ def _kotlin_expression_body_type(
     return ""
 
 
+# ---------------------------------------------------------------------------
+# Cyclomatic complexity for Kotlin
+# ---------------------------------------------------------------------------
+
+_KOTLIN_DECISION_TYPES: frozenset[str] = frozenset(
+    {
+        "if_expression",
+        "when_expression",
+        "for_statement",
+        "while_statement",
+        "do_while_statement",
+        "catch_block",
+    }
+)
+
+_KOTLIN_LOGIC_OP_TOKENS: frozenset[str] = frozenset({"&&", "||"})
+
+
+def _safe_children(node: Any) -> list[Any]:
+    """Return children list from a tree-sitter node, empty list on any error."""
+    try:
+        children = getattr(node, "children", None)
+        if children is None:
+            return []
+        return list(children)
+    except (TypeError, AttributeError):
+        return []
+
+
+def calculate_kotlin_complexity(node: Any) -> int:
+    """Return cyclomatic complexity for a Kotlin function node.
+
+    complexity = 1 + decision_points.
+    Decision points: if_expression, when_expression, for_statement,
+    while_statement, do_while_statement, catch_block (non-leaf nodes),
+    and ``&&`` / ``||`` leaf operator tokens.
+    """
+    decisions = 0
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        children = _safe_children(cur)
+        is_leaf = len(children) == 0
+        if not is_leaf and getattr(cur, "type", None) in _KOTLIN_DECISION_TYPES:
+            decisions += 1
+        elif is_leaf and getattr(cur, "type", None) in _KOTLIN_LOGIC_OP_TOKENS:
+            decisions += 1
+        stack.extend(children)
+    return 1 + decisions
+
+
 def extract_kotlin_function(
     node: Any,
     get_node_text: Callable[..., str],
@@ -341,6 +392,7 @@ def extract_kotlin_function(
             parameters=parameters,
             return_type=return_type,
             visibility=visibility,
+            complexity_score=calculate_kotlin_complexity(node),
         )
         func.is_suspend = is_suspend
 
@@ -453,6 +505,7 @@ def extract_kotlin_primary_constructor(
             return_type=None,
             visibility="public",
             is_constructor=True,
+            complexity_score=calculate_kotlin_complexity(node),
         )
 
     except Exception as e:
