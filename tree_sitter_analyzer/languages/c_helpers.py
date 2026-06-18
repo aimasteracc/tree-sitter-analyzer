@@ -28,6 +28,7 @@ from ._c_type_definition_helpers import (
 from ._c_type_definition_helpers import (
     extract_struct_definition as _extract_struct_definition_impl,
 )
+from ._complexity_logical import is_executable_logical_operator
 
 
 # Extract elements from AST: extract_c_imports
@@ -136,6 +137,11 @@ def calculate_complexity(node: Any) -> int:
         "conditional_expression",
         "do_statement",
     }
+    # "&&"/"||" in a preprocessor "#if A && B" condition or a "_Static_assert"
+    # is compile-time, not executable control flow, and must not be counted.
+    non_executable_anchors = frozenset(
+        {"preproc_if", "preproc_elif", "static_assert_declaration"}
+    )
 
     def count_decisions(n: Any) -> int:
         count = 0
@@ -143,14 +149,10 @@ def calculate_complexity(node: Any) -> int:
         if n_type in decision_nodes:
             count += 1
         elif n_type in ("&&", "||"):
-            # Short-circuit boolean operators each add a decision point, but
-            # only as logical operators (operands of a binary_expression),
-            # matching the Go/Rust/Swift convention.
-            parent = getattr(n, "parent", None)
-            if (
-                parent is not None
-                and getattr(parent, "type", None) == "binary_expression"
-            ):
+            # Short-circuit boolean operators each add a decision point when
+            # they drive executable control flow, matching the Go/Rust/Swift
+            # convention.
+            if is_executable_logical_operator(n, non_executable_anchors):
                 count += 1
         if hasattr(n, "children"):
             try:

@@ -1188,3 +1188,74 @@ class TestCSharpCyclomaticComplexity:
         assert len(funcs) == 1
         assert funcs[0].name == "Process"
         assert funcs[0].complexity_score == 11
+
+
+# ---------------------------------------------------------------------------
+# Non-executable boolean contexts (Codex P2/P3 on PR #1085)
+# ---------------------------------------------------------------------------
+# A "&&"/"||" only adds a decision point when it drives executable control
+# flow. Boolean tokens in a C++ noexcept/requires specifier, a preprocessor
+# "#if A && B" condition, a default argument, or an attribute/annotation are
+# compile-time / signature metadata, NOT runtime branches, and must leave an
+# otherwise branch-free function at complexity 1.
+
+
+class TestLogicalOperatorNonExecutableContexts:
+    def test_cpp_noexcept_boolean_not_counted(self):
+        funcs = _cpp_functions("int f() noexcept(true && false) { return 1; }")
+        assert funcs[0].name == "f"
+        assert funcs[0].complexity_score == 1
+
+    def test_cpp_requires_boolean_not_counted(self):
+        src = (
+            "template<class T> int g() "
+            "requires (sizeof(T) > 0 && sizeof(T) < 99) { return 2; }"
+        )
+        funcs = _cpp_functions(src)
+        assert funcs[0].name == "g"
+        assert funcs[0].complexity_score == 1
+
+    def test_cpp_default_argument_boolean_not_counted(self):
+        funcs = _cpp_functions("int h(bool flag = true && false) { return 1; }")
+        assert funcs[0].name == "h"
+        assert funcs[0].complexity_score == 1
+
+    def test_cpp_preproc_if_boolean_not_counted(self):
+        src = (
+            "int f(int x) {\n#if defined(A) && defined(B)\n x++;\n#endif\n return x;\n}"
+        )
+        funcs = _cpp_functions(src)
+        assert funcs[0].name == "f"
+        assert funcs[0].complexity_score == 1
+
+    def test_c_preproc_if_boolean_not_counted(self):
+        src = (
+            "int f(int x) {\n#if defined(A) && defined(B)\n x++;\n#endif\n return x;\n}"
+        )
+        funcs = _c_functions(src)
+        assert funcs[0].name == "f"
+        assert funcs[0].complexity_score == 1
+
+    def test_csharp_default_argument_boolean_not_counted(self):
+        funcs = _csharp_functions("class P { void M(bool flag = true && false) {} }")
+        assert funcs[0].name == "M"
+        assert funcs[0].complexity_score == 1
+
+    def test_csharp_attribute_boolean_not_counted(self):
+        funcs = _csharp_functions("class P { [Attr(true && false)] void M() {} }")
+        assert funcs[0].name == "M"
+        assert funcs[0].complexity_score == 1
+
+    def test_csharp_preproc_if_boolean_not_counted(self):
+        src = "class P {\n void M(int x) {\n#if DEBUG && TRACE\n x++;\n#endif\n }\n}"
+        funcs = _csharp_functions(src)
+        assert funcs[0].name == "M"
+        assert funcs[0].complexity_score == 1
+
+    def test_body_boolean_still_counts_as_control(self):
+        """A genuine body "&&" must still add a decision point (regression guard)."""
+        funcs = _cpp_functions(
+            "int f(int x) { if (x > 0 && x < 9) { return 1; } return 0; }"
+        )
+        assert funcs[0].name == "f"
+        assert funcs[0].complexity_score == 3

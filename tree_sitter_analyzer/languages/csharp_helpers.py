@@ -5,6 +5,13 @@ from typing import Any
 
 from ..models import Class, Function, Import, Variable
 from ..utils import log_error
+from ._complexity_logical import is_executable_logical_operator
+
+# "&&"/"||" in a default argument, an attribute, or a "#if A && B" condition is
+# not executable control flow and must not inflate a method's complexity.
+_CSHARP_NON_EXECUTABLE_ANCHORS = frozenset(
+    {"parameter", "attribute_argument", "preproc_if", "preproc_elif"}
+)
 
 _OWNING_TYPE_NODES = frozenset(
     {
@@ -105,14 +112,10 @@ def calculate_complexity(node: Any, traverse_fn: Callable[..., Iterator]) -> int
         if child_type in decision_keywords:
             complexity += 1
         elif child_type in ("&&", "||"):
-            # Short-circuit boolean operators each add a decision point, but
-            # only as logical operators (operands of a binary_expression),
-            # matching the Go/Rust/Swift convention.
-            parent = getattr(child, "parent", None)
-            if (
-                parent is not None
-                and getattr(parent, "type", None) == "binary_expression"
-            ):
+            # Short-circuit boolean operators each add a decision point when
+            # they drive executable control flow, matching the Go/Rust/Swift
+            # convention.
+            if is_executable_logical_operator(child, _CSHARP_NON_EXECUTABLE_ANCHORS):
                 complexity += 1
     return complexity
 
