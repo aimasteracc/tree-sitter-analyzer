@@ -349,12 +349,13 @@ def _build_agent_next_action(
 
 def _build_noop_agent_action() -> dict[str, Any]:
     """Build the action payload for files that need no immediate work."""
+    # RFC-0018 Part 3: a no-op action carries no commands. Emitting empty
+    # ``mcp_command:""`` / ``cli_command:""`` / ``post_edit_commands:[]``
+    # costs tokens on every healthy-file response (both surfaces) for zero
+    # agent signal — omit them rather than ship empties.
     return {
         "priority": "none",
         "reason": "file is healthy enough; no immediate refactor needed",
-        "mcp_command": "",
-        "cli_command": "",
-        "post_edit_commands": [],
     }
 
 
@@ -485,7 +486,7 @@ def _health_next_step(action: dict[str, Any], smells: list[dict[str, Any]]) -> s
         return "No immediate refactor needed."
     if not _has_refactor_target_smell(smells):
         return "Inspect the weakest health dimension and make a focused cleanup."
-    return f"Run refactoring suggestions: {action['cli_command']}"
+    return f"Run refactoring suggestions: {action.get('cli_command', '')}"
 
 
 def _health_verification_command(action: dict[str, Any], file_path: str) -> str:
