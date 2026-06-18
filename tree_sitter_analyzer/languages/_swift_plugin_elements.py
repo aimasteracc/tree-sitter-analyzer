@@ -294,11 +294,28 @@ def _parameter_names(raw_text: str) -> list[str]:
     match = re.search(r"\(([^)]*)\)", raw_text, flags=re.DOTALL)
     if not match:
         return []
-    return [_parameter_name(part) for part in match.group(1).split(",") if part.strip()]
+    return [_parameter(part) for part in match.group(1).split(",") if part.strip()]
 
 
-def _parameter_name(parameter_text: str) -> str:
-    before_type = parameter_text.split(":", 1)[0].strip()
+def _parameter(parameter_text: str) -> str:
+    """Render a Swift parameter as ``name: Type`` (mirrors Rust).
+
+    Drops the external argument label and the ``_`` no-label marker (keeping
+    the internal name), strips any default value, and splits on the *first*
+    colon only so dictionary types like ``[String: Int]`` stay intact.
+    """
+    before_type, sep, after_type = parameter_text.partition(":")
+    name = _parameter_name(before_type)
+    if not sep:
+        return name
+    type_text = " ".join(after_type.split("=", 1)[0].split())
+    if not type_text:
+        return name
+    return f"{name}: {type_text}" if name else type_text
+
+
+def _parameter_name(before_type: str) -> str:
+    before_type = before_type.strip()
     if not before_type:
         return ""
     tokens = before_type.split()

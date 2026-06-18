@@ -127,8 +127,29 @@ class TestSwiftExtraction:
         assert load.return_type == "User"
 
         greet = next(item for item in functions if item.name == "greet")
-        assert greet.parameters == ["message"]
+        assert greet.parameters == ["message: String"]
         assert greet.return_type == "String"
+
+    def test_function_parameters_keep_types(self, plugin: SwiftPlugin) -> None:
+        # Swift params must render as "name: Type" (mirrors Rust), not bare
+        # names — the internal name + the type, with the external argument
+        # label and the `_` no-label marker dropped, and default values
+        # stripped. Regression for the type-dropping defect.
+        sample = """
+        func config(name: String, times count: Int = 3, _ flag: Bool) -> Void {}
+        func lookup(map: [String: Int]) -> Int { return 0 }
+        """
+        tree = _swift_parser().parse(sample.encode("utf-8"))
+        functions = plugin.create_extractor().extract_functions(tree, sample)
+        by_name = {item.name: item for item in functions}
+        assert by_name["config"].parameters == [
+            "name: String",
+            "count: Int",
+            "flag: Bool",
+        ]
+        # A dictionary type contains its own colon; only the first colon
+        # separates name from type.
+        assert by_name["lookup"].parameters == ["map: [String: Int]"]
 
     def test_extract_variables(self, plugin: SwiftPlugin, tree) -> None:
         variables = plugin.create_extractor().extract_variables(tree, SWIFT_SAMPLE)
