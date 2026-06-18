@@ -138,7 +138,7 @@ class CodeGraphDependencyMatrixTool(BaseMCPTool):
             }
 
         elif mode == "hotspots":
-            top_k = arguments.get("top_k", 10)
+            top_k = int(arguments.get("top_k", 10))
             hotspots = dm.most_coupled(top_k=top_k)
             result = {
                 "success": True,

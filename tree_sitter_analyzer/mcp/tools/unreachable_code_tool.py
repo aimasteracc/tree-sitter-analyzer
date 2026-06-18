@@ -135,7 +135,7 @@ class UnreachableCodeTool(BaseMCPTool):
             return {"error": "Project root not set for project mode."}
 
         include_tests = arguments.get("include_test_files", False)
-        max_files = arguments.get("max_files", 500)
+        max_files = int(arguments.get("max_files", 500))
 
         try:
             results = analyze_project_unreachable(

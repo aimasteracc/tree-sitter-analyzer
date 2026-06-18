@@ -172,7 +172,7 @@ class ClassHierarchyTool(BaseMCPTool):
 
         mode = self._normalize_mode(self._resolve_mode(arguments))
         class_name = arguments.get("class_name", "")
-        max_depth = arguments.get("max_depth", 10)
+        max_depth = int(arguments.get("max_depth", 10))
         output_format = arguments.get("output_format", "toon")
 
         if is_index_rebuilding(self.project_root):

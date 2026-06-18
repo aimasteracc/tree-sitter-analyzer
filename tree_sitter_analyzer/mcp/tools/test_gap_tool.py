@@ -120,8 +120,8 @@ class CodeGraphTestGapTool(BaseMCPTool):
 
         mode = arguments.get("mode", "gaps")
         language_filter = arguments.get("language") or None
-        max_files = arguments.get("max_files", 1000)
-        max_gaps = arguments.get("max_gaps", 50)
+        max_files = int(arguments.get("max_files", 1000))
+        max_gaps = int(arguments.get("max_gaps", 50))
         include_covered = arguments.get("include_covered", False)
         output_format = arguments.get("output_format", "toon")
         target_file = arguments.get("file_path") or None
