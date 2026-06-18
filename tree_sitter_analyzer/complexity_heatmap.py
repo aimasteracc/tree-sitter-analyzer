@@ -279,9 +279,17 @@ def _extract_functions(
     tree: Any, source: str, language: str, file_path: str
 ) -> list[FunctionComplexity]:
     method_nodes = _METHOD_NODES.get(language, set())
-    if not method_nodes:
-        return []
+    if method_nodes:
+        return _extract_functions_from_ast(
+            tree, source, language, file_path, method_nodes
+        )
+    return _extract_functions_via_plugin(tree, source, language, file_path)
 
+
+def _extract_functions_from_ast(
+    tree: Any, source: str, language: str, file_path: str, method_nodes: set[str]
+) -> list[FunctionComplexity]:
+    """Original AST-walk path used for the 8 hardcoded languages."""
     results: list[FunctionComplexity] = []
     stack = [tree.root_node]
 
@@ -304,6 +312,51 @@ def _extract_functions(
             )
         stack.extend(node.children)
 
+    return results
+
+
+def _extract_functions_via_plugin(
+    tree: Any, source: str, language: str, file_path: str
+) -> list[FunctionComplexity]:
+    """Fallback path for languages not in _METHOD_NODES.
+
+    Uses the language plugin's synchronous extract_functions() which already
+    computes complexity_score for all 13 supported languages.
+    """
+    try:
+        from .plugins.manager import PluginManager
+
+        pm = PluginManager()
+        plugin = pm.get_plugin(language)
+        if plugin is None:
+            logger.debug(
+                "No plugin available for language %r — skipping %s", language, file_path
+            )
+            return []
+
+        extractor = plugin.create_extractor()
+        elements = extractor.extract_functions(tree, source)
+    except Exception as exc:
+        logger.debug(
+            "Plugin extraction failed for %s (%s): %s", file_path, language, exc
+        )
+        return []
+
+    results: list[FunctionComplexity] = []
+    for elem in elements:
+        results.append(
+            FunctionComplexity(
+                name=elem.name or "<anonymous>",
+                file=file_path,
+                line=elem.start_line,
+                end_line=elem.end_line,
+                complexity=max(getattr(elem, "complexity_score", 1), 1),
+                language=language,
+                class_name=getattr(elem, "receiver_type", None)
+                or getattr(elem, "parent_class", None),
+                decision_points={},
+            )
+        )
     return results
 
 
@@ -416,7 +469,7 @@ def analyze_project_heatmap(
     total_funcs = len(all_functions)
     project_avg = round(total_cc / total_funcs, 2) if total_funcs else 0.0
 
-    return {
+    result: dict[str, Any] = {
         "project_root": project_root,
         "total_files_analyzed": len(file_heatmaps),
         "total_functions": total_funcs,
@@ -459,6 +512,12 @@ def analyze_project_heatmap(
             for fh in file_heatmaps
         ],
     }
+    if total_funcs == 0:
+        result["note"] = (
+            "No functions extracted. The project may contain only languages "
+            "without parser support, or all files may be empty."
+        )
+    return result
 
 
 def _collect_source_files(

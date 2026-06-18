@@ -226,6 +226,24 @@ class TestComplexityHeatmapTool:
         assert result["verdict"] in ("INFO", "REVIEW")
 
     @pytest.mark.asyncio
+    async def test_project_mode_string_max_files(self, complex_project):
+        """Project mode must coerce a string ``max_files`` to int.
+
+        The MCP boundary can deliver numeric params as strings (e.g.
+        ``"200"``). Before the coercion fix, ``_collect_source_files`` did
+        ``len(results) >= max_files`` and raised
+        ``TypeError: '>=' not supported between instances of 'int' and 'str'``.
+        The string path must behave identically to the int path.
+        """
+        tool = self._make_tool(complex_project)
+        result = await tool.execute(
+            {"mode": "project", "output_format": "json", "max_files": "200"}
+        )
+        assert result["success"] is True
+        assert result["mode"] == "project"
+        assert result["total_functions"] == 6
+
+    @pytest.mark.asyncio
     async def test_file_mode(self, complex_project):
         tool = self._make_tool(complex_project)
         result = await tool.execute(
@@ -424,3 +442,106 @@ class TestComplexityCLI:
         assert data["mode"] == "function"
         assert data["name"] == "deeply_nested"
         assert data["complexity"] == 8
+
+
+# ---------------------------------------------------------------------------
+# Tests for languages NOT in the hardcoded _METHOD_NODES map (C#, Ruby, …).
+# These exercise the plugin-fallback path added to fix the silent-empty bug.
+# Exact integer counts are pinned per the "exact assertions only" rule.
+# ---------------------------------------------------------------------------
+
+_CSHARP_FIXTURE = """\
+public class Calculator {
+    public int Add(int a, int b) {
+        if (a < 0) return 0;
+        return a + b;
+    }
+    public int Sub(int a, int b) {
+        return a - b;
+    }
+}
+"""
+
+_RUBY_FIXTURE = """\
+def greet(name)
+  if name.nil?
+    "Hello stranger"
+  else
+    "Hello #{name}"
+  end
+end
+
+def add(a, b)
+  a + b
+end
+"""
+
+
+@pytest.fixture()
+def csharp_project(tmp_path):
+    project = tmp_path / "csproject"
+    project.mkdir()
+    (project / "Calculator.cs").write_text(_CSHARP_FIXTURE)
+    return project
+
+
+@pytest.fixture()
+def ruby_project(tmp_path):
+    project = tmp_path / "rbproject"
+    project.mkdir()
+    (project / "helpers.rb").write_text(_RUBY_FIXTURE)
+    return project
+
+
+class TestPluginFallbackLanguages:
+    """Verify that languages absent from _METHOD_NODES get correct results
+    via the plugin-sync fallback rather than a silent empty list."""
+
+    def test_csharp_file_complexity(self, csharp_project):
+        from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
+
+        funcs = analyze_file_complexity(str(csharp_project / "Calculator.cs"), "csharp")
+        # C# fixture has exactly 2 methods: Add (complexity 2) and Sub (complexity 1)
+        assert len(funcs) == 2
+        names = {f.name for f in funcs}
+        assert names == {"Add", "Sub"}
+        add_func = next(f for f in funcs if f.name == "Add")
+        assert add_func.complexity == 2
+
+    def test_ruby_file_complexity(self, ruby_project):
+        from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
+
+        funcs = analyze_file_complexity(str(ruby_project / "helpers.rb"), "ruby")
+        # Ruby fixture has exactly 2 methods
+        assert len(funcs) == 2
+        names = {f.name for f in funcs}
+        assert names == {"greet", "add"}
+
+    def test_csharp_project_heatmap(self, csharp_project):
+        from tree_sitter_analyzer.complexity_heatmap import analyze_project_heatmap
+
+        heatmap = analyze_project_heatmap(str(csharp_project))
+        # 1 .cs file containing 2 methods
+        assert heatmap["total_files_analyzed"] == 1
+        assert heatmap["total_functions"] == 2
+
+    def test_ruby_project_heatmap(self, ruby_project):
+        from tree_sitter_analyzer.complexity_heatmap import analyze_project_heatmap
+
+        heatmap = analyze_project_heatmap(str(ruby_project))
+        # 1 .rb file containing 2 methods
+        assert heatmap["total_files_analyzed"] == 1
+        assert heatmap["total_functions"] == 2
+
+    def test_empty_project_warns(self, tmp_path):
+        """When a project yields 0 functions, result must carry a note/warning."""
+        from tree_sitter_analyzer.complexity_heatmap import analyze_project_heatmap
+
+        empty_project = tmp_path / "emptyproj"
+        empty_project.mkdir()
+        # A .cs file with no methods (just a using statement)
+        (empty_project / "Empty.cs").write_text("using System;\n")
+        heatmap = analyze_project_heatmap(str(empty_project))
+        assert heatmap["total_functions"] == 0
+        # Must NOT be silently clean — must carry a warning/note field
+        assert "note" in heatmap or "warning" in heatmap
