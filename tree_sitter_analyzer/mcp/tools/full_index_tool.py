@@ -115,7 +115,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             )
 
         mode = arguments.get("mode", "incremental")
-        max_files = arguments.get("max_files", 20_000)
+        max_files = int(arguments.get("max_files", 20_000))
         resolve_synapse = arguments.get("resolve_synapse", True)
         include_activation = bool(arguments.get("include_activation", False))
         output_format = arguments.get("output_format", "toon")

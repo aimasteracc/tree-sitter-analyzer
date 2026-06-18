@@ -882,6 +882,10 @@ class TraceImpactTool(BaseMCPTool):
         Behaviour preserved (M11 NOT_FOUND, H4 source-ext + J7 comment
         filters, K5 verdict alias, agent_summary).
         """
+        # Coerce max_results to int before validate_arguments so string values
+        # from the MCP boundary ("1000") are accepted rather than rejected.
+        if "max_results" in arguments and arguments["max_results"] is not None:
+            arguments = {**arguments, "max_results": int(arguments["max_results"])}
         self.validate_arguments(arguments)
 
         symbol = arguments["symbol"].strip()

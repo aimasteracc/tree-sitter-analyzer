@@ -432,7 +432,7 @@ class ASTCacheTool(BaseMCPTool):
                 "to retrieve the cached entry"
             )
         else:
-            max_files = arguments.get("max_files", 20_000)
+            max_files = int(arguments.get("max_files", 20_000))
             force = arguments.get("force", False)
             include_activation = bool(arguments.get("include_activation", False))
             # #1018: honor the language scope on the index path. Without this the
@@ -595,7 +595,7 @@ class ASTCacheTool(BaseMCPTool):
     def _handle_sync(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """``mode=sync``: drift-detect + reconcile + M15 considered alias."""
         sync_engine = self._get_sync()
-        max_files = arguments.get("max_files", 20_000)
+        max_files = int(arguments.get("max_files", 20_000))
         sync_result = sync_engine.sync(max_files=max_files)
         sync_dict = sync_result.to_dict()
         # M15: surface J8's ``considered`` vocabulary at the top level too.

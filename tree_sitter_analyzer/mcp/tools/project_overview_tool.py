@@ -197,6 +197,10 @@ class ProjectOverviewTool(BaseMCPTool):
     # Main entry point - dispatches to mode-specific handler
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute project scan and build result with optional health data."""
+        # Coerce max_depth to int before validate_arguments so string values
+        # from the MCP boundary ("5") are accepted rather than rejected.
+        if "max_depth" in arguments:
+            arguments = {**arguments, "max_depth": int(arguments["max_depth"])}
         self.validate_arguments(arguments)
         if not self.project_root:
             raise ValueError("Project root not set. Call set_project_path first.")
