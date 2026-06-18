@@ -291,10 +291,53 @@ def _swift_import_fields(
 
 
 def _parameter_names(raw_text: str) -> list[str]:
-    match = re.search(r"\(([^)]*)\)", raw_text, flags=re.DOTALL)
-    if not match:
+    clause = _parameter_clause(raw_text)
+    if clause is None:
         return []
-    return [_parameter(part) for part in match.group(1).split(",") if part.strip()]
+    return [_parameter(part) for part in _split_top_level(clause) if part.strip()]
+
+
+def _parameter_clause(raw_text: str) -> str | None:
+    """Return the text inside the parameter parentheses, matched with
+    balanced parens so tuple/closure types keep their own ``)``."""
+    start = raw_text.find("(")
+    if start == -1:
+        return None
+    depth = 0
+    for index in range(start, len(raw_text)):
+        char = raw_text[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return raw_text[start + 1 : index]
+    return raw_text[start + 1 :]
+
+
+def _split_top_level(text: str) -> list[str]:
+    """Split on commas that sit outside any (), [], or <> nesting, so a
+    tuple ``(Int, String)``, dictionary, or generic ``Result<Int, Error>``
+    stays in one parameter. The ``>`` of a ``->`` arrow is not a closer."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    prev = ""
+    for char in text:
+        if char in "([<":
+            depth += 1
+        elif char in ")]":
+            depth = max(0, depth - 1)
+        elif char == ">" and prev != "-":
+            depth = max(0, depth - 1)
+        if char == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+        prev = char
+    parts.append("".join(current))
+    return parts
 
 
 def _parameter(parameter_text: str) -> str:

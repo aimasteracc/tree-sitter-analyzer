@@ -151,6 +151,30 @@ class TestSwiftExtraction:
         # separates name from type.
         assert by_name["lookup"].parameters == ["map: [String: Int]"]
 
+    def test_parameters_with_nested_commas(self, plugin: SwiftPlugin) -> None:
+        # Tuple, generic, and multi-arg-closure parameter types contain their
+        # own commas/parens. The parameter clause must be matched with
+        # balanced parens (not the first ")") and split on top-level commas
+        # only — otherwise the nested comma both corrupts the type AND drops
+        # every following parameter.
+        sample = """
+        func handle(pair: (Int, String), name: String) -> Bool { return true }
+        func run(onDone: (Int, Error?) -> Void, tag: String) {}
+        func wrap(box: Result<Int, Error>, count: Int) {}
+        """
+        tree = _swift_parser().parse(sample.encode("utf-8"))
+        functions = plugin.create_extractor().extract_functions(tree, sample)
+        by_name = {item.name: item for item in functions}
+        assert by_name["handle"].parameters == ["pair: (Int, String)", "name: String"]
+        assert by_name["run"].parameters == [
+            "onDone: (Int, Error?) -> Void",
+            "tag: String",
+        ]
+        assert by_name["wrap"].parameters == [
+            "box: Result<Int, Error>",
+            "count: Int",
+        ]
+
     def test_return_types_with_brackets_and_closures(self, plugin: SwiftPlugin) -> None:
         # Swift return types using collection shorthand ([T], [K: V]) or
         # tuples start with a bracket/paren, and a completion-handler param
