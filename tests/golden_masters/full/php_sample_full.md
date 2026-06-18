@@ -42,8 +42,8 @@ import App\Traits\Timestampable
 | User::setId | ($id:int):void | + | 55-58 | 1 | - |
 | User::getUsername | ():string | + | 63-66 | 1 | - |
 | User::authenticate | ($password:string):bool | + | 71-75 | 1 | - |
-| User::updateProfile | ($data:array):void | + | 80-86 | 1 | - |
-| User::__get | ($name:string):mixed | + | 91-94 | 1 | - |
+| User::updateProfile | ($data:array):void | + | 80-86 | 2 | - |
+| User::__get | ($name:string):mixed | + | 91-94 | 2 | - |
 | User::__set | ($name:string, $value:mixed):void | + | 99-102 | 1 | - |
 | User::getInstanceCount | ():int [static] | + | 107-110 | 1 | - |
 | User::findByEmail | ($email:string):?self [static] | + | 115-119 | 1 | - |
@@ -63,7 +63,7 @@ import App\Traits\Timestampable
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
 | AdminUser::hasPermission | ($permission:string):bool | + | 135-138 | 1 | - |
-| AdminUser::grantPermission | ($permission:string):void | + | 140-145 | 1 | - |
+| AdminUser::grantPermission | ($permission:string):void | + | 140-145 | 2 | - |
 
 ## App\Models\UserRepositoryInterface (151-156)
 ### Public Methods

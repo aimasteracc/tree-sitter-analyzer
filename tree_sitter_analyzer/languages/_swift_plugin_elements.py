@@ -26,58 +26,6 @@ if TYPE_CHECKING:
     import tree_sitter
 
 
-# ---------------------------------------------------------------------------
-# Cyclomatic complexity for Swift
-# ---------------------------------------------------------------------------
-
-_SWIFT_DECISION_TYPES: frozenset[str] = frozenset(
-    {
-        "if_statement",
-        "guard_statement",
-        "switch_statement",
-        "for_statement",
-        "while_statement",
-        "repeat_while_statement",
-        "catch_block",
-        "ternary_expression",
-        "conjunction_expression",  # x > 0 && x < 10
-        "disjunction_expression",  # x < 0 || x > 100
-    }
-)
-
-
-def _safe_children(node: Any) -> list[Any]:
-    """Return children list from a tree-sitter node, empty list on any error."""
-    try:
-        children = getattr(node, "children", None)
-        if children is None:
-            return []
-        return list(children)
-    except (TypeError, AttributeError):
-        return []
-
-
-def _swift_calculate_complexity(node: Any) -> int:
-    """Return cyclomatic complexity for a Swift function node.
-
-    complexity = 1 + decision_points.
-    Decision points: if_statement, guard_statement, switch_statement,
-    for_statement, while_statement, repeat_while_statement, catch_block,
-    ternary_expression, conjunction_expression, disjunction_expression.
-    All are counted as non-leaf nodes to avoid matching keyword tokens.
-    """
-    decisions = 0
-    stack = [node]
-    while stack:
-        cur = stack.pop()
-        children = _safe_children(cur)
-        is_leaf = len(children) == 0
-        if not is_leaf and getattr(cur, "type", None) in _SWIFT_DECISION_TYPES:
-            decisions += 1
-        stack.extend(children)
-    return 1 + decisions
-
-
 def extract_swift_function(extractor: Any, node: tree_sitter.Node) -> Function | None:
     """Extract one Swift function-like declaration."""
     try:
@@ -169,7 +117,6 @@ def _swift_function_fields(
         "modifiers": modifiers,
         "visibility": found_visibility,
         "is_constructor": node.type == "init_declaration",
-        "complexity_score": _swift_calculate_complexity(node),
         **_swift_function_flags(modifiers, raw_text, found_visibility),
     }
 

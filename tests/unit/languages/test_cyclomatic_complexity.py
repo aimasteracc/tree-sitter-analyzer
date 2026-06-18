@@ -1,4 +1,4 @@
-"""Tests for cyclomatic complexity in Ruby, Kotlin, PHP, and Swift plugins.
+"""Tests for cyclomatic complexity in Ruby, Kotlin, and PHP plugins.
 
 RED-first: these tests are written before the fix.
 Each fixture has an exactly-known decision-point count.
@@ -6,15 +6,7 @@ Per CLAUDE.md locked rule: assertions MUST pin the EXACT expected integer,
 never a loose bound (>= N, > 0, etc.).
 """
 
-import pytest
 import tree_sitter
-
-try:
-    import tree_sitter_swift  # noqa: F401
-
-    TREE_SITTER_SWIFT_AVAILABLE = True
-except ImportError:
-    TREE_SITTER_SWIFT_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
 # Ruby
@@ -338,126 +330,3 @@ class TestPHPCyclomaticComplexity:
         assert len(funcs) == 1
         assert funcs[0].name == "process"
         assert funcs[0].complexity_score == 13
-
-
-# ---------------------------------------------------------------------------
-# Swift
-# ---------------------------------------------------------------------------
-
-SWIFT_SIMPLE = """\
-func greet(_ name: String) -> String {
-    return "Hello, \\(name)!"
-}
-"""
-# No branches → complexity = 1
-
-SWIFT_BRANCHY = """\
-func binarySearch(_ arr: [Int], _ target: Int) -> Int {
-    var low = 0
-    var high = arr.count - 1
-    while low <= high {
-        let mid = (low + high) / 2
-        if arr[mid] == target {
-            return mid
-        } else if arr[mid] < target {
-            low = mid + 1
-        } else {
-            high = mid - 1
-        }
-    }
-    return -1
-}
-"""
-# Decisions: while_statement(1) + if_statement(1) + else-if → nested if_statement(1) = 3
-# → complexity 4
-
-SWIFT_RICH = """\
-func process(_ x: Int) -> String {
-    if x > 0 {
-        print("pos")
-    } else if x == 0 {
-        print("zero")
-    } else {
-        print("neg")
-    }
-    guard x > 0 else { return "neg" }
-    switch x {
-    case 1:
-        print("one")
-    case 2:
-        print("two")
-    default:
-        print("other")
-    }
-    for i in 1...10 { print(i) }
-    var y = x
-    while y > 0 { y -= 1 }
-    repeat { y += 1 } while y < 10
-    do {
-        let _ = 1
-    } catch {
-        print("error")
-    }
-    let r = x > 0 ? "pos" : "neg"
-    let t = x > 0 && x < 10
-    let u = x < 0 || x > 100
-    return r
-}
-"""
-# Decisions:
-#   if_statement (x>0)         : 1
-#   if_statement (else-if x==0): 1
-#   guard_statement            : 1
-#   switch_statement           : 1
-#   for_statement              : 1
-#   while_statement            : 1
-#   repeat_while_statement     : 1
-#   catch_block                : 1
-#   ternary_expression         : 1
-#   conjunction_expression     : 1
-#   disjunction_expression     : 1
-# Total = 11 → complexity = 1 + 11 = 12
-
-
-def _swift_lang():
-    import tree_sitter_swift
-
-    return tree_sitter.Language(tree_sitter_swift.language())
-
-
-def _swift_functions(source: str):
-    lang = _swift_lang()
-    parser = tree_sitter.Parser(lang)
-    tree = parser.parse(source.encode())
-    from tree_sitter_analyzer.languages._swift_plugin_elements import (
-        SwiftElementExtractor,
-    )
-
-    extractor = SwiftElementExtractor()
-    return extractor.extract_functions(tree, source)
-
-
-@pytest.mark.skipif(
-    not TREE_SITTER_SWIFT_AVAILABLE,
-    reason="tree-sitter-swift not installed",
-)
-class TestSwiftCyclomaticComplexity:
-    def test_simple_no_branches(self):
-        funcs = _swift_functions(SWIFT_SIMPLE)
-        assert len(funcs) == 1
-        assert funcs[0].name == "greet"
-        assert funcs[0].complexity_score == 1
-
-    def test_binary_search(self):
-        """while + if + else-if (nested if) = 3 decisions → complexity 4."""
-        funcs = _swift_functions(SWIFT_BRANCHY)
-        assert len(funcs) == 1
-        assert funcs[0].name == "binarySearch"
-        assert funcs[0].complexity_score == 4
-
-    def test_rich_branching(self):
-        """11 decision points → complexity 12."""
-        funcs = _swift_functions(SWIFT_RICH)
-        assert len(funcs) == 1
-        assert funcs[0].name == "process"
-        assert funcs[0].complexity_score == 12
