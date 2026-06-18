@@ -80,8 +80,8 @@ class RustTableFormatter(BaseTableFormatter):
         fns = data.get("methods", [])
         if fns:
             lines.append("## Functions")
-            lines.append("| Function | Signature | Vis | Async | Lines | Doc |")
-            lines.append("|----------|-----------|-----|-------|-------|-----|")
+            lines.append("| Function | Signature | Vis | Async | Lines | Cx | Doc |")
+            lines.append("|----------|-----------|-----|-------|-------|----|-----|")
 
             for fn in fns:
                 lines.append(self._format_fn_row(fn))
@@ -158,11 +158,15 @@ class RustTableFormatter(BaseTableFormatter):
         is_async = "Yes" if fn.get("is_async", False) else "-"
         line_range = fn.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        complexity = fn.get("complexity_score", 1)
         doc = self._clean_csv_text(
             self._extract_doc_summary(str(fn.get("docstring", "") or ""))
         )
 
-        return f"| {name} | {signature} | {visibility} | {is_async} | {lines_str} | {doc} |"
+        return (
+            f"| {name} | {signature} | {visibility} | {is_async} "
+            f"| {lines_str} | {complexity} | {doc} |"
+        )
 
     @staticmethod
     def _format_rust_param(param: Any) -> str:

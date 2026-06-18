@@ -153,6 +153,34 @@ class TestRustFormatterFormatFullTable:
         assert "Yes" in result  # is_async = True
         assert "-" in result  # is_async = False
 
+    def test_full_table_has_complexity_column(self):
+        """The full Functions table must expose a Cx column with the computed
+        complexity (parity with the Go full table; Rust complexity is computed
+        as of the always-1 fix but was not surfaced in the markdown table)."""
+        formatter = RustTableFormatter()
+        data = {
+            "file_path": "src/lib.rs",
+            "modules": [],
+            "classes": [],
+            "methods": [
+                {
+                    "name": "binary_search",
+                    "parameters": [],
+                    "visibility": "pub",
+                    "line_range": {"start": 1, "end": 14},
+                    "is_async": False,
+                    "docstring": "",
+                    "complexity_score": 4,
+                }
+            ],
+            "fields": [],
+        }
+        result = formatter._format_full_table(data)
+        header = next(line for line in result.splitlines() if "| Function " in line)
+        assert "Cx" in header
+        row = next(line for line in result.splitlines() if "binary_search" in line)
+        assert "| 4 |" in row
+
 
 class TestRustFormatterFormatCompactTable:
     """Test compact table format for Rust"""
