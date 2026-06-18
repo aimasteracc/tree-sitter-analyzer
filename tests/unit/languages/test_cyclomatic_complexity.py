@@ -757,3 +757,92 @@ class TestGoCyclomaticComplexity:
         assert len(funcs) == 1
         assert funcs[0].name == "process"
         assert funcs[0].complexity_score == 7
+
+
+# ---------------------------------------------------------------------------
+# Rust
+# ---------------------------------------------------------------------------
+
+RUST_SIMPLE = """\
+fn greet(name: &str) -> String {
+    format!("Hello, {}!", name)
+}
+"""
+# No branches → complexity = 1
+
+RUST_BRANCHY = """\
+fn binary_search(arr: &[i32], target: i32) -> i32 {
+    let mut low = 0i32;
+    let mut high = arr.len() as i32 - 1;
+    while low <= high {
+        let mid = (low + high) / 2;
+        if arr[mid as usize] == target {
+            return mid;
+        } else if arr[mid as usize] < target {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    -1
+}
+"""
+# Decisions: while(1) + if(1) + else-if (nested if_expression)(1) = 3 → complexity = 4
+
+RUST_RICH = """\
+fn process(x: i32) -> i32 {
+    if x > 0 && x < 100 {
+        return 1;
+    } else if x < 0 || x > 200 {
+        return 2;
+    }
+    for _i in 0..10 {}
+    match x {
+        1 => return 3,
+        _ => {}
+    }
+    0
+}
+"""
+# Decisions:
+#   if_expression                  : 1
+#   &&                            : 1
+#   else if (nested if_expression) : 1
+#   ||                            : 1
+#   for_expression                 : 1
+#   match_expression               : 1
+# Total = 6 → complexity = 1 + 6 = 7
+
+
+def _rust_functions(source: str):
+    import tree_sitter_rust
+
+    lang = tree_sitter.Language(tree_sitter_rust.language())
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode())
+    from tree_sitter_analyzer.languages.rust_plugin import RustPlugin
+
+    extractor = RustPlugin().create_extractor()
+    return extractor.extract_functions(tree, source)
+
+
+class TestRustCyclomaticComplexity:
+    def test_simple_no_branches(self):
+        funcs = _rust_functions(RUST_SIMPLE)
+        assert len(funcs) == 1
+        assert funcs[0].name == "greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_binary_search(self):
+        """while + if + else-if (nested if_expression) = 3 decisions → complexity 4."""
+        funcs = _rust_functions(RUST_BRANCHY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "binary_search"
+        assert funcs[0].complexity_score == 4
+
+    def test_rich_branching(self):
+        """6 decision points → complexity 7."""
+        funcs = _rust_functions(RUST_RICH)
+        assert len(funcs) == 1
+        assert funcs[0].name == "process"
+        assert funcs[0].complexity_score == 7
