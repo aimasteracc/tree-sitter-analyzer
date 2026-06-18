@@ -368,17 +368,37 @@ def _parameter_name(before_type: str) -> str:
 def _return_type(raw_text: str) -> str | None:
     """Extract a Swift return type, including bracket/tuple-led types.
 
-    The return type is the text after the *final* signature arrow (so a
-    completion-handler parameter's own ``->`` is ignored) and before the
-    function body. This covers collection shorthand (``[T]``, ``[K: V]``)
+    The return arrow is sought *after* the parameter list's closing paren,
+    so a closure-typed parameter's own ``->`` is never mistaken for it (a
+    function with a closure param and no return type yields None, not the
+    malformed ``Void)``). Covers collection shorthand (``[T]``, ``[K: V]``)
     and tuples (``(A, B)``), which the previous letter-anchored regex
     dropped entirely.
     """
-    signature = raw_text.split("{", 1)[0]
-    arrow = signature.rfind("->")
+    end = _param_list_end(raw_text)
+    tail = raw_text[end + 1 :] if end != -1 else raw_text
+    tail = tail.split("{", 1)[0]
+    arrow = tail.find("->")
     if arrow == -1:
         return None
-    return signature[arrow + 2 :].strip() or None
+    return tail[arrow + 2 :].strip() or None
+
+
+def _param_list_end(raw_text: str) -> int:
+    """Index of the parameter list's matching closing paren, or -1."""
+    start = raw_text.find("(")
+    if start == -1:
+        return -1
+    depth = 0
+    for index in range(start, len(raw_text)):
+        char = raw_text[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+    return -1
 
 
 def _import_module_path(raw_text: str) -> str:
