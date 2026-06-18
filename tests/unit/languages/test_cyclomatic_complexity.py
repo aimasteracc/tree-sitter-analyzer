@@ -330,3 +330,118 @@ class TestPHPCyclomaticComplexity:
         assert len(funcs) == 1
         assert funcs[0].name == "process"
         assert funcs[0].complexity_score == 13
+
+
+# ---------------------------------------------------------------------------
+# Swift
+# ---------------------------------------------------------------------------
+
+SWIFT_SIMPLE = """\
+func greet(name: String) -> String {
+    return name
+}
+"""
+# No branches → complexity = 1
+
+SWIFT_BRANCHY = """\
+func binarySearch(_ arr: [Int], _ target: Int) -> Int {
+    var low = 0
+    var high = arr.count - 1
+    while low <= high {
+        let mid = (low + high) / 2
+        if arr[mid] == target {
+            return mid
+        } else if arr[mid] < target {
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return -1
+}
+"""
+# Decisions: while_statement(1) + if_statement(1) + else-if=nested if_statement(1) = 3
+# → complexity = 1 + 3 = 4
+
+SWIFT_RICH = """\
+func process(x: Int) -> Int {
+    if x > 0 {
+        print(x)
+    }
+    guard x < 100 else { return -1 }
+    switch x {
+    case 1: print("one")
+    default: print("other")
+    }
+    for i in 1...10 {
+        print(i)
+    }
+    while x > 0 {
+        print(x)
+    }
+    repeat {
+        print(x)
+    } while x < 10
+    do {
+        try riskyOp()
+    } catch {
+        print("error")
+    }
+    let r = x > 0 ? 1 : -1
+    let t = x > 0 && x < 10
+    let u = x < 0 || x > 100
+    return r
+}
+"""
+# Decisions:
+#   if_statement           : 1
+#   guard_statement        : 1
+#   switch_statement       : 1
+#   for_statement          : 1
+#   while_statement        : 1
+#   repeat_while_statement : 1
+#   catch_block            : 1
+#   ternary_expression     : 1
+#   conjunction_expression : 1   (x > 0 && x < 10)
+#   disjunction_expression : 1   (x < 0 || x > 100)
+# Total = 10 → complexity = 1 + 10 = 11
+
+
+def _swift_lang():
+    import tree_sitter_swift
+
+    return tree_sitter.Language(tree_sitter_swift.language())
+
+
+def _swift_functions(source: str):
+    lang = _swift_lang()
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode())
+    from tree_sitter_analyzer.languages._swift_plugin_extractor import (
+        SwiftElementExtractor,
+    )
+
+    extractor = SwiftElementExtractor()
+    return extractor.extract_functions(tree, source)
+
+
+class TestSwiftCyclomaticComplexity:
+    def test_simple_no_branches(self):
+        funcs = _swift_functions(SWIFT_SIMPLE)
+        assert len(funcs) == 1
+        assert funcs[0].name == "greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_binary_search(self):
+        """while + if + else-if (nested if_statement) = 3 decisions → complexity 4."""
+        funcs = _swift_functions(SWIFT_BRANCHY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "binarySearch"
+        assert funcs[0].complexity_score == 4
+
+    def test_rich_branching(self):
+        """10 decision points → complexity 11."""
+        funcs = _swift_functions(SWIFT_RICH)
+        assert len(funcs) == 1
+        assert funcs[0].name == "process"
+        assert funcs[0].complexity_score == 11
