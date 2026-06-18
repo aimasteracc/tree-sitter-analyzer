@@ -21,6 +21,37 @@ from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
+# AST node types that each add one decision point to cyclomatic complexity.
+# Loop/branch constructs count once (matching the Swift/Go plugin convention),
+# and the "&&"/"||" leaf tokens count the short-circuit boolean operators.
+_RUST_DECISION_NODE_TYPES: frozenset[str] = frozenset(
+    {
+        "if_expression",
+        "for_expression",
+        "while_expression",
+        "loop_expression",
+        "match_expression",
+        "&&",
+        "||",
+    }
+)
+
+
+def _rust_calculate_complexity(node: Any) -> int:
+    """Return cyclomatic complexity (1 + decision points) for a Rust fn node."""
+    decisions = 0
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        try:
+            children = list(getattr(cur, "children", None) or [])
+        except (TypeError, AttributeError):
+            children = []
+        if getattr(cur, "type", None) in _RUST_DECISION_NODE_TYPES:
+            decisions += 1
+        stack.extend(children)
+    return 1 + decisions
+
 
 def _rust_function_is_async(node: tree_sitter.Node) -> bool:
     """Return ``True`` when ``node`` carries an ``async`` modifier.
@@ -390,6 +421,7 @@ class RustElementExtractor(ElementExtractor):
                 return_type=return_type,
                 visibility=visibility,
                 docstring=docstring,
+                complexity_score=_rust_calculate_complexity(node),
             )
             # Attach Rust-specific attributes
             func.is_async = is_async
