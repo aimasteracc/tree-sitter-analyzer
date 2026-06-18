@@ -26,6 +26,60 @@ if TYPE_CHECKING:
     import tree_sitter
 
 
+# ---------------------------------------------------------------------------
+# Cyclomatic complexity for Swift
+# ---------------------------------------------------------------------------
+
+# Non-leaf AST node types that each add one decision point.
+# conjunction_expression / disjunction_expression are non-leaf container nodes
+# (not bare && / || tokens), so the non-leaf check is redundant but harmless.
+_SWIFT_DECISION_NODE_TYPES: frozenset[str] = frozenset(
+    {
+        "if_statement",
+        "guard_statement",
+        "switch_statement",
+        "for_statement",
+        "while_statement",
+        "repeat_while_statement",
+        "catch_block",
+        "ternary_expression",
+        "conjunction_expression",  # x && y
+        "disjunction_expression",  # x || y
+    }
+)
+
+
+def _safe_children(node: object) -> list[object]:
+    """Return children list from a tree-sitter node, empty list on any error."""
+    try:
+        children = getattr(node, "children", None)
+        if children is None:
+            return []
+        return list(children)
+    except (TypeError, AttributeError):
+        return []
+
+
+def _swift_calculate_complexity(node: object) -> int:
+    """Return cyclomatic complexity for a Swift function node.
+
+    complexity = 1 + (number of decision points).
+
+    Decision points are non-leaf AST nodes whose type is in
+    _SWIFT_DECISION_NODE_TYPES (if/guard/switch/for/while/repeat-while/
+    catch_block/ternary_expression/conjunction_expression/disjunction_expression).
+    """
+    decisions = 0
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        children = _safe_children(cur)
+        if getattr(cur, "type", None) in _SWIFT_DECISION_NODE_TYPES and children:
+            decisions += 1
+        stack.extend(children)
+    return 1 + decisions
+
+
 def extract_swift_function(extractor: Any, node: tree_sitter.Node) -> Function | None:
     """Extract one Swift function-like declaration."""
     try:
@@ -117,6 +171,7 @@ def _swift_function_fields(
         "modifiers": modifiers,
         "visibility": found_visibility,
         "is_constructor": node.type == "init_declaration",
+        "complexity_score": _swift_calculate_complexity(node),
         **_swift_function_flags(modifiers, raw_text, found_visibility),
     }
 
