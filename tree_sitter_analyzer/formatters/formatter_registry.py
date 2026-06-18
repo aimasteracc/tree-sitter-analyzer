@@ -529,6 +529,7 @@ def _register_language_formatters_safe() -> None:
     try:
         # Import language-specific formatters
         from ..default_table_formatter import DefaultTableFormatter
+        from .bash_formatter import BashTableFormatter
         from .cpp_formatter import CppTableFormatter
         from .csharp_formatter import CSharpTableFormatter
         from .css_formatter import CSSFormatter
@@ -567,6 +568,8 @@ def _register_language_formatters_safe() -> None:
             "kotlin": KotlinTableFormatter,
             "kt": KotlinTableFormatter,
             "kts": KotlinTableFormatter,
+            "bash": BashTableFormatter,
+            "sh": BashTableFormatter,
             "go": GoTableFormatter,
             "rust": RustTableFormatter,
             "rs": RustTableFormatter,

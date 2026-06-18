@@ -193,8 +193,8 @@ def _append_functions(
         return
 
     lines.append("## Functions")
-    lines.append("| Func | Signature | Vis | Lines | Doc |")
-    lines.append("|------|-----------|-----|-------|-----|")
+    lines.append("| Func | Signature | Vis | Lines | Cx | Doc |")
+    lines.append("|------|-----------|-----|-------|----|-----|")
     for func in funcs:
         lines.append(format_func_row(func))
     lines.append("")
@@ -209,8 +209,8 @@ def _append_methods(
         return
 
     lines.append("## Methods")
-    lines.append("| Receiver | Func | Signature | Vis | Lines | Doc |")
-    lines.append("|----------|------|-----------|-----|-------|-----|")
+    lines.append("| Receiver | Func | Signature | Vis | Lines | Cx | Doc |")
+    lines.append("|----------|------|-----------|-----|-------|----|-----|")
     for method in methods:
         lines.append(format_method_row(method))
     lines.append("")
