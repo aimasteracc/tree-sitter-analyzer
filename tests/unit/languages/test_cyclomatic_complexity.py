@@ -661,3 +661,99 @@ class TestBashCyclomaticComplexity:
         assert len(funcs) == 1
         assert funcs[0].name == "process"
         assert funcs[0].complexity_score == 12
+
+
+# ---------------------------------------------------------------------------
+# Go
+# ---------------------------------------------------------------------------
+
+GO_SIMPLE = """\
+package main
+
+func greet(name string) string {
+	return "Hello, " + name
+}
+"""
+# No branches → complexity = 1
+
+GO_BRANCHY = """\
+package main
+
+func binarySearch(arr []int, target int) int {
+	low := 0
+	high := len(arr) - 1
+	for low <= high {
+		mid := (low + high) / 2
+		if arr[mid] == target {
+			return mid
+		} else if arr[mid] < target {
+			low = mid + 1
+		} else {
+			high = mid - 1
+		}
+	}
+	return -1
+}
+"""
+# Decisions: for(1) + if(1) + else-if (nested if_statement)(1) = 3 → complexity = 4
+
+GO_RICH = """\
+package main
+
+func process(x int) int {
+	if x > 0 && x < 100 {
+		return 1
+	} else if x < 0 || x > 200 {
+		return 2
+	}
+	for i := 0; i < 10; i++ {
+	}
+	switch x {
+	case 1:
+		return 3
+	}
+	return 0
+}
+"""
+# Decisions:
+#   if_statement                 : 1
+#   &&                           : 1
+#   else if (nested if_statement): 1
+#   ||                           : 1
+#   for_statement                : 1
+#   expression_switch_statement  : 1
+# Total = 6 → complexity = 1 + 6 = 7
+
+
+def _go_functions(source: str):
+    import tree_sitter_go
+
+    lang = tree_sitter.Language(tree_sitter_go.language())
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode())
+    from tree_sitter_analyzer.languages.go_plugin import GoElementExtractor
+
+    extractor = GoElementExtractor()
+    return extractor.extract_functions(tree, source)
+
+
+class TestGoCyclomaticComplexity:
+    def test_simple_no_branches(self):
+        funcs = _go_functions(GO_SIMPLE)
+        assert len(funcs) == 1
+        assert funcs[0].name == "greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_binary_search(self):
+        """for + if + else-if (nested if_statement) = 3 decisions → complexity 4."""
+        funcs = _go_functions(GO_BRANCHY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "binarySearch"
+        assert funcs[0].complexity_score == 4
+
+    def test_rich_branching(self):
+        """6 decision points → complexity 7."""
+        funcs = _go_functions(GO_RICH)
+        assert len(funcs) == 1
+        assert funcs[0].name == "process"
+        assert funcs[0].complexity_score == 7

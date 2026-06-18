@@ -13,6 +13,38 @@ from ._go_common_helpers import (
     go_visibility,
 )
 
+# AST node types that each add one decision point to cyclomatic complexity.
+# Switch/select constructs count once (matching the Swift plugin's
+# count-the-construct-once convention), and the "&&"/"||" leaf tokens count
+# the short-circuit boolean operators.
+_GO_DECISION_NODE_TYPES: frozenset[str] = frozenset(
+    {
+        "if_statement",
+        "for_statement",
+        "expression_switch_statement",
+        "type_switch_statement",
+        "select_statement",
+        "&&",
+        "||",
+    }
+)
+
+
+def _go_calculate_complexity(node: Any) -> int:
+    """Return cyclomatic complexity (1 + decision points) for a Go function node."""
+    decisions = 0
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        try:
+            children = list(getattr(cur, "children", None) or [])
+        except (TypeError, AttributeError):
+            children = []
+        if getattr(cur, "type", None) in _GO_DECISION_NODE_TYPES:
+            decisions += 1
+        stack.extend(children)
+    return 1 + decisions
+
 
 def extract_go_function(
     node: Any,
@@ -123,4 +155,5 @@ def _build_go_function(
         visibility=visibility,
         docstring=extract_docstring(node, content_lines),
         is_public=visibility == "public",
+        complexity_score=_go_calculate_complexity(node),
     )

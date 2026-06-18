@@ -47,21 +47,21 @@ import ""time""
 | NewService | (name string, config *Config) *Service | exported | 80-86 | 1 | - |
 | Name | () string | exported | 89-91 | 1 | - |
 | IsRunning | () bool | exported | 94-98 | 1 | - |
-| Start | (ctx context.Context) error | exported | 101-114 | 1 | - |
-| run | (ctx context.Context) | unexported | 117-132 | 1 | - |
-| tick | (t time.Time) | unexported | 135-139 | 1 | - |
-| Stop | () error | exported | 142-153 | 1 | - |
+| Start | (ctx context.Context) error | exported | 101-114 | 2 | - |
+| run | (ctx context.Context) | unexported | 117-132 | 3 | - |
+| tick | (t time.Time) | unexported | 135-139 | 2 | - |
+| Stop | () error | exported | 142-153 | 2 | - |
 | stop | () | unexported | 156-160 | 1 | - |
-| ProcessData | (ctx context.Context, input <-chan []byte) (<-chan []byte, <-chan error) | exported | 163-193 | 1 | - |
-| process | (data []byte) []byte | unexported | 196-203 | 1 | - |
+| ProcessData | (ctx context.Context, input <-chan []byte) (<-chan []byte, <-chan error) | exported | 163-193 | 5 | - |
+| process | (data []byte) []byte | unexported | 196-203 | 2 | - |
 | NewWorkerPool | (workers int) *WorkerPool | exported | 213-218 | 1 | - |
-| Start | () | exported | 221-226 | 1 | - |
-| worker | () | unexported | 229-234 | 1 | - |
+| Start | () | exported | 221-226 | 2 | - |
+| worker | () | unexported | 229-234 | 2 | - |
 | Submit | (job func()) | exported | 237-239 | 1 | - |
 | Shutdown | () | exported | 242-245 | 1 | - |
-| Chain | (middlewares ...Middleware) Middleware | exported | 257-264 | 1 | - |
+| Chain | (middlewares ...Middleware) Middleware | exported | 257-264 | 2 | - |
 | WithTimeout | (timeout time.Duration) Middleware | exported | 267-275 | 1 | - |
-| WithRetry | (maxRetries int) Middleware | exported | 278-293 | 1 | - |
+| WithRetry | (maxRetries int) Middleware | exported | 278-293 | 3 | - |
 
 ## Variables
 | Name | Type | Vis | Line |
