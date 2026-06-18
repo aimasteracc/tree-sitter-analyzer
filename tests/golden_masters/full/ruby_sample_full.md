@@ -40,8 +40,8 @@ import concerns/timestampable
 | User#id | (): | + | 19-19 | 1 | - |
 | User#created_at | (): | + | 19-19 | 1 | - |
 | User#password_hash | (): | + | 20-20 | 1 | - |
-| User#authenticate | (password:Any): | + | 36-40 | 1 | - |
-| User#update_profile | (data:Any): | + | 43-47 | 1 | - |
+| User#authenticate | (password:Any): | + | 36-40 | 2 | - |
+| User#update_profile | (data:Any): | + | 43-47 | 3 | - |
 | User#active? | (): | + | 50-52 | 1 | - |
 | User#deactivate! | (): | + | 55-58 | 1 | - |
 | User.instance_count | (): [static] | + | 61-63 | 1 | - |
@@ -62,9 +62,9 @@ import concerns/timestampable
 | AdminUser#initialize | (username:Any, email:Any, permissions:Any): | + | 94-97 | 1 | - |
 | AdminUser#permissions | (): | + | 92-92 | 1 | - |
 | AdminUser#has_permission? | (permission:Any): | + | 99-101 | 1 | - |
-| AdminUser#grant_permission | (permission:Any): | + | 103-105 | 1 | - |
+| AdminUser#grant_permission | (permission:Any): | + | 103-105 | 2 | - |
 | AdminUser#revoke_permission | (permission:Any): | + | 107-109 | 1 | - |
-| AdminUser#update_profile | (data:Any): | + | 112-115 | 1 | - |
+| AdminUser#update_profile | (data:Any): | + | 112-115 | 2 | - |
 
 ## Session (119-138)
 ### Public Methods
@@ -85,8 +85,8 @@ import concerns/timestampable
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
 | UserRepository#initialize | (database:Any): | + | 143-146 | 1 | - |
-| UserRepository#find | (id:Any): | + | 148-154 | 1 | - |
-| UserRepository#save | (user:Any): | + | 156-162 | 1 | - |
+| UserRepository#find | (id:Any): | + | 148-154 | 3 | - |
+| UserRepository#save | (user:Any): | + | 156-162 | 2 | - |
 | UserRepository#delete | (user:Any): | + | 164-167 | 1 | - |
 | UserRepository#insert | (user:Any): | + | 171-176 | 1 | - |
 | UserRepository#update | (user:Any): | + | 178-183 | 1 | - |
@@ -96,4 +96,4 @@ import concerns/timestampable
 |--------|-----------|-----|-------|----|----|
 | create_user | (username:Any, email:Any): | + | 187-189 | 1 | - |
 | hash_password | (password:Any): | + | 191-193 | 1 | - |
-| with_transaction | (&block:Any): | + | 205-214 | 1 | - |
+| with_transaction | (&block:Any): | + | 205-214 | 2 | - |

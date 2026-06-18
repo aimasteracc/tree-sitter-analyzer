@@ -34,6 +34,72 @@ from .ruby_helpers import (
     extract_require_statement as _extract_require_standalone,
 )
 
+# ---------------------------------------------------------------------------
+# Cyclomatic complexity for Ruby
+# ---------------------------------------------------------------------------
+
+# Statement-level nodes that each add one decision point.
+# These are non-leaf nodes (they have children), which distinguishes them from
+# the same-named keyword *tokens* that live inside the statement nodes.
+_RUBY_DECISION_STATEMENT_TYPES: frozenset[str] = frozenset(
+    {
+        "if",
+        "elsif",
+        "unless",
+        "while",
+        "until",
+        "case",
+        "when",
+        "rescue",
+        "for",
+        "conditional",  # ternary  x > 0 ? a : b
+        "if_modifier",  # expr if cond
+        "unless_modifier",  # expr unless cond
+        "while_modifier",  # expr while cond
+        "until_modifier",  # expr until cond
+    }
+)
+
+# Leaf operator tokens that are themselves a decision branch.
+_RUBY_LOGIC_OP_TOKENS: frozenset[str] = frozenset({"&&", "||"})
+
+
+def _safe_children(node: object) -> list[object]:
+    """Return children list from a tree-sitter node, empty list on any error."""
+    try:
+        children = getattr(node, "children", None)
+        if children is None:
+            return []
+        return list(children)
+    except (TypeError, AttributeError):
+        return []
+
+
+def _ruby_calculate_complexity(node: object) -> int:
+    """Return cyclomatic complexity for a Ruby method node.
+
+    complexity = 1 + (number of decision points).
+
+    Decision points are:
+    - Non-leaf nodes whose type is in _RUBY_DECISION_STATEMENT_TYPES (statement
+      nodes like ``if``, ``elsif``, ``while``, etc.).  Non-leaf distinguishes
+      the statement from the same-named keyword *token* that lives inside it.
+    - Leaf tokens ``&&`` / ``||`` inside ``binary`` expressions.
+    """
+    decisions = 0
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        children = _safe_children(cur)
+        is_leaf = len(children) == 0
+        if not is_leaf and getattr(cur, "type", None) in _RUBY_DECISION_STATEMENT_TYPES:
+            decisions += 1
+        elif is_leaf and getattr(cur, "type", None) in _RUBY_LOGIC_OP_TOKENS:
+            decisions += 1
+        stack.extend(children)
+    return 1 + decisions
+
+
 # Type alias for the element cache key — avoids triple-nested generic annotation
 # inside __init__, which would push identifier leaves to AST depth 17.
 _ElementCacheKey = tuple[tuple[int, int], str]
@@ -328,6 +394,7 @@ class RubyElementExtractor(ElementExtractor):
                 annotations=[],
                 receiver_type=parent_class if parent_class else None,
                 is_constructor=name == "initialize",
+                complexity_score=_ruby_calculate_complexity(node),
             )
         except Exception as e:
             log_error(f"Error extracting method element: {e}")
@@ -401,6 +468,7 @@ class RubyElementExtractor(ElementExtractor):
                 modifiers=[],
                 annotations=[],
                 receiver_type=parent_class if parent_class else None,
+                complexity_score=_ruby_calculate_complexity(node),
             )
         except Exception as e:
             log_error(f"Error extracting singleton method element: {e}")

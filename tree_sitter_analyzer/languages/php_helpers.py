@@ -6,6 +6,60 @@ from typing import Any
 from ..models import Class, Function, Import, Variable
 from ..utils import log_error
 
+# ---------------------------------------------------------------------------
+# Cyclomatic complexity for PHP
+# ---------------------------------------------------------------------------
+
+_PHP_DECISION_TYPES: frozenset[str] = frozenset(
+    {
+        "if_statement",
+        "else_if_clause",
+        "switch_statement",
+        "for_statement",
+        "foreach_statement",
+        "while_statement",
+        "do_statement",
+        "catch_clause",
+        "conditional_expression",  # ternary  $x > 0 ? a : b
+    }
+)
+
+_PHP_LOGIC_OP_TOKENS: frozenset[str] = frozenset({"&&", "||", "??"})
+
+
+def _safe_children(node: Any) -> list[Any]:
+    """Return children list from a tree-sitter node, empty list on any error."""
+    try:
+        children = getattr(node, "children", None)
+        if children is None:
+            return []
+        return list(children)
+    except (TypeError, AttributeError):
+        return []
+
+
+def calculate_php_complexity(node: Any) -> int:
+    """Return cyclomatic complexity for a PHP function or method node.
+
+    complexity = 1 + decision_points.
+    Decision points: if_statement, else_if_clause, switch_statement,
+    for_statement, foreach_statement, while_statement, do_statement,
+    catch_clause, conditional_expression, and ``&&`` / ``||`` / ``??``
+    operator leaf tokens.
+    """
+    decisions = 0
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        children = _safe_children(cur)
+        is_leaf = len(children) == 0
+        if not is_leaf and getattr(cur, "type", None) in _PHP_DECISION_TYPES:
+            decisions += 1
+        elif is_leaf and getattr(cur, "type", None) in _PHP_LOGIC_OP_TOKENS:
+            decisions += 1
+        stack.extend(children)
+    return 1 + decisions
+
 
 def determine_visibility(modifiers: list[str]) -> str:
     """Determine visibility from PHP modifiers."""
@@ -309,6 +363,7 @@ def extract_php_method_element(
             annotations=[{"name": attr["name"]} for attr in attributes],
             receiver_type=parent_class if parent_class else None,
             is_constructor=name == "__construct",
+            complexity_score=calculate_php_complexity(node),
         )
     except Exception as e:
         log_error(f"Error extracting method element: {e}")
@@ -359,6 +414,7 @@ def extract_php_function_element(
             return_type=return_type,
             modifiers=[],
             annotations=[],
+            complexity_score=calculate_php_complexity(node),
         )
     except Exception as e:
         log_error(f"Error extracting function element: {e}")
