@@ -323,10 +323,19 @@ def _parameter_name(before_type: str) -> str:
 
 
 def _return_type(raw_text: str) -> str | None:
-    match = re.search(r"->\s*([A-Za-z_][A-Za-z0-9_?.<>,\s]*)", raw_text)
-    if not match:
+    """Extract a Swift return type, including bracket/tuple-led types.
+
+    The return type is the text after the *final* signature arrow (so a
+    completion-handler parameter's own ``->`` is ignored) and before the
+    function body. This covers collection shorthand (``[T]``, ``[K: V]``)
+    and tuples (``(A, B)``), which the previous letter-anchored regex
+    dropped entirely.
+    """
+    signature = raw_text.split("{", 1)[0]
+    arrow = signature.rfind("->")
+    if arrow == -1:
         return None
-    return match.group(1).split("{", 1)[0].strip()
+    return signature[arrow + 2 :].strip() or None
 
 
 def _import_module_path(raw_text: str) -> str:
