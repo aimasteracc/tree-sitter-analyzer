@@ -330,3 +330,219 @@ class TestPHPCyclomaticComplexity:
         assert len(funcs) == 1
         assert funcs[0].name == "process"
         assert funcs[0].complexity_score == 13
+
+
+# ---------------------------------------------------------------------------
+# Scala
+# ---------------------------------------------------------------------------
+
+SCALA_SIMPLE = """\
+def greet(name: String): String = {
+  s"Hello, $name!"
+}
+"""
+# No branches → complexity = 1
+
+SCALA_BRANCHY = """\
+def binarySearch(arr: Array[Int], target: Int): Int = {
+  var low = 0
+  var high = arr.length - 1
+  while (low <= high) {
+    val mid = (low + high) / 2
+    if (arr(mid) == target) {
+      mid
+    } else if (arr(mid) < target) {
+      low = mid + 1
+      -1
+    } else {
+      high = mid - 1
+      -1
+    }
+  }
+  -1
+}
+"""
+# Decisions: while_expression(1) + if_expression(1) + else-if (another if_expression)(1) = 3
+# → complexity = 1 + 3 = 4
+
+SCALA_RICH = """\
+def process(x: Int): String = {
+  val r = if (x > 0) "pos" else "neg"
+  x match {
+    case 1 => "one"
+    case 2 => "two"
+    case _ => "other"
+  }
+  for (i <- 1 to 10) {
+    println(i)
+  }
+  while (x > 0) { println(x) }
+  val ok = x > 0 && x < 10
+  val ok2 = x < 0 || x > 100
+  try {
+    val d = 1 / x
+  } catch {
+    case e: Exception => println(e)
+  }
+  r
+}
+"""
+# Decisions:
+#   if_expression (inline if)   : 1
+#   match_expression            : 1
+#   case_clause x3 (in match)   : 3
+#   for_expression              : 1
+#   while_expression            : 1
+#   catch_clause                : 1
+#   case_clause (in catch)      : 1
+#   &&  (operator_identifier)   : 1
+#   ||  (operator_identifier)   : 1
+# Total = 11 → complexity = 1 + 11 = 12
+
+
+def _scala_lang():
+    import tree_sitter_scala
+
+    return tree_sitter.Language(tree_sitter_scala.language())
+
+
+def _scala_functions(source: str):
+    lang = _scala_lang()
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode())
+    from tree_sitter_analyzer.languages.scala_plugin import ScalaElementExtractor
+
+    extractor = ScalaElementExtractor()
+    return extractor.extract_functions(tree, source)
+
+
+class TestScalaCyclomaticComplexity:
+    def test_simple_no_branches(self):
+        funcs = _scala_functions(SCALA_SIMPLE)
+        assert len(funcs) == 1
+        assert funcs[0].name == "greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_binary_search(self):
+        """while_expression + if_expression x2 = 3 decisions → complexity 4."""
+        funcs = _scala_functions(SCALA_BRANCHY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "binarySearch"
+        assert funcs[0].complexity_score == 4
+
+    def test_rich_branching(self):
+        """11 decision points → complexity 12."""
+        funcs = _scala_functions(SCALA_RICH)
+        assert len(funcs) == 1
+        assert funcs[0].name == "process"
+        assert funcs[0].complexity_score == 12
+
+
+# ---------------------------------------------------------------------------
+# Bash
+# ---------------------------------------------------------------------------
+
+BASH_SIMPLE = """\
+greet() {
+    echo "Hello, world!"
+}
+"""
+# No branches → complexity = 1
+
+BASH_BRANCHY = """\
+binary_search() {
+    local low=0
+    local high=10
+    while [ $low -le $high ]; do
+        local mid=$(( (low + high) / 2 ))
+        if [ "$mid" -eq 5 ]; then
+            echo $mid
+            return
+        elif [ "$mid" -lt 5 ]; then
+            low=$((mid + 1))
+        else
+            high=$((mid - 1))
+        fi
+    done
+    echo -1
+}
+"""
+# Decisions: while_statement(1) + if_statement(1) + elif_clause(1) = 3 → complexity 4
+
+BASH_RICH = """\
+process() {
+    local x="$1"
+    if [ "$x" -gt 0 ]; then
+        echo "positive"
+    elif [ "$x" -eq 0 ]; then
+        echo "zero"
+    fi
+    while [ "$x" -gt 0 ]; do
+        x=$((x - 1))
+    done
+    until [ "$x" -ge 10 ]; do
+        x=$((x + 1))
+    done
+    for i in 1 2 3; do
+        echo "$i"
+    done
+    for ((j=0; j<3; j++)); do
+        echo "$j"
+    done
+    case "$x" in
+        1) echo "one";;
+        2) echo "two";;
+        *) echo "other";;
+    esac
+    [ "$x" -gt 0 ] && echo "and" || echo "or"
+}
+"""
+# Decisions:
+#   if_statement          : 1
+#   elif_clause           : 1
+#   while_statement (while): 1
+#   while_statement (until): 1
+#   for_statement         : 1
+#   c_style_for_statement : 1
+#   case_item x3          : 3
+#   &&                    : 1
+#   ||                    : 1
+# Total = 11 → complexity = 1 + 11 = 12
+
+
+def _bash_lang():
+    import tree_sitter_bash
+
+    return tree_sitter.Language(tree_sitter_bash.language())
+
+
+def _bash_functions(source: str):
+    lang = _bash_lang()
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode())
+    from tree_sitter_analyzer.languages.bash_plugin import BashElementExtractor
+
+    extractor = BashElementExtractor()
+    return extractor.extract_functions(tree, source)
+
+
+class TestBashCyclomaticComplexity:
+    def test_simple_no_branches(self):
+        funcs = _bash_functions(BASH_SIMPLE)
+        assert len(funcs) == 1
+        assert funcs[0].name == "greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_binary_search(self):
+        """while_statement + if_statement + elif_clause = 3 decisions → complexity 4."""
+        funcs = _bash_functions(BASH_BRANCHY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "binary_search"
+        assert funcs[0].complexity_score == 4
+
+    def test_rich_branching(self):
+        """11 decision points → complexity 12."""
+        funcs = _bash_functions(BASH_RICH)
+        assert len(funcs) == 1
+        assert funcs[0].name == "process"
+        assert funcs[0].complexity_score == 12
