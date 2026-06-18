@@ -195,6 +195,23 @@ class TestSwiftExtraction:
         assert ret["pair"] == "(Int, String)"
         assert ret["register"] == "Bool"
 
+    def test_no_return_type_with_closure_param(self, plugin: SwiftPlugin) -> None:
+        # A function with a closure parameter but NO return type must report
+        # return_type None — the closure param's own `->` is inside the
+        # parameter list and must not be mistaken for the return arrow
+        # (regression: it produced the malformed "Void)").
+        sample = """
+        func run(onDone: (Int, Error?) -> Void) { }
+        func sub(cb: () -> Void) { }
+        func plain(x: Int) { }
+        """
+        tree = _swift_parser().parse(sample.encode("utf-8"))
+        functions = plugin.create_extractor().extract_functions(tree, sample)
+        ret = {item.name: item.return_type for item in functions}
+        assert ret["run"] is None
+        assert ret["sub"] is None
+        assert ret["plain"] is None
+
     def test_extract_variables(self, plugin: SwiftPlugin, tree) -> None:
         variables = plugin.create_extractor().extract_variables(tree, SWIFT_SAMPLE)
         by_name = {item.name: item for item in variables}
