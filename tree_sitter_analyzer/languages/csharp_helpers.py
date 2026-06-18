@@ -101,8 +101,19 @@ def calculate_complexity(node: Any, traverse_fn: Callable[..., Iterator]) -> int
         "conditional_expression",
     }
     for child in traverse_fn(node):
-        if child.type in decision_keywords:
+        child_type = child.type
+        if child_type in decision_keywords:
             complexity += 1
+        elif child_type in ("&&", "||"):
+            # Short-circuit boolean operators each add a decision point, but
+            # only as logical operators (operands of a binary_expression),
+            # matching the Go/Rust/Swift convention.
+            parent = getattr(child, "parent", None)
+            if (
+                parent is not None
+                and getattr(parent, "type", None) == "binary_expression"
+            ):
+                complexity += 1
     return complexity
 
 

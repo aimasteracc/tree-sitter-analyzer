@@ -55,6 +55,11 @@ _JAVA_DECISION_NODES = frozenset(
     }
 )
 
+# Short-circuit boolean operators each add a decision point, matching the
+# Go/Rust/Swift convention. Counted only as logical operators (operands of a
+# binary_expression) for consistency with the C/C++ walkers.
+_JAVA_LOGICAL_OPERATORS = frozenset({"&&", "||"})
+
 
 def extract_modifiers(node: Any, get_node_text: Callable[..., str]) -> list[str]:
     """Extract modifiers from a declaration node."""
@@ -199,8 +204,16 @@ def _count_decision_nodes(node: Any) -> int:
     stack = [node]
     while stack:
         current = stack.pop()
-        if getattr(current, "type", None) in _JAVA_DECISION_NODES:
+        current_type = getattr(current, "type", None)
+        if current_type in _JAVA_DECISION_NODES:
             count += 1
+        elif current_type in _JAVA_LOGICAL_OPERATORS:
+            parent = getattr(current, "parent", None)
+            if (
+                parent is not None
+                and getattr(parent, "type", None) == "binary_expression"
+            ):
+                count += 1
         stack.extend(_safe_children(current))
     return count
 

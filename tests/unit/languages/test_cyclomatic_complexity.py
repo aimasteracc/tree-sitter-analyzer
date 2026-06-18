@@ -846,3 +846,345 @@ class TestRustCyclomaticComplexity:
         assert len(funcs) == 1
         assert funcs[0].name == "process"
         assert funcs[0].complexity_score == 7
+
+
+# ---------------------------------------------------------------------------
+# Java
+# ---------------------------------------------------------------------------
+# The C-family plugins (Java/C/C++/C#) historically counted control-flow
+# statements but NOT the "&&"/"||" short-circuit operators, while every other
+# plugin (Python/JS/TS/Go/Rust/Ruby/Kotlin/PHP/Scala/Swift/Bash) does. These
+# RED-first tests pin the post-fix value where each "&&"/"||" adds one decision
+# point, restoring cross-language parity. The binary_search fixture has no
+# boolean operators, so it is a control that stays at 4 (unchanged by the fix).
+
+JAVA_SIMPLE = """\
+class Sample {
+    String greet(String name) {
+        return "Hello, " + name;
+    }
+}
+"""
+# No branches → complexity = 1
+
+JAVA_BRANCHY = """\
+class Sample {
+    int binarySearch(int[] arr, int target) {
+        int low = 0;
+        int high = arr.length - 1;
+        while (low <= high) {
+            int mid = (low + high) / 2;
+            if (arr[mid] == target) {
+                return mid;
+            } else if (arr[mid] < target) {
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return -1;
+    }
+}
+"""
+# Decisions: while(1) + if(1) + else-if (nested if_statement)(1) = 3
+# No boolean operators → complexity = 1 + 3 = 4 (unchanged by the fix).
+
+JAVA_RICH = """\
+class Sample {
+    int process(int x) {
+        if (x > 0 && x < 100) {
+            return 1;
+        } else if (x < 0 || x > 200) {
+            return 2;
+        }
+        for (int i = 0; i < 10; i++) {}
+        while (x > 0) {
+            x--;
+        }
+        try {
+            int d = 1 / x;
+        } catch (Exception e) {}
+        return 0;
+    }
+}
+"""
+# Decisions counted by the Java walker:
+#   if_statement          : 2   (if + else-if)
+#   for_statement         : 1
+#   while_statement       : 1
+#   catch_clause          : 1
+#   &&                    : 1   (NEW: short-circuit operator)
+#   ||                    : 1   (NEW: short-circuit operator)
+# Total = 7 → complexity = 1 + 7 = 8 (pre-fix this measured 6).
+
+
+def _java_functions(source: str):
+    import tree_sitter_java
+
+    lang = tree_sitter.Language(tree_sitter_java.language())
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode())
+    from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor
+
+    return JavaElementExtractor().extract_functions(tree, source)
+
+
+class TestJavaCyclomaticComplexity:
+    def test_simple_no_branches(self):
+        funcs = _java_functions(JAVA_SIMPLE)
+        assert len(funcs) == 1
+        assert funcs[0].name == "greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_binary_search(self):
+        """while + if + else-if = 3 decisions, no booleans → complexity 4."""
+        funcs = _java_functions(JAVA_BRANCHY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "binarySearch"
+        assert funcs[0].complexity_score == 4
+
+    def test_rich_branching(self):
+        """7 decision points (incl. && and ||) → complexity 8."""
+        funcs = _java_functions(JAVA_RICH)
+        assert len(funcs) == 1
+        assert funcs[0].name == "process"
+        assert funcs[0].complexity_score == 8
+
+
+# ---------------------------------------------------------------------------
+# C
+# ---------------------------------------------------------------------------
+
+C_SIMPLE = """\
+int greet(int n) {
+    return n;
+}
+"""
+# No branches → complexity = 1
+
+C_BRANCHY = """\
+int binary_search(int* arr, int n, int target) {
+    int low = 0;
+    int high = n - 1;
+    while (low <= high) {
+        int mid = (low + high) / 2;
+        if (arr[mid] == target) {
+            return mid;
+        } else if (arr[mid] < target) {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return -1;
+}
+"""
+# Decisions: while(1) + if(1) + else-if (nested if_statement)(1) = 3
+# No boolean operators → complexity = 1 + 3 = 4 (unchanged by the fix).
+
+C_RICH = """\
+int process(int x) {
+    if (x > 0 && x < 100) {
+        return 1;
+    } else if (x < 0 || x > 200) {
+        return 2;
+    }
+    for (int i = 0; i < 10; i++) {}
+    while (x > 0) {
+        x--;
+    }
+    switch (x) {
+        case 1: return 3;
+    }
+    int r = x > 0 ? 1 : -1;
+    return r;
+}
+"""
+# Decisions counted by the C walker:
+#   if_statement          : 2   (if + else-if)
+#   for_statement         : 1
+#   while_statement       : 1
+#   switch_statement      : 1
+#   case_statement        : 1
+#   conditional_expression: 1   (ternary)
+#   &&                    : 1   (NEW: short-circuit operator)
+#   ||                    : 1   (NEW: short-circuit operator)
+# Total = 9 → complexity = 1 + 9 = 10 (pre-fix this measured 8).
+
+
+def _c_functions(source: str):
+    import tree_sitter_c
+
+    lang = tree_sitter.Language(tree_sitter_c.language())
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode())
+    from tree_sitter_analyzer.languages.c_plugin import CElementExtractor
+
+    return CElementExtractor().extract_functions(tree, source)
+
+
+class TestCCyclomaticComplexity:
+    def test_simple_no_branches(self):
+        funcs = _c_functions(C_SIMPLE)
+        assert len(funcs) == 1
+        assert funcs[0].name == "greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_binary_search(self):
+        """while + if + else-if = 3 decisions, no booleans → complexity 4."""
+        funcs = _c_functions(C_BRANCHY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "binary_search"
+        assert funcs[0].complexity_score == 4
+
+    def test_rich_branching(self):
+        """9 decision points (incl. && and ||) → complexity 10."""
+        funcs = _c_functions(C_RICH)
+        assert len(funcs) == 1
+        assert funcs[0].name == "process"
+        assert funcs[0].complexity_score == 10
+
+
+# ---------------------------------------------------------------------------
+# C++
+# ---------------------------------------------------------------------------
+
+
+def _cpp_functions(source: str):
+    import tree_sitter_cpp
+
+    lang = tree_sitter.Language(tree_sitter_cpp.language())
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode())
+    from tree_sitter_analyzer.languages.cpp_plugin import CppElementExtractor
+
+    return CppElementExtractor().extract_functions(tree, source)
+
+
+class TestCppCyclomaticComplexity:
+    # Reuses the C fixtures: the grammars share the same decision-node types
+    # for these constructs, and the C++ walker now counts && / || as well.
+    def test_simple_no_branches(self):
+        funcs = _cpp_functions(C_SIMPLE)
+        assert len(funcs) == 1
+        assert funcs[0].name == "greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_binary_search(self):
+        """while + if + else-if = 3 decisions, no booleans → complexity 4."""
+        funcs = _cpp_functions(C_BRANCHY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "binary_search"
+        assert funcs[0].complexity_score == 4
+
+    def test_rich_branching(self):
+        """9 decision points (incl. && and ||) → complexity 10."""
+        funcs = _cpp_functions(C_RICH)
+        assert len(funcs) == 1
+        assert funcs[0].name == "process"
+        assert funcs[0].complexity_score == 10
+
+
+# ---------------------------------------------------------------------------
+# C#
+# ---------------------------------------------------------------------------
+
+CSHARP_SIMPLE = """\
+class Sample {
+    int Greet(int n) {
+        return n;
+    }
+}
+"""
+# No branches → complexity = 1
+
+CSHARP_BRANCHY = """\
+class Sample {
+    int BinarySearch(int[] arr, int target) {
+        int low = 0;
+        int high = arr.Length - 1;
+        while (low <= high) {
+            int mid = (low + high) / 2;
+            if (arr[mid] == target) {
+                return mid;
+            } else if (arr[mid] < target) {
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return -1;
+    }
+}
+"""
+# Decisions: while(1) + if(1) + else-if (nested if_statement)(1) = 3
+# No boolean operators → complexity = 1 + 3 = 4 (unchanged by the fix).
+
+CSHARP_RICH = """\
+class Sample {
+    int Process(int x) {
+        if (x > 0 && x < 100) {
+            return 1;
+        } else if (x < 0 || x > 200) {
+            return 2;
+        }
+        for (int i = 0; i < 10; i++) {}
+        foreach (var y in new[] {1, 2}) {}
+        while (x > 0) {
+            x--;
+        }
+        switch (x) {
+            case 1: return 3;
+        }
+        try {
+            int d = 1 / x;
+        } catch (Exception e) {}
+        int r = x > 0 ? 1 : -1;
+        return r;
+    }
+}
+"""
+# Decisions counted by the C# walker:
+#   if_statement          : 2   (if + else-if)
+#   for_statement         : 1
+#   foreach_statement     : 1
+#   while_statement       : 1
+#   switch_statement      : 1
+#   catch_clause          : 1
+#   conditional_expression: 1   (ternary)
+#   &&                    : 1   (NEW: short-circuit operator)
+#   ||                    : 1   (NEW: short-circuit operator)
+# Total = 10 → complexity = 1 + 10 = 11 (pre-fix this measured 9).
+
+
+def _csharp_functions(source: str):
+    import tree_sitter_c_sharp
+
+    lang = tree_sitter.Language(tree_sitter_c_sharp.language())
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode())
+    from tree_sitter_analyzer.languages.csharp_plugin import CSharpElementExtractor
+
+    return CSharpElementExtractor().extract_functions(tree, source)
+
+
+class TestCSharpCyclomaticComplexity:
+    def test_simple_no_branches(self):
+        funcs = _csharp_functions(CSHARP_SIMPLE)
+        assert len(funcs) == 1
+        assert funcs[0].name == "Greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_binary_search(self):
+        """while + if + else-if = 3 decisions, no booleans → complexity 4."""
+        funcs = _csharp_functions(CSHARP_BRANCHY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "BinarySearch"
+        assert funcs[0].complexity_score == 4
+
+    def test_rich_branching(self):
+        """10 decision points (incl. && and ||) → complexity 11."""
+        funcs = _csharp_functions(CSHARP_RICH)
+        assert len(funcs) == 1
+        assert funcs[0].name == "Process"
+        assert funcs[0].complexity_score == 11

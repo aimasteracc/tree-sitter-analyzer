@@ -4,4 +4,4 @@ Field,logger,logger:Logger,private,8-8,,-
 Constructor,UserService,(userRepository:UserRepository):void,public,10-12,1,-
 Method,findUserById,(id:Long):User,public,14-19,2,-
 Method,createUser,"(name:String, email:String):User",public,21-25,1,-
-Method,validateUser,(user:User):boolean,private,27-35,3,-
+Method,validateUser,(user:User):boolean,private,27-35,5,-

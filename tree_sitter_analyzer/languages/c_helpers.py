@@ -139,8 +139,19 @@ def calculate_complexity(node: Any) -> int:
 
     def count_decisions(n: Any) -> int:
         count = 0
-        if hasattr(n, "type") and n.type in decision_nodes:
+        n_type = getattr(n, "type", None)
+        if n_type in decision_nodes:
             count += 1
+        elif n_type in ("&&", "||"):
+            # Short-circuit boolean operators each add a decision point, but
+            # only as logical operators (operands of a binary_expression),
+            # matching the Go/Rust/Swift convention.
+            parent = getattr(n, "parent", None)
+            if (
+                parent is not None
+                and getattr(parent, "type", None) == "binary_expression"
+            ):
+                count += 1
         if hasattr(n, "children"):
             try:
                 for child in n.children:
