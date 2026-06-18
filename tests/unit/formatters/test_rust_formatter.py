@@ -417,6 +417,124 @@ class TestRustFormatterFormatJson:
         assert result is not None
 
 
+class TestRustFormatterParamDictLeak:
+    """Regression tests: parameters must never render as raw Python dicts.
+
+    Before the fix, parameters provided as dicts (e.g. from the Rust extractor)
+    were coerced via ``str(p)`` which produced the ugly
+    ``{'name': 'self', 'type': 'Any'}`` literal in the signature column.
+    """
+
+    def test_format_rust_param_dict_self(self):
+        """self param as dict renders as bare 'self' (Rust convention)."""
+        formatter = RustTableFormatter()
+        result = formatter._format_rust_param({"name": "self", "type": "Any"})
+        assert result == "self"
+        assert "{'name'" not in result
+
+    def test_format_rust_param_dict_ref_self(self):
+        """&self param as dict renders as '&self'."""
+        formatter = RustTableFormatter()
+        result = formatter._format_rust_param({"name": "&self", "type": "Any"})
+        assert result == "&self"
+        assert "{'name'" not in result
+
+    def test_format_rust_param_dict_mut_self(self):
+        """&mut self param as dict renders as '&mut self'."""
+        formatter = RustTableFormatter()
+        result = formatter._format_rust_param({"name": "&mut self", "type": "Any"})
+        assert result == "&mut self"
+        assert "{'name'" not in result
+
+    def test_format_rust_param_dict_typed(self):
+        """Typed param renders as 'name: type'."""
+        formatter = RustTableFormatter()
+        result = formatter._format_rust_param({"name": "value", "type": "&T"})
+        assert result == "value: &T"
+        assert "{'name'" not in result
+
+    def test_format_rust_param_dict_i32(self):
+        """Typed param with primitive type renders correctly."""
+        formatter = RustTableFormatter()
+        result = formatter._format_rust_param({"name": "a", "type": "i32"})
+        assert result == "a: i32"
+        assert "{'name'" not in result
+
+    def test_format_rust_param_string(self):
+        """String params (already formatted) pass through unchanged."""
+        formatter = RustTableFormatter()
+        assert formatter._format_rust_param("x: i32") == "x: i32"
+        assert formatter._format_rust_param("&self") == "&self"
+
+    def test_create_full_signature_dict_params_no_leak(self):
+        """Full signature with dict params must not contain literal braces."""
+        formatter = RustTableFormatter()
+        fn = {
+            "name": "search",
+            "parameters": [
+                {"name": "self", "type": "Any"},
+                {"name": "value", "type": "&T"},
+            ],
+            "return_type": "bool",
+        }
+        result = formatter._create_full_signature(fn)
+        assert result == "fn(self, value: &T) -> bool"
+        assert "{'name'" not in result
+
+    def test_create_full_signature_add_dict_params(self):
+        """fn(a: i32, b: i32) -> i32 from dict params."""
+        formatter = RustTableFormatter()
+        fn = {
+            "name": "add",
+            "parameters": [
+                {"name": "a", "type": "i32"},
+                {"name": "b", "type": "i32"},
+            ],
+            "return_type": "i32",
+        }
+        result = formatter._create_full_signature(fn)
+        assert result == "fn(a: i32, b: i32) -> i32"
+        assert "{'name'" not in result
+
+    def test_format_full_table_dict_params_no_leak(self):
+        """Full table output must not contain raw dict reprs in any row."""
+        formatter = RustTableFormatter()
+        data = {
+            "file_path": "src/lib.rs",
+            "modules": [],
+            "classes": [],
+            "methods": [
+                {
+                    "name": "search",
+                    "parameters": [
+                        {"name": "self", "type": "Any"},
+                        {"name": "value", "type": "&T"},
+                    ],
+                    "visibility": "pub",
+                    "return_type": "bool",
+                    "line_range": {"start": 10, "end": 15},
+                    "is_async": False,
+                    "docstring": "",
+                },
+                {
+                    "name": "new",
+                    "parameters": [],
+                    "visibility": "pub",
+                    "return_type": "Self",
+                    "line_range": {"start": 20, "end": 25},
+                    "is_async": False,
+                    "docstring": "",
+                },
+            ],
+            "fields": [],
+        }
+        result = formatter._format_full_table(data)
+        assert "{'name'" not in result
+        assert "search" in result
+        assert "fn(self, value: &T) -> bool" in result
+        assert "fn() -> Self" in result
+
+
 class TestRustFormatterEdgeCases:
     """Test edge cases"""
 

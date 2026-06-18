@@ -164,11 +164,31 @@ class RustTableFormatter(BaseTableFormatter):
 
         return f"| {name} | {signature} | {visibility} | {is_async} | {lines_str} | {doc} |"
 
+    @staticmethod
+    def _format_rust_param(param: Any) -> str:
+        """Render one Rust parameter as proper Rust syntax (never a raw dict repr).
+
+        Handles three cases:
+        - Receiver params (``self`` / ``&self`` / ``&mut self``): the extractor
+          sets ``type`` to the placeholder ``'Any'``; render as the bare name only.
+        - Typed dict ``{"name": "value", "type": "&T"}`` → ``"value: &T"``.
+        - String (already formatted by the extractor) → pass through unchanged.
+        """
+        if isinstance(param, dict):
+            name = param.get("name", "")
+            ptype = param.get("type", "")
+            # Receiver params and Any-typed params: return bare name
+            if ptype in ("Any", "", None) or name in ("self", "&self", "&mut self"):
+                return name or ptype or str(param)
+            if name and ptype:
+                return f"{name}: {ptype}"
+            return name or ptype or str(param)
+        return str(param)
+
     def _create_full_signature(self, fn: dict[str, Any]) -> str:
         """Create full function signature for Rust"""
         params = fn.get("parameters", [])
-        # Rust parameters are usually strings like "x: i32", keep them as is or simplify
-        params_str = ", ".join([str(p) for p in params])
+        params_str = ", ".join(self._format_rust_param(p) for p in params)
         return_type = fn.get("return_type", "")
         ret_str = f" -> {return_type}" if return_type and return_type != "()" else ""
 
