@@ -10,7 +10,7 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 **Why it's different:**
 * **Cross-language correctness is the moat.** A name-only index wires Python `sorted()` to a Swift `func sorted`. TSA doesn't. ~390× fewer cross-language call-graph mis-wires than alternatives ([reproducible audit](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)).
-* **Built agent-native.** 8 MCP tools, TOON output (~50-70% smaller than JSON on bulk responses), verdict envelopes, and 13 curated Skills — designed for Claude Code, Cursor, and any MCP client.
+* **Built agent-native.** 8 MCP tools, TOON output (~half the size of JSON on bulk/tabular responses), verdict envelopes, and 13 curated Skills — designed for Claude Code, Cursor, and any MCP client.
 * **Broad and correctly classified.** 13 languages with full call-graph indexing (Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP), 8 more symbol-indexed or CLI-reachable.
 
 > **Proof:** on HuggingFace `tokenizers` (Rust+Python+JS+TS), a name-only resolver mis-wires **1,259** call edges — TSA: **0**. Run it on your repo in seconds: `uvx --from tree-sitter-analyzer miswire-audit .`
@@ -97,8 +97,8 @@ It prints how many call edges a name-only code index (the design most tools use)
 
 ## Why Tree-sitter Analyzer
 
-* **Token-efficient by default.** Every MCP response uses **TOON** — a tabular JSON variant that cuts bulk/tabular payloads by ~50-70 % vs raw JSON ([measured invariant](tests/unit/mcp/test_output_cost_invariants.py); RFC-0012 measured 0.52× ratio on representative decision tools).
-* **Verdict envelopes.** Every response carries `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND`, so orchestrators branch on outcomes without re-prompting.
+* **Token-efficient on bulk output.** Every MCP response uses **TOON**, a tabular JSON variant that cuts **bulk/tabular** payloads by roughly half vs raw JSON ([measured invariant](tests/unit/mcp/test_output_cost_invariants.py)). Note: small metadata-heavy *decision-tool* responses are currently ~equal-to-larger than JSON under the present envelope wiring — tracked by a strict-xfail invariant and being corrected in [RFC-0018](rfcs/0018-response-envelope-normalization-and-adaptive-toon.md).
+* **Verdict envelopes.** Every response carries `verdict: SAFE | CAUTION | UNSAFE | INFO | REVIEW | WARN | ERROR | NOT_FOUND`, so orchestrators branch on outcomes without re-prompting.
 * **Project health grading (A–F).** Few code-intel tools expose a whole-project quality grade — TSA grades on size / complexity / coverage / duplication / dependencies / structure / git-hotspots in one call.
 * **13 curated workflows (Skills).** Pre-baked tool subsets for "find symbol", "trace call chain", "score health", "safe-to-edit before refactor", "PR review", etc.
 * **5 layers of safety.** `edit action=safe` + `edit action=guard` + constraint DSL + `edit action=impact` + verdict envelopes — designed so agents *know* before they touch.
@@ -128,7 +128,7 @@ It prints how many call edges a name-only code index (the design most tools use)
 | **BM25-ranked symbol search** | all search tools | relevance_score on every result (min-max normalized: best=1.0, weakest=0.0); sort(by='confidence') in DSL |
 | **Semantic search (BM25 pre-filtered)** | `search` action=chain (`semantic()` DSL) | BM25 pre-filter narrows 40k symbols to ~400 before cosine rerank |
 | **Project A–F health grading** | `health` action=project | 7 dimensions (size/complexity/deps/coverage/duplication/structure/git-hotspot), uncommon among code-intel tools |
-| **TOON output** | every tool, `output_format: "toon"` (default) | 50-70 % token saving on bulk/tabular output |
+| **TOON output** | every tool, `output_format: "toon"` (default) | ~50 % token saving on bulk/tabular output (decision tools tracked by RFC-0018) |
 | **Verdict envelopes** | every tool | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
 | **Safe-to-edit gate** | `edit` action=safe / action=guard | refuses high-risk edits before they happen |
 | **Architectural constraint DSL** | `edit` action=constraints | "module A cannot import B" → enforced |
@@ -240,7 +240,7 @@ The remaining ~4% `unknown` is dominated by genuinely-unresolvable dynamic dispa
 - **Index build speed.** Removing a redundant post-index edge-refresh pass cut a cold django index (~2 950 files) from **181 s → 97 s (−46 %)**; the win grows with repo size. Re-index of unchanged files is a content-hash lookup.
 - **Strict CLI superset.** Every MCP tool has a CLI equivalent (CodeGraph's CLI is thinner); *behavioural* defaults (ranking, limits, truncation) are kept in lock-step between the two surfaces. Output format is the one intentional divergence — MCP defaults to TOON (token-efficient for agents), the CLI to JSON (human/`jq`-friendly).
 - **One-call expressiveness.** A jQuery-style chain DSL — `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` — returns an entire flow's subgraph + source in a single call, with JS-style `true`/`false` so agents can write it naturally.
-- **Output is structured + token-aware.** TOON default for MCP (50–70 % smaller than JSON on bulk/tabular output), per-call truncation hints, consistent test-file de-prioritisation across every ranking path.
+- **Output is structured + token-aware.** TOON default for MCP (~half the size of JSON on bulk/tabular output; decision-tool wiring corrected in RFC-0018), per-call truncation hints, consistent test-file de-prioritisation across every ranking path.
 - **Breadth.** Health scoring, safe-to-edit / change-impact gating, 13 curated Skills, and broad language coverage.
 
 ### On token cost — and a benchmark we corrected
