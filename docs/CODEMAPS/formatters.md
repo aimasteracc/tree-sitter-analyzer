@@ -118,6 +118,19 @@ Same data in JSON costs noticeably more tokens for typical AST outputs (the
 
 Serialization helpers: `formatters/toon_formatter.py:_emit_*` (extracted in r37dm dogfood).
 
+### TOON Encoder/Decoder internals
+
+| Module | Role |
+|---|---|
+| `formatters/toon_encoder.py` | `ToonEncoder` — iterative encoder; `encode_value` for scalars |
+| `formatters/_toon_encoder_string_helpers.py` | `needs_quotes`, `escape_string` — quoting rules |
+| `formatters/_toon_encoder_table_helpers.py` | Array-table encoding: `union_schema`, `encode_array_table_lines` |
+| `formatters/_toon_encoder_task_helpers.py` | Stack-based task dispatch helpers |
+| `formatters/toon_decoder.py` | `decode_toon(token)` — inverse of `encode_value` for scalar tokens (issue #1058); `ToonDecodeError` |
+
+The decoder is intentionally **scalar-only** (PR1 scope): it handles `null`, `true`/`false`, numbers, quoted strings, and bare words.
+Full dict/list/table parsing is deferred to RFC-0018.
+
 ## Format Stability Contract
 
 Format changes are tracked by:
