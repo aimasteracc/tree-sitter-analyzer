@@ -1004,12 +1004,11 @@ int process(int x) {
 #   if_statement          : 2   (if + else-if)
 #   for_statement         : 1
 #   while_statement       : 1
-#   switch_statement      : 1
-#   case_statement        : 1
+#   switch_statement      : 1   (switch counts ONCE — case_statement excluded)
 #   conditional_expression: 1   (ternary)
-#   &&                    : 1   (NEW: short-circuit operator)
-#   ||                    : 1   (NEW: short-circuit operator)
-# Total = 9 → complexity = 1 + 9 = 10 (pre-fix this measured 8).
+#   &&                    : 1   (short-circuit operator)
+#   ||                    : 1   (short-circuit operator)
+# Total = 8 → complexity = 1 + 8 = 9.
 
 
 def _c_functions(source: str):
@@ -1038,11 +1037,28 @@ class TestCCyclomaticComplexity:
         assert funcs[0].complexity_score == 4
 
     def test_rich_branching(self):
-        """9 decision points (incl. && and ||) → complexity 10."""
+        """8 decision points (switch counts once, incl. && and ||) → complexity 9."""
         funcs = _c_functions(C_RICH)
         assert len(funcs) == 1
         assert funcs[0].name == "process"
-        assert funcs[0].complexity_score == 10
+        assert funcs[0].complexity_score == 9
+
+    def test_switch_counts_once_not_per_case(self):
+        """A switch with many cases adds exactly one decision point."""
+        src = (
+            "int classify(int x) {\n"
+            "    switch (x) {\n"
+            "        case 1: return 10;\n"
+            "        case 2: return 20;\n"
+            "        case 3: return 30;\n"
+            "        default: return 0;\n"
+            "    }\n"
+            "}\n"
+        )
+        funcs = _c_functions(src)
+        assert len(funcs) == 1
+        assert funcs[0].name == "classify"
+        assert funcs[0].complexity_score == 2
 
 
 # ---------------------------------------------------------------------------
@@ -1078,11 +1094,28 @@ class TestCppCyclomaticComplexity:
         assert funcs[0].complexity_score == 4
 
     def test_rich_branching(self):
-        """9 decision points (incl. && and ||) → complexity 10."""
+        """8 decision points (switch counts once, incl. && and ||) → complexity 9."""
         funcs = _cpp_functions(C_RICH)
         assert len(funcs) == 1
         assert funcs[0].name == "process"
-        assert funcs[0].complexity_score == 10
+        assert funcs[0].complexity_score == 9
+
+    def test_switch_counts_once_not_per_case(self):
+        """A switch with many cases adds exactly one decision point."""
+        src = (
+            "int classify(int x) {\n"
+            "    switch (x) {\n"
+            "        case 1: return 10;\n"
+            "        case 2: return 20;\n"
+            "        case 3: return 30;\n"
+            "        default: return 0;\n"
+            "    }\n"
+            "}\n"
+        )
+        funcs = _cpp_functions(src)
+        assert len(funcs) == 1
+        assert funcs[0].name == "classify"
+        assert funcs[0].complexity_score == 2
 
 
 # ---------------------------------------------------------------------------

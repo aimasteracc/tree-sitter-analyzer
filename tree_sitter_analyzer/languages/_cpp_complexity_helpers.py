@@ -4,6 +4,10 @@ from typing import Any
 
 from ._complexity_logical import is_executable_logical_operator
 
+# A switch counts ONCE (the "switch_statement" node), per the cross-language
+# construct-once convention shared by Go/Rust/Swift/Java/C#. "case_statement"
+# is deliberately excluded — counting each case (and the default) on top of the
+# switch over-counted C/C++ relative to every other language.
 _DECISION_NODES = frozenset(
     {
         "if_statement",
@@ -11,7 +15,6 @@ _DECISION_NODES = frozenset(
         "for_statement",
         "for_range_loop",
         "switch_statement",
-        "case_statement",
         "conditional_expression",
         "catch_clause",
         "do_statement",
