@@ -1,6 +1,6 @@
 # RFC-0019: Cyclomatic complexity — one source of truth
 
-- **Status**: draft
+- **Status**: accepted
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-19
 - **Last updated**: 2026-06-19
