@@ -1259,3 +1259,86 @@ class TestLogicalOperatorNonExecutableContexts:
         )
         assert funcs[0].name == "f"
         assert funcs[0].complexity_score == 3
+
+
+# ---------------------------------------------------------------------------
+# Java decision-node coverage (tree-sitter-java node-name parity)
+# ---------------------------------------------------------------------------
+# tree-sitter-java emits "switch_expression" (NOT "switch_statement"),
+# "ternary_expression" (NOT "conditional_expression"), and has a separate
+# "do_statement". The historical _JAVA_DECISION_NODES used the wrong names, so
+# Java silently ignored every switch, every ternary, and every do-while loop.
+# Each construct is pinned in isolation (per CLAUDE.md: a mixed fixture would
+# let one missed construct hide behind another's count).
+
+JAVA_SWITCH_ONLY = """\
+class S {
+    int pick(int x) {
+        switch (x) {
+            case 1: return 10;
+            case 2: return 20;
+            case 3: return 30;
+            default: return 0;
+        }
+    }
+}
+"""
+# switch counts once (construct-once convention) → complexity = 1 + 1 = 2.
+
+JAVA_TERNARY_ONLY = """\
+class S {
+    int sign(int x) {
+        return x > 0 ? 1 : -1;
+    }
+}
+"""
+# one ternary → complexity = 1 + 1 = 2.
+
+JAVA_DO_WHILE_ONLY = """\
+class S {
+    int drain(int x) {
+        do {
+            x--;
+        } while (x > 0);
+        return x;
+    }
+}
+"""
+# one do-while → complexity = 1 + 1 = 2.
+
+JAVA_ALL_THREE = """\
+class S {
+    int run(int x) {
+        do { x--; } while (x > 0);
+        switch (x) { case 1: return 1; case 2: return 2; }
+        return x > 0 ? 1 : -1;
+    }
+}
+"""
+# do-while(1) + switch(1) + ternary(1) = 3 → complexity = 1 + 3 = 4.
+
+
+class TestJavaDecisionNodeCoverage:
+    def test_switch_counts_once(self):
+        funcs = _java_functions(JAVA_SWITCH_ONLY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "pick"
+        assert funcs[0].complexity_score == 2
+
+    def test_ternary_counts(self):
+        funcs = _java_functions(JAVA_TERNARY_ONLY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "sign"
+        assert funcs[0].complexity_score == 2
+
+    def test_do_while_counts(self):
+        funcs = _java_functions(JAVA_DO_WHILE_ONLY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "drain"
+        assert funcs[0].complexity_score == 2
+
+    def test_all_three_combined(self):
+        funcs = _java_functions(JAVA_ALL_THREE)
+        assert len(funcs) == 1
+        assert funcs[0].name == "run"
+        assert funcs[0].complexity_score == 4
