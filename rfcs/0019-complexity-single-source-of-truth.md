@@ -92,6 +92,34 @@ Kotlin/C/C++/C# walkers, …). The extractor element builders keep calling their
 own walker (or this dispatcher — equivalent), so the extractor path is
 behavior-preserving.
 
+### Constraint found while prototyping: ``decision_points`` must survive
+
+The heatmap path does not just produce a *number*. ``_count_complexity_in_node``
+also returns a per-type ``decision_points`` breakdown (``{"if_statement": 3,
+"for_statement": 1, ...}``) that is surfaced by the **MCP ``viz``/complexity-
+heatmap tool** (user-facing), cached in v1 rows, and asserted by
+``test_decision_points_populated``. So the naive "Alternative A" (have consumers
+read ``element.complexity_score``) is **not viable as-is** — the extractor emits
+a scalar, not a breakdown, and the heatmap's fallback path (already on
+Alternative A) sets ``decision_points={}``.
+
+Therefore the source of truth must be the **decision-node TYPE definitions**, not
+just a scalar function. Concretely, each language exposes (or the shared module
+owns) a single ``decision_node_types(language) -> frozenset[str]`` plus the
+``&&``/``||``/construct-once rules, and BOTH the extractor's count AND the
+heatmap's ``{type: n}`` breakdown derive from that one definition. The scalar
+``cyclomatic_complexity`` is then ``1 + sum(breakdown.values())`` (modulo the
+``&&``/``||`` and construct-once special cases already centralised in
+``_complexity_logical`` / ``_complexity_decisions``). This keeps
+``decision_points`` alive while removing the duplicate, drift-prone tables.
+
+Note the heatmap already half-implements unification: languages NOT in
+``_METHOD_NODES`` go through ``_extract_functions_fallback`` and use
+``element.complexity_score`` (correct); only the eight ``_METHOD_NODES``
+languages (python/js/ts/java/go/rust/c/cpp) use the per-case
+``_count_complexity_in_node``. So the inconsistency is *already* path-dependent
+even within the heatmap module.
+
 ### Consumers
 
 - **`health_scorer.score_complexity`** — delete `DECISION_NODE_TYPES`; parse the
