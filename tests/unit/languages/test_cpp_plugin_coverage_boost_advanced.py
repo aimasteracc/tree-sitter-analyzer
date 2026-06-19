@@ -164,7 +164,8 @@ def test_switch_complexity(extractor):
     funcs = extractor.extract_functions(tree, code)
     grade_funcs = [f for f in funcs if f.name == "grade"]
     assert len(grade_funcs) == 1
-    assert grade_funcs[0].complexity_score == 5
+    # A switch counts once (construct-once convention); cases are not summed.
+    assert grade_funcs[0].complexity_score == 2
 
 
 # --- Catch clause complexity ---

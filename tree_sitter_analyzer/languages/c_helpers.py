@@ -128,12 +128,15 @@ def extract_macro_function(
 
 def calculate_complexity(node: Any) -> int:
     """Calculate cyclomatic complexity."""
+    # A switch counts ONCE (the "switch_statement" node), per the cross-language
+    # construct-once convention. "case_statement" is excluded — counting each
+    # case (and default) on top of the switch over-counted C relative to every
+    # other language.
     decision_nodes = {
         "if_statement",
         "while_statement",
         "for_statement",
         "switch_statement",
-        "case_statement",
         "conditional_expression",
         "do_statement",
     }

@@ -473,4 +473,5 @@ def test_extract_function_with_switch(plugin):
     elements = plugin.extract_elements(tree, code)
     funcs = elements["functions"]
     assert len(funcs) == 1
-    assert funcs[0].complexity_score == 5
+    # A switch counts once (construct-once convention); cases are not summed.
+    assert funcs[0].complexity_score == 2
