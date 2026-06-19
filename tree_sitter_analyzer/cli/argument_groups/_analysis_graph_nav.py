@@ -443,6 +443,13 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         help="Max dead function candidates (default: 50)",
     )
     parser.add_argument(
+        "--dead-code-path",
+        metavar="PREFIX",
+        help="Restrict --dead-code results to definitions under this path "
+        "prefix (segment-matched, project-relative), e.g. "
+        "tree_sitter_analyzer/mcp to exclude corpus/ and benchmarks/",
+    )
+    parser.add_argument(
         "--doc-sync",
         action="store_true",
         help="Scan markdown docs for stale file-path references (broken links)",
