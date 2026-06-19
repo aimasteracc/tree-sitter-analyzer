@@ -100,3 +100,89 @@ class TestFormatAdvanced:
     def test_format_advanced_non_json_non_csv(self, fmt, sample_data):
         result = fmt.format_advanced(sample_data, "markdown")
         assert isinstance(result, str)
+
+
+class TestJavaScriptModuleLevelFunctions:
+    """Module-level (non-class) functions must render in the full table.
+
+    Regression: the full table previously rendered only classes and their
+    methods, silently dropping every top-level function.
+    """
+
+    def test_flat_module_functions_render(self, fmt):
+        data = {
+            "file_path": "/x/util.js",
+            "classes": [],
+            "methods": [
+                {
+                    "name": "alpha",
+                    "line_range": {"start": 1, "end": 1},
+                    "parameters": ["a"],
+                    "return_type": "number",
+                    "complexity_score": 1,
+                },
+                {
+                    "name": "beta",
+                    "line_range": {"start": 2, "end": 4},
+                    "parameters": ["b"],
+                    "return_type": "number",
+                    "complexity_score": 2,
+                },
+            ],
+        }
+        result = fmt._format_full_table(data)
+        assert "## Global Functions" in result
+        assert "| alpha |" in result
+        assert "| beta |" in result
+
+    def test_top_level_function_alongside_class(self, fmt):
+        data = {
+            "file_path": "/x/mixed.js",
+            "classes": [
+                {"name": "C", "line_range": {"start": 5, "end": 7}},
+            ],
+            "methods": [
+                {
+                    "name": "topLevel",
+                    "line_range": {"start": 1, "end": 3},
+                    "parameters": ["x"],
+                    "return_type": "number",
+                    "complexity_score": 2,
+                },
+                {
+                    "name": "method",
+                    "line_range": {"start": 6, "end": 6},
+                    "parameters": ["y"],
+                    "return_type": "number",
+                    "complexity_score": 1,
+                },
+            ],
+        }
+        result = fmt._format_full_table(data)
+        # The class method stays under its class; the top-level function does not.
+        assert "## Global Functions" in result
+        assert "| topLevel |" in result
+        global_section = result.split("## Global Functions", 1)[1]
+        assert "topLevel" in global_section
+        assert "| method |" not in global_section
+
+    def test_plugin_shaped_functions_key_render(self, fmt):
+        """Top-level functions arrive under 'functions' (JS plugin shape),
+        not 'methods'; they must still render. (Codex P2 on #1092)"""
+        data = {
+            "file_path": "/x/util.js",
+            "classes": [],
+            "methods": [],
+            "functions": [
+                {
+                    "name": "gamma",
+                    "line_range": {"start": 1, "end": 2},
+                    "parameters": ["g"],
+                    "return_type": "number",
+                    "complexity_score": 1,
+                }
+            ],
+        }
+        result = fmt._format_full_table(data)
+        assert "## Global Functions" in result
+        assert "| gamma |" in result

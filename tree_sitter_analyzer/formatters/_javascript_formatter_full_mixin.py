@@ -18,6 +18,10 @@ class JavaScriptTableFormatterFullMixin:
         lines: list[str] = []
         classes = _list_or_empty(data.get("classes", []))
         methods = _list_or_empty(data.get("methods", []))
+        # The JS plugin stores class methods under "methods" and top-level
+        # functions under "functions" (disjoint lists), so both must be
+        # considered when collecting module-level functions.
+        callables = methods + _list_or_empty(data.get("functions", []))
 
         lines.append(f"# {_title(data, classes)}")
         lines.append("")
@@ -26,6 +30,15 @@ class JavaScriptTableFormatterFullMixin:
             _append_classes_overview(lines, classes, methods)
             for class_info in classes:
                 lines.extend(self._format_class_section(class_info, data))
+
+        _append_method_section(
+            lines,
+            "## Global Functions",
+            "| Function | Signature | Vis | Lines | Cx | Doc |",
+            "|----------|-----------|-----|-------|----|----|",
+            _module_level_functions(callables, classes),
+            self._format_method_table_row,
+        )
 
         _trim_trailing_blank_lines(lines)
         return "\n".join(lines)
@@ -138,6 +151,23 @@ def _items_in_range(
         item
         for item in items
         if start <= item.get("line_range", {}).get("start", 0) <= end
+    ]
+
+
+def _module_level_functions(
+    methods: list[dict[str, Any]], classes: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Return methods that don't fall inside any class range."""
+    class_ranges = [c.get("line_range") or {} for c in classes if c is not None]
+    return [
+        method
+        for method in methods
+        if not any(
+            rng.get("start", 0)
+            <= (method.get("line_range") or {}).get("start", 0)
+            <= rng.get("end", 0)
+            for rng in class_ranges
+        )
     ]
 
 
