@@ -310,22 +310,33 @@ export default UserComponent;
         assert extractor._is_exported_class("TestClass") is False
 
     def test_calculate_complexity_optimized(self, extractor):
-        """Test complexity calculation"""
-        # Mock node
+        """Cache hit returns the cached value; otherwise an AST-node walk."""
+        # Cache hit short-circuits.
         node = Mock()
-        node_id = id(node)
-
-        # Test caching
-        extractor._complexity_cache[node_id] = 5
+        extractor._complexity_cache[id(node)] = 5
         assert extractor._calculate_complexity_optimized(node) == 5
 
-        # Test calculation
+        # Real calculation: if + while + for = 3 decisions → complexity 4.
         extractor._complexity_cache.clear()
-        extractor._get_node_text_optimized = Mock(
-            return_value="if (condition) { while (true) { for (let i = 0; i < 10; i++) {} } }"
-        )
-        complexity = extractor._calculate_complexity_optimized(node)
-        assert complexity > 1  # Should be greater than base complexity
+        import tree_sitter
+        import tree_sitter_typescript
+
+        lang = tree_sitter.Language(tree_sitter_typescript.language_typescript())
+        src = "function f(x:number){ if (x) { while (x) { for (let i=0;;) {} } } }"
+        tree = tree_sitter.Parser(lang).parse(src.encode())
+        stack = [tree.root_node]
+        fn = None
+        while stack:
+            n = stack.pop()
+            if n.type in (
+                "function_declaration",
+                "function_expression",
+                "arrow_function",
+            ):
+                fn = n
+                break
+            stack.extend(n.children)
+        assert extractor._calculate_complexity_optimized(fn) == 4
 
 
 class TestTypeScriptPlugin:
