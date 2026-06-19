@@ -62,6 +62,28 @@ def cyclomatic_complexity(function_node, language: str) -> int:
     for every consumer (extractor, health_scorer, heatmap)."""
 ```
 
+**Signature heterogeneity (found while prototyping — the wrinkle this RFC must
+pin down).** The per-language walkers do NOT share a signature today:
+`_java_ast_helpers.calculate_complexity(node)`, `_complexity_decisions.
+count_decision_complexity(node)` and most others take a bare node; but
+`csharp_helpers.calculate_complexity(node, traverse_fn)` needs a traversal
+helper, `typescript_plugin._text_helpers.calculate_complexity(node,
+get_node_text, cache)` needs two more, and the Python path
+(`python_plugin/_node_helpers.calculate_complexity(body: str)`) takes a **source
+string**, not a node. So the dispatcher cannot be a 1-line `FUNCS[language]
+(node)`.
+
+The dispatcher therefore owns a small **per-language adapter table** mapping
+`language -> Callable[[node], int]`, where each adapter closes over whatever the
+underlying walker needs (a no-op `traverse_fn`/cache for C#/TS; for Python,
+either migrate its body-string counter to a node walk or have the adapter
+re-extract the body text). Normalising these signatures — ideally giving every
+plugin a uniform `complexity(function_node) -> int` — is the bulk of the work
+and is the part reviewers should scrutinise. It also means the migration is best
+done **language-by-language** behind the dispatcher (start with the already-
+node-shaped ones; Python and C#/TS adapters last), each step keeping the
+extractor byte-identical.
+
 It dispatches `language -> the existing per-language function` already used by the
 extractors (`_java_ast_helpers.calculate_complexity`, `ruby_plugin.
 _ruby_calculate_complexity`, `_complexity_decisions.count_decision_complexity`
@@ -150,5 +172,7 @@ walker.
 
 ## Open questions
 
+- Python's counter takes a source *string*; migrate it to a node walk
+  (preferred — uniform signature) or adapt by re-slicing the body? 
 - Should `health_scorer` parse independently or reuse a cached parse? (Perf —
   health already parses for other metrics; reuse if cheap.)
