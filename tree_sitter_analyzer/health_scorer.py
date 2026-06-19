@@ -74,218 +74,6 @@ STRUCTURE_DEPTH_MAX = 30  # Max AST depth for scoring
 HOTSPOT_COMMITS_LOW = 5  # ≤ 5 commits in 90 days → full score (stable)
 HOTSPOT_COMMITS_HIGH = 50  # ≥ 50 commits in 90 days → 0 score (volatile)
 
-# Per-language function-definition node types for per-function CC normalization
-FUNCTION_NODE_TYPES: dict[str, set[str]] = {
-    "python": {"function_definition"},
-    "javascript": {"function_declaration", "method_definition", "arrow_function"},
-    "typescript": {"function_declaration", "method_definition", "arrow_function"},
-    "java": {"method_declaration", "constructor_declaration"},
-    "go": {"function_declaration", "method_declaration"},
-    "c": {"function_definition"},
-    "cpp": {"function_definition"},
-    "rust": {"function_item"},
-    "ruby": {"method", "singleton_method"},
-    # Swift: DECISION_NODE_TYPES already had a "swift" entry but FUNCTION
-    # types were missing, so multi-function Swift files fell back to
-    # absolute CC thresholds instead of per-function normalization. Node
-    # names verified against tree_sitter_analyzer/languages/_swift_plugin_extractor.py
-    # (function_declaration / init_declaration); deinit / subscript are
-    # real tree-sitter-swift grammar nodes that also carry a code body.
-    "swift": {
-        "function_declaration",
-        "init_declaration",
-        "deinit_declaration",
-        "subscript_declaration",
-    },
-    # bash node names verified by parsing a sample with tree-sitter-bash.
-    "bash": {"function_definition"},
-    # scala node names verified by parsing samples with tree-sitter-scala;
-    # function_definition = concrete (has body), function_declaration =
-    # abstract (trait method, no body).
-    "scala": {"function_definition", "function_declaration"},
-}
-
-
-# Per-language decision node types for McCabe Cyclomatic Complexity
-# CC = 1 + count(decision_nodes)
-DECISION_NODE_TYPES: dict[str, set[str]] = {
-    "python": {
-        # McCabe 1976 base set:
-        "if_statement",
-        "elif_clause",
-        "for_statement",
-        "while_statement",
-        "except_clause",
-        "conditional_expression",
-        "boolean_operator",
-        "case_clause",
-        # Radon-aligned extras: assert / with / comprehensions are
-        # control-flow branches the agent should account for. Cross-tool
-        # comparison against radon on health_scorer.py showed we were
-        # undercounting by ~25% without these — see AGENT_UX_PAIN entry
-        # for the byte-offset and CC-undercount bugs caught the same way.
-        "assert_statement",
-        "with_statement",
-        "list_comprehension",
-        "set_comprehension",
-        "dictionary_comprehension",
-        "generator_expression",
-    },
-    "javascript": {
-        "if_statement",
-        "for_statement",
-        "for_in_statement",
-        "while_statement",
-        "do_statement",
-        "switch_statement",
-        "case_clause",
-        "catch_clause",
-        "conditional_expression",
-        "logical_expression",
-        "try_statement",
-    },
-    "typescript": {
-        "if_statement",
-        "for_statement",
-        "for_in_statement",
-        "while_statement",
-        "do_statement",
-        "switch_statement",
-        "case_clause",
-        "catch_clause",
-        "conditional_expression",
-        "logical_expression",
-        "try_statement",
-    },
-    "java": {
-        "if_statement",
-        "while_statement",
-        "for_statement",
-        "enhanced_for_statement",
-        "switch_statement",
-        "case_clause",
-        "catch_clause",
-        "conditional_expression",
-    },
-    "c": {
-        "if_statement",
-        "while_statement",
-        "for_statement",
-        "switch_statement",
-        "case_clause",
-        "conditional_expression",
-        "do_statement",
-        "labeled_statement",
-    },
-    "cpp": {
-        "if_statement",
-        "while_statement",
-        "for_statement",
-        "switch_statement",
-        "case_clause",
-        "conditional_expression",
-        "do_statement",
-        "catch_clause",
-        "try_statement",
-        "range_based_for_statement",
-    },
-    "go": {
-        "if_statement",
-        "for_statement",
-        "case_clause",
-        "type_switch_statement",
-        "select_statement",
-        "communication_case",
-    },
-    "rust": {
-        "if_statement",
-        "if_let_expression",
-        "while_expression",
-        "while_let_expression",
-        "for_expression",
-        "loop_expression",
-        "match_expression",
-        "try_expression",
-    },
-    "ruby": {
-        "if",
-        "elsif",
-        "unless",
-        "while",
-        "until",
-        "for",
-        "case",
-        "when",
-        "rescue",
-        "and",
-        "or",
-        "ternary",
-    },
-    "php": {
-        "if_statement",
-        "while_statement",
-        "for_statement",
-        "foreach_statement",
-        "switch_statement",
-        "case_statement",
-        "catch_clause",
-        "conditional_expression",
-        "try_statement",
-    },
-    "kotlin": {
-        "if_statement",
-        "when_expression",
-        "when_entry",
-        "for_statement",
-        "while_statement",
-        "do_statement",
-        "try_expression",
-        "catch_block",
-        "conditional_expression",
-    },
-    "swift": {
-        "if_statement",
-        "while_statement",
-        "for_statement",
-        "switch_statement",
-        "case_statement",
-        "catch_clause",
-        "guard_statement",
-        "conditional_expression",
-    },
-    "csharp": {
-        "if_statement",
-        "while_statement",
-        "for_statement",
-        "foreach_statement",
-        "switch_statement",
-        "case_switch_label",
-        "catch_clause",
-        "conditional_expression",
-        "try_statement",
-        "do_statement",
-    },
-    # bash node names verified by parsing a sample with tree-sitter-bash.
-    # Each ``case`` arm is one ``case_item`` (a branch); the wrapping
-    # ``case_statement`` is not itself a decision point. A 10-arm dispatch
-    # must add 10 CC points, not 1 — so we count ``case_item`` per arm.
-    "bash": {
-        "if_statement",
-        "while_statement",
-        "for_statement",
-        "case_item",
-        "elif_clause",
-    },
-    # scala node names verified by parsing samples with tree-sitter-scala.
-    "scala": {
-        "if_expression",
-        "while_expression",
-        "for_expression",
-        "match_expression",
-        "case_clause",
-    },
-}
-
 # _EXT_TO_LANG is imported from _lang_extension_map at the top of this module.
 # Bug #785 fix: using the canonical map eliminates the drift that caused bash,
 # scala, swiftinterface, and hxx files to be silently skipped by the scorer.
@@ -307,36 +95,6 @@ _DEPENDENCY_ANALYZABLE_LANGS: set[str] = {
     "java",
 }
 _NEUTRAL_DEP_SCORE = 50.0
-
-# Node types that constitute a function/method *body* across the grammars we
-# score. A declaration with one of these as a child (or under the ``body``
-# field) is a concrete definition; one without it is an abstract/no-body
-# declaration (Scala trait method = ``function_declaration`` with no block;
-# Swift protocol requirement = ``init_declaration`` with no body). No-body
-# declarations contribute 0 branches but would otherwise inflate ``n_funcs``
-# in the average-CC path, diluting the average and making files look healthier
-# than they are — so they are skipped from the function count.
-_BODY_NODE_TYPES: frozenset[str] = frozenset(
-    {"block", "function_body", "statements", "compound_statement"}
-)
-
-
-def _has_function_body(node: Any) -> bool:
-    """Return True when a function/method node has an actual code body.
-
-    Checks the ``body`` field first (Scala/Swift name it ``body``), then falls
-    back to scanning immediate children for a known body/block node type so a
-    grammar that does not label the field is still handled.
-    """
-    try:
-        if node.child_by_field_name("body") is not None:
-            return True
-    except Exception:  # pragma: no cover - defensive: non-tree-sitter node
-        pass
-    children = getattr(node, "children", None)
-    if children:
-        return any(getattr(c, "type", None) in _BODY_NODE_TYPES for c in children)
-    return False
 
 
 @dataclass
@@ -749,54 +507,42 @@ def score_size(line_count: int) -> float:
 def score_complexity(file_path: str, source: str, language: str | None) -> float:
     """Score based on McCabe Cyclomatic Complexity.
 
+    Derives CC from the language plugin extractor (single source of truth,
+    RFC-0019 / #1094). The extractor uses per-language AST walkers with the
+    correct node-type names; the old DECISION_NODE_TYPES table was stale for
+    Java (switch_expression/ternary_expression/do_statement all missed) and
+    JavaScript/TypeScript (ternary_expression was mapped as
+    conditional_expression).
+
     For files with ≥3 functions, scores the **average CC per function**
     against industry-standard thresholds (≤5 simple, 5-10 moderate,
     10-15 complex). This stops penalizing well-factored modules that
-    contain many small functions — a file with 30 functions each at
-    CC=3 has a healthy 3.0 avg, even though the file-level total CC=91
-    looks "complex" under naive aggregation.
+    contain many small functions.
 
     For files with <3 functions (utility scripts, single-function
-    modules), the original file-level CC against CC_IDEAL/CC_MODERATE/
-    CC_COMPLEX thresholds is preserved — those thresholds remain the
-    right call for "one function with many branches".
+    modules), the total CC from all functions is scored against CC_IDEAL/
+    CC_MODERATE/CC_COMPLEX thresholds.
     """
     try:
         if language is None:
             return 50.0
 
-        parser = Parser()
-        result = parser.parse_file(file_path, language)
+        from .complexity_heatmap import analyze_file_complexity
 
-        if not result.success or result.tree is None:
-            return 50.0
+        funcs = analyze_file_complexity(file_path, language)
+        n_funcs = len(funcs)
 
-        decision_types = DECISION_NODE_TYPES.get(language, set())
-        function_types = FUNCTION_NODE_TYPES.get(language, set())
-        cc = 1
-        n_funcs = 0
-
-        def walk(node: Any, depth: int) -> None:
-            nonlocal cc, n_funcs
-            if hasattr(node, "type"):
-                if node.type in decision_types:
-                    cc += 1
-                # Only count declarations that actually have a body block.
-                # No-body abstract declarations (Scala trait methods, Swift
-                # protocol requirements) contribute 0 branches; counting them
-                # in ``n_funcs`` would dilute the average-CC denominator and
-                # inflate the health score for multi-function files.
-                if node.type in function_types and _has_function_body(node):
-                    n_funcs += 1
-            if hasattr(node, "children"):
-                for child in node.children:
-                    walk(child, depth + 1)
-
-        walk(result.tree.root_node, 0)
+        if n_funcs == 0:
+            # No functions found (empty file, language with no plugin, or
+            # parse failure inside analyze_file_complexity). Fall back to
+            # base CC = 1 — same as the old path for files with no decision
+            # nodes and no function defs.
+            cc = 1
+        else:
+            cc = sum(f.complexity for f in funcs)
 
         # Multi-function file: score the average CC per function
-        # against industry-standard thresholds. This is the right
-        # interpretation for any module with real structure.
+        # against industry-standard thresholds.
         if n_funcs >= 3:
             avg_cc = cc / n_funcs
             if avg_cc <= 5.0:
@@ -809,9 +555,7 @@ def score_complexity(file_path: str, source: str, language: str | None) -> float
                 return max(5.0, 30.0 - 25.0 * ratio)
             return 5.0
 
-        # Few-function file: stick with absolute CC thresholds — the
-        # original tuning was already correct for "one function with
-        # many branches" cases.
+        # Few-function file: score total CC against absolute thresholds.
         if cc <= CC_IDEAL:
             return 100.0
         if cc <= CC_MODERATE:
