@@ -1536,3 +1536,71 @@ class TestTypeScriptCyclomaticComplexity:
             "case 3:break;default:break;} }"
         )
         assert funcs[0].complexity_score == 2
+
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+# Python complexity was a `re.findall(r"\bkeyword\b", text)` counter that
+# over-counted keywords appearing as whole words in comments/docstrings/strings
+# and counted `match` per-arm and `with` (not a branch). It is now an AST walk.
+
+
+def _python_functions(source: str):
+    import tree_sitter_python
+
+    lang = tree_sitter.Language(tree_sitter_python.language())
+    tree = tree_sitter.Parser(lang).parse(source.encode())
+    from tree_sitter_analyzer.languages.python_plugin.extractor import (
+        PythonElementExtractor,
+    )
+
+    return PythonElementExtractor().extract_functions(tree, source)
+
+
+class TestPythonCyclomaticComplexity:
+    def test_simple_no_branches(self):
+        funcs = _python_functions("def greet(name):\n    return name\n")
+        assert funcs[0].name == "greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_keywords_in_comment_docstring_string_not_counted(self):
+        for src in [
+            "def f():\n    # if elif while for and or\n    return 1\n",
+            'def f():\n    """if elif while for"""\n    return 1\n',
+            "def f():\n    return 'if you for or while'\n",
+            "def modify(formatter):\n    return formatter\n",
+        ]:
+            assert _python_functions(src)[0].complexity_score == 1
+
+    def test_with_statement_is_not_a_decision(self):
+        funcs = _python_functions(
+            "def f():\n    with open('x') as fh:\n        return fh.read()\n"
+        )
+        assert funcs[0].complexity_score == 1
+
+    def test_match_counts_once_not_per_case(self):
+        funcs = _python_functions(
+            "def f(x):\n    match x:\n        case 1: pass\n"
+            "        case 2: pass\n        case _: pass\n"
+        )
+        assert funcs[0].complexity_score == 2
+
+    def test_comprehension_loop_and_filter_count(self):
+        """`[y for y in z if w]` = comprehension for + if → complexity 3."""
+        funcs = _python_functions("def f(z):\n    return [y for y in z if w]\n")
+        assert funcs[0].complexity_score == 3
+
+    def test_rich_branching(self):
+        """if + elif + for + while + except + ternary + and + or = 8 → 9."""
+        funcs = _python_functions(
+            "def f(x, items):\n"
+            "    if x > 0 and x < 9:\n        pass\n"
+            "    elif x < 0 or x > 20:\n        pass\n"
+            "    for i in items:\n        pass\n"
+            "    while x:\n        pass\n"
+            "    try:\n        pass\n    except ValueError:\n        pass\n"
+            "    r = 1 if x else -1\n    return r\n"
+        )
+        assert funcs[0].name == "f"
+        assert funcs[0].complexity_score == 9

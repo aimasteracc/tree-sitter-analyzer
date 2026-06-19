@@ -674,27 +674,33 @@ class TestPythonPluginEdgeCases:
             )  # Should use fallback (10 bytes = "def test()")
 
     def test_complexity_calculation_edge_cases(self, extractor):
-        """Test complexity calculation edge cases"""
-        # Exact measured complexities per input (text-keyword counting ignores context)
-        expected_by_code = {
-            "": 1,
-            "pass": 1,
-            "if if if:": 4,
-            "# if elif while for": 5,
-            "'if elif while'": 4,
-            "if True: pass": 2,
-        }
+        """Keywords in comments / docstrings / strings / identifiers do NOT add
+        complexity (the AST walk respects context, unlike the old keyword count)."""
+        import tree_sitter
+        import tree_sitter_python
 
-        for code, expected_complexity in expected_by_code.items():
-            mock_node = Mock()
+        lang = tree_sitter.Language(tree_sitter_python.language())
+        _trees = []  # keep parses alive so node ids are not recycled across calls
 
-            with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:
-                mock_get_text.return_value = code
+        def _func_cx(src: str) -> int:
+            extractor._complexity_cache.clear()
+            tree = tree_sitter.Parser(lang).parse(src.encode())
+            _trees.append(tree)
+            stack = [tree.root_node]
+            while stack:
+                n = stack.pop()
+                if n.type == "function_definition":
+                    return extractor._calculate_complexity_optimized(n)
+                stack.extend(n.children)
+            raise AssertionError("no function")
 
-                result = extractor._calculate_complexity_optimized(mock_node)
-                assert result == expected_complexity, (
-                    f"code={code!r}: expected {expected_complexity}, got {result}"
-                )
+        # keywords only in a comment / docstring / string / identifier → Cx 1
+        assert _func_cx("def f():\n    # if elif while for and or\n    return 1\n") == 1
+        assert _func_cx('def f():\n    """if elif while"""\n    return 1\n') == 1
+        assert _func_cx("def f():\n    return 'if you for or while'\n") == 1
+        assert _func_cx("def modify(formatter):\n    return formatter\n") == 1
+        # one real `if` → Cx 2
+        assert _func_cx("def f(x):\n    if x:\n        pass\n") == 2
 
     def test_docstring_extraction_edge_cases(self, extractor):
         """Test docstring extraction edge cases"""
