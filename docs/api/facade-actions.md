@@ -63,7 +63,7 @@ Reading the tables:
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
-| `dead` | `include_test_files`, `max_dead`, `max_imports`, `max_variables`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--dead-code` |
+| `dead` | `include_test_files`, `max_dead`, `max_imports`, `max_variables`, `mode`, `output_format`, `path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--dead-code` |
 | `deps` | `file_path`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--dependencies` |
 | `file` | `file_path`*, `compact_only`, `language`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--file-health` |
 | `heatmap` | `directory`, `file_path`, `function_name` (`symbol` aliases `function_name`), `language`, `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-complexity-heatmap` |

@@ -68,6 +68,17 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                     "description": "Include test files in analysis (default: false)",
                     "default": False,
                 },
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "Restrict results to functions/imports/variables defined "
+                        "under this path prefix, relative to the project root and "
+                        "matched on path segments (e.g. 'tree_sitter_analyzer/mcp' "
+                        "excludes corpus/ and benchmarks/). Transitive reachability "
+                        "is still computed across the whole project; only the "
+                        "reported items are scoped."
+                    ),
+                },
                 "max_dead": {
                     "type": "integer",
                     "description": "Max dead function candidates to return (default: 50)",
@@ -115,6 +126,7 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
         max_imports = arguments.get("max_imports", 50)
         max_variables = arguments.get("max_variables", 50)
         output_format = arguments.get("output_format", "toon")
+        path = arguments.get("path") or None
 
         try:
             result = analyze_dead_code(
@@ -129,6 +141,23 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                 "success": False,
                 "error": f"Analysis failed: {exc}",
             }
+
+        # Scope to a path prefix (#1084) AFTER the transitive analysis, so
+        # cross-file reachability stays whole-project but the *reported* items
+        # are limited to definitions under ``path``. Applied before any total
+        # is computed so every count reflects the scoped set.
+        if path is not None:
+            result.dead_functions = [
+                df
+                for df in result.dead_functions
+                if _under_path(df.function.file_path, path)
+            ]
+            result.unused_imports = [
+                ui for ui in result.unused_imports if _under_path(ui.file, path)
+            ]
+            result.unreferenced_variables = [
+                uv for uv in result.unreferenced_variables if _under_path(uv.file, path)
+            ]
 
         # Totals BEFORE the display cap — used for truncation signals.
         total_dead_funcs = len(result.dead_functions)
@@ -246,6 +275,18 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(response, output_format)
+
+
+def _under_path(file_path: str, path: str) -> bool:
+    """True if ``file_path`` is the ``path`` itself or lives under it, matched
+    on whole path segments (so 'a/m' does NOT match 'a/mcp/x.py'). Both sides
+    are normalized to forward slashes; a trailing slash on ``path`` is ignored.
+    """
+    f = file_path.replace("\\", "/")
+    p = path.replace("\\", "/").rstrip("/")
+    if not p:
+        return True
+    return f == p or f.startswith(p + "/")
 
 
 def _serialize_dead_function(df: DeadFunction) -> dict[str, Any]:

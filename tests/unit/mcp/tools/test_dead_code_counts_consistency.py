@@ -52,14 +52,14 @@ def _make_dead(name: str, file: str = "a.py", line: int = 1) -> DeadFunction:
     )
 
 
-def _make_import(name: str) -> UnusedImport:
+def _make_import(name: str, file: str = "a.py") -> UnusedImport:
     return UnusedImport(
-        file="a.py", line=1, import_text=f"import {name}", unused_names=[name]
+        file=file, line=1, import_text=f"import {name}", unused_names=[name]
     )
 
 
-def _make_var(name: str) -> UnreferencedVariable:
-    return UnreferencedVariable(file="a.py", name=name, line=1, language="python")
+def _make_var(name: str, file: str = "a.py") -> UnreferencedVariable:
+    return UnreferencedVariable(file=file, name=name, line=1, language="python")
 
 
 def _fake_result(
@@ -364,6 +364,124 @@ class TestDeadCodeToolEdgeCases:
         assert "unreferenced_variables" in result
         assert "dead_functions" not in result
         assert "unused_imports" not in result
+
+
+def _mixed_path_result() -> DeadCodeResult:
+    """Dead items spread across product / corpus / benchmarks paths (#1084)."""
+    return DeadCodeResult(
+        dead_functions=[
+            _make_dead("prod_a", "tree_sitter_analyzer/mcp/x.py"),
+            _make_dead("prod_b", "tree_sitter_analyzer/mcp/sub/y.py"),
+            _make_dead("corpus_c", "corpus/python/z.py"),
+            _make_dead("bench_d", "benchmarks/agent-tasks/scenarios.py"),
+            _make_dead("root_e", "analyze_coverage_json.py"),
+        ],
+        unused_imports=[
+            _make_import("prod_imp", "tree_sitter_analyzer/mcp/x.py"),
+            _make_import("corpus_imp", "corpus/python/z.py"),
+        ],
+        unreferenced_variables=[
+            _make_var("prod_var", "tree_sitter_analyzer/mcp/x.py"),
+            _make_var("corpus_var", "corpus/python/z.py"),
+        ],
+        stats={
+            "total_functions": 5,
+            "dead_functions": 5,
+            "unused_imports": 2,
+            "unreferenced_variables": 2,
+            "total_call_edges": 0,
+        },
+    )
+
+
+class TestDeadCodePathScoping:
+    """#1084: ``path`` scopes results to items defined under a path prefix
+    (the ``next_step`` 'filter by path' guidance must become real)."""
+
+    def test_no_path_returns_everything(self, fake_root, monkeypatch):
+        monkeypatch.setattr(
+            mod, "analyze_dead_code", lambda *a, **k: _mixed_path_result()
+        )
+        tool = CodeGraphDeadCodeTool(fake_root)
+        result = _run(tool.execute({"output_format": "json"}))
+        assert result["stats"]["total_dead_functions_transitive"] == 5
+        assert result["stats"]["total_unused_imports"] == 2
+        assert result["stats"]["total_unreferenced_variables"] == 2
+
+    def test_path_scopes_to_product_package(self, fake_root, monkeypatch):
+        monkeypatch.setattr(
+            mod, "analyze_dead_code", lambda *a, **k: _mixed_path_result()
+        )
+        tool = CodeGraphDeadCodeTool(fake_root)
+        result = _run(
+            tool.execute({"output_format": "json", "path": "tree_sitter_analyzer/mcp"})
+        )
+        stats = result["stats"]
+        # 2 dead funcs + 1 import + 1 var live under tree_sitter_analyzer/mcp
+        assert stats["total_dead_functions_transitive"] == 2
+        assert stats["total_unused_imports"] == 1
+        assert stats["total_unreferenced_variables"] == 1
+        files = {df["file"] for df in result["dead_functions"]}
+        assert files == {
+            "tree_sitter_analyzer/mcp/x.py",
+            "tree_sitter_analyzer/mcp/sub/y.py",
+        }
+
+    def test_path_excludes_corpus_and_benchmarks(self, fake_root, monkeypatch):
+        monkeypatch.setattr(
+            mod, "analyze_dead_code", lambda *a, **k: _mixed_path_result()
+        )
+        tool = CodeGraphDeadCodeTool(fake_root)
+        result = _run(
+            tool.execute({"output_format": "json", "path": "tree_sitter_analyzer/mcp"})
+        )
+        files = {df["file"] for df in result["dead_functions"]}
+        assert not any(
+            f.startswith("corpus/") or f.startswith("benchmarks/") for f in files
+        )
+
+    def test_path_matches_single_subtree(self, fake_root, monkeypatch):
+        monkeypatch.setattr(
+            mod, "analyze_dead_code", lambda *a, **k: _mixed_path_result()
+        )
+        tool = CodeGraphDeadCodeTool(fake_root)
+        result = _run(tool.execute({"output_format": "json", "path": "corpus"}))
+        assert result["stats"]["total_dead_functions_transitive"] == 1
+        assert result["dead_functions"][0]["file"] == "corpus/python/z.py"
+
+    def test_path_trailing_slash_normalized(self, fake_root, monkeypatch):
+        monkeypatch.setattr(
+            mod, "analyze_dead_code", lambda *a, **k: _mixed_path_result()
+        )
+        tool = CodeGraphDeadCodeTool(fake_root)
+        result = _run(
+            tool.execute({"output_format": "json", "path": "tree_sitter_analyzer/mcp/"})
+        )
+        assert result["stats"]["total_dead_functions_transitive"] == 2
+
+    def test_path_respects_segment_boundary(self, fake_root, monkeypatch):
+        """A partial segment ('.../m') must NOT match '.../mcp/...' — the
+        filter is path-segment aware, not a raw string prefix."""
+        monkeypatch.setattr(
+            mod, "analyze_dead_code", lambda *a, **k: _mixed_path_result()
+        )
+        tool = CodeGraphDeadCodeTool(fake_root)
+        result = _run(
+            tool.execute({"output_format": "json", "path": "tree_sitter_analyzer/m"})
+        )
+        assert result["stats"]["total_dead_functions_transitive"] == 0
+
+    def test_path_no_match_is_empty_not_error(self, fake_root, monkeypatch):
+        monkeypatch.setattr(
+            mod, "analyze_dead_code", lambda *a, **k: _mixed_path_result()
+        )
+        tool = CodeGraphDeadCodeTool(fake_root)
+        result = _run(
+            tool.execute({"output_format": "json", "path": "nonexistent/dir"})
+        )
+        assert result["success"] is True
+        assert result["stats"]["total_dead_functions_transitive"] == 0
+        assert result["verdict"] == "INFO"
 
 
 def test_scoped_mode_ignores_hidden_category_truncation(tmp_path) -> None:
