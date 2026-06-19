@@ -80,7 +80,7 @@ using StringList = vector<string>;
 | name | ():string | + | 106-106 | 5-6 | 1 | - |
 | width | ():double | + | 109-109 | 5-6 | 1 | - |
 | height | ():double | + | 110-110 | 5-6 | 1 | - |
-| operator== | (other:const Rectangle&):bool | + | 113-115 | 5-6 | 1 | - |
+| operator== | (other:const Rectangle&):bool | + | 113-115 | 5-6 | 2 | - |
 | square | (side:double):Rectangle [static] | + | 118-120 | 5-6 | 1 | - |
 
 ## Printable (134-138)

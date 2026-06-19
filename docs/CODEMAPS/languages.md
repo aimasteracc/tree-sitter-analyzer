@@ -39,6 +39,12 @@ Not every registered plugin is wired into the indexer to the same depth:
 | JSON | `languages/json_plugin.py` | inline | basic structure |
 | Bash | `languages/bash_plugin.py` | inline | functions, commands |
 
+## Shared helpers
+
+Cross-cutting logic shared by several plugins (not a language plugin itself):
+
+- `languages/_complexity_logical.py` — `is_executable_logical_operator()`: counts a `&&`/`||` token toward cyclomatic complexity only when it drives executable control flow. Used by the C/C++/C#/Java walkers to exclude booleans in non-executable contexts (`noexcept`/`requires` specifiers, `#if A && B` preprocessor conditions, default arguments, attributes/annotations, `static_assert`). The cross-language convention is "1 + decision points; each `&&`/`||` is one decision; switch/match counts once" (matching Go/Rust/Swift).
+
 ## Plugin Contract
 
 Every language plugin implements:

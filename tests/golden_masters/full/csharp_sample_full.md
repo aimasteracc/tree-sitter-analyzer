@@ -38,7 +38,7 @@ using System.Linq;
 | PhoneNumber | ():string? | + | 29-29 | 1 | - |
 | DisplayName | ():string | + | 32-32 | 1 | - |
 | UpdateEmail | (newEmail:string):void | + | 44-52 | 2 | - |
-| IsValid | ():bool | + | 54-59 | 1 | - |
+| IsValid | ():bool | + | 54-59 | 3 | - |
 | ToString | ():string | + | 61-64 | 1 | - |
 
 ## IUserRepository (70-77)

@@ -166,7 +166,7 @@ public class UserService {
         assert "| Methods | 4 |" in table_output
         assert "| Fields | 2 |" in table_output
         assert "| findUserById | (Long):User | + | 14-19 | 2 | - |" in table_output
-        assert "| validateUser | (User):b | - | 27-35 | 3 | - |" in table_output
+        assert "| validateUser | (User):b | - | 27-35 | 5 | - |" in table_output
 
     @pytest.mark.asyncio
     async def test_csv_format_end_to_end(
@@ -266,7 +266,7 @@ public class UserService {
         )
         assert (
             results["full"].count(
-                "| validateUser | (user:User):boolean | - | 27-35 | 3 | - |"
+                "| validateUser | (user:User):boolean | - | 27-35 | 5 | - |"
             )
             == 1
         )
@@ -282,7 +282,7 @@ public class UserService {
             == 1
         )
         assert (
-            results["compact"].count("| validateUser | (User):b | - | 27-35 | 3 | - |")
+            results["compact"].count("| validateUser | (User):b | - | 27-35 | 5 | - |")
             == 1
         )
         assert results["csv"].count("\nMethod,") == 3

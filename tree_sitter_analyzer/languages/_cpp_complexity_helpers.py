@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from ._complexity_logical import is_executable_logical_operator
+
 _DECISION_NODES = frozenset(
     {
         "if_statement",
@@ -16,6 +18,32 @@ _DECISION_NODES = frozenset(
     }
 )
 
+# Short-circuit boolean operators each add a decision point, matching the
+# Go/Rust/Swift convention. They are counted ONLY as logical operators
+# (operands of a binary_expression) driving executable control flow; "&&" in a
+# non-body context — the rvalue-reference declarator ``T&& x`` (parent is not a
+# binary_expression), a ``noexcept`` / ``requires`` specifier, a preprocessor
+# ``#if`` condition, a default argument, or a ``static_assert`` — is not a
+# branch and must not inflate complexity.
+_LOGICAL_OPERATORS = frozenset({"&&", "||"})
+_NON_EXECUTABLE_ANCHORS = frozenset(
+    {
+        "noexcept",
+        "requires_clause",
+        "preproc_if",
+        "preproc_elif",
+        "optional_parameter_declaration",
+        "static_assert_declaration",
+    }
+)
+
+
+def _is_logical_operator(node: Any) -> bool:
+    """True when ``node`` is a "&&"/"||" used as an executable boolean branch."""
+    if getattr(node, "type", None) not in _LOGICAL_OPERATORS:
+        return False
+    return is_executable_logical_operator(node, _NON_EXECUTABLE_ANCHORS)
+
 
 def calculate_complexity(node: Any) -> int:
     """Calculate cyclomatic complexity for a C++ syntax node."""
@@ -25,6 +53,8 @@ def calculate_complexity(node: Any) -> int:
     while stack:
         current = stack.pop()
         if getattr(current, "type", None) in _DECISION_NODES:
+            count += 1
+        elif _is_logical_operator(current):
             count += 1
 
         children = getattr(current, "children", None)
