@@ -136,14 +136,14 @@ class TestReturnTypeAndParamsSerialized:
 
 
 class TestExtractorVersionBump:
-    def test_extractor_version_is_13_in_both_sites(self):
-        # v13: #949 — bash variable_assignment indexing (skip command-prefix
-        # env vars, unwrap subscript only for assignment targets); bump forces
-        # re-index.
+    def test_extractor_version_matches_in_both_sites(self):
+        # The two declarations must stay equal (they gate cache staleness).
+        # v14: #1094 — function symbols carry the extractor's canonical
+        # ``complexity``; the bump forces existing rows to re-index.
         from tree_sitter_analyzer import _ast_cache_indexer, ast_cache
 
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 13
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 13
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 14
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 14
 
 
 class TestBashVariableAssignmentScope:
