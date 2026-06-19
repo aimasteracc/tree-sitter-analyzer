@@ -27,11 +27,11 @@ Method,manageCache,"(key:String, value:Object):void",public,295-308,2,-
 Method,cleanupCache,():void,private,313-326,3,-
 Method,updateCacheStatistics,():void,private,331-335,1,-
 Method,calculateCacheHitRatio,():double,private,340-343,1,-
-Method,performBackup,(backupType:String):void,public,348-367,1,-
+Method,performBackup,(backupType:String):void,public,348-367,2,-
 Method,performFullBackup,():void,private,372-395,6,-
 Method,performIncrementalBackup,():void,private,400-414,4,-
 Method,performDifferentialBackup,():void,private,419-433,4,-
-Method,generateReport,"(reportType:String, parameters:Map<String, Object>):void",public,438-471,2,-
+Method,generateReport,"(reportType:String, parameters:Map<String, Object>):void",public,438-471,3,-
 Method,prepareReportData,"(reportType:String, parameters:Map<String, Object>):void",private,476-490,4,-
 Method,generateSalesReport,"(parameters:Map<String, Object>):void",private,495-513,6,-
 Method,generatePerformanceReport,"(parameters:Map<String, Object>):void",private,518-534,5,-
@@ -42,7 +42,7 @@ Method,updateCustomerName,"(customerId:String, newName:String):void",public,601-
 Method,getCustomerInfo,"(customerId:String):Map<String, Object>",public,622-652,6,-
 Method,deleteCustomer,(customerId:String):boolean,public,657-691,10,-
 Method,processOrder,"(customerId:String, items:List<String>, totalAmount:double):String",public,696-736,12,-
-Method,manageInventory,"(action:String, itemId:String, quantity:int):void",public,741-773,5,-
+Method,manageInventory,"(action:String, itemId:String, quantity:int):void",public,741-773,6,-
 Method,addInventory,"(itemId:String, quantity:int):void",private,778-792,4,-
 Method,removeInventory,"(itemId:String, quantity:int):void",private,797-811,4,-
 Method,updateInventory,"(itemId:String, quantity:int):void",private,816-830,4,-

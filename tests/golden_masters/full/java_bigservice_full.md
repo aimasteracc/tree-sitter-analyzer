@@ -52,13 +52,13 @@ import javax.sql.DataSource;
 | validateData | (data:Map<String, Object>):boolean | + | 204-246 | 11 | - |
 | logOperation | (operation:String, details:String):void | + | 280-290 | 2 | - |
 | manageCache | (key:String, value:Object):void | + | 295-308 | 2 | - |
-| performBackup | (backupType:String):void | + | 348-367 | 1 | - |
-| generateReport | (reportType:String, parameters:Map<String, Object>):void | + | 438-471 | 2 | - |
+| performBackup | (backupType:String):void | + | 348-367 | 2 | - |
+| generateReport | (reportType:String, parameters:Map<String, Object>):void | + | 438-471 | 3 | - |
 | updateCustomerName | (customerId:String, newName:String):void | + | 601-617 | 6 | - |
 | getCustomerInfo | (customerId:String):Map<String, Object> | + | 622-652 | 6 | - |
 | deleteCustomer | (customerId:String):boolean | + | 657-691 | 10 | - |
 | processOrder | (customerId:String, items:List<String>, totalAmount:double):String | + | 696-736 | 12 | - |
-| manageInventory | (action:String, itemId:String, quantity:int):void | + | 741-773 | 5 | - |
+| manageInventory | (action:String, itemId:String, quantity:int):void | + | 741-773 | 6 | - |
 | sendNotification | (recipient:String, message:String, type:String):void | + | 855-884 | 9 | - |
 | shutdownSystem | ():void | + | 889-912 | 6 | - |
 | handleError | (error:Exception, context:String):void | + | 958-977 | 4 | - |

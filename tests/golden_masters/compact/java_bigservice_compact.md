@@ -29,11 +29,11 @@
 | cleanupCache | ():void | - | 313-326 | 3 | - |
 | updateCacheStatistics | ():void | - | 331-335 | 1 | - |
 | calculateCacheHitRatio | ():d | - | 340-343 | 1 | - |
-| performBackup | (S):void | + | 348-367 | 1 | - |
+| performBackup | (S):void | + | 348-367 | 2 | - |
 | performFullBackup | ():void | - | 372-395 | 6 | - |
 | performIncrementalBackup | ():void | - | 400-414 | 4 | - |
 | performDifferentialBackup | ():void | - | 419-433 | 4 | - |
-| generateReport | (S,M<S, O>):void | + | 438-471 | 2 | - |
+| generateReport | (S,M<S, O>):void | + | 438-471 | 3 | - |
 | prepareReportData | (S,M<S, O>):void | - | 476-490 | 4 | - |
 | generateSalesReport | (M<S, O>):void | - | 495-513 | 6 | - |
 | generatePerformanceReport | (M<S, O>):void | - | 518-534 | 5 | - |
@@ -44,7 +44,7 @@
 | getCustomerInfo | (S):M<S, O> | + | 622-652 | 6 | - |
 | deleteCustomer | (S):b | + | 657-691 | 10 | - |
 | processOrder | (S,L<S>,d):S | + | 696-736 | 12 | - |
-| manageInventory | (S,S,i):void | + | 741-773 | 5 | - |
+| manageInventory | (S,S,i):void | + | 741-773 | 6 | - |
 | addInventory | (S,i):void | - | 778-792 | 4 | - |
 | removeInventory | (S,i):void | - | 797-811 | 4 | - |
 | updateInventory | (S,i):void | - | 816-830 | 4 | - |

@@ -45,15 +45,21 @@ _FIELD_TYPE_NODES = frozenset(
     }
 )
 
+# tree-sitter-java node names (verified against the grammar): the switch is
+# "switch_expression" (covers statement and expression forms), the ternary is
+# "ternary_expression", and the do-while is "do_statement". Earlier this set
+# used "switch_statement"/"conditional_expression" — node types the grammar
+# never emits — so Java silently dropped every switch / ternary / do-while.
 _JAVA_DECISION_NODES = frozenset(
     {
         "if_statement",
         "while_statement",
         "for_statement",
-        "switch_statement",
-        "catch_clause",
-        "conditional_expression",
         "enhanced_for_statement",
+        "do_statement",
+        "switch_expression",
+        "catch_clause",
+        "ternary_expression",
     }
 )
 
