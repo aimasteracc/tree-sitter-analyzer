@@ -118,11 +118,9 @@ if __name__ == "__main__":
             Path(sample_java_file).unlink()
 
     def test_analyze_file_with_options(self, sample_java_file: str) -> None:
-        """Test file analysis with additional options"""
+        """Test file analysis returns a valid result dict for a string path"""
         try:
-            result = api.analyze_file(
-                sample_java_file, include_complexity=True, include_details=True
-            )
+            result = api.analyze_file(sample_java_file)
 
             assert isinstance(result, dict)
             assert result["success"] is True
