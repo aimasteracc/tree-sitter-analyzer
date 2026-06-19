@@ -108,6 +108,23 @@ class TestRubyCyclomaticComplexity:
         assert funcs[0].name == "process"
         assert funcs[0].complexity_score == 8
 
+    def test_case_counts_once_not_per_when(self):
+        """A valued `case x` with N `when` arms is one decision → complexity 2."""
+        funcs = _ruby_functions(
+            "def f(x)\n case x\n when 1 then 0\n when 2 then 0\n"
+            " when 3 then 0\n else 0\n end\nend"
+        )
+        assert funcs[0].name == "f"
+        assert funcs[0].complexity_score == 2
+
+    def test_conditionless_case_counts_each_when(self):
+        """A subjectless `case` is an if/elsif chain — each `when` is a decision."""
+        funcs = _ruby_functions(
+            "def f(x)\n case\n when x > 0 then 1\n when x < 0 then -1\n end\nend"
+        )
+        assert funcs[0].name == "f"
+        assert funcs[0].complexity_score == 3
+
 
 # ---------------------------------------------------------------------------
 # Kotlin
@@ -502,17 +519,16 @@ def process(x: Int): String = {
   r
 }
 """
-# Decisions:
+# Decisions (construct-once: `match` and `catch` each count once; their
+# `case_clause` arms are NOT counted individually):
 #   if_expression (inline if)   : 1
 #   match_expression            : 1
-#   case_clause x3 (in match)   : 3
 #   for_expression              : 1
 #   while_expression            : 1
 #   catch_clause                : 1
-#   case_clause (in catch)      : 1
 #   &&  (operator_identifier)   : 1
 #   ||  (operator_identifier)   : 1
-# Total = 11 → complexity = 1 + 11 = 12
+# Total = 7 → complexity = 1 + 7 = 8
 
 
 def _scala_lang():
@@ -546,11 +562,40 @@ class TestScalaCyclomaticComplexity:
         assert funcs[0].complexity_score == 4
 
     def test_rich_branching(self):
-        """11 decision points → complexity 12."""
+        """7 decision points (match/catch construct-once) → complexity 8."""
         funcs = _scala_functions(SCALA_RICH)
         assert len(funcs) == 1
         assert funcs[0].name == "process"
-        assert funcs[0].complexity_score == 12
+        assert funcs[0].complexity_score == 8
+
+    def test_match_counts_once_not_per_case(self):
+        """A `match` with N `case` arms is one decision → complexity 2."""
+        funcs = _scala_functions(
+            "def f(x: Int): Int = { x match { case 1=>0; case 2=>0; case _=>0 } }"
+        )
+        assert funcs[0].complexity_score == 2
+
+    def test_catch_counts_once_not_per_case(self):
+        """A `catch` is one decision; its inner `case` arm is not counted."""
+        funcs = _scala_functions(
+            "def f(): Unit = { try {} catch { case e: Exception => {} } }"
+        )
+        assert funcs[0].complexity_score == 2
+
+    def test_standalone_partial_function_counts_once(self):
+        """A partial-function `{ case ... }` (no match/catch) is one decision."""
+        funcs = _scala_functions(
+            "def handle(xs: List[Int]): List[Int] = xs.map { case n => n + 1 }"
+        )
+        assert funcs[0].name == "handle"
+        assert funcs[0].complexity_score == 2
+
+    def test_case_guard_counts_as_extra_decision(self):
+        """A `case n if cond` guard is an extra branch on top of the match."""
+        funcs = _scala_functions(
+            "def f(x: Int): Int = x match { case n if n > 0 => 1; case _ => 0 }"
+        )
+        assert funcs[0].complexity_score == 3
 
 
 # ---------------------------------------------------------------------------
@@ -612,17 +657,18 @@ process() {
     [ "$x" -gt 0 ] && echo "and" || echo "or"
 }
 """
-# Decisions:
+# Decisions (construct-once: the `case` counts once via case_statement; its
+# `case_item` arms are NOT counted individually):
 #   if_statement          : 1
 #   elif_clause           : 1
 #   while_statement (while): 1
 #   while_statement (until): 1
 #   for_statement         : 1
 #   c_style_for_statement : 1
-#   case_item x3          : 3
+#   case_statement        : 1
 #   &&                    : 1
 #   ||                    : 1
-# Total = 11 → complexity = 1 + 11 = 12
+# Total = 9 → complexity = 1 + 9 = 10
 
 
 def _bash_lang():
@@ -656,11 +702,17 @@ class TestBashCyclomaticComplexity:
         assert funcs[0].complexity_score == 4
 
     def test_rich_branching(self):
-        """11 decision points → complexity 12."""
+        """9 decision points (case construct-once) → complexity 10."""
         funcs = _bash_functions(BASH_RICH)
         assert len(funcs) == 1
         assert funcs[0].name == "process"
-        assert funcs[0].complexity_score == 12
+        assert funcs[0].complexity_score == 10
+
+    def test_case_counts_once_not_per_item(self):
+        """A `case` with N pattern arms is one decision → complexity 2."""
+        funcs = _bash_functions('f(){ case "$1" in 1) :;; 2) :;; 3) :;; *) :;; esac; }')
+        assert funcs[0].name == "f"
+        assert funcs[0].complexity_score == 2
 
 
 # ---------------------------------------------------------------------------
