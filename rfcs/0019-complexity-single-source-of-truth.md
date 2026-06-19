@@ -8,8 +8,8 @@
 - **Affected source paths** (pin them — reviewers watch for drift here):
   - `tree_sitter_analyzer/languages/` (the per-language extractor complexity functions — the chosen source of truth)
   - `tree_sitter_analyzer/health_scorer.py` (`DECISION_NODE_TYPES`, `score_complexity`)
-  - `tree_sitter_analyzer/_ast_extraction.py` (`_count_complexity_in_node`, `analyze_file_complexity`)
-  - `tree_sitter_analyzer/complexity_heatmap.py`
+  - `tree_sitter_analyzer/complexity_heatmap.py` (`_count_complexity_in_node`, `analyze_file_complexity` — the heatmap/hotspot path)
+  - `tests/unit/test_complexity_cross_path_invariant.py` (the keystone strict-xfail invariant, added with this RFC)
   - `tests/unit/test_complexity_heatmap.py`, `tests/unit/languages/test_cyclomatic_complexity.py`, golden masters carrying a `Cx` column
 
 ## Summary
@@ -33,7 +33,7 @@ never touched and still disagree:
    `javascript`/`typescript` entries list `conditional_expression` (emitted as
    `ternary_expression`). So `project_health` silently undercounts Java/JS/TS
    `switch` / `ternary` / `do-while`.
-2. **`_ast_extraction._count_complexity_in_node`** — its own per-language set that
+2. **`complexity_heatmap._count_complexity_in_node`** — its own per-language set that
    counts `switch_case` / `case_clause` / `switch_block_statement_group` **per
    arm**, so `analyze_file_complexity(...)` reports Cx ≈ 5 for a 4-case switch
    where the extractor (and the golden `--table full`) now report 2.
@@ -98,7 +98,7 @@ behavior-preserving.
   file (it already has `source`+`language`), walk to each function node, and sum
   `cyclomatic_complexity(node, language)`. The normalization (`CC_IDEAL`, the
   0–100 score) is unchanged.
-- **`_ast_extraction._count_complexity_in_node`** — delete its per-language set;
+- **`complexity_heatmap._count_complexity_in_node`** — delete its per-language set;
   call the dispatcher. `analyze_file_complexity` already has the parsed nodes.
 
 ### Algorithms
