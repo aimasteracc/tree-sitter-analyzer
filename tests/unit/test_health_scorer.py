@@ -598,16 +598,19 @@ class TestScoreComplexityExtractorPath:
 
     def test_java_switch_ternary_do_while_matches_extractor(self, tmp_path):
         """Java method with 3-case switch + ternary + do-while must yield
-        the same aggregate CC the extractor computes (CC=6 for this method).
+        the same aggregate CC the extractor computes (CC=4 for this method).
+
+        Construct-once (#1094): base 1 + switch 1 + ternary 1 + do-while 1 = 4.
+        The switch counts ONCE regardless of arm count, not per-arm.
 
         Old scorer returned 100.0 (CC=1, all branches missed because
         DECISION_NODE_TYPES had switch_statement/conditional_expression/
         no do_statement while tree-sitter-java emits switch_expression/
         ternary_expression/do_statement).
 
-        Extractor (complexity_heatmap) returns CC=6. Both CC=1 and CC=6 fall
-        in the ideal range (≤15) so both give score=100. The real regression
-        test is test_java_high_switch_penalised_by_extractor below.
+        Both CC=1 and CC=4 fall in the ideal range (≤15) so both give
+        score=100. The switch-specific invariant is locked in
+        test_java_switch_counts_construct_once_via_extractor below.
         """
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
         from tree_sitter_analyzer.health_scorer import score_complexity
@@ -635,26 +638,29 @@ class TestScoreComplexityExtractorPath:
         funcs = analyze_file_complexity(f, "java")
         assert len(funcs) == 1, f"Expected 1 function, got {len(funcs)}"
         extractor_cx = funcs[0].complexity
-        assert extractor_cx == 6, (
-            f"Extractor CC for switch(3)+ternary+do-while should be 6, got {extractor_cx}"
+        assert extractor_cx == 4, (
+            f"Extractor CC for switch(3)+ternary+do-while should be 4, got {extractor_cx}"
         )
 
-        # health scorer must now delegate to the extractor (CC=6)
+        # health scorer must now delegate to the extractor (CC=4)
         scorer_score = score_complexity(f, java_src, "java")
-        # CC=6, n_funcs=1 (<3) → absolute path: 6 <= CC_IDEAL=15 → 100.0
+        # CC=4, n_funcs=1 (<3) → absolute path: 4 <= CC_IDEAL=15 → 100.0
         assert scorer_score == 100.0, (
             f"score_complexity returned {scorer_score}, expected 100.0 "
-            f"(CC=6 via extractor, still in ideal range)"
+            f"(CC=4 via extractor, still in ideal range)"
         )
 
-    def test_java_high_switch_penalised_by_extractor(self, tmp_path):
-        """Java method with 19 switch arms: extractor gives CC=20 (counted
-        via switch_block_statement_group), old DECISION_NODE_TYPES would give
-        CC=1 (switch_statement/case_clause don't match tree-sitter-java's
-        actual node names switch_expression/switch_block_statement_group).
+    def test_java_switch_counts_construct_once_via_extractor(self, tmp_path):
+        """A Java ``switch`` contributes exactly ONE decision to cyclomatic
+        complexity no matter how many arms — the construct-once convention
+        (#1094). A 19-arm switch method therefore has CC = base 1 + switch 1
+        = 2, NOT 20: switch breadth must not inflate the health score.
 
-        This is the RED→GREEN regression test: old code returned 100.0;
-        new extractor-based code must return a penalised score < 100.0.
+        This locks the switch-specific invariant. The old DECISION_NODE_TYPES
+        missed switches entirely (wrong node names → CC=1); the extractor
+        counts the construct once. The "high CC ⇒ penalised" behaviour is
+        covered separately by test_java_high_complexity_method_scored_correctly
+        (15 sequential ``if`` branches → CC=16 → penalised).
         """
         from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
         from tree_sitter_analyzer.health_scorer import CC_IDEAL, score_complexity
@@ -675,23 +681,22 @@ class TestScoreComplexityExtractorPath:
         )
         f = self._write(tmp_path, "Foo.java", java_src)
 
-        # Extractor ground truth: CC=20 (19 switch_block_statement_groups + base 1)
+        # Extractor ground truth: construct-once → CC = base 1 + switch 1 = 2
         funcs = analyze_file_complexity(f, "java")
         assert len(funcs) == 1
         extractor_cx = funcs[0].complexity
-        assert extractor_cx == 20, (
-            f"Extractor CC for 19-arm switch must be 20, got {extractor_cx}"
+        assert extractor_cx == 2, (
+            f"19-arm switch is construct-once: CC == base 1 + switch 1 == 2, "
+            f"got {extractor_cx}"
         )
-        assert extractor_cx > CC_IDEAL, "Test setup: extractor CC must exceed CC_IDEAL"
+        assert extractor_cx <= CC_IDEAL, "A wide switch stays within the ideal CC band"
 
-        # new scorer: uses extractor → CC=20 > CC_IDEAL=15 → penalised
+        # CC=2 ≤ CC_IDEAL=15 → switch breadth alone must NOT penalise the score
         score = score_complexity(f, java_src, "java")
-        assert score < 100.0, (
-            f"Java 19-arm switch must be penalised (CC=20 > CC_IDEAL=15), "
+        assert score == 100.0, (
+            f"A wide switch (CC=2 construct-once) must not be penalised, "
             f"got score={score}"
         )
-        # Verify score is in plausible range (not collapsed to 0 or 50-neutral)
-        assert score >= 30.0, f"Score {score} is unexpectedly low for CC=20"
 
     def test_java_high_complexity_method_scored_correctly(self, tmp_path):
         """A single Java method with CC > 15 must be penalised.
