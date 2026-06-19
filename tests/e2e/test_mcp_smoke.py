@@ -255,6 +255,11 @@ class TestToolLatencyBudgets:
             f"codegraph_metrics returned a JSON-RPC error: {response.get('error')}"
         )
 
+    # The unmeasured cold warm-up below can take well over a minute on a loaded
+    # runner; the CI e2e job runs pytest with a global ``--timeout=60``, so this
+    # per-test override keeps pytest-timeout from killing the warm-up before the
+    # measured (warm) call runs. The 50s budget assertion still guards latency.
+    @pytest.mark.timeout(400)
     def test_check_project_health_under_10s(self, mcp_server: MCPClient) -> None:
         """check_project_health on the TSA repo itself must complete in 10s (×3 in CI).
 
