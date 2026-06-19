@@ -22,15 +22,19 @@ from __future__ import annotations
 
 import inspect
 import os
+import shutil
 import sqlite3
 import subprocess
 import time
+import uuid
 from pathlib import Path
 
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # ---------------------------------------------------------------------------
 # Fixture: a tiny git repo whose AST cache contains an activation row we
@@ -49,6 +53,9 @@ _SAMPLE_PY = (
 
 def _init_git_repo(repo: Path) -> None:
     """Initialise a git repo inside ``repo`` with a single commit."""
+    os.environ["GIT_CONFIG_COUNT"] = "1"
+    os.environ["GIT_CONFIG_KEY_0"] = "safe.directory"
+    os.environ["GIT_CONFIG_VALUE_0"] = str(repo)
     subprocess.run(
         ["git", "init", "--initial-branch=main", str(repo)],
         check=True,
@@ -73,6 +80,20 @@ def _init_git_repo(repo: Path) -> None:
         check=True,
         capture_output=True,
     )
+
+
+def _make_git_repo_path(tmp_path: Path) -> Path:
+    """Use a project-local temp repo; Git cannot access system Temp on some hosts."""
+    repo = (
+        PROJECT_ROOT
+        / "_pytest_git_repos"
+        / tmp_path.parent.name
+        / f"{tmp_path.name}-temporal-{uuid.uuid4().hex}"
+    )
+    if repo.exists():
+        shutil.rmtree(repo, ignore_errors=True)
+    repo.mkdir(parents=True)
+    return repo
 
 
 def _seed_hot_zone_row(
@@ -136,18 +157,24 @@ def _seed_hot_zone_row(
         conn.close()
 
 
-def _first_symbol_id(db_path: str, file_path: str) -> int:
-    """Return the smallest symbol id for ``file_path`` from ast_symbol_rows."""
+def _first_symbol_row(db_path: str, file_path: str) -> tuple[int, str]:
+    """Return the smallest symbol id and stored path for ``file_path``."""
     conn = sqlite3.connect(db_path)
     try:
         cur = conn.execute(
-            "SELECT id FROM ast_symbol_rows WHERE file_path = ? ORDER BY id LIMIT 1",
-            (file_path,),
+            """
+            SELECT id, file_path
+            FROM ast_symbol_rows
+            WHERE file_path = ? OR file_path LIKE ?
+            ORDER BY CASE WHEN file_path = ? THEN 0 ELSE 1 END, id
+            LIMIT 1
+            """,
+            (file_path, f"%/{file_path}", file_path),
         )
         row = cur.fetchone()
         if row is None:
             raise RuntimeError(f"no ast_symbol_rows entry for {file_path!r}")
-        return int(row[0])
+        return int(row[0]), str(row[1])
     finally:
         conn.close()
 
@@ -158,24 +185,24 @@ def _first_symbol_id(db_path: str, file_path: str) -> int:
 
 
 class TestHotZoneBumpsVerdict:
+    @pytest.mark.slow_ok  # real git repo + AST cache indexing can exceed 5s on Windows
     @pytest.mark.asyncio
     async def test_hot_zone_bumps_verdict_to_caution(self, tmp_path, monkeypatch):
         """A symbol with ``mod_count_30d >= 5`` in a CHANGED file must:
         * push the run's verdict to ``CAUTION``
         * surface a ``risk_factors`` entry mentioning ``hot zone``.
         """
-        repo = tmp_path / "repo"
-        repo.mkdir()
+        repo = _make_git_repo_path(tmp_path)
         _init_git_repo(repo)
 
         # Index the file so ast_symbol_rows is populated.
         cache = ASTCache(str(repo))
         try:
             cache.index_file(str(repo / "mod.py"))
-            symbol_id = _first_symbol_id(cache.db_path, "mod.py")
+            symbol_id, stored_file_path = _first_symbol_row(cache.db_path, "mod.py")
             _seed_hot_zone_row(
                 cache.db_path,
-                file_path="mod.py",
+                file_path=stored_file_path,
                 symbol_id=symbol_id,
                 mod_count_30d=10,  # well above the threshold of 5
             )

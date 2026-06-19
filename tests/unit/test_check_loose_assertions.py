@@ -21,9 +21,12 @@ Coverage scenarios:
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import textwrap
 from pathlib import Path
+
+import pytest
 
 # ---------------------------------------------------------------------------
 # Load the module under test from the scripts directory
@@ -195,6 +198,76 @@ def test_baseline_counter_counts_violations(tmp_path: Path) -> None:
     assert _checker.count_baseline(tmp_path) == 3
 
 
+def test_baseline_json_format_uses_repo_relative_paths(tmp_path: Path) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_loose.py").write_text(
+        textwrap.dedent("""\
+            def test_loose():
+                assert len([1]) >= 1
+        """),
+        encoding="utf-8",
+    )
+
+    violations = _checker.baseline_violations(tests_dir)
+    payload = json.loads(_checker.format_baseline_json(violations, tmp_path))
+
+    assert payload == [
+        {
+            "path": "tests/test_loose.py",
+            "line": 2,
+            "end_line": 2,
+            "operator": ">=",
+            "snippet": "assert len([1]) >= 1",
+            "category": "general",
+            "exemption": None,
+        }
+    ]
+
+
+def test_baseline_table_format_includes_total_and_top_paths(tmp_path: Path) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_a.py").write_text(
+        "def test_a():\n    assert x >= 1\n    assert y > 0\n",
+        encoding="utf-8",
+    )
+    (tests_dir / "test_b.py").write_text(
+        "def test_b():\n    assert z >= 1\n",
+        encoding="utf-8",
+    )
+
+    output = _checker.format_baseline_table(
+        _checker.baseline_violations(tests_dir),
+        tmp_path,
+    )
+
+    assert "Total loose assertions: 3" in output
+    assert "| tests/test_a.py | 2 |" in output
+    assert "| tests/test_b.py | 1 |" in output
+
+
+def test_baseline_count_format_remains_plain_number(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    repo = tmp_path / "repo"
+    scripts = repo / "scripts"
+    tests = repo / "tests"
+    scripts.mkdir(parents=True)
+    tests.mkdir()
+    script_copy = scripts / "check_loose_assertions.py"
+    script_copy.write_text(_SCRIPT_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+    (tests / "test_loose.py").write_text(
+        "def test_loose():\n    assert count > 0\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(_checker, "__file__", str(script_copy))
+
+    assert _checker.main(["--baseline"]) == 0
+    assert capsys.readouterr().out == "1\n"
+
+
 def test_property_file_skipped_in_baseline(tmp_path: Path) -> None:
     """Files matching *propert* (case-insensitive) should be skipped."""
     (tmp_path / "test_property_something.py").write_text(
@@ -240,14 +313,29 @@ def _git(repo: Path, *args: str) -> str:
 
 
 def _make_repo(tmp_path: Path) -> Path:
-    repo = tmp_path / "repo"
+    import atexit
+    import os
+    import shutil
+    import uuid
+
+    repo = (
+        _PROJECT_ROOT
+        / "_pytest_git_repos"
+        / tmp_path.parent.name
+        / f"{tmp_path.name}-{uuid.uuid4().hex}"
+    )
     (repo / "tests").mkdir(parents=True)
+    atexit.register(shutil.rmtree, repo.parent, ignore_errors=True)
+    os.environ["GIT_CONFIG_COUNT"] = "1"
+    os.environ["GIT_CONFIG_KEY_0"] = "safe.directory"
+    os.environ["GIT_CONFIG_VALUE_0"] = str(repo)
     _git(repo, "init", "-q")
     _git(repo, "config", "user.email", "t@example.com")
     _git(repo, "config", "user.name", "t")
     return repo
 
 
+@pytest.mark.slow_ok  # real git subprocess repo; Windows safe.directory checks can exceed 5s
 def test_preexisting_loose_assert_not_flagged_on_unrelated_edit(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -274,6 +362,7 @@ def test_preexisting_loose_assert_not_flagged_on_unrelated_edit(
     assert _checker.check_diff(base) == 0
 
 
+@pytest.mark.slow_ok  # real git subprocess repo; Windows safe.directory checks can exceed 5s
 def test_added_loose_assert_is_flagged(tmp_path: Path, monkeypatch) -> None:
     repo = _make_repo(tmp_path)
     f = repo / "tests" / "test_sample.py"
@@ -293,6 +382,7 @@ def test_added_loose_assert_is_flagged(tmp_path: Path, monkeypatch) -> None:
     assert _checker.check_diff(base) == 1
 
 
+@pytest.mark.slow_ok  # real git subprocess repo; Windows safe.directory checks can exceed 5s
 def test_renamed_file_with_added_loose_assert_is_flagged(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -317,6 +407,7 @@ def test_renamed_file_with_added_loose_assert_is_flagged(
     assert _checker.check_diff(base) == 1
 
 
+@pytest.mark.slow_ok  # real git subprocess repo; Windows safe.directory checks can exceed 5s
 def test_multiline_assert_partially_touched_is_flagged(
     tmp_path: Path, monkeypatch
 ) -> None:

@@ -19,7 +19,7 @@ Every entry follows: **Symptom → Root cause → Why generic defenses didn't ca
 
 **Defense**:
 - Agent discipline rule in `AGENTS.md` § Anti-Patterns: any new `pytest.skip*` MUST include an issue or commit reference in the `reason=` string.
-- `tests/unit/test_agent_contracts.py::test_skips_have_tracking_references` enforces it for the `tests/` tree.
+- `tests/governance/test_postmortem_guards.py::test_skips_have_tracking_references` enforces it for the `tests/` tree.
 
 ---
 
@@ -34,7 +34,7 @@ Every entry follows: **Symptom → Root cause → Why generic defenses didn't ca
 **Defense** (landed in PR #137):
 - `.github/workflows/gitflow-guard.yml` — CI job that fails any PR whose `head→base` pair violates the matrix.
 - `AGENTS.md § GitFlow Branching Mandate` — head→base matrix + explicit MUST NEVER list. `hotfix/*` is called out by name.
-- `tests/unit/test_agent_contracts.py::test_gitflow_documentation_is_present` — guards against the doc/guard being deleted.
+- `tests/governance/test_gitflow_contract.py::test_gitflow_documentation_is_present` — guards against the doc/guard being deleted.
 
 ---
 
@@ -114,7 +114,7 @@ Every entry follows: **Symptom → Root cause → Why generic defenses didn't ca
 **Why generic defenses didn't catch it**: GitFlow assumes develop ≥ main + active feature work. Nothing alarms when the invariant breaks.
 
 **Defense** (this PR):
-- `tests/unit/test_agent_contracts.py::test_develop_not_far_behind_main` — skipped locally (no remote), runs in CI: fails if `git rev-list main..develop` is empty AND `git rev-list develop..main` is non-empty (i.e. develop is strictly behind main).
+- `tests/governance/test_postmortem_guards.py` owns the branch-divergence guard coverage for this rule.
 - Agent-facing rule in `AGENTS.md § Anti-Patterns`: before merging `release/v*` back into develop, run `git log --oneline develop..main` and verify nothing on main is being orphaned.
 
 ---

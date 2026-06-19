@@ -34,12 +34,96 @@ tests/
 │   ├── coverage_helpers.py    # Coverage measurement utilities
 │   ├── data_generators.py     # Test data generators
 │   └── assertion_helpers.py   # Custom assertion functions
-├── unit/                   # Unit tests
+├── unit/                   # Module/function behavior tests
 │   ├── mcp/                # MCP-specific unit tests
 │   └── security/           # Security unit tests
+├── contracts/              # Runtime/API/parity contracts
+├── governance/             # CI, GitFlow, release, and process guards
 ├── integration/            # Integration tests
+├── e2e/                    # Black-box end-to-end tests
+├── golden/                 # Exhaustive language/corpus golden tests
+├── effectiveness/          # Test-quality and mutation baseline evidence
 ├── regression/             # Regression tests
 └── benchmarks/             # Performance benchmarks
+```
+
+### Test Layer Ownership
+
+| Layer | Owns | Should not own |
+|---|---|---|
+| `tests/unit/` | Pure module behavior, small regressions, deterministic value checks | CI policy, workflow routing, repo governance, broad runtime contracts |
+| `tests/contracts/` | Stable API/runtime contracts, MCP/CLI parity, pytest runtime defaults, plugin architecture, agent-facing docs contracts | Process policy or release workflow ownership |
+| `tests/governance/` | CI routing, GitFlow, postmortem guards, README registry counts, skip-tracking policy | Product behavior assertions |
+| `tests/golden/` | Corpus/output drift checks that intentionally compare broad expected output | Day-to-day unit behavior or plugin golden masters |
+| `tests/regression/` | Focused regressions and plugin golden master coverage | Exhaustive all-language corpus sweeps unless marked appropriately |
+| `tests/effectiveness/` | Test-suite quality metrics, mutation/effectiveness baseline evidence | Blocking PR gates unless explicitly promoted |
+| `tests/integration/` | Cross-module and external-surface integration | Single pure-function behavior |
+| `tests/e2e/` | Black-box MCP and real workflow smoke tests | Fast unit feedback |
+| `tests/benchmarks/` | Benchmark-only performance measurement | Normal full-suite assertions |
+
+Fast tests do not automatically belong in `tests/unit/`. A fast governance or
+contract check should live under `tests/governance/` or `tests/contracts/` so a
+failure immediately tells the reader whether to fix product behavior, runtime
+configuration, or process policy.
+
+### Pytest Configuration Source of Truth
+
+`pytest.ini` owns pytest runtime configuration: discovery, strict markers,
+`addopts`, warning filters, timeout/session-timeout, xdist settings, benchmark
+disabling, and marker definitions. `pyproject.toml` must not contain
+`[tool.pytest.ini_options]`; keeping two runtime config surfaces invites drift.
+
+Runtime-default changes must update the relevant contract tests in
+`tests/contracts/test_pytest_runtime_contract.py` and prove that
+`uv run pytest -q` remains bounded and safe.
+
+### Marker And CI Routing Expectations
+
+- `full_language` marks exhaustive all-language golden/regression tests. CI runs
+  these once on the Linux coverage axis, not on every OS/Python matrix cell.
+- `slow` marks tests that are intentionally excluded from quick local loops.
+- `slow_ok` is a narrow exception for tests that must scan enough code to exceed
+  the unit 5-second budget.
+- `benchmark` tests run only with benchmark-specific commands and are disabled
+  in the default full suite.
+- `e2e` marks black-box workflow checks routed separately from the ordinary test
+  matrix.
+- Platform, optional-dependency, and language-specific markers should preserve
+  existing selection behavior and be documented at the test site when the reason
+  is not obvious.
+
+`config/ci-routing.yml` controls optional expensive jobs. Changes to pytest
+config, CI config, `tests/conftest.py`, `tests/contracts/**`, or
+`tests/governance/**` are high-impact and should route to the full suite.
+
+### Loose-Assertion Baseline
+
+`scripts/check_loose_assertions.py` blocks newly introduced loose deterministic
+count assertions in PR diffs. Its baseline modes are triage inputs:
+
+```bash
+uv run python scripts/check_loose_assertions.py --baseline
+uv run python scripts/check_loose_assertions.py --baseline --format json
+uv run python scripts/check_loose_assertions.py --baseline --format table
+```
+
+Baseline entries are cleanup candidates, not deletion authority. Before
+rewriting or removing a test, inspect the file-level behavior and classify the
+case: ordinary deterministic assertion, property-style test, performance test,
+platform-dependent test, optional-dependency test, or genuinely nondeterministic
+case with a documented `ratchet: nondeterministic <reason>` exemption.
+
+### Golden And Benchmark Guidance
+
+Corpus golden tests stay under `tests/golden/` and should link to
+[`tests/golden/TESTING.md`](../tests/golden/TESTING.md) for detailed update
+rules instead of duplicating that guide here. Plugin golden master regressions
+remain separate under `tests/regression/`.
+
+Benchmark-only runs are not normal pytest runs:
+
+```bash
+uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0
 ```
 
 ## Writing Tests

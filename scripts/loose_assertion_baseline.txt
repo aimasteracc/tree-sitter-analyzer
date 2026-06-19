@@ -92,7 +92,7 @@
 #   exemption in 7 files: test_csharp_plugin_integration.py (classes==5/
 #   functions==12/imports==3/len(code)==2650), test_csharp_plugin_extraction.py
 #   (constructor_names==0/param_names==1/constructors==1/complexity==7),
-#   test_csharp_plugin_details.py (static_imports==1/import start_lines==[2,3]/
+#   test_csharp_plugin_elements.py (static_imports==1/import start_lines==[2,3]/
 #   complexity==7/nodes==98), test_swift_plugin.py (classes==4/functions==5/
 #   variables==3/node_count==207), test_python_plugin_edge_cases.py (imports==0
 #   x2/concurrent_cache exempt-nondeterministic/complexity loop restructured to

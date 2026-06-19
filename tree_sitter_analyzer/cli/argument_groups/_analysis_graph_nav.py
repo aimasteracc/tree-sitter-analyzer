@@ -507,6 +507,14 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
             "Default is summary-only (files, line ranges, scores — no bodies)."
         ),
     )
+    parser.add_argument(
+        "--code-similarity-path-filter",
+        default="",
+        help=(
+            "Limit --code-similarity to project-relative path glob(s), "
+            "comma-separated for multiple filters, e.g. tests/**,src/**/*.py",
+        ),
+    )
     # RFC-0003: test-gap analysis
     parser.add_argument(
         "--test-gap",

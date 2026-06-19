@@ -884,7 +884,7 @@ def _attach_doc_drift_hints(
     extra_steps: list[str] = []
     if cli_changed:
         extra_steps.append(
-            "uv run pytest tests/unit/test_agent_contracts.py::test_readme_counts_match_registry -x"
+            "uv run pytest tests/governance/test_postmortem_guards.py::test_readme_counts_match_registry -x"
         )
     if facade_changed:
         extra_steps.append(

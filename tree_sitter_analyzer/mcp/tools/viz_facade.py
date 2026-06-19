@@ -67,6 +67,10 @@ _VIZ_SIMILARITY_PARAMS: dict[str, dict] = {
         "type": "integer",
         "description": "action=similarity: min clone group size to report (default: 2).",
     },
+    "path_filter": {
+        "type": "string",
+        "description": "action=similarity: project-relative path glob filter.",
+    },
 }
 
 

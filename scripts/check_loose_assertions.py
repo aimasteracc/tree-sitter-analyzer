@@ -34,9 +34,11 @@ segment (``ast.get_source_segment`` spanning ``lineno`` … ``end_lineno``).
 from __future__ import annotations
 
 import ast
+import json
 import re
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import NamedTuple
 
@@ -61,6 +63,8 @@ class Violation(NamedTuple):
     lineno: int
     snippet: str
     end_lineno: int = 0
+    operator: str = ""
+    category: str = "general"
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +118,30 @@ def _find_loose_compares(assert_node: ast.Assert) -> list[ast.Compare]:
         if isinstance(node, ast.Compare) and _is_loose_compare(node):
             result.append(node)
     return result
+
+
+def _loose_operator(compare: ast.Compare) -> str:
+    """Return the first loose operator in *compare* as source-like text."""
+    for op, comparator in zip(compare.ops, compare.comparators, strict=False):
+        if isinstance(op, ast.GtE) and _is_int_literal(comparator):
+            return ">="
+        if isinstance(op, ast.Gt) and _is_int_literal(comparator):
+            return ">"
+    return ""
+
+
+def _category_for_path(path: Path) -> str:
+    """Best-effort triage category for baseline queueing."""
+    lowered = path.as_posix().lower()
+    if "benchmark" in lowered or "performance" in lowered:
+        return "performance"
+    if "property" in lowered:
+        return "property"
+    if "platform" in lowered or "windows" in lowered or "macos" in lowered:
+        return "platform"
+    if "optional" in lowered or "dependency" in lowered:
+        return "optional-dependency"
+    return "general"
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +198,17 @@ def check_file(path: Path) -> list[Violation]:
 
         # Build a short snippet (first line of the assert)
         snippet = source_lines[node.lineno - 1].strip() if source_lines else ""
-        violations.append(Violation(str(path), node.lineno, snippet, end))
+        operator = _loose_operator(loose[0])
+        violations.append(
+            Violation(
+                str(path),
+                node.lineno,
+                snippet,
+                end,
+                operator,
+                _category_for_path(path),
+            )
+        )
 
     return violations
 
@@ -267,6 +305,56 @@ def check_diff(base_ref: str) -> int:
 
 def count_baseline(tests_dir: Path) -> int:
     """Count all loose assertions under *tests_dir* using AST rules."""
+    return len(baseline_violations(tests_dir))
+
+
+def baseline_violations(tests_dir: Path) -> list[Violation]:
+    """Return all baseline loose assertions under *tests_dir* using AST rules."""
+    violations: list[Violation] = []
+    for py_file in sorted(tests_dir.rglob("*.py")):
+        if PROPERTY_FILE_RE.search(py_file.name):
+            continue
+        violations.extend(check_file(py_file))
+    return violations
+
+
+def _repo_relative(path: str, project_root: Path) -> str:
+    resolved = Path(path).resolve()
+    try:
+        return resolved.relative_to(project_root.resolve()).as_posix()
+    except ValueError:
+        return Path(path).as_posix()
+
+
+def format_baseline_json(violations: list[Violation], project_root: Path) -> str:
+    """Format violations as stable machine-readable JSON."""
+    payload = [
+        {
+            "path": _repo_relative(v.path, project_root),
+            "line": v.lineno,
+            "end_line": v.end_lineno or v.lineno,
+            "operator": v.operator,
+            "snippet": v.snippet,
+            "category": v.category,
+            "exemption": None,
+        }
+        for v in violations
+    ]
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def format_baseline_table(violations: list[Violation], project_root: Path) -> str:
+    """Format violations as a short human-readable summary table."""
+    by_path = Counter(_repo_relative(v.path, project_root) for v in violations)
+    lines = [f"Total loose assertions: {len(violations)}", "", "| path | count |"]
+    lines.append("|---|---:|")
+    for path, count in by_path.most_common():
+        lines.append(f"| {path} | {count} |")
+    return "\n".join(lines)
+
+
+def count_baseline_legacy(tests_dir: Path) -> int:
+    """Compatibility alias retained for older callers."""
     total = 0
     for py_file in sorted(tests_dir.rglob("*.py")):
         if PROPERTY_FILE_RE.search(py_file.name):
@@ -287,8 +375,24 @@ def main(argv: list[str] | None = None) -> int:
         # Baseline counting mode — always exits 0
         project_root = Path(__file__).resolve().parents[1]
         tests_dir = project_root / "tests"
-        count = count_baseline(tests_dir)
-        print(count)
+        output_format = "count"
+        if "--format" in args:
+            format_index = args.index("--format")
+            if format_index + 1 >= len(args):
+                print("❌ --format requires one of: count, json, table", file=sys.stderr)
+                return 2
+            output_format = args[format_index + 1]
+
+        violations = baseline_violations(tests_dir)
+        if output_format == "count":
+            print(len(violations))
+        elif output_format == "json":
+            print(format_baseline_json(violations, project_root))
+        elif output_format == "table":
+            print(format_baseline_table(violations, project_root))
+        else:
+            print("❌ --format requires one of: count, json, table", file=sys.stderr)
+            return 2
         return 0
 
     base_ref = args[0] if args else "origin/develop"

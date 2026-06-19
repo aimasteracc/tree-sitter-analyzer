@@ -417,5 +417,5 @@ def _verification_commands(language: str) -> list[str]:
     return [
         f"uv run tree-sitter-analyzer parser-readiness {safe_lang} --format json",
         f"uv run pytest tests/unit/languages/test_{safe_lang}_plugin.py -q",
-        "uv run pytest tests/unit/test_agent_contracts.py::test_registered_mcp_tools_have_cli_parity -q",
+        "uv run pytest tests/contracts/test_mcp_cli_parity_contract.py::test_registered_mcp_tools_have_cli_parity -q",
     ]

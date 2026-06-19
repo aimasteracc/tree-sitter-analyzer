@@ -670,10 +670,44 @@ class TestHtmlQueryAccuracy:
         tree = get_tree_for_code(TAG_CODE, plugin)
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
-        # Should not extract non-tag elements
-        for element in elements:
-            assert element.tag_name is not None
-            assert element.tag_name != ""
+        # Exact full tag list in fixture order.
+        assert [e.tag_name for e in elements] == [
+            "div",
+            "header",
+            "h1",
+            "nav",
+            "ul",
+            "li",
+            "a",
+            "li",
+            "a",
+            "li",
+            "a",
+            "main",
+            "section",
+            "h2",
+            "p",
+            "article",
+            "h3",
+            "p",
+            "aside",
+            "h4",
+            "p",
+            "footer",
+            "p",
+            "p",
+            "strong",
+            "em",
+            "p",
+            "mark",
+            "del",
+            "p",
+            "ins",
+            "sub",
+            "p",
+            "sup",
+            "small",
+        ]
 
     def test_attribute_query_accuracy(self):
         """Test that attribute query accurately identifies attributes."""
@@ -761,13 +795,80 @@ class TestHtmlQueryAccuracy:
         tree = get_tree_for_code(TAG_CODE, plugin)
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
-        # The first tag in TAG_CODE opens on line 3 — pinning the exact
-        # minimum makes a regression to 0/-1 line numbers impossible to miss
-        start_lines = [e.start_line for e in elements]
-        assert len(start_lines) == 35
-        assert min(start_lines) == 3
-        for element in elements:
-            assert element.end_line >= element.start_line
+        assert [e.start_line for e in elements] == [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            8,
+            9,
+            9,
+            10,
+            10,
+            14,
+            15,
+            16,
+            17,
+            19,
+            20,
+            21,
+            23,
+            24,
+            25,
+            28,
+            29,
+            34,
+            34,
+            34,
+            35,
+            35,
+            35,
+            36,
+            36,
+            36,
+            37,
+            37,
+            37,
+        ]
+        assert [e.end_line for e in elements] == [
+            31,
+            13,
+            5,
+            12,
+            11,
+            8,
+            8,
+            9,
+            9,
+            10,
+            10,
+            27,
+            18,
+            16,
+            17,
+            22,
+            20,
+            21,
+            26,
+            24,
+            25,
+            30,
+            29,
+            34,
+            34,
+            34,
+            35,
+            35,
+            35,
+            36,
+            36,
+            36,
+            37,
+            37,
+            37,
+        ]
 
     def test_element_classification_accuracy(self):
         """Test that element classification is accurate."""

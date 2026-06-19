@@ -87,18 +87,24 @@ public class Calculator {
         assert hasattr(extractor, "extract_variables")
         assert hasattr(extractor, "extract_imports")
 
-    def test_extract_functions_success(
+    def test_extract_core_elements_success(
         self, extractor: JavaElementExtractor, mock_tree: Mock
     ) -> None:
-        """Test successful function extraction"""
-        # Mock the language query
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"method.declaration": []}
+        """Test successful extraction of the core Java element families."""
+        cases = (
+            ("functions", {"method.declaration": []}, extractor.extract_functions),
+            ("classes", {"class.declaration": []}, extractor.extract_classes),
+            ("variables", {"field.declaration": []}, extractor.extract_variables),
+            ("imports", {"import.declaration": []}, extractor.extract_imports),
+        )
+        for label, captures, extract in cases:
+            mock_query = Mock()
+            mock_tree.language.query.return_value = mock_query
+            mock_query.captures.return_value = captures
 
-        functions = extractor.extract_functions(mock_tree, "test code")
+            result = extract(mock_tree, "test code")
 
-        assert isinstance(functions, list)
+            assert isinstance(result, list), label
 
     def test_extract_functions_no_language(
         self, extractor: JavaElementExtractor
@@ -115,45 +121,6 @@ public class Calculator {
 
         assert isinstance(functions, list)
         assert len(functions) == 0
-
-    def test_extract_classes_success(
-        self, extractor: JavaElementExtractor, mock_tree: Mock
-    ) -> None:
-        """Test successful class extraction"""
-        # Mock the language query
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"class.declaration": []}
-
-        classes = extractor.extract_classes(mock_tree, "test code")
-
-        assert isinstance(classes, list)
-
-    def test_extract_variables_success(
-        self, extractor: JavaElementExtractor, mock_tree: Mock
-    ) -> None:
-        """Test successful variable extraction"""
-        # Mock the language query
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"field.declaration": []}
-
-        variables = extractor.extract_variables(mock_tree, "test code")
-
-        assert isinstance(variables, list)
-
-    def test_extract_imports_success(
-        self, extractor: JavaElementExtractor, mock_tree: Mock
-    ) -> None:
-        """Test successful import extraction"""
-        # Mock the language query
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"import.declaration": []}
-
-        imports = extractor.extract_imports(mock_tree, "test code")
-
-        assert isinstance(imports, list)
 
     def test_extract_method_optimized(self, extractor: JavaElementExtractor) -> None:
         """Test optimized method extraction"""

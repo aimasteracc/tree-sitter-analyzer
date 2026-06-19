@@ -17,8 +17,8 @@ single big-bang patch. A follow-up sprint can do the physical relocation
 behind these re-exports without changing any consumer.
 
 The contract test ``test_no_mcp_tool_imports_cli`` in
-``tests/unit/test_agent_contracts.py`` AST-walks ``mcp/tools/*.py`` and
-fails if anyone re-introduces a ``from ...cli.*`` import.
+``tests/contracts/test_internal_architecture_contract.py`` AST-walks
+``mcp/tools/*.py`` and fails if anyone re-introduces a ``from ...cli.*`` import.
 """
 
 from __future__ import annotations
