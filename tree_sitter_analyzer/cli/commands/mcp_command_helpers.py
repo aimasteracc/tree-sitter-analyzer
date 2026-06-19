@@ -39,18 +39,6 @@ class McpCommandSpec:
     required_value_error: str | None = None
 
 
-def _spec_value(args: Any, spec: McpCommandSpec) -> Any:
-    """Return the user-facing value associated with the spec's flag.
-
-    For value-bearing flags (``value_arg_name`` set) we look up the
-    actual argparse attribute; for boolean flags we keep the legacy
-    ``flag_name`` lookup so the rest of the dispatcher is unchanged.
-    """
-    if spec.value_arg_name is not None:
-        return getattr(args, spec.value_arg_name, None)
-    return getattr(args, spec.flag_name, False)
-
-
 def find_selected_mcp_command(
     args: Any,
     command_specs: tuple[McpCommandSpec, ...],
