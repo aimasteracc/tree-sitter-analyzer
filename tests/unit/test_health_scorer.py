@@ -744,8 +744,8 @@ class TestScoreComplexityExtractorPath:
         funcs = analyze_file_complexity(f, "javascript")
         assert len(funcs) == 1
         extractor_cx = funcs[0].complexity
-        # extractor sees ternary_expression -> CC >= 2
-        assert extractor_cx >= 2, f"JS ternary should give CC >= 2, got {extractor_cx}"
+        # extractor sees ternary_expression -> base 1 + 1 ternary = exactly 2
+        assert extractor_cx == 2, f"JS ternary should give CC == 2, got {extractor_cx}"
 
         score = score_complexity(f, js_src, "javascript")
         # CC=2, n_funcs=1 (<3) → absolute path → CC=2 <= CC_IDEAL=15 → 100.0
