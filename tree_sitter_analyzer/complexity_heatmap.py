@@ -289,7 +289,16 @@ def _extract_functions(
 def _extract_functions_from_ast(
     tree: Any, source: str, language: str, file_path: str, method_nodes: set[str]
 ) -> list[FunctionComplexity]:
-    """Original AST-walk path used for the 8 hardcoded languages."""
+    """AST-walk path for the 8 hardcoded languages.
+
+    The cyclomatic count comes from the language plugin's
+    ``element.complexity_score`` — the single source of truth (RFC-0019 / #1094)
+    that ``--table`` and the golden masters use — so the heatmap can no longer
+    disagree with the extractor (the old ``_count_complexity_in_node`` walk
+    counted switch per-arm, counted ``else``, and used stale operator nodes).
+    The per-type ``decision_points`` breakdown is still derived from the walk.
+    """
+    extractor_cx = _extractor_complexity_by_line(tree, source, language)
     results: list[FunctionComplexity] = []
     stack = [tree.root_node]
 
@@ -298,13 +307,15 @@ def _extract_functions_from_ast(
         if node.type in method_nodes:
             name = _get_function_name(node)
             cc, decision_points = _count_complexity_in_node(node, language)
+            line = node.start_point[0] + 1
+            complexity = extractor_cx.get(line, cc + 1)
             results.append(
                 FunctionComplexity(
                     name=name or "<anonymous>",
                     file=file_path,
-                    line=node.start_point[0] + 1,
+                    line=line,
                     end_line=node.end_point[0] + 1,
-                    complexity=max(cc + 1, 1),
+                    complexity=max(complexity, 1),
                     language=language,
                     class_name=_find_class_name(node, language),
                     decision_points=decision_points,
@@ -313,6 +324,33 @@ def _extract_functions_from_ast(
         stack.extend(node.children)
 
     return results
+
+
+def _extractor_complexity_by_line(
+    tree: Any, source: str, language: str
+) -> dict[int, int]:
+    """Map function start-line → the plugin extractor's ``complexity_score``.
+
+    The canonical cyclomatic value (RFC-0019 / #1094), keyed by start line so a
+    node walk can look each function up.
+    """
+    try:
+        from .plugins.manager import PluginManager
+
+        plugin = PluginManager().get_plugin(language)
+        if plugin is None:
+            return {}
+        elements = plugin.create_extractor().extract_functions(tree, source)
+    except Exception as exc:
+        logger.debug("extractor complexity unavailable for %s: %s", language, exc)
+        return {}
+
+    by_line: dict[int, int] = {}
+    for elem in elements:
+        start = getattr(elem, "start_line", None)
+        if start is not None:
+            by_line[start] = max(getattr(elem, "complexity_score", 1) or 1, 1)
+    return by_line
 
 
 def _extract_functions_via_plugin(
@@ -396,9 +434,14 @@ def analyze_file_complexity_from_cache(
         if sym.get("kind") not in ("function", "method"):
             continue
         dp: dict[str, int] = sym.get("decision_points", {})
-        if not dp:
+        # Prefer the canonical extractor complexity stored at index time
+        # (v14, #1094). An older row without it is re-parsed via the live path
+        # rather than re-derived from the per-arm `decision_points` sum (which
+        # over-counts switch/etc. and would disagree with `--table`).
+        canonical = sym.get("complexity")
+        if canonical is None:
             return analyze_file_complexity(file_path, lang)
-        cc = max(sum(dp.values()) + 1, 1)
+        cc = max(int(canonical), 1)
         results.append(
             FunctionComplexity(
                 name=sym.get("name", "<unknown>"),

@@ -1124,11 +1124,45 @@ def _extract_symbols(tree: Any, source_code: str, language: str) -> dict[str, An
     _walk_for_symbols(
         root, source_code, symbols, language, _truncated_flag=truncated_flag
     )
+    _annotate_canonical_complexity(symbols, tree, source_code, language)
     return {
         "symbols": symbols,
         "node_count": _count_nodes(root),
         "truncated_depth": truncated_flag[0],
     }
+
+
+def _annotate_canonical_complexity(
+    symbols: list[dict[str, Any]], tree: Any, source_code: str, language: str
+) -> None:
+    """Stamp each function/method symbol with the extractor's ``complexity``.
+
+    The plugin extractor's ``complexity_score`` is the single source of truth
+    (RFC-0019 / #1094); cached here (keyed by start line) so the cache-backed
+    heatmap path uses the same value the live path and ``--table`` do, instead
+    of re-deriving it from the per-arm ``decision_points`` sum.
+    """
+    try:
+        from .plugins.manager import PluginManager
+
+        plugin = PluginManager().get_plugin(language)
+        if plugin is None:
+            return
+        elements = plugin.create_extractor().extract_functions(tree, source_code)
+    except Exception:
+        return
+
+    cx_by_line: dict[int, int] = {}
+    for elem in elements:
+        start = getattr(elem, "start_line", None)
+        if start is not None:
+            cx_by_line[start] = max(getattr(elem, "complexity_score", 1) or 1, 1)
+
+    for sym in symbols:
+        if sym.get("kind") in ("function", "method"):
+            line = sym.get("line")
+            if line is not None and line in cx_by_line:
+                sym["complexity"] = cx_by_line[line]
 
 
 def _extract_imports(symbols: dict[str, Any]) -> list[str]:

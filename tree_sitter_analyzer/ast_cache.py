@@ -85,7 +85,11 @@ logger = logging.getLogger(__name__)
 #      cached under the old cap so deeply nested symbols are no longer truncated.
 # v13: #949 — bash variable_assignment indexing: skip command-prefix env vars
 #      (``FOO=bar make``) and unwrap subscript only for assignment targets.
-_AST_CACHE_EXTRACTOR_VERSION = 13
+# v14: #1094 / RFC-0019 — function symbols carry the extractor's canonical
+#      ``complexity`` so the cache-backed heatmap matches the extractor; the
+#      bump forces existing rows to re-index. MUST stay equal to the copy in
+#      ``_ast_cache_indexer.py`` (gated by test_extractor_version_matches_in_both_sites).
+_AST_CACHE_EXTRACTOR_VERSION = 14
 
 
 class SchemaIntegrityError(RuntimeError):
