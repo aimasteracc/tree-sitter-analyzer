@@ -38,6 +38,16 @@ never touched and still disagree:
    arm**, so `analyze_file_complexity(...)` reports Cx ≈ 5 for a 4-case switch
    where the extractor (and the golden `--table full`) now report 2.
 
+The heatmap's `_COMPLEXITY_NODES` table (the third definition) has drifted the
+furthest from the extractor convention — prototyping found it: (a) counts switch
+**per arm** (`switch_case`/`switch_block_statement_group`/`match_arm`/
+`expression_switch_case`/`type_switch_case`/`select_case`); (b) counts
+`else_clause` as a decision (it is **not** one — no other path counts `else`);
+(c) uses stale/divergent operator nodes (`logical_expression` /
+`conditional_expression` for JS/TS where the grammar emits `binary_expression` /
+`ternary_expression`). So the heatmap is wrong on multiple axes, not just
+per-case — aligning it is the bulk of the re-pinning.
+
 Concrete: `examples/BigService.java::performBackup` is `Cx 2` in the golden
 formatter output but the heatmap/health path scores it differently, so the
 user-facing heatmap / hotspot ranking / health grade are inconsistent with the
