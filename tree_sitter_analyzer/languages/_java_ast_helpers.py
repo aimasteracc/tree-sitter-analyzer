@@ -50,9 +50,14 @@ _JAVA_DECISION_NODES = frozenset(
         "if_statement",
         "while_statement",
         "for_statement",
-        "switch_statement",
+        "do_statement",
+        # tree-sitter-java emits "switch_expression" for both switch statements
+        # and switch expressions, and "ternary_expression" for the ?: operator —
+        # NOT "switch_statement" / "conditional_expression". The stale names
+        # never matched, so switch / ternary / do-while were silently uncounted.
+        "switch_expression",
+        "ternary_expression",
         "catch_clause",
-        "conditional_expression",
         "enhanced_for_statement",
     }
 )

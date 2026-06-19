@@ -950,6 +950,76 @@ class TestJavaCyclomaticComplexity:
         assert funcs[0].name == "process"
         assert funcs[0].complexity_score == 8
 
+    def test_switch_counted_once(self):
+        """switch (one switch_expression node) = 1 decision → complexity 2.
+
+        tree-sitter-java emits "switch_expression" (not "switch_statement"),
+        so before the node-name fix this measured 1. The construct counts once,
+        not per case (matching the Go/Rust/Swift convention).
+        """
+        funcs = _java_functions(JAVA_SWITCH)
+        assert len(funcs) == 1
+        assert funcs[0].name == "classify"
+        assert funcs[0].complexity_score == 2
+
+    def test_ternary_counted(self):
+        """ternary ?: (one ternary_expression node) = 1 decision → complexity 2.
+
+        tree-sitter-java emits "ternary_expression" (not "conditional_expression"),
+        so before the node-name fix this measured 1.
+        """
+        funcs = _java_functions(JAVA_TERNARY)
+        assert len(funcs) == 1
+        assert funcs[0].name == "sign"
+        assert funcs[0].complexity_score == 2
+
+    def test_do_while_counted(self):
+        """do-while (one do_statement node) = 1 decision → complexity 2.
+
+        do_statement was entirely absent from the Java decision set, so before
+        the fix this measured 1.
+        """
+        funcs = _java_functions(JAVA_DO_WHILE)
+        assert len(funcs) == 1
+        assert funcs[0].name == "countdown"
+        assert funcs[0].complexity_score == 2
+
+
+JAVA_SWITCH = """\
+class Sample {
+    int classify(int x) {
+        switch (x) {
+            case 1: return 1;
+            case 2: return 2;
+            default: return 0;
+        }
+    }
+}
+"""
+# One switch (switch_expression) counted once → complexity = 1 + 1 = 2.
+
+JAVA_TERNARY = """\
+class Sample {
+    int sign(int x) {
+        int r = x > 0 ? 1 : -1;
+        return r;
+    }
+}
+"""
+# One ternary (ternary_expression) → complexity = 1 + 1 = 2.
+
+JAVA_DO_WHILE = """\
+class Sample {
+    int countdown(int x) {
+        do {
+            x--;
+        } while (x > 0);
+        return x;
+    }
+}
+"""
+# One do-while (do_statement) → complexity = 1 + 1 = 2.
+
 
 # ---------------------------------------------------------------------------
 # C
