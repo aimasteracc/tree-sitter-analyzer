@@ -32,7 +32,6 @@ from .formatter_registry import (
     FormatterRegistry,
     FullFormatter,
     IFormatter,
-    IStructureFormatter,
     JsonFormatter,
 )
 from .table_formatter import TableFormatter
@@ -41,7 +40,6 @@ __all__ = [
     # Primary API
     "FormatterRegistry",
     "IFormatter",
-    "IStructureFormatter",
     # Built-in formatters
     "JsonFormatter",
     "CsvFormatter",

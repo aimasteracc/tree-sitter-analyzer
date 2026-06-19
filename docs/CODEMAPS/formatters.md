@@ -37,9 +37,8 @@ Interfaces live in `formatters/_formatter_interface.py` (no upward imports — b
 | Interface | Implementors | Purpose |
 |---|---|---|
 | `IFormatter` | `HtmlFormatter`, `JsonFormatter`, `CsvFormatter`, … | `format(elements)` → str |
-| `IStructureFormatter` | legacy adapters | `format_structure(dict)` → str |
 
-`formatters/formatter_registry.py` re-exports both for backward compat.
+`formatters/formatter_registry.py` re-exports `IFormatter` for backward compat.
 `formatters/html_formatter.py` imports directly from `formatters/_formatter_interface.py` to avoid the
 `formatter_registry ↔ html_formatter` import cycle (fixed 2026-05-30).
 

@@ -12,7 +12,7 @@ import logging
 from typing import Any
 
 from ..models import CodeElement
-from ._formatter_interface import IFormatter, IStructureFormatter  # noqa: F401
+from ._formatter_interface import IFormatter
 
 logger = logging.getLogger(__name__)
 
