@@ -21,7 +21,7 @@ from functools import reduce
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----| 
 | __post_init__ | (self:Any):Any | + | 21-24 | 2 | Validate the person data after initialization. |
-| greet | (self:Any):str | + | 26-28 | 2 | Return a greeting message. |
+| greet | (self:Any):str | + | 26-28 | 1 | Return a greeting message. |
 
 ## Animal (31-45)
 ### Public Methods
@@ -50,14 +50,14 @@ from functools import reduce
 ## Module Functions
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----| 
-| fetch_data | (url:str):dict[str, any] | + | 81-87 | 3 | Asynchronously fetch data from a URL. |
-| process_animals | (animals:list[Animal]):dict[str, list[str]] | + | 90-103 | 4 | Process a list of animals and categorize their ... |
-| calculate_statistics | (numbers:list[int | float]):dict[str, float] | + | 106-117 | 3 | Calculate basic statistics for a list of numbers. |
+| fetch_data | (url:str):dict[str, any] | + | 81-87 | 1 | Asynchronously fetch data from a URL. |
+| process_animals | (animals:list[Animal]):dict[str, list[str]] | + | 90-103 | 3 | Process a list of animals and categorize their ... |
+| calculate_statistics | (numbers:list[int | float]):dict[str, float] | + | 106-117 | 2 | Calculate basic statistics for a list of numbers. |
 | fibonacci_generator | (n:int):Any | + | 120-125 | 2 | Generate Fibonacci numbers up to n. |
-| list_comprehension_examples | ():Any | + | 128-142 | 7 | Demonstrate various list comprehensions. |
+| list_comprehension_examples | ():Any | + | 128-142 | 6 | Demonstrate various list comprehensions. |
 | exception_handling_example | ():Any | + | 145-160 | 3 | Demonstrate exception handling. |
-| context_manager_example | ():Any | + | 163-168 | 2 | Demonstrate context managers. |
-| lambda_and_higher_order_functions | ():Any | + | 171-186 | 6 | Demonstrate lambda functions and higher-order f... |
+| context_manager_example | ():Any | + | 163-168 | 1 | Demonstrate context managers. |
+| lambda_and_higher_order_functions | ():Any | + | 171-186 | 2 | Demonstrate lambda functions and higher-order f... |
 | decorator_example | (func:Any):Any | + | 189-198 | 1 | A simple decorator example. |
 | wrapper | (*args:Any, **kwargs:Any):Any | + | 192-196 | 1 | - |
 | decorated_function | (message:str):str | + | 202-204 | 1 | A function that uses the decorator. |
