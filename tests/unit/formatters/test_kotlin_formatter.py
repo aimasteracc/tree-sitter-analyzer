@@ -574,3 +574,33 @@ class TestKotlinFormatterEdgeCases:
         assert "longFunction" in result
         assert "param0" in result
         assert "param9" in result
+
+
+class TestKotlinFullTableComplexityColumn:
+    """The full table shows a Cx (cyclomatic complexity) column, matching the
+    other language formatters (Go/Java/JS/TS/Rust/C#/C++)."""
+
+    def test_full_table_has_cx_column_with_value(self):
+        formatter = KotlinTableFormatter()
+        data = {
+            "package": {"name": "demo"},
+            "file_path": "/x/Demo.kt",
+            "imports": [],
+            "classes": [],
+            "methods": [
+                {
+                    "name": "f",
+                    "visibility": "public",
+                    "line_range": {"start": 1, "end": 8},
+                    "parameters": [],
+                    "return_type": "Int",
+                    "complexity_score": 10,
+                }
+            ],
+            "fields": [],
+        }
+        result = formatter._format_full_table(data)
+        assert "| Function | Signature | Vis | Lines | Cx | Suspend | Doc |" in result
+        # The function row carries its complexity score in the Cx column.
+        f_row = next(line for line in result.splitlines() if line.startswith("| f |"))
+        assert "| 10 |" in f_row
