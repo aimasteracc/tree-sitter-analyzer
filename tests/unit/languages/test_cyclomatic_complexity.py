@@ -1375,3 +1375,112 @@ class TestJavaDecisionNodeCoverage:
         assert len(funcs) == 1
         assert funcs[0].name == "run"
         assert funcs[0].complexity_score == 4
+
+
+# ---------------------------------------------------------------------------
+# JavaScript / TypeScript
+# ---------------------------------------------------------------------------
+# These plugins previously computed complexity by counting keyword *substrings*
+# in the function text, which (a) counted keywords inside identifiers, strings,
+# and comments (the "for" in "formatter", the "if" in "notify", every keyword
+# in a comment), and (b) counted each switch `case` separately. They now walk
+# the AST and count decision nodes once each. These tests pin the AST behavior.
+
+
+def _js_functions(source: str):
+    import tree_sitter_javascript
+
+    lang = tree_sitter.Language(tree_sitter_javascript.language())
+    tree = tree_sitter.Parser(lang).parse(source.encode())
+    from tree_sitter_analyzer.languages.javascript_plugin.extractor import (
+        JavaScriptElementExtractor,
+    )
+
+    return JavaScriptElementExtractor().extract_functions(tree, source)
+
+
+def _ts_functions(source: str):
+    import tree_sitter_typescript
+
+    lang = tree_sitter.Language(tree_sitter_typescript.language_typescript())
+    tree = tree_sitter.Parser(lang).parse(source.encode())
+    from tree_sitter_analyzer.languages.typescript_plugin.extractor import (
+        TypeScriptElementExtractor,
+    )
+
+    return TypeScriptElementExtractor().extract_functions(tree, source)
+
+
+class TestJavaScriptCyclomaticComplexity:
+    def test_simple_no_branches(self):
+        funcs = _js_functions("function greet(name){ return name; }")
+        assert funcs[0].name == "greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_keyword_substrings_in_identifiers_not_counted(self):
+        """Identifiers containing keyword substrings must NOT add complexity."""
+        # "for" in formatData/formatter, "if" in notify, "case" in processCases
+        for src, name in [
+            ("function notify(){ return 1; }", "notify"),
+            ("function formatData(formatter){ return formatter; }", "formatData"),
+            ("function processCases(database){ return database; }", "processCases"),
+        ]:
+            funcs = _js_functions(src)
+            assert funcs[0].name == name
+            assert funcs[0].complexity_score == 1
+
+    def test_keywords_in_comment_and_string_not_counted(self):
+        funcs = _js_functions(
+            "function plain(){ /* if while for case switch && || ? */ "
+            "return 'if you switch the case'; }"
+        )
+        assert funcs[0].complexity_score == 1
+
+    def test_switch_counts_once_not_per_case(self):
+        funcs = _js_functions(
+            "function f(x){ switch(x){case 1:break;case 2:break;"
+            "case 3:break;default:break;} }"
+        )
+        assert funcs[0].complexity_score == 2
+
+    def test_nullish_coalescing_counts_but_optional_chain_does_not(self):
+        """`??` short-circuits (a decision); `?.` is not a branch."""
+        assert (
+            _js_functions("function f(a,b){ return a ?? b; }")[0].complexity_score == 2
+        )
+        assert _js_functions("function f(a){ return a?.b; }")[0].complexity_score == 1
+
+    def test_rich_branching(self):
+        """if + else-if + for + for-of + while + do + switch + catch + ternary
+        + && + || = 11 decisions → complexity 12."""
+        funcs = _js_functions(
+            "function f(x, a){"
+            " if (x>0 && x<9) {} else if (x<0 || x>20) {}"
+            " for (let i=0;i<3;i++) {} for (const v of a) {}"
+            " while (x>0) {} do {} while (x<5);"
+            " switch (x) { case 1: break; default: break; }"
+            " try {} catch (e) {}"
+            " let r = x>0 ? 1 : -1; return r; }"
+        )
+        assert funcs[0].complexity_score == 12
+
+
+class TestTypeScriptCyclomaticComplexity:
+    def test_simple_no_branches(self):
+        funcs = _ts_functions("function greet(name: string): string { return name; }")
+        assert funcs[0].name == "greet"
+        assert funcs[0].complexity_score == 1
+
+    def test_keyword_substrings_not_counted(self):
+        funcs = _ts_functions(
+            "function render(forEachItem: number): number { return forEachItem; }"
+        )
+        assert funcs[0].name == "render"
+        assert funcs[0].complexity_score == 1
+
+    def test_switch_counts_once_not_per_case(self):
+        funcs = _ts_functions(
+            "function f(x: number){ switch(x){case 1:break;case 2:break;"
+            "case 3:break;default:break;} }"
+        )
+        assert funcs[0].complexity_score == 2

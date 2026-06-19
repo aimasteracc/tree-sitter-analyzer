@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ...utils import log_debug
+from .._complexity_decisions import count_decision_complexity
 from ._jsdoc_helpers import clean_jsdoc, extract_jsdoc_for_line
 from ._variable_helpers import infer_type_from_value
 
@@ -84,25 +85,11 @@ class JavaScriptUtilityMixin:
         if node_id in self._complexity_cache:
             return self._complexity_cache[node_id]
 
-        complexity = 1
         try:
-            node_text = self._get_node_text_optimized(node).lower()
-            keywords = [
-                "if",
-                "else if",
-                "while",
-                "for",
-                "catch",
-                "case",
-                "switch",
-                "&&",
-                "||",
-                "?",
-            ]
-            for keyword in keywords:
-                complexity += node_text.count(keyword)
+            complexity = count_decision_complexity(node)
         except Exception as e:
             log_debug(f"Failed to calculate complexity: {e}")
+            complexity = 1
 
         self._complexity_cache[node_id] = complexity
         return complexity
