@@ -87,9 +87,7 @@ def analyze_file(
     language: str | None = None,
     queries: list[str] | None = None,
     include_elements: bool = True,
-    include_details: bool = False,  # Add for backward compatibility
     include_queries: bool = True,
-    include_complexity: bool = False,  # Add for backward compatibility
 ) -> dict[str, Any]:
     """
     Analyze a source code file.
@@ -103,7 +101,6 @@ def analyze_file(
         queries: List of query names to execute (all available if not specified)
         include_elements: Whether to extract code elements
         include_queries: Whether to execute queries
-        include_complexity: Whether to include complexity metrics (backward compatibility)
 
     Returns:
         Analysis results dictionary
