@@ -192,12 +192,25 @@ walker.
 
 ## Acceptance criteria
 
-- [ ] `cyclomatic_complexity(node, language)` dispatcher added; extractor path
-      byte-identical (no golden change from the extractor side).
-- [ ] `health_scorer` no longer defines `DECISION_NODE_TYPES`; uses the dispatcher.
-- [ ] `_ast_extraction` no longer defines its own decision set; uses the dispatcher.
-- [ ] Cross-path invariant test passes for Java/JS/TS (and a parametrized sweep
-      over all 13 languages where the construct exists).
+- [x] **Prerequisite: Python extractor is an AST walk, not a keyword-regex
+      count** — done in #1100 (Codex review finding). The Python extractor was a
+      `re.findall` keyword counter (counted keywords in comments/strings,
+      `match` per-arm, `with`); it could not be a canonical source until fixed.
+- [ ] `cyclomatic_complexity(node, language)` dispatcher added (with the
+      per-language **adapter layer** for the heterogeneous signatures);
+      extractor path byte-identical (no golden change from the extractor side).
+- [ ] The shared source is the **decision-node TYPE definitions** so the heatmap
+      keeps its `decision_points` breakdown (and v1 cache rows) intact — not a
+      scalar dispatcher (Codex finding 1).
+- [ ] `health_scorer` no longer defines `DECISION_NODE_TYPES`; uses the shared
+      definitions. `FUNCTION_NODE_TYPES` covers **every** language that has a
+      health table (PHP/Kotlin/… — Codex finding 4), guarded by a test.
+- [ ] `complexity_heatmap` no longer defines its own per-case/`else_clause`/
+      stale-operator set; uses the shared definitions.
+- [ ] Cross-path invariant test (`test_complexity_cross_path_invariant.py`)
+      passes and is **un-xfailed**, parametrized over the **15** plugins that
+      emit `complexity_score` (13 fully-wired + Bash + Scala — Codex finding 3),
+      for each construct the language has.
 - [ ] All grade/heatmap re-pins are exact values with a recorded before→after.
 
 ## What this RFC does NOT do (deferred)
