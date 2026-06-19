@@ -48,8 +48,10 @@ _RUBY_DECISION_STATEMENT_TYPES: frozenset[str] = frozenset(
         "unless",
         "while",
         "until",
-        "case",
-        "when",
+        # ``case`` / ``when`` are handled specially in the walk (see
+        # _ruby_case_decision): a *valued* ``case expr`` counts once
+        # (construct-once switch), while a *conditionless* ``case`` is an
+        # if/elsif chain whose ``when`` arms are each an independent predicate.
         "rescue",
         "for",
         "conditional",  # ternary  x > 0 ? a : b
@@ -92,12 +94,37 @@ def _ruby_calculate_complexity(node: object) -> int:
         cur = stack.pop()
         children = _safe_children(cur)
         is_leaf = len(children) == 0
-        if not is_leaf and getattr(cur, "type", None) in _RUBY_DECISION_STATEMENT_TYPES:
+        node_type = getattr(cur, "type", None)
+        if not is_leaf and node_type == "case":
+            # Valued ``case expr`` is a construct-once switch (+1); a
+            # conditionless ``case`` adds nothing itself — its ``when`` arms
+            # are counted individually below.
+            if _ruby_case_has_subject(cur):
+                decisions += 1
+        elif not is_leaf and node_type == "when":
+            # A ``when`` is a decision only inside a conditionless ``case``
+            # (where it is an independent predicate, like ``elsif``).
+            parent = getattr(cur, "parent", None)
+            if (
+                parent is not None
+                and getattr(parent, "type", None) == "case"
+                and not _ruby_case_has_subject(parent)
+            ):
+                decisions += 1
+        elif not is_leaf and node_type in _RUBY_DECISION_STATEMENT_TYPES:
             decisions += 1
-        elif is_leaf and getattr(cur, "type", None) in _RUBY_LOGIC_OP_TOKENS:
+        elif is_leaf and node_type in _RUBY_LOGIC_OP_TOKENS:
             decisions += 1
         stack.extend(children)
     return 1 + decisions
+
+
+def _ruby_case_has_subject(case_node: Any) -> bool:
+    """True for a valued ``case expr`` (switch); False for conditionless ``case``."""
+    try:
+        return case_node.child_by_field_name("value") is not None
+    except (AttributeError, TypeError):
+        return False
 
 
 # Type alias for the element cache key — avoids triple-nested generic annotation

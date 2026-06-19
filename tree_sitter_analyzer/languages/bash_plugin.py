@@ -90,7 +90,10 @@ _BASH_DECISION_TYPES: frozenset[str] = frozenset(
         "while_statement",  # covers both 'while' and 'until' loops
         "for_statement",
         "c_style_for_statement",
-        "case_item",
+        # The ``case`` construct counts once via ``case_statement``; the
+        # individual ``case_item`` arms are NOT counted (construct-once),
+        # matching every other plugin. See #1090 (C/C++ switch counts once).
+        "case_statement",
     }
 )
 
