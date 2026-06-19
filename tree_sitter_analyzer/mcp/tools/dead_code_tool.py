@@ -281,10 +281,18 @@ def _under_path(file_path: str, path: str) -> bool:
     """True if ``file_path`` is the ``path`` itself or lives under it, matched
     on whole path segments (so 'a/m' does NOT match 'a/mcp/x.py'). Both sides
     are normalized to forward slashes; a trailing slash on ``path`` is ignored.
+
+    Root-relative aliases are accepted: a leading ``./`` is stripped, and ``.``
+    (or an empty prefix) means the whole project, so every item matches.
+    Result file paths are project-relative (e.g. ``tree_sitter_analyzer/x.py``),
+    so without this an agent passing ``.`` or ``./pkg`` would match nothing.
     """
     f = file_path.replace("\\", "/")
-    p = path.replace("\\", "/").rstrip("/")
-    if not p:
+    p = path.replace("\\", "/").strip()
+    if p.startswith("./"):
+        p = p[2:]
+    p = p.rstrip("/")
+    if p in ("", "."):
         return True
     return f == p or f.startswith(p + "/")
 

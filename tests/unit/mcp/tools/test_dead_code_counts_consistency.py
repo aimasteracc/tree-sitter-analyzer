@@ -471,6 +471,29 @@ class TestDeadCodePathScoping:
         )
         assert result["stats"]["total_dead_functions_transitive"] == 0
 
+    def test_path_dot_means_whole_project(self, fake_root, monkeypatch):
+        """Codex P2: ``path='.'`` is the root scope — must match everything,
+        not reject every project-relative file."""
+        monkeypatch.setattr(
+            mod, "analyze_dead_code", lambda *a, **k: _mixed_path_result()
+        )
+        tool = CodeGraphDeadCodeTool(fake_root)
+        result = _run(tool.execute({"output_format": "json", "path": "."}))
+        assert result["stats"]["total_dead_functions_transitive"] == 5
+
+    def test_path_leading_dot_slash_normalized(self, fake_root, monkeypatch):
+        """Codex P2: a copy-pasted ``./pkg`` prefix must behave like ``pkg``."""
+        monkeypatch.setattr(
+            mod, "analyze_dead_code", lambda *a, **k: _mixed_path_result()
+        )
+        tool = CodeGraphDeadCodeTool(fake_root)
+        result = _run(
+            tool.execute(
+                {"output_format": "json", "path": "./tree_sitter_analyzer/mcp"}
+            )
+        )
+        assert result["stats"]["total_dead_functions_transitive"] == 2
+
     def test_path_no_match_is_empty_not_error(self, fake_root, monkeypatch):
         monkeypatch.setattr(
             mod, "analyze_dead_code", lambda *a, **k: _mixed_path_result()
