@@ -330,6 +330,7 @@ class TestStderrNoiseBudget:
             + "\n".join(debug_lines[:10])
         )
 
+    @pytest.mark.timeout(120)
     def test_no_error_lines_after_normal_tool_call(self, mcp_server: MCPClient) -> None:
         """A successful tool call must not produce any [error]-level log lines."""
         initialized(mcp_server)
