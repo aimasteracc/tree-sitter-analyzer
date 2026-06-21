@@ -492,7 +492,6 @@ def _build_not_found_response(symbol: str, language: str | None) -> dict[str, An
         "usages": [],
         "call_count": 0,
         "count": 0,
-        "results": [],
         "impact_level": impact["level"],
         "impact_verdict": impact["level"].upper(),
         "verdict": "NOT_FOUND",
@@ -588,8 +587,15 @@ def _trace_impact_base_envelope(
         "verdict": verdict,
         "impact_badge": impact["badge"],
         "impact_guidance": impact["guidance"],
+        # RFC-0018 R10: ``usages`` is the canonical array for trace_impact
+        # (``usage_count`` counts it). The former ``"results": usages`` was an
+        # exact duplicate of the SAME list object — it doubled the largest
+        # field of the JSON response returned to the agent (trace emits a raw
+        # JSON dict; it does not apply TOON) for zero added signal. Dropped;
+        # consumers read ``usages``. (``results`` remains the cross-tool key
+        # for *search* tools, which is unaffected — trace does not route
+        # through search_envelope.)
         "usages": usages,
-        "results": usages,
         "summary_line": summary_line,
         "agent_summary": {
             "summary_line": summary_line,
