@@ -43,7 +43,6 @@ import pytest
 #   - end-to-end no strict leak (F4 regression guard with real inner tools)
 #   - set_project_path rebind propagation to action_map and bespoke inners (G3)
 # ---------------------------------------------------------------------------
-
 from tree_sitter_analyzer.mcp.tools.facade_tool import FacadeTool
 from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
 
