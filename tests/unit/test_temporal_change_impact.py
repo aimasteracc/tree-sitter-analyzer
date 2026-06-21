@@ -22,11 +22,9 @@ from __future__ import annotations
 
 import inspect
 import os
-import shutil
 import sqlite3
 import subprocess
 import time
-import uuid
 from pathlib import Path
 
 import pytest
@@ -53,14 +51,14 @@ _SAMPLE_PY = (
 
 def _init_git_repo(repo: Path) -> None:
     """Initialise a git repo inside ``repo`` with a single commit."""
-    os.environ["GIT_CONFIG_COUNT"] = "1"
-    os.environ["GIT_CONFIG_KEY_0"] = "safe.directory"
-    os.environ["GIT_CONFIG_VALUE_0"] = str(repo)
     subprocess.run(
         ["git", "init", "--initial-branch=main", str(repo)],
         check=True,
         capture_output=True,
     )
+    os.environ["GIT_CONFIG_COUNT"] = "1"
+    os.environ["GIT_CONFIG_KEY_0"] = "safe.directory"
+    os.environ["GIT_CONFIG_VALUE_0"] = str(repo)
     subprocess.run(
         ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
         check=True,
@@ -83,15 +81,8 @@ def _init_git_repo(repo: Path) -> None:
 
 
 def _make_git_repo_path(tmp_path: Path) -> Path:
-    """Use a project-local temp repo; Git cannot access system Temp on some hosts."""
-    repo = (
-        PROJECT_ROOT
-        / "_pytest_git_repos"
-        / tmp_path.parent.name
-        / f"{tmp_path.name}-temporal-{uuid.uuid4().hex}"
-    )
-    if repo.exists():
-        shutil.rmtree(repo, ignore_errors=True)
+    """Create a git repo under pytest's tmp_path for automatic cleanup."""
+    repo = tmp_path / "repo-temporal"
     repo.mkdir(parents=True)
     return repo
 
@@ -339,10 +330,10 @@ class TestCalleesActivationFlag:
             assert "last_modified_at" in activation
             # mod_count_30d is a non-negative int.
             assert isinstance(activation["mod_count_30d"], int)
-            assert activation["mod_count_30d"] >= 0
+            assert activation["mod_count_30d"] >= 0  # ratchet: nondeterministic
             # last_modified_at is either an epoch int or None.
             ts = activation["last_modified_at"]
-            assert ts is None or (isinstance(ts, int) and ts >= 0)
+            assert ts is None or (isinstance(ts, int) and ts >= 0)  # ratchet: nondeterministic
 
     @pytest.mark.asyncio
     async def test_callees_tool_omits_activation_by_default(self, callees_tool):
