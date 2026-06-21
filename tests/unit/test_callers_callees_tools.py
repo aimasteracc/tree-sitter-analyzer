@@ -51,24 +51,24 @@ class TestCodeGraphCallersTool:
         assert callers_tool.validate_arguments({"function_name": "main"})
 
     @pytest.mark.asyncio
-    @pytest.mark.slow_ok  # scans full project graph; ~12s on CI hardware
-    async def test_execute_returns_callers(self, callers_tool):
+    async def test_execute_returns_callers(self, tiny_project_root):
+        callers_tool = CodeGraphCallersTool(tiny_project_root)
         result = await callers_tool.execute(
-            {"function_name": "_walk_tree", "output_format": "json"}
+            {"function_name": "bar", "output_format": "json"}
         )
         assert result["success"] is True
-        assert result["function"] == "_walk_tree"
+        assert result["function"] == "bar"
         assert "callers" in result
         assert "caller_count" in result
         assert isinstance(result["callers"], list)
 
     @pytest.mark.asyncio
-    @pytest.mark.slow_ok  # clean Py3.13 CI may build the full project graph before SQL cache exists
-    async def test_execute_with_file_path(self, callers_tool):
+    async def test_execute_with_file_path(self, tiny_project_root):
+        callers_tool = CodeGraphCallersTool(tiny_project_root)
         result = await callers_tool.execute(
             {
-                "function_name": "_walk_tree",
-                "file_path": "tree_sitter_analyzer/call_graph.py",
+                "function_name": "bar",
+                "file_path": "sample.py",
                 "output_format": "json",
             }
         )

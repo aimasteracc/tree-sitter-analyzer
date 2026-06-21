@@ -3,6 +3,7 @@
 Global test configuration and fixtures.
 """
 
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -31,8 +32,25 @@ hypothesis_settings.register_profile(
 hypothesis_settings.load_profile("tree_sitter_analyzer")
 
 
+def _cleanup_pytest_git_repos() -> None:
+    """Best-effort cleanup for project-local git repos used by subprocess tests."""
+    git_repos_root = PROJECT_ROOT / "_pytest_git_repos"
+    if git_repos_root.exists():
+        shutil.rmtree(git_repos_root, ignore_errors=True)
+
+
+def pytest_xdist_auto_num_workers(config) -> int:
+    """Cap automatic xdist worker sizing on Windows."""
+    if sys.platform == "win32":
+        return 4
+    return os.cpu_count() or 4
+
+
 def pytest_configure(config):
     """Configure pytest with custom markers and safety checks."""
+    if not hasattr(config, "workerinput"):
+        _cleanup_pytest_git_repos()
+
     # Suppress SQLite connection finalizer warnings that fire when gc.collect()
     # in one xdist worker collects objects from other workers. These are benign
     # resource cleanup events, not actual test failures.
@@ -195,6 +213,9 @@ def pytest_sessionfinish(session, exitstatus):
     import gc
 
     gc.collect()
+
+    if not hasattr(session.config, "workerinput"):
+        _cleanup_pytest_git_repos()
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
@@ -515,7 +536,7 @@ def verify_test_isolation():
 # blocks CI. ``slow_ok`` is the escape hatch for known-slow tests
 # (file_watcher polling, real-process file_output, etc.).
 
-SLOW_TEST_BUDGET_S: float = 5.0
+SLOW_TEST_BUDGET_S: float = 8.0 if sys.platform == "win32" else 5.0
 
 
 @pytest.hookimpl(wrapper=True)

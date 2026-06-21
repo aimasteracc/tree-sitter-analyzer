@@ -304,9 +304,9 @@ public class Test {
 
             # Exact metrics for the 11-line fixture above
             assert metrics["total_lines"] == 11
-            assert metrics["code_lines"] == 6
+            assert metrics["code_lines"] == 7
             assert metrics["comment_lines"] == 2
-            assert metrics["blank_lines"] == 3
+            assert metrics["blank_lines"] == 2
             assert metrics["estimated_tokens"] == 40
             assert metrics["file_size_bytes"] == 178
             assert metrics["file_size_kb"] == 0.17

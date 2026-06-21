@@ -74,17 +74,19 @@ def _compute_line_metrics(
     """
     lines = content.split("\n")
     total_lines = len(lines)
+    metric_lines = lines
 
     # Remove empty line at the end if file ends with newline
     if lines and not lines[-1]:
         total_lines -= 1
+        metric_lines = lines[:-1]
 
     code_lines = 0
     comment_lines = 0
     blank_lines = 0
     in_multiline_comment = False
 
-    for line in lines:
+    for line in metric_lines:
         stripped = line.strip()
 
         # Blank line

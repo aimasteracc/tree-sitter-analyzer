@@ -65,7 +65,7 @@ def test_excluded_dirs_show_up_in_skip_reasons(tmp_path: Path) -> None:
 
     skip_reasons = result["skip_reasons"]
     # The excluded-dir count must reflect the pycache file we planted.
-    assert skip_reasons["excluded_dir"] >= 1, (
+    assert skip_reasons["excluded_dir"], (
         f"expected at least 1 excluded_dir skip (the __pycache__ file), "
         f"got skip_reasons={skip_reasons}"
     )

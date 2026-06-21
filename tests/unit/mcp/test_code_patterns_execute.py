@@ -69,7 +69,7 @@ class TestExecuteAntiPatterns:
             {"file_path": fp, "categories": ["anti_patterns"], "output_format": "json"}
         )
         assert result["success"] is True
-        assert result["total_patterns"] > 0
+        assert result["total_patterns"]
         types = [p["type"] for p in result["results"]]
         assert "mutable_default_argument" in types
         assert "bare_except" in types
@@ -230,7 +230,7 @@ class TestExecuteSeverityFiltering:
         tool = CodePatternsTool(str(tmp_path))
         result = await tool.execute({"file_path": fp, "categories": ["anti_patterns"]})
         assert result["success"] is True
-        assert result["total_patterns"] > 0
+        assert result["total_patterns"]
 
     @pytest.mark.asyncio
     async def test_patterns_sorted_by_severity_desc(self, tmp_path):

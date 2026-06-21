@@ -10,6 +10,7 @@ import json
 
 import pytest
 
+from tree_sitter_analyzer.default_table_formatter import DefaultTableFormatter
 from tree_sitter_analyzer.formatters.formatter_registry import (
     CompactFormatter,
     CsvFormatter,
@@ -18,6 +19,11 @@ from tree_sitter_analyzer.formatters.formatter_registry import (
     IFormatter,
     JsonFormatter,
 )
+from tree_sitter_analyzer.formatters.java_formatter import JavaTableFormatter
+from tree_sitter_analyzer.formatters.javascript_formatter import (
+    JavaScriptTableFormatter,
+)
+from tree_sitter_analyzer.formatters.python_formatter import PythonTableFormatter
 from tree_sitter_analyzer.models import (
     Class,
     CodeElement,
@@ -217,7 +223,7 @@ class TestFormatterRegistry:
                 return "output"
 
         FormatterRegistry.register_formatter(TestFormatter)
-        assert len(FormatterRegistry.get_available_formats()) > 0
+        assert FormatterRegistry.get_available_formats() == ["test"]
 
         FormatterRegistry.clear_registry()
         assert len(FormatterRegistry.get_available_formats()) == 0
@@ -562,20 +568,20 @@ class TestFormatterRegistryLanguageSupport:
     def test_get_formatter_for_language_java(self):
         """Test getting formatter for Java language"""
         formatter = FormatterRegistry.get_formatter_for_language("java", "full")
-        assert formatter is not None
-        assert hasattr(formatter, "format_structure")
+        assert isinstance(formatter, JavaTableFormatter)
+        assert formatter.format_type == "full"
 
     def test_get_formatter_for_language_python(self):
         """Test getting formatter for Python language"""
         formatter = FormatterRegistry.get_formatter_for_language("python", "full")
-        assert formatter is not None
-        assert hasattr(formatter, "format_structure")
+        assert isinstance(formatter, PythonTableFormatter)
+        assert formatter.format_type == "full"
 
     def test_get_formatter_for_language_javascript(self):
         """Test getting formatter for JavaScript language"""
         formatter = FormatterRegistry.get_formatter_for_language("javascript", "full")
-        assert formatter is not None
-        assert hasattr(formatter, "format_structure")
+        assert isinstance(formatter, JavaScriptTableFormatter)
+        assert formatter.format_type == "full"
 
     def test_get_formatter_for_language_with_alias(self):
         """Test getting formatter using language alias"""
@@ -593,9 +599,12 @@ class TestFormatterRegistryLanguageSupport:
         )
         csv_formatter = FormatterRegistry.get_formatter_for_language("java", "csv")
 
-        assert full_formatter is not None
-        assert compact_formatter is not None
-        assert csv_formatter is not None
+        assert isinstance(full_formatter, JavaTableFormatter)
+        assert full_formatter.format_type == "full"
+        assert isinstance(compact_formatter, JavaTableFormatter)
+        assert compact_formatter.format_type == "compact"
+        assert isinstance(csv_formatter, JavaTableFormatter)
+        assert csv_formatter.format_type == "csv"
 
     def test_get_supported_languages(self):
         """Test getting list of supported languages"""
@@ -616,7 +625,8 @@ class TestFormatterRegistryLanguageSupport:
         formatter = FormatterRegistry.get_formatter_for_language(
             "unsupported_lang", "full"
         )
-        assert formatter is not None
+        assert isinstance(formatter, DefaultTableFormatter)
+        assert formatter.format_type == "full"
 
 
 class TestFormatterErrorHandling:

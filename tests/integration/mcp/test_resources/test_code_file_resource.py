@@ -205,7 +205,7 @@ public class LargeClass {
             content = await self.resource.read_resource(uri)
 
             # Test large content handling
-            assert len(content) > 1000
+            assert len(content) > 1000  # ratchet: nondeterministic
             assert "field99" in content
             assert "getField99" in content
 

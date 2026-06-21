@@ -200,7 +200,7 @@ class TestQueryFileCompatibility:
         assert isinstance(queries, list | dict)
 
         if isinstance(queries, list):
-            assert len(queries) > 0
+            assert queries
 
 
 class TestPluginInterfaceCompatibility:

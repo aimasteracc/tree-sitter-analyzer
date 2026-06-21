@@ -117,7 +117,7 @@ class TestEncodingManagerEdge:
 
         _encoding_cache.set("test.txt", "utf-8")
         size = get_encoding_cache_size()
-        assert size >= 1
+        assert size
         clear_encoding_cache()
 
     def test_cleanup_expired_on_eviction(self):

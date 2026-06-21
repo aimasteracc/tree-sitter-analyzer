@@ -424,8 +424,8 @@ class TestHtmlLinkImageRecognition:
             ),
             None,
         )
-        if img_with_alt:
-            assert img_with_alt.attributes["alt"] is not None
+        assert img_with_alt.attributes["alt"] == "Description"
+        assert img_with_alt.attributes["src"] == "image.jpg"
 
     def test_extract_image_with_dimensions(self):
         """Test extraction of image with dimensions."""
@@ -446,9 +446,12 @@ class TestHtmlLinkImageRecognition:
             ),
             None,
         )
-        if img_with_dims:
-            assert img_with_dims.attributes["width"] is not None
-            assert img_with_dims.attributes["height"] is not None
+        assert img_with_dims.attributes == {
+            "src": "logo.png",
+            "alt": "Logo",
+            "width": "100",
+            "height": "50",
+        }
 
     def test_extract_picture_tag(self):
         """Test extraction of picture tag."""
@@ -547,8 +550,7 @@ class TestHtmlScriptStyleRecognition:
             ),
             None,
         )
-        if script_with_src:
-            assert script_with_src.attributes["src"] is not None
+        assert script_with_src.attributes == {"src": "https://cdn.example.com/library.js"}
 
     def test_extract_style_with_href(self):
         """Test extraction of link with href attribute."""
@@ -566,8 +568,7 @@ class TestHtmlScriptStyleRecognition:
             ),
             None,
         )
-        if link_with_href:
-            assert link_with_href.attributes["href"] is not None
+        assert link_with_href.attributes == {"rel": "stylesheet", "href": "styles.css"}
 
 
 class TestHtmlComplexStructures:
@@ -670,10 +671,44 @@ class TestHtmlQueryAccuracy:
         tree = get_tree_for_code(TAG_CODE, plugin)
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
-        # Should not extract non-tag elements
-        for element in elements:
-            assert element.tag_name is not None
-            assert element.tag_name != ""
+        # Exact full tag list in fixture order.
+        assert [e.tag_name for e in elements] == [
+            "div",
+            "header",
+            "h1",
+            "nav",
+            "ul",
+            "li",
+            "a",
+            "li",
+            "a",
+            "li",
+            "a",
+            "main",
+            "section",
+            "h2",
+            "p",
+            "article",
+            "h3",
+            "p",
+            "aside",
+            "h4",
+            "p",
+            "footer",
+            "p",
+            "p",
+            "strong",
+            "em",
+            "p",
+            "mark",
+            "del",
+            "p",
+            "ins",
+            "sub",
+            "p",
+            "sup",
+            "small",
+        ]
 
     def test_attribute_query_accuracy(self):
         """Test that attribute query accurately identifies attributes."""
@@ -685,8 +720,21 @@ class TestHtmlQueryAccuracy:
         for element in elements:
             if element.attributes:
                 for attr_name, attr_value in element.attributes.items():
-                    assert attr_name is not None
-                    assert attr_value is not None
+                    assert isinstance(attr_name, str)
+                    assert isinstance(attr_value, str)
+
+        image_attrs = [
+            element.attributes for element in elements if element.tag_name == "img"
+        ]
+        assert image_attrs == [
+            {
+                "src": "image.jpg",
+                "alt": "Description",
+                "width": "200",
+                "height": "150",
+                "loading": "lazy",
+            }
+        ]
 
     def test_form_query_accuracy(self):
         """Test that form query accurately identifies form elements."""
@@ -761,13 +809,80 @@ class TestHtmlQueryAccuracy:
         tree = get_tree_for_code(TAG_CODE, plugin)
         elements = plugin.create_extractor().extract_html_elements(tree, TAG_CODE)
 
-        # The first tag in TAG_CODE opens on line 3 — pinning the exact
-        # minimum makes a regression to 0/-1 line numbers impossible to miss
-        start_lines = [e.start_line for e in elements]
-        assert len(start_lines) == 35
-        assert min(start_lines) == 3
-        for element in elements:
-            assert element.end_line >= element.start_line
+        assert [e.start_line for e in elements] == [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            8,
+            9,
+            9,
+            10,
+            10,
+            14,
+            15,
+            16,
+            17,
+            19,
+            20,
+            21,
+            23,
+            24,
+            25,
+            28,
+            29,
+            34,
+            34,
+            34,
+            35,
+            35,
+            35,
+            36,
+            36,
+            36,
+            37,
+            37,
+            37,
+        ]
+        assert [e.end_line for e in elements] == [
+            31,
+            13,
+            5,
+            12,
+            11,
+            8,
+            8,
+            9,
+            9,
+            10,
+            10,
+            27,
+            18,
+            16,
+            17,
+            22,
+            20,
+            21,
+            26,
+            24,
+            25,
+            30,
+            29,
+            34,
+            34,
+            34,
+            35,
+            35,
+            35,
+            36,
+            36,
+            36,
+            37,
+            37,
+            37,
+        ]
 
     def test_element_classification_accuracy(self):
         """Test that element classification is accurate."""

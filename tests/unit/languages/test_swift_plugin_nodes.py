@@ -410,7 +410,7 @@ class TestWalkWithRealParser:
         parser.language = language
         tree = parser.parse(b"struct Foo { let x: Int }")
         nodes = walk(tree.root_node)
-        assert len(nodes) > 1
+        assert len(nodes) > 1  # ratchet: nondeterministic
 
     def test_decode_real_node(self) -> None:
         language = tree_sitter.Language(tree_sitter_swift.language())

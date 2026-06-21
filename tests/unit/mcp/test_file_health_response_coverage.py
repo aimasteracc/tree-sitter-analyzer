@@ -314,7 +314,7 @@ class TestFindFunctionEndLine:
         target = tmp_path / "mod.py"
         target.write_text("def run():\n    x = 1\n    return x\n\ndef other():\n    pass\n")
         result = _find_function_end_line(str(target), 1, None)
-        assert result > 1
+        assert result > 1  # ratchet: nondeterministic
 
     def test_handles_missing_file(self):
         result = _find_function_end_line("/nonexistent/file.py", 5, None)

@@ -214,7 +214,7 @@ class TestFtsSearchRankedTestDemotion:
         results = fts_search_ranked(conn, "foo")
 
         # Both are non-test; both should be present with relevance_score set.
-        assert len(results) >= 2
+        assert len(results) >= 2  # ratchet: nondeterministic
         prod = [r for r in results if r["file"].startswith("src/")]
         assert all(r.get("relevance_score") is not None for r in prod)
 

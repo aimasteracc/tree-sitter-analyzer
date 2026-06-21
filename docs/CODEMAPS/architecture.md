@@ -71,7 +71,7 @@ Every path is validated against `TREE_SITTER_PROJECT_ROOT` by `security/validato
 4. `mcp/utils/search_cache.py` — fd/ripgrep result cache
 
 ### MCP / CLI parity
-Every MCP tool has a CLI equivalent — enforced by `tests/unit/test_agent_contracts.py`
+Every MCP tool has a CLI equivalent — enforced by `tests/contracts/test_mcp_cli_parity_contract.py`
 and `tests/unit/cli/test_mcp_commands.py`. **Adding an MCP tool without a CLI flag is a
 contract violation.**
 

@@ -109,7 +109,7 @@ class TestAnalyzeScaleToolGetToolDefinition:
         definition = tool.get_tool_definition()
         assert "description" in definition
         assert isinstance(definition["description"], str)
-        assert len(definition["description"]) > 0
+        assert definition["description"]
 
     def test_get_tool_definition_has_input_schema(self, tool):
         """Test tool definition has input schema."""

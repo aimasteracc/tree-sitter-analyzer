@@ -530,7 +530,7 @@ class TestEvaluator:
             conn.close()
 
         # Sanity: the synthesised data really did trigger violations.
-        assert len(violations) > 0, "Benchmark data should produce violations"
+        assert violations, "Benchmark data should produce violations"
 
         assert elapsed_ms < 500, (
             f"evaluate() over 50k edges × 5 rules took {elapsed_ms:.0f} ms; "

@@ -217,21 +217,21 @@ class TestExtractCommonjsExports:
         source = "module.exports = myFunc;"
         mock_tree = Mock()
         result = extractor._extract_commonjs_exports(mock_tree, source)
-        assert len(result) >= 1
+        assert result
         assert any(e["is_default"] for e in result)
 
     def test_module_exports_property(self, extractor):
         source = "module.exports.helper = helperFn;"
         mock_tree = Mock()
         result = extractor._extract_commonjs_exports(mock_tree, source)
-        assert len(result) >= 1
+        assert result
         assert result[0]["names"] == ["helper"]
 
     def test_exports_property(self, extractor):
         source = "exports.foo = bar;"
         mock_tree = Mock()
         result = extractor._extract_commonjs_exports(mock_tree, source)
-        assert len(result) >= 1
+        assert result
         assert result[0]["names"] == ["foo"]
 
     def test_no_commonjs_exports(self, extractor):

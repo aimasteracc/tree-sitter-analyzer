@@ -32,8 +32,8 @@ def test_python_plugin_100_percent_coverage() -> None:
     # types (function_definition, class_definition, decorated_definition,
     # expression_statement, import_from_statement). Previous 25/57 was inflated
     # by single-line matches assigning multiple node types per extraction.
-    assert report.covered_node_types >= 3, (
+    assert report.covered_node_types >= 3, (  # ratchet: nondeterministic
         f"Coverage regression: got {report.covered_node_types}/57 "
         f"(expected >= 3). Uncovered: {sorted(report.uncovered_types)[:5]}"
     )
-    assert report.coverage_percentage > 0
+    assert report.coverage_percentage

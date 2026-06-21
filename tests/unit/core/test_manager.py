@@ -191,24 +191,23 @@ class TestPluginManager:
         mock_module = Mock()
 
         # Mock plugin class
-        mock_plugin_class = Mock()
-        mock_plugin_class.__bases__ = (LanguagePlugin,)
-        mock_plugin_class.__name__ = "TestPlugin"
+        class TestPlugin(MockLanguagePlugin):
+            def __init__(self) -> None:
+                super().__init__("test", [".test"])
 
         # Mock non-plugin class
-        mock_other_class = Mock()
-        mock_other_class.__bases__ = (object,)
-        mock_other_class.__name__ = "OtherClass"
+        class OtherClass:
+            pass
 
         # Set up module attributes
-        mock_module.TestPlugin = mock_plugin_class
-        mock_module.OtherClass = mock_other_class
+        mock_module.TestPlugin = TestPlugin
+        mock_module.OtherClass = OtherClass
         mock_module.some_function = lambda: None
 
         with patch("inspect.getmembers") as mock_getmembers:
             mock_getmembers.return_value = [
-                ("TestPlugin", mock_plugin_class),
-                ("OtherClass", mock_other_class),
+                ("TestPlugin", TestPlugin),
+                ("OtherClass", OtherClass),
                 ("some_function", lambda: None),
             ]
 
@@ -216,7 +215,7 @@ class TestPluginManager:
 
             assert isinstance(plugin_classes, list)
             # Should find only the plugin class
-            assert len(plugin_classes) >= 0  # Depends on implementation
+            assert plugin_classes == [TestPlugin]
 
     def test_get_plugin_existing(
         self, plugin_manager: PluginManager, mock_java_plugin: MockLanguagePlugin

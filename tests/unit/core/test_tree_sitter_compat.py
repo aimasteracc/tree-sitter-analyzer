@@ -197,12 +197,16 @@ class TestCreateQuerySafely:
 
     def test_successful_query_creation(self):
         """Test successful query creation"""
-        with patch("tree_sitter_analyzer.utils.tree_sitter_compat.logger"):
+        expected_query = MagicMock()
+        with (
+            patch("tree_sitter.Query", return_value=expected_query) as query_cls,
+            patch("tree_sitter_analyzer.utils.tree_sitter_compat.logger"),
+        ):
             mock_language = MagicMock()
             result = create_query_safely(mock_language, "(identifier) @name")
 
-            # If tree-sitter is installed, should create a query
-            assert result is not None or result is None  # Depends on real tree-sitter
+            assert result is expected_query
+            query_cls.assert_called_once_with(mock_language, "(identifier) @name")
 
     def test_query_creation_failure(self):
         """Test query creation failure handling"""
@@ -214,14 +218,12 @@ class TestCreateQuerySafely:
 
     def test_query_creation_invalid_query(self):
         """Test query creation with invalid query string"""
-        # This will use real tree-sitter if available
         mock_language = MagicMock()
-        mock_language.field_count = 0  # Mock minimal language interface
 
-        # Should handle exceptions gracefully
-        result = create_query_safely(mock_language, "completely invalid ]][[")
-        # May return None if query is invalid
-        assert result is None or result is not None
+        with patch("tree_sitter.Query", side_effect=ValueError("invalid query")):
+            result = create_query_safely(mock_language, "completely invalid ]][[")
+
+        assert result is None
 
 
 class TestLogApiInfo:
@@ -250,7 +252,7 @@ class TestLogApiInfo:
             log_api_info()
 
         # Should have logged something
-        assert len(caplog.records) > 0
+        assert caplog.records
 
 
 class TestTreeSitterQueryCompatExecuteQuery:

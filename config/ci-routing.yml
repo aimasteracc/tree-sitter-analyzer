@@ -29,7 +29,8 @@ full_suite:
   - "uv.lock"
   - "pytest.ini"
   - "tests/conftest.py"
-  - "tests/unit/test_agent_contracts.py"
+  - "tests/contracts/**"
+  - "tests/governance/**"
 
 routes:
   run_e2e_smoke:

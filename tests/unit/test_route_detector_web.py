@@ -133,7 +133,7 @@ app.get('/health', (req, res) => res.send('ok'));
 class TestSpringDetection:
     def test_detect_spring_routes(self, spring_project: Path):
         routes = RouteDetector(str(spring_project)).detect_all()
-        assert len(routes) >= 2  # GetMapping + PostMapping
+        assert len(routes) >= 2  # GetMapping + PostMapping  # ratchet: nondeterministic
         methods = {r.http_method for r in routes}
         assert "GET" in methods
         assert "POST" in methods

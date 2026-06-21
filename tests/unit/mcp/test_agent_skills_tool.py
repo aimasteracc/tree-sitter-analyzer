@@ -103,7 +103,7 @@ async def test_agent_skills_tool_lists_project_skills(tmp_path):
     assert result["skills"][0]["ready_for_use"] is True
     assert result["skills"][0]["actionability"] == "ready"
     assert result["agent_summary"]["ready_for_use_count"] == 1
-    assert result["skills"][0]["actionability_score"] >= 85
+    assert result["skills"][0]["actionability_score"] >= 85  # ratchet: nondeterministic
     assert result["validation"]["status"] == "ready"
     assert result["agent_summary"]["inspection_command"] == (
         "uv run tree-sitter-analyzer agent-skills --format json"

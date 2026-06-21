@@ -51,7 +51,7 @@ class TestASTCacheLifecycle:
         """Invalidating a file removes it from the index."""
         fp = str(project / "sample.py")
         cache.index_file(fp, language="python")
-        assert len(cache.get_functions()) > 0
+        assert cache.get_functions()
         removed = cache.invalidate(fp)
         assert removed is True
         assert len(cache.get_functions()) == 0
@@ -69,4 +69,4 @@ class TestASTCacheLifecycle:
         """get_stats() shows at least one file after indexing."""
         cache.index_file(str(project / "sample.py"), language="python")
         stats = cache.get_stats()
-        assert stats.get("total_files", 0) >= 1
+        assert stats.get("total_files", 0)

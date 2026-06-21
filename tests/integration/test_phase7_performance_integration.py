@@ -247,7 +247,7 @@ class TestPhase7PerformanceIntegration:
         )
 
         total_matches = sum(r.get("count", 0) for r in successful_searches)
-        assert total_matches > 0, "検索結果が見つからない"
+        assert total_matches, "検索結果が見つからない"
 
         print(f"同時検索完了: {len(successful_searches)}/{len(search_queries)} 成功")
         print(
@@ -631,7 +631,7 @@ class TestPhase7PerformanceIntegration:
         ]
         assert len(successful_valid) == 5, "エラーが正常なタスクに影響を与えました"
 
-        assert len(handled_errors) >= 2, (
+        assert len(handled_errors) >= 2, (  # ratchet: nondeterministic
             f"エラーが適切に処理されていません: {len(handled_errors)}/3"
         )
 

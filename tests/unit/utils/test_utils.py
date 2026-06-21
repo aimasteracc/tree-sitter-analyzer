@@ -8,6 +8,7 @@ This module tests logging, debugging, and utility functions.
 import logging
 import sys
 from io import StringIO
+from unittest.mock import patch
 
 # Mock imports removed - not used in this file
 import pytest
@@ -317,23 +318,28 @@ def test_logging_context_nesting():
 # Test utility functions
 def test_testing_mode_detection():
     """Test detection of testing mode"""
-    # This is a bit tricky to test since we're IN a test
-    # Just verify the function exists and returns a boolean
-
-    # The _testing flag should be set during tests
-    assert hasattr(sys, "_testing") or not hasattr(sys, "_testing")
+    testing_flag = getattr(sys, "_testing", False)
+    assert testing_flag in (False, True)
 
 
 def test_performance_logger_setup():
     """Test performance logger setup"""
-    setup_performance_logger()
+    performance_logger = logging.getLogger("performance")
+    for handler in performance_logger.handlers[:]:
+        handler.close()
+        performance_logger.removeHandler(handler)
 
-    # Verify performance logger exists
-    perf_logger = logging.getLogger("performance")
-    assert perf_logger is not None
+    perf_logger = setup_performance_logger()
 
-    # Should have handlers if not already configured
-    assert len(perf_logger.handlers) >= 0
+    assert perf_logger is performance_logger
+    assert perf_logger.name == "performance"
+    assert perf_logger.level == logging.INFO
+    assert [handler.__class__.__name__ for handler in perf_logger.handlers] == [
+        "SafeStreamHandler"
+    ]
+    assert perf_logger.handlers[0].formatter._fmt == (
+        "%(asctime)s - Performance - %(message)s"
+    )
 
 
 # Test error handling in logging functions
@@ -395,14 +401,12 @@ def test_logging_context_with_safe_print(test_logger):
 
 def test_performance_logging_integration():
     """Test performance logging integration"""
-    # Test that performance logging function exists and can be called
-    try:
+    with patch("tree_sitter_analyzer.utils.logging.perf_logger") as mock_logger:
         log_performance("Test operation", execution_time=1.5, details={"items": 100})
-        # Performance logger uses different logger, so just check it doesn't crash
-        assert True
-    except Exception:
-        # If the function doesn't work as expected, just pass the test
-        assert True
+
+    mock_logger.debug.assert_called_once_with(
+        "Test operation: 1.5000s - items: 100"
+    )
 
 
 if __name__ == "__main__":

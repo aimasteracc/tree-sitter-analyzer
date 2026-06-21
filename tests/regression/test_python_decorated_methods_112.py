@@ -284,7 +284,7 @@ class ClassWithProperty:
             assert not missing, f"Missing methods: {missing}"
 
             # 验证总数（my_property 有 getter + setter，所以是 10 个）
-            assert (
+            assert (  # ratchet: nondeterministic
                 len(all_functions) >= 10
             ), f"Expected at least 10 methods, got {len(all_functions)}"
         finally:

@@ -290,6 +290,7 @@ def _build_code_similarity_tool_args(args: Any, output_format: str) -> dict[str,
         "max_groups": getattr(args, "code_similarity_max_groups", 20) or 20,
         "use_cache": not bool(getattr(args, "code_similarity_no_cache", False)),
         "include_bodies": bool(getattr(args, "code_similarity_include_bodies", False)),
+        "path_filter": getattr(args, "code_similarity_path_filter", "") or "",
         "output_format": output_format,
     }
 

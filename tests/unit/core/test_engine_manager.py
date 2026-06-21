@@ -129,10 +129,19 @@ class TestEngineManagerResetInstances:
         """Test that reset_instances clears all instances."""
         EngineManager.reset_instances()
 
-        EngineManager.get_instance(UnifiedAnalysisEngine, project_root="/path1")
-        EngineManager.get_instance(UnifiedAnalysisEngine, project_root="/path2")
+        instance1 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path1"
+        )
+        instance2 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path2"
+        )
+        assert EngineManager._instances == {  # noqa: SLF001
+            "/path1": instance1,
+            "/path2": instance2,
+        }
 
         EngineManager.reset_instances()
+        assert EngineManager._instances == {}  # noqa: SLF001
 
         instance3 = EngineManager.get_instance(
             UnifiedAnalysisEngine, project_root="/path1"
@@ -141,18 +150,29 @@ class TestEngineManagerResetInstances:
             UnifiedAnalysisEngine, project_root="/path2"
         )
 
-        assert instance3 is not None
-        assert instance4 is not None
+        assert isinstance(instance3, UnifiedAnalysisEngine)
+        assert isinstance(instance4, UnifiedAnalysisEngine)
+        assert instance3 is not instance4
+        assert instance3._project_root == "/path1"  # noqa: SLF001
+        assert instance4._project_root == "/path2"  # noqa: SLF001
+        assert EngineManager._instances == {  # noqa: SLF001
+            "/path1": instance3,
+            "/path2": instance4,
+        }
         EngineManager.reset_instances()
 
     def test_reset_instances_thread_safety(self):
         """Test that reset_instances remains safe under concurrent access."""
         EngineManager.reset_instances()
         EngineManager.get_instance(UnifiedAnalysisEngine)
+        instances = []
+        lock = threading.Lock()
 
         def reset_and_create():
             EngineManager.reset_instances()
-            EngineManager.get_instance(UnifiedAnalysisEngine)
+            instance = EngineManager.get_instance(UnifiedAnalysisEngine)
+            with lock:
+                instances.append(instance)
 
         threads = [threading.Thread(target=reset_and_create) for _ in range(5)]
 
@@ -161,7 +181,12 @@ class TestEngineManagerResetInstances:
         for thread in threads:
             thread.join()
 
-        assert True
+        assert len(instances) == 5
+        assert all(isinstance(instance, UnifiedAnalysisEngine) for instance in instances)
+        assert set(EngineManager._instances) == {"default"}  # noqa: SLF001
+        assert any(  # noqa: SLF001
+            EngineManager._instances["default"] is instance for instance in instances
+        )
         EngineManager.reset_instances()
 
 
@@ -234,9 +259,20 @@ class TestEngineManagerEdgeCases:
             UnifiedAnalysisEngine, project_root="/path/to/project3"
         )
 
-        assert instance1_new is not None
-        assert instance2_new is not None
-        assert instance3_new is not None
+        assert isinstance(instance1_new, UnifiedAnalysisEngine)
+        assert isinstance(instance2_new, UnifiedAnalysisEngine)
+        assert isinstance(instance3_new, UnifiedAnalysisEngine)
+        assert instance1_new is not instance2_new
+        assert instance2_new is not instance3_new
+        assert instance1_new is not instance3_new
+        assert instance1_new._project_root == "/path/to/project1"  # noqa: SLF001
+        assert instance2_new._project_root == "/path/to/project2"  # noqa: SLF001
+        assert instance3_new._project_root == "/path/to/project3"  # noqa: SLF001
+        assert EngineManager._instances == {  # noqa: SLF001
+            "/path/to/project1": instance1_new,
+            "/path/to/project2": instance2_new,
+            "/path/to/project3": instance3_new,
+        }
         EngineManager.reset_instances()
 
 

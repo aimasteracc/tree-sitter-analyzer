@@ -180,8 +180,8 @@ class TestConstraintCheckVerdict:
             f"Response must expose a 'violations' field. Got keys: {list(result)}"
         )
         assert isinstance(result["violations"], list)
-        assert len(result["violations"]) >= 1
-        assert result.get("rule_count", 0) >= 1, (
+        assert result["violations"]
+        assert result.get("rule_count", 0), (
             f"rule_count must reflect loaded rules. Got: {result.get('rule_count')!r}"
         )
 

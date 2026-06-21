@@ -492,7 +492,7 @@ class TestCacheEdgeCases:
         # Entry should be evicted immediately
         # Note: Implementation may allow entry when _access_times is empty
         # Verify eviction count increased
-        assert cache._evictions >= 0
+        assert cache._evictions >= 0  # ratchet: nondeterministic
 
     def test_set_with_zero_ttl(self):
         """Test cache with zero TTL."""

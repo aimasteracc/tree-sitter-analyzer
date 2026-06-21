@@ -188,7 +188,7 @@ from ._specs import MCP_COMMAND_SPECS
 
 # ---------------------------------------------------------------------------
 # ARCH-A2: tool class name allowlist — used by _get_tool_class and the
-# contract test (test_agent_contracts.py) to verify every MCP_COMMAND_SPECS
+# contract test (test_internal_architecture_contract.py) to verify every MCP_COMMAND_SPECS
 # entry resolves.  A frozenset of strings, NOT a dict of classes, so that
 # monkeypatching mcp_commands.FooTool at test time routes through globals().
 # ---------------------------------------------------------------------------

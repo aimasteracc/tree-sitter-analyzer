@@ -252,7 +252,7 @@ class TestCodeGraphCallToolCallers:
             }
         )
         assert result["caller_count"] == bare["caller_count"]
-        assert result["caller_count"] > 0
+        assert result["caller_count"]
         # No hint needed when qualified form matched.
         assert "hint" not in result
 
@@ -296,7 +296,7 @@ class TestCodeGraphCallToolCallers:
                 "output_format": "json",
             }
         )
-        assert bare["caller_count"] > 0
+        assert bare["caller_count"]
         # Hint must be present on the qualified zero-hit response.
         assert "hint" in qualified
         assert "method" in qualified["hint"]

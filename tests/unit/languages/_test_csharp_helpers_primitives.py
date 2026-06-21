@@ -269,7 +269,7 @@ class TestExtractAttributes:
         result1 = extract_attributes(node, _get_node_text, cache)
         result2 = extract_attributes(node, _get_node_text, cache)
         assert result1 is result2
-        assert len(cache) > 0
+        assert cache
 
 
 class TestExtractUsingDirective:

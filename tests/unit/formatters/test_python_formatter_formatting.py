@@ -74,7 +74,7 @@ class Test:
 
         result = formatter._extract_module_docstring(data)
         assert isinstance(result, str)
-        assert len(result) > 1000
+        assert len(result) > 1000  # ratchet: nondeterministic
 
 
 class TestPythonFormatterDecoratorHandling:

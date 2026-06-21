@@ -142,6 +142,8 @@ def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
         cwd=cwd,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=30,
         check=False,
     )
@@ -202,6 +204,8 @@ class TestSearchContentSubprocessAlias:
                 "src",
                 "--query",
                 "ALIAS_TOKEN",
+                "--project-root",
+                str(fixture_root),
                 "--format",
                 "json",
             ],
@@ -211,6 +215,7 @@ class TestSearchContentSubprocessAlias:
         payload = _parse_first_json(result.stdout)
         assert payload.get("success") is True
 
+    @pytest.mark.slow_ok  # Real subprocess smoke invokes Python + rg twice on Windows.
     def test_format_and_output_format_match(self, fixture_root: Path) -> None:
         common = [
             _module_for("search-content"),
@@ -218,6 +223,8 @@ class TestSearchContentSubprocessAlias:
             "src",
             "--query",
             "ALIAS_TOKEN",
+            "--project-root",
+            str(fixture_root),
         ]
         with_alias = _run_cli([*common, "--format", "json"], cwd=fixture_root)
         with_canonical = _run_cli(
@@ -245,6 +252,8 @@ class TestFindAndGrepSubprocessAlias:
                 "src",
                 "--query",
                 "ALIAS_TOKEN",
+                "--project-root",
+                str(fixture_root),
                 "--format",
                 "json",
             ],
@@ -254,6 +263,7 @@ class TestFindAndGrepSubprocessAlias:
         payload = _parse_first_json(result.stdout)
         assert payload.get("success") is True
 
+    @pytest.mark.slow_ok  # Real subprocess smoke invokes Python + fd/rg twice on Windows.
     def test_format_and_output_format_match(self, fixture_root: Path) -> None:
         common = [
             _module_for("find-and-grep"),
@@ -261,6 +271,8 @@ class TestFindAndGrepSubprocessAlias:
             "src",
             "--query",
             "ALIAS_TOKEN",
+            "--project-root",
+            str(fixture_root),
         ]
         with_alias = _run_cli([*common, "--format", "json"], cwd=fixture_root)
         with_canonical = _run_cli(
@@ -282,15 +294,28 @@ class TestListFilesSubprocessAlias:
 
     def test_format_alias_yields_valid_json(self, fixture_root: Path) -> None:
         result = _run_cli(
-            [_module_for("list-files"), "src", "--format", "json"],
+            [
+                _module_for("list-files"),
+                "src",
+                "--project-root",
+                str(fixture_root),
+                "--format",
+                "json",
+            ],
             cwd=fixture_root,
         )
         assert result.returncode == 0, result.stderr
         payload = _parse_first_json(result.stdout)
         assert payload.get("success") is True
 
+    @pytest.mark.slow_ok  # Real subprocess smoke invokes Python + fd twice on Windows.
     def test_format_and_output_format_match(self, fixture_root: Path) -> None:
-        common = [_module_for("list-files"), "src"]
+        common = [
+            _module_for("list-files"),
+            "src",
+            "--project-root",
+            str(fixture_root),
+        ]
         with_alias = _run_cli([*common, "--format", "json"], cwd=fixture_root)
         with_canonical = _run_cli(
             [*common, "--output-format", "json"], cwd=fixture_root

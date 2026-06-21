@@ -8,10 +8,17 @@ including base formatter, factory, and language-specific formatters.
 
 import pytest
 
+from tree_sitter_analyzer.default_table_formatter import DefaultTableFormatter
 from tree_sitter_analyzer.formatters.base_formatter import BaseTableFormatter
 from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
 from tree_sitter_analyzer.formatters.java_formatter import JavaTableFormatter
+from tree_sitter_analyzer.formatters.javascript_formatter import (
+    JavaScriptTableFormatter,
+)
 from tree_sitter_analyzer.formatters.python_formatter import PythonTableFormatter
+from tree_sitter_analyzer.formatters.typescript_formatter import (
+    TypeScriptTableFormatter,
+)
 
 
 class TestBaseTableFormatter:
@@ -97,30 +104,36 @@ class TestFormatterRegistry:
     def test_create_formatter_for_java(self):
         """Test creating formatter for Java language."""
         formatter = FormatterRegistry.get_formatter_for_language("java", "full")
-        assert formatter is not None
+        assert isinstance(formatter, JavaTableFormatter)
+        assert formatter.format_type == "full"
 
     def test_create_formatter_for_python(self):
         """Test creating formatter for Python language."""
         formatter = FormatterRegistry.get_formatter_for_language("python", "full")
-        assert formatter is not None
+        assert isinstance(formatter, PythonTableFormatter)
+        assert formatter.format_type == "full"
 
     def test_create_formatter_for_javascript(self):
         """Test creating formatter for JavaScript language."""
         formatter = FormatterRegistry.get_formatter_for_language("javascript", "full")
-        assert formatter is not None
+        assert isinstance(formatter, JavaScriptTableFormatter)
+        assert formatter.format_type == "full"
 
         # Test alias
         formatter_alias = FormatterRegistry.get_formatter_for_language("js", "full")
-        assert formatter_alias is not None
+        assert isinstance(formatter_alias, JavaScriptTableFormatter)
+        assert formatter_alias.format_type == "full"
 
     def test_create_formatter_for_typescript(self):
         """Test creating formatter for TypeScript language."""
         formatter = FormatterRegistry.get_formatter_for_language("typescript", "full")
-        assert formatter is not None
+        assert isinstance(formatter, TypeScriptTableFormatter)
+        assert formatter.format_type == "full"
 
         # Test alias
         formatter_alias = FormatterRegistry.get_formatter_for_language("ts", "full")
-        assert formatter_alias is not None
+        assert isinstance(formatter_alias, TypeScriptTableFormatter)
+        assert formatter_alias.format_type == "full"
 
     def test_create_formatter_case_insensitive(self):
         """Test that formatter registry is case insensitive."""
@@ -136,7 +149,8 @@ class TestFormatterRegistry:
     def test_create_formatter_for_unsupported_language(self):
         """Test creating formatter for unsupported language uses default."""
         formatter = FormatterRegistry.get_formatter_for_language("unsupported", "full")
-        assert formatter is not None  # Should fall back to default
+        assert isinstance(formatter, DefaultTableFormatter)
+        assert formatter.format_type == "full"
 
     def test_get_supported_languages(self):
         """Test getting list of supported languages."""

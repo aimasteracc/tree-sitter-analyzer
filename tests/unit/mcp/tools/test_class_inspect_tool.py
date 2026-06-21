@@ -839,7 +839,9 @@ def test_base_mcp_tool_fields_extracted_from_delegated_init() -> None:
         _extract_fields_from_source,
     )
 
-    src = open("tree_sitter_analyzer/mcp/tools/base_tool.py").read()
+    src = Path("tree_sitter_analyzer/mcp/tools/base_tool.py").read_text(
+        encoding="utf-8"
+    )
     fields = _extract_fields_from_source(src, "BaseMCPTool", 282, 686)
     names = [f["name"] for f in fields]
     assert names == [

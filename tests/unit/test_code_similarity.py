@@ -6,6 +6,7 @@ analyze_code_similarity function routes to cache-backed detection when available
 """
 
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +15,7 @@ from tree_sitter_analyzer.code_similarity import (
     SimilarityResult,
     _body_snippet,
     _extract_cached_functions,
+    _matches_path_filter,
     _text_fingerprint,
     analyze_code_similarity,
     detect_structural_clones,
@@ -72,6 +74,49 @@ def cached_clone_project(clone_project):
         cache.close()
 
 
+@pytest.fixture
+def path_filtered_clone_project(tmp_path):
+    project = tmp_path / "project"
+    tests_dir = project / "tests"
+    src_dir = project / "src"
+    tests_dir.mkdir(parents=True)
+    src_dir.mkdir()
+
+    clone_a = textwrap.dedent("""\
+        def process_data(data):
+            result = []
+            for item in data:
+                if item.is_valid():
+                    transformed = item.transform()
+                    result.append(transformed)
+            return result
+    """)
+    clone_b = textwrap.dedent("""\
+        def handle_records(records):
+            output = []
+            for rec in records:
+                if rec.is_valid():
+                    converted = rec.convert()
+                    output.append(converted)
+            return output
+    """)
+    clone_c = textwrap.dedent("""\
+        def manage_items(items):
+            bucket = []
+            for item in items:
+                if item.is_valid():
+                    updated = item.update()
+                    bucket.append(updated)
+            return bucket
+    """)
+
+    (tests_dir / "test_a.py").write_text(clone_a)
+    (tests_dir / "test_b.py").write_text(clone_b)
+    (src_dir / "module_c.py").write_text(clone_c)
+
+    return str(project)
+
+
 class TestTextFingerprint:
     def test_identical_after_rename(self):
         a = "def foo(x):\n    return x + 1\n"
@@ -98,6 +143,20 @@ class TestBodySnippet:
         result = _body_snippet(body)
         assert len(result) <= 203
         assert result.endswith("...")
+
+
+class TestPathFilter:
+    def test_matches_glob(self):
+        assert _matches_path_filter("tests/unit/test_example.py", "tests/**")
+
+    def test_matches_directory_prefix_without_glob(self):
+        assert _matches_path_filter("tests/unit/test_example.py", "tests")
+
+    def test_rejects_other_directories(self):
+        assert not _matches_path_filter("src/module.py", "tests/**")
+
+    def test_accepts_comma_separated_globs(self):
+        assert _matches_path_filter("src/module.py", "tests/**,src/**")
 
 
 class TestDetectTextualClonesCached:
@@ -179,6 +238,15 @@ class TestExtractCachedFunctions:
         filtered = _extract_cached_functions(cache, root, min_lines=10)
         assert len(all_funcs) >= len(filtered)
 
+    def test_stale_cache_returns_empty_for_fallback(self, cached_clone_project):
+        cache, root = cached_clone_project
+        module_a = Path(root) / "module_a.py"
+        module_a.write_text("def changed(x):\n    return x + 1\n")
+
+        functions = _extract_cached_functions(cache, root, min_lines=1)
+
+        assert functions == []
+
 
 class TestAnalyzeCodeSimilarityWithCache:
     def test_cache_used_by_default(self, cached_clone_project):
@@ -213,6 +281,55 @@ class TestAnalyzeCodeSimilarityWithCache:
         result = analyze_code_similarity(str(empty), mode="all", min_lines=2)
         assert isinstance(result, SimilarityResult)
         assert result.stats.get("cache_used") is False
+
+    def test_path_filter_limits_uncached_scan(self, path_filtered_clone_project):
+        result = analyze_code_similarity(
+            path_filtered_clone_project,
+            mode="structural",
+            min_lines=3,
+            use_cache=False,
+            path_filter="tests/**",
+        )
+        assert len(result.groups) == 1
+        files = {func.file.replace("\\", "/") for func in result.groups[0].functions}
+        assert files == {"tests/test_a.py", "tests/test_b.py"}
+        assert result.stats["path_filter"] == "tests/**"
+
+    def test_path_filter_limits_cached_scan(self, path_filtered_clone_project):
+        cache = ASTCache(path_filtered_clone_project)
+        cache.index_project(max_files=100)
+        try:
+            result = analyze_code_similarity(
+                path_filtered_clone_project,
+                mode="structural",
+                min_lines=3,
+                path_filter="tests/**",
+            )
+        finally:
+            cache.close()
+
+        assert len(result.groups) == 1
+        files = {func.file.replace("\\", "/") for func in result.groups[0].functions}
+        assert files == {"tests/test_a.py", "tests/test_b.py"}
+        assert result.stats["cache_used"] is True
+
+    def test_stale_cache_falls_back_to_live_scan(self, path_filtered_clone_project):
+        cache = ASTCache(path_filtered_clone_project)
+        cache.index_project(max_files=100)
+        cache.close()
+        module_c = Path(path_filtered_clone_project) / "src" / "module_c.py"
+        module_c.write_text("def unique_now(x):\n    return x + 1\n")
+
+        result = analyze_code_similarity(
+            path_filtered_clone_project,
+            mode="structural",
+            min_lines=3,
+            path_filter="tests/**",
+        )
+
+        assert len(result.groups) == 1
+        files = {func.file.replace("\\", "/") for func in result.groups[0].functions}
+        assert files == {"tests/test_a.py", "tests/test_b.py"}
 
 
 class TestConsistencyCachedVsUncached:

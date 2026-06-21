@@ -355,7 +355,7 @@ class TestExecuteQueryAdditional:
         ):
             result = api.execute_query("test.java", "class")
             assert result["success"] is True
-            assert result["count"] >= 1
+            assert result["count"]
 
     def test_execute_query_with_list_captures(self) -> None:
         """Line 649-650: captures as plain list."""

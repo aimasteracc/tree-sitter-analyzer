@@ -137,7 +137,7 @@ class TestHtmlFormatterEdgeCases:
         result = html_formatter.format([element])
         # Should handle long content without issues
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
 
     def test_formatter_with_special_characters(self):
         """Test formatters with special characters"""

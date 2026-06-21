@@ -142,7 +142,7 @@ class Calculator:
                 file_content = await self.code_resource.read_resource(file_uri)
 
                 # Verify file content is not empty
-                assert len(file_content.strip()) > 0
+                assert file_content.strip()
 
     @pytest.mark.asyncio
     async def test_language_detection_consistency(self) -> None:
@@ -333,7 +333,7 @@ class Class{i}:
                 content = await self.code_resource.read_resource(file_uri)
 
                 # Verify content is readable
-                assert len(content) > 0
+                assert content
                 file_count += 1
 
                 # Limit test to reasonable number
@@ -341,7 +341,7 @@ class Class{i}:
                     break
 
         # Verify we tested multiple files
-        assert file_count > 0
+        assert file_count
 
     @pytest.mark.asyncio
     async def test_statistics_generation_performance(self) -> None:

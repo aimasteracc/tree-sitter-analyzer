@@ -25,6 +25,25 @@ from tree_sitter_analyzer.mcp.tools.facade_tool import FacadeTool
 from tree_sitter_analyzer.mcp.tools.viz_facade import build_viz_facade
 
 # ---------------------------------------------------------------------------
+# INVARIANT DELEGATION NOTICE
+# The following 4 common facade invariants are tested canonically in:
+#   tests/unit/mcp/test_facade_envelope_contract.py
+#
+# Delegated invariants (do NOT add new duplicates here):
+#   - envelope preserved       (verdict / agent_summary verbatim pass-through)
+#   - arg projection           (action key stripped before reaching inner tool)
+#   - missing action error     (success=False, verdict in {ERROR, NOT_FOUND})
+#   - unknown action error     (success=False, available_actions listed)
+#
+# Facade-specific tests that remain in this file:
+#   - action routing to uml/graph/similarity actions
+#   - sibling-param drop between actions
+#   - annotation honesty (readOnlyHint=True valid for all-read-only viz facade)
+#   - end-to-end no strict leak (F4 regression guard with real inner tools)
+#   - set_project_path rebind propagation (G3)
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # Expected actions
 # ---------------------------------------------------------------------------
 

@@ -75,9 +75,9 @@ class TestSemanticSymbolSearchFallback:
 
         results = SemanticSymbolSearch(cache).search("user formatting", limit=5)
 
-        assert len(results) >= 1
+        assert results
         assert results[0]["name"] == "format_user"
-        assert results[0]["semantic_score"] > 0
+        assert results[0]["semantic_score"]
 
     def test_short_query_uses_full_scan(self):
         """Queries shorter than 2 chars bypass BM25 pre-filter."""

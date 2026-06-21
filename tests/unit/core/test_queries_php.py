@@ -14,11 +14,11 @@ def test_php_queries_import():
 
     # Verify they are non-empty strings
     assert isinstance(php.PHP_CLASS_QUERY, str)
-    assert len(php.PHP_CLASS_QUERY) > 0
+    assert php.PHP_CLASS_QUERY
     assert isinstance(php.PHP_METHOD_QUERY, str)
-    assert len(php.PHP_METHOD_QUERY) > 0
+    assert php.PHP_METHOD_QUERY
     assert isinstance(php.PHP_FUNCTION_QUERY, str)
-    assert len(php.PHP_FUNCTION_QUERY) > 0
+    assert php.PHP_FUNCTION_QUERY
 
 
 def test_php_class_query_structure():

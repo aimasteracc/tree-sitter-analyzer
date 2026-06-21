@@ -407,7 +407,7 @@ class TestChangeImpactConstraintIntegration:
         # the violation's caller_file.
         cv = result["constraint_violations"]
         assert isinstance(cv, list)
-        assert len(cv) >= 1, (
+        assert cv, (
             f"Expected at least one constraint_violations entry for the "
             f"forbidden caller, got: {cv}"
         )

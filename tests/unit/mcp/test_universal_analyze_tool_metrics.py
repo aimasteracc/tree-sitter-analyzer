@@ -310,10 +310,10 @@ class Greeter:
             f"vs analyze_scale={s_metrics['code_lines']}"
         )
         # Sanity: counts are non-trivial — fix actually exercised.
-        assert u_metrics["lines_comment"] > 0, (
+        assert u_metrics["lines_comment"], (
             "Finding 1: comment count is still 0 — hardcoded bug regressed"
         )
-        assert u_metrics["lines_blank"] > 0, (
+        assert u_metrics["lines_blank"], (
             "Finding 1: blank count is still 0 — hardcoded bug regressed"
         )
         assert u_metrics["lines_code"] != u_metrics["lines_total"], (

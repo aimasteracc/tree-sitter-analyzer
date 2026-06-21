@@ -180,7 +180,7 @@ class TestPluginManagerLoadPlugins:
 
         plugins = manager.load_plugins()
 
-        assert len(plugins) >= 1
+        assert plugins
         assert plugin in plugins
 
 

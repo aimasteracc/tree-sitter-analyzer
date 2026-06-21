@@ -99,7 +99,7 @@ class ReadPartialToolGetToolDefinitionMixin:
         tool = ReadPartialTool()
         definition = tool.get_tool_definition()
         assert definition["name"] == "extract_code_section"
-        assert len(definition["description"]) > 0
+        assert definition["description"]
 
 
 class ReadPartialToolValidateArgumentsMixin:

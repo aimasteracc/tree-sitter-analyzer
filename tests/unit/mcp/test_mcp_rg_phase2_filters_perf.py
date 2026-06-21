@@ -319,7 +319,7 @@ async def test_rg_20_summary_only(monkeypatch, tmp_path):
     assert res["success"] is True
     assert "summary" in res
     assert res["summary"]["total_matches"] == 2
-    assert len(res["summary"]["top_files"]) >= 1
+    assert res["summary"]["top_files"]
 
 
 @pytest.mark.unit

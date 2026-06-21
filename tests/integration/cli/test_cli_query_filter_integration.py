@@ -115,13 +115,16 @@ public class TestClass {
         results = await command.execute_query("java", "methods", "methods")
 
         # Should find helper, initialize, and processData methods (no parameters)
-        assert results is not None
-        assert len(results) >= 2
+        assert [result["name"] for result in results] == [
+            "helper",
+            "initialize",
+            "processData",
+        ]
 
         # Verify all results have no parameters
-        for _result in results:
-            # This is a simplified check - the actual filtering logic is more sophisticated
-            pass
+        for result in results:
+            assert "(" in result["content"]
+            assert "()" in result["content"]
 
     @pytest.mark.asyncio
     async def test_cli_query_with_modifier_filter(self):
@@ -202,10 +205,13 @@ public class TestClass {
         results = await command.execute_query("java", "methods", "methods")
 
         # Should return all methods
-        assert results is not None
-        assert (
-            len(results) >= 4
-        )  # At least main, helper, authenticate, initialize, processData
+        assert [result["name"] for result in results] == [
+            "main",
+            "helper",
+            "authenticate",
+            "initialize",
+            "processData",
+        ]
 
 
 class TestCLIQueryFilterEdgeCases:
@@ -273,13 +279,11 @@ public class EdgeCaseClass {
         results = await command.execute_query("java", "methods", "methods")
 
         # Should find methods with no parameters
-        assert results is not None
-        param_0_methods = [
-            r
-            for r in results
-            if "overloaded()" in r["content"] or "toString()" in r["content"]
+        assert [result["name"] for result in results] == [
+            "abstractMethod",
+            "overloaded",
+            "toString",
         ]
-        assert len(param_0_methods) >= 1
 
     @pytest.mark.asyncio
     async def test_filter_methods_with_annotations(self):

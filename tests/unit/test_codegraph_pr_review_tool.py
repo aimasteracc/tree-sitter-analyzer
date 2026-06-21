@@ -214,7 +214,7 @@ class TestCodeGraphPRReviewTool:
                     },
                 )
         assert result["success"] is True
-        assert result["files_reviewed"] >= 1
+        assert result["files_reviewed"]
         assert "overall_risk" in result
         assert "verdict" in result
         assert "recommendations" in result

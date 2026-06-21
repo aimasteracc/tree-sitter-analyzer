@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool, MCPTool
+from tree_sitter_analyzer.mcp.utils.path_resolver import PathResolver
 from tree_sitter_analyzer.security import SecurityValidator
 
 
@@ -67,7 +68,7 @@ class TestBaseMCPToolInit:
     def test_init_creates_path_resolver(self):
         """Test that path resolver is created correctly"""
         tool = ConcreteMCPTool(project_root="/test")
-        assert tool.path_resolver is not None
+        assert isinstance(tool.path_resolver, PathResolver)
 
 
 class TestSetProjectPath:
@@ -204,7 +205,11 @@ class TestResolveAndValidateFilePath:
         tool.resolve_and_validate_file_path("test.txt")
 
         # Check that validation was cached for both original and resolved path
-        assert mock_cache.set_security_validation.call_count >= 1
+        assert mock_cache.set_security_validation.call_count == 2
+        assert [call.args[1] for call in mock_cache.set_security_validation.call_args_list] == [
+            (True, ""),
+            (True, ""),
+        ]
 
     @patch("tree_sitter_analyzer.mcp.tools.base_tool.get_shared_cache")
     def test_resolve_caches_resolved_path(self, mock_get_cache):
@@ -410,9 +415,13 @@ class TestBaseToolIntegration:
 
     def test_set_project_path_reinitializes(self, tmp_path):
         tool = ConcreteMCPTool(project_root=str(tmp_path))
+        old_validator = tool.security_validator
+        old_resolver = tool.path_resolver
         test_file = tmp_path / "test.txt"
         test_file.write_text("content")
         with tempfile.TemporaryDirectory() as new_dir:
             tool.set_project_path(new_dir)
-            assert tool.security_validator is not None
-            assert tool.path_resolver is not None
+            assert isinstance(tool.security_validator, SecurityValidator)
+            assert tool.security_validator is not old_validator
+            assert isinstance(tool.path_resolver, PathResolver)
+            assert tool.path_resolver is not old_resolver

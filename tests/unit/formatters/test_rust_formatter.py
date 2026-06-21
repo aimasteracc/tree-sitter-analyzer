@@ -426,7 +426,7 @@ class TestRustFormatterFormatAdvanced:
             "fields": [],
         }
         result = formatter.format_advanced(data, "csv")
-        assert result is not None
+        assert result == "Type,Name,Signature,Visibility,Lines,Complexity,Doc"
 
     def test_format_advanced_default(self):
         """Test format_advanced with default output"""
@@ -439,7 +439,7 @@ class TestRustFormatterFormatAdvanced:
             "fields": [],
         }
         result = formatter.format_advanced(data, "full")
-        assert result is not None
+        assert result == "# main.rs\n"
 
 
 class TestRustFormatterFormatJson:
@@ -460,7 +460,9 @@ class TestRustFormatterFormatJson:
         data = {"file_path": "src/main.rs", "modules": [{"statement": object()}]}
         result = formatter._format_json(data)
         # Should handle error gracefully
-        assert result is not None
+        assert result == (
+            "# JSON serialization error: Object of type object is not JSON serializable\n"
+        )
 
 
 class TestRustFormatterParamDictLeak:
@@ -595,7 +597,7 @@ class TestRustFormatterEdgeCases:
             "fields": [],
         }
         result = formatter.format_structure(data)
-        assert result is not None
+        assert result.replace("\r\n", "\n") == "# main.rs\n"
 
     def test_windows_path(self):
         """Test with Windows file path"""

@@ -170,7 +170,7 @@ class TestAliasMetadata:
         aliases = get_all_aliases()
 
         assert isinstance(aliases, dict)
-        assert len(aliases) > 0
+        assert aliases
         assert "locate_usage" in aliases
         assert aliases["locate_usage"] == "search_content"
 

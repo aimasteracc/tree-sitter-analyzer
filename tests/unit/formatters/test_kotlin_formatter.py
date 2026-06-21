@@ -423,7 +423,7 @@ class TestKotlinFormatterFormatSummary:
             "statistics": {"method_count": 0, "field_count": 0},
         }
         result = formatter.format_summary(data)
-        assert result is not None
+        assert isinstance(result, str)
         assert "## Info" in result
 
 
@@ -441,7 +441,7 @@ class TestKotlinFormatterFormatStructure:
             "fields": [],
         }
         result = formatter.format_structure(data)
-        assert result is not None
+        assert isinstance(result, str)
         assert "Example.kt" in result
 
     def test_format_structure_compact(self):
@@ -453,7 +453,7 @@ class TestKotlinFormatterFormatStructure:
             "statistics": {"method_count": 0, "field_count": 0},
         }
         result = formatter.format_structure(data)
-        assert result is not None
+        assert isinstance(result, str)
         assert "## Info" in result
 
 
@@ -479,7 +479,7 @@ class TestKotlinFormatterFormatAdvanced:
             "fields": [],
         }
         result = formatter.format_advanced(data, "csv")
-        assert result is not None
+        assert isinstance(result, str)
 
     def test_format_advanced_default(self):
         """Test format_advanced with default output"""
@@ -492,7 +492,7 @@ class TestKotlinFormatterFormatAdvanced:
             "fields": [],
         }
         result = formatter.format_advanced(data, "full")
-        assert result is not None
+        assert isinstance(result, str)
 
 
 class TestKotlinFormatterFormatJson:
@@ -503,7 +503,7 @@ class TestKotlinFormatterFormatJson:
         formatter = KotlinTableFormatter()
         data = {"file_path": "Example.kt", "imports": []}
         result = formatter._format_json(data)
-        assert result is not None
+        assert isinstance(result, str)
         assert "Example.kt" in result
 
     def test_format_json_invalid_data(self):
@@ -513,7 +513,7 @@ class TestKotlinFormatterFormatJson:
         data = {"file_path": "Example.kt", "imports": [{"statement": object()}]}
         result = formatter._format_json(data)
         # Should handle the error gracefully
-        assert result is not None
+        assert isinstance(result, str)
 
 
 class TestKotlinFormatterEdgeCases:
@@ -530,7 +530,7 @@ class TestKotlinFormatterEdgeCases:
             "fields": [],
         }
         result = formatter.format_structure(data)
-        assert result is not None
+        assert isinstance(result, str)
 
     def test_windows_path(self):
         """Test with Windows file path"""

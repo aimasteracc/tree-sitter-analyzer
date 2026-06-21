@@ -113,7 +113,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 4. Add tests:
    - Tool envelope contract: `tests/unit/mcp/tools/test_tool_response_contract.py`
    - CLI equivalence: `tests/unit/cli/test_mcp_commands.py`
-   - Agent contracts: `tests/unit/test_agent_contracts.py`
+   - Agent contracts: `tests/contracts/test_mcp_cli_parity_contract.py`
 5. Default to `output_format="toon"` — never flip to JSON (see `CLAUDE.md`).
 
 ## Tool Response Envelope (canonical)

@@ -72,8 +72,10 @@ class TestBoundaryManagerInitialization:
 
     def test_nonexistent_project_root(self):
         """测试不存在的项目根路径"""
+        missing = Path(tempfile.gettempdir()) / "tsa_missing_project_root"
+        assert not missing.exists()
         with pytest.raises(SecurityError) as exc_info:
-            ProjectBoundaryManager(project_root="/nonexistent/path")
+            ProjectBoundaryManager(project_root=str(missing))
         assert "does not exist" in str(exc_info.value)
 
     @pytest.mark.skipif(
@@ -109,9 +111,11 @@ class TestAddAllowedDirectory:
         """测试添加不存在的目录"""
         with tempfile.TemporaryDirectory() as tmp_dir:
             manager = ProjectBoundaryManager(project_root=tmp_dir)
+            missing = Path(tmp_dir) / "missing_allowed_directory"
+            assert not missing.exists()
 
             with pytest.raises(SecurityError) as exc_info:
-                manager.add_allowed_directory("/nonexistent/path")
+                manager.add_allowed_directory(str(missing))
             assert "does not exist" in str(exc_info.value)
 
     @pytest.mark.skipif(

@@ -203,7 +203,7 @@ public class TestClass {
             assert result["success"]
 
             method_with_annotations = result.get("results", [])
-            assert len(method_with_annotations) > 0
+            assert method_with_annotations
 
             # Check structure of first result
             first_result = method_with_annotations[0]

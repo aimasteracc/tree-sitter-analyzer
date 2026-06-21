@@ -20,11 +20,11 @@ class TestKotlinQueries:
 
     def test_kotlin_queries_not_empty(self):
         """Test that KOTLIN_QUERIES is not empty."""
-        assert len(KOTLIN_QUERIES) > 0
+        assert KOTLIN_QUERIES
 
     def test_all_queries_not_empty(self):
         """Test that ALL_QUERIES is not empty."""
-        assert len(ALL_QUERIES) > 0
+        assert ALL_QUERIES
 
     def test_kotlin_query_keys(self):
         """Test that essential queries exist."""
@@ -102,7 +102,7 @@ class TestGetKotlinQueryDescription:
         desc = get_kotlin_query_description("class")
         assert desc is not None
         assert isinstance(desc, str)
-        assert len(desc) > 0
+        assert desc
 
     def test_get_function_description(self):
         """Test getting function query description."""

@@ -277,9 +277,15 @@ class TestToolsAndResources:
         server = TreeSitterAnalyzerMCPServer()
 
         # Test that the three core tools are initialized
-        assert server.read_partial_tool is not None  # extract_code_section
-        assert server.table_format_tool is not None  # analyze_code_structure
-        assert server.analysis_engine is not None  # used by check_code_scale
+        assert (
+            server.read_partial_tool.get_tool_definition()["name"]
+            == "extract_code_section"
+        )
+        assert (
+            server.table_format_tool.get_tool_definition()["name"]
+            == "analyze_code_structure"
+        )
+        assert callable(server.analysis_engine.analyze_file)
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @patch("tree_sitter_analyzer.mcp.server.get_analysis_engine")
@@ -291,8 +297,8 @@ class TestToolsAndResources:
 
         server = TreeSitterAnalyzerMCPServer()
 
-        assert server.code_file_resource is not None
-        assert server.project_stats_resource is not None
+        assert server.code_file_resource.get_resource_info()["name"] == "code_file"
+        assert server.project_stats_resource.get_resource_info()["name"] == "project_stats"
 
 
 class TestMCPAvailability:

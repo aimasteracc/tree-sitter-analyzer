@@ -190,7 +190,7 @@ def test_watch_health_daemon_starts_and_stops_clean_on_sigint(
 
     # Sanity: at least one extra thread exists while running.
     running_threads = {t.ident for t in threading.enumerate()} - threads_before
-    assert len(running_threads) >= 1, "runner should have spawned at least one thread"
+    assert running_threads, "runner should have spawned at least one thread"
 
     # Stop and verify clean shutdown.
     stop = getattr(runner, "stop", None)

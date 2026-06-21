@@ -93,17 +93,24 @@ static void internal_function(void) {
         assert hasattr(extractor, "extract_variables")
         assert hasattr(extractor, "extract_imports")
 
-    def test_extract_functions_success(
+    def test_extract_core_elements_success(
         self, extractor: CElementExtractor, mock_tree: Mock
     ) -> None:
-        """Test successful function extraction"""
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"function.definition": []}
+        """Test successful extraction of the core C element families."""
+        cases = (
+            ("functions", {"function.definition": []}, extractor.extract_functions),
+            ("classes", {"struct.specifier": []}, extractor.extract_classes),
+            ("variables", {"field.declaration": []}, extractor.extract_variables),
+            ("imports", {"include": []}, extractor.extract_imports),
+        )
+        for label, captures, extract in cases:
+            mock_query = Mock()
+            mock_tree.language.query.return_value = mock_query
+            mock_query.captures.return_value = captures
 
-        functions = extractor.extract_functions(mock_tree, "test code")
+            result = extract(mock_tree, "test code")
 
-        assert isinstance(functions, list)
+            assert isinstance(result, list), label
 
     def test_extract_functions_no_language(self, extractor: CElementExtractor) -> None:
         """Test function extraction when language is not available"""
@@ -117,42 +124,6 @@ static void internal_function(void) {
 
         assert isinstance(functions, list)
         assert len(functions) == 0
-
-    def test_extract_classes_success(
-        self, extractor: CElementExtractor, mock_tree: Mock
-    ) -> None:
-        """Test successful class extraction (structs in C)"""
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"struct.specifier": []}
-
-        classes = extractor.extract_classes(mock_tree, "test code")
-
-        assert isinstance(classes, list)
-
-    def test_extract_variables_success(
-        self, extractor: CElementExtractor, mock_tree: Mock
-    ) -> None:
-        """Test successful variable extraction"""
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"field.declaration": []}
-
-        variables = extractor.extract_variables(mock_tree, "test code")
-
-        assert isinstance(variables, list)
-
-    def test_extract_imports_success(
-        self, extractor: CElementExtractor, mock_tree: Mock
-    ) -> None:
-        """Test successful import extraction"""
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"include": []}
-
-        imports = extractor.extract_imports(mock_tree, "test code")
-
-        assert isinstance(imports, list)
 
     def test_extract_function_optimized(self, extractor: CElementExtractor) -> None:
         """Test optimized function extraction"""

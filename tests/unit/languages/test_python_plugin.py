@@ -107,18 +107,24 @@ if __name__ == "__main__":
         assert hasattr(extractor, "extract_variables")
         assert hasattr(extractor, "extract_imports")
 
-    def test_extract_functions_success(
+    def test_extract_core_elements_success(
         self, extractor: PythonElementExtractor, mock_tree: Mock
     ) -> None:
-        """Test successful function extraction"""
-        # Mock the language query
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"function.definition": []}
+        """Test successful extraction of the core Python element families."""
+        cases = (
+            ("functions", {"function.definition": []}, extractor.extract_functions),
+            ("classes", {"class.definition": []}, extractor.extract_classes),
+            ("variables", {"variable.assignment": []}, extractor.extract_variables),
+            ("imports", {"import.statement": []}, extractor.extract_imports),
+        )
+        for label, captures, extract in cases:
+            mock_query = Mock()
+            mock_tree.language.query.return_value = mock_query
+            mock_query.captures.return_value = captures
 
-        functions = extractor.extract_functions(mock_tree, "test code")
+            result = extract(mock_tree, "test code")
 
-        assert isinstance(functions, list)
+            assert isinstance(result, list), label
 
     def test_extract_functions_no_language(
         self, extractor: PythonElementExtractor
@@ -133,45 +139,6 @@ if __name__ == "__main__":
 
         assert isinstance(functions, list)
         assert len(functions) == 0
-
-    def test_extract_classes_success(
-        self, extractor: PythonElementExtractor, mock_tree: Mock
-    ) -> None:
-        """Test successful class extraction"""
-        # Mock the language query
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"class.definition": []}
-
-        classes = extractor.extract_classes(mock_tree, "test code")
-
-        assert isinstance(classes, list)
-
-    def test_extract_variables_success(
-        self, extractor: PythonElementExtractor, mock_tree: Mock
-    ) -> None:
-        """Test successful variable extraction"""
-        # Mock the language query
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"variable.assignment": []}
-
-        variables = extractor.extract_variables(mock_tree, "test code")
-
-        assert isinstance(variables, list)
-
-    def test_extract_imports_success(
-        self, extractor: PythonElementExtractor, mock_tree: Mock
-    ) -> None:
-        """Test successful import extraction"""
-        # Mock the language query
-        mock_query = Mock()
-        mock_tree.language.query.return_value = mock_query
-        mock_query.captures.return_value = {"import.statement": []}
-
-        imports = extractor.extract_imports(mock_tree, "test code")
-
-        assert isinstance(imports, list)
 
     def test_extract_detailed_function_info(
         self, extractor: PythonElementExtractor

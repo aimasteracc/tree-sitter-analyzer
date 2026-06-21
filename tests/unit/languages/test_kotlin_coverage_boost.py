@@ -28,52 +28,30 @@ class TestKotlinExtractorParameters:
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_function_with_typed_parameters(self, extractor, parser):
-        """Test function with typed parameters."""
+    def test_function_parameter_shapes(self, extractor, parser):
+        """Test representative parameter shapes in one parse."""
         code = """
 fun greet(name: String, age: Int, active: Boolean): String {
     return "Hello"
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        functions = extractor.extract_functions(tree, code)
-        assert len(functions) == 1
-        # Check parameters are extracted
-        func = functions[0]
-        assert func.name == "greet"
-
-    def test_function_with_nullable_parameters(self, extractor, parser):
-        """Test function with nullable types."""
-        code = """
 fun process(data: String?, count: Int?): Boolean? {
     return null
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        functions = extractor.extract_functions(tree, code)
-        assert len(functions) == 1
-
-    def test_function_with_lambda_parameter(self, extractor, parser):
-        """Test function with lambda parameter."""
-        code = """
 fun execute(callback: (String) -> Unit) {
     callback("test")
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        functions = extractor.extract_functions(tree, code)
-        assert len(functions) == 1
-
-    def test_function_with_vararg(self, extractor, parser):
-        """Test function with vararg parameter."""
-        code = """
 fun printAll(vararg items: String) {
     items.forEach { println(it) }
 }
 """
         tree = parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        assert len(functions) == 1
+        assert {f.name for f in functions} >= {
+            "greet",
+            "process",
+            "execute",
+            "printAll",
+        }
 
 
 class TestKotlinExtractorVisibility:
@@ -88,36 +66,22 @@ class TestKotlinExtractorVisibility:
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_protected_function(self, extractor, parser):
-        """Test protected visibility."""
+    def test_visibility_shapes(self, extractor, parser):
+        """Test protected/internal/private visibility shapes in one parse."""
         code = """
 open class Base {
     protected fun helper(): Int = 42
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        functions = extractor.extract_functions(tree, code)
-        assert len(functions) == 1
-
-    def test_internal_function(self, extractor, parser):
-        """Test internal visibility."""
-        code = """
 internal fun moduleHelper(): String = "internal"
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        functions = extractor.extract_functions(tree, code)
-        assert len(functions) == 1
-
-    def test_private_class(self, extractor, parser):
-        """Test private class."""
-        code = """
 private class Secret {
     fun doSomething() {}
 }
 """
         tree = parser.parse(code.encode("utf-8"))
+        functions = extractor.extract_functions(tree, code)
         classes = extractor.extract_classes(tree, code)
-        assert len(classes) == 1
+        assert {f.name for f in functions} >= {"helper", "moduleHelper", "doSomething"}
+        assert {c.name for c in classes} >= {"Base", "Secret"}
 
 
 class TestKotlinExtractorProperties:
@@ -132,34 +96,17 @@ class TestKotlinExtractorProperties:
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_property_with_getter_setter(self, extractor, parser):
-        """Test property with custom getter/setter."""
+    def test_property_shapes(self, extractor, parser):
+        """Test getter/setter, lateinit, and const property shapes together."""
         code = """
 class Example {
     var counter: Int = 0
         get() = field
         set(value) { field = value }
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        variables = extractor.extract_variables(tree, code)
-        # Should extract the property
-        assert isinstance(variables, list)
-
-    def test_lateinit_property(self, extractor, parser):
-        """Test lateinit property."""
-        code = """
 class Container {
     lateinit var data: String
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        variables = extractor.extract_variables(tree, code)
-        assert isinstance(variables, list)
-
-    def test_const_property(self, extractor, parser):
-        """Test const property."""
-        code = """
 object Constants {
     const val MAX_SIZE = 100
 }
@@ -181,27 +128,11 @@ class TestKotlinExtractorImports:
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_single_import(self, extractor, parser):
-        """Test single import."""
+    def test_import_shapes(self, extractor, parser):
+        """Test single, wildcard, and alias imports together."""
         code = """
 import kotlin.collections.List
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        imports = extractor.extract_imports(tree, code)
-        assert isinstance(imports, list)
-
-    def test_wildcard_import(self, extractor, parser):
-        """Test wildcard import."""
-        code = """
 import kotlin.collections.*
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        imports = extractor.extract_imports(tree, code)
-        assert isinstance(imports, list)
-
-    def test_alias_import(self, extractor, parser):
-        """Test import with alias."""
-        code = """
 import kotlin.collections.ArrayList as AList
 """
         tree = parser.parse(code.encode("utf-8"))
@@ -221,8 +152,8 @@ class TestKotlinExtractorDocstrings:
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_function_with_kdoc(self, extractor, parser):
-        """Test function with KDoc comment."""
+    def test_kdoc_shapes(self, extractor, parser):
+        """Test function and class KDoc comments together."""
         code = """
 /**
  * Calculates the sum of two numbers.
@@ -231,14 +162,6 @@ class TestKotlinExtractorDocstrings:
  * @return Sum of a and b
  */
 fun add(a: Int, b: Int): Int = a + b
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        functions = extractor.extract_functions(tree, code)
-        assert len(functions) == 1
-
-    def test_class_with_kdoc(self, extractor, parser):
-        """Test class with KDoc comment."""
-        code = """
 /**
  * Represents a user in the system.
  * @property name User's name
@@ -247,7 +170,9 @@ fun add(a: Int, b: Int): Int = a + b
 data class User(val name: String, val age: Int)
 """
         tree = parser.parse(code.encode("utf-8"))
+        functions = extractor.extract_functions(tree, code)
         classes = extractor.extract_classes(tree, code)
+        assert "add" in {f.name for f in functions}
         assert len(classes) == 1
 
 
@@ -263,23 +188,20 @@ class TestKotlinExtractorErrorPaths:
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_extract_with_malformed_function(self, extractor, parser):
-        """Test extraction with malformed function."""
-        code = """
+    def test_extract_with_malformed_declarations(self, extractor, parser):
+        """Malformed declarations should return lists rather than crashing."""
+        function_code = """
 fun incomplete(
 """
-        tree = parser.parse(code.encode("utf-8"))
-        functions = extractor.extract_functions(tree, code)
-        assert isinstance(functions, list)
-
-    def test_extract_with_malformed_class(self, extractor, parser):
-        """Test extraction with malformed class."""
-        code = """
+        class_code = """
 class Broken {
     fun method() {
 """
-        tree = parser.parse(code.encode("utf-8"))
-        classes = extractor.extract_classes(tree, code)
+        function_tree = parser.parse(function_code.encode("utf-8"))
+        class_tree = parser.parse(class_code.encode("utf-8"))
+        functions = extractor.extract_functions(function_tree, function_code)
+        classes = extractor.extract_classes(class_tree, class_code)
+        assert isinstance(functions, list)
         assert isinstance(classes, list)
 
     def test_node_text_extraction_edge_cases(self, extractor):
@@ -322,20 +244,14 @@ class TestKotlinPluginEdgeCases:
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_extract_elements_empty_code(self, plugin, parser):
-        """Test extraction from empty code."""
-        tree = parser.parse(b"")
-        result = plugin.extract_elements(tree, "")
-        assert isinstance(result, dict)
-        assert "functions" in result
-        assert "classes" in result
-
-    def test_extract_elements_whitespace_only(self, plugin, parser):
-        """Test extraction from whitespace only."""
-        code = "   \n\n   \t\t  \n"
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert isinstance(result, dict)
+    def test_extract_elements_empty_or_whitespace_code(self, plugin, parser):
+        """Empty and whitespace-only code should return an element dict."""
+        for code in ["", "   \n\n   \t\t  \n"]:
+            tree = parser.parse(code.encode("utf-8"))
+            result = plugin.extract_elements(tree, code)
+            assert isinstance(result, dict)
+            assert "functions" in result
+            assert "classes" in result
 
 
 class TestKotlinExtractorInternalMethods:
@@ -350,8 +266,8 @@ class TestKotlinExtractorInternalMethods:
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_extract_class_with_body(self, extractor, parser):
-        """Test class extraction with body containing methods."""
+    def test_class_shapes(self, extractor, parser):
+        """Test class body, abstract, interface, inheritance, and object shapes."""
         code = """
 class Service {
     private val data = mutableListOf<String>()
@@ -368,53 +284,18 @@ class Service {
         data.clear()
     }
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        classes = extractor.extract_classes(tree, code)
-        assert len(classes) == 1
-        cls = classes[0]
-        assert cls.name == "Service"
-
-    def test_extract_abstract_class(self, extractor, parser):
-        """Test abstract class extraction."""
-        code = """
 abstract class Shape {
     abstract fun area(): Double
     abstract fun perimeter(): Double
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        classes = extractor.extract_classes(tree, code)
-        assert len(classes) == 1
-
-    def test_extract_interface(self, extractor, parser):
-        """Test interface extraction."""
-        code = """
 interface Drawable {
     fun draw()
     fun resize(scale: Double)
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        classes = extractor.extract_classes(tree, code)
-        # Interface should be extracted as class
-        assert isinstance(classes, list)
-
-    def test_extract_class_with_inheritance(self, extractor, parser):
-        """Test class with inheritance."""
-        code = """
 class Circle(val radius: Double) : Shape() {
     override fun area(): Double = 3.14159 * radius * radius
     override fun perimeter(): Double = 2 * 3.14159 * radius
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        classes = extractor.extract_classes(tree, code)
-        assert len(classes) == 1
-
-    def test_extract_object_with_methods(self, extractor, parser):
-        """Test object declaration with methods."""
-        code = """
 object DatabaseManager {
     private var connection: Connection? = null
 
@@ -429,7 +310,13 @@ object DatabaseManager {
 """
         tree = parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        assert len(classes) == 1
+        assert {c.name for c in classes} >= {
+            "Service",
+            "Shape",
+            "Drawable",
+            "Circle",
+            "DatabaseManager",
+        }
 
 
 class TestKotlinTextExtractionEdgeCases:
@@ -439,8 +326,8 @@ class TestKotlinTextExtractionEdgeCases:
     def extractor(self):
         return KotlinElementExtractor()
 
-    def test_get_node_text_with_cache(self, extractor):
-        """Test cached node text retrieval."""
+    def test_get_node_text_edge_cases(self, extractor):
+        """Test cached, multiline, and out-of-bounds text extraction."""
         extractor.source_code = "val x = 1"
         extractor.content_lines = ["val x = 1"]
 
@@ -458,8 +345,6 @@ class TestKotlinTextExtractionEdgeCases:
 
         assert text1 == text2
 
-    def test_get_node_text_multiline(self, extractor):
-        """Test multiline text extraction."""
         code = """fun test() {
     println("hello")
 }"""
@@ -476,8 +361,6 @@ class TestKotlinTextExtractionEdgeCases:
         text = extractor._get_node_text(mock_node)
         assert "fun test" in text
 
-    def test_get_node_text_out_of_bounds(self, extractor):
-        """Test text extraction with out of bounds position."""
         extractor.source_code = "short"
         extractor.content_lines = ["short"]
 
@@ -504,21 +387,8 @@ class TestKotlinExtractorExceptionPaths:
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_extract_function_returns_none_on_error(self, extractor):
-        """Test _extract_function returns None on error."""
-        extractor.source_code = ""
-        extractor.content_lines = []
-
-        # Create a mock node that will cause an exception
-        mock_node = Mock()
-        mock_node.parent = None
-        mock_node.start_point = Mock(side_effect=Exception("test error"))
-
-        result = extractor._extract_function(mock_node)
-        assert result is None
-
-    def test_extract_class_returns_none_on_error(self, extractor):
-        """Test _extract_class returns None on error."""
+    def test_extractors_return_none_on_error(self, extractor):
+        """Private extractors should return None on unexpected node errors."""
         extractor.source_code = ""
         extractor.content_lines = []
 
@@ -526,32 +396,10 @@ class TestKotlinExtractorExceptionPaths:
         mock_node.parent = None
         mock_node.start_point = Mock(side_effect=Exception("test error"))
 
-        result = extractor._extract_class(mock_node)
-        assert result is None
-
-    def test_extract_property_returns_none_on_error(self, extractor):
-        """Test _extract_property returns None on error."""
-        extractor.source_code = ""
-        extractor.content_lines = []
-
-        mock_node = Mock()
-        mock_node.parent = None
-        mock_node.start_point = Mock(side_effect=Exception("test error"))
-
-        result = extractor._extract_property(mock_node)
-        assert result is None
-
-    def test_extract_import_returns_none_on_error(self, extractor):
-        """Test _extract_import returns None on error."""
-        extractor.source_code = ""
-        extractor.content_lines = []
-
-        mock_node = Mock()
-        mock_node.parent = None
-        mock_node.start_point = Mock(side_effect=Exception("test error"))
-
-        result = extractor._extract_import(mock_node)
-        assert result is None
+        assert extractor._extract_function(mock_node) is None
+        assert extractor._extract_class(mock_node) is None
+        assert extractor._extract_property(mock_node) is None
+        assert extractor._extract_import(mock_node) is None
 
     def test_extract_import_unknown_name(self, extractor):
         """Test import with unparseable name."""

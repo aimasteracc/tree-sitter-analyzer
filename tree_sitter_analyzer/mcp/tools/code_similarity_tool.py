@@ -88,6 +88,14 @@ class CodeGraphSimilarityTool(BaseMCPTool):
                     ),
                     "default": False,
                 },
+                "path_filter": {
+                    "type": "string",
+                    "description": (
+                        "Optional file glob or comma-separated globs limiting analysis "
+                        "to matching project-relative paths, e.g. tests/**."
+                    ),
+                    "default": "",
+                },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
@@ -121,6 +129,7 @@ class CodeGraphSimilarityTool(BaseMCPTool):
         max_groups = int(arguments.get("max_groups", 20))
         use_cache = arguments.get("use_cache", True)
         include_bodies = arguments.get("include_bodies", False)
+        path_filter = arguments.get("path_filter", "") or ""
         output_format = arguments.get("output_format", "toon")
 
         try:
@@ -131,6 +140,7 @@ class CodeGraphSimilarityTool(BaseMCPTool):
                 min_group_size=min_group_size,
                 max_groups=max_groups,
                 use_cache=use_cache,
+                path_filter=path_filter,
             )
         except Exception as exc:
             logger.error(f"Code similarity analysis failed: {exc}")

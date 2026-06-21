@@ -230,7 +230,7 @@ class TestAdvancedCommandOutputStatistics:
             command._output_statistics(mock_analysis_result)
 
             mock_section.assert_called_once_with("Statistics")
-            assert (
+            assert (  # ratchet: nondeterministic
                 mock_data.call_count >= 4
             )  # line_count, element_count, node_count, language
 
@@ -362,7 +362,7 @@ class TestAdvancedCommandOutputTextAnalysis:
             command._output_text_analysis(mock_analysis_result)
 
             # Should output multiple data lines
-            assert mock_data.call_count >= 10
+            assert mock_data.call_count >= 10  # ratchet: nondeterministic
 
     def test_output_text_analysis_no_methods(self, command, mock_analysis_result):
         """Test text analysis when no methods present."""

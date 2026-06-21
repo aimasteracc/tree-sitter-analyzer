@@ -151,7 +151,7 @@ ___"""
             ):
                 result = self.extractor.extract_html_elements(mock_tree, content)
 
-                assert (
+                assert (  # ratchet: nondeterministic
                     len(result) >= 2
                 )  # HTML comments might not be detected by tree-sitter
                 assert result[0].element_type in ["html_element", "html_block"]
@@ -386,7 +386,7 @@ class TestMarkdownPluginNewElementsIntegration:
 
             assert isinstance(result, dict)
             assert "elements" in result
-            assert len(result["elements"]) >= 12  # All 12 extraction methods
+            assert len(result["elements"]) >= 12  # All 12 extraction methods  # ratchet: nondeterministic
 
             # Verify all extraction methods were called
             mock_extractor.extract_headers.assert_called_once()
@@ -525,7 +525,7 @@ Footnote reference[^1]
                             result = await self.plugin.analyze_file("test.md", request)
 
                             assert result.success is True
-                            assert len(result.elements) >= 3
+                            assert len(result.elements) >= 3  # ratchet: nondeterministic
 
 
 class TestMarkdownElementNewAttributes:

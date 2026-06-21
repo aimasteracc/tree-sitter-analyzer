@@ -7,7 +7,7 @@ def test_csharp_queries_import():
 
     assert hasattr(csharp, "CSHARP_QUERIES")
     assert isinstance(csharp.CSHARP_QUERIES, dict)
-    assert len(csharp.CSHARP_QUERIES) > 0
+    assert csharp.CSHARP_QUERIES
 
 
 def test_csharp_class_query_structure():
@@ -96,4 +96,4 @@ def test_csharp_query_descriptions():
 
     for name in CSHARP_QUERIES:
         assert name in CSHARP_QUERY_DESCRIPTIONS, f"Missing description for '{name}'"
-        assert len(CSHARP_QUERY_DESCRIPTIONS[name]) > 0
+        assert CSHARP_QUERY_DESCRIPTIONS[name]

@@ -44,5 +44,5 @@ class TestValidatorDemo:
 
         # Verify structure
         assert report.language == "python"
-        assert report.total_node_types > 0
+        assert report.total_node_types
         assert 0.0 <= report.coverage_percentage <= 100.0

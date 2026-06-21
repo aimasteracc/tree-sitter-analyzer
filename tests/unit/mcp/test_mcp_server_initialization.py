@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from tree_sitter_analyzer.mcp import MCP_INFO
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 from tree_sitter_analyzer.mcp.utils.error_handler import (
     ErrorCategory,
@@ -106,8 +107,8 @@ class TestMCPServerInitialization:
 
             # Check metadata
             assert server.name == "tree-sitter-analyzer-mcp"
-            assert server.version is not None
-            assert len(server.version) > 0
+            assert isinstance(server.version, str)
+            assert server.version.startswith(MCP_INFO["version"])
 
     def test_components_initialized_properly(self):
         """Test that all server components are initialized."""
@@ -115,13 +116,25 @@ class TestMCPServerInitialization:
             server = TreeSitterAnalyzerMCPServer(temp_dir)
 
             # Check that all components are initialized
-            assert server.analysis_engine is not None
-            assert server.security_validator is not None
-            assert server.read_partial_tool is not None
-            assert server.universal_analyze_tool is not None
-            assert server.table_format_tool is not None
-            assert server.code_file_resource is not None
-            assert server.project_stats_resource is not None
+            assert callable(server.analysis_engine.analyze_file)
+            assert callable(server.security_validator.validate_file_path)
+            assert (
+                server.read_partial_tool.get_tool_definition()["name"]
+                == "extract_code_section"
+            )
+            assert (
+                server.universal_analyze_tool.get_tool_definition()["name"]
+                == "analyze_code_universal"
+            )
+            assert (
+                server.table_format_tool.get_tool_definition()["name"]
+                == "analyze_code_structure"
+            )
+            assert server.code_file_resource.get_resource_info()["name"] == "code_file"
+            assert (
+                server.project_stats_resource.get_resource_info()["name"]
+                == "project_stats"
+            )
 
     @pytest.mark.asyncio
     async def test_server_run_method_exists(self):
@@ -139,7 +152,7 @@ class TestMCPServerInitialization:
 
         # Should still initialize successfully
         assert server.is_initialized() is True
-        assert server.analysis_engine is not None
+        assert callable(server.analysis_engine.analyze_file)
 
     def test_initialization_with_invalid_project_root(self):
         """Test initialization with invalid project root."""
@@ -152,7 +165,7 @@ class TestMCPServerInitialization:
 
         # Server should still initialize successfully
         assert server.is_initialized() is True
-        assert server.analysis_engine is not None
+        assert callable(server.analysis_engine.analyze_file)
 
         # But boundary_manager should be None due to invalid path
         assert server.security_validator.boundary_manager is None
