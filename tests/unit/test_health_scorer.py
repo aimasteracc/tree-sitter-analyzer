@@ -763,6 +763,15 @@ class TestScoreComplexityExtractorPath:
         f = self._write(tmp_path, "x.txt", "hello world\n")
         assert score_complexity(f, "hello world\n", None) == 50.0
 
+    def test_top_level_script_control_flow_is_scored(self, tmp_path):
+        """Script-style files with no functions still count top-level branches."""
+        from tree_sitter_analyzer.health_scorer import score_complexity
+
+        py_src = "\n".join(f"if flag_{idx}:\n    value = {idx}" for idx in range(20))
+        f = self._write(tmp_path, "script.py", py_src)
+
+        assert score_complexity(f, py_src, "python") == 83.2
+
     def test_extractor_aggregate_matches_scorer_for_multi_function_file(self, tmp_path):
         """For a Python file with >= 3 functions, score_complexity must use
         the average extractor CC (not a raw AST walk with stale node types).

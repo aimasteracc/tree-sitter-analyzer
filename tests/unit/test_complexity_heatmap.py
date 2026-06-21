@@ -114,6 +114,22 @@ class TestComplexityEngine:
         assert len(fetch) == 1
         assert fetch[0].complexity == 5
 
+    def test_same_line_javascript_functions_keep_distinct_complexity(self, tmp_path):
+        from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
+
+        script = tmp_path / "same_line.js"
+        script.write_text(
+            "const a = (x) => x ? 1 : 2; "
+            "const b = (x, y) => { if (x) return 1; if (y) return 2; return 3; };\n",
+            encoding="utf-8",
+        )
+
+        funcs = {
+            f.name: f.complexity
+            for f in analyze_file_complexity(str(script), "javascript")
+        }
+        assert funcs == {"a": 2, "b": 3}
+
     def test_risk_bands(self):
         from tree_sitter_analyzer.complexity_heatmap import _risk_band
 

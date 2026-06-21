@@ -51,9 +51,24 @@ jobs:
        contains(github.event.comment.body, '@claude review'))
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve PR head
+        id: pr-head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            echo "repository=$(gh api '${{ github.event.issue.pull_request.url }}' --jq '.head.repo.full_name')" >> "$GITHUB_OUTPUT"
+            echo "ref=$(gh api '${{ github.event.issue.pull_request.url }}' --jq '.head.sha')" >> "$GITHUB_OUTPUT"
+          else
+            echo "repository=${{ github.event.pull_request.head.repo.full_name }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check out PR head
         uses: actions/checkout@v4
         with:
+          repository: ${{ steps.pr-head.outputs.repository }}
+          ref: ${{ steps.pr-head.outputs.ref }}
           fetch-depth: 1
 
       - name: Claude review

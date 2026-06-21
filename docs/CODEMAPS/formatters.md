@@ -96,8 +96,8 @@ TS/JS full-table module-level functions:
 - `formatters/_typescript_formatter_full.py` and
   `formatters/_javascript_formatter_full_mixin.py` render top-level (non-class)
   functions in a `## Global Functions` section (same `Cx` column as class
-  methods). JS reads both `methods` (class methods) and `functions` (top-level)
-  since the JS plugin stores them in disjoint lists.
+  methods). JS and TS read both `methods` (class methods) and `functions`
+  (top-level) since the plugins can store them in disjoint lists.
 
 ## CSV Control-Char Safety
 

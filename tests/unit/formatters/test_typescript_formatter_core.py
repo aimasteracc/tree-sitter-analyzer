@@ -191,6 +191,47 @@ class TestTypeScriptTableFormatter:
         result = formatter.format(tsx_data)
         assert "Component" in result
 
+    def test_format_full_table_keeps_functions_when_methods_list_exists(
+        self, formatter
+    ):
+        """Class methods and separate module-level functions both render."""
+        data = {
+            "file_path": "/workspace/src/mixed.ts",
+            "classes": [
+                {
+                    "name": "Runner",
+                    "class_type": "class",
+                    "line_range": {"start": 1, "end": 5},
+                }
+            ],
+            "methods": [
+                {
+                    "name": "run",
+                    "return_type": "void",
+                    "parameters": [],
+                    "line_range": {"start": 2, "end": 4},
+                    "complexity_score": 1,
+                }
+            ],
+            "functions": [
+                {
+                    "name": "bootstrap",
+                    "return_type": "void",
+                    "parameters": [],
+                    "line_range": {"start": 7, "end": 9},
+                    "complexity_score": 1,
+                }
+            ],
+            "variables": [],
+            "statistics": {"function_count": 2, "variable_count": 0},
+        }
+
+        result = formatter.format(data)
+
+        assert "run" in result
+        assert "## Global Functions" in result
+        assert "bootstrap" in result
+
     def test_format_full_table_declaration_file(self, formatter):
         """Test full table formatting for declaration files"""
         dts_data = {

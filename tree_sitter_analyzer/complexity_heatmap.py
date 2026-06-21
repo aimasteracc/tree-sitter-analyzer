@@ -298,7 +298,9 @@ def _extract_functions_from_ast(
     counted switch per-arm, counted ``else``, and used stale operator nodes).
     The per-type ``decision_points`` breakdown is still derived from the walk.
     """
-    extractor_cx = _extractor_complexity_by_line(tree, source, language)
+    extractor_cx, extractor_cx_by_span_name = _extractor_complexity_by_span(
+        tree, source, language
+    )
     results: list[FunctionComplexity] = []
     stack = [tree.root_node]
 
@@ -308,13 +310,25 @@ def _extract_functions_from_ast(
             name = _get_function_name(node)
             cc, decision_points = _count_complexity_in_node(node, language)
             line = node.start_point[0] + 1
-            complexity = extractor_cx.get(line, cc + 1)
+            end_line = node.end_point[0] + 1
+            key = (
+                line,
+                end_line,
+                name or "",
+                _node_text(node).strip(),
+            )
+            complexity = extractor_cx.get(key)
+            if complexity is None:
+                complexity = extractor_cx_by_span_name.get(
+                    (line, end_line, name or ""),
+                    cc + 1,
+                )
             results.append(
                 FunctionComplexity(
                     name=name or "<anonymous>",
                     file=file_path,
                     line=line,
-                    end_line=node.end_point[0] + 1,
+                    end_line=end_line,
                     complexity=max(complexity, 1),
                     language=language,
                     class_name=_find_class_name(node, language),
@@ -326,31 +340,76 @@ def _extract_functions_from_ast(
     return results
 
 
-def _extractor_complexity_by_line(
-    tree: Any, source: str, language: str
-) -> dict[int, int]:
-    """Map function start-line → the plugin extractor's ``complexity_score``.
+_ComplexityKey = tuple[int, int, str, str]
+_SpanNameKey = tuple[int, int, str]
 
-    The canonical cyclomatic value (RFC-0019 / #1094), keyed by start line so a
-    node walk can look each function up.
+
+def _complexity_key(
+    start_line: int | None,
+    end_line: int | None,
+    name: str | None,
+    raw_text: str | None,
+) -> _ComplexityKey | None:
+    if start_line is None or end_line is None:
+        return None
+    return (start_line, end_line, name or "", (raw_text or "").strip())
+
+
+def _span_name_key(
+    start_line: int | None,
+    end_line: int | None,
+    name: str | None,
+) -> _SpanNameKey | None:
+    if start_line is None or end_line is None:
+        return None
+    return (start_line, end_line, name or "")
+
+
+def _extractor_complexity_by_span(
+    tree: Any, source: str, language: str
+) -> tuple[dict[_ComplexityKey, int], dict[_SpanNameKey, int]]:
+    """Map function span/name/text → the plugin extractor's ``complexity_score``.
+
+    The canonical cyclomatic value (RFC-0019 / #1094), keyed by more than line
+    number so compact one-line JS/TS callables cannot overwrite each other.
     """
     try:
         from .plugins.manager import PluginManager
 
         plugin = PluginManager().get_plugin(language)
         if plugin is None:
-            return {}
+            return {}, {}
         elements = plugin.create_extractor().extract_functions(tree, source)
     except Exception as exc:
         logger.debug("extractor complexity unavailable for %s: %s", language, exc)
-        return {}
+        return {}, {}
 
-    by_line: dict[int, int] = {}
+    by_span: dict[_ComplexityKey, int] = {}
+    candidates_by_span_name: dict[_SpanNameKey, list[int]] = defaultdict(list)
     for elem in elements:
-        start = getattr(elem, "start_line", None)
-        if start is not None:
-            by_line[start] = max(getattr(elem, "complexity_score", 1) or 1, 1)
-    return by_line
+        key = _complexity_key(
+            getattr(elem, "start_line", None),
+            getattr(elem, "end_line", None),
+            getattr(elem, "name", None),
+            getattr(elem, "raw_text", None),
+        )
+        complexity = max(getattr(elem, "complexity_score", 1) or 1, 1)
+        if key is not None:
+            by_span[key] = complexity
+        span_name_key = _span_name_key(
+            getattr(elem, "start_line", None),
+            getattr(elem, "end_line", None),
+            getattr(elem, "name", None),
+        )
+        if span_name_key is not None:
+            candidates_by_span_name[span_name_key].append(complexity)
+
+    unique_by_span_name = {
+        span_name_key: candidates[0]
+        for span_name_key, candidates in candidates_by_span_name.items()
+        if len(candidates) == 1
+    }
+    return by_span, unique_by_span_name
 
 
 def _extract_functions_via_plugin(

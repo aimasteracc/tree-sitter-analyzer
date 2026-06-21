@@ -25,7 +25,7 @@ def format_typescript_full_table(formatter: Any, data: dict[str, Any]) -> str:
     ]
 
     classes = data.get("classes", [])
-    methods = data.get("methods", []) or data.get("functions", [])
+    methods = [*(data.get("methods", []) or []), *(data.get("functions", []) or [])]
     fields = data.get("fields", []) or data.get("variables", [])
 
     _append_classes_overview(lines, classes, methods, fields)

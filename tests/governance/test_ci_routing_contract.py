@@ -31,6 +31,7 @@ SKIPPED_SCAN_DIRS = {
     ".venv",
 }
 
+
 def test_reusable_test_workflow_has_job_timeout() -> None:
     """The CI matrix must fail fast instead of hanging forever on runner stalls."""
     workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
@@ -179,6 +180,18 @@ def test_benchmarks_are_path_filtered_for_pr_and_push() -> None:
     assert "paths:" in text
     assert "tests/benchmarks/**" in text
     assert "tree_sitter_analyzer/ast_cache.py" in text
+
+
+def test_claude_review_comment_trigger_checks_out_pr_head() -> None:
+    """Comment-triggered reviews must inspect the PR head, not default branch."""
+    text = (PROJECT_ROOT / ".github" / "workflows" / "claude-review.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "github.event.issue.pull_request.url" in text
+    assert "gh api '${{ github.event.issue.pull_request.url }}'" in text
+    assert "repository: ${{ steps.pr-head.outputs.repository }}" in text
+    assert "ref: ${{ steps.pr-head.outputs.ref }}" in text
 
 
 def test_bandit_security_scan_is_blocking_and_configured() -> None:

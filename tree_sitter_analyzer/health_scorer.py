@@ -533,11 +533,9 @@ def score_complexity(file_path: str, source: str, language: str | None) -> float
         n_funcs = len(funcs)
 
         if n_funcs == 0:
-            # No functions found (empty file, language with no plugin, or
-            # parse failure inside analyze_file_complexity). Fall back to
-            # base CC = 1 — same as the old path for files with no decision
-            # nodes and no function defs.
-            cc = 1
+            cc = _file_level_complexity(file_path, language)
+            if cc is None:
+                return 50.0
         else:
             cc = sum(f.complexity for f in funcs)
 
@@ -568,6 +566,18 @@ def score_complexity(file_path: str, source: str, language: str | None) -> float
 
     except Exception:
         return 50.0
+
+
+def _file_level_complexity(file_path: str, language: str) -> int | None:
+    """Return file-level CC for scripts with top-level control flow."""
+    from .complexity_heatmap import _count_complexity_in_node
+    from .core.parser import Parser
+
+    result = Parser().parse_file(file_path, language)
+    if not result.success or result.tree is None:
+        return None
+    cc, _ = _count_complexity_in_node(result.tree.root_node, language)
+    return max(cc + 1, 1)
 
 
 def find_project_root(path: Path) -> Path:
