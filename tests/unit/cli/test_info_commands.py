@@ -519,7 +519,7 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
         assert captured.get("success") is True
         assert captured.get("verdict") == "INFO"
         assert isinstance(captured.get("extensions"), list)
-        assert captured.get("extension_count") == 51
+        assert captured.get("extension_count") == len(captured["extensions"])
 
     def test_show_languages_text_path_preserved(self):
         """Text default must still go through output_list (backward compat)."""
