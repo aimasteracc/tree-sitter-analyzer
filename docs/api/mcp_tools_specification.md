@@ -2045,7 +2045,7 @@ Modes: `full` (complete map), `api` (public API only), `module` (per-module metr
 
 ### 45. codegraph_visualize
 
-**Purpose**: Export the project call graph as a Mermaid flowchart diagram (CodeGraph parity). Renders caller→callee edges as a text diagram that works in GitHub READMEs, PRs, and Markdown.
+**Purpose**: Export the project call graph as a Mermaid flowchart diagram or a Graphology-compatible JSON graph for Sigma.js/WebGL clients (CodeGraph parity).
 
 **Input**:
 ```json
@@ -2055,12 +2055,14 @@ Modes: `full` (complete map), `api` (public API only), `module` (per-module metr
   "function": "AnalyzeScaleTool.execute",
   "depth": 3,
   "max_edges": 200,
-  "direction": "forward",
+  "direction": "LR",
+  "visualization_format": "sigma",
   "output_format": "toon"
 }
 ```
 
 Modes: `full` (all edges), `file` (single-file scope), `function` (transitive chain from seed).
+Visualization formats: `mermaid` (default text flowchart), `sigma` (Graphology-compatible nodes/edges with LOD metadata).
 
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --codegraph-visualize --codegraph-visualize-mode function --codegraph-visualize-function NAME --format json`
 
