@@ -103,7 +103,8 @@ Categories of CLI surface:
 - `--codegraph-visualize` — Mermaid flowchart export
 - `--uml class|package|component|sequence` — UML-style Mermaid diagram export
 - `--code-similarity` — AST-structural clone detection
-- `--pr-review` — AST diff + semantic classify + blast-radius PR review
+- `--pr-review diff|staged|branch|pr` — AST diff + semantic classify +
+  blast-radius PR review (`pr` mode takes `--pr-review-url URL`)
 
 ### Info
 - `--show-supported-languages`
