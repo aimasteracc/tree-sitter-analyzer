@@ -141,11 +141,10 @@ class TestComputeLineMetrics:
         """Test line metrics with blank lines."""
         content = "def hello():\n\n    print('world')\n\n"
         total, code, comment, blank = _compute_line_metrics(content, None)
-        # Note: The implementation's adjustment logic changes the counts
         assert total == 4
-        assert code == 1  # Due to adjustment logic
+        assert code == 2
         assert comment == 0
-        assert blank == 3
+        assert blank == 2
 
     def test_compute_line_metrics_with_single_line_comments(self):
         """Test line metrics with single-line comments."""
@@ -252,21 +251,19 @@ class TestComputeLineMetrics:
         """Test line metrics with empty content."""
         content = ""
         total, code, comment, blank = _compute_line_metrics(content, None)
-        # Note: Empty content is treated as 1 blank line by the implementation
         assert total == 0
         assert code == 0
         assert comment == 0
-        assert blank == 1
+        assert blank == 0
 
     def test_compute_line_metrics_trailing_newline(self):
         """Test line metrics with trailing newline."""
         content = "line1\nline2\nline3\n"
         total, code, comment, blank = _compute_line_metrics(content, None)
-        # Note: The implementation's adjustment logic changes the counts
         assert total == 3  # Trailing newline is removed
-        assert code == 2  # Due to adjustment logic
+        assert code == 3
         assert comment == 0
-        assert blank == 1
+        assert blank == 0
 
     def test_compute_line_metrics_mixed_content(self):
         """Test line metrics with mixed content."""
@@ -600,7 +597,7 @@ def main():
 
         # Verify values make sense
         assert result["total_lines"] == 9
-        assert result["code_lines"] == 4
+        assert result["code_lines"] == 5
         assert result["comment_lines"] == 3
         assert result["estimated_tokens"] == 38
         assert result["file_size_bytes"] == 153

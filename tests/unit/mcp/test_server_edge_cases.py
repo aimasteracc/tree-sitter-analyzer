@@ -278,7 +278,7 @@ class TestMCPServerFileMetricsEdgeCases:
 
         metrics = server._calculate_file_metrics(str(test_file), "python")
 
-        assert metrics["blank_lines"] == 6
+        assert metrics["blank_lines"] == 5
         assert metrics["code_lines"] == 0
         assert metrics["comment_lines"] == 0
 
@@ -303,7 +303,7 @@ function test() {
         metrics = server._calculate_file_metrics(str(test_file), "javascript")
 
         assert metrics["comment_lines"] == 8
-        assert metrics["code_lines"] == 1
+        assert metrics["code_lines"] == 2
 
     def test_calculate_metrics_with_nested_comments(self, temp_project_dir):
         """Test file metrics with nested comment patterns."""
@@ -324,7 +324,7 @@ function test() {
         metrics = server._calculate_file_metrics(str(test_file), "javascript")
 
         assert metrics["comment_lines"] == 4
-        assert metrics["code_lines"] == 3
+        assert metrics["code_lines"] == 4
 
 
 class TestMCPServerToolHandlingEdgeCases:

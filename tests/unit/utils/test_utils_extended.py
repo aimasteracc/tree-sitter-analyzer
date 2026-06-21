@@ -38,7 +38,8 @@ class TestUtilsExtended:
 
     def test_setup_logger_with_custom_level(self):
         """Test setup_logger with custom log level."""
-        logger = setup_logger("test_logger", level="DEBUG")
+        with patch.dict("os.environ", {"LOG_LEVEL": ""}, clear=False):
+            logger = setup_logger("test_logger", level="DEBUG")
         assert isinstance(logger, logging.Logger)
         assert logger.name == "test_logger"
         assert logger.level == logging.DEBUG
