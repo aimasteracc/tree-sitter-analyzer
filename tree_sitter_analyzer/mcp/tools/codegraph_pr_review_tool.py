@@ -232,7 +232,7 @@ def _get_local_diff(mode: str, project_root: str | None) -> str:
     cmd = {
         "diff": ["git", "diff"],
         "staged": ["git", "diff", "--cached"],
-        "branch": ["git", "diff", "main...HEAD"],
+        "branch": ["git", "diff", f"{_branch_diff_base(project_root)}...HEAD"],
     }.get(mode, ["git", "diff"])
     try:
         rc = subprocess.run(
@@ -247,6 +247,52 @@ def _get_local_diff(mode: str, project_root: str | None) -> str:
         return rc.stdout if rc.returncode == 0 else ""
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return ""
+
+
+def _branch_diff_base(project_root: str) -> str:
+    pr_base = _current_pr_base(project_root)
+    for base in (pr_base, "develop", "main"):
+        if not base:
+            continue
+        for ref in (f"origin/{base}", base):
+            if _git_ref_exists(project_root, ref):
+                return ref
+    return "main"
+
+
+def _current_pr_base(project_root: str) -> str:
+    try:
+        rc = subprocess.run(
+            ["gh", "pr", "view", "--json", "baseRefName", "--jq", ".baseRefName"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            cwd=project_root,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return ""
+    return rc.stdout.strip() if rc.returncode == 0 else ""
+
+
+def _git_ref_exists(project_root: str, ref: str) -> bool:
+    try:
+        rc = subprocess.run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/{ref}"],
+            cwd=project_root,
+            timeout=10,
+        )
+        if rc.returncode == 0:
+            return True
+        rc = subprocess.run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{ref}"],
+            cwd=project_root,
+            timeout=10,
+        )
+        return rc.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
 
 
 def _parse_diff_files(diff_text: str) -> list[str]:

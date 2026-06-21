@@ -281,8 +281,13 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         "--pr-review",
         nargs="?",
         const="diff",
-        choices=["diff", "staged", "branch"],
+        choices=["diff", "staged", "branch", "pr"],
         help="AI-powered PR review (AST diff + semantic classify + call graph).",
+    )
+    parser.add_argument(
+        "--pr-review-url",
+        default="",
+        help="GitHub PR URL for --pr-review pr.",
     )
     parser.add_argument(
         "--semantic-classify",

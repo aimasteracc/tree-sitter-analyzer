@@ -289,6 +289,19 @@ class TestFullParserIntegration:
         assert args.change_impact_mode == "staged"
         assert args.change_impact_resource_profile == "local_low_impact"
 
+    def test_parse_pr_review_url_mode(self):
+        parser = create_argument_parser()
+        args = parser.parse_args(
+            [
+                "--pr-review",
+                "pr",
+                "--pr-review-url",
+                "https://github.com/owner/repo/pull/42",
+            ]
+        )
+        assert args.pr_review == "pr"
+        assert args.pr_review_url == "https://github.com/owner/repo/pull/42"
+
     def test_parse_dependencies_blast_radius(self):
         parser = create_argument_parser()
         args = parser.parse_args(
@@ -486,6 +499,24 @@ class TestCodeGraphImpactCliParity:
         )
         tool_args = spec.build_tool_args(ns, "json")
         assert tool_args["include_tests"] is True
+
+
+class TestCodeGraphPRReviewCliParity:
+    def test_build_tool_args_threads_pr_url(self):
+        import argparse
+
+        from tree_sitter_analyzer.cli.commands.mcp_commands._specs_extended import (
+            _EXTENDED_SPECS,
+        )
+
+        spec = next(s for s in _EXTENDED_SPECS if s.flag_name == "pr_review")
+        ns = argparse.Namespace(
+            pr_review="pr",
+            pr_review_url="https://github.com/owner/repo/pull/42",
+        )
+        tool_args = spec.build_tool_args(ns, "json")
+        assert tool_args["mode"] == "pr"
+        assert tool_args["pr_url"] == "https://github.com/owner/repo/pull/42"
 
 
 def _choices_for_flag(flag: str) -> set[str]:

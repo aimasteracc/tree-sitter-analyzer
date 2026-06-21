@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -687,6 +687,13 @@ def test_action_pr_explicit_diff_mode_still_reaches_diff() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     facade = build_edit_facade(".")
-    result = asyncio.run(facade.execute({"action": "pr", "mode": "diff"}))
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool._get_local_diff",
+        return_value="",
+    ) as get_local_diff:
+        result = asyncio.run(facade.execute({"action": "pr", "mode": "diff"}))
+
+    get_local_diff.assert_called_once_with("diff", ".")
     # diff mode reviews local changes — must not demand pr_url
+    assert result["success"] is True
     assert result.get("error") is None or "pr_url" not in str(result.get("error"))
