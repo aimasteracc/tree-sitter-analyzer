@@ -136,6 +136,9 @@ from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
 from tree_sitter_analyzer.mcp.tools.import_graph_tool import (
     CodeGraphImportGraphTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.knowledge_graph_index_tool import (
+    CodeGraphKnowledgeIndexTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.knowledge_graph_tool import (
     CodeGraphKnowledgeGraphTool,  # noqa: F401
 )
@@ -243,6 +246,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphDependencyMatrixTool",
         "CodeGraphVisualizeTool",
         "CodeGraphKnowledgeGraphTool",
+        "CodeGraphKnowledgeIndexTool",
         "CodeGraphUMLTool",
         "ConstraintCheckTool",
         # consolidated-only tools ported during merge of feat/autonomous-dev

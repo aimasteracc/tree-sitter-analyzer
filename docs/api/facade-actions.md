@@ -112,7 +112,7 @@ Reading the tables:
 | `build` | `add_notes`, `roots` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--build-project-index` |
 | `cache` | `backend`, `file_path`, `force`, `include_activation`, `language`, `limit`, `max_files`, `mode`, `poll_interval`, `query`, `symbol` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-cache` |
 | `full` | `include_activation`, `max_files`, `mode`, `output_format`, `resolve_synapse` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--full-index` |
-| `knowledge` | `backend`, `include_docs`, `max_edges`, `max_files`, `max_nodes`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--knowledge-graph-index` |
+| `knowledge` | `backend`, `focus`, `include_docs`, `include_symbols`, `level`, `max_edges`, `max_files`, `max_nodes`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--knowledge-graph-index` |
 | `status` | `include_lag`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-status` |
 | `sync` | `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--incremental-sync` |
 

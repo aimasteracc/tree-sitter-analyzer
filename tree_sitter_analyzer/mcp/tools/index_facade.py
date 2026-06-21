@@ -88,7 +88,7 @@ def build_index_facade(project_root: str | None = None) -> FacadeTool:
     from .codegraph_status_tool import CodeGraphStatusTool
     from .full_index_tool import CodeGraphFullIndexTool
     from .incremental_sync_tool import CodeGraphIncrementalSyncTool
-    from .knowledge_graph_tool import CodeGraphKnowledgeIndexTool
+    from .knowledge_graph_index_tool import CodeGraphKnowledgeIndexTool
 
     facade = FacadeTool(
         facade_name="index",

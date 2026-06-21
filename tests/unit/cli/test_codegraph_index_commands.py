@@ -5,6 +5,7 @@ Covers payload builders, helpers, and dispatcher error paths via mocking.
 
 from __future__ import annotations
 
+import builtins
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,6 +24,10 @@ from tree_sitter_analyzer.cli.commands.codegraph_index_commands import (
     run_full_index,
     run_incremental_sync,
     run_knowledge_graph_index,
+)
+from tree_sitter_analyzer.cli.special_commands import (
+    SpecialCommandContext,
+    _handle_knowledge_graph_index,
 )
 
 
@@ -315,6 +320,25 @@ class TestRunIncrementalSync:
 
 
 class TestRunKnowledgeGraphIndex:
+    def test_import_error_returns_1(self, tmp_path, monkeypatch):
+        args = _args(project_root=str(tmp_path))
+        real_import = builtins.__import__
+
+        def _blocked_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name.endswith("mcp.tools.knowledge_graph_tool"):
+                raise ImportError("blocked kg tool")
+            return real_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", _blocked_import)
+
+        errors: list[str] = []
+        code = run_knowledge_graph_index(args, errors.append)
+
+        assert code == 1
+        assert errors == [
+            "--knowledge-graph-index failed to import tool: blocked kg tool"
+        ]
+
     def test_execute_failure_returns_1(self, tmp_path):
         args = _args(project_root=str(tmp_path))
         mock_tool = MagicMock()
@@ -339,6 +363,48 @@ class TestRunKnowledgeGraphIndex:
         out = capsys.readouterr().out
         assert code == 0
         assert "kg ok" in out
+
+
+class TestKnowledgeGraphIndexSpecialCommand:
+    def _context(self, errors: list[str]) -> SpecialCommandContext:
+        return SpecialCommandContext(
+            asyncio_run=lambda awaitable: awaitable,
+            output_json=lambda payload: None,
+            output_error=errors.append,
+            output_info=lambda message: None,
+            output_list=lambda values: None,
+            query_loader=None,
+        )
+
+    def test_returns_none_when_flag_absent(self):
+        args = _args(knowledge_graph_index=False)
+        errors: list[str] = []
+        context = self._context(errors)
+
+        assert _handle_knowledge_graph_index(args, context) is None
+        assert errors == []
+
+    def test_dispatches_when_flag_present(self):
+        args = _args(knowledge_graph_index=True)
+        errors: list[str] = []
+        context = self._context(errors)
+
+        with patch(
+            "tree_sitter_analyzer.cli.commands.codegraph_index_commands.run_knowledge_graph_index",
+            return_value=7,
+        ) as mocked:
+            result = _handle_knowledge_graph_index(args, context)
+
+        assert result == 7
+        assert mocked.call_args.args[0] is args
+        assert errors == []
+
+
+def test_mcp_commands_allowlists_knowledge_graph_tools() -> None:
+    from tree_sitter_analyzer.cli.commands import mcp_commands
+
+    assert "CodeGraphKnowledgeGraphTool" in mcp_commands._TOOL_CLASS_NAMES
+    assert "CodeGraphKnowledgeIndexTool" in mcp_commands._TOOL_CLASS_NAMES
 
 
 # ---------------------------------------------------------------------------

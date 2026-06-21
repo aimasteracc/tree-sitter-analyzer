@@ -161,7 +161,7 @@ def run_incremental_sync(args: Any, output_error: OutputErrorFn) -> int:
 
 
 def run_knowledge_graph_index(args: Any, output_error: OutputErrorFn) -> int:
-    """Dispatch ``--knowledge-graph-index`` → ``codegraph_knowledge_index``."""
+    """Dispatch ``--knowledge-graph-index`` → ``knowledge_graph_index``."""
     try:
         from ...mcp.tools.knowledge_graph_tool import CodeGraphKnowledgeIndexTool
     except Exception as exc:  # noqa: BLE001

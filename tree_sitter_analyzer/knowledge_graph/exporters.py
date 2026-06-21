@@ -207,15 +207,11 @@ def _node_color(kind: str) -> str:
 
 def _package_by_file(nodes: list[KnowledgeNode]) -> dict[str, str]:
     result: dict[str, str] = {}
-    packages = [node for node in nodes if node.kind == "package"]
     files = [node for node in nodes if node.kind in {"file", "markdown"}]
     for file_node in files:
         directory = "/".join(file_node.file_path.split("/")[:-1]) or "<root>"
         package_id = "package:" + directory.replace("/", ".")
-        if any(package.id == package_id for package in packages):
-            result[file_node.file_path] = package_id
-        else:
-            result[file_node.file_path] = package_id
+        result[file_node.file_path] = package_id
     return result
 
 

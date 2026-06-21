@@ -1,8 +1,12 @@
-"""Whole-project knowledge graph projection for code and docs."""
+"""Whole-project knowledge graph indexing and visualization exports."""
 
 from .builder import KnowledgeGraphBuilder
 from .models import KnowledgeEdge, KnowledgeGraphSnapshot, KnowledgeNode
-from .stores import JsonKnowledgeGraphStore, LadybugKnowledgeGraphStore
+from .stores import (
+    JsonKnowledgeGraphStore,
+    LadybugKnowledgeGraphStore,
+    LadybugUnavailableError,
+)
 
 __all__ = [
     "JsonKnowledgeGraphStore",
@@ -11,4 +15,5 @@ __all__ = [
     "KnowledgeGraphSnapshot",
     "KnowledgeNode",
     "LadybugKnowledgeGraphStore",
+    "LadybugUnavailableError",
 ]

@@ -11,7 +11,7 @@ action      inner / route                         engine / purpose
 uml         ``codegraph_uml`` (CodeGraphUMLTool)  UML class/sequence diagrams
 graph       ``codegraph_visualize``               call/dependency graph visualizations
 similarity  ``codegraph_similarity``              duplicate / near-duplicate code detection
-knowledge   ``codegraph_knowledge_graph``         code/doc knowledge graph export
+knowledge   ``knowledge_graph``                   code/doc knowledge graph export
 ==========  ====================================  =============================================
 
 Annotation honesty: every action in this facade is read-only (pure generation
@@ -36,7 +36,7 @@ _VIZ_DESCRIPTION = (
     "Code-intelligence (codegraph-compatible) visualization and similarity facade. "
     "Covers codegraph_uml (UML diagrams), codegraph_visualize (call/dependency "
     "graph visualizations), codegraph_similarity (duplicate code detection), "
-    "and codegraph_knowledge_graph (code/doc knowledge graph export) in one "
+    "and knowledge_graph (code/doc knowledge graph export) in one "
     "tool. Pick a capability via `action`:\n"
     "- action=uml — UML class or sequence diagrams "
     "(codegraph_uml equivalent). "
