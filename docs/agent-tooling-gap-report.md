@@ -52,7 +52,7 @@ The distinctive value is not "another chat coding tool." It is agent-grade code 
 ## Hard Requirements For Future Updates
 
 - Every MCP tool change must include CLI parity in the same change.
-- `tests/unit/test_agent_contracts.py` must pass before handoff; it guards pytest runtime, dependencies, MCP/CLI parity, and known Python warning-prone API patterns.
+- The focused contract/governance suites must pass before handoff; they guard pytest runtime, dependencies, MCP/CLI parity, and known Python warning-prone API patterns.
 - `tests/unit/cli/test_mcp_commands.py` must pass after MCP-equivalent CLI changes; it guards delegated tool arguments, required file-path checks, and TOON output.
 - `uv run pytest -q` is the default full-suite command and must remain under 5 minutes.
 - Benchmark runs must stay explicit: `--benchmark-enable --benchmark-only -n 0 --session-timeout=0`.

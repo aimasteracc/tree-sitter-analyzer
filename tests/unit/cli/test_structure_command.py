@@ -336,7 +336,7 @@ class TestStructureCommandOutputStructureAnalysis:
             ) as mock_data:
                 command._output_structure_analysis(analysis_result)
                 mock_section.assert_called_once_with("Structure Analysis Results")
-                assert mock_data.call_count > 0
+                assert mock_data.call_count
 
     def test_output_structure_analysis_json(self, command):
         """Test _output_structure_analysis with JSON format."""
@@ -412,7 +412,7 @@ class TestStructureCommandOutputTextFormat:
             "tree_sitter_analyzer.cli.commands.structure_command.output_data"
         ) as mock_data:
             command._output_text_format(structure_dict)
-            assert mock_data.call_count > 0
+            assert mock_data.call_count
 
     def test_output_text_format_with_package(self, command):
         """Test _output_text_format with package."""

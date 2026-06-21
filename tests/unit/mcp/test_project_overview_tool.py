@@ -196,7 +196,7 @@ class TestScanProject:
 
         scan = _scan_project(tmp_path, max_depth=5)
 
-        assert scan["dir_tree"].get("src", 0) >= 1
+        assert scan["dir_tree"].get("src", 0)
 
     def test_scan_extension_distribution(self, tmp_path) -> None:
         _write(tmp_path, "app.py", "x = 1\n")
@@ -335,7 +335,7 @@ class TestAddFileToScan:
         assert entry["language"] == "python"
         assert entry["path"] == "app.py"
         assert entry["lines"] == 1
-        assert entry["size_bytes"] > 0
+        assert entry["size_bytes"]
 
     def test_skips_unsupported_extension(self, tmp_path) -> None:
         scan = _new_scan()

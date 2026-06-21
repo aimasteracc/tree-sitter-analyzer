@@ -168,7 +168,7 @@ class TestQueryServiceGetAvailableQueries:
         """Test getting available queries for language."""
         queries = query_service.get_available_queries("python")
         assert isinstance(queries, list)
-        assert len(queries) > 0
+        assert queries
 
     def test_get_available_queries_unsupported_language(
         self, query_service: QueryService
@@ -243,7 +243,7 @@ class TestQueryServiceFallbackQueryExecution:
 
         captures = query_service._fallback_query_execution(mock_root_node, "function")
         assert isinstance(captures, list)
-        assert len(captures) >= 0
+        assert captures
 
     def test_fallback_query_execution_class(self, query_service: QueryService) -> None:
         """Test fallback query execution for class nodes."""
@@ -624,7 +624,7 @@ class TestQueryServiceFallbackAdditionalPaths:
 
         for key in ("functions", "classes", "methods", "variables", "imports"):
             captures = service._fallback_query_execution(root, key)
-            assert len(captures) >= 1, f"Expected matches for key '{key}'"
+            assert captures, f"Expected matches for key '{key}'"
 
     def test_fallback_none_query_key(self) -> None:
         """Test fallback with None query_key returns empty list."""

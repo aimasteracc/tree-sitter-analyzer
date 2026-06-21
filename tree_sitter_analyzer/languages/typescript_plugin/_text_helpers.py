@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, TypeAlias
 
 from ...utils import log_debug, log_error
+from .._complexity_decisions import count_decision_complexity
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -103,37 +104,26 @@ def _slice_fallback_line(
     return line
 
 
-_COMPLEXITY_KEYWORDS = (
-    "if",
-    "else if",
-    "while",
-    "for",
-    "catch",
-    "case",
-    "switch",
-    "&&",
-    "||",
-    "?",
-)
-
-
 def calculate_complexity(
     node: tree_sitter.Node,
     get_node_text: Callable[[tree_sitter.Node], str],
     cache: dict[int, int],
 ) -> int:
-    """Calculate cyclomatic complexity for a node."""
+    """Calculate cyclomatic complexity for a node.
+
+    ``get_node_text`` is retained for signature compatibility with existing
+    callers but is no longer used: complexity is now an AST-node walk rather
+    than a keyword-substring text count.
+    """
     node_id = id(node)
     if node_id in cache:
         return cache[node_id]
 
-    complexity = 1
     try:
-        node_text = get_node_text(node).lower()
-        for keyword in _COMPLEXITY_KEYWORDS:
-            complexity += node_text.count(keyword)
+        complexity = count_decision_complexity(node)
     except Exception as e:
         log_debug(f"Failed to calculate complexity: {e}")
+        complexity = 1
 
     cache[node_id] = complexity
     return complexity

@@ -18,20 +18,20 @@ import java.util.Collections
 | LegacyUserManager | class | public | 57-60 | 0 | 1 |
 
 ## Functions
-| Function | Signature | Vis | Lines | Suspend | Doc |
-|----------|-----------|-----|-------|---------|-----|
-| User | fun(id: Long, username: String, email: String, active: Boolean) | pub | 8-13 | - | - |
-| display | fun(): String | pub | 16-16 | - | - |
-| summary | fun(): String | pub | 18-20 | - | - |
-| Success | fun(data: T) | pub | 24-24 | - | - |
-| Error | fun(message: String) | pub | 25-25 | - | - |
-| UserManager | fun(db: Any?) | pub | 28-28 | - | - |
-| getUser | fun(id: Long): User? | pub | 33-35 | - | - |
-| fetchUserAsync | fun(id: Long): Result<User> | pub | 37-40 | - | - |
-| display | fun(): String | pub | 42-44 | - | - |
-| toTitleCase | fun(): String | pub | 52-54 | - | - |
-| get | fun(): String | pub | 59-59 | - | - |
-| main | fun(args: Array<String>) | pub | 62-65 | - | - |
+| Function | Signature | Vis | Lines | Cx | Suspend | Doc |
+|----------|-----------|-----|-------|----|---------|-----|
+| User | fun(id: Long, username: String, email: String, active: Boolean) | pub | 8-13 | 1 | - | - |
+| display | fun(): String | pub | 16-16 | 1 | - | - |
+| summary | fun(): String | pub | 18-20 | 1 | - | - |
+| Success | fun(data: T) | pub | 24-24 | 1 | - | - |
+| Error | fun(message: String) | pub | 25-25 | 1 | - | - |
+| UserManager | fun(db: Any?) | pub | 28-28 | 1 | - | - |
+| getUser | fun(id: Long): User? | pub | 33-35 | 2 | - | - |
+| fetchUserAsync | fun(id: Long): Result<User> | pub | 37-40 | 1 | - | - |
+| display | fun(): String | pub | 42-44 | 1 | - | - |
+| toTitleCase | fun(): String | pub | 52-54 | 2 | - | - |
+| get | fun(): String | pub | 59-59 | 1 | - | - |
+| main | fun(args: Array<String>) | pub | 62-65 | 1 | - | - |
 
 ## Properties
 | Name | Type | Vis | Kind | Line | Doc |

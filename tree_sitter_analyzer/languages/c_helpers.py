@@ -28,6 +28,7 @@ from ._c_type_definition_helpers import (
 from ._c_type_definition_helpers import (
     extract_struct_definition as _extract_struct_definition_impl,
 )
+from ._complexity_logical import is_executable_logical_operator
 
 
 # Extract elements from AST: extract_c_imports
@@ -127,20 +128,35 @@ def extract_macro_function(
 
 def calculate_complexity(node: Any) -> int:
     """Calculate cyclomatic complexity."""
+    # A switch counts ONCE (the "switch_statement" node), per the cross-language
+    # construct-once convention. "case_statement" is excluded — counting each
+    # case (and default) on top of the switch over-counted C relative to every
+    # other language.
     decision_nodes = {
         "if_statement",
         "while_statement",
         "for_statement",
         "switch_statement",
-        "case_statement",
         "conditional_expression",
         "do_statement",
     }
+    # "&&"/"||" in a preprocessor "#if A && B" condition or a "_Static_assert"
+    # is compile-time, not executable control flow, and must not be counted.
+    non_executable_anchors = frozenset(
+        {"preproc_if", "preproc_elif", "static_assert_declaration"}
+    )
 
     def count_decisions(n: Any) -> int:
         count = 0
-        if hasattr(n, "type") and n.type in decision_nodes:
+        n_type = getattr(n, "type", None)
+        if n_type in decision_nodes:
             count += 1
+        elif n_type in ("&&", "||"):
+            # Short-circuit boolean operators each add a decision point when
+            # they drive executable control flow, matching the Go/Rust/Swift
+            # convention.
+            if is_executable_logical_operator(n, non_executable_anchors):
+                count += 1
         if hasattr(n, "children"):
             try:
                 for child in n.children:

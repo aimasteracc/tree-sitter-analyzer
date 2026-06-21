@@ -94,7 +94,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `codegraph_import_graph` | `--import-graph` | File-level import dependency graph |
 | `codegraph_xref` | `--codegraph-xref` | Multi-dimension cross-reference from AST cache |
 | `codegraph_similarity` | `--code-similarity` | AST-structural clone detection |
-| `codegraph_visualize` | `--codegraph-visualize` | Export call graph as Mermaid flowchart |
+| `codegraph_visualize` | `--codegraph-visualize` | Export call graph as Mermaid flowchart or Graphology/Sigma.js JSON |
 | `codegraph_uml` | `--uml` | Export UML-style Mermaid diagrams (class/package/component/sequence/activity). `activity` builds a control-flow graph by re-parsing the source file at query time (one disk read + tree-sitter parse; requires `function_name` + `file_path`). |
 | **CodeGraph parity — cache/index** | | |
 | `codegraph_status` | `--codegraph-status` | INDEX HEALTH at-a-glance (indexed?, files, symbols, lag) |
@@ -113,7 +113,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 4. Add tests:
    - Tool envelope contract: `tests/unit/mcp/tools/test_tool_response_contract.py`
    - CLI equivalence: `tests/unit/cli/test_mcp_commands.py`
-   - Agent contracts: `tests/unit/test_agent_contracts.py`
+   - Agent contracts: `tests/contracts/test_mcp_cli_parity_contract.py`
 5. Default to `output_format="toon"` — never flip to JSON (see `CLAUDE.md`).
 
 ## Tool Response Envelope (canonical)

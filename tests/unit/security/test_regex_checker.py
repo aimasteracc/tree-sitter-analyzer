@@ -191,21 +191,22 @@ class TestCheckDangerousPatterns:
         """检测嵌套加号量词"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(a+)+")
-        assert result is not None
+        assert result in checker.DANGEROUS_PATTERNS
         assert "+" in result
 
     def test_check_dangerous_patterns_nested_star(self):
         """检测嵌套星号量词"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(a*)*")
-        assert result is not None
+        assert result in checker.DANGEROUS_PATTERNS
         assert "*" in result
 
     def test_check_dangerous_patterns_alternation_overlap(self):
         """检测交替重叠"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(a|a)*")
-        assert result is not None
+        assert result in checker.DANGEROUS_PATTERNS
+        assert r"\*" in result
 
     def test_check_dangerous_patterns_backreference(self):
         """检测反向引用"""
@@ -220,25 +221,29 @@ class TestCheckDangerousPatterns:
         """检测前瞻断言"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(?=.*)+")
-        assert result is not None
+        assert result in checker.DANGEROUS_PATTERNS
+        assert "+" in result
 
     def test_check_dangerous_patterns_lookbehind(self):
         """检测后顾断言"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(?<=.*)+")
-        assert result is not None
+        assert result in checker.DANGEROUS_PATTERNS
+        assert "+" in result
 
     def test_check_dangerous_patterns_negative_lookahead(self):
         """检测负向前瞻"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(?!.*)+")
-        assert result is not None
+        assert result in checker.DANGEROUS_PATTERNS
+        assert "+" in result
 
     def test_check_dangerous_patterns_negative_lookbehind(self):
         """检测负向后顾"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(?<!.*)+")
-        assert result is not None
+        assert result in checker.DANGEROUS_PATTERNS
+        assert "+" in result
 
     def test_check_dangerous_patterns_invalid_dangerous_pattern(self):
         """测试无效的危险模式处理"""
@@ -263,26 +268,25 @@ class TestCheckCompilation:
         """测试无效模式编译"""
         checker = RegexSafetyChecker()
         result = checker._check_compilation(r"[invalid(regex")
-        assert result is not None
-        assert "unterminated" in result.lower() or "missing" in result.lower()
+        assert result == "unterminated character set at position 0"
 
     def test_check_compilation_unclosed_bracket(self):
         """测试未闭合的方括号"""
         checker = RegexSafetyChecker()
         result = checker._check_compilation(r"[a-z")
-        assert result is not None
+        assert result == "unterminated character set at position 0"
 
     def test_check_compilation_unclosed_paren(self):
         """测试未闭合的圆括号"""
         checker = RegexSafetyChecker()
         result = checker._check_compilation(r"(test")
-        assert result is not None
+        assert result == "missing ), unterminated subpattern at position 0"
 
     def test_check_compilation_invalid_quantifier(self):
         """测试无效量词"""
         checker = RegexSafetyChecker()
         result = checker._check_compilation(r"a{10,5}")
-        assert result is not None
+        assert result == "min repeat greater than max repeat at position 2"
 
 
 class TestCheckPerformance:
@@ -413,15 +417,13 @@ class TestSuggestSaferPattern:
         """测试嵌套加号量词的建议"""
         checker = RegexSafetyChecker()
         result = checker.suggest_safer_pattern(r"(a+)+")
-        assert result is not None
-        assert "[^\\s]+" in result or "[^\\\\s]+" in result
+        assert result == "[^\\s]+"
 
     def test_suggest_safer_pattern_nested_star(self):
         """测试嵌套星号量词的建议"""
         checker = RegexSafetyChecker()
         result = checker.suggest_safer_pattern(r"(a*)*")
-        assert result is not None
-        assert "[^\\s]*" in result or "[^\\\\s]*" in result
+        assert result == "[^\\s]*"
 
     def test_suggest_safer_pattern_no_suggestion(self):
         """测试无建议的情况"""
@@ -434,7 +436,7 @@ class TestSuggestSaferPattern:
         """测试部分匹配的建议"""
         checker = RegexSafetyChecker()
         result = checker.suggest_safer_pattern(r"prefix(a+)+suffix")
-        assert result is not None
+        assert result == "prefix[^\\s]+suffix"
 
 
 class TestGetSafeFlags:
@@ -444,7 +446,6 @@ class TestGetSafeFlags:
         """测试获取安全标志"""
         checker = RegexSafetyChecker()
         flags = checker.get_safe_flags()
-        assert flags is not None
         assert isinstance(flags, int)
         assert flags & re.MULTILINE != 0
         assert flags & re.DOTALL != 0
@@ -457,15 +458,16 @@ class TestCreateSafePattern:
         """测试创建安全模式"""
         checker = RegexSafetyChecker()
         pattern = checker.create_safe_pattern(r"test.*pattern")
-        assert pattern is not None
         assert isinstance(pattern, re.Pattern)
+        assert pattern.pattern == r"test.*pattern"
 
     def test_create_safe_pattern_with_flags(self):
         """测试带标志创建安全模式"""
         checker = RegexSafetyChecker()
         pattern = checker.create_safe_pattern(r"test.*pattern", flags=re.IGNORECASE)
-        assert pattern is not None
         assert isinstance(pattern, re.Pattern)
+        assert pattern.pattern == r"test.*pattern"
+        assert pattern.flags & re.IGNORECASE
 
     def test_create_safe_pattern_dangerous(self):
         """测试创建危险模式返回 None"""

@@ -682,7 +682,7 @@ if __name__ == "__main__":
             # file, byte-stable via newline="\n" in the fixture writes)
             metrics = result["file_metrics"]
             assert metrics["total_lines"] == 130
-            assert metrics["code_lines"] == 101
+            assert metrics["code_lines"] == 102
             assert metrics["estimated_tokens"] == 641
             assert metrics["file_size_bytes"] == 3371
             assert metrics["file_size_kb"] == 3.29

@@ -39,6 +39,10 @@ TYPE_SUFFIX_LANGUAGES = {
     "rb",
 }
 
+# Go params are name-before-type with a space separator and no colon:
+# "n int64", "config *Config", "numbers ...int".
+GO_LANGUAGES = {"go"}
+
 PACKAGED_LANGUAGES = {"java", "kotlin", "scala", "csharp", "cpp", "c++"}
 STRUCTURE_SQL_ELEMENT_TYPES = {
     ELEMENT_TYPE_SQL_TABLE,
@@ -317,9 +321,30 @@ def _process_single_parameter(param: Any, language: str) -> dict[str, str]:
         return {"name": str(param), "type": "Any"}
 
     stripped = param.strip()
-    if language.lower() in TYPE_SUFFIX_LANGUAGES:
+    lang = language.lower()
+    if lang in GO_LANGUAGES:
+        return _process_go_parameter(stripped)
+    if lang in TYPE_SUFFIX_LANGUAGES:
         return _process_type_suffix_parameter(stripped)
     return _process_type_prefix_parameter(stripped)
+
+
+def _process_go_parameter(param: str) -> dict[str, str]:
+    """Process a Go parameter string: name-before-type, space-separated.
+
+    Go syntax: ``n int64``, ``config *Config``, ``numbers ...int``.
+    The name is the first whitespace-delimited token; everything after
+    the first space is the type (handles multi-word types like ``[]byte``).
+    """
+    first_space = param.find(" ")
+    if first_space == -1:
+        # No space — bare name with no type (unnamed parameter or type-only)
+        return {"name": param, "type": "Any"}
+    name = param[:first_space].strip()
+    param_type = param[first_space + 1 :].strip()
+    if not name or not param_type:
+        return {"name": param, "type": "Any"}
+    return {"name": name, "type": param_type}
 
 
 def _process_type_suffix_parameter(param: str) -> dict[str, str]:

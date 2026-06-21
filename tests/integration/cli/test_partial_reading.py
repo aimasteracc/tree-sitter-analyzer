@@ -160,7 +160,7 @@ def test_read_from_line_10_to_end(test_file):
 
     assert result is not None
     lines = result.split("\n")
-    assert len(lines) > 15  # Should have multiple lines
+    assert len(lines) > 15  # Should have multiple lines  # ratchet: nondeterministic
     assert "public String getName()" in result
     assert "return name" in result
     assert len(result) == 366

@@ -292,6 +292,12 @@ def _query_imports(runtime: ImportExtractionRuntime, language: Any) -> list[Impo
             fallback_result=[],
         )
         _extend_imports_from_captures(runtime, captures, imports)
+        if not imports:
+            imports.extend(
+                runtime.extract_imports_manual(
+                    runtime.tree.root_node, runtime.source_code
+                )
+            )
     except Exception as query_error:
         runtime.log_debug_fn(
             f"Query execution failed, using manual extraction: {query_error}"

@@ -97,6 +97,53 @@ def test_class_hierarchy_summary_cli(monkeypatch) -> None:
     }
 
 
+def test_code_similarity_cli_passes_path_filter(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+
+    class FakeCodeGraphSimilarityTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "toon_content": "similarity"}
+
+    monkeypatch.setattr(
+        mcp_commands, "CodeGraphSimilarityTool", FakeCodeGraphSimilarityTool
+    )
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(
+            code_similarity=True,
+            code_similarity_mode="structural",
+            code_similarity_min_lines=12,
+            code_similarity_min_group=3,
+            code_similarity_max_groups=7,
+            code_similarity_no_cache=True,
+            code_similarity_include_bodies=True,
+            code_similarity_path_filter="tests/unit/languages/**",
+        ),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {
+            "mode": "structural",
+            "min_lines": 12,
+            "min_group_size": 3,
+            "max_groups": 7,
+            "use_cache": False,
+            "include_bodies": True,
+            "path_filter": "tests/unit/languages/**",
+            "output_format": "json",
+        },
+    }
+
+
 def test_class_hierarchy_subclasses_cli(monkeypatch) -> None:
     seen: dict[str, Any] = {}
 

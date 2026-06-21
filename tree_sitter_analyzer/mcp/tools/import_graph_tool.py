@@ -178,7 +178,7 @@ class CodeGraphImportGraphTool(BaseMCPTool):
 
         elif mode == "blast_radius":
             file_path = arguments["file_path"]
-            max_depth = arguments.get("max_depth", 10)
+            max_depth = int(arguments.get("max_depth", 10))
             resolved = self.resolve_and_validate_file_path(file_path)
             radius = graph.blast_radius(resolved, max_depth=max_depth)
             affected = radius.get("affected_files", [])

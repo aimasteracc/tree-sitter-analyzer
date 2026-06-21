@@ -13,4 +13,4 @@
 | UserService | (UserRepository):void | + | 10-12 | 1 | - |
 | findUserById | (Long):User | + | 14-19 | 2 | - |
 | createUser | (S,S):User | + | 21-25 | 1 | - |
-| validateUser | (User):b | - | 27-35 | 3 | - |
+| validateUser | (User):b | - | 27-35 | 5 | - |

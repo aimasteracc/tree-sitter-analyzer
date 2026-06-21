@@ -18,7 +18,7 @@
 | DisplayName | ():string | + | 32-32 | 1 | - |
 | User | (string,string,string):void | + | 35-41 | 1 | - |
 | UpdateEmail | (string):void | + | 44-52 | 2 | - |
-| IsValid | ():bool | + | 54-59 | 1 | - |
+| IsValid | ():bool | + | 54-59 | 3 | - |
 | ToString | ():string | + | 61-64 | 1 | - |
 | GetById | (i):User | + | 72-72 | 1 | - |
 | GetAll | ():IEnumerable<User> | + | 73-73 | 1 | - |

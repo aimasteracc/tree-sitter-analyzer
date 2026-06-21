@@ -30,7 +30,7 @@
 | name | ():str | + | 106-106 | 1 | - |
 | width | ():d | + | 109-109 | 1 | - |
 | height | ():d | + | 110-110 | 1 | - |
-| operator== | (const Rectangle&):b | + | 113-115 | 1 | - |
+| operator== | (const Rectangle&):b | + | 113-115 | 2 | - |
 | square | (d):Rectangle | + | 118-120 | 1 | - |
 | print | ():void | + | 136-136 | 1 | - |
 | ~Printable | ():void | + | 137-137 | 1 | - |

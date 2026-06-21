@@ -167,7 +167,7 @@ def test_backend_semantic_symbols_rank_token_vector_matches() -> None:
     results = backend.semantic_symbols("user formatting", limit=3)
 
     assert results[0]["name"] == "format_user"
-    assert results[0]["semantic_score"] > 0
+    assert results[0]["semantic_score"]
 
 
 def test_backend_semantic_symbols_maps_semantic_score_to_confidence() -> None:
@@ -198,7 +198,7 @@ def test_backend_semantic_symbols_maps_semantic_score_to_confidence() -> None:
 
     results = backend.semantic_symbols("handle request", limit=3)
 
-    assert len(results) >= 1
+    assert results
     for r in results:
         assert "confidence" in r, (
             "semantic_symbols must map semantic_score → confidence"

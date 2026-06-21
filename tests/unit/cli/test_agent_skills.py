@@ -71,7 +71,7 @@ def test_agent_skills_inventory_exposes_decision_fields(tmp_path):
     assert skill["model_invocation_enabled"] is True
     assert skill["ready_for_use"] is True
     assert skill["actionability"] == "ready"
-    assert skill["actionability_score"] >= 85
+    assert skill["actionability_score"] >= 85  # ratchet: nondeterministic
     assert skill["completion_guidance_present"] is True
     assert skill["scripts"] == [".agents/skills/triage/scripts/helper.sh"]
     assert skill["requires_context"] == ["issue_tracker", "triage_labels"]

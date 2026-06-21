@@ -9,7 +9,6 @@ from tree_sitter_analyzer.formatters._php_formatter_helpers import (
 
 
 class TestGetVisibilitySymbol:
-
     def test_public(self):
         assert get_visibility_symbol("public") == "+"
 
@@ -30,7 +29,6 @@ class TestGetVisibilitySymbol:
 
 
 class TestFormatSignature:
-
     def test_no_params(self):
         method = {"parameters": [], "return_type": "void"}
         assert format_signature(method) == "():void"
@@ -82,7 +80,6 @@ class TestFormatSignature:
 
 
 class TestFormatCompactSignature:
-
     def test_dict_params(self):
         method = {
             "parameters": [{"name": "x", "type": "int"}],
@@ -107,13 +104,8 @@ class TestFormatCompactSignature:
 
 
 class TestExtractNamespace:
-
     def test_from_full_qualified_name(self):
-        data = {
-            "classes": [
-                {"full_qualified_name": "App\\Services\\UserService"}
-            ]
-        }
+        data = {"classes": [{"full_qualified_name": "App\\Services\\UserService"}]}
         assert extract_namespace(data) == "App\\Services"
 
     def test_from_metadata(self):
@@ -147,7 +139,6 @@ class TestExtractNamespace:
 
 
 class TestFormatFullTable:
-
     def test_empty_data(self):
         result = format_full_table({})
         assert isinstance(result, str)
@@ -390,7 +381,9 @@ class TestFormatFullTable:
         result = format_full_table(data)
         assert "User::getName" in result
 
-    def test_no_module_functions_without_classes(self):
+    def test_top_level_functions_rendered_without_classes(self):
+        # Regression: when classes=[], top-level functions MUST still produce a
+        # "## Functions" section (the old code had `if not classes: return`).
         data = {
             "file_path": "test.php",
             "classes": [],
@@ -401,16 +394,60 @@ class TestFormatFullTable:
                     "return_type": "void",
                     "visibility": "public",
                     "line_range": {"start": 1, "end": 5},
+                    "complexity_score": 1,
                 }
             ],
             "fields": [],
+            "imports": [],
         }
         result = format_full_table(data)
-        assert "## Functions" not in result
+        assert "## Functions" in result
+        assert "standalone" in result
+
+    def test_top_level_functions_exact_row_format(self):
+        # Pin exact row content for binary_search_iterative (cx=4) and greet (cx=1)
+        # so any formatter regression turns red immediately.
+        data = {
+            "file_path": "php_fns.php",
+            "classes": [],
+            "methods": [
+                {
+                    "name": "binary_search_iterative",
+                    "parameters": [
+                        {"name": "list", "type": "mixed"},
+                        {"name": "target", "type": "mixed"},
+                    ],
+                    "return_type": "mixed",
+                    "visibility": "public",
+                    "line_range": {"start": 2, "end": 11},
+                    "complexity_score": 4,
+                },
+                {
+                    "name": "greet",
+                    "parameters": [{"name": "name", "type": "mixed"}],
+                    "return_type": "mixed",
+                    "visibility": "public",
+                    "line_range": {"start": 12, "end": 12},
+                    "complexity_score": 1,
+                },
+            ],
+            "fields": [],
+            "imports": [],
+        }
+        result = format_full_table(data)
+        # Header row
+        assert "## Functions" in result
+        assert "| Method | Signature | Vis | Lines | Cx | Doc |" in result
+        # binary_search_iterative: exact complexity pin = 4
+        assert (
+            "| binary_search_iterative | ($list:mixed, $target:mixed):mixed | + | 2-11 | 4 | - |"
+            in result
+        )
+        # greet: exact complexity pin = 1
+        assert "| greet | ($name:mixed):mixed | + | 12-12 | 1 | - |" in result
 
 
 class TestFormatCompactTable:
-
     def test_empty_data(self):
         result = format_compact_table({})
         assert "# " in result

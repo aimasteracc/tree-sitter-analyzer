@@ -544,7 +544,7 @@ uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing
 uv run pytest tests/ -m regression
 
 # 运行基准测试
-uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0
+uv run pytest tests/benchmarks/ -m benchmark --benchmark-enable --benchmark-only -n 0 --session-timeout=0
 
 # 运行属性测试
 uv run pytest tests/property/

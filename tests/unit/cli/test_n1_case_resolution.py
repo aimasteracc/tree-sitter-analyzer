@@ -181,6 +181,8 @@ class TestN1DuplicateCaseFlagsEmitWarning:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
             cwd=PROJECT_ROOT,
         )

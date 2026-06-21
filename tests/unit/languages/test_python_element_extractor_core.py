@@ -426,41 +426,39 @@ def __magic_method__(self, other):
         assert result2 == "Test docstring"
 
     def test_calculate_complexity_optimized(self, extractor):
-        """Test complexity calculation"""
-        mock_node = Mock()
-        node_id = id(mock_node)
+        """Complexity is an AST-node walk over a real parse, not a text count."""
+        import tree_sitter
+        import tree_sitter_python
 
-        # Test simple function
-        with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:
-            mock_get_text.return_value = "def simple_function(): return True"
+        def _func_node(src: str):
+            lang = tree_sitter.Language(tree_sitter_python.language())
+            tree = tree_sitter.Parser(lang).parse(src.encode())
+            stack = [tree.root_node]
+            while stack:
+                n = stack.pop()
+                if n.type == "function_definition":
+                    return n
+                stack.extend(n.children)
+            raise AssertionError("no function")
 
-            result = extractor._calculate_complexity_optimized(mock_node)
-            assert result == 1  # Base complexity
-            assert node_id in extractor._complexity_cache
+        simple = _func_node("def simple_function():\n    return True\n")
+        assert extractor._calculate_complexity_optimized(simple) == 1
+        assert id(simple) in extractor._complexity_cache
 
-        # Test complex function with different mock node
-        complex_mock_node = Mock()
-        complex_code = """
-        def complex_function(x):
-            if x > 0:
-                for i in range(x):
-                    if i % 2 == 0:
-                        while i > 0:
-                            try:
-                                result = i / 2
-                            except ZeroDivisionError:
-                                pass
-                            i -= 1
-            elif x < 0:
-                pass
-            return x
-        """
-
-        with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:
-            mock_get_text.return_value = complex_code
-
-            result = extractor._calculate_complexity_optimized(complex_mock_node)
-            assert (
-                result >= 5
-            )  # Should have higher complexity (if, for, if, while, try, elif)
-
+        # if + for + if + while + except + elif = 6 decisions → 7
+        complex_src = (
+            "def complex_function(x):\n"
+            "    if x > 0:\n"
+            "        for i in range(x):\n"
+            "            if i % 2 == 0:\n"
+            "                while i > 0:\n"
+            "                    try:\n"
+            "                        result = i / 2\n"
+            "                    except ZeroDivisionError:\n"
+            "                        pass\n"
+            "                    i -= 1\n"
+            "    elif x < 0:\n"
+            "        pass\n"
+            "    return x\n"
+        )
+        assert extractor._calculate_complexity_optimized(_func_node(complex_src)) == 7

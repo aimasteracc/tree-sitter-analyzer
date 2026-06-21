@@ -80,8 +80,8 @@ class RustTableFormatter(BaseTableFormatter):
         fns = data.get("methods", [])
         if fns:
             lines.append("## Functions")
-            lines.append("| Function | Signature | Vis | Async | Lines | Doc |")
-            lines.append("|----------|-----------|-----|-------|-------|-----|")
+            lines.append("| Function | Signature | Vis | Async | Lines | Cx | Doc |")
+            lines.append("|----------|-----------|-----|-------|-------|----|-----|")
 
             for fn in fns:
                 lines.append(self._format_fn_row(fn))
@@ -158,17 +158,41 @@ class RustTableFormatter(BaseTableFormatter):
         is_async = "Yes" if fn.get("is_async", False) else "-"
         line_range = fn.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        complexity = fn.get("complexity_score", 1)
         doc = self._clean_csv_text(
             self._extract_doc_summary(str(fn.get("docstring", "") or ""))
         )
 
-        return f"| {name} | {signature} | {visibility} | {is_async} | {lines_str} | {doc} |"
+        return (
+            f"| {name} | {signature} | {visibility} | {is_async} "
+            f"| {lines_str} | {complexity} | {doc} |"
+        )
+
+    @staticmethod
+    def _format_rust_param(param: Any) -> str:
+        """Render one Rust parameter as proper Rust syntax (never a raw dict repr).
+
+        Handles three cases:
+        - Receiver params (``self`` / ``&self`` / ``&mut self``): the extractor
+          sets ``type`` to the placeholder ``'Any'``; render as the bare name only.
+        - Typed dict ``{"name": "value", "type": "&T"}`` → ``"value: &T"``.
+        - String (already formatted by the extractor) → pass through unchanged.
+        """
+        if isinstance(param, dict):
+            name = param.get("name", "")
+            ptype = param.get("type", "")
+            # Receiver params and Any-typed params: return bare name
+            if ptype in ("Any", "", None) or name in ("self", "&self", "&mut self"):
+                return name or ptype or str(param)
+            if name and ptype:
+                return f"{name}: {ptype}"
+            return name or ptype or str(param)
+        return str(param)
 
     def _create_full_signature(self, fn: dict[str, Any]) -> str:
         """Create full function signature for Rust"""
         params = fn.get("parameters", [])
-        # Rust parameters are usually strings like "x: i32", keep them as is or simplify
-        params_str = ", ".join([str(p) for p in params])
+        params_str = ", ".join(self._format_rust_param(p) for p in params)
         return_type = fn.get("return_type", "")
         ret_str = f" -> {return_type}" if return_type and return_type != "()" else ""
 
@@ -217,10 +241,15 @@ class RustTableFormatter(BaseTableFormatter):
         return self._format_compact_table(analysis_result)
 
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
-        """Format structure analysis output for Rust"""
-        if self.format_type == "compact":
-            return self._format_compact_table(analysis_result)
-        return self._format_full_table(analysis_result)
+        """Format structure analysis output for Rust.
+
+        Delegates to the base dispatcher (like Go) so every format type is
+        handled consistently: full/compact/csv render, and an unsupported
+        type such as ``signatures`` raises the enumerable "supported
+        languages" error instead of silently falling through to the full
+        table.
+        """
+        return super().format_structure(analysis_result)
 
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"

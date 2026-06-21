@@ -28,7 +28,7 @@ import json
 import logging
 import os
 import sqlite3
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -225,17 +225,4 @@ class HealthScoreCache:
             "entries": int(row[0] or 0),
             "last_cached_at": row[1],
             "db_path": self._db_path,
-        }
-
-
-def score_to_dict(score: Any) -> dict[str, Any]:
-    """Best-effort serialize a HealthScore into the cache row schema."""
-    try:
-        return asdict(score)
-    except TypeError:
-        return {
-            "file_path": getattr(score, "file_path", ""),
-            "total": getattr(score, "total", 0.0),
-            "grade": getattr(score, "grade", "F"),
-            "dimensions": getattr(score, "dimensions", {}),
         }

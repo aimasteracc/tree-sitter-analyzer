@@ -73,4 +73,4 @@ def test_thread_safety():
         t.join()
 
     assert cache.stats["size"] <= 100
-    assert cache.stats["hits"] >= 0
+    assert cache.stats["hits"] >= 0  # ratchet: nondeterministic

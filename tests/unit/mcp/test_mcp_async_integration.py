@@ -594,12 +594,12 @@ class Class_{i}:
                 # ファイルが作成されることを確認
                 output_path = Path(output_file)
                 if output_path.exists():
-                    assert output_path.stat().st_size > 0
+                    assert output_path.stat().st_size
 
                     # ファイル内容の確認
                     with open(output_file) as f:
                         content = f.read()
-                        assert len(content) > 0
+                        assert content
 
                         # JSON形式の場合
                         try:

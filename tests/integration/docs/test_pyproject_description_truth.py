@@ -11,7 +11,7 @@ a public credibility surface. This test pins three invariants:
 3. The legacy ``63 MCP tools`` count (pre-facade consolidation) is gone.
 
 If the facade count changes, update the description and this test together —
-the same discipline ``test_agent_contracts`` applies to the 8-facade surface.
+the same discipline in the split contract suites applies to the 8-facade surface.
 """
 
 import re

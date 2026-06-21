@@ -17,6 +17,7 @@ CodeGraph parity: equivalent to CodeGraph's code similarity / clone detection.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import os
 import re
@@ -178,11 +179,46 @@ def _read_file_content(path: str) -> str | None:
         return None
 
 
+def _source_hash(source: str) -> str:
+    """Return the same content hash format used by the AST cache."""
+    return hashlib.sha256(source.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _split_path_filter(path_filter: str | None) -> tuple[str, ...]:
+    """Return normalized glob patterns from a comma/semicolon separated filter."""
+    if not path_filter:
+        return ()
+    raw_patterns = re.split(r"[;,]", path_filter)
+    return tuple(
+        pattern.strip().replace("\\", "/")
+        for pattern in raw_patterns
+        if pattern.strip()
+    )
+
+
+def _matches_path_filter(file_path: str, path_filter: str | None) -> bool:
+    """Return True when file_path is allowed by the optional glob filter."""
+    patterns = _split_path_filter(path_filter)
+    if not patterns:
+        return True
+
+    normalized = file_path.replace("\\", "/")
+    for pattern in patterns:
+        if fnmatch.fnmatch(normalized, pattern):
+            return True
+        if not any(ch in pattern for ch in "*?[]"):
+            prefix = pattern.rstrip("/")
+            if normalized == prefix or normalized.startswith(prefix + "/"):
+                return True
+    return False
+
+
 def _extract_function_bodies(
     project_root: str,
     *,
     min_lines: int = 5,
     max_files: int = 1000,
+    path_filter: str | None = None,
 ) -> list[tuple[str, str, int, int, str, str]]:
     """Extract function bodies from source files.
 
@@ -205,6 +241,8 @@ def _extract_function_bodies(
 
             abs_path = os.path.join(dirpath, fname)
             rel_path = os.path.relpath(abs_path, root)
+            if not _matches_path_filter(rel_path, path_filter):
+                continue
             file_count += 1
             if file_count > max_files:
                 return results
@@ -277,6 +315,7 @@ def detect_structural_clones(
     min_group_size: int = 2,
     max_files: int = 1000,
     max_groups: int = 30,
+    path_filter: str | None = None,
 ) -> list[SimilarityGroup]:
     """Find functions with identical AST structure.
 
@@ -285,7 +324,10 @@ def detect_structural_clones(
     but potentially different identifier names.
     """
     functions = _extract_function_bodies(
-        project_root, min_lines=min_lines, max_files=max_files
+        project_root,
+        min_lines=min_lines,
+        max_files=max_files,
+        path_filter=path_filter,
     )
     if not functions:
         return []
@@ -337,6 +379,7 @@ def detect_textual_clones(
     min_group_size: int = 2,
     max_files: int = 1000,
     max_groups: int = 30,
+    path_filter: str | None = None,
 ) -> list[SimilarityGroup]:
     """Find functions with nearly identical normalized text.
 
@@ -344,7 +387,10 @@ def detect_textual_clones(
     copy-paste duplicates where only identifier names differ.
     """
     functions = _extract_function_bodies(
-        project_root, min_lines=min_lines, max_files=max_files
+        project_root,
+        min_lines=min_lines,
+        max_files=max_files,
+        path_filter=path_filter,
     )
     if not functions:
         return []
@@ -385,6 +431,7 @@ def _extract_cached_functions(
     cache: Any,
     project_root: str,
     min_lines: int = 5,
+    path_filter: str | None = None,
 ) -> list[tuple[str, str, int, int, str, str]]:
     """Extract function bodies using pre-indexed AST cache.
 
@@ -415,6 +462,8 @@ def _extract_cached_functions(
 
     for func in functions:
         file_rel = func["file"]
+        if not _matches_path_filter(file_rel, path_filter):
+            continue
         start_line = func.get("line", 0)
         end_line = func.get("end_line", 0)
         if end_line == 0:
@@ -428,6 +477,10 @@ def _extract_cached_functions(
             content = _read_file_content(abs_path)
             if content is None:
                 continue
+            file_meta = rows_by_file.get(file_rel) or {}
+            indexed_hash = file_meta.get("content_hash")
+            if indexed_hash and indexed_hash != _source_hash(content):
+                return []
             file_sources[file_rel] = content
 
         source = file_sources.get(file_rel)
@@ -454,6 +507,7 @@ def detect_structural_clones_cached(
     min_lines: int = 5,
     min_group_size: int = 2,
     max_groups: int = 30,
+    path_filter: str | None = None,
 ) -> list[SimilarityGroup]:
     """Find structural clones using pre-indexed AST cache (no re-parsing).
 
@@ -463,13 +517,16 @@ def detect_structural_clones_cached(
 
     CodeGraph parity: instant clone detection from pre-indexed data.
     """
-    functions = _extract_cached_functions(cache, project_root, min_lines)
+    functions = _extract_cached_functions(
+        cache, project_root, min_lines, path_filter=path_filter
+    )
     if not functions:
         return detect_structural_clones(
             project_root,
             min_lines=min_lines,
             min_group_size=min_group_size,
             max_groups=max_groups,
+            path_filter=path_filter,
         )
 
     parser = Parser()
@@ -519,6 +576,7 @@ def detect_textual_clones_cached(
     min_lines: int = 5,
     min_group_size: int = 2,
     max_groups: int = 30,
+    path_filter: str | None = None,
 ) -> list[SimilarityGroup]:
     """Find textual clones using pre-indexed AST cache (no parsing at all).
 
@@ -528,13 +586,16 @@ def detect_textual_clones_cached(
 
     CodeGraph parity: instant clone detection from pre-indexed data.
     """
-    functions = _extract_cached_functions(cache, project_root, min_lines)
+    functions = _extract_cached_functions(
+        cache, project_root, min_lines, path_filter=path_filter
+    )
     if not functions:
         return detect_textual_clones(
             project_root,
             min_lines=min_lines,
             min_group_size=min_group_size,
             max_groups=max_groups,
+            path_filter=path_filter,
         )
 
     fingerprint_map: dict[str, list[SimilarFunction]] = defaultdict(list)
@@ -578,6 +639,7 @@ def analyze_code_similarity(
     max_files: int = 1000,
     max_groups: int = 30,
     use_cache: bool = True,
+    path_filter: str | None = None,
 ) -> SimilarityResult:
     """Comprehensive code similarity analysis.
 
@@ -593,6 +655,7 @@ def analyze_code_similarity(
         max_files: Maximum source files to scan (fallback only).
         max_groups: Maximum similarity groups to return.
         use_cache: Use pre-indexed AST cache for instant detection.
+        path_filter: Optional glob or comma-separated globs limiting files.
 
     Returns:
         SimilarityResult with grouped similar functions.
@@ -620,6 +683,7 @@ def analyze_code_similarity(
                 min_lines=min_lines,
                 min_group_size=min_group_size,
                 max_groups=max_groups,
+                path_filter=path_filter,
             )
         else:
             structural = detect_structural_clones(
@@ -628,6 +692,7 @@ def analyze_code_similarity(
                 min_group_size=min_group_size,
                 max_files=max_files,
                 max_groups=max_groups,
+                path_filter=path_filter,
             )
         all_groups.extend(structural)
 
@@ -639,6 +704,7 @@ def analyze_code_similarity(
                 min_lines=min_lines,
                 min_group_size=min_group_size,
                 max_groups=max_groups,
+                path_filter=path_filter,
             )
         else:
             textual = detect_textual_clones(
@@ -647,6 +713,7 @@ def analyze_code_similarity(
                 min_group_size=min_group_size,
                 max_files=max_files,
                 max_groups=max_groups,
+                path_filter=path_filter,
             )
         seen_fps: set[str] = set()
         for g in textual:
@@ -668,5 +735,6 @@ def analyze_code_similarity(
             "mode": mode,
             "min_lines": min_lines,
             "cache_used": cached,
+            "path_filter": path_filter or "",
         },
     )

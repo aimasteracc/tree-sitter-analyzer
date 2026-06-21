@@ -125,6 +125,14 @@ repos:
   # Workflow consistency tests
   - repo: local
     hooks:
+      - id: weak-assertion-ratchet
+        name: Weak Assertion Ratchet
+        entry: uv run python scripts/check_loose_assertions.py --staged
+        language: system
+        pass_filenames: false
+        files: ^tests/.*\.py$
+        stages: [pre-commit]
+
       - id: workflow-consistency-tests
         name: Workflow Consistency Tests
         entry: uv run pytest tests/integration/workflows/test_workflow_properties.py -v --tb=short

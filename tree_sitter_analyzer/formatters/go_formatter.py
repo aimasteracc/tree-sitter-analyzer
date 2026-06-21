@@ -84,9 +84,10 @@ class GoTableFormatter(BaseTableFormatter):
         vis = self._go_visibility(name)
         line_range = func.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        complexity = func.get("complexity_score", 1)
         doc = self._extract_doc_summary(func.get("docstring", "") or "")
 
-        return f"| {name} | {sig} | {vis} | {lines_str} | {doc or '-'} |"
+        return f"| {name} | {sig} | {vis} | {lines_str} | {complexity} | {doc or '-'} |"
 
     def _format_method_row(self, method: dict[str, Any]) -> str:
         """Format a method table row for Go (with receiver)"""
@@ -98,17 +99,16 @@ class GoTableFormatter(BaseTableFormatter):
         vis = self._go_visibility(name)
         line_range = method.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        complexity = method.get("complexity_score", 1)
         doc = self._extract_doc_summary(method.get("docstring", "") or "")
 
-        return (
-            f"| {receiver_type} | {name} | {sig} | {vis} | {lines_str} | {doc or '-'} |"
-        )
+        return f"| {receiver_type} | {name} | {sig} | {vis} | {lines_str} | {complexity} | {doc or '-'} |"
 
     def _create_go_signature(self, func: dict[str, Any]) -> str:
         """Create Go function signature"""
         params = func.get("parameters", [])
         if isinstance(params, list):
-            params_str = ", ".join(str(p) for p in params)
+            params_str = ", ".join(self._format_go_param(p) for p in params)
         else:
             params_str = str(params)
 
@@ -116,6 +116,17 @@ class GoTableFormatter(BaseTableFormatter):
         if return_type:
             return f"({params_str}) {return_type}"
         return f"({params_str})"
+
+    @staticmethod
+    def _format_go_param(param: Any) -> str:
+        """Render one Go parameter as 'name type' (never a raw dict repr)."""
+        if isinstance(param, dict):
+            name = param.get("name", "")
+            ptype = param.get("type", "")
+            if name and ptype:
+                return f"{name} {ptype}"
+            return name or ptype or str(param)
+        return str(param)
 
     def _create_go_compact_signature(self, func: dict[str, Any]) -> str:
         """Create compact Go function signature"""

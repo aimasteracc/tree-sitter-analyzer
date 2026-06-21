@@ -10,7 +10,7 @@ def test_cli_imports() -> None:
     """Test that CLI package can be imported."""
     import tree_sitter_analyzer.cli
 
-    assert tree_sitter_analyzer.cli is not None
+    assert tree_sitter_analyzer.cli.__name__ == "tree_sitter_analyzer.cli"
 
 
 def test_cli_exports() -> None:
@@ -22,29 +22,20 @@ def test_cli_exports() -> None:
     module cached with None-typed exports.
     """
     import importlib
-    import sys
-
-    # Drop any cached cli + cli_main modules so the import below
-    # re-runs cli/__init__.py and re-binds main / query_loader /
-    # get_analysis_engine to their real implementations.
-    for mod in list(sys.modules):
-        if mod.startswith("tree_sitter_analyzer.cli") or mod in (
-            "tree_sitter_analyzer.cli_main",
-            "tree_sitter_analyzer.core.analysis_engine",
-            "tree_sitter_analyzer.query_loader",
-        ):
-            sys.modules.pop(mod, None)
-
+    # Re-run cli/__init__.py without invalidating already-collected modules.
+    # Deleting cli_main or command modules makes later patch("...") calls hit
+    # freshly imported modules while tests still hold old function objects.
     cli = importlib.import_module("tree_sitter_analyzer.cli")
+    cli = importlib.reload(cli)
 
-    assert cli.DescribeQueryCommand is not None
-    assert cli.InfoCommand is not None
-    assert cli.ListQueriesCommand is not None
-    assert cli.ShowExtensionsCommand is not None
-    assert cli.ShowLanguagesCommand is not None
-    assert cli.main is not None
-    assert cli.query_loader is not None
-    assert cli.get_analysis_engine is not None
+    assert isinstance(cli.DescribeQueryCommand, type)
+    assert isinstance(cli.InfoCommand, type)
+    assert isinstance(cli.ListQueriesCommand, type)
+    assert isinstance(cli.ShowExtensionsCommand, type)
+    assert isinstance(cli.ShowLanguagesCommand, type)
+    assert callable(cli.main)
+    assert callable(cli.query_loader.list_supported_languages)
+    assert callable(cli.get_analysis_engine)
 
 
 def test_cli_all_attribute() -> None:

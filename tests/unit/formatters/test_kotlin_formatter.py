@@ -3,7 +3,25 @@
 Tests for Kotlin-specific table formatter.
 """
 
+import pytest
+
 from tree_sitter_analyzer.formatters.kotlin_formatter import KotlinTableFormatter
+
+
+class TestKotlinFormatterSignaturesUnsupported:
+    """Kotlin does not support the signatures directory mode; it must raise the
+    same enumerable error as the base/Go formatter, not silently render the
+    full table (regression: it fell through to _format_full_table)."""
+
+    def test_format_structure_signatures_raises_enumerable(self):
+        formatter = KotlinTableFormatter(format_type="signatures")
+        data = {
+            "file_path": "Example.kt",
+            "methods": [],
+            "statistics": {"method_count": 0, "field_count": 0},
+        }
+        with pytest.raises(ValueError, match="signatures format not supported"):
+            formatter.format_structure(data)
 
 
 class TestKotlinFormatterInit:
@@ -405,7 +423,7 @@ class TestKotlinFormatterFormatSummary:
             "statistics": {"method_count": 0, "field_count": 0},
         }
         result = formatter.format_summary(data)
-        assert result is not None
+        assert isinstance(result, str)
         assert "## Info" in result
 
 
@@ -423,7 +441,7 @@ class TestKotlinFormatterFormatStructure:
             "fields": [],
         }
         result = formatter.format_structure(data)
-        assert result is not None
+        assert isinstance(result, str)
         assert "Example.kt" in result
 
     def test_format_structure_compact(self):
@@ -435,7 +453,7 @@ class TestKotlinFormatterFormatStructure:
             "statistics": {"method_count": 0, "field_count": 0},
         }
         result = formatter.format_structure(data)
-        assert result is not None
+        assert isinstance(result, str)
         assert "## Info" in result
 
 
@@ -461,7 +479,7 @@ class TestKotlinFormatterFormatAdvanced:
             "fields": [],
         }
         result = formatter.format_advanced(data, "csv")
-        assert result is not None
+        assert isinstance(result, str)
 
     def test_format_advanced_default(self):
         """Test format_advanced with default output"""
@@ -474,7 +492,7 @@ class TestKotlinFormatterFormatAdvanced:
             "fields": [],
         }
         result = formatter.format_advanced(data, "full")
-        assert result is not None
+        assert isinstance(result, str)
 
 
 class TestKotlinFormatterFormatJson:
@@ -485,7 +503,7 @@ class TestKotlinFormatterFormatJson:
         formatter = KotlinTableFormatter()
         data = {"file_path": "Example.kt", "imports": []}
         result = formatter._format_json(data)
-        assert result is not None
+        assert isinstance(result, str)
         assert "Example.kt" in result
 
     def test_format_json_invalid_data(self):
@@ -495,7 +513,7 @@ class TestKotlinFormatterFormatJson:
         data = {"file_path": "Example.kt", "imports": [{"statement": object()}]}
         result = formatter._format_json(data)
         # Should handle the error gracefully
-        assert result is not None
+        assert isinstance(result, str)
 
 
 class TestKotlinFormatterEdgeCases:
@@ -512,7 +530,7 @@ class TestKotlinFormatterEdgeCases:
             "fields": [],
         }
         result = formatter.format_structure(data)
-        assert result is not None
+        assert isinstance(result, str)
 
     def test_windows_path(self):
         """Test with Windows file path"""
@@ -556,3 +574,33 @@ class TestKotlinFormatterEdgeCases:
         assert "longFunction" in result
         assert "param0" in result
         assert "param9" in result
+
+
+class TestKotlinFullTableComplexityColumn:
+    """The full table shows a Cx (cyclomatic complexity) column, matching the
+    other language formatters (Go/Java/JS/TS/Rust/C#/C++)."""
+
+    def test_full_table_has_cx_column_with_value(self):
+        formatter = KotlinTableFormatter()
+        data = {
+            "package": {"name": "demo"},
+            "file_path": "/x/Demo.kt",
+            "imports": [],
+            "classes": [],
+            "methods": [
+                {
+                    "name": "f",
+                    "visibility": "public",
+                    "line_range": {"start": 1, "end": 8},
+                    "parameters": [],
+                    "return_type": "Int",
+                    "complexity_score": 10,
+                }
+            ],
+            "fields": [],
+        }
+        result = formatter._format_full_table(data)
+        assert "| Function | Signature | Vis | Lines | Cx | Suspend | Doc |" in result
+        # The function row carries its complexity score in the Cx column.
+        f_row = next(line for line in result.splitlines() if line.startswith("| f |"))
+        assert "| 10 |" in f_row

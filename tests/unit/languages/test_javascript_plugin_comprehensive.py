@@ -19,6 +19,26 @@ from tree_sitter_analyzer.languages.javascript_plugin import (
 )
 
 
+def _js_function_node(source: str):
+    """Parse ``source`` and return its first function-ish AST node.
+
+    Complexity is computed by walking the real AST, so these tests must feed a
+    parsed node (not a mock whose text is keyword-counted).
+    """
+    import tree_sitter
+    import tree_sitter_javascript
+
+    lang = tree_sitter.Language(tree_sitter_javascript.language())
+    tree = tree_sitter.Parser(lang).parse(source.encode())
+    stack = [tree.root_node]
+    while stack:
+        n = stack.pop()
+        if n.type in ("function_declaration", "function_expression", "arrow_function"):
+            return n
+        stack.extend(n.children)
+    raise AssertionError("no function node found")
+
+
 @pytest.fixture
 def extractor():
     """Fixture to provide enhanced JavaScriptElementExtractor instance"""
@@ -198,15 +218,12 @@ class TestEnhancedJavaScriptElementExtractor:
         expected = "This is a function @param {string} name - The name parameter @returns {string} The greeting"
         assert cleaned == expected
 
-    def test_calculate_complexity_optimized(self, extractor, mocker):
-        """Test complexity calculation"""
-        mock_node = mocker.MagicMock()
-        extractor._get_node_text_optimized = mocker.MagicMock(
-            return_value="if (x) { while (y) { for (z) { } } }"
+    def test_calculate_complexity_optimized(self, extractor):
+        """AST walk: if + while + for = 3 decisions → complexity 4."""
+        node = _js_function_node(
+            "function f(x){ if (x) { while (y) { for (let z=0;;) { } } } }"
         )
-
-        complexity = extractor._calculate_complexity_optimized(mock_node)
-        assert complexity == 4  # Base 1 + if + while + for
+        assert extractor._calculate_complexity_optimized(node) == 4
 
     def test_get_variable_kind_const(self, extractor):
         """Test variable kind detection for const"""
@@ -337,35 +354,29 @@ class TestJavaScriptComplexityAnalysis:
         complexity = extractor._calculate_complexity_optimized(mock_node)
         assert complexity == 1  # Base complexity
 
-    def test_complexity_with_conditionals(self, extractor, mocker):
-        """Test complexity calculation with conditionals"""
-        mock_node = mocker.MagicMock()
-        extractor._get_node_text_optimized = mocker.MagicMock(
-            return_value="function complex(x) { if (x > 0) return x; else if (x < 0) return -x; else return 0; }"
+    def test_complexity_with_conditionals(self, extractor):
+        """if + else-if (nested if_statement) = 2 decisions → complexity 3.
+
+        ``else`` is not a decision; the old keyword-text count reported 4 by
+        counting the ``if`` substring inside ``else if``.
+        """
+        node = _js_function_node(
+            "function complex(x) { if (x > 0) return x; "
+            "else if (x < 0) return -x; else return 0; }"
         )
+        assert extractor._calculate_complexity_optimized(node) == 3
 
-        complexity = extractor._calculate_complexity_optimized(mock_node)
-        assert complexity == 4  # Base 1 + if + else if
-
-    def test_complexity_with_loops(self, extractor, mocker):
-        """Test complexity calculation with loops"""
-        mock_node = mocker.MagicMock()
-        extractor._get_node_text_optimized = mocker.MagicMock(
-            return_value="function loop() { for (let i = 0; i < 10; i++) { while (condition) { } } }"
+    def test_complexity_with_loops(self, extractor):
+        """for + while = 2 decisions → complexity 3."""
+        node = _js_function_node(
+            "function loop() { for (let i = 0; i < 10; i++) { while (condition) { } } }"
         )
+        assert extractor._calculate_complexity_optimized(node) == 3
 
-        complexity = extractor._calculate_complexity_optimized(mock_node)
-        assert complexity == 3  # Base 1 + for + while
-
-    def test_complexity_with_logical_operators(self, extractor, mocker):
-        """Test complexity calculation with logical operators"""
-        mock_node = mocker.MagicMock()
-        extractor._get_node_text_optimized = mocker.MagicMock(
-            return_value="function logical(a, b, c) { return a && b || c; }"
-        )
-
-        complexity = extractor._calculate_complexity_optimized(mock_node)
-        assert complexity == 3  # Base 1 + && + ||
+    def test_complexity_with_logical_operators(self, extractor):
+        """&& + || = 2 decisions → complexity 3."""
+        node = _js_function_node("function logical(a, b, c) { return a && b || c; }")
+        assert extractor._calculate_complexity_optimized(node) == 3
 
 
 class TestJavaScriptFrameworkDetection:

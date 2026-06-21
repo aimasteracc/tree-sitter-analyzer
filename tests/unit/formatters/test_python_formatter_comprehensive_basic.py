@@ -109,7 +109,7 @@ class TestPythonTableFormatterBasic:
         result = formatter.format(sample_python_data)
 
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
         assert "Calculator" in result
 
     def test_format_with_empty_data(self, formatter):

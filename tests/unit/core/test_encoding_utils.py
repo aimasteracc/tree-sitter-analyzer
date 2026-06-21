@@ -82,7 +82,7 @@ class TestEncodingManager:
         detected = EncodingManager.detect_encoding(data)
         # Should detect UTF-8 or fall back to default
         assert isinstance(detected, str)
-        assert len(detected) > 0
+        assert detected
 
     def test_detect_encoding_empty(self):
         """Test encoding detection with empty data"""

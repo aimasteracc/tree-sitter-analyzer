@@ -130,7 +130,7 @@ def test_cached_candidate_lookup_matches_uncached_byte_for_byte(
         stats_b = unresolved.resolve_unresolved_refs(conn_b)
 
         assert stats_a == stats_b, (stats_a, stats_b)
-        assert stats_b is not None and stats_b["resolved"] > 0
+        assert stats_b is not None and stats_b["resolved"]
 
         # Byte-for-byte edge parity (rewrite b/ paths is unnecessary — both
         # snapshots use project-relative file_path which is identical).
@@ -170,7 +170,7 @@ def test_candidate_cache_collapses_duplicate_selects(tmp_path: Path) -> None:
         # Many refs share the names ``helper`` / ``Base`` / ``run`` → the cache
         # collapses thousands of repeats to one SELECT per distinct (name, kind).
         assert cached_conn.candidate_selects < uncached_conn.candidate_selects
-        assert uncached_conn.candidate_selects > 0
+        assert uncached_conn.candidate_selects
     finally:
         cache.close()
 

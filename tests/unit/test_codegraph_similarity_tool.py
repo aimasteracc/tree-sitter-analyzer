@@ -99,6 +99,11 @@ class TestIncludeBodiesSchema:
             "Description must mention summary-by-default or include_bodies"
         )
 
+    def test_path_filter_in_schema(self, tool):
+        props = tool.get_tool_schema()["properties"]
+        assert "path_filter" in props
+        assert props["path_filter"]["default"] == ""
+
 
 @pytest.mark.asyncio
 class TestSummaryDefaultNoBodies:
@@ -116,6 +121,48 @@ class TestSummaryDefaultNoBodies:
                     f"snippet must be absent by default (include_bodies not set); "
                     f"got func={func}"
                 )
+
+
+@pytest.mark.asyncio
+class TestPathFilter:
+    async def test_path_filter_limits_similarity_scope(self, tmp_path):
+        tests_dir = tmp_path / "tests"
+        src_dir = tmp_path / "src"
+        tests_dir.mkdir()
+        src_dir.mkdir()
+
+        body_a = (
+            "def process(x):\n"
+            "    if x > 0:\n"
+            "        y = x * 2\n"
+            "        z = y + 1\n"
+            "        return z\n"
+            "    return 0\n"
+        )
+        body_b = body_a.replace("process", "handle")
+        body_c = body_a.replace("process", "manage")
+
+        (tests_dir / "test_a.py").write_text(body_a)
+        (tests_dir / "test_b.py").write_text(body_b)
+        (src_dir / "module_c.py").write_text(body_c)
+
+        tool = CodeSimilarityTool(str(tmp_path))
+        result = await tool.execute(
+            {
+                "output_format": "json",
+                "mode": "structural",
+                "path_filter": "tests/**",
+                "include_bodies": True,
+            }
+        )
+
+        assert result["success"] is True
+        assert len(result["groups"]) == 1
+        files = {
+            func["file"].replace("\\", "/")
+            for func in result["groups"][0]["functions"]
+        }
+        assert files == {"tests/test_a.py", "tests/test_b.py"}
 
     async def test_include_bodies_true_has_snippet(self, tool_with_clones):
         """include_bodies=True: function entries must have 'snippet' key."""
@@ -354,6 +401,16 @@ class TestFacadeSchemaExposesSimilarityParams801:
             "min_group_size must be in viz facade schema for agent discoverability"
         )
 
+    def test_viz_facade_schema_exposes_path_filter(self):
+        """path_filter must appear in the viz facade's public schema."""
+        from tree_sitter_analyzer.mcp.tools.viz_facade import build_viz_facade
+
+        facade = build_viz_facade(project_root=None)
+        schema = facade.get_tool_schema()
+        assert "path_filter" in schema["properties"], (
+            "path_filter must be in viz facade schema for scoped similarity scans"
+        )
+
 
 @pytest.mark.asyncio
 class TestFacadeRoutesSimilarityParams801:
@@ -370,3 +427,42 @@ class TestFacadeRoutesSimilarityParams801:
         )
         assert result["success"] is True
         assert len(result["groups"]) == 1
+
+    async def test_path_filter_via_facade(self, tmp_path):
+        """path_filter passed via viz facade must limit similarity scope."""
+        from tree_sitter_analyzer.mcp.tools.viz_facade import build_viz_facade
+
+        tests_dir = tmp_path / "tests"
+        src_dir = tmp_path / "src"
+        tests_dir.mkdir()
+        src_dir.mkdir()
+        body = (
+            "def process(x):\n"
+            "    if x > 0:\n"
+            "        y = x * 2\n"
+            "        z = y + 1\n"
+            "        return z\n"
+            "    return 0\n"
+        )
+        (tests_dir / "test_a.py").write_text(body)
+        (tests_dir / "test_b.py").write_text(body.replace("process", "handle"))
+        (src_dir / "module_c.py").write_text(body.replace("process", "manage"))
+
+        facade = build_viz_facade(str(tmp_path))
+        result = await facade.execute(
+            {
+                "action": "similarity",
+                "output_format": "json",
+                "mode": "structural",
+                "path_filter": "tests/**",
+                "include_bodies": True,
+            }
+        )
+
+        assert result["success"] is True
+        assert len(result["groups"]) == 1
+        files = {
+            func["file"].replace("\\", "/")
+            for func in result["groups"][0]["functions"]
+        }
+        assert files == {"tests/test_a.py", "tests/test_b.py"}

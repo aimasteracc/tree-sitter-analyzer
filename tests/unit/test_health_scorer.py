@@ -356,80 +356,15 @@ class TestHealthScorer:
             f"Weights sum to {sum(DIMENSION_WEIGHTS.values())}"
         )
 
-    def test_decision_node_types_cover_major_languages(self):
-        """All major languages should have CC decision node definitions."""
-        from tree_sitter_analyzer.health_scorer import DECISION_NODE_TYPES
-
-        expected_counts = {
-            "python": 14,
-            "javascript": 11,
-            "typescript": 11,
-            "java": 8,
-            "c": 8,
-            "cpp": 10,
-            "go": 6,
-            "rust": 8,
-            "ruby": 12,
-            "php": 9,
-            "kotlin": 9,
-            "csharp": 10,
-        }
-        for lang, expected in expected_counts.items():
-            assert lang in DECISION_NODE_TYPES, f"Missing CC nodes for {lang}"
-            assert len(DECISION_NODE_TYPES[lang]) == expected, (
-                f"{lang} has {len(DECISION_NODE_TYPES[lang])} decision node types, expected {expected}"
-            )
-
-    def test_bash_scala_have_complexity_node_types(self):
-        """bash/scala must have CC decision + function node types so newly
-        scanned shell/Scala files do not always score a perfect CC=1 100."""
-        from tree_sitter_analyzer.health_scorer import (
-            DECISION_NODE_TYPES,
-            FUNCTION_NODE_TYPES,
-        )
-
-        assert DECISION_NODE_TYPES["bash"] == {
-            "if_statement",
-            "while_statement",
-            "for_statement",
-            "case_item",
-            "elif_clause",
-        }
-        assert FUNCTION_NODE_TYPES["bash"] == {"function_definition"}
-        assert DECISION_NODE_TYPES["scala"] == {
-            "if_expression",
-            "while_expression",
-            "for_expression",
-            "match_expression",
-            "case_clause",
-        }
-        assert FUNCTION_NODE_TYPES["scala"] == {
-            "function_definition",
-            "function_declaration",
-        }
-
-    def test_swift_has_function_node_types(self):
-        """swift had DECISION_NODE_TYPES but no FUNCTION_NODE_TYPES, so
-        multi-function Swift files skipped per-function CC normalization."""
-        from tree_sitter_analyzer.health_scorer import FUNCTION_NODE_TYPES
-
-        assert FUNCTION_NODE_TYPES["swift"] == {
-            "function_declaration",
-            "init_declaration",
-            "deinit_declaration",
-            "subscript_declaration",
-        }
-
     def test_bash_complexity_counts_decision_nodes(self, scorer, tmp_path):
-        """A bash function with these branches must yield CC=12: 4 if + 2
-        while + 2 for + 2 case_item (the 2-arm case) + 1 elif = 11 decision
-        nodes, +1 base. The 2-arm case contributes 2 (one per arm) now that
-        ``case_item`` replaced the wrapping ``case_statement``."""
-        from tree_sitter_analyzer.core.parser import Parser
-        from tree_sitter_analyzer.health_scorer import (
-            DECISION_NODE_TYPES,
-            FUNCTION_NODE_TYPES,
-        )
+        """A bash function with 4 if + 2 while + 2 for + 1 case + 1 elif
+        must yield CC=11 from the extractor (single source of truth).
+
+        The extractor counts the whole case statement as 1 branch (not
+        per-arm), and counts the elif within its parent if-statement, so
+        the result is 10 decision nodes + base 1 = CC=11.
+        """
+        from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
 
         sh = tmp_path / "branchy.sh"
         sh.write_text(
@@ -447,25 +382,9 @@ class TestHealthScorer:
             "}\n",
             encoding="utf-8",
         )
-        parser = Parser()
-        result = parser.parse_file(str(sh), "bash")
-        decision = DECISION_NODE_TYPES["bash"]
-        function = FUNCTION_NODE_TYPES["bash"]
-        cc = 1
-        n_funcs = 0
-
-        def walk(node):
-            nonlocal cc, n_funcs
-            if node.type in decision:
-                cc += 1
-            if node.type in function:
-                n_funcs += 1
-            for child in node.children:
-                walk(child)
-
-        walk(result.tree.root_node)
-        assert cc == 12
-        assert n_funcs == 1
+        funcs = analyze_file_complexity(str(sh), "bash")
+        assert len(funcs) == 1
+        assert funcs[0].complexity == 11
 
     def test_dependencies_neutral_for_unanalyzable_languages(self, tmp_path):
         """Languages DependencyGraph cannot resolve (bash/scala/swift) must
@@ -491,15 +410,11 @@ class TestHealthScorer:
         sh.write_text("#!/bin/bash\necho hi\n", encoding="utf-8")
         assert _score_deps_fallback(str(sh)) == 50.0
 
-    def test_bash_case_scores_one_decision_per_arm(self, tmp_path):
-        """A K-arm bash ``case`` dispatch must score K decision points (one
-        ``case_item`` per arm), not 1 for the whole ``case_statement``. A
-        10-arm case therefore yields CC = 1 + 10 = 11."""
-        from tree_sitter_analyzer.core.parser import Parser
-        from tree_sitter_analyzer.health_scorer import (
-            DECISION_NODE_TYPES,
-            FUNCTION_NODE_TYPES,
-        )
+    def test_bash_case_scores_decision_per_case(self, tmp_path):
+        """A K-arm bash ``case`` dispatch: the extractor (single source of
+        truth) reports CC=2 for a 10-arm case (base 1 + 1 case_statement
+        branch). The extractor does not count per-arm items for bash case."""
+        from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
 
         arms = "\n".join(f"    {i}) echo {i} ;;" for i in range(1, 11))
         sh = tmp_path / "dispatch.sh"
@@ -507,45 +422,19 @@ class TestHealthScorer:
             '#!/bin/bash\ndispatch() {\n  case "$1" in\n' + arms + "\n  esac\n}\n",
             encoding="utf-8",
         )
-        parser = Parser()
-        result = parser.parse_file(str(sh), "bash")
-        decision = DECISION_NODE_TYPES["bash"]
-        function = FUNCTION_NODE_TYPES["bash"]
-        cc = 1
-        n_funcs = 0
-        n_case_items = 0
+        funcs = analyze_file_complexity(str(sh), "bash")
+        assert len(funcs) == 1
+        assert funcs[0].complexity == 2
 
-        def walk(node):
-            nonlocal cc, n_funcs, n_case_items
-            if node.type in decision:
-                cc += 1
-            if node.type == "case_item":
-                n_case_items += 1
-            if node.type in function:
-                n_funcs += 1
-            for child in node.children:
-                walk(child)
-
-        walk(result.tree.root_node)
-        assert n_case_items == 10
-        assert cc == 11
-        assert n_funcs == 1
-
-    def test_scala_avg_cc_skips_no_body_abstract_methods(self, tmp_path):
-        """A Scala trait with N abstract methods (``function_declaration``,
-        no body) + M concrete methods (``function_definition``, with body)
-        must average CC over only the M concrete ones. Abstract methods carry
-        0 branches; counting them in ``n_funcs`` would dilute the average and
-        inflate the score."""
-        from tree_sitter_analyzer.core.parser import Parser
-        from tree_sitter_analyzer.health_scorer import (
-            DECISION_NODE_TYPES,
-            FUNCTION_NODE_TYPES,
-            _has_function_body,
-        )
+    def test_scala_avg_cc_includes_all_methods(self, tmp_path):
+        """A Scala trait with abstract + concrete methods: the extractor
+        reports all of them (abstract methods get CC=1 base). score_complexity
+        averages over all 5 functions → avg_cc = (1+1+2+2+2)/5 = 1.6 → 100.0
+        (still in the ideal range)."""
+        from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
+        from tree_sitter_analyzer.health_scorer import score_complexity
 
         scala = tmp_path / "T.scala"
-        # 2 abstract (no body) + 3 concrete (each has one `if` -> 1 branch).
         scala.write_text(
             "trait T {\n"
             "  def a1(x: Int): Int\n"
@@ -556,31 +445,16 @@ class TestHealthScorer:
             "}\n",
             encoding="utf-8",
         )
-        parser = Parser()
-        result = parser.parse_file(str(scala), "scala")
-        decision = DECISION_NODE_TYPES["scala"]
-        function = FUNCTION_NODE_TYPES["scala"]
-        cc = 1
-        n_funcs = 0
-        n_funcs_all = 0
+        funcs = analyze_file_complexity(str(scala), "scala")
+        assert len(funcs) == 5
+        total_cc = sum(fn.complexity for fn in funcs)
+        assert total_cc == 8  # 1+1+2+2+2
+        avg_cc = total_cc / len(funcs)
+        assert avg_cc == 1.6
 
-        def walk(node):
-            nonlocal cc, n_funcs, n_funcs_all
-            if node.type in decision:
-                cc += 1
-            if node.type in function:
-                n_funcs_all += 1
-                if _has_function_body(node):
-                    n_funcs += 1
-            for child in node.children:
-                walk(child)
-
-        walk(result.tree.root_node)
-        # 5 declarations exist, but only 3 have bodies.
-        assert n_funcs_all == 5
-        assert n_funcs == 3
-        # 3 `if` branches + base 1.
-        assert cc == 4
+        src = scala.read_text(encoding="utf-8")
+        score = score_complexity(str(scala), src, "scala")
+        assert score == 100.0
 
     def test_duplication_penalizes_repeated_code(self, scorer, tmp_path):
         """Files with repeated code blocks should have lower duplication score."""
@@ -697,3 +571,216 @@ class TestHealthScore:
         assert HealthScore("f", 72, {}).grade == "C"
         assert HealthScore("f", 55, {}).grade == "D"
         assert HealthScore("f", 30, {}).grade == "F"
+
+
+# ============================================================
+# score_complexity extractor-path tests (RFC-0019 / #1094)
+# ============================================================
+
+
+class TestScoreComplexityExtractorPath:
+    """Verify score_complexity derives CC from the extractor (single
+    source of truth) rather than the stale DECISION_NODE_TYPES table.
+
+    The key regression: Java with a 3-case switch + ternary + do-while
+    was silently scored CC=1 (all missed) by the old AST-walk using
+    DECISION_NODE_TYPES which mapped ``switch_statement`` (old grammar)
+    and ``conditional_expression`` (wrong name) while tree-sitter-java
+    emits ``switch_expression``, ``ternary_expression``, and
+    ``do_statement``. The extractor (via complexity_heatmap) uses the
+    correct node types and yields CC=6 for this method.
+    """
+
+    def _write(self, tmp_path, name: str, content: str):
+        p = tmp_path / name
+        p.write_text(content, encoding="utf-8")
+        return str(p)
+
+    def test_java_switch_ternary_do_while_matches_extractor(self, tmp_path):
+        """Java method with 3-case switch + ternary + do-while must yield
+        the same aggregate CC the extractor computes (CC=4 for this method).
+
+        Construct-once (#1094): base 1 + switch 1 + ternary 1 + do-while 1 = 4.
+        The switch counts ONCE regardless of arm count, not per-arm.
+
+        Old scorer returned 100.0 (CC=1, all branches missed because
+        DECISION_NODE_TYPES had switch_statement/conditional_expression/
+        no do_statement while tree-sitter-java emits switch_expression/
+        ternary_expression/do_statement).
+
+        Both CC=1 and CC=4 fall in the ideal range (≤15) so both give
+        score=100. The switch-specific invariant is locked in
+        test_java_switch_counts_construct_once_via_extractor below.
+        """
+        from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
+        from tree_sitter_analyzer.health_scorer import score_complexity
+
+        java_src = (
+            "public class Foo {\n"
+            "    public int compute(int x) {\n"
+            "        int result = 0;\n"
+            "        switch (x) {\n"
+            "            case 1: result = 1; break;\n"
+            "            case 2: result = 2; break;\n"
+            "            case 3: result = 3; break;\n"
+            "        }\n"
+            "        result = (x > 0) ? result : -result;\n"
+            "        do {\n"
+            "            result--;\n"
+            "        } while (result > 0);\n"
+            "        return result;\n"
+            "    }\n"
+            "}\n"
+        )
+        f = self._write(tmp_path, "Foo.java", java_src)
+
+        # Ground truth from the extractor (single source of truth)
+        funcs = analyze_file_complexity(f, "java")
+        assert len(funcs) == 1, f"Expected 1 function, got {len(funcs)}"
+        extractor_cx = funcs[0].complexity
+        assert extractor_cx == 4, (
+            f"Extractor CC for switch(3)+ternary+do-while should be 4, got {extractor_cx}"
+        )
+
+        # health scorer must now delegate to the extractor (CC=4)
+        scorer_score = score_complexity(f, java_src, "java")
+        # CC=4, n_funcs=1 (<3) → absolute path: 4 <= CC_IDEAL=15 → 100.0
+        assert scorer_score == 100.0, (
+            f"score_complexity returned {scorer_score}, expected 100.0 "
+            f"(CC=4 via extractor, still in ideal range)"
+        )
+
+    def test_java_switch_counts_construct_once_via_extractor(self, tmp_path):
+        """A Java ``switch`` contributes exactly ONE decision to cyclomatic
+        complexity no matter how many arms — the construct-once convention
+        (#1094). A 19-arm switch method therefore has CC = base 1 + switch 1
+        = 2, NOT 20: switch breadth must not inflate the health score.
+
+        This locks the switch-specific invariant. The old DECISION_NODE_TYPES
+        missed switches entirely (wrong node names → CC=1); the extractor
+        counts the construct once. The "high CC ⇒ penalised" behaviour is
+        covered separately by test_java_high_complexity_method_scored_correctly
+        (15 sequential ``if`` branches → CC=16 → penalised).
+        """
+        from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
+        from tree_sitter_analyzer.health_scorer import CC_IDEAL, score_complexity
+
+        switch_cases = "\n".join(
+            f"            case {i}: result = {i}; break;" for i in range(1, 20)
+        )
+        java_src = (
+            "public class Foo {\n"
+            "    public int compute(int x) {\n"
+            "        int result = 0;\n"
+            "        switch (x) {\n"
+            f"{switch_cases}\n"
+            "        }\n"
+            "        return result;\n"
+            "    }\n"
+            "}\n"
+        )
+        f = self._write(tmp_path, "Foo.java", java_src)
+
+        # Extractor ground truth: construct-once → CC = base 1 + switch 1 = 2
+        funcs = analyze_file_complexity(f, "java")
+        assert len(funcs) == 1
+        extractor_cx = funcs[0].complexity
+        assert extractor_cx == 2, (
+            f"19-arm switch is construct-once: CC == base 1 + switch 1 == 2, "
+            f"got {extractor_cx}"
+        )
+        assert extractor_cx <= CC_IDEAL, "A wide switch stays within the ideal CC band"
+
+        # CC=2 ≤ CC_IDEAL=15 → switch breadth alone must NOT penalise the score
+        score = score_complexity(f, java_src, "java")
+        assert score == 100.0, (
+            f"A wide switch (CC=2 construct-once) must not be penalised, "
+            f"got score={score}"
+        )
+
+    def test_java_high_complexity_method_scored_correctly(self, tmp_path):
+        """A single Java method with CC > 15 must be penalised.
+
+        Old scorer would return 100.0 (CC=1 due to wrong node names).
+        New scorer (via extractor) correctly counts the branches.
+        """
+        from tree_sitter_analyzer.health_scorer import score_complexity
+
+        # Build a Java method with many if statements (15 → CC≈16 from extractor)
+        branches = "\n".join(f"        if (x > {i}) result += {i};" for i in range(15))
+        java_src = (
+            "public class Bar {\n"
+            "    public int f(int x) {\n"
+            "        int result = 0;\n"
+            f"{branches}\n"
+            "        return result;\n"
+            "    }\n"
+            "}\n"
+        )
+        f = self._write(tmp_path, "Bar.java", java_src)
+
+        score = score_complexity(f, java_src, "java")
+
+        # Old scorer: CC=1 (all if_statement matched? Let us check):
+        # Actually if_statement IS in old DECISION_NODE_TYPES for java, so it
+        # scored correctly for if. The regression is specifically for switch /
+        # ternary / do-while. This test verifies if-based CC still works.
+        # CC = 1 + 15 = 16 > CC_IDEAL=15 → penalty starts.
+        # n_funcs=1 < 3 → absolute path: cc=16 > CC_IDEAL → penalised.
+        assert score < 100.0, (
+            f"Java method with 15 if-branches must be penalised, got score={score}"
+        )
+        # Verify the range is plausible (16 should fall into moderate zone)
+        assert score >= 30.0, f"Score {score} is too low for CC=16"
+
+    def test_javascript_ternary_scored_correctly(self, tmp_path):
+        """JavaScript ternary_expression was mapped to ``conditional_expression``
+        in DECISION_NODE_TYPES (wrong node name). Extractor uses the correct
+        name and counts it.
+
+        A JS function with a ternary must yield CC > 1 from the extractor.
+        """
+        from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
+        from tree_sitter_analyzer.health_scorer import score_complexity
+
+        js_src = "function compute(x) {\n  return x > 0 ? x : -x;\n}\n"
+        f = self._write(tmp_path, "compute.js", js_src)
+
+        funcs = analyze_file_complexity(f, "javascript")
+        assert len(funcs) == 1
+        extractor_cx = funcs[0].complexity
+        # extractor sees ternary_expression -> base 1 + 1 ternary = exactly 2
+        assert extractor_cx == 2, f"JS ternary should give CC == 2, got {extractor_cx}"
+
+        score = score_complexity(f, js_src, "javascript")
+        # CC=2, n_funcs=1 (<3) → absolute path → CC=2 <= CC_IDEAL=15 → 100.0
+        assert score == 100.0, f"Expected 100.0 for low-CC JS, got {score}"
+
+    def test_no_plugin_language_returns_neutral(self, tmp_path):
+        """When language is None, score_complexity returns 50.0 (neutral)."""
+        from tree_sitter_analyzer.health_scorer import score_complexity
+
+        f = self._write(tmp_path, "x.txt", "hello world\n")
+        assert score_complexity(f, "hello world\n", None) == 50.0
+
+    def test_extractor_aggregate_matches_scorer_for_multi_function_file(self, tmp_path):
+        """For a Python file with >= 3 functions, score_complexity must use
+        the average extractor CC (not a raw AST walk with stale node types).
+        Both paths must agree on the average when using the extractor as source.
+        """
+        from tree_sitter_analyzer.complexity_heatmap import analyze_file_complexity
+        from tree_sitter_analyzer.health_scorer import score_complexity
+
+        # 4 identical simple functions → avg_cc should be 1.0 → score 100.0
+        py_src = "\n".join([f"def f{i}(x):\n    return x\n" for i in range(4)])
+        f = self._write(tmp_path, "multi.py", py_src)
+
+        funcs = analyze_file_complexity(f, "python")
+        assert len(funcs) == 4, f"Expected 4 functions, got {len(funcs)}"
+        avg_cx = sum(fn.complexity for fn in funcs) / len(funcs)
+        assert avg_cx == 1.0
+
+        score = score_complexity(f, py_src, "python")
+        assert score == 100.0, (
+            f"4 simple Python functions must score 100.0 (avg_cc=1.0), got {score}"
+        )

@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ._comprehensive_suite_data import ComprehensiveSuiteDataMixin
 from ._comprehensive_suite_models import (
     FormatTestSuiteConfig,
     TestSuiteResults,
@@ -20,8 +19,8 @@ from ._comprehensive_suite_phases import ComprehensiveSuitePhasesMixin
 from ._comprehensive_suite_reporting import (
     generate_summary_report,
     save_comprehensive_results,
+    update_test_counts,
 )
-from ._comprehensive_suite_runner import run_enabled_phases
 from .enhanced_assertions import EnhancedAssertions
 from .golden_master import GoldenMasterManager, GoldenMasterTester
 from .performance_tests import FormatPerformanceTester
@@ -45,6 +44,117 @@ __all__ = [
     "run_quick_format_validation",
     "run_regression_test_suite",
 ]
+
+
+PHASES = [
+    (
+        "enable_golden_master",
+        "\n📋 Phase 1: Golden Master Testing",
+        "golden_master_results",
+        "_run_golden_master_tests",
+    ),
+    (
+        "enable_schema_validation",
+        "\n🔍 Phase 2: Schema Validation Testing",
+        "schema_validation_results",
+        "_run_schema_validation_tests",
+    ),
+    (
+        "enable_integration_tests",
+        "\n🔗 Phase 3: Integration Testing",
+        "integration_test_results",
+        "_run_integration_tests",
+    ),
+    (
+        "enable_end_to_end_tests",
+        "\n🎯 Phase 4: End-to-End Testing",
+        "end_to_end_results",
+        "_run_end_to_end_tests",
+    ),
+    (
+        "enable_cross_component_tests",
+        "\n🌐 Phase 5: Cross-Component Testing",
+        "cross_component_results",
+        "_run_cross_component_tests",
+    ),
+    (
+        "enable_specification_compliance",
+        "\n📖 Phase 6: Specification Compliance Testing",
+        "specification_compliance_results",
+        "_run_specification_compliance_tests",
+    ),
+    (
+        "enable_format_contracts",
+        "\n📋 Phase 7: Format Contract Testing",
+        "format_contract_results",
+        "_run_format_contract_tests",
+    ),
+    (
+        "enable_enhanced_assertions",
+        "\n⚡ Phase 8: Enhanced Assertion Testing",
+        "enhanced_assertion_results",
+        "_run_enhanced_assertion_tests",
+    ),
+    (
+        "enable_performance_tests",
+        "\n🚀 Phase 9: Performance Testing",
+        "performance_test_results",
+        "_run_performance_tests",
+    ),
+]
+
+
+class ComprehensiveSuiteDataMixin:
+    """Prepares generated or fallback test data for suite phases."""
+
+    async def _prepare_test_data(self) -> list[dict[str, Any]]:
+        """Prepare test data for comprehensive testing"""
+        test_data_sources = []
+
+        if self.config.generate_test_data:
+            print("📝 Generating test data...")
+            created_ids = self.test_data_manager.create_test_data_suite(
+                languages=self.config.test_data_languages,
+                complexities=self.config.test_data_complexities,
+                count_per_combination=2,
+            )
+            test_data_sources.extend(self._load_created_test_data(created_ids))
+
+        if not test_data_sources:
+            test_data_sources = [_default_python_test_data()]
+
+        print(f"📊 Prepared {len(test_data_sources)} test data sources")
+        return test_data_sources
+
+    def _load_created_test_data(self, created_ids: list[str]) -> list[dict[str, Any]]:
+        test_data_sources = []
+        for test_id in created_ids:
+            test_data_set = self.test_data_manager.repository.get_test_data(test_id)
+            if test_data_set:
+                test_data_sources.append(_test_data_set_source(test_id, test_data_set))
+        return test_data_sources
+
+
+def _test_data_set_source(test_id: str, test_data_set: Any) -> dict[str, Any]:
+    return {
+        "id": test_id,
+        "language": test_data_set.metadata.language,
+        "complexity": test_data_set.metadata.complexity_level,
+        "source_code": test_data_set.source_code,
+        "expected_outputs": test_data_set.expected_outputs,
+        "test_scenarios": test_data_set.test_scenarios,
+    }
+
+
+def _default_python_test_data() -> dict[str, Any]:
+    return {
+        "id": "default_python",
+        "language": "python",
+        "complexity": "simple",
+        "source_code": 'class TestClass:\n    def test_method(self):\n        return "test"',
+        "expected_outputs": {},
+        "test_scenarios": [],
+    }
 
 
 class ComprehensiveFormatTestSuite(
@@ -135,6 +245,23 @@ class ComprehensiveFormatTestSuite(
         )
 
         return results
+
+
+async def run_enabled_phases(
+    suite: Any,
+    analyzer_function: callable,
+    test_data_sources: list[dict[str, Any]],
+    results: TestSuiteResults,
+) -> None:
+    """Run enabled suite phases and update aggregate counts."""
+    for config_attr, phase_banner, result_attr, method_name in PHASES:
+        if getattr(suite.config, config_attr):
+            print(phase_banner)
+            phase_results = await getattr(suite, method_name)(
+                analyzer_function, test_data_sources
+            )
+            setattr(results, result_attr, phase_results)
+            update_test_counts(results, phase_results)
 
 
 def _ensure_config_defaults(config: FormatTestSuiteConfig) -> None:

@@ -11,22 +11,52 @@ import random
 import shutil
 import sqlite3
 import string
+from collections.abc import Callable
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ._test_data_manager_io import (
-    export_test_data_suite_data,
-    import_test_data_suite_data,
+TEST_DATA_TABLE_SCHEMAS = (
+    """
+    CREATE TABLE IF NOT EXISTS test_data_sets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        language TEXT NOT NULL,
+        complexity_level TEXT NOT NULL,
+        file_size_bytes INTEGER,
+        element_counts TEXT,
+        created_timestamp TEXT NOT NULL,
+        version TEXT NOT NULL,
+        tags TEXT,
+        source_hash TEXT NOT NULL,
+        validation_status TEXT DEFAULT 'unknown',
+        file_path TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS test_data_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        test_data_id TEXT NOT NULL,
+        usage_timestamp TEXT NOT NULL,
+        test_type TEXT NOT NULL,
+        result TEXT,
+        FOREIGN KEY (test_data_id) REFERENCES test_data_sets (id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS test_data_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        test_data_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        changes TEXT,
+        created_timestamp TEXT NOT NULL,
+        FOREIGN KEY (test_data_id) REFERENCES test_data_sets (id)
+    )
+    """,
 )
-from ._test_data_manager_repository_io import (
-    search_test_data_sets,
-    store_test_data_set,
-)
-from ._test_data_manager_schema import TEST_DATA_TABLE_SCHEMAS
-from ._test_data_manager_templates import get_language_templates
 
 
 @dataclass
@@ -781,3 +811,538 @@ class FormatTestDataManager:
             FormatTestDataMetadata,
             FormatTestDataSet,
         )
+
+
+def get_language_templates() -> dict[str, dict[str, str]]:
+    """Return source templates keyed by language name."""
+    return {
+        "python": _get_python_templates(),
+        "java": _get_java_templates(),
+        "javascript": _get_javascript_templates(),
+        "typescript": _get_typescript_templates(),
+    }
+
+
+def _get_python_templates() -> dict[str, str]:
+    return {
+        "simple_class": """class {class_name}:
+    def __init__(self):
+        self.{field_name} = "value"
+
+    def {method_name}(self):
+        return self.{field_name}
+""",
+        "medium_class": """class {base_class}:
+    def __init__(self):
+        self.{field1} = "base_value"
+
+class {class_name}({base_class}):
+    def __init__(self):
+        super().__init__()
+        self.{field2} = "derived_value"
+
+    def {method1}(self):
+        return self.{field1}
+
+    def {method2}(self):
+        return self.{field2}
+""",
+        "complex_class": """class {class_name}:
+    {fields}
+
+    def __init__(self):
+        pass
+
+    {methods}
+""",
+        "method": '''def {method_name}(self):
+        return "result"''',
+        "field": '''self.{field_name} = "value"''',
+    }
+
+
+def _get_java_templates() -> dict[str, str]:
+    return {
+        "simple_class": """public class {class_name} {{
+    private String {field_name};
+
+    public {class_name}() {{
+        this.{field_name} = "value";
+    }}
+
+    public String {method_name}() {{
+        return this.{field_name};
+    }}
+}}""",
+        "medium_class": """public class {base_class} {{
+    protected String {field1};
+
+    public {base_class}() {{
+        this.{field1} = "base_value";
+    }}
+}}
+
+public class {class_name} extends {base_class} {{
+    private String {field2};
+
+    public {class_name}() {{
+        super();
+        this.{field2} = "derived_value";
+    }}
+
+    public String {method1}() {{
+        return this.{field1};
+    }}
+
+    public String {method2}() {{
+        return this.{field2};
+    }}
+}}""",
+        "complex_class": """public class {class_name} {{
+    {fields}
+
+    public {class_name}() {{
+        // Constructor
+    }}
+
+    {methods}
+}}""",
+        "method": """public String {method_name}() {{
+        return "result";
+    }}""",
+        "field": """private String {field_name};""",
+    }
+
+
+def _get_javascript_templates() -> dict[str, str]:
+    return {
+        "simple_class": """class {class_name} {{
+    constructor() {{
+        this.{field_name} = "value";
+    }}
+
+    {method_name}() {{
+        return this.{field_name};
+    }}
+}}""",
+        "medium_class": """class {base_class} {{
+    constructor() {{
+        this.{field1} = "base_value";
+    }}
+}}
+
+class {class_name} extends {base_class} {{
+    constructor() {{
+        super();
+        this.{field2} = "derived_value";
+    }}
+
+    {method1}() {{
+        return this.{field1};
+    }}
+
+    {method2}() {{
+        return this.{field2};
+    }}
+}}""",
+        "complex_class": """class {class_name} {{
+    {fields}
+
+    constructor() {{
+        // Constructor
+    }}
+
+    {methods}
+}}""",
+        "method": """{method_name}() {{
+        return "result";
+    }}""",
+        "field": """this.{field_name} = "value";""",
+    }
+
+
+def _get_typescript_templates() -> dict[str, str]:
+    return {
+        "simple_class": """class {class_name} {{
+    private {field_name}: string;
+
+    constructor() {{
+        this.{field_name} = "value";
+    }}
+
+    public {method_name}(): string {{
+        return this.{field_name};
+    }}
+}}""",
+        "medium_class": """class {base_class} {{
+    protected {field1}: string;
+
+    constructor() {{
+        this.{field1} = "base_value";
+    }}
+}}
+
+class {class_name} extends {base_class} {{
+    private {field2}: string;
+
+    constructor() {{
+        super();
+        this.{field2} = "derived_value";
+    }}
+
+    public {method1}(): string {{
+        return this.{field1};
+    }}
+
+    public {method2}(): string {{
+        return this.{field2};
+    }}
+}}""",
+        "complex_class": """class {class_name} {{
+    {fields}
+
+    constructor() {{
+        // Constructor
+    }}
+
+    {methods}
+}}""",
+        "method": """public {method_name}(): string {{
+        return "result";
+    }}""",
+        "field": """private {field_name}: string;""",
+    }
+
+
+def export_test_data_suite_data(
+    repository: Any, output_path: str, filters: dict[str, Any] | None = None
+) -> str:
+    """Export repository test data to a portable directory."""
+    output_dir = Path(output_path)
+    output_dir.mkdir(exist_ok=True)
+
+    test_data_list = _select_export_metadata(repository, filters)
+    exported_count = _export_test_data_sets(repository, output_dir, test_data_list)
+    _write_export_manifest(output_dir, exported_count, filters, test_data_list)
+
+    return str(output_dir)
+
+
+def import_test_data_suite_data(
+    repository: Any,
+    import_path: str,
+    metadata_type: Any,
+    data_set_type: Any,
+) -> dict[str, Any]:
+    """Import repository test data from a portable export directory."""
+    import_dir = Path(import_path)
+    manifest = _load_export_manifest(import_dir)
+
+    imported_count = 0
+    skipped_count = 0
+    errors: list[str] = []
+
+    for test_data_id in manifest["test_data_ids"]:
+        result = _import_one_test_data_set(
+            repository, import_dir, test_data_id, metadata_type, data_set_type
+        )
+        imported_count += result["imported"]
+        skipped_count += result["skipped"]
+        errors.extend(result["errors"])
+
+    return {
+        "imported_count": imported_count,
+        "skipped_count": skipped_count,
+        "errors": errors,
+        "total_in_manifest": len(manifest["test_data_ids"]),
+    }
+
+
+def _select_export_metadata(
+    repository: Any, filters: dict[str, Any] | None
+) -> list[Any]:
+    if not filters:
+        return repository.search_test_data(limit=1000)
+
+    return repository.search_test_data(
+        language=filters.get("language"),
+        complexity=filters.get("complexity"),
+        tags=filters.get("tags"),
+        limit=filters.get("limit", 1000),
+    )
+
+
+def _export_test_data_sets(
+    repository: Any, output_path: Path, test_data_list: list[Any]
+) -> int:
+    exported_count = 0
+    for metadata in test_data_list:
+        test_data = repository.get_test_data(metadata.id)
+        if not test_data:
+            continue
+
+        export_dir = output_path / metadata.id
+        export_dir.mkdir(exist_ok=True)
+
+        _write_export_source_file(
+            repository, export_dir, metadata.language, test_data.source_code
+        )
+        _write_expected_outputs(export_dir, test_data.expected_outputs)
+        _write_metadata(export_dir, test_data)
+        exported_count += 1
+
+    return exported_count
+
+
+def _write_export_source_file(
+    repository: Any, export_dir: Path, language: str, source_code: str
+) -> None:
+    source_file = export_dir / f"source.{repository._get_file_extension(language)}"
+    with open(source_file, "w", encoding="utf-8") as f:
+        f.write(source_code)
+
+
+def _write_expected_outputs(export_dir: Path, expected_outputs: dict[str, str]) -> None:
+    outputs_dir = export_dir / "expected_outputs"
+    outputs_dir.mkdir(exist_ok=True)
+
+    for format_type, output in expected_outputs.items():
+        output_file = outputs_dir / f"{format_type}.txt"
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(output)
+
+
+def _write_metadata(export_dir: Path, test_data: Any) -> None:
+    metadata_file = export_dir / "metadata.json"
+    with open(metadata_file, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "metadata": asdict(test_data.metadata),
+                "test_scenarios": test_data.test_scenarios,
+            },
+            f,
+            indent=2,
+        )
+
+
+def _write_export_manifest(
+    output_path: Path,
+    exported_count: int,
+    filters: dict[str, Any] | None,
+    test_data_list: list[Any],
+) -> None:
+    manifest_file = output_path / "export_manifest.json"
+    with open(manifest_file, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "export_timestamp": datetime.now(timezone.utc).isoformat(),
+                "exported_count": exported_count,
+                "filters_applied": filters or {},
+                "test_data_ids": [m.id for m in test_data_list],
+            },
+            f,
+            indent=2,
+        )
+
+
+def _load_export_manifest(import_path: Path) -> dict[str, Any]:
+    if not import_path.exists():
+        raise ValueError(f"Import path does not exist: {import_path}")
+
+    manifest_file = import_path / "export_manifest.json"
+    if not manifest_file.exists():
+        raise ValueError("Export manifest not found")
+
+    with open(manifest_file, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _import_one_test_data_set(
+    repository: Any,
+    import_path: Path,
+    test_data_id: str,
+    metadata_type: Any,
+    data_set_type: Any,
+) -> dict[str, Any]:
+    test_dir = import_path / test_data_id
+    if not test_dir.exists():
+        return {
+            "imported": 0,
+            "skipped": 0,
+            "errors": [f"Test data directory not found: {test_data_id}"],
+        }
+
+    try:
+        if repository.get_test_data(test_data_id):
+            return {"imported": 0, "skipped": 1, "errors": []}
+
+        test_data_set = _load_exported_test_data(
+            repository, test_dir, metadata_type, data_set_type
+        )
+        repository.store_test_data(test_data_set)
+        return {"imported": 1, "skipped": 0, "errors": []}
+    except Exception as e:
+        return {
+            "imported": 0,
+            "skipped": 0,
+            "errors": [f"Error importing {test_data_id}: {e}"],
+        }
+
+
+def _load_exported_test_data(
+    repository: Any,
+    test_dir: Path,
+    metadata_type: Any,
+    data_set_type: Any,
+) -> Any:
+    metadata_file = test_dir / "metadata.json"
+    with open(metadata_file, encoding="utf-8") as f:
+        data = json.load(f)
+
+    metadata = metadata_type(**data["metadata"])
+    source_code = _read_exported_source(repository, test_dir, metadata.language)
+    expected_outputs = _read_exported_outputs(test_dir)
+
+    return data_set_type(
+        metadata=metadata,
+        source_code=source_code,
+        expected_outputs=expected_outputs,
+        test_scenarios=data["test_scenarios"],
+    )
+
+
+def _read_exported_source(repository: Any, test_dir: Path, language: str) -> str:
+    source_file = test_dir / f"source.{repository._get_file_extension(language)}"
+    with open(source_file, encoding="utf-8") as f:
+        return f.read()
+
+
+def _read_exported_outputs(test_dir: Path) -> dict[str, str]:
+    expected_outputs: dict[str, str] = {}
+    outputs_dir = test_dir / "expected_outputs"
+    if not outputs_dir.exists():
+        return expected_outputs
+
+    for output_file in outputs_dir.glob("*.txt"):
+        with open(output_file, encoding="utf-8") as f:
+            expected_outputs[output_file.stem] = f.read()
+
+    return expected_outputs
+
+
+def store_test_data_set(repository: Any, test_data_set: Any) -> str:
+    """Persist a test data set and return its id."""
+    data_dir = repository.data_path / test_data_set.metadata.id
+    data_dir.mkdir(exist_ok=True)
+
+    _write_repository_source_file(
+        data_dir, test_data_set, repository._get_file_extension
+    )
+    _write_expected_outputs(data_dir, test_data_set.expected_outputs)
+    _write_metadata(data_dir, test_data_set)
+    _upsert_test_data_record(repository.db_path, data_dir, test_data_set)
+
+    return test_data_set.metadata.id
+
+
+def _write_repository_source_file(
+    data_dir: Path, test_data_set: Any, extension_for_language: Callable[[str], str]
+) -> None:
+    source_file = (
+        data_dir / f"source.{extension_for_language(test_data_set.metadata.language)}"
+    )
+    with open(source_file, "w", encoding="utf-8") as f:
+        f.write(test_data_set.source_code)
+
+
+def search_test_data_sets(
+    db_path: Path,
+    metadata_type: type,
+    language: str | None = None,
+    complexity: str | None = None,
+    tags: list[str] | None = None,
+    limit: int = 100,
+) -> list[Any]:
+    """Search repository metadata records with optional filters."""
+    query, params = _build_search_query(language, complexity, tags, limit)
+
+    with closing(sqlite3.connect(db_path)) as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+    return [_metadata_from_row(row, metadata_type) for row in rows]
+
+
+def _build_search_query(
+    language: str | None,
+    complexity: str | None,
+    tags: list[str] | None,
+    limit: int,
+) -> tuple[str, list[str]]:
+    query = "SELECT * FROM test_data_sets WHERE 1=1"
+    params = []
+
+    if language:
+        query += " AND language = ?"
+        params.append(language)
+
+    if complexity:
+        query += " AND complexity_level = ?"
+        params.append(complexity)
+
+    if tags:
+        for tag in tags:
+            query += " AND tags LIKE ?"
+            params.append(f"%{tag}%")
+
+    query += f" ORDER BY created_timestamp DESC LIMIT {limit}"
+    return query, params
+
+
+def _metadata_from_row(row: tuple[Any, ...], metadata_type: type) -> Any:
+    return metadata_type(
+        id=row[0],
+        name=row[1],
+        description=row[2],
+        language=row[3],
+        format_types=["full", "compact", "csv"],
+        complexity_level=row[4],
+        file_size_bytes=row[5],
+        element_counts=json.loads(row[6]),
+        created_timestamp=row[7],
+        version=row[8],
+        tags=json.loads(row[9]),
+        source_hash=row[10],
+        validation_status=row[11],
+    )
+
+
+def _upsert_test_data_record(db_path: Path, data_dir: Path, test_data_set: Any) -> None:
+    with closing(sqlite3.connect(db_path)) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO test_data_sets
+            (id, name, description, language, complexity_level, file_size_bytes,
+             element_counts, created_timestamp, version, tags, source_hash,
+             validation_status, file_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                test_data_set.metadata.id,
+                test_data_set.metadata.name,
+                test_data_set.metadata.description,
+                test_data_set.metadata.language,
+                test_data_set.metadata.complexity_level,
+                test_data_set.metadata.file_size_bytes,
+                json.dumps(test_data_set.metadata.element_counts),
+                test_data_set.metadata.created_timestamp,
+                test_data_set.metadata.version,
+                json.dumps(test_data_set.metadata.tags),
+                test_data_set.metadata.source_hash,
+                test_data_set.metadata.validation_status,
+                str(data_dir),
+            ),
+        )
+        conn.commit()

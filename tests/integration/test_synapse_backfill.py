@@ -99,7 +99,7 @@ def test_backfill_no_reparse(
             "SELECT COUNT(*) AS c FROM edges "
             "WHERE kind = 'calls' AND callee_resolution != 'unknown'"
         ).fetchone()
-        assert row["c"] > 0, (
+        assert row["c"], (
             "resolve_only=True must populate at least one edge's "
             "resolution column — got zero, so the backfill is a no-op."
         )

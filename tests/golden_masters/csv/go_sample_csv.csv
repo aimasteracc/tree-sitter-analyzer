@@ -21,23 +21,23 @@ Field,workers,workers:int,private,207-207,,-
 Field,jobs,jobs:chan func(),private,208-208,,-
 Field,wg,wg:sync.WaitGroup,private,209-209,,-
 Field,lastErr,lastErr:error,private,281-281,,-
-Method,Read,"([]byte:p):(n int, err error)",public,55-55,1,-
-Method,Write,"([]byte:p):(n int, err error)",public,61-61,1,-
-Method,NewService,"(string:name, *Config:config):*Service",public,80-86,1,-
+Method,Read,"(p:[]byte):(n int, err error)",public,55-55,1,-
+Method,Write,"(p:[]byte):(n int, err error)",public,61-61,1,-
+Method,NewService,"(name:string, config:*Config):*Service",public,80-86,1,-
 Method,Name,():string,public,89-91,1,-
 Method,IsRunning,():bool,public,94-98,1,-
-Method,Start,(context.Context:ctx):error,public,101-114,1,-
-Method,run,(context.Context:ctx):,private,117-132,1,-
-Method,tick,(time.Time:t):,private,135-139,1,-
-Method,Stop,():error,public,142-153,1,-
+Method,Start,(ctx:context.Context):error,public,101-114,2,-
+Method,run,(ctx:context.Context):,private,117-132,3,-
+Method,tick,(t:time.Time):,private,135-139,2,-
+Method,Stop,():error,public,142-153,2,-
 Method,stop,():,private,156-160,1,-
-Method,ProcessData,"(context.Context:ctx, []byte:input <-chan):(<-chan []byte, <-chan error)",public,163-193,1,-
-Method,process,([]byte:data):[]byte,private,196-203,1,-
-Method,NewWorkerPool,(int:workers):*WorkerPool,public,213-218,1,-
-Method,Start,():,public,221-226,1,-
-Method,worker,():,private,229-234,1,-
-Method,Submit,(func():job):,public,237-239,1,-
+Method,ProcessData,"(ctx:context.Context, input:<-chan []byte):(<-chan []byte, <-chan error)",public,163-193,5,-
+Method,process,(data:[]byte):[]byte,private,196-203,2,-
+Method,NewWorkerPool,(workers:int):*WorkerPool,public,213-218,1,-
+Method,Start,():,public,221-226,2,-
+Method,worker,():,private,229-234,2,-
+Method,Submit,(job:func()):,public,237-239,1,-
 Method,Shutdown,():,public,242-245,1,-
-Method,Chain,(...Middleware:middlewares):Middleware,public,257-264,1,-
-Method,WithTimeout,(time.Duration:timeout):Middleware,public,267-275,1,-
-Method,WithRetry,(int:maxRetries):Middleware,public,278-293,1,-
+Method,Chain,(middlewares:...Middleware):Middleware,public,257-264,2,-
+Method,WithTimeout,(timeout:time.Duration):Middleware,public,267-275,1,-
+Method,WithRetry,(maxRetries:int):Middleware,public,278-293,3,-

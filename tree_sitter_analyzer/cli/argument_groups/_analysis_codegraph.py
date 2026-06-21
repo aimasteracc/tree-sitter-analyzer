@@ -215,6 +215,15 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
         help="Mermaid flowchart direction for --codegraph-visualize (default: TD)",
     )
     parser.add_argument(
+        "--codegraph-visualize-format",
+        choices=["mermaid", "sigma"],
+        default="mermaid",
+        help=(
+            "Visualization payload for --codegraph-visualize: mermaid text or "
+            "Sigma.js/Graphology JSON (default: mermaid)"
+        ),
+    )
+    parser.add_argument(
         "--uml",
         choices=["class", "package", "component", "sequence", "activity", "state"],
         help="Export a UML-style Mermaid diagram from indexed project intelligence",

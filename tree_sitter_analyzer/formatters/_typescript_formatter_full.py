@@ -14,6 +14,7 @@ from ._typescript_formatter_helpers import (
     trim_trailing_blank_lines,
     typescript_title,
 )
+from ._typescript_formatter_signatures_table import _module_level_functions
 
 
 def format_typescript_full_table(formatter: Any, data: dict[str, Any]) -> str:
@@ -30,9 +31,27 @@ def format_typescript_full_table(formatter: Any, data: dict[str, Any]) -> str:
     _append_classes_overview(lines, classes, methods, fields)
     for class_info in classes:
         _append_class_section(formatter, lines, class_info, methods, fields)
+    _append_global_functions(
+        formatter, lines, _module_level_functions(methods, classes)
+    )
 
     trim_trailing_blank_lines(lines)
     return "\n".join(lines)
+
+
+def _append_global_functions(
+    formatter: Any, lines: list[str], functions: list[dict[str, Any]]
+) -> None:
+    """Render module-level (non-class) functions in their own section."""
+    if not functions:
+        return
+
+    lines.append("## Global Functions")
+    lines.append("| Function | Signature | Vis | Lines | Cx | Doc |")
+    lines.append("|----------|-----------|-----|-------|----|----|")
+    for function in functions:
+        lines.append(format_method_row(formatter, function))
+    lines.append("")
 
 
 def _append_classes_overview(

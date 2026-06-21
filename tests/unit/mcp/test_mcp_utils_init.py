@@ -1,12 +1,29 @@
 """Tests for tree_sitter_analyzer.mcp.utils.__init__ module."""
 
 import importlib
+import sys
 
 from tree_sitter_analyzer.mcp.utils import (
     MCP_UTILS_CAPABILITIES,
     get_cache_manager,
     get_performance_monitor,
 )
+
+
+def _snapshot_modules(prefix: str) -> dict[str, object]:
+    return {m: sys.modules[m] for m in list(sys.modules) if m.startswith(prefix)}
+
+
+def _restore_modules(prefix: str, snapshot: dict[str, object]) -> None:
+    for mod in list(sys.modules):
+        if mod.startswith(prefix):
+            del sys.modules[mod]
+    sys.modules.update(snapshot)
+    for name, module in snapshot.items():
+        parent_name, _, child_name = name.rpartition(".")
+        parent = sys.modules.get(parent_name)
+        if parent is not None:
+            setattr(parent, child_name, module)
 
 
 class TestMcpUtilsCapabilities:
@@ -46,16 +63,10 @@ class TestGetPerformanceMonitor:
 class TestImportErrorFallback:
     def test_fallback_get_cache_manager_returns_none(self):
         """Test that fallback returns None when core services unavailable."""
-        import sys
-
         blocked = "tree_sitter_analyzer.core.cache_service"
         saved = sys.modules.pop(blocked, None)
 
-        mcp_utils_snapshot = {
-            m: sys.modules[m]
-            for m in list(sys.modules)
-            if m.startswith("tree_sitter_analyzer.mcp.utils")
-        }
+        mcp_utils_snapshot = _snapshot_modules("tree_sitter_analyzer.mcp.utils")
 
         block_list = {blocked}
 
@@ -80,23 +91,14 @@ class TestImportErrorFallback:
             sys.meta_path.remove(finder)
             if saved is not None:
                 sys.modules[blocked] = saved
-            for mod in list(sys.modules):
-                if mod.startswith("tree_sitter_analyzer.mcp.utils"):
-                    del sys.modules[mod]
-            sys.modules.update(mcp_utils_snapshot)
+            _restore_modules("tree_sitter_analyzer.mcp.utils", mcp_utils_snapshot)
 
     def test_fallback_get_performance_monitor_returns_none(self):
         """Test that fallback performance monitor returns None."""
-        import sys
-
         blocked = "tree_sitter_analyzer.core.cache_service"
         saved = sys.modules.pop(blocked, None)
 
-        mcp_utils_snapshot = {
-            m: sys.modules[m]
-            for m in list(sys.modules)
-            if m.startswith("tree_sitter_analyzer.mcp.utils")
-        }
+        mcp_utils_snapshot = _snapshot_modules("tree_sitter_analyzer.mcp.utils")
 
         block_list = {blocked}
 
@@ -121,7 +123,4 @@ class TestImportErrorFallback:
             sys.meta_path.remove(finder)
             if saved is not None:
                 sys.modules[blocked] = saved
-            for mod in list(sys.modules):
-                if mod.startswith("tree_sitter_analyzer.mcp.utils"):
-                    del sys.modules[mod]
-            sys.modules.update(mcp_utils_snapshot)
+            _restore_modules("tree_sitter_analyzer.mcp.utils", mcp_utils_snapshot)

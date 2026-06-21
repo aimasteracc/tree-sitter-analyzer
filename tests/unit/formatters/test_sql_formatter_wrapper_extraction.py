@@ -85,7 +85,7 @@ class TestExtractProcedureInfo:
         result = formatter._extract_procedure_info(raw_text, "update_user")
         assert "parameters" in result
         assert "dependencies" in result
-        assert len(result["parameters"]) > 0
+        assert result["parameters"]
 
     def test_extract_procedure_with_dependencies(self, formatter):
         """Test extraction of procedure with table dependencies."""

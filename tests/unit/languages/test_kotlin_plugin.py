@@ -25,7 +25,7 @@ class TestKotlinElementExtractorInit:
     def test_init_creates_instance(self):
         """KotlinElementExtractor should be instantiable."""
         extractor = KotlinElementExtractor()
-        assert extractor is not None
+        assert isinstance(extractor, KotlinElementExtractor)
 
     def test_init_sets_defaults(self):
         """KotlinElementExtractor should initialize default values."""
@@ -434,8 +434,12 @@ fun main() {
 
         result = await plugin.analyze_file(str(kt_file), mock_request)
 
-        # Should return an AnalysisResult (successful or not)
-        assert result is not None
+        assert result.success is True
+        assert result.language == "kotlin"
+        assert [(element.element_type, element.name) for element in result.elements] == [
+            ("function", "main"),
+            ("package", "com.example"),
+        ]
 
     @pytest.mark.asyncio
     async def test_analyze_file_with_classes(self, plugin, tmp_path):
@@ -454,7 +458,13 @@ class Person(val name: String) {
 
         result = await plugin.analyze_file(str(kt_file), mock_request)
 
-        assert result is not None
+        assert result.success is True
+        assert result.language == "kotlin"
+        assert [(element.element_type, element.name) for element in result.elements] == [
+            ("function", "Person"),
+            ("function", "greet"),
+            ("class", "Person"),
+        ]
 
 
 class TestKotlinComplexExtraction:
@@ -575,366 +585,35 @@ class TestKotlinPluginExtraction:
         language = tree_sitter.Language(_tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_extract_simple_function_via_plugin(self, plugin, parser):
-        """Test extracting simple function via plugin."""
-        code = """
-fun greet(name: String): String {
-    return "Hello, $name!"
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-        func_names = [f.name for f in result["functions"]]
-        assert "greet" in func_names
-
-    def test_extract_suspend_function_via_plugin(self, plugin, parser):
-        """Test extracting suspend function via plugin."""
-        code = """
-suspend fun fetchData(url: String): String {
-    delay(1000)
-    return "data"
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-
-    def test_extract_private_function_via_plugin(self, plugin, parser):
-        """Test extracting private function via plugin."""
-        code = """
-private fun internalHelper(): Int {
-    return 42
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-
-    def test_extract_protected_function(self, plugin, parser):
-        """Test extracting protected function."""
-        code = """
-open class Base {
-    protected fun helperMethod(): String {
-        return "helper"
-    }
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-        assert "classes" in result
-
-    def test_extract_internal_function(self, plugin, parser):
-        """Test extracting internal function."""
-        code = """
-internal fun moduleHelper(): Boolean {
-    return true
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-
-    def test_extract_class_with_visibility(self, plugin, parser):
-        """Test extracting class with different visibility."""
-        code = """
-public class PublicClass
-private class PrivateClass
-internal class InternalClass
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_extract_interface_via_plugin(self, plugin, parser):
-        """Test extracting interface via plugin."""
-        code = """
-interface Repository {
-    fun findById(id: Int): Entity?
-    fun save(entity: Entity): Boolean
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_extract_object_declaration_via_plugin(self, plugin, parser):
-        """Test extracting object declaration via plugin."""
-        code = """
-object Singleton {
-    val instance = "singleton"
-    fun doSomething() {}
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_extract_companion_object_via_plugin(self, plugin, parser):
-        """Test extracting companion object via plugin."""
-        code = """
-class MyClass {
-    companion object {
-        const val TAG = "MyClass"
-        fun create(): MyClass = MyClass()
-    }
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_extract_data_class_via_plugin(self, plugin, parser):
-        """Test extracting data class via plugin."""
-        code = """
-data class User(
-    val id: Int,
-    val name: String,
-    val email: String
-)
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_extract_sealed_class_via_plugin(self, plugin, parser):
-        """Test extracting sealed class via plugin."""
-        code = """
-sealed class Result<out T> {
-    data class Success<T>(val data: T) : Result<T>()
-    data class Error(val exception: Exception) : Result<Nothing>()
-    object Loading : Result<Nothing>()
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_extract_enum_class_via_plugin(self, plugin, parser):
-        """Test extracting enum class via plugin."""
-        code = """
-enum class Status {
-    PENDING,
-    ACTIVE,
-    COMPLETED,
-    CANCELLED
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_extract_property_val_via_plugin(self, plugin, parser):
-        """Test extracting val property via plugin."""
-        code = """
-val immutableValue: String = "constant"
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "variables" in result
-
-    def test_extract_property_var_via_plugin(self, plugin, parser):
-        """Test extracting var property via plugin."""
-        code = """
-var mutableValue: Int = 0
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "variables" in result
-
-    def test_extract_private_property(self, plugin, parser):
-        """Test extracting private property."""
-        code = """
-class Config {
-    private val secret: String = "hidden"
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "variables" in result or "classes" in result
-
-    def test_extract_package_declaration(self, plugin, parser):
-        """Test extracting package declaration."""
+    def test_extract_elements_via_plugin_smoke(self, plugin, parser):
+        """Plugin dispatch should exercise all extractor categories once."""
         code = """
 package com.example.myapp
 
-class MyClass
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "packages" in result or "classes" in result
-
-    def test_extract_imports_via_plugin(self, plugin, parser):
-        """Test extracting import statements via plugin."""
-        code = """
 import kotlin.collections.List
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
-class MyClass
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "imports" in result
+data class User(val id: Int, val name: String)
 
-    def test_extract_function_with_parameters_via_plugin(self, plugin, parser):
-        """Test extracting function with multiple parameters via plugin."""
-        code = """
-fun calculate(a: Int, b: Int, operation: (Int, Int) -> Int): Int {
-    return operation(a, b)
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-        funcs = result["functions"]
-        calc_func = next((f for f in funcs if f.name == "calculate"), None)
-        if calc_func:
-            assert hasattr(calc_func, "parameters") or True
+class Repository {
+    private val users = mutableListOf<User>()
 
-    def test_extract_extension_function_via_plugin(self, plugin, parser):
-        """Test extracting extension function via plugin."""
-        code = """
-fun String.addExclamation(): String {
-    return this + "!"
-}
-
-fun Int.isEven(): Boolean = this % 2 == 0
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-
-    def test_extract_inline_function_via_plugin(self, plugin, parser):
-        """Test extracting inline function via plugin."""
-        code = """
-inline fun <T> measureTime(block: () -> T): T {
-    val start = System.currentTimeMillis()
-    val result = block()
-    println("Time: ${System.currentTimeMillis() - start}ms")
-    return result
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-
-    def test_extract_function_with_default_params_via_plugin(self, plugin, parser):
-        """Test extracting function with default parameters via plugin."""
-        code = """
-fun greet(name: String = "World", greeting: String = "Hello"): String {
-    return "$greeting, $name!"
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-
-    def test_extract_class_with_constructor_via_plugin(self, plugin, parser):
-        """Test extracting class with primary constructor via plugin."""
-        code = """
-class Person(
-    val name: String,
-    val age: Int,
-    private var email: String
-) {
-    fun greet() = "Hello, I'm $name"
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-        assert "functions" in result
-
-    def test_extract_class_with_secondary_constructor(self, plugin, parser):
-        """Test extracting class with secondary constructor."""
-        code = """
-class Person {
-    val name: String
-    val age: Int
-
-    constructor(name: String) {
-        this.name = name
-        this.age = 0
-    }
-
-    constructor(name: String, age: Int) {
-        this.name = name
-        this.age = age
+    suspend fun fetchData(): List<User> {
+        return users.toList()
     }
 }
 """
         tree = parser.parse(code.encode("utf-8"))
         result = plugin.extract_elements(tree, code)
-        assert "classes" in result
 
-    def test_extract_abstract_class_via_plugin(self, plugin, parser):
-        """Test extracting abstract class via plugin."""
-        code = """
-abstract class Shape {
-    abstract fun area(): Double
-    abstract fun perimeter(): Double
-
-    fun describe(): String = "I am a shape"
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-        assert "functions" in result
-
-    def test_extract_generic_class_via_plugin(self, plugin, parser):
-        """Test extracting generic class via plugin."""
-        code = """
-class Container<T>(val item: T) {
-    fun get(): T = item
-    fun set(newItem: T): Container<T> = Container(newItem)
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_extract_nested_class_via_plugin(self, plugin, parser):
-        """Test extracting nested class via plugin."""
-        code = """
-class Outer {
-    class Nested {
-        fun nestedMethod(): String = "nested"
-    }
-
-    inner class Inner {
-        fun innerMethod(): String = "inner"
-    }
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_extract_annotation_class_via_plugin(self, plugin, parser):
-        """Test extracting annotation class via plugin."""
-        code = """
-annotation class MyAnnotation(val value: String)
-
-@MyAnnotation("test")
-class AnnotatedClass
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_extract_typealias(self, plugin, parser):
-        """Test extracting typealias."""
-        code = """
-typealias StringList = List<String>
-typealias Handler = (Int, String) -> Boolean
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        # Typealias may be extracted as variables or not at all
-        assert isinstance(result, dict)
+        assert result.keys() >= {
+            "functions",
+            "classes",
+            "variables",
+            "imports",
+            "packages",
+        }
+        assert [f.name for f in result["functions"]]
+        assert [c.name for c in result["classes"]]
 
 
 class TestKotlinPluginAnalyzeFile:
@@ -960,8 +639,13 @@ class TestClass {
         request = AnalysisRequest(file_path=str(kt_file))
         result = await plugin.analyze_file(str(kt_file), request)
 
-        assert result is not None
+        assert result.success is True
         assert result.language == "kotlin"
+        assert [(element.element_type, element.name) for element in result.elements] == [
+            ("function", "testMethod"),
+            ("class", "TestClass"),
+            ("package", "com.example"),
+        ]
 
     @pytest.mark.asyncio
     async def test_analyze_file_with_imports(self, plugin, tmp_path):
@@ -981,8 +665,14 @@ class ImportTest {
         request = AnalysisRequest(file_path=str(kt_file))
         result = await plugin.analyze_file(str(kt_file), request)
 
-        assert result is not None
+        assert result.success is True
         assert result.language == "kotlin"
+        assert [(element.element_type, element.name) for element in result.elements] == [
+            ("class", "ImportTest"),
+            ("variable", "items"),
+            ("import", "kotlin.collections.List"),
+            ("package", "com.example"),
+        ]
 
     @pytest.mark.asyncio
     async def test_analyze_file_error_handling(self, plugin):
@@ -993,8 +683,10 @@ class ImportTest {
         request = AnalysisRequest(file_path="/nonexistent/path/file.kt")
         result = await plugin.analyze_file("/nonexistent/path/file.kt", request)
 
-        # Should return a result even for error cases
-        assert result is not None
+        assert result.success is False
+        assert result.language == "kotlin"
+        assert result.elements == []
+        assert "No such file or directory" in result.error_message
 
 
 class TestKotlinDocstring:
@@ -1218,7 +910,7 @@ class TestKotlinPluginEdgeCases:
     def test_get_tree_sitter_language(self, plugin):
         """Test getting tree-sitter language."""
         lang = plugin.get_tree_sitter_language()
-        assert lang is not None
+        assert isinstance(lang, tree_sitter.Language)
 
     def test_count_tree_nodes(self, plugin):
         """Test _count_tree_nodes method."""
@@ -2021,56 +1713,28 @@ class TestKotlinExtractionBranches:
         language = tree_sitter.Language(_tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_function_without_name_node(self, plugin, parser):
-        """Test function extraction when name field is None."""
+    def test_extract_branch_shapes_in_comprehensive_file(self, plugin, parser):
+        """Exercise branch-heavy syntax through one plugin dispatch."""
         code = """
-fun (x: Int) = x * 2
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert isinstance(result, dict)
+package com.example.myapp.feature
 
-    def test_function_with_unit_return(self, plugin, parser):
-        """Test function with implicit Unit return."""
-        code = """
-fun printHello() {
-    println("Hello")
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
+import kotlin.collections.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow as createFlow
 
-    def test_function_with_explicit_return_type(self, plugin, parser):
-        """Test function with explicit return type after colon."""
-        code = """
-fun getValue(): Int {
-    return 42
-}
-
-fun getString(): String = "test"
-
-fun getList(): List<Int> = listOf(1, 2, 3)
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-
-    def test_class_with_modifiers(self, plugin, parser):
-        """Test class with various modifiers."""
-        code = """
 open class OpenClass
 abstract class AbstractClass
 final class FinalClass
 sealed class SealedClass
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
 
-    def test_property_with_getter_setter(self, plugin, parser):
-        """Test property with custom getter/setter."""
-        code = """
+interface Clickable {
+    fun onClick()
+    fun onLongClick(): Boolean = false
+}
+
+val immutable = "cannot change"
+var mutable = "can change"
+
 class Example {
     var counter: Int = 0
         get() = field
@@ -2078,72 +1742,27 @@ class Example {
 
     val computed: Int
         get() = counter * 2
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
 
-    def test_class_without_name_fallback(self, plugin, parser):
-        """Test anonymous class handling."""
-        code = """
-val runnable = object : Runnable {
-    override fun run() {
-        println("Running")
+    class StaticNested {
+        fun method() = "nested"
     }
+
+    inner class Inner {
+        fun method() = this@Example.toString()
+    }
+
+    public fun publicMethod() {}
+    private fun privateMethod() {}
+    protected fun protectedMethod() {}
+    internal fun internalMethod() {}
+    suspend fun suspendMethod() {}
+    inline fun inlineMethod() {}
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert isinstance(result, dict)
 
-    def test_interface_detection(self, plugin, parser):
-        """Test interface is properly detected as interface kind."""
-        code = """
-interface Drawable {
-    fun draw()
-}
+fun getValue(): Int = 42
+fun getString(): String = "test"
+fun getList(): List<Int> = listOf(1, 2, 3)
 
-interface Clickable {
-    fun onClick()
-    fun onLongClick(): Boolean = false
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-        # Check if interface is detected
-        for cls in result["classes"]:
-            if cls.name in ["Drawable", "Clickable"]:
-                assert cls.class_type == "interface" or True
-
-    def test_package_with_qualified_name(self, plugin, parser):
-        """Test package with qualified name."""
-        code = """
-package com.example.myapp.feature
-
-class FeatureClass
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "packages" in result or "classes" in result
-
-    def test_imports_various_styles(self, plugin, parser):
-        """Test various import styles."""
-        code = """
-import kotlin.collections.*
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow as createFlow
-
-class Test
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "imports" in result
-
-    def test_function_with_many_parameters(self, plugin, parser):
-        """Test function with multiple parameters of various types."""
-        code = """
 fun complexFunction(
     name: String,
     age: Int,
@@ -2157,59 +1776,26 @@ fun complexFunction(
 """
         tree = parser.parse(code.encode("utf-8"))
         result = plugin.extract_elements(tree, code)
-        assert "functions" in result
+        assert result["functions"]
+        assert result["classes"]
+        assert "imports" in result
+        assert "packages" in result
 
-    def test_property_val_and_var_detection(self, plugin, parser):
-        """Test val and var property detection."""
-        code = """
-val immutable = "cannot change"
-var mutable = "can change"
-
-class Config {
-    val setting1: String = "default"
-    var setting2: Int = 0
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "variables" in result or "classes" in result
-
-    def test_nested_class_extraction(self, plugin, parser):
-        """Test nested class extraction."""
-        code = """
-class Outer {
-    class StaticNested {
-        fun method() = "nested"
-    }
-
-    inner class Inner {
-        fun method() = this@Outer.toString()
+    def test_extract_elements_handles_unusual_shapes(self, plugin, parser):
+        """Malformed and anonymous shapes should still return an element dict."""
+        cases = [
+            "fun (x: Int) = x * 2",
+            """
+val runnable = object : Runnable {
+    override fun run() {
+        println("Running")
     }
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_function_modifiers(self, plugin, parser):
-        """Test function with various modifiers."""
-        code = """
-class Example {
-    public fun publicMethod() {}
-    private fun privateMethod() {}
-    protected fun protectedMethod() {}
-    internal fun internalMethod() {}
-
-    suspend fun suspendMethod() {}
-    inline fun inlineMethod() {}
-
-    private suspend fun privateSuspend() {}
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-        assert "classes" in result
+""",
+        ]
+        for code in cases:
+            tree = parser.parse(code.encode("utf-8"))
+            assert isinstance(plugin.extract_elements(tree, code), dict)
 
 
 class TestKotlinDocstringExtraction:
@@ -2223,38 +1809,6 @@ class TestKotlinDocstringExtraction:
     def parser(self):
         language = tree_sitter.Language(_tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
-
-    def test_function_with_kdoc(self, plugin, parser):
-        """Test function with KDoc."""
-        code = """
-/**
- * Calculates the sum of two numbers.
- *
- * @param a First number
- * @param b Second number
- * @return Sum of a and b
- */
-fun add(a: Int, b: Int): Int = a + b
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-
-    def test_class_with_kdoc(self, plugin, parser):
-        """Test class with KDoc."""
-        code = """
-/**
- * Represents a user in the system.
- *
- * @property id Unique identifier
- * @property name User's full name
- * @constructor Creates a new user
- */
-class User(val id: Int, val name: String)
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
 
     def test_property_with_kdoc(self, plugin, parser):
         """Test property with KDoc."""
@@ -2290,7 +1844,7 @@ class TestKotlinTreeSitterLanguage:
     def test_get_tree_sitter_language_returns_language(self, plugin):
         """Test that get_tree_sitter_language returns valid language."""
         lang = plugin.get_tree_sitter_language()
-        assert lang is not None
+        assert isinstance(lang, tree_sitter.Language)
 
 
 class TestKotlinPluginWithoutTreeSitter:
@@ -2347,109 +1901,28 @@ class TestKotlinEdgeCasesFinal:
         language = tree_sitter.Language(_tree_sitter_kotlin.language())
         return tree_sitter.Parser(language)
 
-    def test_empty_class(self, plugin, parser):
-        """Test empty class."""
-        code = "class Empty"
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_object_declaration(self, plugin, parser):
-        """Test object declaration."""
+    def test_extract_class_variants_via_plugin(self, plugin, parser):
+        """Class-like edge cases can share one plugin dispatch."""
         code = """
+class Empty
+
 object Singleton {
     val value = 42
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
 
-    def test_companion_object(self, plugin, parser):
-        """Test companion object."""
-        code = """
 class Factory {
     companion object {
         fun create(): Factory = Factory()
     }
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
 
-    def test_enum_class(self, plugin, parser):
-        """Test enum class."""
-        code = """
 enum class Color { RED, GREEN, BLUE }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
 
-    def test_data_class(self, plugin, parser):
-        """Test data class."""
-        code = """
-data class Point(val x: Int, val y: Int)
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-
-    def test_lambda_expression(self, plugin, parser):
-        """Test lambda expression handling."""
-        code = """
-val sum = { a: Int, b: Int -> a + b }
-val list = listOf(1, 2, 3).map { it * 2 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert isinstance(result, dict)
-
-    def test_when_expression(self, plugin, parser):
-        """Test when expression."""
-        code = """
-fun describe(obj: Any): String = when (obj) {
-    1 -> "One"
-    "Hello" -> "Greeting"
-    is Long -> "Long number"
-    !is String -> "Not a string"
-    else -> "Unknown"
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-
-    def test_try_catch(self, plugin, parser):
-        """Test try-catch expression."""
-        code = """
-fun safeParse(str: String): Int? = try {
-    str.toInt()
-} catch (e: NumberFormatException) {
-    null
-}
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-
-    def test_operator_overloading(self, plugin, parser):
-        """Test operator overloading."""
-        code = """
 data class Point(val x: Int, val y: Int) {
     operator fun plus(other: Point) = Point(x + other.x, y + other.y)
     operator fun minus(other: Point) = Point(x - other.x, y - other.y)
 }
-"""
-        tree = parser.parse(code.encode("utf-8"))
-        result = plugin.extract_elements(tree, code)
-        assert "classes" in result
-        assert "functions" in result
 
-    def test_delegation(self, plugin, parser):
-        """Test delegation pattern."""
-        code = """
 interface Printer {
     fun print()
 }
@@ -2462,12 +1935,30 @@ class DelegatingPrinter(printer: Printer) : Printer by printer
 """
         tree = parser.parse(code.encode("utf-8"))
         result = plugin.extract_elements(tree, code)
-        assert "classes" in result
+        assert result["classes"]
+        assert result["functions"]
 
-    def test_destructuring(self, plugin, parser):
-        """Test destructuring declarations."""
+    def test_extract_expression_shapes_via_plugin(self, plugin, parser):
+        """Expression-heavy function bodies can share one plugin dispatch."""
         code = """
+val sum = { a: Int, b: Int -> a + b }
+val list = listOf(1, 2, 3).map { it * 2 }
+
 data class Person(val name: String, val age: Int)
+
+fun describe(obj: Any): String = when (obj) {
+    1 -> "One"
+    "Hello" -> "Greeting"
+    is Long -> "Long number"
+    !is String -> "Not a string"
+    else -> "Unknown"
+}
+
+fun safeParse(str: String): Int? = try {
+    str.toInt()
+} catch (e: NumberFormatException) {
+    null
+}
 
 fun processUser() {
     val (name, age) = Person("John", 30)
@@ -2476,5 +1967,5 @@ fun processUser() {
 """
         tree = parser.parse(code.encode("utf-8"))
         result = plugin.extract_elements(tree, code)
-        assert "functions" in result
-        assert "classes" in result
+        assert result["functions"]
+        assert result["classes"]

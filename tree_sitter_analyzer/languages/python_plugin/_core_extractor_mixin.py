@@ -15,6 +15,7 @@ from ._extractor_helpers import (
     find_docstring_after_line,
     run_iterative_traversal,
 )
+from ._python_complexity import python_cyclomatic_complexity
 
 
 class PythonExtractorCoreMixin:
@@ -148,34 +149,20 @@ class PythonExtractorCoreMixin:
             return None
 
     def _calculate_complexity_optimized(self, node: Any) -> int:
-        """Calculate cyclomatic complexity efficiently."""
-        import re
+        """Calculate cyclomatic complexity via an AST-node walk.
 
+        Replaces a keyword-regex text count that over-counted Python keywords
+        appearing in comments/docstrings/strings and counted ``match`` per-arm.
+        """
         node_id = id(node)
         if node_id in self._complexity_cache:
             return self._complexity_cache[node_id]
 
-        complexity = 1
         try:
-            node_text = self._get_node_text_optimized(node).lower()
-            keywords = [
-                "if",
-                "elif",
-                "while",
-                "for",
-                "except",
-                "and",
-                "or",
-                "with",
-                "match",
-                "case",
-            ]
-            for keyword in keywords:
-                pattern = rf"\b{keyword}\b"
-                matches = re.findall(pattern, node_text)
-                complexity += len(matches)
+            complexity = python_cyclomatic_complexity(node)
         except Exception as exc:
             log_debug(f"Failed to calculate complexity: {exc}")
+            complexity = 1
 
         self._complexity_cache[node_id] = complexity
         return complexity

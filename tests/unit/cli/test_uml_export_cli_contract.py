@@ -26,6 +26,7 @@ def _args(**overrides: Any) -> Namespace:
         "codegraph_visualize_depth": 3,
         "codegraph_visualize_max_edges": 150,
         "codegraph_visualize_direction": "TD",
+        "codegraph_visualize_format": "mermaid",
         "uml": None,
         "uml_source": None,
         "uml_target": None,
@@ -114,6 +115,47 @@ def test_existing_codegraph_visualize_cli_maps_function_diagram_inputs(
             "depth": 4,
             "max_edges": 25,
             "direction": "LR",
+            "visualization_format": "mermaid",
+            "output_format": "json",
+        },
+    }
+
+
+def test_codegraph_visualize_cli_maps_sigma_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    class FakeCodeGraphVisualizeTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "graph": {"nodes": [], "edges": []}}
+
+    monkeypatch.setattr(
+        mcp_commands, "CodeGraphVisualizeTool", FakeCodeGraphVisualizeTool
+    )
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(codegraph_visualize=True, codegraph_visualize_format="sigma"),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {
+            "mode": "full",
+            "file_path": None,
+            "function": None,
+            "depth": 3,
+            "max_edges": 150,
+            "direction": "TD",
+            "visualization_format": "sigma",
             "output_format": "json",
         },
     }
@@ -152,6 +194,17 @@ def test_uml_parser_accepts_sequence_source_target_and_limits() -> None:
     assert args.uml_target == "repository"
     assert args.uml_max_depth == 5
     assert args.uml_max_paths == 2
+
+
+def test_codegraph_visualize_parser_accepts_sigma_format() -> None:
+    parser = create_argument_parser()
+
+    args = parser.parse_args(
+        ["--codegraph-visualize", "--codegraph-visualize-format", "sigma"]
+    )
+
+    assert args.codegraph_visualize is True
+    assert args.codegraph_visualize_format == "sigma"
 
 
 def test_uml_parser_accepts_package_and_class_tuning_flags() -> None:

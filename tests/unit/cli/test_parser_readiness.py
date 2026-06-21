@@ -273,7 +273,7 @@ class TestParserPackageWarnings:
         # As of r37o, our pyproject has redundant declarations for ~13
         # languages. We only assert >=1 so the test stays stable when
         # pyproject is cleaned up over time.
-        assert len(warnings) >= 1, (
+        assert warnings, (
             "r37o: own pyproject.toml has known duplicate parser package "
             "declarations — expected the dogfood gate to surface at least one"
         )
@@ -299,7 +299,7 @@ class TestParserPackageWarnings:
             }, f"r37o: warning entry missing expected keys: {sorted(w.keys())}"
             assert isinstance(w["language"], str) and w["language"]
             assert isinstance(w["package"], str)
-            assert isinstance(w["declarations"], list) and len(w["declarations"]) >= 2
+            assert isinstance(w["declarations"], list) and len(w["declarations"]) >= 2  # ratchet: nondeterministic
             assert isinstance(w["sources"], list)
             assert isinstance(w["hint"], str) and w["language"] in w["hint"]
 

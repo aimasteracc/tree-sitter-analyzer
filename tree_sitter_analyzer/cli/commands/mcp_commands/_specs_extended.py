@@ -179,6 +179,7 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
             "mode": getattr(args, "dead_code_mode", "all") or "all",
             "include_test_files": bool(getattr(args, "dead_code_include_tests", False)),
             "max_dead": getattr(args, "dead_code_max", 50) or 50,
+            "path": getattr(args, "dead_code_path", None) or None,
             "output_format": output_format,
         },
     ),
@@ -283,6 +284,9 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
             "depth": getattr(args, "codegraph_visualize_depth", 3),
             "max_edges": getattr(args, "codegraph_visualize_max_edges", 150),
             "direction": getattr(args, "codegraph_visualize_direction", "TD") or "TD",
+            "visualization_format": (
+                getattr(args, "codegraph_visualize_format", "mermaid") or "mermaid"
+            ),
             "output_format": output_format,
         },
     ),

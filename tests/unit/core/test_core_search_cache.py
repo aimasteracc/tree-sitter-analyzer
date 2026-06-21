@@ -179,7 +179,7 @@ class TestSearchCacheLRU:
         assert cache.get("key3") is not None
 
         stats = cache.get_stats()
-        assert stats["evictions"] >= 1
+        assert stats["evictions"]
 
 
 class TestSearchCacheClear:

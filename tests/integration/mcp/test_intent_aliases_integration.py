@@ -77,7 +77,7 @@ class ExampleClass:
         assert result["success"] is True
         assert "count" in result
         assert "results" in result
-        assert result["count"] > 0
+        assert result["count"]
         # Verify the search actually found our function
         found = any("example_function" in str(r) for r in result["results"])
         assert found, f"Should find 'example_function' in results: {result['results']}"
@@ -291,7 +291,7 @@ class TestAliasWithAllToolParameters:
         assert "count" in result
         assert "results" in result
         # Should find matches (target appears in multiple files)
-        assert result["count"] > 0
+        assert result["count"]
 
     @pytest.mark.asyncio
     async def test_map_structure_supports_all_list_files_params(

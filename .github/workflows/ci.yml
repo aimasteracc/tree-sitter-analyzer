@@ -71,7 +71,7 @@ jobs:
       - name: Install (all extras)
         run: uv sync --all-extras
       # Docs-only change: skip the heavy matrix, but still run EVERY doc-anchor
-      # contract — the full agent-contract suite guards README counts AND the
+      # contract — the split contract/governance suites guard README counts AND the
       # AGENTS.md / GITFLOW.md / CLAUDE.md anchors (deleting the GitFlow link
       # from AGENTS.md must still fail), plus the README structure test. These
       # are fast file-read assertions, so a prose edit is validated against all
@@ -79,7 +79,8 @@ jobs:
       - name: Doc contract + structure guard
         run: |
           uv run pytest -q \
-            tests/unit/test_agent_contracts.py \
+            tests/contracts/ \
+            tests/governance/ \
             tests/integration/docs/test_readme_structure.py
 
   quality-check:

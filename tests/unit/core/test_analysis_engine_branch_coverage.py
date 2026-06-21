@@ -45,7 +45,7 @@ class TestCacheKeyCoverage:
         ):
             key = engine._generate_cache_key(request)
             assert isinstance(key, str)
-            assert len(key) > 0
+            assert key
 
 
 class TestDetectLanguageCoverage:

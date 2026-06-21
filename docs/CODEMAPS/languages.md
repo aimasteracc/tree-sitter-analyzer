@@ -39,6 +39,14 @@ Not every registered plugin is wired into the indexer to the same depth:
 | JSON | `languages/json_plugin.py` | inline | basic structure |
 | Bash | `languages/bash_plugin.py` | inline | functions, commands |
 
+## Shared helpers
+
+Cross-cutting logic shared by several plugins (not a language plugin itself):
+
+- `languages/_complexity_logical.py` — `is_executable_logical_operator()`: counts a `&&`/`||` token toward cyclomatic complexity only when it drives executable control flow. Used by the C/C++/C#/Java walkers to exclude booleans in non-executable contexts (`noexcept`/`requires` specifiers, `#if A && B` preprocessor conditions, default arguments, attributes/annotations, `static_assert`). The cross-language convention is "1 + decision points; each `&&`/`||` is one decision; switch/match counts once" (matching Go/Rust/Swift).
+- `languages/_complexity_decisions.py` — `count_decision_complexity()`: AST-node walk for JS/TS cyclomatic complexity (replaces the old keyword-substring text count that inflated complexity for keywords appearing inside identifiers/strings/comments and counted each switch `case`). Counts if / for / for-in/of / while / do-while / switch (once) / catch / ternary plus `&&`/`||`/`??` short-circuit operators (via `_complexity_logical`). Used by the JavaScript and TypeScript extractors.
+- `languages/python_plugin/_python_complexity.py` — `python_cyclomatic_complexity()`: AST-node walk for Python cyclomatic complexity (replaces a `re.findall(r"\bkeyword\b", text)` counter that counted keywords in comments/docstrings/strings, counted `match` per-arm, and counted `with`). Counts if / elif / for / while / except / ternary / match (once) / `and`/`or` / comprehension for-and-if clauses. Used by the Python extractor.
+
 ## Plugin Contract
 
 Every language plugin implements:

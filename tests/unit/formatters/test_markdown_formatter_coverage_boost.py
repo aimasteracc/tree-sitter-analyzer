@@ -41,7 +41,7 @@ class TestFormatTableCompactAndCSV:
         result = self.formatter.format_table(analysis_result, table_type="csv")
         assert result is not None
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
 
 
 class TestFormatCompact:

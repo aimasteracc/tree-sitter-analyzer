@@ -11,7 +11,11 @@ import os
 import shutil
 import tempfile
 
+import pytest
+
 from tree_sitter_analyzer.miswire_audit import audit, render_card, render_terminal
+
+pytestmark = pytest.mark.benchmark
 
 
 def _planted_polyglot() -> str:
@@ -30,7 +34,7 @@ def test_audit_flags_name_only_miswire_but_tsa_does_not() -> None:
     try:
         r = audit(d, reindex=True)
         # a name-only resolver would wire Python sorted() -> the Swift func sorted
-        assert r.naive_miswires >= 1, r
+        assert r.naive_miswires, r
         assert any(
             o.callee_name == "sorted" and o.callee_lang == "swift"
             for o in r.naive_offenders
@@ -38,7 +42,7 @@ def test_audit_flags_name_only_miswire_but_tsa_does_not() -> None:
         # TSA refuses that cross-language bind — Python sorted() stays builtin
         assert r.tsa_miswires == 0, r
         # the headline multiplier is meaningful
-        assert r.multiplier >= 1
+        assert r.multiplier
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
@@ -132,7 +136,7 @@ def test_genuine_collisions_exclude_builtins() -> None:
                 "func sorted(_ a: [Int]) -> [Int] { return a }\n"
             )
         r = audit(d, reindex=True)
-        assert r.naive_genuine_miswires >= 1
+        assert r.naive_genuine_miswires
         assert any(o.callee_name == "compute" for o in r.genuine_offenders)
         # `sorted` is a Python builtin -> never a GENUINE offender
         assert not any(o.callee_name == "sorted" for o in r.genuine_offenders)

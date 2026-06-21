@@ -40,4 +40,4 @@ import java.sql.SQLException;
 ### Private Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
-| validateUser | (user:User):boolean | - | 27-35 | 3 | - |
+| validateUser | (user:User):boolean | - | 27-35 | 5 | - |

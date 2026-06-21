@@ -537,7 +537,7 @@ SELECT * FROM employees;
         """Test extraction from empty source code."""
         result = extract_elements_from_sql(plugin, "")
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert len(result.get("classes", [])) == 0
         assert len(result.get("functions", [])) == 0
 
@@ -549,7 +549,7 @@ SELECT * FROM employees;
    comment */
 """
         result = extract_elements_from_sql(plugin, sql_code)
-        assert result is not None
+        assert isinstance(result, dict)
 
     def test_malformed_sql(self, plugin: SQLPlugin) -> None:
         """Test extraction from malformed SQL."""
@@ -558,7 +558,7 @@ CREATE TABLE incomplete (
     id INT
 """
         result = extract_elements_from_sql(plugin, sql_code)
-        assert result is not None
+        assert isinstance(result, dict)
 
     def test_mixed_statements(self, plugin: SQLPlugin) -> None:
         """Test extraction from mixed SQL statements."""
@@ -572,11 +572,11 @@ INSERT INTO logs (message) VALUES ('test');
 
 SELECT * FROM logs;
 
-CREATE VIEW recent_logs AS
+        CREATE VIEW recent_logs AS
 SELECT * FROM logs ORDER BY id DESC LIMIT 10;
 """
         result = extract_elements_from_sql(plugin, sql_code)
-        assert result is not None
+        assert isinstance(result, dict)
 
     def test_complex_database_schema(self, plugin: SQLPlugin) -> None:
         """Test extraction from complex database schema."""
@@ -612,11 +612,11 @@ BEGIN
     VALUES (p_username, p_email, p_password_hash);
 END;
 
-CREATE INDEX idx_users_email ON users (email);
+        CREATE INDEX idx_users_email ON users (email);
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         table_names = [c.name for c in result.get("classes", [])]
         assert "users" in table_names
 
@@ -652,7 +652,7 @@ CREATE TABLE users (
             request = AnalysisRequest(file_path=temp_path)
             result = await plugin.analyze_file(temp_path, request)
 
-            assert result is not None
+            assert result is not None and hasattr(result, "language")
             assert result.language == "sql"
         finally:
             os.unlink(temp_path)
@@ -676,7 +676,7 @@ END;
             request = AnalysisRequest(file_path=temp_path)
             result = await plugin.analyze_file(temp_path, request)
 
-            assert result is not None
+            assert result is not None and hasattr(result, "language")
             assert result.language == "sql"
         finally:
             os.unlink(temp_path)
@@ -688,7 +688,7 @@ class TestSQLElementModels:
     def test_sql_element_types_available(self) -> None:
         """Test that SQL-specific element types are available."""
         for attr in ("TABLE", "VIEW", "PROCEDURE", "FUNCTION", "TRIGGER", "INDEX"):
-            assert getattr(SQLElementType, attr) is not None
+            assert attr in SQLElementType.__members__
 
     def test_sql_table_with_columns_and_constraints(self) -> None:
         """Test SQLTable with columns and constraints."""

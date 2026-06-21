@@ -47,24 +47,24 @@ import javax.sql.DataSource;
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
-| authenticateUser | (username:String, password:String):boolean | + | 141-172 | 6 | - |
+| authenticateUser | (username:String, password:String):boolean | + | 141-172 | 9 | - |
 | createSession | (username:String):String | + | 177-199 | 5 | - |
-| validateData | (data:Map<String, Object>):boolean | + | 204-246 | 10 | - |
+| validateData | (data:Map<String, Object>):boolean | + | 204-246 | 11 | - |
 | logOperation | (operation:String, details:String):void | + | 280-290 | 2 | - |
 | manageCache | (key:String, value:Object):void | + | 295-308 | 2 | - |
-| performBackup | (backupType:String):void | + | 348-367 | 1 | - |
-| generateReport | (reportType:String, parameters:Map<String, Object>):void | + | 438-471 | 2 | - |
-| updateCustomerName | (customerId:String, newName:String):void | + | 601-617 | 4 | - |
-| getCustomerInfo | (customerId:String):Map<String, Object> | + | 622-652 | 5 | - |
-| deleteCustomer | (customerId:String):boolean | + | 657-691 | 9 | - |
-| processOrder | (customerId:String, items:List<String>, totalAmount:double):String | + | 696-736 | 10 | - |
-| manageInventory | (action:String, itemId:String, quantity:int):void | + | 741-773 | 3 | - |
-| sendNotification | (recipient:String, message:String, type:String):void | + | 855-884 | 7 | - |
+| performBackup | (backupType:String):void | + | 348-367 | 2 | - |
+| generateReport | (reportType:String, parameters:Map<String, Object>):void | + | 438-471 | 3 | - |
+| updateCustomerName | (customerId:String, newName:String):void | + | 601-617 | 6 | - |
+| getCustomerInfo | (customerId:String):Map<String, Object> | + | 622-652 | 6 | - |
+| deleteCustomer | (customerId:String):boolean | + | 657-691 | 10 | - |
+| processOrder | (customerId:String, items:List<String>, totalAmount:double):String | + | 696-736 | 12 | - |
+| manageInventory | (action:String, itemId:String, quantity:int):void | + | 741-773 | 6 | - |
+| sendNotification | (recipient:String, message:String, type:String):void | + | 855-884 | 9 | - |
 | shutdownSystem | ():void | + | 889-912 | 6 | - |
 | handleError | (error:Exception, context:String):void | + | 958-977 | 4 | - |
 | monitorPerformance | ():void | + | 1046-1067 | 1 | - |
 | performSecurityCheck | ():void | + | 1155-1171 | 1 | - |
-| synchronizeData | (sourceSystem:String, targetSystem:String):void | + | 1254-1283 | 3 | - |
+| synchronizeData | (sourceSystem:String, targetSystem:String):void | + | 1254-1283 | 5 | - |
 | main | (args:String[]):void [static] | + | 1385-1418 | 1 | - |
 
 ### Private Methods
@@ -77,10 +77,10 @@ import javax.sql.DataSource;
 | checkMemoryUsage | ():void | - | 93-106 | 2 | - |
 | checkDiskSpace | ():void | - | 111-117 | 2 | - |
 | checkNetworkConnectivity | ():void | - | 122-136 | 3 | - |
-| validateEmail | (email:String):boolean | - | 251-254 | 1 | - |
-| validatePhoneNumber | (phone:String):boolean | - | 259-262 | 1 | - |
+| validateEmail | (email:String):boolean | - | 251-254 | 3 | - |
+| validatePhoneNumber | (phone:String):boolean | - | 259-262 | 2 | - |
 | validateDate | (date:String):boolean | - | 267-275 | 2 | - |
-| cleanupCache | ():void | - | 313-326 | 2 | - |
+| cleanupCache | ():void | - | 313-326 | 3 | - |
 | updateCacheStatistics | ():void | - | 331-335 | 1 | - |
 | calculateCacheHitRatio | ():double | - | 340-343 | 1 | - |
 | performFullBackup | ():void | - | 372-395 | 6 | - |

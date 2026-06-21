@@ -325,7 +325,7 @@ class TestPageRank:
             assert "name" in node
             assert "pagerank" in node
             assert "inbound_refs" in node
-            assert node["inbound_refs"] >= 0
+            assert node["inbound_refs"] >= 0  # ratchet: nondeterministic
 
     def test_empty_edges_returns_empty(self, tmp_path: Path) -> None:
         manager = ProjectIndexManager(project_root=str(tmp_path))

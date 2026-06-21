@@ -113,7 +113,7 @@ async def test_search_content_with_output_file_and_suppress_output(
 
     assert saved_data["success"] is True
     assert "results" in saved_data
-    assert len(saved_data["results"]) > 0
+    assert saved_data["results"]
     assert "calculate_total" in saved_data["results"][0]["text"]
 
 
@@ -151,7 +151,7 @@ async def test_search_content_output_file_without_suppress_output(
     assert "results" in result
     assert result["output_file"] == output_file
     assert "file_saved" in result
-    assert len(result["results"]) > 0
+    assert result["results"]
 
     output_path = tmp_path / output_file
     assert output_path.exists()

@@ -25,12 +25,33 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
 from tree_sitter_analyzer.mcp.tools.facade_tool import FacadeTool
+
+# ---------------------------------------------------------------------------
+# INVARIANT DELEGATION NOTICE
+# The following 4 common facade invariants are tested canonically in:
+#   tests/unit/mcp/test_facade_envelope_contract.py
+#
+# Delegated invariants (do NOT add new duplicates here):
+#   - envelope preserved       (verdict / agent_summary verbatim pass-through)
+#   - arg projection           (action key stripped before reaching inner tool)
+#   - missing action error     (success=False, verdict in {ERROR, NOT_FOUND})
+#   - unknown action error     (success=False, available_actions listed)
+#
+# Facade-specific tests that remain in this file:
+#   - action routing to each of the 8 named actions (safe/guard/impact/refactor/
+#     constraints/pr/classify/ast_diff)
+#   - sibling-param drop between actions
+#   - R3 normalize (symbol -> function_name) for inners that declare function_name
+#   - annotation honesty (readOnlyHint must be False for mixed action set)
+#   - end-to-end no strict leak (F4 regression guard with real inner tools)
+#   - set_project_path rebind propagation (G3)
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Fake inner tool — minimal BaseMCPTool to test routing in isolation.
@@ -666,6 +687,13 @@ def test_action_pr_explicit_diff_mode_still_reaches_diff() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     facade = build_edit_facade(".")
-    result = asyncio.run(facade.execute({"action": "pr", "mode": "diff"}))
+    with patch(
+        "tree_sitter_analyzer.mcp.tools.codegraph_pr_review_tool._get_local_diff",
+        return_value="",
+    ) as get_local_diff:
+        result = asyncio.run(facade.execute({"action": "pr", "mode": "diff"}))
+
+    get_local_diff.assert_called_once_with("diff", ".")
     # diff mode reviews local changes — must not demand pr_url
+    assert result["success"] is True
     assert result.get("error") is None or "pr_url" not in str(result.get("error"))

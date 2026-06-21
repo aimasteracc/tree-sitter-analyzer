@@ -108,7 +108,7 @@ class TestDefaultCommandOutput:
         ) as mock_info:
             await command.execute_async("python")
             # Check that output_info was called multiple times
-            assert mock_info.call_count > 0
+            assert mock_info.call_count
             # Check that usage examples are included
             calls = [str(call) for call in mock_info.call_args_list]
             assert any("--query-key" in call for call in calls)

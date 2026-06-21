@@ -249,7 +249,7 @@ class TestCacheServiceClear:
         await service.set("key2", "value2")
         await service.set("key3", "value3")
 
-        assert service.size() > 0
+        assert service.size()
 
         service.clear()
 
@@ -266,8 +266,8 @@ class TestCacheServiceClear:
         await service.get("key1")
 
         stats_before = service.get_stats()
-        assert stats_before["hits"] > 0
-        assert stats_before["sets"] > 0
+        assert stats_before["hits"]
+        assert stats_before["sets"]
 
         service.clear()
 

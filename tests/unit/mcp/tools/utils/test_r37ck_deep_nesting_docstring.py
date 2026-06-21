@@ -47,7 +47,7 @@ class TestDeepNestingDocstringSuppression:
             "                    print(y)",
         ]
         depth, line = deepest_nesting_location(lines)
-        assert depth >= 4, (
+        assert depth >= 4, (  # ratchet: nondeterministic
             f"r37ck: real nested code MUST still register a high depth. "
             f"Got depth={depth} at L{line}"
         )

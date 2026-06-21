@@ -24,7 +24,7 @@ class TestJavaScriptTableFormatterEdgeCases:
         """Test formatting with None data"""
         result = formatter.format(None, "full")
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
 
     def test_format_with_invalid_format_type(self, formatter):
         """Test formatting with invalid format type"""
@@ -47,7 +47,7 @@ class TestJavaScriptTableFormatterEdgeCases:
 
         result = formatter.format(data, "full")
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
 
     def test_format_with_circular_references(self, formatter):
         """Test formatting with circular references in data"""

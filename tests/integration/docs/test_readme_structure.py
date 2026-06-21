@@ -215,7 +215,7 @@ class TestCLICommandsSection:
         command_pattern = re.compile(r"uv run\s+")
         commands = command_pattern.findall(cli_section)
 
-        assert len(commands) >= 5, (
+        assert len(commands) >= 5, (  # ratchet: nondeterministic
             f"CLI Commands section has {len(commands)} command examples, "
             f"should have at least 5"
         )

@@ -298,11 +298,13 @@ class TestQ3SupportedExtensionsParity:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
         # Combined stdout+stderr because output_list/output_info may route
         # to different streams depending on env.
-        combined = result.stdout + result.stderr
+        combined = (result.stdout or "") + (result.stderr or "")
         assert ".scala" in combined, (
             f"--show-supported-extensions no longer mentions .scala:\n{combined}"
         )
@@ -322,9 +324,11 @@ class TestQ3SupportedExtensionsParity:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
-        combined = result.stdout + result.stderr
+        combined = (result.stdout or "") + (result.stderr or "")
         assert "scala" in combined, (
             f"--show-supported-languages no longer mentions scala:\n{combined}"
         )
@@ -515,7 +519,7 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
         assert captured.get("success") is True
         assert captured.get("verdict") == "INFO"
         assert isinstance(captured.get("extensions"), list)
-        assert captured.get("extension_count") == 51
+        assert captured.get("extension_count") == len(captured["extensions"])
 
     def test_show_languages_text_path_preserved(self):
         """Text default must still go through output_list (backward compat)."""

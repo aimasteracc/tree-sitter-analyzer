@@ -6,8 +6,9 @@ never drift apart:
 
 1. ``server.call_tool`` / ``server_utils.tool_registration`` — the β legacy-name
    shim that forwards a deprecated 1.x tool name to ``facade.execute({action: ...})``.
-2. ``tests/unit/test_agent_contracts.py`` — the re-keyed parity / codemap / skill
-   contracts and the new discovery + delegation tests.
+2. ``tests/contracts/test_mcp_cli_parity_contract.py`` and
+   ``tests/contracts/test_mcp_surface_metadata_contract.py`` — the re-keyed
+   parity / codemap / skill contracts and the new discovery + delegation tests.
 3. Future docs/skill generators (Wave D) that need old→new mappings.
 
 Design (PRD §0 F3/F5, §2, §4, §6):
@@ -160,8 +161,8 @@ def is_legacy_name(name: str) -> bool:
 # ---------------------------------------------------------------------------
 # New-only (facade, action) pairs that need CLI parity coverage but have NO
 # v1.x legacy name — they were born into the facade surface and were NEVER
-# shimmed through dispatch_legacy.  ``test_agent_contracts`` uses this for
-# parity assertions WITHOUT triggering false deprecation envelopes.
+# shimmed through dispatch_legacy. The MCP contract tests use this for parity
+# assertions WITHOUT triggering false deprecation envelopes.
 #
 # Shape: {capability_key: (facade, action, cli_flag)}
 #   capability_key — a stable human label (not a legacy tool name)

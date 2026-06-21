@@ -66,6 +66,14 @@ Per-language formatter mixins live alongside (`_java_formatter_*_mixin.py`,
 `_cpp_formatter_*_mixin.py`, etc.) and are composed into the concrete formatter
 classes via Python's MRO.
 
+Standalone per-language formatters (self-contained, no mixin composition):
+- `formatters/go_formatter.py` — `GoTableFormatter`; full/compact/csv/json; renders
+  `| Func | Signature | Vis | Lines | Cx | Doc |` (functions) and
+  `| Receiver | Func | Signature | Vis | Lines | Cx | Doc |` (methods)
+- `formatters/bash_formatter.py` — `BashTableFormatter`; registered for "bash" / "sh";
+  renders `| Name | Signature | Vis | Lines | Cx | Doc |` (full) and
+  `| Name | Sig | V | L | Cx | Doc |` (compact)
+
 Key mixins for the Java formatter:
 - `formatters/_java_formatter_full_mixin.py` — `_format_full_table`
 - `formatters/_java_formatter_compact_mixin.py` — `_format_compact_table`
@@ -83,6 +91,13 @@ TypeScript formatter signatures module:
   (lightweight directory for .ts/.tsx/.d.ts files; interfaces count as grouping
   containers; overloads each appear as separate lines; used by
   `TypeScriptTableFormatter._format_signatures_table` via `structure action=signatures`)
+
+TS/JS full-table module-level functions:
+- `formatters/_typescript_formatter_full.py` and
+  `formatters/_javascript_formatter_full_mixin.py` render top-level (non-class)
+  functions in a `## Global Functions` section (same `Cx` column as class
+  methods). JS reads both `methods` (class methods) and `functions` (top-level)
+  since the JS plugin stores them in disjoint lists.
 
 ## CSV Control-Char Safety
 
@@ -117,6 +132,19 @@ Same data in JSON costs noticeably more tokens for typical AST outputs (the
 50-70% TOON saving cited above; the exact ratio is pinned by `tests/unit/mcp/test_output_cost_invariants.py`).
 
 Serialization helpers: `formatters/toon_formatter.py:_emit_*` (extracted in r37dm dogfood).
+
+### TOON Encoder/Decoder internals
+
+| Module | Role |
+|---|---|
+| `formatters/toon_encoder.py` | `ToonEncoder` — iterative encoder; `encode_value` for scalars |
+| `formatters/_toon_encoder_string_helpers.py` | `needs_quotes`, `escape_string` — quoting rules |
+| `formatters/_toon_encoder_table_helpers.py` | Array-table encoding: `union_schema`, `encode_array_table_lines` |
+| `formatters/_toon_encoder_task_helpers.py` | Stack-based task dispatch helpers |
+| `formatters/toon_decoder.py` | `decode_toon(token)` — inverse of `encode_value` for scalar tokens (issue #1058); `ToonDecodeError` |
+
+The decoder is intentionally **scalar-only** (PR1 scope): it handles `null`, `true`/`false`, numbers, quoted strings, and bare words.
+Full dict/list/table parsing is deferred to RFC-0018.
 
 ## Format Stability Contract
 

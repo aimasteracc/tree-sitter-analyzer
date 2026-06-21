@@ -234,7 +234,7 @@ class TestJavaScriptFullTableFormatting:
     def test_format_full_table_complete(self, formatter, sample_js_data):
         result = formatter._format_full_table(sample_js_data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
         assert "MyComponent" in result or "module" in result
         assert "MyComponent" in result
         assert "DataService" in result
@@ -430,7 +430,7 @@ class TestJavaScriptCompactTableFormatting:
     def test_format_compact_table(self, formatter, sample_js_data):
         result = formatter._format_compact_table(sample_js_data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
         assert "MyComponent" in result or "module" in result
         assert "## Info" in result
 

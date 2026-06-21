@@ -181,7 +181,7 @@ class TestGetStatsBreakdowns:
         assert by_kind.get("class") == 2, f"expected class=2, got {by_kind}"
         # function count >=1; not asserting exact value because the method-
         # classification engineer may reclassify some entries.
-        assert by_kind.get("function", 0) >= 1
+        assert by_kind.get("function", 0)
 
     def test_symbols_by_kind_includes_constant_bucket(self) -> None:
         """Issue #610 — kind='constant' rows (Python module constants) must

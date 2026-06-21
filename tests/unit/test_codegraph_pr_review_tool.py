@@ -80,6 +80,34 @@ class TestHelpers:
         assert "foo.py" in files
         assert "bar.js" in files
 
+    def test_branch_diff_uses_current_pr_base(self):
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            if cmd[0] == "gh":
+                return MagicMock(returncode=0, stdout="develop\n")
+            if cmd[:3] == ["git", "show-ref", "--verify"]:
+                return MagicMock(returncode=0)
+            if cmd[:2] == ["git", "diff"]:
+                return MagicMock(returncode=0, stdout="diff text")
+            return MagicMock(returncode=1, stdout="")
+
+        with patch("subprocess.run", side_effect=fake_run):
+            assert _get_local_diff("branch", "/repo") == "diff text"
+
+        assert calls == [
+            ["gh", "pr", "view", "--json", "baseRefName", "--jq", ".baseRefName"],
+            [
+                "git",
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/remotes/origin/develop",
+            ],
+            ["git", "diff", "origin/develop...HEAD"],
+        ]
+
     def test_build_recommendations_empty(self):
         recs = _build_recommendations([], [], [])
         assert len(recs) == 1
@@ -214,7 +242,7 @@ class TestCodeGraphPRReviewTool:
                     },
                 )
         assert result["success"] is True
-        assert result["files_reviewed"] >= 1
+        assert result["files_reviewed"]
         assert "overall_risk" in result
         assert "verdict" in result
         assert "recommendations" in result

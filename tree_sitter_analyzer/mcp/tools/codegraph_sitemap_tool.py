@@ -144,12 +144,26 @@ class CodeGraphSitemapTool(BaseMCPTool):
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        # Coerce numeric params to int before validate_arguments so string values
+        # from the MCP boundary ("200") pass _validate_positive_int.
+        coerced: dict[str, Any] = dict(arguments)
+        for _key in ("max_files", "max_symbols"):
+            if (
+                _key in coerced
+                and coerced[_key] is not None
+                and not isinstance(coerced[_key], bool)
+            ):
+                try:
+                    coerced[_key] = int(coerced[_key])
+                except (ValueError, TypeError):
+                    pass  # let validate_arguments produce the error
+        arguments = coerced
         self.validate_arguments(arguments)
 
         mode = arguments.get("mode", "full")
         language = arguments.get("language")
         directory = arguments.get("directory")
-        max_files = arguments.get("max_files", 200)
+        max_files = int(arguments.get("max_files", 200))
         max_symbols = arguments.get("max_symbols", DEFAULT_MAX_SYMBOLS)
         output_format = arguments.get("output_format", "toon")
 

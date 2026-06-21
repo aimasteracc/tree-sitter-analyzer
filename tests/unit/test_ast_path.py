@@ -75,7 +75,6 @@ class TestPathAtLine:
         nav = ASTPathNavigator()
         result = nav.path_at_line(python_file, 16)
         assert result.target_line == 16
-        assert len(result.path) >= 2
         scope_names = [n.name for n in result.path if n.name]
         assert "MyClass" in scope_names
         assert "process" in scope_names
@@ -169,7 +168,8 @@ class TestToDict:
         assert "target_line" in d
         assert d["target_line"] == 16
         assert isinstance(d["path"], list)
-        assert len(d["path"]) >= 2
+        assert all("type" in item for item in d["path"])
+        assert all("name" in item for item in d["path"])
 
     def test_node_to_dict(self, python_file):
         nav = ASTPathNavigator()
@@ -187,11 +187,13 @@ class TestEdgeCases:
         p.write_text("", encoding="utf-8")
         nav = ASTPathNavigator()
         result = nav.path_at_line(str(p), 1)
-        assert result.path is not None
+        assert isinstance(result.path, list)
+        assert result.target_line == 1
 
     def test_comment_only_file(self, tmp_path):
         p = tmp_path / "comments.py"
         p.write_text("# just a comment\n# another\n", encoding="utf-8")
         nav = ASTPathNavigator()
         result = nav.path_at_line(str(p), 1)
-        assert result is not None
+        assert isinstance(result.path, list)
+        assert result.target_line == 1

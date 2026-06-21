@@ -24,7 +24,7 @@
 - For PRs that change Python source, run focused tests with `--cov=tree_sitter_analyzer --cov-report=json`, then run `uv run python scripts/check_patch_coverage.py --base origin/develop --coverage-json coverage.json` before pushing. The local patch gate must report no added executable misses; add effective tests instead of waiting for CI Codecov to block the PR.
 - Benchmark-only runs are the exception: use `uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0`.
 - Do not remove or weaken these pytest defaults. They prevent repeated agent mistakes: serial full-suite runs, accidental benchmark execution, hidden hangs, and >5 minute feedback loops.
-- If a test-runtime setting must change, update `tests/unit/test_agent_contracts.py`, explain why the new setting is faster or safer, and prove `uv run pytest -q` still finishes under 5 minutes.
+- If a test-runtime setting must change, update `tests/contracts/test_pytest_runtime_contract.py`, explain why the new setting is faster or safer, and prove `uv run pytest -q` still finishes under 5 minutes.
 
 ## CI Test Tier Contract
 
@@ -49,7 +49,7 @@ Memory records should capture reusable lessons, not logs: benchmark surprises, C
 ## MCP/CLI Parity Contract
 
 - Every registered MCP tool must have a CLI access path.
-- Main CLI flags and standalone scripts are guarded by `tests/unit/test_agent_contracts.py`.
+- Main CLI flags and standalone scripts are guarded by `tests/contracts/test_mcp_cli_parity_contract.py`.
 - MCP-equivalent CLI handler arguments, required file-path checks, and TOON output are guarded by `tests/unit/cli/test_mcp_commands.py`.
 - When adding or changing an MCP tool, update the CLI path in the same change and run a real CLI smoke test, for example `uv run python -m tree_sitter_analyzer <file> --smart-context --format json`.
 - This keeps MCP-only features from becoming invisible to users, CI, and future agents.
@@ -67,7 +67,7 @@ Any change touching one of these registries MUST update the corresponding `docs/
 
 Enforced by:
 - `scripts/codemap-sync-check.sh` (pre-commit hook + Claude PreToolUse soft-nag)
-- `test_registered_mcp_tools_have_codemap_parity` in `tests/unit/test_agent_contracts.py`
+- `test_registered_mcp_tools_have_codemap_parity` in `tests/contracts/test_mcp_surface_metadata_contract.py`
 
 Escape hatch for intentional rename/rebase: `SKIP_CODEMAP_SYNC=1 git commit ...`. The pytest test still runs in CI as the final safety net — bypass is local-only.
 
@@ -102,7 +102,7 @@ Why: previously the codemap drifted from 23 → 27 → 30 → 55 tools across 4 
 **Enforcement layers:**
 - `.github/workflows/gitflow-guard.yml` — CI fails on a PR whose head→base pair violates the matrix
 - GitHub branch protection on `main` (PR + status checks required, no force-push)
-- `test_gitflow_documentation_is_present` in `tests/unit/test_agent_contracts.py` — guards against `GITFLOW.md` being deleted or `AGENTS.md` losing the link
+- `test_gitflow_documentation_is_present` in `tests/governance/test_gitflow_contract.py` — guards against `GITFLOW.md` being deleted or `AGENTS.md` losing the link
 
 Escape hatch: none. If GITFLOW.md itself needs to change, that's a PR like any other — argue the case in the description and update the matrix + tests in the same commit.
 
@@ -128,7 +128,8 @@ These are failure modes the project has *already paid for* during the v1.13.0 / 
 
 8. **Never lower `--maxfail` or `--session-timeout` in pytest config.** v1.13 release CI repeatedly capped failures at 10 while the actual count was ~85, forcing multi-hour debug cycles. `--maxfail=200` + `--session-timeout=600` are the locked floors; `test_default_pytest_runtime_contract_is_locked` enforces them. (Postmortem § 9.)
 
-These rules are guarded by tests in `tests/unit/test_agent_contracts.py`:
+These rules are guarded by tests in `tests/governance/test_postmortem_guards.py`
+and `tests/contracts/test_pytest_runtime_contract.py`:
 
 - `test_postmortem_v1_13_doc_exists`
 - `test_agents_md_documents_v1_13_anti_patterns`

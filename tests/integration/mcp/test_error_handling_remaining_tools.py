@@ -286,7 +286,7 @@ public class Example {
             except expected_error as e:
                 error_msg = str(e)
                 # エラーメッセージが空でないことを確認
-                assert len(error_msg) > 0
+                assert error_msg
                 # ファイル名が含まれることを確認
                 assert (
                     "nonexistent.py" in error_msg

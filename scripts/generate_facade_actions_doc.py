@@ -23,7 +23,7 @@ Sources of truth
   so they are honestly summarised as "+ action payload" instead of guessed.
 * **CLI twins** — ``facade_map.LEGACY_TOOL_MAP`` + ``facade_map.NEW_ACTION_PARITY``
   crosswalked with the ``tool_to_cli`` parity table asserted by
-  ``tests/unit/test_agent_contracts.py::test_registered_mcp_tools_have_cli_parity``
+  ``tests/contracts/test_mcp_cli_parity_contract.py::test_registered_mcp_tools_have_cli_parity``
   (extracted via AST from the test source so it cannot be hand-copied stale).
   Actions with no authoritative mapping get an explicit em-dash gap — never a
   hand-written guess.
@@ -47,7 +47,9 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DOC_PATH = PROJECT_ROOT / "docs" / "api" / "facade-actions.md"
-CONTRACTS_TEST_PATH = PROJECT_ROOT / "tests" / "unit" / "test_agent_contracts.py"
+CONTRACTS_TEST_PATH = (
+    PROJECT_ROOT / "tests" / "contracts" / "test_mcp_cli_parity_contract.py"
+)
 REGEN_COMMAND = "uv run python scripts/generate_facade_actions_doc.py"
 DRIFT_TEST = "tests/unit/docs/test_facade_actions_doc_drift.py"
 

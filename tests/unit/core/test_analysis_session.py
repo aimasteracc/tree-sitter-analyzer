@@ -50,7 +50,7 @@ class TestAnalysisSessionCreation:
 
         # Session ID 格式: YYYYMMDD-HHMMSS-<uuid4>
         parts = session.session_id.split('-')
-        assert len(parts) >= 3  # 至少有 date-time-uuid
+        assert len(parts) >= 3  # 至少有 date-time-uuid  # ratchet: nondeterministic
 
         # 第一部分是日期 YYYYMMDD
         assert len(parts[0]) == 8
@@ -195,7 +195,7 @@ class TestSessionSerialization:
         json_str = json.dumps(data)  # 不应抛出异常
 
         assert isinstance(json_str, str)
-        assert len(json_str) > 0
+        assert json_str
 
 
 class TestSessionPersistence:

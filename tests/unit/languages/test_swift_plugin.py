@@ -127,8 +127,90 @@ class TestSwiftExtraction:
         assert load.return_type == "User"
 
         greet = next(item for item in functions if item.name == "greet")
-        assert greet.parameters == ["message"]
+        assert greet.parameters == ["message: String"]
         assert greet.return_type == "String"
+
+    def test_function_parameters_keep_types(self, plugin: SwiftPlugin) -> None:
+        # Swift params must render as "name: Type" (mirrors Rust), not bare
+        # names — the internal name + the type, with the external argument
+        # label and the `_` no-label marker dropped, and default values
+        # stripped. Regression for the type-dropping defect.
+        sample = """
+        func config(name: String, times count: Int = 3, _ flag: Bool) -> Void {}
+        func lookup(map: [String: Int]) -> Int { return 0 }
+        """
+        tree = _swift_parser().parse(sample.encode("utf-8"))
+        functions = plugin.create_extractor().extract_functions(tree, sample)
+        by_name = {item.name: item for item in functions}
+        assert by_name["config"].parameters == [
+            "name: String",
+            "count: Int",
+            "flag: Bool",
+        ]
+        # A dictionary type contains its own colon; only the first colon
+        # separates name from type.
+        assert by_name["lookup"].parameters == ["map: [String: Int]"]
+
+    def test_parameters_with_nested_commas(self, plugin: SwiftPlugin) -> None:
+        # Tuple, generic, and multi-arg-closure parameter types contain their
+        # own commas/parens. The parameter clause must be matched with
+        # balanced parens (not the first ")") and split on top-level commas
+        # only — otherwise the nested comma both corrupts the type AND drops
+        # every following parameter.
+        sample = """
+        func handle(pair: (Int, String), name: String) -> Bool { return true }
+        func run(onDone: (Int, Error?) -> Void, tag: String) {}
+        func wrap(box: Result<Int, Error>, count: Int) {}
+        """
+        tree = _swift_parser().parse(sample.encode("utf-8"))
+        functions = plugin.create_extractor().extract_functions(tree, sample)
+        by_name = {item.name: item for item in functions}
+        assert by_name["handle"].parameters == ["pair: (Int, String)", "name: String"]
+        assert by_name["run"].parameters == [
+            "onDone: (Int, Error?) -> Void",
+            "tag: String",
+        ]
+        assert by_name["wrap"].parameters == [
+            "box: Result<Int, Error>",
+            "count: Int",
+        ]
+
+    def test_return_types_with_brackets_and_closures(self, plugin: SwiftPlugin) -> None:
+        # Swift return types using collection shorthand ([T], [K: V]) or
+        # tuples start with a bracket/paren, and a completion-handler param
+        # carries its own `->`. The return type is the text after the final
+        # signature arrow, before the body. Regression for return types
+        # being dropped (returned None) on bracket-led types.
+        sample = """
+        func all() -> [String: [Int]] { return [:] }
+        func ids() -> [Int] { return [] }
+        func pair() -> (Int, String) { return (0, "") }
+        func register(handler: () -> Void) -> Bool { return true }
+        """
+        tree = _swift_parser().parse(sample.encode("utf-8"))
+        functions = plugin.create_extractor().extract_functions(tree, sample)
+        ret = {item.name: item.return_type for item in functions}
+        assert ret["all"] == "[String: [Int]]"
+        assert ret["ids"] == "[Int]"
+        assert ret["pair"] == "(Int, String)"
+        assert ret["register"] == "Bool"
+
+    def test_no_return_type_with_closure_param(self, plugin: SwiftPlugin) -> None:
+        # A function with a closure parameter but NO return type must report
+        # return_type None — the closure param's own `->` is inside the
+        # parameter list and must not be mistaken for the return arrow
+        # (regression: it produced the malformed "Void)").
+        sample = """
+        func run(onDone: (Int, Error?) -> Void) { }
+        func sub(cb: () -> Void) { }
+        func plain(x: Int) { }
+        """
+        tree = _swift_parser().parse(sample.encode("utf-8"))
+        functions = plugin.create_extractor().extract_functions(tree, sample)
+        ret = {item.name: item.return_type for item in functions}
+        assert ret["run"] is None
+        assert ret["sub"] is None
+        assert ret["plain"] is None
 
     def test_extract_variables(self, plugin: SwiftPlugin, tree) -> None:
         variables = plugin.create_extractor().extract_variables(tree, SWIFT_SAMPLE)

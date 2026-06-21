@@ -62,14 +62,14 @@ class TestCallGraphCrossFileBuild:
         assert "__init__" in functions
 
     def test_finds_cross_file_edges(self, graph):
-        assert len(graph._call_edges) > 0
+        assert graph._call_edges
 
     def test_summary(self, graph):
         s = graph.summary()
         # function_count drifted to 5 on some platforms after the
         # call-graph builder dropped a duplicate-resolution pass; the
         # tighter contract is "at least 5 functions across 3 files".
-        assert s["function_count"] >= 5
+        assert s["function_count"] >= 5  # ratchet: nondeterministic
         assert s["file_count"] == 3
 
 
@@ -103,7 +103,7 @@ class TestCallGraphCrossFileResolution:
 class TestCallGraphCrossFileNoResolution:
     def test_dead_code_has_no_callers(self, graph):
         greet_callers = graph.callers_of("greet")
-        assert len(greet_callers) >= 0
+        assert greet_callers
 
     def test_entry_point_has_no_callers(self, graph):
         run_callers = graph.callers_of("run")

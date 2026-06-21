@@ -45,6 +45,14 @@ def engine():
     return AnalysisEngine()
 
 
+def _assert_engine_components(engine: AnalysisEngine) -> None:
+    """Assert the engine exposes its initialized component contracts."""
+    assert callable(engine.parser.parse_file)
+    assert callable(engine.query_executor.execute_query_string)
+    assert callable(engine.language_detector.detect_language)
+    assert callable(engine.plugin_manager.get_plugin)
+
+
 class TestAnalysisEngine:
     """Test cases for the core AnalysisEngine."""
 
@@ -52,10 +60,7 @@ class TestAnalysisEngine:
 
     def test_initialization(self, engine):
         """Test that the AnalysisEngine initializes correctly."""
-        assert engine.parser is not None
-        assert engine.query_executor is not None
-        assert engine.language_detector is not None
-        assert engine.plugin_manager is not None
+        _assert_engine_components(engine)
 
     @pytest.mark.asyncio
     async def test_analyze_java_file(self, engine):
@@ -320,8 +325,8 @@ class TestUnifiedAnalysisEngineInit:
 
         # After ensure_initialized, components should be initialized
         engine._ensure_initialized()
-        assert engine._cache_service is not None
-        assert engine._parser is not None
+        assert engine._cache_service.__class__.__name__ == "CacheService"
+        assert callable(engine._parser.parse_file)
 
     def test_get_analysis_engine_function(self):
         """Test get_analysis_engine convenience function."""
@@ -361,7 +366,7 @@ class TestUnifiedAnalysisEnginePluginManagement:
         """Test accessing plugin manager property."""
         engine = UnifiedAnalysisEngine()
         plugin_manager = engine.plugin_manager
-        assert plugin_manager is not None
+        assert callable(plugin_manager.get_plugin)
 
 
 class TestUnifiedAnalysisEngineCacheManagement:
@@ -392,7 +397,7 @@ class TestUnifiedAnalysisEngineCacheManagement:
         """Test accessing cache service property."""
         engine = UnifiedAnalysisEngine()
         cache_service = engine.cache_service
-        assert cache_service is not None
+        assert cache_service.__class__.__name__ == "CacheService"
 
     def test_cache_key_generation(self):
         """Test cache key generation for different requests."""
@@ -437,7 +442,7 @@ class TestUnifiedAnalysisEngineLanguageDetection:
         """Test accessing language detector property."""
         engine = UnifiedAnalysisEngine()
         detector = engine.language_detector
-        assert detector is not None
+        assert callable(detector.detect_language)
 
 
 class TestUnifiedAnalysisEngineAnalysis:
@@ -464,7 +469,7 @@ class TestUnifiedAnalysisEngineAnalysis:
 
         try:
             result = await engine.analyze_file(temp_path)
-            assert result is not None
+            assert isinstance(result, AnalysisResult)
             assert result.success is True
             assert result.language == "python"
         finally:
@@ -504,7 +509,7 @@ class TestUnifiedAnalysisEngineAnalysis:
         engine = UnifiedAnalysisEngine()
         code = "def hello():\n    pass\n"
         result = await engine.analyze_code(code, language="python")
-        assert result is not None
+        assert isinstance(result, AnalysisResult)
         assert result.success is True
         assert result.language == "python"
 
@@ -516,7 +521,7 @@ class TestUnifiedAnalysisEngineAnalysis:
         result = await engine.analyze_code(
             code, language="python", filename="custom.py"
         )
-        assert result is not None
+        assert isinstance(result, AnalysisResult)
         assert result.file_path == "custom.py"
 
     def test_analyze_code_sync(self):
@@ -524,7 +529,7 @@ class TestUnifiedAnalysisEngineAnalysis:
         engine = UnifiedAnalysisEngine()
         code = "def hello():\n    pass\n"
         result = engine.analyze_code_sync(code, language="python")
-        assert result is not None
+        assert isinstance(result, AnalysisResult)
         assert result.success is True
 
     @pytest.mark.asyncio
@@ -547,7 +552,7 @@ class TestUnifiedAnalysisEngineAnalysis:
                 include_complexity=True,
             )
             result = await engine.analyze(request)
-            assert result is not None
+            assert isinstance(result, AnalysisResult)
             assert result.success is True
         finally:
             if os.path.exists(temp_path):
@@ -567,7 +572,7 @@ class TestUnifiedAnalysisEngineAnalysis:
         try:
             request = AnalysisRequest(file_path=temp_path, language="python")
             result = engine.analyze_sync(request)
-            assert result is not None
+            assert isinstance(result, AnalysisResult)
             assert result.success is True
         finally:
             if os.path.exists(temp_path):
@@ -587,7 +592,7 @@ class TestUnifiedAnalysisEngineAnalysis:
 
         try:
             result = await engine.analyze_file_async(temp_path)
-            assert result is not None
+            assert isinstance(result, AnalysisResult)
             assert result.success is True
         finally:
             if os.path.exists(temp_path):
@@ -617,7 +622,7 @@ class TestUnifiedAnalysisEngineSecurity:
         """Test accessing security validator property."""
         engine = UnifiedAnalysisEngine()
         validator = engine.security_validator
-        assert validator is not None
+        assert callable(validator.validate_file_path)
 
 
 class TestUnifiedAnalysisEngineQueries:
@@ -640,7 +645,7 @@ class TestUnifiedAnalysisEngineQueries:
         """Test accessing query executor property."""
         engine = UnifiedAnalysisEngine()
         executor = engine.query_executor
-        assert executor is not None
+        assert callable(executor.execute_query_string)
 
     @pytest.mark.asyncio
     async def test_analyze_with_queries(self):
@@ -662,7 +667,7 @@ class TestUnifiedAnalysisEngineQueries:
                 include_queries=True,
             )
             result = await engine.analyze(request)
-            assert result is not None
+            assert isinstance(result, AnalysisResult)
             assert result.success is True
         finally:
             if os.path.exists(temp_path):
@@ -712,7 +717,7 @@ class TestUnifiedAnalysisEnginePerformance:
         # Ensure initialization first
         engine._ensure_initialized()
         monitor = engine._performance_monitor
-        assert monitor is not None
+        assert monitor.__class__.__name__ == "PerformanceMonitor"
 
 
 class TestUnifiedAnalysisEngineProperties:
@@ -729,17 +734,17 @@ class TestUnifiedAnalysisEngineProperties:
         """Test accessing parser property."""
         engine = UnifiedAnalysisEngine()
         parser = engine.parser
-        assert parser is not None
+        assert callable(parser.parse_file)
 
     def test_all_properties_accessible(self):
         """Test that all properties are accessible."""
         engine = UnifiedAnalysisEngine()
-        assert engine.cache_service is not None
-        assert engine.parser is not None
-        assert engine.query_executor is not None
-        assert engine.language_detector is not None
-        assert engine.security_validator is not None
-        assert engine.plugin_manager is not None
+        assert engine.cache_service.__class__.__name__ == "CacheService"
+        assert callable(engine.parser.parse_file)
+        assert callable(engine.query_executor.execute_query_string)
+        assert callable(engine.language_detector.detect_language)
+        assert callable(engine.security_validator.validate_file_path)
+        assert callable(engine.plugin_manager.get_plugin)
 
 
 class TestMockLanguagePlugin:
@@ -775,7 +780,7 @@ class TestMockLanguagePlugin:
         plugin = MockLanguagePlugin("python")
         request = AnalysisRequest(file_path="test.py", language="python")
         result = await plugin.analyze_file("test.py", request)
-        assert result is not None
+        assert isinstance(result, AnalysisResult)
         assert result.language == "python"
         assert result.success is True
 
@@ -798,10 +803,7 @@ class TestAnalysisEngineInitComprehensive:
         engine = AnalysisEngine()
 
         # Components are lazily initialized, so we need to access them to trigger init
-        assert engine.parser is not None
-        assert engine.query_executor is not None
-        assert engine.language_detector is not None
-        assert engine.plugin_manager is not None
+        _assert_engine_components(engine)
 
     @patch("tree_sitter_analyzer.core.parser.Parser")
     def test_init_parser_failure(self, mock_parser_class):
@@ -868,7 +870,7 @@ class TestAnalysisEngineAnalyzeFileComprehensive:
         try:
             result = await engine.analyze_file(temp_path, language="python")
 
-            assert result is not None
+            assert isinstance(result, AnalysisResult)
             assert result.language == "python"
         finally:
             os.unlink(temp_path)
@@ -895,7 +897,7 @@ class TestAnalysisEngineAnalyzeFileComprehensive:
 
                 result = await engine.analyze_file(temp_path)
 
-                assert result is not None
+                assert isinstance(result, AnalysisResult)
                 assert result.error_message == "Syntax error"
         finally:
             os.unlink(temp_path)
@@ -911,7 +913,7 @@ class TestAnalysisEngineAnalyzeFileComprehensive:
         try:
             result = await engine.analyze_file(temp_path)
 
-            assert result is not None
+            assert isinstance(result, AnalysisResult)
             assert result.language == "python"
         finally:
             os.unlink(temp_path)
@@ -929,7 +931,7 @@ class TestAnalysisEngineAnalyzeFileComprehensive:
         try:
             result = await engine.analyze_file(temp_path)
 
-            assert result is not None
+            assert isinstance(result, AnalysisResult)
             assert result.language == "python"
         finally:
             os.unlink(temp_path)
@@ -948,7 +950,7 @@ class TestAnalysisEngineAnalyzeCodeComprehensive:
         code = "def hello():\n    print('world')"
         result = await engine.analyze_code(code, language="python")
 
-        assert result is not None
+        assert isinstance(result, AnalysisResult)
         assert result.language == "python"
 
     async def test_analyze_code_with_filename(self):
@@ -962,7 +964,7 @@ class TestAnalysisEngineAnalyzeCodeComprehensive:
             code, filename="test.js", language="javascript"
         )
 
-        assert result is not None
+        assert isinstance(result, AnalysisResult)
         assert result.language == "javascript"
 
     async def test_analyze_code_without_language_or_filename(self):
@@ -979,7 +981,7 @@ class TestAnalysisEngineAnalyzeCodeComprehensive:
 
         result = await engine.analyze_code("", language="python")
 
-        assert result is not None
+        assert isinstance(result, AnalysisResult)
 
     async def test_analyze_code_parsing_failure(self):
         """Test analyze_code when parsing fails."""
@@ -998,7 +1000,7 @@ class TestAnalysisEngineAnalyzeCodeComprehensive:
 
             result = await engine.analyze_code("invalid", language="python")
 
-            assert result is not None
+            assert isinstance(result, AnalysisResult)
             assert result.error_message == "Parse error"
 
     async def test_analyze_code_with_queries(self):
@@ -1008,7 +1010,7 @@ class TestAnalysisEngineAnalyzeCodeComprehensive:
         code = "class MyClass:\n    pass"
         result = await engine.analyze_code(code, language="python")
 
-        assert result is not None
+        assert isinstance(result, AnalysisResult)
 
 
 class TestAnalysisEngineDetermineLanguage:
@@ -1155,7 +1157,7 @@ class TestAnalysisEngineEdgeCases:
 
         try:
             result = await engine_extended.analyze_file(temp_path)
-            assert result is not None
+            assert isinstance(result, AnalysisResult)
         except Exception as e:
             assert isinstance(
                 e,
@@ -1206,7 +1208,7 @@ class TestAnalysisEngineEdgeCases:
 
             try:
                 result = await engine_extended.analyze_file(temp_path)
-                assert result is not None
+                assert isinstance(result, AnalysisResult)
             except Exception as e:
                 assert isinstance(e, ParseError | SyntaxError | AnalysisError)
             finally:
@@ -1300,7 +1302,7 @@ class TestAnalysisEngineConfiguration:
         for config in configs:
             try:
                 engine = AnalysisEngine(**config)
-                assert engine is not None
+                assert isinstance(engine, AnalysisEngine)
             except TypeError:
                 # Some config options might not be supported
                 pass
@@ -1314,7 +1316,7 @@ class TestAnalysisEngineConfiguration:
                 mock_loader.return_value.load_language.return_value = None
 
                 engine = AnalysisEngine()
-                assert engine is not None
+                assert isinstance(engine, AnalysisEngine)
         except (ImportError, AttributeError):
             # Mock patching might fail, which is acceptable for this test
             pass
@@ -1333,7 +1335,7 @@ class TestAnalysisEngineConfiguration:
         for _filename, _expected_lang in test_files:
             # Test language detection logic
             # This might be internal to the engine
-            assert engine is not None  # Basic test that engine exists
+            assert callable(engine._detect_language)
 
 
 class TestAnalysisEnginePerformanceExtended:
@@ -1385,7 +1387,8 @@ class TestAnalysisEnginePerformanceExtended:
             for _i in range(2):
                 try:
                     result = await engine_perf.analyze_file(temp_path)
-                    assert result is not None or result is None  # Either is acceptable
+                    assert isinstance(result, AnalysisResult)
+                    assert result.file_path == temp_path
                 except Exception:
                     # Some failures are acceptable in stress testing
                     pass
@@ -1418,7 +1421,8 @@ class TestAnalysisEnginePerformanceExtended:
         try:
             # Test with potential timeout
             result = await engine_perf.analyze_file(temp_path)
-            assert result is not None or result is None
+            assert isinstance(result, AnalysisResult)
+            assert result.file_path == temp_path
         except (TimeoutError, AnalysisError):
             # Timeout errors are acceptable for complex files
             pass

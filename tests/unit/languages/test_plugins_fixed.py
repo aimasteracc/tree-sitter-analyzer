@@ -173,7 +173,7 @@ def test_parse_method_signature_throws(mocker, java_extractor):
     assert result is not None
     method_name, return_type, parameters, modifiers, throws = result
     assert method_name == "testMethod"
-    assert len(throws) >= 1  # Should extract at least one exception
+    assert throws  # Should extract at least one exception
     # The current implementation uses regex to find exceptions
     assert any("Exception" in throw for throw in throws) or any(
         "IOException" in throw for throw in throws

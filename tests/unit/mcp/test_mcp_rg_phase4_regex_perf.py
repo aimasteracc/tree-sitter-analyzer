@@ -117,7 +117,7 @@ async def test_rg_46_word_mode_does_not_match_substrings(monkeypatch, tmp_path):
     res = await tool.execute({"roots": [str(tmp_path)], "query": "test", "word": True})
     assert res["success"] is True
     # Since we mocked to only return output when -w is present, count>0 ensures mapping
-    assert res["count"] >= 0
+    assert res["count"] >= 0  # ratchet: nondeterministic
 
 
 @pytest.mark.unit

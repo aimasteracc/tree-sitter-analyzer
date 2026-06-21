@@ -24,14 +24,14 @@ import Foundation
 ### Methods
 | Name | Return Type | Parameters | Access | Line |
 |------|-------------|------------|--------|------|
-| greet | String | Any name | internal | 4 |
+| greet | String | String name | internal | 4 |
 
 ## Greeting (7-19)
 ### Methods
 | Name | Return Type | Parameters | Access | Line |
 |------|-------------|------------|--------|------|
-| init | - | Any prefix | public | 11 |
-| greet | String | Any name | public | 15 |
+| init | - | String prefix | public | 11 |
+| greet | String | String name | public | 15 |
 
 ### Fields
 | Name | Type | Access | Static | Final | Line |
@@ -43,7 +43,7 @@ import Foundation
 ### Methods
 | Name | Return Type | Parameters | Access | Line |
 |------|-------------|------------|--------|------|
-| welcome | String | Any user | internal | 24 |
+| welcome | String | String user | internal | 24 |
 
 ### Fields
 | Name | Type | Access | Static | Final | Line |

@@ -26,6 +26,60 @@ if TYPE_CHECKING:
     import tree_sitter
 
 
+# ---------------------------------------------------------------------------
+# Cyclomatic complexity for Swift
+# ---------------------------------------------------------------------------
+
+# Non-leaf AST node types that each add one decision point.
+# conjunction_expression / disjunction_expression are non-leaf container nodes
+# (not bare && / || tokens), so the non-leaf check is redundant but harmless.
+_SWIFT_DECISION_NODE_TYPES: frozenset[str] = frozenset(
+    {
+        "if_statement",
+        "guard_statement",
+        "switch_statement",
+        "for_statement",
+        "while_statement",
+        "repeat_while_statement",
+        "catch_block",
+        "ternary_expression",
+        "conjunction_expression",  # x && y
+        "disjunction_expression",  # x || y
+    }
+)
+
+
+def _safe_children(node: object) -> list[object]:
+    """Return children list from a tree-sitter node, empty list on any error."""
+    try:
+        children = getattr(node, "children", None)
+        if children is None:
+            return []
+        return list(children)
+    except (TypeError, AttributeError):
+        return []
+
+
+def _swift_calculate_complexity(node: object) -> int:
+    """Return cyclomatic complexity for a Swift function node.
+
+    complexity = 1 + (number of decision points).
+
+    Decision points are non-leaf AST nodes whose type is in
+    _SWIFT_DECISION_NODE_TYPES (if/guard/switch/for/while/repeat-while/
+    catch_block/ternary_expression/conjunction_expression/disjunction_expression).
+    """
+    decisions = 0
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        children = _safe_children(cur)
+        if getattr(cur, "type", None) in _SWIFT_DECISION_NODE_TYPES and children:
+            decisions += 1
+        stack.extend(children)
+    return 1 + decisions
+
+
 def extract_swift_function(extractor: Any, node: tree_sitter.Node) -> Function | None:
     """Extract one Swift function-like declaration."""
     try:
@@ -117,6 +171,7 @@ def _swift_function_fields(
         "modifiers": modifiers,
         "visibility": found_visibility,
         "is_constructor": node.type == "init_declaration",
+        "complexity_score": _swift_calculate_complexity(node),
         **_swift_function_flags(modifiers, raw_text, found_visibility),
     }
 
@@ -236,14 +291,74 @@ def _swift_import_fields(
 
 
 def _parameter_names(raw_text: str) -> list[str]:
-    match = re.search(r"\(([^)]*)\)", raw_text, flags=re.DOTALL)
-    if not match:
+    clause = _parameter_clause(raw_text)
+    if clause is None:
         return []
-    return [_parameter_name(part) for part in match.group(1).split(",") if part.strip()]
+    return [_parameter(part) for part in _split_top_level(clause) if part.strip()]
 
 
-def _parameter_name(parameter_text: str) -> str:
-    before_type = parameter_text.split(":", 1)[0].strip()
+def _parameter_clause(raw_text: str) -> str | None:
+    """Return the text inside the parameter parentheses, matched with
+    balanced parens so tuple/closure types keep their own ``)``."""
+    start = raw_text.find("(")
+    if start == -1:
+        return None
+    depth = 0
+    for index in range(start, len(raw_text)):
+        char = raw_text[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return raw_text[start + 1 : index]
+    return raw_text[start + 1 :]
+
+
+def _split_top_level(text: str) -> list[str]:
+    """Split on commas that sit outside any (), [], or <> nesting, so a
+    tuple ``(Int, String)``, dictionary, or generic ``Result<Int, Error>``
+    stays in one parameter. The ``>`` of a ``->`` arrow is not a closer."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    prev = ""
+    for char in text:
+        if char in "([<":
+            depth += 1
+        elif char in ")]":
+            depth = max(0, depth - 1)
+        elif char == ">" and prev != "-":
+            depth = max(0, depth - 1)
+        if char == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+        prev = char
+    parts.append("".join(current))
+    return parts
+
+
+def _parameter(parameter_text: str) -> str:
+    """Render a Swift parameter as ``name: Type`` (mirrors Rust).
+
+    Drops the external argument label and the ``_`` no-label marker (keeping
+    the internal name), strips any default value, and splits on the *first*
+    colon only so dictionary types like ``[String: Int]`` stay intact.
+    """
+    before_type, sep, after_type = parameter_text.partition(":")
+    name = _parameter_name(before_type)
+    if not sep:
+        return name
+    type_text = " ".join(after_type.split("=", 1)[0].split())
+    if not type_text:
+        return name
+    return f"{name}: {type_text}" if name else type_text
+
+
+def _parameter_name(before_type: str) -> str:
+    before_type = before_type.strip()
     if not before_type:
         return ""
     tokens = before_type.split()
@@ -251,10 +366,39 @@ def _parameter_name(parameter_text: str) -> str:
 
 
 def _return_type(raw_text: str) -> str | None:
-    match = re.search(r"->\s*([A-Za-z_][A-Za-z0-9_?.<>,\s]*)", raw_text)
-    if not match:
+    """Extract a Swift return type, including bracket/tuple-led types.
+
+    The return arrow is sought *after* the parameter list's closing paren,
+    so a closure-typed parameter's own ``->`` is never mistaken for it (a
+    function with a closure param and no return type yields None, not the
+    malformed ``Void)``). Covers collection shorthand (``[T]``, ``[K: V]``)
+    and tuples (``(A, B)``), which the previous letter-anchored regex
+    dropped entirely.
+    """
+    end = _param_list_end(raw_text)
+    tail = raw_text[end + 1 :] if end != -1 else raw_text
+    tail = tail.split("{", 1)[0]
+    arrow = tail.find("->")
+    if arrow == -1:
         return None
-    return match.group(1).split("{", 1)[0].strip()
+    return tail[arrow + 2 :].strip() or None
+
+
+def _param_list_end(raw_text: str) -> int:
+    """Index of the parameter list's matching closing paren, or -1."""
+    start = raw_text.find("(")
+    if start == -1:
+        return -1
+    depth = 0
+    for index in range(start, len(raw_text)):
+        char = raw_text[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+    return -1
 
 
 def _import_module_path(raw_text: str) -> str:

@@ -345,7 +345,7 @@ public class Sample {
         assert result["range"]["end_line"] is None
 
         # Should have content
-        assert result["content_length"] > 0
+        assert result["content_length"]
 
     @pytest.mark.asyncio
     async def test_large_range_extraction(self, read_partial_tool, temp_project_dir):
@@ -367,7 +367,7 @@ public class Sample {
         # Should handle gracefully
         assert "file_path" in result
         assert "content_length" in result
-        assert result["content_length"] > 0
+        assert result["content_length"]
 
         # File should be created
         output_file = Path(result["output_file_path"])
@@ -393,7 +393,7 @@ public class Sample {
         # Check basic functionality works with Java files
         assert "file_path" in result
         assert "content_length" in result
-        assert result["content_length"] > 0
+        assert result["content_length"]
 
         # Verify file output
         output_file = Path(result["output_file_path"])

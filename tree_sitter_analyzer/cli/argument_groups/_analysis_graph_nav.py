@@ -281,8 +281,13 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         "--pr-review",
         nargs="?",
         const="diff",
-        choices=["diff", "staged", "branch"],
+        choices=["diff", "staged", "branch", "pr"],
         help="AI-powered PR review (AST diff + semantic classify + call graph).",
+    )
+    parser.add_argument(
+        "--pr-review-url",
+        default="",
+        help="GitHub PR URL for --pr-review pr.",
     )
     parser.add_argument(
         "--semantic-classify",
@@ -443,6 +448,13 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         help="Max dead function candidates (default: 50)",
     )
     parser.add_argument(
+        "--dead-code-path",
+        metavar="PREFIX",
+        help="Restrict --dead-code results to definitions under this path "
+        "prefix (segment-matched, project-relative), e.g. "
+        "tree_sitter_analyzer/mcp to exclude corpus/ and benchmarks/",
+    )
+    parser.add_argument(
         "--doc-sync",
         action="store_true",
         help="Scan markdown docs for stale file-path references (broken links)",
@@ -498,6 +510,14 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "Include code snippets in each function entry of --code-similarity output. "
             "Default is summary-only (files, line ranges, scores — no bodies)."
+        ),
+    )
+    parser.add_argument(
+        "--code-similarity-path-filter",
+        default="",
+        help=(
+            "Limit --code-similarity to project-relative path glob(s), "
+            "comma-separated for multiple filters, e.g. tests/**,src/**/*.py"
         ),
     )
     # RFC-0003: test-gap analysis

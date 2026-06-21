@@ -143,7 +143,7 @@ class TestPhase7EndToEnd:
         )
 
         assert file_list_result["success"]
-        assert file_list_result["count"] > 0
+        assert file_list_result["count"]
         results["analyses"].append(("file_listing", file_list_result))
 
         # 2. 主要ファイルの規模チェック
@@ -430,7 +430,7 @@ class TestPhase7EndToEnd:
                         continue
                     raise
 
-        assert len(languages_tested) >= 1, (
+        assert languages_tested, (
             "少なくとも1つの言語がテストされる必要があります"
         )
         results["integration_checks"].append(("languages_tested", languages_tested))

@@ -597,7 +597,7 @@ class TestMCPUtilsInit:
         """Test FileOutputManager can be imported from submodule."""
         from tree_sitter_analyzer.mcp.utils.file_output_manager import FileOutputManager
 
-        assert FileOutputManager is not None
+        assert isinstance(FileOutputManager, type)
 
     def test_format_helper_import(self):
         """Test format_helper functions can be imported."""
@@ -606,11 +606,11 @@ class TestMCPUtilsInit:
             format_output,
         )
 
-        assert format_output is not None
-        assert format_for_file_output is not None
+        assert callable(format_output)
+        assert callable(format_for_file_output)
 
     def test_error_handler_import(self):
         """Test error_handler can be imported."""
         from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
 
-        assert AnalysisError is not None
+        assert isinstance(AnalysisError, type)

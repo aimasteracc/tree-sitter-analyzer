@@ -84,8 +84,8 @@ class KotlinTableFormatter(BaseTableFormatter):
         fns = data.get("methods", [])
         if fns:
             lines.append("## Functions")
-            lines.append("| Function | Signature | Vis | Lines | Suspend | Doc |")
-            lines.append("|----------|-----------|-----|-------|---------|-----|")
+            lines.append("| Function | Signature | Vis | Lines | Cx | Suspend | Doc |")
+            lines.append("|----------|-----------|-----|-------|----|---------|-----|")
 
             for fn in fns:
                 lines.append(self._format_fn_row(fn))
@@ -161,11 +161,15 @@ class KotlinTableFormatter(BaseTableFormatter):
         is_suspend = "Yes" if fn.get("is_suspend", False) else "-"
         line_range = fn.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        complexity = fn.get("complexity_score", 1)
         doc = self._clean_csv_text(
             self._extract_doc_summary(str(fn.get("docstring", "") or ""))
         )
 
-        return f"| {name} | {signature} | {visibility} | {lines_str} | {is_suspend} | {doc} |"
+        return (
+            f"| {name} | {signature} | {visibility} | {lines_str} | "
+            f"{complexity} | {is_suspend} | {doc} |"
+        )
 
     def _format_prop_row(self, prop: dict[str, Any]) -> str:
         """Format a property table row for Kotlin"""
@@ -247,10 +251,15 @@ class KotlinTableFormatter(BaseTableFormatter):
         return self._format_compact_table(analysis_result)
 
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
-        """Format structure analysis output for Kotlin"""
-        if self.format_type == "compact":
-            return self._format_compact_table(analysis_result)
-        return self._format_full_table(analysis_result)
+        """Format structure analysis output for Kotlin.
+
+        Delegates to the base dispatcher (like Go) so every format type is
+        handled consistently: full/compact/csv render, and an unsupported
+        type such as ``signatures`` raises the enumerable "supported
+        languages" error instead of silently falling through to the full
+        table.
+        """
+        return super().format_structure(analysis_result)
 
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"

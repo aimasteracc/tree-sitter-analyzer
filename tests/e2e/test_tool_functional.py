@@ -291,7 +291,7 @@ class TestCheckProjectHealth:
 
         numbers = re.findall(r"\b(\d+)\b", text)
         ints = [int(n) for n in numbers]
-        assert any(n > 0 for n in ints), (
+        assert any(n > 0 for n in ints), (  # ratchet: nondeterministic
             f"check_project_health returned no positive numbers:\n{text[:500]}"
         )
 

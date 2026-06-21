@@ -111,7 +111,7 @@ class CodeGraphASTPathTool(BaseMCPTool):
         file_path = arguments["file_path"]
         line = arguments.get("line")
         language = arguments.get("language")
-        max_depth = arguments.get("max_depth", 3)
+        max_depth = int(arguments.get("max_depth", 3))
         output_format = arguments.get("output_format", "toon")
 
         resolved = self.resolve_and_validate_file_path(file_path)

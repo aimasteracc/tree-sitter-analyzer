@@ -29,7 +29,7 @@ Method,perimeter,():double,public,105-105,1,-
 Method,name,():string,public,106-106,1,-
 Method,width,():double,public,109-109,1,-
 Method,height,():double,public,110-110,1,-
-Method,operator==,(other:const Rectangle&):bool,public,113-115,1,-
+Method,operator==,(other:const Rectangle&):bool,public,113-115,2,-
 Method,square,(side:double):Rectangle [static],public,118-120,1,-
 Method,print,():void,public,136-136,1,-
 Method,~Printable,():void,public,137-137,1,-

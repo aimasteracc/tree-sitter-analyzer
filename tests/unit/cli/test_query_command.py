@@ -79,8 +79,13 @@ class TestQueryCommandExecuteQuery:
         ) as mock_execute:
             mock_execute.return_value = [{"name": "test"}]
             results = await command.execute_query("python", "test_query", "methods")
-            assert results is not None
-            mock_execute.assert_called_once()
+            assert results == [{"name": "test"}]
+            mock_execute.assert_called_once_with(
+                "test.py",
+                "python",
+                query_key="methods",
+                filter_expression=None,
+            )
 
     @pytest.mark.asyncio
     async def test_execute_query_with_custom_query(self, command):
@@ -90,8 +95,13 @@ class TestQueryCommandExecuteQuery:
         ) as mock_execute:
             mock_execute.return_value = [{"name": "test"}]
             results = await command.execute_query("python", "(function)", "custom")
-            assert results is not None
-            mock_execute.assert_called_once()
+            assert results == [{"name": "test"}]
+            mock_execute.assert_called_once_with(
+                "test.py",
+                "python",
+                query_string="(function)",
+                filter_expression=None,
+            )
 
     @pytest.mark.asyncio
     async def test_execute_query_with_filter(self, command):
@@ -102,8 +112,13 @@ class TestQueryCommandExecuteQuery:
             mock_execute.return_value = [{"name": "test"}]
             command.args.filter = "name=main"
             results = await command.execute_query("python", "test_query", "methods")
-            assert results is not None
-            mock_execute.assert_called_once()
+            assert results == [{"name": "test"}]
+            mock_execute.assert_called_once_with(
+                "test.py",
+                "python",
+                query_key="methods",
+                filter_expression="name=main",
+            )
 
     @pytest.mark.asyncio
     async def test_execute_query_failure(self, command):
@@ -261,7 +276,7 @@ class TestQueryCommandOutput:
             ) as mock_data:
                 result = await command.execute_async("python")
                 assert result == 0
-                assert mock_data.call_count > 0
+                assert mock_data.call_count == 3
 
     @pytest.mark.asyncio
     async def test_execute_async_no_results(self, command):
@@ -348,8 +363,7 @@ class TestQueryCommandBehavior:
             ) as mock_data:
                 result = await command.execute_async("python")
                 assert result == 0
-                # Should output multiple results
-                assert mock_data.call_count >= 6  # 3 lines per result
+                assert mock_data.call_count == 6
 
 
 class TestR37acQueryCanonicalEnvelope:

@@ -10,7 +10,7 @@ Method,PhoneNumber,():string?,public,29-29,1,-
 Method,DisplayName,():string,public,32-32,1,-
 Constructor,User,"(name:string, email:string, createdBy:string):void",public,35-41,1,-
 Method,UpdateEmail,(newEmail:string):void,public,44-52,2,-
-Method,IsValid,():bool,public,54-59,1,-
+Method,IsValid,():bool,public,54-59,3,-
 Method,ToString,():string,public,61-64,1,-
 Method,GetById,(id:int):User,public,72-72,1,-
 Method,GetAll,():IEnumerable<User>,public,73-73,1,-

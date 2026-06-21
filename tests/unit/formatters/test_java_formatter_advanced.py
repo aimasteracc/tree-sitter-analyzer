@@ -40,7 +40,7 @@ class TestFormatStructure:
         """Test structure formatting"""
         result = _FMT.format_structure(_data())
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
 
 
 class TestFormatAdvanced:

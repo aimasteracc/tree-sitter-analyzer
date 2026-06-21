@@ -427,7 +427,7 @@ class TestJavaScriptPluginEdgeCases:
         # Should handle extreme nesting without crashing
         complexity = extractor._calculate_complexity_optimized(mock_node)
         assert isinstance(complexity, int)
-        assert complexity >= 0
+        assert complexity >= 0  # ratchet: nondeterministic
 
     def test_framework_detection_with_mixed_frameworks(self, extractor):
         """Test framework detection with mixed framework imports"""

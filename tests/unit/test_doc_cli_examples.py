@@ -4,7 +4,7 @@ If a doc shows ``uv run tree-sitter-analyzer --foo bar``, the parser must
 accept ``--foo``. This catches doc drift (flag was renamed, doc didn't
 catch up) at CI time instead of at user-frustration time.
 
-Mirrors the pattern from ``tests/unit/test_agent_contracts.py`` —
+Mirrors the pattern from the split contract suites —
 agent-facing doc invariants enforced as tests.
 """
 

@@ -268,9 +268,6 @@ def _full_method_row(
 def _append_module_level_functions(
     lines: list[str], classes: list[dict[str, Any]], methods: list[dict[str, Any]]
 ) -> None:
-    if not classes:
-        return
-
     module_methods = _module_level_methods(classes, methods)
     if not module_methods:
         return

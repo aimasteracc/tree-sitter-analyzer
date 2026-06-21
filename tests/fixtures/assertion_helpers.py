@@ -175,7 +175,7 @@ def assert_list_contains_dicts_with_key(
         ...     {"foo", "bar"}
         ... )
     """
-    assert len(items) > 0, "List is empty"
+    assert items, "List is empty"
 
     for i, item in enumerate(items):
         assert isinstance(item, dict), f"Item {i} is not a dictionary"

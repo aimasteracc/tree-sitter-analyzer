@@ -4,6 +4,8 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from ._complexity_logical import is_executable_logical_operator
+
 _MODIFIER_KEYWORDS = frozenset(
     {
         "public",
@@ -43,16 +45,32 @@ _FIELD_TYPE_NODES = frozenset(
     }
 )
 
+# tree-sitter-java node names (verified against the grammar): the switch is
+# "switch_expression" (covers statement and expression forms), the ternary is
+# "ternary_expression", and the do-while is "do_statement". Earlier this set
+# used "switch_statement"/"conditional_expression" — node types the grammar
+# never emits — so Java silently dropped every switch / ternary / do-while.
 _JAVA_DECISION_NODES = frozenset(
     {
         "if_statement",
         "while_statement",
         "for_statement",
-        "switch_statement",
-        "catch_clause",
-        "conditional_expression",
         "enhanced_for_statement",
+        "do_statement",
+        "switch_expression",
+        "catch_clause",
+        "ternary_expression",
     }
+)
+
+# Short-circuit boolean operators each add a decision point, matching the
+# Go/Rust/Swift convention. Counted only as logical operators (operands of a
+# binary_expression) that drive executable control flow, for consistency with
+# the C/C++ walkers. A "&&"/"||" in an annotation argument (a compile-time
+# constant) is not a runtime branch and must not inflate complexity.
+_JAVA_LOGICAL_OPERATORS = frozenset({"&&", "||"})
+_JAVA_NON_EXECUTABLE_ANCHORS = frozenset(
+    {"element_value_pair", "annotation_argument_list"}
 )
 
 
@@ -199,8 +217,12 @@ def _count_decision_nodes(node: Any) -> int:
     stack = [node]
     while stack:
         current = stack.pop()
-        if getattr(current, "type", None) in _JAVA_DECISION_NODES:
+        current_type = getattr(current, "type", None)
+        if current_type in _JAVA_DECISION_NODES:
             count += 1
+        elif current_type in _JAVA_LOGICAL_OPERATORS:
+            if is_executable_logical_operator(current, _JAVA_NON_EXECUTABLE_ANCHORS):
+                count += 1
         stack.extend(_safe_children(current))
     return count
 

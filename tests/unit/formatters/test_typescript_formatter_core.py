@@ -168,10 +168,13 @@ class TestTypeScriptTableFormatter:
         result = formatter.format(sample_data)
 
         assert isinstance(result, str)
-        assert len(result.replace("\r\n", "\n")) == 879  # normalize CRLF for Windows
+        assert len(result.replace("\r\n", "\n")) == 1159  # normalize CRLF for Windows
 
         assert "UserService" in result
         assert "class" in result or "interface" in result
+        # Module-level functions render in their own section (previously dropped).
+        assert "## Global Functions" in result
+        assert "mapArray" in result
 
     def test_format_full_table_tsx_file(self, formatter):
         """Test full table formatting for TSX files"""

@@ -42,7 +42,8 @@ _VIZ_DESCRIPTION = (
     "package_depth, include_external_bases, file_path, class_name, include_tests.\n"
     "- action=graph — call/dependency graph visualizations "
     "(codegraph_visualize equivalent). "
-    "Params: mode, file_path, function, depth, max_edges, direction.\n"
+    "Params: mode, file_path, function, depth, max_edges, direction, "
+    "visualization_format (mermaid|sigma).\n"
     "- action=similarity — duplicate / near-duplicate code detection "
     "(codegraph_similarity equivalent). "
     "Default response is a summary map (files, line ranges, scores — no bodies). "
@@ -66,6 +67,10 @@ _VIZ_SIMILARITY_PARAMS: dict[str, dict] = {
     "min_group_size": {
         "type": "integer",
         "description": "action=similarity: min clone group size to report (default: 2).",
+    },
+    "path_filter": {
+        "type": "string",
+        "description": "action=similarity: project-relative path glob filter.",
     },
 }
 

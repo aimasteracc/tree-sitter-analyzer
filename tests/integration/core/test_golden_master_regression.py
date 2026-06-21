@@ -387,7 +387,7 @@ class TestToonGoldenMasterRegression:
         reduction = (1 - toon_chars / json_chars) * 100 if json_chars else 0
 
         # 少なくとも 20% の削減があることを確認
-        assert reduction > 20, f"Token reduction should be > 20%, got {reduction:.1f}%"
+        assert reduction > 20, f"Token reduction should be > 20%, got {reduction:.1f}%"  # ratchet: nondeterministic
 
 
 if __name__ == "__main__":

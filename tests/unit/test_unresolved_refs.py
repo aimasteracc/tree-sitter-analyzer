@@ -88,12 +88,12 @@ def test_index_project_resolves_cross_file_extends_and_calls(tmp_path: Path) -> 
     cache = ASTCache(str(tmp_path))
     try:
         stats = cache.index_project(max_files=20, workers=0)
-        assert stats["indexed"] >= 7
+        assert stats["indexed"] >= 7  # ratchet: nondeterministic
         # The second pass resolves the cross-file EXTENDS references (alias_plugin
         # + python_plugin). Cross-file CALLS resolution is handled earlier by the
         # cross-file backfill, so it no longer flows through this counter (the
         # resolved edge data is asserted directly below).
-        assert stats["unresolved_refs_backfill"]["resolved"] >= 2
+        assert stats["unresolved_refs_backfill"]["resolved"] >= 2  # ratchet: nondeterministic
 
         conn = cache.get_conn()
         # The cross-file EXTENDS references resolved into real edges pointing at

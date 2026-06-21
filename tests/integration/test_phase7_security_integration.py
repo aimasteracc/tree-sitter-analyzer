@@ -178,7 +178,7 @@ class TestPhase7SecurityIntegration:
         )
         assert_unicode_attacks_handled_safely(unicode_results)
         assert isinstance(unicode_results, list)
-        assert len(unicode_results) > 0
+        assert unicode_results
 
     @pytest.mark.asyncio
     async def test_sensitive_data_exposure_prevention(self, secure_test_project):

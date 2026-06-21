@@ -10,7 +10,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tree_sitter_analyzer.core.parser import Parser
 from tree_sitter_analyzer.core.query import QueryExecutor
+from tree_sitter_analyzer.core.query_filter import QueryFilter
 from tree_sitter_analyzer.core.query_service import QueryService
 
 
@@ -51,8 +53,6 @@ def query_service():
 @pytest.fixture
 def query_filter():
     """Create a QueryFilter instance."""
-    from tree_sitter_analyzer.core.query_filter import QueryFilter
-
     return QueryFilter()
 
 
@@ -78,24 +78,41 @@ class TestQueryFixtures:
 
     def test_executor_initialized(self, executor):
         """Test that QueryExecutor fixture initializes correctly."""
-        assert executor is not None
-        assert hasattr(executor, "_execution_stats")
-        assert executor._execution_stats["total_queries"] == 0
-        assert executor._execution_stats["successful_queries"] == 0
+        assert isinstance(executor, QueryExecutor)
+        assert callable(executor.execute_query)
+        assert callable(executor.execute_query_string)
+        assert executor.execution_stats == {
+            "total_queries": 0,
+            "successful_queries": 0,
+            "failed_queries": 0,
+            "total_execution_time": 0.0,
+        }
 
     def test_query_executor_alias(self, query_executor):
         """Test that query_executor alias fixture works."""
-        assert query_executor is not None
+        assert isinstance(query_executor, QueryExecutor)
+        assert callable(query_executor.execute_multiple_queries)
+        assert query_executor.execution_stats == {
+            "total_queries": 0,
+            "successful_queries": 0,
+            "failed_queries": 0,
+            "total_execution_time": 0.0,
+        }
 
     def test_query_service_initialized(self, query_service):
         """Test that QueryService fixture initializes correctly."""
-        assert query_service is not None
-        assert query_service.parser is not None
-        assert query_service.filter is not None
+        assert isinstance(query_service, QueryService)
+        assert query_service.project_root is None
+        assert isinstance(query_service.parser, Parser)
+        assert isinstance(query_service.filter, QueryFilter)
+        assert callable(query_service.execute_query)
+        assert callable(query_service.get_available_queries)
 
     def test_query_filter_initialized(self, query_filter):
         """Test that QueryFilter fixture initializes correctly."""
-        assert query_filter is not None
+        assert isinstance(query_filter, QueryFilter)
+        assert callable(query_filter.filter_results)
+        assert callable(query_filter.get_filter_help)
 
     def test_query_filter_noop(self, query_filter):
         """Test QueryFilter.filter_results with no filter returns all results."""
@@ -105,12 +122,14 @@ class TestQueryFixtures:
 
     def test_temp_project_dir(self, temp_project_dir):
         """Test that temp_project_dir fixture creates a valid path."""
-        assert temp_project_dir is not None
+        assert isinstance(temp_project_dir, Path)
         assert temp_project_dir.exists()
+        assert temp_project_dir.is_dir()
 
     def test_temp_file(self, temp_file):
         """Test that temp_file fixture creates a valid file."""
-        assert temp_file is not None
-        import os
-
-        assert os.path.exists(temp_file)
+        assert isinstance(temp_file, str)
+        temp_path = Path(temp_file)
+        assert temp_path.exists()
+        assert temp_path.is_file()
+        assert temp_path.read_text() == "def test_function(): pass\n"

@@ -79,6 +79,61 @@ _BASH_CONTAINER_NODE_TYPES: frozenset[str] = frozenset(
 )
 
 
+# ---------------------------------------------------------------------------
+# Cyclomatic complexity for Bash
+# ---------------------------------------------------------------------------
+
+_BASH_DECISION_TYPES: frozenset[str] = frozenset(
+    {
+        "if_statement",
+        "elif_clause",
+        "while_statement",  # covers both 'while' and 'until' loops
+        "for_statement",
+        "c_style_for_statement",
+        # The ``case`` construct counts once via ``case_statement``; the
+        # individual ``case_item`` arms are NOT counted (construct-once),
+        # matching every other plugin. See #1090 (C/C++ switch counts once).
+        "case_statement",
+    }
+)
+
+_BASH_LOGIC_OP_TOKENS: frozenset[str] = frozenset({"&&", "||"})
+
+
+def _safe_children_bash(node: Any) -> list[Any]:
+    """Return children list from a tree-sitter node, empty list on any error."""
+    try:
+        children = getattr(node, "children", None)
+        if children is None:
+            return []
+        return list(children)
+    except (TypeError, AttributeError):
+        return []
+
+
+def calculate_bash_complexity(node: Any) -> int:
+    """Return cyclomatic complexity for a Bash function node.
+
+    complexity = 1 + decision_points.
+    Decision points: if_statement, elif_clause, while_statement (covers
+    both while and until), for_statement, c_style_for_statement, case_item
+    (non-leaf nodes), and ``&&`` / ``||`` leaf operator tokens.
+    """
+    decisions = 0
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        children = _safe_children_bash(cur)
+        is_leaf = len(children) == 0
+        node_type = getattr(cur, "type", None)
+        if not is_leaf and node_type in _BASH_DECISION_TYPES:
+            decisions += 1
+        elif is_leaf and node_type in _BASH_LOGIC_OP_TOKENS:
+            decisions += 1
+        stack.extend(children)
+    return 1 + decisions
+
+
 def _push_bash_children(
     node_stack: list[tuple[tree_sitter.Node, int]],
     current_node: tree_sitter.Node,
@@ -462,6 +517,7 @@ class BashElementExtractor(ElementExtractor):
                 language="bash",
                 parameters=[],  # Bash functions don't have formal parameters in signature
                 return_type="",  # Bash functions don't have type annotations
+                complexity_score=calculate_bash_complexity(node),
             )
         except Exception as e:
             log_error(f"Failed to extract Bash function info: {e}")

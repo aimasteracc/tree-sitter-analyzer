@@ -15,14 +15,14 @@
 | User::setId | (int):void | + | 55-58 | 1 | - |
 | User::getUsername | ():string | + | 63-66 | 1 | - |
 | User::authenticate | (string):bool | + | 71-75 | 1 | - |
-| User::updateProfile | (array):void | + | 80-86 | 1 | - |
-| User::__get | (string):mixed | + | 91-94 | 1 | - |
+| User::updateProfile | (array):void | + | 80-86 | 2 | - |
+| User::__get | (string):mixed | + | 91-94 | 2 | - |
 | User::__set | (string, mixed):void | + | 99-102 | 1 | - |
 | User::getInstanceCount | ():int | + | 107-110 | 1 | - |
 | User::findByEmail | (string):?self | + | 115-119 | 1 | - |
 | AdminUser::__construct | (string, string, array):void | + | 129-133 | 1 | - |
 | AdminUser::hasPermission | (string):bool | + | 135-138 | 1 | - |
-| AdminUser::grantPermission | (string):void | + | 140-145 | 1 | - |
+| AdminUser::grantPermission | (string):void | + | 140-145 | 2 | - |
 | UserRepositoryInterface::find | (int):?User | + | 153-153 | 1 | - |
 | UserRepositoryInterface::save | (User):void | + | 154-154 | 1 | - |
 | UserRepositoryInterface::delete | (User):void | + | 155-155 | 1 | - |
