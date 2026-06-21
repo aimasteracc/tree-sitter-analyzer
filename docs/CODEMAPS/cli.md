@@ -100,7 +100,7 @@ Categories of CLI surface:
 - `--codegraph-xref` — multi-dimension cross-reference
 - `--codegraph-complexity-heatmap` — cyclomatic complexity heatmap
 - `--codegraph-sitemap` — hierarchical project code map
-- `--codegraph-visualize` — Mermaid flowchart export
+- `--codegraph-visualize` — Mermaid flowchart export, or Graphology/Sigma.js JSON with `--codegraph-visualize-format sigma`
 - `--uml class|package|component|sequence` — UML-style Mermaid diagram export
 - `--code-similarity` — AST-structural clone detection
 - `--pr-review diff|staged|branch|pr` — AST diff + semantic classify +

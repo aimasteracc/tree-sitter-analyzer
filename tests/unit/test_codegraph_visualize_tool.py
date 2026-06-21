@@ -113,6 +113,14 @@ class TestVisualizeToolSchema:
         assert "file" in modes
         assert "function" in modes
 
+    def test_schema_visualization_formats(self) -> None:
+        tool = CodeGraphVisualizeTool()
+        schema = tool.get_tool_schema()
+        assert schema["properties"]["visualization_format"]["enum"] == [
+            "mermaid",
+            "sigma",
+        ]
+
     def test_validate_file_mode_requires_path(self) -> None:
         tool = CodeGraphVisualizeTool()
         with pytest.raises(ValueError, match="file_path"):
@@ -137,6 +145,13 @@ class TestVisualizeToolSchema:
         with pytest.raises(ValueError, match="depth"):
             tool.validate_arguments(
                 {"mode": "function", "function": "foo", "depth": -1}
+            )
+
+    def test_validate_bad_visualization_format(self) -> None:
+        tool = CodeGraphVisualizeTool()
+        with pytest.raises(ValueError, match="visualization_format"):
+            tool.validate_arguments(
+                {"mode": "full", "visualization_format": "cytoscape"}
             )
 
 
@@ -189,6 +204,70 @@ class TestVisualizeToolNoProject:
         assert "alpha" in result["mermaid"]
         assert "beta" in result["mermaid"]
         assert result["stats"]["mode"] == "function"
+
+    @pytest.mark.asyncio
+    async def test_mocked_function_mode_sigma_payload(self) -> None:
+        tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
+        from tree_sitter_analyzer.call_graph import FunctionRef
+
+        fn_a = FunctionRef(
+            "src/main/java/com/example/UserService.java",
+            "save",
+            12,
+            "java",
+            receiver="UserService",
+            end_line=20,
+        )
+        fn_b = FunctionRef(
+            "src/main/java/com/example/UserRepository.java",
+            "commit",
+            32,
+            "java",
+            receiver="UserRepository",
+            end_line=40,
+        )
+        cg = MagicMock()
+        cg.resolve_targets.return_value = [fn_a]
+        cg.callee_refs_of.side_effect = lambda f: [fn_b] if f is fn_a else []
+        cg.caller_refs_of.return_value = []
+
+        with patch.object(tool, "get_call_graph", return_value=cg):
+            result = await tool.execute(
+                {
+                    "mode": "function",
+                    "function": "save",
+                    "depth": 1,
+                    "visualization_format": "sigma",
+                    "output_format": "json",
+                }
+            )
+
+        assert result["success"] is True
+        assert "mermaid" not in result
+        assert result["stats"] == {
+            "mode": "function",
+            "visualization_format": "sigma",
+            "node_count": 2,
+            "edge_count": 1,
+        }
+        graph = result["graph"]
+        assert graph["schema_version"] == "tsa.graphology.v1"
+        assert graph["renderer"] == {
+            "library": "sigma.js",
+            "data_model": "graphology",
+            "layout": "client_forceatlas2_or_precomputed",
+        }
+        assert graph["lod"]["available_levels"] == ["package", "class", "method"]
+        assert len(graph["nodes"]) == 2
+        assert len(graph["edges"]) == 1
+        assert graph["edges"][0]["attributes"] == {"kind": "calls", "weight": 1}
+        service_node = next(
+            node
+            for node in graph["nodes"]
+            if node["attributes"]["receiver"] == "UserService"
+        )
+        assert service_node["attributes"]["kind"] == "method"
+        assert service_node["attributes"]["package"] == "src.main.java.com.example"
 
     @pytest.mark.asyncio
     async def test_mocked_file_mode(self) -> None:
