@@ -11,6 +11,7 @@ action      inner / route                         engine / purpose
 uml         ``codegraph_uml`` (CodeGraphUMLTool)  UML class/sequence diagrams
 graph       ``codegraph_visualize``               call/dependency graph visualizations
 similarity  ``codegraph_similarity``              duplicate / near-duplicate code detection
+knowledge   ``codegraph_knowledge_graph``         code/doc knowledge graph export
 ==========  ====================================  =============================================
 
 Annotation honesty: every action in this facade is read-only (pure generation
@@ -34,8 +35,9 @@ _VIZ_ANNOTATIONS: dict[str, Any] = {
 _VIZ_DESCRIPTION = (
     "Code-intelligence (codegraph-compatible) visualization and similarity facade. "
     "Covers codegraph_uml (UML diagrams), codegraph_visualize (call/dependency "
-    "graph visualizations), and codegraph_similarity (duplicate code detection) "
-    "in one tool. Pick a capability via `action`:\n"
+    "graph visualizations), codegraph_similarity (duplicate code detection), "
+    "and codegraph_knowledge_graph (code/doc knowledge graph export) in one "
+    "tool. Pick a capability via `action`:\n"
     "- action=uml — UML class or sequence diagrams "
     "(codegraph_uml equivalent). "
     "Params: diagram, source, target, max_edges, max_depth, max_paths, "
@@ -49,6 +51,9 @@ _VIZ_DESCRIPTION = (
     "Default response is a summary map (files, line ranges, scores — no bodies). "
     "Params: mode, min_lines, min_group_size, max_groups, use_cache, include_bodies "
     "(set include_bodies=true to add code snippets; omit for the compact default).\n"
+    "- action=knowledge — export the materialized code/doc knowledge graph "
+    "for Sigma.js/Graphology or agents. Params: export_format, lod, focus, "
+    "max_nodes, max_edges.\n"
 )
 
 
@@ -84,6 +89,7 @@ def build_viz_facade(project_root: str | None = None) -> FacadeTool:
     """
     from .code_similarity_tool import CodeGraphSimilarityTool
     from .codegraph_visualize_tool import CodeGraphVisualizeTool
+    from .knowledge_graph_tool import CodeGraphKnowledgeGraphTool
     from .uml_tool import CodeGraphUMLTool
 
     facade = FacadeTool(
@@ -92,6 +98,7 @@ def build_viz_facade(project_root: str | None = None) -> FacadeTool:
             "uml": CodeGraphUMLTool(project_root),
             "graph": CodeGraphVisualizeTool(project_root),
             "similarity": CodeGraphSimilarityTool(project_root),
+            "knowledge": CodeGraphKnowledgeGraphTool(project_root),
         },
         bespoke_map={},  # no F5 bespoke routes needed for viz
         description=_VIZ_DESCRIPTION,

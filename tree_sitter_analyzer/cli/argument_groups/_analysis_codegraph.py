@@ -224,6 +224,42 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--knowledge-graph-export",
+        action="store_true",
+        help=(
+            "Export the whole-project code+docs knowledge graph for Sigma.js/"
+            "Graphology, raw JSON, or compact summaries."
+        ),
+    )
+    parser.add_argument(
+        "--knowledge-graph-export-format",
+        choices=["graphology", "raw", "summary"],
+        default="graphology",
+        help="Export format for --knowledge-graph-export (default: graphology)",
+    )
+    parser.add_argument(
+        "--knowledge-graph-lod",
+        choices=["package", "file", "symbol", "docs"],
+        default="file",
+        help="Level of detail for --knowledge-graph-export (default: file)",
+    )
+    parser.add_argument(
+        "--knowledge-graph-focus",
+        help="Substring focus for knowledge graph node ids, labels, or paths",
+    )
+    parser.add_argument(
+        "--knowledge-graph-export-max-nodes",
+        type=int,
+        default=10_000,
+        help="Max nodes emitted by --knowledge-graph-export (default: 10000)",
+    )
+    parser.add_argument(
+        "--knowledge-graph-export-max-edges",
+        type=int,
+        default=50_000,
+        help="Max edges emitted by --knowledge-graph-export (default: 50000)",
+    )
+    parser.add_argument(
         "--uml",
         choices=["class", "package", "component", "sequence", "activity", "state"],
         help="Export a UML-style Mermaid diagram from indexed project intelligence",
