@@ -1,5 +1,62 @@
 # Changelog
 
+## [1.26.0] - 2026-06-22
+
+Graph-visualization and correctness release. 54 commits since 1.25.0
+deliver the first browser-visualization data contract, complete a broad
+cyclomatic-complexity correctness sweep, tighten formatter output parity, and
+add CI review automation. No default output formats changed.
+
+### Added
+
+- **Sigma.js / Graphology graph payload export.** `viz action=graph` and
+  `--codegraph-visualize` now accept `visualization_format=sigma` /
+  `--codegraph-visualize-format sigma`, returning a Graphology-compatible
+  directed graph with node/edge attributes and LOD metadata for package,
+  class, and method drilldown. Mermaid remains the default. (#1110)
+- **Dead-code path scoping.** `health action=dead` can now scope analysis by
+  path, reducing noise for focused cleanup passes. (#1104)
+- **Formatter complexity columns.** Rust and Kotlin full-table output now show
+  cyclomatic complexity, matching the broader formatter surface. (#1082,
+  #1093)
+- **Claude PR review automation.** PRs now run a Claude-powered review job as
+  part of the CI feedback surface. (#1071, #1073)
+
+### Fixed
+
+- **Cyclomatic complexity is now extractor-owned and language-correct.**
+  Complexity scoring was corrected across Go, Rust, Python, JavaScript,
+  TypeScript, Java, C, C++, C#, Ruby, Scala, Bash, Swift, Kotlin, and
+  PHP. Heatmap and project-health consumers now read the extractor-derived
+  value instead of recomputing divergent scores. (#1055, #1056, #1057,
+  #1080, #1081, #1085, #1087, #1090, #1094, #1097, #1098, #1100, #1101,
+  #1102)
+- **MCP numeric parameter coercion.** Eleven MCP tools now coerce numeric
+  boundary parameters before validation, preventing int/string crashes from
+  agent callers. (#1054)
+- **Complexity heatmap language coverage.** Project-mode heatmap handles
+  string `max_files` and uses fallback complexity extraction across plugin
+  languages. (#1051, #1052)
+- **Formatter signature/output correctness.** Go parameter names/types,
+  Swift parameter and return types, Rust signatures, PHP and JS/TS module
+  functions, and Go/Bash complexity columns now render correctly in table
+  outputs. (#1053, #1064, #1065, #1066, #1074, #1075, #1077, #1079, #1092)
+- **Trace impact payload slimming.** `trace_impact` no longer duplicates the
+  bulk `results` array, reducing MCP response size while preserving the data
+  in the formatted payload. (#1078)
+- **PR review base resolution.** PR review routing now resolves the intended
+  base branch correctly. (#1109)
+
+### Changed
+
+- **TOON scalar safety.** Ambiguous scalar-looking strings are quoted, and a
+  `ToonDecoder` plus round-trip oracle now guard TOON losslessness. (#1063)
+- **README honesty.** README wording was corrected around TOON efficiency and
+  verdict vocabulary. (#1062)
+- **Test and CI hardening.** E2E project-health timing now warms the index
+  before measuring, formatter helper fixtures were simplified, and release
+  docs/counts were refreshed for 21,232 collected tests. (#1105, #1106)
+
 ## [1.25.0] - 2026-06-17
 
 Correctness & agent-honesty point release. 14 commits since 1.24.0 (6 fixes,
