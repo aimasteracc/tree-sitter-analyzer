@@ -47,6 +47,7 @@ def handle_special_commands(
         lambda: _handle_full_index(args, context),
         lambda: _handle_codegraph_metrics(args, context),
         lambda: _handle_incremental_sync(args, context),
+        lambda: _handle_knowledge_graph_index(args, context),
         lambda: _handle_affected(args, context),
         lambda: _handle_nav_actions_lazy(args, context),
         lambda: _handle_watch_health(args, context),
@@ -567,6 +568,17 @@ def _handle_incremental_sync(
     from .commands.codegraph_index_commands import run_incremental_sync
 
     return run_incremental_sync(args, context.output_error)
+
+
+def _handle_knowledge_graph_index(
+    args: Any, context: SpecialCommandContext
+) -> int | None:
+    """Dispatch ``--knowledge-graph-index`` → ``codegraph_knowledge_index``."""
+    if not getattr(args, "knowledge_graph_index", False):
+        return None
+    from .commands.codegraph_index_commands import run_knowledge_graph_index
+
+    return run_knowledge_graph_index(args, context.output_error)
 
 
 def _handle_clean_state(

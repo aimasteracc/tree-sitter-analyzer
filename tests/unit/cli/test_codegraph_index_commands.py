@@ -14,6 +14,7 @@ from tree_sitter_analyzer.cli.commands.codegraph_index_commands import (
     _exit_code_for,
     _full_index_payload,
     _incremental_sync_payload,
+    _knowledge_graph_index_payload,
     _metrics_payload,
     _print,
     _project_root,
@@ -21,6 +22,7 @@ from tree_sitter_analyzer.cli.commands.codegraph_index_commands import (
     run_codegraph_metrics,
     run_full_index,
     run_incremental_sync,
+    run_knowledge_graph_index,
 )
 
 
@@ -142,6 +144,37 @@ class TestIncrementalSyncPayload:
         assert payload["mode"] == "check"
 
 
+class TestKnowledgeGraphIndexPayload:
+    def test_default_values(self):
+        args = _args()
+        payload = _knowledge_graph_index_payload(args, "json")
+        assert payload["mode"] == "update"
+        assert payload["backend"] == "json"
+        assert payload["max_files"] == 1_000_000
+        assert payload["max_nodes"] == 100_000
+        assert payload["max_edges"] == 500_000
+        assert payload["include_docs"] is True
+        assert payload["output_format"] == "json"
+
+    def test_custom_values(self):
+        args = _args(
+            knowledge_graph_index_mode="build",
+            knowledge_graph_backend="hybrid",
+            knowledge_graph_max_files=123,
+            knowledge_graph_max_nodes=456,
+            knowledge_graph_max_edges=789,
+            knowledge_graph_no_docs=True,
+        )
+        payload = _knowledge_graph_index_payload(args, "toon")
+        assert payload["mode"] == "build"
+        assert payload["backend"] == "hybrid"
+        assert payload["max_files"] == 123
+        assert payload["max_nodes"] == 456
+        assert payload["max_edges"] == 789
+        assert payload["include_docs"] is False
+        assert payload["output_format"] == "toon"
+
+
 class TestMetricsPayload:
     def test_no_sections(self):
         args = _args()
@@ -167,6 +200,9 @@ _INCSYNC_CLS = (
 )
 _METRICS_CLS = (
     "tree_sitter_analyzer.mcp.tools.codegraph_metrics_tool.CodeGraphMetricsTool"
+)
+_KNOWLEDGE_INDEX_CLS = (
+    "tree_sitter_analyzer.mcp.tools.knowledge_graph_tool.CodeGraphKnowledgeIndexTool"
 )
 _OUTPUT_FMT = (
     "tree_sitter_analyzer.cli.commands.codegraph_index_commands._output_format"
@@ -271,6 +307,38 @@ class TestRunIncrementalSync:
             with patch(_OUTPUT_FMT, return_value="toon"):
                 code = run_incremental_sync(args, lambda e: None)
         assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# run_knowledge_graph_index
+# ---------------------------------------------------------------------------
+
+
+class TestRunKnowledgeGraphIndex:
+    def test_execute_failure_returns_1(self, tmp_path):
+        args = _args(project_root=str(tmp_path))
+        mock_tool = MagicMock()
+        mock_tool.execute = AsyncMock(side_effect=RuntimeError("kg fail"))
+
+        errors: list[str] = []
+        with patch(_KNOWLEDGE_INDEX_CLS, return_value=mock_tool):
+            code = run_knowledge_graph_index(args, errors.append)
+        assert code == 1
+        assert errors == ["--knowledge-graph-index failed: kg fail"]
+
+    def test_success_returns_0(self, tmp_path, capsys):
+        args = _args(project_root=str(tmp_path), knowledge_graph_backend="json")
+        mock_tool = MagicMock()
+        mock_tool.execute = AsyncMock(
+            return_value={"success": True, "toon_content": "kg ok"}
+        )
+
+        with patch(_KNOWLEDGE_INDEX_CLS, return_value=mock_tool):
+            with patch(_OUTPUT_FMT, return_value="toon"):
+                code = run_knowledge_graph_index(args, lambda e: None)
+        out = capsys.readouterr().out
+        assert code == 0
+        assert "kg ok" in out
 
 
 # ---------------------------------------------------------------------------

@@ -31,6 +31,7 @@ SKIPPED_SCAN_DIRS = {
     ".venv",
 }
 
+
 def test_registered_mcp_tools_have_cli_parity() -> None:
     """Every registered MCP tool must have a documented CLI access path."""
     parser = create_argument_parser()
@@ -368,9 +369,11 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("index", "full"): "CodeGraphFullIndexTool",
         ("index", "auto"): "CodeGraphAutoIndexTool",
         ("index", "sync"): "CodeGraphIncrementalSyncTool",
+        ("index", "knowledge"): "CodeGraphKnowledgeIndexTool",
         ("viz", "uml"): "CodeGraphUMLTool",
         ("viz", "graph"): "CodeGraphVisualizeTool",
         ("viz", "similarity"): "CodeGraphSimilarityTool",
+        ("viz", "knowledge"): "CodeGraphKnowledgeGraphTool",
     }
 
     mismatches: list[str] = []

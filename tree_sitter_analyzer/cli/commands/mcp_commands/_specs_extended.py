@@ -291,6 +291,22 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         },
     ),
     McpCommandSpec(
+        flag_name="knowledge_graph_export",
+        tool_attr="CodeGraphKnowledgeGraphTool",
+        label="Whole-project code/doc knowledge graph export",
+        build_tool_args=lambda args, output_format: {
+            "export_format": (
+                getattr(args, "knowledge_graph_export_format", "graphology")
+                or "graphology"
+            ),
+            "lod": getattr(args, "knowledge_graph_lod", "file") or "file",
+            "focus": getattr(args, "knowledge_graph_focus", None),
+            "max_nodes": getattr(args, "knowledge_graph_export_max_nodes", 10_000),
+            "max_edges": getattr(args, "knowledge_graph_export_max_edges", 50_000),
+            "output_format": output_format,
+        },
+    ),
+    McpCommandSpec(
         flag_name="uml",
         tool_attr="CodeGraphUMLTool",
         label="UML Mermaid export: class, package, component, sequence diagrams",

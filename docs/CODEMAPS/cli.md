@@ -30,7 +30,7 @@ cli/commands/
 ├── list_files_cli.py           ← `list-files` subcommand
 ├── search_content_cli.py       ← `search-content` subcommand
 ├── mcp_commands/               ← MCP-equivalent CLI flags (parity contract; package)
-└── codegraph_index_commands.py ← cache commands: autoindex / full-index / incremental-sync / metrics
+└── codegraph_index_commands.py ← cache commands: autoindex / full-index / incremental-sync / metrics / knowledge graph index
 ```
 
 ## Flag → Tool Mapping
@@ -78,6 +78,7 @@ Categories of CLI surface:
 - `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index (default cap: 20k files)
 - `--full-index-include-activation` — opt in to temporal git activation during full-index rebuilds
 - `--incremental-sync [--incremental-sync-mode sync|changes|status]` — content-hash diff re-index (SHA-256)
+- `--knowledge-graph-index [--knowledge-graph-index-mode build|update|status]` — materialize whole-project code+docs graph sidecar; `--knowledge-graph-backend json|ladybug|hybrid`; update mode scans the full project safely
 - `--codegraph-status [--codegraph-status-no-lag]` — index health at-a-glance (CodeGraph parity)
 - `--codegraph-metrics` — aggregated cache/call-graph/complexity/health dashboard
 - `--parser-readiness` — pre-flight checks
@@ -101,6 +102,7 @@ Categories of CLI surface:
 - `--codegraph-complexity-heatmap` — cyclomatic complexity heatmap
 - `--codegraph-sitemap` — hierarchical project code map
 - `--codegraph-visualize` — Mermaid flowchart export, or Graphology/Sigma.js JSON with `--codegraph-visualize-format sigma`
+- `--knowledge-graph-export` — Graphology/Sigma.js or raw JSON export of code files, Markdown docs, symbols, and relationships with `--knowledge-graph-lod package|file|symbol|docs`
 - `--uml class|package|component|sequence` — UML-style Mermaid diagram export
 - `--code-similarity` — AST-structural clone detection
 - `--pr-review diff|staged|branch|pr` — AST diff + semantic classify +

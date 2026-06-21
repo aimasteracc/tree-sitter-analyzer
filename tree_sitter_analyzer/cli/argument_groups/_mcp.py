@@ -104,6 +104,52 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
         default=20_000,
         help="Max files for --incremental-sync (default: 20000)",
     )
+    parser.add_argument(
+        "--knowledge-graph-index",
+        action="store_true",
+        help=(
+            "Build/update the whole-project code+docs knowledge graph sidecar "
+            "(JSON by default, optional LadybugDB mirror)."
+        ),
+    )
+    parser.add_argument(
+        "--knowledge-graph-index-mode",
+        choices=["build", "update", "status"],
+        default="update",
+        help="Mode for --knowledge-graph-index (default: update)",
+    )
+    parser.add_argument(
+        "--knowledge-graph-backend",
+        choices=["json", "ladybug", "hybrid"],
+        default="json",
+        help="Persistence backend for --knowledge-graph-index (default: json)",
+    )
+    parser.add_argument(
+        "--knowledge-graph-max-files",
+        type=int,
+        default=1_000_000,
+        help=(
+            "Max files for --knowledge-graph-index-mode build; update mode "
+            "uses a safe full-project scan (default: 1000000)"
+        ),
+    )
+    parser.add_argument(
+        "--knowledge-graph-max-nodes",
+        type=int,
+        default=100_000,
+        help="Max nodes to materialize into the knowledge graph (default: 100000)",
+    )
+    parser.add_argument(
+        "--knowledge-graph-max-edges",
+        type=int,
+        default=500_000,
+        help="Max edges to materialize into the knowledge graph (default: 500000)",
+    )
+    parser.add_argument(
+        "--knowledge-graph-no-docs",
+        action="store_true",
+        help="Skip Markdown doc link extraction during --knowledge-graph-index",
+    )
 
 
 def _add_clean_state_options(parser: argparse.ArgumentParser) -> None:
