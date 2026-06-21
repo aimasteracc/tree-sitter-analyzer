@@ -8,6 +8,23 @@ facade, accessible via facade._bespoke_inners. We patch get_call_graph on
 that instance to inject mock call-graph data.
 """
 
+# ---------------------------------------------------------------------------
+# INVARIANT DELEGATION NOTICE
+# The following 4 common facade invariants are tested canonically in:
+#   tests/unit/mcp/test_facade_envelope_contract.py
+#
+# Delegated invariants (do NOT add new duplicates here):
+#   - envelope preserved       (verdict / agent_summary verbatim pass-through)
+#   - arg projection           (action key stripped before reaching inner tool)
+#   - missing action error     (success=False, verdict in {ERROR, NOT_FOUND})
+#   - unknown action error     (success=False, available_actions listed)
+#
+# Facade-specific tests that remain in this file:
+#   - nav action=test_map bespoke route (RFC-0014 Phase B)
+#   - test_map call-graph data injection and output schema
+#   - collectible caller / language-specific test detection helpers
+# ---------------------------------------------------------------------------
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock

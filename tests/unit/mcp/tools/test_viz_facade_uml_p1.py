@@ -5,6 +5,22 @@ not declared in the inner tool's schema. Before P1-A, file_path and class_name
 were not declared → silently dropped → always whole-project diagram.
 """
 
+# ---------------------------------------------------------------------------
+# INVARIANT DELEGATION NOTICE
+# The following 4 common facade invariants are tested canonically in:
+#   tests/unit/mcp/test_facade_envelope_contract.py
+#
+# Delegated invariants (do NOT add new duplicates here):
+#   - envelope preserved       (verdict / agent_summary verbatim pass-through)
+#   - arg projection           (action key stripped before reaching inner tool)
+#   - missing action error     (success=False, verdict in {ERROR, NOT_FOUND})
+#   - unknown action error     (success=False, available_actions listed)
+#
+# Facade-specific tests that remain in this file:
+#   - viz facade passes file_path and class_name to inner UML tool
+#   - _project_args schema compliance for uml_tool (RFC-0015 P1-A regression)
+# ---------------------------------------------------------------------------
+
 from __future__ import annotations
 
 

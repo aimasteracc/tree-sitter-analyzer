@@ -29,6 +29,26 @@ from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
 from tree_sitter_analyzer.mcp.tools.facade_tool import FacadeTool
 
 # --------------------------------------------------------------------------
+# INVARIANT DELEGATION NOTICE
+# The following 4 common facade invariants are tested canonically in:
+#   tests/unit/mcp/test_facade_envelope_contract.py
+#
+# Delegated invariants (do NOT add new duplicates here):
+#   - envelope preserved       (verdict / agent_summary verbatim pass-through)
+#   - arg projection           (action key stripped before reaching inner tool)
+#   - missing action error     (success=False, verdict in {ERROR, NOT_FOUND})
+#   - unknown action error     (success=False, available_actions listed)
+#
+# Facade-specific tests that remain in this file:
+#   - FacadeTool base framework tests (routing, R3 normalize, F5 bespoke)
+#   - symbol -> function_name normalize (R3) before projection
+#   - symbol -> class_name normalize (Wave 1b) before projection
+#   - bespoke route (F5) bypass of schema projection
+#   - G3 rebind propagation to action_map + bespoke inners
+#   - facade's own schema must not self-reject action/scope/mode
+# --------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
 # Fake inner tools — minimal BaseMCPTool subclasses to test routing in
 # isolation without pulling in the real heavy tools.
 # --------------------------------------------------------------------------
