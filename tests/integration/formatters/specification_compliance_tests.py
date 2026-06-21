@@ -6,6 +6,7 @@ defined in docs/format_specifications.md
 """
 
 import re
+import io
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -16,26 +17,239 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool as TableFormatTool,
 )
 
-from ._specification_compliance_tests_csv_mixin import (
-    FormatSpecificationValidatorCsvMixin,
-)
-from ._specification_compliance_tests_fixtures import ANALYTICS_SERVICE_JAVA
-from ._specification_compliance_tests_full_mixin import (
-    FormatSpecificationValidatorFullMixin,
-)
-from ._specification_compliance_tests_helpers import (
-    assert_specification_compliance_across_formats,
-)
+ANALYTICS_SERVICE_JAVA = """package com.example.analytics;
+
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
+import static java.util.Collections.emptyList;
+
+/**
+ * Analytics service for processing user data
+ * Provides comprehensive analytics functionality
+ */
+public class AnalyticsService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AnalyticsService.class);
+    private final Map<String, Object> cache = new ConcurrentHashMap<>();
+    private UserRepository userRepository;
+    private boolean enabled = true;
+
+    /**
+     * Constructor with repository injection
+     * @param userRepository the user repository
+     */
+    public AnalyticsService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+        logger.info("AnalyticsService initialized");
+    }
+
+    /**
+     * Process user analytics data
+     * @param userId User ID to process
+     * @param metrics List of metrics to calculate
+     * @return Analytics result
+     * @throws SQLException if database error occurs
+     */
+    public AnalyticsResult processUserAnalytics(Long userId, List<String> metrics) throws SQLException {
+        if (userId == null) {
+            throw new IllegalArgumentException("User ID cannot be null");
+        }
+
+        User user = userRepository.findById(userId);
+        Map<String, Double> results = calculateMetrics(user, metrics);
+
+        return new AnalyticsResult(userId, results);
+    }
+
+    /**
+     * Calculate metrics for user
+     * @param user the user
+     * @param metrics list of metrics
+     * @return calculated results
+     */
+    private Map<String, Double> calculateMetrics(User user, List<String> metrics) {
+        Map<String, Double> results = new HashMap<>();
+
+        for (String metric : metrics) {
+            Double value = calculateSingleMetric(user, metric);
+            if (value != null) {
+                results.put(metric, value);
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Calculate single metric
+     * @param user the user
+     * @param metric metric name
+     * @return calculated value
+     */
+    private Double calculateSingleMetric(User user, String metric) {
+        String cacheKey = user.getId() + ":" + metric;
+
+        if (cache.containsKey(cacheKey)) {
+            return (Double) cache.get(cacheKey);
+        }
+
+        Double result = performCalculation(user, metric);
+
+        if (result != null) {
+            cache.put(cacheKey, result);
+        }
+
+        return result;
+    }
+
+    /**
+     * Perform actual calculation
+     * @param user the user
+     * @param metric metric name
+     * @return calculated value
+     */
+    private Double performCalculation(User user, String metric) {
+        switch (metric.toLowerCase()) {
+            case "engagement":
+                return user.getLoginCount() * 0.1;
+            case "retention":
+                return Math.max(0.0, 1.0 - (user.getDaysSinceLastLogin() / 30.0));
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Clear analytics cache
+     */
+    public void clearCache() {
+        cache.clear();
+        logger.info("AnalyticsService cache cleared");
+    }
+
+    /**
+     * Check if service is enabled
+     * @return true if enabled
+     */
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    /**
+     * Set service enabled state
+     * @param enabled new enabled state
+     */
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+        logger.info("AnalyticsService enabled: " + enabled);
+    }
+}
+"""
 
 
-class FormatSpecificationValidator(
-    FormatSpecificationValidatorFullMixin, FormatSpecificationValidatorCsvMixin
-):
+class FormatSpecificationValidator:
     """Validator for format specification compliance"""
 
     def __init__(self):
         self.errors: list[str] = []
         self.warnings: list[str] = []
+
+    def validate_full_format_specification(self, output: str, class_name: str) -> bool:
+        """Validate Full Format specification compliance"""
+        self.errors.clear()
+        self.warnings.clear()
+
+        lines = output.split("\n")
+
+        if not self._validate_full_format_header(lines, class_name):
+            return False
+
+        if not self._validate_full_format_sections(lines):
+            return False
+
+        if not self._validate_full_format_tables(lines):
+            return False
+
+        if not self._validate_common_formatting(output):
+            return False
+
+        return len(self.errors) == 0
+
+    def _validate_full_format_header(self, lines: list[str], class_name: str) -> bool:
+        """Validate Full Format header: # {package}.{ClassName}"""
+        if not lines or not any(line.strip() for line in lines):
+            self.errors.append("Empty output")
+            return False
+
+        header_line = lines[0].strip()
+
+        if not header_line:
+            self.errors.append("Empty output")
+            return False
+
+        if not header_line.startswith("# "):
+            self.errors.append(f"Header must start with '# ', got: {header_line}")
+            return False
+
+        header_content = header_line[2:]
+        if class_name not in header_content:
+            self.errors.append(
+                f"Header must contain class name '{class_name}', got: {header_content}"
+            )
+            return False
+
+        if "." not in header_content:
+            self.warnings.append(
+                f"Header should contain package information: {header_content}"
+            )
+
+        return True
+
+    def _validate_full_format_sections(self, lines: list[str]) -> bool:
+        """Validate required sections for Full Format"""
+        content = "\n".join(lines)
+
+        required_sections = ["## Class Info", "## Methods", "## Fields"]
+
+        for section in required_sections:
+            if section not in content:
+                self.errors.append(f"Missing required section: {section}")
+
+        if "## Imports" not in content:
+            self.warnings.append("Missing optional section: ## Imports")
+
+        return len([e for e in self.errors if "Missing required section" in e]) == 0
+
+    def _validate_full_format_tables(self, lines: list[str]) -> bool:
+        """Validate table structures for Full Format"""
+        content = "\n".join(lines)
+
+        class_info_match = re.search(r"## Class Info\n(.*?)\n\n", content, re.DOTALL)
+        if class_info_match:
+            table_content = class_info_match.group(1)
+            if not self._validate_markdown_table(table_content, ["Property", "Value"]):
+                self.errors.append("Invalid Class Info table structure")
+
+        methods_match = re.search(r"## Methods\n(.*?)(?=\n##|\n$)", content, re.DOTALL)
+        if methods_match:
+            table_content = methods_match.group(1)
+            expected_headers = ["Name", "Return Type", "Parameters", "Access", "Line"]
+            if not self._validate_markdown_table(table_content, expected_headers):
+                self.errors.append("Invalid Methods table structure")
+
+        fields_match = re.search(r"## Fields\n(.*?)(?=\n##|\n$)", content, re.DOTALL)
+        if fields_match:
+            table_content = fields_match.group(1)
+            expected_headers = ["Name", "Type", "Access", "Static", "Final", "Line"]
+            if not self._validate_markdown_table(table_content, expected_headers):
+                self.errors.append("Invalid Fields table structure")
+
+        return (
+            len([e for e in self.errors if "Invalid" in e and "table structure" in e])
+            == 0
+        )
 
     def validate_compact_format_specification(
         self, output: str, class_name: str
@@ -141,6 +355,175 @@ class FormatSpecificationValidator(
             == 0
         )
 
+    def validate_csv_format_specification(self, output: str) -> bool:
+        """Validate CSV Format specification compliance"""
+        self.errors.clear()
+        self.warnings.clear()
+
+        if not self._validate_csv_structure(output):
+            return False
+
+        if not self._validate_csv_header(output):
+            return False
+
+        if not self._validate_csv_data_rows(output):
+            return False
+
+        if not self._validate_common_formatting(output):
+            return False
+
+        return len(self.errors) == 0
+
+    def _validate_csv_structure(self, output: str) -> bool:
+        """Validate CSV structure"""
+        try:
+            reader = csv.reader(io.StringIO(output))
+            rows = list(reader)
+
+            if len(rows) < 1:
+                self.errors.append("CSV must have at least header row")
+                return False
+
+            header_cols = len(rows[0])
+            self._append_inconsistent_csv_row_errors(rows, header_cols)
+
+            return True
+
+        except csv.Error as e:
+            self.errors.append(f"Invalid CSV format: {e}")
+            return False
+
+    def _append_inconsistent_csv_row_errors(
+        self, rows: list[list[str]], header_cols: int
+    ) -> None:
+        for i, row in enumerate(rows[1:], 1):
+            if len(row) == header_cols:
+                continue
+
+            self.errors.append(
+                f"Row {i} has {len(row)} columns, expected {header_cols}"
+            )
+
+    def _validate_csv_header(self, output: str) -> bool:
+        """Validate CSV header compliance"""
+        try:
+            reader = csv.reader(io.StringIO(output))
+            header = next(reader)
+
+            expected_headers = [
+                "Type",
+                "Name",
+                "ReturnType",
+                "Parameters",
+                "Access",
+                "Static",
+                "Final",
+                "Line",
+            ]
+
+            if header != expected_headers:
+                self.errors.append(
+                    f"CSV header mismatch. Expected: {expected_headers}, Got: {header}"
+                )
+                return False
+
+            return True
+
+        except (csv.Error, StopIteration) as e:
+            self.errors.append(f"Cannot read CSV header: {e}")
+            return False
+
+    def _validate_csv_data_rows(self, output: str) -> bool:
+        """Validate CSV data rows"""
+        try:
+            reader = csv.reader(io.StringIO(output))
+            _header = next(reader)
+
+            for i, row in enumerate(reader, 1):
+                if not self._validate_csv_row(row, i):
+                    return False
+
+            return True
+
+        except (csv.Error, StopIteration) as e:
+            self.errors.append(f"Cannot read CSV data: {e}")
+            return False
+
+    def _validate_csv_row(self, row: list[str], row_num: int) -> bool:
+        """Validate individual CSV row"""
+        if len(row) != 8:
+            self.errors.append(f"Row {row_num} has {len(row)} columns, expected 8")
+            return False
+
+        type_val, name, return_type, parameters, access, static, final, line = row
+
+        valid_types = [
+            "class",
+            "interface",
+            "enum",
+            "method",
+            "constructor",
+            "field",
+            "property",
+        ]
+        if type_val not in valid_types:
+            self.errors.append(
+                f"Row {row_num}: Invalid type '{type_val}', must be one of {valid_types}"
+            )
+
+        if not name.strip():
+            self.errors.append(f"Row {row_num}: Name cannot be empty")
+
+        for field_name, field_value in [("Static", static), ("Final", final)]:
+            if field_value not in ["true", "false", ""]:
+                self.errors.append(
+                    f"Row {row_num}: {field_name} must be 'true', 'false', or empty, got '{field_value}'"
+                )
+
+        if line.strip():
+            self._append_line_number_error(line, row_num)
+
+        if parameters.strip() and not self._validate_parameters_format(parameters):
+            self.errors.append(
+                f"Row {row_num}: Invalid parameters format '{parameters}'"
+            )
+
+        return True
+
+    def _append_line_number_error(self, line: str, row_num: int) -> None:
+        try:
+            line_num = int(line)
+        except ValueError:
+            self.errors.append(f"Row {row_num}: Line must be a number, got '{line}'")
+            return
+
+        if line_num < 1:
+            self.errors.append(
+                f"Row {row_num}: Line number must be positive, got {line_num}"
+            )
+
+    def _validate_parameters_format(self, parameters: str) -> bool:
+        """Validate parameters format: param1:type1;param2:type2"""
+        if not parameters.strip():
+            return True
+
+        params = parameters.split(";")
+
+        for param in params:
+            param = param.strip()
+            if ":" not in param:
+                return False
+
+            parts = param.split(":")
+            if len(parts) != 2:
+                return False
+
+            name, type_name = parts
+            if not name.strip() or not type_name.strip():
+                return False
+
+        return True
+
     def _validate_markdown_table(
         self, table_content: str, expected_headers: list[str]
     ) -> bool:
@@ -216,6 +599,44 @@ class FormatSpecificationValidator(
             "error_count": len(self.errors),
             "warning_count": len(self.warnings),
         }
+
+
+async def assert_specification_compliance_across_formats(
+    tool: Any, file_path: Path, class_name: str, validator: Any
+) -> None:
+    """Run all format specification compliance checks."""
+    results = {}
+    for format_type in ["full", "compact", "csv"]:
+        result = await tool.execute(
+            {
+                "file_path": str(file_path),
+                "format_type": format_type,
+                "language": "java",
+            }
+        )
+        output = result["table_output"]
+        results[format_type] = output
+        if format_type == "full":
+            is_valid = validator.validate_full_format_specification(output, class_name)
+        elif format_type == "compact":
+            is_valid = validator.validate_compact_format_specification(output, class_name)
+        else:
+            is_valid = validator.validate_csv_format_specification(output)
+        report = validator.get_validation_report()
+        assert is_valid, (
+            f"{format_type} format specification compliance failed: {report['errors']}"
+        )
+
+    for format_type, output in results.items():
+        assert class_name in output, f"{format_type} format missing class name"
+        if format_type == "csv":
+            assert "method," in output, (
+                f"{format_type} format missing method information"
+            )
+        else:
+            assert "processUserAnalytics" in output, (
+                f"{format_type} format missing method information"
+            )
 
 
 class TestFormatSpecificationCompliance:
