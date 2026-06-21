@@ -169,7 +169,7 @@ CREATE TABLE products (
         result = plugin.extract_elements(tree, code)
         assert "classes" in result
         tables = [c for c in result["classes"] if c.name == "products"]
-        assert len(tables) >= 1
+        assert any(c.name == "products" for c in result["classes"])
 
     def test_extract_view_with_if_not_exists(self, plugin, parser):
         """Test CREATE VIEW IF NOT EXISTS."""
@@ -700,7 +700,8 @@ class TestSQLPluginInitBranches:
         """Test plugin initialization when tree-sitter is not available."""
         with patch.dict("sys.modules", {"tree_sitter_sql": None}):
             plugin = SQLPlugin()
-            assert plugin is not None
+            assert isinstance(plugin, SQLPlugin)
+            assert plugin.language == "sql"
 
     def test_extractor_reset_caches(self) -> None:
         """Test cache reset functionality."""
@@ -771,8 +772,8 @@ class TestSQLProcedureParameterDirection:
         params = []
         proc_text = "PROCEDURE my_proc(OUT result INT) BEGIN SET result = 1; END;"
         ext._extract_procedure_parameters(proc_text, params)
-        assert len(params) > 0
         assert params[0].direction == "OUT"
+        assert params[0].name == "result"
 
     def test_default_in_parameter(self) -> None:
         """Default (no direction keyword) is treated as IN."""
@@ -780,6 +781,5 @@ class TestSQLProcedureParameterDirection:
         params = []
         proc_text = "PROCEDURE my_proc(p_id INT) BEGIN SET x = p_id; END;"
         ext._extract_procedure_parameters(proc_text, params)
-        assert len(params) > 0
         assert params[0].direction == "IN"
         assert params[0].name == "p_id"

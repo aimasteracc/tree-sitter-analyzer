@@ -353,7 +353,7 @@ class TestFormatSpecificationCompliance:
 
         # Additional checks
         lines = output.strip().split("\n")
-        assert len(lines) >= 2, "CSV must have header and at least one data row"
+        assert len(lines) >= 2, "CSV must have header and at least one data row"  # ratchet: nondeterministic
 
         # Check header
         header = lines[0]
@@ -399,7 +399,7 @@ class TestFormatSpecificationCompliance:
         assert not is_valid
 
         report = validator.get_validation_report()
-        assert len(report["errors"]) > 0
+        assert report["errors"]
         assert any("Missing required section" in error for error in report["errors"])
 
         # Test invalid CSV format
@@ -411,7 +411,7 @@ class TestFormatSpecificationCompliance:
         assert not is_valid
 
         report = validator.get_validation_report()
-        assert len(report["errors"]) > 0
+        assert report["errors"]
         assert any("CSV header mismatch" in error for error in report["errors"])
 
     @pytest.mark.asyncio

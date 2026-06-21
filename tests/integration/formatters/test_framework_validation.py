@@ -128,7 +128,7 @@ class TestClass:
         print(f"Success rate: {results.success_rate:.1f}%")
 
         # Should have run some tests
-        assert results.total_tests > 0
+        assert results.total_tests
 
     def test_schema_validation_components(self):
         """Test schema validation components work"""

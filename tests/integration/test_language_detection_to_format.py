@@ -36,22 +36,38 @@ class TestLanguageDetectionToFormat:
         p = tmp_path / "calc.py"
         p.write_text(_PYTHON_SRC)
         result = analyze_file(str(p))
-        assert result is not None
+        assert result["success"] is True
+        assert {item["name"] for item in result["elements"]} == {
+            "Calculator",
+            "add",
+            "main",
+        }
 
     def test_java_file_full_pipeline(self, tmp_path):
         p = tmp_path / "Hello.java"
         p.write_text(_JAVA_SRC)
         result = analyze_file(str(p))
-        assert result is not None
+        assert result["success"] is True
+        assert {item["name"] for item in result["elements"]} == {
+            "HelloWorld",
+            "main",
+        }
 
     def test_typescript_file_full_pipeline(self, tmp_path):
         p = tmp_path / "app.ts"
         p.write_text(_TS_SRC)
         result = analyze_file(str(p))
-        assert result is not None
+        assert result["success"] is True
+        assert {item["name"] for item in result["elements"]} == {
+            "Color",
+            "User",
+            "constructor",
+            "greet",
+        }
 
     def test_unknown_extension_raises(self, tmp_path):
         p = tmp_path / "data.xyz"
         p.write_text("hello")
         result = analyze_file(str(p))
-        assert result is not None or result is None
+        assert result["success"] is False
+        assert result["error"] == "Unsupported language: unknown"

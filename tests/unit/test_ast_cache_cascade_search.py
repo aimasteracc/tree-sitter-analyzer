@@ -125,7 +125,7 @@ def test_cascade_private_fallback_helpers_cover_error_paths() -> None:
     assert len(results) == 3
 
     assert _name_match_bonus("HandlerFunc", "") == 0.0
-    assert _name_match_bonus("HandlerFunc", "hf") > 0
+    assert _name_match_bonus("HandlerFunc", "hf")
     assert _bounded_levenshtein("abcdef", "z", 2) == 3
     assert _bounded_levenshtein("abcdef", "zzzzzz", 2) == 3
 

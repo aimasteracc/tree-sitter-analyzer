@@ -424,8 +424,8 @@ class TestHtmlLinkImageRecognition:
             ),
             None,
         )
-        if img_with_alt:
-            assert img_with_alt.attributes["alt"] is not None
+        assert img_with_alt.attributes["alt"] == "Description"
+        assert img_with_alt.attributes["src"] == "image.jpg"
 
     def test_extract_image_with_dimensions(self):
         """Test extraction of image with dimensions."""
@@ -446,9 +446,12 @@ class TestHtmlLinkImageRecognition:
             ),
             None,
         )
-        if img_with_dims:
-            assert img_with_dims.attributes["width"] is not None
-            assert img_with_dims.attributes["height"] is not None
+        assert img_with_dims.attributes == {
+            "src": "logo.png",
+            "alt": "Logo",
+            "width": "100",
+            "height": "50",
+        }
 
     def test_extract_picture_tag(self):
         """Test extraction of picture tag."""
@@ -547,8 +550,7 @@ class TestHtmlScriptStyleRecognition:
             ),
             None,
         )
-        if script_with_src:
-            assert script_with_src.attributes["src"] is not None
+        assert script_with_src.attributes == {"src": "https://cdn.example.com/library.js"}
 
     def test_extract_style_with_href(self):
         """Test extraction of link with href attribute."""
@@ -566,8 +568,7 @@ class TestHtmlScriptStyleRecognition:
             ),
             None,
         )
-        if link_with_href:
-            assert link_with_href.attributes["href"] is not None
+        assert link_with_href.attributes == {"rel": "stylesheet", "href": "styles.css"}
 
 
 class TestHtmlComplexStructures:
@@ -719,8 +720,21 @@ class TestHtmlQueryAccuracy:
         for element in elements:
             if element.attributes:
                 for attr_name, attr_value in element.attributes.items():
-                    assert attr_name is not None
-                    assert attr_value is not None
+                    assert isinstance(attr_name, str)
+                    assert isinstance(attr_value, str)
+
+        image_attrs = [
+            element.attributes for element in elements if element.tag_name == "img"
+        ]
+        assert image_attrs == [
+            {
+                "src": "image.jpg",
+                "alt": "Description",
+                "width": "200",
+                "height": "150",
+                "loading": "lazy",
+            }
+        ]
 
     def test_form_query_accuracy(self):
         """Test that form query accurately identifies form elements."""

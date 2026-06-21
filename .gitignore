@@ -288,6 +288,8 @@ prompt_history/
 temp/
 tmp/
 .temp/
+.codex/
+tests/temp_cli_test/
 
 # Speckit temporary files and analysis
 .specify/

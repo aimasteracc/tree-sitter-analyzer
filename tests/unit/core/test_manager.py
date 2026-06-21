@@ -216,7 +216,7 @@ class TestPluginManager:
 
             assert isinstance(plugin_classes, list)
             # Should find only the plugin class
-            assert len(plugin_classes) >= 0  # Depends on implementation
+            assert plugin_classes  # Depends on implementation
 
     def test_get_plugin_existing(
         self, plugin_manager: PluginManager, mock_java_plugin: MockLanguagePlugin

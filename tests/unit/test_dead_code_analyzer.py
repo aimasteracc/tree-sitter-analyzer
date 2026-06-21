@@ -294,7 +294,7 @@ class TestDeadCodeErrorHandling:
 
         result = analyze_dead_code(str(tmp_path), max_files=10)
 
-        assert result.stats["total_functions"] >= 1
+        assert result.stats["total_functions"]
 
 
 def test_excludes_dot_prefixed_vendored_dirs(tmp_path):

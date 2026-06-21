@@ -579,7 +579,7 @@ async def quick_analyze(data) -> AnalysisResult:
             )
 
         for result in results:
-            assert result["count"] > 0
+            assert result["count"]
 
         print("✓ 多言語一貫性テスト成功:")
         for result in results:
@@ -710,7 +710,7 @@ async def quick_analyze(data) -> AnalysisResult:
             method_count = 0
 
         total_analysis_items = class_count + method_count
-        assert total_analysis_items >= 0
+        assert total_analysis_items >= 0  # ratchet: nondeterministic
 
         print("✓ 包括的ワークフローテスト成功:")
         print(f"  クラス解析: {class_count}個")

@@ -13,6 +13,8 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 
+pytestmark = pytest.mark.benchmark
+
 
 class TestQueryPerformance:
     """Tests for query performance."""

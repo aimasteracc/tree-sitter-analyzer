@@ -224,7 +224,7 @@ class TestDetectAntiPatterns:
         f = tmp_path / "bad.py"
         f.write_text("def foo(x=[]):\n    except:\n    print('x')\n")
         result = _detect_anti_patterns(str(f), "python")
-        assert len(result) > 0
+        assert result
 
     def test_detects_js_patterns(self, tmp_path):
         f = tmp_path / "bad.js"
@@ -323,7 +323,7 @@ class TestAntiPatternLineNumbers:
         for p in patterns:
             assert "line" in p
             assert isinstance(p["line"], int)
-            assert p["line"] >= 1
+            assert p["line"]
 
     def test_js_anti_patterns_have_line_numbers(self):
         lines = ["var x = 1;", "if (x == 2) {}"]

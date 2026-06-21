@@ -117,7 +117,7 @@ def test_no_project_root_eq_tmp_in_tests() -> None:
     """
     # The scanner must actually find test files to be a meaningful lint.
     test_files = _iter_test_files()
-    assert len(test_files) > 0, "No test files found under tests/ — scanner is broken"
+    assert test_files, "No test files found under tests/ — scanner is broken"
     # This file itself must be in the scanned set.
     assert any(p.name == "test_no_project_root_traps.py" for p in test_files), (
         "_iter_test_files() did not include the current lint file"
@@ -151,7 +151,7 @@ def test_no_project_root_eq_none_in_tests() -> None:
     """
     # The scanner must find Python files to be a meaningful lint.
     test_files = _iter_test_files()
-    assert len(test_files) > 0, "No test files found under tests/ — scanner is broken"
+    assert test_files, "No test files found under tests/ — scanner is broken"
     # Every file returned must actually exist.
     for p in test_files:
         assert p.exists(), f"_iter_test_files() returned non-existent path: {p}"

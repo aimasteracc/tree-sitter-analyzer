@@ -21,7 +21,7 @@ from tree_sitter_analyzer.mcp.tools.output_format_validator import OutputFormatV
 
 class TestCLIArgumentValidator:
     def test_init(self):
-        assert CLIArgumentValidator() is not None
+        assert isinstance(CLIArgumentValidator(), CLIArgumentValidator)
 
     def test_validate_no_conflicts(self):
         v = CLIArgumentValidator()
@@ -51,7 +51,17 @@ class TestConstants:
         assert ELEMENT_TYPE_SQL_TABLE == "table"
 
     def test_mapping(self):
-        assert len(ELEMENT_TYPE_MAPPING) >= 3
+        assert ELEMENT_TYPE_MAPPING == {
+            "Class": "class",
+            "Function": "function",
+            "Variable": "variable",
+            "Import": "import",
+            "Package": "package",
+            "Annotation": "annotation",
+            "Lambda": "lambda",
+            "Comprehension": "comprehension",
+            "Expression": "expression",
+        }
 
     def test_is_element_of_type(self):
         elem = MagicMock()
@@ -74,14 +84,16 @@ class TestEngineManager:
         assert inst1 is not None and inst2 is not None
 
     def test_reset(self):
-        EngineManager.get_instance(MagicMock, "/t")
+        first = EngineManager.get_instance(MagicMock, "/t")
         EngineManager.reset_instances()
-        assert EngineManager.get_instance(MagicMock, "/t") is not None
+        second = EngineManager.get_instance(MagicMock, "/t")
+        assert first is not second
+        assert list(EngineManager._instances) == ["/t"]
 
 
 class TestOutputFormatValidator:
     def test_init(self):
-        assert OutputFormatValidator() is not None
+        assert isinstance(OutputFormatValidator(), OutputFormatValidator)
 
     def test_no_conflict_passes(self):
         v = OutputFormatValidator()
@@ -101,4 +113,10 @@ class TestOutputFormatValidator:
     def test_format_params(self):
         v = OutputFormatValidator()
         assert "total_only" in v.OUTPUT_FORMAT_PARAMS
-        assert len(v.OUTPUT_FORMAT_PARAMS) >= 4
+        assert v.OUTPUT_FORMAT_PARAMS == [
+            "total_only",
+            "count_only_matches",
+            "summary_only",
+            "group_by_file",
+            "suppress_output",
+        ]

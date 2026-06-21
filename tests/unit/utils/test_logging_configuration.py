@@ -142,10 +142,9 @@ class TestLoggingConfiguration:
         file_handler = file_handlers[0]
         assert file_handler.level == logging.DEBUG
 
-        # Logger level should be minimum of main level and file level
-        # Note: The actual implementation may not set the minimum level correctly
-        # Let's check what the actual level is
-        assert logger.level in [logging.DEBUG, logging.WARNING]
+        # Test loggers keep their requested level while the file handler
+        # gets the environment-controlled level.
+        assert logger.level == logging.WARNING
 
     def test_system_temp_directory_fallback(self):
         """Test fallback to system temporary directory."""
@@ -188,9 +187,10 @@ class TestLoggingConfiguration:
             ]
             assert len(stream_handlers) == 1
 
-            # File handler creation might still succeed with fallback to temp directory
-            # So we'll just check that we have at least the stream handler
-            assert len(logger.handlers) >= 1
+            assert all(
+                handler.__class__.__name__ in {"SafeStreamHandler", "FileHandler"}
+                for handler in logger.handlers
+            )
 
     def test_log_level_environment_variable(self):
         """Test LOG_LEVEL environment variable."""
@@ -255,9 +255,8 @@ class TestLoggingConfiguration:
         # Main level is WARNING, file level is DEBUG
         logger = setup_logger("test_logging_min_level", level=logging.WARNING)
 
-        # Logger level should be DEBUG (minimum) or WARNING depending on implementation
-        # Let's be more flexible in our assertion
-        assert logger.level in [logging.DEBUG, logging.WARNING]
+        # Test logger isolation keeps the requested logger level exact.
+        assert logger.level == logging.WARNING
 
     def test_test_logger_special_handling(self):
         """Test special handling for test loggers."""
@@ -316,7 +315,12 @@ class TestLoggingConfiguration:
         logger = setup_logger("test_logging_stderr_error")
 
         # Should still create logger successfully
-        assert logger is not None
+        assert isinstance(logger, logging.Logger)
+        assert logger.name == "test_logging_stderr_error"
+        assert [handler.__class__.__name__ for handler in logger.handlers] == [
+            "SafeStreamHandler",
+            "FileHandler",
+        ]
 
 
 class TestSafeStreamHandler:

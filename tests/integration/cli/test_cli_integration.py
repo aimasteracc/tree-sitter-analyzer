@@ -11,7 +11,17 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.cli_main import CLICommandFactory, create_argument_parser
+from tree_sitter_analyzer.mcp.resources.code_file_resource import CodeFileResource
+from tree_sitter_analyzer.mcp.resources.project_stats_resource import (
+    ProjectStatsResource,
+)
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool,
+)
+from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
+from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 
 
 class TestCLIArgumentParserIntegration:
@@ -125,16 +135,16 @@ class TestCLIWithMCPServerIntegration:
     def test_mcp_server_has_required_tools(self):
         """Test MCP server has required tools."""
         server = TreeSitterAnalyzerMCPServer()
-        assert server.analyze_scale_tool is not None
-        assert server.table_format_tool is not None
-        assert server.read_partial_tool is not None
-        assert server.query_tool is not None
+        assert isinstance(server.analyze_scale_tool, AnalyzeScaleTool)
+        assert isinstance(server.table_format_tool, AnalyzeCodeStructureTool)
+        assert isinstance(server.read_partial_tool, ReadPartialTool)
+        assert isinstance(server.query_tool, QueryTool)
 
     def test_mcp_server_has_required_resources(self):
         """Test MCP server has required resources."""
         server = TreeSitterAnalyzerMCPServer()
-        assert server.code_file_resource is not None
-        assert server.project_stats_resource is not None
+        assert isinstance(server.code_file_resource, CodeFileResource)
+        assert isinstance(server.project_stats_resource, ProjectStatsResource)
 
     def test_mcp_server_set_project_path(self):
         """Test MCP server sets project path."""

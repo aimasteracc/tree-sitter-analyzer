@@ -60,7 +60,7 @@ class TestPythonIsConstructor:
     def functions(self, extractor: PythonElementExtractor):
         plugin = PythonPlugin()
         lang = plugin.get_tree_sitter_language()
-        assert lang is not None, "tree-sitter Python grammar unavailable"
+        assert isinstance(lang, tree_sitter.Language)
         parser = tree_sitter.Parser(lang)
         tree = parser.parse(_PYTHON_SRC.encode())
         return extractor.extract_functions(tree, _PYTHON_SRC)
@@ -108,7 +108,7 @@ class TestRubyIsConstructor:
     def functions(self):
         plugin = RubyPlugin()
         lang = plugin.get_tree_sitter_language()
-        assert lang is not None, "tree-sitter Ruby grammar unavailable"
+        assert isinstance(lang, tree_sitter.Language)
         parser = tree_sitter.Parser(lang)
         tree = parser.parse(_RUBY_SRC.encode())
         extractor = plugin.create_extractor()
@@ -150,7 +150,7 @@ class TestPhpIsConstructor:
     def functions(self):
         plugin = PHPPlugin()
         lang = plugin.get_tree_sitter_language()
-        assert lang is not None, "tree-sitter PHP grammar unavailable"
+        assert isinstance(lang, tree_sitter.Language)
         parser = tree_sitter.Parser(lang)
         tree = parser.parse(_PHP_SRC.encode())
         extractor = plugin.create_extractor()
@@ -184,7 +184,7 @@ class TestScalaIsConstructor:
     def functions(self):
         plugin = ScalaPlugin()
         lang = plugin.get_tree_sitter_language()
-        assert lang is not None, "tree-sitter Scala grammar unavailable"
+        assert isinstance(lang, tree_sitter.Language)
         parser = tree_sitter.Parser(lang)
         tree = parser.parse(_SCALA_SRC.encode())
         extractor = plugin.create_extractor()
@@ -222,7 +222,7 @@ class TestCppIsConstructor:
     def functions(self):
         plugin = CppPlugin()
         lang = plugin.get_tree_sitter_language()
-        assert lang is not None, "tree-sitter C++ grammar unavailable"
+        assert isinstance(lang, tree_sitter.Language)
         parser, failure = create_cpp_parser(lang, "test.cpp", _CPP_SRC)
         assert failure is None, f"C++ parser creation failed: {failure}"
         tree = parser.parse(_CPP_SRC.encode())

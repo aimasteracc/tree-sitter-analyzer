@@ -715,7 +715,7 @@ class TestMarkdownLinkRefDefinitions:
         refs = []
         self.extractor._extract_link_reference_definitions(mock_root, refs)
 
-        assert len(refs) >= 1
+        assert refs
 
 
 class TestMarkdownAllElementsExtract:

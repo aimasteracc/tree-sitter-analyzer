@@ -29,7 +29,7 @@ class TestModuleLevelFunctions:
         queries = get_available_queries()
 
         assert isinstance(queries, list)
-        assert len(queries) > 0
+        assert queries
 
     @patch("tree_sitter_analyzer.core.query.get_query_loader")
     def test_get_available_queries_with_language(self, mock_loader):

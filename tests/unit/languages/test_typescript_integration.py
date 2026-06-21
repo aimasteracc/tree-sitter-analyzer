@@ -397,7 +397,7 @@ class UserService {
         csv_result = csv_formatter.format_structure(sample_data)
         # Check CSV has data
         lines = csv_result.strip().split("\n")
-        assert len(lines) >= 1  # Should have at least header
+        assert lines  # Should have at least header
         # CSV format includes methods/fields, not class names directly
         assert "test" in csv_result or "config" in csv_result
 

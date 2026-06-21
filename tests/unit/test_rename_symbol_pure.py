@@ -491,7 +491,7 @@ class TestRenameSymbol:
             result = rename_symbol(cache, "foo", "bar", dry_run=True)
         # File unchanged
         assert "foo" in f.read_text()
-        assert len(result.sites) > 0
+        assert result.sites
         assert result.files_changed == 0
 
     def test_live_rename_writes_file(self, tmp_path):
@@ -522,6 +522,6 @@ class TestRenameSymbol:
                 return_value=False,
             ):
                 result = rename_symbol(cache, "foo", "bar", dry_run=False)
-        assert len(result.errors) > 0
+        assert result.errors
         # Rollback should restore original content
         assert f.read_text() == original

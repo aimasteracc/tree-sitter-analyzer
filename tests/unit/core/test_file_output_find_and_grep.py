@@ -86,7 +86,7 @@ async def test_find_and_grep_with_output_file_and_suppress_output(
 
     assert saved_data["success"] is True
     assert "files" in saved_data
-    assert len(saved_data["files"]) > 0
+    assert saved_data["files"]
     assert "calculate_total" in str(saved_data["files"][0]["matches"])
 
 

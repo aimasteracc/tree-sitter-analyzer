@@ -141,7 +141,7 @@ class TestLanguageFormatterFactoryGetSupportedLanguages:
         languages = LanguageFormatterFactory.get_supported_languages()
 
         assert isinstance(languages, list)
-        assert len(languages) > 0
+        assert languages
         assert all(isinstance(lang, str) for lang in languages)
 
     def test_get_supported_languages_includes_common(self) -> None:

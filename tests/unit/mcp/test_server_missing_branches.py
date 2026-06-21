@@ -139,8 +139,8 @@ class TestCalculateFileMetrics:
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
         metrics = server._calculate_file_metrics(str(file), "python")
         assert isinstance(metrics, dict)
-        assert "total_lines" in metrics
-        assert metrics["total_lines"] > 0
+        assert metrics["total_lines"] == 1
+        assert metrics["file_size_bytes"] == 16
 
     def test_calculate_metrics_nonexistent_file(self, tmp_path):
         from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
@@ -158,7 +158,8 @@ class TestCalculateFileMetrics:
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
         metrics = server._calculate_file_metrics(str(file), "python")
         assert isinstance(metrics, dict)
-        assert metrics["total_lines"] >= 0
+        assert metrics["total_lines"] == 0
+        assert metrics["file_size_bytes"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -225,27 +226,29 @@ class TestCreateServerToolHandlers:
         assert hasattr(mcp_server, "name")
 
     def test_set_project_path(self, tmp_path):
+        from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
         from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
         server.set_project_path(str(tmp_path))
-        assert server.analysis_engine is not None
+        assert isinstance(server.analysis_engine, UnifiedAnalysisEngine)
+        assert server.analysis_engine._project_root == str(tmp_path)
 
     def test_project_root_stored(self, tmp_path):
+        from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
         from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
-        assert (
-            str(tmp_path) in str(server.analysis_engine)
-            or server.analysis_engine is not None
-        )
+        assert isinstance(server.analysis_engine, UnifiedAnalysisEngine)
+        assert server.analysis_engine._project_root == str(tmp_path)
 
     def test_set_project_path_reinit(self, tmp_path):
         from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
+        original_engine = server.analysis_engine
         server.set_project_path(str(tmp_path))
-        assert server.analysis_engine is not None
+        assert server.analysis_engine is original_engine
 
 
 # ---------------------------------------------------------------------------

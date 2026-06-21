@@ -122,7 +122,7 @@ class TestEstimateTokens:
         """Test token estimation with numbers."""
         content = "123 456 789"
         tokens = _estimate_tokens(content)
-        assert tokens > 0
+        assert tokens
 
 
 class TestComputeLineMetrics:

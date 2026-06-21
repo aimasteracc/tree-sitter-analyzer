@@ -512,7 +512,7 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         default="",
         help=(
             "Limit --code-similarity to project-relative path glob(s), "
-            "comma-separated for multiple filters, e.g. tests/**,src/**/*.py",
+            "comma-separated for multiple filters, e.g. tests/**,src/**/*.py"
         ),
     )
     # RFC-0003: test-gap analysis

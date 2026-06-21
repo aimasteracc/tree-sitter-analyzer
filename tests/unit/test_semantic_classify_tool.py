@@ -88,7 +88,7 @@ class TestSemanticClassifyExecution:
         assert result["success"] is True
         assert result["dominant_category"] == "feature_addition"
         key = "num_changes" if "num_changes" in result else "change_count"
-        assert result[key] > 0
+        assert result[key]
 
     def test_classify_string_signature_changed(self, tool: SemanticClassifyTool):
         result = _run(

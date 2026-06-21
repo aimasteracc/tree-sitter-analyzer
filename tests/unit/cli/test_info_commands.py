@@ -298,11 +298,13 @@ class TestQ3SupportedExtensionsParity:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
         # Combined stdout+stderr because output_list/output_info may route
         # to different streams depending on env.
-        combined = result.stdout + result.stderr
+        combined = (result.stdout or "") + (result.stderr or "")
         assert ".scala" in combined, (
             f"--show-supported-extensions no longer mentions .scala:\n{combined}"
         )
@@ -322,9 +324,11 @@ class TestQ3SupportedExtensionsParity:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
         )
-        combined = result.stdout + result.stderr
+        combined = (result.stdout or "") + (result.stderr or "")
         assert "scala" in combined, (
             f"--show-supported-languages no longer mentions scala:\n{combined}"
         )

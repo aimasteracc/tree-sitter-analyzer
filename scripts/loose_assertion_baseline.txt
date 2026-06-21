@@ -1,4 +1,4 @@
-# Loose assertion ratchet baseline (Layer 2 prep — informational, not yet CI-enforced)
+# Weak assertion ratchet baseline (Layer 2 prep - informational, not yet CI-enforced)
 #
 # METHODOLOGY NOTE (2026-06-12, conscious re-pin — AST counter supersedes grep):
 #
@@ -111,7 +111,61 @@
 #   test_codegraph_metrics_tool.py, test_change_impact_analysis.py,
 #   test_cached_call_graph.py, test_mcp_security.py, test_error_handler.py,
 #   test_safe_to_edit_tool.py, test_project_health_tool.py).
+#
+#   weak-assertion moat expansion: 302 -> 662, 2026-06-20. The ratchet now
+#   also counts unpaired `assert x is not None` placeholders and
+#   `assert x is not None or x is None` tautologies. This is a scope expansion,
+#   not a regression in fixed loose-bound work.
+#
+#   cleanup batch: 662 -> 612, 2026-06-20. Replaced all 15 AST tautologies
+#   and 35 high-confidence placeholder export/pipeline smoke assertions with
+#   concrete behavior, type, callable, logger, or envelope assertions.
+#
+#   cleanup batch: 612 -> 592, 2026-06-20. Replaced MCP server initialization
+#   placeholder assertions with tool-definition, resource-info, callable, and
+#   metadata-prefix contracts. Avoided introducing loose version length checks.
+#
+#   cleanup batch: 592 -> 566, 2026-06-20. Replaced remaining
+#   `tests/unit/core/test_engine.py` placeholder component/result assertions
+#   with component-contract helpers and `AnalysisResult` assertions.
+#
+#   cleanup batch: 566 -> 494, 2026-06-20. Parallel cleanup of MCP integration,
+#   core manager/conftest query, utils/logging, regex security, HTML/Ruby
+#   language-plugin, formatter registry, and checker self-test placeholder
+#   assertions. Replaced existence guards with exact metadata, schema, type,
+#   attribute, superclass, logger, and formatter contracts.
+#
+#   cleanup batch: 494 -> 476, 2026-06-20. Replaced CLI/MCP wiring,
+#   tree-sitter integration, and CLI query-filter smoke assertions with exact
+#   tool/resource classes, cross-language query counts, query result line pins,
+#   available-query sentinels, and filtered Java method-name lists.
+#
+#   cleanup batch: 476 -> 470, 2026-06-20. Replaced Kotlin plugin placeholder
+#   checks with extractor/language types and exact AnalysisResult success,
+#   element, import, and error-path contracts.
+#
+#   cleanup batch: 470 -> 445, 2026-06-20. Replaced formatter-registry,
+#   core smoke, constructor grammar, Kotlin target, and QueryCommand weak
+#   assertions with exact registry state, formatter classes, mapping values,
+#   engine reset/cache behavior, language types, parser roots, class lists,
+#   query-service calls, and output call counts.
+#
+#   cleanup batch: 445 -> 428, 2026-06-20. Replaced encoding pipeline,
+#   MCP server branch, base-tool, and Rust formatter weak assertions with exact
+#   encoding strings, file metrics, analysis-engine types, cache calls, resolver
+#   types, JSON error text, CSV headers, and markdown title output.
+#
+#   recovery re-measure: 428 -> 171, 2026-06-20. After reverting corrupted
+#   one-line test files to HEAD, the expanded AST ratchet's current working
+#   tree baseline measures substantially lower than the stale document count.
+#   This count is now the authoritative baseline for follow-up cleanup.
+#
+#   Measured category split:
+#     placeholder: 130
+#     general loose-bound: 30
+#     tautology: 10
+#     optional-dependency: 1
 
-BASELINE_COUNT=302
-MEASUREMENT_DATE=2026-06-15
+BASELINE_COUNT=171
+MEASUREMENT_DATE=2026-06-20
 MEASUREMENT_COMMAND="uv run python scripts/check_loose_assertions.py --baseline"

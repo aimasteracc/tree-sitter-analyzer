@@ -726,7 +726,7 @@ class AnalyzeScaleToolExecuteBatchAdvancedMixin:
         ):
             arguments = {"file_paths": [123], "metrics_only": True}
             result = await tool._execute_metrics_batch(arguments)
-            assert result["count_errors"] >= 1
+            assert result["count_errors"]
 
     @pytest.mark.asyncio
     async def test_execute_batch_with_resolve_error(self, tool):

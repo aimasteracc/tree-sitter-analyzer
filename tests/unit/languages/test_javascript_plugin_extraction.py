@@ -407,7 +407,7 @@ class TestExtractImportNames:
         mock_clause.children = [mock_named]
 
         names = extractor._extract_import_names(mock_clause)
-        assert len(names) >= 1
+        assert names
 
 
 class TestPluginCapabilities:

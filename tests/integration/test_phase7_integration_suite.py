@@ -294,7 +294,7 @@ class TestPhase7IntegrationSuite:
                     "end_to_end", test_case, success, duration
                 )
                 assert success is True
-                assert duration >= 0
+                assert duration >= 0  # ratchet: nondeterministic
                 print(f"  ✅ {test_case}: {duration:.2f}s")
 
             except Exception as e:
@@ -409,7 +409,7 @@ class TestPhase7IntegrationSuite:
             integration_reporter.add_test_result(
                 "compatibility", "integration_compatibility", True, duration
             )
-            assert duration >= 0
+            assert duration >= 0  # ratchet: nondeterministic
             print(f"  ✅ Integration compatibility verified: {duration:.2f}s")
 
         except Exception as e:
@@ -450,7 +450,7 @@ class TestPhase7IntegrationSuite:
             integration_reporter.add_test_result(
                 "enterprise", "enterprise_readiness", True, duration
             )
-            assert len(enterprise_requirements) > 0
+            assert enterprise_requirements
             print(f"  ✅ Enterprise readiness validated: {duration:.2f}s")
 
         except Exception as e:

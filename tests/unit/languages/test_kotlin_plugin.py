@@ -25,7 +25,7 @@ class TestKotlinElementExtractorInit:
     def test_init_creates_instance(self):
         """KotlinElementExtractor should be instantiable."""
         extractor = KotlinElementExtractor()
-        assert extractor is not None
+        assert isinstance(extractor, KotlinElementExtractor)
 
     def test_init_sets_defaults(self):
         """KotlinElementExtractor should initialize default values."""
@@ -434,8 +434,12 @@ fun main() {
 
         result = await plugin.analyze_file(str(kt_file), mock_request)
 
-        # Should return an AnalysisResult (successful or not)
-        assert result is not None
+        assert result.success is True
+        assert result.language == "kotlin"
+        assert [(element.element_type, element.name) for element in result.elements] == [
+            ("function", "main"),
+            ("package", "com.example"),
+        ]
 
     @pytest.mark.asyncio
     async def test_analyze_file_with_classes(self, plugin, tmp_path):
@@ -454,7 +458,13 @@ class Person(val name: String) {
 
         result = await plugin.analyze_file(str(kt_file), mock_request)
 
-        assert result is not None
+        assert result.success is True
+        assert result.language == "kotlin"
+        assert [(element.element_type, element.name) for element in result.elements] == [
+            ("function", "Person"),
+            ("function", "greet"),
+            ("class", "Person"),
+        ]
 
 
 class TestKotlinComplexExtraction:
@@ -629,8 +639,13 @@ class TestClass {
         request = AnalysisRequest(file_path=str(kt_file))
         result = await plugin.analyze_file(str(kt_file), request)
 
-        assert result is not None
+        assert result.success is True
         assert result.language == "kotlin"
+        assert [(element.element_type, element.name) for element in result.elements] == [
+            ("function", "testMethod"),
+            ("class", "TestClass"),
+            ("package", "com.example"),
+        ]
 
     @pytest.mark.asyncio
     async def test_analyze_file_with_imports(self, plugin, tmp_path):
@@ -650,8 +665,14 @@ class ImportTest {
         request = AnalysisRequest(file_path=str(kt_file))
         result = await plugin.analyze_file(str(kt_file), request)
 
-        assert result is not None
+        assert result.success is True
         assert result.language == "kotlin"
+        assert [(element.element_type, element.name) for element in result.elements] == [
+            ("class", "ImportTest"),
+            ("variable", "items"),
+            ("import", "kotlin.collections.List"),
+            ("package", "com.example"),
+        ]
 
     @pytest.mark.asyncio
     async def test_analyze_file_error_handling(self, plugin):
@@ -662,8 +683,10 @@ class ImportTest {
         request = AnalysisRequest(file_path="/nonexistent/path/file.kt")
         result = await plugin.analyze_file("/nonexistent/path/file.kt", request)
 
-        # Should return a result even for error cases
-        assert result is not None
+        assert result.success is False
+        assert result.language == "kotlin"
+        assert result.elements == []
+        assert "No such file or directory" in result.error_message
 
 
 class TestKotlinDocstring:
@@ -887,7 +910,7 @@ class TestKotlinPluginEdgeCases:
     def test_get_tree_sitter_language(self, plugin):
         """Test getting tree-sitter language."""
         lang = plugin.get_tree_sitter_language()
-        assert lang is not None
+        assert isinstance(lang, tree_sitter.Language)
 
     def test_count_tree_nodes(self, plugin):
         """Test _count_tree_nodes method."""
@@ -1821,7 +1844,7 @@ class TestKotlinTreeSitterLanguage:
     def test_get_tree_sitter_language_returns_language(self, plugin):
         """Test that get_tree_sitter_language returns valid language."""
         lang = plugin.get_tree_sitter_language()
-        assert lang is not None
+        assert isinstance(lang, tree_sitter.Language)
 
 
 class TestKotlinPluginWithoutTreeSitter:

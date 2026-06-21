@@ -55,7 +55,7 @@ class TestFormatEmptyFormatType:
     def test_empty_string_calls_format_structure(self, fmt, sample_data):
         result = fmt.format(sample_data, "")
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
 
     def test_none_format_type_calls_format_structure(self, fmt, sample_data):
         result = fmt.format(sample_data, None)
@@ -75,7 +75,7 @@ class TestFormatTable:
     def test_format_table_default_type(self, fmt, sample_data):
         result = fmt.format_table(sample_data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
 
 
 class TestFormatAdvanced:

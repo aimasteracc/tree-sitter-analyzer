@@ -248,6 +248,13 @@ def code_block():
     @pytest.mark.asyncio
     async def test_parser_integration_all_languages(self):
         """Test that parser can successfully parse all supported languages"""
+        expected_counts = {
+            "java": 5,
+            "javascript": 27,
+            "typescript": 24,
+            "python": 40,
+            "markdown": 3,
+        }
         for lang, file_path in self.test_files.items():
             try:
                 # Test through QueryService which uses the parser
@@ -256,8 +263,7 @@ def code_block():
                     lang,
                     query_key="functions" if lang != "markdown" else "headers",
                 )
-                # Should not raise exception and should return some results
-                assert results is not None, f"Parser failed for {lang}"
+                assert len(results) == expected_counts[lang]
                 print(
                     f"✓ Parser integration successful for {lang}: {len(results)} results"
                 )
@@ -275,6 +281,22 @@ def code_block():
             "python": ["functions", "classes"],
             "markdown": ["headers", "links", "code_blocks"],
         }
+        expected_query_counts = {
+            ("java", "class"): 1,
+            ("java", "methods"): 5,
+            ("javascript", "functions"): 27,
+            ("javascript", "classes"): 3,
+            ("javascript", "variables"): 3,
+            ("typescript", "interfaces"): 3,
+            ("typescript", "types"): 3,
+            ("typescript", "functions"): 24,
+            ("typescript", "classes"): 3,
+            ("python", "functions"): 40,
+            ("python", "classes"): 3,
+            ("markdown", "headers"): 3,
+            ("markdown", "links"): 10,
+            ("markdown", "code_blocks"): 1,
+        }
 
         for lang, queries in query_tests.items():
             file_path = self.test_files[lang]
@@ -284,7 +306,8 @@ def code_block():
                     results = await self.query_service.execute_query(
                         file_path, lang, query_key=query_key
                     )
-                    assert results is not None, f"Query {query_key} failed for {lang}"
+                    expected_count = expected_query_counts[(lang, query_key)]
+                    assert len(results) == expected_count
                     print(
                         f"✓ Query '{query_key}' successful for {lang}: {len(results)} results"
                     )
@@ -362,8 +385,8 @@ def code_block():
             assert isinstance(result["start_line"], int)
             assert isinstance(result["end_line"], int)
             assert isinstance(result["content"], str)
-            assert result["start_line"] > 0
-            assert result["end_line"] >= result["start_line"]
+            assert result["start_line"] == 13
+            assert result["end_line"] == 15
 
     @pytest.mark.asyncio
     async def test_filter_integration(self):
@@ -464,8 +487,10 @@ class TestClass:
             utf8_file, "python", query_key="functions"
         )
 
-        assert results is not None
-        assert len(results) > 0
+        assert [result["name"] for result in results if "name" in result] == [
+            "test_function",
+            "__init__",
+        ]
 
         # Check that content is properly decoded
         for result in results:
@@ -494,10 +519,12 @@ class TestClass:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Check that all queries completed successfully
+        expected_counts = [5, 27, 24, 40, 3]
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 pytest.fail(f"Concurrent query {i} failed: {result}")
-            assert result is not None
+            assert isinstance(result, list)
+            assert len(result) == expected_counts[i]
 
     def test_query_service_initialization(self):
         """Test QueryService initialization and configuration"""
@@ -556,7 +583,13 @@ class TestClass:
         for lang in ["java", "javascript", "typescript", "python", "markdown"]:
             available = self.query_tool.get_available_queries(lang)
             assert isinstance(available, list)
-            assert len(available) > 0, f"No available queries for {lang}"
+            assert {
+                "java": "methods",
+                "javascript": "functions",
+                "typescript": "interfaces",
+                "python": "classes",
+                "markdown": "headers",
+            }[lang] in available
             print(f"✓ Available queries for {lang}: {available}")
 
 

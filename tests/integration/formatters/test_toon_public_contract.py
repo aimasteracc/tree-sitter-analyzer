@@ -115,7 +115,7 @@ class TestToonEncoderPublicContract:
         duration = time.time() - start
 
         assert duration < 5.0, f"Encoding took {duration:.2f}s (should be < 5s)"
-        assert len(output) > 0  # 产生了输出
+        assert output  # 产生了输出
 
     def test_contract_circular_reference_no_crash(self):
         """契约：循环引用不导致堆栈溢出"""

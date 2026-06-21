@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tree_sitter_analyzer.mcp import MCP_INFO
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer, parse_mcp_args
 
 
@@ -43,19 +44,28 @@ class TestServerInit:
     def test_initialization_creates_tools(self, tmp_path):
         """Test that initialization creates all tools"""
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
-        assert server.query_tool is not None
-        assert server.read_partial_tool is not None
-        assert server.analyze_code_structure_tool is not None
-        assert server.analyze_scale_tool is not None
-        assert server.list_files_tool is not None
-        assert server.search_content_tool is not None
-        assert server.find_and_grep_tool is not None
+        assert server.query_tool.get_tool_definition()["name"] == "query_code"
+        assert (
+            server.read_partial_tool.get_tool_definition()["name"]
+            == "extract_code_section"
+        )
+        assert (
+            server.analyze_code_structure_tool.get_tool_definition()["name"]
+            == "analyze_code_structure"
+        )
+        assert server.analyze_scale_tool.get_tool_definition()["name"] == "check_code_scale"
+        assert server.list_files_tool.get_tool_definition()["name"] == "list_files"
+        assert (
+            server.search_content_tool.get_tool_definition()["name"]
+            == "search_content"
+        )
+        assert server.find_and_grep_tool.get_tool_definition()["name"] == "find_and_grep"
 
     def test_initialization_creates_resources(self, tmp_path):
         """Test that initialization creates resources"""
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
-        assert server.code_file_resource is not None
-        assert server.project_stats_resource is not None
+        assert server.code_file_resource.get_resource_info()["name"] == "code_file"
+        assert server.project_stats_resource.get_resource_info()["name"] == "project_stats"
         assert server.project_stats_resource.project_root == str(tmp_path)
 
 
@@ -252,10 +262,13 @@ class TestRegistryDeferral:
 
     def test_eager_components_available_before_registry(self, server):
         """Cheap eager components must exist without triggering the build."""
-        assert server.analysis_engine is not None
-        assert server.security_validator is not None
+        assert callable(server.analysis_engine.analyze_file)
+        assert callable(server.security_validator.validate_file_path)
         # Legacy alias tools + universal tool are eager (registry-independent).
-        assert server.read_partial_tool is not None
+        assert (
+            server.read_partial_tool.get_tool_definition()["name"]
+            == "extract_code_section"
+        )
         assert hasattr(server, "universal_analyze_tool")
         assert server._registry_built is False
 
@@ -271,8 +284,8 @@ class TestProjectStatsResource:
 
     def test_project_stats_resource_initialized(self, server):
         """Test project stats resource is initialized"""
-        assert server.project_stats_resource is not None
-        assert server.project_stats_resource.project_root is not None
+        assert server.project_stats_resource.get_resource_info()["name"] == "project_stats"
+        assert "overview" in server.project_stats_resource.get_supported_stats_types()
 
     def test_project_stats_resource_supported_types(self, server):
         """Test project stats resource has supported types"""
@@ -294,7 +307,7 @@ class TestCodeFileResource:
 
     def test_code_file_resource_initialized(self, server):
         """Test code file resource is initialized"""
-        assert server.code_file_resource is not None
+        assert server.code_file_resource.get_resource_info()["name"] == "code_file"
 
     def test_code_file_resource_matches_uri(self, server):
         """Test code file resource URI matching"""
@@ -317,8 +330,8 @@ class TestVersionInfo:
 
     def test_server_version(self, server):
         """Test server version"""
-        assert server.version is not None
         assert isinstance(server.version, str)
+        assert server.version.startswith(MCP_INFO["version"])
 
 
 class TestAnalysisEngine:
@@ -332,7 +345,7 @@ class TestAnalysisEngine:
 
     def test_analysis_engine_initialized(self, server):
         """Test analysis engine is initialized"""
-        assert server.analysis_engine is not None
+        assert callable(server.analysis_engine.analyze_file)
 
 
 class TestSecurityValidator:
@@ -346,7 +359,7 @@ class TestSecurityValidator:
 
     def test_security_validator_initialized(self, server):
         """Test security validator is initialized"""
-        assert server.security_validator is not None
+        assert callable(server.security_validator.validate_file_path)
 
 
 class TestToolDefinitions:

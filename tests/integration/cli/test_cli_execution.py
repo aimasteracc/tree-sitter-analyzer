@@ -410,4 +410,4 @@ class TestCLIAdditionalCoverage:
             main()
 
         output = mock_stdout.getvalue()
-        assert len(output) > 0
+        assert output

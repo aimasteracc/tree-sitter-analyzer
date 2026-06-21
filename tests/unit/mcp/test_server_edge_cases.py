@@ -25,7 +25,7 @@ class TestMCPServerInitializationEdgeCases:
         """Test initialization with invalid project root."""
         # Server should not raise exception but fallback to current directory
         server = TreeSitterAnalyzerMCPServer("/non/existent/path")
-        assert server is not None
+        assert isinstance(server, TreeSitterAnalyzerMCPServer)
         assert server.is_initialized()
         # boundary_manager should be None for invalid project root
         assert server.security_validator.boundary_manager is None
@@ -38,7 +38,7 @@ class TestMCPServerInitializationEdgeCases:
 
         # Server should not raise exception but fallback to current directory
         server = TreeSitterAnalyzerMCPServer(str(test_file))
-        assert server is not None
+        assert isinstance(server, TreeSitterAnalyzerMCPServer)
         assert server.is_initialized()
         # boundary_manager should be None for file path (not directory)
         assert server.security_validator.boundary_manager is None
@@ -59,7 +59,7 @@ class TestMCPServerInitializationEdgeCases:
             # This might not raise an exception on all systems
             # but we test the behavior
             server = TreeSitterAnalyzerMCPServer(str(restricted_dir))
-            assert server is not None
+            assert isinstance(server, TreeSitterAnalyzerMCPServer)
         finally:
             # Restore permissions for cleanup
             restricted_dir.chmod(0o755)
@@ -144,10 +144,8 @@ class TestMCPServerCodeAnalysisEdgeCases:
         arguments = {"file_path": large_file}
         result = await server._analyze_code_scale(arguments)
 
-        assert result["metrics"]["lines_total"] > 10000
-        assert (
-            result["metrics"]["lines_code"] >= 9999
-        )  # Adjust expectation to match actual result
+        assert result["metrics"]["lines_total"] == 10001
+        assert result["metrics"]["lines_code"] == 10000
 
     @pytest.mark.asyncio
     async def test_analyze_with_invalid_language(self, temp_project_dir):
@@ -385,7 +383,7 @@ class TestMCPServerToolHandlingEdgeCases:
         # Test non-existent path - should not raise exception but fallback
         server.set_project_path("/non/existent/path")
         # Should not raise exception
-        assert server is not None
+        assert server._project_root == "/non/existent/path"
 
     @pytest.mark.asyncio
     async def test_tool_call_with_failing_tool(self, server_with_failing_tools):

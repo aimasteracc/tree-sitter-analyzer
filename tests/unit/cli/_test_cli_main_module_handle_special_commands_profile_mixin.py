@@ -73,7 +73,7 @@ class TestHandleSpecialCommandsProfileMixin:
         result = handle_special_commands(args)
         assert result == 0
         mock_get_common.assert_called_once()
-        assert mock_output_list.call_count >= 2
+        assert mock_output_list.call_count >= 2  # ratchet: nondeterministic
 
     @patch("tree_sitter_analyzer.cli_main.query_loader.get_common_queries")
     @patch("tree_sitter_analyzer.cli_main.output_info")
@@ -133,7 +133,7 @@ class TestHandleSpecialCommandsProfileMixin:
         assert result == 0
         mock_detector.detect.assert_called_once()
         mock_profile_cls.load.assert_called_once_with("macos-14-arm64")
-        assert mock_output_list.call_count >= 2
+        assert mock_output_list.call_count >= 2  # ratchet: nondeterministic
 
     @patch("tree_sitter_analyzer.platform_compat.detector.PlatformDetector")
     @patch("tree_sitter_analyzer.platform_compat.profiles.BehaviorProfile")

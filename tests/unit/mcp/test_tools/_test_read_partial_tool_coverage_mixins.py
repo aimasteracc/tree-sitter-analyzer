@@ -194,7 +194,7 @@ class ReadPartialToolCoverageBatchMixin:
                 mock_stat.return_value.st_size = 100
                 result = await tool._execute_batch(args)
             assert result["success"] is True
-            assert result["count_sections"] >= 1
+            assert result["count_sections"]
         finally:
             if test_file.exists():
                 test_file.unlink()

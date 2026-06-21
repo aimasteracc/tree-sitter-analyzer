@@ -157,13 +157,14 @@ class TestRubyPluginInterface:
     def test_plugin_instantiation(self):
         """Test that plugin instantiates successfully."""
         plugin = RubyPlugin()
-        assert plugin is not None
+        assert isinstance(plugin, RubyPlugin)
+        assert isinstance(plugin.create_extractor(), RubyElementExtractor)
 
     def test_get_tree_sitter_language(self):
         """Test tree-sitter language retrieval."""
         plugin = RubyPlugin()
         language = plugin.get_tree_sitter_language()
-        assert language is not None
+        assert isinstance(language, tree_sitter.Language)
 
     def test_language_caching(self):
         """Test that language is cached after first load."""
@@ -301,8 +302,9 @@ class TestRubyFunctionExtraction:
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, BLOCK_PARAMS_CODE)
 
-        filter_method = next((f for f in functions if "filter" in f.name), None)
-        assert filter_method is not None
+        filter_method = next(f for f in functions if f.name == "filter")
+        assert filter_method.parameters == ["*args", "**kwargs"]
+        assert filter_method.receiver_type == "DataProcessor"
 
     def test_singleton_method_is_static(self):
         """Test that singleton methods are marked as static."""
@@ -661,14 +663,13 @@ class TestRubyIntegration:
         classes = extractor.extract_classes(tree, INHERITANCE_CODE)
 
         # Check inheritance
-        dog = next((c for c in classes if c.name == "Dog"), None)
-        cat = next((c for c in classes if c.name == "Cat"), None)
+        dog = next(c for c in classes if c.name == "Dog")
+        cat = next(c for c in classes if c.name == "Cat")
 
-        assert dog is not None
-        assert cat is not None
-        # Superclass extraction may vary - check it's not None
-        assert dog.superclass is not None
-        assert cat.superclass is not None
+        assert dog.class_type == "class"
+        assert cat.class_type == "class"
+        assert dog.superclass == "Animal"
+        assert cat.superclass == "Animal"
 
 
 class TestRubyMethodNameClean:

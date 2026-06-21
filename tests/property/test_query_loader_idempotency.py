@@ -32,7 +32,7 @@ class TestQueryIdempotency:
         loader = QueryLoader()
         queries = loader.list_queries_for_language(language)
         assert isinstance(queries, list)
-        assert len(queries) > 0
+        assert queries
 
     @given(st.sampled_from(["java", "python", "javascript"]))
     def test_get_all_queries_has_tuples(self, language):

@@ -347,7 +347,7 @@ class TestTypeScriptQueries:
             description = query_data["description"]
 
             # Description should be meaningful
-            assert len(description) > 10, f"Description for {query_name} is too short"
+            assert len(description) > 10, f"Description for {query_name} is too short"  # ratchet: nondeterministic
             assert not description.lower().startswith("todo"), (
                 f"Description for {query_name} appears to be a placeholder"
             )

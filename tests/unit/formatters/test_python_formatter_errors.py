@@ -416,7 +416,7 @@ class TestPythonFormatterTypeHandling:
         for type_name in complex_types:
             result = formatter._shorten_type(type_name)
             assert isinstance(result, str)
-            assert len(result) > 0
+            assert result
 
     def test_shorten_type_with_invalid_syntax(self, formatter):
         """Test type shortening with invalid type syntax."""
@@ -441,7 +441,7 @@ class TestPythonFormatterTypeHandling:
 
         result = formatter._shorten_type(nested_type)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
 
     def test_format_signature_with_complex_types(self, formatter):
         """Test signature formatting with complex types."""

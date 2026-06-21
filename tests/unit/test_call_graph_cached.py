@@ -156,7 +156,7 @@ class TestCachedCallGraphImportResolution:
         cg = CachedCallGraph(str(PY_PROJECT), cache=cache, fallback=True)
         cg.build()
         funcs = cg.all_functions()
-        assert len(funcs) > 0
+        assert funcs
 
     def test_no_fallback_skips_parse(self):
         cache = MagicMock()
@@ -437,7 +437,7 @@ class TestCallEdgesPublicAccessor:
         cg = CachedCallGraph(".", cache=cache)
         cg.build()
         edges = cg.call_edges()
-        assert len(edges) >= 1
+        assert edges
         for edge in edges:
             assert len(edge) == 3
             caller_ref, callee_ref, line = edge

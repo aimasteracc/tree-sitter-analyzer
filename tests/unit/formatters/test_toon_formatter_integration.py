@@ -318,7 +318,7 @@ class TestOutputManagerIntegration:
 
         captured = capsys.readouterr()
         # Should output something (either JSON or formatted data)
-        assert len(captured.out) > 0
+        assert captured.out
 
 
 class TestFormatterProtocolCompliance:
@@ -350,7 +350,7 @@ class TestFormatterProtocolCompliance:
         dict_data = {"key": "value"}
         result = formatter.format(dict_data)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result
 
         # Verify it produces TOON-like output
         assert ":" in result or "{" in result

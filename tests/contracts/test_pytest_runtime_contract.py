@@ -7,6 +7,7 @@ import ast
 import configparser
 import os
 import re
+import shlex
 from pathlib import Path
 
 import pytest
@@ -53,7 +54,7 @@ def _assert_pytest_runtime_contract(
     warning_filters: str | list[str],
 ) -> None:
     if isinstance(addopts, str):
-        addopts_list = addopts.split()
+        addopts_list = shlex.split(addopts)
     else:
         addopts_list = addopts
     if isinstance(warning_filters, str):
@@ -63,18 +64,20 @@ def _assert_pytest_runtime_contract(
     else:
         warning_filter_list = warning_filters
     required = {
-        "--numprocesses=auto",
-        "--dist=loadfile",
-        "--timeout=180",
-        # 600s ceiling: the suite passes in ~5 min on CI but the
-        # old 300s budget left zero headroom and caused intermittent
-        # session-timeout kills on slower runners.
-        "--session-timeout=600",
+        "--numprocesses=4",
+        "--dist=worksteal",
+        "--timeout=30",
+        "--session-timeout=900",
         "--benchmark-disable",
     }
 
     missing = [option for option in sorted(required) if option not in addopts_list]
     assert missing == []
+    marker_index = addopts_list.index("-m")
+    assert (
+        addopts_list[marker_index + 1]
+        == "not e2e and not slow and not network and not full_language and not benchmark"
+    )
     assert warning_filter_list[0] == "error"
     assert "ignore::DeprecationWarning" not in warning_filter_list
     assert "ignore::PendingDeprecationWarning" not in warning_filter_list

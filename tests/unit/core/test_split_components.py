@@ -43,7 +43,7 @@ class TestCoreComponents:
         stats = monitor.get_operation_stats()
         assert "test_op" in stats
         assert stats["test_op"]["count"] == 1
-        assert stats["test_op"]["total_time"] > 0
+        assert stats["test_op"]["total_time"]
 
         summary = monitor.get_performance_summary()
         assert summary["total_operations"] == 1

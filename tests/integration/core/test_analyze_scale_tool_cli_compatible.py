@@ -641,7 +641,7 @@ class TestAnalyzeScaleToolCLICompatiblePerformance:
             result = await tool.execute(arguments)
 
             # Should be at least 100ms
-            assert result["analysis_time_ms"] >= 100
+            assert result["analysis_time_ms"] >= 100  # ratchet: nondeterministic
             # Should be reasonable (less than 5 seconds for this test)
             assert result["analysis_time_ms"] < 5000
 

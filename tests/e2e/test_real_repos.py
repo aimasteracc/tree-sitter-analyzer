@@ -249,6 +249,6 @@ class TestCrossProjectDiversity:
         content = response["result"]["content"]
         text = content[0]["text"] if isinstance(content, list) else str(content)
         numbers = [int(n) for n in re.findall(r"\b(\d+)\b", text)]
-        assert any(n > 0 for n in numbers), (
+        assert any(n > 0 for n in numbers), (  # ratchet: nondeterministic
             f"check_project_health for {name} contains no positive numbers:\n{text[:500]}"
         )

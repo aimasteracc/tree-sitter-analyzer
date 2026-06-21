@@ -121,7 +121,7 @@ class TestRunCaseSchema:
         for field in bench_runner.REQUIRED_FIELDS:
             assert field in row
         # Baseline always makes more than 1 call (README + ls + git log + find)
-        assert row["tool_calls"] >= 1
+        assert row["tool_calls"]
 
     @pytest.mark.parametrize(
         "task,extra",

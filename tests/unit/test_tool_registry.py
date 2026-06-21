@@ -16,7 +16,7 @@ class TestCreateToolRegistry:
         tools, _ = create_tool_registry(project_root=None)
         for name, _instance in tools:
             assert isinstance(name, str)
-            assert len(name) > 0
+            assert name
 
     def test_dict_keys_match_tool_names(self):
         tools, lookup = create_tool_registry(project_root=None)

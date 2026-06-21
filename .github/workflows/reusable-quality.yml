@@ -82,14 +82,14 @@ jobs:
           exit "$BANDIT_STATUS"
 
   loose-assertions:
-    name: Loose Assertion Ratchet
+    name: Weak Assertion Ratchet
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Check for new loose assertions
+      - name: Check for new weak assertions
         run: |
           bash scripts/check_loose_assertions.sh origin/${{ github.base_ref }}
         continue-on-error: false

@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from tree_sitter_analyzer.mcp import MCP_INFO
+from tree_sitter_analyzer.mcp.resources import CodeFileResource, ProjectStatsResource
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 from tree_sitter_analyzer.mcp.utils import (
     get_performance_monitor,
@@ -24,36 +26,57 @@ class TestMCPServerLifecycle:
     def test_server_initialization(self):
         """Test server initialization."""
         server = TreeSitterAnalyzerMCPServer()
-        assert server is not None
-        assert server.name is not None
-        assert server.version is not None
+        assert server.is_initialized()
+        assert server.name == "tree-sitter-analyzer-mcp"
+        assert server.version.startswith(MCP_INFO["version"])
 
     def test_server_components_initialized(self):
         """Test that all server components are initialized."""
         server = TreeSitterAnalyzerMCPServer()
-        assert server.analysis_engine is not None
-        assert server.read_partial_tool is not None
-        assert server.table_format_tool is not None
-        assert server.code_file_resource is not None
-        assert server.project_stats_resource is not None
+        assert callable(server._analyze_code_scale)
+        assert server.read_partial_tool.get_tool_definition()["name"] == "extract_code_section"
+        assert (
+            server.table_format_tool.get_tool_definition()["name"]
+            == "analyze_code_structure"
+        )
+        assert server.table_format_tool is server.analyze_code_structure_tool
+        assert isinstance(server.code_file_resource, CodeFileResource)
+        assert isinstance(server.project_stats_resource, ProjectStatsResource)
+        assert server.code_file_resource.get_resource_info() == {
+            "name": "code_file",
+            "description": "Access to code file content through URI-based identification",
+            "uri_template": "code://file/{file_path}",
+            "mime_type": "text/plain",
+        }
+        assert server.project_stats_resource.get_resource_info() == {
+            "name": "project_stats",
+            "description": "Access to project statistics and analysis data",
+            "uri_template": "code://stats/{stats_type}",
+            "mime_type": "application/json",
+        }
 
     def test_set_project_path(self):
         """Test setting project path."""
         server = TreeSitterAnalyzerMCPServer()
         temp_dir = tempfile.mkdtemp()
         server.set_project_path(temp_dir)
-        # Verify project path was set (no direct attribute access available)
-        assert True  # If we get here, set_project_path didn't raise an exception
+        assert server.project_stats_resource.project_root == temp_dir
+        assert server.read_partial_tool.project_root == temp_dir
+        assert server.table_format_tool.project_root == temp_dir
+        assert server.tools["nav"].project_root == temp_dir
 
     @pytest.mark.asyncio
     async def test_server_cleanup(self):
         """Test server cleanup."""
         server = TreeSitterAnalyzerMCPServer()
         # Perform cleanup
-        if hasattr(server, "cleanup"):
-            await server.cleanup()
-        # Verify cleanup succeeded
-        assert True  # If we get here, cleanup didn't raise an exception
+        cleanup = getattr(server, "cleanup", None)
+        if cleanup is None:
+            assert server.server is None
+            assert server.is_initialized()
+            return
+
+        assert await cleanup() is None
 
 
 class TestMCPToolsIntegration:
@@ -284,8 +307,8 @@ class TestMCPPerformanceIntegration:
             {"file_path": str(test_file), "include_complexity": False}
         )
 
-        # Check that monitor exists and is working
-        assert monitor is not None
+        # Check that monitor exposes the metrics contract used by MCP cleanup.
+        assert callable(getattr(monitor, "clear_metrics", None))
 
 
 class TestMCPMultiLanguageIntegration:

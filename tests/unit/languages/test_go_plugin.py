@@ -435,7 +435,7 @@ func (s *Service) run(ctx context.Context) {
         result = await plugin.analyze_file("test.go", None)
 
         assert result.language == "go"
-        assert len(result.elements) > 0
+        assert result.elements
 
         # Check for specific elements
         funcs = [e for e in result.elements if isinstance(e, Function)]
@@ -467,9 +467,9 @@ func (s *Service) run(ctx context.Context) {
 
         # Check packages
         packages = [e for e in result.elements if isinstance(e, Package)]
-        assert len(packages) > 0
+        assert packages
         assert packages[0].name == "sample"
 
         # Check Go-specific metadata (goroutines)
         assert hasattr(result, "goroutines")
-        assert len(result.goroutines) > 0  # Should detect "go s.run(ctx)"
+        assert result.goroutines  # Should detect "go s.run(ctx)"

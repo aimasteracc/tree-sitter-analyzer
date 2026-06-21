@@ -214,7 +214,7 @@ class TestStartupScriptIntegration:
             # Verify logger is properly configured
             assert logger.name == "test_startup"
             assert logger.level == logging.INFO
-            assert len(logger.handlers) > 0
+            assert logger.handlers
         finally:
             # Restore original LOG_LEVEL if it existed
             if original_log_level is not None:

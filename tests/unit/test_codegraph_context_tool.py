@@ -1231,7 +1231,7 @@ async def test_context_include_graph_true_returns_full_nodes_edges(
     assert result["success"] is True
     assert "nodes" in result
     assert isinstance(result["nodes"], list)
-    assert len(result["nodes"]) > 0
+    assert result["nodes"]
     assert "edges" in result
     assert isinstance(result["edges"], list)
     # Back-compat: stats still has per-inline counts
@@ -1329,7 +1329,7 @@ async def test_context_related_symbols_grouped_by_file(
     related = result.get("related_symbols", [])
     assert isinstance(related, list)
     # With an indexed project we expect at least one file group
-    assert len(related) > 0
+    assert related
 
     for group in related:
         assert "file" in group, f"each group must have 'file'; got {group!r}"

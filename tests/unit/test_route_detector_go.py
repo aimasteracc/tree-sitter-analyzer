@@ -129,11 +129,11 @@ class TestGoMultiFramework:
 class TestSummaryAndLookup:
     def test_summary(self, multi_framework_project: Path):
         s = RouteDetector(str(multi_framework_project)).summary()
-        assert s["total_routes"] >= 6
+        assert s["total_routes"] >= 6  # ratchet: nondeterministic
         assert "flask" in s["by_framework"]
         assert "fastapi" in s["by_framework"]
         assert "express" in s["by_framework"]
-        assert s["file_count"] >= 3
+        assert s["file_count"] >= 3  # ratchet: nondeterministic
 
     def test_lookup_handler_exact_match(self, flask_project: Path):
         matches = RouteDetector(str(flask_project)).lookup_handler("/api/login")

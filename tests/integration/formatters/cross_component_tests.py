@@ -467,7 +467,7 @@ public class TestService {
             consistency_report = validation_result["consistency_report"]
 
             # Should have at least MCP and API working
-            assert len(consistency_report["successful_interfaces"]) >= 2, (
+            assert len(consistency_report["successful_interfaces"]) >= 2, (  # ratchet: nondeterministic
                 f"Too few successful interfaces for {format_type}: {consistency_report['successful_interfaces']}"
             )
 
@@ -501,7 +501,7 @@ public class TestService {
         # Check that common metadata fields are consistent
         if metadata_consistency["consistent_fields"]:
             # Should have some consistent metadata
-            assert len(metadata_consistency["consistent_fields"]) > 0
+            assert metadata_consistency["consistent_fields"]
 
         # Report any inconsistencies for debugging
         if metadata_consistency["inconsistent_fields"]:
@@ -607,7 +607,7 @@ public class TestService {
         successful_interfaces = baseline_results["consistency_report"][
             "successful_interfaces"
         ]
-        assert len(successful_interfaces) >= 2, (
+        assert len(successful_interfaces) >= 2, (  # ratchet: nondeterministic
             "Need at least 2 successful interfaces to detect regressions"
         )
 

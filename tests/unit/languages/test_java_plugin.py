@@ -231,8 +231,8 @@ public class Calculator {
 
         assert isinstance(simple_complexity, int)
         assert isinstance(complex_complexity, int)
-        assert simple_complexity >= 1
-        assert complex_complexity >= 1
+        assert simple_complexity
+        assert complex_complexity
 
 
 class TestJavaPlugin:

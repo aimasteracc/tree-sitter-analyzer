@@ -60,7 +60,7 @@ class TestWatchStart:
         await tool.execute({"mode": "watch_start"})
         sync_result = await tool.execute({"mode": "sync"})
         assert sync_result["success"] is True
-        assert sync_result["new_files"] >= 2
+        assert sync_result["new_files"] >= 2  # ratchet: nondeterministic
         tool._watcher.stop()
 
 

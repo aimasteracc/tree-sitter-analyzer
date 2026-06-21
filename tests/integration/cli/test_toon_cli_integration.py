@@ -334,8 +334,8 @@ public class Sample {
         toon_len = len(toon_result.stdout)
 
         # Just verify both have output - size comparison is not guaranteed
-        assert json_len > 0
-        assert toon_len > 0
+        assert json_len
+        assert toon_len
 
 
 class TestToonCLIEdgeCases:

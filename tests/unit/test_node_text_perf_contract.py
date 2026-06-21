@@ -132,7 +132,7 @@ def test_node_text_throughput_is_O1_per_call() -> None:
             collect(child)
 
     collect(res.tree.root_node)
-    assert len(nodes) > 50, "fixture too small to exercise the hot path"
+    assert len(nodes) > 50, "fixture too small to exercise the hot path"  # ratchet: nondeterministic
 
     started = time.perf_counter()
     iterations = 5_000

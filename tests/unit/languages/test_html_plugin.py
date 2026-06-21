@@ -137,8 +137,8 @@ class TestHtmlPlugin:
             # Verify results
             assert result.success
             assert result.language == "html"
-            assert result.line_count > 0
-            assert len(result.elements) > 0
+            assert result.line_count
+            assert result.elements
             assert result.source_code == html_content
 
             # Check that we have at least one element

@@ -6,7 +6,14 @@ Per CLAUDE.md locked rule: assertions MUST pin the EXACT expected integer,
 never a loose bound (>= N, > 0, etc.).
 """
 
+import importlib.util
+
+import pytest
 import tree_sitter
+
+TREE_SITTER_SWIFT_AVAILABLE = (
+    importlib.util.find_spec("tree_sitter_swift") is not None
+)
 
 # ---------------------------------------------------------------------------
 # Ruby
@@ -442,6 +449,10 @@ def _swift_functions(source: str):
     return extractor.extract_functions(tree, source)
 
 
+@pytest.mark.skipif(
+    not TREE_SITTER_SWIFT_AVAILABLE,
+    reason="tree-sitter-swift not installed",
+)
 class TestSwiftCyclomaticComplexity:
     def test_simple_no_branches(self):
         funcs = _swift_functions(SWIFT_SIMPLE)

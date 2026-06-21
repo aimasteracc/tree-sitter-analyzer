@@ -161,7 +161,7 @@ def test_registered_mcp_tools_have_skill_parity() -> None:
         "tsa-landing skill is missing — the cold-start landing skill is "
         "the entry point every other skill builds on."
     )
-    assert len(skill_files) >= 8, (
+    assert len(skill_files) >= 8, (  # ratchet: nondeterministic
         f"Expected at least 8 tsa-* skills, found {len(skill_files)}. The "
         "10-skill design exists so each skill stays under 12 tools — "
         "collapsing to fewer skills defeats the progressive-disclosure "

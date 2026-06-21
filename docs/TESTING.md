@@ -96,12 +96,37 @@ Runtime-default changes must update the relevant contract tests in
 config, CI config, `tests/conftest.py`, `tests/contracts/**`, or
 `tests/governance/**` are high-impact and should route to the full suite.
 
-### Loose-Assertion Baseline
+### Weak-Assertion Ratchet
 
-`scripts/check_loose_assertions.py` blocks newly introduced loose deterministic
-count assertions in PR diffs. Its baseline modes are triage inputs:
+`scripts/check_loose_assertions.py` blocks newly introduced weak assertions in
+PR diffs. CI calls the shell wrapper, and pre-commit runs the same Python gate
+when staged test files change. The ratchet rejects:
+
+- Loose deterministic count bounds, for example `assert len(items) >= 1`.
+- Placeholder existence checks, for example `assert result is not None`, unless
+  the same test also asserts concrete behavior.
+- None-check tautologies, for example `assert result is not None or result is None`.
+
+Prefer exact, behavior-bearing assertions:
+
+```python
+assert result["status"] == "ok"
+assert [item.name for item in result.items] == ["main", "helper"]
+assert diagnostics == []
+```
+
+Existence checks are acceptable as setup guards only when paired with concrete
+behavior in the same test:
+
+```python
+assert result is not None
+assert result.language == "python"
+```
+
+Baseline modes are triage inputs:
 
 ```bash
+uv run python scripts/check_loose_assertions.py --staged
 uv run python scripts/check_loose_assertions.py --baseline
 uv run python scripts/check_loose_assertions.py --baseline --format json
 uv run python scripts/check_loose_assertions.py --baseline --format table
@@ -111,7 +136,9 @@ Baseline entries are cleanup candidates, not deletion authority. Before
 rewriting or removing a test, inspect the file-level behavior and classify the
 case: ordinary deterministic assertion, property-style test, performance test,
 platform-dependent test, optional-dependency test, or genuinely nondeterministic
-case with a documented `ratchet: nondeterministic <reason>` exemption.
+case with a documented `ratchet: nondeterministic <reason>` exemption. The
+baseline count in `scripts/loose_assertion_baseline.txt` is measured, never
+hand-derived; when the rule scope expands, record the category split there.
 
 ### Golden And Benchmark Guidance
 
@@ -123,7 +150,7 @@ remain separate under `tests/regression/`.
 Benchmark-only runs are not normal pytest runs:
 
 ```bash
-uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0
+uv run pytest tests/benchmarks/ -m benchmark --benchmark-enable --benchmark-only -n 0 --session-timeout=0
 ```
 
 ## Writing Tests
@@ -393,7 +420,7 @@ PYTEST_XDIST_AUTO_NUM_WORKERS=2 uv run pytest -q               # parallel (defau
 PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q               # force single-process (lighter on local machine)
 
 # Benchmark-only runs should disable xdist and the 5-minute session limit.
-uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0
+uv run pytest tests/benchmarks/ -m benchmark --benchmark-enable --benchmark-only -n 0 --session-timeout=0
 ```
 
 ### Generate Coverage Reports

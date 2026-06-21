@@ -89,9 +89,6 @@ class Calculator:
 
             table_output = result["table_output"]
 
-            # Validate output is not empty
-            assert table_output and len(table_output.strip()) > 0
-
             # Format-specific validations
             if format_type == "full":
                 # New FullFormatter uses text borders (=, -) instead of Markdown

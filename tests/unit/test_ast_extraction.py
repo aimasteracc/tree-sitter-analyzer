@@ -80,7 +80,7 @@ class TestWorkerIndexFile:
         f.write_text("def greet(name):\n    return f'hello {name}'\n")
         result = _worker_index_file((str(f), str(tmp_path), "python"))
         assert result["status"] == "ok"
-        assert result["symbols_count"] >= 1
+        assert result["symbols_count"]
         assert "content_hash" in result
         assert "mtime_ns" in result
 
@@ -95,7 +95,7 @@ class TestWorkerIndexFile:
 
         syms = json.loads(result["symbols_json"])["symbols"]
         class_syms = [s for s in syms if s.get("kind") == "class"]
-        assert len(class_syms) >= 1
+        assert class_syms
         dog_cls = next(s for s in class_syms if s["name"] == "Dog")
         assert "parents" in dog_cls
         assert "Animal" in dog_cls["parents"]

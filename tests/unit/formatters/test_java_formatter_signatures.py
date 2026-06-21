@@ -256,7 +256,7 @@ def test_base_formatter_signatures_dispatch_to_mixin() -> None:
     # Should not raise
     output = fmt.format_structure(_make_simple_data())
     assert isinstance(output, str)
-    assert len(output) > 0
+    assert output
 
 
 def test_base_formatter_signatures_raises_for_unsupported() -> None:

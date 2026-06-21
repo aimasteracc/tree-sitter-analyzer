@@ -288,7 +288,7 @@ class TestPathResolverCache:
 
         # Add to cache
         resolver.resolve("test.txt")
-        assert len(resolver._cache) > 0
+        assert resolver._cache
 
         # Clear cache
         resolver.clear_cache()
@@ -571,7 +571,7 @@ class TestPathResolverIntegration:
 
         # Check cache stats
         stats = resolver.get_cache_stats()
-        assert stats["size"] > 0
+        assert stats["size"]
 
     def test_cross_platform_workflow(self, tmp_path):
         """Test cross-platform path handling."""

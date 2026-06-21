@@ -118,7 +118,7 @@ class TestPollingDetection:
         detected = _wait_until(lambda: cache.get_stats()["total_files"] >= 3)
         watcher.stop()
         assert detected, "watcher did not detect the newly created file"
-        assert cache.get_stats()["total_files"] >= 3
+        assert cache.get_stats()["total_files"] >= 3  # ratchet: nondeterministic
 
     def test_detects_modified_file(self, watcher, project, cache):
         # Same ordering requirement: start (snapshot) -> modify -> wait for the
@@ -133,7 +133,7 @@ class TestPollingDetection:
         detected = _wait_until(lambda: watcher.get_stats()["syncs_triggered"] >= 2)
         watcher.stop()
         assert detected, "watcher did not detect the modified file"
-        assert watcher.get_stats()["syncs_triggered"] >= 2
+        assert watcher.get_stats()["syncs_triggered"] >= 2  # ratchet: nondeterministic
 
 
 class TestOnSyncCallback:

@@ -10,7 +10,7 @@ def test_cli_imports() -> None:
     """Test that CLI package can be imported."""
     import tree_sitter_analyzer.cli
 
-    assert tree_sitter_analyzer.cli is not None
+    assert tree_sitter_analyzer.cli.__name__ == "tree_sitter_analyzer.cli"
 
 
 def test_cli_exports() -> None:
@@ -37,14 +37,14 @@ def test_cli_exports() -> None:
 
     cli = importlib.import_module("tree_sitter_analyzer.cli")
 
-    assert cli.DescribeQueryCommand is not None
-    assert cli.InfoCommand is not None
-    assert cli.ListQueriesCommand is not None
-    assert cli.ShowExtensionsCommand is not None
-    assert cli.ShowLanguagesCommand is not None
-    assert cli.main is not None
-    assert cli.query_loader is not None
-    assert cli.get_analysis_engine is not None
+    assert isinstance(cli.DescribeQueryCommand, type)
+    assert isinstance(cli.InfoCommand, type)
+    assert isinstance(cli.ListQueriesCommand, type)
+    assert isinstance(cli.ShowExtensionsCommand, type)
+    assert isinstance(cli.ShowLanguagesCommand, type)
+    assert callable(cli.main)
+    assert callable(cli.query_loader.list_supported_languages)
+    assert callable(cli.get_analysis_engine)
 
 
 def test_cli_all_attribute() -> None:

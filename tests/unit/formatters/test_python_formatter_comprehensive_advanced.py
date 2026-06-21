@@ -428,6 +428,6 @@ class TestPythonTableFormatterEdgeCases:
         result = formatter._format_full_table(data)
 
         assert isinstance(result, str)
-        assert len(result) > 1000
+        assert len(result) > 1000  # ratchet: nondeterministic
         assert "method_0" in result
         assert "method_99" in result

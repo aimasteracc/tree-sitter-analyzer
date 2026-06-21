@@ -346,7 +346,7 @@ class TestValidateFile:
         with patch("pathlib.Path.is_file", side_effect=RuntimeError("Disk error")):
             result = api.validate_file("/some/file.py")
             assert result["valid"] is False
-            assert len(result["errors"]) > 0
+            assert result["errors"]
 
 
 # ============================================================================
@@ -475,4 +475,4 @@ class TestGroupCaptures:
         ]
         result = _group_captures_by_main_node(captures)
         assert len(result) == 1
-        assert len(result[0]["captures"]) >= 2
+        assert len(result[0]["captures"]) >= 2  # ratchet: nondeterministic

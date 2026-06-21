@@ -48,7 +48,7 @@ class TestAnalyzeScaleToolCountElements:
         mock_elem = MagicMock(spec=[])
         mock_elem.element_type = "class"
         count = tool._count_elements([mock_elem], ELEMENT_TYPE_CLASS, "class")
-        assert count >= 1
+        assert count
 
     def test_count_elements_no_match(self, tool):
         """Test counting with no matching elements."""
@@ -531,7 +531,7 @@ class TestExecuteMetricsBatchFullBody:
         ):
             arguments = {"file_paths": [None], "metrics_only": True}
             result = await tool._execute_metrics_batch(arguments)
-            assert result["count_errors"] >= 1
+            assert result["count_errors"]
 
     @pytest.mark.asyncio
     async def test_batch_with_resolved_path_exists(self, tool):

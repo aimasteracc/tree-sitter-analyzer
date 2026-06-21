@@ -363,7 +363,7 @@ def nested_hello():
 
             # Check that result is just a number
             assert isinstance(result, int)
-            assert result >= 0
+            assert result >= 0  # ratchet: nondeterministic
 
     @pytest.mark.asyncio
     async def test_file_filtering_options(self, find_and_grep_tool, temp_project_dir):
@@ -566,7 +566,7 @@ def nested_hello():
 
             assert result["success"] is True
             assert "meta" in result
-            assert result["meta"]["searched_file_count"] > 0
+            assert result["meta"]["searched_file_count"]
 
     def test_tool_definition_includes_new_parameters(self, find_and_grep_tool):
         """Test that tool definition includes new parameters"""

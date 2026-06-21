@@ -53,7 +53,7 @@ async def test_list_files_exec_happy_path(monkeypatch, tmp_path):
         {"roots": [str(tmp_path)], "extensions": ["py"], "output_format": "json"}
     )
     assert result["success"] is True
-    assert result["count"] >= 0
+    assert result["count"] >= 0  # ratchet: nondeterministic
     assert any(x["path"].endswith("a.py") for x in result["results"])
 
 

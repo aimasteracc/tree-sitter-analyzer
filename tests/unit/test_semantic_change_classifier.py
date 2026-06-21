@@ -292,7 +292,7 @@ class TestSemanticChangeClassifier:
         assert classification.dominant_category == SemanticCategory.API_CHANGE
         assert classification.risk_level == "high"
         assert classification.change_summary
-        assert len(classification.category_counts) >= 2
+        assert len(classification.category_counts) >= 2  # ratchet: nondeterministic
 
     def test_file_path_override(self):
         hunk = _hunk(DiffKind.BODY_CHANGED, ASTNodeKind.FUNCTION, "func")
