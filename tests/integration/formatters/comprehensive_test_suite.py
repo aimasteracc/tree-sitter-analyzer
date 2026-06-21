@@ -17,9 +17,9 @@ from ._comprehensive_suite_models import (
 )
 from ._comprehensive_suite_phases import ComprehensiveSuitePhasesMixin
 from ._comprehensive_suite_reporting import (
-    update_test_counts,
     generate_summary_report,
     save_comprehensive_results,
+    update_test_counts,
 )
 from .enhanced_assertions import EnhancedAssertions
 from .golden_master import GoldenMasterManager, GoldenMasterTester

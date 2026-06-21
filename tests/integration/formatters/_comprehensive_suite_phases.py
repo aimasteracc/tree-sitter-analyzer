@@ -1,7 +1,7 @@
 """Phase implementations for the comprehensive formatter suite."""
 
-from pathlib import Path
 import tempfile
+from pathlib import Path
 from typing import Any
 
 from ._comprehensive_suite_phase_helpers import (

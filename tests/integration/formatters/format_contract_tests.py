@@ -13,10 +13,10 @@ Format contracts ensure:
 
 import csv
 import io
-from dataclasses import dataclass
 import re
-from pathlib import Path
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pytest

@@ -5,8 +5,9 @@ Tests that validate output compliance with the formal format specifications
 defined in docs/format_specifications.md
 """
 
-import re
+import csv
 import io
+import re
 import tempfile
 from pathlib import Path
 from typing import Any

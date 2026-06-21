@@ -164,12 +164,12 @@ CREATE TABLE products (
     CONSTRAINT fk_category FOREIGN KEY (category_id) REFERENCES categories(id),
     INDEX idx_name (name)
 );
-"""
+        """
         tree = parser.parse(code.encode("utf-8"))
         result = plugin.extract_elements(tree, code)
         assert "classes" in result
         tables = [c for c in result["classes"] if c.name == "products"]
-        assert any(c.name == "products" for c in result["classes"])
+        assert tables
 
     def test_extract_view_with_if_not_exists(self, plugin, parser):
         """Test CREATE VIEW IF NOT EXISTS."""
