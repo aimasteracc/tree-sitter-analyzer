@@ -55,7 +55,13 @@ def code_patterns_result() -> dict[str, object]:
         "json",
     ]
     proc = subprocess.run(
-        cmd, capture_output=True, text=True, check=False, cwd=PROJECT_ROOT
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        cwd=PROJECT_ROOT,
     )
     assert proc.returncode == 0, (
         f"code_patterns exited {proc.returncode}\nSTDOUT:\n{proc.stdout}\n"

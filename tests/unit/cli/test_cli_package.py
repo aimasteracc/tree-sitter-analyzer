@@ -22,20 +22,11 @@ def test_cli_exports() -> None:
     module cached with None-typed exports.
     """
     import importlib
-    import sys
-
-    # Drop any cached cli + cli_main modules so the import below
-    # re-runs cli/__init__.py and re-binds main / query_loader /
-    # get_analysis_engine to their real implementations.
-    for mod in list(sys.modules):
-        if mod.startswith("tree_sitter_analyzer.cli") or mod in (
-            "tree_sitter_analyzer.cli_main",
-            "tree_sitter_analyzer.core.analysis_engine",
-            "tree_sitter_analyzer.query_loader",
-        ):
-            sys.modules.pop(mod, None)
-
+    # Re-run cli/__init__.py without invalidating already-collected modules.
+    # Deleting cli_main or command modules makes later patch("...") calls hit
+    # freshly imported modules while tests still hold old function objects.
     cli = importlib.import_module("tree_sitter_analyzer.cli")
+    cli = importlib.reload(cli)
 
     assert isinstance(cli.DescribeQueryCommand, type)
     assert isinstance(cli.InfoCommand, type)

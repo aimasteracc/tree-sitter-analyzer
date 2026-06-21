@@ -39,6 +39,8 @@ def _run_cli(*cli_args: str) -> subprocess.CompletedProcess[str]:
         cwd=str(PROJECT_ROOT),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=180,
     )
 

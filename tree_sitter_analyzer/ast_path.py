@@ -104,13 +104,12 @@ class ASTNode:
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
             "type": self.type,
+            "name": self.name,
             "start_line": self.start_line,
             "end_line": self.end_line,
             "is_scope": self.is_named_scope,
             "children_count": self.children_count,
         }
-        if self.name is not None:
-            d["name"] = self.name
         if self.field_name is not None:
             d["field"] = self.field_name
         return d
