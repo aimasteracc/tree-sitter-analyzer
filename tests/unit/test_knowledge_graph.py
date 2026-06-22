@@ -187,7 +187,11 @@ def test_builder_private_defensive_paths(tmp_path: Path) -> None:
     assert _as_int_or_none("bad") is None
     assert _json_dict("{bad") == {}
     assert _package_for_file("src/main/java/com/example/App.java") == "com.example"
+    assert _package_for_file("Main.java") == "<root>"
+    assert _package_for_file("src/main/java/App.java") == "src/main/java"
     assert _collect_md_files(str(tmp_path), ["missing/**/*.md"]) == []
+    assert _json_dict({"ok": True}) == {"ok": True}
+    assert _json_dict("") == {}
     ref_node = _node_from_ref(
         "orphan.py:missing:7",
         SimpleNamespace(file_path="orphan.py", name="", line=7),
@@ -400,6 +404,50 @@ def test_builder_doc_links_cover_read_error_focus_and_missing_target(
     assert "file:other.py" not in nodes
 
 
+def test_builder_doc_links_resolve_package_prefixed_targets(tmp_path: Path) -> None:
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "tree_sitter_analyzer").mkdir()
+    (tmp_path / "tree_sitter_analyzer" / "module.py").write_text(
+        "x = 1\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs" / "guide.md").write_text(
+        "See `module.py`.\n",
+        encoding="utf-8",
+    )
+    nodes: dict[str, KnowledgeNode] = {}
+    edges: dict[str, KnowledgeEdge] = {}
+
+    KnowledgeGraphBuilder(str(tmp_path))._add_doc_links(  # noqa: SLF001
+        nodes,
+        edges,
+        ["docs/*.md"],
+        focus=None,
+    )
+
+    assert "file:tree_sitter_analyzer/module.py" in nodes
+    assert ("doc:docs/guide.md", "file:tree_sitter_analyzer/module.py") in {
+        (edge.source, edge.target) for edge in edges.values()
+    }
+
+
+def test_builder_snapshot_marks_truncation_limits(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project()
+    finally:
+        cache.close()
+
+    snapshot = KnowledgeGraphBuilder(str(tmp_path)).build(max_nodes=1, max_edges=1)
+
+    assert snapshot.truncated is True
+    assert snapshot.stats["max_nodes"] == 1
+    assert snapshot.stats["max_edges"] == 1
+    assert snapshot.stats["node_count"] == 1
+
+
 def test_json_store_round_trips_snapshot(tmp_path: Path) -> None:
     snapshot = KnowledgeGraphSnapshot(
         nodes=[
@@ -465,6 +513,43 @@ def test_graphology_export_filters_docs_lod_exactly() -> None:
     assert [edge["key"] for edge in graph["edges"]] == ["edge:doc"]
     assert graph["stats"]["export_node_count"] == 2
     assert graph["stats"]["export_edge_count"] == 1
+
+
+def test_snapshot_direct_graphology_serialization_includes_metadata() -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(
+                id="file:a.py",
+                kind="file",
+                label="a.py",
+                file_path="a.py",
+                language="python",
+                line=3,
+                package="<root>",
+                metadata={"rank": 1},
+            )
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:calls",
+                source="file:a.py",
+                target="file:a.py",
+                kind="calls",
+                weight=2.5,
+                provenance="unit",
+                line=4,
+                metadata={"hot": True},
+            )
+        ],
+        stats={"node_count": 1, "edge_count": 1},
+        truncated=True,
+    )
+
+    graph = snapshot.to_graphology()
+
+    assert graph["nodes"][0]["attributes"]["rank"] == 1
+    assert graph["edges"][0]["attributes"]["hot"] is True
+    assert graph["metadata"]["truncated"] is True
 
 
 def test_graphology_export_package_focus_and_summary() -> None:
@@ -622,6 +707,249 @@ async def test_knowledge_index_tool_status_is_readable(tmp_path: Path) -> None:
     status_path = Path(result["json_store"]["path"])
     assert status_path.parent.name == ".ast-cache"
     assert status_path.name == "knowledge-graph.json"
+
+
+def test_knowledge_index_tool_rejects_invalid_arguments(tmp_path: Path) -> None:
+    tool = CodeGraphKnowledgeIndexTool(str(tmp_path))
+
+    with pytest.raises(ValueError, match="mode"):
+        tool.validate_arguments({"mode": "refresh"})
+    with pytest.raises(ValueError, match="level"):
+        tool.validate_arguments({"level": "class"})
+    with pytest.raises(ValueError, match="backend"):
+        tool.validate_arguments({"backend": "sqlite"})
+    with pytest.raises(ValueError, match="max_nodes"):
+        tool.validate_arguments({"max_nodes": 0})
+
+
+@pytest.mark.asyncio
+async def test_knowledge_index_tool_reports_missing_project_root() -> None:
+    tool = CodeGraphKnowledgeIndexTool()
+
+    result = await tool.execute({"output_format": "json"})
+
+    assert result["success"] is False
+    assert result["error"] == "project_root not set"
+
+
+@pytest.mark.asyncio
+async def test_knowledge_index_tool_build_writes_hybrid_backend(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py")
+        ],
+        edges=[],
+        stats={"node_count": 1, "edge_count": 0},
+    )
+
+    class FakeBuilder:
+        def __init__(self, project_root: str) -> None:
+            self.project_root = project_root
+
+        def build(self, **kwargs: object) -> KnowledgeGraphSnapshot:
+            assert kwargs["level"] == "file"
+            assert kwargs["focus"] == "src"
+            assert kwargs["include_docs"] is False
+            assert kwargs["include_symbols"] is True
+            return snapshot
+
+    class FakeStore:
+        def __init__(self, project_root: str) -> None:
+            self.project_root = project_root
+
+        def write(self, written_snapshot: KnowledgeGraphSnapshot) -> dict[str, object]:
+            assert written_snapshot is snapshot
+            return {
+                "path": self.project_root,
+                "node_count": len(written_snapshot.nodes),
+            }
+
+        def status(self) -> dict[str, object]:
+            return {"exists": True}
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_index_tool.KnowledgeGraphBuilder",
+        FakeBuilder,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_index_tool.JsonKnowledgeGraphStore",
+        FakeStore,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_index_tool.LadybugKnowledgeGraphStore",
+        FakeStore,
+    )
+    tool = CodeGraphKnowledgeIndexTool(str(tmp_path))
+
+    result = await tool.execute(
+        {
+            "mode": "build",
+            "backend": "both",
+            "focus": "src",
+            "include_docs": False,
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is True
+    assert result["storage"]["backend"] == "hybrid"
+    assert result["storage"]["json_store"]["node_count"] == 1
+    assert result["storage"]["ladybug_store"]["node_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_knowledge_index_tool_update_adds_compact_sync_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = KnowledgeGraphSnapshot(nodes=[], edges=[], stats={})
+
+    class FakeBuilder:
+        def __init__(self, _project_root: str) -> None:
+            pass
+
+        def build(self, **_kwargs: object) -> KnowledgeGraphSnapshot:
+            return snapshot
+
+    class FakeJsonStore:
+        def __init__(self, _project_root: str) -> None:
+            pass
+
+        def write(self, _snapshot: KnowledgeGraphSnapshot) -> dict[str, object]:
+            return {"path": "kg.json"}
+
+    class FakeLadybugStore(FakeJsonStore):
+        pass
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_index_tool.KnowledgeGraphBuilder",
+        FakeBuilder,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_index_tool.JsonKnowledgeGraphStore",
+        FakeJsonStore,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_index_tool.LadybugKnowledgeGraphStore",
+        FakeLadybugStore,
+    )
+    tool = CodeGraphKnowledgeIndexTool(str(tmp_path))
+    monkeypatch.setattr(
+        tool,
+        "_run_incremental_sync",
+        lambda max_files: {
+            "scanned": max_files,
+            "details": [{"file": "a.py"}],
+            "updated": ["a.py"],
+        },
+    )
+
+    result = await tool.execute(
+        {"mode": "update", "max_files": 7, "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["incremental_sync"] == {"scanned": 7}
+
+
+@pytest.mark.asyncio
+async def test_knowledge_index_tool_reports_ladybug_write_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeBuilder:
+        def __init__(self, _project_root: str) -> None:
+            pass
+
+        def build(self, **_kwargs: object) -> KnowledgeGraphSnapshot:
+            return KnowledgeGraphSnapshot(nodes=[], edges=[], stats={})
+
+    class FakeJsonStore:
+        def __init__(self, _project_root: str) -> None:
+            pass
+
+        def write(self, _snapshot: KnowledgeGraphSnapshot) -> dict[str, object]:
+            return {}
+
+    class MissingLadybugStore(FakeJsonStore):
+        def write(self, _snapshot: KnowledgeGraphSnapshot) -> dict[str, object]:
+            raise LadybugUnavailableError("missing ladybug")
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_index_tool.KnowledgeGraphBuilder",
+        FakeBuilder,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_index_tool.JsonKnowledgeGraphStore",
+        FakeJsonStore,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_index_tool.LadybugKnowledgeGraphStore",
+        MissingLadybugStore,
+    )
+    tool = CodeGraphKnowledgeIndexTool(str(tmp_path))
+
+    result = await tool.execute(
+        {"mode": "build", "backend": "ladybug", "output_format": "json"}
+    )
+
+    assert result["success"] is False
+    assert result["error"] == "missing ladybug"
+
+
+def test_knowledge_index_tool_write_snapshot_backend_selection(
+    tmp_path: Path,
+) -> None:
+    snapshot = KnowledgeGraphSnapshot(nodes=[], edges=[], stats={})
+    tool = CodeGraphKnowledgeIndexTool(str(tmp_path))
+    json_store = SimpleNamespace(write=lambda _snapshot: {"json": True})
+    ladybug_store = SimpleNamespace(write=lambda _snapshot: {"ladybug": True})
+
+    assert tool._write_snapshot(  # noqa: SLF001
+        snapshot, json_store, ladybug_store, "ladybug"
+    ) == {"backend": "ladybug", "ladybug_store": {"ladybug": True}}
+    with pytest.raises(ValueError, match="backend"):
+        tool._write_snapshot(snapshot, json_store, ladybug_store, "bad")  # noqa: SLF001
+
+
+def test_knowledge_index_tool_incremental_sync_closes_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[object] = []
+
+    class FakeResult:
+        def to_dict(self) -> dict[str, object]:
+            return {"synced": True}
+
+    class FakeCache:
+        def __init__(self, project_root: str) -> None:
+            events.append(("cache", project_root))
+
+        def close(self) -> None:
+            events.append("closed")
+
+    class FakeIncrementalSync:
+        def __init__(self, cache: FakeCache) -> None:
+            self.cache = cache
+
+        def sync(self, *, max_files: int) -> FakeResult:
+            events.append(("sync", max_files))
+            return FakeResult()
+
+    monkeypatch.setattr("tree_sitter_analyzer.ast_cache.ASTCache", FakeCache)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_index_tool.IncrementalSync",
+        FakeIncrementalSync,
+    )
+
+    result = CodeGraphKnowledgeIndexTool(str(tmp_path))._run_incremental_sync(7)  # noqa: SLF001
+
+    assert result == {"synced": True}
+    assert events == [("cache", str(tmp_path)), ("sync", 7), "closed"]
 
 
 @pytest.mark.asyncio
