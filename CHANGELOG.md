@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.28.0] - 2026-06-22
+
+Knowledge-graph viewer release. This release completes the human-facing graph
+path for the Ladybug/Graphology knowledge graph added in 1.27.0.
+
+### Added
+
+- **Standalone knowledge graph HTML viewer.** `viz action=knowledge` and
+  `--knowledge-graph-export` now accept `export_format=html` /
+  `--knowledge-graph-export-format html`, returning a self-contained browser
+  page over the existing capped Graphology/LOD payload.
+- **Obsidian-style interactive graph controls.** The viewer supports pan/zoom,
+  search, node-kind filtering, edge-kind filtering, node detail inspection, and
+  rendering for Markdown doc links, files, symbols, calls, imports, inheritance,
+  and containment edges.
+
+### Changed
+
+- **Human and program visualization split.** Graphology JSON remains the
+  programmatic Sigma-compatible export, while the HTML format gives people a
+  no-server browser view of the same package/file/symbol/docs LOD graph.
+
 ## [1.27.0] - 2026-06-22
 
 Ladybug knowledge-graph release. This release adds an optional whole-project
