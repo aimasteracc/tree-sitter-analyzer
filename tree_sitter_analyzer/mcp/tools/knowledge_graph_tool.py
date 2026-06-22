@@ -12,13 +12,14 @@ from ...knowledge_graph import (
     LadybugKnowledgeGraphStore,
 )
 from ...knowledge_graph.exporters import summarize, to_graphology
+from ...knowledge_graph.html_viewer import to_html_viewer
 from ...knowledge_graph.stores import LadybugUnavailableError
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
 
 _BACKENDS = {"json", "ladybug", "hybrid"}
-_EXPORT_FORMATS = {"graphology", "raw", "summary"}
+_EXPORT_FORMATS = {"graphology", "html", "raw", "summary"}
 _LOD_LEVELS = {"package", "file", "symbol", "docs"}
 
 
@@ -199,7 +200,7 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
                     "type": "string",
                     "enum": sorted(_EXPORT_FORMATS),
                     "default": "graphology",
-                    "description": "graphology=Sigma.js JSON, raw=full sidecar, summary=compact stats",
+                    "description": "graphology=Sigma.js JSON, html=standalone browser viewer, raw=full sidecar, summary=compact stats",
                 },
                 "lod": {
                     "type": "string",
@@ -233,7 +234,9 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         export_format = arguments.get("export_format", "graphology")
         if export_format not in _EXPORT_FORMATS:
-            raise ValueError("export_format must be one of: graphology, raw, summary")
+            raise ValueError(
+                "export_format must be one of: graphology, html, raw, summary"
+            )
         lod = arguments.get("lod", "file")
         if lod not in _LOD_LEVELS:
             raise ValueError("lod must be one of: package, file, symbol, docs")
@@ -265,6 +268,20 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
             response = build_response(verdict="INFO", graph=payload)
         elif export_format == "summary":
             response = build_response(verdict="INFO", graph=summarize(snapshot))
+        elif export_format == "html":
+            graph = to_graphology(
+                snapshot,
+                lod=arguments.get("lod", "file"),
+                focus=arguments.get("focus") or None,
+                max_nodes=int(arguments.get("max_nodes", 10_000)),
+                max_edges=int(arguments.get("max_edges", 50_000)),
+            )
+            response = build_response(
+                verdict="INFO",
+                html=to_html_viewer(graph),
+                graph=summarize(snapshot),
+                export_stats=graph.get("stats", {}),
+            )
         else:
             response = build_response(
                 verdict="INFO",

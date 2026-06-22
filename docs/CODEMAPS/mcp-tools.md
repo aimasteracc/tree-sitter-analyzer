@@ -95,7 +95,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `codegraph_xref` | `--codegraph-xref` | Multi-dimension cross-reference from AST cache |
 | `codegraph_similarity` | `--code-similarity` | AST-structural clone detection |
 | `codegraph_visualize` | `--codegraph-visualize` | Export call graph as Mermaid flowchart or Graphology/Sigma.js JSON |
-| `viz_knowledge` | `--knowledge-graph-export` | Export code/doc knowledge graph as Graphology/Sigma.js JSON, raw sidecar, or summary |
+| `viz_knowledge` | `--knowledge-graph-export` | Export code/doc knowledge graph as Graphology/Sigma.js JSON, standalone HTML viewer, raw sidecar, or summary |
 | `codegraph_uml` | `--uml` | Export UML-style Mermaid diagrams (class/package/component/sequence/activity). `activity` builds a control-flow graph by re-parsing the source file at query time (one disk read + tree-sitter parse; requires `function_name` + `file_path`). |
 | **CodeGraph parity — cache/index** | | |
 | `codegraph_status` | `--codegraph-status` | INDEX HEALTH at-a-glance (indexed?, files, symbols, lag) |
