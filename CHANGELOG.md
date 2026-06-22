@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.27.0] - 2026-06-22
+
+Ladybug knowledge-graph release. This release adds an optional whole-project
+code/document graph projection for browser viewers and agent consumers, while
+keeping the existing SQLite AST/FTS index as the source of truth.
+
+### Added
+
+- **Whole-project knowledge graph indexing.** New `index action=knowledge`
+  MCP facade and `--knowledge-graph-index` CLI command materialize package,
+  file, symbol, and Markdown-link nodes from the existing AST cache, unified
+  edge store, and docs references.
+- **Optional LadybugDB mirror.** Installing `tree-sitter-analyzer[graph]`
+  enables a LadybugDB-backed graph mirror for Cypher-style traversal without
+  replacing SQLite. JSON remains the portable default; `backend=hybrid`
+  writes both.
+- **Graphology/Sigma export.** New `viz action=knowledge` MCP facade and
+  `--knowledge-graph-export` CLI command export Graphology-compatible JSON
+  for Sigma.js/browser visualization, plus raw and compact summary formats for
+  programmatic consumers.
+- **Obsidian-style docs/code links.** Markdown file references are projected
+  into the same graph as code files and symbols, so documentation-to-code and
+  code-to-code relationships can be explored together.
+
+### Changed
+
+- **Differential knowledge graph refresh.** `mode=update` reuses the existing
+  incremental sync path before graph materialization, preserving TSA's current
+  SQLite indexing pipeline while adding a graph-database sidecar for traversal.
+- **Facade and CLI parity.** The new knowledge graph actions are available
+  through both MCP facades and CLI entry points, with codemap and API docs
+  updated in the same release.
+
+### Fixed
+
+- **Cross-platform knowledge graph tests.** Knowledge graph sidecar path
+  assertions now handle Windows path separators, and patch coverage covers the
+  new graph export and optional-backend branches.
+
 ## [1.26.0] - 2026-06-22
 
 Graph-visualization and correctness release. 54 commits since 1.25.0
