@@ -85,6 +85,51 @@ def test_mermaid_uml_export_supports_component_package_and_class_views() -> None
         to_mermaid_uml(snapshot, diagram="sequence")
 
 
+def test_mermaid_uml_class_view_covers_focus_and_relation_variants() -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="app.py:Service:1", kind="class", label="Service"),
+            KnowledgeNode(id="app.py:Repo:1", kind="interface", label="Repo"),
+            KnowledgeNode(id="app.py:Mode:1", kind="enum", label="Mode"),
+            KnowledgeNode(id="app.py:Hidden:1", kind="class", label="Hidden"),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:implements",
+                source="app.py:Service:1",
+                target="app.py:Repo:1",
+                kind="implements",
+            ),
+            KnowledgeEdge(
+                id="edge:references",
+                source="app.py:Service:1",
+                target="app.py:Mode:1",
+                kind="references",
+            ),
+            KnowledgeEdge(
+                id="edge:hidden",
+                source="app.py:Hidden:1",
+                target="app.py:Repo:1",
+                kind="imports",
+            ),
+        ],
+        stats={"node_count": 4, "edge_count": 3},
+    )
+
+    class_view = to_mermaid_uml(snapshot, diagram="class", focus="app.py")
+    capped = to_mermaid_uml(snapshot, diagram="class", max_nodes=2, max_edges=1)
+
+    assert "<<interface>>" in class_view["mermaid"]
+    assert "<<enum>>" in class_view["mermaid"]
+    assert " <|.. " in class_view["mermaid"]
+    assert " ..> " in class_view["mermaid"]
+    assert class_view["stats"]["export_node_count"] == 4
+    assert class_view["stats"]["export_edge_count"] == 3
+    assert capped["stats"]["export_node_count"] == 2
+    assert capped["stats"]["export_edge_count"] == 0
+    assert capped["stats"]["export_truncated"] is True
+
+
 def test_knowledge_graph_tool_rejects_bad_uml_kind(tmp_path: Path) -> None:
     tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
 
