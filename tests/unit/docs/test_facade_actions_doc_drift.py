@@ -67,7 +67,7 @@ def test_facade_actions_doc_matches_generator() -> None:
 def test_facade_actions_surface_pins() -> None:
     """Exact pins on the documented surface (conscious re-pin on change).
 
-    * 8 facades, 71 routable actions total (measured 2026-06-13).
+    * 8 facades, 73 routable actions total (measured 2026-06-22).
     * Exactly 4 actions have no authoritative CLI twin — they are new-only
       MCP capabilities with no entry in ``facade_map.NEW_ACTION_PARITY`` nor
       a legacy name in the agent-contracts ``tool_to_cli`` parity table. A
@@ -88,7 +88,7 @@ def test_facade_actions_surface_pins() -> None:
         "viz",
     ]
     total_actions = sum(len(rows) for rows in rows_by_facade.values())
-    assert total_actions == 71
+    assert total_actions == 73
 
     gaps = sorted(
         (facade, row.action)

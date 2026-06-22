@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "1.26.0"
+version = "1.27.0"
 description = "MCP code-intelligence server for AI agents — a more complete and more correct call graph with classified, cross-file edges. 8 facade MCP tools, 13 curated skills, TOON-compressed output, 100% local."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -106,6 +106,7 @@ cpp = ["tree-sitter-cpp>=0.23.4,<0.25.0"]
 rust = ["tree-sitter-rust>=0.20.0,<0.25.0"]
 go = ["tree-sitter-go>=0.20.0,<0.25.0"]
 markdown = ["tree-sitter-markdown>=0.3.1"]
+graph = ["ladybug>=0.17.1,<0.18.0"]
 html = ["tree-sitter-html>=0.23.0,<0.25.0"]  # HTML DOM analysis with element classification
 css = ["tree-sitter-css>=0.23.0,<0.25.0"]   # CSS selector and property analysis with specificity calculation
 sql = ["tree-sitter-sql>=0.3.11,<0.4.0"]   # SQL language support for database schema analysis
@@ -596,7 +597,7 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "1.26.0"
+server_version = "1.27.0"
 description = "AI-era enterprise-grade code analysis MCP server with comprehensive HTML/CSS support and multi-language capabilities"
 capabilities = [
     "check_code_scale",

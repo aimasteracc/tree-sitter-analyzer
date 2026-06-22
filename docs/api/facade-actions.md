@@ -3,7 +3,7 @@
 > **AUTO-GENERATED — do not edit by hand.** Regenerate with `uv run python scripts/generate_facade_actions_doc.py`.
 > Drift-gated by `tests/unit/docs/test_facade_actions_doc_drift.py` (regenerates in-memory and diffs).
 
-The MCP server exposes **8 facade tools** routing **71 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
+The MCP server exposes **8 facade tools** routing **73 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
 
 Reading the tables:
 
@@ -104,7 +104,7 @@ Reading the tables:
 | `tools` | (none) | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-tools` |
 | `workflow` | `output_format`, `target_path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--agent-workflow` |
 
-## `index` — 6 actions
+## `index` — 7 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -112,13 +112,15 @@ Reading the tables:
 | `build` | `add_notes`, `roots` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--build-project-index` |
 | `cache` | `backend`, `file_path`, `force`, `include_activation`, `language`, `limit`, `max_files`, `mode`, `poll_interval`, `query`, `symbol` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-cache` |
 | `full` | `include_activation`, `max_files`, `mode`, `output_format`, `resolve_synapse` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--full-index` |
+| `knowledge` | `backend`, `include_docs`, `max_edges`, `max_files`, `max_nodes`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--knowledge-graph-index` |
 | `status` | `include_lag`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-status` |
 | `sync` | `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--incremental-sync` |
 
-## `viz` — 3 actions
+## `viz` — 4 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
 | `graph` | `depth`, `direction`, `file_path`, `function`, `max_edges`, `mode`, `output_format`, `visualization_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-visualize` |
+| `knowledge` | `export_format`, `focus`, `lod`, `max_edges`, `max_nodes`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--knowledge-graph-export` |
 | `similarity` | `include_bodies`, `max_groups`, `min_group_size`, `min_lines`, `mode`, `output_format`, `path_filter`, `use_cache` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--code-similarity` |
 | `uml` | `class_name` (`symbol` aliases `class_name`), `diagram`, `file_path`, `function_name` (`symbol` aliases `function_name`), `include_external_bases`, `include_tests`, `max_depth`, `max_edges`, `max_nodes`, `max_paths`, `output_format`, `package_depth`, `source`, `target` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--uml` |

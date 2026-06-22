@@ -44,7 +44,8 @@ _INDEX_ANNOTATIONS: dict[str, Any] = {
 _INDEX_DESCRIPTION = (
     "Code-intelligence (codegraph-compatible) index lifecycle hub. "
     "Covers codegraph_status, codegraph_full_index, codegraph_autoindex, "
-    "codegraph_incremental_sync, and AST cache query in one tool. "
+    "codegraph_incremental_sync, AST cache query, and whole-project "
+    "knowledge graph materialization in one tool. "
     "Pick a capability via `action`:\n"
     "\n"
     "READ-ONLY:\n"
@@ -68,6 +69,9 @@ _INDEX_DESCRIPTION = (
     "(codegraph_autoindex equivalent). Params: enable, watch.\n"
     "- action=sync — run one incremental sync pass (fast; use after "
     "editing files, codegraph_incremental_sync equivalent). Params: paths.\n"
+    "- action=knowledge — build/update/status for the code+docs knowledge "
+    "graph sidecar and optional LadybugDB mirror. Params: mode, backend, "
+    "max_files, max_nodes, max_edges, include_docs.\n"
 )
 
 
@@ -84,6 +88,7 @@ def build_index_facade(project_root: str | None = None) -> FacadeTool:
     from .codegraph_status_tool import CodeGraphStatusTool
     from .full_index_tool import CodeGraphFullIndexTool
     from .incremental_sync_tool import CodeGraphIncrementalSyncTool
+    from .knowledge_graph_tool import CodeGraphKnowledgeIndexTool
 
     facade = FacadeTool(
         facade_name="index",
@@ -96,6 +101,7 @@ def build_index_facade(project_root: str | None = None) -> FacadeTool:
             "full": CodeGraphFullIndexTool(project_root),
             "auto": CodeGraphAutoIndexTool(project_root),
             "sync": CodeGraphIncrementalSyncTool(project_root),
+            "knowledge": CodeGraphKnowledgeIndexTool(project_root),
         },
         bespoke_map={},  # all 6 actions are clean action_map delegates
         description=_INDEX_DESCRIPTION,

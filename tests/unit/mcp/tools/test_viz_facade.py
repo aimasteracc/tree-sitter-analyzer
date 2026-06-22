@@ -2,7 +2,7 @@
 """Tests for the ``viz`` facade (Wave B, P0 geode layer).
 
 Covered behaviours (mirrors test_facade_tool.py §5 contract):
-1.  builds & routes — factory returns FacadeTool; all 3 actions present.
+1.  builds & routes — factory returns FacadeTool; all 4 actions present.
 2.  action routing — {"action": X, ...} reaches the right inner.
 3.  arg projection — ``action`` is NOT in the args the inner received.
 4.  sibling-param drop — param for action A doesn't reach action B's inner.
@@ -36,7 +36,7 @@ from tree_sitter_analyzer.mcp.tools.viz_facade import build_viz_facade
 #   - unknown action error     (success=False, available_actions listed)
 #
 # Facade-specific tests that remain in this file:
-#   - action routing to uml/graph/similarity actions
+#   - action routing to uml/graph/similarity/knowledge actions
 #   - sibling-param drop between actions
 #   - annotation honesty (readOnlyHint=True valid for all-read-only viz facade)
 #   - end-to-end no strict leak (F4 regression guard with real inner tools)
@@ -47,7 +47,7 @@ from tree_sitter_analyzer.mcp.tools.viz_facade import build_viz_facade
 # Expected actions
 # ---------------------------------------------------------------------------
 
-_ALL_ACTIONS = frozenset({"uml", "graph", "similarity"})
+_ALL_ACTIONS = frozenset({"uml", "graph", "similarity", "knowledge"})
 
 # ---------------------------------------------------------------------------
 # Minimal fake inner for isolation tests
@@ -111,10 +111,10 @@ def test_viz_facade_builds_and_has_all_actions() -> None:
 
 
 def test_viz_facade_total_action_count() -> None:
-    """3 actions total: uml, graph, similarity."""
+    """4 actions total: uml, graph, similarity, knowledge."""
     facade = build_viz_facade(project_root=None)
     total = len(facade.action_map) + len(facade.bespoke_map)
-    assert total == 3
+    assert total == 4
 
 
 def test_viz_facade_annotations_read_only() -> None:

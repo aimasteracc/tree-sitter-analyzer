@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI dispatchers for the cache/index trio: autoindex, full-index, metrics.
+"""CLI dispatchers for cache/index commands: autoindex, full-index, metrics.
 
 These three commands all wrap MCP tools (``codegraph_autoindex``,
 ``codegraph_full_index``, ``codegraph_metrics``). They live in a single
@@ -78,6 +78,18 @@ def _incremental_sync_payload(args: Any, output_format: str) -> dict[str, Any]:
     }
 
 
+def _knowledge_graph_index_payload(args: Any, output_format: str) -> dict[str, Any]:
+    return {
+        "mode": getattr(args, "knowledge_graph_index_mode", "update") or "update",
+        "backend": getattr(args, "knowledge_graph_backend", "json") or "json",
+        "max_files": int(getattr(args, "knowledge_graph_max_files", 1_000_000)),
+        "max_nodes": int(getattr(args, "knowledge_graph_max_nodes", 100_000)),
+        "max_edges": int(getattr(args, "knowledge_graph_max_edges", 500_000)),
+        "include_docs": not bool(getattr(args, "knowledge_graph_no_docs", False)),
+        "output_format": output_format,
+    }
+
+
 def _metrics_payload(args: Any, output_format: str) -> dict[str, Any]:
     payload: dict[str, Any] = {"output_format": output_format}
     sections = getattr(args, "codegraph_metrics_sections", None)
@@ -142,6 +154,28 @@ def run_incremental_sync(args: Any, output_error: OutputErrorFn) -> int:
         )
     except Exception as exc:  # noqa: BLE001
         output_error(f"--incremental-sync failed: {exc}")
+        return 1
+
+    _print(result, output_format)
+    return _exit_code_for(result)
+
+
+def run_knowledge_graph_index(args: Any, output_error: OutputErrorFn) -> int:
+    """Dispatch ``--knowledge-graph-index`` → ``codegraph_knowledge_index``."""
+    try:
+        from ...mcp.tools.knowledge_graph_tool import CodeGraphKnowledgeIndexTool
+    except Exception as exc:  # noqa: BLE001
+        output_error(f"--knowledge-graph-index failed to import tool: {exc}")
+        return 1
+
+    output_format = _output_format(args)
+    tool = CodeGraphKnowledgeIndexTool(project_root=_project_root(args))
+    try:
+        result = asyncio.run(
+            tool.execute(_knowledge_graph_index_payload(args, output_format))
+        )
+    except Exception as exc:  # noqa: BLE001
+        output_error(f"--knowledge-graph-index failed: {exc}")
         return 1
 
     _print(result, output_format)
