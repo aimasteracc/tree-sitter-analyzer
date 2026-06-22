@@ -121,6 +121,6 @@ Reading the tables:
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
 | `graph` | `depth`, `direction`, `file_path`, `function`, `max_edges`, `mode`, `output_format`, `visualization_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-visualize` |
-| `knowledge` | `export_format`, `focus`, `lod`, `max_edges`, `max_nodes`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--knowledge-graph-export` |
+| `knowledge` | `export_format`, `focus`, `lod`, `max_edges`, `max_nodes`, `output_format`, `uml_kind` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--knowledge-graph-export` |
 | `similarity` | `include_bodies`, `max_groups`, `min_group_size`, `min_lines`, `mode`, `output_format`, `path_filter`, `use_cache` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--code-similarity` |
 | `uml` | `class_name` (`symbol` aliases `class_name`), `diagram`, `file_path`, `function_name` (`symbol` aliases `function_name`), `include_external_bases`, `include_tests`, `max_depth`, `max_edges`, `max_nodes`, `max_paths`, `output_format`, `package_depth`, `source`, `target` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--uml` |

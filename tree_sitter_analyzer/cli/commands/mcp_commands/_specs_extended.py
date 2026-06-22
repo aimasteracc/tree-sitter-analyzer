@@ -300,6 +300,9 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
                 or "graphology"
             ),
             "lod": getattr(args, "knowledge_graph_lod", "file") or "file",
+            "uml_kind": (
+                getattr(args, "knowledge_graph_uml_kind", "component") or "component"
+            ),
             "focus": getattr(args, "knowledge_graph_focus", None),
             "max_nodes": getattr(args, "knowledge_graph_export_max_nodes", 10_000),
             "max_edges": getattr(args, "knowledge_graph_export_max_edges", 50_000),

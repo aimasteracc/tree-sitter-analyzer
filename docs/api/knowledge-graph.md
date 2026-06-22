@@ -54,5 +54,8 @@ with deterministic positions and node styling, suitable for Sigma.js or another
 programmatic viewer. `--knowledge-graph-export-format html` emits a standalone
 canvas viewer for people: pan/zoom, search, kind filters, node details, Markdown
 doc links, file relationships, and code edges all use the same capped LOD
-payload. Use `--knowledge-graph-lod package|file|symbol|docs` to control level
-of detail and `--knowledge-graph-focus TEXT` for focused subgraphs.
+payload. `--knowledge-graph-export-format uml` emits Mermaid UML-style text;
+select `--knowledge-graph-uml-kind class|package|component` for class
+relationships, package dependencies, or component/file/doc dependencies. Use
+`--knowledge-graph-lod package|file|symbol|docs` to control level of detail and
+`--knowledge-graph-focus TEXT` for focused subgraphs.

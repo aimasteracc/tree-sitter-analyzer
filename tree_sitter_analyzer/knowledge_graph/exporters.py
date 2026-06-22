@@ -89,6 +89,53 @@ def summarize(snapshot: KnowledgeGraphSnapshot) -> dict[str, Any]:
     }
 
 
+def to_mermaid_uml(
+    snapshot: KnowledgeGraphSnapshot,
+    *,
+    diagram: str = "component",
+    focus: str | None = None,
+    max_nodes: int = 200,
+    max_edges: int = 500,
+) -> dict[str, Any]:
+    """Return a Mermaid UML-style diagram from a knowledge graph snapshot."""
+    if diagram not in {"class", "package", "component"}:
+        raise ValueError("diagram must be one of: class, package, component")
+    if diagram == "class":
+        mermaid, node_count, edge_count, truncated = _class_diagram(
+            snapshot, focus, max_nodes, max_edges
+        )
+    else:
+        lod = "package" if diagram == "package" else "file"
+        nodes, edges, truncated = _select(snapshot, lod, focus, max_nodes, max_edges)
+        mermaid = _flowchart_diagram(nodes, edges, diagram)
+        node_count = len(nodes)
+        edge_count = len(edges)
+        return {
+            "schema": "tsa.knowledge_graph.uml.v1",
+            "syntax": "mermaid",
+            "diagram": diagram,
+            "mermaid": mermaid,
+            "stats": {
+                **snapshot.stats,
+                "export_node_count": node_count,
+                "export_edge_count": edge_count,
+                "export_truncated": truncated,
+            },
+        }
+    return {
+        "schema": "tsa.knowledge_graph.uml.v1",
+        "syntax": "mermaid",
+        "diagram": diagram,
+        "mermaid": mermaid,
+        "stats": {
+            **snapshot.stats,
+            "export_node_count": node_count,
+            "export_edge_count": edge_count,
+            "export_truncated": truncated,
+        },
+    }
+
+
 def aggregate_package_graph(snapshot: KnowledgeGraphSnapshot) -> KnowledgeGraphSnapshot:
     """Aggregate file/symbol/doc edges to package-level dependencies."""
     package_by_file = _package_by_file(snapshot.nodes)
@@ -203,6 +250,85 @@ def _node_color(kind: str) -> str:
         "method": "#EF4444",
         "function": "#EF4444",
     }.get(kind, "#64748B")
+
+
+def _class_diagram(
+    snapshot: KnowledgeGraphSnapshot,
+    focus: str | None,
+    max_nodes: int,
+    max_edges: int,
+) -> tuple[str, int, int, bool]:
+    node_by_id = {
+        node.id: node
+        for node in snapshot.nodes
+        if node.kind in {"class", "interface", "enum"}
+    }
+    if focus:
+        node_by_id = {
+            node_id: node
+            for node_id, node in node_by_id.items()
+            if focus in node_id or focus in node.label or focus in node.file_path
+        }
+    all_nodes = sorted(node_by_id.values(), key=lambda n: n.id)
+    nodes = all_nodes[:max_nodes]
+    kept = {node.id for node in nodes}
+    all_relation_edges = [
+        edge
+        for edge in snapshot.edges
+        if edge.source in kept
+        and edge.target in kept
+        and edge.kind in {"extends", "implements", "references", "imports"}
+    ]
+    relation_edges = all_relation_edges[:max_edges]
+    lines = ["classDiagram"]
+    for node in nodes:
+        class_id = _mermaid_id(node.id)
+        lines.append(f"  class {class_id}")
+        if node.kind in {"interface", "enum"}:
+            lines.append(f"  <<{node.kind}>> {class_id}")
+    for edge in relation_edges:
+        source = _mermaid_id(edge.source)
+        target = _mermaid_id(edge.target)
+        if edge.kind == "extends":
+            lines.append(f"  {target} <|-- {source}")
+        elif edge.kind == "implements":
+            lines.append(f"  {target} <|.. {source}")
+        else:
+            lines.append(f"  {source} ..> {target} : {edge.kind}")
+    truncated = len(all_nodes) > len(nodes) or len(all_relation_edges) > len(
+        relation_edges
+    )
+    return "\n".join(lines), len(nodes), len(relation_edges), truncated
+
+
+def _flowchart_diagram(
+    nodes: list[KnowledgeNode],
+    edges: list[KnowledgeEdge],
+    diagram: str,
+) -> str:
+    lines = ["flowchart LR"]
+    for node in nodes:
+        node_id = _mermaid_id(node.id)
+        label = _mermaid_label(node.label or node.id)
+        lines.append(f'  {node_id}["{label}"]')
+    for edge in edges:
+        lines.append(
+            f"  {_mermaid_id(edge.source)} -->|{_mermaid_label(edge.kind)}| "
+            f"{_mermaid_id(edge.target)}"
+        )
+    if diagram == "component":
+        lines.append("  %% component view: files, docs, symbols, and relationships")
+    return "\n".join(lines)
+
+
+def _mermaid_id(raw: str) -> str:
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+    stem = "".join(ch if ch.isalnum() else "_" for ch in raw)[-48:].strip("_")
+    return "n_" + (stem or "node") + "_" + digest
+
+
+def _mermaid_label(raw: str) -> str:
+    return raw.replace("\\", "\\\\").replace('"', "'").replace("\n", " ")[:120]
 
 
 def _package_by_file(nodes: list[KnowledgeNode]) -> dict[str, str]:

@@ -233,9 +233,18 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--knowledge-graph-export-format",
-        choices=["graphology", "html", "raw", "summary"],
+        choices=["graphology", "html", "raw", "summary", "uml"],
         default="graphology",
         help="Export format for --knowledge-graph-export (default: graphology)",
+    )
+    parser.add_argument(
+        "--knowledge-graph-uml-kind",
+        choices=["class", "package", "component"],
+        default="component",
+        help=(
+            "Mermaid UML view for --knowledge-graph-export-format uml "
+            "(default: component)"
+        ),
     )
     parser.add_argument(
         "--knowledge-graph-lod",

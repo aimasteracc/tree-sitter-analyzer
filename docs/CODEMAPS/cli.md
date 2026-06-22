@@ -102,7 +102,7 @@ Categories of CLI surface:
 - `--codegraph-complexity-heatmap` — cyclomatic complexity heatmap
 - `--codegraph-sitemap` — hierarchical project code map
 - `--codegraph-visualize` — Mermaid flowchart export, or Graphology/Sigma.js JSON with `--codegraph-visualize-format sigma`
-- `--knowledge-graph-export` — Graphology/Sigma.js JSON, standalone HTML viewer, raw JSON, or summary export of code files, Markdown docs, symbols, and relationships with `--knowledge-graph-lod package|file|symbol|docs`
+- `--knowledge-graph-export` — Graphology/Sigma.js JSON, standalone HTML viewer, Mermaid UML, raw JSON, or summary export of code files, Markdown docs, symbols, and relationships with `--knowledge-graph-lod package|file|symbol|docs`
 - `--uml class|package|component|sequence` — UML-style Mermaid diagram export
 - `--code-similarity` — AST-structural clone detection
 - `--pr-review diff|staged|branch|pr` — AST diff + semantic classify +

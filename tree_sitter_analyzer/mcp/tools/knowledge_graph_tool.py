@@ -11,7 +11,7 @@ from ...knowledge_graph import (
     KnowledgeGraphBuilder,
     LadybugKnowledgeGraphStore,
 )
-from ...knowledge_graph.exporters import summarize, to_graphology
+from ...knowledge_graph.exporters import summarize, to_graphology, to_mermaid_uml
 from ...knowledge_graph.html_viewer import to_html_viewer
 from ...knowledge_graph.stores import LadybugUnavailableError
 from ..utils.format_helper import apply_toon_format_to_response
@@ -19,8 +19,9 @@ from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
 
 _BACKENDS = {"json", "ladybug", "hybrid"}
-_EXPORT_FORMATS = {"graphology", "html", "raw", "summary"}
+_EXPORT_FORMATS = {"graphology", "html", "raw", "summary", "uml"}
 _LOD_LEVELS = {"package", "file", "symbol", "docs"}
+_UML_KINDS = {"class", "package", "component"}
 
 
 class CodeGraphKnowledgeIndexTool(BaseMCPTool):
@@ -200,7 +201,13 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
                     "type": "string",
                     "enum": sorted(_EXPORT_FORMATS),
                     "default": "graphology",
-                    "description": "graphology=Sigma.js JSON, html=standalone browser viewer, raw=full sidecar, summary=compact stats",
+                    "description": "graphology=Sigma.js JSON, html=standalone browser viewer, uml=Mermaid, raw=full sidecar, summary=compact stats",
+                },
+                "uml_kind": {
+                    "type": "string",
+                    "enum": sorted(_UML_KINDS),
+                    "default": "component",
+                    "description": "Mermaid UML view when export_format=uml: class, package, or component",
                 },
                 "lod": {
                     "type": "string",
@@ -235,11 +242,14 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
         export_format = arguments.get("export_format", "graphology")
         if export_format not in _EXPORT_FORMATS:
             raise ValueError(
-                "export_format must be one of: graphology, html, raw, summary"
+                "export_format must be one of: graphology, html, raw, summary, uml"
             )
         lod = arguments.get("lod", "file")
         if lod not in _LOD_LEVELS:
             raise ValueError("lod must be one of: package, file, symbol, docs")
+        uml_kind = arguments.get("uml_kind", "component")
+        if uml_kind not in _UML_KINDS:
+            raise ValueError("uml_kind must be one of: class, component, package")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -281,6 +291,17 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
                 html=to_html_viewer(graph),
                 graph=summarize(snapshot),
                 export_stats=graph.get("stats", {}),
+            )
+        elif export_format == "uml":
+            response = build_response(
+                verdict="INFO",
+                graph=to_mermaid_uml(
+                    snapshot,
+                    diagram=arguments.get("uml_kind", "component"),
+                    focus=arguments.get("focus") or None,
+                    max_nodes=int(arguments.get("max_nodes", 10_000)),
+                    max_edges=int(arguments.get("max_edges", 50_000)),
+                ),
             )
         else:
             response = build_response(
