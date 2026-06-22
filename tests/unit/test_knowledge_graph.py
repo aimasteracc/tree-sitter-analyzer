@@ -35,6 +35,7 @@ from tree_sitter_analyzer.knowledge_graph.exporters import (
     summarize,
     to_graphology,
 )
+from tree_sitter_analyzer.knowledge_graph.html_viewer import to_html_viewer
 from tree_sitter_analyzer.knowledge_graph.stores import LadybugUnavailableError
 from tree_sitter_analyzer.mcp.tools.knowledge_graph_tool import (
     CodeGraphKnowledgeGraphTool,
@@ -388,6 +389,34 @@ def test_graphology_export_supports_package_focus_and_empty_graph() -> None:
     assert summarize(snapshot)["topology"] == {"node_kinds": {}, "edge_kinds": {}}
 
 
+def test_html_viewer_embeds_graphology_payload_safely() -> None:
+    graph = {
+        "attributes": {"name": "A </script> graph", "lod": "file"},
+        "nodes": [
+            {
+                "key": "file:a.py",
+                "attributes": {
+                    "label": "a.py",
+                    "kind": "file",
+                    "x": 0,
+                    "y": 0,
+                },
+            }
+        ],
+        "edges": [],
+        "stats": {"export_node_count": 1, "export_edge_count": 0},
+    }
+
+    html = to_html_viewer(graph)
+
+    assert html.startswith("<!doctype html>")
+    assert '<canvas id="graph-canvas"></canvas>' in html
+    assert "TSA Knowledge Graph" in html
+    assert "A &lt;/script&gt; graph" in html
+    assert "<\\/script>" in html
+    assert "file:a.py" in html
+
+
 def test_ladybug_store_reports_missing_optional_dependency(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -653,6 +682,44 @@ async def test_knowledge_graph_tool_exports_raw_and_summary(tmp_path: Path) -> N
 
     assert raw["graph"]["schema"] == "tsa.knowledge_graph.v1"
     assert summary["graph"]["topology"] == {"node_kinds": {}, "edge_kinds": {}}
+
+
+@pytest.mark.asyncio
+async def test_knowledge_graph_tool_exports_html_viewer(tmp_path: Path) -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="doc:README.md", kind="markdown", label="README.md"),
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py"),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:doc",
+                source="doc:README.md",
+                target="file:a.py",
+                kind="doc_links",
+            )
+        ],
+        stats={"node_count": 2, "edge_count": 1},
+    )
+    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
+
+    result = await tool.execute(
+        {
+            "export_format": "html",
+            "lod": "docs",
+            "max_nodes": 5,
+            "max_edges": 5,
+            "output_format": "json",
+        }
+    )
+
+    assert result["success"] is True
+    assert result["html"].startswith("<!doctype html>")
+    assert "graph-canvas" in result["html"]
+    assert result["graph"]["schema"] == "tsa.knowledge_graph.v1"
+    assert result["export_stats"]["export_node_count"] == 2
+    assert result["export_stats"]["export_edge_count"] == 1
 
 
 def test_compact_sync_report_drops_per_file_payloads() -> None:

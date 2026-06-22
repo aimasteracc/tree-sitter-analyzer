@@ -228,12 +228,12 @@ def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help=(
             "Export the whole-project code+docs knowledge graph for Sigma.js/"
-            "Graphology, raw JSON, or compact summaries."
+            "Graphology, standalone HTML viewer, raw JSON, or compact summaries."
         ),
     )
     parser.add_argument(
         "--knowledge-graph-export-format",
-        choices=["graphology", "raw", "summary"],
+        choices=["graphology", "html", "raw", "summary"],
         default="graphology",
         help="Export format for --knowledge-graph-export (default: graphology)",
     )

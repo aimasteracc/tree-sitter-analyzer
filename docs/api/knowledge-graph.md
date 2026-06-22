@@ -50,7 +50,9 @@ kinds), and `doc_links` from Markdown file references.
 ## Visualization
 
 `--knowledge-graph-export-format graphology` emits Graphology-compatible JSON
-with deterministic positions and node styling, suitable for Sigma.js or an
-Obsidian-like browser graph. Use `--knowledge-graph-lod package|file|symbol|docs`
-to control level of detail and `--knowledge-graph-focus TEXT` for focused
-subgraphs.
+with deterministic positions and node styling, suitable for Sigma.js or another
+programmatic viewer. `--knowledge-graph-export-format html` emits a standalone
+canvas viewer for people: pan/zoom, search, kind filters, node details, Markdown
+doc links, file relationships, and code edges all use the same capped LOD
+payload. Use `--knowledge-graph-lod package|file|symbol|docs` to control level
+of detail and `--knowledge-graph-focus TEXT` for focused subgraphs.
