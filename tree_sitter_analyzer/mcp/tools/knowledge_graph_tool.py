@@ -18,10 +18,10 @@ from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
 
-_BACKENDS = {"json", "ladybug", "hybrid"}
+_BACKENDS = {"auto", "json", "ladybug", "hybrid"}
 _EXPORT_FORMATS = {"graphology", "html", "raw", "summary", "uml"}
 _LOD_LEVELS = {"package", "file", "symbol", "docs"}
-_UML_KINDS = {"class", "package", "component"}
+_UML_KINDS = {"class", "package", "component", "sequence"}
 
 
 class CodeGraphKnowledgeIndexTool(BaseMCPTool):
@@ -58,8 +58,8 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
                 "backend": {
                     "type": "string",
                     "enum": sorted(_BACKENDS),
-                    "default": "json",
-                    "description": "json sidecar, ladybug mirror, or hybrid both",
+                    "default": "auto",
+                    "description": "auto writes LadybugDB when available plus JSON fallback; json, ladybug, or hybrid force a backend",
                 },
                 "max_files": {
                     "type": "integer",
@@ -68,13 +68,13 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
                 },
                 "max_nodes": {
                     "type": "integer",
-                    "default": 100000,
-                    "description": "Max nodes to materialize into the sidecar/export",
+                    "default": 0,
+                    "description": "Max nodes to materialize; 0 means no materialization cap",
                 },
                 "max_edges": {
                     "type": "integer",
-                    "default": 500000,
-                    "description": "Max edges to materialize into the sidecar/export",
+                    "default": 0,
+                    "description": "Max edges to materialize; 0 means no materialization cap",
                 },
                 "include_docs": {
                     "type": "boolean",
@@ -94,9 +94,9 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
         mode = arguments.get("mode", "update")
         if mode not in {"build", "update", "status"}:
             raise ValueError("mode must be one of: build, update, status")
-        backend = arguments.get("backend", "json")
+        backend = arguments.get("backend", "auto")
         if backend not in _BACKENDS:
-            raise ValueError("backend must be one of: json, ladybug, hybrid")
+            raise ValueError("backend must be one of: auto, json, ladybug, hybrid")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -109,9 +109,12 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
             )
 
         mode = arguments.get("mode", "update")
-        backend = arguments.get("backend", "json")
+        backend = arguments.get("backend", "auto")
         json_store = JsonKnowledgeGraphStore(str(self.project_root))
         ladybug_store = LadybugKnowledgeGraphStore(str(self.project_root))
+        effective_backend = backend
+        if backend == "auto":
+            effective_backend = "hybrid" if ladybug_store.available() else "json"
         if mode == "status":
             response = build_response(
                 verdict="INFO",
@@ -126,15 +129,33 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
             mode=mode,
             max_files=int(arguments.get("max_files", 20_000)),
         )
+        if (
+            mode == "update"
+            and not _sync_has_changes(sync_report)
+            and _stores_ready(effective_backend, json_store, ladybug_store)
+        ):
+            snapshot = _snapshot_from_payload(json_store.read())
+            response = build_response(
+                verdict="INFO",
+                mode=mode,
+                backend=backend,
+                effective_backend=effective_backend,
+                sync=sync_report,
+                graph=summarize(snapshot),
+                writes={},
+                skipped_write_reason="no indexed file changes",
+            )
+            return apply_toon_format_to_response(response, output_format)
+
         snapshot = KnowledgeGraphBuilder(str(self.project_root)).build(
             include_docs=bool(arguments.get("include_docs", True)),
-            max_nodes=int(arguments.get("max_nodes", 100_000)),
-            max_edges=int(arguments.get("max_edges", 500_000)),
+            max_nodes=int(arguments.get("max_nodes", 0)),
+            max_edges=int(arguments.get("max_edges", 0)),
         )
         writes: dict[str, Any] = {}
-        if backend in {"json", "hybrid"}:
+        if effective_backend in {"json", "hybrid"}:
             writes["json"] = json_store.write(snapshot)
-        if backend in {"ladybug", "hybrid"}:
+        if effective_backend in {"ladybug", "hybrid"}:
             try:
                 writes["ladybug"] = ladybug_store.write(snapshot)
             except LadybugUnavailableError as exc:
@@ -147,6 +168,7 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
             verdict="INFO",
             mode=mode,
             backend=backend,
+            effective_backend=effective_backend,
             sync=sync_report,
             graph=summarize(snapshot),
             writes=writes,
@@ -207,7 +229,7 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
                     "type": "string",
                     "enum": sorted(_UML_KINDS),
                     "default": "component",
-                    "description": "Mermaid UML view when export_format=uml: class, package, or component",
+                    "description": "Mermaid UML view when export_format=uml: class, package, component, or sequence",
                 },
                 "lod": {
                     "type": "string",
@@ -249,7 +271,9 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
             raise ValueError("lod must be one of: package, file, symbol, docs")
         uml_kind = arguments.get("uml_kind", "component")
         if uml_kind not in _UML_KINDS:
-            raise ValueError("uml_kind must be one of: class, component, package")
+            raise ValueError(
+                "uml_kind must be one of: class, component, package, sequence"
+            )
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -347,5 +371,24 @@ def _compact_sync_report(report: dict[str, Any]) -> dict[str, Any]:
     return {
         key: value
         for key, value in report.items()
-        if key not in {"details", "updated", "deleted", "new"}
+        if key not in {"details", "files", "updated", "deleted", "new"}
     }
+
+
+def _sync_has_changes(report: dict[str, Any]) -> bool:
+    return any(
+        int(report.get(key, 0) or 0)
+        for key in ("new_files", "updated_files", "deleted_files")
+    )
+
+
+def _stores_ready(
+    backend: str,
+    json_store: JsonKnowledgeGraphStore,
+    ladybug_store: LadybugKnowledgeGraphStore,
+) -> bool:
+    if backend in {"json", "hybrid"} and not json_store.exists():
+        return False
+    if backend in {"ladybug", "hybrid"} and not ladybug_store.exists():
+        return False
+    return True

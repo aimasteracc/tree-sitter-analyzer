@@ -47,6 +47,18 @@ def test_mermaid_uml_export_supports_component_package_and_class_views() -> None
                 label="BaseService",
                 file_path="lib/util.py",
             ),
+            KnowledgeNode(
+                id="src/app.py:main:10",
+                kind="function",
+                label="main",
+                file_path="src/app.py",
+            ),
+            KnowledgeNode(
+                id="lib/util.py:helper:20",
+                kind="function",
+                label="helper",
+                file_path="lib/util.py",
+            ),
         ],
         edges=[
             KnowledgeEdge(
@@ -61,13 +73,21 @@ def test_mermaid_uml_export_supports_component_package_and_class_views() -> None
                 target="lib/util.py:BaseService:1",
                 kind="extends",
             ),
+            KnowledgeEdge(
+                id="edge:calls",
+                source="src/app.py:main:10",
+                target="lib/util.py:helper:20",
+                kind="calls",
+                metadata={"callee_name": "helper"},
+            ),
         ],
-        stats={"node_count": 6, "edge_count": 2},
+        stats={"node_count": 8, "edge_count": 3},
     )
 
     component = to_mermaid_uml(snapshot, diagram="component")
     package = to_mermaid_uml(snapshot, diagram="package")
     class_view = to_mermaid_uml(snapshot, diagram="class")
+    sequence = to_mermaid_uml(snapshot, diagram="sequence")
 
     assert component["syntax"] == "mermaid"
     assert component["diagram"] == "component"
@@ -76,13 +96,20 @@ def test_mermaid_uml_export_supports_component_package_and_class_views() -> None
     assert component["stats"]["export_edge_count"] == 1
     assert package["diagram"] == "package"
     assert package["stats"]["export_node_count"] == 2
-    assert package["stats"]["export_edge_count"] == 2
+    assert package["stats"]["export_edge_count"] == 3
     assert class_view["mermaid"].splitlines()[0] == "classDiagram"
     assert " <|-- " in class_view["mermaid"]
     assert class_view["stats"]["export_node_count"] == 2
     assert class_view["stats"]["export_edge_count"] == 1
+    assert sequence["diagram"] == "sequence"
+    assert sequence["mermaid"].splitlines()[0] == "sequenceDiagram"
+    assert "participant" in sequence["mermaid"]
+    assert "->>+" in sequence["mermaid"]
+    assert ": helper" in sequence["mermaid"]
+    assert sequence["stats"]["export_node_count"] == 2
+    assert sequence["stats"]["export_edge_count"] == 1
     with pytest.raises(ValueError, match="diagram"):
-        to_mermaid_uml(snapshot, diagram="sequence")
+        to_mermaid_uml(snapshot, diagram="state")
 
 
 def test_mermaid_uml_class_view_covers_focus_and_relation_variants() -> None:
@@ -130,11 +157,85 @@ def test_mermaid_uml_class_view_covers_focus_and_relation_variants() -> None:
     assert capped["stats"]["export_truncated"] is True
 
 
+def test_mermaid_sequence_view_covers_focus_missing_nodes_and_caps() -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(
+                id="src/app.py:main:1",
+                kind="function",
+                label="main",
+                file_path="src/app.py",
+            ),
+            KnowledgeNode(
+                id="src/app.py:helper:4",
+                kind="function",
+                label="helper",
+                file_path="src/app.py",
+            ),
+            KnowledgeNode(
+                id="src/app.py:worker:8",
+                kind="function",
+                label="worker",
+                file_path="",
+            ),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:missing",
+                source="src/app.py:missing:0",
+                target="src/app.py:main:1",
+                kind="calls",
+            ),
+            KnowledgeEdge(
+                id="edge:helper",
+                source="src/app.py:main:1",
+                target="src/app.py:helper:4",
+                kind="calls",
+                line=2,
+                metadata={"callee_name": 'say "hi"'},
+            ),
+            KnowledgeEdge(
+                id="edge:worker",
+                source="src/app.py:helper:4",
+                target="src/app.py:worker:8",
+                kind="calls",
+                line=3,
+            ),
+        ],
+        stats={"node_count": 3, "edge_count": 3},
+    )
+
+    focused = to_mermaid_uml(
+        snapshot,
+        diagram="sequence",
+        focus="main",
+        max_nodes=2,
+        max_edges=1,
+    )
+
+    assert focused["stats"]["export_node_count"] == 2
+    assert focused["stats"]["export_edge_count"] == 1
+    assert focused["stats"]["export_truncated"] is True
+    assert "say 'hi'" in focused["mermaid"]
+    assert "worker" not in focused["mermaid"]
+
+    capped_by_nodes = to_mermaid_uml(
+        snapshot,
+        diagram="sequence",
+        max_nodes=2,
+        max_edges=10,
+    )
+    full = to_mermaid_uml(snapshot, diagram="sequence", max_nodes=10, max_edges=10)
+    assert capped_by_nodes["stats"]["export_node_count"] == 2
+    assert capped_by_nodes["stats"]["export_truncated"] is True
+    assert "worker" in full["mermaid"]
+
+
 def test_knowledge_graph_tool_rejects_bad_uml_kind(tmp_path: Path) -> None:
     tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
 
     with pytest.raises(ValueError, match="uml_kind must be one of"):
-        tool.validate_arguments({"uml_kind": "sequence"})
+        tool.validate_arguments({"uml_kind": "state"})
 
 
 @pytest.mark.asyncio
@@ -148,6 +249,18 @@ async def test_knowledge_graph_tool_exports_mermaid_uml(tmp_path: Path) -> None:
                 label="src/app.py",
                 file_path="src/app.py",
             ),
+            KnowledgeNode(
+                id="src/app.py:main:1",
+                kind="function",
+                label="main",
+                file_path="src/app.py",
+            ),
+            KnowledgeNode(
+                id="src/app.py:helper:4",
+                kind="function",
+                label="helper",
+                file_path="src/app.py",
+            ),
         ],
         edges=[
             KnowledgeEdge(
@@ -155,9 +268,16 @@ async def test_knowledge_graph_tool_exports_mermaid_uml(tmp_path: Path) -> None:
                 source="package:src",
                 target="file:src/app.py",
                 kind="contains",
-            )
+            ),
+            KnowledgeEdge(
+                id="edge:calls",
+                source="src/app.py:main:1",
+                target="src/app.py:helper:4",
+                kind="calls",
+                metadata={"callee_name": "helper"},
+            ),
         ],
-        stats={"node_count": 2, "edge_count": 1},
+        stats={"node_count": 4, "edge_count": 2},
     )
     JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
     tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
@@ -178,3 +298,19 @@ async def test_knowledge_graph_tool_exports_mermaid_uml(tmp_path: Path) -> None:
     assert result["graph"]["mermaid"].splitlines()[0] == "flowchart LR"
     assert result["graph"]["stats"]["export_node_count"] == 2
     assert result["graph"]["stats"]["export_edge_count"] == 1
+
+    sequence = await tool.execute(
+        {
+            "export_format": "uml",
+            "uml_kind": "sequence",
+            "max_nodes": 5,
+            "max_edges": 5,
+            "output_format": "json",
+        }
+    )
+
+    assert sequence["success"] is True
+    assert sequence["graph"]["diagram"] == "sequence"
+    assert sequence["graph"]["mermaid"].splitlines()[0] == "sequenceDiagram"
+    assert "helper" in sequence["graph"]["mermaid"]
+    assert sequence["graph"]["stats"]["export_edge_count"] == 1

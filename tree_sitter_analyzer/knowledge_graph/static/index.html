@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TSA Graph Studio</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand"><span class="logo"></span><strong>TSA Graph Studio</strong></div>
+      <input id="command" class="command" type="search" placeholder="Search file, class, method, markdown, or paste a symbol id">
+      <div class="status"><span>backend <b id="backend">...</b></span><span>view <b id="viewCount">0 / 0</b></span></div>
+    </header>
+
+    <aside class="sidebar">
+      <section>
+        <h2>Map</h2>
+        <div class="seg" id="viewMode">
+          <button data-view="overview" class="active">Overview</button>
+          <button data-view="local">Local</button>
+        </div>
+        <div class="seg" id="lodMode">
+          <button data-lod="package">Pkg</button>
+          <button data-lod="file">File</button>
+          <button data-lod="symbol" class="active">Symbol</button>
+          <button data-lod="docs">Docs</button>
+        </div>
+        <label>Edge kind<select id="edgeKind"><option>all</option><option>calls</option><option>imports</option><option>extends</option><option>implements</option><option>doc_links</option><option>contains</option></select></label>
+        <label>Depth<input id="depth" type="range" min="1" max="4" value="1"></label>
+        <div class="actions"><button id="loadGraph">Load</button><button id="fitGraph">Fit</button></div>
+      </section>
+
+      <section>
+        <h2>Explorer</h2>
+        <div class="explorerTools">
+          <input id="fileFilter" class="fileFilter" type="search" placeholder="Filter files and docs">
+          <span id="explorerCount" class="explorerCount">0 files</span>
+        </div>
+        <div id="explorer" class="explorer"></div>
+      </section>
+
+      <section>
+        <h2>Metrics</h2>
+        <div id="metrics" class="metrics"></div>
+      </section>
+    </aside>
+
+    <main class="stage">
+      <canvas id="graph"></canvas>
+      <div class="stageHud">
+        <span id="modePill">overview</span>
+        <span id="hoverPill">hover none</span>
+      </div>
+    </main>
+
+    <aside class="inspector">
+      <section class="selection">
+        <h2>Selection</h2>
+        <h3 id="selectionTitle">No selection</h3>
+        <div class="actions"><button id="openLocal">Local graph</button><button id="copyId">Copy id</button></div>
+      </section>
+      <section id="details" class="details"><p>Select a node or choose a file.</p></section>
+    </aside>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

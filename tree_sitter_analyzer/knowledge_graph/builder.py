@@ -30,10 +30,12 @@ class KnowledgeGraphBuilder:
         *,
         include_docs: bool = True,
         doc_patterns: list[str] | None = None,
-        max_nodes: int = 100_000,
-        max_edges: int = 500_000,
+        max_nodes: int = 0,
+        max_edges: int = 0,
     ) -> KnowledgeGraphSnapshot:
         """Build a capped whole-project graph projection from persisted indexes."""
+        node_cap = _cap(max_nodes)
+        edge_cap = _cap(max_edges)
         cache = ASTCache(self.project_root)
         try:
             conn = cache.get_conn()
@@ -47,29 +49,35 @@ class KnowledgeGraphBuilder:
 
             for row in rows:
                 self._add_file_and_symbols(nodes, edges, row)
-                if len(nodes) >= max_nodes:
+                if _at_cap(len(nodes), node_cap):
                     break
 
-            edge_rows = conn.execute(
+            edge_query = (
                 "SELECT source_node_id, target_node_id, kind, line, provenance, "
                 "metadata, caller_name, callee_name, file_path, language, "
                 "callee_resolved_file FROM edges "
                 "ORDER BY kind, source_node_id, target_node_id, line "
-                "LIMIT ?",
-                (max_edges,),
-            ).fetchall()
+            )
+            if edge_cap is None:
+                edge_rows = conn.execute(edge_query).fetchall()
+            else:
+                edge_rows = conn.execute(edge_query + "LIMIT ?", (edge_cap,)).fetchall()
             for row in edge_rows:
                 self._add_existing_edge(nodes, edges, row)
-                if len(nodes) >= max_nodes or len(edges) >= max_edges:
+                if _at_cap(len(nodes), node_cap) or _at_cap(len(edges), edge_cap):
                     break
 
-            if include_docs and len(nodes) < max_nodes and len(edges) < max_edges:
+            if (
+                include_docs
+                and not _at_cap(len(nodes), node_cap)
+                and not _at_cap(len(edges), edge_cap)
+            ):
                 self._add_markdown_links(
                     nodes,
                     edges,
                     doc_patterns or list(_DEFAULT_DOC_PATTERNS),
-                    max_nodes=max_nodes,
-                    max_edges=max_edges,
+                    max_nodes=node_cap,
+                    max_edges=edge_cap,
                 )
 
             stats = {
@@ -79,7 +87,8 @@ class KnowledgeGraphBuilder:
                 "indexed_files": len(rows),
                 "node_kinds": dict(Counter(node.kind for node in nodes.values())),
                 "edge_kinds": dict(Counter(edge.kind for edge in edges.values())),
-                "truncated": len(nodes) >= max_nodes or len(edges) >= max_edges,
+                "truncated": _at_cap(len(nodes), node_cap)
+                or _at_cap(len(edges), edge_cap),
                 "max_nodes": max_nodes,
                 "max_edges": max_edges,
             }
@@ -191,11 +200,11 @@ class KnowledgeGraphBuilder:
         edges: dict[str, KnowledgeEdge],
         patterns: list[str],
         *,
-        max_nodes: int,
-        max_edges: int,
+        max_nodes: int | None,
+        max_edges: int | None,
     ) -> None:
         for md_path in _iter_markdown_files(self.project_root, patterns):
-            if len(nodes) >= max_nodes or len(edges) >= max_edges:
+            if _at_cap(len(nodes), max_nodes) or _at_cap(len(edges), max_edges):
                 return
             rel_doc = os.path.relpath(md_path, self.project_root).replace("\\", "/")
             doc_id = f"doc:{rel_doc}"
@@ -237,7 +246,7 @@ class KnowledgeGraphBuilder:
                     provenance="markdown",
                     metadata={"raw_ref": ref.path},
                 )
-                if len(edges) >= max_edges:
+                if _at_cap(len(edges), max_edges):
                     return
 
     def _add_placeholder_node(
@@ -304,6 +313,14 @@ class KnowledgeGraphBuilder:
 def _edge_id(source: str, target: str, kind: str, line: int | None) -> str:
     raw = f"{source}\0{target}\0{kind}\0{line or ''}"
     return "edge:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _cap(value: int) -> int | None:
+    return value if value > 0 else None
+
+
+def _at_cap(count: int, cap: int | None) -> bool:
+    return cap is not None and count >= cap
 
 
 def _json_obj(raw: str | None) -> dict[str, Any]:

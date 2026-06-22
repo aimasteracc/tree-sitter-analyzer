@@ -12,7 +12,18 @@ from .models import KnowledgeEdge, KnowledgeGraphSnapshot, KnowledgeNode
 _LOD_KINDS: dict[str, set[str]] = {
     "package": {"package"},
     "file": {"package", "file", "markdown"},
-    "symbol": {"package", "file", "markdown", "class", "function", "method"},
+    "symbol": {
+        "package",
+        "file",
+        "markdown",
+        "class",
+        "constant",
+        "enum",
+        "function",
+        "interface",
+        "method",
+        "symbol",
+    },
     "docs": {"file", "markdown"},
 }
 
@@ -98,10 +109,14 @@ def to_mermaid_uml(
     max_edges: int = 500,
 ) -> dict[str, Any]:
     """Return a Mermaid UML-style diagram from a knowledge graph snapshot."""
-    if diagram not in {"class", "package", "component"}:
-        raise ValueError("diagram must be one of: class, package, component")
+    if diagram not in {"class", "package", "component", "sequence"}:
+        raise ValueError("diagram must be one of: class, component, package, sequence")
     if diagram == "class":
         mermaid, node_count, edge_count, truncated = _class_diagram(
+            snapshot, focus, max_nodes, max_edges
+        )
+    elif diagram == "sequence":
+        mermaid, node_count, edge_count, truncated = _sequence_diagram(
             snapshot, focus, max_nodes, max_edges
         )
     else:
@@ -301,6 +316,60 @@ def _class_diagram(
     return "\n".join(lines), len(nodes), len(relation_edges), truncated
 
 
+def _sequence_diagram(
+    snapshot: KnowledgeGraphSnapshot,
+    focus: str | None,
+    max_nodes: int,
+    max_edges: int,
+) -> tuple[str, int, int, bool]:
+    node_by_id = {
+        node.id: node
+        for node in snapshot.nodes
+        if node.kind in {"class", "function", "interface", "method", "symbol", "file"}
+    }
+    call_edges = [edge for edge in snapshot.edges if edge.kind == "calls"]
+    if focus:
+        focused = {
+            node_id
+            for node_id, node in node_by_id.items()
+            if focus in node_id or focus in node.label or focus in node.file_path
+        }
+        call_edges = [
+            edge
+            for edge in call_edges
+            if edge.source in focused
+            or edge.target in focused
+            or focus in edge.source
+            or focus in edge.target
+        ]
+    participants: dict[str, KnowledgeNode] = {}
+    ordered_edges: list[KnowledgeEdge] = []
+    for edge in sorted(call_edges, key=lambda e: (e.source, e.line or 0, e.target)):
+        source = node_by_id.get(edge.source)
+        target = node_by_id.get(edge.target)
+        if source is None or target is None:
+            continue
+        missing = [node for node in (source, target) if node.id not in participants]
+        if len(participants) + len(missing) > max_nodes:
+            break
+        for node in missing:
+            participants[node.id] = node
+        ordered_edges.append(edge)
+        if len(ordered_edges) >= max_edges:
+            break
+    lines = ["sequenceDiagram"]
+    for node in sorted(participants.values(), key=lambda n: n.id):
+        lines.append(f"  participant {_mermaid_id(node.id)} as {_sequence_label(node)}")
+    for edge in ordered_edges:
+        source_id = _mermaid_id(edge.source)
+        target_id = _mermaid_id(edge.target)
+        message = _mermaid_label(edge.metadata.get("callee_name") or "calls")
+        lines.append(f"  {source_id}->>+{target_id}: {message}")
+        lines.append(f"  {target_id}-->>-{source_id}: return")
+    truncated = len(ordered_edges) < len(call_edges)
+    return "\n".join(lines), len(participants), len(ordered_edges), truncated
+
+
 def _flowchart_diagram(
     nodes: list[KnowledgeNode],
     edges: list[KnowledgeEdge],
@@ -327,8 +396,15 @@ def _mermaid_id(raw: str) -> str:
     return "n_" + (stem or "node") + "_" + digest
 
 
-def _mermaid_label(raw: str) -> str:
-    return raw.replace("\\", "\\\\").replace('"', "'").replace("\n", " ")[:120]
+def _mermaid_label(raw: Any) -> str:
+    return str(raw).replace("\\", "\\\\").replace('"', "'").replace("\n", " ")[:120]
+
+
+def _sequence_label(node: KnowledgeNode) -> str:
+    label = node.label or node.id
+    if node.file_path and node.file_path not in label:
+        label = f"{label}\\n{node.file_path}"
+    return '"' + _mermaid_label(label) + '"'
 
 
 def _package_by_file(nodes: list[KnowledgeNode]) -> dict[str, str]:

@@ -78,7 +78,9 @@ Categories of CLI surface:
 - `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index (default cap: 20k files)
 - `--full-index-include-activation` — opt in to temporal git activation during full-index rebuilds
 - `--incremental-sync [--incremental-sync-mode sync|changes|status]` — content-hash diff re-index (SHA-256)
-- `--knowledge-graph-index [--knowledge-graph-index-mode build|update|status]` — materialize whole-project code+docs graph sidecar; `--knowledge-graph-backend json|ladybug|hybrid`; update mode scans the full project safely
+- `--knowledge-graph-index [--knowledge-graph-index-mode build|update|status]` — materialize whole-project code+docs graph sidecar; `--knowledge-graph-backend auto|json|ladybug|hybrid` defaults to LadybugDB mirror plus JSON fallback when the graph extra is installed; update mode scans the full project safely; `--knowledge-graph-max-nodes 0 --knowledge-graph-max-edges 0` means uncapped materialization
+- `--knowledge-graph-serve` — start a local interactive browser service over the materialized knowledge graph; node clicks fetch callers/callees/imports/inheritance/doc links on demand
+- `--knowledge-graph-export --knowledge-graph-export-format uml --knowledge-graph-uml-kind class|package|component|sequence` — Mermaid UML exports from the materialized knowledge graph
 - `--codegraph-status [--codegraph-status-no-lag]` — index health at-a-glance (CodeGraph parity)
 - `--codegraph-metrics` — aggregated cache/call-graph/complexity/health dashboard
 - `--parser-readiness` — pre-flight checks

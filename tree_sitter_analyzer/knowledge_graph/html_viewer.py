@@ -25,45 +25,63 @@ def to_html_viewer(graph: dict[str, Any]) -> str:
 <style>
 :root {{
   color-scheme: light;
-  --bg: #f8fafc;
+  --bg: #f5f6f8;
   --panel: #ffffff;
-  --ink: #111827;
-  --muted: #64748b;
-  --line: #d1d5db;
-  --accent: #2563eb;
+  --panel-2: #fafafa;
+  --ink: #18181b;
+  --muted: #71717a;
+  --line: #d8d8dc;
+  --soft-line: #ececef;
+  --accent: #0f766e;
+  --accent-ink: #0f3f3a;
+  --focus: #e11d48;
 }}
 * {{ box-sizing: border-box; }}
-body {{ margin: 0; height: 100vh; overflow: hidden; font: 13px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }}
-#app {{ display: grid; grid-template-columns: 320px 1fr; height: 100vh; min-width: 0; }}
-aside {{ border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-width: 0; }}
-header {{ padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }}
-h1 {{ margin: 0 0 8px; font-size: 15px; font-weight: 650; letter-spacing: 0; }}
-.stats {{ color: var(--muted); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }}
-.controls {{ padding: 12px 14px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }}
-label {{ display: grid; gap: 4px; color: var(--muted); font-size: 12px; }}
-input, select, button {{ width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 8px 9px; background: #fff; color: var(--ink); font: inherit; }}
-button {{ cursor: pointer; background: #f1f5f9; }}
-button:hover {{ border-color: var(--accent); }}
-#details {{ padding: 12px 14px; overflow: auto; min-height: 0; }}
-#details h2 {{ margin: 0 0 8px; font-size: 14px; letter-spacing: 0; }}
-.kv {{ display: grid; grid-template-columns: 82px 1fr; gap: 5px 8px; margin-bottom: 12px; }}
+body {{ margin: 0; height: 100vh; overflow: hidden; font: 13px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }}
+#app {{ display: grid; grid-template-columns: 360px minmax(0, 1fr); height: 100vh; min-width: 0; }}
+.sidebar {{ border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-width: 0; }}
+.brand {{ padding: 18px 18px 14px; border-bottom: 1px solid var(--line); }}
+.eyebrow {{ color: var(--accent); font-size: 11px; font-weight: 700; text-transform: uppercase; }}
+h1 {{ margin: 4px 0 14px; font-size: 18px; font-weight: 720; letter-spacing: 0; }}
+.stats {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }}
+.metric {{ border: 1px solid var(--soft-line); border-radius: 8px; padding: 8px 9px; background: var(--panel-2); min-width: 0; }}
+.metric span {{ display: block; color: var(--muted); font-size: 11px; }}
+.metric b {{ display: block; margin-top: 2px; font-size: 15px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+.controls {{ padding: 14px 18px; display: grid; gap: 11px; border-bottom: 1px solid var(--line); }}
+label {{ display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 610; }}
+input, select, button {{ width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px 9px; background: #fff; color: var(--ink); font: inherit; }}
+input:focus, select:focus, button:focus {{ outline: 2px solid rgba(15, 118, 110, 0.22); border-color: var(--accent); }}
+button {{ cursor: pointer; background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 680; }}
+button:hover {{ background: var(--accent-ink); border-color: var(--accent-ink); }}
+#legend {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 13px 18px; border-bottom: 1px solid var(--line); color: var(--muted); }}
+.legend-item {{ display: flex; align-items: center; min-width: 0; gap: 7px; }}
+.dot {{ width: 10px; height: 10px; border-radius: 999px; flex: 0 0 auto; }}
+#details {{ padding: 15px 18px; overflow: auto; min-height: 0; }}
+#details h2 {{ margin: 0 0 10px; font-size: 15px; letter-spacing: 0; overflow-wrap: anywhere; }}
+#details .empty {{ color: var(--muted); margin: 0; }}
+.kv {{ display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 6px 10px; margin-bottom: 14px; }}
 .kv span:nth-child(odd) {{ color: var(--muted); }}
-.edge-list {{ display: grid; gap: 6px; }}
-.edge-list div {{ border-top: 1px solid #eef2f7; padding-top: 6px; overflow-wrap: anywhere; }}
-main {{ position: relative; min-width: 0; }}
-canvas {{ width: 100%; height: 100%; display: block; background: radial-gradient(circle at 20% 20%, #ffffff 0, #f8fafc 36%, #eef2f7 100%); }}
-#hint {{ position: absolute; left: 12px; bottom: 10px; color: var(--muted); background: rgba(255,255,255,0.88); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; pointer-events: none; }}
+.kv span:nth-child(even) {{ overflow-wrap: anywhere; }}
+.edge-list {{ display: grid; gap: 7px; }}
+.edge-list div {{ border: 1px solid var(--soft-line); border-radius: 7px; padding: 8px; overflow-wrap: anywhere; background: var(--panel-2); }}
+.stage {{ position: relative; min-width: 0; background: #f7f7f8; }}
+canvas {{ width: 100%; height: 100%; display: block; background: #f7f7f8; }}
+#topbar {{ position: absolute; left: 16px; top: 14px; right: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none; }}
+.pill {{ pointer-events: none; border: 1px solid rgba(24,24,27,0.12); border-radius: 999px; padding: 7px 10px; background: rgba(255,255,255,0.84); color: var(--muted); box-shadow: 0 8px 24px rgba(24,24,27,0.08); backdrop-filter: blur(10px); }}
+#hint {{ position: absolute; left: 16px; bottom: 14px; color: var(--muted); background: rgba(255,255,255,0.9); border: 1px solid rgba(24,24,27,0.12); border-radius: 8px; padding: 7px 10px; pointer-events: none; box-shadow: 0 8px 24px rgba(24,24,27,0.08); }}
 @media (max-width: 760px) {{
   #app {{ grid-template-columns: 1fr; grid-template-rows: 260px 1fr; }}
-  aside {{ border-right: 0; border-bottom: 1px solid var(--line); }}
+  .sidebar {{ border-right: 0; border-bottom: 1px solid var(--line); }}
   #details {{ display: none; }}
+  #topbar {{ display: none; }}
 }}
 </style>
 </head>
 <body>
 <div id="app">
-  <aside>
-    <header>
+  <aside class="sidebar">
+    <header class="brand">
+      <div class="eyebrow">Interactive code map</div>
       <h1>TSA Knowledge Graph</h1>
       <div class="stats" id="stats"></div>
     </header>
@@ -73,9 +91,14 @@ canvas {{ width: 100%; height: 100%; display: block; background: radial-gradient
       <label>Edge kind<select id="edge-kind"></select></label>
       <button id="fit" type="button">Fit</button>
     </section>
+    <section id="legend"></section>
     <section id="details"></section>
   </aside>
-  <main>
+  <main class="stage">
+    <div id="topbar">
+      <div class="pill" id="scope-pill"></div>
+      <div class="pill">pan / zoom / select</div>
+    </div>
     <canvas id="graph-canvas"></canvas>
     <div id="hint">Drag to pan. Wheel to zoom. Click a node.</div>
   </main>
@@ -90,9 +113,12 @@ const nodeKind = document.getElementById("node-kind");
 const edgeKind = document.getElementById("edge-kind");
 const details = document.getElementById("details");
 const statsBox = document.getElementById("stats");
+const legendBox = document.getElementById("legend");
+const scopePill = document.getElementById("scope-pill");
 const nodes = graph.nodes || [];
 const edges = graph.edges || [];
 const byKey = new Map(nodes.map((n) => [n.key, n]));
+const adjacency = new Map();
 let selected = null;
 let hover = null;
 let scale = 1;
@@ -103,6 +129,12 @@ let lastX = 0;
 let lastY = 0;
 
 function attr(item) {{ return item.attributes || {{}}; }}
+for (const edge of edges) {{
+  if (!adjacency.has(edge.source)) adjacency.set(edge.source, new Set());
+  if (!adjacency.has(edge.target)) adjacency.set(edge.target, new Set());
+  adjacency.get(edge.source).add(edge.target);
+  adjacency.get(edge.target).add(edge.source);
+}}
 function unique(values) {{ return ["all", ...Array.from(new Set(values.filter(Boolean))).sort()]; }}
 function fillSelect(select, values) {{
   select.innerHTML = "";
@@ -115,6 +147,8 @@ function fillSelect(select, values) {{
 }}
 fillSelect(nodeKind, unique(nodes.map((n) => attr(n).kind)));
 fillSelect(edgeKind, unique(edges.map((e) => attr(e).kind)));
+renderLegend();
+scopePill.textContent = "LOD " + ((graph.attributes || {{}}).lod || "file");
 
 function resize() {{
   const rect = canvas.getBoundingClientRect();
@@ -160,46 +194,88 @@ function fit() {{
 }}
 function draw() {{
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+  drawGrid();
   const vNodes = visibleNodes();
   const keys = new Set(vNodes.map((n) => n.key));
   const vEdges = visibleEdges(keys);
+  const selectedNeighbours = selected ? adjacency.get(selected) || new Set() : new Set();
   ctx.lineCap = "round";
   for (const e of vEdges) {{
     const s = byKey.get(e.source), t = byKey.get(e.target);
     if (!s || !t) continue;
     const [x1, y1] = worldToScreen(Number(attr(s).x || 0), Number(attr(s).y || 0));
     const [x2, y2] = worldToScreen(Number(attr(t).x || 0), Number(attr(t).y || 0));
+    const activeEdge = !selected || e.source === selected || e.target === selected;
     ctx.strokeStyle = edgeColor(attr(e).kind);
-    ctx.globalAlpha = selected && e.source !== selected && e.target !== selected ? 0.12 : 0.42;
-    ctx.lineWidth = Math.max(1, Number(attr(e).weight || 1) > 1 ? 2 : 1);
+    ctx.globalAlpha = activeEdge ? 0.52 : 0.08;
+    ctx.lineWidth = activeEdge ? Math.max(1.2, Number(attr(e).weight || 1) > 1 ? 2.2 : 1.2) : 1;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
+    if (activeEdge && scale > 0.16) drawArrowHead(x1, y1, x2, y2, edgeColor(attr(e).kind));
   }}
   ctx.globalAlpha = 1;
   for (const n of vNodes) {{
     const a = attr(n);
     const [x, y] = worldToScreen(Number(a.x || 0), Number(a.y || 0));
     const r = Math.max(3, Number(a.size || 4) * Math.sqrt(scale));
-    const active = n.key === selected || n.key === hover || matchesSearch(n);
-    ctx.fillStyle = a.color || "#64748b";
-    ctx.strokeStyle = active ? "#111827" : "#ffffff";
-    ctx.lineWidth = active ? 2.5 : 1.4;
+    const active = n.key === selected || n.key === hover || selectedNeighbours.has(n.key) || matchesSearch(n);
+    ctx.globalAlpha = selected && !active ? 0.28 : 1;
+    ctx.fillStyle = nodeColor(a.kind, a.color);
+    ctx.strokeStyle = n.key === selected ? "#e11d48" : "#ffffff";
+    ctx.lineWidth = n.key === selected ? 3 : active ? 2 : 1.4;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     if (scale > 0.55 || active) {{
-      ctx.fillStyle = "#111827";
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#18181b";
       ctx.font = active ? "600 12px system-ui" : "11px system-ui";
       ctx.fillText(String(a.label || n.key).slice(0, 80), x + r + 4, y + 4);
     }}
   }}
+  ctx.globalAlpha = 1;
   updateStats(vNodes.length, vEdges.length);
 }}
+function drawGrid() {{
+  ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+  const step = Math.max(32, Math.min(96, 52 * scale));
+  ctx.strokeStyle = "rgba(24,24,27,0.055)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = (offsetX % step); x < canvas.clientWidth; x += step) {{
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.clientHeight);
+  }}
+  for (let y = (offsetY % step); y < canvas.clientHeight; y += step) {{
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.clientWidth, y);
+  }}
+  ctx.stroke();
+}}
+function drawArrowHead(x1, y1, x2, y2, color) {{
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const len = 7;
+  ctx.save();
+  ctx.translate(x2, y2);
+  ctx.rotate(angle);
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-len, -len * 0.45);
+  ctx.lineTo(-len, len * 0.45);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}}
 function edgeColor(kind) {{
-  return {{calls: "#dc2626", imports: "#2563eb", extends: "#7c3aed", implements: "#7c3aed", doc_links: "#d97706", contains: "#94a3b8"}}[kind] || "#64748b";
+  return {{calls: "#dc2626", imports: "#2563eb", extends: "#7c3aed", implements: "#7c3aed", doc_links: "#d97706", contains: "#a1a1aa"}}[kind] || "#64748b";
+}}
+function nodeColor(kind, fallback) {{
+  return {{package: "#2563eb", markdown: "#d97706", file: "#0f766e", class: "#7c3aed", method: "#dc2626", function: "#dc2626", symbol: "#64748b"}}[kind] || fallback || "#64748b";
 }}
 function matchesSearch(n) {{
   const q = search.value.trim().toLowerCase();
@@ -221,11 +297,14 @@ function pick(clientX, clientY) {{
 }}
 function showDetails(node) {{
   if (!node) {{
-    details.innerHTML = "<h2>No selection</h2>";
+    details.innerHTML = '<h2>No selection</h2><p class="empty">Select a node to inspect file, symbol, doc, and relationship details.</p>';
     return;
   }}
   const a = attr(node);
-  const related = edges.filter((e) => e.source === node.key || e.target === node.key).slice(0, 40);
+  const allRelated = edges.filter((e) => e.source === node.key || e.target === node.key);
+  const incoming = allRelated.filter((e) => e.target === node.key).length;
+  const outgoing = allRelated.filter((e) => e.source === node.key).length;
+  const related = allRelated.slice(0, 40);
   const relatedHtml = related.map((e) =>
     "<div><b>" + escapeText(attr(e).kind || "") + "</b><br>" +
     escapeText(e.source) + " -> " + escapeText(e.target) + "</div>"
@@ -235,6 +314,8 @@ function showDetails(node) {{
     '<div class="kv"><span>kind</span><span>' + escapeText(a.kind || "") +
     "</span><span>path</span><span>" + escapeText(a.file_path || "") +
     "</span><span>language</span><span>" + escapeText(a.language || "") +
+    "</span><span>incoming</span><span>" + incoming +
+    "</span><span>outgoing</span><span>" + outgoing +
     '</span></div><div class="edge-list">' + relatedHtml + "</div>";
 }}
 function escapeText(value) {{
@@ -243,12 +324,24 @@ function escapeText(value) {{
 function updateStats(nodeCount, edgeCount) {{
   const s = graph.stats || {{}};
   const attributes = graph.attributes || {{}};
+  const materializedNodes = s.node_count || nodes.length;
+  const materializedEdges = s.edge_count || edges.length;
+  const exportNodes = s.export_node_count || nodes.length;
+  const exportEdges = s.export_edge_count || edges.length;
   statsBox.innerHTML =
-    "<span>nodes</span><b>" + nodeCount + "/" + (s.export_node_count || nodes.length) +
-    "</b><span>edges</span><b>" + edgeCount + "/" + (s.export_edge_count || edges.length) +
-    "</b><span>lod</span><b>" + escapeText(attributes.lod || "") +
-    "</b><span>truncated</span><b>" + (attributes.truncated ? "yes" : "no") +
-    "</b>";
+    metric("visible nodes", nodeCount + "/" + exportNodes) +
+    metric("visible edges", edgeCount + "/" + exportEdges) +
+    metric("materialized", materializedNodes + " / " + materializedEdges) +
+    metric("viewer capped", attributes.truncated ? "yes" : "no");
+}}
+function metric(label, value) {{
+  return '<div class="metric"><span>' + escapeText(label) + '</span><b>' + escapeText(value) + '</b></div>';
+}}
+function renderLegend() {{
+  const kinds = unique(nodes.map((n) => attr(n).kind)).filter((k) => k !== "all").slice(0, 8);
+  legendBox.innerHTML = kinds.map((kind) =>
+    '<div class="legend-item"><span class="dot" style="background:' + nodeColor(kind) + '"></span><span>' + escapeText(kind) + '</span></div>'
+  ).join("");
 }}
 canvas.addEventListener("mousedown", (e) => {{ dragging = true; lastX = e.clientX; lastY = e.clientY; }});
 window.addEventListener("mouseup", () => {{ dragging = false; }});
