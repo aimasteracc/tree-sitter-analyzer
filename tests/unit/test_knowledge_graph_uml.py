@@ -157,6 +157,74 @@ def test_mermaid_uml_class_view_covers_focus_and_relation_variants() -> None:
     assert capped["stats"]["export_truncated"] is True
 
 
+def test_mermaid_uml_class_view_keeps_placeholder_bases_and_focused_neighbors() -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(
+                id="src/app.py:Child:1",
+                kind="class",
+                label="Child",
+                file_path="src/app.py",
+            ),
+            KnowledgeNode(
+                id="class:FrameworkBase",
+                kind="symbol",
+                label="FrameworkBase",
+            ),
+            KnowledgeNode(
+                id="src/app.py:Worker:8",
+                kind="interface",
+                label="Worker",
+                file_path="src/app.py",
+            ),
+            KnowledgeNode(
+                id="src/app.py:Unrelated:20",
+                kind="class",
+                label="Unrelated",
+                file_path="src/app.py",
+            ),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:extends",
+                source="src/app.py:Child:1",
+                target="class:FrameworkBase",
+                kind="extends",
+            ),
+            KnowledgeEdge(
+                id="edge:implements",
+                source="src/app.py:Child:1",
+                target="src/app.py:Worker:8",
+                kind="implements",
+            ),
+            KnowledgeEdge(
+                id="edge:unfocused",
+                source="src/app.py:Unrelated:20",
+                target="src/app.py:Worker:8",
+                kind="references",
+            ),
+            KnowledgeEdge(
+                id="edge:non-uml",
+                source="src/app.py:Child:1",
+                target="src/app.py:Worker:8",
+                kind="calls",
+            ),
+        ],
+        stats={"node_count": 4, "edge_count": 4},
+    )
+
+    focused = to_mermaid_uml(snapshot, diagram="class", focus="Child")
+
+    assert "n_Child_" in focused["mermaid"]
+    assert "n_FrameworkBase_" in focused["mermaid"]
+    assert "n_Worker_" in focused["mermaid"]
+    assert "src_app_py_Child" not in focused["mermaid"]
+    assert " <|-- " in focused["mermaid"]
+    assert " <|.. " in focused["mermaid"]
+    assert focused["stats"]["export_node_count"] == 3
+    assert focused["stats"]["export_edge_count"] == 2
+
+
 def test_mermaid_sequence_view_covers_focus_missing_nodes_and_caps() -> None:
     snapshot = KnowledgeGraphSnapshot(
         nodes=[
@@ -314,3 +382,42 @@ async def test_knowledge_graph_tool_exports_mermaid_uml(tmp_path: Path) -> None:
     assert sequence["graph"]["mermaid"].splitlines()[0] == "sequenceDiagram"
     assert "helper" in sequence["graph"]["mermaid"]
     assert sequence["graph"]["stats"]["export_edge_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_knowledge_graph_tool_uses_uml_sized_default_caps(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[KnowledgeNode(id="file:src/app.py", kind="file", label="src/app.py")],
+        edges=[],
+        stats={"node_count": 1, "edge_count": 0},
+    )
+    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    captured: dict[str, object] = {}
+
+    def _fake_to_mermaid_uml(
+        snapshot: KnowledgeGraphSnapshot,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "schema": "tsa.knowledge_graph.uml.v1",
+            "syntax": "mermaid",
+            "diagram": kwargs["diagram"],
+            "mermaid": "flowchart LR",
+            "stats": {"export_node_count": 1, "export_edge_count": 0},
+        }
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_tool.to_mermaid_uml",
+        _fake_to_mermaid_uml,
+    )
+    tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
+
+    result = await tool.execute({"export_format": "uml", "output_format": "json"})
+
+    assert result["success"] is True
+    assert captured["max_nodes"] == 200
+    assert captured["max_edges"] == 500

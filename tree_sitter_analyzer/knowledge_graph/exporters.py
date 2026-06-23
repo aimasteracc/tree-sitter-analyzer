@@ -26,6 +26,9 @@ _LOD_KINDS: dict[str, set[str]] = {
     },
     "docs": {"file", "markdown"},
 }
+_CLASS_UML_RELATION_KINDS = {"extends", "implements", "references", "imports"}
+_UML_DEFAULT_MAX_NODES = 200
+_UML_DEFAULT_MAX_EDGES = 500
 
 
 def to_graphology(
@@ -105,8 +108,8 @@ def to_mermaid_uml(
     *,
     diagram: str = "component",
     focus: str | None = None,
-    max_nodes: int = 200,
-    max_edges: int = 500,
+    max_nodes: int = _UML_DEFAULT_MAX_NODES,
+    max_edges: int = _UML_DEFAULT_MAX_EDGES,
 ) -> dict[str, Any]:
     """Return a Mermaid UML-style diagram from a knowledge graph snapshot."""
     if diagram not in {"class", "package", "component", "sequence"}:
@@ -273,16 +276,22 @@ def _class_diagram(
     max_nodes: int,
     max_edges: int,
 ) -> tuple[str, int, int, bool]:
-    node_by_id = {
-        node.id: node
-        for node in snapshot.nodes
-        if node.kind in {"class", "interface", "enum"}
-    }
+    node_by_id = {node.id: node for node in snapshot.nodes if _is_class_uml_node(node)}
     if focus:
-        node_by_id = {
-            node_id: node
+        focused = {
+            node_id
             for node_id, node in node_by_id.items()
             if focus in node_id or focus in node.label or focus in node.file_path
+        }
+        expanded = set(focused)
+        for edge in snapshot.edges:
+            if edge.kind not in _CLASS_UML_RELATION_KINDS:
+                continue
+            if edge.source in focused or edge.target in focused:
+                expanded.add(edge.source)
+                expanded.add(edge.target)
+        node_by_id = {
+            node_id: node_by_id[node_id] for node_id in expanded & set(node_by_id)
         }
     all_nodes = sorted(node_by_id.values(), key=lambda n: n.id)
     nodes = all_nodes[:max_nodes]
@@ -292,18 +301,19 @@ def _class_diagram(
         for edge in snapshot.edges
         if edge.source in kept
         and edge.target in kept
-        and edge.kind in {"extends", "implements", "references", "imports"}
+        and edge.kind in _CLASS_UML_RELATION_KINDS
     ]
     relation_edges = all_relation_edges[:max_edges]
+    class_ids = {node.id: _mermaid_class_id(node) for node in nodes}
     lines = ["classDiagram"]
     for node in nodes:
-        class_id = _mermaid_id(node.id)
+        class_id = class_ids[node.id]
         lines.append(f"  class {class_id}")
         if node.kind in {"interface", "enum"}:
             lines.append(f"  <<{node.kind}>> {class_id}")
     for edge in relation_edges:
-        source = _mermaid_id(edge.source)
-        target = _mermaid_id(edge.target)
+        source = class_ids[edge.source]
+        target = class_ids[edge.target]
         if edge.kind == "extends":
             lines.append(f"  {target} <|-- {source}")
         elif edge.kind == "implements":
@@ -314,6 +324,17 @@ def _class_diagram(
         relation_edges
     )
     return "\n".join(lines), len(nodes), len(relation_edges), truncated
+
+
+def _is_class_uml_node(node: KnowledgeNode) -> bool:
+    return node.kind in {"class", "interface", "enum"} or node.id.startswith("class:")
+
+
+def _mermaid_class_id(node: KnowledgeNode) -> str:
+    label = node.label or node.id.removeprefix("class:") or node.id
+    digest = hashlib.sha256(node.id.encode("utf-8")).hexdigest()[:8]
+    stem = "".join(ch if ch.isalnum() else "_" for ch in label)[-48:].strip("_")
+    return "n_" + (stem or "class") + "_" + digest
 
 
 def _sequence_diagram(

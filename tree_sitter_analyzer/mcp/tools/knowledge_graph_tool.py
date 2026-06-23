@@ -22,6 +22,8 @@ _BACKENDS = {"auto", "json", "ladybug", "hybrid"}
 _EXPORT_FORMATS = {"graphology", "html", "raw", "summary", "uml"}
 _LOD_LEVELS = {"package", "file", "symbol", "docs"}
 _UML_KINDS = {"class", "package", "component", "sequence"}
+_UML_DEFAULT_MAX_NODES = 200
+_UML_DEFAULT_MAX_EDGES = 500
 
 
 class CodeGraphKnowledgeIndexTool(BaseMCPTool):
@@ -323,8 +325,8 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
                     snapshot,
                     diagram=arguments.get("uml_kind", "component"),
                     focus=arguments.get("focus") or None,
-                    max_nodes=int(arguments.get("max_nodes", 10_000)),
-                    max_edges=int(arguments.get("max_edges", 50_000)),
+                    max_nodes=int(arguments.get("max_nodes", _UML_DEFAULT_MAX_NODES)),
+                    max_edges=int(arguments.get("max_edges", _UML_DEFAULT_MAX_EDGES)),
                 ),
             )
         else:
