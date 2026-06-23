@@ -906,16 +906,23 @@ def test_prepare_reason_and_ready_error_paths(
     index_path.write_bytes(b"sqlite")
     ladybug_path = Path(LadybugKnowledgeGraphStore(str(tmp_path)).path)
     ladybug_path.write_bytes(b"ladybug")
-    os.utime(index_path, ns=(30, 30))
-    os.utime(ast_cache / "knowledge-graph.json", ns=(10, 10))
-    os.utime(ladybug_path, ns=(40, 40))
+
+    mtimes = {
+        str(index_path): 30,
+        str(ast_cache / "knowledge-graph.json"): 10,
+        str(ladybug_path): 40,
+    }
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.server._mtime_ns",
+        lambda path: mtimes.get(path),
+    )
     assert _prepare_reason(str(tmp_path)) == "json sidecar older than SQLite index"
 
-    os.utime(ast_cache / "knowledge-graph.json", ns=(50, 50))
-    os.utime(ladybug_path, ns=(20, 20))
+    mtimes[str(ast_cache / "knowledge-graph.json")] = 50
+    mtimes[str(ladybug_path)] = 20
     assert _prepare_reason(str(tmp_path)) == "LadybugDB mirror older than SQLite index"
 
-    os.utime(ladybug_path, ns=(60, 60))
+    mtimes[str(ladybug_path)] = 60
     assert _prepare_reason(str(tmp_path)) == ""
 
     class FailingKnowledgeIndexTool:
