@@ -96,12 +96,12 @@ def test_file_health_result_marks_healthy_files_as_no_action() -> None:
         "src/healthy.py", health, [], "/tmp/healthy.py", None
     )
 
+    # RFC-0018 Part 3: a no-op action omits the empty command fields
+    # (``mcp_command``/``cli_command``/``post_edit_commands``) — they carry
+    # zero agent signal and cost tokens on every healthy-file response.
     assert result["agent_next_action"] == {
         "priority": "none",
         "reason": "file is healthy enough; no immediate refactor needed",
-        "mcp_command": "",
-        "cli_command": "",
-        "post_edit_commands": [],
     }
     # M10 (round-26): file_health's top-level ``verdict`` mirrors into
     # ``agent_summary`` via ``mirror_summary_line``. Grade A → SAFE.
@@ -576,5 +576,10 @@ def test_file_health_empty_file(tmp_path) -> None:
     assert "empty" in result["recommendation"].lower()
     # The follow-up actions must be no-ops — agents must not chain refactor
     # commands on a 0-byte file.
-    assert result["agent_next_action"]["mcp_command"] == ""
-    assert result["agent_next_action"]["post_edit_commands"] == []
+    # RFC-0018 Part 3: the no-op action omits empty command fields rather
+    # than ship ``mcp_command:""`` / ``post_edit_commands:[]`` (zero signal).
+    # The no-op intent is now pinned by their ABSENCE + priority "none".
+    assert result["agent_next_action"]["priority"] == "none"
+    assert "mcp_command" not in result["agent_next_action"]
+    assert "cli_command" not in result["agent_next_action"]
+    assert "post_edit_commands" not in result["agent_next_action"]
