@@ -70,9 +70,21 @@ class TestHealthScorer:
         for r in results:
             assert 0 <= r.total <= 100
 
-    def test_score_project_includes_reported_source_extensions(self, scorer, tmp_path):
+    def test_score_project_includes_reported_source_extensions(
+        self, scorer, monkeypatch, tmp_path
+    ):
         """Project scoring should include all configured reportable extensions."""
-        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+        from tree_sitter_analyzer.health_scorer import (
+            PROJECT_HEALTH_SOURCE_EXTS,
+            HealthScore,
+        )
+
+        def fake_score_file_with_cache(file_path, _cache):
+            return HealthScore(file_path=file_path, total=100.0, dimensions={})
+
+        monkeypatch.setattr(
+            scorer, "_score_file_with_cache", fake_score_file_with_cache
+        )
 
         for idx, ext in enumerate(sorted(PROJECT_HEALTH_SOURCE_EXTS)):
             path = tmp_path / f"sample{idx}{ext}"
@@ -81,14 +93,14 @@ class TestHealthScorer:
         unknown = tmp_path / "ignored.log"
         unknown.write_text("x = 1\n")
 
-        results = scorer.score_project(str(tmp_path))
+        results = scorer.score_project(str(tmp_path), use_cache=False)
         names = {Path(result.file_path).name for result in results}
         included = {
             f"sample{idx}{ext}"
             for idx, ext in enumerate(sorted(PROJECT_HEALTH_SOURCE_EXTS))
         }
 
-        assert names >= included
+        assert names == included
         assert "ignored.log" not in names
 
     def test_score_project_respects_custom_source_extensions(self, tmp_path):
@@ -771,6 +783,34 @@ class TestScoreComplexityExtractorPath:
         f = self._write(tmp_path, "script.py", py_src)
 
         assert score_complexity(f, py_src, "python") == 83.2
+
+    def test_top_level_script_parse_failure_returns_neutral(
+        self, monkeypatch, tmp_path
+    ):
+        """If script-level complexity cannot parse, score stays neutral."""
+        from tree_sitter_analyzer import complexity_heatmap, health_scorer
+        from tree_sitter_analyzer.health_scorer import score_complexity
+
+        monkeypatch.setattr(complexity_heatmap, "analyze_file_complexity", lambda *_: [])
+        monkeypatch.setattr(health_scorer, "_file_level_complexity", lambda *_: None)
+
+        f = self._write(tmp_path, "script.py", "if flag:\n    value = 1\n")
+
+        assert score_complexity(f, "if flag:\n    value = 1\n", "python") == 50.0
+
+    def test_file_level_complexity_returns_none_on_parse_failure(self, monkeypatch):
+        """Parser failures are reported as missing file-level complexity."""
+        from types import SimpleNamespace
+
+        from tree_sitter_analyzer.health_scorer import _file_level_complexity
+
+        class FailingParser:
+            def parse_file(self, _file_path, _language):
+                return SimpleNamespace(success=False, tree=None)
+
+        monkeypatch.setattr("tree_sitter_analyzer.core.parser.Parser", FailingParser)
+
+        assert _file_level_complexity("broken.py", "python") is None
 
     def test_extractor_aggregate_matches_scorer_for_multi_function_file(self, tmp_path):
         """For a Python file with >= 3 functions, score_complexity must use

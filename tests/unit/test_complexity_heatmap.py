@@ -130,6 +130,95 @@ class TestComplexityEngine:
         }
         assert funcs == {"a": 2, "b": 3}
 
+    def test_complexity_span_keys_reject_missing_lines(self):
+        from tree_sitter_analyzer.complexity_heatmap import (
+            _complexity_key,
+            _span_name_key,
+        )
+
+        assert _complexity_key(None, 4, "fn", "body") is None
+        assert _complexity_key(1, None, "fn", "body") is None
+        assert _span_name_key(None, 4, "fn") is None
+        assert _span_name_key(1, None, "fn") is None
+
+    def test_extractor_complexity_by_span_handles_missing_plugin(self, monkeypatch):
+        from tree_sitter_analyzer.complexity_heatmap import (
+            _extractor_complexity_by_span,
+        )
+
+        class MissingPluginManager:
+            def get_plugin(self, _language):
+                return None
+
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.plugins.manager.PluginManager",
+            MissingPluginManager,
+        )
+
+        assert _extractor_complexity_by_span(None, "", "unknown") == ({}, {})
+
+    def test_extractor_complexity_by_span_handles_extractor_failure(
+        self, monkeypatch
+    ):
+        from tree_sitter_analyzer.complexity_heatmap import (
+            _extractor_complexity_by_span,
+        )
+
+        class BrokenExtractor:
+            def extract_functions(self, _tree, _source):
+                raise RuntimeError("boom")
+
+        class BrokenPlugin:
+            def create_extractor(self):
+                return BrokenExtractor()
+
+        class BrokenPluginManager:
+            def get_plugin(self, _language):
+                return BrokenPlugin()
+
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.plugins.manager.PluginManager",
+            BrokenPluginManager,
+        )
+
+        assert _extractor_complexity_by_span(None, "", "python") == ({}, {})
+
+    def test_extractor_complexity_by_span_skips_incomplete_metadata(
+        self, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        from tree_sitter_analyzer.complexity_heatmap import (
+            _extractor_complexity_by_span,
+        )
+
+        incomplete = SimpleNamespace(
+            start_line=None,
+            end_line=3,
+            name="missing_start",
+            raw_text="def missing_start(): pass",
+            complexity_score=7,
+        )
+
+        class IncompleteExtractor:
+            def extract_functions(self, _tree, _source):
+                return [incomplete]
+
+        class IncompletePlugin:
+            def create_extractor(self):
+                return IncompleteExtractor()
+
+        class IncompletePluginManager:
+            def get_plugin(self, _language):
+                return IncompletePlugin()
+
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.plugins.manager.PluginManager",
+            IncompletePluginManager,
+        )
+
+        assert _extractor_complexity_by_span(None, "", "python") == ({}, {})
+
     def test_risk_bands(self):
         from tree_sitter_analyzer.complexity_heatmap import _risk_band
 
