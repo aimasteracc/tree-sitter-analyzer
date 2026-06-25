@@ -50,13 +50,27 @@ jobs:
        github.event.issue.pull_request != null &&
        contains(github.event.comment.body, '@claude review'))
     runs-on: ubuntu-latest
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN_PRESENT: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
     steps:
       - name: Check out PR head
+        if: env.CLAUDE_CODE_OAUTH_TOKEN_PRESENT == 'true'
         uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
+      - name: Skip Claude review when auth is not configured
+        if: env.CLAUDE_CODE_OAUTH_TOKEN_PRESENT != 'true'
+        run: |
+          {
+            echo "### Claude PR Review skipped"
+            echo
+            echo "CLAUDE_CODE_OAUTH_TOKEN is not configured for this repository."
+            echo "Add the repo secret to enable automated Claude PR reviews."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Claude review
+        if: env.CLAUDE_CODE_OAUTH_TOKEN_PRESENT == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           # Subscription auth: token from `claude setup-token`, stored as

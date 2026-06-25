@@ -120,9 +120,12 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--knowledge-graph-backend",
-        choices=["json", "ladybug", "hybrid"],
-        default="json",
-        help="Persistence backend for --knowledge-graph-index (default: json)",
+        choices=["auto", "json", "ladybug", "hybrid"],
+        default="auto",
+        help=(
+            "Persistence backend for --knowledge-graph-index "
+            "(default: auto; writes LadybugDB when installed plus JSON fallback)"
+        ),
     )
     parser.add_argument(
         "--knowledge-graph-max-files",
@@ -136,19 +139,50 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--knowledge-graph-max-nodes",
         type=int,
-        default=100_000,
-        help="Max nodes to materialize into the knowledge graph (default: 100000)",
+        default=0,
+        help=(
+            "Max nodes to materialize into the knowledge graph; 0 means no cap "
+            "(default: 0)"
+        ),
     )
     parser.add_argument(
         "--knowledge-graph-max-edges",
         type=int,
-        default=500_000,
-        help="Max edges to materialize into the knowledge graph (default: 500000)",
+        default=0,
+        help=(
+            "Max edges to materialize into the knowledge graph; 0 means no cap "
+            "(default: 0)"
+        ),
     )
     parser.add_argument(
         "--knowledge-graph-no-docs",
         action="store_true",
         help="Skip Markdown doc link extraction during --knowledge-graph-index",
+    )
+    parser.add_argument(
+        "--knowledge-graph-serve",
+        action="store_true",
+        help=(
+            "Start a local interactive knowledge graph service. The browser "
+            "view loads callers, callees, imports, inheritance, and doc links "
+            "on demand from the materialized graph sidecar."
+        ),
+    )
+    parser.add_argument(
+        "--knowledge-graph-host",
+        default="127.0.0.1",
+        help="Host for --knowledge-graph-serve (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--knowledge-graph-port",
+        type=int,
+        default=8765,
+        help="Port for --knowledge-graph-serve (default: 8765)",
+    )
+    parser.add_argument(
+        "--knowledge-graph-no-browser",
+        action="store_true",
+        help="Do not open a browser automatically for --knowledge-graph-serve",
     )
 
 

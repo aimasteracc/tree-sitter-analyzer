@@ -81,12 +81,21 @@ def _incremental_sync_payload(args: Any, output_format: str) -> dict[str, Any]:
 def _knowledge_graph_index_payload(args: Any, output_format: str) -> dict[str, Any]:
     return {
         "mode": getattr(args, "knowledge_graph_index_mode", "update") or "update",
-        "backend": getattr(args, "knowledge_graph_backend", "json") or "json",
+        "backend": getattr(args, "knowledge_graph_backend", "auto") or "auto",
         "max_files": int(getattr(args, "knowledge_graph_max_files", 1_000_000)),
-        "max_nodes": int(getattr(args, "knowledge_graph_max_nodes", 100_000)),
-        "max_edges": int(getattr(args, "knowledge_graph_max_edges", 500_000)),
+        "max_nodes": int(getattr(args, "knowledge_graph_max_nodes", 0)),
+        "max_edges": int(getattr(args, "knowledge_graph_max_edges", 0)),
         "include_docs": not bool(getattr(args, "knowledge_graph_no_docs", False)),
         "output_format": output_format,
+    }
+
+
+def _knowledge_graph_serve_payload(args: Any) -> dict[str, Any]:
+    return {
+        "project_root": _project_root(args),
+        "host": getattr(args, "knowledge_graph_host", "127.0.0.1") or "127.0.0.1",
+        "port": int(getattr(args, "knowledge_graph_port", 8765)),
+        "open_browser": not bool(getattr(args, "knowledge_graph_no_browser", False)),
     }
 
 
@@ -180,6 +189,25 @@ def run_knowledge_graph_index(args: Any, output_error: OutputErrorFn) -> int:
 
     _print(result, output_format)
     return _exit_code_for(result)
+
+
+def run_knowledge_graph_serve(args: Any, output_error: OutputErrorFn) -> int:
+    """Dispatch ``--knowledge-graph-serve`` → local HTTP service."""
+    try:
+        from ...knowledge_graph.server import serve_knowledge_graph
+    except Exception as exc:  # pragma: no cover  # noqa: BLE001
+        output_error(f"--knowledge-graph-serve failed to import service: {exc}")
+        return 1
+
+    payload = _knowledge_graph_serve_payload(args)
+    try:
+        serve_knowledge_graph(**payload)
+    except KeyboardInterrupt:
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        output_error(f"--knowledge-graph-serve failed: {exc}")
+        return 1
+    return 0
 
 
 def run_codegraph_metrics(args: Any, output_error: OutputErrorFn) -> int:
