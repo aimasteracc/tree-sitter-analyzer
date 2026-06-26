@@ -24,54 +24,130 @@ def to_html_viewer(graph: dict[str, Any]) -> str:
 <title>{title}</title>
 <style>
 :root {{
-  color-scheme: light;
-  --bg: #f5f6f8;
-  --panel: #ffffff;
-  --panel-2: #fafafa;
-  --ink: #18181b;
-  --muted: #71717a;
-  --line: #d8d8dc;
-  --soft-line: #ececef;
-  --accent: #0f766e;
-  --accent-ink: #0f3f3a;
-  --focus: #e11d48;
+  color-scheme: dark;
+  --bg: #060910;
+  --panel: rgba(15, 22, 32, 0.84);
+  --panel-solid: #0f1622;
+  --panel-soft: rgba(20, 30, 44, 0.8);
+  --ink: #eff2f8;
+  --muted: #92a1b8;
+  --line: rgba(130, 154, 178, 0.3);
+  --line-soft: rgba(130, 154, 178, 0.15);
+  --accent: #33d39a;
+  --accent-weak: rgba(51, 211, 154, 0.22);
+  --hot: #ff6a83;
+  --radius: 12px;
+  --shadow-soft: 0 16px 44px rgba(4, 8, 18, 0.45);
 }}
 * {{ box-sizing: border-box; }}
-body {{ margin: 0; height: 100vh; overflow: hidden; font: 13px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }}
+body {{
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  font: 13px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 16% 9%, rgba(66, 188, 255, 0.16), transparent 35%),
+    radial-gradient(circle at 78% 79%, rgba(159, 142, 255, 0.14), transparent 42%),
+    radial-gradient(circle at 46% 48%, rgba(51, 211, 154, 0.14), transparent 56%),
+    var(--bg);
+}}
 #app {{ display: grid; grid-template-columns: 360px minmax(0, 1fr); height: 100vh; min-width: 0; }}
-.sidebar {{ border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-width: 0; }}
-.brand {{ padding: 18px 18px 14px; border-bottom: 1px solid var(--line); }}
-.eyebrow {{ color: var(--accent); font-size: 11px; font-weight: 700; text-transform: uppercase; }}
+.sidebar {{
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  backdrop-filter: blur(8px);
+}}
+.brand {{
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+}}
+.eyebrow {{ color: var(--accent); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }}
 h1 {{ margin: 4px 0 14px; font-size: 18px; font-weight: 720; letter-spacing: 0; }}
 .stats {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }}
-.metric {{ border: 1px solid var(--soft-line); border-radius: 8px; padding: 8px 9px; background: var(--panel-2); min-width: 0; }}
+.metric {{
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 9px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+  min-width: 0;
+}}
 .metric span {{ display: block; color: var(--muted); font-size: 11px; }}
 .metric b {{ display: block; margin-top: 2px; font-size: 15px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-.controls {{ padding: 14px 18px; display: grid; gap: 11px; border-bottom: 1px solid var(--line); }}
+section {{
+  margin: 10px 12px;
+  padding: 13px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: linear-gradient(170deg, rgba(17, 23, 34, 0.8), rgba(13, 18, 27, 0.7));
+  box-shadow: var(--shadow-soft);
+}}
+.controls {{ padding: 14px 0 0; display: grid; gap: 11px; border-bottom: 1px solid var(--line); }}
 label {{ display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 610; }}
-input, select, button {{ width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px 9px; background: #fff; color: var(--ink); font: inherit; }}
-input:focus, select:focus, button:focus {{ outline: 2px solid rgba(15, 118, 110, 0.22); border-color: var(--accent); }}
-button {{ cursor: pointer; background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 680; }}
-button:hover {{ background: var(--accent-ink); border-color: var(--accent-ink); }}
-#legend {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 13px 18px; border-bottom: 1px solid var(--line); color: var(--muted); }}
+input, select {{
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 9px;
+  background: rgba(7, 11, 18, 0.86);
+  color: var(--ink);
+  font: inherit;
+}}
+input:focus, select:focus, button:focus-visible {{ outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }}
+button {{
+  cursor: pointer;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01));
+  color: var(--ink);
+  font-weight: 680;
+  transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+}}
+button:hover {{ background: var(--accent); color: #041018; border-color: var(--accent); box-shadow: 0 10px 24px rgba(51, 211, 154, 0.32); transform: translateY(-1px); }}
+#legend {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 13px 0; border-bottom: 1px solid var(--line); color: var(--muted); }}
 .legend-item {{ display: flex; align-items: center; min-width: 0; gap: 7px; }}
 .dot {{ width: 10px; height: 10px; border-radius: 999px; flex: 0 0 auto; }}
-#details {{ padding: 15px 18px; overflow: auto; min-height: 0; }}
+#details {{ padding: 15px 0; overflow: auto; min-height: 0; }}
 #details h2 {{ margin: 0 0 10px; font-size: 15px; letter-spacing: 0; overflow-wrap: anywhere; }}
 #details .empty {{ color: var(--muted); margin: 0; }}
 .kv {{ display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 6px 10px; margin-bottom: 14px; }}
 .kv span:nth-child(odd) {{ color: var(--muted); }}
 .kv span:nth-child(even) {{ overflow-wrap: anywhere; }}
 .edge-list {{ display: grid; gap: 7px; }}
-.edge-list div {{ border: 1px solid var(--soft-line); border-radius: 7px; padding: 8px; overflow-wrap: anywhere; background: var(--panel-2); }}
-.stage {{ position: relative; min-width: 0; background: #f7f7f8; }}
-canvas {{ width: 100%; height: 100%; display: block; background: #f7f7f8; }}
+.edge-list div {{ border: 1px solid var(--line); border-radius: 8px; padding: 8px; overflow-wrap: anywhere; background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)); }}
+.stage {{ position: relative; min-width: 0; background:
+  radial-gradient(circle at 20% 8%, rgba(56,189,248,.14), transparent 30%),
+  radial-gradient(circle at 80% 85%, rgba(159,142,255,.12), transparent 34%),
+  #080b0e;
+}}
+canvas {{
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: transparent;
+  touch-action: none;
+}}
 #topbar {{ position: absolute; left: 16px; top: 14px; right: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none; }}
-.pill {{ pointer-events: none; border: 1px solid rgba(24,24,27,0.12); border-radius: 999px; padding: 7px 10px; background: rgba(255,255,255,0.84); color: var(--muted); box-shadow: 0 8px 24px rgba(24,24,27,0.08); backdrop-filter: blur(10px); }}
-#hint {{ position: absolute; left: 16px; bottom: 14px; color: var(--muted); background: rgba(255,255,255,0.9); border: 1px solid rgba(24,24,27,0.12); border-radius: 8px; padding: 7px 10px; pointer-events: none; box-shadow: 0 8px 24px rgba(24,24,27,0.08); }}
+.pill {{
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.78);
+  color: #2e3440;
+  box-shadow: 0 8px 24px rgba(24,24,27,0.08);
+  backdrop-filter: blur(10px);
+}}
+#hint {{ position: absolute; left: 16px; bottom: 14px; color: var(--muted); background: rgba(8,12,20,0.84); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 7px 10px; pointer-events: none; }}
 @media (max-width: 760px) {{
   #app {{ grid-template-columns: 1fr; grid-template-rows: 260px 1fr; }}
   .sidebar {{ border-right: 0; border-bottom: 1px solid var(--line); }}
+  section {{ margin: 10px; }}
   #details {{ display: none; }}
   #topbar {{ display: none; }}
 }}
