@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..._language_family import language_from_path, languages_compatible
+from tree_sitter_analyzer.languages.language_family import language_from_path, languages_compatible
 from ...ast_diff import ASTDiffer
 from ...call_graph import CachedCallGraph, CallGraph
 from ...pr_url import check_gh_available, fetch_pr_diff, parse_pr_url

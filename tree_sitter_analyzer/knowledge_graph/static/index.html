@@ -11,41 +11,102 @@
   <div id="app">
     <header class="topbar">
       <div class="brand"><span class="logo"></span><strong>TSA Graph Studio</strong></div>
-      <input id="command" class="command" type="search" placeholder="Search file, class, method, markdown, or paste a symbol id">
-      <div class="status"><span>backend <b id="backend">...</b></span><span>view <b id="viewCount">0 / 0</b></span></div>
+      <input id="command" class="command" type="search" placeholder="Search file, class, method, or paste a symbol id">
+      <div class="status">
+        <span>backend <b id="backend">...</b></span>
+        <span>view <b id="viewCount">0 / 0</b></span>
+        <span id="mtimeDisplay" style="display:none">updated <b id="mtimeValue">—</b></span>
+      </div>
     </header>
 
     <aside class="sidebar">
-      <section>
-        <h2>Map</h2>
-        <div class="seg" id="viewMode">
-          <button data-view="overview" class="active">Overview</button>
-          <button data-view="local">Local</button>
+
+      <!-- Accordion: Folder Tree -->
+      <section class="accordion-section">
+        <button class="accordion-toggle" data-target="folder-tree-body">
+          <span>Folder Tree</span><span class="accordion-arrow">▾</span>
+        </button>
+        <div id="folder-tree-body" class="accordion-body">
+          <div class="explorerTools">
+            <input id="fileFilter" class="fileFilter" type="search" placeholder="Filter files…">
+            <span id="explorerCount" class="explorerCount">0 files</span>
+          </div>
+          <div class="accordion-folder-actions">
+            <button id="expandAll" class="small-btn">Expand all</button>
+            <button id="collapseAll" class="small-btn">Collapse all</button>
+          </div>
+          <div id="folder-tree" class="folder-tree"></div>
         </div>
-        <div class="seg" id="lodMode">
-          <button data-lod="package">Pkg</button>
-          <button data-lod="file">File</button>
-          <button data-lod="symbol" class="active">Symbol</button>
-          <button data-lod="docs">Docs</button>
-        </div>
-        <label>Edge kind<select id="edgeKind"><option>all</option><option>calls</option><option>imports</option><option>extends</option><option>implements</option><option>doc_links</option><option>contains</option></select></label>
-        <label>Depth<input id="depth" type="range" min="1" max="4" value="1"></label>
-        <div class="actions"><button id="loadGraph">Load</button><button id="fitGraph">Fit</button></div>
       </section>
 
-      <section>
-        <h2>Explorer</h2>
-        <div class="explorerTools">
-          <input id="fileFilter" class="fileFilter" type="search" placeholder="Filter files and docs">
-          <span id="explorerCount" class="explorerCount">0 files</span>
+      <!-- Accordion: Legend -->
+      <section class="accordion-section">
+        <button class="accordion-toggle" data-target="legend-body">
+          <span>Legend</span><span class="accordion-arrow">▾</span>
+        </button>
+        <div id="legend-body" class="accordion-body">
+          <div id="node-legend" class="legend-grid"></div>
+          <div class="legend-divider"></div>
+          <div id="edge-legend" class="legend-grid"></div>
         </div>
-        <div id="explorer" class="explorer"></div>
       </section>
 
-      <section>
-        <h2>Metrics</h2>
-        <div id="metrics" class="metrics"></div>
+      <!-- Accordion: Filters -->
+      <section class="accordion-section">
+        <button class="accordion-toggle" data-target="filters-body">
+          <span>Filters</span><span class="accordion-arrow">▾</span>
+        </button>
+        <div id="filters-body" class="accordion-body">
+          <div class="seg" id="viewMode">
+            <button data-view="overview" class="active">Overview</button>
+            <button data-view="local">Local</button>
+          </div>
+          <div class="seg" id="lodMode">
+            <button data-lod="package">Pkg</button>
+            <button data-lod="file">File</button>
+            <button data-lod="symbol" class="active">Symbol</button>
+            <button data-lod="docs">Docs</button>
+          </div>
+          <label>Edge kind<select id="edgeKind"><option>all</option><option>calls</option><option>imports</option><option>extends</option><option>implements</option><option>doc_links</option><option>contains</option></select></label>
+          <label>Depth<input id="depth" type="range" min="1" max="4" value="1"></label>
+          <div class="actions"><button id="loadGraph">Load</button><button id="fitGraph">Fit</button></div>
+          <div id="nodeTypeFilters" class="filter-checkboxes"></div>
+        </div>
       </section>
+
+      <!-- Accordion: Blast Radius -->
+      <section class="accordion-section">
+        <button class="accordion-toggle" data-target="blast-body">
+          <span>Blast Radius</span><span class="accordion-arrow">▸</span>
+        </button>
+        <div id="blast-body" class="accordion-body collapsed">
+          <label>Mode
+            <select id="blastMode">
+              <option value="downstream">Downstream</option>
+              <option value="upstream">Upstream</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+          <label>Depth <span id="blastDepthDisplay">2</span>
+            <input id="blastDepth" type="range" min="1" max="6" value="2">
+          </label>
+          <div class="actions">
+            <button id="blastHighlight">Highlight</button>
+            <button id="blastClear">Clear</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Accordion: Metrics -->
+      <section class="accordion-section">
+        <button class="accordion-toggle" data-target="metrics-body">
+          <span>Metrics</span><span class="accordion-arrow">▸</span>
+        </button>
+        <div id="metrics-body" class="accordion-body collapsed">
+          <div id="metrics" class="metrics"></div>
+        </div>
+      </section>
+
     </aside>
 
     <main class="stage">
@@ -57,14 +118,57 @@
     </main>
 
     <aside class="inspector">
+
       <section class="selection">
         <h2>Selection</h2>
         <h3 id="selectionTitle">No selection</h3>
-        <div class="actions"><button id="openLocal">Local graph</button><button id="copyId">Copy id</button></div>
+        <div class="actions">
+          <button id="openLocal">Local graph</button>
+          <button id="copyId">Copy id</button>
+        </div>
       </section>
+
       <section id="details" class="details"><p>Select a node or choose a file.</p></section>
+
+      <!-- Node Details panel (shown when a node is selected) -->
+      <section id="nodeDetails" class="node-details" style="display:none">
+        <h2>Node Details</h2>
+        <div id="nodeDetailsContent" class="kv"></div>
+        <div id="vscodeLink" class="vscode-link" style="display:none">
+          <a id="vscodeLinkAnchor" href="#" title="Open in VS Code">Open in VS Code</a>
+        </div>
+        <div id="umlPanel" class="uml-panel">
+          <div class="uml-controls">
+            <select id="umlType">
+              <option value="class">Class</option>
+              <option value="component">Component</option>
+              <option value="sequence">Sequence</option>
+            </select>
+            <button id="showUml">Show UML</button>
+            <button id="umlPopup">Popup</button>
+          </div>
+          <div id="umlContent" class="uml-content"></div>
+        </div>
+      </section>
+
     </aside>
   </div>
+
+  <!-- UML Modal -->
+  <div id="uml-modal" class="uml-modal" style="display:none">
+    <div class="uml-modal-box">
+      <div class="uml-modal-header">
+        <span id="umlModalTitle">UML Diagram</span>
+        <button id="umlModalClose" class="uml-modal-close">✕</button>
+      </div>
+      <div id="umlModalDiagram" class="uml-modal-diagram"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({startOnLoad:false, theme:'dark', maxTextSize:200000});
+  </script>
   <script src="/static/app.js"></script>
 </body>
 </html>

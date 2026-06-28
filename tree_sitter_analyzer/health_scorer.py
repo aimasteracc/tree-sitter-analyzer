@@ -18,13 +18,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ._health_scorer_helpers import (
+from .registry.health_scorer_helpers import (
     calculate_git_hotspot,
     calculate_weighted_total,
     read_source_file,
     round_available_scores,
 )
-from ._lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
+from .languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from .constants import EXCLUDE_DIRS
 from .core.parser import Parser
 
@@ -337,7 +337,7 @@ class HealthScorer:
         # Import locally to avoid a circular import at module load time —
         # _health_score_cache pulls in nothing heavy but keeps the import
         # graph one-directional.
-        from ._health_score_cache import HealthScoreCache
+        from .registry.health_score_cache import HealthScoreCache
 
         root = Path(project_root)
         cache = HealthScoreCache(str(root)) if use_cache else None

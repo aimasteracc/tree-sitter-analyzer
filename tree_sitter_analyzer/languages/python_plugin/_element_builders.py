@@ -5,13 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ..._ast_extraction import _PY_SCOPE_BODY_NODES, _python_module_constant
+from tree_sitter_analyzer.cache.extraction import _PY_SCOPE_BODY_NODES, _python_module_constant
 from ...models import Class, Function, Variable
 from ...utils import log_warning
+from ..shared.traversal import node_range
 
 
 def node_line_range(node: Any) -> tuple[int, int]:
-    return node.start_point[0] + 1, node.end_point[0] + 1
+    return node_range(node)
 
 
 def node_raw_text(node: Any, source_code: str) -> str:
@@ -42,10 +43,11 @@ def extract_class_attribute_info(node: Any, source_code: str) -> Variable | None
 
         left_part = assignment_text.split("=")[0].strip()
         attr_name, attr_type = _class_attribute_name_and_type(left_part)
+        _start, _end = node_line_range(node)
         return Variable(
             name=attr_name,
-            start_line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
+            start_line=_start,
+            end_line=_end,
             raw_text=assignment_text,
             language="python",
             variable_type=attr_type,

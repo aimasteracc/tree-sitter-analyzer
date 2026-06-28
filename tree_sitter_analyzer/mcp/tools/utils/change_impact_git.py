@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess  # nosec B404
 
-from .._graph_cache_fingerprint import _EXCLUDE_DIRS as _PROJECT_EXCLUDE_DIRS
+from tree_sitter_analyzer.cache.fingerprint import _EXCLUDE_DIRS as _PROJECT_EXCLUDE_DIRS
 
 
 def _path_is_excluded(path: str) -> bool:

@@ -8,7 +8,7 @@ from typing import Any
 from ...models import Function
 from ...utils import log_debug, log_error, log_warning
 from ...utils.tree_sitter_compat import get_node_text_safe
-from ._extractor_helpers import (
+from ._extractor import (
     DetailedFunctionBuildInput,
     FunctionBuildInput,
     _extract_decorated_function_decorators,

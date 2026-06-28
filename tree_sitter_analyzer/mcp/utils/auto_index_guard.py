@@ -127,7 +127,7 @@ def _open_cache(project_root: str) -> Any:
 def _resolve_pending_unresolved_refs(cache: Any) -> bool:
     """Attempt the resolve-only pass. Returns True on success, False if it failed."""
     try:
-        from ..._ast_cache_unresolved import pending_unresolved_count
+        from tree_sitter_analyzer.cache.unresolved import pending_unresolved_count
 
         if pending_unresolved_count(cache.get_conn()) > 0:
             cache.index_project(resolve_only=True)
@@ -139,7 +139,7 @@ def _resolve_pending_unresolved_refs(cache: Any) -> bool:
 
 def _resolution_converged(cache: Any) -> bool:
     try:
-        from ..._ast_cache_unresolved import resolution_converged
+        from tree_sitter_analyzer.cache.unresolved import resolution_converged
 
         return bool(resolution_converged(cache.get_conn()))
     except Exception:
@@ -148,7 +148,7 @@ def _resolution_converged(cache: Any) -> bool:
 
 def _mark_resolution_converged(cache: Any) -> None:
     try:
-        from ..._ast_cache_unresolved import mark_resolution_converged
+        from tree_sitter_analyzer.cache.unresolved import mark_resolution_converged
 
         mark_resolution_converged(cache.get_conn())
     except Exception:

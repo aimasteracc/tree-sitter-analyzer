@@ -12,7 +12,7 @@ from typing import Any
 
 from ...call_graph import CallGraph
 from ...utils import setup_logger
-from ._graph_cache_fingerprint import GraphFingerprint, compute_graph_fingerprint
+from tree_sitter_analyzer.cache.fingerprint import GraphFingerprint, compute_graph_fingerprint
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
 logger = setup_logger(__name__)

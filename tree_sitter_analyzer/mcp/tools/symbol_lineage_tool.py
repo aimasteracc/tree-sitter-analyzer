@@ -20,7 +20,7 @@ from ...project_graph import BlastRadius, DependencyGraph
 from ...utils import setup_logger
 from ...utils.test_detection import is_test_file as _is_test_file
 from ..utils.format_helper import apply_toon_format_to_response
-from ._graph_cache_fingerprint import (
+from tree_sitter_analyzer.cache.fingerprint import (
     GraphFingerprint,
     compute_graph_fingerprint,
     is_ast_index_stale,

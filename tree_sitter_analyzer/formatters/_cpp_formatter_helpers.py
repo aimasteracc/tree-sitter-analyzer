@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from .._legacy_table_formatter_common import (
+from .legacy.common import (
     trim_trailing_blank_lines as _trim_trailing_blank_lines,
 )
 

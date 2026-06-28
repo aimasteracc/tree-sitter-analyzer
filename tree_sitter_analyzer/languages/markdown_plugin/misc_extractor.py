@@ -3,16 +3,16 @@
 from collections.abc import Callable, Iterator
 from typing import Any
 
-from ._misc_block_extractor_helpers import (
+from ._misc_block_extractor import (
     _extract_block_quotes_process_items,
     _extract_html_blocks_process_items,
     _extract_thematic_breaks_process_items,
 )
-from ._misc_extractor_helpers import (
+from ._misc_extractor import (
     _extract_emphasis_elements_process_items,
     _extract_footnote_elements_process_items,
 )
-from ._misc_inline_extractor_helpers import (
+from ._misc_inline_extractor import (
     _extract_inline_code_spans_process_items,
     _extract_inline_html_process_items,
     _extract_strikethrough_elements_process_items,

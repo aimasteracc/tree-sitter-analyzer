@@ -19,6 +19,7 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from .shared.traversal import node_range
 from .kotlin_helpers import (
     extract_import as _extract_import_standalone,
 )
@@ -162,11 +163,12 @@ class KotlinElementExtractor(ElementExtractor):
         package_node = self._find_package_header_node(tree.root_node)
         if package_node is None:
             return packages
+        _kpkg_start, _kpkg_end = node_range(package_node)
         packages.append(
             Package(
                 name=self.current_package,
-                start_line=package_node.start_point[0] + 1,
-                end_line=package_node.end_point[0] + 1,
+                start_line=_kpkg_start,
+                end_line=_kpkg_end,
                 raw_text=self._get_node_text(package_node),
                 language="kotlin",
             )

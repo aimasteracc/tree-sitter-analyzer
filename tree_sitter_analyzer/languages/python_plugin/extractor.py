@@ -8,7 +8,7 @@ from ...plugins.base import ElementExtractor
 from ...utils import log_debug, log_error, log_warning
 from ._class_extractor_mixin import PythonClassExtractionMixin
 from ._core_extractor_mixin import PythonExtractorCoreMixin
-from ._extractor_helpers import (
+from ._extractor import (
     calculate_complexity,
     extract_class_attribute_info,
     extract_decorators_from_node,

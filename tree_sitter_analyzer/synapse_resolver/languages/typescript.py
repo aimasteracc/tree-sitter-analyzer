@@ -231,7 +231,7 @@ def _project_owns(
     file-scoped and never appear in ``global_name_table``, so they are consulted
     via ``shadow_locals`` for the CALLER file only (Codex P2 #2/#3).
     """
-    from ..._language_family import languages_compatible
+    from tree_sitter_analyzer.languages.language_family import languages_compatible
 
     if simple in ctx.shadow_locals.get(caller_file, set()):
         return True

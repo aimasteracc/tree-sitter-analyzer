@@ -19,6 +19,8 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Expression, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from ..utils.tree_sitter_compat import count_nodes_iterative
+from .shared.traversal import node_range
 
 # ---------------------------------------------------------------------------
 # Cyclomatic complexity for Scala
@@ -214,9 +216,7 @@ class ScalaElementExtractor(ElementExtractor):
         self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """Extract Scala function definitions and declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._setup(source_code)
 
         functions: list[Function] = []
 
@@ -227,9 +227,7 @@ class ScalaElementExtractor(ElementExtractor):
 
     def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
         """Extract Scala class, object, trait, enum, given, and type definitions."""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._setup(source_code)
 
         # Extract package first
         self._extract_package(tree.root_node)
@@ -244,9 +242,7 @@ class ScalaElementExtractor(ElementExtractor):
         self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Variable]:
         """Extract Scala val and var definitions"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._setup(source_code)
 
         variables: list[Variable] = []
 
@@ -266,9 +262,7 @@ class ScalaElementExtractor(ElementExtractor):
 
     def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """Extract Scala imports"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._setup(source_code)
 
         imports: list[Import] = []
 
@@ -289,9 +283,7 @@ class ScalaElementExtractor(ElementExtractor):
         self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Package]:
         """Extract Scala package"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._setup(source_code)
 
         # r37dt (dogfood): mirror of kotlin r37ds — flatten nesting 6 → 3
         # via _find_package_clause_node helper.
@@ -302,11 +294,12 @@ class ScalaElementExtractor(ElementExtractor):
         package_node = self._find_package_clause_node(tree.root_node)
         if package_node is None:
             return packages
+        _pkg_start, _pkg_end = node_range(package_node)
         packages.append(
             Package(
                 name=self.current_package,
-                start_line=package_node.start_point[0] + 1,
-                end_line=package_node.end_point[0] + 1,
+                start_line=_pkg_start,
+                end_line=_pkg_end,
                 raw_text=self._get_node_text(package_node),
                 language="scala",
             )
@@ -327,9 +320,7 @@ class ScalaElementExtractor(ElementExtractor):
         self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Expression]:
         """Extract Scala block comments"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._setup(source_code)
 
         comments: list[Expression] = []
 
@@ -346,9 +337,7 @@ class ScalaElementExtractor(ElementExtractor):
         self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Expression]:
         """Extract Scala annotations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._setup(source_code)
 
         annotations: list[Expression] = []
 
@@ -360,6 +349,12 @@ class ScalaElementExtractor(ElementExtractor):
 
         log_debug(f"Extracted {len(annotations)} Scala annotations")
         return annotations
+
+    def _setup(self, source_code: str) -> None:
+        """Set source code and reset caches — called at the top of every extract_* method."""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
@@ -579,49 +574,17 @@ class ScalaElementExtractor(ElementExtractor):
         parent_class: str | None,
         results: list[Class],
     ) -> None:
-        """Emit the enum itself and each enum case as enum_member.
-
-        AST shape (tree-sitter-scala):
-            enum_definition
-              'enum'
-              identifier            ← enum name
-              class_parameters?     ← optional constructor params
-              enum_body
-                ':'
-                enum_case_definitions*
-                  'case'
-                  simple_enum_case+ / full_enum_case+  ← one or more cases
-                    identifier       ← case name
-                    extends_clause?
-
-        Each ``enum_case_definitions`` may contain multiple ``simple_enum_case``
-        children separated by commas (``case North, South, East, West``).
-        """
+        """Emit the enum itself and each enum case as enum_member."""
         enum_name = self._scala_class_like_name(node)
-        start_line = node.start_point[0] + 1
-        end_line = node.end_point[0] + 1
-        raw_text = self._get_node_text(node)
-        docstring = self._extract_docstring(node)
         superclass, interfaces = self._extract_scala_extends_clause(node)
-
-        enum_cls = Class(
-            name=enum_name,
-            start_line=start_line,
-            end_line=end_line,
-            raw_text=raw_text,
-            language="scala",
-            class_type="enum",
-            visibility=self._scala_visibility(node),
-            package_name=self.current_package,
-            docstring=docstring,
-            superclass=superclass,
-            interfaces=interfaces,
-            parent_class=parent_class,
-            modifiers=self._scala_modifiers(node),
+        results.append(
+            self._build_scala_class(
+                node, enum_name, "enum", parent_class,
+                superclass=superclass, interfaces=interfaces,
+                docstring=self._extract_docstring(node),
+            )
         )
-        results.append(enum_cls)
-
-        # Walk enum_body → enum_case_definitions → simple_enum_case
+        # Walk enum_body → enum_case_definitions → simple_enum_case / full_enum_case
         for child in node.children:
             if child.type != "enum_body":
                 continue
@@ -631,56 +594,53 @@ class ScalaElementExtractor(ElementExtractor):
                 for case_node in case_defs.children:
                     if case_node.type not in ("simple_enum_case", "full_enum_case"):
                         continue
-                    case_name = self._scala_class_like_name(case_node)
-                    case_superclass, case_interfaces = (
-                        self._extract_scala_extends_clause(case_node)
-                    )
+                    case_superclass, case_interfaces = self._extract_scala_extends_clause(case_node)
                     results.append(
-                        Class(
-                            name=case_name,
-                            start_line=case_node.start_point[0] + 1,
-                            end_line=case_node.end_point[0] + 1,
-                            raw_text=self._get_node_text(case_node),
-                            language="scala",
-                            class_type="enum_member",
-                            visibility=self._scala_visibility(case_node),
-                            package_name=self.current_package,
-                            parent_class=enum_name,
-                            superclass=case_superclass,
-                            interfaces=case_interfaces,
-                            modifiers=self._scala_modifiers(case_node),
+                        self._build_scala_class(
+                            case_node, self._scala_class_like_name(case_node),
+                            "enum_member", enum_name,
+                            superclass=case_superclass, interfaces=case_interfaces,
                         )
                     )
+
+    def _build_scala_class(
+        self,
+        node: tree_sitter.Node,
+        name: str,
+        class_type: str,
+        parent_class: str | None,
+        *,
+        superclass: str | None = None,
+        interfaces: list[str] | None = None,
+        docstring: str | None = None,
+    ) -> Class:
+        """Build a Class element from common Scala fields."""
+        start_line, end_line = node_range(node)
+        return Class(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=self._get_node_text(node),
+            language="scala",
+            class_type=class_type,
+            visibility=self._scala_visibility(node),
+            modifiers=self._scala_modifiers(node),
+            package_name=self.current_package,
+            parent_class=parent_class,
+            superclass=superclass,
+            interfaces=interfaces or [],
+            docstring=docstring,
+        )
 
     def _extract_given(
         self,
         node: tree_sitter.Node,
         parent_class: str | None,
     ) -> Class | None:
-        """Extract a ``given_definition`` as a Class with class_type='given'.
-
-        AST shape:
-            given_definition
-              'given'
-              identifier    ← name (may be absent for anonymous givens)
-              ':'
-              <type>
-              '='
-              <expr>
-        """
+        """Extract a ``given_definition`` as a Class with class_type='given'."""
         try:
-            name = self._scala_given_name(node)
-            return Class(
-                name=name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=self._get_node_text(node),
-                language="scala",
-                class_type="given",
-                visibility=self._scala_visibility(node),
-                modifiers=self._scala_modifiers(node),
-                package_name=self.current_package,
-                parent_class=parent_class,
+            return self._build_scala_class(
+                node, self._scala_given_name(node), "given", parent_class
             )
         except Exception as e:
             log_error(f"Error extracting Scala given: {e}")
@@ -691,41 +651,14 @@ class ScalaElementExtractor(ElementExtractor):
         node: tree_sitter.Node,
         parent_class: str | None,
     ) -> Class | None:
-        """Extract a ``type_definition`` as a Class with class_type='type_alias'.
-
-        AST shape:
-            type_definition
-              'type'
-              type_identifier   ← alias name
-              '='
-              <type>
-        """
+        """Extract a ``type_definition`` as a Class with class_type='type_alias'."""
         try:
             name = next(
-                (
-                    self._get_node_text(c)
-                    for c in node.children
-                    if c.type == "type_identifier"
-                ),
+                (self._get_node_text(c) for c in node.children if c.type == "type_identifier"),
                 "unknown_type",
             )
-            class_type = (
-                "type_alias"
-                if self._scala_type_has_alias_target(node)
-                else "type_member"
-            )
-            return Class(
-                name=name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=self._get_node_text(node),
-                language="scala",
-                class_type=class_type,
-                visibility=self._scala_visibility(node),
-                modifiers=self._scala_modifiers(node),
-                package_name=self.current_package,
-                parent_class=parent_class,
-            )
+            class_type = "type_alias" if self._scala_type_has_alias_target(node) else "type_member"
+            return self._build_scala_class(node, name, class_type, parent_class)
         except Exception as e:
             log_error(f"Error extracting Scala type alias: {e}")
             return None
@@ -735,21 +668,12 @@ class ScalaElementExtractor(ElementExtractor):
         node: tree_sitter.Node,
         parent_class: str | None,
     ) -> Class | None:
+        """Extract an ``extension_definition`` as a Class with class_type='extension'."""
         try:
             receiver_type = self._scala_extension_receiver_type(node)
-            suffix = receiver_type or str(node.start_point[0] + 1)
-            return Class(
-                name=f"extension[{suffix}]",
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=self._get_node_text(node),
-                language="scala",
-                class_type="extension",
-                visibility=self._scala_visibility(node),
-                modifiers=self._scala_modifiers(node),
-                package_name=self.current_package,
-                parent_class=parent_class,
-            )
+            start_line, _ = node_range(node)
+            suffix = receiver_type or str(start_line)
+            return self._build_scala_class(node, f"extension[{suffix}]", "extension", parent_class)
         except Exception as e:
             log_error(f"Error extracting Scala extension: {e}")
             return None
@@ -770,8 +694,7 @@ class ScalaElementExtractor(ElementExtractor):
         """
         try:
             name = self._scala_function_name(node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
             parameters: list[str] = []
             for child in node.children:
                 if "parameter" in child.type:
@@ -1018,18 +941,6 @@ class ScalaElementExtractor(ElementExtractor):
                 param_type = self._get_node_text(grandchild)
         return param_name, param_type
 
-    def _extract_class(self, node: tree_sitter.Node) -> Class | None:
-        """Extract class definition"""
-        return self._extract_class_like(node, "class")
-
-    def _extract_object(self, node: tree_sitter.Node) -> Class | None:
-        """Extract object definition (Scala singleton)"""
-        return self._extract_class_like(node, "object")
-
-    def _extract_trait(self, node: tree_sitter.Node) -> Class | None:
-        """Extract trait definition (Scala interface/mixin)"""
-        return self._extract_class_like(node, "trait")
-
     def _extract_scala_extends_clause(
         self, node: tree_sitter.Node
     ) -> tuple[str | None, list[str]]:
@@ -1083,41 +994,18 @@ class ScalaElementExtractor(ElementExtractor):
         return superclass, interfaces
 
     def _extract_class_like(self, node: tree_sitter.Node, kind: str) -> Class | None:
-        """Generic extraction for class/object/trait.
-
-        r37dw (dogfood): name-fallback抽到 _scala_class_like_name.
-        """
+        """Generic extraction for class/object/trait (issue #562: includes extends)."""
         try:
-            name = self._scala_class_like_name(node)
-
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # r37dw (dogfood): reuse _scala_visibility helper.
-            visibility = self._scala_visibility(node)
-            raw_text = self._get_node_text(node)
-
-            # Extract docstring
-            docstring = self._extract_docstring(node)
-
-            # Issue #562: read extends_clause to populate superclass / interfaces.
             superclass, interfaces = self._extract_scala_extends_clause(node)
-
-            return Class(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="scala",
-                class_type=kind,
-                visibility=visibility,
-                modifiers=self._scala_modifiers(node),
-                package_name=self.current_package,
-                docstring=docstring,
+            return self._build_scala_class(
+                node,
+                self._scala_class_like_name(node),
+                kind,
+                None,
                 superclass=superclass,
                 interfaces=interfaces,
+                docstring=self._extract_docstring(node),
             )
-
         except Exception as e:
             log_error(f"Error extracting Scala {kind}: {e}")
             return None
@@ -1140,8 +1028,7 @@ class ScalaElementExtractor(ElementExtractor):
             # from 7 to ≤3.
             name = self._extract_scala_variable_name(node)
 
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
 
             # r37dw (dogfood): reuse _scala_type_after_colon + _scala_visibility.
             var_type = self._scala_type_after_colon(node, "Inferred")
@@ -1219,8 +1106,7 @@ class ScalaElementExtractor(ElementExtractor):
         """Extract import declaration"""
         try:
             raw_text = self._get_node_text(node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
 
             # Parse import path
             # import_declaration -> 'import' import_expression
@@ -1247,8 +1133,7 @@ class ScalaElementExtractor(ElementExtractor):
         """Extract Scala block comment"""
         try:
             raw_text = self._get_node_text(node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
 
             # Get preview (first 50 chars)
             preview = raw_text[:50] if len(raw_text) > 50 else raw_text
@@ -1270,8 +1155,7 @@ class ScalaElementExtractor(ElementExtractor):
         """Extract Scala annotation"""
         try:
             raw_text = self._get_node_text(node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
 
             # Extract annotation name from the tree
             # annotation -> @ stable_type_identifier
@@ -1412,7 +1296,7 @@ class ScalaPlugin(LanguagePlugin):
 
         all_elements = _flatten_scala_elements(elements_dict)
         node_count = (
-            self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
+            count_nodes_iterative(tree.root_node) if tree and tree.root_node else 0
         )
         packages = elements_dict.get("packages", [])
         package = packages[0] if packages else None
@@ -1429,14 +1313,10 @@ class ScalaPlugin(LanguagePlugin):
         )
 
     def _count_tree_nodes(self, node: Any) -> int:
-        """Recursively count nodes."""
+        """Count all nodes in the subtree. Delegates to count_nodes_iterative."""
         if node is None:
             return 0
-        count = 1
-        if hasattr(node, "children"):
-            for child in node.children:
-                count += self._count_tree_nodes(child)
-        return count
+        return count_nodes_iterative(node)
 
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for Scala."""
@@ -1471,20 +1351,11 @@ class ScalaPlugin(LanguagePlugin):
 
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements."""
+        _empty: dict[str, Any] = {k: [] for k in _SCALA_ELEMENT_KEYS}
         if tree is None:
-            return {
-                "functions": [],
-                "classes": [],
-                "variables": [],
-                "imports": [],
-                "packages": [],
-                "comments": [],
-                "annotations": [],
-            }
-
+            return _empty
         try:
             extractor = self.create_extractor()
-
             return {
                 "functions": extractor.extract_functions(tree, source_code),
                 "classes": extractor.extract_classes(tree, source_code),
@@ -1494,15 +1365,6 @@ class ScalaPlugin(LanguagePlugin):
                 "comments": extractor.extract_comments(tree, source_code),  # type: ignore[attr-defined]
                 "annotations": extractor.extract_annotations(tree, source_code),
             }
-
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
-            return {
-                "functions": [],
-                "classes": [],
-                "variables": [],
-                "imports": [],
-                "packages": [],
-                "comments": [],
-                "annotations": [],
-            }
+            return _empty

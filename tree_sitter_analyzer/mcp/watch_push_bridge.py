@@ -47,7 +47,7 @@ def _drive_subscriptions(
     sync_result: dict[str, Any],
 ) -> None:
     """Re-evaluate each subscription and push deltas.  Called on the watcher thread."""
-    from .._singleton_registry import get_subscription_registry
+    from ..registry.singleton_registry import get_subscription_registry
 
     registry = get_subscription_registry()
 

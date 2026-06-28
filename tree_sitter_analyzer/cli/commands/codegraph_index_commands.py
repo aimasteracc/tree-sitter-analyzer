@@ -210,6 +210,63 @@ def run_knowledge_graph_serve(args: Any, output_error: OutputErrorFn) -> int:
     return 0
 
 
+def run_knowledge_graph_watch(args: Any) -> int:
+    """Dispatch ``--knowledge-graph-watch`` → resident watch daemon."""
+    from ...ast_cache import ASTCache
+    from ...file_watcher import FileWatcherDaemon
+    from ...knowledge_graph.builder import KnowledgeGraphBuilder
+    from ...knowledge_graph.stores import LadybugKnowledgeGraphStore
+
+    project_root = _project_root(args)
+
+    # Perform initial indexing
+    cache = ASTCache(project_root)
+    cache.index(full=False)
+    cache.close()
+
+    # Build initial knowledge graph
+    builder = KnowledgeGraphBuilder(project_root)
+    snapshot = builder.build(include_docs=True)
+    lb_store = LadybugKnowledgeGraphStore(project_root)
+    lb_store.write(snapshot)
+
+    # Define on_sync callback
+    def on_sync(sync_result: dict) -> None:
+        details = sync_result.get("details", [])
+        if not details:
+            return
+        changed = [d["file"] for d in details if d.get("considered") in ("indexed", "updated")]
+        deleted = [d["file"] for d in details if d.get("considered") == "deleted"]
+        if not changed and not deleted:
+            return
+        try:
+            for fp in deleted:
+                lb_store.delete_by_file(fp)
+            if changed:
+                for fp in changed:
+                    lb_store.delete_by_file(fp)
+                delta = builder.build_delta(changed)
+                lb_store.patch(list(delta.nodes), [], list(delta.edges), [])
+        except Exception:
+            pass
+
+    # Start daemon
+    backend = getattr(args, "knowledge_graph_watch_backend", "poll") or "poll"
+    daemon = FileWatcherDaemon(project_root=project_root, backend=backend, on_sync=on_sync)
+    daemon.start()
+    print(f"TSA knowledge graph watch started: {backend} backend", flush=True)
+    print("Press Ctrl-C to stop.", flush=True)
+
+    try:
+        import time
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        daemon.stop()
+        return 0
+    return 0
+
+
 def run_codegraph_metrics(args: Any, output_error: OutputErrorFn) -> int:
     """Dispatch ``--codegraph-metrics`` → ``codegraph_metrics`` MCP tool."""
     try:

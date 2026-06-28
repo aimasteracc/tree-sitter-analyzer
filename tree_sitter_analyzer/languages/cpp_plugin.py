@@ -21,81 +21,51 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
-from ._cpp_plugin_analysis_helpers import (
+from ._cpp_plugin_analysis import (
     cpp_analysis_error_result,
     create_cpp_parser,
     empty_cpp_analysis_result,
     load_cpp_tree_sitter_language,
 )
-from ._cpp_plugin_template_helpers import (
+from ._cpp_plugin_template import (
     extract_template_class as _extract_template_class_standalone,
 )
-from ._cpp_plugin_template_helpers import (
+from ._cpp_plugin_template import (
     extract_template_function as _extract_template_func_standalone,
 )
-from ._cpp_plugin_text_helpers import get_node_text_optimized as _get_cpp_node_text
-from .cpp_helpers import (
+from ._cpp_plugin_text import get_node_text_optimized as _get_cpp_node_text
+from ._cpp_complexity import calculate_complexity as _calc_complexity_standalone
+from ._cpp_element import (
     CppClassExtractionContext as _CppClassExtractionContext,
-)
-from .cpp_helpers import (
-    CppFieldFunctionExtractionContext as _CppFieldFunctionExtractionContext,
-)
-from .cpp_helpers import (
     CppFunctionExtractionContext as _CppFunctionExtractionContext,
-)
-from .cpp_helpers import (
-    CppTraversalState as _CppTraversalState,
-)
-from .cpp_helpers import (
-    calculate_complexity as _calc_complexity_standalone,
-)
-from .cpp_helpers import (
     determine_visibility as _determine_vis_standalone,
-)
-from .cpp_helpers import (
-    extract_base_classes as _extract_base_standalone,
-)
-from .cpp_helpers import (
-    extract_comment_for_line as _extract_comment_standalone,
-)
-from .cpp_helpers import (
     extract_cpp_class as _extract_class_standalone,
-)
-from .cpp_helpers import (
-    extract_cpp_field_declaration as _extract_cpp_field_standalone,
-)
-from .cpp_helpers import (
     extract_cpp_function as _extract_func_standalone,
-)
-from .cpp_helpers import (
-    extract_cpp_imports as _extract_imports_standalone,
-)
-from .cpp_helpers import (
-    extract_cpp_namespaces as _extract_namespaces_standalone,
-)
-from .cpp_helpers import (
-    extract_cpp_variable_declaration as _extract_cpp_var_standalone,
-)
-from .cpp_helpers import (
-    extract_function_declaration as _extract_func_decl_standalone,
-)
-from .cpp_helpers import (
-    extract_function_from_field_declaration as _extract_func_field_standalone,
-)
-from .cpp_helpers import (
-    extract_parameters as _extract_params_standalone,
-)
-from .cpp_helpers import (
     get_access_specifier as _get_access_standalone,
-)
-from .cpp_helpers import (
     is_global_scope as _is_global_standalone,
 )
-from .cpp_helpers import (
+from ._cpp_field_function import (
+    CppFieldFunctionExtractionContext as _CppFieldFunctionExtractionContext,
+    extract_function_declaration as _extract_func_decl_standalone,
+    extract_function_from_field_declaration as _extract_func_field_standalone,
+)
+from ._cpp_import_namespace import (
+    extract_cpp_imports as _extract_imports_standalone,
+    extract_cpp_namespaces as _extract_namespaces_standalone,
+)
+from ._cpp_signature import (
+    extract_comment_for_line as _extract_comment_standalone,
+    extract_parameters as _extract_params_standalone,
     parse_function_signature as _parse_sig_standalone,
 )
-from .cpp_helpers import (
+from ._cpp_traversal import (
+    CppTraversalState as _CppTraversalState,
     traverse_and_extract_iterative as _traverse_standalone,
+)
+from ._cpp_variable import (
+    extract_base_classes as _extract_base_standalone,
+    extract_cpp_field_declaration as _extract_cpp_field_standalone,
+    extract_cpp_variable_declaration as _extract_cpp_var_standalone,
 )
 
 
@@ -419,19 +389,19 @@ class CppElementExtractor(ElementExtractor):
     def _extract_include_info(
         self, node: tree_sitter.Node, source_code: str
     ) -> Import | None:
-        from .cpp_helpers import _extract_include_info as _impl
+        from ._cpp_import_namespace import _extract_include_info as _impl
 
         return _impl(node, source_code, self._get_node_text_optimized)
 
     # Extract elements from AST: _extract_includes_fallback
     def _extract_includes_fallback(self, source_code: str) -> list[Import]:
-        from .cpp_helpers import _extract_includes_fallback
+        from ._cpp_import_namespace import _extract_includes_fallback
 
         return _extract_includes_fallback(source_code)
 
     # Extract elements from AST: _extract_namespace_info
     def _extract_namespace_info(self, node: tree_sitter.Node) -> Any:
-        from .cpp_helpers import _extract_namespace_info as _impl
+        from ._cpp_import_namespace import _extract_namespace_info as _impl
 
         result = _impl(node, self._get_node_text_optimized)
         if result:

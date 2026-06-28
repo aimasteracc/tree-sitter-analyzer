@@ -1,3 +1,7 @@
+# Macky SDLC artifacts — do not commit
+threads/
+REDESIGN_PROPOSAL.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -14,9 +14,9 @@ from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import Any
 
-from ._ast_cache_graph import bfs_callees as _bfs_callees_impl
-from ._ast_cache_graph import bfs_callers as _bfs_callers_impl
-from ._ast_cache_query import (
+from .cache.graph import bfs_callees as _bfs_callees_impl
+from .cache.graph import bfs_callers as _bfs_callers_impl
+from .cache.query import (
     backfill_cross_file_edges as _backfill_cross_file_edges,
     fts_search as _fts_search,
     fts_search_ranked as _fts_search_ranked,
@@ -28,26 +28,26 @@ from ._ast_cache_query import (
     query_callees_enhanced as _query_callees_enhanced,
     search_symbols_linear as _search_symbols_linear,
 )
-from ._ast_cache_search import search_symbols_cascade as _search_symbols_cascade
-from ._ast_cache_build_state import (
+from .cache.search import search_symbols_cascade as _search_symbols_cascade
+from .cache.build_state import (
     clear_build_in_progress as _clear_build_in_progress,
     mark_build_in_progress as _mark_build_in_progress,
 )
-from ._ast_cache_callgraph_state import (
+from .cache.callgraph_state import (
     call_graph_built as _call_graph_built,
     clear_call_graph_built as _clear_call_graph_built,
     mark_call_graph_built as _mark_call_graph_built,
 )
-from ._ast_cache_helpers import (
+from .cache.helpers import (
     _build_function_entry,
     _commit_index_results,
     _make_error_entry,
     _project_index_activation_enabled,
 )
-from ._ast_cache_maintenance import (
+from .cache.maintenance import (
     reclaim_storage_after_full_rebuild as _reclaim_storage_after_full_rebuild,
 )
-from ._ast_cache_schema import (
+from .cache.schema import (
     EXPECTED_SCHEMA_VERSIONS as _EXPECTED_SCHEMA_VERSIONS,
     SQL_GET_SCHEMA_VERSION as _SQL_GET_SCHEMA_VERSION,
     apply_large_repo_indexes as _apply_large_repo_indexes,
@@ -97,7 +97,7 @@ class SchemaIntegrityError(RuntimeError):
 
 
 # Extraction helpers — re-exported for back-compat; logic lives in _ast_extraction.py.
-from ._ast_extraction import (  # noqa: E402
+from .cache.extraction import (  # noqa: E402
     _EXCLUDE_DIRS,
     _content_hash,
     _extract_symbols,  # noqa: F401 - back-compat re-export used by tests
@@ -107,7 +107,7 @@ from ._ast_extraction import (  # noqa: E402
 )
 
 # Back-compat alias imported by file_watcher.py and incremental_sync.py.
-from ._lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG  # noqa: E402
+from .languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG  # noqa: E402
 
 
 class ASTCache:
@@ -254,7 +254,7 @@ class ASTCache:
         stat: os.stat_result,
     ) -> dict[str, Any] | tuple[str, str]:
         """Return cached-response dict, or (source_code, content_hash) if stale."""
-        from . import _ast_cache_indexer as _indexer
+        from .cache import indexer as _indexer
 
         return _indexer.check_cache_or_read(
             conn, rel_path, abs_path, stat, _content_hash, _AST_CACHE_EXTRACTOR_VERSION
@@ -271,7 +271,7 @@ class ASTCache:
         content_hash: str,
     ) -> dict[str, Any]:
         """Parse a file and write all cache rows."""
-        from . import _ast_cache_indexer as _indexer
+        from .cache import indexer as _indexer
 
         return _indexer.parse_and_write(
             self,
@@ -292,7 +292,7 @@ class ASTCache:
         inserted_symbol_rows: list[dict[str, Any]],
     ) -> None:
         """Refresh ``ast_symbol_activation`` rows for a single file."""
-        from . import _ast_cache_write as _write
+        from .cache import write as _write
 
         _write.write_activation_for_file(
             conn, rel_path, inserted_symbol_rows, self.project_root
@@ -306,7 +306,7 @@ class ASTCache:
         imports: list[str] | list[dict[str, Any]],
     ) -> None:
         """Refresh ``ast_imports`` rows for ``rel_path``."""
-        from . import _ast_cache_write as _write
+        from .cache import write as _write
 
         _write.write_imports_for_file(conn, rel_path, language, imports)
 
@@ -314,13 +314,13 @@ class ASTCache:
         self, conn: sqlite3.Connection, rel_path: str
     ) -> None:
         """Resolve call edges for ``rel_path`` via Synapse."""
-        from . import _ast_cache_synapse as _synapse
+        from .cache import synapse as _synapse
 
         _synapse.resolve_call_edges_for_file(self, conn, rel_path)
 
     def _run_synapse_backfill(self) -> dict[str, int] | None:
         """Re-resolve every unresolved call edge. Returns stats dict or None."""
-        from . import _ast_cache_synapse as _synapse
+        from .cache import synapse as _synapse
 
         return _synapse.run_synapse_backfill(self, self._get_conn())
 
@@ -429,7 +429,7 @@ class ASTCache:
         language_filter: str | None = None,
     ) -> tuple[dict[str, Any], list[tuple[str, str]], int]:
         """Walk source files and partition into (stats, candidates, count)."""
-        from . import _ast_cache_indexer as _indexer
+        from .cache import indexer as _indexer
 
         return _indexer.walk_and_partition(
             self,
@@ -513,7 +513,7 @@ class ASTCache:
         # cold ensure_indexed() can skip a redundant resolve-only pass (~40 s
         # no-op) instead of blocking the first retrieval.
         try:
-            from ._ast_cache_unresolved import mark_resolution_converged
+            from .cache.unresolved import mark_resolution_converged
 
             mark_resolution_converged(self._get_conn())
         except Exception:
@@ -535,7 +535,7 @@ class ASTCache:
         self, file_paths: list[str] | None = None
     ) -> dict[str, int]:
         """Refresh unified EdgeStore rows from persisted AST cache rows."""
-        from . import _ast_cache_write as _write
+        from .cache import write as _write
 
         conn = self._get_conn()
         if file_paths is None:
@@ -574,7 +574,7 @@ class ASTCache:
 
     def _run_unresolved_refs_backfill(self) -> dict[str, int] | None:
         """Resolve persisted unresolved_refs rows into EdgeStore edges."""
-        from . import _ast_cache_unresolved as _unresolved
+        from .cache import unresolved as _unresolved
 
         return _unresolved.resolve_unresolved_refs(self._get_conn())
 
@@ -584,7 +584,7 @@ class ASTCache:
         """Dispatch parse+extract to a spawn process pool (safe on macOS/Linux)."""
         from multiprocessing import get_context
 
-        from ._ast_extraction import _init_worker_parser
+        from .cache.extraction import _init_worker_parser
 
         ctx = get_context("spawn")
         args_iter = [(p, self.project_root, lang) for p, lang in candidates]
@@ -599,7 +599,7 @@ class ASTCache:
         include_activation: bool = True,
     ) -> None:
         """Write one worker result to SQLite (main table + optional FTS5)."""
-        from . import _ast_cache_indexer as _indexer
+        from .cache import indexer as _indexer
 
         _indexer.insert_index_row(
             self,

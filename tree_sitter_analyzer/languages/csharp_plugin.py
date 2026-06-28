@@ -27,47 +27,22 @@ except ImportError:
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
-from ..utils.tree_sitter_compat import get_node_text_safe
+from ..utils.tree_sitter_compat import count_nodes_iterative, get_node_text_safe
+from .shared.traversal import collect_named_nodes, node_range
 from .csharp_helpers import (
     calculate_complexity as _calc_complexity_standalone,
-)
-from .csharp_helpers import (
     determine_visibility as _determine_vis_standalone,
-)
-from .csharp_helpers import (
     extract_attributes as _extract_attrs_standalone,
-)
-from .csharp_helpers import (
     extract_class_declaration as _extract_class_standalone,
-)
-from .csharp_helpers import (
     extract_constructor_declaration as _extract_ctor_standalone,
-)
-from .csharp_helpers import (
     extract_event_declaration as _extract_event_standalone,
-)
-from .csharp_helpers import (
     extract_field_declaration as _extract_field_standalone,
-)
-from .csharp_helpers import (
     extract_method_declaration as _extract_method_standalone,
-)
-from .csharp_helpers import (
     extract_modifiers as _extract_mods_standalone,
-)
-from .csharp_helpers import (
     extract_parameters as _extract_params_standalone,
-)
-from .csharp_helpers import (
     extract_property_declaration as _extract_prop_standalone,
-)
-from .csharp_helpers import (
     extract_type_name as _extract_type_standalone,
-)
-from .csharp_helpers import (
     extract_using_directive as _extract_using_standalone,
-)
-from .csharp_helpers import (
     find_owning_class_name as _find_owning_class_name,
 )
 
@@ -226,17 +201,14 @@ class CSharpElementExtractor(ElementExtractor):
         self._extract_namespace(tree.root_node)
 
         # Extract all class-like declarations
-        for node in self._traverse_iterative(tree.root_node):
-            if node.type in [
-                "class_declaration",
-                "interface_declaration",
-                "record_declaration",
-                "enum_declaration",
-                "struct_declaration",
-            ]:
-                class_obj = self._extract_class_declaration(node)
-                if class_obj:
-                    classes.append(class_obj)
+        for node in collect_named_nodes(
+            tree.root_node,
+            "class_declaration", "interface_declaration",
+            "record_declaration", "enum_declaration", "struct_declaration",
+        ):
+            class_obj = self._extract_class_declaration(node)
+            if class_obj:
+                classes.append(class_obj)
 
         # Sort by start line for deterministic output
         classes.sort(key=lambda c: c.start_line)
@@ -333,28 +305,19 @@ class CSharpElementExtractor(ElementExtractor):
         self._extract_namespace(tree.root_node)
 
         # Extract methods, constructors, and properties
-        for node in self._traverse_iterative(tree.root_node):
-            if node.type == "method_declaration":
-                func = self._extract_method(node)
-                if func:
-                    func.receiver_type = _find_owning_class_name(
-                        node, self._get_node_text_optimized
-                    )
-                    functions.append(func)
-            elif node.type == "constructor_declaration":
-                func = self._extract_constructor(node)
-                if func:
-                    func.receiver_type = _find_owning_class_name(
-                        node, self._get_node_text_optimized
-                    )
-                    functions.append(func)
-            elif node.type == "property_declaration":
-                func = self._extract_property(node)
-                if func:
-                    func.receiver_type = _find_owning_class_name(
-                        node, self._get_node_text_optimized
-                    )
-                    functions.append(func)
+        _func_extractors = {
+            "method_declaration": self._extract_method,
+            "constructor_declaration": self._extract_constructor,
+            "property_declaration": self._extract_property,
+        }
+        for node in collect_named_nodes(
+            tree.root_node,
+            "method_declaration", "constructor_declaration", "property_declaration",
+        ):
+            func = _func_extractors[node.type](node)
+            if func:
+                func.receiver_type = _find_owning_class_name(node, self._get_node_text_optimized)
+                functions.append(func)
 
         # Sort by start line for deterministic output
         functions.sort(key=lambda f: f.start_line)
@@ -419,14 +382,15 @@ class CSharpElementExtractor(ElementExtractor):
         if tree is None or tree.root_node is None:
             return variables
 
-        # Extract fields
-        for node in self._traverse_iterative(tree.root_node):
-            if node.type == "field_declaration":
-                vars_list = self._extract_field(node)
-                variables.extend(vars_list)
-            elif node.type == "event_field_declaration":
-                vars_list = self._extract_event(node)
-                variables.extend(vars_list)
+        # Extract fields and events
+        _var_extractors = {
+            "field_declaration": self._extract_field,
+            "event_field_declaration": self._extract_event,
+        }
+        for node in collect_named_nodes(
+            tree.root_node, "field_declaration", "event_field_declaration"
+        ):
+            variables.extend(_var_extractors[node.type](node))
 
         # Sort by start line for deterministic output
         variables.sort(key=lambda v: v.start_line)
@@ -475,11 +439,10 @@ class CSharpElementExtractor(ElementExtractor):
             return imports
 
         # Extract using directives
-        for node in self._traverse_iterative(tree.root_node):
-            if node.type == "using_directive":
-                import_obj = self._extract_using_directive(node)
-                if import_obj:
-                    imports.append(import_obj)
+        for node in collect_named_nodes(tree.root_node, "using_directive"):
+            import_obj = self._extract_using_directive(node)
+            if import_obj:
+                imports.append(import_obj)
 
         # Sort by start line for deterministic output
         imports.sort(key=lambda i: i.start_line)
@@ -515,26 +478,20 @@ class CSharpElementExtractor(ElementExtractor):
         if tree is None or tree.root_node is None:
             return packages
 
-        for node in self._traverse_iterative(tree.root_node):
-            if node.type not in (
-                "namespace_declaration",
-                "file_scoped_namespace_declaration",
-            ):
-                continue
+        for node in collect_named_nodes(
+            tree.root_node,
+            "namespace_declaration", "file_scoped_namespace_declaration",
+        ):
             name_node = node.child_by_field_name("name")
             if name_node is None:
                 continue
             ns_name = self._get_node_text_optimized(name_node)
             if not ns_name:
                 continue
+            _cns_start, _cns_end = node_range(node)
             packages.append(
-                Package(
-                    name=ns_name,
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    raw_text=ns_name,
-                    language="csharp",
-                )
+                Package(name=ns_name, start_line=_cns_start, end_line=_cns_end,
+                        raw_text=ns_name, language="csharp")
             )
         return packages
 
@@ -689,46 +646,35 @@ class CSharpPlugin(LanguagePlugin):
         """Unified extraction entry point — delegates to the extractor."""
         return self.create_extractor().extract_elements(tree, source_code)
 
+    def _make_parser(self, language: Any) -> Any:
+        """Construct a tree_sitter.Parser bound to *language* across API shapes."""
+        parser = tree_sitter.Parser()
+        if hasattr(parser, "set_language"):
+            parser.set_language(language)
+            return parser
+        if hasattr(parser, "language"):
+            parser.language = language
+            return parser
+        return tree_sitter.Parser(language)
+
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest
     ) -> AnalysisResult:
-        """
-        Analyze a C# file and extract all elements.
-
-        Args:
-            file_path: Path to the C# file to analyze
-            request: Analysis request containing file options
-
-        Returns:
-            AnalysisResult with extracted elements
-        """
+        """Analyze a C# file and extract all elements."""
         from ..encoding_utils import read_file_safe
         from ..models import AnalysisResult
 
         try:
-            source_code, encoding = read_file_safe(file_path)
-
+            source_code, _enc = read_file_safe(file_path)
             language = self.get_tree_sitter_language()
             if not language:
                 log_error("Failed to load C# language")
                 return AnalysisResult(
-                    file_path=file_path,
-                    language="csharp",
-                    elements=[],
-                    success=False,
-                    error_message="Failed to load C# language",
+                    file_path=file_path, language="csharp",
+                    elements=[], success=False, error_message="Failed to load C# language",
                 )
 
-            parser = tree_sitter.Parser()
-            if hasattr(parser, "set_language"):
-                parser.set_language(language)
-            elif hasattr(parser, "language"):
-                parser.language = language
-            else:
-                parser = tree_sitter.Parser(language)
-
-            tree = parser.parse(source_code.encode("utf-8"))
-
+            tree = self._make_parser(language).parse(source_code.encode("utf-8"))
             extractor = self.create_extractor()
             elements: list[Any] = []
             elements.extend(extractor.extract_packages(tree, source_code))
@@ -736,25 +682,16 @@ class CSharpPlugin(LanguagePlugin):
             elements.extend(extractor.extract_functions(tree, source_code))
             elements.extend(extractor.extract_variables(tree, source_code))
             elements.extend(extractor.extract_imports(tree, source_code))
-
-            node_count = sum(1 for _ in _traverse_nodes(tree.root_node))
-            line_count = len(source_code.splitlines())
-
             return AnalysisResult(
-                file_path=file_path,
-                language="csharp",
-                elements=elements,
-                node_count=node_count,
-                line_count=line_count,
+                file_path=file_path, language="csharp", elements=elements,
+                node_count=count_nodes_iterative(tree.root_node),
+                line_count=len(source_code.splitlines()),
                 source_code=source_code,
             )
 
         except Exception as e:
             log_error(f"Error analyzing C# file {file_path}: {e}")
             return AnalysisResult(
-                file_path=file_path,
-                language="csharp",
-                elements=[],
-                success=False,
-                error_message=str(e),
+                file_path=file_path, language="csharp",
+                elements=[], success=False, error_message=str(e),
             )

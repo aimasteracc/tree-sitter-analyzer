@@ -31,6 +31,7 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, CodeElement, Expression, Function, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from .shared.traversal import node_range
 
 # Import at runtime for analyze_file method
 try:
@@ -202,6 +203,25 @@ class BashElementExtractor(ElementExtractor):
 
         return functions
 
+    # Build the expression extractor dict once from the kind maps + singletons.
+    # Using dict.fromkeys(keys, value) groups all types that share a handler.
+    _EXPRESSION_EXTRACTORS: dict[str, str] = {}  # populated in __init_subclass__ below
+
+    @classmethod
+    def _build_expression_extractors(cls) -> dict[str, Any]:
+        """Return {node_type: extractor_method_name} — built lazily and cached."""
+        return {
+            **dict.fromkeys(cls._CONTROL_FLOW_KIND, "_extract_control_flow"),
+            "subshell": "_extract_subshell",
+            "array": "_extract_array",
+            "subscript": "_extract_subscript",
+            "list": "_extract_list",
+            **dict.fromkeys(cls._REDIRECT_KIND, "_extract_redirect"),
+            "process_substitution": "_extract_process_substitution",
+            "comment": "_extract_comment",
+            **dict.fromkeys(cls._STRING_PATTERN_KIND, "_extract_string_pattern"),
+        }
+
     def extract_expressions(
         self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Expression]:
@@ -209,52 +229,22 @@ class BashElementExtractor(ElementExtractor):
         self.source_code = source_code or ""
         self.content_lines = self.source_code.split("\n")
         self._reset_caches()
-
         expressions: list[Expression] = []
-
-        # Map node types to extraction methods
-        extractors = {
-            # Control flow
-            "while_statement": self._extract_control_flow,
-            "for_statement": self._extract_control_flow,
-            "c_style_for_statement": self._extract_control_flow,
-            "case_statement": self._extract_control_flow,
-            "case_item": self._extract_control_flow,
-            "elif_clause": self._extract_control_flow,
-            "do_group": self._extract_control_flow,
-            # Subshells and arrays
-            "subshell": self._extract_subshell,
-            "array": self._extract_array,
-            "subscript": self._extract_subscript,
-            "list": self._extract_list,
-            # Redirections
-            "file_redirect": self._extract_redirect,
-            "herestring_redirect": self._extract_redirect,
-            "heredoc_content": self._extract_redirect,
-            "file_descriptor": self._extract_redirect,
-            # Process substitution
-            "process_substitution": self._extract_process_substitution,
-            # Comments
-            "comment": self._extract_comment,
-            # String and pattern expressions
-            "raw_string": self._extract_string_pattern,
-            "regex": self._extract_string_pattern,
-            "brace_expression": self._extract_string_pattern,
-            "extglob_pattern": self._extract_string_pattern,
-            "special_variable_name": self._extract_string_pattern,
-            "postfix_expression": self._extract_string_pattern,
+        if tree is None or tree.root_node is None:
+            return expressions
+        # Resolve method names to bound methods at call time.
+        method_map = {
+            nt: getattr(self, mn)
+            for nt, mn in self._build_expression_extractors().items()
         }
-
-        if tree is not None and tree.root_node is not None:
-            try:
-                self._traverse_and_extract_iterative(
-                    tree.root_node, extractors, expressions, "expression"
-                )
-                log_debug(f"Extracted {len(expressions)} Bash expressions")
-            except Exception as e:
-                log_debug(f"Error during expression extraction: {e}")
-                return []
-
+        try:
+            self._traverse_and_extract_iterative(
+                tree.root_node, method_map, expressions, "expression"
+            )
+            log_debug(f"Extracted {len(expressions)} Bash expressions")
+        except Exception as e:
+            log_debug(f"Error during expression extraction: {e}")
+            return []
         return expressions
 
     def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
@@ -297,8 +287,7 @@ class BashElementExtractor(ElementExtractor):
     def _extract_variable(self, node: tree_sitter.Node) -> Variable | None:
         """Extract a Bash variable from a ``variable_assignment`` node."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
             raw_text = self._get_node_text_optimized(node)
 
             # The first child of variable_assignment is variable_name.
@@ -498,8 +487,7 @@ class BashElementExtractor(ElementExtractor):
     def _extract_function(self, node: tree_sitter.Node) -> Function | None:
         """Extract Bash function information"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
 
             # Extract function name
             name = self._extract_function_name(node)
@@ -535,77 +523,74 @@ class BashElementExtractor(ElementExtractor):
             return None
         return None
 
+    # -----------------------------------------------------------------------
+    # Node-type → expression-kind lookup tables for _make_expression
+    # -----------------------------------------------------------------------
+    _CONTROL_FLOW_KIND: dict[str, str] = {
+        "while_statement": "while_loop",
+        "for_statement": "for_loop",
+        "c_style_for_statement": "c_style_for_loop",
+        "case_statement": "case_statement",
+        "case_item": "case_item",
+        "elif_clause": "elif_clause",
+        "do_group": "do_group",
+    }
+    _REDIRECT_KIND: dict[str, str] = {
+        "file_redirect": "file_redirect",
+        "herestring_redirect": "herestring_redirect",
+        "heredoc_content": "heredoc_content",
+        "file_descriptor": "file_descriptor",
+    }
+    _STRING_PATTERN_KIND: dict[str, str] = {
+        "raw_string": "raw_string",
+        "regex": "regex",
+        "brace_expression": "brace_expression",
+        "extglob_pattern": "extglob_pattern",
+        "special_variable_name": "special_variable_name",
+        "postfix_expression": "postfix_expression",
+    }
+
+    def _make_expression(
+        self, node: tree_sitter.Node, kind: str, name: str | None = None
+    ) -> Expression:
+        """Build an Expression element for *node* with the given *kind*.
+
+        ``name`` defaults to *kind* when not provided.
+        """
+        start_line, end_line = node_range(node)
+        raw_text = self._get_node_text_optimized(node)
+        preview = raw_text[:50].replace("\n", " ") if raw_text else ""
+        return Expression(
+            name=name if name is not None else kind,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language="bash",
+            expression_kind=kind,
+            preview=preview,
+        )
+
     def _extract_control_flow(self, node: tree_sitter.Node) -> Expression | None:
-        """Extract control flow statements (while, for, case, if branches)"""
+        """Extract control flow statements (while, for, case, if branches)."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text_optimized(node)
-            preview = raw_text[:50].replace("\n", " ") if raw_text else ""
-
-            # Determine expression kind based on node type
-            kind_map = {
-                "while_statement": "while_loop",
-                "for_statement": "for_loop",
-                "c_style_for_statement": "c_style_for_loop",
-                "case_statement": "case_statement",
-                "case_item": "case_item",
-                "elif_clause": "elif_clause",
-                "do_group": "do_group",
-            }
-            expression_kind = kind_map.get(node.type, node.type)
-
-            return Expression(
-                name=expression_kind,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="bash",
-                expression_kind=expression_kind,
-                preview=preview,
-            )
+            kind = self._CONTROL_FLOW_KIND.get(node.type, node.type)
+            return self._make_expression(node, kind)
         except Exception as e:
             log_error(f"Failed to extract control flow: {e}")
             return None
 
     def _extract_subshell(self, node: tree_sitter.Node) -> Expression | None:
-        """Extract subshell expressions"""
+        """Extract subshell expressions."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text_optimized(node)
-            preview = raw_text[:50].replace("\n", " ") if raw_text else ""
-
-            return Expression(
-                name="subshell",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="bash",
-                expression_kind="subshell",
-                preview=preview,
-            )
+            return self._make_expression(node, "subshell")
         except Exception as e:
             log_error(f"Failed to extract subshell: {e}")
             return None
 
     def _extract_array(self, node: tree_sitter.Node) -> Expression | None:
-        """Extract array expressions"""
+        """Extract array expressions."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text_optimized(node)
-            preview = raw_text[:50].replace("\n", " ") if raw_text else ""
-
-            return Expression(
-                name="array",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="bash",
-                expression_kind="array",
-                preview=preview,
-            )
+            return self._make_expression(node, "array")
         except Exception as e:
             log_error(f"Failed to extract array: {e}")
             return None
@@ -613,22 +598,10 @@ class BashElementExtractor(ElementExtractor):
     def _extract_subscript(self, node: tree_sitter.Node) -> Expression | None:
         """Extract subscript/array indexing expressions.
 
-        For an array/associative assignment target (``arr[0]=x``) the base
-        variable lives under the subscript's ``name`` field (or the first
-        ``variable_name``/``word`` child). Unwrap to that base so ``name`` is
-        the variable, not the literal ``"subscript"``.
+        For an assignment target (``arr[0]=x``) unwraps to the base name.
+        A subscript read keeps the ``subscript`` label (#949 Codex P2).
         """
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text_optimized(node)
-            preview = raw_text[:50].replace("\n", " ") if raw_text else ""
-
-            # #949 Codex P2: the base-name unwrap is only correct for an
-            # assignment *target* (left side of a variable_assignment, e.g.
-            # ``arr[0]=x``). A subscript *read* (``echo ${arr[0]}``) — whose
-            # parent is an ``expansion``/command, not a variable_assignment —
-            # must keep the ``subscript`` label, not be relabeled to ``arr``.
             parent = node.parent
             name_field = (
                 parent.child_by_field_name("name")
@@ -645,69 +618,24 @@ class BashElementExtractor(ElementExtractor):
                             base = child
                             break
             name = self._get_node_text_optimized(base) if base is not None else ""
-            if not name:
-                name = "subscript"
-
-            return Expression(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="bash",
-                expression_kind="subscript",
-                preview=preview,
-            )
+            return self._make_expression(node, "subscript", name or "subscript")
         except Exception as e:
             log_error(f"Failed to extract subscript: {e}")
             return None
 
     def _extract_list(self, node: tree_sitter.Node) -> Expression | None:
-        """Extract list expressions (command lists with && or ||)"""
+        """Extract list expressions (command lists with && or ||)."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text_optimized(node)
-            preview = raw_text[:50].replace("\n", " ") if raw_text else ""
-
-            return Expression(
-                name="list",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="bash",
-                expression_kind="list",
-                preview=preview,
-            )
+            return self._make_expression(node, "list")
         except Exception as e:
             log_error(f"Failed to extract list: {e}")
             return None
 
     def _extract_redirect(self, node: tree_sitter.Node) -> Expression | None:
-        """Extract redirection expressions"""
+        """Extract redirection expressions."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text_optimized(node)
-            preview = raw_text[:50].replace("\n", " ") if raw_text else ""
-
-            # Map node types to expression kinds
-            kind_map = {
-                "file_redirect": "file_redirect",
-                "herestring_redirect": "herestring_redirect",
-                "heredoc_content": "heredoc_content",
-                "file_descriptor": "file_descriptor",
-            }
-            expression_kind = kind_map.get(node.type, node.type)
-
-            return Expression(
-                name=expression_kind,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="bash",
-                expression_kind=expression_kind,
-                preview=preview,
-            )
+            kind = self._REDIRECT_KIND.get(node.type, node.type)
+            return self._make_expression(node, kind)
         except Exception as e:
             log_error(f"Failed to extract redirect: {e}")
             return None
@@ -715,22 +643,9 @@ class BashElementExtractor(ElementExtractor):
     def _extract_process_substitution(
         self, node: tree_sitter.Node
     ) -> Expression | None:
-        """Extract process substitution expressions"""
+        """Extract process substitution expressions."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text_optimized(node)
-            preview = raw_text[:50].replace("\n", " ") if raw_text else ""
-
-            return Expression(
-                name="process_substitution",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="bash",
-                expression_kind="process_substitution",
-                preview=preview,
-            )
+            return self._make_expression(node, "process_substitution")
         except Exception as e:
             log_error(f"Failed to extract process substitution: {e}")
             return None
@@ -738,63 +653,23 @@ class BashElementExtractor(ElementExtractor):
     def _extract_comment(self, node: tree_sitter.Node) -> Expression | None:
         """Extract comment nodes, skipping shebang lines (#!).
 
-        Bug #777: tree-sitter-bash represents ``#!/usr/bin/env bash`` as a
-        ``comment`` node (the grammar treats it as a hash-prefixed line).
-        Emitting it as a code element is misleading — shebang is interpreter
-        metadata, not a symbolic comment worth indexing.  Skip any comment
-        whose text starts with ``#!``.
+        Bug #777: ``#!/usr/bin/env bash`` is a ``comment`` node in the grammar.
+        Shebang lines are interpreter metadata, not symbolic comments.
         """
         try:
             raw_text = self._get_node_text_optimized(node)
-            # Skip shebang lines.
             if raw_text.startswith("#!"):
                 return None
-
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            preview = raw_text[:50].replace("\n", " ") if raw_text else ""
-
-            return Expression(
-                name="comment",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="bash",
-                expression_kind="comment",
-                preview=preview,
-            )
+            return self._make_expression(node, "comment")
         except Exception as e:
             log_error(f"Failed to extract comment: {e}")
             return None
 
     def _extract_string_pattern(self, node: tree_sitter.Node) -> Expression | None:
-        """Extract string and pattern expressions"""
+        """Extract string and pattern expressions."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text_optimized(node)
-            preview = raw_text[:50].replace("\n", " ") if raw_text else ""
-
-            # Map node types to expression kinds
-            kind_map = {
-                "raw_string": "raw_string",
-                "regex": "regex",
-                "brace_expression": "brace_expression",
-                "extglob_pattern": "extglob_pattern",
-                "special_variable_name": "special_variable_name",
-                "postfix_expression": "postfix_expression",
-            }
-            expression_kind = kind_map.get(node.type, node.type)
-
-            return Expression(
-                name=expression_kind,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="bash",
-                expression_kind=expression_kind,
-                preview=preview,
-            )
+            kind = self._STRING_PATTERN_KIND.get(node.type, node.type)
+            return self._make_expression(node, kind)
         except Exception as e:
             log_error(f"Failed to extract string/pattern: {e}")
             return None
@@ -853,45 +728,6 @@ class BashPlugin(LanguagePlugin):
                 log_error(f"Failed to load Bash language: {e}")
                 return None
         return self._language_cache
-
-    def get_supported_queries(self) -> list[str]:
-        """Get list of supported query names for this language"""
-        return [
-            "function",
-            "variable_assignment",
-            "command",
-            "pipeline",
-            "if_statement",
-            "while_statement",
-            "for_statement",
-            "case_statement",
-        ]
-
-    def is_applicable(self, file_path: str) -> bool:
-        """Check if this plugin is applicable for the given file"""
-        return any(
-            file_path.lower().endswith(ext.lower())
-            for ext in self.get_file_extensions()
-        )
-
-    def get_plugin_info(self) -> dict[str, Any]:
-        """Get information about this plugin"""
-        return {
-            "name": "Bash Plugin",
-            "language": self.get_language_name(),
-            "extensions": self.get_file_extensions(),
-            "class_name": self.__class__.__name__,
-            "module": self.__class__.__module__,
-            "version": "1.0.0",
-            "supported_queries": self.get_supported_queries(),
-            "features": [
-                "Function definitions",
-                "Variable assignments",
-                "Control flow (if/while/for/case)",
-                "Command extraction",
-                "Pipeline detection",
-            ],
-        }
 
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest

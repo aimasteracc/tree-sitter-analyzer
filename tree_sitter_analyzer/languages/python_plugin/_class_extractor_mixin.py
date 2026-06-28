@@ -7,8 +7,9 @@ from typing import Any
 from ...models import Class, Variable
 from ...utils import log_debug, log_warning
 from ...utils.tree_sitter_compat import get_node_text_safe
+from ..shared.traversal import node_range
 from ._element_builders import extract_module_constants
-from ._extractor_helpers import (
+from ._extractor import (
     ClassBodyQueryRuntime,
     ClassBuildInput,
     _class_body_assignment_node,
@@ -161,10 +162,11 @@ class PythonClassExtractionMixin:
                 f"{self.current_module}.{name}" if self.current_module else name
             )
 
+            _start, _end = node_range(node)
             return Class(
                 name=name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=_start,
+                end_line=_end,
                 raw_text=get_node_text_safe(node, source_code),
                 language="python",
                 class_type="class",

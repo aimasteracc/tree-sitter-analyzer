@@ -12,7 +12,7 @@ from typing import Any
 import pathspec
 
 from ...utils import setup_logger
-from ._graph_cache_fingerprint import _EXCLUDE_DIRS as _PROJECT_EXCLUDE_DIRS
+from tree_sitter_analyzer.cache.fingerprint import _EXCLUDE_DIRS as _PROJECT_EXCLUDE_DIRS
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)

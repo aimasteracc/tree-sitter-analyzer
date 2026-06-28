@@ -143,9 +143,80 @@ def build_error(
     return build_response(verdict=verdict, success=False, error=error, **fields)
 
 
+def build_error_response(
+    tool_name: str,
+    error: str,
+    verdict: str = "ERROR",
+    **fields: Any,
+) -> dict[str, Any]:
+    """Construct an error envelope with ``tool_name`` included.
+
+    Args:
+        tool_name: the MCP tool name; included as ``tool`` in the envelope.
+        error: human-readable failure description.
+        verdict: usually ``"ERROR"`` (default) or ``"NOT_FOUND"``.
+        **fields: extra payload keys merged into the envelope.
+
+    Returns:
+        ``{"success": False, "verdict": <str>, "tool": <str>, "error": <str>, **fields}``
+    """
+    return build_error(error=error, verdict=verdict, tool=tool_name, **fields)
+
+
+def build_success_response(
+    tool_name: str,
+    data: dict[str, Any],
+    verdict: str = "INFO",
+    duration_ms: float | None = None,
+    **fields: Any,
+) -> dict[str, Any]:
+    """Construct a success envelope with ``tool_name`` and optional timing.
+
+    Args:
+        tool_name: the MCP tool name; included as ``tool`` in the envelope.
+        data: tool-specific payload dict, merged into the envelope.
+        verdict: canonical verdict string (default ``"INFO"``).
+        duration_ms: optional wall-clock execution time in milliseconds.
+        **fields: extra payload keys merged after ``data``.
+
+    Returns:
+        ``{"success": True, "verdict": <str>, "tool": <str>, [**data], [duration_ms?,] **fields}``
+    """
+    extra: dict[str, Any] = {"tool": tool_name, **data, **fields}
+    if duration_ms is not None:
+        extra["duration_ms"] = duration_ms
+    return build_response(verdict=verdict, **extra)
+
+
+def build_agent_summary(
+    verdict: str,
+    message: str,
+    recommendations: list[str] | None = None,
+    **fields: Any,
+) -> dict[str, Any]:
+    """Construct an agent-readable summary envelope.
+
+    Args:
+        verdict: canonical verdict string (e.g. ``"INFO"``, ``"WARN"``).
+        message: human/agent-readable summary message.
+        recommendations: optional list of actionable recommendation strings.
+        **fields: extra payload keys merged into the envelope.
+
+    Returns:
+        ``{"success": True, "verdict": <str>, "message": <str>, [recommendations?,] **fields}``
+    """
+    extra: dict[str, Any] = {"message": message, **fields}
+    if recommendations:
+        extra["recommendations"] = list(recommendations)
+    return build_response(verdict=verdict, **extra)
+
+
 __all__ = [
     "CANONICAL_VERDICTS",
     "InvalidVerdictError",
     "build_response",
     "build_error",
+    "build_error_response",
+    "build_success_response",
+    "build_agent_summary",
 ]

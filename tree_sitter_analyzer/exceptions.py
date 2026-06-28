@@ -7,7 +7,7 @@ Public facade for the exception hierarchy and handling utilities. Keep imports f
 smaller private modules.
 """
 
-from ._exceptions_core import (
+from .exceptions.core import (
     AnalysisError,
     ConfigurationError,
     FileHandlingError,
@@ -19,14 +19,14 @@ from ._exceptions_core import (
     TreeSitterAnalyzerError,
     ValidationError,
 )
-from ._exceptions_execution import (
+from .exceptions.execution import (
     create_error_response,
     handle_exception,
     handle_exceptions,
     safe_execute,
     safe_execute_async,
 )
-from ._exceptions_mcp import (
+from .exceptions.mcp import (
     MCPResourceError,
     MCPTimeoutError,
     MCPToolError,
@@ -35,7 +35,7 @@ from ._exceptions_mcp import (
     create_mcp_error_response,
     mcp_exception_handler,
 )
-from ._exceptions_security import (
+from .exceptions.security import (
     FileRestrictionError,
     PathTraversalError,
     RegexSecurityError,

@@ -17,7 +17,7 @@ import asyncio
 import urllib.parse
 from typing import Any
 
-from ..._singleton_registry import get_subscription_registry
+from tree_sitter_analyzer.registry.singleton_registry import get_subscription_registry
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool

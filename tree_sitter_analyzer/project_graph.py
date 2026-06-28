@@ -53,7 +53,7 @@ def _language_from_ext(file_path: str) -> str | None:
     silent bug (Swift/Kotlin/Ruby/PHP/C# silently dropped — fixed
     2026-05-24).
     """
-    from ._lang_extension_map import language_from_ext
+    from .languages.lang_extension_map import language_from_ext
 
     return language_from_ext(file_path)
 
@@ -407,7 +407,7 @@ class DependencyGraph:
             os.stat(project_root)
         except OSError:
             return None
-        from ._graph_cache_fingerprint import compute_graph_fingerprint
+        from .cache.fingerprint import compute_graph_fingerprint
 
         fp = compute_graph_fingerprint(project_root)
         return f"{project_root}:{fp.file_count}:{fp.max_mtime_ns}"
