@@ -151,6 +151,16 @@ repos:
         stages: [pre-commit]
         always_run: true
 
+  # T-1 gate: reject new test files with banned name patterns (CLAUDE.md §T-1).
+  - repo: local
+    hooks:
+      - id: block-banned-test-names
+        name: block-banned-test-names (T-1)
+        entry: scripts/check-test-file-names.sh
+        language: script
+        pass_filenames: false
+        stages: [pre-commit]
+
   # Block local development artifacts from being committed.
   # Catches: threads/ (SDLC work logs), REDESIGN_PROPOSAL.md.
   # To add more patterns, edit scripts/check-local-artifacts.sh.
