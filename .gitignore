@@ -413,6 +413,9 @@ ruvector.db
 .query_cache.json
 coverage.json
 
+# Test purge reports (Phase 1)
+/reports/
+
 # PM/agent workspace (recon / review / architect notes — not source)
 .recon/
 

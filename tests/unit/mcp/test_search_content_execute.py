@@ -31,12 +31,14 @@ class TestExecute:
     """Tests for execute method."""
 
     @pytest.mark.asyncio
-    async def test_execute_rg_not_found(self, tool):
+    async def test_execute_rg_not_found(self, tmp_path):
+        tool = SearchContentTool(project_root=str(tmp_path))
+        (tmp_path / "src").mkdir()
         with patch(
             "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
             return_value=False,
         ):
-            arguments = {"roots": ["."], "query": "test"}
+            arguments = {"roots": [str(tmp_path)], "query": "test"}
             result = await tool.execute(arguments)
             assert result["success"] is False
             assert "rg (ripgrep) command not found" in result["error"]

@@ -29,6 +29,7 @@ def server():
     return TreeSitterAnalyzerMCPServer()
 
 
+@pytest.mark.requires_fd
 class TestIntentAliasIntegration:
     """测试 Intent Alias 在 MCP Server 中的集成"""
 
@@ -252,6 +253,8 @@ class TestMultipleAliasesForSameTool:
         assert result1["results"] == result2["results"]
 
 
+@pytest.mark.requires_ripgrep
+@pytest.mark.requires_fd
 class TestAliasWithAllToolParameters:
     """测试 Alias 支持原始工具的所有参数"""
 
