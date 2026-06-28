@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Python formatter error handling, boundary conditions, special chars, type/docstring handling."""
 
-
 import pytest
 
 from tree_sitter_analyzer.formatters.python_formatter import PythonTableFormatter
@@ -473,5 +472,3 @@ class TestPythonFormatterTypeHandling:
 
         result = formatter._format_python_signature(method)
         assert isinstance(result, str)
-
-

@@ -58,22 +58,6 @@ class JSONElement(CodeElement):
         child_count: int | None = None,
         **kwargs: Any,
     ) -> None:
-        """Initialize JSONElement.
-
-        Args:
-            name: Element name
-            start_line: Starting line number
-            end_line: Ending line number
-            raw_text: Raw text content
-            language: Language identifier
-            element_type: Type of JSON element
-            key: Key for object pairs
-            value: Scalar value (None for complex structures)
-            value_type: Type of value (string, number, boolean, null, object, array)
-            nesting_level: AST-based logical depth
-            child_count: Number of child elements for complex structures
-            **kwargs: Additional attributes
-        """
         super().__init__(
             name=name,
             start_line=start_line,
@@ -225,31 +209,50 @@ class JSONElementExtractor(ElementExtractor):
             elif node_type == "null":
                 self._extract_null(node, elements)
 
+    def _make_element(
+        self,
+        node: tree_sitter.Node,
+        name: str,
+        element_type: str,
+        *,
+        value: str | None = None,
+        value_type: str | None = None,
+        key: str | None = None,
+        child_count: int | None = None,
+        truncate_text: bool = False,
+    ) -> JSONElement:
+        """Build a JSONElement from a node (shared helper to reduce repetition)."""
+        raw_text = self._get_node_text(node)
+        if truncate_text and len(raw_text) > 200:
+            raw_text = raw_text[:200] + "..."
+        return JSONElement(
+            name=name,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            raw_text=raw_text,
+            element_type=element_type,
+            key=key,
+            value=value,
+            value_type=value_type or element_type,
+            nesting_level=self._calculate_nesting_level(node),
+            child_count=child_count,
+        )
+
     def _extract_object(
         self, node: tree_sitter.Node, elements: list[JSONElement]
     ) -> None:
         """Extract JSON object."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text(node)
-
-            # Count pairs in object
-            child_count = len([c for c in node.children if c.type == "pair"])
-
-            nesting_level = self._calculate_nesting_level(node)
-
-            element = JSONElement(
-                name="object",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text[:200] + "..." if len(raw_text) > 200 else raw_text,
-                element_type="object",
-                value_type="object",
-                nesting_level=nesting_level,
-                child_count=child_count,
+            child_count = sum(1 for c in node.children if c.type == "pair")
+            elements.append(
+                self._make_element(
+                    node,
+                    "object",
+                    "object",
+                    child_count=child_count,
+                    truncate_text=True,
+                )
             )
-            elements.append(element)
         except Exception:  # nosec B110
             pass
 
@@ -258,121 +261,60 @@ class JSONElementExtractor(ElementExtractor):
     ) -> None:
         """Extract JSON array."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text(node)
-
-            # Count items in array (exclude brackets and commas)
-            child_count = len(
-                [c for c in node.children if c.type not in ("[", "]", ",", "ERROR")]
+            child_count = sum(
+                1 for c in node.children if c.type not in ("[", "]", ",", "ERROR")
             )
-
-            nesting_level = self._calculate_nesting_level(node)
-
-            element = JSONElement(
-                name="array",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text[:200] + "..." if len(raw_text) > 200 else raw_text,
-                element_type="array",
-                value_type="array",
-                nesting_level=nesting_level,
-                child_count=child_count,
+            elements.append(
+                self._make_element(
+                    node, "array", "array", child_count=child_count, truncate_text=True
+                )
             )
-            elements.append(element)
         except Exception:  # nosec B110
             pass
 
     def _extract_pair(
         self, node: tree_sitter.Node, elements: list[JSONElement]
     ) -> None:
-        """Extract JSON key-value pair."""
+        """Extract JSON key-value pair (tree-sitter structure: string, ':', value)."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text(node)
-
-            key = None
-            value = None
-            value_type = None
-
-            # Extract key and value from pair
-            # In tree-sitter-json, pair has structure: string (key), ":", value
-            key_node = None
-            value_node = None
-
+            key_node = value_node = None
             for child in node.children:
                 if child.type == "string" and key_node is None:
-                    # First string is the key
                     key_node = child
-                elif child.type != ":" and child.type != "," and key_node is not None:
-                    # After colon, this is the value
+                elif child.type not in (":", ",") and key_node is not None:
                     value_node = child
                     break
-
-            # Extract key text (remove quotes)
+            key = None
             if key_node is not None:
-                key_text = self._get_node_text(key_node).strip()
-                # Remove surrounding quotes
-                if key_text.startswith('"') and key_text.endswith('"'):
-                    key = key_text[1:-1]
-                else:
-                    key = key_text
-
-            # Extract value info
-            if value_node is not None:
-                value, value_type = self._extract_value_info(value_node)
-
-            nesting_level = self._calculate_nesting_level(node)
-
-            element = JSONElement(
-                name=key or "pair",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                element_type="pair",
-                key=key,
-                value=value,
-                value_type=value_type,
-                nesting_level=nesting_level,
+                kt = self._get_node_text(key_node).strip()
+                key = kt[1:-1] if kt.startswith('"') and kt.endswith('"') else kt
+            value, value_type = self._extract_value_info(value_node)
+            elements.append(
+                self._make_element(
+                    node,
+                    key or "pair",
+                    "pair",
+                    key=key,
+                    value=value,
+                    value_type=value_type,
+                )
             )
-            elements.append(element)
         except Exception:  # nosec B110
             pass
 
     def _extract_string(
         self, node: tree_sitter.Node, elements: list[JSONElement]
     ) -> None:
-        """Extract JSON string."""
+        """Extract JSON string (skip pair keys — handled by _extract_pair)."""
         try:
-            # Skip strings that are keys in pairs (already handled by pair extraction)
             if node.parent and node.parent.type == "pair":
-                # Check if this is the key (first child)
                 if node.parent.children and node.parent.children[0] == node:
                     return
-
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
             raw_text = self._get_node_text(node)
-
-            # Remove quotes from string value
             value = raw_text.strip()
             if value.startswith('"') and value.endswith('"'):
                 value = value[1:-1]
-
-            nesting_level = self._calculate_nesting_level(node)
-
-            element = JSONElement(
-                name="string",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                element_type="string",
-                value=value,
-                value_type="string",
-                nesting_level=nesting_level,
-            )
-            elements.append(element)
+            elements.append(self._make_element(node, "string", "string", value=value))
         except Exception:  # nosec B110
             pass
 
@@ -381,24 +323,8 @@ class JSONElementExtractor(ElementExtractor):
     ) -> None:
         """Extract JSON number."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text(node)
-
-            value = raw_text.strip()
-            nesting_level = self._calculate_nesting_level(node)
-
-            element = JSONElement(
-                name="number",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                element_type="number",
-                value=value,
-                value_type="number",
-                nesting_level=nesting_level,
-            )
-            elements.append(element)
+            value = self._get_node_text(node).strip()
+            elements.append(self._make_element(node, "number", "number", value=value))
         except Exception:  # nosec B110
             pass
 
@@ -407,24 +333,12 @@ class JSONElementExtractor(ElementExtractor):
     ) -> None:
         """Extract JSON boolean."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text(node)
-
             value = "true" if bool_value else "false"
-            nesting_level = self._calculate_nesting_level(node)
-
-            element = JSONElement(
-                name=value,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                element_type=value,
-                value=value,
-                value_type="boolean",
-                nesting_level=nesting_level,
+            elements.append(
+                self._make_element(
+                    node, value, value, value=value, value_type="boolean"
+                )
             )
-            elements.append(element)
         except Exception:  # nosec B110
             pass
 
@@ -433,23 +347,7 @@ class JSONElementExtractor(ElementExtractor):
     ) -> None:
         """Extract JSON null."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text(node)
-
-            nesting_level = self._calculate_nesting_level(node)
-
-            element = JSONElement(
-                name="null",
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                element_type="null",
-                value="null",
-                value_type="null",
-                nesting_level=nesting_level,
-            )
-            elements.append(element)
+            elements.append(self._make_element(node, "null", "null", value="null"))
         except Exception:  # nosec B110
             pass
 
@@ -560,18 +458,9 @@ class JSONPlugin(LanguagePlugin):
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest
     ) -> AnalysisResult:
-        """Analyze JSON file using tree-sitter-json parser.
-
-        Args:
-            file_path: Path to the JSON file
-            request: Analysis request parameters
-
-        Returns:
-            AnalysisResult with extracted elements
-        """
+        """Analyze JSON file using tree-sitter-json parser."""
         from ..encoding_utils import read_file_safe
 
-        # Check if JSON support is available
         if not JSON_AVAILABLE:
             log_error("tree-sitter-json not available")
             return AnalysisResult(
@@ -585,22 +474,13 @@ class JSONPlugin(LanguagePlugin):
                 success=False,
                 error_message="JSON support not available. Install tree-sitter-json.",
             )
-
         try:
-            # Read file content with encoding detection
-            content, encoding = read_file_safe(file_path)
-
-            # Parse the JSON content
-            # tree-sitter Parser is not guaranteed to be thread-safe across concurrent calls.
+            content, _encoding = read_file_safe(file_path)
+            # tree-sitter Parser is not thread-safe across concurrent calls.
             with _JSON_PARSER_LOCK:
                 tree = JSON_PARSER.parse(content.encode("utf-8"))
-
-            # Extract elements using the extractor
-            json_extractor = self.create_extractor()
-            elements = json_extractor.extract_json_elements(tree, content)
-
+            elements = self.create_extractor().extract_json_elements(tree, content)
             log_info(f"Extracted {len(elements)} JSON elements from {file_path}")
-
             return AnalysisResult(
                 file_path=file_path,
                 language="json",
@@ -612,7 +492,6 @@ class JSONPlugin(LanguagePlugin):
                 success=True,
                 error_message=None,
             )
-
         except Exception as e:
             log_error(f"Failed to analyze JSON file {file_path}: {e}")
             return AnalysisResult(

@@ -30,7 +30,11 @@ import os
 import sqlite3
 from typing import Any
 
-from ..._language_family import language_from_path, languages_compatible
+from tree_sitter_analyzer.languages.language_family import (
+    language_from_path,
+    languages_compatible,
+)
+
 from ._codegraph_explore_helpers import extract_snippet_from_lines, read_file_lines
 
 # ---------------------------------------------------------------------------

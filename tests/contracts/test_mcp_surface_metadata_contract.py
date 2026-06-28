@@ -31,6 +31,7 @@ SKIPPED_SCAN_DIRS = {
     ".venv",
 }
 
+
 def test_registered_mcp_tools_have_codemap_parity() -> None:
     """Every registered MCP tool must appear in `docs/CODEMAPS/mcp-tools.md`.
 

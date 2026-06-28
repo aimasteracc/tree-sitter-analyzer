@@ -32,6 +32,7 @@ SKIPPED_SCAN_DIRS = {
     ".venv",
 }
 
+
 def test_default_pytest_runtime_contract_is_locked() -> None:
     """The default full suite must stay parallel and bounded under 5 minutes."""
     config = configparser.ConfigParser()

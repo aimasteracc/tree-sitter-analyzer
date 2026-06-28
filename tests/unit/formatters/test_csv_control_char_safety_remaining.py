@@ -23,7 +23,7 @@ import io
 
 import pytest
 
-from tree_sitter_analyzer._legacy_table_formatter_csv import (
+from tree_sitter_analyzer.formatters.legacy.csv import (
     format_csv as legacy_format_csv,
 )
 from tree_sitter_analyzer.formatters.python_formatter import PythonTableFormatter

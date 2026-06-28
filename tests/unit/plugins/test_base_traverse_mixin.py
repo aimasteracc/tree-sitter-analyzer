@@ -168,10 +168,14 @@ class TestTreeRootNode:
 
 class TestNodeTypeMatches:
     def test_exact_match(self) -> None:
-        assert _node_type_matches("function_definition", ("function_definition",)) is True
+        assert (
+            _node_type_matches("function_definition", ("function_definition",)) is True
+        )
 
     def test_case_insensitive_match(self) -> None:
-        assert _node_type_matches("Function_Definition", ("function_definition",)) is True
+        assert (
+            _node_type_matches("Function_Definition", ("function_definition",)) is True
+        )
 
     def test_substring_match(self) -> None:
         assert _node_type_matches("function_definition", ("function",)) is True
@@ -195,7 +199,15 @@ class TestNodeTypeMatches:
 class TestIsFunctionNode:
     @pytest.mark.parametrize(
         "node_type",
-        ["function_definition", "function_declaration", "method_definition", "function", "method", "procedure", "subroutine"],
+        [
+            "function_definition",
+            "function_declaration",
+            "method_definition",
+            "function",
+            "method",
+            "procedure",
+            "subroutine",
+        ],
     )
     def test_function_types(self, node_type: str) -> None:
         assert _is_function_node(node_type) is True
@@ -213,7 +225,15 @@ class TestIsFunctionNode:
 class TestIsClassNode:
     @pytest.mark.parametrize(
         "node_type",
-        ["class_definition", "class_declaration", "interface_definition", "class", "interface", "struct", "enum"],
+        [
+            "class_definition",
+            "class_declaration",
+            "interface_definition",
+            "class",
+            "interface",
+            "struct",
+            "enum",
+        ],
     )
     def test_class_types(self, node_type: str) -> None:
         assert _is_class_node(node_type) is True
@@ -228,7 +248,15 @@ class TestIsClassNode:
 class TestIsVariableNode:
     @pytest.mark.parametrize(
         "node_type",
-        ["variable_declaration", "variable_definition", "field_declaration", "assignment", "declaration", "variable", "field"],
+        [
+            "variable_declaration",
+            "variable_definition",
+            "field_declaration",
+            "assignment",
+            "declaration",
+            "variable",
+            "field",
+        ],
     )
     def test_variable_types(self, node_type: str) -> None:
         assert _is_variable_node(node_type) is True
@@ -243,7 +271,15 @@ class TestIsVariableNode:
 class TestIsImportNode:
     @pytest.mark.parametrize(
         "node_type",
-        ["import_statement", "import_declaration", "include_statement", "import", "include", "require", "use"],
+        [
+            "import_statement",
+            "import_declaration",
+            "include_statement",
+            "import",
+            "include",
+            "require",
+            "use",
+        ],
     )
     def test_import_types(self, node_type: str) -> None:
         assert _is_import_node(node_type) is True
@@ -373,7 +409,14 @@ class TestDefaultNodeMixin:
     def test_element_fields(self) -> None:
         mixin = DefaultNodeMixin()
         ident = _make_node("identifier", start_byte=4, end_byte=7)
-        node = _make_node("function_definition", start_row=2, end_row=4, start_col=0, end_col=10, children=(ident,))
+        node = _make_node(
+            "function_definition",
+            start_row=2,
+            end_row=4,
+            start_col=0,
+            end_col=10,
+            children=(ident,),
+        )
         source = "def bar(): pass"
         fields = mixin._element_fields(node, source)
         assert "name" in fields
@@ -431,7 +474,9 @@ class TestDefaultTraverseAppendMixin:
         mixin = DefaultTraverseAppendMixin()
         functions: list[ModelFunction] = []
         ident = _make_node("identifier", start_byte=0, end_byte=3)
-        node = _make_node("function_definition", start_row=0, end_row=2, children=(ident,))
+        node = _make_node(
+            "function_definition", start_row=0, end_row=2, children=(ident,)
+        )
         mixin._append_function(node, functions, "foo")
         assert len(functions) == 1
         assert isinstance(functions[0], ModelFunction)
@@ -472,7 +517,9 @@ class TestDefaultTraverseAppendMixin:
 class TestDefaultTraverseMixin:
     def test_traverse_for_functions_finds_matching_nodes(self) -> None:
         mixin = DefaultTraverseMixin()
-        func_node = _make_node("function_definition", start_row=0, end_row=3, start_byte=0, end_byte=20)
+        func_node = _make_node(
+            "function_definition", start_row=0, end_row=3, start_byte=0, end_byte=20
+        )
         ident = _make_node("identifier", start_byte=4, end_byte=7)
         func_node.children = (ident,)
         root = _make_node("module", children=(func_node,))
@@ -490,20 +537,28 @@ class TestDefaultTraverseMixin:
 
     def test_traverse_for_functions_recursive(self) -> None:
         mixin = DefaultTraverseMixin()
-        func1 = _make_node("function_definition", start_row=0, end_row=2, start_byte=0, end_byte=10)
-        func2 = _make_node("function", start_row=3, end_row=5, start_byte=11, end_byte=21)
+        func1 = _make_node(
+            "function_definition", start_row=0, end_row=2, start_byte=0, end_byte=10
+        )
+        func2 = _make_node(
+            "function", start_row=3, end_row=5, start_byte=11, end_byte=21
+        )
         ident1 = _make_node("identifier", start_byte=4, end_byte=7)
         ident2 = _make_node("identifier", start_byte=15, end_byte=18)
         func1.children = (ident1,)
         func2.children = (ident2,)
         root = _make_node("module", children=(func1, func2))
         functions: list[ModelFunction] = []
-        mixin._traverse_for_functions(root, functions, [], "def a(): pass\ndef b(): pass")
+        mixin._traverse_for_functions(
+            root, functions, [], "def a(): pass\ndef b(): pass"
+        )
         assert len(functions) == 2
 
     def test_traverse_for_classes_finds_matching_nodes(self) -> None:
         mixin = DefaultTraverseMixin()
-        class_node = _make_node("class_definition", start_row=0, end_row=5, start_byte=0, end_byte=30)
+        class_node = _make_node(
+            "class_definition", start_row=0, end_row=5, start_byte=0, end_byte=30
+        )
         ident = _make_node("identifier", start_byte=6, end_byte=9)
         class_node.children = (ident,)
         root = _make_node("module", children=(class_node,))
@@ -513,7 +568,9 @@ class TestDefaultTraverseMixin:
 
     def test_traverse_for_classes_recursive(self) -> None:
         mixin = DefaultTraverseMixin()
-        cls1 = _make_node("class_definition", start_row=0, end_row=3, start_byte=0, end_byte=15)
+        cls1 = _make_node(
+            "class_definition", start_row=0, end_row=3, start_byte=0, end_byte=15
+        )
         cls2 = _make_node("class", start_row=4, end_row=7, start_byte=16, end_byte=31)
         ident1 = _make_node("identifier", start_byte=6, end_byte=9)
         ident2 = _make_node("identifier", start_byte=22, end_byte=25)
@@ -526,7 +583,9 @@ class TestDefaultTraverseMixin:
 
     def test_traverse_for_variables_finds_matching_nodes(self) -> None:
         mixin = DefaultTraverseMixin()
-        var_node = _make_node("variable_declaration", start_row=0, end_row=0, start_byte=0, end_byte=5)
+        var_node = _make_node(
+            "variable_declaration", start_row=0, end_row=0, start_byte=0, end_byte=5
+        )
         ident = _make_node("identifier", start_byte=0, end_byte=1)
         var_node.children = (ident,)
         root = _make_node("module", children=(var_node,))
@@ -536,7 +595,9 @@ class TestDefaultTraverseMixin:
 
     def test_traverse_for_imports_finds_matching_nodes(self) -> None:
         mixin = DefaultTraverseMixin()
-        imp_node = _make_node("import_statement", start_row=0, end_row=0, start_byte=0, end_byte=10)
+        imp_node = _make_node(
+            "import_statement", start_row=0, end_row=0, start_byte=0, end_byte=10
+        )
         ident = _make_node("identifier", start_byte=7, end_byte=9)
         imp_node.children = (ident,)
         root = _make_node("module", children=(imp_node,))
@@ -546,7 +607,9 @@ class TestDefaultTraverseMixin:
 
     def test_traverse_for_imports_recursive(self) -> None:
         mixin = DefaultTraverseMixin()
-        imp1 = _make_node("import_statement", start_row=0, end_row=0, start_byte=0, end_byte=10)
+        imp1 = _make_node(
+            "import_statement", start_row=0, end_row=0, start_byte=0, end_byte=10
+        )
         imp2 = _make_node("include", start_row=1, end_row=1, start_byte=11, end_byte=22)
         ident1 = _make_node("identifier", start_byte=7, end_byte=9)
         ident2 = _make_node("identifier", start_byte=18, end_byte=21)
@@ -566,26 +629,42 @@ class TestDefaultTraverseMixin:
 
     def test_traverse_deeply_nested(self) -> None:
         mixin = DefaultTraverseMixin()
-        inner_func = _make_node("function_definition", start_row=2, end_row=4, start_byte=10, end_byte=25)
+        inner_func = _make_node(
+            "function_definition", start_row=2, end_row=4, start_byte=10, end_byte=25
+        )
         ident = _make_node("identifier", start_byte=14, end_byte=17)
         inner_func.children = (ident,)
         middle = _make_node("block", children=(inner_func,))
         outer = _make_node("block", children=(middle,))
         root = _make_node("module", children=(outer,))
         functions: list[ModelFunction] = []
-        mixin._traverse_for_functions(root, functions, [], "def outer():\n  def inner(): pass")
+        mixin._traverse_for_functions(
+            root, functions, [], "def outer():\n  def inner(): pass"
+        )
         assert len(functions) == 1
 
     def test_traverse_mixed_node_types(self) -> None:
         mixin = DefaultTraverseMixin()
-        func_node = _make_node("function_definition", start_row=0, end_row=2, start_byte=0, end_byte=15)
-        class_node = _make_node("class_definition", start_row=3, end_row=8, start_byte=16, end_byte=40)
-        var_node = _make_node("variable_declaration", start_row=9, end_row=9, start_byte=41, end_byte=46)
-        imp_node = _make_node("import_statement", start_row=10, end_row=10, start_byte=47, end_byte=57)
+        func_node = _make_node(
+            "function_definition", start_row=0, end_row=2, start_byte=0, end_byte=15
+        )
+        class_node = _make_node(
+            "class_definition", start_row=3, end_row=8, start_byte=16, end_byte=40
+        )
+        var_node = _make_node(
+            "variable_declaration", start_row=9, end_row=9, start_byte=41, end_byte=46
+        )
+        imp_node = _make_node(
+            "import_statement", start_row=10, end_row=10, start_byte=47, end_byte=57
+        )
         for n in [func_node, class_node, var_node, imp_node]:
-            ident = _make_node("identifier", start_byte=n.start_byte, end_byte=n.start_byte + 3)
+            ident = _make_node(
+                "identifier", start_byte=n.start_byte, end_byte=n.start_byte + 3
+            )
             n.children = (ident,)
-        root = _make_node("module", children=(func_node, class_node, var_node, imp_node))
+        root = _make_node(
+            "module", children=(func_node, class_node, var_node, imp_node)
+        )
 
         functions: list[ModelFunction] = []
         classes: list[ModelClass] = []

@@ -20,9 +20,9 @@ from typing import Any
 
 import pytest
 
-from tree_sitter_analyzer import _ast_cache_unresolved as unresolved
 from tree_sitter_analyzer import ast_cache as ast_cache_module
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.cache import unresolved
 from tree_sitter_analyzer.class_hierarchy import ClassHierarchy
 from tree_sitter_analyzer.graph.edge_store import EdgeKind, symbol_node
 from tree_sitter_analyzer.mcp.utils import auto_index_guard
@@ -93,7 +93,9 @@ def test_index_project_resolves_cross_file_extends_and_calls(tmp_path: Path) -> 
         # + python_plugin). Cross-file CALLS resolution is handled earlier by the
         # cross-file backfill, so it no longer flows through this counter (the
         # resolved edge data is asserted directly below).
-        assert stats["unresolved_refs_backfill"]["resolved"] >= 2  # ratchet: nondeterministic
+        assert (
+            stats["unresolved_refs_backfill"]["resolved"] >= 2
+        )  # ratchet: nondeterministic
 
         conn = cache.get_conn()
         # The cross-file EXTENDS references resolved into real edges pointing at

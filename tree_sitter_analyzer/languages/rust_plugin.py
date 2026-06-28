@@ -20,6 +20,9 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from ..utils.tree_sitter_compat import count_nodes_iterative
+from .shared.complexity import CyclomaticCounter
+from .shared.traversal import collect_named_nodes, node_range
 
 # AST node types that each add one decision point to cyclomatic complexity.
 # Loop/branch constructs count once (matching the Swift/Go plugin convention),
@@ -36,21 +39,12 @@ _RUST_DECISION_NODE_TYPES: frozenset[str] = frozenset(
     }
 )
 
+_rust_complexity_counter = CyclomaticCounter(set(_RUST_DECISION_NODE_TYPES))
+
 
 def _rust_calculate_complexity(node: Any) -> int:
     """Return cyclomatic complexity (1 + decision points) for a Rust fn node."""
-    decisions = 0
-    stack = [node]
-    while stack:
-        cur = stack.pop()
-        try:
-            children = list(getattr(cur, "children", None) or [])
-        except (TypeError, AttributeError):
-            children = []
-        if getattr(cur, "type", None) in _RUST_DECISION_NODE_TYPES:
-            decisions += 1
-        stack.extend(children)
-    return 1 + decisions
+    return _rust_complexity_counter.count(node).cyclomatic
 
 
 def _rust_function_is_async(node: tree_sitter.Node) -> bool:
@@ -89,57 +83,44 @@ class RustElementExtractor(ElementExtractor):
         self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Function]:
         """Extract Rust function declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
+        self._setup(source_code)
         functions: list[Function] = []
-
-        # Use tree traversal to find function_item (implemented) and
-        # function_signature_item (abstract / trait-required method with no body).
-        self._traverse_and_extract(
-            tree.root_node,
-            {
-                "function_item": self._extract_function,
-                "function_signature_item": self._extract_function_signature,
-            },
-            functions,
-        )
-
+        _fn_extractors = {
+            "function_item": self._extract_function,
+            "function_signature_item": self._extract_function_signature,
+        }
+        for node in collect_named_nodes(
+            tree.root_node, "function_item", "function_signature_item"
+        ):
+            fn = _fn_extractors[node.type](node)
+            if fn is not None:
+                functions.append(fn)
         log_debug(f"Extracted {len(functions)} Rust functions")
         return functions
 
-    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
-        """Extract Rust struct, enum, trait, and impl definitions"""
+    def _setup(self, source_code: str) -> None:
+        """Set source code and reset caches."""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
 
-        # Extract modules first
+    def extract_classes(self, tree: tree_sitter.Tree, source_code: str) -> list[Class]:
+        """Extract Rust struct, enum, trait, and impl definitions"""
+        self._setup(source_code)
         self._extract_modules(tree.root_node)
-
         classes: list[Class] = []
-
-        extractors = {
+        _class_extractors = {
             "struct_item": self._extract_struct,
             "enum_item": self._extract_enum,
             "trait_item": self._extract_trait,
-            "impl_item": self._extract_impl,  # Impl blocks are treated as related to classes
+            "impl_item": self._extract_impl,
         }
-
-        self._traverse_and_extract(
-            tree.root_node,
-            extractors,
-            classes,
-        )
-
-        # Process collected impl blocks and add them to classes list if they are standalone
-        # Or we might want to return them as separate metadata.
-        # For now, we'll include impl blocks as Class objects with type='impl' for visibility
-        for _impl in self.impl_blocks:
-            # Creating a Class object for impl block to represent it in the structure
-            pass
-
+        for node in collect_named_nodes(
+            tree.root_node, "struct_item", "enum_item", "trait_item", "impl_item"
+        ):
+            result = _class_extractors[node.type](node)
+            if result is not None:
+                classes.append(result)
         log_debug(f"Extracted {len(classes)} Rust structs/enums/traits")
         return classes
 
@@ -148,60 +129,33 @@ class RustElementExtractor(ElementExtractor):
     ) -> list[Variable]:
         """Extract Rust struct fields and enum variants.
 
-        Bug #796: enum variants (e.g. ``None``, ``Some``, ``North``) are now
-        extracted as Variable entries with ``variable_type="enum_variant"``
-        and ``parent_class`` set to the enclosing enum name.
-
-        Implementation note: struct-field extraction and enum-variant
-        extraction are run as two separate passes. Running them together in
-        a single ``_traverse_and_extract`` call would cause struct-like enum
-        variant bodies (``enum Foo { Bar { x: i32 } }``) to emit their
-        ``field_declaration`` children as if they were ordinary struct
-        fields. Separate passes avoid this:
-        - Pass 1 collects ``field_declaration`` nodes only (struct fields).
-        - Pass 2 collects ``enum_item`` nodes and extracts their variants
-          directly, without recursing into the variant bodies.
+        Two separate passes to avoid struct-like enum variant bodies (#796/#960):
+        Pass 1 collects field_declaration (struct fields, skipping enum_item subtrees).
+        Pass 2 collects enum variants directly without recursing into variant bodies.
         """
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
+        self._setup(source_code)
         variables: list[Variable] = []
-
-        # Pass 1: struct fields only. Do not recurse into enum_item because
-        # struct-like enum variants also contain field_declaration nodes (#960).
         self._collect_struct_fields(tree.root_node, variables)
-
-        # Pass 2: enum variants — collect directly, skip field_declaration recursion
         self._collect_enum_variants(tree.root_node, variables)
-
         log_debug(f"Extracted {len(variables)} Rust fields/variants")
         return variables
 
     def _collect_enum_variants(
         self, node: tree_sitter.Node, results: list[Variable]
     ) -> None:
-        """Walk the AST and extract enum variants from every ``enum_item``.
-
-        Unlike ``_traverse_and_extract``, this walk recurses into
-        non-enum-item children (to find enums nested inside mod blocks), but
-        does NOT recurse into ``enum_item`` children — so
-        ``field_declaration`` nodes inside struct-like variant bodies are
-        never picked up here.
-        """
+        """Recurse into non-enum children; extract variants from enum_item directly."""
         if node.type == "enum_item":
             variants = self._extract_enum_variants(node)
             if variants:
                 results.extend(variants)
-            # Do not recurse further: the enum body is fully handled above.
-            return
+            return  # Do not recurse: enum body fully handled above.
         for child in node.children:
             self._collect_enum_variants(child, results)
 
     def _collect_struct_fields(
         self, node: tree_sitter.Node, results: list[Variable]
     ) -> None:
-        """Walk the AST for real struct fields, skipping enum variant bodies."""
+        """Walk the AST for struct fields, skipping enum_item subtrees (#960)."""
         if node.type == "enum_item":
             return
         if node.type == "field_declaration":
@@ -214,47 +168,25 @@ class RustElementExtractor(ElementExtractor):
 
     def extract_imports(self, tree: tree_sitter.Tree, source_code: str) -> list[Import]:
         """Extract Rust use declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
+        self._setup(source_code)
         imports: list[Import] = []
-
-        # We extract use declarations
-        extractors = {
-            "use_declaration": self._extract_import,
-        }
-
-        self._traverse_and_extract(
-            tree.root_node,
-            extractors,
-            imports,
-        )
-
+        for node in collect_named_nodes(tree.root_node, "use_declaration"):
+            imp = self._extract_import(node)
+            if imp is not None:
+                imports.append(imp)
         log_debug(f"Extracted {len(imports)} Rust imports")
         return imports
 
     def extract_packages(
         self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Package]:
-        """Extract Rust ``mod`` blocks as Package containers (issue #589).
-
-        Mirrors the C++ namespace → Package convention. Declaration-only
-        mods (``mod tests;`` — no body) are emitted too: their span is the
-        declaration line, which is the only trace of the file-module
-        mapping and cannot mis-claim nested items.
-        """
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
+        """Extract Rust ``mod`` blocks as Package containers (issue #589)."""
+        self._setup(source_code)
         packages: list[Package] = []
-        self._traverse_and_extract(
-            tree.root_node,
-            {"mod_item": self._extract_mod_package},
-            packages,
-        )
-
+        for node in collect_named_nodes(tree.root_node, "mod_item"):
+            pkg = self._extract_mod_package(node)
+            if pkg is not None:
+                packages.append(pkg)
         log_debug(f"Extracted {len(packages)} Rust modules")
         return packages
 
@@ -264,10 +196,11 @@ class RustElementExtractor(ElementExtractor):
             name_node = node.child_by_field_name("name")
             if name_node is None:
                 return None
+            start_line, end_line = node_range(node)
             return Package(
                 name=self._get_node_text(name_node),
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=start_line,
+                end_line=end_line,
                 raw_text=self._get_node_text(node),
                 language="rust",
             )
@@ -279,8 +212,7 @@ class RustElementExtractor(ElementExtractor):
         """Extract import statement (use declaration)"""
         try:
             raw_text = self._get_node_text(node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
 
             # Extract name (the path)
             # use std::collections::HashMap;
@@ -312,40 +244,10 @@ class RustElementExtractor(ElementExtractor):
             self.modules.clear()
             self.impl_blocks.clear()
 
-    def _traverse_and_extract(
-        self,
-        node: tree_sitter.Node,
-        extractors: dict[str, Any],
-        results: list[Any],
-    ) -> None:
-        """Recursive traversal to find and extract elements.
-
-        When an extractor returns a list, all items in the list are added
-        to ``results`` (extends rather than appends). Single-item returns
-        are appended as before. Recursion always continues so that nested
-        structures (e.g. nested ``mod_item`` inside a mod body) are
-        discovered. Extractors that need to suppress child traversal (e.g.
-        enum variants preventing struct-like variant fields from leaking as
-        struct fields) do so by specifying their own ``no_recurse_types``
-        set — an internal contract between the extractor dict and the
-        caller, not the traversal itself.
-        """
-        if node.type in extractors:
-            element = extractors[node.type](node)
-            if element is not None:
-                if isinstance(element, list):
-                    results.extend(element)
-                else:
-                    results.append(element)
-
-        for child in node.children:
-            self._traverse_and_extract(child, extractors, results)
-
     def _extract_modules(self, node: tree_sitter.Node) -> None:
-        """Extract module information"""
+        """Populate self.modules from mod_item nodes."""
         if node.type == "mod_item":
             self._extract_module(node)
-
         for child in node.children:
             self._extract_modules(child)
 
@@ -356,8 +258,7 @@ class RustElementExtractor(ElementExtractor):
             if name_node:
                 name = self._get_node_text(name_node)
                 visibility = self._extract_visibility(node)
-                start_line = node.start_point[0] + 1
-                end_line = node.end_point[0] + 1
+                start_line, end_line = node_range(node)
 
                 self.modules.append(
                     {
@@ -372,66 +273,48 @@ class RustElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Error extracting module: {e}")
 
+    def _build_function_core(self, node: tree_sitter.Node) -> Function | None:
+        """Build a Function from a ``function_item`` or ``function_signature_item``.
+
+        Shared logic for both node types: name, line range, parameters,
+        return type, visibility, docstring, raw text.  Callers attach
+        type-specific attributes (is_async, is_abstract, receiver_type …).
+        """
+        name_node = node.child_by_field_name("name")
+        if not name_node:
+            return None
+        name = self._get_node_text(name_node)
+        start_line, end_line = node_range(node)
+        parameters = self._extract_rust_parameters(
+            node.child_by_field_name("parameters")
+        )
+        return_type = "()"
+        ret_node = node.child_by_field_name("return_type")
+        if ret_node:
+            return_type = self._get_node_text(ret_node)
+            if return_type.startswith("->"):
+                return_type = return_type[2:].strip()
+        return Function(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=self._get_node_text(node),
+            language="rust",
+            parameters=parameters,
+            return_type=return_type,
+            visibility=self._extract_visibility(node),
+            docstring=self._extract_docstring(node),
+            complexity_score=_rust_calculate_complexity(node),
+        )
+
     def _extract_function(self, node: tree_sitter.Node) -> Function | None:
-        """Extract function information"""
+        """Extract function_item (implemented function)."""
         try:
-            name_node = node.child_by_field_name("name")
-            if not name_node:
+            func = self._build_function_core(node)
+            if func is None:
                 return None
-
-            name = self._get_node_text(name_node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # r37ds (dogfood): extract parameters via helper.
-            parameters = self._extract_rust_parameters(
-                node.child_by_field_name("parameters")
-            )
-
-            # Return type
-            return_type = "()"
-            ret_node = node.child_by_field_name("return_type")
-            if ret_node:
-                return_type = self._get_node_text(ret_node)
-                # Remove "->" prefix if captured
-                if return_type.startswith("->"):
-                    return_type = return_type[2:].strip()
-
-            # Visibility
-            visibility = self._extract_visibility(node)
-
-            # Async detection via function_modifiers node or direct child.
-            is_async = _rust_function_is_async(node)
-
-            # Docstring
-            docstring = self._extract_docstring(node)
-
-            # Raw text
-            raw_text = self._get_node_text(node)
-
-            # Add to Function object
-            # Note: We're using dynamic attributes for Rust-specific fields
-            func = Function(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="rust",
-                parameters=parameters,
-                return_type=return_type,
-                visibility=visibility,
-                docstring=docstring,
-                complexity_score=_rust_calculate_complexity(node),
-            )
-            # Attach Rust-specific attributes
-            func.is_async = is_async
-
-            # Theme-A (2026-06-10): impl-block ownership. Functions inside
-            # ``impl Counter { ... }`` were flattened to top-level with no
-            # receiver — an agent could not tell ``inc`` belongs to
-            # ``Counter``. Any fn in an impl gets receiver_type = the impl
-            # target; is_method/receiver only when a self_parameter exists
-            # (self-less impl fns are associated functions, not methods).
+            func.is_async = _rust_function_is_async(node)
+            # Theme-A (2026-06-10): impl-block ownership.
             owner = self._find_impl_owner(node)
             if owner:
                 func.receiver_type = owner
@@ -439,9 +322,7 @@ class RustElementExtractor(ElementExtractor):
                 if self_param:
                     func.receiver = self_param
                     func.is_method = True
-
             return func
-
         except Exception as e:
             log_error(f"Error extracting Rust function: {e}")
             return None
@@ -449,9 +330,8 @@ class RustElementExtractor(ElementExtractor):
     def _inside_trait(self, node: tree_sitter.Node) -> bool:
         """True when *node* sits inside a ``trait_item`` body.
 
-        Depth-capped for the same reason as ``_find_impl_owner`` (MagicMock
-        endless-parent-chain OOM, 2026-06-10). ``impl_item`` / ``foreign_mod_item``
-        terminate the walk early: a signature inside them is not trait-required.
+        Depth-capped (MagicMock OOM guard, 2026-06-10). ``impl_item`` /
+        ``foreign_mod_item`` terminate the walk early.
         """
         parent = node.parent
         for _ in range(256):
@@ -467,16 +347,7 @@ class RustElementExtractor(ElementExtractor):
     def _find_impl_owner(self, node: tree_sitter.Node) -> str | None:
         """Return the impl target type name for a fn nested in an impl block.
 
-        Walks the parent chain (function_item → declaration_list →
-        impl_item); the impl's ``type`` field is the implementing type for
-        both inherent (``impl Counter``) and trait (``impl Greet for
-        Counter``) impls.
-
-        The walk is depth-capped: a real tree-sitter parent chain always
-        terminates at source_file/None, but a non-conforming node object
-        (e.g. a MagicMock in unit tests, whose .parent auto-generates an
-        endless chain) must not send this into an unbounded
-        memory-allocating loop (2026-06-10 140GB OOM incident).
+        Depth-capped (MagicMock OOM guard, 2026-06-10).
         """
         parent = node.parent
         for _ in range(256):
@@ -491,12 +362,7 @@ class RustElementExtractor(ElementExtractor):
         return None
 
     def _find_self_parameter(self, node: tree_sitter.Node) -> str | None:
-        """Return the self-parameter text (``&self`` / ``&mut self`` / ...).
-
-        Shorthand receivers parse as ``self_parameter``; verbose receivers
-        (``self: Pin<&mut Self>`` / ``self: Box<Self>``) parse as a plain
-        ``parameter`` whose ``pattern`` field is the bare ``self`` token.
-        """
+        """Return the self-parameter text (``&self`` / ``&mut self`` / ...)."""
         params = node.child_by_field_name("parameters")
         if params is None:
             return None
@@ -512,56 +378,15 @@ class RustElementExtractor(ElementExtractor):
     def _extract_function_signature(self, node: tree_sitter.Node) -> Function | None:
         """Extract a trait abstract method (``function_signature_item``).
 
-        These are required-method declarations inside a trait body that carry
-        no default implementation — they end with ``;`` rather than a block.
-        The ``function_item`` handler covers default-impl methods; this one
-        covers the missing half (issue #538, Rust N2).
-
-        ``extern`` blocks also emit ``function_signature_item`` for foreign
-        function declarations — those are linked FFI APIs, not trait-required
-        methods, so only nodes inside a ``trait_item`` are extracted here
-        (Codex P2 on #583).
+        Only nodes inside a ``trait_item`` are extracted (Codex P2 on #583).
         """
         try:
             if not self._inside_trait(node):
                 return None
-
-            name_node = node.child_by_field_name("name")
-            if not name_node:
+            func = self._build_function_core(node)
+            if func is None:
                 return None
-
-            name = self._get_node_text(name_node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            parameters = self._extract_rust_parameters(
-                node.child_by_field_name("parameters")
-            )
-            return_type = "()"
-            ret_node = node.child_by_field_name("return_type")
-            if ret_node:
-                return_type = self._get_node_text(ret_node)
-                if return_type.startswith("->"):
-                    return_type = return_type[2:].strip()
-
-            visibility = self._extract_visibility(node)
-            raw_text = self._get_node_text(node)
-
-            func = Function(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="rust",
-                parameters=parameters,
-                return_type=return_type,
-                visibility=visibility,
-            )
             func.is_abstract = True
-
-            # No receiver binding here: _inside_trait guarantees the node is
-            # trait-contained, and _find_impl_owner only matches impl_item —
-            # trait-body declarations carry no impl owner (same as the
-            # function_item path for trait default methods).
             return func
         except Exception as e:
             log_error(f"Error extracting Rust abstract function: {e}")
@@ -587,8 +412,7 @@ class RustElementExtractor(ElementExtractor):
                 return None
 
             name = self._get_node_text(name_node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
             visibility = self._extract_visibility(node)
 
             raw_text = self._get_node_text(node)
@@ -627,8 +451,7 @@ class RustElementExtractor(ElementExtractor):
             type_name = self._get_node_text(type_node) if type_node else None
 
             if type_name:
-                start_line = node.start_point[0] + 1
-                end_line = node.end_point[0] + 1
+                start_line, end_line = node_range(node)
                 self.impl_blocks.append(
                     {
                         "type": type_name,
@@ -653,8 +476,7 @@ class RustElementExtractor(ElementExtractor):
 
             name = self._get_node_text(name_node)
             field_type = self._get_node_text(type_node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
             visibility = self._extract_visibility(node)
 
             raw_text = self._get_node_text(node)
@@ -677,17 +499,8 @@ class RustElementExtractor(ElementExtractor):
     def _extract_enum_variants(self, node: tree_sitter.Node) -> list[Variable] | None:
         """Extract each enum variant from an ``enum_item`` node as a Variable.
 
-        For an enum like ``enum Direction { North, South }`` this yields two
-        Variable entries with ``variable_type="enum_variant"`` and
-        ``parent_class`` set to the enum name (e.g. ``"Direction"``).
-
-        The method returns a *list* (possibly empty), not a single Variable.
-        ``_traverse_and_extract`` checks for list returns and extends the
-        accumulator rather than appending.
-
-        Bug #796: enum variants were previously invisible — the ``enum_item``
-        node was only visited by ``extract_classes`` (which emits the enum as
-        a Class), while ``extract_variables`` skipped it entirely.
+        Bug #796: enum variants were previously invisible. Returns a list so
+        callers can extend results directly.
         """
         try:
             name_node = node.child_by_field_name("name")
@@ -713,8 +526,7 @@ class RustElementExtractor(ElementExtractor):
                 if variant_name_node is None:
                     continue
                 variant_name = self._get_node_text(variant_name_node)
-                start_line = child.start_point[0] + 1
-                end_line = child.end_point[0] + 1
+                start_line, end_line = node_range(child)
                 raw_text = self._get_node_text(child)
 
                 var = Variable(
@@ -869,19 +681,29 @@ class RustPlugin(LanguagePlugin):
         """Create a new element extractor instance."""
         return RustElementExtractor()
 
+    def _make_parser(self, language: Any) -> Any:
+        """Construct a tree_sitter.Parser bound to *language* across API shapes."""
+        import tree_sitter
+
+        parser = tree_sitter.Parser()
+        if hasattr(parser, "set_language"):
+            parser.set_language(language)
+            return parser
+        if hasattr(parser, "language"):
+            parser.language = language
+            return parser
+        return tree_sitter.Parser(language)
+
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest
     ) -> AnalysisResult:
         """Analyze Rust code and return structured results."""
-
         from ..models import AnalysisResult
 
         try:
             from ..encoding_utils import read_file_safe
 
-            file_content, detected_encoding = read_file_safe(file_path)
-
-            # Get tree-sitter language and parse
+            file_content, _enc = read_file_safe(file_path)
             language = self.get_tree_sitter_language()
             if language is None:
                 return AnalysisResult(
@@ -892,21 +714,7 @@ class RustPlugin(LanguagePlugin):
                     source_code=file_content,
                 )
 
-            import tree_sitter
-
-            parser = tree_sitter.Parser()
-
-            # Set language
-            if hasattr(parser, "set_language"):
-                parser.set_language(language)
-            elif hasattr(parser, "language"):
-                parser.language = language
-            else:
-                parser = tree_sitter.Parser(language)
-
-            tree = parser.parse(file_content.encode("utf-8"))
-
-            # Extract elements
+            tree = self._make_parser(language).parse(file_content.encode("utf-8"))
             extractor = self.create_extractor()
             all_elements: list[Any] = []
             all_elements.extend(extractor.extract_functions(tree, file_content))
@@ -916,9 +724,8 @@ class RustPlugin(LanguagePlugin):
             all_elements.extend(extractor.extract_packages(tree, file_content))
 
             node_count = (
-                self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
+                count_nodes_iterative(tree.root_node) if tree and tree.root_node else 0
             )
-
             result = AnalysisResult(
                 file_path=file_path,
                 language="rust",
@@ -927,11 +734,9 @@ class RustPlugin(LanguagePlugin):
                 node_count=node_count,
                 source_code=file_content,
             )
-
             if isinstance(extractor, RustElementExtractor):
                 result.modules = extractor.modules
                 result.impls = extractor.impl_blocks
-
             return result
 
         except Exception as e:
@@ -947,14 +752,10 @@ class RustPlugin(LanguagePlugin):
             )
 
     def _count_tree_nodes(self, node: Any) -> int:
-        """Recursively count nodes."""
+        """Count all nodes in the subtree. Delegates to count_nodes_iterative."""
         if node is None:
             return 0
-        count = 1
-        if hasattr(node, "children"):
-            for child in node.children:
-                count += self._count_tree_nodes(child)
-        return count
+        return count_nodes_iterative(node)
 
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for Rust."""
@@ -990,20 +791,15 @@ class RustPlugin(LanguagePlugin):
         """Extract all elements."""
         if tree is None:
             return {"functions": [], "classes": [], "variables": []}
-
         try:
             extractor = self.create_extractor()
-
-            result = {
+            return {
                 "functions": extractor.extract_functions(tree, source_code),
                 "classes": extractor.extract_classes(tree, source_code),
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
                 "packages": extractor.extract_packages(tree, source_code),
             }
-
-            return result
-
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
             return {"functions": [], "classes": [], "variables": []}

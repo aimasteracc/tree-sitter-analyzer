@@ -33,9 +33,7 @@ class TestVerdictSafetyNetJSON:
         # Failures use the explicit error envelope; we don't auto-assign
         # a verdict because the agent shouldn't branch on it. The tool
         # (or the validator) handles failures separately.
-        out = apply_toon_format_to_response(
-            {"success": False, "error": "boom"}, "json"
-        )
+        out = apply_toon_format_to_response({"success": False, "error": "boom"}, "json")
         assert "verdict" not in out
 
     def test_non_dict_inputs_are_not_touched(self):

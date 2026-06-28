@@ -30,26 +30,44 @@ def _make_health(grade: str, total: float, dimensions: dict[str, float]):
 class TestBuildOptionalExtractionFields:
     def test_d_grade_returns_next_action_and_plan(self):
         smells = [
-            {"smell": "long_method", "detail": "'run' is 80 lines (L12)", "severity": "warning"}
+            {
+                "smell": "long_method",
+                "detail": "'run' is 80 lines (L12)",
+                "severity": "warning",
+            }
         ]
-        fields = _build_optional_extraction_fields("src/x.py", "D", smells, "/tmp/x.py", None)
+        fields = _build_optional_extraction_fields(
+            "src/x.py", "D", smells, "/tmp/x.py", None
+        )
         assert "next_action" in fields
         assert "extraction_plan" in fields
 
     def test_f_grade_returns_fields(self):
         smells = [
-            {"smell": "long_method", "detail": "'process' is 100 lines (L5)", "severity": "critical"}
+            {
+                "smell": "long_method",
+                "detail": "'process' is 100 lines (L5)",
+                "severity": "critical",
+            }
         ]
-        fields = _build_optional_extraction_fields("src/y.py", "F", smells, "/tmp/y.py", None)
+        fields = _build_optional_extraction_fields(
+            "src/y.py", "F", smells, "/tmp/y.py", None
+        )
         assert "next_action" in fields
 
     def test_a_grade_returns_empty(self):
-        fields = _build_optional_extraction_fields("src/a.py", "A", [], "/tmp/a.py", None)
+        fields = _build_optional_extraction_fields(
+            "src/a.py", "A", [], "/tmp/a.py", None
+        )
         assert fields == {}
 
     def test_no_long_methods_returns_no_extraction_plan(self):
-        smells = [{"smell": "oversized_file", "detail": "500 lines", "severity": "warning"}]
-        fields = _build_optional_extraction_fields("src/z.py", "D", smells, "/tmp/z.py", None)
+        smells = [
+            {"smell": "oversized_file", "detail": "500 lines", "severity": "warning"}
+        ]
+        fields = _build_optional_extraction_fields(
+            "src/z.py", "D", smells, "/tmp/z.py", None
+        )
         assert "next_action" in fields
         assert "extraction_plan" not in fields
 
@@ -95,8 +113,16 @@ class TestBuildRecommendation:
 
     def test_long_method_names_in_extraction(self):
         smells = [
-            {"smell": "long_method", "detail": "'process_data' is huge", "severity": "warning"},
-            {"smell": "long_method", "detail": "'run_pipeline' is big", "severity": "critical"},
+            {
+                "smell": "long_method",
+                "detail": "'process_data' is huge",
+                "severity": "warning",
+            },
+            {
+                "smell": "long_method",
+                "detail": "'run_pipeline' is big",
+                "severity": "critical",
+            },
         ]
         rec = _build_recommendation("D", {"complexity": 20.0}, smells)
         assert "process_data" in rec
@@ -106,7 +132,11 @@ class TestBuildRecommendation:
 class TestLongMethodNames:
     def test_extracts_names_from_detail(self):
         smells = [
-            {"smell": "long_method", "detail": "'my_func' is 50 lines", "severity": "warning"},
+            {
+                "smell": "long_method",
+                "detail": "'my_func' is 50 lines",
+                "severity": "warning",
+            },
         ]
         assert _long_method_names(smells) == ["my_func"]
 
@@ -115,7 +145,9 @@ class TestLongMethodNames:
         assert _long_method_names(smells) == []
 
     def test_skips_detail_without_quote(self):
-        smells = [{"smell": "long_method", "detail": "no quotes here", "severity": "warning"}]
+        smells = [
+            {"smell": "long_method", "detail": "no quotes here", "severity": "warning"}
+        ]
         assert _long_method_names(smells) == []
 
 
@@ -143,29 +175,37 @@ class TestBuildAgentNextAction:
 
     def test_b_grade_with_smell_returns_medium(self):
         action = _build_agent_next_action(
-            "src/b.py", "B", {"complexity": 60.0},
-            [{"smell": "high_complexity", "severity": "warning"}]
+            "src/b.py",
+            "B",
+            {"complexity": 60.0},
+            [{"smell": "high_complexity", "severity": "warning"}],
         )
         assert action["priority"] == "medium"
 
     def test_d_grade_returns_high_priority(self):
         action = _build_agent_next_action(
-            "src/d.py", "D", {"complexity": 20.0},
-            [{"smell": "long_method", "severity": "warning"}]
+            "src/d.py",
+            "D",
+            {"complexity": 20.0},
+            [{"smell": "long_method", "severity": "warning"}],
         )
         assert action["priority"] == "high"
 
     def test_c_grade_with_smells_returns_medium(self):
         action = _build_agent_next_action(
-            "src/c.py", "C", {"complexity": 40.0},
-            [{"smell": "deep_nesting", "severity": "warning"}]
+            "src/c.py",
+            "C",
+            {"complexity": 40.0},
+            [{"smell": "deep_nesting", "severity": "warning"}],
         )
         assert action["priority"] == "medium"
 
     def test_critical_smell_returns_high(self):
         action = _build_agent_next_action(
-            "src/e.py", "C", {"complexity": 50.0},
-            [{"smell": "long_method", "severity": "critical"}]
+            "src/e.py",
+            "C",
+            {"complexity": 50.0},
+            [{"smell": "long_method", "severity": "critical"}],
         )
         assert action["priority"] == "high"
 
@@ -200,7 +240,9 @@ class TestWeakestDimensionScore:
         assert score is None
 
     def test_returns_lowest(self):
-        dim, score = _weakest_dimension_score({"complexity": 80.0, "size": 30.0, "deps": 90.0})
+        dim, score = _weakest_dimension_score(
+            {"complexity": 80.0, "size": 30.0, "deps": 90.0}
+        )
         assert dim == "size"
         assert score == 30.0
 
@@ -252,11 +294,13 @@ class TestBuildExtractionPlan:
         target_file = tmp_path / "big_module.py"
         target_file.write_text("def run():\n    pass\n\ndef helper():\n    pass\n")
         smells = [
-            {"smell": "long_method", "detail": "'run' is 50 lines (L1)", "severity": "critical"},
+            {
+                "smell": "long_method",
+                "detail": "'run' is 50 lines (L1)",
+                "severity": "critical",
+            },
         ]
-        plan = _build_extraction_plan(
-            "big_module.py", smells, str(target_file), None
-        )
+        plan = _build_extraction_plan("big_module.py", smells, str(target_file), None)
         assert plan is not None
         assert plan["target_file"] == "big_module.py"
         assert len(plan["methods_to_extract"]) == 1
@@ -265,9 +309,15 @@ class TestBuildExtractionPlan:
 
     def test_limits_to_three_targets(self, tmp_path):
         target_file = tmp_path / "many.py"
-        target_file.write_text("def a():\n    pass\ndef b():\n    pass\ndef c():\n    pass\ndef d():\n    pass\n")
+        target_file.write_text(
+            "def a():\n    pass\ndef b():\n    pass\ndef c():\n    pass\ndef d():\n    pass\n"
+        )
         smells = [
-            {"smell": "long_method", "detail": f"'{n}' is 50 lines (L{i})", "severity": "warning"}
+            {
+                "smell": "long_method",
+                "detail": f"'{n}' is 50 lines (L{i})",
+                "severity": "warning",
+            }
             for i, n in enumerate(["a", "b", "c", "d"], 1)
         ]
         plan = _build_extraction_plan("many.py", smells, str(target_file), None)
@@ -278,8 +328,14 @@ class TestBuildExtractionPlan:
 class TestBuildExtractionTarget:
     def test_parses_detail_with_line_number(self, tmp_path):
         target = tmp_path / "mod.py"
-        target.write_text("def run():\n    x = 1\n    return x\n\ndef other():\n    pass\n")
-        smell = {"smell": "long_method", "detail": "'run' is 50 lines (L1)", "severity": "warning"}
+        target.write_text(
+            "def run():\n    x = 1\n    return x\n\ndef other():\n    pass\n"
+        )
+        smell = {
+            "smell": "long_method",
+            "detail": "'run' is 50 lines (L1)",
+            "severity": "warning",
+        }
         result = _build_extraction_target(smell, str(target), None)
         assert result["method"] == "run"
         assert result["start_line"] == 1
@@ -288,7 +344,11 @@ class TestBuildExtractionTarget:
     def test_critical_severity_target(self, tmp_path):
         target = tmp_path / "mod.py"
         target.write_text("def run():\n    pass\n")
-        smell = {"smell": "long_method", "detail": "'run' is 50 lines (L1)", "severity": "critical"}
+        smell = {
+            "smell": "long_method",
+            "detail": "'run' is 50 lines (L1)",
+            "severity": "critical",
+        }
         result = _build_extraction_target(smell, str(target), None)
         assert result["priority"] == "critical"
 
@@ -303,16 +363,22 @@ class TestBuildExtractionTarget:
 class TestFindFunctionEndLine:
     def test_uses_analysis_functions(self, tmp_path):
         target = tmp_path / "mod.py"
-        target.write_text("def run():\n    x = 1\n    return x\n\ndef other():\n    pass\n")
+        target.write_text(
+            "def run():\n    x = 1\n    return x\n\ndef other():\n    pass\n"
+        )
         analysis = SimpleNamespace(elements=[])
-        with patch("tree_sitter_analyzer.mcp.tools.utils.file_health_response.get_functions") as mock_gf:
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.utils.file_health_response.get_functions"
+        ) as mock_gf:
             mock_gf.return_value = [{"line": 1, "end_line": 4}]
             result = _find_function_end_line(str(target), 1, analysis)
         assert result == 4
 
     def test_falls_back_to_file_read(self, tmp_path):
         target = tmp_path / "mod.py"
-        target.write_text("def run():\n    x = 1\n    return x\n\ndef other():\n    pass\n")
+        target.write_text(
+            "def run():\n    x = 1\n    return x\n\ndef other():\n    pass\n"
+        )
         result = _find_function_end_line(str(target), 1, None)
         assert result > 1  # ratchet: nondeterministic
 
@@ -330,10 +396,16 @@ class TestFindFunctionEndLine:
 class TestBuildFileHealthResultIntegration:
     def test_full_d_grade_flow(self, tmp_path):
         target = tmp_path / "big.py"
-        target.write_text("def run():\n    x = 1\n    return x\n\ndef other():\n    pass\n")
+        target.write_text(
+            "def run():\n    x = 1\n    return x\n\ndef other():\n    pass\n"
+        )
         health = _make_health("D", 40.0, {"complexity": 20.0, "size": 50.0})
         smells = [
-            {"smell": "long_method", "detail": "'run' is 50 lines (L1)", "severity": "critical"},
+            {
+                "smell": "long_method",
+                "detail": "'run' is 50 lines (L1)",
+                "severity": "critical",
+            },
         ]
         result = build_file_health_result("big.py", health, smells, str(target), None)
         assert result["success"] is True

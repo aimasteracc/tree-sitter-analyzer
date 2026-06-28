@@ -26,7 +26,7 @@ class TestAnalyzeCodeStructureToolInit:
 
     def test_init_without_project_root(self, tool):
         """Test initialization without project root."""
-        assert tool is not None
+        assert isinstance(tool, AnalyzeCodeStructureTool)
         assert tool.project_root is None
         assert tool.analysis_engine is not None
         assert tool.file_output_manager is not None
@@ -62,7 +62,7 @@ class TestAnalyzeCodeStructureToolGetToolDefinition:
         definition = tool.get_tool_definition()
         assert "description" in definition
         assert isinstance(definition["description"], str)
-        assert len(definition["description"]) > 0
+        assert "Per-file structural table" in definition["description"]
 
     def test_get_tool_definition_has_input_schema(self, tool):
         """Test tool definition has input schema."""

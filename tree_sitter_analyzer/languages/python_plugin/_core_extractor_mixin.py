@@ -7,7 +7,7 @@ from typing import Any
 
 from ...encoding_utils import extract_text_slice, safe_encode
 from ...utils import log_debug, log_error, log_warning
-from ._extractor_helpers import (
+from ._extractor import (
     _PARAMETER_NODE_TYPES,
     TraversalRuntime,
     _extract_node_text_by_bytes,

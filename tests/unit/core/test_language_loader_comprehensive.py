@@ -162,8 +162,9 @@ class TestLoadLanguage:
 
         loader.load_language("python")
 
-        # Result might be wrapped in Language(), so check it's in cache
-        assert loader._loaded_languages["python"] is not None
+        # Language was stored in cache
+        assert "python" in loader._loaded_languages
+        assert loader._loaded_languages["python"] is mock_language_obj
 
     @patch("tree_sitter_analyzer.language_loader.importlib.import_module")
     @patch("tree_sitter_analyzer.language_loader.tree_sitter")
@@ -214,8 +215,8 @@ class TestLoadLanguage:
 
         result = loader.load_language("typescript")
 
-        # Should load successfully
-        assert result is not None
+        # Should return the mock language object
+        assert result is mock_language_obj
         mock_module.language_typescript.assert_called_once()
 
     @patch("tree_sitter_analyzer.language_loader.importlib.import_module")
@@ -240,8 +241,8 @@ class TestLoadLanguage:
 
         result = loader.load_language("tsx")
 
-        # Should load successfully
-        assert result is not None
+        # Should return the mock language object
+        assert result is mock_language_obj
         mock_module.language_tsx.assert_called_once()
 
     @patch("tree_sitter_analyzer.language_loader.importlib.import_module")

@@ -707,8 +707,8 @@ class TestBug785MatchingFileCount:
     def test_source_exts_equals_canonical_ext_to_lang_keys(self) -> None:
         """PROJECT_HEALTH_SOURCE_EXTS must equal EXT_TO_LANG.keys() exactly —
         no extensions missing, none added beyond what the indexer supports."""
-        from tree_sitter_analyzer._lang_extension_map import EXT_TO_LANG
         from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+        from tree_sitter_analyzer.languages.lang_extension_map import EXT_TO_LANG
 
         assert frozenset(PROJECT_HEALTH_SOURCE_EXTS) == frozenset(EXT_TO_LANG.keys())
 

@@ -73,9 +73,12 @@ class TestParserInit:
 
     def test_parser_init(self) -> None:
         """Test Parser initialization."""
+        from tree_sitter_analyzer.encoding_utils import EncodingManager
+        from tree_sitter_analyzer.language_loader import LanguageLoader
+
         parser = Parser()
-        assert parser._loader is not None
-        assert parser._encoding_manager is not None
+        assert isinstance(parser._loader, LanguageLoader)
+        assert isinstance(parser._encoding_manager, EncodingManager)
 
     def test_parser_class_cache_exists(self) -> None:
         """Test that Parser has class-level cache."""

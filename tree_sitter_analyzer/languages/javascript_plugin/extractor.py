@@ -24,14 +24,15 @@ from ...encoding_utils import extract_text_slice, safe_encode
 from ...models import Class, Variable
 from ...plugins.base import ElementExtractor
 from ...utils import log_debug
-from ._class_helpers import extract_class
+from ..shared.traversal import node_range
+from ._class import extract_class
 from ._function_mixin import JavaScriptFunctionExtractionMixin
 from ._import_export_mixin import JavaScriptImportExportMixin
 from ._public_extraction_mixin import JavaScriptPublicExtractionMixin
-from ._text_helpers import get_node_text_optimized
-from ._traversal_helpers import traverse_and_extract_iterative
+from ._text import get_node_text_optimized
+from ._traversal import traverse_and_extract_iterative
 from ._utility_mixin import JavaScriptUtilityMixin
-from ._variable_helpers import parse_variable_declarator
+from ._variable import parse_variable_declarator
 
 
 class JavaScriptElementExtractor(
@@ -143,8 +144,7 @@ class JavaScriptElementExtractor(
     def _extract_property_optimized(self, node: "tree_sitter.Node") -> Variable | None:
         """Extract class property definition"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
 
             # Extract property name
             prop_name = None
@@ -192,8 +192,7 @@ class JavaScriptElementExtractor(
     ) -> Variable | None:
         """Extract class field declaration (public and private, not arrow methods)."""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
 
             field_name = None
             field_value = None
@@ -271,8 +270,7 @@ class JavaScriptElementExtractor(
         variables: list[Variable] = []
 
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            start_line, end_line = node_range(node)
 
             # Find variable declarators
             for child in node.children:

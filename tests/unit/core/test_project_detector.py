@@ -366,7 +366,7 @@ class TestProjectDetectorEdge:
         (sub / ".git").mkdir()
         detector = ProjectRootDetector()
         result = detector._traverse_upward(str(sub))
-        assert result is not None
+        assert result == str(sub)
 
     def test_calculate_score_weights(self):
         """_calculate_score returns weighted scores for different markers."""
@@ -374,7 +374,7 @@ class TestProjectDetectorEdge:
 
         detector = ProjectRootDetector()
         score = detector._calculate_score([".git", "pyproject.toml"])
-        assert score > 0
+        assert score == 210
 
     def test_detect_from_cwd_exception_handling(self, monkeypatch):
         """detect_from_cwd handles OSError gracefully."""
@@ -484,7 +484,7 @@ class TestProjectDetectorEdge:
         test_file = isolated / "test.py"
         test_file.touch()
         result = detect_project_root(str(test_file))
-        assert result is not None
+        assert result == str(Path.cwd())
 
     def test_detect_project_root_no_args_no_markers(self, monkeypatch, tmp_path):
         """detect_project_root returns None when cwd has no markers."""

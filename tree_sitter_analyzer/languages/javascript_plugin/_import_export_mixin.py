@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 from ...models import Import
 from ...utils import log_debug
-from ._export_helpers import extract_commonjs_exports, parse_export_statement
-from ._import_helpers import (
+from ..shared.traversal import node_range
+from ._export import extract_commonjs_exports, parse_export_statement
+from ._import import (
     extract_commonjs_requires,
     extract_import_names,
     parse_import_statement,
@@ -73,10 +74,11 @@ class JavaScriptImportExportMixin:
                 return None
 
             _import_type, names, source, _is_default, _is_namespace = import_info
+            _s1, _e1 = node_range(node)
             return Import(
                 name=names[0] if names else "unknown",
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=_s1,
+                end_line=_e1,
                 raw_text=import_text,
                 language="javascript",
                 module_path=source,
@@ -100,10 +102,11 @@ class JavaScriptImportExportMixin:
                 return None
 
             source = import_match.group(1)
+            _s2, _e2 = node_range(node)
             return Import(
                 name="dynamic_import",
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=_s2,
+                end_line=_e2,
                 raw_text=node_text,
                 language="javascript",
                 module_path=source,
@@ -131,12 +134,13 @@ class JavaScriptImportExportMixin:
                 return None
 
             export_type, names, is_default = export_info
+            _s3, _e3 = node_range(node)
             return {
                 "type": export_type,
                 "names": names,
                 "is_default": is_default,
-                "start_line": node.start_point[0] + 1,
-                "end_line": node.end_point[0] + 1,
+                "start_line": _s3,
+                "end_line": _e3,
                 "raw_text": export_text,
             }
         except Exception as e:

@@ -127,7 +127,7 @@ class TestGuardBranches:
         return node
 
     def _extract(self, spec_node):
-        from tree_sitter_analyzer.languages._go_function_helpers import (
+        from tree_sitter_analyzer.languages._go_function import (
             extract_go_interface_methods,
         )
 
@@ -159,7 +159,7 @@ class TestGuardBranches:
         assert self._extract(spec) == []
 
     def test_nameless_method_elem_skipped(self) -> None:
-        from tree_sitter_analyzer.languages._go_function_helpers import (
+        from tree_sitter_analyzer.languages._go_function import (
             extract_go_interface_methods,
         )
 
@@ -175,7 +175,7 @@ class TestGuardBranches:
     def test_exception_returns_empty(self) -> None:
         from unittest.mock import MagicMock
 
-        from tree_sitter_analyzer.languages._go_function_helpers import (
+        from tree_sitter_analyzer.languages._go_function import (
             extract_go_interface_methods,
         )
 

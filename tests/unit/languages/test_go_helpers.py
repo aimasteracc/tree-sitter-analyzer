@@ -5,12 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from tree_sitter_analyzer.languages.go_helpers import (
+from tree_sitter_analyzer.languages._go_common import extract_docstring
+from tree_sitter_analyzer.languages._go_import import (
     _extract_import_declaration,
-    extract_docstring,
+    extract_import_spec,
+)
+from tree_sitter_analyzer.languages._go_type import (
     extract_embedded_types,
     extract_go_type_spec,
-    extract_import_spec,
 )
 
 

@@ -159,7 +159,7 @@ def _project_owns(ctx: RustResolverContext, simple: str) -> bool:
     When a file's language is unknown (no tag), it is treated as a possible owner
     (conservative — same convention as the Java resolver).
     """
-    from ..._language_family import languages_compatible
+    from tree_sitter_analyzer.languages.language_family import languages_compatible
 
     for owner_file, _sym_id in ctx.global_name_table.get(simple, []):
         owner_lang = ctx.file_languages.get(owner_file, "")

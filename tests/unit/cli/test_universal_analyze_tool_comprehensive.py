@@ -19,10 +19,14 @@ class TestUniversalAnalyzeToolInitialization:
 
     def test_init_without_project_root(self):
         """Test initialization without project root"""
+        from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
+        from tree_sitter_analyzer.mcp.utils.path_resolver import PathResolver
+        from tree_sitter_analyzer.security.validator import SecurityValidator
+
         tool = UniversalAnalyzeTool()
-        assert tool.analysis_engine is not None
-        assert tool.path_resolver is not None
-        assert tool.security_validator is not None
+        assert isinstance(tool.analysis_engine, UnifiedAnalysisEngine)
+        assert isinstance(tool.path_resolver, PathResolver)
+        assert isinstance(tool.security_validator, SecurityValidator)
 
     def test_init_with_project_root(self, tmp_path):
         """Test initialization with project root"""

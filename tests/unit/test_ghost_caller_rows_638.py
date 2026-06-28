@@ -23,8 +23,8 @@ from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer._ast_extraction import _extract_call_edges
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.cache.extraction import _extract_call_edges
 from tree_sitter_analyzer.call_graph import CallGraph
 from tree_sitter_analyzer.core.parser import Parser
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool

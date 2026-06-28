@@ -17,8 +17,8 @@ def tool():
 
 class TestInit:
     def test_initializes(self, tool):
-        assert tool is not None
-        assert tool.analysis_engine is not None
+        assert isinstance(tool, AnalyzeScaleToolCLICompatible)
+        assert tool.analysis_engine is not None  # mocked by fixture
 
 
 class TestGetToolSchema:
@@ -167,7 +167,7 @@ class TestExecute:
         assert result["element_counts"]["methods"] == 1
         assert result["element_counts"]["fields"] == 1
         assert result["element_counts"]["annotations"] == 1
-        assert result["analysis_time_ms"] >= 0
+        assert result["analysis_time_ms"] >= 0  # ratchet: nondeterministic timing value
 
     @pytest.mark.asyncio
     async def test_success_no_package(self, tool):

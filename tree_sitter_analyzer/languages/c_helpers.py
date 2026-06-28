@@ -5,27 +5,27 @@ from typing import Any
 
 from ..models import Class, Function, Import, Variable
 from ..utils import log_debug
-from ._c_comment_helpers import extract_comment_for_line as _extract_comment_impl
-from ._c_declaration_helpers import (
+from ._c_comment import extract_comment_for_line as _extract_comment_impl
+from ._c_declaration import (
     extract_field_declaration as _extract_field_declaration_impl,
 )
-from ._c_declaration_helpers import (
+from ._c_declaration import (
     extract_variable_declaration as _extract_variable_declaration_impl,
 )
-from ._c_function_helpers import extract_c_function as _extract_c_function_impl
-from ._c_include_helpers import extract_include_info as _extract_include_info_impl
-from ._c_include_helpers import (
+from ._c_function import extract_c_function as _extract_c_function_impl
+from ._c_include import extract_include_info as _extract_include_info_impl
+from ._c_include import (
     extract_includes_fallback as _extract_includes_fallback_impl,
 )
-from ._c_macro_helpers import extract_macro_function as _extract_macro_function_impl
-from ._c_signature_helpers import (
+from ._c_macro import extract_macro_function as _extract_macro_function_impl
+from ._c_signature import (
     parse_function_signature as _parse_function_signature_impl,
 )
-from ._c_traversal_helpers import c_traverse_and_extract as _c_traverse_and_extract_impl
-from ._c_type_definition_helpers import (
+from ._c_traversal import c_traverse_and_extract as _c_traverse_and_extract_impl
+from ._c_type_definition import (
     extract_enum_definition as _extract_enum_definition_impl,
 )
-from ._c_type_definition_helpers import (
+from ._c_type_definition import (
     extract_struct_definition as _extract_struct_definition_impl,
 )
 from ._complexity_logical import is_executable_logical_operator

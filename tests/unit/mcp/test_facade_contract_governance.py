@@ -48,7 +48,10 @@ KNOWN_EXISTING_VIOLATIONS: frozenset[tuple[str, str]] = frozenset(
         ("test_index_facade.py", "test_arg_projection_strips_action_key"),
         ("test_index_facade.py", "test_envelope_preserved_verbatim"),
         ("test_index_facade.py", "test_missing_action_returns_error_envelope"),
-        ("test_index_facade.py", "test_unknown_action_returns_error_with_available_actions"),
+        (
+            "test_index_facade.py",
+            "test_unknown_action_returns_error_with_available_actions",
+        ),
         # test_nav_facade.py
         ("test_nav_facade.py", "test_arg_projection_strips_action_from_impact"),
         ("test_nav_facade.py", "test_arg_projection_strips_action_from_navigate"),
@@ -58,7 +61,10 @@ KNOWN_EXISTING_VIOLATIONS: frozenset[tuple[str, str]] = frozenset(
         ("test_project_facade.py", "test_arg_projection_strips_action_key"),
         ("test_project_facade.py", "test_envelope_preserved_verbatim"),
         ("test_project_facade.py", "test_missing_action_returns_error_envelope"),
-        ("test_project_facade.py", "test_unknown_action_returns_error_with_available_actions"),
+        (
+            "test_project_facade.py",
+            "test_unknown_action_returns_error_with_available_actions",
+        ),
         # test_structure_facade.py
         ("test_structure_facade.py", "test_arg_projection_strips_action_key"),
         ("test_structure_facade.py", "test_envelope_preserved"),

@@ -66,10 +66,9 @@ class MyClass:
     # Step 4: Identify wrappers
     print("\n[Step 4] Detecting wrapper nodes...")
     wrapper_candidates = [
-        nt for nt in node_counts if any(
-            pattern in nt
-            for pattern in ["decorated", "with_clause", "annotated"]
-        )
+        nt
+        for nt in node_counts
+        if any(pattern in nt for pattern in ["decorated", "with_clause", "annotated"])
     ]
     print(f"  Heuristic found: {len(wrapper_candidates)} candidates")
     for wc in wrapper_candidates:

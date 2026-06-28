@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from tree_sitter_analyzer import _ast_cache_build_state as build_state
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.cache import build_state
 from tree_sitter_analyzer.class_hierarchy import ClassHierarchy
 from tree_sitter_analyzer.graph import edge_store as edge_store_module
 from tree_sitter_analyzer.graph.edge_store import (

@@ -87,7 +87,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_basic_analysis(self, tool, sample_python_file):
         """Test basic analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "basic", "output_format": "json"}
+        args = {
+            "file_path": sample_python_file,
+            "analysis_type": "basic",
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -98,7 +102,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_detailed_analysis(self, tool, sample_python_file):
         """Test detailed analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "detailed", "output_format": "json"}
+        args = {
+            "file_path": sample_python_file,
+            "analysis_type": "detailed",
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -108,7 +116,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_structure_analysis(self, tool, sample_python_file):
         """Test structure analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "structure", "output_format": "json"}
+        args = {
+            "file_path": sample_python_file,
+            "analysis_type": "structure",
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -118,7 +130,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_metrics_analysis(self, tool, sample_python_file):
         """Test metrics analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "metrics", "output_format": "json"}
+        args = {
+            "file_path": sample_python_file,
+            "analysis_type": "metrics",
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -128,7 +144,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_with_include_ast(self, tool, sample_python_file):
         """Test analysis with include_ast option."""
-        args = {"file_path": sample_python_file, "include_ast": True, "output_format": "json"}
+        args = {
+            "file_path": sample_python_file,
+            "include_ast": True,
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -138,7 +158,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_with_include_queries(self, tool, sample_python_file):
         """Test analysis with include_queries option."""
-        args = {"file_path": sample_python_file, "include_queries": True, "output_format": "json"}
+        args = {
+            "file_path": sample_python_file,
+            "include_queries": True,
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -148,7 +172,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_file_basic(self, tool, sample_java_file):
         """Test Java file analysis with basic type."""
-        args = {"file_path": sample_java_file, "analysis_type": "basic", "output_format": "json"}
+        args = {
+            "file_path": sample_java_file,
+            "analysis_type": "basic",
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -158,7 +186,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_file_detailed(self, tool, sample_java_file):
         """Test Java file analysis with detailed type."""
-        args = {"file_path": sample_java_file, "analysis_type": "detailed", "output_format": "json"}
+        args = {
+            "file_path": sample_java_file,
+            "analysis_type": "detailed",
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -167,7 +199,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_file_structure(self, tool, sample_java_file):
         """Test Java file analysis with structure type."""
-        args = {"file_path": sample_java_file, "analysis_type": "structure", "output_format": "json"}
+        args = {
+            "file_path": sample_java_file,
+            "analysis_type": "structure",
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -176,7 +212,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_file_metrics(self, tool, sample_java_file):
         """Test Java file analysis with metrics type."""
-        args = {"file_path": sample_java_file, "analysis_type": "metrics", "output_format": "json"}
+        args = {
+            "file_path": sample_java_file,
+            "analysis_type": "metrics",
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -185,7 +225,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_with_include_ast(self, tool, sample_java_file):
         """Test Java file analysis with include_ast option."""
-        args = {"file_path": sample_java_file, "include_ast": True, "output_format": "json"}
+        args = {
+            "file_path": sample_java_file,
+            "include_ast": True,
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -194,7 +238,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_with_include_queries(self, tool, sample_java_file):
         """Test Java file analysis with include_queries option."""
-        args = {"file_path": sample_java_file, "include_queries": True, "output_format": "json"}
+        args = {
+            "file_path": sample_java_file,
+            "include_queries": True,
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -241,31 +289,51 @@ class TestUniversalAnalyzeToolValidation:
 
     def test_validate_arguments_invalid_language_type(self, tool):
         """Test validate_arguments with invalid language type."""
-        args = {"file_path": "/path/to/file.py", "language": 123, "output_format": "json"}
+        args = {
+            "file_path": "/path/to/file.py",
+            "language": 123,
+            "output_format": "json",
+        }
         with pytest.raises(ValueError, match="language must be a string"):
             tool.validate_arguments(args)
 
     def test_validate_arguments_invalid_analysis_type_type(self, tool):
         """Test validate_arguments with invalid analysis_type type."""
-        args = {"file_path": "/path/to/file.py", "analysis_type": 123, "output_format": "json"}
+        args = {
+            "file_path": "/path/to/file.py",
+            "analysis_type": 123,
+            "output_format": "json",
+        }
         with pytest.raises(ValueError, match="analysis_type must be a string"):
             tool.validate_arguments(args)
 
     def test_validate_arguments_invalid_analysis_type_value(self, tool):
         """Test validate_arguments with invalid analysis_type value."""
-        args = {"file_path": "/path/to/file.py", "analysis_type": "invalid", "output_format": "json"}
+        args = {
+            "file_path": "/path/to/file.py",
+            "analysis_type": "invalid",
+            "output_format": "json",
+        }
         with pytest.raises(ValueError, match="analysis_type must be one of"):
             tool.validate_arguments(args)
 
     def test_validate_arguments_invalid_include_ast_type(self, tool):
         """Test validate_arguments with invalid include_ast type."""
-        args = {"file_path": "/path/to/file.py", "include_ast": "true", "output_format": "json"}
+        args = {
+            "file_path": "/path/to/file.py",
+            "include_ast": "true",
+            "output_format": "json",
+        }
         with pytest.raises(ValueError, match="include_ast must be a boolean"):
             tool.validate_arguments(args)
 
     def test_validate_arguments_invalid_include_queries_type(self, tool):
         """Test validate_arguments with invalid include_queries type."""
-        args = {"file_path": "/path/to/file.py", "include_queries": "true", "output_format": "json"}
+        args = {
+            "file_path": "/path/to/file.py",
+            "include_queries": "true",
+            "output_format": "json",
+        }
         with pytest.raises(ValueError, match="include_queries must be a boolean"):
             tool.validate_arguments(args)
 
@@ -335,7 +403,11 @@ class TestUniversalAnalyzeToolErrorHandling:
         file_path = Path(temp_dir) / "test.py"
         file_path.write_text("def hello(): pass")
 
-        args = {"file_path": str(file_path), "analysis_type": "invalid_type", "output_format": "json"}
+        args = {
+            "file_path": str(file_path),
+            "analysis_type": "invalid_type",
+            "output_format": "json",
+        }
 
         with pytest.raises(AnalysisError):
             await tool.execute(args)
@@ -348,7 +420,11 @@ class TestUniversalAnalyzeToolErrorHandling:
         file_path = Path(temp_dir) / "test.xyz"
         file_path.write_text("some content")
 
-        args = {"file_path": str(file_path), "language": "unsupported_lang", "output_format": "json"}
+        args = {
+            "file_path": str(file_path),
+            "language": "unsupported_lang",
+            "output_format": "json",
+        }
 
         with pytest.raises(AnalysisError):
             await tool.execute(args)
@@ -372,7 +448,11 @@ class TestUniversalAnalyzeToolErrorHandling:
         file_path = Path(temp_dir) / "test.txt"
         file_path.write_text("def hello(): pass")
 
-        args = {"file_path": str(file_path), "language": "python", "output_format": "json"}
+        args = {
+            "file_path": str(file_path),
+            "language": "python",
+            "output_format": "json",
+        }
 
         result = await tool.execute(args)
         assert isinstance(result, dict)

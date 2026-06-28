@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer import _ast_cache_build_state as build_state
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.cache import build_state
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 from tree_sitter_analyzer.mcp.tools.codegraph_relation_tool import (

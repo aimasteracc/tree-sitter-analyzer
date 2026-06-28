@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Markdown formatter tests — table formatting and analysis result."""
 
-
 from unittest.mock import Mock
 
 from tree_sitter_analyzer.formatters.markdown_formatter import MarkdownFormatter
@@ -521,5 +520,3 @@ class TestFormatAnalysisResult:
         assert data["elements"][0]["line_range"]["start"] == 10
         assert data["elements"][0]["line_range"]["end"] == 20
         assert data["analysis_metadata"]["analysis_time"] == 1.5
-
-

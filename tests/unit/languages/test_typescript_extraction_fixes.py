@@ -285,7 +285,7 @@ class Painter {}
 
 def test_enum_kind_in_ast_extraction() -> None:
     """enum_declaration must produce kind='enum' in the _ast_extraction symbol list."""
-    from tree_sitter_analyzer._ast_extraction import _extract_symbols
+    from tree_sitter_analyzer.cache.extraction import _extract_symbols
 
     code = "enum Status { Active, Inactive }\nconst enum Dir { Up, Down }"
     tree = _parse(code)
@@ -424,7 +424,7 @@ def test_reexport_aliased() -> None:
 
 def test_reexport_name_is_substring_does_not_match() -> None:
     """`export { LocalThing }` must NOT report `Local` as re-exported."""
-    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+    from tree_sitter_analyzer.languages.typescript_plugin._variable import (
         _is_named_reexport,
     )
 
@@ -433,7 +433,7 @@ def test_reexport_name_is_substring_does_not_match() -> None:
 
 def test_reexport_alias_lhs_substring_does_not_match() -> None:
     """`{ LocalThing as Foo }` must NOT report `Local` (alias-pattern miss)."""
-    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+    from tree_sitter_analyzer.languages.typescript_plugin._variable import (
         _is_named_reexport,
     )
 
@@ -442,7 +442,7 @@ def test_reexport_alias_lhs_substring_does_not_match() -> None:
 
 def test_reexport_no_export_block_returns_false() -> None:
     """A source with no `export { ... }` block at all returns False."""
-    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+    from tree_sitter_analyzer.languages.typescript_plugin._variable import (
         _is_named_reexport,
     )
 
@@ -451,7 +451,7 @@ def test_reexport_no_export_block_returns_false() -> None:
 
 def test_reexport_alias_form_direct() -> None:
     """`{ Local as Foo }` reports the LHS `Local` via the alias pattern."""
-    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+    from tree_sitter_analyzer.languages.typescript_plugin._variable import (
         _is_named_reexport,
     )
 
@@ -460,7 +460,7 @@ def test_reexport_alias_form_direct() -> None:
 
 def test_is_exported_class_unexported_returns_false() -> None:
     """A locally-declared, never-exported class is not reported as exported."""
-    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+    from tree_sitter_analyzer.languages.typescript_plugin._variable import (
         is_exported_class,
     )
 
@@ -469,7 +469,7 @@ def test_is_exported_class_unexported_returns_false() -> None:
 
 def test_is_exported_class_interface_prefix() -> None:
     """`export interface X` is recognised via the interface prefix."""
-    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+    from tree_sitter_analyzer.languages.typescript_plugin._variable import (
         is_exported_class,
     )
 
@@ -478,7 +478,7 @@ def test_is_exported_class_interface_prefix() -> None:
 
 def test_is_exported_class_default_export() -> None:
     """`export default X` is recognised."""
-    from tree_sitter_analyzer.languages.typescript_plugin._variable_helpers import (
+    from tree_sitter_analyzer.languages.typescript_plugin._variable import (
         is_exported_class,
     )
 

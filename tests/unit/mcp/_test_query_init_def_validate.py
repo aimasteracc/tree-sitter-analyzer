@@ -1,6 +1,5 @@
 """Mixins for query tool: init, set_path, definition, and validate tests."""
 
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool

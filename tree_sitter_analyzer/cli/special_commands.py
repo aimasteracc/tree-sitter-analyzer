@@ -47,6 +47,7 @@ def handle_special_commands(
         lambda: _handle_full_index(args, context),
         lambda: _handle_codegraph_metrics(args, context),
         lambda: _handle_incremental_sync(args, context),
+        lambda: _handle_knowledge_graph_watch(args, context),
         lambda: _handle_knowledge_graph_serve(args, context),
         lambda: _handle_knowledge_graph_index(args, context),
         lambda: _handle_affected(args, context),
@@ -591,6 +592,17 @@ def _handle_knowledge_graph_serve(
     from .commands.codegraph_index_commands import run_knowledge_graph_serve
 
     return run_knowledge_graph_serve(args, context.output_error)
+
+
+def _handle_knowledge_graph_watch(
+    args: Any, context: SpecialCommandContext
+) -> int | None:
+    """Dispatch ``--knowledge-graph-watch`` → resident watch daemon."""
+    if not getattr(args, "knowledge_graph_watch", False):
+        return None
+    from .commands.codegraph_index_commands import run_knowledge_graph_watch
+
+    return run_knowledge_graph_watch(args)
 
 
 def _handle_clean_state(

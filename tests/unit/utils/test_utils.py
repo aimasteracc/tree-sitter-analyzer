@@ -404,9 +404,7 @@ def test_performance_logging_integration():
     with patch("tree_sitter_analyzer.utils.logging.perf_logger") as mock_logger:
         log_performance("Test operation", execution_time=1.5, details={"items": 100})
 
-    mock_logger.debug.assert_called_once_with(
-        "Test operation: 1.5000s - items: 100"
-    )
+    mock_logger.debug.assert_called_once_with("Test operation: 1.5000s - items: 100")
 
 
 if __name__ == "__main__":

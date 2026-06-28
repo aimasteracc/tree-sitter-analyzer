@@ -47,9 +47,7 @@ class TestParsePRUrl:
         assert result.pr_number == 42
 
     def test_api_url(self):
-        result = parse_pr_url(
-            "https://api.github.com/repos/owner/repo/pulls/123"
-        )
+        result = parse_pr_url("https://api.github.com/repos/owner/repo/pulls/123")
         assert result is not None
         assert result.owner == "owner"
         assert result.repo == "repo"
@@ -162,7 +160,9 @@ class TestChangeImpactToolPRUrlValidation:
         # for a clean empty directory — keeps the test contract (PR URL
         # parses, mocked git wins) but in O(1) instead of O(/tmp).
         tool = ChangeImpactTool(project_root=str(tmp_path))
-        assert tool.validate_arguments({"mode": "pr", "pr_url": "https://github.com/o/r/pull/1"})
+        assert tool.validate_arguments(
+            {"mode": "pr", "pr_url": "https://github.com/o/r/pull/1"}
+        )
 
     def test_validate_rejects_bad_mode(self, tmp_path):
         # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
@@ -176,13 +176,21 @@ class TestChangeImpactToolPRUrlValidation:
 
 
 class TestChangeImpactToolPRUrlExecute:
-    @patch("tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available", return_value=True)
-    @patch("tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_diff_stat", return_value="src/a.py | 5 ++")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available",
+        return_value=True,
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_diff_stat",
+        return_value="src/a.py | 5 ++",
+    )
     @patch(
         "tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_changed_files",
         return_value=["src/a.py", "src/b.py"],
     )
-    def test_pr_url_analysis_returns_pr_metadata(self, mock_files, mock_stat, mock_gh, tmp_path):
+    def test_pr_url_analysis_returns_pr_metadata(
+        self, mock_files, mock_stat, mock_gh, tmp_path
+    ):
         # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
         # /tmp tree during dependency-graph construction (~22s on CI boxes
         # with build artifacts in /tmp). Use the pytest tmp_path fixture
@@ -190,24 +198,34 @@ class TestChangeImpactToolPRUrlExecute:
         # parses, mocked git wins) but in O(1) instead of O(/tmp).
         tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
-            tool.execute({
-                "pr_url": "https://github.com/owner/repo/pull/42",
-                "include_tests": False,
-                "output_format": "json",
-            })
+            tool.execute(
+                {
+                    "pr_url": "https://github.com/owner/repo/pull/42",
+                    "include_tests": False,
+                    "output_format": "json",
+                }
+            )
         )
         assert result["success"] is True
         assert result["pr_url"] == "https://github.com/owner/repo/pull/42"
         assert result["pr_number"] == 42
         assert result["repo"] == "owner/repo"
 
-    @patch("tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available", return_value=True)
-    @patch("tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_diff_stat", return_value="src/a.py | 5 ++")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available",
+        return_value=True,
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_diff_stat",
+        return_value="src/a.py | 5 ++",
+    )
     @patch(
         "tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_changed_files",
         return_value=["src/a.py"],
     )
-    def test_pr_url_with_scope_filters_files(self, mock_files, mock_stat, mock_gh, tmp_path):
+    def test_pr_url_with_scope_filters_files(
+        self, mock_files, mock_stat, mock_gh, tmp_path
+    ):
         # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
         # /tmp tree during dependency-graph construction (~22s on CI boxes
         # with build artifacts in /tmp). Use the pytest tmp_path fixture
@@ -215,12 +233,14 @@ class TestChangeImpactToolPRUrlExecute:
         # parses, mocked git wins) but in O(1) instead of O(/tmp).
         tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
-            tool.execute({
-                "pr_url": "https://github.com/owner/repo/pull/42",
-                "scope_paths": ["src/a.py"],
-                "include_tests": False,
-                "output_format": "json",
-            })
+            tool.execute(
+                {
+                    "pr_url": "https://github.com/owner/repo/pull/42",
+                    "scope_paths": ["src/a.py"],
+                    "include_tests": False,
+                    "output_format": "json",
+                }
+            )
         )
         assert result["success"] is True
 
@@ -232,15 +252,20 @@ class TestChangeImpactToolPRUrlExecute:
         # parses, mocked git wins) but in O(1) instead of O(/tmp).
         tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
-            tool.execute({
-                "pr_url": "not-a-url",
-                "output_format": "json",
-            })
+            tool.execute(
+                {
+                    "pr_url": "not-a-url",
+                    "output_format": "json",
+                }
+            )
         )
         assert result["success"] is False
         assert "Invalid GitHub PR URL" in result["error"]
 
-    @patch("tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available", return_value=False)
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available",
+        return_value=False,
+    )
     def test_pr_url_gh_not_available(self, mock_gh, tmp_path):
         # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
         # /tmp tree during dependency-graph construction (~22s on CI boxes
@@ -249,15 +274,20 @@ class TestChangeImpactToolPRUrlExecute:
         # parses, mocked git wins) but in O(1) instead of O(/tmp).
         tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
-            tool.execute({
-                "pr_url": "https://github.com/owner/repo/pull/42",
-                "output_format": "json",
-            })
+            tool.execute(
+                {
+                    "pr_url": "https://github.com/owner/repo/pull/42",
+                    "output_format": "json",
+                }
+            )
         )
         assert result["success"] is False
         assert "gh CLI" in result["error"]
 
-    @patch("tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available", return_value=True)
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available",
+        return_value=True,
+    )
     @patch(
         "tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_changed_files",
         return_value=[],
@@ -270,16 +300,24 @@ class TestChangeImpactToolPRUrlExecute:
         # parses, mocked git wins) but in O(1) instead of O(/tmp).
         tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
-            tool.execute({
-                "pr_url": "https://github.com/owner/repo/pull/42",
-                "output_format": "json",
-            })
+            tool.execute(
+                {
+                    "pr_url": "https://github.com/owner/repo/pull/42",
+                    "output_format": "json",
+                }
+            )
         )
         assert result["pr_url"] == "https://github.com/owner/repo/pull/42"
         assert result["pr_number"] == 42
 
-    @patch("tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available", return_value=True)
-    @patch("tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_diff_stat", return_value="a.py | 1 +")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available",
+        return_value=True,
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_diff_stat",
+        return_value="a.py | 1 +",
+    )
     @patch(
         "tree_sitter_analyzer.mcp.tools.change_impact_tool.fetch_pr_changed_files",
         return_value=["a.py"],
@@ -292,11 +330,13 @@ class TestChangeImpactToolPRUrlExecute:
         # parses, mocked git wins) but in O(1) instead of O(/tmp).
         tool = ChangeImpactTool(project_root=str(tmp_path))
         result = asyncio.run(
-            tool.execute({
-                "pr_url": "https://github.com/owner/repo/pull/42",
-                "agent_summary_only": True,
-                "output_format": "json",
-            })
+            tool.execute(
+                {
+                    "pr_url": "https://github.com/owner/repo/pull/42",
+                    "agent_summary_only": True,
+                    "output_format": "json",
+                }
+            )
         )
         assert result["success"] is True
         assert "agent_summary" in result

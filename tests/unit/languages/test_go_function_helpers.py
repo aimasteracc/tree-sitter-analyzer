@@ -1,4 +1,4 @@
-"""Tests for languages/_go_function_helpers.py — 100% coverage."""
+"""Tests for languages/_go_function.py — 100% coverage."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import MagicMock
 
-from tree_sitter_analyzer.languages._go_function_helpers import (
+from tree_sitter_analyzer.languages._go_function import (
     extract_go_function,
     extract_go_method,
 )
@@ -126,8 +126,8 @@ class TestExtractGoFunction:
             return ""
 
         node = MagicMock()
-        node.child_by_field_name.side_effect = (
-            lambda f: name_node if f == "name" else None
+        node.child_by_field_name.side_effect = lambda f: (
+            name_node if f == "name" else None
         )
         node.start_point = (0, 0)
         node.end_point = (1, 0)
@@ -173,7 +173,9 @@ class TestExtractGoFunction:
         ]
         result = extract_go_function(
             node=node,
-            get_node_text=lambda n: n.text if hasattr(n, "text") else "func MyFunc() {}",
+            get_node_text=lambda n: (
+                n.text if hasattr(n, "text") else "func MyFunc() {}"
+            ),
             content_lines=content_lines,
         )
         assert result is not None
@@ -193,7 +195,9 @@ class TestExtractGoFunction:
         node.child_by_field_name = patched
         result = extract_go_function(
             node=node,
-            get_node_text=lambda n: n.text if hasattr(n, "text") else "func NoReturn() {}",
+            get_node_text=lambda n: (
+                n.text if hasattr(n, "text") else "func NoReturn() {}"
+            ),
             content_lines=["func NoReturn() {}"],
         )
         assert result is not None
@@ -215,14 +219,18 @@ class TestExtractGoMethod:
         def mock_receiver_extractor(n, get_text):
             return ("s *Service", "*Service")
 
-        import tree_sitter_analyzer.languages._go_function_helpers as mod
+        import tree_sitter_analyzer.languages._go_function as mod
 
         original = mod.extract_method_receiver
         mod.extract_method_receiver = mock_receiver_extractor
         try:
             result = extract_go_method(
                 node=node,
-                get_node_text=lambda n: n.text if hasattr(n, "text") else "func (s *Service) DoStuff() error {\n  return nil\n}",
+                get_node_text=lambda n: (
+                    n.text
+                    if hasattr(n, "text")
+                    else "func (s *Service) DoStuff() error {\n  return nil\n}"
+                ),
                 content_lines=content_lines,
             )
         finally:
@@ -259,14 +267,16 @@ class TestExtractGoMethod:
     def test_method_receiver_extraction(self):
         node = FakeNode(_name_text="Process")
 
-        import tree_sitter_analyzer.languages._go_function_helpers as mod
+        import tree_sitter_analyzer.languages._go_function as mod
 
         original = mod.extract_method_receiver
         mod.extract_method_receiver = lambda n, gt: ("r *Reader", "*Reader")
         try:
             result = extract_go_method(
                 node=node,
-                get_node_text=lambda n: n.text if hasattr(n, "text") else "func (r *Reader) Process() {}",
+                get_node_text=lambda n: (
+                    n.text if hasattr(n, "text") else "func (r *Reader) Process() {}"
+                ),
                 content_lines=["func (r *Reader) Process() {}"],
             )
         finally:

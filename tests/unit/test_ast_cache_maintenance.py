@@ -5,11 +5,11 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from tree_sitter_analyzer._ast_cache_maintenance import (
+from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.cache.maintenance import (
     get_db_storage_stats,
     reclaim_storage_after_full_rebuild,
 )
-from tree_sitter_analyzer.ast_cache import ASTCache
 
 
 class _Row:

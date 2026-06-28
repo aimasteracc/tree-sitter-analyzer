@@ -184,6 +184,17 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Do not open a browser automatically for --knowledge-graph-serve",
     )
+    parser.add_argument(
+        "--knowledge-graph-watch",
+        action="store_true",
+        help="Watch for file changes and keep the knowledge graph up to date.",
+    )
+    parser.add_argument(
+        "--knowledge-graph-watch-backend",
+        default="poll",
+        choices=["poll", "watchdog"],
+        help="File watching backend (default: poll)",
+    )
 
 
 def _add_clean_state_options(parser: argparse.ArgumentParser) -> None:

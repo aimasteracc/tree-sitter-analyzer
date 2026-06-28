@@ -507,9 +507,7 @@ class TestRealIndexIntegration:
         ``function_definition``), so the call must resolve to the project
         definition (``local``/``project``) — never ``stdlib``.
         """
-        _root, c_ctx = _index_and_build(
-            tmp_path, {"alloc.c": _REAL_C_CUSTOM_MALLOC}
-        )
+        _root, c_ctx = _index_and_build(tmp_path, {"alloc.c": _REAL_C_CUSTOM_MALLOC})
         sym, res, f = resolve_c_callee("malloc", "malloc", "alloc.c", c_ctx)
         assert res != "stdlib", (
             "project-defined malloc must shadow the libc tier, got stdlib"

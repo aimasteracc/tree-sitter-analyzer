@@ -386,7 +386,9 @@ class TestMarkdownPluginNewElementsIntegration:
 
             assert isinstance(result, dict)
             assert "elements" in result
-            assert len(result["elements"]) >= 12  # All 12 extraction methods  # ratchet: nondeterministic
+            assert (
+                len(result["elements"]) >= 12
+            )  # All 12 extraction methods  # ratchet: nondeterministic
 
             # Verify all extraction methods were called
             mock_extractor.extract_headers.assert_called_once()
@@ -525,7 +527,9 @@ Footnote reference[^1]
                             result = await self.plugin.analyze_file("test.md", request)
 
                             assert result.success is True
-                            assert len(result.elements) >= 3  # ratchet: nondeterministic
+                            assert (
+                                len(result.elements) >= 3
+                            )  # ratchet: nondeterministic
 
 
 class TestMarkdownElementNewAttributes:

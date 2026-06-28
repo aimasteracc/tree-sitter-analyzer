@@ -8,7 +8,8 @@ from typing import Any
 from ...models import Import, Package, Variable
 from ...utils import log_debug, log_warning
 from ...utils.tree_sitter_compat import get_node_text_safe
-from ._extractor_helpers import (
+from ..shared.traversal import node_range
+from ._extractor import (
     ImportExtractionRuntime,
     extract_imports_from_tree,
     import_node_context,
@@ -131,10 +132,11 @@ class PythonImportPackageMixin:
             else:
                 name = "variable"
 
+            _start, _end = node_range(node)
             return Variable(
                 name=name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=_start,
+                end_line=_end,
                 raw_text=variable_text,
                 language="python",
                 variable_type=assignment_type,
@@ -194,10 +196,11 @@ class PythonImportPackageMixin:
                 elif import_name:
                     imported_names = [import_name]
 
+            _start2, _end2 = node_range(node)
             return Import(
                 name=import_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=_start2,
+                end_line=_end2,
                 raw_text=import_text,
                 language="python",
                 module_name=module_name,

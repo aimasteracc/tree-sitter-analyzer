@@ -27,7 +27,7 @@ class TestCheckToolsToolInitialization:
 
     def test_init_creates_tool(self, tool: CheckToolsTool) -> None:
         """Test that initialization creates a tool instance."""
-        assert tool is not None
+        assert isinstance(tool, CheckToolsTool)
 
 
 class TestCheckToolsToolDefinition:
@@ -156,8 +156,10 @@ class TestCheckToolsToolExecution:
         assert result["status"] == "missing_tools"
         assert result["fd"]["available"] is False
         assert result["rg"]["available"] is False
-        assert result["recommendation"] is not None
-        assert len(result["recommendation"]) > 0
+        assert (
+            isinstance(result["recommendation"], str)
+            and "fd" in result["recommendation"]
+        )
 
     @pytest.mark.asyncio
     async def test_version_parsing(self, tool: CheckToolsTool) -> None:

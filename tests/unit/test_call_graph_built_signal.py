@@ -14,14 +14,14 @@ from unittest import mock
 
 import pytest
 
-from tree_sitter_analyzer import _ast_cache_callgraph_state as callgraph_state
-from tree_sitter_analyzer._graph_cache_fingerprint import (
-    _walk_supported_source_paths,
-)
 from tree_sitter_analyzer.ast_cache import (
     ASTCache,
     _language_from_ext,
     _walk_source_files,
+)
+from tree_sitter_analyzer.cache import callgraph_state
+from tree_sitter_analyzer.cache.fingerprint import (
+    _walk_supported_source_paths,
 )
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
@@ -603,7 +603,7 @@ def test_errored_file_does_not_stamp_marker_when_incomplete(
 
     try:
         with mock.patch(
-            "tree_sitter_analyzer._ast_cache_indexer.os.stat",
+            "tree_sitter_analyzer.cache.indexer.os.stat",
             side_effect=_stat_raising_on_b,
         ):
             result = cache.index_project(workers=0)

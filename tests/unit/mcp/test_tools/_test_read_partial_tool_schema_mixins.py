@@ -206,7 +206,11 @@ class ReadPartialToolValidateArgumentsMixin:
 
     def test_validate_arguments_batch_single_request(self):
         tool = ReadPartialTool()
-        args = {"requests": [{"file_path": "t.py", "sections": [{"start_line": 1, "end_line": 5}]}]}
+        args = {
+            "requests": [
+                {"file_path": "t.py", "sections": [{"start_line": 1, "end_line": 5}]}
+            ]
+        }
         assert tool.validate_arguments(args) is True
 
     def test_validate_arguments_mutually_exclusive(self):

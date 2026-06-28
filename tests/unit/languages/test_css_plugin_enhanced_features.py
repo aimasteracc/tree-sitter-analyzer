@@ -602,8 +602,8 @@ class TestCssQueryAccuracy:
         for element in elements:
             if element.properties:
                 for prop_name, prop_value in element.properties.items():
-                    assert prop_name is not None
-                    assert prop_value is not None
+                    assert isinstance(prop_name, str) and prop_name != ""
+                    assert isinstance(prop_value, str)
 
     def test_media_query_accuracy(self):
         """Test that media query is accurately captured."""
@@ -630,7 +630,9 @@ class TestCssQueryAccuracy:
         elements = plugin.create_extractor().extract_css_rules(tree, VARIABLE_CODE)
 
         root_element = next((e for e in elements if e.selector == ":root"), None)
-        assert root_element is not None
+        assert (
+            root_element is not None and len(root_element.properties) == 5
+        )  # 5 CSS custom properties
 
     def test_no_false_positives(self):
         """Test that queries don't produce false positives."""

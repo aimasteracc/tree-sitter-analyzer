@@ -232,7 +232,9 @@ def _asserts_by_function(tree: ast.AST) -> dict[int, bool]:
         assert_nodes = [
             child for child in ast.walk(node) if isinstance(child, ast.Assert)
         ]
-        has_concrete = any(_assert_has_concrete_behavior(child) for child in assert_nodes)
+        has_concrete = any(
+            _assert_has_concrete_behavior(child) for child in assert_nodes
+        )
         for assert_node in assert_nodes:
             result[id(assert_node)] = has_concrete
     return result
@@ -298,9 +300,9 @@ def check_file(path: Path) -> list[Violation]:
             )
             continue
 
-        if _assert_is_placeholder_candidate(node) and not function_has_concrete_assert.get(
-            id(node), False
-        ):
+        if _assert_is_placeholder_candidate(
+            node
+        ) and not function_has_concrete_assert.get(id(node), False):
             violations.append(
                 Violation(
                     str(path),
@@ -451,7 +453,9 @@ def _check_added_ranges(added: dict[str, set[int]], source_label: str) -> int:
     if not all_violations:
         return 0
 
-    print(f"❌ Found {len(all_violations)} new weak assertion(s) in the {source_label}:\n")
+    print(
+        f"❌ Found {len(all_violations)} new weak assertion(s) in the {source_label}:\n"
+    )
     for v in all_violations:
         print(f"  {v.path}:{v.lineno}: {v.snippet}")
     print()
@@ -545,7 +549,9 @@ def main(argv: list[str] | None = None) -> int:
         if "--format" in args:
             format_index = args.index("--format")
             if format_index + 1 >= len(args):
-                print("❌ --format requires one of: count, json, table", file=sys.stderr)
+                print(
+                    "❌ --format requires one of: count, json, table", file=sys.stderr
+                )
                 return 2
             output_format = args[format_index + 1]
 

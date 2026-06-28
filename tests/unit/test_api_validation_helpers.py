@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from tree_sitter_analyzer._api_validation_helpers import (
+from tree_sitter_analyzer.internal_api.validation_helpers import (
     apply_language_validation,
     mark_validation_readable,
     validation_result_template,
@@ -52,7 +52,7 @@ class TestMarkValidationReadable:
         f.write_text("secret")
         result = validation_result_template(f)
         with patch(
-            "tree_sitter_analyzer._api_validation_helpers.read_file_safe",
+            "tree_sitter_analyzer.internal_api.validation_helpers.read_file_safe",
             side_effect=PermissionError("denied"),
         ):
             assert mark_validation_readable(f, result) is False
@@ -64,7 +64,7 @@ class TestMarkValidationReadable:
         result = validation_result_template(f)
         result["errors"].append("prior error")
         with patch(
-            "tree_sitter_analyzer._api_validation_helpers.read_file_safe",
+            "tree_sitter_analyzer.internal_api.validation_helpers.read_file_safe",
             side_effect=OSError("boom"),
         ):
             mark_validation_readable(f, result)

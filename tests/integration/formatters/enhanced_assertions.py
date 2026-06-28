@@ -463,6 +463,7 @@ def _validate_markdown_separator(
         )
     ]
 
+
 def _count_mismatch_results(
     actual_counts: dict[str, int],
     expected_elements: dict[str, int],

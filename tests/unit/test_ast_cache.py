@@ -52,7 +52,7 @@ class TestContentHash:
 
 class TestAstCacheWriteHelpers:
     def test_empty_fts5_symbol_batches_return_empty(self):
-        from tree_sitter_analyzer._ast_cache_write import (
+        from tree_sitter_analyzer.cache.write import (
             write_fts5_symbols,
             write_fts5_symbols_from_tuples,
         )
@@ -74,7 +74,7 @@ class TestAstCacheWriteHelpers:
 
 class TestAstExtractionWorker:
     def test_init_worker_parser_sets_reusable_parser(self):
-        import tree_sitter_analyzer._ast_extraction as extraction
+        import tree_sitter_analyzer.cache.extraction as extraction
 
         extraction._worker_parser = None
 

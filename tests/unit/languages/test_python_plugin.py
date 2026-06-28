@@ -677,15 +677,314 @@ async def async_function():
 
         complexity = extractor._calculate_complexity(python_complex_code)
         assert isinstance(complexity, int)
-        assert complexity > 1  # Should detect complexity
+        assert complexity == 5  # async with + async for + if + try + except = 5
 
     def test_python_import_variations(self, plugin: PythonPlugin) -> None:
         """Test Python import statement variations"""
+        from tree_sitter_analyzer.languages.python_plugin import PythonElementExtractor
+
         extractor = plugin.create_extractor()
+        assert isinstance(extractor, PythonElementExtractor)
 
-        # Test different import patterns
-        # Test different import patterns (simplified for testing)
 
-        # Each pattern should be recognizable by the extractor
-        # (This would require actual tree parsing in a real test)
-        assert extractor is not None
+# ---------------------------------------------------------------------------
+# Tests migrated from test_python_plugin_coverage_boost.py
+# ---------------------------------------------------------------------------
+
+
+def _parse_py(plugin, code):
+    import tree_sitter
+
+    language = plugin.get_tree_sitter_language()
+    parser = tree_sitter.Parser(language)
+    return parser.parse(code.encode("utf-8"))
+
+
+class TestPythonExtractImportsManual:
+    """Behavioral tests for _extract_imports_manual."""
+
+    @pytest.fixture
+    def plugin(self):
+        return PythonPlugin()
+
+    @pytest.fixture
+    def extractor(self):
+        return PythonElementExtractor()
+
+    def test_simple_import_names(self, extractor, plugin):
+        code = "import os\nimport sys\n"
+        tree = _parse_py(plugin, code)
+        imports = extractor._extract_imports_manual(tree.root_node, code)
+        assert len(imports) == 2
+        names = [i.name for i in imports]
+        assert "os" in names
+        assert "sys" in names
+
+    def test_from_import_module_and_names(self, extractor, plugin):
+        code = "from os.path import join, exists\n"
+        tree = _parse_py(plugin, code)
+        imports = extractor._extract_imports_manual(tree.root_node, code)
+        assert len(imports) == 1
+        imp = imports[0]
+        assert imp.module_name == "os.path"
+        assert "join" in imp.imported_names
+        assert "exists" in imp.imported_names
+
+    def test_from_import_single_module(self, extractor, plugin):
+        code = "from collections import OrderedDict\n"
+        tree = _parse_py(plugin, code)
+        imports = extractor._extract_imports_manual(tree.root_node, code)
+        assert len(imports) == 1
+        assert "collections" in imports[0].module_name
+
+    def test_empty_code_returns_empty(self, extractor, plugin):
+        code = ""
+        tree = _parse_py(plugin, code)
+        imports = extractor._extract_imports_manual(tree.root_node, code)
+        assert imports == []
+
+    def test_no_imports_returns_empty(self, extractor, plugin):
+        code = "x = 1\ny = 2\n"
+        tree = _parse_py(plugin, code)
+        imports = extractor._extract_imports_manual(tree.root_node, code)
+        assert imports == []
+
+
+class TestPythonExtractPackages:
+    """Behavioral tests for extract_packages."""
+
+    @pytest.fixture
+    def extractor(self):
+        return PythonElementExtractor()
+
+    def test_with_init_file_returns_package_name(self, extractor):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pkg_dir = os.path.join(tmpdir, "mypkg")
+            os.makedirs(pkg_dir)
+            with open(os.path.join(pkg_dir, "__init__.py"), "w") as f:
+                f.write("# package\n")
+            with open(os.path.join(pkg_dir, "mod.py"), "w") as f:
+                f.write("x = 1\n")
+
+            extractor.current_file = os.path.join(pkg_dir, "mod.py")
+            plugin = PythonPlugin()
+            tree = _parse_py(plugin, "# test\n")
+            packages = extractor.extract_packages(tree, "")
+            assert len(packages) == 1
+            assert packages[0].name == "mypkg"
+
+    def test_no_init_file_returns_empty(self, extractor):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            extractor.current_file = os.path.join(tmpdir, "mod.py")
+            plugin = PythonPlugin()
+            tree = _parse_py(plugin, "# test\n")
+            packages = extractor.extract_packages(tree, "")
+            assert packages == []
+
+
+class TestPythonGetNodeTypeForElement:
+    """Behavioral tests for _get_node_type_for_element."""
+
+    @pytest.fixture
+    def plugin(self):
+        return PythonPlugin()
+
+    def test_function_returns_function_definition(self, plugin):
+        from tree_sitter_analyzer.models import Function
+
+        assert (
+            plugin._get_node_type_for_element(Function("f", 1, 1, "def f(): pass"))
+            == "function_definition"
+        )
+
+    def test_class_returns_class_definition(self, plugin):
+        from tree_sitter_analyzer.models import Class
+
+        assert (
+            plugin._get_node_type_for_element(Class("C", 1, 1, "class C: pass"))
+            == "class_definition"
+        )
+
+    def test_variable_returns_assignment(self, plugin):
+        from tree_sitter_analyzer.models import Variable
+
+        assert (
+            plugin._get_node_type_for_element(Variable("x", 1, 1, "x = 1"))
+            == "assignment"
+        )
+
+    def test_import_returns_import_statement(self, plugin):
+        from tree_sitter_analyzer.models import Import
+
+        assert (
+            plugin._get_node_type_for_element(Import("os", 1, 1, "import os"))
+            == "import_statement"
+        )
+
+    def test_unknown_type_returns_unknown(self, plugin):
+        assert plugin._get_node_type_for_element("not_an_element") == "unknown"
+
+
+class TestPythonExtractFunctionBodyBehavioral:
+    """Behavioral tests for _extract_function_body."""
+
+    @pytest.fixture
+    def plugin(self):
+        return PythonPlugin()
+
+    @pytest.fixture
+    def extractor(self):
+        return PythonElementExtractor()
+
+    def test_function_body_contains_statements(self, extractor, plugin):
+        code = "def f():\n    x = 1\n    return x\n"
+        tree = _parse_py(plugin, code)
+
+        def find_nodes(node, node_type):
+            result = []
+            if node.type == node_type:
+                result.append(node)
+            for child in node.children:
+                result.extend(find_nodes(child, node_type))
+            return result
+
+        func_nodes = find_nodes(tree.root_node, "function_definition")
+        assert len(func_nodes) == 1
+        body = extractor._extract_function_body(func_nodes[0], code)
+        assert "x = 1" in body
+
+
+class TestPythonExtractSuperclassesBehavioral:
+    """Behavioral tests for _extract_superclasses_from_node."""
+
+    @pytest.fixture
+    def plugin(self):
+        return PythonPlugin()
+
+    @pytest.fixture
+    def extractor(self):
+        return PythonElementExtractor()
+
+    def test_with_superclass_returns_name(self, extractor, plugin):
+        code = "class Child(Base):\n    pass\n"
+        tree = _parse_py(plugin, code)
+
+        def find_nodes(node, node_type):
+            result = []
+            if node.type == node_type:
+                result.append(node)
+            for child in node.children:
+                result.extend(find_nodes(child, node_type))
+            return result
+
+        class_nodes = find_nodes(tree.root_node, "class_definition")
+        assert len(class_nodes) == 1
+        supers = extractor._extract_superclasses_from_node(class_nodes[0], code)
+        assert "Base" in supers
+
+
+class TestPythonComplexityBehavioral:
+    """Behavioral tests for _calculate_complexity with branches."""
+
+    @pytest.fixture
+    def extractor(self):
+        return PythonElementExtractor()
+
+    def test_simple_body_complexity_is_one(self, extractor):
+        body = "x = 1"
+        assert extractor._calculate_complexity(body) == 1
+
+    def test_branched_body_complexity(self, extractor):
+        body = "if x:\n    pass\nelif y:\n    pass\nfor i in range(10):\n    pass"
+        c = extractor._calculate_complexity(body)
+        assert c == 3
+
+
+class TestPythonDetailedFunctionPrivacy:
+    """Behavioral tests for is_private on _extract_detailed_function_info."""
+
+    @pytest.fixture
+    def plugin(self):
+        return PythonPlugin()
+
+    @pytest.fixture
+    def extractor(self):
+        return PythonElementExtractor()
+
+    def test_dunder_method_is_not_private(self, extractor, plugin):
+        code = "class C:\n    def __init__(self):\n        pass\n"
+        tree = _parse_py(plugin, code)
+
+        def find_nodes(node, node_type):
+            result = []
+            if node.type == node_type:
+                result.append(node)
+            for child in node.children:
+                result.extend(find_nodes(child, node_type))
+            return result
+
+        func_nodes = find_nodes(tree.root_node, "function_definition")
+        assert len(func_nodes) == 1
+        info = extractor._extract_detailed_function_info(func_nodes[0], code)
+        assert info is not None
+        assert info.name == "__init__"
+        assert info.is_private is False
+
+    def test_single_underscore_method_is_private(self, extractor, plugin):
+        code = "class C:\n    def _internal(self):\n        pass\n"
+        tree = _parse_py(plugin, code)
+
+        def find_nodes(node, node_type):
+            result = []
+            if node.type == node_type:
+                result.append(node)
+            for child in node.children:
+                result.extend(find_nodes(child, node_type))
+            return result
+
+        func_nodes = find_nodes(tree.root_node, "function_definition")
+        assert len(func_nodes) == 1
+        info = extractor._extract_detailed_function_info(func_nodes[0], code)
+        assert info is not None
+        assert info.name == "_internal"
+        assert info.is_private is True
+
+
+class TestPythonGetElementCategories:
+    """Behavioral tests for get_element_categories."""
+
+    @pytest.fixture
+    def plugin(self):
+        return PythonPlugin()
+
+    def test_returns_required_category_keys(self, plugin):
+        cats = plugin.get_element_categories()
+        assert isinstance(cats, dict)
+        assert "function" in cats
+        assert "class" in cats
+        assert "import" in cats
+        assert "lambda" in cats
+        assert "decorator" in cats
+        assert "comprehension" in cats
+
+
+class TestPythonGetSupportedQueries:
+    """Behavioral tests for get_supported_queries."""
+
+    @pytest.fixture
+    def plugin(self):
+        return PythonPlugin()
+
+    def test_supported_queries_keys(self, plugin):
+        queries = plugin.get_supported_queries()
+        assert "function" in queries
+        assert "class" in queries
+        assert "async_function" in queries
+        assert "lambda" in queries
+        assert "django_model" in queries

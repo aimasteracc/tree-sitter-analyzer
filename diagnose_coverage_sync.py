@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Diagnose Python plugin coverage gaps - sync version"""
+
 from tree_sitter_analyzer.grammar_coverage.validator import (
     validate_plugin_coverage_sync,
 )
@@ -19,9 +20,14 @@ def main():
     print("\n=== Analysis ===")
 
     expressions = ["conditional_expression", "subscript", "list"]
-    comprehensions = ["list_comprehension", "set_comprehension",
-                     "dictionary_comprehension", "generator_expression",
-                     "for_in_clause", "if_clause"]
+    comprehensions = [
+        "list_comprehension",
+        "set_comprehension",
+        "dictionary_comprehension",
+        "generator_expression",
+        "for_in_clause",
+        "if_clause",
+    ]
     lambdas = ["lambda", "lambda_parameters"]
     params = ["default_parameter"]
 
@@ -42,6 +48,7 @@ def main():
     print("\nParameter types (visited but not tracked):")
     for t in sorted(uncovered_set & set(params)):
         print(f"  - {t}")
+
 
 if __name__ == "__main__":
     main()

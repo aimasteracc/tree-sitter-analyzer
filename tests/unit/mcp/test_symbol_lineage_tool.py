@@ -154,7 +154,9 @@ class TestExecute:
             tool.execute({"symbol": "my_func", "output_format": "json"})
         )
         assert result["success"] is True
-        assert result["definition_count"] + result["reference_count"] >= 0  # ratchet: nondeterministic
+        assert (
+            result["definition_count"] + result["reference_count"] >= 0
+        )  # ratchet: nondeterministic
         assert result["risk"]["level"] in ("low", "medium", "high", "unknown")
         assert "smart_workflow_hint" in result
 
@@ -485,7 +487,7 @@ class TestGraphCacheFingerprintHelpers:
         so the helper falls back to the path's own posix form."""
         from pathlib import Path
 
-        from tree_sitter_analyzer._graph_cache_fingerprint import (
+        from tree_sitter_analyzer.cache.fingerprint import (
             _indexed_abs_and_rel_path,
         )
 
@@ -499,7 +501,7 @@ class TestGraphCacheFingerprintHelpers:
         """A relative indexed path is resolved against root and stays relative."""
         from pathlib import Path
 
-        from tree_sitter_analyzer._graph_cache_fingerprint import (
+        from tree_sitter_analyzer.cache.fingerprint import (
             _indexed_abs_and_rel_path,
         )
 
@@ -512,7 +514,7 @@ class TestGraphCacheFingerprintHelpers:
         self, tmp_path
     ):
         """The walker yields only supported, non-dot files outside EXCLUDE_DIRS."""
-        from tree_sitter_analyzer._graph_cache_fingerprint import (
+        from tree_sitter_analyzer.cache.fingerprint import (
             _walk_supported_source_paths,
         )
 

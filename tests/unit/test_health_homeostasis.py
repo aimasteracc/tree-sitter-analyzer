@@ -51,7 +51,9 @@ def _import_loop():
 
 
 def _import_history():
-    from tree_sitter_analyzer._health_history import HealthHistory  # noqa: WPS433
+    from tree_sitter_analyzer.registry.health_history import (
+        HealthHistory,  # noqa: WPS433
+    )
 
     return HealthHistory
 

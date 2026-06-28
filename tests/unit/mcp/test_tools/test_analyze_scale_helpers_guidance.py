@@ -71,9 +71,7 @@ class TestGenerateLlmGuidance:
         assert "1 complexity hotspots" in guidance["complexity_assessment"]
 
     def test_no_hotspots_assessment(self):
-        guidance = generate_llm_guidance(
-            self._base_metrics(), self._base_overview()
-        )
+        guidance = generate_llm_guidance(self._base_metrics(), self._base_overview())
         assert "No significant complexity" in guidance["complexity_assessment"]
 
     def test_multiple_classes_key_area(self):
@@ -115,9 +113,7 @@ class TestGenerateLlmGuidance:
         assert guidance["suggested_queries"] == []
 
     def test_workflow_steps_always_start_with_check_scale(self):
-        guidance = generate_llm_guidance(
-            self._base_metrics(), self._base_overview()
-        )
+        guidance = generate_llm_guidance(self._base_metrics(), self._base_overview())
         assert guidance["workflow_steps"][0] == "check_code_scale (done)"
 
     def test_large_file_workflow_includes_targeted_steps(self):
@@ -151,9 +147,7 @@ class TestGenerateLlmGuidance:
                 "end_line": 50,
             }
         )
-        guidance = generate_llm_guidance(
-            self._base_metrics(total_lines=2000), overview
-        )
+        guidance = generate_llm_guidance(self._base_metrics(total_lines=2000), overview)
         steps = guidance["workflow_steps"]
         assert any("hotFn" in s and "hotspot" in s for s in steps)
 
@@ -245,17 +239,13 @@ class TestValidateScaleArguments:
         import pytest
 
         with pytest.raises(ValueError, match="metrics_only must be true"):
-            validate_scale_arguments(
-                {"file_paths": ["a.py"], "metrics_only": False}
-            )
+            validate_scale_arguments({"file_paths": ["a.py"], "metrics_only": False})
 
     def test_metrics_only_non_bool_raises(self):
         import pytest
 
         with pytest.raises(ValueError, match="metrics_only must be a boolean"):
-            validate_scale_arguments(
-                {"file_paths": ["a.py"], "metrics_only": "yes"}
-            )
+            validate_scale_arguments({"file_paths": ["a.py"], "metrics_only": "yes"})
 
     def test_language_non_string_raises(self):
         import pytest
@@ -267,22 +257,16 @@ class TestValidateScaleArguments:
         import pytest
 
         with pytest.raises(ValueError, match="include_complexity must be a boolean"):
-            validate_scale_arguments(
-                {"file_path": "f.py", "include_complexity": "yes"}
-            )
+            validate_scale_arguments({"file_path": "f.py", "include_complexity": "yes"})
 
     def test_include_details_non_bool_raises(self):
         import pytest
 
         with pytest.raises(ValueError, match="include_details must be a boolean"):
-            validate_scale_arguments(
-                {"file_path": "f.py", "include_details": 1}
-            )
+            validate_scale_arguments({"file_path": "f.py", "include_details": 1})
 
     def test_include_guidance_non_bool_raises(self):
         import pytest
 
         with pytest.raises(ValueError, match="include_guidance must be a boolean"):
-            validate_scale_arguments(
-                {"file_path": "f.py", "include_guidance": [True]}
-            )
+            validate_scale_arguments({"file_path": "f.py", "include_guidance": [True]})

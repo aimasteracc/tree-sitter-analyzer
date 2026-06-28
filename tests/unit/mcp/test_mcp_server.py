@@ -298,7 +298,9 @@ class TestToolsAndResources:
         server = TreeSitterAnalyzerMCPServer()
 
         assert server.code_file_resource.get_resource_info()["name"] == "code_file"
-        assert server.project_stats_resource.get_resource_info()["name"] == "project_stats"
+        assert (
+            server.project_stats_resource.get_resource_info()["name"] == "project_stats"
+        )
 
 
 class TestMCPAvailability:

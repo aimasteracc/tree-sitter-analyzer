@@ -1,8 +1,8 @@
-"""Tests for _cpp_plugin_analysis_helpers — parser creation, language loading, result building."""
+"""Tests for _cpp_plugin_analysis — parser creation, language loading, result building."""
 
 from unittest.mock import MagicMock, patch
 
-from tree_sitter_analyzer.languages._cpp_plugin_analysis_helpers import (
+from tree_sitter_analyzer.languages._cpp_plugin_analysis import (
     build_cpp_analysis_result,
     cpp_analysis_error_result,
     cpp_parser_failure_result,
@@ -100,7 +100,7 @@ class TestLoadCppTreeSitterLanguage:
     def test_general_exception_returns_none(self):
         with (
             patch(
-                "tree_sitter_analyzer.languages._cpp_plugin_analysis_helpers._coerce_cpp_language",
+                "tree_sitter_analyzer.languages._cpp_plugin_analysis._coerce_cpp_language",
                 side_effect=RuntimeError("boom"),
             ),
             patch.dict(

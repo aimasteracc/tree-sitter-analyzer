@@ -17,10 +17,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.fingerprint import _SOURCE_EXTS
+
 from ...language_detector import LanguageDetector, detect_language_from_file
 from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
-from ._graph_cache_fingerprint import _SOURCE_EXTS
 from .base_tool import BaseMCPTool
 from .fd_rg_utils import (
     build_rg_command,

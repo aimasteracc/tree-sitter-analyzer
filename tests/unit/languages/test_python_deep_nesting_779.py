@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from tree_sitter_analyzer.languages.python_plugin._traversal_helpers import (
+from tree_sitter_analyzer.languages.python_plugin._traversal import (
     _MAX_TRAVERSAL_DEPTH,
 )
 from tree_sitter_analyzer.languages.python_plugin.plugin import PythonPlugin

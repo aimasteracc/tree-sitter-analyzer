@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from tree_sitter_analyzer._file_meta_cache import FileMetaCache
+from tree_sitter_analyzer.registry.file_meta_cache import FileMetaCache
 
 
 @pytest.fixture

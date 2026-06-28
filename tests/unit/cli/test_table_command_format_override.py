@@ -47,8 +47,7 @@ class TestTableOutputFormatOverride:
         """DOG-3: --output-format=toon must beat --table=full's default."""
         out = _run(["--table=full", "--output-format=toon"])
         assert "file_path:" in out, (
-            "TOON output expected to start with key:value lines, got:\n"
-            + out[:200]
+            "TOON output expected to start with key:value lines, got:\n" + out[:200]
         )
         assert not out.startswith("# "), "Should not fall back to markdown"
         # Sanity: contain at least one of the table-typical sections

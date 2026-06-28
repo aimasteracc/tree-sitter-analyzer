@@ -25,7 +25,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tree_sitter_analyzer._ast_cache_query import get_stats
+from tree_sitter_analyzer.cache.query import get_stats
 
 # ---------------------------------------------------------------------------
 # Helpers: minimal in-memory SQLite fixtures

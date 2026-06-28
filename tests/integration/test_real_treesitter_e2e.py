@@ -38,7 +38,7 @@ from typing import Optional
 
 class Greeter:
     \"\"\"A friendly greeter.\"\"\"
-    
+
     def __init__(self, name: str) -> None:
         self.name = name
 
@@ -123,7 +123,9 @@ class TestRealTreeSitterIntegration:
                     break
 
         assert "standalone_function" in func_names
-        assert len(funcs) >= 3  # __init__, greet, static_hello, standalone_function  # ratchet: nondeterministic
+        assert (
+            len(funcs) >= 3
+        )  # __init__, greet, static_hello, standalone_function  # ratchet: nondeterministic
 
     @REQUIRES_PYTHON
     def test_parse_python_extracts_classes(self):

@@ -39,7 +39,7 @@ class TestRegisterPrompts:
         result = await handlers["get_prompt"](
             "smart_analyze", {"file_path": "src/main.py"}
         )
-        assert result is not None
+        assert isinstance(result, dict) and "messages" in result
 
     @pytest.mark.asyncio
     async def test_smart_explore_prompt(self):
@@ -53,7 +53,7 @@ class TestRegisterPrompts:
         result = await handlers["get_prompt"](
             "smart_explore", {"project_root": "/home/user/project"}
         )
-        assert result is not None
+        assert isinstance(result, dict) and "messages" in result
 
     @pytest.mark.asyncio
     async def test_unknown_prompt_raises(self):
@@ -77,4 +77,4 @@ class TestRegisterPrompts:
         register_prompts(server)
 
         result = await handlers["get_prompt"]("smart_analyze", None)
-        assert result is not None
+        assert isinstance(result, dict) and "messages" in result

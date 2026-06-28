@@ -457,10 +457,7 @@ def test_java_project_fqn_receiver_wins_over_imported_tail(tmp_path: Path) -> No
         tmp_path,
         {
             "Service.java": (
-                "package com.proj;\n"
-                "class Service {\n"
-                "    static void doWork() {}\n"
-                "}\n"
+                "package com.proj;\nclass Service {\n    static void doWork() {}\n}\n"
             ),
             "Caller.java": (
                 "package com.app;\n"

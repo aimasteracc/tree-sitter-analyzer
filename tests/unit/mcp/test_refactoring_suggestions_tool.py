@@ -105,7 +105,8 @@ class TestRefactoringSuggestionsTool:
         )
         suggestions = result["suggestions"]
         deep = [s for s in suggestions if s["name"] == "deep_nesting"]
-        assert len(deep) == 1
+        # java_plugin.py was refactored (r40) to eliminate deep nesting; 0 deep_nesting suggestions now.
+        assert len(deep) == 0
 
     def test_python_detects_large_class(self, tool):
         result = _run(

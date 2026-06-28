@@ -18,7 +18,9 @@ class TestSanitizeMessage:
         assert sanitize_message("", "/tmp") == ""
 
     def test_no_paths_in_message(self):
-        assert sanitize_message("invalid query syntax", "/tmp") == "invalid query syntax"
+        assert (
+            sanitize_message("invalid query syntax", "/tmp") == "invalid query syntax"
+        )
 
     def test_inside_project_root_becomes_relative(self, tmp_path: Path):
         target = tmp_path / "src" / "main.py"
@@ -116,7 +118,9 @@ class TestIntegrationWithErrorRecovery:
 class TestFileOutputManagerPathTraversal:
     """SEC-1: refusing to write outside the configured output directory."""
 
-    def test_rejects_parent_traversal(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_rejects_parent_traversal(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         from tree_sitter_analyzer.mcp.utils.file_output_manager import (
             FileOutputManager,
         )
@@ -124,11 +128,11 @@ class TestFileOutputManagerPathTraversal:
         monkeypatch.setenv("TREE_SITTER_OUTPUT_PATH", str(tmp_path))
         mgr = FileOutputManager(project_root=str(tmp_path))
         with pytest.raises(ValueError, match="outside the output directory"):
-            mgr.save_to_file(
-                "anything", filename="../../etc/cron.d/backdoor"
-            )
+            mgr.save_to_file("anything", filename="../../etc/cron.d/backdoor")
 
-    def test_rejects_absolute_path_outside(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_rejects_absolute_path_outside(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         from tree_sitter_analyzer.mcp.utils.file_output_manager import (
             FileOutputManager,
         )
@@ -138,16 +142,16 @@ class TestFileOutputManagerPathTraversal:
         with pytest.raises(ValueError, match="outside the output directory"):
             mgr.save_to_file("anything", filename="/etc/passwd")
 
-    def test_allows_in_directory_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_allows_in_directory_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         from tree_sitter_analyzer.mcp.utils.file_output_manager import (
             FileOutputManager,
         )
 
         monkeypatch.setenv("TREE_SITTER_OUTPUT_PATH", str(tmp_path))
         mgr = FileOutputManager(project_root=str(tmp_path))
-        result_path = mgr.save_to_file(
-            "hello world\n", filename="sub/output.txt"
-        )
+        result_path = mgr.save_to_file("hello world\n", filename="sub/output.txt")
         assert (tmp_path / "sub" / "output.txt").exists()
         # Result should be inside tmp_path.
         assert str(tmp_path) in result_path

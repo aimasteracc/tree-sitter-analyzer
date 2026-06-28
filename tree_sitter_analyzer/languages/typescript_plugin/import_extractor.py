@@ -6,6 +6,7 @@ from typing import Any
 
 from ...models import Import
 from ...utils import log_debug
+from ..shared.traversal import node_range
 
 _COMMONJS_REQUIRE_PATTERN = re.compile(
     r"(?:const|let|var)\s+(\w+)\s*=\s*require\s*\(\s*[\"']([^\"']+)[\"']\s*\)"
@@ -144,9 +145,8 @@ def _extract_import_child_names(
 
 
 def _node_line_range(node: Any) -> tuple[int, int]:
-    if hasattr(node, "start_point") and hasattr(node, "end_point"):
-        return node.start_point[0] + 1, node.end_point[0] + 1
-    return 1, 1
+    result = node_range(node)
+    return result if result != (0, 0) else (1, 1)
 
 
 def _extract_node_text(
@@ -248,10 +248,11 @@ def _extract_dynamic_import(
         if not source:
             return None
 
+        _start, _end = node_range(node)
         return Import(
             name="dynamic_import",
-            start_line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
+            start_line=_start,
+            end_line=_end,
             raw_text=node_text,
             language="typescript",
             module_name=source,

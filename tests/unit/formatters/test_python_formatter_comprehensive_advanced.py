@@ -253,9 +253,7 @@ class TestPythonTableFormatterEdgeCases:
 
     def test_format_with_missing_data_fields(self, formatter):
         """Test formatting with missing data fields."""
-        data = {
-            "file_path": "incomplete.py"
-        }
+        data = {"file_path": "incomplete.py"}
 
         result = formatter._format_full_table(data)
 

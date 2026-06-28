@@ -19,7 +19,7 @@ def is_index_rebuilding(project_root: str | None) -> bool:
     if not os.path.exists(db_path):
         return False
     try:
-        from ..._ast_cache_build_state import build_in_progress
+        from tree_sitter_analyzer.cache.build_state import build_in_progress
 
         conn = sqlite3.connect(db_path, timeout=2)
         try:

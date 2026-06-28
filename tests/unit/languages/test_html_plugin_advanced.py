@@ -550,7 +550,9 @@ class TestHtmlScriptStyleRecognition:
             ),
             None,
         )
-        assert script_with_src.attributes == {"src": "https://cdn.example.com/library.js"}
+        assert script_with_src.attributes == {
+            "src": "https://cdn.example.com/library.js"
+        }
 
     def test_extract_style_with_href(self):
         """Test extraction of link with href attribute."""

@@ -12,7 +12,7 @@ honesty-over-fabrication precedent from #537):
 * expression body ``= <expr>`` with no explicit type:
   - trivial literal → its pinned type (String / Int / Boolean / Double)
   - anything else → ``""`` (empty = unknown; matches the Go plugin's
-    absent-return-type convention in ``_go_common_helpers.extract_return_type``)
+    absent-return-type convention in ``_go_common.extract_return_type``)
 """
 
 from __future__ import annotations

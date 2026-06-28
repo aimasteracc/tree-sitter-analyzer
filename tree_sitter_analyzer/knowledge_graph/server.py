@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import posixpath
 import webbrowser
@@ -15,6 +16,8 @@ from urllib.parse import parse_qs, urlparse
 
 from .query import KnowledgeGraphQueryBackend, open_query_backend
 from .stores import JsonKnowledgeGraphStore, LadybugKnowledgeGraphStore
+
+logger = logging.getLogger(__name__)
 
 
 class KnowledgeGraphService:
@@ -77,6 +80,8 @@ def serve_knowledge_graph(
     host: str = "127.0.0.1",
     port: int = 8765,
     open_browser: bool = True,
+    watch: bool = False,
+    watch_backend: str = "poll",
 ) -> None:
     """Start a blocking local knowledge graph HTTP service."""
     prepare_reason = _prepare_reason(project_root) or "startup incremental update"
@@ -88,6 +93,22 @@ def serve_knowledge_graph(
             flush=True,
         )
     service = KnowledgeGraphService(project_root)
+
+    # Start FileWatcherDaemon if watch mode enabled
+    daemon = None
+    if watch:
+        from ..ast_cache import ASTCache
+        from ..file_watcher import FileWatcherDaemon
+
+        on_sync = _make_on_sync_callback(project_root)
+        daemon = FileWatcherDaemon(
+            ASTCache(project_root),
+            backend=watch_backend,
+            on_sync=on_sync,
+        )
+        daemon.start()
+        print(f"TSA file watcher started: {watch_backend} backend", flush=True)
+
     handler_cls = _make_handler(service)
     server = ThreadingHTTPServer((host, port), handler_cls)
     url = f"http://{host}:{server.server_port}/"
@@ -98,6 +119,8 @@ def serve_knowledge_graph(
     try:
         server.serve_forever()
     finally:
+        if daemon:
+            daemon.stop()
         server.server_close()
 
 
@@ -162,6 +185,114 @@ def _mtime_ns(path: str) -> int | None:
         return None
 
 
+def _make_on_sync_callback(project_root: str) -> Any:
+    """Create a callback for FileWatcherDaemon that updates LadybugDB incrementally."""
+
+    def on_sync(sync_result: dict[str, Any]) -> None:
+        details = sync_result.get("details", [])
+        if not details:
+            return
+        changed = [
+            d["file"] for d in details if d.get("considered") in ("indexed", "updated")
+        ]
+        deleted = [d["file"] for d in details if d.get("considered") == "deleted"]
+        if not changed and not deleted:
+            return
+        try:
+            from .builder import KnowledgeGraphBuilder
+
+            lb_store = LadybugKnowledgeGraphStore(project_root)
+            for fp in deleted:
+                lb_store.delete_by_file(fp)
+            if changed:
+                # CRITICAL: delete old nodes before patch to prevent ghost nodes
+                for fp in changed:
+                    lb_store.delete_by_file(fp)
+                builder = KnowledgeGraphBuilder(project_root)
+                delta = builder.build_delta(changed)
+                lb_store.patch(list(delta.nodes), [], list(delta.edges), [])
+        except Exception:
+            logger.debug("on_sync LadybugDB update failed", exc_info=True)
+
+    return on_sync
+
+
+def _uml_for_node(
+    project_root: str,
+    backend: KnowledgeGraphQueryBackend,
+    node_id: str,
+    diagram_type: str,
+) -> dict[str, Any]:
+    """Generate UML diagram for a node's file."""
+    from .builder import KnowledgeGraphBuilder
+
+    # Find the node
+    node_result = backend.node(node_id, limit=1)
+    node = node_result.get("node")
+    if not node:
+        return {"error": "node not found"}
+    file_path = node.get("file_path")
+    if not file_path:
+        return {"error": "node has no file_path"}
+
+    # Build subgraph for this file
+    builder = KnowledgeGraphBuilder(project_root)
+    delta = builder.build_delta([file_path])
+
+    # Generate diagram based on type
+    if diagram_type == "class":
+        class_nodes = [
+            n for n in delta.nodes if n.kind in ("class", "interface", "enum")
+        ]
+        # CRITICAL: fallback to component if no class nodes
+        if not class_nodes:
+            diagram_type = "component"
+            return _generate_component_diagram(delta, diagram_type)
+        return _generate_class_diagram(class_nodes, delta.edges, diagram_type)
+    elif diagram_type == "sequence":
+        # CRITICAL: limit max_nodes to 30 to avoid Mermaid maxTextSize overflow
+        limited_nodes = list(delta.nodes)[:30]
+        return _generate_sequence_diagram(limited_nodes, delta.edges, diagram_type)
+    else:  # component
+        return _generate_component_diagram(delta, diagram_type)
+
+
+def _generate_class_diagram(
+    nodes: list[Any], edges: list[Any], diagram_type: str
+) -> dict[str, Any]:
+    """Generate Mermaid class diagram."""
+    lines = ["classDiagram"]
+    for node in nodes:
+        lines.append(f"  class {node.label}")
+    for edge in edges:
+        if edge.kind == "inherits":
+            lines.append(f"  {edge.source} --|> {edge.target}")
+        elif edge.kind == "contains":
+            lines.append(f"  {edge.source} *-- {edge.target}")
+    return {"diagram": "\n".join(lines), "diagram_type": diagram_type}
+
+
+def _generate_sequence_diagram(
+    nodes: list[Any], edges: list[Any], diagram_type: str
+) -> dict[str, Any]:
+    """Generate Mermaid sequence diagram."""
+    lines = ["sequenceDiagram"]
+    for edge in edges:
+        if edge.kind == "calls":
+            lines.append(f"  {edge.source}->>+{edge.target}: call")
+    return {"diagram": "\n".join(lines), "diagram_type": diagram_type}
+
+
+def _generate_component_diagram(delta: Any, diagram_type: str) -> dict[str, Any]:
+    """Generate Mermaid component diagram."""
+    lines = ["graph TD"]
+    for node in delta.nodes:
+        lines.append(f'  {node.id}["{node.label}"]')
+    for edge in delta.edges:
+        lines.append(f"  {edge.source} --> {edge.target}")
+    return {"diagram": "\n".join(lines), "diagram_type": diagram_type}
+
+
 def _make_handler(service: KnowledgeGraphService) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt: str, *args: Any) -> None:
@@ -215,6 +346,20 @@ def _make_handler(service: KnowledgeGraphService) -> type[BaseHTTPRequestHandler
                             limit=_int_param(query, "limit", 5000),
                         )
                     )
+                elif parsed.path == "/api/status":
+                    snapshot = getattr(service.backend, "snapshot", None)
+                    stats = snapshot.stats if snapshot else {}
+                    self._write_json({"stats": stats})
+                elif parsed.path == "/api/uml":
+                    node_id = _first(query, "node_id", "")
+                    diagram_type = _first(query, "diagram_type", "class")
+                    result = _uml_for_node(
+                        service.project_root,
+                        service.backend,
+                        node_id,
+                        diagram_type,
+                    )
+                    self._write_json(result)
                 else:
                     self.send_error(HTTPStatus.NOT_FOUND, "Not found")
             except (FileNotFoundError, ValueError) as exc:

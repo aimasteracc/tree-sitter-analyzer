@@ -125,7 +125,7 @@ class TestKotlinParameterExtraction:
 
 
 # ---------------------------------------------------------------------------
-# Go — extract_parameters in _go_common_helpers.py
+# Go — extract_parameters in _go_common.py
 # ---------------------------------------------------------------------------
 
 
@@ -135,7 +135,7 @@ class TestGoVariadicParameterExtraction:
 
     def test_variadic_sum_count(self):
         """func sum(a int, numbers ...int) must yield exactly 2 parameters."""
-        from tree_sitter_analyzer.languages._go_common_helpers import (
+        from tree_sitter_analyzer.languages._go_common import (
             extract_parameters,
         )
 
@@ -152,7 +152,7 @@ class TestGoVariadicParameterExtraction:
 
     def test_variadic_sum_contains_variadic_param(self):
         """The variadic parameter text must contain 'numbers' and '...'."""
-        from tree_sitter_analyzer.languages._go_common_helpers import (
+        from tree_sitter_analyzer.languages._go_common import (
             extract_parameters,
         )
 
@@ -169,7 +169,7 @@ class TestGoVariadicParameterExtraction:
 
     def test_regular_params_unchanged(self):
         """Regular (non-variadic) parameters still work."""
-        from tree_sitter_analyzer.languages._go_common_helpers import (
+        from tree_sitter_analyzer.languages._go_common import (
             extract_parameters,
         )
 
@@ -186,7 +186,7 @@ class TestGoVariadicParameterExtraction:
 
     def test_only_variadic_param(self):
         """func with only a variadic param must yield exactly 1 parameter."""
-        from tree_sitter_analyzer.languages._go_common_helpers import (
+        from tree_sitter_analyzer.languages._go_common import (
             extract_parameters,
         )
 
@@ -328,7 +328,7 @@ class TestPHPVariadicParameterExtraction:
 
 
 class TestCppVariadicParameterExtraction:
-    """Theme E (C++): _cpp_signature_helpers.extract_parameters previously
+    """Theme E (C++): _cpp_signature.extract_parameters previously
     appended the literal string '...' for variadic_parameter_declaration nodes
     instead of the actual node text (e.g. 'Args... args').
 
@@ -338,7 +338,7 @@ class TestCppVariadicParameterExtraction:
     def test_template_variadic_full_text(self):
         """template variadic param 'Args... args' must appear as full text,
         not a bare '...'."""
-        from tree_sitter_analyzer.languages._cpp_signature_helpers import (
+        from tree_sitter_analyzer.languages._cpp_signature import (
             extract_parameters,
         )
 
@@ -376,7 +376,7 @@ class TestCppVariadicParameterExtraction:
     def test_c_style_variadic_printf(self):
         """C-style printf(const char* fmt, ...) variadic: '...' node type is
         different (just '...') — verify it is preserved or captured."""
-        from tree_sitter_analyzer.languages._cpp_signature_helpers import (
+        from tree_sitter_analyzer.languages._cpp_signature import (
             extract_parameters,
         )
 
@@ -470,7 +470,7 @@ class TestCppCStyleVariadicExact:
 
     def test_c_style_variadic_exact_string(self):
         """int printf(const char* fmt, ...) → params[1] == '...' (exact)."""
-        from tree_sitter_analyzer.languages._cpp_signature_helpers import (
+        from tree_sitter_analyzer.languages._cpp_signature import (
             extract_parameters,
         )
 

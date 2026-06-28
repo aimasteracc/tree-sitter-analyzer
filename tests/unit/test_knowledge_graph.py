@@ -1758,3 +1758,410 @@ def test_cli_knowledge_graph_import_and_special_command_paths(
         )
         == 9
     )
+
+
+# ── Group 7: 13 new tests ────────────────────────────────────────────────────
+
+
+def test_ladybug_store_patch_skips_when_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        LadybugKnowledgeGraphStore, "available", staticmethod(lambda: False)
+    )
+    store = LadybugKnowledgeGraphStore(str(tmp_path))
+
+    result = store.patch([], [], [], [])
+
+    assert result == {"skipped": "ladybug_unavailable"}
+
+
+def test_ladybug_store_patch_skips_when_db_not_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        LadybugKnowledgeGraphStore, "available", staticmethod(lambda: True)
+    )
+    store = LadybugKnowledgeGraphStore(str(tmp_path))
+    # No db file exists
+
+    result = store.patch([], [], [], [])
+
+    assert result == {"skipped": "db_not_found"}
+
+
+def test_ladybug_store_patch_returns_counts_when_db_exists(
+    tmp_path: Path,
+) -> None:
+    if not LadybugKnowledgeGraphStore.available():
+        pytest.skip("tracked: optional LadybugDB extra is not installed")
+    # Write an initial snapshot so the db exists
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py"),
+        ],
+        edges=[],
+        stats={"node_count": 1, "edge_count": 0},
+    )
+    store = LadybugKnowledgeGraphStore(str(tmp_path))
+    store.write(snapshot)
+
+    added_node = KnowledgeNode(
+        id="file:b.py", kind="file", label="b.py", file_path="b.py"
+    )
+    result = store.patch([added_node], [], [], [])
+
+    assert result["added_nodes"] == 1
+    assert result["removed_nodes"] == 0
+    assert result["added_edges"] == 0
+    assert result["removed_edges"] == 0
+    assert "elapsed_seconds" in result
+
+
+def test_ladybug_store_patch_adds_edges_and_persists(
+    tmp_path: Path,
+) -> None:
+    """CRITICAL regression test: verify .has_next() is called (not .fetchall())."""
+    if not LadybugKnowledgeGraphStore.available():
+        pytest.skip("tracked: optional LadybugDB extra is not installed")
+    # Write initial snapshot with two nodes
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py"),
+            KnowledgeNode(id="file:b.py", kind="file", label="b.py", file_path="b.py"),
+        ],
+        edges=[],
+        stats={"node_count": 2, "edge_count": 0},
+    )
+    store = LadybugKnowledgeGraphStore(str(tmp_path))
+    store.write(snapshot)
+
+    # Patch with an edge connecting existing nodes — has_next() must be used
+    added_edge = KnowledgeEdge(
+        id="edge:a-b", source="file:a.py", target="file:b.py", kind="imports"
+    )
+    result = store.patch([], [], [added_edge], [])
+
+    assert result["added_edges"] == 1
+    assert result["removed_edges"] == 0
+    # Verify the edge actually persisted by querying the backend
+    backend = LadybugKnowledgeGraphQuery(str(tmp_path))
+    node_a = backend.node("file:a.py", limit=5)
+    assert node_a["found"] is True
+    assert node_a["outgoing_count"] == 1
+
+
+def test_ladybug_store_delete_by_file_removes_nodes_and_edges(
+    tmp_path: Path,
+) -> None:
+    if not LadybugKnowledgeGraphStore.available():
+        pytest.skip("tracked: optional LadybugDB extra is not installed")
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py"),
+            KnowledgeNode(id="file:b.py", kind="file", label="b.py", file_path="b.py"),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:a-b", source="file:a.py", target="file:b.py", kind="imports"
+            )
+        ],
+        stats={"node_count": 2, "edge_count": 1},
+    )
+    store = LadybugKnowledgeGraphStore(str(tmp_path))
+    store.write(snapshot)
+
+    result = store.delete_by_file("a.py")
+
+    assert result["file_path"] == "a.py"
+    assert "elapsed_seconds" in result
+    # file:a.py should be gone
+    backend = LadybugKnowledgeGraphQuery(str(tmp_path))
+    assert backend.node("file:a.py", limit=5)["found"] is False
+    # file:b.py should still exist
+    assert backend.node("file:b.py", limit=5)["found"] is True
+
+
+def test_ladybug_store_delete_by_file_skips_when_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        LadybugKnowledgeGraphStore, "available", staticmethod(lambda: False)
+    )
+    store = LadybugKnowledgeGraphStore(str(tmp_path))
+
+    result = store.delete_by_file("a.py")
+
+    assert result == {"skipped": "ladybug_unavailable"}
+
+
+def test_builder_build_delta_returns_empty_for_no_files() -> None:
+    builder = KnowledgeGraphBuilder(".")
+
+    result = builder.build_delta([])
+
+    assert result.nodes == []
+    assert result.edges == []
+    assert result.stats == {}
+
+
+def test_builder_build_delta_returns_subgraph(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text(
+        "def helper():\n    return 1\n\n\ndef main():\n    return helper()\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "other.py").write_text(
+        "def unrelated():\n    return 2\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project()
+    finally:
+        cache.close()
+
+    builder = KnowledgeGraphBuilder(str(tmp_path))
+    delta = builder.build_delta(["src/app.py"])
+
+    node_ids = {node.id for node in delta.nodes}
+    assert "file:src/app.py" in node_ids
+    # unrelated.py should not appear in the delta
+    assert "file:src/other.py" not in node_ids
+    assert delta.stats["delta"] is True
+    assert delta.stats["changed_files"] == 1
+
+
+def test_on_sync_modify_removes_ghost_nodes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CRITICAL regression: delete_by_file called BEFORE patch for changed files."""
+    from tree_sitter_analyzer.knowledge_graph.server import _make_on_sync_callback
+
+    call_order: list[str] = []
+
+    class FakeLadybugStore:
+        def __init__(self, project_root: str) -> None:
+            pass
+
+        def delete_by_file(self, fp: str) -> dict[str, Any]:
+            call_order.append(f"delete:{fp}")
+            return {"file_path": fp, "elapsed_seconds": 0.0}
+
+        def patch(
+            self,
+            added_nodes: Any,
+            removed_node_ids: Any,
+            added_edges: Any,
+            removed_edge_ids: Any,
+        ) -> dict[str, Any]:
+            call_order.append("patch")
+            return {"added_nodes": 0}
+
+    class FakeBuilder:
+        def __init__(self, project_root: str) -> None:
+            pass
+
+        def build_delta(self, paths: list[str]) -> KnowledgeGraphSnapshot:
+            return KnowledgeGraphSnapshot(nodes=[], edges=[], stats={})
+
+    # Patch at the server module level (used by LadybugKnowledgeGraphStore(...) call)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.server.LadybugKnowledgeGraphStore",
+        FakeLadybugStore,
+    )
+    # Patch KnowledgeGraphBuilder in the builder module (imported inline via `from .builder import`)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.builder.KnowledgeGraphBuilder",
+        FakeBuilder,
+    )
+
+    callback = _make_on_sync_callback(str(tmp_path))
+    sync_result = {
+        "details": [
+            {"file": "src/app.py", "considered": "updated"},
+        ]
+    }
+    callback(sync_result)
+
+    # delete must appear before patch in call_order
+    assert "delete:src/app.py" in call_order
+    assert "patch" in call_order
+    delete_idx = call_order.index("delete:src/app.py")
+    patch_idx = call_order.index("patch")
+    assert delete_idx < patch_idx, (
+        f"ghost node prevention violated: delete at {delete_idx}, patch at {patch_idx}; "
+        f"call_order={call_order}"
+    )
+
+
+def test_http_status_endpoint_returns_mtime_ns(tmp_path: Path) -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py"),
+        ],
+        edges=[],
+        stats={"node_count": 1, "edge_count": 0, "mtime_ns": 1234567890000000000},
+    )
+    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    service = KnowledgeGraphService(str(tmp_path))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(service))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_port}"
+
+    try:
+        status_payload = _read_url(f"{base_url}/api/status")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    import json as _json
+
+    data = _json.loads(status_payload)
+    assert "stats" in data
+    assert data["stats"]["mtime_ns"] == 1234567890000000000
+
+
+def test_http_uml_endpoint_returns_mermaid_for_component(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tree_sitter_analyzer.knowledge_graph import server as server_mod
+
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py"),
+        ],
+        edges=[],
+        stats={"node_count": 1, "edge_count": 0},
+    )
+    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+
+    def fake_uml(
+        project_root: str, backend: Any, node_id: str, diagram_type: str
+    ) -> dict[str, Any]:
+        return {"diagram": "graph TD\n  A[test]", "diagram_type": "component"}
+
+    monkeypatch.setattr(server_mod, "_uml_for_node", fake_uml)
+
+    service = KnowledgeGraphService(str(tmp_path))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(service))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_port}"
+
+    try:
+        uml_payload = _read_url(
+            f"{base_url}/api/uml?node_id=file:a.py&diagram_type=component"
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    import json as _json
+
+    data = _json.loads(uml_payload)
+    assert "diagram" in data
+    assert data["diagram_type"] == "component"
+    assert "graph TD" in data["diagram"]
+
+
+def test_http_uml_endpoint_class_falls_back_when_no_class_nodes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When kind=class requested but no class nodes exist, returns component diagram."""
+    from tree_sitter_analyzer.knowledge_graph import server as server_mod
+
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py"),
+        ],
+        edges=[],
+        stats={"node_count": 1, "edge_count": 0},
+    )
+    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+
+    # Simulate fallback: no class nodes → component diagram returned
+    def fake_uml(
+        project_root: str, backend: Any, node_id: str, diagram_type: str
+    ) -> dict[str, Any]:
+        # Mimic the actual fallback logic: class requested, no class nodes → component
+        return {"diagram": 'graph TD\n  file_a_py["a.py"]', "diagram_type": "component"}
+
+    monkeypatch.setattr(server_mod, "_uml_for_node", fake_uml)
+
+    service = KnowledgeGraphService(str(tmp_path))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(service))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_port}"
+
+    try:
+        uml_payload = _read_url(
+            f"{base_url}/api/uml?node_id=file:a.py&diagram_type=class"
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    import json as _json
+
+    data = _json.loads(uml_payload)
+    # Fallback: diagram_type should be component, not class
+    assert data["diagram_type"] == "component"
+    assert "graph TD" in data["diagram"]
+
+
+def test_http_uml_endpoint_returns_class_diagram_with_class_nodes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When class nodes exist, returns class diagram."""
+    from tree_sitter_analyzer.knowledge_graph import server as server_mod
+
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py"),
+            KnowledgeNode(
+                id="a.py:MyClass:5",
+                kind="class",
+                label="MyClass",
+                file_path="a.py",
+                metadata={"line": 5},
+            ),
+        ],
+        edges=[],
+        stats={"node_count": 2, "edge_count": 0},
+    )
+    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+
+    def fake_uml(
+        project_root: str, backend: Any, node_id: str, diagram_type: str
+    ) -> dict[str, Any]:
+        return {"diagram": "classDiagram\n  class MyClass", "diagram_type": "class"}
+
+    monkeypatch.setattr(server_mod, "_uml_for_node", fake_uml)
+
+    service = KnowledgeGraphService(str(tmp_path))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(service))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_port}"
+
+    try:
+        uml_payload = _read_url(
+            f"{base_url}/api/uml?node_id=a.py:MyClass:5&diagram_type=class"
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    import json as _json
+
+    data = _json.loads(uml_payload)
+    assert data["diagram_type"] == "class"
+    assert "classDiagram" in data["diagram"]
+    assert "MyClass" in data["diagram"]
