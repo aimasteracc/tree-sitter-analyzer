@@ -1,8 +1,8 @@
-"""Tests for languages._go_package_helpers — Go package extraction."""
+"""Tests for languages._go_package — Go package extraction."""
 
 from unittest.mock import MagicMock
 
-from tree_sitter_analyzer.languages._go_package_helpers import (
+from tree_sitter_analyzer.languages._go_package import (
     _go_package_name,
     extract_go_package,
 )

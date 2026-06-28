@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from tree_sitter_analyzer.languages._c_comment_helpers import (
+from tree_sitter_analyzer.languages._c_comment import (
     _collect_block_comment,
     _is_block_comment_start,
     extract_comment_for_line,
 )
-from tree_sitter_analyzer.languages._c_include_helpers import (
+from tree_sitter_analyzer.languages._c_include import (
     _include_from_line,
     _include_path_match,
     extract_include_info,

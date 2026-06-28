@@ -25,7 +25,7 @@ from tree_sitter_analyzer.function_extraction import (
     _normalize_go_receiver_type_for_graph,
     find_receiver_type_go,
 )
-from tree_sitter_analyzer.languages._go_common_helpers import (
+from tree_sitter_analyzer.languages._go_common import (
     _extract_receiver_from_text,
     _extract_receiver_parts,
     _strip_generic_suffix,

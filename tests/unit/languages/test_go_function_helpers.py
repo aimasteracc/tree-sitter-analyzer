@@ -1,4 +1,4 @@
-"""Tests for languages/_go_function_helpers.py — 100% coverage."""
+"""Tests for languages/_go_function.py — 100% coverage."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import MagicMock
 
-from tree_sitter_analyzer.languages._go_function_helpers import (
+from tree_sitter_analyzer.languages._go_function import (
     extract_go_function,
     extract_go_method,
 )
@@ -215,7 +215,7 @@ class TestExtractGoMethod:
         def mock_receiver_extractor(n, get_text):
             return ("s *Service", "*Service")
 
-        import tree_sitter_analyzer.languages._go_function_helpers as mod
+        import tree_sitter_analyzer.languages._go_function as mod
 
         original = mod.extract_method_receiver
         mod.extract_method_receiver = mock_receiver_extractor
@@ -259,7 +259,7 @@ class TestExtractGoMethod:
     def test_method_receiver_extraction(self):
         node = FakeNode(_name_text="Process")
 
-        import tree_sitter_analyzer.languages._go_function_helpers as mod
+        import tree_sitter_analyzer.languages._go_function as mod
 
         original = mod.extract_method_receiver
         mod.extract_method_receiver = lambda n, gt: ("r *Reader", "*Reader")

@@ -16,7 +16,7 @@ from __future__ import annotations
 import pytest
 import tree_sitter
 
-from tree_sitter_analyzer.languages._cpp_plugin_analysis_helpers import (
+from tree_sitter_analyzer.languages._cpp_plugin_analysis import (
     create_cpp_parser,
 )
 from tree_sitter_analyzer.languages.cpp_plugin import CppPlugin

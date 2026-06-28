@@ -190,7 +190,7 @@ def _abstract_sig_node() -> tree_sitter.Node:
 
 
 def test_abstract_signature_parse_returning_none_yields_none() -> None:
-    from tree_sitter_analyzer.languages.typescript_plugin._function_helpers import (
+    from tree_sitter_analyzer.languages.typescript_plugin._function import (
         extract_abstract_method_signature,
     )
 
@@ -205,7 +205,7 @@ def test_abstract_signature_parse_returning_none_yields_none() -> None:
 
 
 def test_abstract_signature_nameless_parse_yields_none() -> None:
-    from tree_sitter_analyzer.languages.typescript_plugin._function_helpers import (
+    from tree_sitter_analyzer.languages.typescript_plugin._function import (
         extract_abstract_method_signature,
     )
 
@@ -221,7 +221,7 @@ def test_abstract_signature_nameless_parse_yields_none() -> None:
 
 
 def test_abstract_signature_parse_raising_yields_none() -> None:
-    from tree_sitter_analyzer.languages.typescript_plugin._function_helpers import (
+    from tree_sitter_analyzer.languages.typescript_plugin._function import (
         extract_abstract_method_signature,
     )
 

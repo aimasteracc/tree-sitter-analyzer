@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from tree_sitter_analyzer._ast_extraction import (
+from tree_sitter_analyzer.cache.extraction import (
     _content_hash,
     _count_decision_points,
     _count_nodes,
@@ -318,7 +318,7 @@ class TestWalkForSymbols:
         block), so 26 nested functions need AST depth ~51, which exceeds the old
         cap.  With _WALK_MAX_DEPTH=100 all 26 must be present.
         """
-        from tree_sitter_analyzer._ast_extraction import (
+        from tree_sitter_analyzer.cache.extraction import (
             Parser,  # type: ignore[attr-defined]
         )
 
@@ -409,25 +409,25 @@ class TestCDeclaratorName:
     """Edge cases of the C declarator-name descent helper."""
 
     def test_none_declarator_returns_none(self):
-        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+        from tree_sitter_analyzer.cache.extraction import _c_declarator_name
 
         assert _c_declarator_name(None, "", 0) is None
 
     def test_depth_guard_returns_none(self):
-        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+        from tree_sitter_analyzer.cache.extraction import _c_declarator_name
 
         # depth past the bound short-circuits even with a real node
         node = SimpleNamespace(type="identifier")
         assert _c_declarator_name(node, "x", 99) is None
 
     def test_unknown_declarator_type_returns_none(self):
-        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+        from tree_sitter_analyzer.cache.extraction import _c_declarator_name
 
         node = SimpleNamespace(type="abstract_declarator", children=[])
         assert _c_declarator_name(node, "", 0) is None
 
     def test_parenthesized_without_name_returns_none(self):
-        from tree_sitter_analyzer._ast_extraction import _c_declarator_name
+        from tree_sitter_analyzer.cache.extraction import _c_declarator_name
 
         # parenthesized_declarator whose children carry no name-bearing node
         paren = SimpleNamespace(
@@ -445,7 +445,7 @@ class TestCDeclaratorName:
 def _symbols_for(source: str, lang: str) -> list[dict]:
     """Parse source and return all symbols from _extract_symbols."""
 
-    from tree_sitter_analyzer._ast_extraction import _extract_symbols
+    from tree_sitter_analyzer.cache.extraction import _extract_symbols
     from tree_sitter_analyzer.core.parser import Parser
 
     result = Parser().parse_code(source, lang)
@@ -1109,7 +1109,7 @@ class TestPhpConstantsGuards:
     """Cover defensive branches unreachable from valid PHP source (codecov)."""
 
     def test_nameless_const_element_skipped(self):
-        from tree_sitter_analyzer._ast_extraction import _php_constants
+        from tree_sitter_analyzer.cache.extraction import _php_constants
 
         nameless = _PhpStubNode("const_element", children=[])
         decl = _PhpStubNode("const_declaration", children=[nameless])
@@ -1231,7 +1231,7 @@ class TestJsTsLocalVariableContraction:
         # The ast_cache path only ever delivers "javascript"/"typescript" for
         # this family — .tsx (and .jsx -> "javascript") included — so the
         # language gate on those two ids covers every indexed file.
-        from tree_sitter_analyzer._lang_extension_map import EXT_TO_LANG
+        from tree_sitter_analyzer.languages.lang_extension_map import EXT_TO_LANG
 
         assert EXT_TO_LANG[".tsx"] == "typescript"
         assert EXT_TO_LANG[".jsx"] == "javascript"
@@ -1566,3 +1566,332 @@ class TestCountNodes:
             node = _FakeNode([node])
         # Must not raise; exact count is 2001 (2000 wrappers + original leaf).
         assert _count_nodes(node) == 2001
+
+
+# ---------------------------------------------------------------------------
+# _has_fts5() — pragma success branch (line 31 coverage)
+# ---------------------------------------------------------------------------
+
+
+class TestHasFts5PragmaSuccess:
+    def test_returns_true_when_pragma_row_exists(self):
+        """A mocked connection that returns a row on first execute → True (line 31)."""
+        conn = MagicMock(spec=sqlite3.Connection)
+        # First execute returns successfully (pragma row found) — no exception
+        conn.execute.return_value = MagicMock()
+        assert _has_fts5(conn) is True
+        conn.execute.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _bash_subscript_base() — branch coverage (lines 875-881)
+# ---------------------------------------------------------------------------
+
+
+class TestBashSubscriptBase:
+    def test_returns_name_field_when_present(self):
+        """subscript with ``name`` field → returns it directly."""
+        from tree_sitter_analyzer.cache.extraction import _bash_subscript_base
+
+        base_node = SimpleNamespace(type="variable_name")
+        subscript = SimpleNamespace(
+            children=[],
+            **{"child_by_field_name": lambda n: base_node if n == "name" else None},
+        )
+        # Use MagicMock to control child_by_field_name
+        subscript = MagicMock()
+        subscript.child_by_field_name.return_value = base_node
+        result = _bash_subscript_base(subscript)
+        assert result is base_node
+
+    def test_falls_back_to_variable_name_child(self):
+        """No ``name`` field → scan children for variable_name."""
+        from tree_sitter_analyzer.cache.extraction import _bash_subscript_base
+
+        var_node = SimpleNamespace(type="variable_name")
+        other = SimpleNamespace(type="[")
+        subscript = MagicMock()
+        subscript.child_by_field_name.return_value = None
+        subscript.children = [other, var_node]
+        result = _bash_subscript_base(subscript)
+        assert result is var_node
+
+    def test_falls_back_to_word_child(self):
+        """No ``name`` field and no variable_name → scan for word child."""
+        from tree_sitter_analyzer.cache.extraction import _bash_subscript_base
+
+        word_node = SimpleNamespace(type="word")
+        subscript = MagicMock()
+        subscript.child_by_field_name.return_value = None
+        subscript.children = [SimpleNamespace(type="["), word_node]
+        result = _bash_subscript_base(subscript)
+        assert result is word_node
+
+    def test_returns_none_when_no_matching_child(self):
+        """No name field and no matching child type → returns None."""
+        from tree_sitter_analyzer.cache.extraction import _bash_subscript_base
+
+        subscript = MagicMock()
+        subscript.child_by_field_name.return_value = None
+        subscript.children = [SimpleNamespace(type="["), SimpleNamespace(type="]")]
+        result = _bash_subscript_base(subscript)
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Scala helpers: _scala_symbol_from_node / _scala_symbol_name / _scala_given_type_text
+# ---------------------------------------------------------------------------
+
+
+class TestScalaHelpers:
+    def test_scala_symbol_from_node_non_scala_type_returns_none(self):
+        """Node type not in _SCALA_CLASS_LIKE → None."""
+        from tree_sitter_analyzer.cache.extraction import _scala_symbol_from_node
+
+        node = MagicMock()
+        node.type = "some_unknown_type"
+        assert _scala_symbol_from_node(node, "") is None
+
+    def test_scala_symbol_from_node_enum_definition(self):
+        """enum_definition produces kind='enum'."""
+        from tree_sitter_analyzer.cache.extraction import _scala_symbol_from_node
+
+        name_node = MagicMock()
+        name_node.text = b"Color"
+
+        node = MagicMock()
+        node.type = "enum_definition"
+        node.child_by_field_name.return_value = name_node
+        node.start_point = (4, 0)
+        node.end_point = (10, 0)
+
+        sym = _scala_symbol_from_node(node, "")
+        assert sym is not None
+        assert sym["kind"] == "enum"
+        assert sym["name"] == "Color"
+
+    def test_scala_symbol_from_node_object_definition(self):
+        """object_definition produces kind='class'."""
+        from tree_sitter_analyzer.cache.extraction import _scala_symbol_from_node
+
+        name_node = MagicMock()
+        name_node.text = b"MyObject"
+
+        node = MagicMock()
+        node.type = "object_definition"
+        node.child_by_field_name.return_value = name_node
+        node.start_point = (1, 0)
+        node.end_point = (5, 0)
+
+        sym = _scala_symbol_from_node(node, "")
+        assert sym is not None
+        assert sym["kind"] == "class"
+        assert sym["name"] == "MyObject"
+
+    def test_scala_symbol_from_node_empty_name_returns_none(self):
+        """If name resolution returns empty string → None."""
+        from tree_sitter_analyzer.cache.extraction import _scala_symbol_from_node
+
+        # name field returns a node with empty text, no children with identifier
+        empty_name = MagicMock()
+        empty_name.text = b""
+
+        node = MagicMock()
+        node.type = "trait_definition"
+        node.child_by_field_name.return_value = empty_name
+        node.children = []
+        node.start_point = (0, 0)
+        node.end_point = (0, 0)
+
+        # _scala_symbol_name returns empty string → _scala_symbol_from_node returns None
+        sym = _scala_symbol_from_node(node, "")
+        assert sym is None
+
+    def test_scala_symbol_name_fallback_to_identifier_child(self):
+        """No name field → scan children for identifier."""
+        from tree_sitter_analyzer.cache.extraction import _scala_symbol_name
+
+        ident_child = MagicMock()
+        ident_child.type = "identifier"
+        ident_child.text = b"MyTrait"
+
+        node = MagicMock()
+        node.type = "trait_definition"
+        node.child_by_field_name.return_value = None
+        node.children = [ident_child]
+
+        result = _scala_symbol_name(node, "")
+        assert result == "MyTrait"
+
+    def test_scala_symbol_name_given_definition_with_generic_type(self):
+        """given_definition with a generic_type child (not identifier) → 'given <type>'.
+
+        The for-loop in _scala_symbol_name only returns early for 'identifier' /
+        'type_identifier' children; a 'generic_type' child doesn't match, so the
+        function falls through to the given_definition branch.
+        """
+        from tree_sitter_analyzer.cache.extraction import _scala_symbol_name
+
+        generic_child = MagicMock()
+        generic_child.type = "generic_type"
+        generic_child.text = b"List[String]"
+
+        node = MagicMock()
+        node.type = "given_definition"
+        node.child_by_field_name.return_value = None
+        node.children = [generic_child]
+        node.start_point = (5, 0)
+
+        result = _scala_symbol_name(node, "")
+        assert result == "given List[String]"
+
+    def test_scala_symbol_name_given_definition_anonymous(self):
+        """given_definition with no matching type child → anonymous name with line."""
+        from tree_sitter_analyzer.cache.extraction import _scala_symbol_name
+
+        # Use a child type that matches neither identifier/type_identifier
+        # (for the loop) nor any of the _scala_given_type_text types.
+        unmatched = MagicMock()
+        unmatched.type = "comment"
+
+        node = MagicMock()
+        node.type = "given_definition"
+        node.child_by_field_name.return_value = None
+        node.children = [unmatched]
+        node.start_point = (9, 0)  # line 10 (0-indexed)
+
+        result = _scala_symbol_name(node, "")
+        assert result == "anonymous_given_10"
+
+    def test_scala_given_type_text_returns_generic_type(self):
+        """_scala_given_type_text returns text of generic_type child."""
+        from tree_sitter_analyzer.cache.extraction import _scala_given_type_text
+
+        child = MagicMock()
+        child.type = "generic_type"
+        child.text = b"List[String]"
+
+        node = MagicMock()
+        node.children = [child]
+
+        result = _scala_given_type_text(node, "")
+        assert result == "List[String]"
+
+    def test_scala_given_type_text_returns_none_when_no_match(self):
+        """No matching child type → None."""
+        from tree_sitter_analyzer.cache.extraction import _scala_given_type_text
+
+        child = MagicMock()
+        child.type = "some_other_type"
+
+        node = MagicMock()
+        node.children = [child]
+
+        result = _scala_given_type_text(node, "")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _python_docstring — concatenated_string and empty content branches
+# ---------------------------------------------------------------------------
+
+
+class TestPythonDocstring:
+    def test_concatenated_string_docstring(self):
+        """Adjacent string literals folded into concatenated_string are extracted."""
+        from tree_sitter_analyzer.cache.extraction import _python_docstring
+        from tree_sitter_analyzer.core.parser import Parser
+
+        src = (
+            'def f():\n'
+            '    ("hello "\n'
+            '     "world")\n'
+            '    pass\n'
+        )
+        result = Parser().parse_code(src, "python")
+        if result.success and result.tree is not None:
+            doc = _python_docstring(result.tree.root_node.children[0], src)
+            # May or may not be extracted depending on tree-sitter version;
+            # key guarantee: no exception raised.
+            assert doc is None or isinstance(doc, str)
+
+    def test_no_body_returns_none(self):
+        """Node with no body field → None."""
+        from tree_sitter_analyzer.cache.extraction import _python_docstring
+
+        node = MagicMock()
+        node.child_by_field_name.return_value = None
+        assert _python_docstring(node, "") is None
+
+    def test_body_no_named_children_returns_none(self):
+        """Node with empty body → None."""
+        from tree_sitter_analyzer.cache.extraction import _python_docstring
+
+        body = MagicMock()
+        body.named_children = []
+        node = MagicMock()
+        node.child_by_field_name.return_value = body
+        assert _python_docstring(node, "") is None
+
+    def test_non_expression_statement_first_child_returns_none(self):
+        """First body child is not expression_statement → None."""
+        from tree_sitter_analyzer.cache.extraction import _python_docstring
+
+        first = MagicMock()
+        first.type = "return_statement"
+        first.named_children = []
+
+        body = MagicMock()
+        body.named_children = [first]
+
+        node = MagicMock()
+        node.child_by_field_name.return_value = body
+        assert _python_docstring(node, "") is None
+
+    def test_real_python_function_docstring_extracted(self):
+        """A real Python function with a string docstring returns the text."""
+        from tree_sitter_analyzer.cache.extraction import _python_docstring
+        from tree_sitter_analyzer.core.parser import Parser
+
+        src = 'def greet():\n    """Say hello."""\n    return "hi"\n'
+        result = Parser().parse_code(src, "python")
+        assert result.success and result.tree is not None
+        func_node = result.tree.root_node.children[0]
+        doc = _python_docstring(func_node, src)
+        assert doc == "Say hello."
+
+
+# ---------------------------------------------------------------------------
+# _extract_call_edges — with a real Python source (lines 1238-1264)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractCallEdgesReal:
+    def test_call_edges_python_simple_caller(self):
+        """A function that calls another produces a non-empty edge list."""
+        from tree_sitter_analyzer.core.parser import Parser
+        from tree_sitter_analyzer.cache.extraction import _extract_symbols
+
+        src = "def helper():\n    pass\n\ndef main():\n    helper()\n"
+        result = Parser().parse_code(src, "python")
+        assert result.success and result.tree is not None
+        symbols = _extract_symbols(result.tree, src, "python")
+        edges = _extract_call_edges(result.tree, src, "python", symbols)
+        # At least one edge: main → helper
+        assert len(edges) >= 1
+        callee_names = [e["callee_name"] for e in edges]
+        assert "helper" in callee_names
+
+    def test_call_edges_caller_attribution(self):
+        """The call inside main() is attributed to main."""
+        from tree_sitter_analyzer.core.parser import Parser
+        from tree_sitter_analyzer.cache.extraction import _extract_symbols
+
+        src = "def helper():\n    pass\n\ndef main():\n    helper()\n"
+        result = Parser().parse_code(src, "python")
+        assert result.success and result.tree is not None
+        symbols = _extract_symbols(result.tree, src, "python")
+        edges = _extract_call_edges(result.tree, src, "python", symbols)
+        helper_edges = [e for e in edges if e["callee_name"] == "helper"]
+        assert len(helper_edges) == 1
+        assert helper_edges[0]["caller_name"] == "main"

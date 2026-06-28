@@ -1,8 +1,8 @@
-"""Coverage boost tests for languages/python_plugin/_import_helpers.py."""
+"""Coverage boost tests for languages/python_plugin/_import.py."""
 
 from unittest.mock import MagicMock
 
-from tree_sitter_analyzer.languages.python_plugin._import_helpers import (
+from tree_sitter_analyzer.languages.python_plugin._import import (
     ClassBodyQueryRuntime,
     ImportExtractionRuntime,
     ImportNodeContext,

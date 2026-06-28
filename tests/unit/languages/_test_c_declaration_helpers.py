@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from tree_sitter_analyzer.languages._c_declaration_helpers import (
+from tree_sitter_analyzer.languages._c_declaration import (
     _append_array_fields,
     _append_child_names,
     _append_initializer_fields,

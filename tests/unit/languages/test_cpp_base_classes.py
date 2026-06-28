@@ -80,7 +80,7 @@ def test_legacy_base_specifier_wrapper_still_handled() -> None:
     node — the compatibility branch must still collect names from it."""
     from unittest.mock import Mock
 
-    from tree_sitter_analyzer.languages._cpp_variable_helpers import (
+    from tree_sitter_analyzer.languages._cpp_variable import (
         extract_base_classes,
     )
 
