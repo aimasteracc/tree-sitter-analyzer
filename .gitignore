@@ -1,6 +1,7 @@
 # Local development artifacts — do not commit
 threads/
 REDESIGN_PROPOSAL.md
+node_modules/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
