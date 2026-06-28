@@ -1,0 +1,614 @@
+{
+  "language": "kotlin",
+  "corpus_file": "tests/golden/corpus_kotlin.kt",
+  "snapshot_timestamp": "2026-06-28T17:00:46.217453+00:00",
+  "symbol_count": 121,
+  "symbols": [
+    {
+      "name": "kotlin.collections.HashMap",
+      "kind": "import",
+      "start_line": 23
+    },
+    {
+      "name": "kotlin.collections.mutableListOf",
+      "kind": "import",
+      "start_line": 24
+    },
+    {
+      "name": "kotlin.math.sqrt",
+      "kind": "import",
+      "start_line": 25
+    },
+    {
+      "name": "CustomAnnotation",
+      "kind": "class",
+      "start_line": 39
+    },
+    {
+      "name": "CustomAnnotation",
+      "kind": "function",
+      "start_line": 41
+    },
+    {
+      "name": "Person",
+      "kind": "function",
+      "start_line": 56
+    },
+    {
+      "name": "Person",
+      "kind": "class",
+      "start_line": 56
+    },
+    {
+      "name": "isAdult",
+      "kind": "variable",
+      "start_line": 65
+    },
+    {
+      "name": "greet",
+      "kind": "function",
+      "start_line": 69
+    },
+    {
+      "name": "MAX_AGE",
+      "kind": "variable",
+      "start_line": 75
+    },
+    {
+      "name": "createDefault",
+      "kind": "function",
+      "start_line": 77
+    },
+    {
+      "name": "Animal",
+      "kind": "function",
+      "start_line": 90
+    },
+    {
+      "name": "Animal",
+      "kind": "class",
+      "start_line": 90
+    },
+    {
+      "name": "sound",
+      "kind": "variable",
+      "start_line": 92
+    },
+    {
+      "name": "age",
+      "kind": "variable",
+      "start_line": 99
+    },
+    {
+      "name": "owner",
+      "kind": "variable",
+      "start_line": 103
+    },
+    {
+      "name": "description",
+      "kind": "variable",
+      "start_line": 106
+    },
+    {
+      "name": "makeSound",
+      "kind": "function",
+      "start_line": 111
+    },
+    {
+      "name": "feed",
+      "kind": "function",
+      "start_line": 116
+    },
+    {
+      "name": "likes",
+      "kind": "function",
+      "start_line": 121
+    },
+    {
+      "name": "plus",
+      "kind": "function",
+      "start_line": 126
+    },
+    {
+      "name": "Shape",
+      "kind": "function",
+      "start_line": 135
+    },
+    {
+      "name": "Shape",
+      "kind": "class",
+      "start_line": 135
+    },
+    {
+      "name": "area",
+      "kind": "variable",
+      "start_line": 137
+    },
+    {
+      "name": "draw",
+      "kind": "function",
+      "start_line": 140
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 143
+    },
+    {
+      "name": "validate",
+      "kind": "function",
+      "start_line": 148
+    },
+    {
+      "name": "Circle",
+      "kind": "function",
+      "start_line": 153
+    },
+    {
+      "name": "Circle",
+      "kind": "class",
+      "start_line": 153
+    },
+    {
+      "name": "area",
+      "kind": "variable",
+      "start_line": 154
+    },
+    {
+      "name": "draw",
+      "kind": "function",
+      "start_line": 157
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 161
+    },
+    {
+      "name": "Result",
+      "kind": "class",
+      "start_line": 170
+    },
+    {
+      "name": "Success",
+      "kind": "function",
+      "start_line": 171
+    },
+    {
+      "name": "Success",
+      "kind": "class",
+      "start_line": 171
+    },
+    {
+      "name": "Error",
+      "kind": "function",
+      "start_line": 172
+    },
+    {
+      "name": "Error",
+      "kind": "class",
+      "start_line": 172
+    },
+    {
+      "name": "Loading",
+      "kind": "class",
+      "start_line": 173
+    },
+    {
+      "name": "Vehicle",
+      "kind": "class",
+      "start_line": 176
+    },
+    {
+      "name": "wheels",
+      "kind": "variable",
+      "start_line": 177
+    },
+    {
+      "name": "Status",
+      "kind": "class",
+      "start_line": 184
+    },
+    {
+      "name": "Color",
+      "kind": "function",
+      "start_line": 190
+    },
+    {
+      "name": "Color",
+      "kind": "class",
+      "start_line": 190
+    },
+    {
+      "name": "toHex",
+      "kind": "function",
+      "start_line": 195
+    },
+    {
+      "name": "Direction",
+      "kind": "class",
+      "start_line": 198
+    },
+    {
+      "name": "opposite",
+      "kind": "function",
+      "start_line": 201
+    },
+    {
+      "name": "Outer",
+      "kind": "function",
+      "start_line": 213
+    },
+    {
+      "name": "Outer",
+      "kind": "class",
+      "start_line": 213
+    },
+    {
+      "name": "outerProperty",
+      "kind": "variable",
+      "start_line": 214
+    },
+    {
+      "name": "Inner",
+      "kind": "class",
+      "start_line": 216
+    },
+    {
+      "name": "getOuterValue",
+      "kind": "function",
+      "start_line": 217
+    },
+    {
+      "name": "accessOuter",
+      "kind": "function",
+      "start_line": 221
+    },
+    {
+      "name": "Nested",
+      "kind": "class",
+      "start_line": 226
+    },
+    {
+      "name": "nestedFunction",
+      "kind": "function",
+      "start_line": 227
+    },
+    {
+      "name": "DatabaseConfig",
+      "kind": "class",
+      "start_line": 240
+    },
+    {
+      "name": "HOST",
+      "kind": "variable",
+      "start_line": 241
+    },
+    {
+      "name": "PORT",
+      "kind": "variable",
+      "start_line": 242
+    },
+    {
+      "name": "connections",
+      "kind": "variable",
+      "start_line": 244
+    },
+    {
+      "name": "connect",
+      "kind": "function",
+      "start_line": 246
+    },
+    {
+      "name": "getConnections",
+      "kind": "function",
+      "start_line": 250
+    },
+    {
+      "name": "createAnonymousObject",
+      "kind": "function",
+      "start_line": 256
+    },
+    {
+      "name": "x",
+      "kind": "variable",
+      "start_line": 258
+    },
+    {
+      "name": "y",
+      "kind": "variable",
+      "start_line": 259
+    },
+    {
+      "name": "sum",
+      "kind": "function",
+      "start_line": 261
+    },
+    {
+      "name": "Factory",
+      "kind": "class",
+      "start_line": 269
+    },
+    {
+      "name": "VERSION",
+      "kind": "variable",
+      "start_line": 271
+    },
+    {
+      "name": "create",
+      "kind": "function",
+      "start_line": 273
+    },
+    {
+      "name": "WithDefaultCompanion",
+      "kind": "class",
+      "start_line": 279
+    },
+    {
+      "name": "createDefault",
+      "kind": "function",
+      "start_line": 281
+    },
+    {
+      "name": "Drawable",
+      "kind": "class",
+      "start_line": 289
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 291
+    },
+    {
+      "name": "draw",
+      "kind": "function",
+      "start_line": 294
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 297
+    },
+    {
+      "name": "Clickable",
+      "kind": "class",
+      "start_line": 302
+    },
+    {
+      "name": "click",
+      "kind": "function",
+      "start_line": 303
+    },
+    {
+      "name": "doubleClick",
+      "kind": "function",
+      "start_line": 304
+    },
+    {
+      "name": "Named",
+      "kind": "class",
+      "start_line": 308
+    },
+    {
+      "name": "firstName",
+      "kind": "variable",
+      "start_line": 309
+    },
+    {
+      "name": "lastName",
+      "kind": "variable",
+      "start_line": 310
+    },
+    {
+      "name": "fullName",
+      "kind": "variable",
+      "start_line": 311
+    },
+    {
+      "name": "regularFunction",
+      "kind": "function",
+      "start_line": 322
+    },
+    {
+      "name": "functionWithDefaults",
+      "kind": "function",
+      "start_line": 329
+    },
+    {
+      "name": "createPerson",
+      "kind": "function",
+      "start_line": 336
+    },
+    {
+      "name": "measureTime",
+      "kind": "function",
+      "start_line": 343
+    },
+    {
+      "name": "fetchData",
+      "kind": "function",
+      "start_line": 353
+    },
+    {
+      "name": "plus",
+      "kind": "function",
+      "start_line": 361
+    },
+    {
+      "name": "times",
+      "kind": "function",
+      "start_line": 368
+    },
+    {
+      "name": "isPalindrome",
+      "kind": "function",
+      "start_line": 375
+    },
+    {
+      "name": "concatenate",
+      "kind": "function",
+      "start_line": 382
+    },
+    {
+      "name": "singletonList",
+      "kind": "function",
+      "start_line": 389
+    },
+    {
+      "name": "isInstanceOf",
+      "kind": "function",
+      "start_line": 396
+    },
+    {
+      "name": "factorial",
+      "kind": "function",
+      "start_line": 403
+    },
+    {
+      "name": "anonymousFunctionExamples",
+      "kind": "function",
+      "start_line": 411
+    },
+    {
+      "name": "lambdaExamples",
+      "kind": "function",
+      "start_line": 435
+    },
+    {
+      "name": "globalConstant",
+      "kind": "variable",
+      "start_line": 480
+    },
+    {
+      "name": "globalVariable",
+      "kind": "variable",
+      "start_line": 483
+    },
+    {
+      "name": "computedProperty",
+      "kind": "variable",
+      "start_line": 486
+    },
+    {
+      "name": "propertyWithAccessors",
+      "kind": "variable",
+      "start_line": 490
+    },
+    {
+      "name": "PropertyDelegateExample",
+      "kind": "class",
+      "start_line": 497
+    },
+    {
+      "name": "delegatedProperty",
+      "kind": "variable",
+      "start_line": 498
+    },
+    {
+      "name": "annotatedProperty",
+      "kind": "variable",
+      "start_line": 502
+    },
+    {
+      "name": "variableDeclarations",
+      "kind": "function",
+      "start_line": 510
+    },
+    {
+      "name": "whenExpressions",
+      "kind": "function",
+      "start_line": 539
+    },
+    {
+      "name": "Point",
+      "kind": "function",
+      "start_line": 589
+    },
+    {
+      "name": "Point",
+      "kind": "class",
+      "start_line": 589
+    },
+    {
+      "name": "distance",
+      "kind": "function",
+      "start_line": 590
+    },
+    {
+      "name": "component1",
+      "kind": "function",
+      "start_line": 594
+    },
+    {
+      "name": "component2",
+      "kind": "function",
+      "start_line": 595
+    },
+    {
+      "name": "Rectangle",
+      "kind": "function",
+      "start_line": 598
+    },
+    {
+      "name": "Rectangle",
+      "kind": "class",
+      "start_line": 598
+    },
+    {
+      "name": "Box",
+      "kind": "function",
+      "start_line": 604
+    },
+    {
+      "name": "Box",
+      "kind": "class",
+      "start_line": 604
+    },
+    {
+      "name": "get",
+      "kind": "function",
+      "start_line": 605
+    },
+    {
+      "name": "Producer",
+      "kind": "class",
+      "start_line": 608
+    },
+    {
+      "name": "produce",
+      "kind": "function",
+      "start_line": 609
+    },
+    {
+      "name": "Consumer",
+      "kind": "class",
+      "start_line": 612
+    },
+    {
+      "name": "consume",
+      "kind": "function",
+      "start_line": 613
+    },
+    {
+      "name": "Container",
+      "kind": "function",
+      "start_line": 617
+    },
+    {
+      "name": "Container",
+      "kind": "class",
+      "start_line": 617
+    },
+    {
+      "name": "compare",
+      "kind": "function",
+      "start_line": 618
+    },
+    {
+      "name": "main",
+      "kind": "function",
+      "start_line": 627
+    }
+  ],
+  "edges": []
+}

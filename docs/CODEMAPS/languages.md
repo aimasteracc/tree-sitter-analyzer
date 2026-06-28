@@ -38,6 +38,7 @@ Not every registered plugin is wired into the indexer to the same depth:
 | Markdown | `markdown_plugin/` | submodules | headings, code blocks, tables |
 | JSON | `languages/json_plugin.py` | inline | basic structure |
 | Bash | `languages/bash_plugin.py` | inline | functions, commands |
+| Lua | `languages/lua_plugin.py` | inline | extensibility demo; shows new language = 1 file, no central edits (Phase 2 capability system) |
 
 ## Shared helpers
 

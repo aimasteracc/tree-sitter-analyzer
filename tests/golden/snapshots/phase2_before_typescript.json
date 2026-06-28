@@ -1,0 +1,699 @@
+{
+  "language": "typescript",
+  "corpus_file": "tests/golden/corpus_typescript.ts",
+  "snapshot_timestamp": "2026-06-28T17:00:46.590100+00:00",
+  "symbol_count": 138,
+  "symbols": [
+    {
+      "name": "StringOrNumber",
+      "kind": "class",
+      "start_line": 27
+    },
+    {
+      "name": "Point",
+      "kind": "class",
+      "start_line": 28
+    },
+    {
+      "name": "x",
+      "kind": "variable",
+      "start_line": 28
+    },
+    {
+      "name": "y",
+      "kind": "variable",
+      "start_line": 28
+    },
+    {
+      "name": "Predicate",
+      "kind": "class",
+      "start_line": 29
+    },
+    {
+      "name": "ReadonlyPoint",
+      "kind": "class",
+      "start_line": 30
+    },
+    {
+      "name": "Animal",
+      "kind": "class",
+      "start_line": 35
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 36
+    },
+    {
+      "name": "age",
+      "kind": "variable",
+      "start_line": 37
+    },
+    {
+      "name": "makeSound",
+      "kind": "function",
+      "start_line": 38
+    },
+    {
+      "name": "Container",
+      "kind": "class",
+      "start_line": 44
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 45
+    },
+    {
+      "name": "getValue",
+      "kind": "function",
+      "start_line": 46
+    },
+    {
+      "name": "setValue",
+      "kind": "function",
+      "start_line": 47
+    },
+    {
+      "name": "Dictionary",
+      "kind": "class",
+      "start_line": 53
+    },
+    {
+      "name": "Callable",
+      "kind": "class",
+      "start_line": 60
+    },
+    {
+      "name": "Dog",
+      "kind": "class",
+      "start_line": 67
+    },
+    {
+      "name": "breed",
+      "kind": "variable",
+      "start_line": 68
+    },
+    {
+      "name": "fetch",
+      "kind": "function",
+      "start_line": 69
+    },
+    {
+      "name": "DogWithOwner",
+      "kind": "class",
+      "start_line": 75
+    },
+    {
+      "name": "Result",
+      "kind": "class",
+      "start_line": 80
+    },
+    {
+      "name": "Direction",
+      "kind": "class",
+      "start_line": 89
+    },
+    {
+      "name": "Color",
+      "kind": "class",
+      "start_line": 99
+    },
+    {
+      "name": "HttpStatus",
+      "kind": "class",
+      "start_line": 108
+    },
+    {
+      "name": "add",
+      "kind": "function",
+      "start_line": 121
+    },
+    {
+      "name": "greet",
+      "kind": "function",
+      "start_line": 128
+    },
+    {
+      "name": "sum",
+      "kind": "function",
+      "start_line": 135
+    },
+    {
+      "name": "identity",
+      "kind": "function",
+      "start_line": 142
+    },
+    {
+      "name": "pair",
+      "kind": "function",
+      "start_line": 149
+    },
+    {
+      "name": "fetchData",
+      "kind": "function",
+      "start_line": 156
+    },
+    {
+      "name": "numberGenerator",
+      "kind": "function",
+      "start_line": 164
+    },
+    {
+      "name": "asyncNumberGenerator",
+      "kind": "function",
+      "start_line": 173
+    },
+    {
+      "name": "process",
+      "kind": "function",
+      "start_line": 184
+    },
+    {
+      "name": "multiply",
+      "kind": "function",
+      "start_line": 195
+    },
+    {
+      "name": "wrapInArray",
+      "kind": "function",
+      "start_line": 200
+    },
+    {
+      "name": "asyncFetch",
+      "kind": "function",
+      "start_line": 205
+    },
+    {
+      "name": "getFullName",
+      "kind": "function",
+      "start_line": 212
+    },
+    {
+      "name": "Person",
+      "kind": "class",
+      "start_line": 223
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 225
+    },
+    {
+      "name": "_age",
+      "kind": "variable",
+      "start_line": 228
+    },
+    {
+      "name": "email",
+      "kind": "variable",
+      "start_line": 231
+    },
+    {
+      "name": "id",
+      "kind": "variable",
+      "start_line": 234
+    },
+    {
+      "name": "species",
+      "kind": "variable",
+      "start_line": 237
+    },
+    {
+      "name": "constructor",
+      "kind": "function",
+      "start_line": 240
+    },
+    {
+      "name": "greet",
+      "kind": "function",
+      "start_line": 248
+    },
+    {
+      "name": "age",
+      "kind": "function",
+      "start_line": 253
+    },
+    {
+      "name": "age",
+      "kind": "function",
+      "start_line": 258
+    },
+    {
+      "name": "getSpecies",
+      "kind": "function",
+      "start_line": 264
+    },
+    {
+      "name": "fetchProfile",
+      "kind": "function",
+      "start_line": 269
+    },
+    {
+      "name": "validateEmail",
+      "kind": "function",
+      "start_line": 274
+    },
+    {
+      "name": "sendNotification",
+      "kind": "function",
+      "start_line": 279
+    },
+    {
+      "name": "Box",
+      "kind": "class",
+      "start_line": 287
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 288
+    },
+    {
+      "name": "constructor",
+      "kind": "function",
+      "start_line": 290
+    },
+    {
+      "name": "getValue",
+      "kind": "function",
+      "start_line": 294
+    },
+    {
+      "name": "setValue",
+      "kind": "function",
+      "start_line": 298
+    },
+    {
+      "name": "Shape",
+      "kind": "class",
+      "start_line": 306
+    },
+    {
+      "name": "area",
+      "kind": "function",
+      "start_line": 307
+    },
+    {
+      "name": "perimeter",
+      "kind": "function",
+      "start_line": 308
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 310
+    },
+    {
+      "name": "Circle",
+      "kind": "class",
+      "start_line": 318
+    },
+    {
+      "name": "constructor",
+      "kind": "function",
+      "start_line": 319
+    },
+    {
+      "name": "area",
+      "kind": "function",
+      "start_line": 323
+    },
+    {
+      "name": "perimeter",
+      "kind": "function",
+      "start_line": 327
+    },
+    {
+      "name": "MyDog",
+      "kind": "class",
+      "start_line": 335
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 336
+    },
+    {
+      "name": "age",
+      "kind": "variable",
+      "start_line": 337
+    },
+    {
+      "name": "breed",
+      "kind": "variable",
+      "start_line": 338
+    },
+    {
+      "name": "constructor",
+      "kind": "function",
+      "start_line": 340
+    },
+    {
+      "name": "makeSound",
+      "kind": "function",
+      "start_line": 346
+    },
+    {
+      "name": "fetch",
+      "kind": "function",
+      "start_line": 350
+    },
+    {
+      "name": "sealed",
+      "kind": "function",
+      "start_line": 362
+    },
+    {
+      "name": "log",
+      "kind": "function",
+      "start_line": 370
+    },
+    {
+      "name": "required",
+      "kind": "function",
+      "start_line": 382
+    },
+    {
+      "name": "DecoratedClass",
+      "kind": "class",
+      "start_line": 389
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 391
+    },
+    {
+      "name": "greet",
+      "kind": "function",
+      "start_line": 395
+    },
+    {
+      "name": "SomeType",
+      "kind": "import",
+      "start_line": 405
+    },
+    {
+      "name": "* as Types",
+      "kind": "import",
+      "start_line": 406
+    },
+    {
+      "name": "something",
+      "kind": "import",
+      "start_line": 409
+    },
+    {
+      "name": "* as Utils",
+      "kind": "import",
+      "start_line": 410
+    },
+    {
+      "name": "defaultExport",
+      "kind": "import",
+      "start_line": 411
+    },
+    {
+      "name": "type TypeImport",
+      "kind": "import",
+      "start_line": 414
+    },
+    {
+      "name": "exportedConst",
+      "kind": "variable",
+      "start_line": 417
+    },
+    {
+      "name": "exportedLet",
+      "kind": "variable",
+      "start_line": 418
+    },
+    {
+      "name": "exportedFunction",
+      "kind": "function",
+      "start_line": 420
+    },
+    {
+      "name": "ExportedClass",
+      "kind": "class",
+      "start_line": 424
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 425
+    },
+    {
+      "name": "ExportedType",
+      "kind": "class",
+      "start_line": 429
+    },
+    {
+      "name": "field",
+      "kind": "variable",
+      "start_line": 429
+    },
+    {
+      "name": "ExportedInterface",
+      "kind": "class",
+      "start_line": 430
+    },
+    {
+      "name": "method",
+      "kind": "function",
+      "start_line": 431
+    },
+    {
+      "name": "DefaultExport",
+      "kind": "class",
+      "start_line": 439
+    },
+    {
+      "name": "constructor",
+      "kind": "function",
+      "start_line": 440
+    },
+    {
+      "name": "Utilities",
+      "kind": "class",
+      "start_line": 447
+    },
+    {
+      "name": "helper",
+      "kind": "function",
+      "start_line": 448
+    },
+    {
+      "name": "HelperClass",
+      "kind": "class",
+      "start_line": 452
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 453
+    },
+    {
+      "name": "Nested",
+      "kind": "class",
+      "start_line": 456
+    },
+    {
+      "name": "nestedHelper",
+      "kind": "function",
+      "start_line": 457
+    },
+    {
+      "name": "Window",
+      "kind": "class",
+      "start_line": 468
+    },
+    {
+      "name": "customProperty",
+      "kind": "variable",
+      "start_line": 469
+    },
+    {
+      "name": "isString",
+      "kind": "function",
+      "start_line": 480
+    },
+    {
+      "name": "someValue",
+      "kind": "variable",
+      "start_line": 487
+    },
+    {
+      "name": "strValue",
+      "kind": "variable",
+      "start_line": 488
+    },
+    {
+      "name": "strValue2",
+      "kind": "variable",
+      "start_line": 489
+    },
+    {
+      "name": "IsString",
+      "kind": "class",
+      "start_line": 498
+    },
+    {
+      "name": "Optional",
+      "kind": "class",
+      "start_line": 503
+    },
+    {
+      "name": "Greeting",
+      "kind": "class",
+      "start_line": 510
+    },
+    {
+      "name": "Direction2D",
+      "kind": "class",
+      "start_line": 511
+    },
+    {
+      "name": "PartialPerson",
+      "kind": "class",
+      "start_line": 516
+    },
+    {
+      "name": "RequiredPerson",
+      "kind": "class",
+      "start_line": 517
+    },
+    {
+      "name": "PickedPerson",
+      "kind": "class",
+      "start_line": 518
+    },
+    {
+      "name": "OmittedPerson",
+      "kind": "class",
+      "start_line": 519
+    },
+    {
+      "name": "constNumber",
+      "kind": "variable",
+      "start_line": 526
+    },
+    {
+      "name": "constString",
+      "kind": "variable",
+      "start_line": 527
+    },
+    {
+      "name": "constArray",
+      "kind": "variable",
+      "start_line": 528
+    },
+    {
+      "name": "constTuple",
+      "kind": "variable",
+      "start_line": 529
+    },
+    {
+      "name": "constObject",
+      "kind": "variable",
+      "start_line": 530
+    },
+    {
+      "name": "letNumber",
+      "kind": "variable",
+      "start_line": 533
+    },
+    {
+      "name": "letString",
+      "kind": "variable",
+      "start_line": 534
+    },
+    {
+      "name": "letUnion",
+      "kind": "variable",
+      "start_line": 535
+    },
+    {
+      "name": "varNumber",
+      "kind": "variable",
+      "start_line": 538
+    },
+    {
+      "name": "inferred",
+      "kind": "variable",
+      "start_line": 541
+    },
+    {
+      "name": "asConstObject",
+      "kind": "variable",
+      "start_line": 544
+    },
+    {
+      "name": "asConstArray",
+      "kind": "variable",
+      "start_line": 545
+    },
+    {
+      "name": "config",
+      "kind": "variable",
+      "start_line": 548
+    },
+    {
+      "name": "maybeNull",
+      "kind": "variable",
+      "start_line": 554
+    },
+    {
+      "name": "definitelyNotNull",
+      "kind": "variable",
+      "start_line": 555
+    },
+    {
+      "name": "getLength",
+      "kind": "function",
+      "start_line": 564
+    },
+    {
+      "name": "merge",
+      "kind": "function",
+      "start_line": 571
+    },
+    {
+      "name": "complexAsyncOperation",
+      "kind": "function",
+      "start_line": 579
+    },
+    {
+      "name": "Counter",
+      "kind": "class",
+      "start_line": 605
+    },
+    {
+      "name": "count",
+      "kind": "variable",
+      "start_line": 606
+    },
+    {
+      "name": "increment",
+      "kind": "function",
+      "start_line": 607
+    },
+    {
+      "name": "counter",
+      "kind": "variable",
+      "start_line": 610
+    },
+    {
+      "name": "PersonName",
+      "kind": "class",
+      "start_line": 621
+    },
+    {
+      "name": "PersonKeys",
+      "kind": "class",
+      "start_line": 622
+    }
+  ],
+  "edges": []
+}

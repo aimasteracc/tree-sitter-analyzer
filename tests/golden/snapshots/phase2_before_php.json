@@ -1,0 +1,529 @@
+{
+  "language": "php",
+  "corpus_file": "tests/golden/corpus_php.php",
+  "snapshot_timestamp": "2026-06-28T17:00:46.327344+00:00",
+  "symbol_count": 104,
+  "symbols": [
+    {
+      "name": "GoldenCorpus\\Interfaces\\Animal",
+      "kind": "import",
+      "start_line": 27
+    },
+    {
+      "name": "GoldenCorpus\\Traits\\Describable",
+      "kind": "import",
+      "start_line": 28
+    },
+    {
+      "name": "GoldenCorpus\\Helpers\\format_name",
+      "kind": "import",
+      "start_line": 29
+    },
+    {
+      "name": "GoldenCorpus\\Constants\\MAX_AGE",
+      "kind": "import",
+      "start_line": 30
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Animal",
+      "kind": "class",
+      "start_line": 39
+    },
+    {
+      "name": "makeSound",
+      "kind": "function",
+      "start_line": 40
+    },
+    {
+      "name": "getAge",
+      "kind": "function",
+      "start_line": 41
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Configurable",
+      "kind": "class",
+      "start_line": 47
+    },
+    {
+      "name": "VERSION",
+      "kind": "variable",
+      "start_line": 48
+    },
+    {
+      "name": "MAX_RETRY",
+      "kind": "variable",
+      "start_line": 49
+    },
+    {
+      "name": "configure",
+      "kind": "function",
+      "start_line": 51
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Domesticated",
+      "kind": "class",
+      "start_line": 57
+    },
+    {
+      "name": "getOwner",
+      "kind": "function",
+      "start_line": 58
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Describable",
+      "kind": "class",
+      "start_line": 68
+    },
+    {
+      "name": "description",
+      "kind": "variable",
+      "start_line": 69
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 71
+    },
+    {
+      "name": "setDescription",
+      "kind": "function",
+      "start_line": 75
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Trackable",
+      "kind": "class",
+      "start_line": 83
+    },
+    {
+      "name": "createdAt",
+      "kind": "variable",
+      "start_line": 84
+    },
+    {
+      "name": "getId",
+      "kind": "function",
+      "start_line": 86
+    },
+    {
+      "name": "track",
+      "kind": "function",
+      "start_line": 88
+    },
+    {
+      "name": "getCreatedAt",
+      "kind": "function",
+      "start_line": 92
+    },
+    {
+      "name": "GoldenCorpus\\Models\\FullyDescribable",
+      "kind": "class",
+      "start_line": 100
+    },
+    {
+      "name": "fullDescription",
+      "kind": "function",
+      "start_line": 104
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Person",
+      "kind": "class",
+      "start_line": 121
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 123
+    },
+    {
+      "name": "age",
+      "kind": "variable",
+      "start_line": 124
+    },
+    {
+      "name": "email",
+      "kind": "variable",
+      "start_line": 127
+    },
+    {
+      "name": "metadata",
+      "kind": "variable",
+      "start_line": 130
+    },
+    {
+      "name": "instanceCount",
+      "kind": "variable",
+      "start_line": 133
+    },
+    {
+      "name": "isActive",
+      "kind": "variable",
+      "start_line": 136
+    },
+    {
+      "name": "__construct",
+      "kind": "function",
+      "start_line": 139
+    },
+    {
+      "name": "greet",
+      "kind": "function",
+      "start_line": 146
+    },
+    {
+      "name": "validate",
+      "kind": "function",
+      "start_line": 151
+    },
+    {
+      "name": "formatMetadata",
+      "kind": "function",
+      "start_line": 156
+    },
+    {
+      "name": "getInstanceCount",
+      "kind": "function",
+      "start_line": 161
+    },
+    {
+      "name": "setEmail",
+      "kind": "function",
+      "start_line": 166
+    },
+    {
+      "name": "updateAge",
+      "kind": "function",
+      "start_line": 172
+    },
+    {
+      "name": "makeSound",
+      "kind": "function",
+      "start_line": 177
+    },
+    {
+      "name": "getAge",
+      "kind": "function",
+      "start_line": 181
+    },
+    {
+      "name": "__destruct",
+      "kind": "function",
+      "start_line": 186
+    },
+    {
+      "name": "__toString",
+      "kind": "function",
+      "start_line": 191
+    },
+    {
+      "name": "__get",
+      "kind": "function",
+      "start_line": 195
+    },
+    {
+      "name": "__set",
+      "kind": "function",
+      "start_line": 199
+    },
+    {
+      "name": "GoldenCorpus\\Models\\AbstractShape",
+      "kind": "class",
+      "start_line": 211
+    },
+    {
+      "name": "color",
+      "kind": "variable",
+      "start_line": 212
+    },
+    {
+      "name": "__construct",
+      "kind": "function",
+      "start_line": 214
+    },
+    {
+      "name": "getArea",
+      "kind": "function",
+      "start_line": 219
+    },
+    {
+      "name": "getPerimeter",
+      "kind": "function",
+      "start_line": 220
+    },
+    {
+      "name": "getColor",
+      "kind": "function",
+      "start_line": 223
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Circle",
+      "kind": "class",
+      "start_line": 231
+    },
+    {
+      "name": "radius",
+      "kind": "variable",
+      "start_line": 232
+    },
+    {
+      "name": "__construct",
+      "kind": "function",
+      "start_line": 234
+    },
+    {
+      "name": "getArea",
+      "kind": "function",
+      "start_line": 239
+    },
+    {
+      "name": "getPerimeter",
+      "kind": "function",
+      "start_line": 243
+    },
+    {
+      "name": "GoldenCorpus\\Models\\ImmutablePoint",
+      "kind": "class",
+      "start_line": 255
+    },
+    {
+      "name": "__construct",
+      "kind": "function",
+      "start_line": 256
+    },
+    {
+      "name": "distance",
+      "kind": "function",
+      "start_line": 262
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Product",
+      "kind": "class",
+      "start_line": 271
+    },
+    {
+      "name": "id",
+      "kind": "variable",
+      "start_line": 277
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 278
+    },
+    {
+      "name": "price",
+      "kind": "variable",
+      "start_line": 279
+    },
+    {
+      "name": "__construct",
+      "kind": "function",
+      "start_line": 281
+    },
+    {
+      "name": "getId",
+      "kind": "function",
+      "start_line": 287
+    },
+    {
+      "name": "getPrice",
+      "kind": "function",
+      "start_line": 291
+    },
+    {
+      "name": "anonymousClassExample",
+      "kind": "function",
+      "start_line": 300
+    },
+    {
+      "name": "sound",
+      "kind": "variable",
+      "start_line": 302
+    },
+    {
+      "name": "makeSound",
+      "kind": "function",
+      "start_line": 304
+    },
+    {
+      "name": "getAge",
+      "kind": "function",
+      "start_line": 308
+    },
+    {
+      "name": "regularFunction",
+      "kind": "function",
+      "start_line": 321
+    },
+    {
+      "name": "functionWithDefaults",
+      "kind": "function",
+      "start_line": 328
+    },
+    {
+      "name": "variadicFunction",
+      "kind": "function",
+      "start_line": 335
+    },
+    {
+      "name": "swapValues",
+      "kind": "function",
+      "start_line": 342
+    },
+    {
+      "name": "processValue",
+      "kind": "function",
+      "start_line": 351
+    },
+    {
+      "name": "getMixedValue",
+      "kind": "function",
+      "start_line": 358
+    },
+    {
+      "name": "getUserData",
+      "kind": "function",
+      "start_line": 366
+    },
+    {
+      "name": "closureExamples",
+      "kind": "function",
+      "start_line": 378
+    },
+    {
+      "name": "arrowFunctionExamples",
+      "kind": "function",
+      "start_line": 414
+    },
+    {
+      "name": "GLOBAL_CONSTANT",
+      "kind": "variable",
+      "start_line": 438
+    },
+    {
+      "name": "MAX_RETRIES",
+      "kind": "variable",
+      "start_line": 439
+    },
+    {
+      "name": "PI_VALUE",
+      "kind": "variable",
+      "start_line": 440
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Person",
+      "kind": "import",
+      "start_line": 450
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Product",
+      "kind": "import",
+      "start_line": 451
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Circle",
+      "kind": "import",
+      "start_line": 452
+    },
+    {
+      "name": "GoldenCorpus\\Models\\ServiceClass",
+      "kind": "class",
+      "start_line": 454
+    },
+    {
+      "name": "createPerson",
+      "kind": "function",
+      "start_line": 455
+    },
+    {
+      "name": "createProduct",
+      "kind": "function",
+      "start_line": 459
+    },
+    {
+      "name": "globalHelper",
+      "kind": "function",
+      "start_line": 474
+    },
+    {
+      "name": "GoldenCorpus\\Models\\StaticExample",
+      "kind": "class",
+      "start_line": 482
+    },
+    {
+      "name": "staticCounter",
+      "kind": "variable",
+      "start_line": 483
+    },
+    {
+      "name": "cache",
+      "kind": "variable",
+      "start_line": 484
+    },
+    {
+      "name": "increment",
+      "kind": "function",
+      "start_line": 486
+    },
+    {
+      "name": "getCounter",
+      "kind": "function",
+      "start_line": 490
+    },
+    {
+      "name": "cache",
+      "kind": "function",
+      "start_line": 494
+    },
+    {
+      "name": "getCached",
+      "kind": "function",
+      "start_line": 498
+    },
+    {
+      "name": "firstClassCallableExamples",
+      "kind": "function",
+      "start_line": 507
+    },
+    {
+      "name": "generatorFunction",
+      "kind": "function",
+      "start_line": 523
+    },
+    {
+      "name": "generatorWithKeys",
+      "kind": "function",
+      "start_line": 529
+    },
+    {
+      "name": "generatorYieldFrom",
+      "kind": "function",
+      "start_line": 535
+    },
+    {
+      "name": "GoldenCorpus\\Models\\PromotedConstructor",
+      "kind": "class",
+      "start_line": 545
+    },
+    {
+      "name": "__construct",
+      "kind": "function",
+      "start_line": 546
+    },
+    {
+      "name": "GoldenCorpus\\Models\\Status",
+      "kind": "class",
+      "start_line": 557
+    },
+    {
+      "name": "GoldenCorpus\\Models\\StatusCode",
+      "kind": "class",
+      "start_line": 563
+    },
+    {
+      "name": "message",
+      "kind": "function",
+      "start_line": 568
+    }
+  ],
+  "edges": []
+}
