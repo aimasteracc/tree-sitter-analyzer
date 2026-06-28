@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-from tree_sitter_analyzer._health_score_cache import HealthScoreCache
+from tree_sitter_analyzer.registry.health_score_cache import HealthScoreCache
 from tree_sitter_analyzer.health_scorer import HealthScore, HealthScorer
 
 

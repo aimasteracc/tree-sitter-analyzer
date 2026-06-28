@@ -93,7 +93,7 @@ _skip_no_fts5 = pytest.mark.skipif(
 
 class TestNormalizeBm25:
     def _call(self, raw: float, worst: float, best: float | None = None) -> float:
-        from tree_sitter_analyzer._ast_cache_query import _normalize_bm25
+        from tree_sitter_analyzer.cache.query import _normalize_bm25
 
         return _normalize_bm25(raw, worst, best)
 
@@ -147,7 +147,7 @@ class TestFtsSearchRanked:
         language: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        from tree_sitter_analyzer._ast_cache_query import fts_search_ranked
+        from tree_sitter_analyzer.cache.query import fts_search_ranked
 
         return fts_search_ranked(conn, query, language=language, limit=limit)
 
@@ -199,7 +199,7 @@ class TestFtsSearchRanked:
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
 
-        from tree_sitter_analyzer._ast_cache_query import fts_search_ranked
+        from tree_sitter_analyzer.cache.query import fts_search_ranked
 
         results = fts_search_ranked(conn, "search")
         assert results == []
@@ -303,11 +303,11 @@ class TestASTCacheFtsSearchRanked:
         ranked_results = [{"name": "search", "relevance_score": 0.9}]
 
         with patch(
-            "tree_sitter_analyzer._ast_cache_query.fts_search_ranked",
+            "tree_sitter_analyzer.cache.query.fts_search_ranked",
             return_value=ranked_results,
         ) as mock_fn:
             # call the real method via the bound-like call
-            from tree_sitter_analyzer import _ast_cache_query as _q
+            from tree_sitter_analyzer.cache import query as _q
 
             result = _q.fts_search_ranked(
                 MagicMock(),  # fake conn

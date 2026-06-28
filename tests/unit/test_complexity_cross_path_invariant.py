@@ -22,7 +22,7 @@ import tempfile
 import pytest
 import tree_sitter
 
-from tree_sitter_analyzer._ast_extraction import _extract_symbols
+from tree_sitter_analyzer.cache.extraction import _extract_symbols
 from tree_sitter_analyzer.complexity_heatmap import (
     analyze_file_complexity,
     analyze_file_complexity_from_cache,

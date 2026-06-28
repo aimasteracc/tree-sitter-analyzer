@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from tree_sitter_analyzer._ast_cache_unresolved import (
+from tree_sitter_analyzer.cache.unresolved import (
     index_resolution_fingerprint,
     mark_resolution_converged,
     resolution_converged,

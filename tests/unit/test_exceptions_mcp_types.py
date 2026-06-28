@@ -2,12 +2,12 @@
 
 import pytest
 
-from tree_sitter_analyzer._exceptions_core import (
+from tree_sitter_analyzer.exceptions.core import (
     MCPError,
     TreeSitterAnalyzerError,
     ValidationError,
 )
-from tree_sitter_analyzer._exceptions_mcp_types import (
+from tree_sitter_analyzer.exceptions.mcp_types import (
     MCPResourceError,
     MCPTimeoutError,
     MCPToolError,

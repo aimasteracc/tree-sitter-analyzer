@@ -9,7 +9,7 @@ Tests correctness invariants for:
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from tree_sitter_analyzer.languages._java_element_helpers import (
+from tree_sitter_analyzer.languages._java_element import (
     _split_respecting_generics,
 )
 from tree_sitter_analyzer.languages.java_helpers import determine_visibility

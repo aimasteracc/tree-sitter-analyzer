@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from tree_sitter_analyzer import _ast_cache_unresolved as unresolved
+from tree_sitter_analyzer.cache import unresolved
 from tree_sitter_analyzer import ast_cache as ast_cache_module
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.class_hierarchy import ClassHierarchy

@@ -234,7 +234,7 @@ def test_file_modify_triggers_reevaluation(tmp_path: Path) -> None:
     Uses short interval (1s) + debounce (0.2s) for test speed.
     """
     runner_target = _import_runner()
-    from tree_sitter_analyzer._health_history import HealthHistory  # noqa: WPS433
+    from tree_sitter_analyzer.registry.health_history import HealthHistory  # noqa: WPS433
 
     # Seed a project with one scorable file.
     src = tmp_path / "src"

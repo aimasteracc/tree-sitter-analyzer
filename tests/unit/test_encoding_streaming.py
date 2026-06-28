@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tree_sitter_analyzer._encoding_streaming import (
+from tree_sitter_analyzer.encoding.streaming import (
     detect_streaming_encoding,
     open_streaming_context,
     read_encoding_sample,

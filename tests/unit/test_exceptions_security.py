@@ -1,7 +1,7 @@
 """Unit tests for _exceptions_security — security exception hierarchy."""
 
-from tree_sitter_analyzer._exceptions_core import TreeSitterAnalyzerError
-from tree_sitter_analyzer._exceptions_security import (
+from tree_sitter_analyzer.exceptions.core import TreeSitterAnalyzerError
+from tree_sitter_analyzer.exceptions.security import (
     FileRestrictionError,
     PathTraversalError,
     RegexSecurityError,

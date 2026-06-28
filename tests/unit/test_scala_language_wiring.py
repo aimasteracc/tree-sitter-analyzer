@@ -29,7 +29,7 @@ def test_extension_detects_scala() -> None:
 
 
 def test_lang_extension_map_has_scala() -> None:
-    from tree_sitter_analyzer._lang_extension_map import EXT_TO_LANG
+    from tree_sitter_analyzer.languages.lang_extension_map import EXT_TO_LANG
 
     assert EXT_TO_LANG.get(".scala") == "scala"
 
@@ -39,7 +39,7 @@ def test_sc_extension_stays_unknown() -> None:
     though ``ScalaPlugin.get_file_extensions()`` lists it. Pin the documented
     behavior: detection returns unknown; an explicit ``language="scala"``
     override remains the supported route for Scala scripts / Ammonite."""
-    from tree_sitter_analyzer._lang_extension_map import EXT_TO_LANG
+    from tree_sitter_analyzer.languages.lang_extension_map import EXT_TO_LANG
     from tree_sitter_analyzer.language_detector import detect_language_from_file
 
     assert ".sc" not in EXT_TO_LANG
@@ -108,7 +108,7 @@ def test_ast_cache_path_excludes_method_local_given_and_type() -> None:
     """
     import tree_sitter
 
-    from tree_sitter_analyzer._ast_extraction import _extract_symbols
+    from tree_sitter_analyzer.cache.extraction import _extract_symbols
     from tree_sitter_analyzer.languages.scala_plugin import ScalaPlugin
 
     code = """object Ops:
@@ -164,7 +164,7 @@ def _scala_node(code: str, node_type: str):
 
 
 def test_ast_cache_symbol_from_node_object_is_class() -> None:
-    from tree_sitter_analyzer._ast_extraction import _scala_symbol_from_node
+    from tree_sitter_analyzer.cache.extraction import _scala_symbol_from_node
 
     code = "object Box:\n  val x = 1\n"
     node = _scala_node(code, "object_definition")
@@ -175,7 +175,7 @@ def test_ast_cache_symbol_from_node_object_is_class() -> None:
 
 
 def test_ast_cache_symbol_from_node_enum_is_enum() -> None:
-    from tree_sitter_analyzer._ast_extraction import _scala_symbol_from_node
+    from tree_sitter_analyzer.cache.extraction import _scala_symbol_from_node
 
     code = "enum Color:\n  case Red\n"
     node = _scala_node(code, "enum_definition")
@@ -188,7 +188,7 @@ def test_ast_cache_symbol_from_node_enum_is_enum() -> None:
 def test_ast_cache_symbol_from_node_rejects_non_class_like() -> None:
     """A node outside ``_SCALA_CLASS_LIKE`` (e.g. the bare ``enum`` keyword)
     returns None (line 877-878 guard)."""
-    from tree_sitter_analyzer._ast_extraction import _scala_symbol_from_node
+    from tree_sitter_analyzer.cache.extraction import _scala_symbol_from_node
 
     code = "enum Color:\n  case Red\n"
     keyword = _scala_node(code, "enum")
@@ -198,7 +198,7 @@ def test_ast_cache_symbol_from_node_rejects_non_class_like() -> None:
 def test_ast_cache_symbol_name_uses_identifier_child_for_object() -> None:
     """``object_definition`` exposes no ``name`` field, so the identifier-child
     fallback path (line 895-897) resolves the name."""
-    from tree_sitter_analyzer._ast_extraction import _scala_symbol_name
+    from tree_sitter_analyzer.cache.extraction import _scala_symbol_name
 
     code = "object Box:\n  val x = 1\n"
     node = _scala_node(code, "object_definition")
@@ -206,7 +206,7 @@ def test_ast_cache_symbol_name_uses_identifier_child_for_object() -> None:
 
 
 def test_ast_cache_symbol_name_named_given_via_type() -> None:
-    from tree_sitter_analyzer._ast_extraction import _scala_symbol_name
+    from tree_sitter_analyzer.cache.extraction import _scala_symbol_name
 
     code = "object O:\n  given Ordering[Int] = ???\n"
     node = _scala_node(code, "given_definition")
@@ -218,7 +218,7 @@ def test_ast_cache_symbol_name_degenerate_given_is_empty() -> None:
     identifier-child branch (line 895-897) returns ``""`` — distinct from the
     plugin path which line-numbers it. The empty name then trips the
     ``if not name`` guard in ``_scala_symbol_from_node`` (line 880-881)."""
-    from tree_sitter_analyzer._ast_extraction import (
+    from tree_sitter_analyzer.cache.extraction import (
         _scala_symbol_from_node,
         _scala_symbol_name,
     )
@@ -231,7 +231,7 @@ def test_ast_cache_symbol_name_degenerate_given_is_empty() -> None:
 
 
 def test_ast_cache_given_type_text_resolves_tuple_type() -> None:
-    from tree_sitter_analyzer._ast_extraction import _scala_given_type_text
+    from tree_sitter_analyzer.cache.extraction import _scala_given_type_text
 
     code = "object O:\n  given (Int, String) = ???\n"
     node = _scala_node(code, "given_definition")
@@ -239,7 +239,7 @@ def test_ast_cache_given_type_text_resolves_tuple_type() -> None:
 
 
 def test_ast_cache_given_type_text_resolves_generic_type() -> None:
-    from tree_sitter_analyzer._ast_extraction import _scala_given_type_text
+    from tree_sitter_analyzer.cache.extraction import _scala_given_type_text
 
     code = "object O:\n  given Ordering[Int] = ???\n"
     node = _scala_node(code, "given_definition")

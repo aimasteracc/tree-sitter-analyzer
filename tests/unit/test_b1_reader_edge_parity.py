@@ -251,7 +251,7 @@ class TestCallPathParity:
 
 class TestAstCacheGraphParity:
     def _run(self, conn: sqlite3.Connection):
-        from tree_sitter_analyzer._ast_cache_graph import bfs_callees, bfs_callers
+        from tree_sitter_analyzer.cache.graph import bfs_callees, bfs_callers
 
         callers = bfs_callers(conn, "bar", None, max_depth=2)
         callers_scoped = bfs_callers(conn, "foo", "b.py", max_depth=1)

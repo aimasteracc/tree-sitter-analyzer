@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from tree_sitter_analyzer._language_family import (
+from tree_sitter_analyzer.languages.language_family import (
     language_from_path,
     languages_compatible,
 )

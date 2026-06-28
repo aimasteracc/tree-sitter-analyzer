@@ -102,7 +102,7 @@ class TestFtsSearchRankedTestDemotion:
             line=5,
         )
 
-        from tree_sitter_analyzer._ast_cache_query import fts_search_ranked
+        from tree_sitter_analyzer.cache.query import fts_search_ranked
 
         results = fts_search_ranked(conn, "foo")
 
@@ -125,7 +125,7 @@ class TestFtsSearchRankedTestDemotion:
             line=10,
         )
 
-        from tree_sitter_analyzer._ast_cache_query import fts_search_ranked
+        from tree_sitter_analyzer.cache.query import fts_search_ranked
 
         results = fts_search_ranked(conn, "foo test")
 
@@ -155,7 +155,7 @@ class TestFtsSearchRankedTestDemotion:
             line=167,
         )
 
-        from tree_sitter_analyzer._ast_cache_query import fts_search_ranked
+        from tree_sitter_analyzer.cache.query import fts_search_ranked
 
         results = fts_search_ranked(conn, "fts_search_ranked")
 
@@ -191,7 +191,7 @@ class TestFtsSearchRankedTestDemotion:
             line=42,
         )
 
-        from tree_sitter_analyzer._ast_cache_query import fts_search_ranked
+        from tree_sitter_analyzer.cache.query import fts_search_ranked
 
         results = fts_search_ranked(conn, "widget", limit=5)
 
@@ -209,7 +209,7 @@ class TestFtsSearchRankedTestDemotion:
         _insert(conn, "foo", file_path="src/primary.py", kind="function", line=1)
         _insert(conn, "foo", file_path="src/secondary.py", kind="function", line=1)
 
-        from tree_sitter_analyzer._ast_cache_query import fts_search_ranked
+        from tree_sitter_analyzer.cache.query import fts_search_ranked
 
         results = fts_search_ranked(conn, "foo")
 
@@ -243,7 +243,7 @@ class TestFtsSearchRankedTestDemotion:
             language="go",
         )
 
-        from tree_sitter_analyzer._ast_cache_query import fts_search_ranked
+        from tree_sitter_analyzer.cache.query import fts_search_ranked
 
         results = fts_search_ranked(conn, "foo", language="python")
 
@@ -255,7 +255,7 @@ class TestFtsSearchRankedTestDemotion:
         conn = _make_fts_conn()
         _insert(conn, "f", file_path="src/f.py")
 
-        from tree_sitter_analyzer._ast_cache_query import fts_search_ranked
+        from tree_sitter_analyzer.cache.query import fts_search_ranked
 
         assert fts_search_ranked(conn, "f") == []
         assert fts_search_ranked(conn, "") == []

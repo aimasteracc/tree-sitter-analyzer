@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer._route_cache import RouteCache
+from tree_sitter_analyzer.registry.route_cache import RouteCache
 from tree_sitter_analyzer.mcp.tools.route_detector_tool import RouteDetectorTool
 from tree_sitter_analyzer.route_detector import RouteDetector
 
@@ -419,7 +419,7 @@ class TestRouteCacheVersionInvalidation:
     """
 
     def test_version_mismatch_clears_cache(self, tmp_path: Path):
-        from tree_sitter_analyzer import _route_cache as cache_module
+        from tree_sitter_analyzer.registry import route_cache as cache_module
 
         db_path = tmp_path / "routes.db"
         # Seed the cache with one row at the current scanner version.
@@ -460,7 +460,7 @@ class TestRouteCacheVersionInvalidation:
         )
 
     def test_version_match_preserves_cache(self, tmp_path: Path):
-        from tree_sitter_analyzer import _route_cache as cache_module
+        from tree_sitter_analyzer.registry import route_cache as cache_module
 
         db_path = tmp_path / "routes.db"
         cache = cache_module.RouteCache(db_path)

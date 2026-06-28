@@ -1,6 +1,6 @@
 """Tests for _encoding_conversion — encoding/decoding fallback paths."""
 
-from tree_sitter_analyzer._encoding_conversion import (
+from tree_sitter_analyzer.encoding.conversion import (
     decode_with_fallbacks,
     encode_with_fallbacks,
     safe_decode_bytes,

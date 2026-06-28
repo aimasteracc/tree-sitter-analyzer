@@ -17,7 +17,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from tree_sitter_analyzer import _ast_cache_unresolved as unresolved
+from tree_sitter_analyzer.cache import unresolved
 from tree_sitter_analyzer.ast_cache import ASTCache
 
 
