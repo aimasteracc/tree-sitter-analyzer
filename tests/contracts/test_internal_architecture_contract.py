@@ -46,7 +46,7 @@ def test_package_and_mcp_versions_are_aligned() -> None:
 
 def test_ast_cache_call_edge_extraction_does_not_depend_on_call_graph() -> None:
     """ASTCache and CallGraph must share extraction helpers without a back-edge."""
-    path = PROJECT_ROOT / "tree_sitter_analyzer" / "_ast_extraction.py"
+    path = PROJECT_ROOT / "tree_sitter_analyzer" / "cache" / "extraction.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     imports: list[str] = []
     for node in ast.walk(tree):
