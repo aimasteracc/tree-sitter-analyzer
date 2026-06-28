@@ -151,6 +151,19 @@ repos:
         stages: [pre-commit]
         always_run: true
 
+  # Block local development artifacts from being committed.
+  # Catches: threads/ (SDLC work logs), REDESIGN_PROPOSAL.md.
+  # To add more patterns, edit scripts/check-local-artifacts.sh.
+  - repo: local
+    hooks:
+      - id: block-local-artifacts
+        name: block-local-artifacts
+        entry: scripts/check-local-artifacts.sh
+        language: script
+        pass_filenames: false
+        stages: [pre-commit]
+        always_run: true
+
   # Defense against incidents catalogued in docs/POSTMORTEM_v1.13.md.
   - repo: local
     hooks:
