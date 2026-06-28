@@ -360,7 +360,7 @@ class TestCyclesHelper:
         _write(tmp_path, "y.py", "import x\n")
         graph = DependencyGraph(str(tmp_path))
         result = _cycles(graph)
-        assert result["cycle_count"] >= 1
+        assert result["cycle_count"] == 1  # x.py → y.py → x.py = 1 cycle
 
 
 class TestFileDepsHelper:

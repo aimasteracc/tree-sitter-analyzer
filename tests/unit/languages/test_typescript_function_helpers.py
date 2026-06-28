@@ -183,7 +183,9 @@ class TestExtractFunction:
             content_lines=content_lines,
             framework_type="react",
         )
-        assert result is not None
+        assert (
+            result is not None and result.name == "myFunc"
+        )  # boundary clamp returns valid result
 
     def test_generator_function_flag(self):
         node = FakeNode(start_point=(0, 0), end_point=(2, 0))
@@ -202,7 +204,9 @@ class TestExtractFunction:
 class TestExtractArrowFunction:
     def test_basic_arrow_with_variable_declarator(self):
         parent = FakeNode(type="variable_declarator", children=[])
-        identifier_child = FakeNode(type="identifier", start_point=(0, 0), end_point=(0, 5))
+        identifier_child = FakeNode(
+            type="identifier", start_point=(0, 0), end_point=(0, 5)
+        )
         parent.children = [identifier_child]
 
         node = FakeNode(
@@ -277,7 +281,7 @@ class TestExtractArrowFunction:
             calculate_complexity=lambda n: 0,
             framework_type="vue",
         )
-        assert result is not None
+        assert result is not None and result.is_arrow is True
 
     def test_arrow_async_detection(self):
         parent = FakeNode(type="variable_declarator", children=[])
@@ -325,7 +329,9 @@ class TestExtractArrowFunction:
 
     def test_arrow_exception_returns_none(self):
         node = MagicMock()
-        node.start_point = property(lambda self: (_ for _ in ()).throw(RuntimeError("err")))
+        node.start_point = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("err"))
+        )
 
         result = extract_arrow_function(
             node=node,
@@ -371,7 +377,9 @@ class TestExtractArrowFunction:
 
         result = extract_arrow_function(
             node=node,
-            get_node_text=lambda n: ": string" if n.type == "type_annotation" else "() => x",
+            get_node_text=lambda n: (
+                ": string" if n.type == "type_annotation" else "() => x"
+            ),
             extract_parameters=lambda n: [],
             extract_tsdoc=lambda line: None,
             calculate_complexity=lambda n: 0,
@@ -381,7 +389,9 @@ class TestExtractArrowFunction:
         assert result.return_type == "string"
 
     def test_arrow_parent_no_identifier_child(self):
-        parent = FakeNode(type="variable_declarator", children=[FakeNode(type="number")])
+        parent = FakeNode(
+            type="variable_declarator", children=[FakeNode(type="number")]
+        )
         node = FakeNode(
             start_point=(0, 0),
             end_point=(1, 0),
@@ -461,7 +471,9 @@ class TestExtractMethod:
 
     def test_method_exception_returns_none(self):
         node = MagicMock()
-        node.start_point = property(lambda self: (_ for _ in ()).throw(RuntimeError("err")))
+        node.start_point = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("err"))
+        )
 
         result = extract_method(
             node=node,
@@ -527,7 +539,9 @@ class TestExtractMethodSignature:
 
     def test_exception_returns_none(self):
         node = MagicMock()
-        node.start_point = property(lambda self: (_ for _ in ()).throw(RuntimeError("err")))
+        node.start_point = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("err"))
+        )
 
         result = extract_method_signature(
             node=node,
@@ -556,7 +570,9 @@ class TestExtractGeneratorFunction:
         node = FakeNode(start_point=(0, 0), end_point=(3, 0))
         result = extract_generator_function(
             node=node,
-            parse_signature=lambda n: _make_function_sig(is_generator=True, return_type=None),
+            parse_signature=lambda n: _make_function_sig(
+                is_generator=True, return_type=None
+            ),
             extract_tsdoc=lambda line: "/** gen doc */",
             calculate_complexity=lambda n: 4,
             get_node_text=lambda n: "function* gen() { yield 1; }",
@@ -593,7 +609,9 @@ class TestExtractGeneratorFunction:
 
     def test_generator_exception_returns_none(self):
         node = MagicMock()
-        node.start_point = property(lambda self: (_ for _ in ()).throw(RuntimeError("err")))
+        node.start_point = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("err"))
+        )
 
         result = extract_generator_function(
             node=node,

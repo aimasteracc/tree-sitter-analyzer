@@ -5,7 +5,6 @@ from tree_sitter_analyzer.formatters.markdown_formatter import MarkdownFormatter
 
 
 class TestMarkdownFormatterInitialization:
-
     def test_init(self):
         formatter = MarkdownFormatter()
         assert formatter.language == "markdown"
@@ -18,7 +17,6 @@ class TestMarkdownFormatterInitialization:
 
 
 class TestFormatSummary:
-
     def test_format_summary_basic(self):
         formatter = MarkdownFormatter()
         analysis_result = {
@@ -148,7 +146,6 @@ class TestFormatSummary:
 
 
 class TestFormatStructure:
-
     def test_format_structure_basic(self):
         formatter = MarkdownFormatter()
         analysis_result = {
@@ -277,7 +274,6 @@ class TestFormatStructure:
 
 
 class TestFormatAdvanced:
-
     def test_format_advanced_json(self):
         formatter = MarkdownFormatter()
         analysis_result = {
@@ -418,3 +414,341 @@ class TestFormatAdvanced:
         json_data = json.loads(result[json_start:])
         assert json_data["document_metrics"]["link_count"] == 15
         assert json_data["document_metrics"]["image_count"] == 8
+
+
+# ---------------------------------------------------------------------------
+# Tests migrated from test_markdown_formatter_coverage_boost.py
+# ---------------------------------------------------------------------------
+
+
+class TestMarkdownFormatterCompact:
+    """Behavioral tests for MarkdownFormatter._format_compact."""
+
+    def setup_method(self):
+        self.formatter = MarkdownFormatter()
+
+    def test_format_compact_empty_elements(self):
+        result = self.formatter._format_compact(
+            {"file_path": "empty.md", "line_count": 0, "elements": []}
+        )
+        assert "# empty" in result
+        assert "## Summary" in result
+        assert "| **Total** | **0** |" in result
+
+    def test_format_compact_with_headers_section(self):
+        result = self.formatter._format_compact(
+            {
+                "file_path": "doc.md",
+                "line_count": 20,
+                "elements": [
+                    {
+                        "type": "heading",
+                        "text": "Introduction",
+                        "level": 1,
+                        "line_range": {"start": 1, "end": 1},
+                    },
+                    {
+                        "type": "heading",
+                        "text": "Details",
+                        "level": 2,
+                        "line_range": {"start": 5, "end": 5},
+                    },
+                ],
+            }
+        )
+        assert "# doc" in result
+        assert "| Headers | 2 |" in result
+        assert "## Document Structure" in result
+        assert "| # | Introduction |" in result
+        assert "| ## | Details |" in result
+
+    def test_format_compact_with_links(self):
+        result = self.formatter._format_compact(
+            {
+                "file_path": "links.md",
+                "line_count": 10,
+                "elements": [
+                    {
+                        "type": "link",
+                        "text": "Example",
+                        "url": "http://example.com",
+                        "line_range": {"start": 3, "end": 3},
+                    },
+                ],
+            }
+        )
+        assert "| Links |" in result
+
+    def test_format_compact_no_headers_omits_structure_section(self):
+        result = self.formatter._format_compact(
+            {
+                "file_path": "nolinks.md",
+                "line_count": 10,
+                "elements": [
+                    {
+                        "type": "link",
+                        "text": "Link1",
+                        "url": "http://a.com",
+                        "line_range": {"start": 1, "end": 1},
+                    },
+                ],
+            }
+        )
+        assert "## Document Structure" not in result
+
+    def test_format_compact_many_headers_truncation(self):
+        headers = [
+            {
+                "type": "heading",
+                "text": f"Section {i + 1}",
+                "level": (i % 3) + 1,
+                "line_range": {"start": i * 2 + 1, "end": i * 2 + 1},
+            }
+            for i in range(25)
+        ]
+        result = self.formatter._format_compact(
+            {"file_path": "long.md", "line_count": 50, "elements": headers}
+        )
+        assert "(5 more)" in result
+
+    def test_format_compact_strips_markdown_extension(self):
+        result = self.formatter._format_compact(
+            {"file_path": "docs/guide.markdown", "line_count": 5, "elements": []}
+        )
+        assert "# guide" in result
+
+    def test_format_compact_windows_path(self):
+        result = self.formatter._format_compact(
+            {"file_path": "C:\\Users\\docs\\readme.md", "line_count": 5, "elements": []}
+        )
+        assert "# readme" in result
+
+
+class TestMarkdownFormatterCSV:
+    """Behavioral tests for MarkdownFormatter._format_csv."""
+
+    def setup_method(self):
+        self.formatter = MarkdownFormatter()
+
+    def test_format_csv_empty_has_header(self):
+        result = self.formatter._format_csv({"file_path": "empty.md", "elements": []})
+        assert "Type,Text/URL/Language,Level/Count,Start Line,End Line" in result
+
+    def test_format_csv_heading_row(self):
+        result = self.formatter._format_csv(
+            {
+                "file_path": "doc.md",
+                "elements": [
+                    {
+                        "type": "heading",
+                        "text": "Introduction",
+                        "level": 1,
+                        "line_range": {"start": 1, "end": 1},
+                    }
+                ],
+            }
+        )
+        assert "heading,Introduction,1,1,1" in result
+
+    def test_format_csv_link_row(self):
+        result = self.formatter._format_csv(
+            {
+                "file_path": "links.md",
+                "elements": [
+                    {
+                        "type": "link",
+                        "text": "Example",
+                        "url": "http://example.com",
+                        "line_range": {"start": 3, "end": 3},
+                    }
+                ],
+            }
+        )
+        assert "link" in result
+        assert "Example -> http://example.com" in result
+
+    def test_format_csv_image_row(self):
+        result = self.formatter._format_csv(
+            {
+                "file_path": "img.md",
+                "elements": [
+                    {
+                        "type": "image",
+                        "alt": "Photo",
+                        "url": "photo.png",
+                        "line_range": {"start": 5, "end": 5},
+                    }
+                ],
+            }
+        )
+        assert "image" in result
+        assert "Photo -> photo.png" in result
+
+    def test_format_csv_code_block_row(self):
+        result = self.formatter._format_csv(
+            {
+                "file_path": "code.md",
+                "elements": [
+                    {
+                        "type": "code_block",
+                        "language": "python",
+                        "line_count": 15,
+                        "line_range": {"start": 10, "end": 25},
+                    }
+                ],
+            }
+        )
+        assert "code_block,python,15,10,25" in result
+
+    def test_format_csv_list_row(self):
+        result = self.formatter._format_csv(
+            {
+                "file_path": "list.md",
+                "elements": [
+                    {
+                        "type": "list",
+                        "list_type": "unordered",
+                        "item_count": 5,
+                        "line_range": {"start": 2, "end": 7},
+                    }
+                ],
+            }
+        )
+        assert "list,unordered,5,2,7" in result
+
+    def test_format_csv_table_row(self):
+        result = self.formatter._format_csv(
+            {
+                "file_path": "tbl.md",
+                "elements": [
+                    {
+                        "type": "table",
+                        "column_count": 3,
+                        "row_count": 5,
+                        "line_range": {"start": 8, "end": 13},
+                    }
+                ],
+            }
+        )
+        assert "table,3x5,-,8,13" in result
+
+    def test_format_csv_all_element_types_row_count(self):
+        elements = [
+            {
+                "type": "heading",
+                "text": "H1",
+                "level": 1,
+                "line_range": {"start": 1, "end": 1},
+            },
+            {
+                "type": "link",
+                "text": "L1",
+                "url": "http://a.com",
+                "line_range": {"start": 2, "end": 2},
+            },
+            {
+                "type": "autolink",
+                "text": "A1",
+                "url": "http://b.com",
+                "line_range": {"start": 3, "end": 3},
+            },
+            {
+                "type": "image",
+                "alt": "I1",
+                "url": "img.png",
+                "line_range": {"start": 4, "end": 4},
+            },
+            {
+                "type": "code_block",
+                "language": "python",
+                "line_count": 5,
+                "line_range": {"start": 5, "end": 10},
+            },
+            {
+                "type": "list",
+                "list_type": "unordered",
+                "item_count": 3,
+                "line_range": {"start": 11, "end": 14},
+            },
+            {
+                "type": "task_list",
+                "list_type": "task",
+                "item_count": 2,
+                "line_range": {"start": 15, "end": 17},
+            },
+            {
+                "type": "table",
+                "column_count": 2,
+                "row_count": 3,
+                "line_range": {"start": 18, "end": 21},
+            },
+        ]
+        result = self.formatter._format_csv(
+            {"file_path": "all.md", "elements": elements}
+        )
+        lines = result.strip().split("\n")
+        assert len(lines) == 9
+        assert lines[0].startswith("Type,")
+
+    def test_format_csv_truncates_heading_to_50_chars(self):
+        long_text = "A" * 100
+        result = self.formatter._format_csv(
+            {
+                "file_path": "long.md",
+                "elements": [
+                    {
+                        "type": "heading",
+                        "text": long_text,
+                        "level": 1,
+                        "line_range": {"start": 1, "end": 1},
+                    }
+                ],
+            }
+        )
+        assert "A" * 100 not in result
+        assert "A" * 50 in result
+
+    def test_format_csv_truncates_link_text_to_30_chars(self):
+        long_text = "B" * 50
+        result = self.formatter._format_csv(
+            {
+                "file_path": "longlink.md",
+                "elements": [
+                    {
+                        "type": "link",
+                        "text": long_text,
+                        "url": "http://x.com",
+                        "line_range": {"start": 1, "end": 1},
+                    }
+                ],
+            }
+        )
+        assert "B" * 30 in result
+        assert "B" * 50 not in result
+
+
+class TestMarkdownCollectImagesException:
+    """Behavioral tests for MarkdownFormatter._collect_images exception handling."""
+
+    def setup_method(self):
+        self.formatter = MarkdownFormatter()
+
+    def test_collect_images_exception_in_element_returns_initial_only(self):
+        """_collect_images catches exception in fallback loop (lines 589-591)."""
+
+        class BadElement(dict):
+            def get(self, key, default=None):
+                if key == "alt":
+                    raise RuntimeError("Cannot get alt")
+                return super().get(key, default)
+
+        elements = [
+            {"type": "image", "alt": "Good", "url": "good.png"},
+            BadElement({"type": "reference_definition", "url": "photo.png"}),
+        ]
+        result = self.formatter._collect_images(elements)
+        assert len(result) == 1
+
+    def test_collect_images_empty_list(self):
+        result = self.formatter._collect_images([])
+        assert result == []

@@ -265,13 +265,15 @@ class TestCSharpPluginInterface:
     def test_plugin_instantiation(self):
         """Test that plugin instantiates successfully."""
         plugin = CSharpPlugin()
-        assert plugin is not None
+        assert isinstance(plugin, CSharpPlugin)
 
     def test_get_tree_sitter_language(self):
         """Test tree-sitter language retrieval."""
+        import tree_sitter
+
         plugin = CSharpPlugin()
         language = plugin.get_tree_sitter_language()
-        assert language is not None
+        assert isinstance(language, tree_sitter.Language)
 
     def test_language_caching(self):
         """Test that language is cached after first load."""

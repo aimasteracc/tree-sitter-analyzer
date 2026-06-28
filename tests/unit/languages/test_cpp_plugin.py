@@ -187,8 +187,8 @@ const std::string Calculator::VERSION = "1.0";
 
         assert isinstance(simple_complexity, int)
         assert isinstance(complex_complexity, int)
-        assert simple_complexity >= 1
-        assert complex_complexity >= 1
+        assert simple_complexity == 1
+        assert complex_complexity == 2
 
 
 class TestCppPlugin:
@@ -609,5 +609,437 @@ class TestCppPluginLegacyTests:
 
         p = CppPlugin()
         path = os.path.join("examples", "sample.cpp")
+        from tree_sitter_analyzer.models.result import AnalysisResult
+
         out = await p.analyze_file(path, SimpleNamespace())
-        assert out is not None
+        assert isinstance(out, AnalysisResult)
+
+
+# ---------------------------------------------------------------------------
+# Tests migrated from test_cpp_plugin_coverage_boost_core.py
+# ---------------------------------------------------------------------------
+
+
+def _parse_cpp(code: str):
+    import tree_sitter
+    import tree_sitter_cpp
+
+    lang = tree_sitter.Language(tree_sitter_cpp.language())
+    parser = tree_sitter.Parser(lang)
+    return parser.parse(code.encode("utf-8"))
+
+
+class TestCppPluginCore:
+    """Core behavioral tests for C++ extraction."""
+
+    @pytest.fixture
+    def extractor(self):
+        return CppElementExtractor()
+
+    @pytest.fixture
+    def plugin(self):
+        return CppPlugin()
+
+    def test_template_function(self, extractor):
+        code = "template <typename T> T max_val(T a, T b) { return a > b ? a : b; }\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        names = [f.name for f in funcs]
+        assert "max_val" in names
+        tfunc = next(f for f in funcs if f.name == "max_val")
+        assert "template" in (tfunc.modifiers or [])
+
+    def test_template_class(self, extractor):
+        code = "template <typename T> class Stack { T data[100]; int top; };\n"
+        tree = _parse_cpp(code)
+        classes = extractor.extract_classes(tree, code)
+        names = [c.name for c in classes]
+        assert "Stack" in names
+        tcls = next(c for c in classes if c.name == "Stack")
+        assert "template" in (tcls.modifiers or [])
+
+    def test_union_extraction(self, extractor):
+        code = "union Data { int i; float f; char c; };\n"
+        tree = _parse_cpp(code)
+        classes = extractor.extract_classes(tree, code)
+        assert len(classes) == 1
+        unions = [c for c in classes if c.class_type == "union"]
+        assert len(unions) == 1
+        assert unions[0].name == "Data"
+
+    def test_namespace_extraction(self, extractor):
+        code = "namespace physics { double gravity = 9.8; }\n"
+        tree = _parse_cpp(code)
+        packages = extractor.extract_packages(tree, code)
+        assert len(packages) == 1
+        assert packages[0].name == "physics"
+
+    def test_using_declaration_import(self, extractor):
+        code = "using namespace std;\n"
+        tree = _parse_cpp(code)
+        imports = extractor.extract_imports(tree, code)
+        assert len(imports) == 1
+        assert any("using" in i.import_statement for i in imports)
+
+    def test_alias_declaration_import(self, extractor):
+        code = "using IntVec = vector<int>;\n"
+        tree = _parse_cpp(code)
+        imports = extractor.extract_imports(tree, code)
+        assert len(imports) == 1
+        assert any("IntVec" in i.name for i in imports)
+
+    def test_system_include(self, extractor):
+        code = "#include <iostream>\n#include <string>\n"
+        tree = _parse_cpp(code)
+        imports = extractor.extract_imports(tree, code)
+        names = [i.name for i in imports]
+        assert "iostream" in names
+        assert "string" in names
+
+    def test_class_inheritance(self, extractor):
+        code = "class Base { public: virtual void foo() {} };\nclass Derived : public Base { public: void foo() override {} };\n"
+        tree = _parse_cpp(code)
+        classes = extractor.extract_classes(tree, code)
+        derived = [c for c in classes if c.name == "Derived"]
+        assert len(derived) == 1
+        assert derived[0].superclass == "Base"
+
+    def test_static_const_modifiers(self, extractor):
+        code = "class Config { public: static const int MAX_SIZE = 100; };\n"
+        tree = _parse_cpp(code)
+        variables = extractor.extract_variables(tree, code)
+        assert len(variables) == 1
+        max_var = [v for v in variables if v.name == "MAX_SIZE"]
+        assert len(max_var) == 1
+        assert max_var[0].is_static is True
+        assert max_var[0].is_constant is True
+
+    def test_global_variable(self, extractor):
+        code = "int counter = 0;\nstatic double pi = 3.14;\n"
+        tree = _parse_cpp(code)
+        variables = extractor.extract_variables(tree, code)
+        assert len(variables) == 2
+        names = [v.name for v in variables]
+        assert "counter" in names
+
+    def test_visibility_public_and_protected(self, extractor):
+        code = (
+            "class Widget {\n"
+            "public:\n"
+            "    void show() {}\n"
+            "private:\n"
+            "    int secret;\n"
+            "protected:\n"
+            "    void internal() {}\n"
+            "};\n"
+        )
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        show_funcs = [f for f in funcs if f.name == "show"]
+        assert len(show_funcs) == 1
+        assert show_funcs[0].visibility == "public"
+        internal_funcs = [f for f in funcs if f.name == "internal"]
+        assert len(internal_funcs) == 1
+        assert internal_funcs[0].visibility == "protected"
+
+    def test_struct_default_visibility(self, extractor):
+        code = "struct Point { int x; int y; };\n"
+        tree = _parse_cpp(code)
+        variables = extractor.extract_variables(tree, code)
+        x_vars = [v for v in variables if v.name == "x"]
+        assert len(x_vars) == 1
+        assert x_vars[0].visibility == "public"
+
+    def test_triple_slash_comment(self, extractor):
+        code = "/// Computes sum\nint sum(int a, int b) { return a + b; }\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        sum_funcs = [f for f in funcs if f.name == "sum"]
+        assert len(sum_funcs) == 1
+        assert sum_funcs[0].docstring is not None
+        assert "Computes" in sum_funcs[0].docstring
+
+    def test_complexity_with_control_flow(self, extractor):
+        code = (
+            "int classify(int x) {\n"
+            "    if (x > 0) return 1;\n"
+            "    else if (x < 0) return -1;\n"
+            "    for (int i = 0; i < x; i++) {}\n"
+            "    while (x > 10) { x--; }\n"
+            "    return 0;\n"
+            "}\n"
+        )
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        classify = [f for f in funcs if f.name == "classify"]
+        assert len(classify) == 1
+        assert classify[0].complexity_score == 5
+
+    def test_extract_elements_none_tree(self, plugin):
+        result = plugin.extract_elements(None, "code")
+        assert result["functions"] == []
+        assert result["classes"] == []
+        assert result["variables"] == []
+        assert result["imports"] == []
+        assert result["packages"] == []
+
+    def test_count_tree_nodes_cpp(self, plugin):
+        code = "int main() { return 0; }\n"
+        tree = _parse_cpp(code)
+        count = plugin._count_tree_nodes(tree.root_node)
+        assert count == 15
+
+    def test_count_tree_nodes_none(self, plugin):
+        assert plugin._count_tree_nodes(None) == 0
+
+    def test_variable_with_init_declarator(self, extractor):
+        code = "int x = 42;\n"
+        tree = _parse_cpp(code)
+        variables = extractor.extract_variables(tree, code)
+        assert len(variables) == 1
+        assert variables[0].name == "x"
+        assert variables[0].variable_type == "int"
+
+    def test_destructor_extraction(self, extractor):
+        code = "class Resource { public: ~Resource() {} };\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        dtor_funcs = [f for f in funcs if f.name and "~" in f.name]
+        assert len(dtor_funcs) == 1
+
+    def test_static_global_private_visibility(self, extractor):
+        code = "static int internal_counter = 0;\n"
+        tree = _parse_cpp(code)
+        variables = extractor.extract_variables(tree, code)
+        ctr_vars = [v for v in variables if v.name == "internal_counter"]
+        assert len(ctr_vars) == 1
+        assert ctr_vars[0].visibility == "private"
+
+    def test_function_declaration_return_type(self, extractor):
+        code = "void initialize(int argc, char** argv);\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        init_funcs = [f for f in funcs if f.name == "initialize"]
+        assert len(init_funcs) == 1
+        assert init_funcs[0].return_type == "void"
+
+    def test_method_declaration_in_class(self, extractor):
+        code = "class Engine { public: void start(); void stop(); };\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        names = [f.name for f in funcs]
+        assert "start" in names
+        assert "stop" in names
+
+    def test_mixed_includes_count(self, extractor):
+        code = '#include <iostream>\n#include "utils.h"\n'
+        tree = _parse_cpp(code)
+        imports = extractor.extract_imports(tree, code)
+        assert len(imports) == 2
+
+    def test_class_default_visibility_private(self, extractor):
+        code = "class Secret { int value; };\n"
+        tree = _parse_cpp(code)
+        variables = extractor.extract_variables(tree, code)
+        val_vars = [v for v in variables if v.name == "value"]
+        assert len(val_vars) == 1
+        assert val_vars[0].visibility == "private"
+
+    def test_variable_template_type(self, extractor):
+        code = "vector<int> nums;\n"
+        tree = _parse_cpp(code)
+        variables = extractor.extract_variables(tree, code)
+        assert len(variables) == 1
+        assert "vector" in (variables[0].variable_type or "")
+
+    def test_function_with_static_modifier(self, extractor):
+        code = "static void helper() {}\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        helper_funcs = [f for f in funcs if f.name == "helper"]
+        assert len(helper_funcs) == 1
+        assert helper_funcs[0].is_static is True
+
+    def test_template_struct(self, extractor):
+        code = "template <typename T> struct Holder { T value; };\n"
+        tree = _parse_cpp(code)
+        classes = extractor.extract_classes(tree, code)
+        holders = [c for c in classes if c.name == "Holder"]
+        assert len(holders) == 1
+        assert "template" in (holders[0].modifiers or [])
+
+
+class TestCppPluginAdvanced:
+    """Advanced behavioral tests for C++ extraction."""
+
+    @pytest.fixture
+    def extractor(self):
+        return CppElementExtractor()
+
+    @pytest.fixture
+    def plugin(self):
+        return CppPlugin()
+
+    def test_function_multiple_parameters(self, extractor):
+        code = "int add(int a, int b, int c) { return a + b + c; }\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        add_funcs = [f for f in funcs if f.name == "add"]
+        assert len(add_funcs) == 1
+        assert len(add_funcs[0].parameters) == 3
+
+    def test_protected_access_specifier(self, extractor):
+        code = "class Base {\nprotected:\n    void do_thing() {}\n};\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        thing_funcs = [f for f in funcs if f.name == "do_thing"]
+        assert len(thing_funcs) == 1
+        assert thing_funcs[0].visibility == "protected"
+
+    def test_protected_explicit_modifier_determine_visibility(self, extractor):
+        result = extractor._determine_visibility(
+            ["protected"], is_global=False, node=None
+        )
+        assert result == "protected"
+
+    def test_private_explicit_modifier_determine_visibility(self, extractor):
+        result = extractor._determine_visibility(
+            ["private"], is_global=False, node=None
+        )
+        assert result == "private"
+
+    def test_public_explicit_modifier_determine_visibility(self, extractor):
+        result = extractor._determine_visibility(["public"], is_global=True, node=None)
+        assert result == "public"
+
+    def test_static_global_determine_visibility(self, extractor):
+        result = extractor._determine_visibility(["static"], is_global=True, node=None)
+        assert result == "private"
+
+    def test_default_visibility_global_vs_local(self, extractor):
+        assert (
+            extractor._determine_visibility([], is_global=True, node=None) == "public"
+        )
+        assert (
+            extractor._determine_visibility([], is_global=False, node=None) == "private"
+        )
+
+    def test_field_init_declarator_type(self, extractor):
+        code = "class Pair { int val = 0; };\n"
+        tree = _parse_cpp(code)
+        variables = extractor.extract_variables(tree, code)
+        val_vars = [v for v in variables if v.name == "val"]
+        assert len(val_vars) == 1
+        assert val_vars[0].variable_type == "int"
+
+    def test_include_fallback_local_only(self, extractor):
+        code = '#include "local_header.h"\n'
+        tree = _parse_cpp(code)
+        imports = extractor.extract_imports(tree, code)
+        names = [i.name for i in imports]
+        assert "local_header.h" in names
+
+    def test_virtual_const_function_modifiers(self, extractor):
+        code = "class Shape {\npublic:\n    virtual double area() const = 0;\n};\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        area_funcs = [f for f in funcs if f.name == "area"]
+        assert len(area_funcs) == 1
+        assert "virtual" in (area_funcs[0].modifiers or [])
+        assert "pure_virtual" in (area_funcs[0].modifiers or [])
+
+    def test_for_range_complexity(self, extractor):
+        code = "int sum_items() {\n    int total = 0;\n    for (int x : items) { total += x; }\n    return total;\n}\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        sum_funcs = [f for f in funcs if f.name == "sum_items"]
+        assert len(sum_funcs) == 1
+        assert sum_funcs[0].complexity_score == 2
+
+    def test_switch_complexity(self, extractor):
+        code = "int grade(int score) {\n    switch(score) {\n        case 90: return 4;\n        case 80: return 3;\n        default: return 0;\n    }\n}\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        grade_funcs = [f for f in funcs if f.name == "grade"]
+        assert len(grade_funcs) == 1
+        # A switch counts once (construct-once convention); cases are not summed.
+        assert grade_funcs[0].complexity_score == 2
+
+    def test_try_catch_complexity(self, extractor):
+        code = "void safe_op() {\n    try { risky(); }\n    catch (int e) { handle(e); }\n}\n"
+        tree = _parse_cpp(code)
+        funcs = extractor.extract_functions(tree, code)
+        safe_funcs = [f for f in funcs if f.name == "safe_op"]
+        assert len(safe_funcs) == 1
+        assert safe_funcs[0].complexity_score == 2
+
+    def test_is_global_scope_root(self, extractor):
+        code = "class Foo { int x; };\n"
+        tree = _parse_cpp(code)
+        assert extractor._is_global_scope(tree.root_node) is True
+
+    def test_count_tree_nodes_with_children(self, plugin):
+        code = "class Foo { int x; void bar() {} };\n"
+        tree = _parse_cpp(code)
+        count = plugin._count_tree_nodes(tree.root_node)
+        assert count == 22
+
+    def test_doxygen_comment_on_class(self, extractor):
+        code = "/**\n * A documented class.\n */\nclass DocClass {\n};\n"
+        tree = _parse_cpp(code)
+        classes = extractor.extract_classes(tree, code)
+        dc = [c for c in classes if c.name == "DocClass"]
+        assert len(dc) == 1
+        assert dc[0].docstring is not None
+        assert "documented" in dc[0].docstring
+
+    def test_namespace_identifier_node(self, extractor):
+        code = "namespace my_lib { int val = 42; }\n"
+        tree = _parse_cpp(code)
+        packages = extractor.extract_packages(tree, code)
+        assert len(packages) == 1
+        assert packages[0].name == "my_lib"
+
+    def test_static_field_declaration(self, extractor):
+        code = "class Counter {\n    static int count;\n};\n"
+        tree = _parse_cpp(code)
+        variables = extractor.extract_variables(tree, code)
+        count_vars = [v for v in variables if v.name == "count"]
+        assert len(count_vars) == 1
+        assert count_vars[0].is_static is True
+
+    def test_include_fallback_regex_direct(self, extractor):
+        code = '#include <iostream>\n#include "myheader.h"\n'
+        imports = extractor._extract_includes_fallback(code)
+        assert len(imports) == 2
+        names = [i.name for i in imports]
+        assert "iostream" in names
+        assert "myheader.h" in names
+
+    def test_include_fallback_system_only(self, extractor):
+        code = "#include <vector>\n#include <string>\n"
+        imports = extractor._extract_includes_fallback(code)
+        assert len(imports) == 2
+        names = [i.name for i in imports]
+        assert "vector" in names
+        assert "string" in names
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_cpp_line_count(self, plugin, tmp_path):
+        from types import SimpleNamespace
+
+        cpp_file = tmp_path / "test.cpp"
+        cpp_file.write_text(
+            "#include <iostream>\n"
+            "namespace demo {\n"
+            "class Widget {\n"
+            "public:\n"
+            "    int value;\n"
+            "    void work() {}\n"
+            "};\n"
+            "}  // namespace demo\n"
+        )
+        result = await plugin.analyze_file(str(cpp_file), SimpleNamespace())
+        assert result is not None
+        assert result.language == "cpp"
+        assert result.line_count == 8

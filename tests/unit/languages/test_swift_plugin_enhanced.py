@@ -554,10 +554,12 @@ class TestSwiftModuleLevelFunctions:
         reason="tree-sitter-swift not installed",
     )
     def test_parse_swift_source(self) -> None:
+        import tree_sitter as ts
+
         language = tree_sitter.Language(tree_sitter_swift.language())
         tree = _parse_swift_source(language, "let x = 1")
-        assert tree is not None
-        assert tree.root_node is not None
+        assert isinstance(tree, ts.Tree)
+        assert isinstance(tree.root_node, ts.Node)
 
     @pytest.mark.skipif(
         not TREE_SITTER_SWIFT_AVAILABLE,

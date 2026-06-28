@@ -417,9 +417,9 @@ class TestErrorHandler:
 
         handler.register_recovery_strategy(RuntimeError, failing_recovery)
 
-        # Should not raise, just log warning
+        # Should not raise, just log warning; returns standard error dict
         result = handler.handle_error(RuntimeError("Test"), {}, "test")
-        assert result is not None
+        assert isinstance(result, dict) and result["error_type"] == "RuntimeError"
 
     def test_parent_class_recovery_strategy(self):
         """Test parent class recovery strategy is used"""
@@ -622,7 +622,7 @@ class TestErrorHandlerRecovery:
         handler.register_recovery_strategy(RuntimeError, none_recovery)
 
         result = handler.handle_error(RuntimeError("Test"), {}, "test")
-        assert result is not None  # Should still return error info
+        assert isinstance(result, dict) and result["error_type"] == "RuntimeError"
 
     def test_recovery_strategy_returns_empty_dict(self):
         """Test recovery strategy returning empty dict is handled"""
@@ -634,7 +634,7 @@ class TestErrorHandlerRecovery:
         handler.register_recovery_strategy(RuntimeError, empty_recovery)
 
         result = handler.handle_error(RuntimeError("Test"), {}, "test")
-        assert result is not None
+        assert isinstance(result, dict) and result["error_type"] == "RuntimeError"
 
     def test_multiple_recovery_strategies(self):
         """Test multiple recovery strategies can be registered"""

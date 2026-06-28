@@ -760,3 +760,133 @@ class TestToonEncoderLongFlatStringList:
         data = {"paths": []}
         result = encoder.encode(data)
         assert "paths: []" in result.split("\n")
+
+
+# ---------------------------------------------------------------------------
+# Tests migrated from test_toon_coverage_boost.py
+# ---------------------------------------------------------------------------
+
+
+from tree_sitter_analyzer.formatters.toon_encoder import (  # noqa: E402
+    _Task,
+    _TaskType,
+)
+
+
+class TestToonEncoderArrayTableShapes:
+    """Behavioral tests for array table encoding shapes."""
+
+    def test_encode_array_table_with_tuple_values(self):
+        encoder = ToonEncoder()
+        items = [{"name": "test", "range": (1, 10)}]
+        result = encoder.encode_array_table(items)
+        assert "range(a,b)" in result
+        assert "(1,10)" in result
+
+    def test_encode_array_table_with_dict_values(self):
+        encoder = ToonEncoder()
+        items = [{"name": "test", "meta": {"start": 1, "end": 2}}]
+        result = encoder.encode_array_table(items)
+        assert "meta{start,end}" in result
+
+    def test_encode_list_with_nested_dicts_produces_array_table(self):
+        encoder = ToonEncoder()
+        data = [{"a": 1}, {"a": 2}]
+        result = encoder.encode_list(data)
+        assert "[2]{a}:" in result
+
+    def test_encode_with_tabs_delimiter(self):
+        encoder = ToonEncoder(use_tabs=True)
+        assert encoder.delimiter == "\t"
+        items = [{"a": 1, "b": 2}]
+        result = encoder.encode_array_table(items)
+        assert "\t" in result
+
+
+class TestToonEncoderHandleListItem:
+    """Behavioral tests for _handle_list_item."""
+
+    def test_handle_list_item_with_dict_pushes_dict_task(self):
+        encoder = ToonEncoder()
+        task = _Task(_TaskType.ENCODE_LIST_ITEM, {"key": "value"}, indent=1)
+        stack: list[_Task] = []
+        output: list[str] = []
+        seen_ids: set[int] = set()
+
+        encoder._handle_list_item(task, stack, output, seen_ids)
+        assert len(stack) == 1
+        assert stack[0].task_type == _TaskType.ENCODE_DICT_START
+
+    def test_handle_list_item_with_list_pushes_list_task(self):
+        encoder = ToonEncoder()
+        task = _Task(_TaskType.ENCODE_LIST_ITEM, [1, 2, 3], indent=1)
+        stack: list[_Task] = []
+        output: list[str] = []
+        seen_ids: set[int] = set()
+
+        encoder._handle_list_item(task, stack, output, seen_ids)
+        assert len(stack) == 1
+        assert stack[0].task_type == _TaskType.ENCODE_LIST_START
+
+    def test_handle_list_item_with_primitive_adds_to_output(self):
+        encoder = ToonEncoder()
+        task = _Task(_TaskType.ENCODE_LIST_ITEM, "hello", indent=1)
+        stack: list[_Task] = []
+        output: list[str] = []
+        seen_ids: set[int] = set()
+
+        encoder._handle_list_item(task, stack, output, seen_ids)
+        assert len(output) == 1
+        assert "hello" in output[0]
+
+
+class TestToonEncoderHandleListStart:
+    """Behavioral tests for _handle_list_start."""
+
+    def test_handle_list_start_empty_list_outputs_empty_brackets(self):
+        encoder = ToonEncoder()
+        task = _Task(_TaskType.ENCODE_LIST_START, [], indent=0)
+        stack: list[_Task] = []
+        output: list[str] = []
+        seen_ids: set[int] = set()
+
+        encoder._handle_list_start(task, stack, output, seen_ids)
+        assert output == ["[]"]
+
+    def test_handle_list_start_circular_reference_outputs_placeholder(self):
+        encoder = ToonEncoder()
+        data = [1, 2]
+        obj_id = id(data)
+        task = _Task(_TaskType.ENCODE_LIST_START, data, indent=0)
+        stack: list[_Task] = []
+        output: list[str] = []
+        seen_ids: set[int] = {obj_id}
+
+        encoder._handle_list_start(task, stack, output, seen_ids)
+        result = "".join(output)
+        assert "[...]" in result
+
+
+class TestToonEncoderHandleArrayTable:
+    """Behavioral tests for _handle_array_table."""
+
+    def test_handle_array_table_empty_outputs_empty_brackets(self):
+        encoder = ToonEncoder()
+        task = _Task(_TaskType.ENCODE_ARRAY_TABLE, [], indent=0)
+        output: list[str] = []
+        seen_ids: set[int] = set()
+
+        encoder._handle_array_table(task, output, seen_ids)
+        assert output == ["[]"]
+
+    def test_handle_array_table_circular_reference_outputs_placeholder(self):
+        encoder = ToonEncoder()
+        data = [{"key": 1}]
+        obj_id = id(data)
+        task = _Task(_TaskType.ENCODE_ARRAY_TABLE, data, indent=0)
+        output: list[str] = []
+        seen_ids: set[int] = {obj_id}
+
+        encoder._handle_array_table(task, output, seen_ids)
+        result = "".join(output)
+        assert "[...]" in result

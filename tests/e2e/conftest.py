@@ -147,7 +147,7 @@ class MCPClient:
         # and only decode on access — exactly the contract violated
         # by the cp932 bug (PR #153 errata).
         stderr = self.proc.stderr
-        assert stderr is not None
+        assert stderr is not None and hasattr(stderr, "read")
 
         def drain() -> None:
             try:
@@ -172,7 +172,7 @@ class MCPClient:
     def _send(self, payload: dict[str, Any]) -> None:
         """Serialise and frame a JSON-RPC payload to the server's stdin."""
         stdin = self.proc.stdin
-        assert stdin is not None
+        assert stdin is not None and hasattr(stdin, "write")
         encoded = json.dumps(payload).encode("utf-8")
         stdin.write(_frame(encoded))
         stdin.flush()
@@ -185,7 +185,7 @@ class MCPClient:
         message that carries an ``id``.
         """
         stdout = self.proc.stdout
-        assert stdout is not None
+        assert stdout is not None and hasattr(stdout, "read")
         deadline = time.monotonic() + timeout
         while True:
             remaining = deadline - time.monotonic()

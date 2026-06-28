@@ -52,8 +52,9 @@ class TestQueryExecutorEdgeCases:
                 result = query_executor.execute_query_string(
                     mock_tree, mock_language, query, "test code"
                 )
-                # Should handle empty queries gracefully
-                assert result is not None or result is None
+                # Should handle empty queries gracefully — result is always a dict
+                assert isinstance(result, dict)
+                assert "success" in result
             except (QueryError, ValueError, TypeError):
                 # These exceptions are acceptable for empty queries
                 pass
@@ -76,7 +77,8 @@ class TestQueryExecutorEdgeCases:
                 result = query_executor.execute_query_string(
                     mock_tree, mock_language, query, "test code"
                 )
-                assert result is not None or result is None
+                assert isinstance(result, dict)
+                assert "success" in result
             except (QueryError, ValueError, Exception):
                 # Query syntax errors are expected
                 pass
@@ -99,7 +101,8 @@ class TestQueryExecutorEdgeCases:
                 else:
                     # Skip None query test as it would cause TypeError before method call
                     continue
-                assert result is not None or result is None
+                assert isinstance(result, dict)
+                assert "success" in result
             except (TypeError, AttributeError, QueryError):
                 # These exceptions are expected for None inputs
                 pass
@@ -119,7 +122,8 @@ class TestQueryExecutorEdgeCases:
                 result = query_executor.execute_query_string(
                     tree, mock_language, "(function_definition)", "test code"
                 )
-                assert result is not None or result is None
+                assert isinstance(result, dict)
+                assert "success" in result
             except (AttributeError, TypeError, QueryError):
                 # These exceptions are expected for malformed trees
                 pass
@@ -160,7 +164,8 @@ class TestQueryExecutorEdgeCases:
                 result = query_executor.execute_query_string(
                     mock_tree, mock_language, query, "test code"
                 )
-                assert result is not None or result is None
+                assert isinstance(result, dict)
+                assert "success" in result
             except Exception as e:
                 # Some complex queries might fail, which is acceptable
                 assert isinstance(e, QueryError | ValueError | AttributeError)
@@ -194,7 +199,8 @@ class TestQueryExecutorEdgeCases:
             result = query_executor.execute_query_string(
                 large_tree, mock_language, "(function_definition)", "test code"
             )
-            assert result is not None or result is None
+            assert isinstance(result, dict)
+            assert "success" in result
         except Exception as e:
             # Performance issues might cause exceptions
             assert isinstance(e, MemoryError | TimeoutError | QueryError)
@@ -215,7 +221,7 @@ class TestQueryExecutorConfiguration:
         for config in configs:
             try:
                 executor = QueryExecutor(**config)
-                assert executor is not None
+                assert isinstance(executor, QueryExecutor)
             except TypeError:
                 # Some config options might not be supported
                 pass
@@ -243,7 +249,7 @@ class TestQueryExecutorConfiguration:
         for _error in error_types:
             # Test that executor can handle different error types
             # This is more of a structural test
-            assert executor is not None
+            assert isinstance(executor, QueryExecutor)
 
 
 class TestQueryExecutorPerformance:
@@ -313,7 +319,8 @@ class TestQueryExecutorPerformance:
             result = query_executor.execute_query_string(
                 mock_tree, mock_language, "(function_definition)", "test code"
             )
-            assert result is not None or result is None
+            assert isinstance(result, dict)
+            assert "success" in result
         except (TimeoutError, QueryError):
             # Timeout errors are acceptable
             pass
@@ -337,7 +344,8 @@ class TestQueryExecutorPerformance:
                 result = query_executor.execute_query_string(
                     mock_tree, mock_language, "(function_definition)", "test code"
                 )
-                assert result is not None or result is None
+                assert isinstance(result, dict)
+                assert "success" in result
             except Exception:
                 # Some failures are acceptable in stress testing
                 pass
@@ -383,7 +391,8 @@ class TestQueryExecutorIntegration:
             result = query_executor.execute_query_string(
                 mock_tree, mock_language, "(function_definition)", "test code"
             )
-            assert result is not None or result is None
+            assert isinstance(result, dict)
+            assert "success" in result
 
         except ImportError:
             # tree-sitter not available, skip this test
@@ -418,7 +427,8 @@ class TestQueryExecutorIntegration:
                 result = query_executor.execute_query_string(
                     mock_tree, mock_language, "(function_definition)", "test code"
                 )
-                assert result is not None or result is None
+                assert isinstance(result, dict)
+                assert "success" in result
 
             except Exception:
                 # Error recovery might involve exceptions

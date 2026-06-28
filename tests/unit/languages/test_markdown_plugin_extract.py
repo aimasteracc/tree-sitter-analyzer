@@ -281,7 +281,7 @@ class TestExecuteQueryStrategy:
     def test_known_category(self):
         plugin = MarkdownPlugin()
         result = plugin.execute_query_strategy("function", "markdown")
-        assert result is not None
+        assert isinstance(result, str)
         assert "atx_heading" in result
 
     def test_unknown_category_fallback_to_queries(self):
@@ -292,17 +292,17 @@ class TestExecuteQueryStrategy:
     def test_category_headers(self):
         plugin = MarkdownPlugin()
         result = plugin.execute_query_strategy("headers", "markdown")
-        assert result is not None
+        assert isinstance(result, str) and "atx_heading" in result
 
     def test_category_links(self):
         plugin = MarkdownPlugin()
         result = plugin.execute_query_strategy("links", "markdown")
-        assert result is not None
+        assert isinstance(result, str) and "inline" in result
 
     def test_category_all_elements(self):
         plugin = MarkdownPlugin()
         result = plugin.execute_query_strategy("all_elements", "markdown")
-        assert result is not None
+        assert isinstance(result, str) and "atx_heading" in result
 
 
 # ---------------------------------------------------------------------------

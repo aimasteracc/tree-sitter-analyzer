@@ -37,8 +37,10 @@ class TestMcpUtilsCapabilities:
 
 class TestBackwardCompatibleCacheManager:
     def test_get_cache_manager_returns_object(self):
+        from tree_sitter_analyzer.mcp.utils import BackwardCompatibleCacheManager
+
         mgr = get_cache_manager()
-        assert mgr is not None
+        assert isinstance(mgr, BackwardCompatibleCacheManager)
 
     def test_get_cache_stats_returns_dict(self):
         mgr = get_cache_manager()
@@ -56,8 +58,10 @@ class TestBackwardCompatibleCacheManager:
 
 class TestGetPerformanceMonitor:
     def test_get_performance_monitor_returns_object(self):
+        from tree_sitter_analyzer.core.performance import PerformanceMonitor
+
         monitor = get_performance_monitor()
-        assert monitor is not None
+        assert isinstance(monitor, PerformanceMonitor)
 
 
 class TestImportErrorFallback:

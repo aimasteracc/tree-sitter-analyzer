@@ -436,7 +436,9 @@ fun main() {
 
         assert result.success is True
         assert result.language == "kotlin"
-        assert [(element.element_type, element.name) for element in result.elements] == [
+        assert [
+            (element.element_type, element.name) for element in result.elements
+        ] == [
             ("function", "main"),
             ("package", "com.example"),
         ]
@@ -460,7 +462,9 @@ class Person(val name: String) {
 
         assert result.success is True
         assert result.language == "kotlin"
-        assert [(element.element_type, element.name) for element in result.elements] == [
+        assert [
+            (element.element_type, element.name) for element in result.elements
+        ] == [
             ("function", "Person"),
             ("function", "greet"),
             ("class", "Person"),
@@ -641,7 +645,9 @@ class TestClass {
 
         assert result.success is True
         assert result.language == "kotlin"
-        assert [(element.element_type, element.name) for element in result.elements] == [
+        assert [
+            (element.element_type, element.name) for element in result.elements
+        ] == [
             ("function", "testMethod"),
             ("class", "TestClass"),
             ("package", "com.example"),
@@ -667,7 +673,9 @@ class ImportTest {
 
         assert result.success is True
         assert result.language == "kotlin"
-        assert [(element.element_type, element.name) for element in result.elements] == [
+        assert [
+            (element.element_type, element.name) for element in result.elements
+        ] == [
             ("class", "ImportTest"),
             ("variable", "items"),
             ("import", "kotlin.collections.List"),
@@ -1969,3 +1977,189 @@ fun processUser() {
         result = plugin.extract_elements(tree, code)
         assert result["functions"]
         assert result["classes"]
+
+
+# ---------------------------------------------------------------------------
+# Tests migrated from test_kotlin_coverage_boost.py
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def _kotlin_parser():
+    language = tree_sitter.Language(_tree_sitter_kotlin.language())
+    return tree_sitter.Parser(language)
+
+
+class TestKotlinParameterExtractionBehavioral:
+    """Parameter extraction behavioral tests."""
+
+    def test_function_names_from_various_param_shapes(self, _kotlin_parser):
+        code = """
+fun greet(name: String, age: Int, active: Boolean): String {
+    return "Hello"
+}
+fun process(data: String?, count: Int?): Boolean? {
+    return null
+}
+fun execute(callback: (String) -> Unit) {
+    callback("test")
+}
+fun printAll(vararg items: String) {
+    items.forEach { println(it) }
+}
+"""
+        extractor = KotlinElementExtractor()
+        tree = _kotlin_parser.parse(code.encode("utf-8"))
+        functions = extractor.extract_functions(tree, code)
+        assert {f.name for f in functions} >= {
+            "greet",
+            "process",
+            "execute",
+            "printAll",
+        }
+
+
+class TestKotlinVisibilityBehavioral:
+    """Visibility modifier behavioral tests."""
+
+    def test_visibility_function_and_class_names(self, _kotlin_parser):
+        code = """
+open class Base {
+    protected fun helper(): Int = 42
+}
+internal fun moduleHelper(): String = "internal"
+private class Secret {
+    fun doSomething() {}
+}
+"""
+        extractor = KotlinElementExtractor()
+        tree = _kotlin_parser.parse(code.encode("utf-8"))
+        functions = extractor.extract_functions(tree, code)
+        classes = extractor.extract_classes(tree, code)
+        assert {f.name for f in functions} >= {"helper", "moduleHelper", "doSomething"}
+        assert {c.name for c in classes} >= {"Base", "Secret"}
+
+
+class TestKotlinDocstringBehavioral:
+    """Docstring extraction behavioral tests."""
+
+    def test_kdoc_function_found_and_class_count(self, _kotlin_parser):
+        code = """
+/**
+ * Calculates the sum of two numbers.
+ */
+fun add(a: Int, b: Int): Int = a + b
+/**
+ * Represents a user.
+ */
+data class User(val name: String, val age: Int)
+"""
+        extractor = KotlinElementExtractor()
+        tree = _kotlin_parser.parse(code.encode("utf-8"))
+        functions = extractor.extract_functions(tree, code)
+        classes = extractor.extract_classes(tree, code)
+        assert "add" in {f.name for f in functions}
+        assert len(classes) == 1
+
+
+class TestKotlinClassExtractionBehavioral:
+    """Class extraction behavioral tests."""
+
+    def test_class_names_from_multiple_class_types(self, _kotlin_parser):
+        code = """
+class Service {
+    fun add(item: String) {}
+    fun remove(item: String): Boolean { return true }
+}
+abstract class Shape {
+    abstract fun area(): Double
+}
+interface Drawable {
+    fun draw()
+}
+class Circle(val radius: Double) : Shape() {
+    override fun area(): Double = 3.14159 * radius * radius
+}
+object DatabaseManager {
+    fun connect(url: String) {}
+}
+"""
+        extractor = KotlinElementExtractor()
+        tree = _kotlin_parser.parse(code.encode("utf-8"))
+        classes = extractor.extract_classes(tree, code)
+        assert {c.name for c in classes} >= {
+            "Service",
+            "Shape",
+            "Drawable",
+            "Circle",
+            "DatabaseManager",
+        }
+
+
+class TestKotlinNodeTextBehavioral:
+    """Node text extraction behavioral tests."""
+
+    def test_node_text_cache_consistency(self):
+        extractor = KotlinElementExtractor()
+        extractor.source_code = "val x = 1"
+        extractor.content_lines = ["val x = 1"]
+
+        mock_node = Mock()
+        mock_node.parent = None
+        mock_node.start_byte = 0
+        mock_node.end_byte = 9
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (0, 9)
+
+        text1 = extractor._get_node_text(mock_node)
+        text2 = extractor._get_node_text(mock_node)
+        assert text1 == text2
+
+    def test_node_text_multiline_contains_content(self):
+        code = 'fun test() {\n    println("hello")\n}'
+        extractor = KotlinElementExtractor()
+        extractor.source_code = code
+        extractor.content_lines = code.split("\n")
+
+        mock_node = Mock()
+        mock_node.parent = None
+        mock_node.start_byte = 0
+        mock_node.end_byte = len(code)
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 1)
+
+        text = extractor._get_node_text(mock_node)
+        assert "fun test" in text
+
+    def test_node_text_out_of_bounds_returns_empty(self):
+        extractor = KotlinElementExtractor()
+        extractor.source_code = "short"
+        extractor.content_lines = ["short"]
+
+        mock_node = Mock()
+        mock_node.parent = None
+        mock_node.start_byte = 100
+        mock_node.end_byte = 200
+        mock_node.start_point = (10, 0)
+        mock_node.end_point = (10, 50)
+
+        text = extractor._get_node_text(mock_node)
+        assert text == ""
+
+
+class TestKotlinExtractorErrorPathsBehavioral:
+    """Error path behavioral tests."""
+
+    def test_extractors_return_none_on_bad_node(self):
+        extractor = KotlinElementExtractor()
+        extractor.source_code = ""
+        extractor.content_lines = []
+
+        mock_node = Mock()
+        mock_node.parent = None
+        mock_node.start_point = Mock(side_effect=Exception("test error"))
+
+        assert extractor._extract_function(mock_node) is None
+        assert extractor._extract_class(mock_node) is None
+        assert extractor._extract_property(mock_node) is None
+        assert extractor._extract_import(mock_node) is None
