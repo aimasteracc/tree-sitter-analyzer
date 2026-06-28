@@ -27,8 +27,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
 
-from ..languages.lang_extension_map import EXT_TO_LANG
 from ..constants import EXCLUDE_DIRS
+from ..languages.lang_extension_map import EXT_TO_LANG
 
 # Use the shared exclude set so the fingerprint scope matches the graph walkers
 # being invalidated — and, critically, so fingerprinting (which runs BEFORE the

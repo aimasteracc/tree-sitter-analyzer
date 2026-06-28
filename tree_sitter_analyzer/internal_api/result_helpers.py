@@ -45,7 +45,10 @@ def normalize_parameters(value: Any) -> Any:
     """
     if isinstance(value, list):
         return [
-            dataclasses.asdict(p) if dataclasses.is_dataclass(p) else p for p in value
+            dataclasses.asdict(p)
+            if dataclasses.is_dataclass(p) and not isinstance(p, type)
+            else p
+            for p in value
         ]
     return value
 

@@ -2,15 +2,15 @@
 
 from typing import Any
 
-from .legacy.common import (
-    trim_trailing_blank_lines as _trim_trailing_blank_lines,
-)
 from ._java_formatter_class_mixin import (
     get_class_fields,
     get_class_methods,
     get_inner_classes,
     is_in_range,
     is_inner_class,
+)
+from .legacy.common import (
+    trim_trailing_blank_lines as _trim_trailing_blank_lines,
 )
 
 

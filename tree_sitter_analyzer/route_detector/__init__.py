@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..core.parser import Parser
+from ..project_graph import _language_from_ext
 from ..registry.route_cache import RouteCache
 from .go import scan_go_routes
 from .scanners import (
@@ -28,8 +30,6 @@ from .scanners import (
     scan_flask_decorators,
     scan_spring_annotations,
 )
-from ..core.parser import Parser
-from ..project_graph import _language_from_ext
 
 logger = logging.getLogger(__name__)
 

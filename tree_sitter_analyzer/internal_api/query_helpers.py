@@ -83,7 +83,7 @@ def query_captures_for_result(result: dict[str, Any], query_name: str) -> list[A
     """Extract raw captures from the API query result shape."""
     query_result = result["query_results"].get(query_name, {})
     if isinstance(query_result, dict) and "captures" in query_result:
-        return query_result["captures"]
+        return list(query_result["captures"])
     if isinstance(query_result, list):
         return query_result
     return []

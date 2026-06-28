@@ -10,9 +10,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.cache.fingerprint import (
+    GraphFingerprint,
+    compute_graph_fingerprint,
+)
+
 from ...project_graph import BlastRadius, DependencyGraph
 from ...utils import setup_logger
-from tree_sitter_analyzer.cache.fingerprint import GraphFingerprint, compute_graph_fingerprint
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)

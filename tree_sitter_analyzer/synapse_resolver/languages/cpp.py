@@ -53,6 +53,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from tree_sitter_analyzer.languages.language_family import languages_compatible
+
 from .._registry import register_language
 from ._cpp_constants import (
     EXTERNAL_METHODS_CPP,

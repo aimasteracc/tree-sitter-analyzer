@@ -23,8 +23,8 @@ import os
 import sqlite3
 from typing import Any
 
-from ..languages.language_family import languages_compatible
 from ..graph.edge_store import Edge, EdgeKind, EdgeStore, parse_node_id, symbol_node
+from ..languages.language_family import languages_compatible
 from ..utils.test_detection import is_test_file
 
 logger = logging.getLogger(__name__)

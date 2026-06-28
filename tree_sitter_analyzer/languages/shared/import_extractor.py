@@ -54,7 +54,7 @@ def extract_qualified_import(node: Any, source_bytes: bytes) -> ImportRecord | N
         An ImportRecord with ``module`` set and empty ``names`` list,
         or None when the node does not carry extractable module information.
     """
-    from .traversal import node_text, node_range
+    from .traversal import node_range, node_text
 
     try:
         start_line, _ = node_range(node)
@@ -99,7 +99,7 @@ def extract_from_import(node: Any, source_bytes: bytes) -> ImportRecord | None:
         An ImportRecord with ``module`` and ``names`` populated,
         or None on failure.
     """
-    from .traversal import node_text, node_range
+    from .traversal import node_range, node_text
 
     try:
         start_line, _ = node_range(node)
@@ -111,7 +111,7 @@ def extract_from_import(node: Any, source_bytes: bytes) -> ImportRecord | None:
             # Try ``source`` field (TypeScript/JS grammar: import { X } from "y")
             mod_node = node.child_by_field_name("source")
 
-        module = node_text(mod_node, source_bytes).strip('"\'') if mod_node else ""
+        module = node_text(mod_node, source_bytes).strip("\"'") if mod_node else ""
 
         # Collect imported names from ``name`` field or named imports
         names: list[str] = []
@@ -156,7 +156,7 @@ def extract_namespace_import(node: Any, source_bytes: bytes) -> ImportRecord | N
         An ImportRecord with ``module`` and optionally ``alias`` set,
         or None on failure.
     """
-    from .traversal import node_text, node_range
+    from .traversal import node_range, node_text
 
     try:
         start_line, _ = node_range(node)

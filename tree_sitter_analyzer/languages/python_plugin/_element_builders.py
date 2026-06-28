@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from tree_sitter_analyzer.cache.extraction import _PY_SCOPE_BODY_NODES, _python_module_constant
+from tree_sitter_analyzer.cache.extraction import (
+    _PY_SCOPE_BODY_NODES,
+    _python_module_constant,
+)
+
 from ...models import Class, Function, Variable
 from ...utils import log_warning
 from ..shared.traversal import node_range

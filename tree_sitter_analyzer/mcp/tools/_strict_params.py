@@ -53,9 +53,7 @@ def wrap_execute_with_strict_params(cls_execute: Any) -> Any:
         return cls_execute
 
     @functools.wraps(cls_execute)
-    async def _wrapped(
-        self: "BaseMCPTool", arguments: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _wrapped(self: BaseMCPTool, arguments: dict[str, Any]) -> dict[str, Any]:
         self._guard_strict_parameters(arguments)
         return await cls_execute(self, arguments)  # type: ignore[no-any-return]
 

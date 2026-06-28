@@ -19,7 +19,6 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
-from .shared.traversal import node_range
 from .kotlin_helpers import (
     extract_import as _extract_import_standalone,
 )
@@ -35,6 +34,7 @@ from .kotlin_helpers import (
 from .kotlin_helpers import (
     extract_kotlin_property as _extract_prop_standalone,
 )
+from .shared.traversal import node_range
 
 
 class KotlinElementExtractor(ElementExtractor):

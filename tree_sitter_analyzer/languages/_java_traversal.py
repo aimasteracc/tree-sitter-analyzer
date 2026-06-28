@@ -41,6 +41,8 @@ def java_traverse_and_extract(
         return
 
     target_node_types, max_depth = set(extractors.keys()), 50
+    node_stack: list[tuple[Any, int]]
+    field_batch: list[Any]
     node_stack, field_batch = [(root_node, 0)], []
     processed_count = 0
 

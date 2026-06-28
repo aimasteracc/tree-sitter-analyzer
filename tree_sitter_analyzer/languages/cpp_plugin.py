@@ -21,6 +21,43 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from ._cpp_complexity import calculate_complexity as _calc_complexity_standalone
+from ._cpp_element import (
+    CppClassExtractionContext as _CppClassExtractionContext,
+)
+from ._cpp_element import (
+    CppFunctionExtractionContext as _CppFunctionExtractionContext,
+)
+from ._cpp_element import (
+    determine_visibility as _determine_vis_standalone,
+)
+from ._cpp_element import (
+    extract_cpp_class as _extract_class_standalone,
+)
+from ._cpp_element import (
+    extract_cpp_function as _extract_func_standalone,
+)
+from ._cpp_element import (
+    get_access_specifier as _get_access_standalone,
+)
+from ._cpp_element import (
+    is_global_scope as _is_global_standalone,
+)
+from ._cpp_field_function import (
+    CppFieldFunctionExtractionContext as _CppFieldFunctionExtractionContext,
+)
+from ._cpp_field_function import (
+    extract_function_declaration as _extract_func_decl_standalone,
+)
+from ._cpp_field_function import (
+    extract_function_from_field_declaration as _extract_func_field_standalone,
+)
+from ._cpp_import_namespace import (
+    extract_cpp_imports as _extract_imports_standalone,
+)
+from ._cpp_import_namespace import (
+    extract_cpp_namespaces as _extract_namespaces_standalone,
+)
 from ._cpp_plugin_analysis import (
     cpp_analysis_error_result,
     create_cpp_parser,
@@ -34,37 +71,28 @@ from ._cpp_plugin_template import (
     extract_template_function as _extract_template_func_standalone,
 )
 from ._cpp_plugin_text import get_node_text_optimized as _get_cpp_node_text
-from ._cpp_complexity import calculate_complexity as _calc_complexity_standalone
-from ._cpp_element import (
-    CppClassExtractionContext as _CppClassExtractionContext,
-    CppFunctionExtractionContext as _CppFunctionExtractionContext,
-    determine_visibility as _determine_vis_standalone,
-    extract_cpp_class as _extract_class_standalone,
-    extract_cpp_function as _extract_func_standalone,
-    get_access_specifier as _get_access_standalone,
-    is_global_scope as _is_global_standalone,
-)
-from ._cpp_field_function import (
-    CppFieldFunctionExtractionContext as _CppFieldFunctionExtractionContext,
-    extract_function_declaration as _extract_func_decl_standalone,
-    extract_function_from_field_declaration as _extract_func_field_standalone,
-)
-from ._cpp_import_namespace import (
-    extract_cpp_imports as _extract_imports_standalone,
-    extract_cpp_namespaces as _extract_namespaces_standalone,
-)
 from ._cpp_signature import (
     extract_comment_for_line as _extract_comment_standalone,
+)
+from ._cpp_signature import (
     extract_parameters as _extract_params_standalone,
+)
+from ._cpp_signature import (
     parse_function_signature as _parse_sig_standalone,
 )
 from ._cpp_traversal import (
     CppTraversalState as _CppTraversalState,
+)
+from ._cpp_traversal import (
     traverse_and_extract_iterative as _traverse_standalone,
 )
 from ._cpp_variable import (
     extract_base_classes as _extract_base_standalone,
+)
+from ._cpp_variable import (
     extract_cpp_field_declaration as _extract_cpp_field_standalone,
+)
+from ._cpp_variable import (
     extract_cpp_variable_declaration as _extract_cpp_var_standalone,
 )
 

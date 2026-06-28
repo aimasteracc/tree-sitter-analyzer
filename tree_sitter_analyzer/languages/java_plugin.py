@@ -29,21 +29,53 @@ from .java_helpers import (
     _extract_package_element,
     _extract_package_name,
     _process_field_batch,
+)
+from .java_helpers import (
     calculate_complexity as _calc_complexity_standalone,
+)
+from .java_helpers import (
     determine_visibility as _determine_vis_standalone,
+)
+from .java_helpers import (
     extract_annotation as _extract_annotation_standalone,
+)
+from .java_helpers import (
     extract_class_name as _extract_class_name_standalone,
+)
+from .java_helpers import (
     extract_java_class as _extract_class_standalone,
+)
+from .java_helpers import (
     extract_java_field as _extract_field_standalone,
+)
+from .java_helpers import (
     extract_java_imports as _extract_imports_standalone,
+)
+from .java_helpers import (
     extract_java_method as _extract_method_standalone,
+)
+from .java_helpers import (
     extract_java_packages as _extract_packages_standalone,
+)
+from .java_helpers import (
     extract_javadoc_for_line as _extract_javadoc_standalone,
+)
+from .java_helpers import (
     extract_modifiers as _extract_mods_standalone,
+)
+from .java_helpers import (
     find_parent_class as _find_parent_class_standalone,
+)
+from .java_helpers import (
     is_nested_class as _is_nested_standalone,
+)
+from .java_helpers import (
     java_traverse_and_extract as _traverse_standalone,
+)
+from .java_helpers import (
     parse_field_declaration as _parse_field_standalone,
+)
+from .java_helpers import (
     parse_method_signature as _parse_method_sig_standalone,
 )
 
@@ -65,7 +97,9 @@ class JavaElementExtractor(ElementExtractor):
         self._file_encoding: str | None = None
         self._annotation_cache: dict[int, list[dict[str, Any]]] = {}
         self._signature_cache: dict[int, str] = {}
-        self.annotations: list[dict[str, Any]] = []  # populated before class/method extraction
+        self.annotations: list[
+            dict[str, Any]
+        ] = []  # populated before class/method extraction
 
     def extract_annotations(
         self, tree: tree_sitter.Tree, source_code: str
@@ -119,7 +153,9 @@ class JavaElementExtractor(ElementExtractor):
         self.content_lines = source_code.split("\n")
         self._reset_caches()
 
-        if not self.current_package:  # extract package first to avoid empty current_package (#535)
+        if (
+            not self.current_package
+        ):  # extract package first to avoid empty current_package (#535)
             self._extract_package_from_tree(tree)
 
         classes: list[Class] = []
@@ -194,7 +230,12 @@ class JavaElementExtractor(ElementExtractor):
 
     def _reset_caches(self) -> None:
         """Reset performance caches and package state to avoid cross-test contamination."""
-        for cache in (self._node_text_cache, self._element_cache, self._annotation_cache, self._signature_cache):
+        for cache in (
+            self._node_text_cache,
+            self._element_cache,
+            self._annotation_cache,
+            self._signature_cache,
+        ):
             cache.clear()
         self._processed_nodes.clear()
         self.current_package = ""
@@ -232,7 +273,9 @@ class JavaElementExtractor(ElementExtractor):
         try:
             encoding = self._file_encoding or "utf-8"
             content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, node.start_byte, node.end_byte, encoding)
+            text = extract_text_slice(
+                content_bytes, node.start_byte, node.end_byte, encoding
+            )
             self._node_text_cache[cache_key] = text
             return text
         except Exception as e:
@@ -244,7 +287,7 @@ class JavaElementExtractor(ElementExtractor):
         try:
             sp, ep = node.start_point, node.end_point
             if sp[0] == ep[0]:
-                return self.content_lines[sp[0]][sp[1]:ep[1]]
+                return str(self.content_lines[sp[0]][sp[1] : ep[1]])
             return "\n".join(self._collect_multiline_slices(sp, ep))
         except Exception as fe:
             log_error(f"Fallback text extraction also failed: {fe}")
@@ -260,9 +303,9 @@ class JavaElementExtractor(ElementExtractor):
                 continue
             line = self.content_lines[i]
             if i == sp[0]:
-                lines.append(line[sp[1]:])
+                lines.append(line[sp[1] :])
             elif i == ep[0]:
-                lines.append(line[:ep[1]])
+                lines.append(line[: ep[1]])
             else:
                 lines.append(line)
         return lines
@@ -338,10 +381,14 @@ class JavaElementExtractor(ElementExtractor):
                     self._extract_package_info(child)
                     break
 
-    def _extract_import_info(self, node: tree_sitter.Node, source_code: str) -> Import | None:
+    def _extract_import_info(
+        self, node: tree_sitter.Node, source_code: str
+    ) -> Import | None:
         return _extract_import_info(node, self._get_node_text_optimized)
 
-    def _extract_annotation_optimized(self, node: tree_sitter.Node) -> dict[str, Any] | None:
+    def _extract_annotation_optimized(
+        self, node: tree_sitter.Node
+    ) -> dict[str, Any] | None:
         return _extract_annotation_standalone(node, self._get_node_text_optimized)
 
     def _determine_visibility(self, modifiers: list[str]) -> str:
@@ -399,18 +446,25 @@ class JavaPlugin(LanguagePlugin):
     ) -> AnalysisResult:
         """Analyze Java code and return structured results."""
         try:
-            file_content, detected_encoding = await _encoding_utils.read_file_safe_async(file_path)
+            (
+                file_content,
+                detected_encoding,
+            ) = await _encoding_utils.read_file_safe_async(file_path)
             language = self.get_tree_sitter_language()
             if language is None:
                 return AnalysisResult(
-                    file_path=file_path, language="java",
-                    line_count=len(file_content.splitlines()), elements=[],
-                    source_code=file_content, success=False,
+                    file_path=file_path,
+                    language="java",
+                    line_count=len(file_content.splitlines()),
+                    elements=[],
+                    source_code=file_content,
+                    success=False,
                     error_message="Failed to load tree-sitter language for Java",
                 )
 
             def _analyze_sync() -> tuple[list[Any], int, Any]:
                 import tree_sitter
+
                 parser = tree_sitter.Parser()
                 if hasattr(parser, "set_language"):
                     parser.set_language(language)
@@ -430,20 +484,35 @@ class JavaPlugin(LanguagePlugin):
                 all_elements.extend(extractor.extract_imports(tree, file_content))
                 packages = extractor.extract_packages(tree, file_content)
                 all_elements.extend(packages)
-                node_count = count_nodes_iterative(tree.root_node) if tree and tree.root_node else 0
+                node_count = (
+                    count_nodes_iterative(tree.root_node)
+                    if tree and tree.root_node
+                    else 0
+                )
                 return all_elements, node_count, packages[0] if packages else None
 
-            all_elements, node_count, package = await anyio.to_thread.run_sync(_analyze_sync)
+            all_elements, node_count, package = await anyio.to_thread.run_sync(
+                _analyze_sync
+            )
             return AnalysisResult(
-                file_path=file_path, language="java",
-                line_count=len(file_content.splitlines()), elements=all_elements,
-                node_count=node_count, source_code=file_content, package=package,
+                file_path=file_path,
+                language="java",
+                line_count=len(file_content.splitlines()),
+                elements=all_elements,
+                node_count=node_count,
+                source_code=file_content,
+                package=package,
             )
         except Exception as e:
             log_error(f"Error analyzing Java file {file_path}: {e}")
             return AnalysisResult(
-                file_path=file_path, language="java", line_count=0,
-                elements=[], source_code="", error_message=str(e), success=False,
+                file_path=file_path,
+                language="java",
+                line_count=0,
+                elements=[],
+                source_code="",
+                error_message=str(e),
+                success=False,
             )
 
     def _count_tree_nodes(self, node: Any) -> int:
@@ -459,7 +528,9 @@ class JavaPlugin(LanguagePlugin):
             import tree_sitter_java
 
             caps_or_lang = tree_sitter_java.language()
-            if hasattr(caps_or_lang, "__class__") and "Language" in str(type(caps_or_lang)):
+            if hasattr(caps_or_lang, "__class__") and "Language" in str(
+                type(caps_or_lang)
+            ):
                 self._cached_language = caps_or_lang
             else:
                 try:
@@ -478,8 +549,12 @@ class JavaPlugin(LanguagePlugin):
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements from Java code for test compatibility."""
         _empty: dict[str, Any] = {
-            "functions": [], "classes": [], "variables": [],
-            "imports": [], "packages": [], "annotations": [],
+            "functions": [],
+            "classes": [],
+            "variables": [],
+            "imports": [],
+            "packages": [],
+            "annotations": [],
         }
         if tree is None:
             return _empty

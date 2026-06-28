@@ -38,7 +38,7 @@ def get_cached_encoding(
     if not file_path:
         return None
 
-    cached_encoding = cache.get(file_path)
+    cached_encoding: str | None = cache.get(file_path)
     if cached_encoding:
         log_debug(f"Using cached encoding for {file_path}: {cached_encoding}")
     return cached_encoding
@@ -111,7 +111,7 @@ def detect_with_chardet(
     if confidence <= 0.7:
         return default_encoding
 
-    detected_encoding = detection["encoding"].lower()
+    detected_encoding: str = detection["encoding"].lower()
     log_debug(f"Detected encoding via chardet: {detected_encoding} ({confidence:.2f})")
     return detected_encoding
 

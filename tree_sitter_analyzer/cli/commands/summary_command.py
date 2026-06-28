@@ -8,6 +8,7 @@ Handles summary functionality with specified element types.
 from typing import TYPE_CHECKING, Any
 
 from tree_sitter_analyzer.internal_api.result_helpers import normalize_parameters
+
 from ...constants import (
     ELEMENT_TYPE_CLASS,
     ELEMENT_TYPE_FUNCTION,

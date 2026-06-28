@@ -27,23 +27,32 @@ from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_error
 from ..utils.tree_sitter_compat import get_node_text_safe
-from .shared.traversal import node_range
 from .ruby_helpers import (
     extract_attr_methods as _extract_attrs_standalone,
 )
 from .ruby_helpers import (
     extract_require_statement as _extract_require_standalone,
 )
+from .shared.traversal import node_range
 
 # Non-leaf statement types that each add one cyclomatic complexity decision point.
 # (case/when are handled specially in _ruby_calculate_complexity — see inline comments.)
-_RUBY_DECISION_STATEMENT_TYPES: frozenset[str] = frozenset({
-    "if", "elsif", "unless", "while", "until",
-    "rescue", "for",
-    "conditional",    # ternary  x > 0 ? a : b
-    "if_modifier",    # expr if cond
-    "unless_modifier", "while_modifier", "until_modifier",
-})
+_RUBY_DECISION_STATEMENT_TYPES: frozenset[str] = frozenset(
+    {
+        "if",
+        "elsif",
+        "unless",
+        "while",
+        "until",
+        "rescue",
+        "for",
+        "conditional",  # ternary  x > 0 ? a : b
+        "if_modifier",  # expr if cond
+        "unless_modifier",
+        "while_modifier",
+        "until_modifier",
+    }
+)
 
 # Leaf operator tokens that are themselves a decision branch.
 _RUBY_LOGIC_OP_TOKENS: frozenset[str] = frozenset({"&&", "||"})
@@ -184,17 +193,28 @@ class RubyElementExtractor(ElementExtractor):
         """Extract a single class or module element."""
         try:
             name_node = next(
-                (c for c in node.children if c.type in ("constant", "scope_resolution")), None
+                (
+                    c
+                    for c in node.children
+                    if c.type in ("constant", "scope_resolution")
+                ),
+                None,
             )
             if not name_node:
                 return None
             name = self._get_node_text_optimized(name_node)
             start, end = node_range(node)
             return Class(
-                name=name, start_line=start, end_line=end,
-                visibility="public", is_abstract=False, full_qualified_name=name,
+                name=name,
+                start_line=start,
+                end_line=end,
+                visibility="public",
+                is_abstract=False,
+                full_qualified_name=name,
                 superclass=self._find_ruby_superclass(node),
-                interfaces=[], modifiers=[], annotations=[],
+                interfaces=[],
+                modifiers=[],
+                annotations=[],
                 class_type="module" if node.type == "module" else "class",
             )
         except Exception as e:
@@ -217,7 +237,9 @@ class RubyElementExtractor(ElementExtractor):
             return None
         return None
 
-    def extract_functions(self, tree: tree_sitter.Tree, source_code: str) -> list[Function]:
+    def extract_functions(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> list[Function]:
         """Extract Ruby methods (instance, singleton, and attr_* methods)."""
         self.source_code = source_code
         self.content_lines = source_code.splitlines()
@@ -245,14 +267,18 @@ class RubyElementExtractor(ElementExtractor):
                 stack.append((child, new_parent))
         return functions
 
-    def _find_ruby_class_name(self, class_or_module_node: tree_sitter.Node) -> str | None:
+    def _find_ruby_class_name(
+        self, class_or_module_node: tree_sitter.Node
+    ) -> str | None:
         """Return the class/module name (first constant or scope_resolution child)."""
         for child in class_or_module_node.children:
             if child.type in ("constant", "scope_resolution"):
                 return self._get_node_text_optimized(child)
         return None
 
-    def _extract_method_element(self, node: tree_sitter.Node, parent_class: str) -> Function | None:
+    def _extract_method_element(
+        self, node: tree_sitter.Node, parent_class: str
+    ) -> Function | None:
         """Extract an instance method element."""
         try:
             name_node = node.child_by_field_name("name")
@@ -262,11 +288,18 @@ class RubyElementExtractor(ElementExtractor):
             start, end = node_range(node)
             return Function(
                 name=name,  # bare name; owner in receiver_type (#535)
-                start_line=start, end_line=end,
+                start_line=start,
+                end_line=end,
                 visibility=self._determine_visibility(node),
-                is_static=False, is_async=False, is_abstract=False,
-                parameters=self._extract_ruby_parameters(node.child_by_field_name("parameters")),
-                return_type="", modifiers=[], annotations=[],
+                is_static=False,
+                is_async=False,
+                is_abstract=False,
+                parameters=self._extract_ruby_parameters(
+                    node.child_by_field_name("parameters")
+                ),
+                return_type="",
+                modifiers=[],
+                annotations=[],
                 receiver_type=parent_class if parent_class else None,
                 is_constructor=name == "initialize",
                 complexity_score=_ruby_calculate_complexity(node),
@@ -284,7 +317,9 @@ class RubyElementExtractor(ElementExtractor):
         "keyword_parameter",  # #768: name: default — was silently dropped
     )
 
-    def _extract_ruby_parameters(self, params_node: tree_sitter.Node | None) -> list[str]:
+    def _extract_ruby_parameters(
+        self, params_node: tree_sitter.Node | None
+    ) -> list[str]:
         """Return parameter texts from a Ruby ``parameters`` node; empty list if None."""
         if params_node is None:
             return []
@@ -294,7 +329,9 @@ class RubyElementExtractor(ElementExtractor):
             if p.type in self._RUBY_PARAMETER_NODE_TYPES
         ]
 
-    def _extract_singleton_method_element(self, node: tree_sitter.Node, parent_class: str) -> Function | None:
+    def _extract_singleton_method_element(
+        self, node: tree_sitter.Node, parent_class: str
+    ) -> Function | None:
         """Extract a singleton (class-level) method element."""
         try:
             name_node = node.child_by_field_name("name")
@@ -304,12 +341,18 @@ class RubyElementExtractor(ElementExtractor):
             start, end = node_range(node)
             return Function(
                 name=name,  # bare name; owner in receiver_type (#535)
-                start_line=start, end_line=end,
+                start_line=start,
+                end_line=end,
                 visibility=self._determine_visibility(node),
                 is_static=True,  # singleton methods are class methods
-                is_async=False, is_abstract=False,
-                parameters=self._extract_ruby_parameters(node.child_by_field_name("parameters")),
-                return_type="", modifiers=[], annotations=[],
+                is_async=False,
+                is_abstract=False,
+                parameters=self._extract_ruby_parameters(
+                    node.child_by_field_name("parameters")
+                ),
+                return_type="",
+                modifiers=[],
+                annotations=[],
                 receiver_type=parent_class if parent_class else None,
                 complexity_score=_ruby_calculate_complexity(node),
             )
@@ -325,7 +368,9 @@ class RubyElementExtractor(ElementExtractor):
             node, parent_class, self._get_node_text_optimized
         )
 
-    def extract_variables(self, tree: tree_sitter.Tree, source_code: str) -> list[Variable]:
+    def extract_variables(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> list[Variable]:
         """Extract Ruby instance variables, class variables, and constants."""
         self.source_code = source_code
         self.content_lines = source_code.splitlines()
@@ -353,7 +398,9 @@ class RubyElementExtractor(ElementExtractor):
             new_in_non_init = in_non_init_method
             if node.type == "method":
                 name_node = node.child_by_field_name("name")
-                new_in_non_init = (self._get_node_text_optimized(name_node) if name_node else "") != "initialize"
+                new_in_non_init = (
+                    self._get_node_text_optimized(name_node) if name_node else ""
+                ) != "initialize"
             elif node.type == "singleton_method":
                 new_in_non_init = True
             for child in reversed(node.children):
@@ -361,11 +408,18 @@ class RubyElementExtractor(ElementExtractor):
         return variables
 
     # Only emit real Ruby fields: @ivar, @@cvar, CONSTANT, scoped A::B (#770, #902).
-    _RUBY_VAR_LNODE_TYPES: frozenset[str] = frozenset({
-        "instance_variable", "class_variable", "constant", "scope_resolution",
-    })
+    _RUBY_VAR_LNODE_TYPES: frozenset[str] = frozenset(
+        {
+            "instance_variable",
+            "class_variable",
+            "constant",
+            "scope_resolution",
+        }
+    )
 
-    def _extract_assignment_variable(self, node: tree_sitter.Node, parent_class: str) -> Variable | None:
+    def _extract_assignment_variable(
+        self, node: tree_sitter.Node, parent_class: str
+    ) -> Variable | None:
         """Extract a field/constant variable from an assignment node."""
         try:
             left_node = node.child_by_field_name("left")
@@ -376,12 +430,17 @@ class RubyElementExtractor(ElementExtractor):
             is_class_var = left_node.type == "class_variable"
             start, end = node_range(node)
             return Variable(
-                name=var_text.lstrip("@$"),  # bare name; owner via parent linkage (#535)
-                start_line=start, end_line=end,
+                name=var_text.lstrip(
+                    "@$"
+                ),  # bare name; owner via parent linkage (#535)
+                start_line=start,
+                end_line=end,
                 visibility="public" if is_constant else "private",
                 is_static=is_class_var or is_constant,
-                is_constant=is_constant, is_final=is_constant,
-                variable_type="", modifiers=[],
+                is_constant=is_constant,
+                is_final=is_constant,
+                variable_type="",
+                modifiers=[],
             )
         except Exception as e:
             log_error(f"Error extracting variable: {e}")
@@ -430,7 +489,10 @@ class RubyPlugin(LanguagePlugin):
         if RubyPlugin._language_instance is None:
             try:
                 import tree_sitter_ruby
-                RubyPlugin._language_instance = tree_sitter.Language(tree_sitter_ruby.language())
+
+                RubyPlugin._language_instance = tree_sitter.Language(
+                    tree_sitter_ruby.language()
+                )
             except ImportError as e:
                 raise ImportError(
                     "tree-sitter-ruby is not installed. Install it with: pip install tree-sitter-ruby"
@@ -440,13 +502,18 @@ class RubyPlugin(LanguagePlugin):
     def create_extractor(self) -> ElementExtractor:
         return RubyElementExtractor()
 
-    def extract_elements(self, tree: tree_sitter.Tree, source_code: str) -> dict[str, list]:
+    def extract_elements(
+        self, tree: tree_sitter.Tree, source_code: str
+    ) -> dict[str, list]:
         """Unified extraction entry point — delegates to the extractor."""
         return self.create_extractor().extract_elements(tree, source_code)
 
-    async def analyze_file(self, file_path: str, request: AnalysisRequest) -> AnalysisResult:
+    async def analyze_file(
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """Analyze a Ruby source file and return structured elements."""
         from ..models import AnalysisResult
+
         try:
             content = await self._load_file_safe(file_path)
             language = self.get_tree_sitter_language()
@@ -460,15 +527,22 @@ class RubyPlugin(LanguagePlugin):
                 + extractor.extract_imports(tree, content)
             )
             return AnalysisResult(
-                language=self.get_language_name(), file_path=file_path, success=True,
-                elements=all_elements, line_count=len(content.splitlines()),
+                language=self.get_language_name(),
+                file_path=file_path,
+                success=True,
+                elements=all_elements,
+                line_count=len(content.splitlines()),
                 node_count=self._count_nodes(tree.root_node),
             )
         except Exception as e:
             log_error(f"Error analyzing Ruby file {file_path}: {e}")
             return AnalysisResult(
-                language=self.get_language_name(), file_path=file_path, success=False,
-                error_message=str(e), elements=[], node_count=0,
+                language=self.get_language_name(),
+                file_path=file_path,
+                success=False,
+                error_message=str(e),
+                elements=[],
+                node_count=0,
             )
 
     def _count_nodes(self, node: tree_sitter.Node) -> int:
@@ -481,6 +555,7 @@ class RubyPlugin(LanguagePlugin):
     async def _load_file_safe(self, file_path: str) -> str:
         """Load file with chardet encoding detection."""
         import chardet
+
         try:
             with open(file_path, "rb") as f:
                 raw_content = f.read()

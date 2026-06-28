@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .core.analysis_engine import AnalysisRequest, UnifiedAnalysisEngine
 from .internal_api.query_helpers import (
     filter_elements_by_type,
     group_captures_by_main_node,
@@ -28,7 +29,6 @@ from .internal_api.validation_helpers import (
     mark_validation_readable,
     validation_result_template,
 )
-from .core.analysis_engine import AnalysisRequest, UnifiedAnalysisEngine
 from .utils import log_error
 
 logger = logging.getLogger(__name__)

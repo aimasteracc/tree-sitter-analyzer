@@ -44,7 +44,7 @@ def _docstring_scan_start(node: Any, content_lines: list[str]) -> int | None:
     start_line = node.start_point[0]
     if start_line == 0:
         return None
-    return min(start_line - 1, len(content_lines) - 1)
+    return int(min(start_line - 1, len(content_lines) - 1))
 
 
 def _collect_docstring_lines(content_lines: list[str], scan_start: int) -> list[str]:

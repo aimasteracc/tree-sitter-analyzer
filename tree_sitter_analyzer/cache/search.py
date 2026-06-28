@@ -6,8 +6,8 @@ import re
 import sqlite3
 from typing import Any
 
-from .query import fts_search_ranked
 from ..utils.test_detection import query_wants_tests, rank_tier
+from .query import fts_search_ranked
 
 _KIND_BONUS = {
     "class": 0.08,

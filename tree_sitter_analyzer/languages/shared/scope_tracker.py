@@ -6,7 +6,7 @@ Provides ScopeStack, a lightweight stack that tracks nested scopes
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass

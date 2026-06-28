@@ -18,15 +18,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .constants import EXCLUDE_DIRS
+from .core.parser import Parser
+from .languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from .registry.health_scorer_helpers import (
     calculate_git_hotspot,
     calculate_weighted_total,
     read_source_file,
     round_available_scores,
 )
-from .languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
-from .constants import EXCLUDE_DIRS
-from .core.parser import Parser
 
 logger = logging.getLogger(__name__)
 

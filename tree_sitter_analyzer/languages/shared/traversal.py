@@ -6,10 +6,11 @@ do not duplicate the same boilerplate traversal code.
 
 from __future__ import annotations
 
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 
-def iter_children_of_type(node: Any, *node_types: str) -> Generator[Any, None, None]:
+def iter_children_of_type(node: Any, *node_types: str) -> Generator[Any]:
     """Yield direct children of *node* whose type is in *node_types*.
 
     Args:

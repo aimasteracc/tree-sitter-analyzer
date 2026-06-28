@@ -23,27 +23,47 @@ from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 from ._go_common import (
     extract_docstring as _extract_docstring_standalone,
+)
+from ._go_common import (
     extract_parameters as _extract_params_standalone,
+)
+from ._go_common import (
     extract_return_type as _extract_return_type_standalone,
 )
 from ._go_function import (
     extract_go_function as _extract_func_standalone,
+)
+from ._go_function import (
     extract_go_interface_methods as _extract_iface_methods_standalone,
+)
+from ._go_function import (
     extract_go_method as _extract_method_standalone,
 )
 from ._go_import import (
     _extract_import_declaration,
+)
+from ._go_import import (
     extract_import_spec as _extract_import_spec_standalone,
+)
+from ._go_import import (
     extract_imports_from_tree as _extract_imports_standalone,
 )
 from ._go_type import (
     extract_embedded_types as _extract_embedded_standalone,
+)
+from ._go_type import (
     extract_go_type_spec as _extract_type_spec_standalone,
+)
+from ._go_type import (
     extract_type_declaration,
 )
 from ._go_variable import (
     extract_struct_fields as _extract_struct_fields_standalone,
+)
+from ._go_variable import (
     extract_var_or_const,
+)
+from ._go_variable import (
     extract_var_spec as _extract_var_spec_standalone,
 )
 

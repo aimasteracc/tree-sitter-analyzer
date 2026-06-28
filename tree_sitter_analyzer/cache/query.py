@@ -12,8 +12,8 @@ import logging
 import sqlite3
 from typing import TYPE_CHECKING, Any, cast
 
-from .maintenance import get_db_storage_stats
 from ..utils.test_detection import query_wants_tests, rank_tier
+from .maintenance import get_db_storage_stats
 
 if TYPE_CHECKING:
     pass

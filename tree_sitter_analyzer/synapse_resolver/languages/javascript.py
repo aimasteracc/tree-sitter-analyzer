@@ -28,6 +28,7 @@ from __future__ import annotations
 from typing import Any
 
 from tree_sitter_analyzer.languages.language_family import languages_compatible
+
 from .._javascript_constants import JS_BUILTIN_CALLS
 from .._registry import register_language
 

@@ -1802,12 +1802,7 @@ class TestPythonDocstring:
         from tree_sitter_analyzer.cache.extraction import _python_docstring
         from tree_sitter_analyzer.core.parser import Parser
 
-        src = (
-            'def f():\n'
-            '    ("hello "\n'
-            '     "world")\n'
-            '    pass\n'
-        )
+        src = 'def f():\n    ("hello "\n     "world")\n    pass\n'
         result = Parser().parse_code(src, "python")
         if result.success and result.tree is not None:
             doc = _python_docstring(result.tree.root_node.children[0], src)
@@ -1869,23 +1864,22 @@ class TestPythonDocstring:
 class TestExtractCallEdgesReal:
     def test_call_edges_python_simple_caller(self):
         """A function that calls another produces a non-empty edge list."""
-        from tree_sitter_analyzer.core.parser import Parser
         from tree_sitter_analyzer.cache.extraction import _extract_symbols
+        from tree_sitter_analyzer.core.parser import Parser
 
         src = "def helper():\n    pass\n\ndef main():\n    helper()\n"
         result = Parser().parse_code(src, "python")
         assert result.success and result.tree is not None
         symbols = _extract_symbols(result.tree, src, "python")
         edges = _extract_call_edges(result.tree, src, "python", symbols)
-        # At least one edge: main → helper
-        assert len(edges) >= 1
         callee_names = [e["callee_name"] for e in edges]
         assert "helper" in callee_names
+        assert len(edges) == 1
 
     def test_call_edges_caller_attribution(self):
         """The call inside main() is attributed to main."""
-        from tree_sitter_analyzer.core.parser import Parser
         from tree_sitter_analyzer.cache.extraction import _extract_symbols
+        from tree_sitter_analyzer.core.parser import Parser
 
         src = "def helper():\n    pass\n\ndef main():\n    helper()\n"
         result = Parser().parse_code(src, "python")

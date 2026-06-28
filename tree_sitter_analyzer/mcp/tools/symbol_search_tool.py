@@ -16,6 +16,7 @@ import os
 from typing import Any
 
 from tree_sitter_analyzer.cache.query import _normalize_bm25 as _norm_bm25
+
 from ...utils import setup_logger
 from ...utils.test_detection import query_wants_tests, rank_tier
 from .base_tool import BaseMCPTool

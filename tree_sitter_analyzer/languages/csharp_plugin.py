@@ -28,23 +28,49 @@ from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 from ..utils.tree_sitter_compat import count_nodes_iterative, get_node_text_safe
-from .shared.traversal import collect_named_nodes, node_range
 from .csharp_helpers import (
     calculate_complexity as _calc_complexity_standalone,
+)
+from .csharp_helpers import (
     determine_visibility as _determine_vis_standalone,
+)
+from .csharp_helpers import (
     extract_attributes as _extract_attrs_standalone,
+)
+from .csharp_helpers import (
     extract_class_declaration as _extract_class_standalone,
+)
+from .csharp_helpers import (
     extract_constructor_declaration as _extract_ctor_standalone,
+)
+from .csharp_helpers import (
     extract_event_declaration as _extract_event_standalone,
+)
+from .csharp_helpers import (
     extract_field_declaration as _extract_field_standalone,
+)
+from .csharp_helpers import (
     extract_method_declaration as _extract_method_standalone,
+)
+from .csharp_helpers import (
     extract_modifiers as _extract_mods_standalone,
+)
+from .csharp_helpers import (
     extract_parameters as _extract_params_standalone,
+)
+from .csharp_helpers import (
     extract_property_declaration as _extract_prop_standalone,
+)
+from .csharp_helpers import (
     extract_type_name as _extract_type_standalone,
+)
+from .csharp_helpers import (
     extract_using_directive as _extract_using_standalone,
+)
+from .csharp_helpers import (
     find_owning_class_name as _find_owning_class_name,
 )
+from .shared.traversal import collect_named_nodes, node_range
 
 
 def _traverse_nodes(root_node: tree_sitter.Node) -> Iterator[tree_sitter.Node]:
@@ -203,8 +229,11 @@ class CSharpElementExtractor(ElementExtractor):
         # Extract all class-like declarations
         for node in collect_named_nodes(
             tree.root_node,
-            "class_declaration", "interface_declaration",
-            "record_declaration", "enum_declaration", "struct_declaration",
+            "class_declaration",
+            "interface_declaration",
+            "record_declaration",
+            "enum_declaration",
+            "struct_declaration",
         ):
             class_obj = self._extract_class_declaration(node)
             if class_obj:
@@ -312,11 +341,15 @@ class CSharpElementExtractor(ElementExtractor):
         }
         for node in collect_named_nodes(
             tree.root_node,
-            "method_declaration", "constructor_declaration", "property_declaration",
+            "method_declaration",
+            "constructor_declaration",
+            "property_declaration",
         ):
             func = _func_extractors[node.type](node)
             if func:
-                func.receiver_type = _find_owning_class_name(node, self._get_node_text_optimized)
+                func.receiver_type = _find_owning_class_name(
+                    node, self._get_node_text_optimized
+                )
                 functions.append(func)
 
         # Sort by start line for deterministic output
@@ -480,7 +513,8 @@ class CSharpElementExtractor(ElementExtractor):
 
         for node in collect_named_nodes(
             tree.root_node,
-            "namespace_declaration", "file_scoped_namespace_declaration",
+            "namespace_declaration",
+            "file_scoped_namespace_declaration",
         ):
             name_node = node.child_by_field_name("name")
             if name_node is None:
@@ -490,8 +524,13 @@ class CSharpElementExtractor(ElementExtractor):
                 continue
             _cns_start, _cns_end = node_range(node)
             packages.append(
-                Package(name=ns_name, start_line=_cns_start, end_line=_cns_end,
-                        raw_text=ns_name, language="csharp")
+                Package(
+                    name=ns_name,
+                    start_line=_cns_start,
+                    end_line=_cns_end,
+                    raw_text=ns_name,
+                    language="csharp",
+                )
             )
         return packages
 
@@ -670,8 +709,11 @@ class CSharpPlugin(LanguagePlugin):
             if not language:
                 log_error("Failed to load C# language")
                 return AnalysisResult(
-                    file_path=file_path, language="csharp",
-                    elements=[], success=False, error_message="Failed to load C# language",
+                    file_path=file_path,
+                    language="csharp",
+                    elements=[],
+                    success=False,
+                    error_message="Failed to load C# language",
                 )
 
             tree = self._make_parser(language).parse(source_code.encode("utf-8"))
@@ -683,7 +725,9 @@ class CSharpPlugin(LanguagePlugin):
             elements.extend(extractor.extract_variables(tree, source_code))
             elements.extend(extractor.extract_imports(tree, source_code))
             return AnalysisResult(
-                file_path=file_path, language="csharp", elements=elements,
+                file_path=file_path,
+                language="csharp",
+                elements=elements,
                 node_count=count_nodes_iterative(tree.root_node),
                 line_count=len(source_code.splitlines()),
                 source_code=source_code,
@@ -692,6 +736,9 @@ class CSharpPlugin(LanguagePlugin):
         except Exception as e:
             log_error(f"Error analyzing C# file {file_path}: {e}")
             return AnalysisResult(
-                file_path=file_path, language="csharp",
-                elements=[], success=False, error_message=str(e),
+                file_path=file_path,
+                language="csharp",
+                elements=[],
+                success=False,
+                error_message=str(e),
             )

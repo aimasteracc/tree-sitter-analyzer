@@ -23,7 +23,11 @@ def resolve_call_edges_for_file(
 ) -> None:
     """Resolve Synapse call-edge columns for ``rel_path`` (skipped when disabled)."""
     try:
-        from ..synapse_resolver import build_resolver_context, is_enabled, resolve_callee
+        from ..synapse_resolver import (
+            build_resolver_context,
+            is_enabled,
+            resolve_callee,
+        )
     except Exception as exc:  # pragma: no cover
         logger.debug("synapse_resolver import failed: %s", exc)
         return
@@ -75,7 +79,11 @@ def resolve_call_edges_for_file(
 def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int] | None:
     """Re-resolve every unresolved call edge. Returns stats dict or None."""
     try:
-        from ..synapse_resolver import build_resolver_context, is_enabled, resolve_callee
+        from ..synapse_resolver import (
+            build_resolver_context,
+            is_enabled,
+            resolve_callee,
+        )
     except Exception as exc:
         logger.debug("synapse_resolver import failed: %s", exc)
         return None
