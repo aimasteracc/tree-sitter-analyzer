@@ -19,6 +19,23 @@ from ...utils import setup_logger
 from ..utils.error_sanitizer import safe_error_message
 from ..utils.file_metrics import compute_file_metrics
 from .base_tool import format_summary_line
+from .utils.scale_guidance_builder import generate_llm_guidance  # noqa: F401
+from .utils.scale_structural_extractor import (  # noqa: F401
+    _COMPLEXITY_HOTSPOT_THRESHOLD,
+    _LANG_QUERIES,
+    _PRIORITY_QUERIES,
+    _REQUIRED_OVERVIEW_FIELDS,
+    HOTSPOTS_OUTPUT_CAP,
+    METHODS_OUTPUT_CAP,
+    _apply_hotspot_cap,
+    _extract_class_infos,
+    _extract_field_infos,
+    _extract_import_infos,
+    _extract_method_infos,
+    _make_hotspot_entry,
+    extract_structural_overview,
+    extract_structural_overview_universal,
+)
 
 logger = setup_logger(__name__)
 
