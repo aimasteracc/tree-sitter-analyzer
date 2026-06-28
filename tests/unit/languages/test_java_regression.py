@@ -469,7 +469,9 @@ abstract class BoundedLocalCache<K, V>
         classes = self._classes(mcp_result)
         be = next((c for c in classes if c.get("name") == "BoundedEviction"), None)
         if be is None:
-            pytest.skip("BoundedEviction inner class not surfaced by extractor")
+            pytest.skip(
+                "BoundedEviction inner class not surfaced by extractor (tracked: unimplemented)"
+            )
         ann_names = {a.get("name", "") for a in be.get("annotations", [])}
         assert "Override" not in ann_names, (
             f"@Override bled into BoundedEviction class annotations: {ann_names}"
@@ -480,7 +482,9 @@ abstract class BoundedLocalCache<K, V>
         classes = self._classes(mcp_result)
         legacy = next((c for c in classes if c.get("name") == "LegacyNode"), None)
         if legacy is None:
-            pytest.skip("LegacyNode not surfaced by extractor (inner class)")
+            pytest.skip(
+                "LegacyNode not surfaced by extractor (inner class) (tracked: unimplemented)"
+            )
         ann_names = {a.get("name", "") for a in legacy.get("annotations", [])}
         assert "Deprecated" in ann_names, (
             f"@Deprecated missing from LegacyNode annotations. Got: {ann_names}"

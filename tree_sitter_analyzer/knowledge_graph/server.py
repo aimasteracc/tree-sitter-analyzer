@@ -228,9 +228,9 @@ def _uml_for_node(
 
     # Find the node
     node_result = backend.node(node_id, limit=1)
-    if not node_result.get("nodes"):
+    node = node_result.get("node")
+    if not node:
         return {"error": "node not found"}
-    node = node_result["nodes"][0]
     file_path = node.get("file_path")
     if not file_path:
         return {"error": "node has no file_path"}

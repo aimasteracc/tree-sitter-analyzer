@@ -162,6 +162,22 @@ major version bump (semver).
 - `mcp/utils/file_output_factory.py` — atomic write for large payloads
 - `TREE_SITTER_OUTPUT_PATH` env var sets the default output directory
 
+## Legacy Subpackage
+
+`formatters/legacy/` contains the split-out legacy table formatter modules,
+extracted from the monolithic `legacy_table_formatter.py`:
+
+| Module | Role |
+|---|---|
+| `formatters/legacy/__init__.py` | Re-exports the public `LegacyTableFormatter` surface |
+| `formatters/legacy/common.py` | Shared constants and helper types used across legacy modules |
+| `formatters/legacy/compact.py` | `_format_compact_table` implementation for the legacy formatter |
+| `formatters/legacy/csv.py` | `_format_csv` implementation for the legacy formatter |
+| `formatters/legacy/detail.py` | Detail-row rendering helpers |
+| `formatters/legacy/full.py` | `_format_full_table` implementation for the legacy formatter |
+| `formatters/legacy/helpers.py` | General rendering helpers (column widths, header lines, etc.) |
+| `formatters/legacy/members.py` | Member (field/method) row formatting helpers |
+
 ## See Also
 
 - [`docs/toon-format-guide.md`](../toon-format-guide.md)

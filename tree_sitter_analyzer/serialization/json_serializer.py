@@ -26,7 +26,7 @@ class JSONSerializer:
         on JSON size, so using it here is conservative (makes the
         invariant harder to satisfy, not easier).
         """
-        return json.dumps(data, ensure_ascii=False)
+        return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 
     def byte_size(self, data: dict) -> int:
         """Return the UTF-8 byte count of the serialized output."""

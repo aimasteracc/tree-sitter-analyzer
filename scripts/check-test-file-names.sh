@@ -7,6 +7,7 @@ set -euo pipefail
 BANNED_PATTERNS=(
   "_comprehensive"
   "_edge_cases"
+  "_coverage"
   "_coverage_boost"
   "_extended"
   "_optimized"
