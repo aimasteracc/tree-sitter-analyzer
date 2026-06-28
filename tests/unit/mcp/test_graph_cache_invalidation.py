@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools._graph_cache_fingerprint import (
+from tree_sitter_analyzer.cache.fingerprint import (
     GraphFingerprint,
     compute_graph_fingerprint,
 )
