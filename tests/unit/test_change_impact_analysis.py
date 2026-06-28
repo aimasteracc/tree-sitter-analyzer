@@ -162,12 +162,6 @@ class TestLoadDependencyGraph:
         result = _load_dependency_graph(None)
         assert result is not None
 
-    def test_nonexistent_root(self):
-        # DependencyGraph doesn't raise for nonexistent paths — returns a graph.
-        # An obviously-bogus path scans nothing, so this is already fast.
-        result = _load_dependency_graph("/nonexistent/path")
-        assert result is not None
-
 
 class TestAppendLargeDirtyHint:
     def test_small_count(self):

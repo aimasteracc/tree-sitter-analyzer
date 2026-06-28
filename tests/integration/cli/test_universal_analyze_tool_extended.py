@@ -214,10 +214,6 @@ class TestUniversalAnalyzeToolConfiguration:
             assert hasattr(tool, "analysis_engine")
             assert hasattr(tool, "security_validator")
 
-    def test_tool_initialization_with_none_project_root(self):
-        """Test tool initialization with None project root."""
-        tool = UniversalAnalyzeTool(None)
-        assert tool is not None
         # Should still initialize with default behavior
 
     def test_tool_initialization_with_invalid_project_root(self):

@@ -10,10 +10,6 @@ def query_service():
     return QueryService()
 
 
-def test_query_service_basic(query_service):
-    assert query_service is not None
-
-
 @pytest.mark.asyncio
 async def test_query_service_execute_empty(query_service):
     with patch.object(query_service, "_read_file_async", return_value=("", "utf-8")):

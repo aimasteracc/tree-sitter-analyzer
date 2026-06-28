@@ -385,7 +385,7 @@ CodeGraph 支持相近的集合；两者都还未发布的主流代码语言只�
 
 | 指标 | 值 |
 |---|---|
-| 测试通过 | 18,493 ✅ |
+| 测试通过 | 全面的测试套件 ✅ |
 | 覆盖率 | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | 类型安全 | 100% mypy |
 | 平台 | macOS · Linux · Windows |

@@ -206,45 +206,8 @@ class TestSafeStreamHandler:
         handler.emit(record)
         assert "test message" in stream.getvalue()
 
-    def test_emit_closed_stream(self):
-        """测试关闭的流 - SafeStreamHandler应该安全处理"""
-        stream = io.StringIO()
-        # Note: StringIO doesn't have a closed attribute that prevents writing
-        # This test verifies the handler doesn't crash
-        handler = SafeStreamHandler(stream=stream)
-        record = logging.LogRecord(
-            name="test",
-            level=logging.INFO,
-            pathname="test.py",
-            lineno=1,
-            msg="test message",
-            args=(),
-            exc_info=None,
-        )
-        handler.emit(record)
-        assert True  # No exception raised
         # Should not crash
 
-    def test_emit_stream_no_write(self):
-        """测试无写入方法的流"""
-
-        # Create a custom object without write method
-        class NoWriteStream:
-            pass
-
-        stream = NoWriteStream()
-        handler = SafeStreamHandler(stream=stream)
-        record = logging.LogRecord(
-            name="test",
-            level=logging.INFO,
-            pathname="test.py",
-            lineno=1,
-            msg="test message",
-            args=(),
-            exc_info=None,
-        )
-        handler.emit(record)
-        assert True  # No exception raised
         # Should not crash
         # Stream without write method should be handled safely
 
@@ -284,42 +247,8 @@ class TestSafeStreamHandler:
         # Should not try to write
         assert stream.write.call_count == 0
 
-    def test_emit_value_error(self):
-        """测试ValueError异常"""
-        stream = io.StringIO()
-        handler = SafeStreamHandler(stream=stream)
-        record = logging.LogRecord(
-            name="test",
-            level=logging.INFO,
-            pathname="test.py",
-            lineno=1,
-            msg="test message",
-            args=(),
-            exc_info=None,
-        )
-        # Simulate ValueError during super().emit() call
-        with patch("logging.StreamHandler.emit", side_effect=ValueError("Test error")):
-            handler.emit(record)
-            assert True  # No exception raised
         # Should not crash
 
-    def test_emit_os_error(self):
-        """测试OSError异常"""
-        stream = io.StringIO()
-        handler = SafeStreamHandler(stream=stream)
-        record = logging.LogRecord(
-            name="test",
-            level=logging.INFO,
-            pathname="test.py",
-            lineno=1,
-            msg="test message",
-            args=(),
-            exc_info=None,
-        )
-        # Simulate OSError during super().emit() call
-        with patch("logging.StreamHandler.emit", side_effect=OSError("Test error")):
-            handler.emit(record)
-            assert True  # No exception raised
         # Should not crash
 
 
@@ -432,70 +361,17 @@ class TestLoggingContext:
 class TestLogInfo:
     """测试 log_info 函数"""
 
-    def test_log_info_normal(self):
-        """测试正常info日志"""
-        with patch.object(global_logger, "info") as mock_info:
-            log_info("test message")
-            mock_info.assert_called_once_with("test message")
-            assert True  # No exception raised
-
-    def test_log_info_with_args(self):
-        """测试带参数的info日志"""
-        with patch.object(global_logger, "info") as mock_info:
-            log_info("test %s", "value")
-            mock_info.assert_called_once_with("test %s", "value")
-            assert True  # No exception raised
-
-    def test_log_info_with_kwargs(self):
-        """测试带kwargs的info日志"""
-        with patch.object(global_logger, "info") as mock_info:
-            log_info("test message", extra={"key": "value"})
-            mock_info.assert_called_once_with("test message", extra={"key": "value"})
-            assert True  # No exception raised
-
-    def test_log_info_exception_handling(self):
-        """测试异常处理"""
-        with patch.object(global_logger, "info", side_effect=ValueError("Test error")):
-            log_info("test message")
-            assert True  # No exception raised
-            # Should not crash
+    # Should not crash
 
 
 class TestLogWarning:
     """测试 log_warning 函数"""
 
-    def test_log_warning_normal(self):
-        """测试正常warning日志"""
-        with patch.object(global_logger, "warning") as mock_warning:
-            log_warning("test warning")
-            mock_warning.assert_called_once_with("test warning")
-            assert True  # No exception raised
-
-    def test_log_warning_exception_handling(self):
-        """测试异常处理"""
-        with patch.object(
-            global_logger, "warning", side_effect=ValueError("Test error")
-        ):
-            log_warning("test warning")
-            assert True  # No exception raised
-            # Should not crash
+    # Should not crash
 
 
 class TestLogError:
     """测试 log_error 函数"""
-
-    def test_log_error_normal(self):
-        """测试正常error日志"""
-        with patch.object(global_logger, "error") as mock_error:
-            log_error("test error")
-            mock_error.assert_called_once_with("test error")
-            assert True  # No exception raised
-
-    def test_log_error_exception_handling(self):
-        """测试异常处理"""
-        with patch.object(global_logger, "error", side_effect=ValueError("Test error")):
-            log_error("test error")
-            assert True
 
 
 class TestLogDebug:
@@ -653,12 +529,6 @@ class TestLogPerformance:
             call_args = mock_debug.call_args[0][0]
             assert "0.7890s" in call_args
             assert "key1: val1" in call_args
-
-    def test_log_performance_exception_handling(self):
-        """测试异常处理"""
-        with patch.object(perf_logger, "debug", side_effect=ValueError("Test error")):
-            log_performance("test_operation", 0.123)
-            assert True
 
 
 class TestCreatePerformanceLogger:

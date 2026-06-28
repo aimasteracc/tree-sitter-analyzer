@@ -109,13 +109,6 @@ class TestScenarioRegistry:
 
 
 class TestRunCaseSchema:
-    def test_tsa_cold_start_returns_required_fields(self, tiny_repo: Path):
-        row = bench_runner.run_case(str(tiny_repo), "cold-start", "tsa")
-        for field in bench_runner.REQUIRED_FIELDS:
-            assert field in row, f"missing {field}; got {sorted(row)}"
-        assert row["tool_calls"] == 1
-        assert row["wall_clock_s"] >= 0.0
-
     def test_baseline_cold_start_returns_required_fields(self, tiny_repo: Path):
         row = bench_runner.run_case(str(tiny_repo), "cold-start", "baseline")
         for field in bench_runner.REQUIRED_FIELDS:

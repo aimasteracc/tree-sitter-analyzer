@@ -346,7 +346,7 @@ class TestIntegration:
         assert plan is not None
         assert plan["function"] == "process_data"
         assert "data_processing_helpers" in plan["helper_module"]
-        assert len(plan["extractions"]) >= 1
+        assert len(plan["extractions"]) == 1  # Measured 2026-06-28 with grammar v0.21.3
         assert all("helper_name" in t for t in plan["extractions"])
         assert len(plan["steps"]) == 4
 

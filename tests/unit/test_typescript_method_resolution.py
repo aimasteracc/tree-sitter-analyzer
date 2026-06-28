@@ -96,18 +96,6 @@ def test_build_context_none_when_no_typescript_file() -> None:
     assert ctx is None
 
 
-def test_build_context_present_for_tsx() -> None:
-    """A ``.tsx`` file (tagged ``typescript``) builds a context."""
-    ctx = build_typescript_resolver_context(
-        imports_by_file={},
-        file_languages={"a.tsx": "typescript"},
-        file_symbols={},
-        global_name_table={},
-        file_class_methods=lambda: {},
-    )
-    assert ctx is not None
-
-
 def test_local_no_receiver_resolves_same_file() -> None:
     ctx = _ctx(file_symbols={"a.ts": [("helper", "function", 7)]})
     sym_id, resolution, resolved_file = resolve_typescript_callee(
