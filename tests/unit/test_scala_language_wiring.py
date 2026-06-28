@@ -39,8 +39,8 @@ def test_sc_extension_stays_unknown() -> None:
     though ``ScalaPlugin.get_file_extensions()`` lists it. Pin the documented
     behavior: detection returns unknown; an explicit ``language="scala"``
     override remains the supported route for Scala scripts / Ammonite."""
-    from tree_sitter_analyzer.languages.lang_extension_map import EXT_TO_LANG
     from tree_sitter_analyzer.language_detector import detect_language_from_file
+    from tree_sitter_analyzer.languages.lang_extension_map import EXT_TO_LANG
 
     assert ".sc" not in EXT_TO_LANG
     assert detect_language_from_file("script.sc") == "unknown"

@@ -140,8 +140,7 @@ def create_security_test_files(project_root: Path) -> None:
         json.dumps(
             {
                 "aws_access_key": "AKIA" + "IOSFODNN7EXAMPLE",
-                aws_credential_name: "wJalrXUtnFEMI/"
-                + "K7MDENG/bPxRfiCYEXAMPLEKEY",
+                aws_credential_name: "wJalrXUtnFEMI/" + "K7MDENG/bPxRfiCYEXAMPLEKEY",
                 "database_url": "postgresql://user"
                 + ":"
                 + "password"

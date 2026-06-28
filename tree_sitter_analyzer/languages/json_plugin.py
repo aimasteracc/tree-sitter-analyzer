@@ -238,23 +238,43 @@ class JSONElementExtractor(ElementExtractor):
             child_count=child_count,
         )
 
-    def _extract_object(self, node: tree_sitter.Node, elements: list[JSONElement]) -> None:
+    def _extract_object(
+        self, node: tree_sitter.Node, elements: list[JSONElement]
+    ) -> None:
         """Extract JSON object."""
         try:
             child_count = sum(1 for c in node.children if c.type == "pair")
-            elements.append(self._make_element(node, "object", "object", child_count=child_count, truncate_text=True))
+            elements.append(
+                self._make_element(
+                    node,
+                    "object",
+                    "object",
+                    child_count=child_count,
+                    truncate_text=True,
+                )
+            )
         except Exception:  # nosec B110
             pass
 
-    def _extract_array(self, node: tree_sitter.Node, elements: list[JSONElement]) -> None:
+    def _extract_array(
+        self, node: tree_sitter.Node, elements: list[JSONElement]
+    ) -> None:
         """Extract JSON array."""
         try:
-            child_count = sum(1 for c in node.children if c.type not in ("[", "]", ",", "ERROR"))
-            elements.append(self._make_element(node, "array", "array", child_count=child_count, truncate_text=True))
+            child_count = sum(
+                1 for c in node.children if c.type not in ("[", "]", ",", "ERROR")
+            )
+            elements.append(
+                self._make_element(
+                    node, "array", "array", child_count=child_count, truncate_text=True
+                )
+            )
         except Exception:  # nosec B110
             pass
 
-    def _extract_pair(self, node: tree_sitter.Node, elements: list[JSONElement]) -> None:
+    def _extract_pair(
+        self, node: tree_sitter.Node, elements: list[JSONElement]
+    ) -> None:
         """Extract JSON key-value pair (tree-sitter structure: string, ':', value)."""
         try:
             key_node = value_node = None
@@ -269,13 +289,22 @@ class JSONElementExtractor(ElementExtractor):
                 kt = self._get_node_text(key_node).strip()
                 key = kt[1:-1] if kt.startswith('"') and kt.endswith('"') else kt
             value, value_type = self._extract_value_info(value_node)
-            elements.append(self._make_element(
-                node, key or "pair", "pair", key=key, value=value, value_type=value_type
-            ))
+            elements.append(
+                self._make_element(
+                    node,
+                    key or "pair",
+                    "pair",
+                    key=key,
+                    value=value,
+                    value_type=value_type,
+                )
+            )
         except Exception:  # nosec B110
             pass
 
-    def _extract_string(self, node: tree_sitter.Node, elements: list[JSONElement]) -> None:
+    def _extract_string(
+        self, node: tree_sitter.Node, elements: list[JSONElement]
+    ) -> None:
         """Extract JSON string (skip pair keys — handled by _extract_pair)."""
         try:
             if node.parent and node.parent.type == "pair":
@@ -289,7 +318,9 @@ class JSONElementExtractor(ElementExtractor):
         except Exception:  # nosec B110
             pass
 
-    def _extract_number(self, node: tree_sitter.Node, elements: list[JSONElement]) -> None:
+    def _extract_number(
+        self, node: tree_sitter.Node, elements: list[JSONElement]
+    ) -> None:
         """Extract JSON number."""
         try:
             value = self._get_node_text(node).strip()
@@ -297,15 +328,23 @@ class JSONElementExtractor(ElementExtractor):
         except Exception:  # nosec B110
             pass
 
-    def _extract_boolean(self, node: tree_sitter.Node, elements: list[JSONElement], bool_value: bool) -> None:
+    def _extract_boolean(
+        self, node: tree_sitter.Node, elements: list[JSONElement], bool_value: bool
+    ) -> None:
         """Extract JSON boolean."""
         try:
             value = "true" if bool_value else "false"
-            elements.append(self._make_element(node, value, value, value=value, value_type="boolean"))
+            elements.append(
+                self._make_element(
+                    node, value, value, value=value, value_type="boolean"
+                )
+            )
         except Exception:  # nosec B110
             pass
 
-    def _extract_null(self, node: tree_sitter.Node, elements: list[JSONElement]) -> None:
+    def _extract_null(
+        self, node: tree_sitter.Node, elements: list[JSONElement]
+    ) -> None:
         """Extract JSON null."""
         try:
             elements.append(self._make_element(node, "null", "null", value="null"))
@@ -416,15 +455,23 @@ class JSONPlugin(LanguagePlugin):
         """Unified extraction entry point — delegates to the extractor."""
         return self.create_extractor().extract_elements(tree, source_code)
 
-    async def analyze_file(self, file_path: str, request: AnalysisRequest) -> AnalysisResult:
+    async def analyze_file(
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """Analyze JSON file using tree-sitter-json parser."""
         from ..encoding_utils import read_file_safe
 
         if not JSON_AVAILABLE:
             log_error("tree-sitter-json not available")
             return AnalysisResult(
-                file_path=file_path, language="json", line_count=0, elements=[],
-                node_count=0, query_results={}, source_code="", success=False,
+                file_path=file_path,
+                language="json",
+                line_count=0,
+                elements=[],
+                node_count=0,
+                query_results={},
+                source_code="",
+                success=False,
                 error_message="JSON support not available. Install tree-sitter-json.",
             )
         try:
@@ -435,15 +482,26 @@ class JSONPlugin(LanguagePlugin):
             elements = self.create_extractor().extract_json_elements(tree, content)
             log_info(f"Extracted {len(elements)} JSON elements from {file_path}")
             return AnalysisResult(
-                file_path=file_path, language="json",
-                line_count=len(content.splitlines()), elements=elements,
-                node_count=len(elements), query_results={}, source_code=content,
-                success=True, error_message=None,
+                file_path=file_path,
+                language="json",
+                line_count=len(content.splitlines()),
+                elements=elements,
+                node_count=len(elements),
+                query_results={},
+                source_code=content,
+                success=True,
+                error_message=None,
             )
         except Exception as e:
             log_error(f"Failed to analyze JSON file {file_path}: {e}")
             return AnalysisResult(
-                file_path=file_path, language="json", line_count=0, elements=[],
-                node_count=0, query_results={}, source_code="", success=False,
+                file_path=file_path,
+                language="json",
+                line_count=0,
+                elements=[],
+                node_count=0,
+                query_results={},
+                source_code="",
+                success=False,
                 error_message=str(e),
             )

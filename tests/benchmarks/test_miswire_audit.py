@@ -155,8 +155,21 @@ def test_js_builtins_excluded_from_genuine() -> None:
     JS `Map()` is excluded while a genuine name (`tokenize`) is kept."""
     from tree_sitter_analyzer.miswire_audit import _CALLER_BUILTINS
 
-    for lang in ("javascript", "typescript", "java", "go", "kotlin", "csharp",
-                 "swift", "c", "cpp", "python", "ruby", "php", "rust"):
+    for lang in (
+        "javascript",
+        "typescript",
+        "java",
+        "go",
+        "kotlin",
+        "csharp",
+        "swift",
+        "c",
+        "cpp",
+        "python",
+        "ruby",
+        "php",
+        "rust",
+    ):
         assert _CALLER_BUILTINS.get(lang), f"{lang} has no builtin set"
     assert "Map" in _CALLER_BUILTINS["javascript"]
     assert "Promise" in _CALLER_BUILTINS["javascript"]

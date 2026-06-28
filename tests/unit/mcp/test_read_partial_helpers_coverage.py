@@ -1,6 +1,5 @@
 """Tests for mcp.tools.read_partial_helpers — schema, validation, response building."""
 
-
 from tree_sitter_analyzer.mcp.tools.read_partial_helpers import (
     TOOL_SCHEMA,
     build_agent_summary,
@@ -36,16 +35,12 @@ class TestBuildReadResponse:
         assert "start_column" not in resp
 
     def test_with_columns(self):
-        resp = build_read_response(
-            "f.py", "code", 1, 1, 0, 10, "/abs/f.py", 1, False
-        )
+        resp = build_read_response("f.py", "code", 1, 1, 0, 10, "/abs/f.py", 1, False)
         assert resp["start_column"] == 0
         assert resp["end_column"] == 10
 
     def test_end_line_defaults_to_start(self):
-        resp = build_read_response(
-            "f.py", "x", 3, None, None, None, "/f.py", 1, False
-        )
+        resp = build_read_response("f.py", "x", 3, None, None, None, "/f.py", 1, False)
         assert resp["end_line"] == 3
 
 
@@ -57,16 +52,22 @@ class TestValidateLineRange:
         assert "start_line must be a positive" in validate_line_range(0, 10, None, None)
 
     def test_invalid_start_line_type(self):
-        assert "start_line must be a positive" in validate_line_range("a", 10, None, None)
+        assert "start_line must be a positive" in validate_line_range(
+            "a", 10, None, None
+        )
 
     def test_invalid_end_line(self):
         assert "end_line must be a positive" in validate_line_range(1, -1, None, None)
 
     def test_end_before_start(self):
-        assert "end_line must be >= start_line" in validate_line_range(10, 5, None, None)
+        assert "end_line must be >= start_line" in validate_line_range(
+            10, 5, None, None
+        )
 
     def test_invalid_start_column(self):
-        assert "start_column must be a non-negative" in validate_line_range(1, 10, -1, None)
+        assert "start_column must be a non-negative" in validate_line_range(
+            1, 10, -1, None
+        )
 
     def test_invalid_end_column(self):
         assert "end_column must be a non-negative" in validate_line_range(1, 10, 0, -1)
@@ -165,7 +166,12 @@ class TestBuildAgentSummaryForResult:
     def test_from_result_dict(self):
         result = {
             "file_path": "f.py",
-            "range": {"start_line": 1, "end_line": 5, "start_column": None, "end_column": None},
+            "range": {
+                "start_line": 1,
+                "end_line": 5,
+                "start_column": None,
+                "end_column": None,
+            },
             "content_length": 100,
             "lines_extracted": 5,
         }

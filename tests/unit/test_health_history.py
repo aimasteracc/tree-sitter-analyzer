@@ -28,7 +28,9 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 def _import_history():
     """Lazy import to ensure each test gets a clean failure on missing module."""
-    from tree_sitter_analyzer.registry.health_history import HealthHistory  # noqa: WPS433
+    from tree_sitter_analyzer.registry.health_history import (
+        HealthHistory,  # noqa: WPS433
+    )
 
     return HealthHistory
 

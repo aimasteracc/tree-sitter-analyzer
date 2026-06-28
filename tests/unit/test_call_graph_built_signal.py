@@ -14,14 +14,14 @@ from unittest import mock
 
 import pytest
 
-from tree_sitter_analyzer.cache import callgraph_state
-from tree_sitter_analyzer.cache.fingerprint import (
-    _walk_supported_source_paths,
-)
 from tree_sitter_analyzer.ast_cache import (
     ASTCache,
     _language_from_ext,
     _walk_source_files,
+)
+from tree_sitter_analyzer.cache import callgraph_state
+from tree_sitter_analyzer.cache.fingerprint import (
+    _walk_supported_source_paths,
 )
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool

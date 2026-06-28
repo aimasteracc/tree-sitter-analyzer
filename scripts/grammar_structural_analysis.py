@@ -87,7 +87,7 @@ def analyze_node_structure(
 
 
 def identify_wrapper_nodes_structural(
-    node_stats: dict[str, dict[str, Any]]
+    node_stats: dict[str, dict[str, Any]],
 ) -> list[tuple[str, dict[str, Any]]]:
     """
     基于结构特征识别 wrapper nodes
@@ -276,7 +276,9 @@ dict_comp = {k: v for k, v in items}
 
         # 分析结论
         print("\nAnalysis:")
-        print("  - decorated_definition clearly wraps function_definition/class_definition")
+        print(
+            "  - decorated_definition clearly wraps function_definition/class_definition"
+        )
         print("  - Decorator nodes are structural wrappers, not semantic content")
         print("  - This validates our wrapper detection heuristic")
 

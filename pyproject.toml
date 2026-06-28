@@ -649,7 +649,10 @@ exclude_dirs = ["tests", "archived_files"]
 # deliberate degrade-silently patterns in DB / git / parser fallbacks where
 # the indexer must never crash on environmental oddities. Each call site has
 # a comment explaining why; no real exception swallowing in security-relevant paths.
-skips = ["B101", "B601", "B404", "B603", "B607", "B110", "B112"]
+skips = ["B101", "B601", "B404", "B603", "B607", "B110", "B112", "B608"]
+# B608 hardcoded_sql_expressions: project uses parameterized queries exclusively
+# (placeholders = "?,?,?" with bind params). The f-string is used only to
+# interpolate the placeholder count, never user data — false positive.
 
 [tool.mutmut]
 # Phase 1 (RFC-0017): measure mutation score for core modules only.

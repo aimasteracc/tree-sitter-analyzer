@@ -1766,7 +1766,9 @@ def test_cli_knowledge_graph_import_and_special_command_paths(
 def test_ladybug_store_patch_skips_when_unavailable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(LadybugKnowledgeGraphStore, "available", staticmethod(lambda: False))
+    monkeypatch.setattr(
+        LadybugKnowledgeGraphStore, "available", staticmethod(lambda: False)
+    )
     store = LadybugKnowledgeGraphStore(str(tmp_path))
 
     result = store.patch([], [], [], [])
@@ -1777,7 +1779,9 @@ def test_ladybug_store_patch_skips_when_unavailable(
 def test_ladybug_store_patch_skips_when_db_not_found(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(LadybugKnowledgeGraphStore, "available", staticmethod(lambda: True))
+    monkeypatch.setattr(
+        LadybugKnowledgeGraphStore, "available", staticmethod(lambda: True)
+    )
     store = LadybugKnowledgeGraphStore(str(tmp_path))
     # No db file exists
 
@@ -1802,7 +1806,9 @@ def test_ladybug_store_patch_returns_counts_when_db_exists(
     store = LadybugKnowledgeGraphStore(str(tmp_path))
     store.write(snapshot)
 
-    added_node = KnowledgeNode(id="file:b.py", kind="file", label="b.py", file_path="b.py")
+    added_node = KnowledgeNode(
+        id="file:b.py", kind="file", label="b.py", file_path="b.py"
+    )
     result = store.patch([added_node], [], [], [])
 
     assert result["added_nodes"] == 1
@@ -1879,7 +1885,9 @@ def test_ladybug_store_delete_by_file_removes_nodes_and_edges(
 def test_ladybug_store_delete_by_file_skips_when_unavailable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(LadybugKnowledgeGraphStore, "available", staticmethod(lambda: False))
+    monkeypatch.setattr(
+        LadybugKnowledgeGraphStore, "available", staticmethod(lambda: False)
+    )
     store = LadybugKnowledgeGraphStore(str(tmp_path))
 
     result = store.delete_by_file("a.py")
@@ -2010,6 +2018,7 @@ def test_http_status_endpoint_returns_mtime_ns(tmp_path: Path) -> None:
         thread.join(timeout=2)
 
     import json as _json
+
     data = _json.loads(status_payload)
     assert "stats" in data
     assert data["stats"]["mtime_ns"] == 1234567890000000000
@@ -2029,7 +2038,9 @@ def test_http_uml_endpoint_returns_mermaid_for_component(
     )
     JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
 
-    def fake_uml(project_root: str, backend: Any, node_id: str, diagram_type: str) -> dict[str, Any]:
+    def fake_uml(
+        project_root: str, backend: Any, node_id: str, diagram_type: str
+    ) -> dict[str, Any]:
         return {"diagram": "graph TD\n  A[test]", "diagram_type": "component"}
 
     monkeypatch.setattr(server_mod, "_uml_for_node", fake_uml)
@@ -2041,13 +2052,16 @@ def test_http_uml_endpoint_returns_mermaid_for_component(
     base_url = f"http://127.0.0.1:{server.server_port}"
 
     try:
-        uml_payload = _read_url(f"{base_url}/api/uml?node_id=file:a.py&diagram_type=component")
+        uml_payload = _read_url(
+            f"{base_url}/api/uml?node_id=file:a.py&diagram_type=component"
+        )
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
 
     import json as _json
+
     data = _json.loads(uml_payload)
     assert "diagram" in data
     assert data["diagram_type"] == "component"
@@ -2070,9 +2084,11 @@ def test_http_uml_endpoint_class_falls_back_when_no_class_nodes(
     JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
 
     # Simulate fallback: no class nodes → component diagram returned
-    def fake_uml(project_root: str, backend: Any, node_id: str, diagram_type: str) -> dict[str, Any]:
+    def fake_uml(
+        project_root: str, backend: Any, node_id: str, diagram_type: str
+    ) -> dict[str, Any]:
         # Mimic the actual fallback logic: class requested, no class nodes → component
-        return {"diagram": "graph TD\n  file_a_py[\"a.py\"]", "diagram_type": "component"}
+        return {"diagram": 'graph TD\n  file_a_py["a.py"]', "diagram_type": "component"}
 
     monkeypatch.setattr(server_mod, "_uml_for_node", fake_uml)
 
@@ -2083,13 +2099,16 @@ def test_http_uml_endpoint_class_falls_back_when_no_class_nodes(
     base_url = f"http://127.0.0.1:{server.server_port}"
 
     try:
-        uml_payload = _read_url(f"{base_url}/api/uml?node_id=file:a.py&diagram_type=class")
+        uml_payload = _read_url(
+            f"{base_url}/api/uml?node_id=file:a.py&diagram_type=class"
+        )
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
 
     import json as _json
+
     data = _json.loads(uml_payload)
     # Fallback: diagram_type should be component, not class
     assert data["diagram_type"] == "component"
@@ -2118,7 +2137,9 @@ def test_http_uml_endpoint_returns_class_diagram_with_class_nodes(
     )
     JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
 
-    def fake_uml(project_root: str, backend: Any, node_id: str, diagram_type: str) -> dict[str, Any]:
+    def fake_uml(
+        project_root: str, backend: Any, node_id: str, diagram_type: str
+    ) -> dict[str, Any]:
         return {"diagram": "classDiagram\n  class MyClass", "diagram_type": "class"}
 
     monkeypatch.setattr(server_mod, "_uml_for_node", fake_uml)
@@ -2130,13 +2151,16 @@ def test_http_uml_endpoint_returns_class_diagram_with_class_nodes(
     base_url = f"http://127.0.0.1:{server.server_port}"
 
     try:
-        uml_payload = _read_url(f"{base_url}/api/uml?node_id=a.py:MyClass:5&diagram_type=class")
+        uml_payload = _read_url(
+            f"{base_url}/api/uml?node_id=a.py:MyClass:5&diagram_type=class"
+        )
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
 
     import json as _json
+
     data = _json.loads(uml_payload)
     assert data["diagram_type"] == "class"
     assert "classDiagram" in data["diagram"]

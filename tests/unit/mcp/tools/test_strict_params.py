@@ -22,10 +22,10 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
 
-
 # ---------------------------------------------------------------------------
 # Minimal concrete tool — only one known parameter: ``file_path``
 # ---------------------------------------------------------------------------
+
 
 class _StrictTool(BaseMCPTool):
     """Minimal concrete subclass with a single declared parameter."""
@@ -45,7 +45,11 @@ class _StrictTool(BaseMCPTool):
         }
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        return {"success": True, "verdict": "INFO", "file_path": arguments.get("file_path")}
+        return {
+            "success": True,
+            "verdict": "INFO",
+            "file_path": arguments.get("file_path"),
+        }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         return True
@@ -87,6 +91,7 @@ class TestStrictParamsViaBaseTool:
 
     def test_execute_wrapper_is_idempotent(self) -> None:
         """Subclassing _StrictTool must not double-wrap execute."""
+
         class _DerivedTool(_StrictTool):
             pass
 

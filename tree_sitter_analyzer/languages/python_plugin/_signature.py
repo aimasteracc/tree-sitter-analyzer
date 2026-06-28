@@ -50,7 +50,7 @@ def _class_body_assignment_node(node: Any) -> Any | None:
 def _extract_class_decorators(
     parent: Any, get_node_text: Callable[[Any], str]
 ) -> list[str]:
-    decorators = []
+    decorators: list[str] = []
     if not parent:
         return decorators
 

@@ -25,8 +25,8 @@ from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer.cache import build_state as bs
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.cache import build_state as bs
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
 
 

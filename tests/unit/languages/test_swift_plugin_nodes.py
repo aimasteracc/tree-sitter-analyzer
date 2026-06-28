@@ -178,7 +178,9 @@ class TestClassType:
     def test_with_declaration_kind_field(self) -> None:
         kind_node = _make_node("struct", b"struct")
         node = _make_node("class_declaration")
-        node.child_by_field_name = Mock(side_effect=lambda n: kind_node if n == "declaration_kind" else None)
+        node.child_by_field_name = Mock(
+            side_effect=lambda n: kind_node if n == "declaration_kind" else None
+        )
         assert class_type(node) == "struct"
 
     def test_with_child_type(self) -> None:
@@ -255,8 +257,12 @@ class TestBaseElementFields:
 
 class TestNamedChildText:
     def test_finds_matching_descendant(self) -> None:
-        identifier = _make_node("simple_identifier", b"myFunc", start_byte=0, end_byte=6)
-        parent = _make_node("function_declaration", b"func myFunc()", children=[identifier])
+        identifier = _make_node(
+            "simple_identifier", b"myFunc", start_byte=0, end_byte=6
+        )
+        parent = _make_node(
+            "function_declaration", b"func myFunc()", children=[identifier]
+        )
         extractor = _make_extractor_with_source("func myFunc()")
         result = named_child_text(extractor, parent, ("simple_identifier",))
         assert result == "myFunc"
@@ -288,14 +294,20 @@ class TestTypeName:
         name_child = _make_node("type_identifier", b"MyType", start_byte=0, end_byte=6)
         name_field = _make_node("name", b"MyType", children=[name_child])
         node = _make_node("class_declaration", b"class MyType {}")
-        node.child_by_field_name = Mock(side_effect=lambda n: name_field if n == "name" else None)
+        node.child_by_field_name = Mock(
+            side_effect=lambda n: name_field if n == "name" else None
+        )
         extractor = _make_extractor_with_source("class MyType {}")
         result = type_name(extractor, node)
         assert result == "MyType"
 
     def test_without_name_field(self) -> None:
-        type_child = _make_node("type_identifier", b"MyStruct", start_byte=0, end_byte=8)
-        node = _make_node("struct_declaration", b"struct MyStruct {}", children=[type_child])
+        type_child = _make_node(
+            "type_identifier", b"MyStruct", start_byte=0, end_byte=8
+        )
+        node = _make_node(
+            "struct_declaration", b"struct MyStruct {}", children=[type_child]
+        )
         node.child_by_field_name = Mock(return_value=None)
         extractor = _make_extractor_with_source("struct MyStruct {}")
         result = type_name(extractor, node)
@@ -307,14 +319,18 @@ class TestVariableName:
         id_child = _make_node("simple_identifier", b"myVar", start_byte=0, end_byte=5)
         name_field = _make_node("name", b"myVar", children=[id_child])
         node = _make_node("property_declaration", b"var myVar: Int")
-        node.child_by_field_name = Mock(side_effect=lambda n: name_field if n == "name" else None)
+        node.child_by_field_name = Mock(
+            side_effect=lambda n: name_field if n == "name" else None
+        )
         extractor = _make_extractor_with_source("var myVar: Int")
         result = variable_name(extractor, node)
         assert result == "myVar"
 
     def test_without_name_field(self) -> None:
         id_child = _make_node("simple_identifier", b"myVar", start_byte=0, end_byte=5)
-        node = _make_node("property_declaration", b"var myVar: Int", children=[id_child])
+        node = _make_node(
+            "property_declaration", b"var myVar: Int", children=[id_child]
+        )
         node.child_by_field_name = Mock(return_value=None)
         extractor = _make_extractor_with_source("var myVar: Int")
         result = variable_name(extractor, node)

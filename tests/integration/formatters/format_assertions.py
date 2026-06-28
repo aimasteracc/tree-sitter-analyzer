@@ -278,7 +278,9 @@ class CSVFormatAssertions(FormatAssertions):
         )
 
         lines = content.strip().split("\n")
-        assert len(lines) >= 2, "CSV must have header and at least one data row"  # ratchet: nondeterministic
+        assert len(lines) >= 2, (
+            "CSV must have header and at least one data row"
+        )  # ratchet: nondeterministic
 
         # Validate header
         header = lines[0].split(",")

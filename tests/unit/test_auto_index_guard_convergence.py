@@ -16,12 +16,12 @@ from typing import Any
 
 import pytest
 
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.unresolved import (
     index_resolution_fingerprint,
     mark_resolution_converged,
     resolution_converged,
 )
-from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.utils import auto_index_guard
 
 

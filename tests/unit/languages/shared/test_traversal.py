@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 from tree_sitter_analyzer.languages.shared.traversal import (
     collect_named_nodes,
@@ -122,13 +121,17 @@ class TestNodeText:
         assert node_text(None, b"anything") == ""
 
     def test_returns_empty_on_bad_bytes_slice(self):
-        node = SimpleNamespace(type="x", text=None, start_byte=999, end_byte=1000, children=[])
+        node = SimpleNamespace(
+            type="x", text=None, start_byte=999, end_byte=1000, children=[]
+        )
         assert node_text(node, b"short") == ""
 
     def test_multibyte_utf8_slice(self):
         # "こんにちは" is 15 bytes in UTF-8; bytes 0–15
-        source = "こんにちは".encode("utf-8")
-        node = SimpleNamespace(type="x", text=None, start_byte=0, end_byte=15, children=[])
+        source = "こんにちは".encode()
+        node = SimpleNamespace(
+            type="x", text=None, start_byte=0, end_byte=15, children=[]
+        )
         assert node_text(node, source) == "こんにちは"
 
 

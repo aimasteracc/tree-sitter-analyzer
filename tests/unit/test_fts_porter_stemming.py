@@ -18,13 +18,13 @@ import sqlite3
 
 import pytest
 
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.query import fts_search_ranked
 from tree_sitter_analyzer.cache.schema import (
     SCHEMA_V1,
     SCHEMA_V2_FTS,
     SCHEMA_VERSIONS_DDL,
 )
-from tree_sitter_analyzer.ast_cache import ASTCache
 
 # ---------------------------------------------------------------------------
 # FTS5 availability guard (mirrors tests/unit/mcp/test_fts5_bm25_ranking.py)

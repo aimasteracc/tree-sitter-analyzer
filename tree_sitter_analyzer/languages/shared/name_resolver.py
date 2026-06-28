@@ -59,9 +59,9 @@ _STRIP_GENERICS_RE = re.compile(r"^([^<\[\(\s]+)")
 # Common self/this reference names across languages.
 _SELF_ALIASES: frozenset[str] = frozenset(
     {
-        "self",    # Python, Ruby, Swift
-        "this",    # Java, C#, C++, JavaScript, TypeScript, Kotlin
-        "me",      # Visual Basic / some DSLs
+        "self",  # Python, Ruby, Swift
+        "this",  # Java, C#, C++, JavaScript, TypeScript, Kotlin
+        "me",  # Visual Basic / some DSLs
     }
 )
 

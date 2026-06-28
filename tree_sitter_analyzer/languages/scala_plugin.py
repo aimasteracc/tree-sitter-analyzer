@@ -579,8 +579,12 @@ class ScalaElementExtractor(ElementExtractor):
         superclass, interfaces = self._extract_scala_extends_clause(node)
         results.append(
             self._build_scala_class(
-                node, enum_name, "enum", parent_class,
-                superclass=superclass, interfaces=interfaces,
+                node,
+                enum_name,
+                "enum",
+                parent_class,
+                superclass=superclass,
+                interfaces=interfaces,
                 docstring=self._extract_docstring(node),
             )
         )
@@ -594,12 +598,17 @@ class ScalaElementExtractor(ElementExtractor):
                 for case_node in case_defs.children:
                     if case_node.type not in ("simple_enum_case", "full_enum_case"):
                         continue
-                    case_superclass, case_interfaces = self._extract_scala_extends_clause(case_node)
+                    case_superclass, case_interfaces = (
+                        self._extract_scala_extends_clause(case_node)
+                    )
                     results.append(
                         self._build_scala_class(
-                            case_node, self._scala_class_like_name(case_node),
-                            "enum_member", enum_name,
-                            superclass=case_superclass, interfaces=case_interfaces,
+                            case_node,
+                            self._scala_class_like_name(case_node),
+                            "enum_member",
+                            enum_name,
+                            superclass=case_superclass,
+                            interfaces=case_interfaces,
                         )
                     )
 
@@ -654,10 +663,18 @@ class ScalaElementExtractor(ElementExtractor):
         """Extract a ``type_definition`` as a Class with class_type='type_alias'."""
         try:
             name = next(
-                (self._get_node_text(c) for c in node.children if c.type == "type_identifier"),
+                (
+                    self._get_node_text(c)
+                    for c in node.children
+                    if c.type == "type_identifier"
+                ),
                 "unknown_type",
             )
-            class_type = "type_alias" if self._scala_type_has_alias_target(node) else "type_member"
+            class_type = (
+                "type_alias"
+                if self._scala_type_has_alias_target(node)
+                else "type_member"
+            )
             return self._build_scala_class(node, name, class_type, parent_class)
         except Exception as e:
             log_error(f"Error extracting Scala type alias: {e}")
@@ -673,7 +690,9 @@ class ScalaElementExtractor(ElementExtractor):
             receiver_type = self._scala_extension_receiver_type(node)
             start_line, _ = node_range(node)
             suffix = receiver_type or str(start_line)
-            return self._build_scala_class(node, f"extension[{suffix}]", "extension", parent_class)
+            return self._build_scala_class(
+                node, f"extension[{suffix}]", "extension", parent_class
+            )
         except Exception as e:
             log_error(f"Error extracting Scala extension: {e}")
             return None

@@ -154,7 +154,9 @@ class TestExecute:
             tool.execute({"symbol": "my_func", "output_format": "json"})
         )
         assert result["success"] is True
-        assert result["definition_count"] + result["reference_count"] >= 0  # ratchet: nondeterministic
+        assert (
+            result["definition_count"] + result["reference_count"] >= 0
+        )  # ratchet: nondeterministic
         assert result["risk"]["level"] in ("low", "medium", "high", "unknown")
         assert "smart_workflow_hint" in result
 

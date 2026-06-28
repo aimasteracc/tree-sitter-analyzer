@@ -355,7 +355,9 @@ class TestR37afCLIEnvelopeContract:
             _print_filter_help(args)
         _assert_envelope(captured, "filter_help[json]")
         assert isinstance(captured.get("filter_help"), str)
-        assert len(captured["filter_help"]) > 100  # non-trivial help text  # ratchet: nondeterministic
+        assert (
+            len(captured["filter_help"]) > 100
+        )  # non-trivial help text  # ratchet: nondeterministic
 
     def test_filter_help_text_path_preserved(self):
         """Text path (no --format json) must still emit text via output_info."""

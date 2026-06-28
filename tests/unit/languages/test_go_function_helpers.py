@@ -126,8 +126,8 @@ class TestExtractGoFunction:
             return ""
 
         node = MagicMock()
-        node.child_by_field_name.side_effect = (
-            lambda f: name_node if f == "name" else None
+        node.child_by_field_name.side_effect = lambda f: (
+            name_node if f == "name" else None
         )
         node.start_point = (0, 0)
         node.end_point = (1, 0)
@@ -173,7 +173,9 @@ class TestExtractGoFunction:
         ]
         result = extract_go_function(
             node=node,
-            get_node_text=lambda n: n.text if hasattr(n, "text") else "func MyFunc() {}",
+            get_node_text=lambda n: (
+                n.text if hasattr(n, "text") else "func MyFunc() {}"
+            ),
             content_lines=content_lines,
         )
         assert result is not None
@@ -193,7 +195,9 @@ class TestExtractGoFunction:
         node.child_by_field_name = patched
         result = extract_go_function(
             node=node,
-            get_node_text=lambda n: n.text if hasattr(n, "text") else "func NoReturn() {}",
+            get_node_text=lambda n: (
+                n.text if hasattr(n, "text") else "func NoReturn() {}"
+            ),
             content_lines=["func NoReturn() {}"],
         )
         assert result is not None
@@ -222,7 +226,11 @@ class TestExtractGoMethod:
         try:
             result = extract_go_method(
                 node=node,
-                get_node_text=lambda n: n.text if hasattr(n, "text") else "func (s *Service) DoStuff() error {\n  return nil\n}",
+                get_node_text=lambda n: (
+                    n.text
+                    if hasattr(n, "text")
+                    else "func (s *Service) DoStuff() error {\n  return nil\n}"
+                ),
                 content_lines=content_lines,
             )
         finally:
@@ -266,7 +274,9 @@ class TestExtractGoMethod:
         try:
             result = extract_go_method(
                 node=node,
-                get_node_text=lambda n: n.text if hasattr(n, "text") else "func (r *Reader) Process() {}",
+                get_node_text=lambda n: (
+                    n.text if hasattr(n, "text") else "func (r *Reader) Process() {}"
+                ),
                 content_lines=["func (r *Reader) Process() {}"],
             )
         finally:

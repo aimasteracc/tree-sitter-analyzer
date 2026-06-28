@@ -344,7 +344,6 @@ class TestComplexityHeatmapTool:
 
 class TestComplexityCLI:
     def test_cli_project_mode(self, indexed_complex_project, monkeypatch):
-
         from tree_sitter_analyzer.cli_main import main
 
         # Pass --project-root so the heatmap scans the tmp fixture, not os.getcwd()
@@ -378,7 +377,6 @@ class TestComplexityCLI:
         "TestComplexityEngine",
     )
     def test_cli_file_mode(self, complex_project, monkeypatch):
-
         from tree_sitter_analyzer.cli_main import main
 
         monkeypatch.setattr(
@@ -413,7 +411,6 @@ class TestComplexityCLI:
         "TestComplexityEngine",
     )
     def test_cli_function_mode(self, complex_project, monkeypatch):
-
         from tree_sitter_analyzer.cli_main import main
 
         monkeypatch.setattr(

@@ -97,10 +97,12 @@ def serve_knowledge_graph(
     # Start FileWatcherDaemon if watch mode enabled
     daemon = None
     if watch:
+        from ..ast_cache import ASTCache
         from ..file_watcher import FileWatcherDaemon
+
         on_sync = _make_on_sync_callback(project_root)
         daemon = FileWatcherDaemon(
-            project_root=project_root,
+            ASTCache(project_root),
             backend=watch_backend,
             on_sync=on_sync,
         )
@@ -183,18 +185,22 @@ def _mtime_ns(path: str) -> int | None:
         return None
 
 
-def _make_on_sync_callback(project_root: str):
+def _make_on_sync_callback(project_root: str) -> Any:
     """Create a callback for FileWatcherDaemon that updates LadybugDB incrementally."""
+
     def on_sync(sync_result: dict[str, Any]) -> None:
         details = sync_result.get("details", [])
         if not details:
             return
-        changed = [d["file"] for d in details if d.get("considered") in ("indexed", "updated")]
+        changed = [
+            d["file"] for d in details if d.get("considered") in ("indexed", "updated")
+        ]
         deleted = [d["file"] for d in details if d.get("considered") == "deleted"]
         if not changed and not deleted:
             return
         try:
             from .builder import KnowledgeGraphBuilder
+
             lb_store = LadybugKnowledgeGraphStore(project_root)
             for fp in deleted:
                 lb_store.delete_by_file(fp)
@@ -207,6 +213,7 @@ def _make_on_sync_callback(project_root: str):
                 lb_store.patch(list(delta.nodes), [], list(delta.edges), [])
         except Exception:
             logger.debug("on_sync LadybugDB update failed", exc_info=True)
+
     return on_sync
 
 
@@ -234,7 +241,9 @@ def _uml_for_node(
 
     # Generate diagram based on type
     if diagram_type == "class":
-        class_nodes = [n for n in delta.nodes if n.kind in ("class", "interface", "enum")]
+        class_nodes = [
+            n for n in delta.nodes if n.kind in ("class", "interface", "enum")
+        ]
         # CRITICAL: fallback to component if no class nodes
         if not class_nodes:
             diagram_type = "component"
@@ -248,7 +257,9 @@ def _uml_for_node(
         return _generate_component_diagram(delta, diagram_type)
 
 
-def _generate_class_diagram(nodes, edges, diagram_type):
+def _generate_class_diagram(
+    nodes: list[Any], edges: list[Any], diagram_type: str
+) -> dict[str, Any]:
     """Generate Mermaid class diagram."""
     lines = ["classDiagram"]
     for node in nodes:
@@ -261,7 +272,9 @@ def _generate_class_diagram(nodes, edges, diagram_type):
     return {"diagram": "\n".join(lines), "diagram_type": diagram_type}
 
 
-def _generate_sequence_diagram(nodes, edges, diagram_type):
+def _generate_sequence_diagram(
+    nodes: list[Any], edges: list[Any], diagram_type: str
+) -> dict[str, Any]:
     """Generate Mermaid sequence diagram."""
     lines = ["sequenceDiagram"]
     for edge in edges:
@@ -270,7 +283,7 @@ def _generate_sequence_diagram(nodes, edges, diagram_type):
     return {"diagram": "\n".join(lines), "diagram_type": diagram_type}
 
 
-def _generate_component_diagram(delta, diagram_type):
+def _generate_component_diagram(delta: Any, diagram_type: str) -> dict[str, Any]:
     """Generate Mermaid component diagram."""
     lines = ["graph TD"]
     for node in delta.nodes:

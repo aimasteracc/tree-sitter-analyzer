@@ -31,6 +31,7 @@ SKIPPED_SCAN_DIRS = {
     ".venv",
 }
 
+
 def test_gitflow_documentation_is_present() -> None:
     """The GitFlow mandate must remain documented + machine-enforced.
 

@@ -335,8 +335,12 @@ class LadybugKnowledgeGraphStore:
         for eid in removed_edge_ids:
             conn.execute("MATCH ()-[e:KGEdge {id: $id}]->() DELETE e", {"id": eid})
         for nid in removed_node_ids:
-            conn.execute("MATCH ()-[e:KGEdge]->(n:KGNode {id: $id}) DELETE e", {"id": nid})
-            conn.execute("MATCH (n:KGNode)-[e:KGEdge]->() WHERE n.id = $id DELETE e", {"id": nid})
+            conn.execute(
+                "MATCH ()-[e:KGEdge]->(n:KGNode {id: $id}) DELETE e", {"id": nid}
+            )
+            conn.execute(
+                "MATCH (n:KGNode)-[e:KGEdge]->() WHERE n.id = $id DELETE e", {"id": nid}
+            )
             conn.execute("MATCH (n:KGNode {id: $id}) DELETE n", {"id": nid})
         # Add nodes (MERGE = upsert)
         for node in added_nodes:
@@ -344,16 +348,23 @@ class LadybugKnowledgeGraphStore:
                 "MERGE (n:KGNode {id: $id}) SET n.kind = $kind, n.label = $label, "
                 "n.file_path = $file_path, n.language = $language, "
                 "n.metadata_json = $metadata_json",
-                {"id": node.id, "kind": node.kind, "label": node.label,
-                 "file_path": node.file_path, "language": node.language,
-                 "metadata_json": json.dumps(node.metadata, ensure_ascii=False)},
+                {
+                    "id": node.id,
+                    "kind": node.kind,
+                    "label": node.label,
+                    "file_path": node.file_path,
+                    "language": node.language,
+                    "metadata_json": json.dumps(node.metadata, ensure_ascii=False),
+                },
             )
         # Add edges — check node existence with has_next() (NOT fetchall!)
         node_ids_in_db: set[str] = set()
         for edge in added_edges:
             for nid in (edge.source, edge.target):
                 if nid not in node_ids_in_db:
-                    result = conn.execute("MATCH (n:KGNode {id: $id}) RETURN n.id", {"id": nid})
+                    result = conn.execute(
+                        "MATCH (n:KGNode {id: $id}) RETURN n.id", {"id": nid}
+                    )
                     if result.has_next():
                         node_ids_in_db.add(nid)
             if edge.source not in node_ids_in_db or edge.target not in node_ids_in_db:
@@ -362,15 +373,24 @@ class LadybugKnowledgeGraphStore:
                 "MATCH (s:KGNode {id: $source}), (t:KGNode {id: $target}) "
                 "CREATE (s)-[:KGEdge {id: $id, kind: $kind, line: $line, "
                 "provenance: $provenance, metadata_json: $metadata_json}]->(t)",
-                {"id": edge.id, "source": edge.source, "target": edge.target,
-                 "kind": edge.kind, "line": edge.line if edge.line is not None else -1,
-                 "provenance": edge.provenance,
-                 "metadata_json": json.dumps(edge.metadata, ensure_ascii=False)},
+                {
+                    "id": edge.id,
+                    "source": edge.source,
+                    "target": edge.target,
+                    "kind": edge.kind,
+                    "line": edge.line if edge.line is not None else -1,
+                    "provenance": edge.provenance,
+                    "metadata_json": json.dumps(edge.metadata, ensure_ascii=False),
+                },
             )
         conn.close()
-        return {"added_nodes": len(added_nodes), "removed_nodes": len(removed_node_ids),
-                "added_edges": len(added_edges), "removed_edges": len(removed_edge_ids),
-                "elapsed_seconds": round(time.perf_counter() - start, 3)}
+        return {
+            "added_nodes": len(added_nodes),
+            "removed_nodes": len(removed_node_ids),
+            "added_edges": len(added_edges),
+            "removed_edges": len(removed_edge_ids),
+            "elapsed_seconds": round(time.perf_counter() - start, 3),
+        }
 
     def delete_by_file(self, file_path: str) -> dict[str, Any]:
         """Delete all nodes and their edges for a given file_path from LadybugDB."""
@@ -382,8 +402,19 @@ class LadybugKnowledgeGraphStore:
         start = time.perf_counter()
         db = lb.Database(self.path)
         conn = lb.Connection(db)
-        conn.execute("MATCH (n:KGNode)-[e:KGEdge]->() WHERE n.file_path = $fp DELETE e", {"fp": file_path})
-        conn.execute("MATCH ()-[e:KGEdge]->(n:KGNode) WHERE n.file_path = $fp DELETE e", {"fp": file_path})
-        conn.execute("MATCH (n:KGNode) WHERE n.file_path = $fp DELETE n", {"fp": file_path})
+        conn.execute(
+            "MATCH (n:KGNode)-[e:KGEdge]->() WHERE n.file_path = $fp DELETE e",
+            {"fp": file_path},
+        )
+        conn.execute(
+            "MATCH ()-[e:KGEdge]->(n:KGNode) WHERE n.file_path = $fp DELETE e",
+            {"fp": file_path},
+        )
+        conn.execute(
+            "MATCH (n:KGNode) WHERE n.file_path = $fp DELETE n", {"fp": file_path}
+        )
         conn.close()
-        return {"file_path": file_path, "elapsed_seconds": round(time.perf_counter() - start, 3)}
+        return {
+            "file_path": file_path,
+            "elapsed_seconds": round(time.perf_counter() - start, 3),
+        }

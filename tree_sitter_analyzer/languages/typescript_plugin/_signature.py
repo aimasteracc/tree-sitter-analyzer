@@ -241,9 +241,7 @@ def _method_name_from_child(
     if not hasattr(child, "text") or not child.text:
         return None
 
-    if isinstance(child.text, bytes):
-        return child.text.decode("utf-8")
-    return str(child.text)
+    return str(child.text.decode("utf-8"))
 
 
 def _method_name_from_text(node_text: str) -> str | None:

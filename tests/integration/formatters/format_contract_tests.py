@@ -48,7 +48,11 @@ class _CountExpectation:
 
 def extract_table_output(result: dict[str, Any]) -> str:
     """Return table output from a tool response regardless of response shape."""
-    return result["table_output"] if "table_output" in result else result.get("content", "")
+    return (
+        result["table_output"]
+        if "table_output" in result
+        else result.get("content", "")
+    )
 
 
 async def collect_format_outputs(
@@ -150,7 +154,9 @@ def assert_csv_parameter_encoding(csv_output: str, contract_validator: Any) -> N
             if len(row) >= 4 and row[0] in ["method", "constructor"]:
                 _assert_valid_parameter_cell(row[3], contract_validator)
     except (csv.Error, StopIteration) as exc:
-        raise AssertionError("Failed to parse CSV output for parameter validation") from exc
+        raise AssertionError(
+            "Failed to parse CSV output for parameter validation"
+        ) from exc
 
 
 def _assert_valid_parameter_cell(parameters: str, contract_validator: Any) -> None:
@@ -1193,7 +1199,9 @@ class TestFormatContracts:
         assert "csv" in outputs
         assert isinstance(outputs["csv"], str)
         # CSV output contains at least a header row (non-empty string)
-        assert len(outputs["csv"].strip()) > 0  # ratchet: nondeterministic formatter output length varies by fixture
+        assert (
+            len(outputs["csv"].strip()) > 0
+        )  # ratchet: nondeterministic formatter output length varies by fixture
 
     @pytest.mark.asyncio
     async def test_access_modifier_consistency_contract(

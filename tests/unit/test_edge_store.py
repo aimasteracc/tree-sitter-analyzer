@@ -6,11 +6,11 @@ from typing import Any
 
 import pytest
 
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.schema import apply_migration_v8
 from tree_sitter_analyzer.cache.write import (
     write_graph_edges_for_file,
 )
-from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.graph import edge_store as edge_store_module
 from tree_sitter_analyzer.graph.edge_store import (
     Edge,

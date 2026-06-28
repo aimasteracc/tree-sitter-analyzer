@@ -146,7 +146,7 @@ def _extract_modifier_tokens(
 
 def _modifier_token(node: Any, get_node_text: Callable[..., str]) -> str | None:
     if node.type in _MODIFIER_KEYWORDS:
-        return node.type
+        return str(node.type)
     if node.type == "marker_annotation":
         return None
     mod_text = get_node_text(node)

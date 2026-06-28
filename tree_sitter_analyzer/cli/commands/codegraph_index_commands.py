@@ -221,7 +221,7 @@ def run_knowledge_graph_watch(args: Any) -> int:
 
     # Perform initial indexing
     cache = ASTCache(project_root)
-    cache.index(full=False)
+    cache.index_project()
     cache.close()
 
     # Build initial knowledge graph
@@ -235,7 +235,9 @@ def run_knowledge_graph_watch(args: Any) -> int:
         details = sync_result.get("details", [])
         if not details:
             return
-        changed = [d["file"] for d in details if d.get("considered") in ("indexed", "updated")]
+        changed = [
+            d["file"] for d in details if d.get("considered") in ("indexed", "updated")
+        ]
         deleted = [d["file"] for d in details if d.get("considered") == "deleted"]
         if not changed and not deleted:
             return
@@ -252,19 +254,19 @@ def run_knowledge_graph_watch(args: Any) -> int:
 
     # Start daemon
     backend = getattr(args, "knowledge_graph_watch_backend", "poll") or "poll"
-    daemon = FileWatcherDaemon(project_root=project_root, backend=backend, on_sync=on_sync)
+    daemon = FileWatcherDaemon(cache, backend=backend, on_sync=on_sync)
     daemon.start()
     print(f"TSA knowledge graph watch started: {backend} backend", flush=True)
     print("Press Ctrl-C to stop.", flush=True)
 
     try:
         import time
+
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
         daemon.stop()
         return 0
-    return 0
 
 
 def run_codegraph_metrics(args: Any, output_error: OutputErrorFn) -> int:

@@ -43,7 +43,7 @@ repos:
       - id: debug-statements
       - id: name-tests-test
         args: [--pytest-test-first]
-        exclude: ^tests/.*/_.*\.py$|^tests/integration/formatters/(cross_version_compatibility|format_monitor|generate_compatibility_report|update_baselines|validate_golden_masters|format_assertions|integration_tests|format_contract_tests|comprehensive_test_suite|enhanced_assertions|cross_component_tests|schema_validation|specification_compliance_tests|performance_tests|performance_tests_helpers|performance_tests_tests|generate_regression_report|golden_master|end_to_end_tests)\.py$|^tests/integration/workflows/validate_.*\.py$|^tests/fixtures/.*\.py$
+        exclude: ^tests/.*/_.*\.py$|^tests/integration/formatters/(cross_version_compatibility|format_monitor|generate_compatibility_report|update_baselines|validate_golden_masters|format_assertions|integration_tests|format_contract_tests|comprehensive_test_suite|enhanced_assertions|cross_component_tests|schema_validation|specification_compliance_tests|performance_tests|performance_tests_helpers|performance_tests_tests|generate_regression_report|golden_master|end_to_end_tests)\.py$|^tests/integration/workflows/validate_.*\.py$|^tests/fixtures/.*\.py$|^tests/golden/(corpus_|validate_).*\.py$
 
   # Security checks
   - repo: https://github.com/Yelp/detect-secrets
@@ -85,7 +85,7 @@ repos:
           - --explicit-package-bases
           - --follow-imports=silent
           - --no-incremental
-        exclude: ^(examples/|scripts/|compatibility_test/|collect_project_metrics\.py|test_emergency_fix\.py|debug_async_test\.py|run_regression_tests\.py|generate_golden_masters\.py|check_stability\.py|analyze_specific_sql\.py|upload_interactive\.py|regenerate_with_normalization\.py|llm_code_checker\.py|run_coverage\.py|analyze_coverage_json\.py|verify_workflow_structure\.py|validate_workflows\.py|profile_analysis\.py|upload_to_pypi\.py|check_quality\.py|test_fixes\.py|\.kiro/|openspec/)
+        exclude: ^(examples/|scripts/|compatibility_test/|corpus/|collect_project_metrics\.py|test_emergency_fix\.py|debug_async_test\.py|run_regression_tests\.py|generate_golden_masters\.py|check_stability\.py|analyze_specific_sql\.py|upload_interactive\.py|regenerate_with_normalization\.py|llm_code_checker\.py|run_coverage\.py|analyze_coverage_json\.py|verify_workflow_structure\.py|validate_workflows\.py|profile_analysis\.py|upload_to_pypi\.py|check_quality\.py|test_fixes\.py|diagnose_coverage.*\.py|\.kiro/|openspec/)
         additional_dependencies: [
           types-psutil>=5.9.0,
           types-cachetools,

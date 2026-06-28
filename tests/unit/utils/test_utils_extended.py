@@ -72,9 +72,7 @@ class TestUtilsExtended:
             log_error("test error", extra={"key": "value"})
             log_debug("test debug", extra={"key": "value"})
 
-        mock_logger.info.assert_called_once_with(
-            "test message", extra={"key": "value"}
-        )
+        mock_logger.info.assert_called_once_with("test message", extra={"key": "value"})
         mock_logger.warning.assert_called_once_with(
             "test warning", extra={"key": "value"}
         )

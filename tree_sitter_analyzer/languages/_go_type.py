@@ -26,7 +26,7 @@ def extract_embedded_types(
 
 
 def _iter_struct_fields(struct_node: Any) -> list[Any]:
-    fields = []
+    fields: list[Any] = []
     for child in struct_node.children:
         if child.type != "field_declaration_list":
             continue

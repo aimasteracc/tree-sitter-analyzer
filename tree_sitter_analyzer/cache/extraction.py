@@ -180,14 +180,14 @@ _CLASS_LIKE = frozenset(
         "impl_item",
         "struct_declaration",
         "type_declaration",
-        "struct_specifier",             # C/C++
-        "class_specifier",              # C++
-        "type_spec",                    # Go
+        "struct_specifier",  # C/C++
+        "class_specifier",  # C++
+        "type_spec",  # Go
         "annotation_type_declaration",  # Java
-        "companion_object",             # Kotlin
-        "module",                       # Ruby
-        "trait_item",                   # Rust
-        "abstract_class_declaration",   # TypeScript/TSX
+        "companion_object",  # Kotlin
+        "module",  # Ruby
+        "trait_item",  # Rust
+        "abstract_class_declaration",  # TypeScript/TSX
     }
     | _ENUM_LIKE
 )

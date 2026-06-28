@@ -13,7 +13,9 @@ from tree_sitter_analyzer.languages.shared.import_extractor import (
 )
 
 
-def _node_with_text(type_: str, text: bytes, start_byte: int = 0, end_byte: int | None = None) -> SimpleNamespace:
+def _node_with_text(
+    type_: str, text: bytes, start_byte: int = 0, end_byte: int | None = None
+) -> SimpleNamespace:
     if end_byte is None:
         end_byte = start_byte + len(text)
     return SimpleNamespace(
@@ -37,7 +39,9 @@ class TestImportRecord:
         assert record.line == 0
 
     def test_with_names_and_alias(self):
-        record = ImportRecord(module="numpy", alias="np", raw_text="import numpy as np", line=3)
+        record = ImportRecord(
+            module="numpy", alias="np", raw_text="import numpy as np", line=3
+        )
         assert record.alias == "np"
         assert record.line == 3
 

@@ -33,7 +33,9 @@ def _get_text(node):
 
 class TestExtractGoPackage:
     def test_extracts_package(self):
-        node = _mock_node(children=[_mock_identifier_child("mypkg")], text="package mypkg")
+        node = _mock_node(
+            children=[_mock_identifier_child("mypkg")], text="package mypkg"
+        )
         result = extract_go_package(node, _get_text)
         assert isinstance(result, Package)
         assert result.name == "mypkg"

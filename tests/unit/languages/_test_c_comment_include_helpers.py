@@ -129,7 +129,7 @@ class TestExtractIncludeInfo:
     def test_system_include(self) -> None:
         node = FakeNode(
             "preproc_include",
-            text='#include <stdio.h>',
+            text="#include <stdio.h>",
             start_point=(0, 0),
         )
         result = extract_include_info(node, _get_node_text)
@@ -181,7 +181,7 @@ class TestExtractIncludeInfo:
 
 class TestIncludePathMatch:
     def test_angle_bracket(self) -> None:
-        match = _include_path_match('#include <stdio.h>')
+        match = _include_path_match("#include <stdio.h>")
         assert match is not None
         assert match.group(1) == "stdio.h"
 
@@ -217,7 +217,7 @@ class TestIncludeFromLine:
 
 class TestExtractIncludesFallback:
     def test_single_system_include(self) -> None:
-        code = '#include <stdio.h>\nint main() {}'
+        code = "#include <stdio.h>\nint main() {}"
         result = extract_includes_fallback(code)
         assert len(result) == 1
         assert result[0].name == "stdio.h"
@@ -245,7 +245,7 @@ class TestExtractIncludesFallback:
         assert "string.h" in names
 
     def test_line_numbers_correct(self) -> None:
-        code = '#include <a.h>\nint x;\n#include <b.h>'
+        code = "#include <a.h>\nint x;\n#include <b.h>"
         result = extract_includes_fallback(code)
         assert result[0].start_line == 1
         assert result[1].start_line == 3

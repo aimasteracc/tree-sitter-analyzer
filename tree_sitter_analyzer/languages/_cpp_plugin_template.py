@@ -1,7 +1,7 @@
 """Template extraction helpers for the C++ plugin."""
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from ..models import Class, Function
 
@@ -17,7 +17,7 @@ def extract_template_function(
         return None
 
     processed_nodes.add(id(child))
-    return _with_template_modifier(extract_function(child))
+    return cast(Function | None, _with_template_modifier(extract_function(child)))
 
 
 def extract_template_class(
@@ -33,7 +33,7 @@ def extract_template_class(
             continue
 
         processed_nodes.add(id(child))
-        return _with_template_modifier(extractor(child))
+        return cast(Class | None, _with_template_modifier(extractor(child)))
 
     return None
 

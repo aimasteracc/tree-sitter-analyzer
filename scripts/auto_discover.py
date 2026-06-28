@@ -35,7 +35,9 @@ from tree_sitter_analyzer.grammar_coverage.discovery_corpus import (  # noqa: E4
 )
 
 
-def print_language_report(engine: AutoDiscoveryEngine, language: str, args: argparse.Namespace) -> int:
+def print_language_report(
+    engine: AutoDiscoveryEngine, language: str, args: argparse.Namespace
+) -> int:
     """分析单个语言并打印结果，返回退出码（0=成功）."""
     report = engine.analyze_coverage_gap(language)
 
@@ -49,8 +51,7 @@ def print_language_report(engine: AutoDiscoveryEngine, language: str, args: argp
     print(f"  Grammar node types : {report.total_node_types}")
     print(f"  Discovered in corpus: {len(report.discovered_node_types)}")
     discovered_in_grammar = len(
-        set(report.discovered_node_types)
-        & set(engine.get_all_node_types(language))
+        set(report.discovered_node_types) & set(engine.get_all_node_types(language))
     )
     print(f"  In-grammar discovered: {discovered_in_grammar}")
     print(f"  Coverage rate       : {report.coverage_rate:.1f}%")
@@ -61,10 +62,7 @@ def print_language_report(engine: AutoDiscoveryEngine, language: str, args: argp
     if args.show_wrappers and report.wrapper_candidates:
         print(f"\n  Wrapper nodes (score >= {engine.wrapper_threshold:.0f}):")
         for wc in report.wrapper_candidates:
-            print(
-                f"    [{wc.score:3.0f}] {wc.node_type}"
-                f"  ({', '.join(wc.reasons)})"
-            )
+            print(f"    [{wc.score:3.0f}] {wc.node_type}  ({', '.join(wc.reasons)})")
 
     if args.show_missing and report.missing_node_types:
         print(f"\n  Missing from corpus ({len(report.missing_node_types)}):")

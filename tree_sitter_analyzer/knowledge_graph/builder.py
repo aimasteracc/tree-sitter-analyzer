@@ -109,7 +109,9 @@ class KnowledgeGraphBuilder:
         for p in changed_file_paths:
             if os.path.isabs(p):
                 try:
-                    rel_paths.append(os.path.relpath(p, self.project_root).replace("\\", "/"))
+                    rel_paths.append(
+                        os.path.relpath(p, self.project_root).replace("\\", "/")
+                    )
                 except ValueError:
                     rel_paths.append(p)
             else:
@@ -118,7 +120,7 @@ class KnowledgeGraphBuilder:
         try:
             conn = cache.get_conn()
             placeholders = ",".join("?" * len(rel_paths))
-            rows = conn.execute(
+            rows = conn.execute(  # nosec B608 — placeholders is "?,?,?" (safe bind params)
                 f"SELECT file_path, language, symbols_json FROM ast_index "
                 f"WHERE file_path IN ({placeholders}) ORDER BY file_path",
                 rel_paths,
@@ -130,7 +132,7 @@ class KnowledgeGraphBuilder:
             if nodes:
                 node_ids = list(nodes.keys())
                 id_placeholders = ",".join("?" * len(node_ids))
-                edge_rows = conn.execute(
+                edge_rows = conn.execute(  # nosec B608 — id_placeholders is "?,?,?" (safe bind params)
                     f"SELECT source_node_id, target_node_id, kind, line, provenance, "
                     f"metadata, caller_name, callee_name, file_path, language, "
                     f"callee_resolved_file FROM edges "
@@ -141,8 +143,12 @@ class KnowledgeGraphBuilder:
                 ).fetchall()
                 for row in edge_rows:
                     self._add_existing_edge(nodes, edges, row)
-            stats = {"node_count": len(nodes), "edge_count": len(edges),
-                     "delta": True, "changed_files": len(changed_file_paths)}
+            stats = {
+                "node_count": len(nodes),
+                "edge_count": len(edges),
+                "delta": True,
+                "changed_files": len(changed_file_paths),
+            }
             return KnowledgeGraphSnapshot(
                 nodes=sorted(nodes.values(), key=lambda n: n.id),
                 edges=sorted(edges.values(), key=lambda e: e.id),

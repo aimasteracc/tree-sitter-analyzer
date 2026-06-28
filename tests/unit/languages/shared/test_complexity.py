@@ -53,11 +53,14 @@ class TestCyclomaticCounter:
     def test_three_branches_returns_4(self):
         """REQ acceptance criterion: 3 branches → cyclomatic = 4."""
         counter = CyclomaticCounter({"if_statement", "for_statement"})
-        root = _node("function_definition", [
-            _leaf("if_statement"),
-            _leaf("for_statement"),
-            _leaf("if_statement"),
-        ])
+        root = _node(
+            "function_definition",
+            [
+                _leaf("if_statement"),
+                _leaf("for_statement"),
+                _leaf("if_statement"),
+            ],
+        )
         result = counter.count(root)
         assert result.cyclomatic == 4
         assert result.decision_count == 3
@@ -84,17 +87,24 @@ class TestCyclomaticCounter:
     def test_empty_decision_types_returns_1_always(self):
         """Empty type set → base complexity of 1 regardless of tree shape."""
         counter = CyclomaticCounter(set())
-        root = _node("function_definition", [_leaf("if_statement"), _leaf("for_statement")])
+        root = _node(
+            "function_definition", [_leaf("if_statement"), _leaf("for_statement")]
+        )
         result = counter.count(root)
         assert result.cyclomatic == 1
 
     def test_cyclomatic_equals_1_plus_decision_count(self):
         """Invariant: cyclomatic == 1 + decision_count."""
-        counter = CyclomaticCounter({"if_statement", "while_statement", "for_statement"})
-        root = _node("func", [
-            _leaf("if_statement"),
-            _node("while_statement", [_leaf("if_statement")]),
-        ])
+        counter = CyclomaticCounter(
+            {"if_statement", "while_statement", "for_statement"}
+        )
+        root = _node(
+            "func",
+            [
+                _leaf("if_statement"),
+                _node("while_statement", [_leaf("if_statement")]),
+            ],
+        )
         result = counter.count(root)
         assert result.cyclomatic == 1 + result.decision_count
 

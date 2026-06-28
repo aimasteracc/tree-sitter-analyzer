@@ -620,7 +620,9 @@ async def assert_specification_compliance_across_formats(
         if format_type == "full":
             is_valid = validator.validate_full_format_specification(output, class_name)
         elif format_type == "compact":
-            is_valid = validator.validate_compact_format_specification(output, class_name)
+            is_valid = validator.validate_compact_format_specification(
+                output, class_name
+            )
         else:
             is_valid = validator.validate_csv_format_specification(output)
         report = validator.get_validation_report()
@@ -775,7 +777,9 @@ class TestFormatSpecificationCompliance:
 
         # Additional checks
         lines = output.strip().split("\n")
-        assert len(lines) >= 2, "CSV must have header and at least one data row"  # ratchet: nondeterministic
+        assert len(lines) >= 2, (
+            "CSV must have header and at least one data row"
+        )  # ratchet: nondeterministic
 
         # Check header
         header = lines[0]

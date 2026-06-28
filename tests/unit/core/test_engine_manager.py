@@ -182,7 +182,9 @@ class TestEngineManagerResetInstances:
             thread.join()
 
         assert len(instances) == 5
-        assert all(isinstance(instance, UnifiedAnalysisEngine) for instance in instances)
+        assert all(
+            isinstance(instance, UnifiedAnalysisEngine) for instance in instances
+        )
         assert set(EngineManager._instances) == {"default"}  # noqa: SLF001
         assert any(  # noqa: SLF001
             EngineManager._instances["default"] is instance for instance in instances

@@ -186,7 +186,6 @@ def all_tools(comprehensive_project):
 
 
 class TestMCPConsistencyIntegration:
-
     @pytest.mark.asyncio
     async def test_cross_tool_file_output_consistency(
         self, all_tools, comprehensive_project
@@ -359,9 +358,7 @@ class TestMCPConsistencyIntegration:
 
         if created_files:
             base_dirs = [file_path.parent for _, file_path in created_files]
-            assert len(set(base_dirs)) <= 2, (
-                "Files created in inconsistent locations"
-            )
+            assert len(set(base_dirs)) <= 2, "Files created in inconsistent locations"
 
     @pytest.mark.asyncio
     async def test_error_handling_consistency(self, all_tools, comprehensive_project):

@@ -39,7 +39,7 @@ _RUST_DECISION_NODE_TYPES: frozenset[str] = frozenset(
     }
 )
 
-_rust_complexity_counter = CyclomaticCounter(_RUST_DECISION_NODE_TYPES)
+_rust_complexity_counter = CyclomaticCounter(set(_RUST_DECISION_NODE_TYPES))
 
 
 def _rust_calculate_complexity(node: Any) -> int:
@@ -89,7 +89,9 @@ class RustElementExtractor(ElementExtractor):
             "function_item": self._extract_function,
             "function_signature_item": self._extract_function_signature,
         }
-        for node in collect_named_nodes(tree.root_node, "function_item", "function_signature_item"):
+        for node in collect_named_nodes(
+            tree.root_node, "function_item", "function_signature_item"
+        ):
             fn = _fn_extractors[node.type](node)
             if fn is not None:
                 functions.append(fn)
@@ -271,9 +273,7 @@ class RustElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Error extracting module: {e}")
 
-    def _build_function_core(
-        self, node: tree_sitter.Node
-    ) -> Function | None:
+    def _build_function_core(self, node: tree_sitter.Node) -> Function | None:
         """Build a Function from a ``function_item`` or ``function_signature_item``.
 
         Shared logic for both node types: name, line range, parameters,

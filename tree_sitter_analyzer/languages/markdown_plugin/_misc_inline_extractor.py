@@ -143,4 +143,4 @@ def _append_text_format_match(context: TextFormatMatchContext) -> None:
 
 def _match_start_line(node: Any, raw_text: str, match: re.Match[str]) -> int:
     newlines_before = raw_text[: match.start()].count("\n")
-    return node.start_point[0] + 1 + newlines_before
+    return int(node.start_point[0]) + 1 + newlines_before

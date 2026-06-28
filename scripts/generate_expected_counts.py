@@ -262,7 +262,10 @@ def generate_expected_json(language: str, golden_dir: Path) -> None:
     node_counts = parse_corpus_file(corpus_path, language)
 
     # Create expected.json structure
-    expected_data = {"language": language, "node_types": dict(sorted(node_counts.items()))}
+    expected_data = {
+        "language": language,
+        "node_types": dict(sorted(node_counts.items())),
+    }
 
     # Write expected.json
     with open(expected_path, "w", encoding="utf-8") as f:

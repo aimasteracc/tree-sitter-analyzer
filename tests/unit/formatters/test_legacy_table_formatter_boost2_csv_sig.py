@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Legacy table formatter boost2 — CSV format, full signatures, shorten, visibility, doc, csv text."""
 
-
 from tree_sitter_analyzer.legacy_table_formatter import LegacyTableFormatter
 
 

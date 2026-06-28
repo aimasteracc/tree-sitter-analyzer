@@ -223,7 +223,7 @@ class BashElementExtractor(ElementExtractor):
         }
 
     def extract_expressions(
-        self, tree: tree_sitter.Tree, source_code: str
+        self, tree: tree_sitter.Tree | None, source_code: str
     ) -> list[Expression]:
         """Extract Bash expressions (control flow, arrays, redirects, etc.)"""
         self.source_code = source_code or ""
