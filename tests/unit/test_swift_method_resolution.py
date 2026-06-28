@@ -6,9 +6,12 @@ mis-wire that CodeGraph produces must NOT happen here, in either direction.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import shutil
 import tempfile
+
+import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.function_extraction import _CALL_NODE_TYPES, _FUNC_DEF_TYPES
@@ -19,6 +22,12 @@ from tree_sitter_analyzer.synapse_resolver._registry import (
 from tree_sitter_analyzer.synapse_resolver.languages.swift import (
     SwiftResolverContext,
     resolve_swift_callee,
+)
+
+_SWIFT_GRAMMAR_AVAILABLE = importlib.util.find_spec("tree_sitter_swift") is not None
+requires_swift_grammar = pytest.mark.skipif(
+    not _SWIFT_GRAMMAR_AVAILABLE,
+    reason="tree-sitter-swift grammar not installed; tracked: optional grammar wheel",
 )
 
 
@@ -92,6 +101,7 @@ def test_moat_python_owner_never_suppresses_or_binds() -> None:
     )
 
 
+@requires_swift_grammar
 def test_poetic_moat_end_to_end() -> None:
     """Index a Swift file defining `sorted` + a Python file calling sorted();
     neither binds across the language boundary (the CodeGraph failure)."""

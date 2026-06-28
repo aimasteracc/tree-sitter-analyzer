@@ -150,6 +150,7 @@ class TestN1FindAndGrepCaseEcho:
             assert meta["case_sensitive"] is not None
 
 
+@pytest.mark.requires_ripgrep
 class TestN1DuplicateCaseFlagsEmitWarning:
     """End-to-end check via subprocess for the CLI warning."""
 
@@ -209,6 +210,7 @@ class TestN1DuplicateCaseFlagsEmitWarning:
         assert isinstance(data["meta"]["case_sensitive"], bool)
 
 
+@pytest.mark.requires_ripgrep
 class TestN1SearchContentCaseEcho:
     """search_content also emits a strict bool ``case_sensitive``."""
 
