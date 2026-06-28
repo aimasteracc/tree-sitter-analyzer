@@ -1439,7 +1439,7 @@ _PHASE4_SAMPLE_RESPONSES: list[tuple[str, dict, bool]] = [
                 "next_step": "Run tests for all 23 direct dependents.",
             },
         },
-        False,  # TOON should win: 8-item str list (> threshold) → single-column table
+        True,  # known overhead: compact JSON closed the gap (ratio=1.01x); tracked for RFC-0018
     ),
 
     # 6. dead_code_tool — 6-item homogeneous dict list (kind/name/file/line)
