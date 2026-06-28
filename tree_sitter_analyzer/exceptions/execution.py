@@ -18,7 +18,7 @@ def handle_exception(
         context: Additional context information
         reraise_as: Exception class to re-raise as
     """
-    from .utils import log_error
+    from tree_sitter_analyzer.utils import log_error
 
     error_context = context or {}
     if hasattr(exception, "context"):
@@ -143,7 +143,7 @@ def _handle_decorated_exception(
 
 
 def _log_decorated_exception(func_name: str, exception: Exception) -> None:
-    from .utils import log_error
+    from tree_sitter_analyzer.utils import log_error
 
     log_error(f"Exception in {func_name}: {exception}")
 
