@@ -15,11 +15,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ..core.analysis_engine import AnalysisRequest
-    from ..models import AnalysisResult
+    from ...core.analysis_engine import AnalysisRequest
+    from ...models import AnalysisResult
 
-from ..plugins.base import DefaultExtractor, ElementExtractor, LanguagePlugin
-from ..utils import log_error
+from ...plugins.base import DefaultExtractor, ElementExtractor, LanguagePlugin
+from ...utils import log_error
 
 
 class LuaPlugin(LanguagePlugin):
@@ -49,7 +49,7 @@ class LuaPlugin(LanguagePlugin):
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest
     ) -> AnalysisResult:
-        from ..models import AnalysisResult
+        from ...models import AnalysisResult
 
         try:
             with open(file_path, encoding="utf-8", errors="replace") as f:
