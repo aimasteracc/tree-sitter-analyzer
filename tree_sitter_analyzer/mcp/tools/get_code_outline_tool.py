@@ -676,6 +676,8 @@ from .utils.outline_extractors import (  # noqa: E402
     _in_class_ranges,
     _in_function_spans,
     _method_entry,
+    _resolve_extends,  # noqa: F401 — re-exported for test compatibility
+    _resolve_implements,  # noqa: F401 — re-exported for test compatibility
 )
 
 # 模块级实例，供直接访问使用
