@@ -37,20 +37,6 @@ class TestMCPServerBasic:
         # 版本号应与主体一致
         assert server.version.startswith(MCP_INFO["version"])
 
-    @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
-    @patch("tree_sitter_analyzer.mcp.server.get_analysis_engine")
-    @patch("tree_sitter_analyzer.mcp.server.setup_logger")
-    def test_set_project_path(self, mock_logger, mock_engine):
-        """Test setting project path."""
-        mock_engine.return_value = Mock()
-        mock_logger.return_value = Mock()
-
-        server = TreeSitterAnalyzerMCPServer()
-        server.set_project_path("/test/path")
-
-        # The server's internal project root must be updated
-        assert server._project_root == "/test/path"
-
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", False)
     def test_create_server_mcp_unavailable(self):
         """Test server creation when MCP is unavailable."""

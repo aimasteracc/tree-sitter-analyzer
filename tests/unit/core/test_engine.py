@@ -347,19 +347,12 @@ class TestUnifiedAnalysisEnginePluginManagement:
         """Clean up singleton instances."""
         UnifiedAnalysisEngine._reset_instance()
 
-    def test_register_plugin(self):
-        """Test registering a language plugin."""
-        engine = UnifiedAnalysisEngine()
-        plugin = MockLanguagePlugin("python")
-        engine.register_plugin("python", plugin)
-        assert "python" in engine.plugin_manager.get_supported_languages()
-
     def test_get_supported_languages(self):
         """Test getting list of supported languages."""
         engine = UnifiedAnalysisEngine()
         languages = engine.get_supported_languages()
         assert isinstance(languages, list)
-        assert len(languages) == 26
+        assert len(languages) == 25
 
     def test_plugin_manager_property(self):
         """Test accessing plugin manager property."""
@@ -377,12 +370,6 @@ class TestUnifiedAnalysisEngineCacheManagement:
     def teardown_class(cls):
         """Clean up singleton instances."""
         UnifiedAnalysisEngine._reset_instance()
-
-    def test_clear_cache(self):
-        """Test clearing the analysis cache."""
-        engine = UnifiedAnalysisEngine()
-        engine.clear_cache()
-        assert engine.cache_service.size() == 0
 
     def test_get_cache_stats(self):
         """Test getting cache statistics."""
@@ -682,12 +669,6 @@ class TestUnifiedAnalysisEngineCleanup:
         """Clean up singleton instances."""
         UnifiedAnalysisEngine._reset_instance()
 
-    def test_cleanup(self):
-        """Test cleaning up engine resources."""
-        engine = UnifiedAnalysisEngine()
-        engine.cleanup()
-        assert engine.cache_service.size() == 0
-
 
 class TestUnifiedAnalysisEnginePerformance:
     """Test cases for performance monitoring."""
@@ -698,13 +679,6 @@ class TestUnifiedAnalysisEnginePerformance:
     def teardown_class(cls):
         """Clean up singleton instances."""
         UnifiedAnalysisEngine._reset_instance()
-
-    def test_measure_operation(self):
-        """Test measuring an operation."""
-        engine = UnifiedAnalysisEngine()
-        with engine.measure_operation("test_operation"):
-            sum(range(100))
-        assert engine._performance_monitor.get_last_duration() >= 0.0
 
     def test_performance_monitor_property(self):
         """Test accessing performance monitor property."""

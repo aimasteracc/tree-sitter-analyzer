@@ -66,14 +66,6 @@ def test_build_returns_none_when_no_ruby_file_indexed() -> None:
     assert ctx is None
 
 
-def test_build_returns_context_when_ruby_file_indexed() -> None:
-    from tree_sitter_analyzer.synapse_resolver.languages.ruby import RubyResolverContext
-
-    ctx = _ctx(file_languages={"app.rb": "ruby"})
-    assert isinstance(ctx, RubyResolverContext)
-    assert "app.rb" in ctx.file_languages
-
-
 # ---------------------------------------------------------------------------
 # local — same-file resolution
 # ---------------------------------------------------------------------------

@@ -40,6 +40,7 @@ class TestModificationGuardToolInitialization:
 
     def test_init_creates_tool(self, tool: ModificationGuardTool) -> None:
         """Test that initialization creates a tool instance."""
+        assert tool is not None
         assert isinstance(tool, ModificationGuardTool)
 
     def test_init_creates_trace_impact_tool(self, tool: ModificationGuardTool) -> None:

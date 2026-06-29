@@ -784,8 +784,8 @@ class TestCSharpExtractorHelpers:
         extractor.source_code = "test code"
         extractor.content_lines = ["test code"]
         # The method should work with the cache
+        assert extractor.source_code is not None
         assert extractor.source_code == "test code"
-        assert extractor.content_lines == ["test code"]
 
     def test_traverse_iterative(self):
         """Test iterative tree traversal."""

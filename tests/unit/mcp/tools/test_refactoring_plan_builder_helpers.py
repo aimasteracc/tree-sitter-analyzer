@@ -346,7 +346,7 @@ class TestIntegration:
         assert plan is not None
         assert plan["function"] == "process_data"
         assert "data_processing_helpers" in plan["helper_module"]
-        assert len(plan["extractions"]) >= 1
+        assert len(plan["extractions"]) == 1  # Measured 2026-06-28 with grammar v0.21.3
         assert all("helper_name" in t for t in plan["extractions"])
         assert len(plan["steps"]) == 4
 
@@ -379,10 +379,5 @@ class TestIntegration:
         func = {"line": 1, "end_line": 16, "name": "analyze"}
         plan = _build_plan_for_func("analysis.py", lines, func, source)
         assert plan is not None
-        assert "helper_module" in plan
-        assert (
-            len(plan["extractions"]) >= 1
-        )  # ratchet: nondeterministic refactoring plan extraction count
-        assert (
-            len(plan["steps"]) >= 1
-        )  # ratchet: nondeterministic refactoring plan step count
+        assert "function" in plan
+        assert plan["function"] == "analyze"

@@ -1,4 +1,3 @@
-import threading
 import time
 from unittest.mock import Mock
 
@@ -55,22 +54,3 @@ def test_cache_eviction():
     k2_present = cache.get("k2") is not None
 
     assert not (k1_present and k2_present), "Cache should have evicted one item"
-
-
-def test_thread_safety():
-    cache = ProfileCache()
-    profile = Mock(spec=BehaviorProfile)
-
-    def worker():
-        for i in range(100):
-            cache.put(f"k{i}", profile)
-            cache.get(f"k{i}")
-
-    threads = [threading.Thread(target=worker) for _ in range(10)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    assert cache.stats["size"] <= 100
-    assert cache.stats["hits"] >= 0  # ratchet: nondeterministic

@@ -733,8 +733,9 @@ class TestSerializationDataIntegrityProperties:
         # Property: Output should be valid JSON
         try:
             parsed = json.loads(json_output)
+            assert parsed is not None, "JSON output should parse to non-None value"
             assert isinstance(parsed, (dict, list)), (
-                f"format_table(json) should parse to dict or list, got {type(parsed)}"
+                "JSON output must be a dict or list"
             )
         except json.JSONDecodeError as e:
             pytest.fail(f"format_table(json) should produce valid JSON: {e}")
@@ -757,8 +758,9 @@ class TestSerializationDataIntegrityProperties:
         # Property: Output should be valid JSON
         try:
             parsed = json.loads(json_output)
+            assert parsed is not None, "JSON output should parse to non-None value"
             assert isinstance(parsed, (dict, list)), (
-                f"format_advanced(json) should parse to dict or list, got {type(parsed)}"
+                "JSON output must be a dict or list"
             )
         except json.JSONDecodeError as e:
             pytest.fail(f"format_advanced(json) should produce valid JSON: {e}")

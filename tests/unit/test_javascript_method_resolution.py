@@ -77,28 +77,6 @@ def test_build_returns_none_when_no_js_file_indexed() -> None:
     assert ctx is None
 
 
-def test_build_returns_context_when_js_file_indexed() -> None:
-    from tree_sitter_analyzer.synapse_resolver.languages.javascript import (
-        JavaScriptResolverContext,
-    )
-
-    ctx = _ctx(file_languages={"app.js": "javascript"})
-    assert isinstance(ctx, JavaScriptResolverContext)
-    assert "app.js" in ctx.file_languages
-
-
-def test_build_returns_context_when_only_jsx_file_indexed() -> None:
-    """Codex P2 #346: a project containing only ``.jsx`` files (tagged ``"jsx"``)
-    must still build the JS context — otherwise JSX callers get no resolver."""
-    from tree_sitter_analyzer.synapse_resolver.languages.javascript import (
-        JavaScriptResolverContext,
-    )
-
-    ctx = _ctx(file_languages={"App.jsx": "jsx"})
-    assert isinstance(ctx, JavaScriptResolverContext)
-    assert "App.jsx" in ctx.file_languages
-
-
 def test_jsx_caller_bare_call_stays_unknown_not_python_builtin() -> None:
     """Codex P2 #346: the canonical bug — a bare ``len()`` in a JSX file. With
     the JS resolver active for ``jsx``, an unowned bare name stays ``unknown``

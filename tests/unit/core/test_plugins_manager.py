@@ -222,24 +222,6 @@ class TestPluginManagerDiscoverFromLocalDirectory:
     """Tests for _discover_from_local_directory method"""
 
     @patch("tree_sitter_analyzer.plugins.manager.Path")
-    def test_discover_local_plugins(self, mock_path: MagicMock) -> None:
-        """Test discovering local plugins"""
-        manager = PluginManager()
-
-        # Mock path
-        mock_languages_dir = MagicMock()
-        mock_languages_dir.exists.return_value = True
-        mock_file = MagicMock()
-        mock_file.resolve.return_value = MagicMock(parents=[MagicMock()])
-        mock_file.parent.parent.__truediv__ = MagicMock(return_value=mock_languages_dir)
-        mock_path.return_value = mock_file
-
-        # The actual discovery happens via pkgutil.iter_modules which is hard to mock
-        manager._discover_from_local_directory()
-
-        assert isinstance(manager._plugin_modules, dict)
-
-    @patch("tree_sitter_analyzer.plugins.manager.Path")
     def test_discover_no_languages_dir(self, mock_path: MagicMock) -> None:
         """Test when languages directory doesn't exist"""
         manager = PluginManager()

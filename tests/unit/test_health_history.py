@@ -135,18 +135,19 @@ def test_prune_does_not_touch_other_files(history) -> None:
 
     history.prune("/repo/a.py", keep_n=1)
 
-    # fileB rows must be untouched: 5 rows appended, 0 pruned.
-    last_b = history.last("/repo/b.py")
-    assert last_b is not None
-    assert last_b[1] == 4.0  # last score appended for fileB
+    # fileB rows must be untouched.
+    b_row = history.last("/repo/b.py")
+    assert b_row is not None
+    assert b_row[0] == "B"  # grade of the last row appended
 
 
 def test_prune_keep_n_larger_than_rows_is_noop(history) -> None:
     """If keep_n > existing rows, prune deletes nothing and does not raise."""
     history.append("/repo/small.py", score=88.0, grade="B")
-    deleted = history.prune("/repo/small.py", keep_n=100)
-    assert deleted == 0
-    assert history.last("/repo/small.py") is not None
+    history.prune("/repo/small.py", keep_n=100)
+    row = history.last("/repo/small.py")
+    assert row is not None
+    assert row[1] == 88.0  # score must be preserved
 
 
 # -------------------------------------------------------------------- schema migration

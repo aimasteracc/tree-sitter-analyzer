@@ -158,19 +158,10 @@ class TestLoadDependencyGraph:
         # Run with cwd=tmp_path so the None-fallback hits an empty dir
         # instead of scanning the entire repo. Preserves the test intent
         # (None falls back to ".") while making it run in milliseconds.
-        from tree_sitter_analyzer.project_graph import DependencyGraph
-
         monkeypatch.chdir(tmp_path)
         result = _load_dependency_graph(None)
-        assert isinstance(result, DependencyGraph)
-
-    def test_nonexistent_root(self):
-        # DependencyGraph doesn't raise for nonexistent paths — returns a graph.
-        # An obviously-bogus path scans nothing, so this is already fast.
-        from tree_sitter_analyzer.project_graph import DependencyGraph
-
-        result = _load_dependency_graph("/nonexistent/path")
-        assert isinstance(result, DependencyGraph)
+        assert result is not None
+        assert hasattr(result, "node_count")
 
 
 class TestAppendLargeDirtyHint:

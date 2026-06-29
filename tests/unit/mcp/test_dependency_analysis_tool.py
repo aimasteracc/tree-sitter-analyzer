@@ -387,6 +387,7 @@ class TestGraphResetOnPathChange:
         tool._graph = DependencyGraph(str(project))
         tool.set_project_path(str(project))
         new_graph = tool._get_graph()
+        assert new_graph is not None
         assert isinstance(new_graph, DependencyGraph)
 
 

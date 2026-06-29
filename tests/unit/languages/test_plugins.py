@@ -20,12 +20,6 @@ from tree_sitter_analyzer.languages.javascript_plugin import (
 from tree_sitter_analyzer.plugins.manager import PluginManager
 
 
-def test_plugin_manager_instance():
-    """Test plugin manager instance creation"""
-    manager = PluginManager()
-    assert isinstance(manager, PluginManager)
-
-
 def test_register_plugin():
     """Test plugin registration"""
     manager = PluginManager()

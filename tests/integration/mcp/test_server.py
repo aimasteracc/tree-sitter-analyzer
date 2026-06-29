@@ -111,6 +111,14 @@ class TestMCPServerInitialization:
         assert isinstance(MCP_INFO["description"], str)
 
 
+class TestMCPServerCore:
+    """Test core MCP server functionality"""
+
+    def setup_method(self) -> None:
+        """Set up test fixtures"""
+        self.server = None  # Will be initialized when server class is implemented
+
+
 class TestMCPProtocolCompliance:
     """Test MCP protocol compliance"""
 
@@ -129,6 +137,14 @@ class TestMCPProtocolCompliance:
         for cap in required_caps:
             assert cap in capabilities
             assert isinstance(capabilities[cap], dict)
+
+
+class TestMCPServerErrorHandling:
+    """Test error handling in MCP server"""
+
+
+class TestMCPServerIntegration:
+    """Test integration with existing analyzer components"""
 
 
 if __name__ == "__main__":

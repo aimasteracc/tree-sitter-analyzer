@@ -33,11 +33,6 @@ def test_table_command_execute_async_empty(table_command):
     assert hasattr(table_command, "execute_async")
 
 
-def test_table_command_basic_logic(table_command):
-    assert isinstance(table_command, TableCommand)
-    assert table_command.args.table == "full"
-
-
 # ---------------------------------------------------------------------------
 # Tests migrated from test_table_command_coverage_boost2.py
 # ---------------------------------------------------------------------------

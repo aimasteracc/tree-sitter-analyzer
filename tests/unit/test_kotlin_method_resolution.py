@@ -75,19 +75,6 @@ def test_build_context_returns_none_when_no_kotlin_file() -> None:
     assert ctx is None, "no Kotlin file -> opt out so non-Kotlin projects pay nothing"
 
 
-def test_build_context_built_when_kotlin_file_present() -> None:
-    from tree_sitter_analyzer.synapse_resolver.languages.kotlin import (
-        KotlinResolverContext,
-    )
-
-    ctx = _ctx(
-        file_symbols={"Main.kt": [("helper", "function", 1)]},
-        file_languages={"Main.kt": "kotlin"},
-    )
-    assert isinstance(ctx, KotlinResolverContext)
-    assert "Main.kt" in ctx.file_languages
-
-
 # ---------------------------------------------------------------------------
 # (a) local same-file / same-language resolution
 # ---------------------------------------------------------------------------

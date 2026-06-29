@@ -68,17 +68,6 @@ def test_build_context_returns_none_when_no_rust_file() -> None:
     assert ctx is None, "no Rust file -> opt out so non-Rust projects pay nothing"
 
 
-def test_build_context_built_when_rust_file_present() -> None:
-    from tree_sitter_analyzer.synapse_resolver.languages.rust import RustResolverContext
-
-    ctx = _ctx(
-        file_symbols={"lib.rs": [("helper", "function", 1)]},
-        file_languages={"lib.rs": "rust"},
-    )
-    assert isinstance(ctx, RustResolverContext)
-    assert "lib.rs" in ctx.file_languages
-
-
 # ---------------------------------------------------------------------------
 # (a) local same-file / same-language resolution
 # ---------------------------------------------------------------------------

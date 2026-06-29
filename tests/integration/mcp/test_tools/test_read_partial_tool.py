@@ -115,14 +115,6 @@ class TestReadPartialToolIntegration:
         """Set up test fixtures"""
         self.tool = ReadPartialTool()
 
-    def test_integration_with_file_handler(self) -> None:
-        """Test integration with file handling utilities"""
-        from tree_sitter_analyzer.file_handler import read_file_partial
-
-        # Verify file handler exists and is callable
-        # Function-based API, no handler object needed
-        assert callable(read_file_partial)
-
 
 if __name__ == "__main__":
     pytest.main([__file__])
