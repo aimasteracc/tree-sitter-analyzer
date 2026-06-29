@@ -33,10 +33,6 @@ def test_table_command_execute_async_empty(table_command):
     assert hasattr(table_command, "execute_async")
 
 
-def test_table_command_basic_logic(table_command):
-    assert table_command is not None
-
-
 # ---------------------------------------------------------------------------
 # Tests migrated from test_table_command_coverage_boost2.py
 # ---------------------------------------------------------------------------

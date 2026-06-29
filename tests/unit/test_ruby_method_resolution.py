@@ -66,11 +66,6 @@ def test_build_returns_none_when_no_ruby_file_indexed() -> None:
     assert ctx is None
 
 
-def test_build_returns_context_when_ruby_file_indexed() -> None:
-    ctx = _ctx(file_languages={"app.rb": "ruby"})
-    assert ctx is not None
-
-
 # ---------------------------------------------------------------------------
 # local — same-file resolution
 # ---------------------------------------------------------------------------

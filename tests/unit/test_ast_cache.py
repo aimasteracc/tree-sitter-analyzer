@@ -81,6 +81,7 @@ class TestAstExtractionWorker:
         extraction._init_worker_parser()
 
         assert extraction._worker_parser is not None
+        assert hasattr(extraction._worker_parser, "parse_file")
 
 
 class TestIndexFile:

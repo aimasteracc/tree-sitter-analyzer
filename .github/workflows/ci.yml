@@ -166,9 +166,39 @@ jobs:
     if: needs.route.outputs.run_sql_platform_compat == 'true'
     uses: ./.github/workflows/sql-platform-compat.yml
 
+  test-quality-audit:
+    name: Test Quality Audit
+    needs: [route, test]
+    if: needs.route.outputs.run_test_matrix == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: Run test quality audit
+        run: |
+          mkdir -p reports
+          uv run python scripts/audit_test_quality.py --strict --output reports/test-audit.json
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-audit-report
+          path: reports/test-audit.json
+          retention-days: 30
+
   quality-gate:
     name: Quality Gate
-    needs: [route, docs-check, test, quality-check, build, e2e, regression, sql-platform-compat]
+    needs: [route, docs-check, test, quality-check, build, e2e, regression, sql-platform-compat, test-quality-audit]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -217,6 +247,7 @@ jobs:
           check_optional "E2E Tests" "${{ needs.e2e.result }}"
           check_optional "Regression Tests" "${{ needs.regression.result }}"
           check_optional "SQL Platform Compatibility" "${{ needs.sql-platform-compat.result }}"
+          check_routed "Test Quality Audit" "${{ needs.test-quality-audit.result }}"
 
           # Belt-and-suspenders: SOMETHING substantive must have run. Reject a
           # run where neither the test matrix nor the docs-check executed (guards

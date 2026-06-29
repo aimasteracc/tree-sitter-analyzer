@@ -88,6 +88,7 @@ class TestGetPluginEntryPoint:
         ):
             result = manager.get_plugin("testlang")
         assert result is not None
+        assert result.get_language_name() == "testlang"
 
     def test_get_plugin_entry_point_fails_gracefully(self):
         manager = PluginManager()

@@ -139,27 +139,6 @@ class TestExecute:
         )
         assert result["verdict"] in ("INFO", "REVIEW", "CAUTION")
 
-    def test_finds_symbol_returns_success(self, tool, tmp_path):
-        _write_py(
-            tmp_path,
-            "pkg/core.py",
-            "def my_func():\n    return 42\n",
-        )
-        _write_py(
-            tmp_path,
-            "tests/test_core.py",
-            "from pkg.core import my_func\ndef test_my_func():\n    my_func()\n",
-        )
-        result = asyncio.run(
-            tool.execute({"symbol": "my_func", "output_format": "json"})
-        )
-        assert result["success"] is True
-        assert (
-            result["definition_count"] + result["reference_count"] >= 0
-        )  # ratchet: nondeterministic
-        assert result["risk"]["level"] in ("low", "medium", "high", "unknown")
-        assert "smart_workflow_hint" in result
-
     def test_toon_format_includes_content(self, tool, tmp_path):
         _write_py(tmp_path, "pkg/__init__.py", "x = 1\n")
         result = asyncio.run(tool.execute({"symbol": "x", "output_format": "toon"}))

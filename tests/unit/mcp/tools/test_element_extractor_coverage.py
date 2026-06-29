@@ -57,8 +57,8 @@ class TestExtractElements:
         f = tmp_path / "sample.py"
         f.write_text("def hello():\n    pass\n")
         result = extract_elements(str(f))
-        if result is not None:
-            assert result.elements is not None
+        assert result is not None
+        assert isinstance(result.elements, list)
 
 
 class TestGetFunctions:

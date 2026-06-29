@@ -222,19 +222,6 @@ class TestSecurityIntegration:
                 assert not is_safe, f"Pattern should be dangerous: {pattern}"
 
     @pytest.mark.integration
-    def test_audit_logging_integration(self):
-        """Test audit logging functionality."""
-        # Arrange
-        boundary_manager = ProjectBoundaryManager(self.project_root)
-
-        # Act - should not raise exceptions
-        boundary_manager.audit_access(self.test_file, "read")
-        boundary_manager.audit_access("/etc/passwd", "write")
-        boundary_manager.audit_access("src/main.py", "analyze")
-
-        # Assert - just verify no exceptions were raised
-        assert True
-
     @pytest.mark.integration
     def test_symlink_safety_comprehensive(self):
         """Test comprehensive symlink safety checks."""

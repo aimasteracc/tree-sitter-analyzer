@@ -375,6 +375,7 @@ class TestUniversalAnalyzeToolConfiguration:
             tool.set_project_path(new_temp_dir)
             # Verify the tool still works after path change
             assert tool.analysis_engine is not None
+            assert tool.project_root == new_temp_dir
         finally:
             import shutil
 

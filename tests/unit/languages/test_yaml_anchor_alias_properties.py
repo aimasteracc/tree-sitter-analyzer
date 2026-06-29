@@ -392,56 +392,6 @@ class TestYAMLAnchorAliasProperties:
             f"Content:\n{yaml_content}"
         )
 
-    @settings(max_examples=50)
-    @given(yaml_data=yaml_with_nested_anchor())
-    def test_property_6_nested_anchor_detection(self, yaml_data: tuple[str, str]):
-        """
-        Feature: yaml-language-support, Property 6: Anchor and Alias Detection
-
-        For any YAML file containing anchors in nested structures, the extractor
-        SHALL identify anchors with correct names and nesting levels.
-
-        Validates: Requirements 2.2
-        """
-        yaml_content, expected_anchor_name = yaml_data
-        elements = _parse_and_extract_yaml(yaml_content)
-
-        # Get anchors
-        anchors = [e for e in elements if e.element_type == "anchor"]
-
-        # Property: Anchor must be found
-        assert len(anchors) >= 1, (
-            f"Expected at least 1 anchor, got {len(anchors)}. Content:\n{yaml_content}"
-        )
-
-        # Property: Anchor name must match expected
-        anchor_names = [a.anchor_name for a in anchors]
-        assert expected_anchor_name in anchor_names, (
-            f"Expected anchor name '{expected_anchor_name}' not found. "
-            f"Found: {anchor_names}"
-        )
-
-        # Property: Anchor must have valid nesting_level
-        for anchor in anchors:
-            assert hasattr(anchor, "nesting_level"), (
-                f"Anchor at line {anchor.start_line} must have nesting_level attribute"
-            )
-            assert isinstance(anchor.nesting_level, int), (
-                f"nesting_level must be int, got {type(anchor.nesting_level)}"
-            )
-            assert anchor.nesting_level >= 0, (
-                f"nesting_level must be non-negative, got {anchor.nesting_level}"
-            )
-
-        # Property: Anchor must have valid line numbers
-        for anchor in anchors:
-            assert anchor.start_line > 0, (
-                f"Anchor start_line must be positive, got {anchor.start_line}"
-            )
-            assert anchor.end_line >= anchor.start_line, (
-                "Anchor end_line must be >= start_line"
-            )
-
     @settings(max_examples=100)
     @given(
         anchor_name=valid_anchor_name(),

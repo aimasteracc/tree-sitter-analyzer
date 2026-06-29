@@ -340,7 +340,3 @@ class TestChangeImpactToolPRUrlExecute:
         )
         assert result["success"] is True
         assert "agent_summary" in result
-
-    def test_pr_url_auto_mode_override(self):
-        parsed = parse_pr_url("https://github.com/owner/repo/pull/42")
-        assert parsed is not None

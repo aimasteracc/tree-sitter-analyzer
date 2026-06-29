@@ -347,14 +347,6 @@ class TestUnifiedAnalysisEnginePluginManagement:
         """Clean up singleton instances."""
         UnifiedAnalysisEngine._reset_instance()
 
-    def test_register_plugin(self):
-        """Test registering a language plugin."""
-        engine = UnifiedAnalysisEngine()
-        plugin = MockLanguagePlugin("python")
-        engine.register_plugin("python", plugin)
-        # Plugin should be registered without error
-        assert True
-
     def test_get_supported_languages(self):
         """Test getting list of supported languages."""
         engine = UnifiedAnalysisEngine()
@@ -378,13 +370,6 @@ class TestUnifiedAnalysisEngineCacheManagement:
     def teardown_class(cls):
         """Clean up singleton instances."""
         UnifiedAnalysisEngine._reset_instance()
-
-    def test_clear_cache(self):
-        """Test clearing the analysis cache."""
-        engine = UnifiedAnalysisEngine()
-        engine.clear_cache()
-        # Should complete without error
-        assert True
 
     def test_get_cache_stats(self):
         """Test getting cache statistics."""
@@ -684,13 +669,6 @@ class TestUnifiedAnalysisEngineCleanup:
         """Clean up singleton instances."""
         UnifiedAnalysisEngine._reset_instance()
 
-    def test_cleanup(self):
-        """Test cleaning up engine resources."""
-        engine = UnifiedAnalysisEngine()
-        engine.cleanup()
-        # Should complete without error
-        assert True
-
 
 class TestUnifiedAnalysisEnginePerformance:
     """Test cases for performance monitoring."""
@@ -701,15 +679,6 @@ class TestUnifiedAnalysisEnginePerformance:
     def teardown_class(cls):
         """Clean up singleton instances."""
         UnifiedAnalysisEngine._reset_instance()
-
-    def test_measure_operation(self):
-        """Test measuring an operation."""
-        engine = UnifiedAnalysisEngine()
-        with engine.measure_operation("test_operation"):
-            # Simulate some work
-            sum(range(100))
-        # Should complete without error
-        assert True
 
     def test_performance_monitor_property(self):
         """Test accessing performance monitor property."""
