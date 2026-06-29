@@ -337,8 +337,14 @@ def _bench_query_latency(snapshot: Any, file_ids: list[str]) -> dict[str, Any]:
     }
 
 
-def _bench_memory_resident(snapshot: Any) -> dict[str, Any]:
-    """Measure RSS while the in-memory JSON backend holds the snapshot."""
+def _bench_memory_resident(
+    snapshot: Any, rss_pre_snapshot: float | None = None
+) -> dict[str, Any]:
+    """Measure RSS while the in-memory JSON backend holds the snapshot.
+
+    rss_pre_snapshot: RSS measured BEFORE _build_knowledge_snapshot was called,
+    allowing callers to measure the full snapshot-construction cost.
+    """
     rss_base = _rss_mb()
     tracemalloc.start()
 
@@ -359,7 +365,7 @@ def _bench_memory_resident(snapshot: Any) -> dict[str, Any]:
     tracemalloc.stop()
     rss_after = _rss_mb()
 
-    return {
+    result: dict[str, Any] = {
         "node_count": len(snapshot.nodes),
         "edge_count": len(snapshot.edges),
         "rss_base_mb": round(rss_base, 1),
@@ -368,6 +374,9 @@ def _bench_memory_resident(snapshot: Any) -> dict[str, Any]:
         "tracemalloc_peak_mb": round(peak_bytes / 1024 / 1024, 2),
         "graphify_baseline_mb": "2048-3072 (NetworkX, loads full graph into RAM)",
     }
+    if rss_pre_snapshot is not None:
+        result["rss_pre_snapshot_mb"] = round(rss_pre_snapshot, 1)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -452,15 +461,20 @@ def main(argv: list[str] | None = None) -> int:
         index_result = _bench_full_index(project_dir)
         incremental_result = _bench_incremental_sync(project_dir)
 
+        rss_pre_snapshot = _rss_mb()
         snapshot, file_ids = _build_knowledge_snapshot(args.query_files)
         query_result = _bench_query_latency(snapshot, file_ids)
-        memory_result = _bench_memory_resident(snapshot)
+        memory_result = _bench_memory_resident(snapshot, rss_pre_snapshot)
 
         if args.ci:
+            ci_benchmarks = _build_ci_benchmarks(
+                index_result, incremental_result, query_result, memory_result
+            )
             output = {
-                "benchmarks": _build_ci_benchmarks(
-                    index_result, incremental_result, query_result, memory_result
-                )
+                "benchmarks": ci_benchmarks,
+                "baseline": {
+                    entry["name"]: entry["stats"]["mean"] for entry in ci_benchmarks
+                },
             }
         else:
             output = {
