@@ -21,7 +21,7 @@ class TestUniversalAnalyzeToolInitialization:
         """Test initialization without project root"""
         from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
         from tree_sitter_analyzer.mcp.utils.path_resolver import PathResolver
-        from tree_sitter_analyzer.security.validator import SecurityValidator
+        from tree_sitter_analyzer.security import SecurityValidator
 
         tool = UniversalAnalyzeTool()
         assert isinstance(tool.analysis_engine, UnifiedAnalysisEngine)
