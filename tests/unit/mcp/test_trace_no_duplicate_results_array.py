@@ -36,9 +36,7 @@ def _project() -> str:
 
 
 @pytest.mark.requires_ripgrep
-def test_trace_has_no_duplicate_results_array() -> (
-    None
-):  # T5: tracked via requires_ripgrep
+def test_trace_has_no_duplicate_results_array() -> None:
     d = _project()
     res = asyncio.run(
         TraceImpactTool(project_root=d).execute(

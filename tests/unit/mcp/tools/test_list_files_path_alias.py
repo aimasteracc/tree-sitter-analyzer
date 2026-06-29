@@ -58,6 +58,7 @@ def test_consumed_path_alias_is_removed(tmp_path) -> None:
 
 @pytest.mark.requires_fd
 @pytest.mark.asyncio
+@pytest.mark.requires_fd
 async def test_nonexistent_path_is_rejected_not_silently_widened(tmp_path) -> None:
     """A non-existent ``path`` must surface an error — NOT silently fall back to
     the project root and return the whole tree (the project-05 bug)."""

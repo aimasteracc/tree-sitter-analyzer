@@ -470,6 +470,7 @@ class TestTraceImpactMaxResultsCoercion:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason="unreachable_code_tool deleted in Phase 3")
 class TestUnreachableCodeMaxFilesCoercion:
     """unreachable_code_tool.py:138 — max_files passed to analyze_project_unreachable."""
 

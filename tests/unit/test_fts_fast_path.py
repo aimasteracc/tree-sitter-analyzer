@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import os
 
+import pytest
+
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools._fts_fast_path import (
     _is_fts_eligible,
@@ -239,6 +241,7 @@ class TestSearchContentFtsIntegration:
         cache.index_project(max_files=100)
         cache.close()
 
+    @pytest.mark.requires_ripgrep
     def test_search_content_uses_fts_for_simple_query(self, tmp_path):
         self._setup_indexed_project(tmp_path)
         from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
