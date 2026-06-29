@@ -204,8 +204,12 @@ class TestParserLanguageSupport:
         # 24 in CI (full grammar set). 23 locally when optional wheels such as
         # tree-sitter-swift are absent. Acceptable range: [23, 24].
         # A grammar add/remove outside this range should trip this test.
-        assert len(languages) in (23, 24), (
-            f"expected 23 or 24, got {len(languages)}: {languages}"
+        import importlib.util
+
+        swift_available = importlib.util.find_spec("tree_sitter_swift") is not None
+        expected = 24 if swift_available else 23
+        assert len(languages) == expected, (
+            f"expected {expected}, got {len(languages)}: {languages}"
         )
         assert "python" in languages
 

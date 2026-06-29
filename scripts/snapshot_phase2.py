@@ -51,7 +51,7 @@ _LANG_CONFIG: dict[str, tuple[str, str, str]] = {
     "ruby": ("corpus_ruby.rb", "tree_sitter_ruby", "ruby"),
     "rust": ("corpus_rust.rs", "tree_sitter_rust", "rust"),
     "scala": ("corpus_scala.scala", "tree_sitter_scala", "scala"),
-    "sql": ("corpus_sql.sql", "tree_sitter_languages", "sql"),
+    "sql": ("corpus_sql.sql", "tree_sitter_sql", "sql"),
     "swift": ("corpus_swift.swift", "tree_sitter_swift", "swift"),
     "typescript": ("corpus_typescript.ts", "tree_sitter_typescript", "typescript"),
     "yaml": ("corpus_yaml.yaml", "tree_sitter_yaml", "yaml"),
@@ -138,11 +138,13 @@ def _analyze_with_plugin(corpus_file: Path, lang_key: str) -> dict[str, Any]:
                         "name": getattr(elem, "name", ""),
                         "kind": type(elem).__name__.lower(),
                         "start_line": getattr(elem, "start_line", 0),
+                        "end_line": getattr(elem, "end_line", None),
+                        "import_target": getattr(elem, "import_target", None),
+                        "parent": getattr(elem, "parent", None),
                     }
                 )
         except Exception as exc:
-            # Gracefully store 0 symbols with error note
-            symbols = [{"name": f"__error__: {exc}", "kind": "error", "start_line": 0}]
+            raise RuntimeError(f"Extraction failed for {corpus_file}: {exc}") from exc
 
     # Sort for stable comparison
     symbols.sort(key=lambda s: (s.get("start_line", 0), s.get("name", "")))
@@ -196,7 +198,8 @@ def cmd_compare(languages: list[str]) -> int:
     for lang in languages:
         snap_path = _snapshot_path(lang)
         if not snap_path.exists():
-            print(f"[WARN] no snapshot for {lang}: {snap_path}", file=sys.stderr)
+            diffs.append(f"{lang}: missing baseline snapshot at {snap_path}")
+            print(f"[MISS] {lang}: no snapshot found at {snap_path}", file=sys.stderr)
             continue
 
         corpus_fname, ts_module, lang_key = _LANG_CONFIG[lang]

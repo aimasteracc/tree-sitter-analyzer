@@ -37,7 +37,6 @@ _PROJECT_ROOT = _SCRIPT_DIR.parent
 # Files that are considered "central" and should NOT contain per-language branches.
 # Plugin files and test files are excluded.
 _EXCLUDE_PATTERNS = [
-    "test",
     "plugins/",
     ".venv/",
     "__pycache__",
@@ -49,8 +48,8 @@ _EXCLUDE_PATTERNS = [
 _BRANCH_RE = re.compile(r"\bif\s+language\s*==|elif\s+language\s*==")
 
 # Current gate threshold.  Set to 0 when all migrations are complete.
-# During Phase 2 development this is set high to NOT block development.
-_THRESHOLD = 999  # NOTE: lower to 0 when Stage 12 is fully done (REQ-CI-001)
+# During Phase 2 development this is ratcheted down as stages complete.
+_THRESHOLD = 46  # NOTE: lower to 0 when Stage 12 is fully done (REQ-CI-001)
 
 # Per-file threshold overrides (for gradual ratcheting, not yet in use)
 _FILE_THRESHOLDS: dict[str, int] = {}
@@ -58,6 +57,11 @@ _FILE_THRESHOLDS: dict[str, int] = {}
 
 def _is_excluded(path: Path) -> bool:
     rel = str(path.relative_to(_PROJECT_ROOT)).replace("\\", "/")
+    # Exclude test directories and test files (but not production code that mentions "test")
+    if "/tests/" in rel or rel.startswith("tests/"):
+        return True
+    if path.name.startswith("test_") or path.name.endswith("_test.py"):
+        return True
     return any(pat in rel for pat in _EXCLUDE_PATTERNS)
 
 
@@ -67,7 +71,9 @@ def _count_matches(path: Path) -> list[tuple[int, str]]:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
         for lineno, line in enumerate(text.splitlines(), 1):
-            if _BRANCH_RE.search(line):
+            # Strip inline comments before matching to avoid false positives
+            code_part = line.split("#")[0]
+            if _BRANCH_RE.search(code_part):
                 matches.append((lineno, line.rstrip()))
     except Exception:
         pass
@@ -78,7 +84,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--count", action="store_true", help="Print count only")
     parser.add_argument("--list", action="store_true", help="List each match")
+    parser.add_argument(
+        "--set-threshold",
+        type=int,
+        default=None,
+        help="Override the default threshold (default: 46).",
+    )
+    parser.add_argument(
+        "--enforce",
+        action="store_true",
+        help="Exit 1 when count exceeds threshold (gate enforcement).",
+    )
     args = parser.parse_args()
+
+    threshold = args.set_threshold if args.set_threshold is not None else _THRESHOLD
 
     root = _PROJECT_ROOT / "tree_sitter_analyzer"
     all_matches: list[tuple[Path, int, str]] = []
@@ -103,17 +122,18 @@ def main() -> int:
         return 0
 
     # Gate check
-    print(f"language-branch count: {total} (threshold: {_THRESHOLD})")
-    if total > _THRESHOLD:
-        print(f"FAIL: {total} > {_THRESHOLD}")
+    print(f"language-branch count: {total} (threshold: {threshold})")
+    if total > threshold:
+        print(f"{'FAIL' if args.enforce else 'WARN'}: {total} > {threshold}")
         for path, lineno, line in all_matches[:20]:
             rel = path.relative_to(_PROJECT_ROOT)
             print(f"  {rel}:{lineno}: {line}")
         if len(all_matches) > 20:
             print(f"  ... and {len(all_matches) - 20} more")
-        return 1
+        if args.enforce:
+            return 1
 
-    print(f"PASS: {total} <= {_THRESHOLD}")
+    print(f"PASS: {total} <= {threshold}")
     return 0
 
 
