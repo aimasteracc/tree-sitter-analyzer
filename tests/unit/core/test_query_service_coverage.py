@@ -11,7 +11,7 @@ def query_service():
 
 
 def test_query_service_basic(query_service):
-    assert query_service is not None
+    assert isinstance(query_service, QueryService)
 
 
 @pytest.mark.asyncio

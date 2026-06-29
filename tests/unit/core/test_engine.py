@@ -352,15 +352,14 @@ class TestUnifiedAnalysisEnginePluginManagement:
         engine = UnifiedAnalysisEngine()
         plugin = MockLanguagePlugin("python")
         engine.register_plugin("python", plugin)
-        # Plugin should be registered without error
-        assert True
+        assert "python" in engine.plugin_manager.get_supported_languages()
 
     def test_get_supported_languages(self):
         """Test getting list of supported languages."""
         engine = UnifiedAnalysisEngine()
         languages = engine.get_supported_languages()
         assert isinstance(languages, list)
-        assert len(languages) == 25
+        assert len(languages) == 26
 
     def test_plugin_manager_property(self):
         """Test accessing plugin manager property."""
@@ -383,8 +382,7 @@ class TestUnifiedAnalysisEngineCacheManagement:
         """Test clearing the analysis cache."""
         engine = UnifiedAnalysisEngine()
         engine.clear_cache()
-        # Should complete without error
-        assert True
+        assert engine.cache_service.size() == 0
 
     def test_get_cache_stats(self):
         """Test getting cache statistics."""
@@ -688,8 +686,7 @@ class TestUnifiedAnalysisEngineCleanup:
         """Test cleaning up engine resources."""
         engine = UnifiedAnalysisEngine()
         engine.cleanup()
-        # Should complete without error
-        assert True
+        assert engine.cache_service.size() == 0
 
 
 class TestUnifiedAnalysisEnginePerformance:
@@ -706,10 +703,8 @@ class TestUnifiedAnalysisEnginePerformance:
         """Test measuring an operation."""
         engine = UnifiedAnalysisEngine()
         with engine.measure_operation("test_operation"):
-            # Simulate some work
             sum(range(100))
-        # Should complete without error
-        assert True
+        assert engine._performance_monitor.get_last_duration() >= 0.0
 
     def test_performance_monitor_property(self):
         """Test accessing performance monitor property."""

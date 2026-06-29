@@ -363,8 +363,9 @@ class TestToonEncoderErrorHandling:
 
         obj = CustomObject()
         result = encoder.encode(obj)
-        # Should fall back to JSON
-        assert result is not None
+        # Should fall back to JSON — result must be a non-empty string
+        assert isinstance(result, str)
+        assert len(result) > 0  # ratchet: nondeterministic JSON fallback representation
 
     def test_no_fallback_raises_error(self):
         """Test that error is raised when fallback is disabled."""

@@ -98,6 +98,10 @@ def test_build_context_none_when_no_typescript_file() -> None:
 
 def test_build_context_present_for_tsx() -> None:
     """A ``.tsx`` file (tagged ``typescript``) builds a context."""
+    from tree_sitter_analyzer.synapse_resolver.languages.typescript import (
+        TypeScriptResolverContext,
+    )
+
     ctx = build_typescript_resolver_context(
         imports_by_file={},
         file_languages={"a.tsx": "typescript"},
@@ -105,7 +109,8 @@ def test_build_context_present_for_tsx() -> None:
         global_name_table={},
         file_class_methods=lambda: {},
     )
-    assert ctx is not None
+    assert isinstance(ctx, TypeScriptResolverContext)
+    assert "a.tsx" in ctx.file_languages
 
 
 def test_local_no_receiver_resolves_same_file() -> None:

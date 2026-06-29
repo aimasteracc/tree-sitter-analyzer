@@ -61,7 +61,7 @@ class TestTypeScriptElementExtractorComprehensive:
             side_effect=Exception("Encoding error"),
         ):
             text = extractor._get_node_text_optimized(mock_node)
-            assert text is not None
+            assert isinstance(text, str)
 
     def test_get_node_text_optimized_error_handling(self, extractor, mock_node):
         """Test node text extraction error handling"""

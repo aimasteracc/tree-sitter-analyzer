@@ -379,7 +379,7 @@ class TestGetLanguageHint:
 class TestDefaultNodeMixin:
     def test_is_instantiable(self) -> None:
         mixin = DefaultNodeMixin()
-        assert mixin is not None
+        assert isinstance(mixin, DefaultNodeMixin)
 
     def test_get_language_hint_returns_unknown(self) -> None:
         mixin = DefaultNodeMixin()

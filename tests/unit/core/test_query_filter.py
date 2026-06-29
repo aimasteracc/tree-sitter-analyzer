@@ -16,7 +16,7 @@ class TestQueryFilterInit:
     def test_query_filter_init(self) -> None:
         """Test QueryFilter initialization."""
         filter_obj = QueryFilter()
-        assert filter_obj is not None
+        assert isinstance(filter_obj, QueryFilter)
 
 
 class TestQueryFilterFilterResults:

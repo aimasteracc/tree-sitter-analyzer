@@ -106,7 +106,7 @@ class TestSafeStreamHandler:
         assert handler.stream == custom_stream
 
     def test_handler_emit_with_closed_stream(self):
-        """Test handler handles closed stream"""
+        """Test handler handles closed stream without writing"""
         custom_stream = StringIO()
         custom_stream.close()
         handler = SafeStreamHandler(stream=custom_stream)
@@ -120,12 +120,12 @@ class TestSafeStreamHandler:
             args=(),
             exc_info=None,
         )
-        # Should not raise
+        # Should not raise; closed stream is skipped by should_skip_stream_emit
         handler.emit(record)
-        assert True  # No exception raised
+        assert custom_stream.closed  # Stream remains closed; no write attempted
 
     def test_handler_emit_with_non_writable_stream(self):
-        """Test handler handles non-writable stream"""
+        """Test handler skips non-writable stream"""
         mock_stream = MagicMock()
         mock_stream.closed = False
         mock_stream.writable.return_value = False
@@ -140,9 +140,9 @@ class TestSafeStreamHandler:
             args=(),
             exc_info=None,
         )
-        # Should not raise
         handler.emit(record)
-        assert True  # No exception raised
+        # Non-writable stream must not be written to
+        mock_stream.write.assert_not_called()
 
     def test_handler_emit_success(self):
         """Test handler emits to valid stream"""
@@ -169,57 +169,60 @@ class TestLogFunctions:
     """Tests for logging functions"""
 
     def test_log_info(self):
-        """Test log_info function"""
-        # Should not raise
-        log_info("Test info message")
-        assert True  # No exception raised
+        """Test log_info delegates to logger.info"""
+        with patch.object(logger, "info") as mock_info:
+            log_info("Test info message")
+            mock_info.assert_called_once_with("Test info message")
 
     def test_log_warning(self):
-        """Test log_warning function"""
-        # Should not raise
-        log_warning("Test warning message")
-        assert True  # No exception raised
+        """Test log_warning delegates to logger.warning"""
+        with patch.object(logger, "warning") as mock_warning:
+            log_warning("Test warning message")
+            mock_warning.assert_called_once_with("Test warning message")
 
     def test_log_error(self):
-        """Test log_error function"""
-        # Should not raise
-        log_error("Test error message")
-        assert True  # No exception raised
+        """Test log_error delegates to logger.error"""
+        with patch.object(logger, "error") as mock_error:
+            log_error("Test error message")
+            mock_error.assert_called_once_with("Test error message")
 
     def test_log_debug(self):
-        """Test log_debug function"""
-        # Should not raise
-        log_debug("Test debug message")
-        assert True  # No exception raised
+        """Test log_debug delegates to logger.debug"""
+        with patch.object(logger, "debug") as mock_debug:
+            log_debug("Test debug message")
+            mock_debug.assert_called_once_with("Test debug message")
 
     def test_log_info_with_closed_handler(self):
-        """Test log_info handles closed handlers gracefully"""
-        # This tests the exception handling in log_info
-        with patch.object(logger, "info", side_effect=ValueError("Test error")):
-            # Should not raise, just suppress
+        """Test log_info suppresses ValueError from closed handler"""
+        with patch.object(
+            logger, "info", side_effect=ValueError("Test error")
+        ) as mock_info:
             log_info("Test message")
-            assert True  # No exception raised
+            mock_info.assert_called_once_with("Test message")
 
     def test_log_warning_with_closed_handler(self):
-        """Test log_warning handles closed handlers gracefully"""
-        with patch.object(logger, "warning", side_effect=OSError("Test error")):
-            # Should not raise, just suppress
+        """Test log_warning suppresses OSError from closed handler"""
+        with patch.object(
+            logger, "warning", side_effect=OSError("Test error")
+        ) as mock_warning:
             log_warning("Test message")
-            assert True  # No exception raised
+            mock_warning.assert_called_once_with("Test message")
 
     def test_log_error_with_closed_handler(self):
-        """Test log_error handles closed handlers gracefully"""
-        with patch.object(logger, "error", side_effect=ValueError("Test error")):
-            # Should not raise, just suppress
+        """Test log_error suppresses ValueError from closed handler"""
+        with patch.object(
+            logger, "error", side_effect=ValueError("Test error")
+        ) as mock_error:
             log_error("Test message")
-            assert True  # No exception raised
+            mock_error.assert_called_once_with("Test message")
 
     def test_log_debug_with_closed_handler(self):
-        """Test log_debug handles closed handlers gracefully"""
-        with patch.object(logger, "debug", side_effect=OSError("Test error")):
-            # Should not raise, just suppress
+        """Test log_debug suppresses OSError from closed handler"""
+        with patch.object(
+            logger, "debug", side_effect=OSError("Test error")
+        ) as mock_debug:
             log_debug("Test message")
-            assert True  # No exception raised
+            mock_debug.assert_called_once_with("Test message")
 
 
 class TestQuietMode:
@@ -250,40 +253,48 @@ class TestSafePrint:
     """Tests for safe_print function"""
 
     def test_safe_print_info(self):
-        """Test safe_print with info level"""
-        # Should not raise
-        safe_print("Test message", level="info")
-        assert True  # No exception raised
+        """Test safe_print with info level calls log_info"""
+        with patch("tree_sitter_analyzer.utils.logging.log_info") as mock_log_info:
+            safe_print("Test message", level="info")
+            mock_log_info.assert_called_once_with("Test message")
 
     def test_safe_print_warning(self):
-        """Test safe_print with warning level"""
-        safe_print("Test warning", level="warning")
-        assert True  # No exception raised
+        """Test safe_print with warning level calls log_warning"""
+        with patch(
+            "tree_sitter_analyzer.utils.logging.log_warning"
+        ) as mock_log_warning:
+            safe_print("Test warning", level="warning")
+            mock_log_warning.assert_called_once_with("Test warning")
 
     def test_safe_print_error(self):
-        """Test safe_print with error level"""
-        safe_print("Test error", level="error")
-        assert True  # No exception raised
+        """Test safe_print with error level calls log_error"""
+        with patch("tree_sitter_analyzer.utils.logging.log_error") as mock_log_error:
+            safe_print("Test error", level="error")
+            mock_log_error.assert_called_once_with("Test error")
 
     def test_safe_print_debug(self):
-        """Test safe_print with debug level"""
-        safe_print("Test debug", level="debug")
-        assert True  # No exception raised
+        """Test safe_print with debug level calls log_debug"""
+        with patch("tree_sitter_analyzer.utils.logging.log_debug") as mock_log_debug:
+            safe_print("Test debug", level="debug")
+            mock_log_debug.assert_called_once_with("Test debug")
 
     def test_safe_print_unknown_level(self):
-        """Test safe_print with unknown level defaults to info"""
-        safe_print("Test unknown", level="unknown")
-        assert True  # No exception raised
+        """Test safe_print with unknown level defaults to log_info"""
+        with patch("tree_sitter_analyzer.utils.logging.log_info") as mock_log_info:
+            safe_print("Test unknown", level="unknown")
+            mock_log_info.assert_called_once_with("Test unknown")
 
     def test_safe_print_quiet(self):
-        """Test safe_print with quiet=True does nothing"""
-        safe_print("Should not print", quiet=True)
-        assert True  # No exception raised
+        """Test safe_print with quiet=True skips logging"""
+        with patch("tree_sitter_analyzer.utils.logging.log_info") as mock_log_info:
+            safe_print("Should not print", quiet=True)
+            mock_log_info.assert_not_called()
 
     def test_safe_print_none_message(self):
-        """Test safe_print with None message"""
-        safe_print(None)
-        assert True
+        """Test safe_print converts None to string 'None'"""
+        with patch("tree_sitter_analyzer.utils.logging.log_info") as mock_log_info:
+            safe_print(None)
+            mock_log_info.assert_called_once_with("None")
 
 
 class TestPerformanceLogging:
@@ -296,31 +307,46 @@ class TestPerformanceLogging:
         assert isinstance(perf_log, logging.Logger)
 
     def test_log_performance_basic(self):
-        """Test log_performance with just operation"""
-        log_performance("test_operation")
-        assert True
+        """Test log_performance with just operation logs operation name"""
+        with patch.object(perf_logger, "debug") as mock_debug:
+            log_performance("test_operation")
+            mock_debug.assert_called_once()
+            assert "test_operation" in mock_debug.call_args[0][0]
 
     def test_log_performance_with_time(self):
-        """Test log_performance with execution time"""
-        log_performance("test_operation", execution_time=1.234)
-        assert True
+        """Test log_performance with execution time includes formatted time"""
+        with patch.object(perf_logger, "debug") as mock_debug:
+            log_performance("test_operation", execution_time=1.234)
+            mock_debug.assert_called_once()
+            assert "1.2340s" in mock_debug.call_args[0][0]
 
     def test_log_performance_with_dict_details(self):
-        """Test log_performance with dict details"""
-        log_performance("test_operation", details={"key": "value"})
-        assert True
+        """Test log_performance with dict details includes key-value pairs"""
+        with patch.object(perf_logger, "debug") as mock_debug:
+            log_performance("test_operation", details={"key": "value"})
+            mock_debug.assert_called_once()
+            assert "key: value" in mock_debug.call_args[0][0]
 
     def test_log_performance_with_string_details(self):
-        """Test log_performance with string details"""
-        log_performance("test_operation", details="extra info")
-        assert True
+        """Test log_performance with string details includes the detail text"""
+        with patch.object(perf_logger, "debug") as mock_debug:
+            log_performance("test_operation", details="extra info")
+            mock_debug.assert_called_once()
+            assert "extra info" in mock_debug.call_args[0][0]
 
     def test_log_performance_full(self):
-        """Test log_performance with all parameters"""
-        log_performance(
-            "test_operation", execution_time=1.5, details={"files": 10, "lines": 1000}
-        )
-        assert True
+        """Test log_performance with all parameters includes all data"""
+        with patch.object(perf_logger, "debug") as mock_debug:
+            log_performance(
+                "test_operation",
+                execution_time=1.5,
+                details={"files": 10, "lines": 1000},
+            )
+            mock_debug.assert_called_once()
+            msg = mock_debug.call_args[0][0]
+            assert "test_operation" in msg
+            assert "1.5000s" in msg
+            assert "files: 10" in msg
 
     def test_setup_performance_logger(self):
         """Test setup_performance_logger function"""
@@ -400,9 +426,10 @@ class TestSetupSafeLoggingShutdown:
     """Tests for setup_safe_logging_shutdown function"""
 
     def test_setup_safe_logging_shutdown(self):
-        """Test setup_safe_logging_shutdown registers cleanup"""
-        setup_safe_logging_shutdown()
-        assert True
+        """Test setup_safe_logging_shutdown registers a cleanup function via atexit"""
+        with patch("atexit.register") as mock_register:
+            setup_safe_logging_shutdown()
+            mock_register.assert_called_once()
 
 
 class TestGlobalLoggers:

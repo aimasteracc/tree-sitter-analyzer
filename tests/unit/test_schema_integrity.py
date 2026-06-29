@@ -142,6 +142,7 @@ class TestFreshDb:
                     "WHERE type='table' AND name='ast_schema_version'"
                 ).fetchone()
                 assert row is not None, "ast_schema_version table missing"
+                assert row[0] == "ast_schema_version"
         finally:
             cache.close()
 

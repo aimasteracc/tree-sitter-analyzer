@@ -85,13 +85,13 @@ public class TestClass {
         assert format_type_prop["default"] == "full"
 
     def test_get_tool_definition(self, mocker) -> None:
-        """Test get_tool_definition method."""
+        """Test get_tool_definition method returns a dict with required keys."""
         mock_tool_instance = mocker.MagicMock()
         mocker.patch("mcp.types.Tool", return_value=mock_tool_instance)
         result = self.tool.get_tool_definition()
 
-        # Basic assertion that result is returned
-        assert result is not None
+        assert isinstance(result, dict)
+        assert result["name"] == "analyze_code_structure"
 
     def test_get_tool_definition_fallback(self, mocker) -> None:
         """Test get_tool_definition fallback when MCP is not available."""

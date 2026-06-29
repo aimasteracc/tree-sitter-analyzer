@@ -75,12 +75,13 @@ class TestAstCacheWriteHelpers:
 class TestAstExtractionWorker:
     def test_init_worker_parser_sets_reusable_parser(self):
         import tree_sitter_analyzer.cache.extraction as extraction
+        from tree_sitter_analyzer.cache.extraction import Parser
 
         extraction._worker_parser = None
 
         extraction._init_worker_parser()
 
-        assert extraction._worker_parser is not None
+        assert isinstance(extraction._worker_parser, Parser)
 
 
 class TestIndexFile:

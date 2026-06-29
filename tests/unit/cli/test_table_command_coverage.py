@@ -34,7 +34,8 @@ def test_table_command_execute_async_empty(table_command):
 
 
 def test_table_command_basic_logic(table_command):
-    assert table_command is not None
+    assert isinstance(table_command, TableCommand)
+    assert table_command.args.table == "full"
 
 
 # ---------------------------------------------------------------------------

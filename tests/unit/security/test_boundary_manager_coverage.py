@@ -161,15 +161,17 @@ class TestValidateAndResolvePath:
         assert resolved is not None
         assert resolved == str(file_path.resolve())
 
-    def test_validate_relative_path_within_project(self, tmp_path):
+    def test_validate_relative_path_within_project(self, tmp_path, monkeypatch):
         """Test validating relative path within project"""
         file_path = tmp_path / "test.py"
         file_path.write_text("test")
 
+        monkeypatch.chdir(tmp_path)
         manager = ProjectBoundaryManager(str(tmp_path))
         resolved = manager.validate_and_resolve_path("test.py")
 
         assert resolved is not None
+        assert resolved == str(file_path.resolve())
 
     def test_validate_path_outside_project(self, tmp_path):
         """Test validating path outside project returns None"""

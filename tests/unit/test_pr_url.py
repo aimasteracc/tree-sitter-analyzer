@@ -344,3 +344,6 @@ class TestChangeImpactToolPRUrlExecute:
     def test_pr_url_auto_mode_override(self):
         parsed = parse_pr_url("https://github.com/owner/repo/pull/42")
         assert parsed is not None
+        assert parsed.owner == "owner"
+        assert parsed.repo == "repo"
+        assert parsed.pr_number == 42

@@ -347,8 +347,23 @@ class TestJavaScriptFormatterRobustness:
         # Force garbage collection
         gc.collect()
 
-        # Should not cause memory issues (test passes if no exception)
-        assert True
+        # All formatting methods must return non-empty strings after repeated calls
+        result_full = formatter._format_full_table(data)
+        result_compact = formatter._format_compact_table(data)
+        result_csv = formatter._format_csv(data)
+        result_json = formatter._format_json(data)
+        assert (
+            isinstance(result_full, str) and len(result_full) > 0
+        )  # ratchet: nondeterministic output length
+        assert (
+            isinstance(result_compact, str) and len(result_compact) > 0
+        )  # ratchet: nondeterministic output length
+        assert (
+            isinstance(result_csv, str) and len(result_csv) > 0
+        )  # ratchet: nondeterministic output length
+        assert (
+            isinstance(result_json, str) and len(result_json) > 0
+        )  # ratchet: nondeterministic output length
 
     def test_concurrent_formatting(self, formatter):
         """Test concurrent formatting operations"""

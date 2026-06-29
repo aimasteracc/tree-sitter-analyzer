@@ -379,3 +379,10 @@ class TestIntegration:
         func = {"line": 1, "end_line": 16, "name": "analyze"}
         plan = _build_plan_for_func("analysis.py", lines, func, source)
         assert plan is not None
+        assert "helper_module" in plan
+        assert (
+            len(plan["extractions"]) >= 1
+        )  # ratchet: nondeterministic refactoring plan extraction count
+        assert (
+            len(plan["steps"]) >= 1
+        )  # ratchet: nondeterministic refactoring plan step count

@@ -87,7 +87,7 @@ class TestGetPluginEntryPoint:
             "tree_sitter_analyzer.plugins.manager.issubclass", return_value=True
         ):
             result = manager.get_plugin("testlang")
-        assert result is not None
+        assert result is mock_plugin
 
     def test_get_plugin_entry_point_fails_gracefully(self):
         manager = PluginManager()

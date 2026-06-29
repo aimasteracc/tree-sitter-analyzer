@@ -135,14 +135,17 @@ def test_prune_does_not_touch_other_files(history) -> None:
 
     history.prune("/repo/a.py", keep_n=1)
 
-    # fileB rows must be untouched.
-    assert history.last("/repo/b.py") is not None
+    # fileB rows must be untouched: 5 rows appended, 0 pruned.
+    last_b = history.last("/repo/b.py")
+    assert last_b is not None
+    assert last_b[1] == 4.0  # last score appended for fileB
 
 
 def test_prune_keep_n_larger_than_rows_is_noop(history) -> None:
     """If keep_n > existing rows, prune deletes nothing and does not raise."""
     history.append("/repo/small.py", score=88.0, grade="B")
-    history.prune("/repo/small.py", keep_n=100)
+    deleted = history.prune("/repo/small.py", keep_n=100)
+    assert deleted == 0
     assert history.last("/repo/small.py") is not None
 
 

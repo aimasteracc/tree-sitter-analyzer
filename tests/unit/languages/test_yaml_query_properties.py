@@ -278,8 +278,10 @@ class TestYAMLQueryProperties:
             # Attempt to compile the query
             compiled_query = tree_sitter.Query(yaml_language, query_string)
 
-            # Property: Compiled query must not be None
-            assert compiled_query is not None, f"Query '{query_name}' compiled to None"
+            # Property: Compiled query must be a Query instance
+            assert isinstance(compiled_query, tree_sitter.Query), (
+                f"Query '{query_name}' compiled to unexpected type {type(compiled_query)}"
+            )
 
         except Exception as e:
             pytest.fail(
@@ -305,8 +307,8 @@ class TestYAMLQueryProperties:
         for query_name, query_string in YAML_QUERIES.items():
             try:
                 compiled_query = tree_sitter.Query(yaml_language, query_string)
-                assert compiled_query is not None, (
-                    f"Query '{query_name}' compiled to None"
+                assert isinstance(compiled_query, tree_sitter.Query), (
+                    f"Query '{query_name}' compiled to unexpected type {type(compiled_query)}"
                 )
             except Exception as e:
                 failed_queries.append((query_name, str(e)))

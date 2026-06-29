@@ -223,17 +223,17 @@ class TestSecurityIntegration:
 
     @pytest.mark.integration
     def test_audit_logging_integration(self):
-        """Test audit logging functionality."""
+        """Test audit logging classifies in-project and out-of-project paths correctly."""
         # Arrange
         boundary_manager = ProjectBoundaryManager(self.project_root)
 
-        # Act - should not raise exceptions
+        # In-project file should be within project; /etc/passwd must not be.
+        assert boundary_manager.is_within_project(self.test_file) is True
+        assert boundary_manager.is_within_project("/etc/passwd") is False
+
+        # audit_access must not raise for either case
         boundary_manager.audit_access(self.test_file, "read")
         boundary_manager.audit_access("/etc/passwd", "write")
-        boundary_manager.audit_access("src/main.py", "analyze")
-
-        # Assert - just verify no exceptions were raised
-        assert True
 
     @pytest.mark.integration
     def test_symlink_safety_comprehensive(self):

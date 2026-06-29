@@ -23,7 +23,7 @@ from tree_sitter_analyzer.plugins.manager import PluginManager
 def test_plugin_manager_instance():
     """Test plugin manager instance creation"""
     manager = PluginManager()
-    assert manager is not None
+    assert isinstance(manager, PluginManager)
 
 
 def test_register_plugin():

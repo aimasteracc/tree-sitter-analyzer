@@ -151,8 +151,7 @@ class TestCLIWithMCPServerIntegration:
         server = TreeSitterAnalyzerMCPServer()
         temp_dir = tempfile.mkdtemp()
         server.set_project_path(temp_dir)
-        # Verify project path was set successfully
-        assert True  # If we get here, set_project_path didn't raise an exception
+        assert server._project_root == temp_dir
 
 
 class TestCLIFileHandlingIntegration:

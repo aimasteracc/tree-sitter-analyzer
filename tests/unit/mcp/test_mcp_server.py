@@ -48,8 +48,8 @@ class TestMCPServerBasic:
         server = TreeSitterAnalyzerMCPServer()
         server.set_project_path("/test/path")
 
-        # Should not raise any exceptions
-        assert True
+        # The server's internal project root must be updated
+        assert server._project_root == "/test/path"
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", False)
     def test_create_server_mcp_unavailable(self):

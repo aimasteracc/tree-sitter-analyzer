@@ -42,7 +42,7 @@ class TestBatchSearchToolInitialization:
 
     def test_init_creates_tool(self, tool: BatchSearchTool) -> None:
         """Test that initialization creates a tool instance."""
-        assert tool is not None
+        assert isinstance(tool, BatchSearchTool)
 
 
 class TestBatchSearchToolDefinition:

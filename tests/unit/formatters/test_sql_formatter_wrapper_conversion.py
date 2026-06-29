@@ -290,3 +290,7 @@ class TestCreateSQLElementFromDict:
             }
             result = formatter._create_sql_element_from_dict(data)
             assert result is not None
+            assert result.name == f"test_{type_name}"
+            # create_table → element_type "table", create_view → "view", etc.
+            expected_element_type = type_name.replace("create_", "")
+            assert result.element_type == expected_element_type

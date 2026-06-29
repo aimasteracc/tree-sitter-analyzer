@@ -87,31 +87,6 @@ Line 13:     }
 Line 14: }
 Line 15: """
 
-    def test_read_line_range_placeholder(self) -> None:
-        """Test reading a specific line range - placeholder"""
-        # TODO: Implement proper async testing when tool is fully implemented
-        assert True, "Line range reading test placeholder"
-
-    def test_read_single_line_placeholder(self) -> None:
-        """Test reading a single line - placeholder"""
-        # TODO: Implement proper async testing when tool is fully implemented
-        assert True, "Single line reading test placeholder"
-
-    def test_read_with_column_range_placeholder(self) -> None:
-        """Test reading with column range - placeholder"""
-        # TODO: Implement proper async testing when tool is fully implemented
-        assert True, "Column range reading test placeholder"
-
-    def test_json_format_output_placeholder(self) -> None:
-        """Test JSON format output - placeholder"""
-        # TODO: Implement proper async testing when tool is fully implemented
-        assert True, "JSON format output test placeholder"
-
-    def test_read_beyond_file_end_placeholder(self) -> None:
-        """Test reading beyond file end - placeholder"""
-        # TODO: Implement proper async testing when tool is fully implemented
-        assert True, "Read beyond file end test placeholder"
-
 
 class TestReadPartialToolErrorHandling:
     """Test error handling in read_partial_file tool"""
@@ -132,16 +107,6 @@ class TestReadPartialToolErrorHandling:
         with pytest.raises(ValueError):
             self.tool.validate_arguments(invalid_args)
 
-    def test_invalid_line_range_placeholder(self) -> None:
-        """Test invalid line range handling - placeholder"""
-        # TODO: Implement proper async testing when tool is fully implemented
-        assert True, "Invalid line range test placeholder"
-
-    def test_nonexistent_file_placeholder(self) -> None:
-        """Test error handling for nonexistent file - placeholder"""
-        # TODO: Implement proper async testing when tool is fully implemented
-        assert True, "Nonexistent file test placeholder"
-
 
 class TestReadPartialToolIntegration:
     """Test integration with existing file handling components"""
@@ -157,9 +122,6 @@ class TestReadPartialToolIntegration:
         # Verify file handler exists and is callable
         # Function-based API, no handler object needed
         assert callable(read_file_partial)
-
-        # Test tool uses file handling
-        assert True, "File handler integration placeholder"
 
 
 if __name__ == "__main__":
