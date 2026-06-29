@@ -386,8 +386,8 @@ class TestLogDebug:
     def test_log_debug_exception_handling(self):
         """测试异常处理"""
         with patch.object(global_logger, "debug", side_effect=ValueError("Test error")):
+            # log_debug must suppress exceptions — if it raises, the test fails
             log_debug("test debug")
-            assert True
 
 
 class TestSuppressOutput:

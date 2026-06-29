@@ -505,6 +505,7 @@ class TestCSharpInterfaceRecognition:
 
         repo_interface = next((c for c in classes if c.name == "IRepository"), None)
         assert repo_interface is not None
+        assert repo_interface.name == "IRepository"
 
     def test_extract_generic_interface(self):
         """Test extraction of generic interface."""
@@ -558,6 +559,7 @@ class TestCSharpEnumRecognition:
 
         order_status = next((c for c in classes if c.name == "OrderStatus"), None)
         assert order_status is not None
+        assert order_status.name == "OrderStatus"
 
     def test_extract_enum_with_values(self):
         """Test extraction of enum with explicit values."""

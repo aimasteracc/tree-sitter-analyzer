@@ -319,9 +319,11 @@ class TestQueryFilterCorrectnessProperties:
         regex_pattern = pattern.replace("*", ".*")
         for result in filtered:
             extracted_name = self.filter._extract_method_name(result["content"])
-            assert re.match(regex_pattern, extracted_name, re.IGNORECASE) is not None, (
+            match = re.match(regex_pattern, extracted_name, re.IGNORECASE)
+            assert match is not None, (
                 f"Filtered result name '{extracted_name}' does not match pattern '{pattern}'"
             )
+            assert match.group(0) == extracted_name[: len(match.group(0))]
 
     @given(results=query_results_strategy())
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])

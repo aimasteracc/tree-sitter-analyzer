@@ -126,16 +126,14 @@ class TestLogFunctions:
 
     def test_log_debug(self):
         """Test log_debug function"""
-        # Should not raise
+        # Should not raise — if it does, the test fails
         log_debug("Test debug message")
-        assert True  # No exception raised
 
     def test_log_debug_with_closed_handler(self):
         """Test log_debug handles closed handlers gracefully"""
         with patch.object(logger, "debug", side_effect=OSError("Test error")):
-            # Should not raise, just suppress
+            # Should not raise, just suppress — if it does, the test fails
             log_debug("Test message")
-            assert True  # No exception raised
 
 
 class TestQuietMode:
@@ -167,8 +165,8 @@ class TestSafePrint:
 
     def test_safe_print_debug(self):
         """Test safe_print with debug level"""
+        # Should not raise — if it does, the test fails
         safe_print("Test debug", level="debug")
-        assert True  # No exception raised
 
 
 class TestPerformanceLogging:

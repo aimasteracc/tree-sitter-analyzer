@@ -379,3 +379,5 @@ class TestIntegration:
         func = {"line": 1, "end_line": 16, "name": "analyze"}
         plan = _build_plan_for_func("analysis.py", lines, func, source)
         assert plan is not None
+        assert "function" in plan
+        assert plan["function"] == "analyze"

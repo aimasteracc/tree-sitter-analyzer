@@ -161,6 +161,7 @@ class TestLoadDependencyGraph:
         monkeypatch.chdir(tmp_path)
         result = _load_dependency_graph(None)
         assert result is not None
+        assert hasattr(result, "node_count")
 
 
 class TestAppendLargeDirtyHint:

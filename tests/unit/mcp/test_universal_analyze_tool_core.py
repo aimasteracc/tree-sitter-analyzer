@@ -46,6 +46,7 @@ class TestUniversalAnalyzeToolSetProjectPath:
         tool.set_project_path("/new/project")
         # Analysis engine should be recreated with new project root
         assert tool.analysis_engine is not None
+        assert tool.project_root == "/new/project"
 
 
 class TestUniversalAnalyzeToolGetToolDefinition:
