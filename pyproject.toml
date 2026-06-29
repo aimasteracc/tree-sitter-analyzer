@@ -445,6 +445,8 @@ module = [
     "tree_sitter_javascript.*",
     "tree_sitter_json.*",
     "tree_sitter_kotlin.*",
+    "tree_sitter_lua",
+    "tree_sitter_lua.*",
     "tree_sitter_markdown.*",
     "tree_sitter_php.*",
     "tree_sitter_python.*",
