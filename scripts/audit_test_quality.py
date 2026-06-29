@@ -39,6 +39,12 @@ class TestAntiPatternDetector(ast.NodeVisitor):
             self._check_test_function(node)
         self.generic_visit(node)
 
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        """Visit async function definitions and check test functions."""
+        if node.name.startswith("test_"):
+            self._check_test_function(node)
+        self.generic_visit(node)
+
     def _check_test_function(self, node: ast.FunctionDef) -> None:
         """Analyze a test function for anti-patterns."""
         # Extract function body (filter out docstrings)
@@ -113,8 +119,15 @@ class TestAntiPatternDetector(ast.NodeVisitor):
 
         # P2: assert <expr> is not None only
         if len(assertions) == 1 and self._is_assert_is_not_none(assertions[0]):
-            # Check if there's any follow-up validation
-            has_followup = any(not isinstance(stmt, ast.Assert) for stmt in body[1:])
+            # Check if there's any follow-up validation AFTER the assertion
+            assert_node = assertions[0]
+            assert_idx = next(
+                (i for i, stmt in enumerate(body) if stmt is assert_node),
+                len(body),
+            )
+            has_followup = any(
+                not isinstance(stmt, ast.Assert) for stmt in body[assert_idx + 1 :]
+            )
             if not has_followup:
                 self._add_finding(
                     node,
@@ -486,9 +499,13 @@ def main():
     blocking_findings = [
         f for f in findings if f.get("severity") in ("MUST_DELETE", "SHOULD_DELETE")
     ]
-    if args.strict and len(blocking_findings) > 0:
+    blocking_ambiguous = [
+        f for f in ambiguous if f.get("severity") in ("MUST_DELETE", "SHOULD_DELETE")
+    ]
+    if args.strict and (len(blocking_findings) > 0 or len(blocking_ambiguous) > 0):
+        total_blocking = len(blocking_findings) + len(blocking_ambiguous)
         print(
-            f"\nStrict mode: {len(blocking_findings)} blocking anti-patterns found (MUST_DELETE/SHOULD_DELETE)",
+            f"\nStrict mode: {total_blocking} blocking anti-patterns found (MUST_DELETE/SHOULD_DELETE)",
             file=sys.stderr,
         )
         sys.exit(1)
