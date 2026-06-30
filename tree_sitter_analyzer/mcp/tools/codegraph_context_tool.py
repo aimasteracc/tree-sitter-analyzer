@@ -38,9 +38,15 @@ from .utils.codegraph_context_helpers import (
     _callee_ref_to_hit,
     _caller_ref_to_hit,
     _coerce_bool,
+    _compound_candidates,  # noqa: F401 — re-exported for test compatibility
     _edge_degrees,
+    _entry_rank_v2,  # noqa: F401 — re-exported for test compatibility
     _extract_symbol_candidates,
+    _is_non_prod_file,  # noqa: F401 — re-exported for test compatibility
+    _is_test_file,  # noqa: F401 — re-exported for test compatibility
+    _name_match_score,  # noqa: F401 — re-exported for test compatibility
     _node_from_ref,
+    _node_id,  # noqa: F401 — re-exported for test compatibility
     _nodes_from_hits,
     _resolve_entry_points_from_cache,
     _safe_chain,
