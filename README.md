@@ -413,14 +413,14 @@ MCP client config (the project root inside the container is the mount point `/wo
 
 ## Supported Languages
 
-21 language plugins; 13 fully wired into the indexer (full symbol + call graph) + 2 symbol-indexed (call-graph wiring pending) + 5 (data/markup) reachable via the single-file CLI path + 1 scaffold (plugin exists, indexer wiring pending). bash and scala graduated in v1.22.0; the 2026-05-24 patch unblocked Swift / Kotlin / Ruby / PHP / C# that had been silently skipped for months.
+22 language plugins; 13 fully wired into the indexer (full symbol + call graph) + 2 symbol-indexed (call-graph wiring pending) + 5 (data/markup) reachable via the single-file CLI path + 2 scaffold (plugin exists, indexer wiring pending). bash and scala graduated in v1.22.0; the 2026-05-24 patch unblocked Swift / Kotlin / Ruby / PHP / C# that had been silently skipped for months.
 
 | Tier | Languages |
 |---|---|
 | **Full index + symbol + call graph** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
 | **Full index + symbols (call-graph wiring pending)** | Bash · Scala |
 | **Single-file analysis (CLI)** | HTML · CSS · Markdown · SQL · YAML |
-| **Scaffold (plugin exists, indexer wiring pending)** | json |
+| **Scaffold (plugin exists, indexer wiring pending)** | JSON · Lua |
 
 CodeGraph supports a similar set. **Dart, Vue, Svelte, Lua** are not yet shipped — aspirational backlog, no committed date.
 
@@ -464,7 +464,7 @@ uv run python check_quality.py --new-code-only  # quality gate
 |---|---|
 | `unsupported language` on `.swift / .kt / .rb / .php / .cs` | Update to ≥ 1.12.x — the 5-language gap was patched in commit `50e99a8f`. Grammar modules for extras-gated languages are not bundled in the base install; run `pip install "tree-sitter-analyzer[swift]"` (or `kotlin`, `ruby`, `php`, `csharp`) to add them. |
 | MCP server doesn't appear in client | `TREE_SITTER_PROJECT_ROOT` must be **absolute**; restart the client after config edit. |
-| `database is locked` | Stop any other process holding `.ast-cache/index.db`; if persistent, `rm -rf .ast-cache && tree-sitter-analyzer --autoindex`. |
+| `database is locked` | Stop any other process holding `.ast-cache/index.db`; if persistent, `rm -rf .ast-cache && tree-sitter-analyzer --full-index`. |
 | Slow first call | First call builds the index. Subsequent calls are sub-second. Run `--full-index` upfront to amortise. |
 | Agent picks the wrong tool | Use a `tsa-*` skill (`/tsa-graph`, `/tsa-find`, ...) — each skill restricts the visible tool set to one workflow. |
 

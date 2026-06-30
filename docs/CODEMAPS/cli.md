@@ -1,7 +1,7 @@
 <!-- Generated: 2026-05-22; doc-code re-sync: 2026-06-17 -->
 # CLI Codemap
 
-Three console-script entry points + flag-based dispatch through `cli_main.py`.
+Five console-script entry points + flag-based dispatch through `cli_main.py`.
 
 ## Entry Points
 
@@ -10,6 +10,8 @@ Three console-script entry points + flag-based dispatch through `cli_main.py`.
 | `tree-sitter-analyzer` | `cli_main.py` | `json` |
 | `tree-sitter-analyzer-mcp` | `mcp/server.py` (stdio) | `toon` |
 | `find-and-grep` | `cli/commands/find_and_grep_cli.py` | `json` |
+| `list-files` | `cli/commands/list_files_cli.py` | `json` |
+| `search-content` | `cli/commands/search_content_cli.py` | `json` |
 
 Default format divergence is **intentional** (see `CLAUDE.md`): CLI users pipe into `jq`,
 MCP callers are LLM agents and benefit from TOON's token savings.
