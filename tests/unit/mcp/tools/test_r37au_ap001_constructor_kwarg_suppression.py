@@ -164,3 +164,68 @@ def test_sql_formatter_helper_self_scan() -> None:
         f"any AP001 (all 11 false positives were constructor kwargs, not "
         f"function defaults). Got AP001 on lines: {ap001_lines}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Encoding guard (tracked: #1130)
+# ---------------------------------------------------------------------------
+# anti_patterns.py:28 called read_text(errors="replace") without encoding,
+# causing UnicodeDecodeError on Windows non-UTF-8 locales. The fix pins
+# encoding="utf-8". Tests below lock that requirement.
+
+
+@pytest.mark.regression
+def test_detect_anti_patterns_reads_with_explicit_utf8(tmp_path: Path, monkeypatch) -> None:
+    """REQ-TEST-003 / ARCH-003: detect_anti_patterns must call
+    read_text(encoding='utf-8', ...) so non-ASCII files succeed on
+    non-UTF-8-locale hosts (tracked: #1130)."""
+    source = tmp_path / "locale_sensitive.py"
+    source.write_text(
+        "# 日本語コメント\ndef greet():\n    print('こんにちは')\n",
+        encoding="utf-8",
+    )
+
+    seen_encodings: list[str | None] = []
+    real_read_text = Path.read_text
+
+    def fake_read_text(self, *args, **kwargs):
+        encoding = kwargs.get("encoding")
+        seen_encodings.append(encoding)
+        if encoding is None:
+            raise UnicodeDecodeError("cp1252", b"\x00", 0, 1, "simulated")
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+    result = detect_anti_patterns(str(source), "python")
+
+    assert isinstance(result, list), (
+        "detect_anti_patterns must return a list; got None or raised"
+    )
+    assert "utf-8" in seen_encodings, (
+        f"detect_anti_patterns must call read_text with encoding='utf-8'; "
+        f"observed encodings: {seen_encodings}"
+    )
+    assert any(f.get("id") == "AP003" for f in result), (
+        f"Expected AP003 (print_in_production) finding; got: {result}"
+    )
+
+
+@pytest.mark.regression
+def test_non_ascii_python_file_with_mutable_default_detects_ap001(tmp_path: Path) -> None:
+    """REQ-TEST-003: non-ASCII UTF-8 file must not raise and must return
+    the expected AP001 finding (tracked: #1130)."""
+    source = tmp_path / "non_ascii.py"
+    source.write_text(
+        "# 日本語コメント\ndef process(data=[]):\n    pass\n",
+        encoding="utf-8",
+    )
+
+    result = detect_anti_patterns(str(source), "python")
+
+    assert isinstance(result, list), (
+        f"detect_anti_patterns must return a list, got {type(result)!r}"
+    )
+    assert any(f.get("id") == "AP001" for f in result), (
+        f"Expected AP001 (mutable_default_argument) finding; got: {result}"
+    )
