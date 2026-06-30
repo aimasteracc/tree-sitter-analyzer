@@ -14,7 +14,11 @@ on:
     paths:
       - "benchmarks/**"
       - "tests/benchmarks/**"
+      - "scripts/benchmark.py"
       - "tree_sitter_analyzer/ast_cache.py"
+      - "tree_sitter_analyzer/incremental_sync.py"
+      - "tree_sitter_analyzer/knowledge_graph/**"
+      - "tree_sitter_analyzer/cache/**"
       - "tree_sitter_analyzer/mcp/tools/utils/search_cache.py"
       - "tree_sitter_analyzer/mcp/tools/utils/change_impact_cached_graph.py"
       - ".github/workflows/benchmarks.yml"
@@ -23,7 +27,11 @@ on:
     paths:
       - "benchmarks/**"
       - "tests/benchmarks/**"
+      - "scripts/benchmark.py"
       - "tree_sitter_analyzer/ast_cache.py"
+      - "tree_sitter_analyzer/incremental_sync.py"
+      - "tree_sitter_analyzer/knowledge_graph/**"
+      - "tree_sitter_analyzer/cache/**"
       - "tree_sitter_analyzer/mcp/tools/utils/search_cache.py"
       - "tree_sitter_analyzer/mcp/tools/utils/change_impact_cached_graph.py"
       - ".github/workflows/benchmarks.yml"
@@ -189,6 +197,34 @@ jobs:
         echo '```' >> $GITHUB_STEP_SUMMARY
       shell: bash
 
+    - name: Run Phase 4 Performance Benchmark (index/sync/query/memory)
+      if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'analysis'
+      run: |
+        echo "### ⚡ Phase 4 Performance Benchmark" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        uv run python scripts/benchmark.py \
+          --files 200 \
+          --query-files 1000 \
+          --output benchmark-phase4.json \
+          > benchmark-phase4-full.json 2>benchmark-phase4-stderr.txt || touch benchmark_failed
+
+        cat benchmark-phase4-stderr.txt >&2 || true
+        cat benchmark-phase4-full.json
+
+        echo '```json' >> $GITHUB_STEP_SUMMARY
+        head -n 60 benchmark-phase4-full.json >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+        # Emit CI regression-compatible format for check_performance_regression.py
+        uv run python scripts/benchmark.py \
+          --files 200 \
+          --query-files 1000 \
+          --ci \
+          --output benchmark-phase4-ci.json \
+          > /dev/null 2>&1 || true
+      shell: bash
+
     - name: Compare with baseline
       if: inputs.compare-baseline != false && always()
       run: |
@@ -220,7 +256,7 @@ jobs:
 
         REGRESSION_DETECTED=false
 
-        for json_file in benchmark-*.json; do
+        for json_file in benchmark-*.json benchmark-phase4-ci.json; do
           if [ -f "$json_file" ]; then
             uv run python scripts/check_performance_regression.py \
               "$json_file" \
@@ -272,6 +308,8 @@ jobs:
         path: |
           benchmark-*.json
           benchmark-*-output.txt
+          benchmark-*-full.json
+          benchmark-phase4-ci.json
         retention-days: 30
         if-no-files-found: warn
 
