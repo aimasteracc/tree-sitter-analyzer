@@ -1,0 +1,8 @@
+{
+  "language": "json",
+  "corpus_file": "tests/golden/corpus_json.json",
+  "snapshot_timestamp": "2026-06-28T17:00:46.168955+00:00",
+  "symbol_count": 0,
+  "symbols": [],
+  "edges": []
+}

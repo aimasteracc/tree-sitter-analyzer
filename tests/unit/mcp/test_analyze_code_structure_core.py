@@ -45,7 +45,8 @@ class TestAnalyzeCodeStructureToolSetProjectPath:
     def test_set_project_path_updates_analysis_engine(self, tool):
         """Test that setting project path updates analysis engine."""
         tool.set_project_path("/new/project")
-        # Analysis engine should be recreated with new project root
+        # Both the project root and the analysis engine must reflect the new path
+        assert tool.project_root == "/new/project"
         assert tool.analysis_engine is not None
         assert tool.project_root == "/new/project"
 

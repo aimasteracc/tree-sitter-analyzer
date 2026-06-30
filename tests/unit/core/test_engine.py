@@ -352,7 +352,7 @@ class TestUnifiedAnalysisEnginePluginManagement:
         engine = UnifiedAnalysisEngine()
         languages = engine.get_supported_languages()
         assert isinstance(languages, list)
-        assert len(languages) == 25
+        assert len(languages) == 26
 
     def test_plugin_manager_property(self):
         """Test accessing plugin manager property."""

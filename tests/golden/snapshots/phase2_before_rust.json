@@ -1,0 +1,359 @@
+{
+  "language": "rust",
+  "corpus_file": "tests/golden/corpus_rust.rs",
+  "snapshot_timestamp": "2026-06-28T17:00:46.451745+00:00",
+  "symbol_count": 70,
+  "symbols": [
+    {
+      "name": "use std::collections::HashMap;",
+      "kind": "import",
+      "start_line": 19
+    },
+    {
+      "name": "use std::fmt::{Display, Formatter, Result as FmtResult};",
+      "kind": "import",
+      "start_line": 20
+    },
+    {
+      "name": "use std::io::{Read, Write};",
+      "kind": "import",
+      "start_line": 21
+    },
+    {
+      "name": "inner_function",
+      "kind": "function",
+      "start_line": 29
+    },
+    {
+      "name": "pub use inner_module::inner_function;",
+      "kind": "import",
+      "start_line": 35
+    },
+    {
+      "name": "use std::sync::{Arc, Mutex};",
+      "kind": "import",
+      "start_line": 38
+    },
+    {
+      "name": "use std::thread;",
+      "kind": "import",
+      "start_line": 39
+    },
+    {
+      "name": "Person",
+      "kind": "class",
+      "start_line": 60
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 61
+    },
+    {
+      "name": "age",
+      "kind": "variable",
+      "start_line": 62
+    },
+    {
+      "name": "email",
+      "kind": "variable",
+      "start_line": 63
+    },
+    {
+      "name": "Point3D",
+      "kind": "class",
+      "start_line": 68
+    },
+    {
+      "name": "UnitMarker",
+      "kind": "class",
+      "start_line": 71
+    },
+    {
+      "name": "Container",
+      "kind": "class",
+      "start_line": 75
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 76
+    },
+    {
+      "name": "metadata",
+      "kind": "variable",
+      "start_line": 77
+    },
+    {
+      "name": "Reference",
+      "kind": "class",
+      "start_line": 81
+    },
+    {
+      "name": "data",
+      "kind": "variable",
+      "start_line": 82
+    },
+    {
+      "name": "Status",
+      "kind": "class",
+      "start_line": 91
+    },
+    {
+      "name": "Active",
+      "kind": "variable",
+      "start_line": 92
+    },
+    {
+      "name": "Inactive",
+      "kind": "variable",
+      "start_line": 93
+    },
+    {
+      "name": "Pending",
+      "kind": "variable",
+      "start_line": 94
+    },
+    {
+      "name": "Message",
+      "kind": "class",
+      "start_line": 99
+    },
+    {
+      "name": "Quit",
+      "kind": "variable",
+      "start_line": 100
+    },
+    {
+      "name": "Move",
+      "kind": "variable",
+      "start_line": 101
+    },
+    {
+      "name": "Write",
+      "kind": "variable",
+      "start_line": 102
+    },
+    {
+      "name": "ChangeColor",
+      "kind": "variable",
+      "start_line": 103
+    },
+    {
+      "name": "Option2",
+      "kind": "class",
+      "start_line": 107
+    },
+    {
+      "name": "Some",
+      "kind": "variable",
+      "start_line": 108
+    },
+    {
+      "name": "None",
+      "kind": "variable",
+      "start_line": 109
+    },
+    {
+      "name": "Animal",
+      "kind": "class",
+      "start_line": 117
+    },
+    {
+      "name": "make_sound",
+      "kind": "function",
+      "start_line": 118
+    },
+    {
+      "name": "age",
+      "kind": "function",
+      "start_line": 119
+    },
+    {
+      "name": "Iterator2",
+      "kind": "class",
+      "start_line": 123
+    },
+    {
+      "name": "next",
+      "kind": "function",
+      "start_line": 125
+    },
+    {
+      "name": "Describable",
+      "kind": "class",
+      "start_line": 129
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 130
+    },
+    {
+      "name": "Converter",
+      "kind": "class",
+      "start_line": 136
+    },
+    {
+      "name": "convert",
+      "kind": "function",
+      "start_line": 137
+    },
+    {
+      "name": "new",
+      "kind": "function",
+      "start_line": 146
+    },
+    {
+      "name": "greet",
+      "kind": "function",
+      "start_line": 155
+    },
+    {
+      "name": "set_email",
+      "kind": "function",
+      "start_line": 160
+    },
+    {
+      "name": "consume",
+      "kind": "function",
+      "start_line": 165
+    },
+    {
+      "name": "distance",
+      "kind": "function",
+      "start_line": 174
+    },
+    {
+      "name": "new",
+      "kind": "function",
+      "start_line": 180
+    },
+    {
+      "name": "get_value",
+      "kind": "function",
+      "start_line": 187
+    },
+    {
+      "name": "make_sound",
+      "kind": "function",
+      "start_line": 197
+    },
+    {
+      "name": "age",
+      "kind": "function",
+      "start_line": 201
+    },
+    {
+      "name": "fmt",
+      "kind": "function",
+      "start_line": 207
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 213
+    },
+    {
+      "name": "regular_function",
+      "kind": "function",
+      "start_line": 223
+    },
+    {
+      "name": "generic_function",
+      "kind": "function",
+      "start_line": 228
+    },
+    {
+      "name": "where_clause_function",
+      "kind": "function",
+      "start_line": 233
+    },
+    {
+      "name": "async_function",
+      "kind": "function",
+      "start_line": 242
+    },
+    {
+      "name": "const_function",
+      "kind": "function",
+      "start_line": 247
+    },
+    {
+      "name": "unsafe_function",
+      "kind": "function",
+      "start_line": 252
+    },
+    {
+      "name": "early_return",
+      "kind": "function",
+      "start_line": 257
+    },
+    {
+      "name": "longest",
+      "kind": "function",
+      "start_line": 268
+    },
+    {
+      "name": "let_declarations_demo",
+      "kind": "function",
+      "start_line": 296
+    },
+    {
+      "name": "closure_examples",
+      "kind": "function",
+      "start_line": 330
+    },
+    {
+      "name": "match_examples",
+      "kind": "function",
+      "start_line": 363
+    },
+    {
+      "name": "macro_invocations",
+      "kind": "function",
+      "start_line": 396
+    },
+    {
+      "name": "attributed_function",
+      "kind": "function",
+      "start_line": 459
+    },
+    {
+      "name": "linux_only_function",
+      "kind": "function",
+      "start_line": 465
+    },
+    {
+      "name": "test_addition",
+      "kind": "function",
+      "start_line": 473
+    },
+    {
+      "name": "test_panic",
+      "kind": "function",
+      "start_line": 479
+    },
+    {
+      "name": "expensive_test",
+      "kind": "function",
+      "start_line": 485
+    },
+    {
+      "name": "async_examples",
+      "kind": "function",
+      "start_line": 494
+    },
+    {
+      "name": "error_handling_examples",
+      "kind": "function",
+      "start_line": 511
+    },
+    {
+      "name": "main",
+      "kind": "function",
+      "start_line": 528
+    }
+  ],
+  "edges": []
+}

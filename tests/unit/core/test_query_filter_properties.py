@@ -315,6 +315,7 @@ class TestQueryFilterCorrectnessProperties:
 
         filtered = self.filter.filter_results(results, filter_expr)
 
+        assert isinstance(filtered, list)
         # Property: All filtered results must match the pattern
         regex_pattern = pattern.replace("*", ".*")
         for result in filtered:

@@ -54,6 +54,7 @@ EXT_TO_LANG: dict[str, str] = {
     ".js": "javascript",
     ".jsx": "javascript",
     ".kt": "kotlin",
+    ".lua": "lua",
     ".php": "php",
     ".py": "python",
     ".rb": "ruby",

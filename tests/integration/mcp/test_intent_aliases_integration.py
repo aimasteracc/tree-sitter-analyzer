@@ -29,6 +29,7 @@ def server():
     return TreeSitterAnalyzerMCPServer()
 
 
+@pytest.mark.requires_fd
 class TestIntentAliasIntegration:
     """测试 Intent Alias 在 MCP Server 中的集成"""
 

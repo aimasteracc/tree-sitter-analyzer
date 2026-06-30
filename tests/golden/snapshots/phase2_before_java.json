@@ -1,0 +1,669 @@
+{
+  "language": "java",
+  "corpus_file": "tests/golden/corpus_java.java",
+  "snapshot_timestamp": "2026-06-28T17:00:46.122501+00:00",
+  "symbol_count": 132,
+  "symbols": [
+    {
+      "name": "java.util.",
+      "kind": "import",
+      "start_line": 27
+    },
+    {
+      "name": "java.util.function.",
+      "kind": "import",
+      "start_line": 28
+    },
+    {
+      "name": "java.io.",
+      "kind": "import",
+      "start_line": 29
+    },
+    {
+      "name": "java.lang.Math",
+      "kind": "import",
+      "start_line": 30
+    },
+    {
+      "name": "java.util.concurrent.atomic.AtomicInteger",
+      "kind": "import",
+      "start_line": 31
+    },
+    {
+      "name": "Author",
+      "kind": "class",
+      "start_line": 40
+    },
+    {
+      "name": "Marker",
+      "kind": "class",
+      "start_line": 49
+    },
+    {
+      "name": "SingleValue",
+      "kind": "class",
+      "start_line": 55
+    },
+    {
+      "name": "Direction",
+      "kind": "class",
+      "start_line": 66
+    },
+    {
+      "name": "Planet",
+      "kind": "class",
+      "start_line": 73
+    },
+    {
+      "name": "mass",
+      "kind": "variable",
+      "start_line": 79
+    },
+    {
+      "name": "radius",
+      "kind": "variable",
+      "start_line": 80
+    },
+    {
+      "name": "Planet",
+      "kind": "function",
+      "start_line": 82
+    },
+    {
+      "name": "getMass",
+      "kind": "function",
+      "start_line": 87
+    },
+    {
+      "name": "getRadius",
+      "kind": "function",
+      "start_line": 91
+    },
+    {
+      "name": "surfaceGravity",
+      "kind": "function",
+      "start_line": 95
+    },
+    {
+      "name": "Operation",
+      "kind": "class",
+      "start_line": 103
+    },
+    {
+      "name": "Animal",
+      "kind": "class",
+      "start_line": 133
+    },
+    {
+      "name": "getName",
+      "kind": "function",
+      "start_line": 134
+    },
+    {
+      "name": "makeSound",
+      "kind": "function",
+      "start_line": 135
+    },
+    {
+      "name": "getAge",
+      "kind": "function",
+      "start_line": 136
+    },
+    {
+      "name": "Describable",
+      "kind": "class",
+      "start_line": 142
+    },
+    {
+      "name": "getDescription",
+      "kind": "function",
+      "start_line": 143
+    },
+    {
+      "name": "getFullDescription",
+      "kind": "function",
+      "start_line": 145
+    },
+    {
+      "name": "MathOperations",
+      "kind": "class",
+      "start_line": 153
+    },
+    {
+      "name": "add",
+      "kind": "function",
+      "start_line": 154
+    },
+    {
+      "name": "multiply",
+      "kind": "function",
+      "start_line": 158
+    },
+    {
+      "name": "Transformer",
+      "kind": "class",
+      "start_line": 166
+    },
+    {
+      "name": "transform",
+      "kind": "function",
+      "start_line": 168
+    },
+    {
+      "name": "Container",
+      "kind": "class",
+      "start_line": 174
+    },
+    {
+      "name": "get",
+      "kind": "function",
+      "start_line": 175
+    },
+    {
+      "name": "set",
+      "kind": "function",
+      "start_line": 176
+    },
+    {
+      "name": "map",
+      "kind": "function",
+      "start_line": 177
+    },
+    {
+      "name": "Pet",
+      "kind": "class",
+      "start_line": 183
+    },
+    {
+      "name": "getOwner",
+      "kind": "function",
+      "start_line": 184
+    },
+    {
+      "name": "AbstractAnimal",
+      "kind": "class",
+      "start_line": 194
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 195
+    },
+    {
+      "name": "age",
+      "kind": "variable",
+      "start_line": 196
+    },
+    {
+      "name": "AbstractAnimal",
+      "kind": "function",
+      "start_line": 198
+    },
+    {
+      "name": "getName",
+      "kind": "function",
+      "start_line": 203
+    },
+    {
+      "name": "getAge",
+      "kind": "function",
+      "start_line": 208
+    },
+    {
+      "name": "makeSound",
+      "kind": "function",
+      "start_line": 214
+    },
+    {
+      "name": "sleep",
+      "kind": "function",
+      "start_line": 218
+    },
+    {
+      "name": "Dog",
+      "kind": "class",
+      "start_line": 230
+    },
+    {
+      "name": "breed",
+      "kind": "variable",
+      "start_line": 232
+    },
+    {
+      "name": "owner",
+      "kind": "variable",
+      "start_line": 233
+    },
+    {
+      "name": "Dog",
+      "kind": "function",
+      "start_line": 235
+    },
+    {
+      "name": "makeSound",
+      "kind": "function",
+      "start_line": 241
+    },
+    {
+      "name": "getDescription",
+      "kind": "function",
+      "start_line": 246
+    },
+    {
+      "name": "getOwner",
+      "kind": "function",
+      "start_line": 251
+    },
+    {
+      "name": "getBreed",
+      "kind": "function",
+      "start_line": 256
+    },
+    {
+      "name": "Box",
+      "kind": "class",
+      "start_line": 264
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 265
+    },
+    {
+      "name": "Box",
+      "kind": "function",
+      "start_line": 267
+    },
+    {
+      "name": "getValue",
+      "kind": "function",
+      "start_line": 271
+    },
+    {
+      "name": "setValue",
+      "kind": "function",
+      "start_line": 275
+    },
+    {
+      "name": "map",
+      "kind": "function",
+      "start_line": 279
+    },
+    {
+      "name": "Pair",
+      "kind": "class",
+      "start_line": 287
+    },
+    {
+      "name": "key",
+      "kind": "variable",
+      "start_line": 288
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 289
+    },
+    {
+      "name": "Pair",
+      "kind": "function",
+      "start_line": 291
+    },
+    {
+      "name": "getKey",
+      "kind": "function",
+      "start_line": 296
+    },
+    {
+      "name": "getValue",
+      "kind": "function",
+      "start_line": 300
+    },
+    {
+      "name": "NumberBox",
+      "kind": "class",
+      "start_line": 308
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 309
+    },
+    {
+      "name": "NumberBox",
+      "kind": "function",
+      "start_line": 311
+    },
+    {
+      "name": "doubleValue",
+      "kind": "function",
+      "start_line": 315
+    },
+    {
+      "name": "FieldExamples",
+      "kind": "class",
+      "start_line": 323
+    },
+    {
+      "name": "privateField",
+      "kind": "variable",
+      "start_line": 325
+    },
+    {
+      "name": "protectedField",
+      "kind": "variable",
+      "start_line": 326
+    },
+    {
+      "name": "publicField",
+      "kind": "variable",
+      "start_line": 327
+    },
+    {
+      "name": "packagePrivateField",
+      "kind": "variable",
+      "start_line": 328
+    },
+    {
+      "name": "staticPrivateField",
+      "kind": "variable",
+      "start_line": 331
+    },
+    {
+      "name": "staticPublicField",
+      "kind": "variable",
+      "start_line": 332
+    },
+    {
+      "name": "finalField",
+      "kind": "variable",
+      "start_line": 335
+    },
+    {
+      "name": "PI",
+      "kind": "variable",
+      "start_line": 336
+    },
+    {
+      "name": "volatileFlag",
+      "kind": "variable",
+      "start_line": 339
+    },
+    {
+      "name": "transientField",
+      "kind": "variable",
+      "start_line": 342
+    },
+    {
+      "name": "FieldExamples",
+      "kind": "function",
+      "start_line": 344
+    },
+    {
+      "name": "MethodExamples",
+      "kind": "class",
+      "start_line": 352
+    },
+    {
+      "name": "instanceMethod",
+      "kind": "function",
+      "start_line": 354
+    },
+    {
+      "name": "staticMethod",
+      "kind": "function",
+      "start_line": 359
+    },
+    {
+      "name": "finalMethod",
+      "kind": "function",
+      "start_line": 364
+    },
+    {
+      "name": "synchronizedMethod",
+      "kind": "function",
+      "start_line": 369
+    },
+    {
+      "name": "nativeMethod",
+      "kind": "function",
+      "start_line": 374
+    },
+    {
+      "name": "genericMethod",
+      "kind": "function",
+      "start_line": 377
+    },
+    {
+      "name": "sum",
+      "kind": "function",
+      "start_line": 382
+    },
+    {
+      "name": "methodWithException",
+      "kind": "function",
+      "start_line": 391
+    },
+    {
+      "name": "OuterClass",
+      "kind": "class",
+      "start_line": 399
+    },
+    {
+      "name": "outerField",
+      "kind": "variable",
+      "start_line": 400
+    },
+    {
+      "name": "InnerClass",
+      "kind": "class",
+      "start_line": 403
+    },
+    {
+      "name": "printOuter",
+      "kind": "function",
+      "start_line": 404
+    },
+    {
+      "name": "StaticNestedClass",
+      "kind": "class",
+      "start_line": 410
+    },
+    {
+      "name": "nestedField",
+      "kind": "variable",
+      "start_line": 411
+    },
+    {
+      "name": "getNestedField",
+      "kind": "function",
+      "start_line": 413
+    },
+    {
+      "name": "methodWithLocalClass",
+      "kind": "function",
+      "start_line": 419
+    },
+    {
+      "name": "LocalClass",
+      "kind": "class",
+      "start_line": 420
+    },
+    {
+      "name": "print",
+      "kind": "function",
+      "start_line": 421
+    },
+    {
+      "name": "createRunnable",
+      "kind": "function",
+      "start_line": 431
+    },
+    {
+      "name": "Person",
+      "kind": "class",
+      "start_line": 448
+    },
+    {
+      "name": "Person",
+      "kind": "function",
+      "start_line": 457
+    },
+    {
+      "name": "getFullInfo",
+      "kind": "function",
+      "start_line": 462
+    },
+    {
+      "name": "createAnonymous",
+      "kind": "function",
+      "start_line": 467
+    },
+    {
+      "name": "Result",
+      "kind": "class",
+      "start_line": 475
+    },
+    {
+      "name": "success",
+      "kind": "function",
+      "start_line": 476
+    },
+    {
+      "name": "failure",
+      "kind": "function",
+      "start_line": 480
+    },
+    {
+      "name": "LambdaExamples",
+      "kind": "class",
+      "start_line": 489
+    },
+    {
+      "name": "demonstrateLambdas",
+      "kind": "function",
+      "start_line": 490
+    },
+    {
+      "name": "useStreams",
+      "kind": "function",
+      "start_line": 520
+    },
+    {
+      "name": "ExceptionExamples",
+      "kind": "class",
+      "start_line": 541
+    },
+    {
+      "name": "CustomException",
+      "kind": "class",
+      "start_line": 543
+    },
+    {
+      "name": "CustomException",
+      "kind": "function",
+      "start_line": 544
+    },
+    {
+      "name": "tryCatchExample",
+      "kind": "function",
+      "start_line": 549
+    },
+    {
+      "name": "tryWithResources",
+      "kind": "function",
+      "start_line": 561
+    },
+    {
+      "name": "multiCatch",
+      "kind": "function",
+      "start_line": 568
+    },
+    {
+      "name": "riskyOperation",
+      "kind": "function",
+      "start_line": 576
+    },
+    {
+      "name": "WildcardExamples",
+      "kind": "class",
+      "start_line": 585
+    },
+    {
+      "name": "printList",
+      "kind": "function",
+      "start_line": 587
+    },
+    {
+      "name": "sumOfList",
+      "kind": "function",
+      "start_line": 594
+    },
+    {
+      "name": "addNumbers",
+      "kind": "function",
+      "start_line": 603
+    },
+    {
+      "name": "InitializationExamples",
+      "kind": "class",
+      "start_line": 614
+    },
+    {
+      "name": "cache",
+      "kind": "variable",
+      "start_line": 615
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 629
+    },
+    {
+      "name": "InitializationExamples",
+      "kind": "function",
+      "start_line": 632
+    },
+    {
+      "name": "SwitchExpressions",
+      "kind": "class",
+      "start_line": 641
+    },
+    {
+      "name": "getDayType",
+      "kind": "function",
+      "start_line": 642
+    },
+    {
+      "name": "getLengthOfMonth",
+      "kind": "function",
+      "start_line": 650
+    },
+    {
+      "name": "PatternMatching",
+      "kind": "class",
+      "start_line": 664
+    },
+    {
+      "name": "instanceofPattern",
+      "kind": "function",
+      "start_line": 665
+    },
+    {
+      "name": "formatValue",
+      "kind": "function",
+      "start_line": 673
+    },
+    {
+      "name": "CorpusJava",
+      "kind": "class",
+      "start_line": 691
+    },
+    {
+      "name": "main",
+      "kind": "function",
+      "start_line": 692
+    }
+  ],
+  "edges": []
+}

@@ -1,0 +1,334 @@
+{
+  "language": "markdown",
+  "corpus_file": "tests/golden/corpus_markdown.md",
+  "snapshot_timestamp": "2026-06-28T17:00:46.286397+00:00",
+  "symbol_count": 65,
+  "symbols": [
+    {
+      "name": "Tree-Sitter Markdown Grammar Coverage",
+      "kind": "function",
+      "start_line": 9
+    },
+    {
+      "name": "Table of Contents",
+      "kind": "function",
+      "start_line": 17
+    },
+    {
+      "name": "Introduction",
+      "kind": "variable",
+      "start_line": 19
+    },
+    {
+      "name": "Headings",
+      "kind": "variable",
+      "start_line": 20
+    },
+    {
+      "name": "Paragraphs and Inline Content",
+      "kind": "variable",
+      "start_line": 21
+    },
+    {
+      "name": "Code Blocks",
+      "kind": "variable",
+      "start_line": 22
+    },
+    {
+      "name": "Lists",
+      "kind": "variable",
+      "start_line": 23
+    },
+    {
+      "name": "Block Quotes",
+      "kind": "variable",
+      "start_line": 24
+    },
+    {
+      "name": "Tables",
+      "kind": "variable",
+      "start_line": 25
+    },
+    {
+      "name": "Links and References",
+      "kind": "variable",
+      "start_line": 26
+    },
+    {
+      "name": "HTML Blocks",
+      "kind": "variable",
+      "start_line": 27
+    },
+    {
+      "name": "Special Characters",
+      "kind": "variable",
+      "start_line": 28
+    },
+    {
+      "name": "Thematic Breaks",
+      "kind": "variable",
+      "start_line": 29
+    },
+    {
+      "name": "Introduction",
+      "kind": "function",
+      "start_line": 33
+    },
+    {
+      "name": "Headings",
+      "kind": "function",
+      "start_line": 45
+    },
+    {
+      "name": "ATX Headings",
+      "kind": "function",
+      "start_line": 49
+    },
+    {
+      "name": "Fourth Level Heading",
+      "kind": "function",
+      "start_line": 53
+    },
+    {
+      "name": "Fifth Level Heading",
+      "kind": "function",
+      "start_line": 55
+    },
+    {
+      "name": "Sixth Level Heading",
+      "kind": "function",
+      "start_line": 57
+    },
+    {
+      "name": "Setext Headings",
+      "kind": "function",
+      "start_line": 62
+    },
+    {
+      "name": "Setext First Level",
+      "kind": "function",
+      "start_line": 64
+    },
+    {
+      "name": "Setext Second Level",
+      "kind": "function",
+      "start_line": 67
+    },
+    {
+      "name": "Paragraphs and Inline Content",
+      "kind": "function",
+      "start_line": 75
+    },
+    {
+      "name": "Code Blocks",
+      "kind": "function",
+      "start_line": 91
+    },
+    {
+      "name": "Fenced Code Blocks",
+      "kind": "function",
+      "start_line": 95
+    },
+    {
+      "name": "Code Block (python)",
+      "kind": "class",
+      "start_line": 100
+    },
+    {
+      "name": "Code Block (javascript)",
+      "kind": "class",
+      "start_line": 109
+    },
+    {
+      "name": "Code Block (bash)",
+      "kind": "class",
+      "start_line": 120
+    },
+    {
+      "name": "Code Block (json)",
+      "kind": "class",
+      "start_line": 128
+    },
+    {
+      "name": "Code Block (unknown)",
+      "kind": "class",
+      "start_line": 140
+    },
+    {
+      "name": "Indented Code Blocks",
+      "kind": "function",
+      "start_line": 146
+    },
+    {
+      "name": "Indented Code Block",
+      "kind": "class",
+      "start_line": 150
+    },
+    {
+      "name": "Lists",
+      "kind": "function",
+      "start_line": 164
+    },
+    {
+      "name": "Unordered Lists",
+      "kind": "function",
+      "start_line": 166
+    },
+    {
+      "name": "Ordered Lists",
+      "kind": "function",
+      "start_line": 188
+    },
+    {
+      "name": "Nested Lists",
+      "kind": "function",
+      "start_line": 206
+    },
+    {
+      "name": "Task Lists",
+      "kind": "function",
+      "start_line": 217
+    },
+    {
+      "name": "Block Quotes",
+      "kind": "function",
+      "start_line": 237
+    },
+    {
+      "name": "Simple Block Quote",
+      "kind": "function",
+      "start_line": 241
+    },
+    {
+      "name": "Block Quote with Nested Content",
+      "kind": "function",
+      "start_line": 247
+    },
+    {
+      "name": "Heading Inside a Block Quote\n>",
+      "kind": "function",
+      "start_line": 249
+    },
+    {
+      "name": "Code Block (python)",
+      "kind": "class",
+      "start_line": 257
+    },
+    {
+      "name": "Nested Block Quotes",
+      "kind": "function",
+      "start_line": 262
+    },
+    {
+      "name": "Block Quote with Continuation",
+      "kind": "function",
+      "start_line": 277
+    },
+    {
+      "name": "Tables",
+      "kind": "function",
+      "start_line": 285
+    },
+    {
+      "name": "Basic Table with Alignment",
+      "kind": "function",
+      "start_line": 289
+    },
+    {
+      "name": "Table with Right Alignment",
+      "kind": "function",
+      "start_line": 304
+    },
+    {
+      "name": "Mixed Alignment Table",
+      "kind": "function",
+      "start_line": 319
+    },
+    {
+      "name": "Links and References",
+      "kind": "function",
+      "start_line": 330
+    },
+    {
+      "name": "Link Reference Definitions",
+      "kind": "function",
+      "start_line": 332
+    },
+    {
+      "name": "[tree-sitter]: https://tree-sitter.github.io/tree-sitter/ \"Tree-sitter Homepage\"\n",
+      "kind": "import",
+      "start_line": 336
+    },
+    {
+      "name": "[grammar-guide]: https://tree-sitter.github.io/tree-sitter/creating-parsers \"Creating Parsers Guide\"\n",
+      "kind": "import",
+      "start_line": 337
+    },
+    {
+      "name": "[node-types]: https://tree-sitter.github.io/tree-sitter/using-parsers#named-vs-anonymous-nodes \"Named vs Anonymous Nodes\"\n",
+      "kind": "import",
+      "start_line": 338
+    },
+    {
+      "name": "[markdown-spec]: https://spec.commonmark.org/ \"CommonMark Specification\"\n",
+      "kind": "import",
+      "start_line": 339
+    },
+    {
+      "name": "HTML Blocks",
+      "kind": "function",
+      "start_line": 351
+    },
+    {
+      "name": "Special Characters",
+      "kind": "function",
+      "start_line": 386
+    },
+    {
+      "name": "Backslash Escapes",
+      "kind": "function",
+      "start_line": 388
+    },
+    {
+      "name": "HTML Entity References",
+      "kind": "function",
+      "start_line": 409
+    },
+    {
+      "name": "Numeric Character References",
+      "kind": "function",
+      "start_line": 427
+    },
+    {
+      "name": "Thematic Breaks",
+      "kind": "function",
+      "start_line": 449
+    },
+    {
+      "name": "Summary",
+      "kind": "function",
+      "start_line": 471
+    },
+    {
+      "name": "[tree-sitter]: https://tree-sitter.github.io/tree-sitter/ \"Tree-sitter Homepage\"\n",
+      "kind": "import",
+      "start_line": 528
+    },
+    {
+      "name": "[grammar-guide]: https://tree-sitter.github.io/tree-sitter/creating-parsers \"Creating Parsers Guide\"\n",
+      "kind": "import",
+      "start_line": 529
+    },
+    {
+      "name": "[node-types]: https://tree-sitter.github.io/tree-sitter/using-parsers#named-vs-anonymous-nodes \"Named vs Anonymous Nodes\"\n",
+      "kind": "import",
+      "start_line": 530
+    },
+    {
+      "name": "[markdown-spec]: https://spec.commonmark.org/ \"CommonMark Specification\"\n",
+      "kind": "import",
+      "start_line": 531
+    }
+  ],
+  "edges": []
+}
