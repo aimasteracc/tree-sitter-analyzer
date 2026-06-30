@@ -198,6 +198,18 @@ repos:
         # break the wheel of every contributor.
         files: ^\.github/workflows/.*\.ya?ml$
 
+  # Phase 2 CI gate: count remaining ``if language ==`` branches in central files.
+  # Threshold is currently set high (999) to allow development; lower to 0
+  # once Stage 12 migration is complete (REQ-CI-001).
+  - repo: local
+    hooks:
+      - id: check-language-branches
+        name: check-language-branches
+        language: python
+        entry: python scripts/check_language_branches.py
+        pass_filenames: false
+        stages: [pre-commit]
+
 # Configuration
 default_stages: [pre-commit]
 fail_fast: false

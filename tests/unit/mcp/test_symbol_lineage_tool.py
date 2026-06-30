@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools._graph_cache_fingerprint import is_ast_index_stale
+from tree_sitter_analyzer.cache.fingerprint import is_ast_index_stale
 from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
     SymbolLineageTool,
     _assess_risk,

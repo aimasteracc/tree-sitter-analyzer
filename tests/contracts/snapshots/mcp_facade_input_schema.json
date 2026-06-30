@@ -1,0 +1,554 @@
+[
+  {
+    "facade": "search",
+    "schema": {
+      "additionalProperties": true,
+      "properties": {
+        "action": {
+          "description": "Which capability to invoke. One of: batch, chain, content, grep, query, select, subscribe, symbol, unsubscribe",
+          "enum": [
+            "batch",
+            "chain",
+            "content",
+            "grep",
+            "query",
+            "select",
+            "subscribe",
+            "symbol",
+            "unsubscribe"
+          ],
+          "type": "string"
+        },
+        "file_path": {
+          "description": "Target file path.",
+          "type": "string"
+        },
+        "function_name": {
+          "description": "Function name (alias of symbol).",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Symbol kind filter for action=symbol (default: any).",
+          "enum": [
+            "function",
+            "method",
+            "class",
+            "enum",
+            "variable",
+            "import",
+            "constant",
+            "any"
+          ],
+          "type": "string"
+        },
+        "language": {
+          "description": "Language hint (usually auto).",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max results.",
+          "type": "integer"
+        },
+        "mode": {
+          "description": "Action sub-mode (e.g. summary|cycles).",
+          "type": "string"
+        },
+        "output_format": {
+          "description": "Output format (toon|json).",
+          "type": "string"
+        },
+        "query": {
+          "description": "Search query/pattern.",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Action discriminator (e.g. point|graph).",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Symbol/function name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "facade": "nav",
+    "schema": {
+      "additionalProperties": true,
+      "properties": {
+        "action": {
+          "description": "Which capability to invoke. One of: call_path, callee_tree, callees, caller_tree, callers, co_change, context, impact, lineage, navigate, resolve, test_map, trace, xref",
+          "enum": [
+            "call_path",
+            "callee_tree",
+            "callees",
+            "caller_tree",
+            "callers",
+            "co_change",
+            "context",
+            "impact",
+            "lineage",
+            "navigate",
+            "resolve",
+            "test_map",
+            "trace",
+            "xref"
+          ],
+          "type": "string"
+        },
+        "file_path": {
+          "description": "Target file path.",
+          "type": "string"
+        },
+        "function_name": {
+          "description": "Function name (alias of symbol).",
+          "type": "string"
+        },
+        "language": {
+          "description": "Language hint (usually auto).",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max results.",
+          "type": "integer"
+        },
+        "mode": {
+          "description": "Action sub-mode (e.g. summary|cycles).",
+          "type": "string"
+        },
+        "output_format": {
+          "description": "Output format (toon|json).",
+          "type": "string"
+        },
+        "query": {
+          "description": "Search query/pattern.",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Action discriminator (e.g. point|graph).",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Symbol/function name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "facade": "structure",
+    "schema": {
+      "additionalProperties": true,
+      "properties": {
+        "action": {
+          "description": "Which capability to invoke. One of: analyze, ast_path, class_detail, class_tree, explore, outline, read, signatures, sitemap",
+          "enum": [
+            "analyze",
+            "ast_path",
+            "class_detail",
+            "class_tree",
+            "explore",
+            "outline",
+            "read",
+            "signatures",
+            "sitemap"
+          ],
+          "type": "string"
+        },
+        "class_name": {
+          "description": "Class name for class_tree and class_detail actions.",
+          "type": "string"
+        },
+        "file_path": {
+          "description": "Target file path.",
+          "type": "string"
+        },
+        "function_name": {
+          "description": "Function name (alias of symbol).",
+          "type": "string"
+        },
+        "language": {
+          "description": "Language hint (usually auto).",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max results.",
+          "type": "integer"
+        },
+        "mode": {
+          "description": "Action sub-mode (e.g. summary|cycles).",
+          "type": "string"
+        },
+        "output_format": {
+          "description": "Output format (toon|json).",
+          "type": "string"
+        },
+        "query": {
+          "description": "Search query/pattern.",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Action discriminator (e.g. point|graph).",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Symbol/function name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "facade": "health",
+    "schema": {
+      "additionalProperties": true,
+      "properties": {
+        "action": {
+          "description": "Which capability to invoke. One of: dead, deps, file, heatmap, imports, matrix, overview, patterns, project, routes, scale, test_gap",
+          "enum": [
+            "dead",
+            "deps",
+            "file",
+            "heatmap",
+            "imports",
+            "matrix",
+            "overview",
+            "patterns",
+            "project",
+            "routes",
+            "scale",
+            "test_gap"
+          ],
+          "type": "string"
+        },
+        "file_path": {
+          "description": "Target file path.",
+          "type": "string"
+        },
+        "function_name": {
+          "description": "Function name (alias of symbol).",
+          "type": "string"
+        },
+        "language": {
+          "description": "Language hint (usually auto).",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max results.",
+          "type": "integer"
+        },
+        "mode": {
+          "description": "Action sub-mode (e.g. summary|cycles).",
+          "type": "string"
+        },
+        "output_format": {
+          "description": "Output format (toon|json).",
+          "type": "string"
+        },
+        "query": {
+          "description": "Search query/pattern.",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Action discriminator (e.g. point|graph).",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Symbol/function name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "facade": "edit",
+    "schema": {
+      "additionalProperties": true,
+      "properties": {
+        "action": {
+          "description": "Which capability to invoke. One of: ast_diff, classify, constraints, guard, impact, pr, refactor, safe",
+          "enum": [
+            "ast_diff",
+            "classify",
+            "constraints",
+            "guard",
+            "impact",
+            "pr",
+            "refactor",
+            "safe"
+          ],
+          "type": "string"
+        },
+        "file_path": {
+          "description": "Target file path.",
+          "type": "string"
+        },
+        "function_name": {
+          "description": "Function name (alias of symbol).",
+          "type": "string"
+        },
+        "language": {
+          "description": "Language hint (usually auto).",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max results.",
+          "type": "integer"
+        },
+        "mode": {
+          "description": "Action sub-mode (e.g. summary|cycles).",
+          "type": "string"
+        },
+        "modification_type": {
+          "description": "Required for action=guard: type of planned modification. One of: add_feature, behavior_change, delete, fix_bug, refactor, rename, signature_change.",
+          "enum": [
+            "add_feature",
+            "behavior_change",
+            "delete",
+            "fix_bug",
+            "refactor",
+            "rename",
+            "signature_change"
+          ],
+          "type": "string"
+        },
+        "output_format": {
+          "description": "Output format (toon|json).",
+          "type": "string"
+        },
+        "query": {
+          "description": "Search query/pattern.",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Action discriminator (e.g. point|graph).",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Symbol/function name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "facade": "project",
+    "schema": {
+      "additionalProperties": true,
+      "properties": {
+        "action": {
+          "description": "Which capability to invoke. One of: doc_sync, files, journal, metrics, overview, parser, skills, smart, tools, workflow",
+          "enum": [
+            "doc_sync",
+            "files",
+            "journal",
+            "metrics",
+            "overview",
+            "parser",
+            "skills",
+            "smart",
+            "tools",
+            "workflow"
+          ],
+          "type": "string"
+        },
+        "file_path": {
+          "description": "Target file path.",
+          "type": "string"
+        },
+        "function_name": {
+          "description": "Function name (alias of symbol).",
+          "type": "string"
+        },
+        "language": {
+          "description": "Language hint (usually auto).",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max results.",
+          "type": "integer"
+        },
+        "mode": {
+          "description": "Action sub-mode (e.g. summary|cycles).",
+          "type": "string"
+        },
+        "output_format": {
+          "description": "Output format (toon|json).",
+          "type": "string"
+        },
+        "query": {
+          "description": "Search query/pattern.",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Action discriminator (e.g. point|graph).",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Symbol/function name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "facade": "index",
+    "schema": {
+      "additionalProperties": true,
+      "properties": {
+        "action": {
+          "description": "Which capability to invoke. One of: auto, build, cache, full, knowledge, status, sync",
+          "enum": [
+            "auto",
+            "build",
+            "cache",
+            "full",
+            "knowledge",
+            "status",
+            "sync"
+          ],
+          "type": "string"
+        },
+        "file_path": {
+          "description": "Target file path.",
+          "type": "string"
+        },
+        "function_name": {
+          "description": "Function name (alias of symbol).",
+          "type": "string"
+        },
+        "language": {
+          "description": "Language hint (usually auto).",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max results.",
+          "type": "integer"
+        },
+        "mode": {
+          "description": "Action sub-mode (e.g. summary|cycles).",
+          "type": "string"
+        },
+        "output_format": {
+          "description": "Output format (toon|json).",
+          "type": "string"
+        },
+        "query": {
+          "description": "Search query/pattern.",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Action discriminator (e.g. point|graph).",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Symbol/function name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "facade": "viz",
+    "schema": {
+      "additionalProperties": true,
+      "properties": {
+        "action": {
+          "description": "Which capability to invoke. One of: graph, knowledge, similarity, uml",
+          "enum": [
+            "graph",
+            "knowledge",
+            "similarity",
+            "uml"
+          ],
+          "type": "string"
+        },
+        "file_path": {
+          "description": "Target file path.",
+          "type": "string"
+        },
+        "function_name": {
+          "description": "Function name (alias of symbol).",
+          "type": "string"
+        },
+        "language": {
+          "description": "Language hint (usually auto).",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max results.",
+          "type": "integer"
+        },
+        "max_groups": {
+          "description": "action=similarity: max clone groups to return (default: 20).",
+          "type": "integer"
+        },
+        "min_group_size": {
+          "description": "action=similarity: min clone group size to report (default: 2).",
+          "type": "integer"
+        },
+        "min_lines": {
+          "description": "action=similarity: min function body lines to consider (default: 5).",
+          "type": "integer"
+        },
+        "mode": {
+          "description": "Action sub-mode (e.g. summary|cycles).",
+          "type": "string"
+        },
+        "output_format": {
+          "description": "Output format (toon|json).",
+          "type": "string"
+        },
+        "path_filter": {
+          "description": "action=similarity: project-relative path glob filter.",
+          "type": "string"
+        },
+        "query": {
+          "description": "Search query/pattern.",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Action discriminator (e.g. point|graph).",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Symbol/function name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  }
+]

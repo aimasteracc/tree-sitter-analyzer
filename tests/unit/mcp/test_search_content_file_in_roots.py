@@ -77,6 +77,7 @@ async def test_file_in_roots_returns_canonical_envelope(
 
 @pytest.mark.requires_ripgrep
 @pytest.mark.asyncio
+@pytest.mark.requires_ripgrep
 async def test_normal_directory_root_still_succeeds(
     tool: SearchContentTool,
     project_with_files: Path,
@@ -96,6 +97,7 @@ async def test_normal_directory_root_still_succeeds(
 
 @pytest.mark.requires_ripgrep
 @pytest.mark.asyncio
+@pytest.mark.requires_ripgrep
 async def test_files_parameter_still_succeeds(
     tool: SearchContentTool,
     project_with_files: Path,
