@@ -10,7 +10,7 @@ def read_source_file(path: Path) -> str | None:
     if not path.exists():
         return None
     try:
-        return path.read_text()
+        return path.read_text(encoding="utf-8", errors="replace")
     except Exception:
         return None
 
