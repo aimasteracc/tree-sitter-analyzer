@@ -183,7 +183,8 @@ def test_read_text_called_with_utf8_encoding(tmp_path, monkeypatch):
 @pytest.mark.skipif(
     sys.platform != "win32",
     reason="locale-default decode failure only manifests on non-UTF-8 hosts; "
-    "the host-independent guard above (monkeypatch) covers all platforms",
+    "the host-independent guard above (monkeypatch) covers all platforms; "
+    "tracked: #1130",
 )
 def test_score_file_non_ascii_not_false_f_on_windows(tmp_path):
     """AC-1 (Windows real-locale corroboration): on Windows, a UTF-8 file with
