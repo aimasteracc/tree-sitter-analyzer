@@ -69,13 +69,13 @@ def test_detect_anti_patterns_reads_with_explicit_utf8(tmp_path, monkeypatch):
     assert isinstance(result, list), (
         "detect_anti_patterns must return a list; got None or raised"
     )
-    assert result is not None, (
-        "detect_anti_patterns must pin encoding='utf-8' so it does not fall "
-        "back to the locale default (which fails on non-ASCII bytes)"
-    )
     assert "utf-8" in seen_encodings, (
         f"detect_anti_patterns must call read_text with encoding='utf-8'; "
         f"observed encodings: {seen_encodings}"
+    )
+    # The file contains print() inside a function — AP003 must be detected.
+    assert any(f.get("id") == "AP003" for f in result), (
+        f"Expected AP003 (print_in_production) finding; got: {result}"
     )
 
 
@@ -93,9 +93,10 @@ def test_non_ascii_python_file_returns_findings_not_empty(tmp_path):
 
     result = detect_anti_patterns(str(source), "python")
 
-    assert result is not None, (
-        "detect_anti_patterns must not return None for a readable UTF-8 file"
-    )
     assert isinstance(result, list), (
         f"detect_anti_patterns must return a list, got {type(result)!r}"
+    )
+    # The file contains a mutable default argument — AP001 must be detected.
+    assert any(f.get("id") == "AP001" for f in result), (
+        f"Expected AP001 (mutable_default_argument) finding; got: {result}"
     )

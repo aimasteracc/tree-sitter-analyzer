@@ -46,11 +46,11 @@ def test_non_ascii_file_fills_dimensions(tmp_path):
     result = HealthScorer().score_file(str(source))
 
     # Pre-fix on a non-UTF-8 host: dimensions == {} and total == 0.0 (false F).
-    assert len(result.dimensions) > 0, (
+    assert result.dimensions, (
         f"Expected populated dimensions for a readable UTF-8 file, got "
         f"{result.dimensions}"
     )
-    assert result.total > 0, (
+    assert result.total > 0.0, (  # ratchet: nondeterministic source content determines exact score
         f"Expected a positive health total for a readable UTF-8 file, got "
         f"{result.total}"
     )
@@ -74,7 +74,7 @@ def test_ascii_only_file_score_unchanged(tmp_path):
     assert first.total == 100.0, (
         f"Pure-ASCII single-line file should score 100.0, got {first.total}"
     )
-    assert len(first.dimensions) > 0
+    assert first.dimensions
     assert first.total == second.total, (
         "Scoring the same ASCII file twice must be deterministic"
     )
@@ -199,4 +199,4 @@ def test_score_file_non_ascii_not_false_f_on_windows(tmp_path):
     result = HealthScorer().score_file(str(source))
 
     assert result.dimensions, "Windows non-ASCII file must not yield empty dimensions"
-    assert result.total > 0
+    assert result.total > 0.0  # ratchet: nondeterministic source content determines exact score
