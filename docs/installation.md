@@ -101,7 +101,7 @@ For users integrating with AI assistants (Claude Desktop, Cursor, etc.):
 }
 ```
 
-> **Note**: `TREE_SITTER_PROJECT_ROOT` is optional - you can set it dynamically via the AI assistant.
+> **Note**: `TREE_SITTER_PROJECT_ROOT` must be an **absolute** path. The server enforces a security boundary (`SecurityValidator`) that rejects relative paths. You can also set it dynamically per-call via the AI assistant, but the value must still be absolute.
 
 3. Restart your AI client
 4. Verify by asking the AI to use the tree-sitter-analyzer tools
