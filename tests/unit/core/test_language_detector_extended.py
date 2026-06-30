@@ -6,6 +6,7 @@ Additional test cases to improve coverage for language detection functionality.
 """
 
 import sys
+import unittest.mock
 
 import pytest
 
@@ -26,10 +27,16 @@ def language_detector():
     return LanguageDetector()
 
 
-def test_detect_language_with_content_java(language_detector):
-    """Test language detection with Java content"""
-    file_path = "test.java"
-    content = """
+# ---------------------------------------------------------------------------
+# detect_language() — extension-based, clear languages (was 4 separate funcs)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "file_path,content,expected_language,expected_confidence",
+    [
+        pytest.param(
+            "test.java",
+            """
     package com.example;
 
     public class TestClass {
@@ -38,36 +45,28 @@ def test_detect_language_with_content_java(language_detector):
             System.out.println("Hello");
         }
     }
-    """
-
-    language, confidence = language_detector.detect_language(file_path, content)
-
-    assert language == "java"
-    assert confidence == 0.9  # Extension-based detection confidence
-
-
-def test_detect_language_with_content_python(language_detector):
-    """Test language detection with Python content"""
-    file_path = "test.py"
-    content = """
+    """,
+            "java",
+            0.9,
+            id="java-extension-and-content",
+        ),
+        pytest.param(
+            "test.py",
+            """
     def main():
         import os
         from sys import argv
 
         if __name__ == "__main__":
             print("Hello World")
-    """
-
-    language, confidence = language_detector.detect_language(file_path, content)
-
-    assert language == "python"
-    assert confidence == 0.9  # Extension-based detection confidence
-
-
-def test_detect_language_with_content_javascript(language_detector):
-    """Test language detection with JavaScript content"""
-    file_path = "test.js"
-    content = """
+    """,
+            "python",
+            0.9,
+            id="python-extension-and-content",
+        ),
+        pytest.param(
+            "test.js",
+            """
     function greet(name) {
         var message = "Hello";
         let greeting = `${message}, ${name}!`;
@@ -75,18 +74,14 @@ def test_detect_language_with_content_javascript(language_detector):
         console.log(result);
         return result;
     }
-    """
-
-    language, confidence = language_detector.detect_language(file_path, content)
-
-    assert language == "javascript"
-    assert confidence == 0.9  # Extension-based detection confidence
-
-
-def test_detect_language_with_content_typescript(language_detector):
-    """Test language detection with TypeScript content"""
-    file_path = "test.ts"
-    content = """
+    """,
+            "javascript",
+            0.9,
+            id="javascript-extension-and-content",
+        ),
+        pytest.param(
+            "test.ts",
+            """
     interface User {
         name: string;
         age: number;
@@ -99,18 +94,33 @@ def test_detect_language_with_content_typescript(language_detector):
             return { name: "John", age: 30 };
         }
     }
-    """
-
+    """,
+            "typescript",
+            0.9,
+            id="typescript-extension-and-content",
+        ),
+    ],
+)
+def test_detect_language_with_content(
+    language_detector, file_path, content, expected_language, expected_confidence
+):
+    """Test language detection with clear extension + content — Extension-based detection confidence = 0.9"""
     language, confidence = language_detector.detect_language(file_path, content)
+    assert language == expected_language
+    assert confidence == expected_confidence
 
-    assert language == "typescript"
-    assert confidence == 0.9  # Extension-based detection confidence
 
+# ---------------------------------------------------------------------------
+# detect_language() — ambiguous extensions (.h / .m) with content
+# (was 8 separate funcs)
+# ---------------------------------------------------------------------------
 
-def test_detect_language_ambiguous_h_file_cpp(language_detector):
-    """Test ambiguous .h file detection as C++"""
-    file_path = "test.h"
-    content = """
+@pytest.mark.parametrize(
+    "file_path,content,expected_language,expected_confidence",
+    [
+        pytest.param(
+            "test.h",
+            """
     #include <iostream>
 
     namespace MyNamespace {
@@ -126,19 +136,16 @@ def test_detect_language_ambiguous_h_file_cpp(language_detector):
             std::cout << value << std::endl;
         }
     }
-    """
-
-    language, confidence = language_detector.detect_language(file_path, content)
-
-    # .h files default to C when content-based detection doesn't provide strong signals
-    assert language == "c"  # Default for .h files
-    assert confidence == 0.7  # Ambiguous extension
-
-
-def test_detect_language_ambiguous_h_file_c(language_detector):
-    """Test ambiguous .h file detection as C"""
-    file_path = "test.h"
-    content = """
+    """,
+            "c",
+            0.7,
+            id="h-cpp-content-defaults-to-c",
+            # .h files default to C when content-based detection doesn't
+            # provide strong enough signals (ambiguous extension)
+        ),
+        pytest.param(
+            "test.h",
+            """
     #include <stdio.h>
     #include <stdlib.h>
 
@@ -152,18 +159,14 @@ def test_detect_language_ambiguous_h_file_c(language_detector):
         Person* p = malloc(sizeof(Person));
         return 0;
     }
-    """
-
-    language, confidence = language_detector.detect_language(file_path, content)
-
-    assert language == "c"
-    assert confidence == 0.7
-
-
-def test_detect_language_ambiguous_h_file_objc(language_detector):
-    """Test ambiguous .h file detection as Objective-C"""
-    file_path = "test.h"
-    content = """
+    """,
+            "c",
+            0.7,
+            id="h-c-content",
+        ),
+        pytest.param(
+            "test.h",
+            """
     #import <Foundation/Foundation.h>
 
     @interface MyClass : NSObject
@@ -176,20 +179,16 @@ def test_detect_language_ambiguous_h_file_objc(language_detector):
         NSString *message = [[NSString alloc] initWithString:@"Hello"];
     }
     @end
-    """
-
-    language, confidence = language_detector.detect_language(file_path, content)
-
-    # .h files default to C even with Objective-C content (ambiguous extension)
-    # Content-based detection would require stronger pattern matching implementation
-    assert language == "c"  # .h files default to C
-    assert confidence == 0.7  # Ambiguous extension
-
-
-def test_detect_language_ambiguous_m_file_objc(language_detector):
-    """Test ambiguous .m file detection as Objective-C"""
-    file_path = "test.m"
-    content = """
+    """,
+            "c",
+            0.7,
+            id="h-objc-content-defaults-to-c",
+            # .h files default to C even with Objective-C content (ambiguous
+            # extension); content-based detection requires stronger patterns
+        ),
+        pytest.param(
+            "test.m",
+            """
     #import "MyClass.h"
 
     @implementation MyClass
@@ -197,18 +196,14 @@ def test_detect_language_ambiguous_m_file_objc(language_detector):
         NSString *message = [[NSString alloc] initWithString:@"Hello"];
     }
     @end
-    """
-
-    language, confidence = language_detector.detect_language(file_path, content)
-
-    assert language == "objc"
-    assert confidence == 0.7
-
-
-def test_detect_language_ambiguous_m_file_matlab(language_detector):
-    """Test ambiguous .m file detection as MATLAB"""
-    file_path = "test.m"
-    content = """
+    """,
+            "objc",
+            0.7,
+            id="m-objc-content",
+        ),
+        pytest.param(
+            "test.m",
+            """
     function result = calculateSum(a, b)
         clc;
         clear all;
@@ -221,35 +216,79 @@ def test_detect_language_ambiguous_m_file_matlab(language_detector):
     x = 5;
     y = 10;
     sum_result = calculateSum(x, y);
-    """
-
-    language, confidence = language_detector.detect_language(file_path, content)
-
-    assert (
-        language == "objc"
-    )  # .m files default to Objective-C (more common in modern dev)
-    assert confidence >= 0.7  # Content-based detection may vary
+    """,
+            "objc",
+            0.7,
+            id="m-matlab-content-defaults-to-objc",
+            # .m files default to Objective-C (more common in modern dev)
+        ),
+        pytest.param(
+            "test.h",
+            None,
+            "c",
+            0.7,
+            id="h-no-content-defaults-to-c",
+        ),
+        pytest.param(
+            "test.h",
+            "",
+            "c",
+            0.7,
+            id="h-empty-content-defaults-to-c",
+        ),
+    ],
+)
+def test_detect_language_ambiguous_extension(
+    language_detector, file_path, content, expected_language, expected_confidence
+):
+    """Test detect_language for ambiguous extensions (.h / .m) with various content"""
+    if content is None:
+        language, confidence = language_detector.detect_language(file_path, content)
+    else:
+        language, confidence = language_detector.detect_language(file_path, content)
+    assert language == expected_language
+    assert confidence == expected_confidence
 
 
 def test_detect_language_ambiguous_without_content(language_detector):
-    """Test ambiguous extension without content"""
-    file_path = "test.h"
-
-    language, confidence = language_detector.detect_language(file_path)
-
-    assert language == "c"  # Default for .h
+    """Test ambiguous extension without content — default .h → c, confidence 0.7"""
+    language, confidence = language_detector.detect_language("test.h")
+    assert language == "c"
     assert confidence == 0.7
 
 
-def test_detect_language_unknown_extension(language_detector):
-    """Test unknown file extension"""
-    file_path = "test.unknown"
+# ---------------------------------------------------------------------------
+# detect_language() — unknown / edge-case inputs (was 5 separate funcs)
+# ---------------------------------------------------------------------------
 
+@pytest.mark.parametrize(
+    "file_path,expected_language,expected_confidence",
+    [
+        pytest.param("test.unknown", "unknown", 0.0, id="unknown-extension"),
+        pytest.param("", "unknown", 0.0, id="empty-string-path"),
+        pytest.param("README", "unknown", 0.0, id="no-extension"),
+        pytest.param(None, "unknown", 0.0, id="none-input"),
+    ],
+)
+def test_detect_language_edge_inputs(
+    language_detector, file_path, expected_language, expected_confidence
+):
+    """Test detect_language returns ('unknown', 0.0) for unresolvable or invalid paths"""
     language, confidence = language_detector.detect_language(file_path)
+    assert language == expected_language
+    assert confidence == expected_confidence
 
-    assert language == "unknown"
-    assert confidence == 0.0
 
+def test_file_path_with_multiple_dots(language_detector):
+    """Test file path with multiple dots — last extension wins"""
+    language, confidence = language_detector.detect_language("test.backup.java")
+    assert language == "java"
+    assert confidence == 0.9  # Extension-based detection confidence
+
+
+# ---------------------------------------------------------------------------
+# detect_from_extension() — various languages (already parametrized; kept)
+# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
     "file_path,expected_language",
@@ -276,6 +315,45 @@ def test_detect_from_extension_various_files(
     language = language_detector.detect_from_extension(file_path)
     assert language == expected_language
 
+
+# ---------------------------------------------------------------------------
+# detect_from_extension() — invalid / non-string inputs (was 2 separate funcs)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "bad_input",
+    [
+        pytest.param(None, id="none"),
+        pytest.param(123, id="integer"),
+    ],
+)
+def test_detect_from_extension_invalid_input(language_detector, bad_input):
+    """detect_from_extension with non-string or None returns 'unknown'"""
+    assert language_detector.detect_from_extension(bad_input) == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Case-insensitive extension handling (already parametrized; kept)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "file_path,expected_language",
+    [
+        ("test.JAVA", "java"),
+        ("test.PY", "python"),
+        ("test.JS", "javascript"),
+        ("test.Cpp", "cpp"),
+    ],
+)
+def test_case_insensitive_extensions(language_detector, file_path, expected_language):
+    """Test case insensitive extension handling"""
+    language = language_detector.detect_from_extension(file_path)
+    assert language == expected_language
+
+
+# ---------------------------------------------------------------------------
+# is_supported() (already parametrized; kept)
+# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
     "language",
@@ -309,6 +387,10 @@ def test_is_supported_unsupported_languages(language_detector, language):
     assert language_detector.is_supported(language) is False
 
 
+# ---------------------------------------------------------------------------
+# get_supported_extensions / get_supported_languages (standalone — different shape)
+# ---------------------------------------------------------------------------
+
 def test_get_supported_extensions(language_detector):
     """Test getting supported extensions"""
     extensions = language_detector.get_supported_extensions()
@@ -340,6 +422,10 @@ def test_get_supported_languages(language_detector):
     assert languages == sorted(languages)
 
 
+# ---------------------------------------------------------------------------
+# add_extension_mapping (standalone — stateful mutation test)
+# ---------------------------------------------------------------------------
+
 def test_add_extension_mapping(language_detector):
     """Test adding custom extension mapping"""
     # Add a custom mapping
@@ -355,68 +441,166 @@ def test_add_extension_mapping(language_detector):
     assert language == "upperlang"
 
 
-def test_get_language_info_supported(language_detector):
-    """Test getting language information for supported language"""
-    # Test for Java
-    info = language_detector.get_language_info("java")
+# ---------------------------------------------------------------------------
+# get_language_info() (was 2 separate funcs)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "lang,expected_extension",
+    [
+        pytest.param("java", ".java", id="java"),
+        pytest.param("swift", ".swift", id="swift"),
+    ],
+)
+def test_get_language_info_supported(language_detector, lang, expected_extension):
+    """Test getting language information for supported languages"""
+    info = language_detector.get_language_info(lang)
 
     assert isinstance(info, dict)
-    assert info["name"] == "java"
-    assert ".java" in info["extensions"]
+    assert info["name"] == lang
+    assert expected_extension in info["extensions"]
     assert info["supported"] is True
     assert info["tree_sitter_available"] is True
 
 
-def test_get_language_info_swift_supported(language_detector):
-    """Test getting language information for Swift."""
-    info = language_detector.get_language_info("swift")
+# ---------------------------------------------------------------------------
+# _resolve_ambiguity() (was 9 separate funcs)
+# ---------------------------------------------------------------------------
 
-    assert info["name"] == "swift"
-    assert ".swift" in info["extensions"]
-    assert info["supported"] is True
-    assert info["tree_sitter_available"] is True
+@pytest.mark.parametrize(
+    "extension,content,expected",
+    [
+        pytest.param(".java", "public class Test {}", "java", id="non-ambiguous-java"),
+        pytest.param(".unknown", "some content", "unknown", id="unknown-extension"),
+        pytest.param(
+            ".h",
+            "#include <iostream>\nstd::cout << 'hi';",
+            "cpp",
+            id="h-cpp-signals",
+        ),
+        pytest.param(
+            ".h",
+            '#include <stdio.h>\nprintf("hi");',
+            "c",
+            id="h-c-signals",
+        ),
+        pytest.param(
+            ".h",
+            "#import <Foundation/Foundation.h>\n@interface Foo\nNSString *s; alloc]",
+            "objc",
+            id="h-objc-signals",
+        ),
+        pytest.param(
+            ".m",
+            '#import "Foo.h"\n@interface Bar\nalloc]',
+            "objc",
+            id="m-objc-signals",
+        ),
+        pytest.param(
+            ".m",
+            "function y = f(x)\nclc;\nclear all\ndisp(x)\nend;",
+            "matlab",
+            id="m-matlab-signals",
+        ),
+        pytest.param(".sql", "SELECT 1", "sql", id="sql-fallback"),
+        pytest.param(".json", "{}", "json", id="json-fallback"),
+    ],
+)
+def test_resolve_ambiguity(language_detector, extension, content, expected):
+    """_resolve_ambiguity routes correctly based on extension and content signals"""
+    result = language_detector._resolve_ambiguity(extension, content)
+    assert result == expected
 
 
-def test_resolve_ambiguity_non_ambiguous(language_detector):
-    """Test resolve ambiguity for non-ambiguous extension"""
-    result = language_detector._resolve_ambiguity(".java", "public class Test {}")
-    assert result == "java"
+# ---------------------------------------------------------------------------
+# _detect_c_family() (was 5 separate funcs)
+# ---------------------------------------------------------------------------
 
+@pytest.mark.parametrize(
+    "content,candidates,expected",
+    [
+        pytest.param(
+            "// Just a comment\nint x = 5;",
+            ["c", "cpp", "objc"],
+            "c",
+            id="no-matches-returns-first-candidate",
+        ),
+        pytest.param(
+            "#include <iostream>\nusing namespace std;\nstd::vector<int> v;",
+            ["c", "cpp"],
+            "cpp",
+            id="cpp-patterns-win",
+        ),
+        pytest.param(
+            '#include <stdio.h>\nprintf("hello");\nmalloc(64);\ntypedef struct',
+            ["c", "cpp"],
+            "c",
+            id="c-patterns-win",
+        ),
+        pytest.param(
+            "#import <Foundation/Foundation.h>\n@interface Foo\nalloc]",
+            ["c", "cpp", "objc"],
+            "objc",
+            id="objc-patterns-win",
+        ),
+        pytest.param(
+            "#import <Foundation/Foundation.h>\n@interface Test",
+            ["c", "cpp"],  # objc not in candidates
+            "c",
+            id="objc-wins-but-not-in-candidates-falls-back",
+        ),
+    ],
+)
+def test_detect_c_family(language_detector, content, candidates, expected):
+    """_detect_c_family selects the correct C-family language from content signals.
 
-def test_resolve_ambiguity_unknown_extension(language_detector):
-    """Test resolve ambiguity for unknown extension"""
-    result = language_detector._resolve_ambiguity(".unknown", "some content")
-    assert result == "unknown"
-
-
-def test_detect_c_family_with_no_matches(language_detector):
-    """Test C family detection with no pattern matches"""
-    content = "// Just a comment\nint x = 5;"
-    candidates = ["c", "cpp", "objc"]
-
+    The 'objc-wins-but-not-in-candidates-falls-back' case expects 'c' as the
+    documented first-candidate fallback; the result must be in candidates.
+    """
     result = language_detector._detect_c_family(content, candidates)
-    assert result == "c"  # Should return first candidate
+    # Every result must be drawn from the provided candidates
+    assert result in candidates
+    # And must equal the specific expected value documented per case
+    assert result == expected
 
 
-def test_detect_objc_vs_matlab_tie(language_detector):
-    """Test Objective-C vs MATLAB detection with tie"""
-    content = "// No specific patterns"
-    candidates = ["objc", "matlab"]
+# ---------------------------------------------------------------------------
+# _detect_objc_vs_matlab() (was 3 separate funcs)
+# ---------------------------------------------------------------------------
 
+@pytest.mark.parametrize(
+    "content,candidates,expected",
+    [
+        pytest.param(
+            "// No specific patterns",
+            ["objc", "matlab"],
+            "objc",
+            id="tie-returns-first-candidate",
+        ),
+        pytest.param(
+            '#import "Foo.h"\n@interface MyClass\n@implementation MyClass\nNSString *s = [[NSString alloc] init]',
+            ["objc", "matlab"],
+            "objc",
+            id="clear-objc-content",
+        ),
+        pytest.param(
+            "function result = calc()\nclc;\nclear all\ndisp('hello')\nend;",
+            ["objc", "matlab"],
+            "matlab",
+            id="clear-matlab-content",
+        ),
+    ],
+)
+def test_detect_objc_vs_matlab(language_detector, content, candidates, expected):
+    """_detect_objc_vs_matlab selects the correct language from content signals"""
     result = language_detector._detect_objc_vs_matlab(content, candidates)
-    assert result == "objc"  # Should return first candidate
+    assert result == expected
 
 
-def test_detect_c_family_objc_not_in_candidates(language_detector):
-    """Test C family detection when objc wins but not in candidates"""
-    content = "#import <Foundation/Foundation.h>\n@interface Test"
-    candidates = ["c", "cpp"]  # objc not in candidates
+# ---------------------------------------------------------------------------
+# Global convenience functions
+# ---------------------------------------------------------------------------
 
-    result = language_detector._detect_c_family(content, candidates)
-    assert result in ["c", "cpp"]  # Should fall back to c or cpp
-
-
-# Test global convenience functions
 def test_detect_language_from_file():
     """Test global detect_language_from_file function"""
     language = detect_language_from_file("test.java")
@@ -446,187 +630,20 @@ def test_global_detector_instance():
     assert language == "java"
 
 
-# Test edge cases and error conditions
-def test_empty_file_path(language_detector):
-    """Test empty file path"""
-    language, confidence = language_detector.detect_language("")
-    assert language == "unknown"
-    assert confidence == 0.0
-
-
-def test_file_path_without_extension(language_detector):
-    """Test file path without extension"""
-    language, confidence = language_detector.detect_language("README")
-    assert language == "unknown"
-    assert confidence == 0.0
-
-
-def test_file_path_with_multiple_dots(language_detector):
-    """Test file path with multiple dots"""
-    language, confidence = language_detector.detect_language("test.backup.java")
-    assert language == "java"
-    assert confidence == 0.9  # Extension-based detection confidence
-
+# ---------------------------------------------------------------------------
+# detect_language_from_file() — invalid inputs (was 2 separate funcs)
+# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
-    "file_path,expected_language",
+    "bad_input",
     [
-        ("test.JAVA", "java"),
-        ("test.PY", "python"),
-        ("test.JS", "javascript"),
-        ("test.Cpp", "cpp"),
+        pytest.param("", id="empty-string"),
+        pytest.param(None, id="none"),
     ],
 )
-def test_case_insensitive_extensions(language_detector, file_path, expected_language):
-    """Test case insensitive extension handling"""
-    language = language_detector.detect_from_extension(file_path)
-    assert language == expected_language
-
-
-def test_empty_content_for_ambiguous_extension(language_detector):
-    """Test empty content for ambiguous extension"""
-    language, confidence = language_detector.detect_language("test.h", "")
-    assert language == "c"
-    assert confidence == 0.7
-
-
-def test_none_content_for_ambiguous_extension(language_detector):
-    """Test None content for ambiguous extension"""
-    language, confidence = language_detector.detect_language("test.h", None)
-    assert language == "c"
-    assert confidence == 0.7
-
-
-# --- Tests for uncovered private method paths ---
-
-
-def test_resolve_ambiguity_h_with_cpp_content(language_detector):
-    """_resolve_ambiguity for .h with C++ content returns cpp"""
-    result = language_detector._resolve_ambiguity(
-        ".h", "#include <iostream>\nstd::cout << 'hi';"
-    )
-    assert result == "cpp"
-
-
-def test_resolve_ambiguity_h_with_c_content(language_detector):
-    """_resolve_ambiguity for .h with C content returns c"""
-    result = language_detector._resolve_ambiguity(
-        ".h", '#include <stdio.h>\nprintf("hi");'
-    )
-    assert result == "c"
-
-
-def test_resolve_ambiguity_h_with_objc_content(language_detector):
-    """_resolve_ambiguity for .h with ObjC content returns objc"""
-    result = language_detector._resolve_ambiguity(
-        ".h", "#import <Foundation/Foundation.h>\n@interface Foo\nNSString *s; alloc]"
-    )
-    assert result == "objc"
-
-
-def test_resolve_ambiguity_m_with_objc_content(language_detector):
-    """_resolve_ambiguity for .m with ObjC content"""
-    result = language_detector._resolve_ambiguity(
-        ".m", '#import "Foo.h"\n@interface Bar\nalloc]'
-    )
-    assert result == "objc"
-
-
-def test_resolve_ambiguity_m_with_matlab_content(language_detector):
-    """_resolve_ambiguity for .m with MATLAB content"""
-    result = language_detector._resolve_ambiguity(
-        ".m", "function y = f(x)\nclc;\nclear all\ndisp(x)\nend;"
-    )
-    assert result == "matlab"
-
-
-def test_resolve_ambiguity_sql_fallback(language_detector):
-    """_resolve_ambiguity for .sql returns first candidate"""
-    result = language_detector._resolve_ambiguity(".sql", "SELECT 1")
-    assert result == "sql"
-
-
-def test_resolve_ambiguity_json_fallback(language_detector):
-    """_resolve_ambiguity for .json returns first candidate"""
-    result = language_detector._resolve_ambiguity(".json", "{}")
-    assert result == "json"
-
-
-def test_detect_c_family_cpp_wins(language_detector):
-    """_detect_c_family with strong C++ patterns"""
-    content = "#include <iostream>\nusing namespace std;\nstd::vector<int> v;"
-    result = language_detector._detect_c_family(content, ["c", "cpp"])
-    assert result == "cpp"
-
-
-def test_detect_c_family_c_wins(language_detector):
-    """_detect_c_family with strong C patterns"""
-    content = '#include <stdio.h>\nprintf("hello");\nmalloc(64);\ntypedef struct'
-    result = language_detector._detect_c_family(content, ["c", "cpp"])
-    assert result == "c"
-
-
-def test_detect_c_family_objc_wins(language_detector):
-    """_detect_c_family with ObjC patterns winning"""
-    content = "#import <Foundation/Foundation.h>\n@interface Foo\nalloc]"
-    result = language_detector._detect_c_family(content, ["c", "cpp", "objc"])
-    assert result == "objc"
-
-
-def test_detect_objc_vs_matlab_objc_wins(language_detector):
-    """_detect_objc_vs_matlab with clear ObjC content"""
-    content = '#import "Foo.h"\n@interface MyClass\n@implementation MyClass\nNSString *s = [[NSString alloc] init]'
-    result = language_detector._detect_objc_vs_matlab(content, ["objc", "matlab"])
-    assert result == "objc"
-
-
-def test_detect_objc_vs_matlab_matlab_wins(language_detector):
-    """_detect_objc_vs_matlab with clear MATLAB content"""
-    content = "function result = calc()\nclc;\nclear all\ndisp('hello')\nend;"
-    result = language_detector._detect_objc_vs_matlab(content, ["objc", "matlab"])
-    assert result == "matlab"
-
-
-def test_detect_from_extension_none_input(language_detector):
-    """detect_from_extension with None returns unknown"""
-    assert language_detector.detect_from_extension(None) == "unknown"
-
-
-def test_detect_from_extension_non_string_input(language_detector):
-    """detect_from_extension with non-string returns unknown"""
-    assert language_detector.detect_from_extension(123) == "unknown"
-
-
-def test_detect_language_with_content_ambiguity_path(language_detector):
-    """Force ambiguity resolution by removing .sql from extension_map"""
-    language_detector.extension_map.pop(".sql", None)
-    language, confidence = language_detector.detect_language(
-        "test.sql", "SELECT * FROM table"
-    )
-    assert language == "sql"
-    assert confidence == 0.7
-
-
-def test_detect_language_with_content_ambiguity_without_content(language_detector):
-    """Force ambiguity path without content returns 0.7 confidence"""
-    language_detector.extension_map.pop(".sql", None)
-    language, confidence = language_detector.detect_language("test.sql")
-    assert language == "sql"
-    assert confidence == 0.7
-
-
-def test_detect_language_empty_string_path(language_detector):
-    """detect_language with empty string"""
-    language, confidence = language_detector.detect_language("")
-    assert language == "unknown"
-    assert confidence == 0.0
-
-
-def test_detect_language_non_string_input(language_detector):
-    """detect_language with non-string input"""
-    language, confidence = language_detector.detect_language(None)
-    assert language == "unknown"
-    assert confidence == 0.0
+def test_detect_language_from_file_invalid_input(bad_input):
+    """detect_language_from_file with empty or None returns 'unknown'"""
+    assert detect_language_from_file(bad_input) == "unknown"  # type: ignore
 
 
 def test_detect_language_from_file_with_project_root():
@@ -643,33 +660,65 @@ def test_detect_language_from_file_with_project_root():
         assert result == "python"
 
 
-def test_detect_language_from_file_empty():
-    """detect_language_from_file with empty string"""
-    assert detect_language_from_file("") == "unknown"
+# ---------------------------------------------------------------------------
+# Force ambiguity path by removing a known extension from the map
+# (was 2 separate funcs)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "content,expected_language,expected_confidence",
+    [
+        pytest.param(
+            "SELECT * FROM table",
+            "sql",
+            0.7,
+            id="with-content-ambiguity-path",
+        ),
+        pytest.param(
+            None,
+            "sql",
+            0.7,
+            id="without-content-ambiguity-path",
+        ),
+    ],
+)
+def test_detect_language_forced_ambiguity(
+    language_detector, content, expected_language, expected_confidence
+):
+    """Force ambiguity resolution by removing .sql from extension_map"""
+    language_detector.extension_map.pop(".sql", None)
+    if content is not None:
+        language, confidence = language_detector.detect_language("test.sql", content)
+    else:
+        language, confidence = language_detector.detect_language("test.sql")
+    assert language == expected_language
+    assert confidence == expected_confidence
 
 
-def test_detect_language_from_file_none():
-    """detect_language_from_file with None"""
-    assert detect_language_from_file(None) == "unknown"  # type: ignore
+# ---------------------------------------------------------------------------
+# is_supported / is_language_supported with PluginManager failure
+# (was 2 separate funcs)
+# ---------------------------------------------------------------------------
 
-
-def test_is_supported_with_plugin_manager_failure(language_detector):
-    """is_supported falls back when PluginManager raises"""
-    import unittest.mock
-
+@pytest.mark.parametrize(
+    "fn,label",
+    [
+        pytest.param(
+            lambda ld: ld.is_supported("cobol"),
+            "instance-method",
+            id="instance-method",
+        ),
+        pytest.param(
+            lambda _: is_language_supported("cobol"),
+            "global-function",
+            id="global-function",
+        ),
+    ],
+)
+def test_is_supported_with_plugin_manager_failure(language_detector, fn, label):
+    """is_supported and is_language_supported fall back gracefully when PluginManager raises"""
     with unittest.mock.patch(
         "tree_sitter_analyzer.plugins.manager.PluginManager",
         side_effect=ImportError("nope"),
     ):
-        assert language_detector.is_supported("cobol") is False
-
-
-def test_is_language_supported_with_plugin_manager_failure():
-    """is_language_supported falls back when PluginManager raises"""
-    import unittest.mock
-
-    with unittest.mock.patch(
-        "tree_sitter_analyzer.plugins.manager.PluginManager",
-        side_effect=ImportError("nope"),
-    ):
-        assert is_language_supported("cobol") is False
+        assert fn(language_detector) is False
