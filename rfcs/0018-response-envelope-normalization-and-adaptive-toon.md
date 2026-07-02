@@ -100,11 +100,18 @@ too — it is payload hygiene, not a format problem. **Correction (review):** th
 2. **Add a `ToonDecoder`.** New module `formatters/toon_decoder.py` implementing
    `decode_toon(text) -> dict|list`, spec-conformant, including array-table
    header+rows. Sparse/union rows (`[{a,b},{a}]`) must round-trip unambiguously —
-   define the missing-cell encoding explicitly (emit explicit `null`, not an
-   empty trailing cell) so absent ≠ `""` ≠ `0`.
+   define the missing-cell encoding explicitly with a representation that is
+   **distinct from `null`** (e.g. a truly-empty cell reserved for "absent",
+   with `null`, `""` and `0` each encoded distinguishably) so absent ≠ `null`
+   ≠ `""` ≠ `0` — otherwise the round-trip oracle cannot hold for inputs like
+   `[{"a": null}, {}]` (Codex review, #1136).
 3. **Round-trip oracle (correctness, not cost).**
    `assert decode_toon(format_as_toon(x)) == x` over a corpus covering scalars,
-   nested objects, uniform arrays, sparse arrays, comma/quote-bearing strings.
+   nested objects, uniform arrays, sparse arrays, comma/quote-bearing strings,
+   **and Windows-style paths** (`C:\\repo\\file.py`): the encoder's
+   `normalize_paths` backslash→slash rewrite is lossy, so raw-wire mode must
+   disable it (or make it opt-in) for the oracle to hold on Windows clients
+   (Codex review, #1136).
 
 ```python
 # formatters/toon_decoder.py  (NEW)
@@ -126,6 +133,14 @@ def _emit(result: dict) -> list[TextContent]:
         return [TextContent(type="text", text=result["toon_content"])]
     return [TextContent(type="text", text=_json_dumps(result))]
 ```
+
+**Boundary-normalization ordering (Codex review, #1136):** `handle_call_tool`
+applies `ensure_canonical_success_envelope` AFTER the tool built
+`toon_content`, so boundary-added contract fields (top-level `summary_line`,
+`agent_summary`) live only in the JSON envelope today. PR 2 MUST regenerate
+`toon_content` after boundary normalization (or move TOON formatting to the
+boundary itself) — emitting the tool's cached pre-normalization blob raw would
+silently drop those contract fields.
 
 **Consumer migration (mandatory, same PR):** ~35 test files + any external client
 call `json.loads(wire)` to read `verdict`/`success`. They must switch to
@@ -229,7 +244,10 @@ rules combined. State current-vs-post-PR2 explicitly anywhere a ratio is quoted.
 ### Wire decision (PM 拍板)
 Ship **raw TOON on the wire as the default** for `output_format="toon"` responses.
 `output_format="json"` is the documented **escape hatch** for any client that cannot
-read TOON. Set `mimeType: "application/toon"` so a non-TOON client gets a *detectable*
+read TOON. Set `mimeType: "text/toon"` — the media type the TOON spec itself
+uses and the one §Motivation already cites; a single consistent value repo-wide
+(Codex review, #1136 flagged the earlier `application/toon` inconsistency) — so
+a non-TOON client gets a *detectable*
 content-type mismatch rather than a silent `json.loads` failure. We do **not** build
 opt-in capability negotiation — the format is already per-call selectable. Residual
 gap (accepted): `output_format=json` is per-call, so a TOON-unaware client's *first*
@@ -284,7 +302,11 @@ dictionary (project_root + command templates re-sent every call).
    corpus incl. sparse arrays (RED today: no decoder exists).
 3. `test_wire_toon_is_raw_document` — emitted `TextContent.text` parses via
    `decode_toon` and is **not** `json.dumps`-wrapped (Part 2).
-4. `test_decision_envelope_single_score` — exactly one score key (RED: 4).
+4. `test_decision_envelope_single_score` — exactly one **canonical** score key.
+   During the mandatory one-release alias-deprecation window the test asserts
+   "one canonical + N explicitly-`_deprecated`-marked aliases"; only after the
+   window closes does it tighten to exactly-one-key (Codex review, #1136 —
+   otherwise the gate contradicts Part 3's own deprecation requirement).
 5. `test_no_empty_guidance_fields` — no `""`/`[]` command fields shipped.
 6. `test_agent_summary_keeps_contract_echoes` — `agent_summary.verdict` and
    `.summary_line` **still present and equal to top level** (guards against
