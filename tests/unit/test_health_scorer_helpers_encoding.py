@@ -50,7 +50,9 @@ def test_non_ascii_file_fills_dimensions(tmp_path):
         f"Expected populated dimensions for a readable UTF-8 file, got "
         f"{result.dimensions}"
     )
-    assert result.total > 0.0, (  # ratchet: nondeterministic source content determines exact score
+    assert (
+        result.total > 0.0
+    ), (  # ratchet: nondeterministic source content determines exact score
         f"Expected a positive health total for a readable UTF-8 file, got "
         f"{result.total}"
     )
@@ -200,4 +202,6 @@ def test_score_file_non_ascii_not_false_f_on_windows(tmp_path):
     result = HealthScorer().score_file(str(source))
 
     assert result.dimensions, "Windows non-ASCII file must not yield empty dimensions"
-    assert result.total > 0.0  # ratchet: nondeterministic source content determines exact score
+    assert (
+        result.total > 0.0
+    )  # ratchet: nondeterministic source content determines exact score
