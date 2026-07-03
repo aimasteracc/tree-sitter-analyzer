@@ -31,6 +31,7 @@ def language_detector():
 # detect_language() — extension-based, clear languages (was 4 separate funcs)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "file_path,content,expected_language,expected_confidence",
     [
@@ -114,6 +115,7 @@ def test_detect_language_with_content(
 # detect_language() — ambiguous extensions (.h / .m) with content
 # (was 8 separate funcs)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "file_path,content,expected_language,expected_confidence",
@@ -261,6 +263,7 @@ def test_detect_language_ambiguous_without_content(language_detector):
 # detect_language() — unknown / edge-case inputs (was 5 separate funcs)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "file_path,expected_language,expected_confidence",
     [
@@ -289,6 +292,7 @@ def test_file_path_with_multiple_dots(language_detector):
 # ---------------------------------------------------------------------------
 # detect_from_extension() — various languages (already parametrized; kept)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "file_path,expected_language",
@@ -320,6 +324,7 @@ def test_detect_from_extension_various_files(
 # detect_from_extension() — invalid / non-string inputs (was 2 separate funcs)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "bad_input",
     [
@@ -335,6 +340,7 @@ def test_detect_from_extension_invalid_input(language_detector, bad_input):
 # ---------------------------------------------------------------------------
 # Case-insensitive extension handling (already parametrized; kept)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "file_path,expected_language",
@@ -354,6 +360,7 @@ def test_case_insensitive_extensions(language_detector, file_path, expected_lang
 # ---------------------------------------------------------------------------
 # is_supported() (already parametrized; kept)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "language",
@@ -391,6 +398,7 @@ def test_is_supported_unsupported_languages(language_detector, language):
 # get_supported_extensions / get_supported_languages (standalone — different shape)
 # ---------------------------------------------------------------------------
 
+
 def test_get_supported_extensions(language_detector):
     """Test getting supported extensions"""
     extensions = language_detector.get_supported_extensions()
@@ -426,6 +434,7 @@ def test_get_supported_languages(language_detector):
 # add_extension_mapping (standalone — stateful mutation test)
 # ---------------------------------------------------------------------------
 
+
 def test_add_extension_mapping(language_detector):
     """Test adding custom extension mapping"""
     # Add a custom mapping
@@ -444,6 +453,7 @@ def test_add_extension_mapping(language_detector):
 # ---------------------------------------------------------------------------
 # get_language_info() (was 2 separate funcs)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "lang,expected_extension",
@@ -466,6 +476,7 @@ def test_get_language_info_supported(language_detector, lang, expected_extension
 # ---------------------------------------------------------------------------
 # _resolve_ambiguity() (was 9 separate funcs)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "extension,content,expected",
@@ -515,6 +526,7 @@ def test_resolve_ambiguity(language_detector, extension, content, expected):
 # ---------------------------------------------------------------------------
 # _detect_c_family() (was 5 separate funcs)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "content,candidates,expected",
@@ -568,6 +580,7 @@ def test_detect_c_family(language_detector, content, candidates, expected):
 # _detect_objc_vs_matlab() (was 3 separate funcs)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "content,candidates,expected",
     [
@@ -600,6 +613,7 @@ def test_detect_objc_vs_matlab(language_detector, content, candidates, expected)
 # ---------------------------------------------------------------------------
 # Global convenience functions
 # ---------------------------------------------------------------------------
+
 
 def test_detect_language_from_file():
     """Test global detect_language_from_file function"""
@@ -634,6 +648,7 @@ def test_global_detector_instance():
 # detect_language_from_file() — invalid inputs (was 2 separate funcs)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "bad_input",
     [
@@ -664,6 +679,7 @@ def test_detect_language_from_file_with_project_root():
 # Force ambiguity path by removing a known extension from the map
 # (was 2 separate funcs)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "content,expected_language,expected_confidence",
@@ -699,6 +715,7 @@ def test_detect_language_forced_ambiguity(
 # is_supported / is_language_supported with PluginManager failure
 # (was 2 separate funcs)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "fn,label",

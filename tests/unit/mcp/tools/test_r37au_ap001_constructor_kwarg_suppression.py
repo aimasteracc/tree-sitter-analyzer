@@ -175,7 +175,9 @@ def test_sql_formatter_helper_self_scan() -> None:
 
 
 @pytest.mark.regression
-def test_detect_anti_patterns_reads_with_explicit_utf8(tmp_path: Path, monkeypatch) -> None:
+def test_detect_anti_patterns_reads_with_explicit_utf8(
+    tmp_path: Path, monkeypatch
+) -> None:
     """REQ-TEST-003 / ARCH-003: detect_anti_patterns must call
     read_text(encoding='utf-8', ...) so non-ASCII files succeed on
     non-UTF-8-locale hosts (tracked: #1130)."""
@@ -212,7 +214,9 @@ def test_detect_anti_patterns_reads_with_explicit_utf8(tmp_path: Path, monkeypat
 
 
 @pytest.mark.regression
-def test_non_ascii_python_file_with_mutable_default_detects_ap001(tmp_path: Path) -> None:
+def test_non_ascii_python_file_with_mutable_default_detects_ap001(
+    tmp_path: Path,
+) -> None:
     """REQ-TEST-003: non-ASCII UTF-8 file must not raise and must return
     the expected AP001 finding (tracked: #1130)."""
     source = tmp_path / "non_ascii.py"
