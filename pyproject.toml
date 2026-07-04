@@ -306,6 +306,8 @@ all = [
 tree-sitter-analyzer = "tree_sitter_analyzer.cli_main:main"
 # MCP server entry point
 tree-sitter-analyzer-mcp = "tree_sitter_analyzer.mcp.server:main_sync"
+# Doctor / diagnostics entry point
+tree-sitter-analyzer-doctor = "tree_sitter_analyzer.cli_main:main_doctor"
 # Mis-Wire Audit — run-on-your-repo cross-language correctness demo
 miswire-audit = "tree_sitter_analyzer.miswire_audit:main"
 # Legacy aliases for backward compatibility
