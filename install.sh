@@ -16,12 +16,12 @@ esac
 WSL_ENV=0
 if [ -f /proc/version ] && grep -qi microsoft /proc/version 2>/dev/null; then
   WSL_ENV=1
-  echo "ℹ️  WSL 環境が検出されました。エージェント自動検出は動作しない場合があります。"
+  echo "ℹ️  WSL detected. Agent auto-detection may not work in all cases."
 fi
 
 # ─── uv check & auto-install ──────────────────────────────────────────────────
 if ! command -v uv >/dev/null 2>&1; then
-  echo "📦 uv が見つかりません。自動インストールします..."
+  echo "📦 uv not found. Installing automatically..."
   curl -LsSf https://astral.sh/uv/install.sh | sh
   # Re-source common profile locations
   if [ -f "$HOME/.cargo/env" ]; then
@@ -30,27 +30,27 @@ if ! command -v uv >/dev/null 2>&1; then
   fi
   export PATH="$HOME/.local/bin:$PATH"
   if ! command -v uv >/dev/null 2>&1; then
-    echo "❌ uv のインストールに失敗しました。手動でインストールしてから再実行してください:"
+    echo "❌ uv installation failed. Please install it manually and re-run:"
     echo "   https://docs.astral.sh/uv/getting-started/installation/"
     exit 1
   fi
-  echo "✅ uv がインストールされました: $(command -v uv)"
+  echo "✅ uv installed: $(command -v uv)"
 else
   echo "✅ uv: $(command -v uv)"
 fi
 
 # ─── fd / ripgrep check (optional, warning only) ──────────────────────────────
 if ! command -v fd >/dev/null 2>&1; then
-  echo "⚠️  fd が見つかりません (text search に必要)。後でインストールしてください:"
+  echo "⚠️  fd not found (required for text search). Install it later:"
   if [ "$(uname -s)" = "Darwin" ]; then
     echo "   brew install fd"
   else
-    echo "   apt install fd-find  # または sudo snap install fd"
+    echo "   apt install fd-find  # or: sudo snap install fd"
   fi
 fi
 
 if ! command -v rg >/dev/null 2>&1; then
-  echo "⚠️  ripgrep (rg) が見つかりません (text search に必要)。後でインストールしてください:"
+  echo "⚠️  ripgrep (rg) not found (required for text search). Install it later:"
   if [ "$(uname -s)" = "Darwin" ]; then
     echo "   brew install ripgrep"
   else
@@ -65,7 +65,7 @@ else
   PROJECT_ROOT=$(pwd)
 fi
 echo ""
-echo "📁 プロジェクトルート: $PROJECT_ROOT"
+echo "📁 Project root: $PROJECT_ROOT"
 
 # ─── Agent config paths ───────────────────────────────────────────────────────
 OS_TYPE="$(uname -s)"
@@ -96,7 +96,7 @@ CONFIGURED_AGENTS=""
 SKIPPED_AGENTS=""
 
 echo ""
-echo "🔍 エージェント設定ファイルを検索中..."
+echo "🔍 Scanning for agent config files..."
 
 # Use printf to interpret \n, then process line by line
 while IFS='|' read -r AGENT_LABEL CONFIG_PATH; do
@@ -106,12 +106,12 @@ while IFS='|' read -r AGENT_LABEL CONFIG_PATH; do
   fi
 
   if [ ! -f "$CONFIG_PATH" ]; then
-    echo "   ⏭️  $AGENT_LABEL: 設定ファイルが見つかりません ($CONFIG_PATH)"
+    echo "   ⏭️  $AGENT_LABEL: config file not found ($CONFIG_PATH)"
     SKIPPED_AGENTS="${SKIPPED_AGENTS}${AGENT_LABEL}\n"
     continue
   fi
 
-  echo "   🔧 $AGENT_LABEL: 設定中..."
+  echo "   🔧 $AGENT_LABEL: configuring..."
 
   # Merge MCP entry using python3
   MERGE_RESULT=$(python3 - "$CONFIG_PATH" "$PROJECT_ROOT" <<'PYEOF'
@@ -155,14 +155,14 @@ PYEOF
   MERGE_EXIT=$?
 
   if [ "$MERGE_EXIT" = "2" ]; then
-    echo "   ❌ $AGENT_LABEL: JSON 解析エラー — スキップします ($CONFIG_PATH)"
+    echo "   ❌ $AGENT_LABEL: JSON parse error — skipping ($CONFIG_PATH)"
     SKIPPED_AGENTS="${SKIPPED_AGENTS}${AGENT_LABEL} (JSON parse error)\n"
   elif [ "$MERGE_EXIT" = "0" ]; then
     BACKUP_PATH="${MERGE_RESULT#OK:}"
-    echo "   ✅ $AGENT_LABEL: 設定完了 (バックアップ: $BACKUP_PATH)"
+    echo "   ✅ $AGENT_LABEL: configured (backup: $BACKUP_PATH)"
     CONFIGURED_AGENTS="${CONFIGURED_AGENTS}${AGENT_LABEL}\n"
   else
-    echo "   ❌ $AGENT_LABEL: 予期しないエラー (exit $MERGE_EXIT) — スキップします"
+    echo "   ❌ $AGENT_LABEL: unexpected error (exit $MERGE_EXIT) — skipping"
     SKIPPED_AGENTS="${SKIPPED_AGENTS}${AGENT_LABEL} (error)\n"
   fi
 
@@ -173,14 +173,14 @@ EOF
 # ─── Summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════════"
-echo "🎉 Tree-sitter Analyzer インストール完了"
+echo "🎉 Tree-sitter Analyzer installation complete"
 echo "═══════════════════════════════════════════════════════"
 echo ""
-echo "📌 プロジェクトルート: $PROJECT_ROOT"
+echo "📌 Project root: $PROJECT_ROOT"
 echo ""
 
 if [ -n "$CONFIGURED_AGENTS" ]; then
-  echo "✅ 設定済みエージェント:"
+  echo "✅ Configured agents:"
   printf "$CONFIGURED_AGENTS" | while IFS= read -r agent; do
     [ -n "$agent" ] && echo "   • $agent"
   done
@@ -188,20 +188,20 @@ if [ -n "$CONFIGURED_AGENTS" ]; then
 fi
 
 if [ -n "$SKIPPED_AGENTS" ]; then
-  echo "⏭️  スキップされたエージェント (設定ファイルなし):"
+  echo "⏭️  Skipped agents (config file not found):"
   printf "$SKIPPED_AGENTS" | while IFS= read -r agent; do
     [ -n "$agent" ] && echo "   • $agent"
   done
   echo ""
 fi
 
-echo "📋 次のステップ:"
-echo "   1. エージェント (Claude Code / Claude Desktop / Cursor / VS Code) を再起動してください"
-echo "   2. エージェントに「Run the index tool with action=status」と入力してください"
-echo "   3. 問題が発生した場合: tree-sitter-analyzer --doctor"
+echo "📋 Next steps:"
+echo "   1. Restart your agent (Claude Code / Claude Desktop / Cursor / VS Code)"
+echo "   2. Ask your agent: \"Run the index tool with action=status\""
+echo "   3. If something looks wrong: tree-sitter-analyzer --doctor"
 echo ""
 
 if [ "$WSL_ENV" = "1" ]; then
-  echo "⚠️  WSL 環境: エージェント設定が正しく反映されない場合は、"
-  echo "   Windows 側の設定ファイルを手動で確認してください。"
+  echo "⚠️  WSL environment: if agent config is not picked up, check the"
+  echo "   Windows-side config file manually."
 fi

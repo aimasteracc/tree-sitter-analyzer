@@ -51,9 +51,6 @@ claude mcp add tree-sitter-analyzer \
 
 ### 快速安装
 
-<details>
-<summary>Prerequisites（手动安装依赖）</summary>
-
 #### 1. 安装依赖
 
 ```bash
@@ -65,8 +62,6 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 brew install fd ripgrep                                # macOS
 winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
-
-</details>
 
 #### 2. 安装 Tree-sitter Analyzer
 

@@ -51,9 +51,6 @@ claude mcp add tree-sitter-analyzer \
 
 ### クイック インストール
 
-<details>
-<summary>Prerequisites（手動セットアップ）</summary>
-
 #### 1. 依存関係をインストール
 
 ```bash
@@ -65,8 +62,6 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 brew install fd ripgrep                                # macOS
 winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
-
-</details>
 
 #### 2. Tree-sitter Analyzer をインストール
 
