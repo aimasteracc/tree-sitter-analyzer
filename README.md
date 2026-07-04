@@ -23,6 +23,14 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 > **Requires Python 3.10+** (check: `python3 --version`). Install from [python.org](https://www.python.org/downloads/) if needed.
 
+### Automated install (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh | bash
+```
+
+`install.sh` checks for `uv`, installs it if missing, detects Claude Desktop / Claude Code / Cursor / VS Code config files, and writes the MCP entry automatically. Run `tree-sitter-analyzer --doctor` to verify your setup afterwards.
+
 One-line install for **Claude Code**:
 
 ```bash
@@ -45,6 +53,9 @@ CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 
 ### Quick install
 
+<details>
+<summary>Prerequisites (manual setup)</summary>
+
 #### 1. Install dependencies
 
 ```bash
@@ -56,6 +67,8 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 brew install fd ripgrep                                # macOS
 winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
+
+</details>
 
 #### 2. Install Tree-sitter Analyzer
 
@@ -155,7 +168,7 @@ CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 319 CLI flags
+### 321 CLI flags
 
 Superset of CodeGraph's CLI surface. Highlights:
 
@@ -463,10 +476,32 @@ uv run python check_quality.py --new-code-only  # quality gate
 | Symptom | Fix |
 |---|---|
 | `unsupported language` on `.swift / .kt / .rb / .php / .cs` | Update to ≥ 1.12.x — the 5-language gap was patched in commit `50e99a8f`. Grammar modules for extras-gated languages are not bundled in the base install; run `pip install "tree-sitter-analyzer[swift]"` (or `kotlin`, `ruby`, `php`, `csharp`) to add them. |
-| MCP server doesn't appear in client | `TREE_SITTER_PROJECT_ROOT` must be **absolute**; restart the client after config edit. |
+| MCP server doesn't appear in client | `TREE_SITTER_PROJECT_ROOT` must be **absolute**; restart the client after config edit. See [Relative path in TREE_SITTER_PROJECT_ROOT](#relative-path-in-tree_sitter_project_root) below. |
 | `database is locked` | Stop any other process holding `.ast-cache/index.db`; if persistent, `rm -rf .ast-cache && tree-sitter-analyzer --full-index`. |
 | Slow first call | First call builds the index. Subsequent calls are sub-second. Run `--full-index` upfront to amortise. |
 | Agent picks the wrong tool | Use a `tsa-*` skill (`/tsa-graph`, `/tsa-find`, ...) — each skill restricts the visible tool set to one workflow. |
+
+### Relative path in TREE\_SITTER\_PROJECT\_ROOT
+
+**Symptom:** The MCP server starts without errors, but TSA returns wrong analysis results or an error like `project root not found`.
+
+**Root cause:** `TREE_SITTER_PROJECT_ROOT` is set to a relative path (e.g. `./myproject`). When `uvx` launches the server, the process working directory may differ from where you ran the install command, so the relative path resolves to a wrong location.
+
+**Fix:** Always set an absolute path:
+
+```bash
+# Correct
+"TREE_SITTER_PROJECT_ROOT": "/home/user/myproject"
+
+# Also correct (resolved at install time by install.sh)
+"TREE_SITTER_PROJECT_ROOT": "$(pwd)"        # or $(realpath .)
+
+# Wrong
+"TREE_SITTER_PROJECT_ROOT": "./myproject"
+"TREE_SITTER_PROJECT_ROOT": "myproject"
+```
+
+Run `tree-sitter-analyzer --doctor` to verify your configuration.
 
 ---
 

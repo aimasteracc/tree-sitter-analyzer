@@ -35,6 +35,7 @@ def handle_special_commands(
         lambda: _handle_agent_workflow(args, context),
         lambda: _handle_batch_partial_read(args, context),
         lambda: _handle_health_check(args, context),
+        lambda: _handle_doctor(args, context),
         lambda: _handle_check_scale(args, context),
         lambda: _handle_outline(args, context),
         lambda: _handle_batch_metrics(args, context),
@@ -309,6 +310,19 @@ def _handle_health_check(
             error_type="runtime",
         )
         return 1
+
+
+def _handle_doctor(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Run installation diagnostics for --doctor."""
+    if not getattr(args, "doctor", False):
+        return None
+    from .commands.doctor import run_doctor
+
+    json_output = getattr(args, "doctor_json", False)
+    return run_doctor(json_output=json_output)
 
 
 def _emit_cli_error(
