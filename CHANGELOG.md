@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.29.0] - 2026-07-04
+
+Install-friction reduction release. This release makes TSA significantly easier to set up for first-time users and adds a diagnostic command for troubleshooting.
+
+### Added
+
+- **`install.sh` — one-command setup.** `curl -fsSL .../install.sh | bash` auto-installs `uv` if missing, detects Claude Desktop / Claude Code / Cursor / VS Code config files, and writes the MCP entry with an absolute `TREE_SITTER_PROJECT_ROOT`. Bash 3.x compatible; uses `python3` for JSON merge; creates timestamped backups before writing.
+- **`--doctor` command.** New `tree-sitter-analyzer --doctor` checks uv/uvx/fd/rg availability, validates `TREE_SITTER_PROJECT_ROOT` is an absolute path that exists, and lists agent config file status. Supports `--doctor-json` for machine-readable output. Available as a standalone entry point: `tree-sitter-analyzer-doctor`.
+- **RFC-0018 landed on develop.** The RFC text (TOON wire + envelope normalization, rev-3 with 10-expert panel rulings) is now on develop. Previously the README linked to this file in three places, but it only existed on an unmerged branch — causing 404s since v1.26.
+- **RFC-0018 and RFC-0019 indexed** in `rfcs/README.md`.
+
+### Changed
+
+- **README Quick Start** now opens with the `install.sh` curl command above the manual `claude mcp add` one-liner.
+- **README Troubleshooting** includes a concise entry for the most common setup mistake: setting `TREE_SITTER_PROJECT_ROOT` to a relative path.
+- **CLI flag count updated** to 321 (`--doctor` and `--doctor-json` added).
+
+### Fixed
+
+- **Language abstraction unification (Phase 2).** Consolidates plugin interface, shared infra, and test quality gates across all 21 language plugins.
+- **Internal namespace cleanup.** Stale import paths and module naming inconsistencies resolved across the codebase.
+- **MCP empty `agent_next_action` fields omitted.** Responses no longer carry empty `mcp_command:""`/`cli_command:""`/`post_edit_commands:[]` fields, reducing payload size.
+- **Test suite quality.** Weak assertions strengthened, oversplit test cases consolidated into parametrized matrices, dead stubs removed.
+
 ## [1.28.0] - 2026-06-22
 
 Knowledge-graph viewer release. This release completes the human-facing graph
