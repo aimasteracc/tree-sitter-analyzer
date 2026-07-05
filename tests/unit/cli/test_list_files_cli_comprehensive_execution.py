@@ -232,9 +232,7 @@ class TestRunFunction:
         ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
-            mock_tool.execute = AsyncMock(
-                return_value={"files": ["file1.py"]}
-            )
+            mock_tool.execute = AsyncMock(return_value={"files": ["file1.py"]})
             mock_tool_class.return_value = mock_tool
 
             result = await _run(args)

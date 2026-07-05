@@ -299,7 +299,9 @@ class TestParserPackageWarnings:
             }, f"r37o: warning entry missing expected keys: {sorted(w.keys())}"
             assert isinstance(w["language"], str) and w["language"]
             assert isinstance(w["package"], str)
-            assert isinstance(w["declarations"], list) and len(w["declarations"]) >= 2  # ratchet: nondeterministic
+            assert (
+                isinstance(w["declarations"], list) and len(w["declarations"]) >= 2
+            )  # ratchet: nondeterministic
             assert isinstance(w["sources"], list)
             assert isinstance(w["hint"], str) and w["language"] in w["hint"]
 

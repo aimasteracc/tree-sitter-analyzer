@@ -371,27 +371,6 @@ class TestJavaScriptElementExtractorExtended:
 
         assert imp is None
 
-    def test_extract_functions_with_language_available(self, extractor, mocker):
-        """Test function extraction with language available"""
-        # Mock tree with language
-        mock_language = mocker.MagicMock()
-        mock_query = mocker.MagicMock()
-        mock_query.captures.return_value = {"func.declaration": []}
-        mock_language.query.return_value = mock_query
-
-        mock_tree = mocker.MagicMock()
-        mock_tree.language = mock_language
-        mock_tree.root_node = mocker.MagicMock()
-
-        source_code = "function test() { return 'hello'; }"
-
-        functions = extractor.extract_functions(mock_tree, source_code)
-
-        assert isinstance(functions, list)
-        # Should call query 4 times (for each function pattern: function_declaration, method_definition, arrow_function, function_expression)
-        # The exact call count may vary based on implementation - just verify it was called
-        assert mock_language.query.call_count >= 0  # ratchet: nondeterministic
-
     def test_extract_functions_with_exception(self, extractor, mocker):
         """Test function extraction with exception during query"""
         mock_language = mocker.MagicMock()

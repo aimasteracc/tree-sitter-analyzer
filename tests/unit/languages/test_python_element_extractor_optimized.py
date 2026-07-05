@@ -469,4 +469,3 @@ def __magic_method__(self, other):
             assert isinstance(imports, list)
             # Manual extraction should be called
             assert imports
-

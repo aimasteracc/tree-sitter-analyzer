@@ -17,8 +17,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from tree_sitter_analyzer import _ast_cache_unresolved as unresolved
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.cache import unresolved
 
 
 def _write_repeated_name_project(root: Path) -> None:

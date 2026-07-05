@@ -52,7 +52,7 @@ The analyzer engine is the central component that orchestrates code analysis.
 - Coordinate with language plugins
 
 **Key Classes**:
-- `CodeAnalyzer`: Main analysis orchestrator
+- `UnifiedAnalysisEngine`: Main analysis orchestrator
 - `AnalysisResult`: Container for analysis results
 - `ElementExtractor`: Base class for element extraction
 

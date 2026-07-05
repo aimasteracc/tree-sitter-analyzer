@@ -360,7 +360,7 @@ class TestCyclesHelper:
         _write(tmp_path, "y.py", "import x\n")
         graph = DependencyGraph(str(tmp_path))
         result = _cycles(graph)
-        assert result["cycle_count"] >= 1
+        assert result["cycle_count"] == 1  # x.py → y.py → x.py = 1 cycle
 
 
 class TestFileDepsHelper:
@@ -388,16 +388,17 @@ class TestGraphResetOnPathChange:
         tool.set_project_path(str(project))
         new_graph = tool._get_graph()
         assert new_graph is not None
+        assert isinstance(new_graph, DependencyGraph)
 
 
 class TestNoProjectRoot:
     def test_execute_without_project_root_raises(self):
-        t = DependencyAnalysisTool(project_root=None)
+        t = DependencyAnalysisTool(project_root=None)  # allowed: chdir(tmp_path)
         with pytest.raises(ValueError, match="Project root"):
             _run(t.execute({"mode": "summary"}))
 
     def test_get_graph_without_root_raises(self):
-        t = DependencyAnalysisTool(project_root=None)
+        t = DependencyAnalysisTool(project_root=None)  # allowed: chdir(tmp_path)
         with pytest.raises(ValueError, match="Project root"):
             t._get_graph()
 

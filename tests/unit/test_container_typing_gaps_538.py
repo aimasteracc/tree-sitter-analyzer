@@ -58,7 +58,7 @@ def test_go_type_alias_extracted() -> None:
     """
     from tree_sitter import Parser
 
-    from tree_sitter_analyzer.languages._go_type_helpers import extract_type_declaration
+    from tree_sitter_analyzer.languages._go_type import extract_type_declaration
 
     lang = _go_lang()
     parser = Parser(lang)
@@ -97,7 +97,7 @@ def test_go_interface_embedding_reflected() -> None:
     """
     from tree_sitter import Parser
 
-    from tree_sitter_analyzer.languages._go_type_helpers import extract_type_declaration
+    from tree_sitter_analyzer.languages._go_type import extract_type_declaration
 
     lang = _go_lang()
     parser = Parser(lang)
@@ -539,7 +539,7 @@ class TestGoStructInterfacesNoneNode:
     """Cover the type_node=None early return (codecov branch)."""
 
     def test_none_type_node_returns_empty(self):
-        from tree_sitter_analyzer.languages._go_type_helpers import (
+        from tree_sitter_analyzer.languages._go_type import (
             _go_struct_interfaces,
         )
 
@@ -547,14 +547,14 @@ class TestGoStructInterfacesNoneNode:
 
 
 class TestPythonNodeHelpersQualifiedBase:
-    """Cover the attribute branch in the _node_helpers superclass path
+    """Cover the attribute branch in the _node superclass path
     (the fallback extractor path, not exercised by the engine tests)."""
 
     def test_attribute_base_extracted(self):
         import tree_sitter
         import tree_sitter_python
 
-        from tree_sitter_analyzer.languages.python_plugin._node_helpers import (
+        from tree_sitter_analyzer.languages.python_plugin._node import (
             extract_superclasses_from_node,
         )
 

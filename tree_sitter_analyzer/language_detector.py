@@ -9,7 +9,7 @@ Supports multiple languages with extensible configuration.
 from pathlib import Path
 from typing import Any
 
-from ._language_detector_helpers import (
+from .languages.language_detector_helpers import (
     build_content_pattern_weights,
     build_extension_confidence_map,
     get_cached_language,

@@ -1,8 +1,8 @@
-"""Tests for languages._cpp_plugin_text_helpers — fallback text extraction."""
+"""Tests for languages._cpp_plugin_text — fallback text extraction."""
 
 from types import SimpleNamespace
 
-from tree_sitter_analyzer.languages._cpp_plugin_text_helpers import (
+from tree_sitter_analyzer.languages._cpp_plugin_text import (
     _fallback_multiline_text,
     _fallback_node_text_uncached,
     _slice_fallback_line,

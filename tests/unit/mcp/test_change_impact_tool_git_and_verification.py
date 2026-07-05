@@ -37,7 +37,7 @@ def test_diff_mode_includes_untracked_files(monkeypatch):
         if args == ["diff", "--name-only"]:
             return 0, "tree_sitter_analyzer/health_scorer.py\n"
         if args == ["ls-files", "--others", "--exclude-standard"]:
-            return 0, "tree_sitter_analyzer/_health_scorer_helpers.py\n"
+            return 0, "tree_sitter_analyzer/registry/health_scorer_helpers.py\n"
         raise AssertionError(f"unexpected git args: {args}")
 
     monkeypatch.setattr(change_impact_git, "_run_git", fake_run_git)
@@ -46,7 +46,7 @@ def test_diff_mode_includes_untracked_files(monkeypatch):
 
     assert changed == [
         "tree_sitter_analyzer/health_scorer.py",
-        "tree_sitter_analyzer/_health_scorer_helpers.py",
+        "tree_sitter_analyzer/registry/health_scorer_helpers.py",
     ]
 
 
@@ -139,7 +139,7 @@ def test_diff_stat_mentions_untracked_files(monkeypatch):
         if args == ["diff", "--stat"]:
             return 0, " tree_sitter_analyzer/health_scorer.py | 10 +++++-----"
         if args == ["ls-files", "--others", "--exclude-standard"]:
-            return 0, "tree_sitter_analyzer/_health_scorer_helpers.py\n"
+            return 0, "tree_sitter_analyzer/registry/health_scorer_helpers.py\n"
         raise AssertionError(f"unexpected git args: {args}")
 
     monkeypatch.setattr(change_impact_git, "_run_git", fake_run_git)
@@ -148,7 +148,7 @@ def test_diff_stat_mentions_untracked_files(monkeypatch):
 
     assert "tree_sitter_analyzer/health_scorer.py" in diff_stat
     assert "Untracked files:" in diff_stat
-    assert "tree_sitter_analyzer/_health_scorer_helpers.py" in diff_stat
+    assert "tree_sitter_analyzer/registry/health_scorer_helpers.py" in diff_stat
 
 
 def test_build_pytest_command_quotes_paths():

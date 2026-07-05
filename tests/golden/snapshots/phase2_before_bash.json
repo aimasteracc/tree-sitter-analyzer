@@ -1,0 +1,284 @@
+{
+  "language": "bash",
+  "corpus_file": "tests/golden/corpus_bash.sh",
+  "snapshot_timestamp": "2026-06-28T17:00:45.929195+00:00",
+  "symbol_count": 55,
+  "symbols": [
+    {
+      "name": "SIMPLE_VAR",
+      "kind": "variable",
+      "start_line": 26
+    },
+    {
+      "name": "NUMBER",
+      "kind": "variable",
+      "start_line": 27
+    },
+    {
+      "name": "EMPTY_VAR",
+      "kind": "variable",
+      "start_line": 28
+    },
+    {
+      "name": "CURRENT_DATE",
+      "kind": "variable",
+      "start_line": 31
+    },
+    {
+      "name": "USER_NAME",
+      "kind": "variable",
+      "start_line": 32
+    },
+    {
+      "name": "COUNT",
+      "kind": "variable",
+      "start_line": 35
+    },
+    {
+      "name": "RESULT",
+      "kind": "variable",
+      "start_line": 36
+    },
+    {
+      "name": "SIMPLE_ARRAY",
+      "kind": "variable",
+      "start_line": 39
+    },
+    {
+      "name": "PATH",
+      "kind": "variable",
+      "start_line": 49
+    },
+    {
+      "name": "EDITOR",
+      "kind": "variable",
+      "start_line": 50
+    },
+    {
+      "name": "CONSTANT",
+      "kind": "variable",
+      "start_line": 53
+    },
+    {
+      "name": "local_var_example",
+      "kind": "function",
+      "start_line": 56
+    },
+    {
+      "name": "LOCAL_VAR",
+      "kind": "variable",
+      "start_line": 57
+    },
+    {
+      "name": "INTEGER_VAR",
+      "kind": "variable",
+      "start_line": 66
+    },
+    {
+      "name": "ARRAY_VAR",
+      "kind": "variable",
+      "start_line": 69
+    },
+    {
+      "name": "READONLY_VAR",
+      "kind": "variable",
+      "start_line": 75
+    },
+    {
+      "name": "EXPORTED_VAR",
+      "kind": "variable",
+      "start_line": 78
+    },
+    {
+      "name": "VAR1",
+      "kind": "variable",
+      "start_line": 81
+    },
+    {
+      "name": "VAR2",
+      "kind": "variable",
+      "start_line": 81
+    },
+    {
+      "name": "simple_function",
+      "kind": "function",
+      "start_line": 88
+    },
+    {
+      "name": "another_function",
+      "kind": "function",
+      "start_line": 93
+    },
+    {
+      "name": "greet",
+      "kind": "function",
+      "start_line": 98
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 99
+    },
+    {
+      "name": "greeting",
+      "kind": "variable",
+      "start_line": 100
+    },
+    {
+      "name": "add_numbers",
+      "kind": "function",
+      "start_line": 105
+    },
+    {
+      "name": "a",
+      "kind": "variable",
+      "start_line": 106
+    },
+    {
+      "name": "b",
+      "kind": "variable",
+      "start_line": 107
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "start_line": 108
+    },
+    {
+      "name": "check_file",
+      "kind": "function",
+      "start_line": 113
+    },
+    {
+      "name": "file",
+      "kind": "variable",
+      "start_line": 114
+    },
+    {
+      "name": "outer_function",
+      "kind": "function",
+      "start_line": 123
+    },
+    {
+      "name": "inner_function",
+      "kind": "function",
+      "start_line": 124
+    },
+    {
+      "name": "get_timestamp",
+      "kind": "function",
+      "start_line": 131
+    },
+    {
+      "name": "count_lines",
+      "kind": "function",
+      "start_line": 136
+    },
+    {
+      "name": "print_message",
+      "kind": "function",
+      "start_line": 141
+    },
+    {
+      "name": "counter",
+      "kind": "variable",
+      "start_line": 195
+    },
+    {
+      "name": "i",
+      "kind": "variable",
+      "start_line": 242
+    },
+    {
+      "name": "FILE_EXT",
+      "kind": "variable",
+      "start_line": 284
+    },
+    {
+      "name": "FILES",
+      "kind": "variable",
+      "start_line": 414
+    },
+    {
+      "name": "DATE_STRING",
+      "kind": "variable",
+      "start_line": 415
+    },
+    {
+      "name": "LINE_COUNT",
+      "kind": "variable",
+      "start_line": 416
+    },
+    {
+      "name": "NESTED",
+      "kind": "variable",
+      "start_line": 419
+    },
+    {
+      "name": "OLD_STYLE",
+      "kind": "variable",
+      "start_line": 422
+    },
+    {
+      "name": "ANOTHER_OLD",
+      "kind": "variable",
+      "start_line": 423
+    },
+    {
+      "name": "MESSAGE",
+      "kind": "variable",
+      "start_line": 426
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "start_line": 448
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "start_line": 449
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "start_line": 450
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "start_line": 451
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "start_line": 452
+    },
+    {
+      "name": "a",
+      "kind": "variable",
+      "start_line": 455
+    },
+    {
+      "name": "b",
+      "kind": "variable",
+      "start_line": 456
+    },
+    {
+      "name": "sum",
+      "kind": "variable",
+      "start_line": 457
+    },
+    {
+      "name": "product",
+      "kind": "variable",
+      "start_line": 458
+    },
+    {
+      "name": "EXIT_STATUS",
+      "kind": "variable",
+      "start_line": 543
+    }
+  ],
+  "edges": []
+}

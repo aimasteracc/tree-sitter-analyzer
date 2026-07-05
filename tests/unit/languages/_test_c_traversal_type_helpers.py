@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from tree_sitter_analyzer.languages._c_traversal_helpers import (
+from tree_sitter_analyzer.languages._c_traversal import (
     _append_extracted_element,
     _depth_exceeded,
     _process_target_node,
@@ -13,7 +13,7 @@ from tree_sitter_analyzer.languages._c_traversal_helpers import (
     _should_visit_node,
     c_traverse_and_extract,
 )
-from tree_sitter_analyzer.languages._c_type_definition_helpers import (
+from tree_sitter_analyzer.languages._c_type_definition import (
     _direct_type_name,
     _node_line_range,
     _raw_text,

@@ -30,7 +30,7 @@ def test_extension_detects_bash(ext: str) -> None:
 
 
 def test_lang_extension_map_has_bash() -> None:
-    from tree_sitter_analyzer._lang_extension_map import EXT_TO_LANG
+    from tree_sitter_analyzer.languages.lang_extension_map import EXT_TO_LANG
 
     assert EXT_TO_LANG.get(".sh") == "bash"
     assert EXT_TO_LANG.get(".bash") == "bash"

@@ -1,0 +1,574 @@
+{
+  "language": "c",
+  "corpus_file": "tests/golden/corpus_c.c",
+  "snapshot_timestamp": "2026-06-28T17:00:45.965983+00:00",
+  "symbol_count": 113,
+  "symbols": [
+    {
+      "name": "stdio.h",
+      "kind": "import",
+      "start_line": 26
+    },
+    {
+      "name": "stdlib.h",
+      "kind": "import",
+      "start_line": 27
+    },
+    {
+      "name": "string.h",
+      "kind": "import",
+      "start_line": 28
+    },
+    {
+      "name": "stdint.h",
+      "kind": "import",
+      "start_line": 29
+    },
+    {
+      "name": "stdbool.h",
+      "kind": "import",
+      "start_line": 30
+    },
+    {
+      "name": "local_header.h",
+      "kind": "import",
+      "start_line": 31
+    },
+    {
+      "name": "MAX_SIZE",
+      "kind": "variable",
+      "start_line": 34
+    },
+    {
+      "name": "MIN",
+      "kind": "function",
+      "start_line": 35
+    },
+    {
+      "name": "MAX",
+      "kind": "function",
+      "start_line": 36
+    },
+    {
+      "name": "SQUARE",
+      "kind": "function",
+      "start_line": 37
+    },
+    {
+      "name": "DEBUG",
+      "kind": "variable",
+      "start_line": 38
+    },
+    {
+      "name": "LOG",
+      "kind": "function",
+      "start_line": 42
+    },
+    {
+      "name": "BUFFER_SIZE",
+      "kind": "variable",
+      "start_line": 48
+    },
+    {
+      "name": "PLATFORM",
+      "kind": "variable",
+      "start_line": 52
+    },
+    {
+      "name": "PLATFORM",
+      "kind": "variable",
+      "start_line": 54
+    },
+    {
+      "name": "PLATFORM",
+      "kind": "variable",
+      "start_line": 56
+    },
+    {
+      "name": "MAX_SIZE",
+      "kind": "variable",
+      "start_line": 61
+    },
+    {
+      "name": "STRINGIFY",
+      "kind": "function",
+      "start_line": 64
+    },
+    {
+      "name": "CONCAT",
+      "kind": "function",
+      "start_line": 65
+    },
+    {
+      "name": "Color",
+      "kind": "class",
+      "start_line": 74
+    },
+    {
+      "name": "Status",
+      "kind": "class",
+      "start_line": 84
+    },
+    {
+      "name": "Direction",
+      "kind": "class",
+      "start_line": 94
+    },
+    {
+      "name": "Point",
+      "kind": "class",
+      "start_line": 108
+    },
+    {
+      "name": "x",
+      "kind": "variable",
+      "start_line": 109
+    },
+    {
+      "name": "y",
+      "kind": "variable",
+      "start_line": 110
+    },
+    {
+      "name": "Person",
+      "kind": "class",
+      "start_line": 116
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 117
+    },
+    {
+      "name": "age",
+      "kind": "variable",
+      "start_line": 118
+    },
+    {
+      "name": "height",
+      "kind": "variable",
+      "start_line": 119
+    },
+    {
+      "name": "salary",
+      "kind": "variable",
+      "start_line": 120
+    },
+    {
+      "name": "is_employed",
+      "kind": "variable",
+      "start_line": 121
+    },
+    {
+      "name": "Node",
+      "kind": "class",
+      "start_line": 127
+    },
+    {
+      "name": "data",
+      "kind": "variable",
+      "start_line": 128
+    },
+    {
+      "name": "next",
+      "kind": "variable",
+      "start_line": 129
+    },
+    {
+      "name": "prev",
+      "kind": "variable",
+      "start_line": 130
+    },
+    {
+      "name": "Vector3",
+      "kind": "class",
+      "start_line": 136
+    },
+    {
+      "name": "x",
+      "kind": "variable",
+      "start_line": 137
+    },
+    {
+      "name": "y",
+      "kind": "variable",
+      "start_line": 138
+    },
+    {
+      "name": "z",
+      "kind": "variable",
+      "start_line": 139
+    },
+    {
+      "name": "Flags",
+      "kind": "class",
+      "start_line": 145
+    },
+    {
+      "name": "flag1",
+      "kind": "variable",
+      "start_line": 146
+    },
+    {
+      "name": "flag2",
+      "kind": "variable",
+      "start_line": 147
+    },
+    {
+      "name": "flag3",
+      "kind": "variable",
+      "start_line": 148
+    },
+    {
+      "name": "reserved",
+      "kind": "variable",
+      "start_line": 149
+    },
+    {
+      "name": "Buffer",
+      "kind": "class",
+      "start_line": 155
+    },
+    {
+      "name": "size",
+      "kind": "variable",
+      "start_line": 156
+    },
+    {
+      "name": "data",
+      "kind": "variable",
+      "start_line": 157
+    },
+    {
+      "name": "Rectangle",
+      "kind": "class",
+      "start_line": 163
+    },
+    {
+      "name": "top_left",
+      "kind": "variable",
+      "start_line": 164
+    },
+    {
+      "name": "bottom_right",
+      "kind": "variable",
+      "start_line": 165
+    },
+    {
+      "name": "Packet",
+      "kind": "class",
+      "start_line": 171
+    },
+    {
+      "name": "type",
+      "kind": "variable",
+      "start_line": 172
+    },
+    {
+      "name": "payload",
+      "kind": "variable",
+      "start_line": 173
+    },
+    {
+      "name": "data_packet",
+      "kind": "variable",
+      "start_line": 174
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 175
+    },
+    {
+      "name": "message",
+      "kind": "variable",
+      "start_line": 176
+    },
+    {
+      "name": "error_packet",
+      "kind": "variable",
+      "start_line": 178
+    },
+    {
+      "name": "code",
+      "kind": "variable",
+      "start_line": 179
+    },
+    {
+      "name": "reason",
+      "kind": "variable",
+      "start_line": 180
+    },
+    {
+      "name": "Value",
+      "kind": "class",
+      "start_line": 192
+    },
+    {
+      "name": "i",
+      "kind": "variable",
+      "start_line": 193
+    },
+    {
+      "name": "f",
+      "kind": "variable",
+      "start_line": 194
+    },
+    {
+      "name": "c",
+      "kind": "variable",
+      "start_line": 195
+    },
+    {
+      "name": "Word",
+      "kind": "class",
+      "start_line": 201
+    },
+    {
+      "name": "u32",
+      "kind": "variable",
+      "start_line": 202
+    },
+    {
+      "name": "u16",
+      "kind": "variable",
+      "start_line": 203
+    },
+    {
+      "name": "u8",
+      "kind": "variable",
+      "start_line": 204
+    },
+    {
+      "name": "TaggedValue",
+      "kind": "class",
+      "start_line": 210
+    },
+    {
+      "name": "type",
+      "kind": "variable",
+      "start_line": 211
+    },
+    {
+      "name": "data",
+      "kind": "variable",
+      "start_line": 212
+    },
+    {
+      "name": "int_value",
+      "kind": "variable",
+      "start_line": 213
+    },
+    {
+      "name": "float_value",
+      "kind": "variable",
+      "start_line": 214
+    },
+    {
+      "name": "string_value",
+      "kind": "variable",
+      "start_line": 215
+    },
+    {
+      "name": "Node",
+      "kind": "class",
+      "start_line": 243
+    },
+    {
+      "name": "add",
+      "kind": "function",
+      "start_line": 289
+    },
+    {
+      "name": "factorial",
+      "kind": "function",
+      "start_line": 296
+    },
+    {
+      "name": "calculate_average",
+      "kind": "function",
+      "start_line": 306
+    },
+    {
+      "name": "swap",
+      "kind": "function",
+      "start_line": 322
+    },
+    {
+      "name": "create_point",
+      "kind": "function",
+      "start_line": 331
+    },
+    {
+      "name": "create_array",
+      "kind": "function",
+      "start_line": 341
+    },
+    {
+      "name": "duplicate_string",
+      "kind": "function",
+      "start_line": 354
+    },
+    {
+      "name": "internal_helper",
+      "kind": "function",
+      "start_line": 370
+    },
+    {
+      "name": "fast_add",
+      "kind": "function",
+      "start_line": 377
+    },
+    {
+      "name": "find_max",
+      "kind": "function",
+      "start_line": 384
+    },
+    {
+      "name": "get_day_name",
+      "kind": "function",
+      "start_line": 401
+    },
+    {
+      "name": "power",
+      "kind": "function",
+      "start_line": 417
+    },
+    {
+      "name": "safe_divide",
+      "kind": "function",
+      "start_line": 430
+    },
+    {
+      "name": "sum_integers",
+      "kind": "function",
+      "start_line": 446
+    },
+    {
+      "name": "execute_callback",
+      "kind": "function",
+      "start_line": 466
+    },
+    {
+      "name": "get_operation",
+      "kind": "function",
+      "start_line": 475
+    },
+    {
+      "name": "global_counter",
+      "kind": "variable",
+      "start_line": 498
+    },
+    {
+      "name": "global_pi",
+      "kind": "variable",
+      "start_line": 499
+    },
+    {
+      "name": "file_scope_variable",
+      "kind": "variable",
+      "start_line": 503
+    },
+    {
+      "name": "external_variable",
+      "kind": "variable",
+      "start_line": 506
+    },
+    {
+      "name": "MAX_CONNECTIONS",
+      "kind": "variable",
+      "start_line": 509
+    },
+    {
+      "name": "interrupt_flag",
+      "kind": "variable",
+      "start_line": 512
+    },
+    {
+      "name": "origin",
+      "kind": "variable",
+      "start_line": 521
+    },
+    {
+      "name": "unit_x",
+      "kind": "variable",
+      "start_line": 524
+    },
+    {
+      "name": "const_ptr_to_const",
+      "kind": "variable",
+      "start_line": 546
+    },
+    {
+      "name": "volatile_ptr",
+      "kind": "variable",
+      "start_line": 549
+    },
+    {
+      "name": "restrict_ptr",
+      "kind": "variable",
+      "start_line": 552
+    },
+    {
+      "name": "demonstrate_casts",
+      "kind": "function",
+      "start_line": 558
+    },
+    {
+      "name": "demonstrate_initializers",
+      "kind": "function",
+      "start_line": 575
+    },
+    {
+      "name": "auto_example",
+      "kind": "function",
+      "start_line": 597
+    },
+    {
+      "name": "register_example",
+      "kind": "function",
+      "start_line": 602
+    },
+    {
+      "name": "static_local_example",
+      "kind": "function",
+      "start_line": 610
+    },
+    {
+      "name": "demonstrate_operators",
+      "kind": "function",
+      "start_line": 620
+    },
+    {
+      "name": "demonstrate_bitwise",
+      "kind": "function",
+      "start_line": 633
+    },
+    {
+      "name": "main",
+      "kind": "function",
+      "start_line": 652
+    },
+    {
+      "name": "multiply",
+      "kind": "function",
+      "start_line": 702
+    },
+    {
+      "name": "complex_function",
+      "kind": "function",
+      "start_line": 709
+    },
+    {
+      "name": "max",
+      "kind": "function",
+      "start_line": 733
+    },
+    {
+      "name": "use_comma_operator",
+      "kind": "function",
+      "start_line": 740
+    }
+  ],
+  "edges": []
+}

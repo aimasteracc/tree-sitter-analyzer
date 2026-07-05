@@ -1,0 +1,379 @@
+{
+  "language": "javascript",
+  "corpus_file": "tests/golden/corpus_javascript.js",
+  "snapshot_timestamp": "2026-06-28T17:00:46.152002+00:00",
+  "symbol_count": 74,
+  "symbols": [
+    {
+      "name": "regularFunction",
+      "kind": "function",
+      "start_line": 25
+    },
+    {
+      "name": "asyncFunction",
+      "kind": "function",
+      "start_line": 32
+    },
+    {
+      "name": "response",
+      "kind": "variable",
+      "start_line": 33
+    },
+    {
+      "name": "generatorFunction",
+      "kind": "function",
+      "start_line": 40
+    },
+    {
+      "name": "asyncGeneratorFunction",
+      "kind": "function",
+      "start_line": 49
+    },
+    {
+      "name": "singleParamArrow",
+      "kind": "function",
+      "start_line": 61
+    },
+    {
+      "name": "multiParamArrow",
+      "kind": "function",
+      "start_line": 66
+    },
+    {
+      "name": "blockBodyArrow",
+      "kind": "function",
+      "start_line": 71
+    },
+    {
+      "name": "asyncArrow",
+      "kind": "function",
+      "start_line": 79
+    },
+    {
+      "name": "namedExpression",
+      "kind": "function",
+      "start_line": 91
+    },
+    {
+      "name": "namedFuncExpr",
+      "kind": "variable",
+      "start_line": 91
+    },
+    {
+      "name": "",
+      "kind": "function",
+      "start_line": 98
+    },
+    {
+      "name": "anonFuncExpr",
+      "kind": "variable",
+      "start_line": 98
+    },
+    {
+      "name": "BaseClass",
+      "kind": "class",
+      "start_line": 109
+    },
+    {
+      "name": "constructor",
+      "kind": "function",
+      "start_line": 111
+    },
+    {
+      "name": "regularMethod",
+      "kind": "function",
+      "start_line": 117
+    },
+    {
+      "name": "staticMethod",
+      "kind": "function",
+      "start_line": 122
+    },
+    {
+      "name": "asyncMethod",
+      "kind": "function",
+      "start_line": 127
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "start_line": 128
+    },
+    {
+      "name": "value",
+      "kind": "function",
+      "start_line": 133
+    },
+    {
+      "name": "value",
+      "kind": "function",
+      "start_line": 138
+    },
+    {
+      "name": "generatorMethod",
+      "kind": "function",
+      "start_line": 143
+    },
+    {
+      "name": "asyncGeneratorMethod",
+      "kind": "function",
+      "start_line": 149
+    },
+    {
+      "name": "DerivedClass",
+      "kind": "class",
+      "start_line": 157
+    },
+    {
+      "name": "constructor",
+      "kind": "function",
+      "start_line": 158
+    },
+    {
+      "name": "regularMethod",
+      "kind": "function",
+      "start_line": 164
+    },
+    {
+      "name": "ClassExpression",
+      "kind": "variable",
+      "start_line": 172
+    },
+    {
+      "name": "varDeclaration",
+      "kind": "variable",
+      "start_line": 187
+    },
+    {
+      "name": "multiVar1",
+      "kind": "variable",
+      "start_line": 188
+    },
+    {
+      "name": "multiVar2",
+      "kind": "variable",
+      "start_line": 188
+    },
+    {
+      "name": "letDeclaration",
+      "kind": "variable",
+      "start_line": 191
+    },
+    {
+      "name": "multiLet1",
+      "kind": "variable",
+      "start_line": 192
+    },
+    {
+      "name": "multiLet2",
+      "kind": "variable",
+      "start_line": 192
+    },
+    {
+      "name": "constDeclaration",
+      "kind": "variable",
+      "start_line": 195
+    },
+    {
+      "name": "constObject",
+      "kind": "variable",
+      "start_line": 196
+    },
+    {
+      "name": "constArray",
+      "kind": "variable",
+      "start_line": 197
+    },
+    {
+      "name": "unknown",
+      "kind": "import",
+      "start_line": 209
+    },
+    {
+      "name": "namedExport1",
+      "kind": "import",
+      "start_line": 212
+    },
+    {
+      "name": "unknown",
+      "kind": "import",
+      "start_line": 215
+    },
+    {
+      "name": "namedMixed1",
+      "kind": "import",
+      "start_line": 218
+    },
+    {
+      "name": "originalName",
+      "kind": "import",
+      "start_line": 221
+    },
+    {
+      "name": "unknown",
+      "kind": "import",
+      "start_line": 224
+    },
+    {
+      "name": "exportedConst",
+      "kind": "variable",
+      "start_line": 231
+    },
+    {
+      "name": "exportedLet",
+      "kind": "variable",
+      "start_line": 232
+    },
+    {
+      "name": "exportedVar",
+      "kind": "variable",
+      "start_line": 233
+    },
+    {
+      "name": "exportedFunction",
+      "kind": "function",
+      "start_line": 236
+    },
+    {
+      "name": "ExportedClass",
+      "kind": "class",
+      "start_line": 241
+    },
+    {
+      "name": "constructor",
+      "kind": "function",
+      "start_line": 242
+    },
+    {
+      "name": "toExport1",
+      "kind": "variable",
+      "start_line": 248
+    },
+    {
+      "name": "toExport2",
+      "kind": "variable",
+      "start_line": 249
+    },
+    {
+      "name": "internal",
+      "kind": "variable",
+      "start_line": 253
+    },
+    {
+      "name": "defaultExportFunc",
+      "kind": "function",
+      "start_line": 261
+    },
+    {
+      "name": "templateBasic",
+      "kind": "variable",
+      "start_line": 269
+    },
+    {
+      "name": "templateWithExpr",
+      "kind": "variable",
+      "start_line": 270
+    },
+    {
+      "name": "templateMultiline",
+      "kind": "variable",
+      "start_line": 271
+    },
+    {
+      "name": "templateNested",
+      "kind": "variable",
+      "start_line": 275
+    },
+    {
+      "name": "tag",
+      "kind": "function",
+      "start_line": 278
+    },
+    {
+      "name": "tagged",
+      "kind": "variable",
+      "start_line": 281
+    },
+    {
+      "name": "objectWithMethods",
+      "kind": "variable",
+      "start_line": 287
+    },
+    {
+      "name": "methodShorthand",
+      "kind": "function",
+      "start_line": 289
+    },
+    {
+      "name": "asyncObjectMethod",
+      "kind": "function",
+      "start_line": 294
+    },
+    {
+      "name": "generatorObjectMethod",
+      "kind": "function",
+      "start_line": 299
+    },
+    {
+      "name": "objectGetter",
+      "kind": "function",
+      "start_line": 304
+    },
+    {
+      "name": "objectSetter",
+      "kind": "function",
+      "start_line": 309
+    },
+    {
+      "name": "[\"computed\" + \"Key\"]",
+      "kind": "function",
+      "start_line": 314
+    },
+    {
+      "name": "spreadArray",
+      "kind": "variable",
+      "start_line": 324
+    },
+    {
+      "name": "spreadObject",
+      "kind": "variable",
+      "start_line": 327
+    },
+    {
+      "name": "restParams",
+      "kind": "function",
+      "start_line": 330
+    },
+    {
+      "name": "defaultParams",
+      "kind": "function",
+      "start_line": 335
+    },
+    {
+      "name": "optionalChain",
+      "kind": "variable",
+      "start_line": 340
+    },
+    {
+      "name": "nullishCoalesce",
+      "kind": "variable",
+      "start_line": 343
+    },
+    {
+      "name": "dynamicImportExample",
+      "kind": "function",
+      "start_line": 350
+    },
+    {
+      "name": "module",
+      "kind": "variable",
+      "start_line": 351
+    },
+    {
+      "name": "commonjsModule",
+      "kind": "import",
+      "start_line": 364
+    }
+  ],
+  "edges": []
+}

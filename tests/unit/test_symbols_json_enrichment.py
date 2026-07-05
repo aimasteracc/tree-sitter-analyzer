@@ -14,13 +14,13 @@ both weights. Only the serialization half ships; pilot data on #517.
 
 from __future__ import annotations
 
-from tree_sitter_analyzer._ast_extraction import (
+from tree_sitter_analyzer.cache.extraction import (
     _DOCSTRING_MAX_CHARS,
 )
 
 
 def _symbols_for(source: str, lang: str) -> list[dict]:
-    from tree_sitter_analyzer._ast_extraction import _extract_symbols
+    from tree_sitter_analyzer.cache.extraction import _extract_symbols
     from tree_sitter_analyzer.core.parser import Parser
 
     result = Parser().parse_code(source, lang)
@@ -140,7 +140,8 @@ class TestExtractorVersionBump:
         # The two declarations must stay equal (they gate cache staleness).
         # v14: #1094 — function symbols carry the extractor's canonical
         # ``complexity``; the bump forces existing rows to re-index.
-        from tree_sitter_analyzer import _ast_cache_indexer, ast_cache
+        from tree_sitter_analyzer import ast_cache
+        from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
         assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 14
         assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 14
@@ -201,7 +202,7 @@ class TestBashSubscriptBaseFallback:
 
     def test_name_field_present_returns_field_node(self):
         # When the ``name`` field is set, return it directly (no child scan).
-        from tree_sitter_analyzer._ast_extraction import _bash_subscript_base
+        from tree_sitter_analyzer.cache.extraction import _bash_subscript_base
 
         base = _FakeChild("variable_name")
         sub = _FakeSubscript(
@@ -212,7 +213,7 @@ class TestBashSubscriptBaseFallback:
 
     def test_no_name_field_falls_back_to_variable_name_child(self):
         # No ``name`` field: scan children, return the first ``variable_name``.
-        from tree_sitter_analyzer._ast_extraction import _bash_subscript_base
+        from tree_sitter_analyzer.cache.extraction import _bash_subscript_base
 
         var_child = _FakeChild("variable_name")
         sub = _FakeSubscript(
@@ -223,7 +224,7 @@ class TestBashSubscriptBaseFallback:
 
     def test_no_name_field_falls_back_to_word_child(self):
         # No ``name`` field, no ``variable_name``: first ``word`` child wins.
-        from tree_sitter_analyzer._ast_extraction import _bash_subscript_base
+        from tree_sitter_analyzer.cache.extraction import _bash_subscript_base
 
         word_child = _FakeChild("word")
         sub = _FakeSubscript(
@@ -234,7 +235,7 @@ class TestBashSubscriptBaseFallback:
 
     def test_no_base_anywhere_returns_none(self):
         # Neither a ``name`` field nor a ``variable_name``/``word`` child.
-        from tree_sitter_analyzer._ast_extraction import _bash_subscript_base
+        from tree_sitter_analyzer.cache.extraction import _bash_subscript_base
 
         sub = _FakeSubscript(
             named_base=None,

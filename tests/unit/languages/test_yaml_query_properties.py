@@ -280,6 +280,9 @@ class TestYAMLQueryProperties:
 
             # Property: Compiled query must not be None
             assert compiled_query is not None, f"Query '{query_name}' compiled to None"
+            assert isinstance(compiled_query, tree_sitter.Query), (
+                f"Query '{query_name}' must be a tree_sitter.Query instance"
+            )
 
         except Exception as e:
             pytest.fail(
@@ -308,6 +311,11 @@ class TestYAMLQueryProperties:
                 assert compiled_query is not None, (
                     f"Query '{query_name}' compiled to None"
                 )
+                assert isinstance(compiled_query, tree_sitter.Query), (
+                    f"Query '{query_name}' must be a tree_sitter.Query instance"
+                )
+            except AssertionError:
+                raise
             except Exception as e:
                 failed_queries.append((query_name, str(e)))
 

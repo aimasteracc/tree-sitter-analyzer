@@ -100,7 +100,7 @@ def _discover_plugin_languages() -> set[str]:
 
 def test_every_plugin_has_extension_wiring() -> None:
     """Every plugin must be reachable via at least one file extension."""
-    from tree_sitter_analyzer._lang_extension_map import supported_languages
+    from tree_sitter_analyzer.languages.lang_extension_map import supported_languages
 
     plugin_langs = _discover_plugin_languages()
     mapped_langs = supported_languages()
@@ -119,8 +119,8 @@ def test_every_plugin_has_extension_wiring() -> None:
 
 
 def test_ast_cache_alias_matches_canonical() -> None:
-    from tree_sitter_analyzer._lang_extension_map import EXT_TO_LANG
     from tree_sitter_analyzer.ast_cache import _EXT_TO_LANG
+    from tree_sitter_analyzer.languages.lang_extension_map import EXT_TO_LANG
 
     assert _EXT_TO_LANG is EXT_TO_LANG, (
         "ast_cache._EXT_TO_LANG must be the SAME object as "
@@ -130,7 +130,7 @@ def test_ast_cache_alias_matches_canonical() -> None:
 
 
 def test_project_graph_alias_resolves_via_canonical() -> None:
-    from tree_sitter_analyzer._lang_extension_map import language_from_ext
+    from tree_sitter_analyzer.languages.lang_extension_map import language_from_ext
     from tree_sitter_analyzer.project_graph import _language_from_ext
 
     for sample in (
@@ -161,7 +161,7 @@ def test_project_graph_alias_resolves_via_canonical() -> None:
     ],
 )
 def test_long_broken_extensions_stay_wired(ext: str, expected: str) -> None:
-    from tree_sitter_analyzer._lang_extension_map import language_from_ext
+    from tree_sitter_analyzer.languages.lang_extension_map import language_from_ext
 
     assert language_from_ext(f"foo{ext}") == expected, (
         f"{ext} → {expected} regression. This wiring was missing for "
@@ -180,9 +180,9 @@ def test_swiftinterface_resolves_in_all_known_ext_maps() -> None:
     they cover different code paths). All of them must agree, or a
     file resolves as swift in one path and ``unknown`` in another.
     """
-    from tree_sitter_analyzer._lang_extension_map import language_from_ext
     from tree_sitter_analyzer.file_handler import detect_language_from_extension
     from tree_sitter_analyzer.language_detector import LanguageDetector
+    from tree_sitter_analyzer.languages.lang_extension_map import language_from_ext
 
     sample = "Foundation.swiftinterface"
 

@@ -63,7 +63,7 @@ class TestJSDefaultParameterExtraction:
         from tree_sitter_analyzer.languages.javascript_plugin._function_mixin import (
             JavaScriptFunctionExtractionMixin,
         )
-        from tree_sitter_analyzer.languages.javascript_plugin._text_helpers import (
+        from tree_sitter_analyzer.languages.javascript_plugin._text import (
             get_node_text_optimized,
         )
 
@@ -100,7 +100,7 @@ class TestJSDefaultParameterExtraction:
         from tree_sitter_analyzer.languages.javascript_plugin._function_mixin import (
             JavaScriptFunctionExtractionMixin,
         )
-        from tree_sitter_analyzer.languages.javascript_plugin._text_helpers import (
+        from tree_sitter_analyzer.languages.javascript_plugin._text import (
             get_node_text_optimized,
         )
 
@@ -135,7 +135,7 @@ class TestJSDefaultParameterExtraction:
         from tree_sitter_analyzer.languages.javascript_plugin._function_mixin import (
             JavaScriptFunctionExtractionMixin,
         )
-        from tree_sitter_analyzer.languages.javascript_plugin._text_helpers import (
+        from tree_sitter_analyzer.languages.javascript_plugin._text import (
             get_node_text_optimized,
         )
 
@@ -236,7 +236,7 @@ class TestJSDefaultParameterExtraction:
 
 class TestPythonTypedDefaultParameterExtraction:
     """Issue #533 (Python half): typed_default_parameter (name: type = default)
-    was absent from _PARAMETER_NODE_TYPES in _signature_helpers.py, so any
+    was absent from _PARAMETER_NODE_TYPES in _signature.py, so any
     param with a type annotation AND a default (e.g. 'breed: str = "Mixed"')
     was silently dropped.
 

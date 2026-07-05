@@ -101,7 +101,7 @@ def test_interfaces_survive_api_serialization() -> None:
     """Theme-C tail: plugins collected interfaces but element_to_dict dropped
     them (field missing from _OPTIONAL_ELEM_FIELDS) — agents never saw
     implements/mixins for ANY language."""
-    from tree_sitter_analyzer._api_result_helpers import element_to_dict
+    from tree_sitter_analyzer.internal_api.result_helpers import element_to_dict
 
     dog = _php_classes()["Dog"]
     as_dict = element_to_dict(dog)

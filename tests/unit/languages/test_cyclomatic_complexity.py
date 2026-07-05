@@ -11,9 +11,7 @@ import importlib.util
 import pytest
 import tree_sitter
 
-TREE_SITTER_SWIFT_AVAILABLE = (
-    importlib.util.find_spec("tree_sitter_swift") is not None
-)
+TREE_SITTER_SWIFT_AVAILABLE = importlib.util.find_spec("tree_sitter_swift") is not None
 
 # ---------------------------------------------------------------------------
 # Ruby

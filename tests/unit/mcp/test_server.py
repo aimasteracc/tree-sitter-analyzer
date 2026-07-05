@@ -53,19 +53,25 @@ class TestServerInit:
             server.analyze_code_structure_tool.get_tool_definition()["name"]
             == "analyze_code_structure"
         )
-        assert server.analyze_scale_tool.get_tool_definition()["name"] == "check_code_scale"
+        assert (
+            server.analyze_scale_tool.get_tool_definition()["name"]
+            == "check_code_scale"
+        )
         assert server.list_files_tool.get_tool_definition()["name"] == "list_files"
         assert (
-            server.search_content_tool.get_tool_definition()["name"]
-            == "search_content"
+            server.search_content_tool.get_tool_definition()["name"] == "search_content"
         )
-        assert server.find_and_grep_tool.get_tool_definition()["name"] == "find_and_grep"
+        assert (
+            server.find_and_grep_tool.get_tool_definition()["name"] == "find_and_grep"
+        )
 
     def test_initialization_creates_resources(self, tmp_path):
         """Test that initialization creates resources"""
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
         assert server.code_file_resource.get_resource_info()["name"] == "code_file"
-        assert server.project_stats_resource.get_resource_info()["name"] == "project_stats"
+        assert (
+            server.project_stats_resource.get_resource_info()["name"] == "project_stats"
+        )
         assert server.project_stats_resource.project_root == str(tmp_path)
 
 
@@ -284,7 +290,9 @@ class TestProjectStatsResource:
 
     def test_project_stats_resource_initialized(self, server):
         """Test project stats resource is initialized"""
-        assert server.project_stats_resource.get_resource_info()["name"] == "project_stats"
+        assert (
+            server.project_stats_resource.get_resource_info()["name"] == "project_stats"
+        )
         assert "overview" in server.project_stats_resource.get_supported_stats_types()
 
     def test_project_stats_resource_supported_types(self, server):

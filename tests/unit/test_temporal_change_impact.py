@@ -333,7 +333,9 @@ class TestCalleesActivationFlag:
             assert activation["mod_count_30d"] >= 0  # ratchet: nondeterministic
             # last_modified_at is either an epoch int or None.
             ts = activation["last_modified_at"]
-            assert ts is None or (isinstance(ts, int) and ts >= 0)  # ratchet: nondeterministic
+            assert ts is None or (
+                isinstance(ts, int) and ts >= 0
+            )  # ratchet: nondeterministic
 
     @pytest.mark.asyncio
     async def test_callees_tool_omits_activation_by_default(self, callees_tool):

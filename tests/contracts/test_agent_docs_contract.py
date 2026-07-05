@@ -31,6 +31,7 @@ SKIPPED_SCAN_DIRS = {
     ".venv",
 }
 
+
 def test_agent_facing_docs_do_not_recommend_bare_pytest() -> None:
     """Agent docs should route pytest through uv for consistent environments."""
     bare_pytest_command = re.compile(r"^(?:\$\s+)?pytest(?:\s|$)")

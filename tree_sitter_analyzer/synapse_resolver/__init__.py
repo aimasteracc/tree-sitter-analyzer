@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .._language_family import languages_compatible
+from ..languages.language_family import languages_compatible
 from ._constants import (
     BUILTIN_QUALIFIED_PY,
     BUILTIN_TYPE_NAMES_PY,

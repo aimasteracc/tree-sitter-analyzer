@@ -15,9 +15,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ._encoding_conversion import safe_decode_bytes, safe_encode_text
-from ._encoding_detection import detect_data_encoding
-from ._encoding_streaming import read_file_safe_streaming_context
+from .encoding.conversion import safe_decode_bytes, safe_encode_text
+from .encoding.detection import detect_data_encoding
+from .encoding.streaming import read_file_safe_streaming_context
 
 ANYIO_AVAILABLE = importlib.util.find_spec("anyio") is not None
 

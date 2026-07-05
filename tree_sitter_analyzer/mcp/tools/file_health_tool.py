@@ -396,9 +396,6 @@ def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None
         "agent_next_action": {
             "priority": "none",
             "reason": "file is empty",
-            "mcp_command": "",
-            "cli_command": "",
-            "post_edit_commands": [],
         },
     }
 
@@ -445,9 +442,6 @@ def _non_code_file_response(resolved: str, file_path: str) -> dict[str, Any] | N
         "agent_next_action": {
             "priority": "none",
             "reason": "non-code file",
-            "mcp_command": "",
-            "cli_command": "",
-            "post_edit_commands": [],
         },
     }
 
@@ -593,8 +587,5 @@ def _syntax_error_response(
         "agent_next_action": {
             "priority": "high",
             "reason": "syntax error blocks analysis",
-            "mcp_command": "",
-            "cli_command": "",
-            "post_edit_commands": [],
         },
     }

@@ -1,0 +1,214 @@
+{
+  "language": "python",
+  "corpus_file": "tests/golden/corpus_python.py",
+  "snapshot_timestamp": "2026-06-28T17:00:46.384754+00:00",
+  "symbol_count": 41,
+  "symbols": [
+    {
+      "name": "ABC, abstractmethod",
+      "kind": "import",
+      "start_line": 8
+    },
+    {
+      "name": "Iterator",
+      "kind": "import",
+      "start_line": 9
+    },
+    {
+      "name": "dataclass",
+      "kind": "import",
+      "start_line": 10
+    },
+    {
+      "name": "Any",
+      "kind": "import",
+      "start_line": 11
+    },
+    {
+      "name": "Person",
+      "kind": "class",
+      "start_line": 19
+    },
+    {
+      "name": "email",
+      "kind": "variable",
+      "start_line": 24
+    },
+    {
+      "name": "__post_init__",
+      "kind": "function",
+      "start_line": 26
+    },
+    {
+      "name": "greet",
+      "kind": "function",
+      "start_line": 31
+    },
+    {
+      "name": "PropertyExample",
+      "kind": "class",
+      "start_line": 36
+    },
+    {
+      "name": "__init__",
+      "kind": "function",
+      "start_line": 39
+    },
+    {
+      "name": "value",
+      "kind": "function",
+      "start_line": 43
+    },
+    {
+      "name": "value",
+      "kind": "function",
+      "start_line": 48
+    },
+    {
+      "name": "static_method",
+      "kind": "function",
+      "start_line": 53
+    },
+    {
+      "name": "class_method",
+      "kind": "function",
+      "start_line": 58
+    },
+    {
+      "name": "timing_decorator",
+      "kind": "function",
+      "start_line": 63
+    },
+    {
+      "name": "wrapper",
+      "kind": "function",
+      "start_line": 66
+    },
+    {
+      "name": "decorated_function",
+      "kind": "function",
+      "start_line": 73
+    },
+    {
+      "name": "regular_function",
+      "kind": "function",
+      "start_line": 83
+    },
+    {
+      "name": "async_function",
+      "kind": "function",
+      "start_line": 88
+    },
+    {
+      "name": "function_with_defaults",
+      "kind": "function",
+      "start_line": 93
+    },
+    {
+      "name": "variadic_function",
+      "kind": "function",
+      "start_line": 98
+    },
+    {
+      "name": "generator_function",
+      "kind": "function",
+      "start_line": 120
+    },
+    {
+      "name": "fibonacci_generator",
+      "kind": "function",
+      "start_line": 126
+    },
+    {
+      "name": "async_generator",
+      "kind": "function",
+      "start_line": 134
+    },
+    {
+      "name": "Animal",
+      "kind": "class",
+      "start_line": 156
+    },
+    {
+      "name": "__init__",
+      "kind": "function",
+      "start_line": 159
+    },
+    {
+      "name": "make_sound",
+      "kind": "function",
+      "start_line": 164
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 168
+    },
+    {
+      "name": "Dog",
+      "kind": "class",
+      "start_line": 173
+    },
+    {
+      "name": "__init__",
+      "kind": "function",
+      "start_line": 176
+    },
+    {
+      "name": "make_sound",
+      "kind": "function",
+      "start_line": 180
+    },
+    {
+      "name": "fetch",
+      "kind": "function",
+      "start_line": 184
+    },
+    {
+      "name": "NestedClassExample",
+      "kind": "class",
+      "start_line": 189
+    },
+    {
+      "name": "Inner",
+      "kind": "class",
+      "start_line": 192
+    },
+    {
+      "name": "inner_method",
+      "kind": "function",
+      "start_line": 195
+    },
+    {
+      "name": "outer_method",
+      "kind": "function",
+      "start_line": 198
+    },
+    {
+      "name": "ComplexNesting",
+      "kind": "class",
+      "start_line": 208
+    },
+    {
+      "name": "level1_method",
+      "kind": "function",
+      "start_line": 211
+    },
+    {
+      "name": "level2_nested",
+      "kind": "function",
+      "start_line": 214
+    },
+    {
+      "name": "Level3Class",
+      "kind": "class",
+      "start_line": 217
+    },
+    {
+      "name": "level4_method",
+      "kind": "function",
+      "start_line": 220
+    }
+  ],
+  "edges": []
+}

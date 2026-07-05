@@ -1,0 +1,604 @@
+{
+  "language": "go",
+  "corpus_file": "tests/golden/corpus_go.go",
+  "snapshot_timestamp": "2026-06-28T17:00:46.064218+00:00",
+  "symbol_count": 119,
+  "symbols": [
+    {
+      "name": "context",
+      "kind": "import",
+      "start_line": 18
+    },
+    {
+      "name": "fmt",
+      "kind": "import",
+      "start_line": 19
+    },
+    {
+      "name": "io",
+      "kind": "import",
+      "start_line": 20
+    },
+    {
+      "name": "math",
+      "kind": "import",
+      "start_line": 21
+    },
+    {
+      "name": "os",
+      "kind": "import",
+      "start_line": 22
+    },
+    {
+      "name": "sync",
+      "kind": "import",
+      "start_line": 23
+    },
+    {
+      "name": "time",
+      "kind": "import",
+      "start_line": 24
+    },
+    {
+      "name": "fmt",
+      "kind": "import",
+      "start_line": 39
+    },
+    {
+      "name": "png",
+      "kind": "import",
+      "start_line": 40
+    },
+    {
+      "name": "json",
+      "kind": "import",
+      "start_line": 41
+    },
+    {
+      "name": "Pi",
+      "kind": "variable",
+      "start_line": 49
+    },
+    {
+      "name": "StatusOK",
+      "kind": "variable",
+      "start_line": 53
+    },
+    {
+      "name": "StatusNotFound",
+      "kind": "variable",
+      "start_line": 54
+    },
+    {
+      "name": "StatusInternalError",
+      "kind": "variable",
+      "start_line": 55
+    },
+    {
+      "name": "Sunday",
+      "kind": "variable",
+      "start_line": 60
+    },
+    {
+      "name": "Monday",
+      "kind": "variable",
+      "start_line": 61
+    },
+    {
+      "name": "Tuesday",
+      "kind": "variable",
+      "start_line": 62
+    },
+    {
+      "name": "Wednesday",
+      "kind": "variable",
+      "start_line": 63
+    },
+    {
+      "name": "Thursday",
+      "kind": "variable",
+      "start_line": 64
+    },
+    {
+      "name": "Friday",
+      "kind": "variable",
+      "start_line": 65
+    },
+    {
+      "name": "Saturday",
+      "kind": "variable",
+      "start_line": 66
+    },
+    {
+      "name": "MaxInt",
+      "kind": "variable",
+      "start_line": 71
+    },
+    {
+      "name": "MinInt",
+      "kind": "variable",
+      "start_line": 72
+    },
+    {
+      "name": "globalVar",
+      "kind": "variable",
+      "start_line": 80
+    },
+    {
+      "name": "a",
+      "kind": "variable",
+      "start_line": 97
+    },
+    {
+      "name": "b",
+      "kind": "variable",
+      "start_line": 97
+    },
+    {
+      "name": "c",
+      "kind": "variable",
+      "start_line": 97
+    },
+    {
+      "name": "Integer",
+      "kind": "class",
+      "start_line": 104
+    },
+    {
+      "name": "StringAlias",
+      "kind": "class",
+      "start_line": 105
+    },
+    {
+      "name": "Age",
+      "kind": "class",
+      "start_line": 108
+    },
+    {
+      "name": "Name",
+      "kind": "class",
+      "start_line": 109
+    },
+    {
+      "name": "Person",
+      "kind": "class",
+      "start_line": 112
+    },
+    {
+      "name": "Name",
+      "kind": "variable",
+      "start_line": 113
+    },
+    {
+      "name": "Age",
+      "kind": "variable",
+      "start_line": 114
+    },
+    {
+      "name": "Email",
+      "kind": "variable",
+      "start_line": 115
+    },
+    {
+      "name": "Address",
+      "kind": "variable",
+      "start_line": 116
+    },
+    {
+      "name": "Address",
+      "kind": "class",
+      "start_line": 120
+    },
+    {
+      "name": "Street",
+      "kind": "variable",
+      "start_line": 121
+    },
+    {
+      "name": "City",
+      "kind": "variable",
+      "start_line": 122
+    },
+    {
+      "name": "Country",
+      "kind": "variable",
+      "start_line": 123
+    },
+    {
+      "name": "ZipCode",
+      "kind": "variable",
+      "start_line": 124
+    },
+    {
+      "name": "Employee",
+      "kind": "class",
+      "start_line": 128
+    },
+    {
+      "name": "EmployeeID",
+      "kind": "variable",
+      "start_line": 130
+    },
+    {
+      "name": "Department",
+      "kind": "variable",
+      "start_line": 131
+    },
+    {
+      "name": "Salary",
+      "kind": "variable",
+      "start_line": 132
+    },
+    {
+      "name": "User",
+      "kind": "class",
+      "start_line": 136
+    },
+    {
+      "name": "ID",
+      "kind": "variable",
+      "start_line": 137
+    },
+    {
+      "name": "Username",
+      "kind": "variable",
+      "start_line": 138
+    },
+    {
+      "name": "Password",
+      "kind": "variable",
+      "start_line": 139
+    },
+    {
+      "name": "Reader",
+      "kind": "class",
+      "start_line": 143
+    },
+    {
+      "name": "Read",
+      "kind": "function",
+      "start_line": 144
+    },
+    {
+      "name": "Writer",
+      "kind": "class",
+      "start_line": 147
+    },
+    {
+      "name": "Write",
+      "kind": "function",
+      "start_line": 148
+    },
+    {
+      "name": "ReadWriter",
+      "kind": "class",
+      "start_line": 152
+    },
+    {
+      "name": "Any",
+      "kind": "class",
+      "start_line": 158
+    },
+    {
+      "name": "Number",
+      "kind": "class",
+      "start_line": 161
+    },
+    {
+      "name": "HandlerFunc",
+      "kind": "class",
+      "start_line": 166
+    },
+    {
+      "name": "CompareFunc",
+      "kind": "class",
+      "start_line": 167
+    },
+    {
+      "name": "IntChannel",
+      "kind": "class",
+      "start_line": 170
+    },
+    {
+      "name": "SendOnlyChannel",
+      "kind": "class",
+      "start_line": 171
+    },
+    {
+      "name": "ReceiveOnlyChannel",
+      "kind": "class",
+      "start_line": 172
+    },
+    {
+      "name": "StringMap",
+      "kind": "class",
+      "start_line": 175
+    },
+    {
+      "name": "IntMap",
+      "kind": "class",
+      "start_line": 176
+    },
+    {
+      "name": "IntSlice",
+      "kind": "class",
+      "start_line": 179
+    },
+    {
+      "name": "StringSlice",
+      "kind": "class",
+      "start_line": 180
+    },
+    {
+      "name": "FixedArray",
+      "kind": "class",
+      "start_line": 183
+    },
+    {
+      "name": "IntPointer",
+      "kind": "class",
+      "start_line": 186
+    },
+    {
+      "name": "add",
+      "kind": "function",
+      "start_line": 193
+    },
+    {
+      "name": "divide",
+      "kind": "function",
+      "start_line": 198
+    },
+    {
+      "name": "namedReturns",
+      "kind": "function",
+      "start_line": 206
+    },
+    {
+      "name": "sum",
+      "kind": "function",
+      "start_line": 213
+    },
+    {
+      "name": "printf",
+      "kind": "function",
+      "start_line": 222
+    },
+    {
+      "name": "makeAdder",
+      "kind": "function",
+      "start_line": 227
+    },
+    {
+      "name": "processWithContext",
+      "kind": "function",
+      "start_line": 234
+    },
+    {
+      "name": "deferExample",
+      "kind": "function",
+      "start_line": 245
+    },
+    {
+      "name": "FullName",
+      "kind": "function",
+      "start_line": 256
+    },
+    {
+      "name": "SetAge",
+      "kind": "function",
+      "start_line": 261
+    },
+    {
+      "name": "IsAdult",
+      "kind": "function",
+      "start_line": 266
+    },
+    {
+      "name": "Sum",
+      "kind": "function",
+      "start_line": 271
+    },
+    {
+      "name": "Read",
+      "kind": "function",
+      "start_line": 280
+    },
+    {
+      "name": "Write",
+      "kind": "function",
+      "start_line": 286
+    },
+    {
+      "name": "shortVarExample",
+      "kind": "function",
+      "start_line": 294
+    },
+    {
+      "name": "doSomething",
+      "kind": "function",
+      "start_line": 332
+    },
+    {
+      "name": "getValue",
+      "kind": "function",
+      "start_line": 336
+    },
+    {
+      "name": "goroutineExample",
+      "kind": "function",
+      "start_line": 345
+    },
+    {
+      "name": "processData",
+      "kind": "function",
+      "start_line": 376
+    },
+    {
+      "name": "selectExample",
+      "kind": "function",
+      "start_line": 384
+    },
+    {
+      "name": "deferStatements",
+      "kind": "function",
+      "start_line": 416
+    },
+    {
+      "name": "cleanup",
+      "kind": "function",
+      "start_line": 437
+    },
+    {
+      "name": "GenericMax",
+      "kind": "function",
+      "start_line": 446
+    },
+    {
+      "name": "Stack",
+      "kind": "class",
+      "start_line": 454
+    },
+    {
+      "name": "items",
+      "kind": "variable",
+      "start_line": 455
+    },
+    {
+      "name": "Push",
+      "kind": "function",
+      "start_line": 459
+    },
+    {
+      "name": "Pop",
+      "kind": "function",
+      "start_line": 463
+    },
+    {
+      "name": "zero",
+      "kind": "variable",
+      "start_line": 465
+    },
+    {
+      "name": "Engine",
+      "kind": "class",
+      "start_line": 478
+    },
+    {
+      "name": "Power",
+      "kind": "variable",
+      "start_line": 479
+    },
+    {
+      "name": "Type",
+      "kind": "variable",
+      "start_line": 480
+    },
+    {
+      "name": "Start",
+      "kind": "function",
+      "start_line": 483
+    },
+    {
+      "name": "Car",
+      "kind": "class",
+      "start_line": 487
+    },
+    {
+      "name": "Make",
+      "kind": "variable",
+      "start_line": 489
+    },
+    {
+      "name": "Model",
+      "kind": "variable",
+      "start_line": 490
+    },
+    {
+      "name": "Year",
+      "kind": "variable",
+      "start_line": 491
+    },
+    {
+      "name": "Drive",
+      "kind": "function",
+      "start_line": 494
+    },
+    {
+      "name": "Point",
+      "kind": "class",
+      "start_line": 504
+    },
+    {
+      "name": "X",
+      "kind": "variable",
+      "start_line": 505
+    },
+    {
+      "name": "String",
+      "kind": "function",
+      "start_line": 508
+    },
+    {
+      "name": "CustomError",
+      "kind": "class",
+      "start_line": 513
+    },
+    {
+      "name": "Code",
+      "kind": "variable",
+      "start_line": 514
+    },
+    {
+      "name": "Message",
+      "kind": "variable",
+      "start_line": 515
+    },
+    {
+      "name": "Error",
+      "kind": "function",
+      "start_line": 518
+    },
+    {
+      "name": "concurrencyPatterns",
+      "kind": "function",
+      "start_line": 526
+    },
+    {
+      "name": "wg",
+      "kind": "variable",
+      "start_line": 528
+    },
+    {
+      "name": "mu",
+      "kind": "variable",
+      "start_line": 541
+    },
+    {
+      "name": "controlFlow",
+      "kind": "function",
+      "start_line": 579
+    },
+    {
+      "name": "i",
+      "kind": "variable",
+      "start_line": 600
+    },
+    {
+      "name": "compute",
+      "kind": "function",
+      "start_line": 646
+    },
+    {
+      "name": "init",
+      "kind": "function",
+      "start_line": 654
+    },
+    {
+      "name": "main",
+      "kind": "function",
+      "start_line": 663
+    }
+  ],
+  "edges": []
+}

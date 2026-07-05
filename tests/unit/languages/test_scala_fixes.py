@@ -516,7 +516,7 @@ object O:
 
 
 def test_scala_ast_cache_symbol_path_indexes_new_constructs() -> None:
-    from tree_sitter_analyzer._ast_extraction import _extract_symbols
+    from tree_sitter_analyzer.cache.extraction import _extract_symbols
 
     code = """\
 object Instances:

@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from tree_sitter_analyzer._api_result_helpers import (
+from tree_sitter_analyzer.internal_api.result_helpers import (
     code_analysis_error,
     code_analysis_result,
     element_to_dict,

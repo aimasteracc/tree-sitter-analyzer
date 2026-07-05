@@ -43,7 +43,7 @@ class TestBuildProjectIndexToolInitialization:
 
     def test_init_creates_tool(self, tool: BuildProjectIndexTool) -> None:
         """Test that initialization creates a tool instance."""
-        assert tool is not None
+        assert isinstance(tool, BuildProjectIndexTool)
 
 
 class TestBuildProjectIndexToolDefinition:
@@ -92,7 +92,9 @@ class TestBuildProjectIndexToolExecution:
         result = await tool.execute({})
         assert "build_duration_ms" in result
         assert isinstance(result["build_duration_ms"], int)
-        assert result["build_duration_ms"] >= 0
+        assert (
+            result["build_duration_ms"] >= 0
+        )  # ratchet: nondeterministic timing value
 
     @pytest.mark.asyncio
     async def test_saves_index_to_disk(
@@ -131,7 +133,9 @@ class TestBuildProjectIndexToolExecution:
         result = await tool.execute({})
         assert "files_scanned" in result
         assert isinstance(result["files_scanned"], int)
-        assert result["files_scanned"] > 0
+        assert (
+            result["files_scanned"] == 5
+        )  # project_dir fixture: 3 .py + 1 .md + 1 .toml
 
     @pytest.mark.asyncio
     async def test_languages_found_dict(self, tool: BuildProjectIndexTool) -> None:

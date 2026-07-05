@@ -16,18 +16,25 @@ from tree_sitter_analyzer.models import Class
 
 # ── _view_name_from_text ────────────────────────────────────────────────
 
+
 class TestViewNameFromText:
     def test_simple_create_view(self):
-        assert _view_name_from_text(
-            "CREATE VIEW my_view AS SELECT * FROM t",
-            lambda s: True,
-        ) == "my_view"
+        assert (
+            _view_name_from_text(
+                "CREATE VIEW my_view AS SELECT * FROM t",
+                lambda s: True,
+            )
+            == "my_view"
+        )
 
     def test_create_view_if_not_exists(self):
-        assert _view_name_from_text(
-            "CREATE VIEW IF NOT EXISTS my_view AS SELECT 1",
-            lambda s: True,
-        ) == "my_view"
+        assert (
+            _view_name_from_text(
+                "CREATE VIEW IF NOT EXISTS my_view AS SELECT 1",
+                lambda s: True,
+            )
+            == "my_view"
+        )
 
     def test_empty_text(self):
         assert _view_name_from_text("", lambda s: True) is None
@@ -45,13 +52,17 @@ class TestViewNameFromText:
         )
 
     def test_case_insensitive(self):
-        assert _view_name_from_text(
-            "create view my_view as select * from t",
-            lambda s: True,
-        ) == "my_view"
+        assert (
+            _view_name_from_text(
+                "create view my_view as select * from t",
+                lambda s: True,
+            )
+            == "my_view"
+        )
 
 
 # ── _is_valid_view_identifier ────────────────────────────────────────────
+
 
 class TestIsValidViewIdentifier:
     def test_valid_identifier(self):
@@ -78,6 +89,7 @@ class TestIsValidViewIdentifier:
 
 # ── _view_name_from_children ─────────────────────────────────────────────
 
+
 class TestViewNameFromChildren:
     def test_object_reference_with_identifier(self):
         node = Mock()
@@ -101,9 +113,7 @@ class TestViewNameFromChildren:
         other.type = "other"
         node.children = [other]
 
-        result = _view_name_from_children(
-            node, lambda n: "x", lambda s: True
-        )
+        result = _view_name_from_children(node, lambda n: "x", lambda s: True)
         assert result is None
 
     def test_object_reference_without_identifier(self):
@@ -115,17 +125,13 @@ class TestViewNameFromChildren:
         obj_ref.children = [other_child]
         node.children = [obj_ref]
 
-        result = _view_name_from_children(
-            node, lambda n: "x", lambda s: True
-        )
+        result = _view_name_from_children(node, lambda n: "x", lambda s: True)
         assert result is None
 
     def test_empty_children(self):
         node = Mock()
         node.children = []
-        result = _view_name_from_children(
-            node, lambda n: "x", lambda s: True
-        )
+        result = _view_name_from_children(node, lambda n: "x", lambda s: True)
         assert result is None
 
     def test_reserved_identifier_rejected(self):
@@ -146,6 +152,7 @@ class TestViewNameFromChildren:
 
 
 # ── _view_name ───────────────────────────────────────────────────────────
+
 
 class TestViewName:
     def test_from_text_succeeds(self):
@@ -189,6 +196,7 @@ class TestViewName:
 
 # ── _find_view_statement_end ─────────────────────────────────────────────
 
+
 class TestFindViewStatementEnd:
     def test_finds_semicolon(self):
         lines = ["CREATE VIEW v AS", "SELECT * FROM t;", "other stuff"]
@@ -225,11 +233,10 @@ class TestFindViewStatementEnd:
 
 # ── _recover_single_line_view_span ───────────────────────────────────────
 
+
 class TestRecoverSingleLineViewSpan:
     def test_same_start_end_no_source(self):
-        raw_text, end_line = _recover_single_line_view_span(
-            "text", 5, 5, "v", "", []
-        )
+        raw_text, end_line = _recover_single_line_view_span("text", 5, 5, "v", "", [])
         assert raw_text == "text"
         assert end_line == 5
 
@@ -270,6 +277,7 @@ class TestRecoverSingleLineViewSpan:
 
 
 # ── _append_class_view ──────────────────────────────────────────────────
+
 
 class TestAppendClassView:
     def test_appends_valid_view(self):
@@ -319,6 +327,7 @@ class TestAppendClassView:
 
 
 # ── extract_class_views ──────────────────────────────────────────────────
+
 
 class TestExtractClassViews:
     def test_extracts_create_view_nodes(self):

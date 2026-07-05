@@ -30,8 +30,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-from tree_sitter_analyzer._language_family import languages_compatible
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.languages.language_family import languages_compatible
 
 _DEF_KINDS = ("function", "method", "class")
 

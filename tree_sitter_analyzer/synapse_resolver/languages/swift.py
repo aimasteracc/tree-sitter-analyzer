@@ -123,7 +123,7 @@ def _project_owns(ctx: SwiftResolverContext, simple: str) -> bool:
     must NOT count as a Swift owner, so it neither suppresses the std tier nor is
     ever bound. An untagged file is treated as a possible owner (conservative).
     """
-    from ..._language_family import languages_compatible
+    from tree_sitter_analyzer.languages.language_family import languages_compatible
 
     for owner_file, _sym_id in ctx.global_name_table.get(simple, []):
         owner_lang = ctx.file_languages.get(owner_file, "")

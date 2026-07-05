@@ -218,17 +218,13 @@ class TestExtractStructuralOverview:
         assert len(overview["imports"]) == 1
 
     def test_boundary_complexity_7_no_hotspot(self):
-        method = _make_element(
-            element_type="function", name="m7", complexity_score=7
-        )
+        method = _make_element(element_type="function", name="m7", complexity_score=7)
         result = _make_analysis_result(elements=[method])
         overview = extract_structural_overview(result)
         assert overview["complexity_hotspots"] == []
 
     def test_boundary_complexity_8_creates_hotspot(self):
-        method = _make_element(
-            element_type="function", name="m8", complexity_score=8
-        )
+        method = _make_element(element_type="function", name="m8", complexity_score=8)
         result = _make_analysis_result(elements=[method])
         overview = extract_structural_overview(result)
         assert len(overview["complexity_hotspots"]) == 1

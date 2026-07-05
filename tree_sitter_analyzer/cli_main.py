@@ -202,6 +202,12 @@ def main() -> None:
     _execute_selected_command(args, parser)
 
 
+def main_doctor() -> None:
+    """Entry point for tree-sitter-analyzer-doctor CLI script."""
+    sys.argv = [sys.argv[0], "--doctor"] + sys.argv[1:]
+    main()
+
+
 def _set_cli_log_environment() -> None:
     """Force CLI logging to stderr-only error noise regardless of quiet mode."""
     os.environ["LOG_LEVEL"] = "ERROR"

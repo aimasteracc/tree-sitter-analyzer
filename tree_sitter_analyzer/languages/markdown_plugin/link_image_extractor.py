@@ -5,12 +5,12 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 from ...utils import log_debug
-from ._image_reference_extractor_helpers import (
+from ._image_reference_extractor import (
     ImageReferenceDefinitionContext,
     _collect_image_reference_labels,
     _extract_image_reference_definitions_process_items,
 )
-from ._link_image_extractor_helpers import (
+from ._link_image_extractor import (
     _extract_autolinks_process_items,
     _extract_inline_links_process_items,
     _extract_reference_links_process_items,

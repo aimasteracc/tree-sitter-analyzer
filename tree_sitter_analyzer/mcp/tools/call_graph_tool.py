@@ -10,9 +10,13 @@ CodeGraph parity: equivalent to codegraph_callers / codegraph_callees.
 import time
 from typing import Any
 
+from tree_sitter_analyzer.cache.fingerprint import (
+    GraphFingerprint,
+    compute_graph_fingerprint,
+)
+
 from ...call_graph import CallGraph
 from ...utils import setup_logger
-from ._graph_cache_fingerprint import GraphFingerprint, compute_graph_fingerprint
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
 logger = setup_logger(__name__)

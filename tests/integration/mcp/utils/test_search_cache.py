@@ -485,15 +485,6 @@ class TestCacheEdgeCases:
         assert "key1" not in cache.cache
         assert "key1" not in cache._access_times
 
-    def test_set_with_zero_max_size(self):
-        """Test cache with zero max size."""
-        cache = SearchCache(max_size=0)
-        cache.set("key1", {"data": "value1"})
-        # Entry should be evicted immediately
-        # Note: Implementation may allow entry when _access_times is empty
-        # Verify eviction count increased
-        assert cache._evictions >= 0  # ratchet: nondeterministic
-
     def test_set_with_zero_ttl(self):
         """Test cache with zero TTL."""
         cache = SearchCache(ttl_seconds=0)

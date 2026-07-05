@@ -58,7 +58,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..._language_family import languages_compatible
+from tree_sitter_analyzer.languages.language_family import languages_compatible
+
 from .._registry import register_language
 from ._c_constants import LIBC_FUNCTIONS_C
 

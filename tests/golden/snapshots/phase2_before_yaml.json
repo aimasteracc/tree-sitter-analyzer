@@ -1,0 +1,8 @@
+{
+  "language": "yaml",
+  "corpus_file": "tests/golden/corpus_yaml.yaml",
+  "snapshot_timestamp": "2026-06-28T17:00:46.607237+00:00",
+  "symbol_count": 0,
+  "symbols": [],
+  "edges": []
+}

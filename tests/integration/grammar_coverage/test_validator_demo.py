@@ -13,9 +13,7 @@ from tree_sitter_analyzer.grammar_coverage.validator import (
 )
 
 
-@pytest.mark.skipif(
-    True, reason="Demo test - enable manually to see coverage reports"
-)
+@pytest.mark.skipif(True, reason="Demo test - enable manually to see coverage reports")
 class TestValidatorDemo:
     """Demo tests to showcase validator functionality"""
 

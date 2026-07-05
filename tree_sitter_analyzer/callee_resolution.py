@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ._language_family import language_from_path, languages_compatible
+from .languages.language_family import language_from_path, languages_compatible
 from .utils.test_detection import is_test_file
 
 

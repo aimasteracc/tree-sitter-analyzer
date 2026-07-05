@@ -184,9 +184,9 @@ class DataProcessor:
         assert "languages" in stats
         assert "last_updated" in stats
 
-        # Test values (allow 0 since the implementation returns 0)
-        assert stats["total_files"] >= 0
-        assert stats["total_lines"] >= 0
+        # Test values pinned to the exact test project fixture (3 files, 43 lines)
+        assert stats["total_files"] == 3
+        assert stats["total_lines"] == 43
         assert isinstance(stats["languages"], list)
 
     @pytest.mark.asyncio
@@ -308,11 +308,14 @@ class TestProjectStatsResourceIntegration:
 
     def test_integration_with_advanced_analyzer(self) -> None:
         """Test integration with AdvancedAnalyzer"""
-        from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+        # Verify analysis engine exists and is the expected type
+        from tree_sitter_analyzer.core.analysis_engine import (
+            UnifiedAnalysisEngine,
+            get_analysis_engine,
+        )
 
-        # Verify analysis engine exists
         analysis_engine = get_analysis_engine()
-        assert analysis_engine is not None
+        assert isinstance(analysis_engine, UnifiedAnalysisEngine)
 
     @pytest.mark.asyncio
     async def test_analyzer_integration_flow(self, mocker) -> None:

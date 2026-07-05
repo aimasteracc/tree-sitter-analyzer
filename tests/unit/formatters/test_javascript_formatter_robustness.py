@@ -323,33 +323,6 @@ class TestJavaScriptFormatterRobustness:
         assert len(result) == 217  # exact output size for this fixed dataset
         assert 'Class"quote' in result
 
-    def test_memory_usage_with_repeated_calls(self, formatter):
-        """Test memory usage with repeated formatting calls"""
-        import gc
-
-        data = {
-            "file_path": "memory_test.js",
-            "imports": [{"name": "test", "source": "module"}],
-            "exports": [{"name": "test", "is_named": True}],
-            "classes": [{"name": "Test", "methods": []}],
-            "variables": [{"name": "test", "type": "string"}],
-            "functions": [{"name": "test", "parameters": []}],
-            "statistics": {"function_count": 1, "variable_count": 1},
-        }
-
-        # Perform many formatting operations
-        for _ in range(100):
-            formatter._format_full_table(data)
-            formatter._format_compact_table(data)
-            formatter._format_csv(data)
-            formatter._format_json(data)
-
-        # Force garbage collection
-        gc.collect()
-
-        # Should not cause memory issues (test passes if no exception)
-        assert True
-
     def test_concurrent_formatting(self, formatter):
         """Test concurrent formatting operations"""
         import queue

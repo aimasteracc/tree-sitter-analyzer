@@ -1,0 +1,8 @@
+{
+  "language": "css",
+  "corpus_file": "tests/golden/corpus_css.css",
+  "snapshot_timestamp": "2026-06-28T17:00:46.024035+00:00",
+  "symbol_count": 0,
+  "symbols": [],
+  "edges": []
+}

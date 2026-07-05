@@ -14,9 +14,11 @@ from typing import Any
 # DECORATED_DEFINITION - Issue #112 Regression Test (CRITICAL)
 # ============================================================================
 
+
 @dataclass
 class Person:
     """使用 @dataclass 装饰器的类（decorated_definition）"""
+
     name: str
     age: int
     email: str | None = None
@@ -60,8 +62,10 @@ class PropertyExample:
 
 def timing_decorator(func):
     """自定义装饰器"""
+
     def wrapper(*args, **kwargs):
         return func(*args, **kwargs)
+
     return wrapper
 
 
@@ -74,6 +78,7 @@ def decorated_function(x: int) -> int:
 # ============================================================================
 # REGULAR FUNCTIONS
 # ============================================================================
+
 
 def regular_function(a: int, b: int) -> int:
     """常规函数定义"""
@@ -100,7 +105,7 @@ def variadic_function(*args: int, **kwargs: str) -> tuple:
 # ============================================================================
 
 # Lambda expressions (intentional E731 - testing lambda syntax)
-square = lambda x: x ** 2  # noqa: E731
+square = lambda x: x**2  # noqa: E731
 add = lambda a, b: a + b  # noqa: E731
 complex_lambda = lambda x, y=5: x * y if x > 0 else 0  # noqa: E731
 key_function = lambda item: item[1]  # noqa: E731
@@ -111,11 +116,11 @@ filter_function = lambda x: x % 2 == 0  # noqa: E731
 # GENERATORS AND COMPREHENSIONS
 # ============================================================================
 
+
 def generator_function(n: int) -> Iterator[int]:
     """生成器函数（yield）"""
     # Intentional yield loop (UP028 - testing yield syntax, not yield from)
-    for i in range(n):  # noqa: UP028
-        yield i  # noqa: UP028
+    yield from range(n)
 
 
 def fibonacci_generator(limit: int) -> Iterator[int]:
@@ -146,6 +151,7 @@ filtered_gen = (x for x in numbers if x % 2 == 0)  # generator_expression
 # ============================================================================
 # CLASSES
 # ============================================================================
+
 
 class Animal(ABC):
     """抽象基类"""
@@ -185,6 +191,7 @@ class NestedClassExample:
 
     class Inner:
         """内部类"""
+
         def inner_method(self) -> str:
             return "内部方法"
 
@@ -196,6 +203,7 @@ class NestedClassExample:
 # ============================================================================
 # COMPLEX NESTED STRUCTURES
 # ============================================================================
+
 
 class ComplexNesting:
     """复杂嵌套结构（测试深度遍历）"""

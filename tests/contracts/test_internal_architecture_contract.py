@@ -31,6 +31,7 @@ SKIPPED_SCAN_DIRS = {
     ".venv",
 }
 
+
 def test_package_and_mcp_versions_are_aligned() -> None:
     """Release prep must keep package and MCP server versions in lockstep."""
     data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -45,7 +46,7 @@ def test_package_and_mcp_versions_are_aligned() -> None:
 
 def test_ast_cache_call_edge_extraction_does_not_depend_on_call_graph() -> None:
     """ASTCache and CallGraph must share extraction helpers without a back-edge."""
-    path = PROJECT_ROOT / "tree_sitter_analyzer" / "_ast_extraction.py"
+    path = PROJECT_ROOT / "tree_sitter_analyzer" / "cache" / "extraction.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     imports: list[str] = []
     for node in ast.walk(tree):
@@ -74,6 +75,8 @@ def test_callee_resolution_algorithm_has_single_shared_home() -> None:
     assert "CalleeResolver(" in call_graph
     assert "CalleeResolver(" in cross_file
     assert "CalleeResolver(" in synapse_context
+
+
 def test_no_mcp_tool_imports_from_cli() -> None:
     """ARCH-A1 regression: ``mcp/tools/*.py`` must not import from
     ``tree_sitter_analyzer.cli.*``. The dependency arrow goes one way:

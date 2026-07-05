@@ -323,5 +323,3 @@ def get_tree_for_code(code: str, plugin: HtmlPlugin):
     else:
         parser = tree_sitter.Parser(language)
     return parser.parse(code.encode("utf-8"))
-
-

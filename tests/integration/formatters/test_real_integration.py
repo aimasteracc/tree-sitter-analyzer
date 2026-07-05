@@ -111,7 +111,9 @@ class Calculator:
                 # CSV format may not include class name directly, check for methods instead
                 assert "Method" in table_output or "__init__" in table_output
                 lines = table_output.strip().split("\n")
-                assert len(lines) >= 2  # ratchet: nondeterministic csv row count depends on formatter version
+                assert (
+                    len(lines) >= 2
+                )  # ratchet: nondeterministic csv row count depends on formatter version
 
             print(f"✅ {format_type} format validation passed")
 

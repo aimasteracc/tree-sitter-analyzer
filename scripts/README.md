@@ -30,6 +30,16 @@
 - **用途**: GitFlow工作流的辅助功能
 - **何时使用**: 需要GitFlow相关辅助操作时
 
+#### 4. `benchmark_knowledge_graph_scale.py` - 知识图谱规模压测
+- **用途**: 生成 Java 形态的合成 code graph，压测 JSON/LadybugDB 物化和 LOD 查询
+- **何时使用**: 验证大规模项目可视化、数据库写入、查询性能
+- **命令**: `uv run python scripts/benchmark_knowledge_graph_scale.py --files 100000 --packages 1000 --methods-per-file 2`
+
+#### 5. `benchmark_java_corpus_end_to_end.py` - 真实 Java 端到端压测
+- **用途**: 生成真实 `.java` 文件并走 TSA ASTCache → SQLite → knowledge graph → JSON/LadybugDB → LOD 查询全链路
+- **何时使用**: 验证首次建库、增量前基线、Java 解析吞吐和可视化 sidecar 写入时间
+- **命令**: `uv run python scripts/benchmark_java_corpus_end_to_end.py --files 10000 --packages 500 --methods-per-file 3 --output-dir /tmp/tsa-java-e2e-10k --clean`
+
 ## ❌ **已删除的重复脚本**
 
 - `quick_fix_v1_1_1.py` - 特定版本脚本，不应该存在

@@ -35,6 +35,7 @@ def handle_special_commands(
         lambda: _handle_agent_workflow(args, context),
         lambda: _handle_batch_partial_read(args, context),
         lambda: _handle_health_check(args, context),
+        lambda: _handle_doctor(args, context),
         lambda: _handle_check_scale(args, context),
         lambda: _handle_outline(args, context),
         lambda: _handle_batch_metrics(args, context),
@@ -47,6 +48,8 @@ def handle_special_commands(
         lambda: _handle_full_index(args, context),
         lambda: _handle_codegraph_metrics(args, context),
         lambda: _handle_incremental_sync(args, context),
+        lambda: _handle_knowledge_graph_watch(args, context),
+        lambda: _handle_knowledge_graph_serve(args, context),
         lambda: _handle_knowledge_graph_index(args, context),
         lambda: _handle_affected(args, context),
         lambda: _handle_nav_actions_lazy(args, context),
@@ -307,6 +310,19 @@ def _handle_health_check(
             error_type="runtime",
         )
         return 1
+
+
+def _handle_doctor(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Run installation diagnostics for --doctor."""
+    if not getattr(args, "doctor", False):
+        return None
+    from .commands.doctor import run_doctor
+
+    json_output = getattr(args, "doctor_json", False)
+    return run_doctor(json_output=json_output)
 
 
 def _emit_cli_error(
@@ -579,6 +595,28 @@ def _handle_knowledge_graph_index(
     from .commands.codegraph_index_commands import run_knowledge_graph_index
 
     return run_knowledge_graph_index(args, context.output_error)
+
+
+def _handle_knowledge_graph_serve(
+    args: Any, context: SpecialCommandContext
+) -> int | None:
+    """Dispatch ``--knowledge-graph-serve`` → local HTTP service."""
+    if not getattr(args, "knowledge_graph_serve", False):
+        return None
+    from .commands.codegraph_index_commands import run_knowledge_graph_serve
+
+    return run_knowledge_graph_serve(args, context.output_error)
+
+
+def _handle_knowledge_graph_watch(
+    args: Any, context: SpecialCommandContext
+) -> int | None:
+    """Dispatch ``--knowledge-graph-watch`` → resident watch daemon."""
+    if not getattr(args, "knowledge_graph_watch", False):
+        return None
+    from .commands.codegraph_index_commands import run_knowledge_graph_watch
+
+    return run_knowledge_graph_watch(args)
 
 
 def _handle_clean_state(

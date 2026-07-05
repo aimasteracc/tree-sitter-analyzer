@@ -23,6 +23,14 @@ TSA 使用 tree-sitter 索引你的代码库，向 AI 编程 agent 提供正确�
 
 > **需要 Python 3.10+**（检查：`python3 --version`）。如需安装请访问 [python.org](https://www.python.org/downloads/)。
 
+### 自动安装（推荐）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh | bash
+```
+
+`install.sh` 会检测 `uv` 是否已安装（未安装则自动安装），并自动检测 Claude Desktop / Claude Code / Cursor / VS Code 的配置文件，写入 MCP 配置项。安装完成后可运行 `tree-sitter-analyzer --doctor` 验证配置。
+
 为 **Claude Code** 一行安装：
 
 ```bash
@@ -152,7 +160,7 @@ CodeGraph 没有 skill 系统。我们在 `.claude/skills/tsa-*/` 下提供 13 �
 
 每个 skill 都带 `allowed-tools` 工具子集 + 操作流程 + 决策面 schema，agent 不必在 8 个工具间反复挑选。
 
-### 312 个 CLI flag
+### 321 个 CLI flag
 
 CodeGraph CLI 的严格超集。亮点：
 
@@ -385,7 +393,7 @@ CodeGraph 支持相近的集合；两者都还未发布的主流代码语言只�
 
 | 指标 | 值 |
 |---|---|
-| 测试通过 | 18,493 ✅ |
+| 测试通过 | 全面的测试套件 ✅ |
 | 覆盖率 | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | 类型安全 | 100% mypy |
 | 平台 | macOS · Linux · Windows |
@@ -407,10 +415,32 @@ uv run python check_quality.py --new-code-only  # 质量闸门
 | 症状 | 修复 |
 |---|---|
 | `.swift / .kt / .rb / .php / .cs` 显示 `unsupported language` | 升级到 ≥ 1.12.x — 5 语言 gap 已在 commit `50e99a8f` 中修复。extras 门控语言的语法模块不随基础安装捆绑;运行 `pip install "tree-sitter-analyzer[swift]"`(或 `kotlin`、`ruby`、`php`、`csharp`)补装 |
-| MCP 服务在客户端中不出现 | `TREE_SITTER_PROJECT_ROOT` 必须是**绝对路径**；编辑配置后重启客户端 |
+| MCP 服务在客户端中不出现 | `TREE_SITTER_PROJECT_ROOT` 必须是**绝对路径**；编辑配置后重启客户端。另见 [TREE\_SITTER\_PROJECT\_ROOT 使用了相对路径](#tree_sitter_project_root-使用了相对路径) |
 | `database is locked` | 关闭其他占用 `.ast-cache/index.db` 的进程；持续存在则 `rm -rf .ast-cache && tree-sitter-analyzer --autoindex` |
 | 首次调用慢 | 首次调用会建索引。后续亚秒。预先跑 `--full-index` 即可分摊 |
 | Agent 选错工具 | 使用 `tsa-*` skill（`/tsa-graph`、`/tsa-find` 等）— 每个 skill 把可见工具限定到一个工作流 |
+
+### TREE\_SITTER\_PROJECT\_ROOT 使用了相对路径
+
+**症状：** MCP 服务启动时无报错，但 TSA 返回错误的分析结果，或出现类似 `project root not found` 的错误。
+
+**根本原因：** `TREE_SITTER_PROJECT_ROOT` 设置了相对路径（如 `./myproject`）。`uvx` 启动服务时，进程工作目录可能与安装时不同，导致相对路径解析到错误位置。
+
+**修复方法：** 始终使用绝对路径：
+
+```bash
+# 正确
+"TREE_SITTER_PROJECT_ROOT": "/home/user/myproject"
+
+# 也正确（install.sh 在安装时自动解析）
+"TREE_SITTER_PROJECT_ROOT": "$(pwd)"        # 或 $(realpath .)
+
+# 错误
+"TREE_SITTER_PROJECT_ROOT": "./myproject"
+"TREE_SITTER_PROJECT_ROOT": "myproject"
+```
+
+运行 `tree-sitter-analyzer --doctor` 可验证你的配置。
 
 ---
 

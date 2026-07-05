@@ -136,7 +136,10 @@ def check_analyze_file_delegation(lang: str, path: Path) -> list[str]:
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "analyze_file":
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "analyze_file"
+        ):
             body_src = ast.get_source_segment(source, node)
             for child in ast.walk(node):
                 if isinstance(child, ast.Call):
@@ -168,7 +171,9 @@ CHECKS = [
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check plugin architecture consistency")
+    parser = argparse.ArgumentParser(
+        description="Check plugin architecture consistency"
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 

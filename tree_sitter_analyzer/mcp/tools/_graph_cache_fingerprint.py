@@ -6,7 +6,7 @@ The implementation now lives in the core layer:
 This shim keeps existing MCP-tool imports working without changes.
 """
 
-from ..._graph_cache_fingerprint import (  # noqa: F401
+from tree_sitter_analyzer.cache.fingerprint import (  # noqa: F401
     _EXCLUDE_DIRS,
     _SOURCE_EXTS,
     GraphFingerprint,

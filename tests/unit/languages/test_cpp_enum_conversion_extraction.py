@@ -87,7 +87,7 @@ def test_operator_cast_without_type_child_yields_no_name() -> None:
     """operator_cast with no recognizable type child -> parser returns None."""
     from unittest.mock import Mock
 
-    from tree_sitter_analyzer.languages._cpp_signature_helpers import (
+    from tree_sitter_analyzer.languages._cpp_signature import (
         parse_function_signature,
     )
 

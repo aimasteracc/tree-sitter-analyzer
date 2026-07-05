@@ -9,7 +9,6 @@ from tree_sitter_analyzer.formatters._ruby_formatter_helpers import (
 
 
 class TestGetVisibilitySymbol:
-
     def test_public(self):
         assert get_visibility_symbol("public") == "+"
 
@@ -34,7 +33,6 @@ class TestGetVisibilitySymbol:
 
 
 class TestFormatSignature:
-
     def test_no_params_no_return(self):
         method = {"parameters": [], "return_type": ""}
         result = format_signature(method)
@@ -75,7 +73,6 @@ class TestFormatSignature:
 
 
 class TestFormatCompactSignature:
-
     def test_no_params(self):
         method = {"parameters": [], "return_type": ""}
         assert format_compact_signature(method) == "():"
@@ -107,7 +104,6 @@ class TestFormatCompactSignature:
 
 
 class TestFormatFullTable:
-
     def test_empty_data(self):
         result = format_full_table({})
         assert isinstance(result, str)
@@ -190,7 +186,11 @@ class TestFormatFullTable:
         data = {
             "file_path": "test.rb",
             "classes": [],
-            "imports": [{"raw_text": ""}, {"raw_text": "  "}, {"raw_text": "require 'json'"}],
+            "imports": [
+                {"raw_text": ""},
+                {"raw_text": "  "},
+                {"raw_text": "require 'json'"},
+            ],
             "methods": [],
             "fields": [],
         }
@@ -422,7 +422,6 @@ class TestFormatFullTable:
 
 
 class TestFormatCompactTable:
-
     def test_empty_data(self):
         result = format_compact_table({})
         assert "# " in result
@@ -491,7 +490,6 @@ class TestFormatCompactTable:
 
 
 class TestFormatCsv:
-
     def test_header_row(self):
         result = format_csv({})
         assert result.startswith("Type,Name,Signature,Visibility,Lines,Complexity,Doc")

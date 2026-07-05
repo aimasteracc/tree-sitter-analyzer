@@ -13,11 +13,6 @@ from tree_sitter_analyzer.core.query_filter import QueryFilter
 class TestQueryFilterInit:
     """Tests for QueryFilter initialization."""
 
-    def test_query_filter_init(self) -> None:
-        """Test QueryFilter initialization."""
-        filter_obj = QueryFilter()
-        assert filter_obj is not None
-
 
 class TestQueryFilterFilterResults:
     """Tests for QueryFilter.filter_results method."""

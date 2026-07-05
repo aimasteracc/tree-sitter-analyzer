@@ -12,7 +12,7 @@ Same family as the Kotlin fix for #591/#593 — the contract mirrors
   - trivial literal → its pinned type (String / Int / Boolean / Double)
   - anything else (calls, suffixed/hex numbers, null, blocks) → ``""``
     (empty = unknown; matches the Go plugin's absent-return-type
-    convention in ``_go_common_helpers.extract_return_type``)
+    convention in ``_go_common.extract_return_type``)
 
 Live-verified Scala node shapes (tree-sitter-scala): expression body is a
 direct ``=`` child followed by the expression node; ``string`` covers both

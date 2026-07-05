@@ -170,6 +170,7 @@ class TestValidateAndResolvePath:
         resolved = manager.validate_and_resolve_path("test.py")
 
         assert resolved is not None
+        assert resolved.endswith("test.py")
 
     def test_validate_path_outside_project(self, tmp_path):
         """Test validating path outside project returns None"""

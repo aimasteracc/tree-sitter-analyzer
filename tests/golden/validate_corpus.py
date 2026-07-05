@@ -74,7 +74,9 @@ def validate_corpus(corpus_file: Path, expected_file: Path) -> bool:
         print("\n   Critical node types:")
         for node_type, count in expected["critical_node_types"].items():
             actual_count = actual_counts.get(
-                node_type if node_type != "dict_comprehension" else "dictionary_comprehension",
+                node_type
+                if node_type != "dict_comprehension"
+                else "dictionary_comprehension",
                 0,
             )
             status = "OK" if actual_count == count else "FAIL"

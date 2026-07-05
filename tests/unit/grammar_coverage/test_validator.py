@@ -341,9 +341,9 @@ class TestValidatePluginCoverage:
     """测试 validate_plugin_coverage 函数（集成测试风格，使用真实文件）"""
 
     @pytest.mark.skipif(
-        not Path(__file__).parent.parent.parent.parent.joinpath(
-            "tests/golden/corpus_python.py"
-        ).exists(),
+        not Path(__file__)
+        .parent.parent.parent.parent.joinpath("tests/golden/corpus_python.py")
+        .exists(),
         reason="Golden corpus files not available",
     )
     def test_validate_python_coverage_real_files(self):
@@ -359,7 +359,9 @@ class TestValidatePluginCoverage:
         # start_line = def 行后，decorated_definition 不再作为独立覆盖项；
         # 实际覆盖：function_definition, class_definition, expression_statement,
         # import_from_statement（4 种）。
-        assert report.covered_node_types >= 3  # 至少覆盖核心类型  # ratchet: nondeterministic
+        assert (
+            report.covered_node_types >= 3
+        )  # 至少覆盖核心类型  # ratchet: nondeterministic
         assert report.coverage_percentage > 0.0
 
     @patch("tree_sitter_analyzer.grammar_coverage.validator._parse_corpus_file")

@@ -168,29 +168,28 @@ class TestLoggingConfiguration:
     def test_file_logging_error_handling(self):
         """Test error handling when file logging setup fails."""
         os.environ["TREE_SITTER_ANALYZER_ENABLE_FILE_LOG"] = "true"
-        # Set invalid log directory that will cause mkdir to fail
-        os.environ["TREE_SITTER_ANALYZER_LOG_DIR"] = (
-            "\\\\invalid\\network\\path\\that\\does\\not\\exist"
-        )
+        os.environ["TREE_SITTER_ANALYZER_LOG_DIR"] = "/some/log/dir"
 
-        # Mock stderr to capture error messages
-        with patch("sys.stderr") as mock_stderr:
-            mock_stderr.write = MagicMock()
+        # Mock mkdir to raise OSError so the test is platform-independent and
+        # does not create stray directories on Linux (where backslash paths are valid).
+        with patch("pathlib.Path.mkdir", side_effect=OSError("permission denied")):
+            with patch("sys.stderr") as mock_stderr:
+                mock_stderr.write = MagicMock()
 
-            logger = setup_logger("test_logging_error")
+                logger = setup_logger("test_logging_error")
 
-            # Should still have stream handler even if file handler fails
-            stream_handlers = [
-                h
-                for h in logger.handlers
-                if h.__class__.__name__ == "SafeStreamHandler"
-            ]
-            assert len(stream_handlers) == 1
+                # Should still have stream handler even if file handler fails
+                stream_handlers = [
+                    h
+                    for h in logger.handlers
+                    if h.__class__.__name__ == "SafeStreamHandler"
+                ]
+                assert len(stream_handlers) == 1
 
-            assert all(
-                handler.__class__.__name__ in {"SafeStreamHandler", "FileHandler"}
-                for handler in logger.handlers
-            )
+                assert all(
+                    handler.__class__.__name__ in {"SafeStreamHandler", "FileHandler"}
+                    for handler in logger.handlers
+                )
 
     def test_log_level_environment_variable(self):
         """Test LOG_LEVEL environment variable."""

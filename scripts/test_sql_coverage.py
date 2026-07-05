@@ -26,12 +26,12 @@ def main():
         source_code = f.read()
 
     # Create parser
-    parser = create_parser_safely('sql')
+    parser = create_parser_safely("sql")
     if not parser:
-        print('Failed to create SQL parser')
+        print("Failed to create SQL parser")
         return 1
 
-    tree = parser.parse(source_code.encode('utf-8'))
+    tree = parser.parse(source_code.encode("utf-8"))
 
     # Collect node types
     node_types = {}
@@ -46,11 +46,14 @@ def main():
     from tree_sitter_analyzer.grammar_coverage.validator import (
         validate_plugin_coverage_sync,
     )
-    result = validate_plugin_coverage_sync('sql')
 
-    print(f"\n{'='*70}")
-    print(f"Coverage: {result.covered_node_types}/{result.total_node_types} ({result.coverage_percentage:.1f}%)")
-    print(f"{'='*70}")
+    result = validate_plugin_coverage_sync("sql")
+
+    print(f"\n{'=' * 70}")
+    print(
+        f"Coverage: {result.covered_node_types}/{result.total_node_types} ({result.coverage_percentage:.1f}%)"
+    )
+    print(f"{'=' * 70}")
 
     if result.uncovered_types:
         print(f"\nUncovered ({len(result.uncovered_types)} node types):")

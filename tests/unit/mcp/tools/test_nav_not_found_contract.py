@@ -125,7 +125,7 @@ async def test_edges_without_built_marker_no_empty_index_hint(
     The edge probe (has_call_edges) must override the cleared marker, so the
     hint never claims the index is empty.
     """
-    from tree_sitter_analyzer import _ast_cache_callgraph_state as callgraph_state
+    from tree_sitter_analyzer.cache import callgraph_state
 
     (tmp_path / "sample.py").write_text(
         "def caller():\n    target()\n\ndef target():\n    return 1\n",

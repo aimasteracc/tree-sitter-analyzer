@@ -140,6 +140,17 @@ def _add_batch_options(parser: argparse.ArgumentParser) -> None:
         help="Project health: score all source files and report grade distribution, worst files, and refactoring targets",
     )
     parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Run installation diagnostics: check uv/uvx/fd/rg, TREE_SITTER_PROJECT_ROOT, and agent config files.",
+    )
+    parser.add_argument(
+        "--doctor-json",
+        action="store_true",
+        dest="doctor_json",
+        help="With --doctor: emit results as machine-readable JSON instead of human-readable text.",
+    )
+    parser.add_argument(
         "--metrics-only",
         action="store_true",
         help="Batch metrics: compute file metrics only (no structural analysis). Requires --file-paths or --files-from.",

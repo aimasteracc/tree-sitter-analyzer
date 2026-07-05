@@ -6,25 +6,25 @@ from typing import Any
 
 from ..models import Class, Function, Variable
 from ..utils import log_debug, log_error, log_warning
-from ._java_ast_helpers import (
+from ._java_ast import (
     calculate_complexity,
     extract_modifiers,
     parse_field_declaration,
     parse_method_signature,
 )
-from ._java_element_helpers import (
+from ._java_element import (
     extract_java_class as _extract_java_class_impl,
 )
-from ._java_element_helpers import (
+from ._java_element import (
     extract_java_field as _extract_java_field_impl,
 )
-from ._java_element_helpers import (
+from ._java_element import (
     extract_java_method as _extract_java_method_impl,
 )
-from ._java_element_helpers import (
+from ._java_element import (
     extract_javadoc_for_line as _extract_javadoc_for_line_impl,
 )
-from ._java_import_helpers import (
+from ._java_import import (
     _extract_import_info,
     _extract_imports_fallback,
     _extract_package_element,
@@ -32,10 +32,10 @@ from ._java_import_helpers import (
     extract_java_imports,
     extract_java_packages,
 )
-from ._java_traversal_helpers import (
+from ._java_traversal import (
     _process_field_batch,
 )
-from ._java_traversal_helpers import (
+from ._java_traversal import (
     java_traverse_and_extract as _java_traverse_and_extract_impl,
 )
 

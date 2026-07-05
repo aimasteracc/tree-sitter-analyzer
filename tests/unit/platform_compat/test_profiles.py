@@ -37,6 +37,8 @@ def test_validate_profile_falls_back_when_jsonschema_runtime_fails(monkeypatch):
 
     validate_profile(_valid_profile_data())
     assert isinstance(_valid_profile_data(), dict)
+
+
 def test_validate_profile_reraises_jsonschema_validation_errors(monkeypatch):
     class FakeValidationError(Exception):
         pass

@@ -50,7 +50,7 @@ class TestDefaultExtractorInit:
     def test_init_creates_instance(self):
         """DefaultExtractor should be instantiable."""
         extractor = DefaultExtractor()
-        assert extractor is not None
+        assert isinstance(extractor, DefaultExtractor)
 
     def test_init_sets_current_file(self):
         """DefaultExtractor should initialize current_file as empty string."""
@@ -233,7 +233,7 @@ class TestDefaultExtractorExtraction:
         mock_tree.root_node = mock_root
 
         result = extractor.extract_functions(mock_tree, "def hello(): pass")
-        assert len(result) >= 0  # May or may not extract depending on traversal
+        assert isinstance(result, list)
 
     def test_extract_classes_empty_tree(self):
         """extract_classes should return empty list for empty tree."""
@@ -423,10 +423,12 @@ class TestDefaultLanguagePluginAnalyze:
         test_file = tmp_path / "test.txt"
         test_file.write_text("Hello world")
 
+        from tree_sitter_analyzer.models.result import AnalysisResult
+
         result = await plugin.analyze_file(str(test_file), MagicMock())
 
-        # Should return some result (may succeed or fail depending on engine)
-        assert result is not None
+        # Returns AnalysisResult regardless of success or failure
+        assert isinstance(result, AnalysisResult)
 
     @pytest.mark.asyncio
     async def test_analyze_file_handles_error(self):

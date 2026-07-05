@@ -25,7 +25,7 @@ def detect_anti_patterns(file_path: str, language: str | None) -> list[dict[str,
         return []
     patterns: list[dict[str, Any]] = []
     try:
-        content = Path(file_path).read_text(errors="replace")
+        content = Path(file_path).read_text(encoding="utf-8", errors="replace")
     except Exception:  # nosec B110 — unreadable file is non-fatal here.
         return patterns
 

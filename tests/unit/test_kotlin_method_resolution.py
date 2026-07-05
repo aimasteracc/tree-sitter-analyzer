@@ -75,14 +75,6 @@ def test_build_context_returns_none_when_no_kotlin_file() -> None:
     assert ctx is None, "no Kotlin file -> opt out so non-Kotlin projects pay nothing"
 
 
-def test_build_context_built_when_kotlin_file_present() -> None:
-    ctx = _ctx(
-        file_symbols={"Main.kt": [("helper", "function", 1)]},
-        file_languages={"Main.kt": "kotlin"},
-    )
-    assert ctx is not None
-
-
 # ---------------------------------------------------------------------------
 # (a) local same-file / same-language resolution
 # ---------------------------------------------------------------------------

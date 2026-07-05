@@ -2,7 +2,7 @@
 
 import pytest
 
-from tree_sitter_analyzer._exceptions_core import (
+from tree_sitter_analyzer.exceptions.core import (
     AnalysisError,
     ConfigurationError,
     FileHandlingError,

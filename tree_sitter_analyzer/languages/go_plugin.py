@@ -21,40 +21,49 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
-from .go_helpers import (
+from ._go_common import (
     extract_docstring as _extract_docstring_standalone,
 )
-from .go_helpers import (
-    extract_embedded_types as _extract_embedded_standalone,
-)
-from .go_helpers import (
-    extract_go_function as _extract_func_standalone,
-)
-from .go_helpers import (
-    extract_go_interface_methods as _extract_iface_methods_standalone,
-)
-from .go_helpers import (
-    extract_go_method as _extract_method_standalone,
-)
-from .go_helpers import (
-    extract_go_type_spec as _extract_type_spec_standalone,
-)
-from .go_helpers import (
-    extract_import_spec as _extract_import_spec_standalone,
-)
-from .go_helpers import (
-    extract_imports_from_tree as _extract_imports_standalone,
-)
-from .go_helpers import (
+from ._go_common import (
     extract_parameters as _extract_params_standalone,
 )
-from .go_helpers import (
+from ._go_common import (
     extract_return_type as _extract_return_type_standalone,
 )
-from .go_helpers import (
+from ._go_function import (
+    extract_go_function as _extract_func_standalone,
+)
+from ._go_function import (
+    extract_go_interface_methods as _extract_iface_methods_standalone,
+)
+from ._go_function import (
+    extract_go_method as _extract_method_standalone,
+)
+from ._go_import import (
+    _extract_import_declaration,
+)
+from ._go_import import (
+    extract_import_spec as _extract_import_spec_standalone,
+)
+from ._go_import import (
+    extract_imports_from_tree as _extract_imports_standalone,
+)
+from ._go_type import (
+    extract_embedded_types as _extract_embedded_standalone,
+)
+from ._go_type import (
+    extract_go_type_spec as _extract_type_spec_standalone,
+)
+from ._go_type import (
+    extract_type_declaration,
+)
+from ._go_variable import (
     extract_struct_fields as _extract_struct_fields_standalone,
 )
-from .go_helpers import (
+from ._go_variable import (
+    extract_var_or_const,
+)
+from ._go_variable import (
     extract_var_spec as _extract_var_spec_standalone,
 )
 
@@ -213,7 +222,7 @@ class GoElementExtractor(ElementExtractor):
     # Extract elements from AST: _extract_package
     def _extract_package(self, node: tree_sitter.Node) -> Package | None:
         """Extract package declaration"""
-        from .go_helpers import extract_go_package
+        from ._go_package import extract_go_package
 
         return extract_go_package(node, self._get_node_text)
 
@@ -222,9 +231,7 @@ class GoElementExtractor(ElementExtractor):
         self, node: tree_sitter.Node
     ) -> list[Import] | None:
         """Extract import declaration (may contain multiple imports)"""
-        from .go_helpers import _extract_import_declaration as _impl
-
-        imports = _impl(node, self._get_node_text)
+        imports = _extract_import_declaration(node, self._get_node_text)
         return imports if imports else None
 
     # Extract elements from AST: _extract_import_spec
@@ -262,8 +269,6 @@ class GoElementExtractor(ElementExtractor):
     # Extract elements from AST: _extract_type_declaration
     def _extract_type_declaration(self, node: tree_sitter.Node) -> list[Class]:
         """Extract type declaration (struct, interface, type alias)"""
-        from .go_helpers import extract_type_declaration
-
         return extract_type_declaration(node, self._get_node_text, self.content_lines)
 
     # Extract elements from AST: _extract_type_spec
@@ -295,8 +300,6 @@ class GoElementExtractor(ElementExtractor):
         self, node: tree_sitter.Node, is_const: bool
     ) -> list[Variable] | None:
         """Extract var or const declaration"""
-        from .go_helpers import extract_var_or_const
-
         result = extract_var_or_const(node, is_const, self._get_node_text)
         return result if result else None
 

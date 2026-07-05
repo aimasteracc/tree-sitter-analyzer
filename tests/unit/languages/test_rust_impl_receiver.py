@@ -101,7 +101,7 @@ def test_free_function_unowned() -> None:
 def test_receiver_survives_api_serialization() -> None:
     """End-to-end Theme-A: the serializer allowlist (landed with the Go
     companion fix) must carry the Rust receiver binding to API consumers."""
-    from tree_sitter_analyzer._api_result_helpers import element_to_dict
+    from tree_sitter_analyzer.internal_api.result_helpers import element_to_dict
 
     funcs = _functions()
     inc = element_to_dict(funcs["inc"])

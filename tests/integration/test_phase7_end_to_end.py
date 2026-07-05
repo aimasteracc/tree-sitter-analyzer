@@ -430,9 +430,7 @@ class TestPhase7EndToEnd:
                         continue
                     raise
 
-        assert languages_tested, (
-            "少なくとも1つの言語がテストされる必要があります"
-        )
+        assert languages_tested, "少なくとも1つの言語がテストされる必要があります"
         results["integration_checks"].append(("languages_tested", languages_tested))
 
         return results

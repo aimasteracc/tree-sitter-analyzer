@@ -6,8 +6,6 @@ This module defines the base class that all MCP tools should inherit from
 to ensure consistent behavior and project path management.
 """
 
-import functools
-import inspect
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -16,110 +14,38 @@ from ...utils import setup_logger
 from ..utils.path_resolver import PathResolver
 from ..utils.schema_strictness import enforce_strict_params
 from ..utils.shared_cache import get_shared_cache
+from ._language_mismatch import (
+    detect_language_mismatch,
+    language_mismatch_error_response,
+)
+from ._strict_params import _F5_WRAPPED_ATTR, wrap_execute_with_strict_params
+from ._verdict import (
+    _LEGAL_VERDICTS,
+    _VERDICT_ALIASES,
+    _canonicalize_verdict,
+)
 
 # Set up logging
 logger = setup_logger(__name__)
 
-# Sentinel attribute name marking a function that has already been wrapped
-# by ``__init_subclass__`` so a deeper subclass doesn't double-wrap it.
-_F5_WRAPPED_ATTR = "_f5_strict_params_wrapped"
-
-# F1 (round-37f7): canonical verdict vocabulary shared across every MCP
-# tool + CLI surface. Must stay in sync with
-# ``_N_VERDICT_VOCABULARY`` in
-# ``tests/unit/mcp/tools/test_tool_response_contract.py``. The values
-# are the only strings any tool may stamp into ``result["verdict"]``
-# or ``result["agent_summary"]["verdict"]``.
-#
-# Why a frozenset and not an Enum: tools already pass plain strings on
-# the wire (JSON has no enum); callers (CLI, hive-mind workers, Cursor,
-# Cline) branch on string equality. Keeping it a flat frozenset means
-# membership checks stay O(1) and there's no double-source-of-truth.
-_LEGAL_VERDICTS: frozenset[str] = frozenset(
-    {
-        "SAFE",
-        "CAUTION",
-        "REVIEW",
-        "UNSAFE",
-        "INFO",
-        "WARN",
-        "ERROR",
-        "NOT_FOUND",
-    }
-)
-
-# F1: normalisation table for the historical drift values. Keys are
-# lowercased input; values are the canonical replacement.
-_VERDICT_ALIASES: dict[str, str] = {
-    "": "INFO",
-    "n/a": "INFO",
-    "na": "INFO",
-    "success": "INFO",
-    "clean": "SAFE",
-    "ok": "SAFE",
-    "warning": "WARN",
-}
-
-
-def _canonicalize_verdict(value: str | None) -> str:
-    """Return a verdict guaranteed to belong to ``_LEGAL_VERDICTS``.
-
-    F1 (round-37f7): a prior dogfood audit found at least five MCP
-    tools emitting verdict values outside the canonical vocabulary —
-    ``"n/a"`` (agent_workflow / call_graph / ast_cache),
-    ``"CLEAN"`` (change_impact no-changes path), and various
-    case-shifted spellings (``"warning"``, ``"ok"``). Downstream
-    consumers — Claude Code, Cursor, Cline, the queue-ledger CLI —
-    branch on the string, so drift becomes silent miscoordination.
-
-    Behaviour:
-        - ``None`` / empty / ``"success"`` / ``"n/a"`` / ``"na"`` → ``"INFO"``
-        - ``"CLEAN"`` / ``"clean"`` / ``"ok"`` → ``"SAFE"``
-        - ``"warning"`` → ``"WARN"``
-        - Any value already in :data:`_LEGAL_VERDICTS` → returned
-          unchanged (case-preserved).
-        - Anything else → ``"INFO"`` with a logged warning. The
-          fallback is deliberate: silent rejection (raising) would
-          break tools mid-flight; silent acceptance (returning the bad
-          value) would re-introduce the bug class. Logging gives ops a
-          breadcrumb without taking the response surface down.
-
-    The function never raises — it always returns a string that lives
-    in :data:`_LEGAL_VERDICTS`. Callers can ``assert result in
-    _LEGAL_VERDICTS`` for static analysis without a ``try/except``.
-    """
-    if value is None:
-        return "INFO"
-    # Defensive runtime check: the signature says ``str | None`` but
-    # callers (CLI bridges, hive-mind workers, third-party tooling)
-    # have historically passed integers / booleans by accident. We
-    # refuse to raise — silent fallback to INFO + a logged warning is
-    # the kindest behaviour for chained agent decision loops. Cast to
-    # ``object`` so mypy treats the ``isinstance`` branch as
-    # potentially-reachable runtime defence rather than dead code.
-    raw_value: object = value
-    if not isinstance(raw_value, str):
-        logger.warning(
-            "F1: _canonicalize_verdict received non-string %r — falling back to INFO",
-            raw_value,
-        )
-        return "INFO"
-    # Case-preserved fast path for already-legal values. We check
-    # before lowercasing so "SAFE" stays "SAFE"; there's no
-    # lowercase legal value, so any case-shifted form falls through
-    # to the alias table below.
-    if value in _LEGAL_VERDICTS:
-        return value
-    alias = _VERDICT_ALIASES.get(value.lower().strip())
-    if alias is not None:
-        return alias
-    logger.warning(
-        "F1: _canonicalize_verdict received unknown verdict %r — falling back to INFO. "
-        "Legal vocabulary: %s",
-        value,
-        sorted(_LEGAL_VERDICTS),
-    )
-    return "INFO"
+# Re-exported for backward compatibility: all existing callers that do
+# ``from .base_tool import _LEGAL_VERDICTS`` continue to work.
+# The canonical definitions now live in _verdict.py.
+# ``detect_language_mismatch`` / ``language_mismatch_error_response`` now
+# live in _language_mismatch.py; re-exported here for backward compat.
+# ``_F5_WRAPPED_ATTR`` now lives in _strict_params.py; re-exported here.
+__all__ = [
+    "_F5_WRAPPED_ATTR",
+    "_LEGAL_VERDICTS",
+    "_VERDICT_ALIASES",
+    "_canonicalize_verdict",
+    "BaseMCPTool",
+    "MCPTool",
+    "mirror_summary_line",
+    "format_summary_line",
+    "detect_language_mismatch",
+    "language_mismatch_error_response",
+]
 
 
 def mirror_summary_line(result: dict[str, Any]) -> dict[str, Any]:
@@ -189,96 +115,6 @@ def format_summary_line(*parts: Any) -> str:
     return " ".join(cleaned)
 
 
-def detect_language_mismatch(
-    file_path: str,
-    explicit_language: str | None,
-    *,
-    project_root: str | None = None,
-) -> str | None:
-    """Return a warning message if explicit ``language`` disagrees with the file extension.
-
-    O3 / O8 (round-30 dogfood): tools that accept an explicit ``language``
-    parameter previously analysed e.g. ``foo.py`` as ``java`` whenever the
-    caller passed ``language='java'`` — every downstream analyser returned
-    zero classes/methods/fields and the tool happily emitted
-    ``success=true`` with a clean ``SAFE`` verdict. Agents passing the
-    wrong language tag had no signal that something went wrong.
-
-    Returns ``None`` when there is no mismatch to flag:
-
-    * ``explicit_language`` is ``None`` / empty (no override)
-    * ``explicit_language`` matches the detected language (case-insensitive)
-    * the file extension is unknown — we can't compare, so trust the caller
-
-    Otherwise returns a warning string suitable for surfacing in an error
-    envelope. Comparison is case-insensitive (``Python`` matches
-    ``python``). Detector failures fall back to "no warning" because we
-    can't be sure of the mismatch; the underlying analyser will still
-    raise on truly unsupported input.
-    """
-    if not explicit_language or not isinstance(explicit_language, str):
-        return None
-    if not file_path or not isinstance(file_path, str):
-        return None
-
-    # Local import: avoid a top-level cycle (base_tool is imported by every
-    # tool module, including ones loaded before ``language_detector``).
-    try:
-        from ...language_detector import detect_language_from_file
-    except Exception:  # nosec B110 — detector import failure means no warning
-        return None
-
-    try:
-        detected = detect_language_from_file(file_path, project_root=project_root)
-    except Exception:  # nosec B110 — detector failure means no warning
-        return None
-    if not detected or detected.lower() == "unknown":
-        return None
-    if detected.lower() == explicit_language.lower():
-        return None
-    return (
-        f"language={explicit_language!r} doesn't match detected language "
-        f"{detected!r} from extension. Analysis may be wrong."
-    )
-
-
-def language_mismatch_error_response(
-    *,
-    tool_name: str,
-    file_path: str,
-    warning: str,
-) -> dict[str, Any]:
-    """Canonical strict error envelope for the language-mismatch gate.
-
-    Shared so every tool that opts into the gate emits a byte-identical
-    shape. Cross-tool agents branching on ``error_type=='validation'``
-    can recover the same way regardless of which tool tripped the gate.
-
-    Why strict (Option A): silent acceptance was the original bug class.
-    Returning ``success=False`` forces the caller to make a deliberate
-    choice — either omit ``language`` to auto-detect, or fix the
-    mismatch. The envelope still carries ``agent_summary`` so the
-    response shape stays uniform with other validation failures.
-    """
-    summary_line = f"{tool_name}: {warning}"
-    next_step = (
-        f"Use the correct --language for {file_path!r} or omit it to auto-detect."
-    )
-    return {
-        "success": False,
-        "error_type": "validation",
-        "error": warning,
-        "file_path": file_path,
-        "summary_line": summary_line,
-        "language_mismatch_warning": warning,
-        "agent_summary": {
-            "verdict": "ERROR",
-            "summary_line": summary_line,
-            "next_step": next_step,
-        },
-    }
-
-
 class BaseMCPTool(ABC):
     """
     Base class for all MCP tools.
@@ -306,21 +142,11 @@ class BaseMCPTool(ABC):
             return
         if getattr(cls_execute, _F5_WRAPPED_ATTR, False):
             return
-        if not inspect.iscoroutinefunction(cls_execute):
-            # Non-async execute means the subclass deviates from the
-            # protocol. Leave it alone — the central dispatcher fallback
-            # still catches MCP-routed calls.
+        wrapped = wrap_execute_with_strict_params(cls_execute)
+        if wrapped is cls_execute:
+            # Non-async execute — leave it alone.
             return
-
-        @functools.wraps(cls_execute)
-        async def _wrapped(
-            self: BaseMCPTool, arguments: dict[str, Any]
-        ) -> dict[str, Any]:
-            self._guard_strict_parameters(arguments)
-            return await cls_execute(self, arguments)  # type: ignore[no-any-return]
-
-        setattr(_wrapped, _F5_WRAPPED_ATTR, True)
-        cls.execute = _wrapped  # type: ignore[method-assign]
+        cls.execute = wrapped  # type: ignore[method-assign]
 
     def _guard_strict_parameters(self, arguments: dict[str, Any]) -> None:
         """Refuse unknown top-level parameters using the tool's own schema.

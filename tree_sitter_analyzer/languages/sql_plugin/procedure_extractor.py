@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 from ...models import Function, SQLParameter
 from ...utils import log_debug
-from ._procedure_extractor_helpers import (
+from ._procedure_extractor import (
     append_source_procedures,
     append_tree_sitter_procedures,
 )

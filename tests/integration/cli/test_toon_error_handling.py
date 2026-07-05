@@ -132,10 +132,9 @@ class TestJsonFallback:
         encoder = ToonEncoder(fallback_to_json=True)
         result = encoder.encode(data)
 
-        # Should fall back to JSON (which handles circular refs differently)
-        # or return an error message
-        assert result is not None
-        assert len(result) > 0
+        # Should encode with circular reference replaced by [...]
+        assert isinstance(result, str)
+        assert "[...]" in result
 
     def test_encode_safe_always_returns_string(self):
         """Test that encode_safe always returns a string."""
@@ -171,9 +170,9 @@ class TestJsonFallback:
         formatter = ToonFormatter(fallback_to_json=True)
         result = formatter.format(data)
 
-        # Should return something (either JSON fallback or error message)
+        # Should encode with circular reference replaced by [...]
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert "[...]" in result
 
 
 class TestMaxDepthLimit:

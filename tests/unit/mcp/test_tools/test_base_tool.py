@@ -206,7 +206,9 @@ class TestResolveAndValidateFilePath:
 
         # Check that validation was cached for both original and resolved path
         assert mock_cache.set_security_validation.call_count == 2
-        assert [call.args[1] for call in mock_cache.set_security_validation.call_args_list] == [
+        assert [
+            call.args[1] for call in mock_cache.set_security_validation.call_args_list
+        ] == [
             (True, ""),
             (True, ""),
         ]

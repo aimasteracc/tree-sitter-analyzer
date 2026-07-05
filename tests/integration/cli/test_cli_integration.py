@@ -146,14 +146,6 @@ class TestCLIWithMCPServerIntegration:
         assert isinstance(server.code_file_resource, CodeFileResource)
         assert isinstance(server.project_stats_resource, ProjectStatsResource)
 
-    def test_mcp_server_set_project_path(self):
-        """Test MCP server sets project path."""
-        server = TreeSitterAnalyzerMCPServer()
-        temp_dir = tempfile.mkdtemp()
-        server.set_project_path(temp_dir)
-        # Verify project path was set successfully
-        assert True  # If we get here, set_project_path didn't raise an exception
-
 
 class TestCLIFileHandlingIntegration:
     """Tests for CLI file handling integration."""

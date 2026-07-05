@@ -116,7 +116,9 @@ class TestAntiPatternCommentSuppression:
     def test_real_mutable_default_still_detected(self, tmp_path: Path) -> None:
         """Sanity — the comment skip must not blind the detector to real bugs."""
         src = tmp_path / "real_bug.py"
-        src.write_text("def buggy(x=[]):\n    x.append(1)\n    return x\n", encoding="utf-8")
+        src.write_text(
+            "def buggy(x=[]):\n    x.append(1)\n    return x\n", encoding="utf-8"
+        )
         findings = detect_anti_patterns(str(src), "python")
         assert "AP001" in _ids(findings), (
             f"r37as: real mutable default MUST still be flagged. Got: {_ids(findings)}"

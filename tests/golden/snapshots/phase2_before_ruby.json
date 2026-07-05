@@ -1,0 +1,439 @@
+{
+  "language": "ruby",
+  "corpus_file": "tests/golden/corpus_ruby.rb",
+  "snapshot_timestamp": "2026-06-28T17:00:46.421785+00:00",
+  "symbol_count": 86,
+  "symbols": [
+    {
+      "name": "json",
+      "kind": "import",
+      "start_line": 19
+    },
+    {
+      "name": "set",
+      "kind": "import",
+      "start_line": 20
+    },
+    {
+      "name": "time",
+      "kind": "import",
+      "start_line": 21
+    },
+    {
+      "name": "Printable",
+      "kind": "class",
+      "start_line": 28
+    },
+    {
+      "name": "print_info",
+      "kind": "function",
+      "start_line": 29
+    },
+    {
+      "name": "Outer",
+      "kind": "class",
+      "start_line": 35
+    },
+    {
+      "name": "Inner",
+      "kind": "class",
+      "start_line": 36
+    },
+    {
+      "name": "inner_method",
+      "kind": "function",
+      "start_line": 37
+    },
+    {
+      "name": "Utilities",
+      "kind": "class",
+      "start_line": 44
+    },
+    {
+      "name": "class_method",
+      "kind": "function",
+      "start_line": 47
+    },
+    {
+      "name": "helper_method",
+      "kind": "function",
+      "start_line": 51
+    },
+    {
+      "name": "Animal",
+      "kind": "class",
+      "start_line": 61
+    },
+    {
+      "name": "name",
+      "kind": "function",
+      "start_line": 62
+    },
+    {
+      "name": "age",
+      "kind": "function",
+      "start_line": 63
+    },
+    {
+      "name": "species",
+      "kind": "function",
+      "start_line": 64
+    },
+    {
+      "name": "count",
+      "kind": "variable",
+      "start_line": 67
+    },
+    {
+      "name": "count",
+      "kind": "function",
+      "start_line": 70
+    },
+    {
+      "name": "total_count",
+      "kind": "function",
+      "start_line": 76
+    },
+    {
+      "name": "reset_count",
+      "kind": "function",
+      "start_line": 80
+    },
+    {
+      "name": "initialize",
+      "kind": "function",
+      "start_line": 86
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 87
+    },
+    {
+      "name": "species",
+      "kind": "variable",
+      "start_line": 88
+    },
+    {
+      "name": "age",
+      "kind": "variable",
+      "start_line": 89
+    },
+    {
+      "name": "speak",
+      "kind": "function",
+      "start_line": 94
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 99
+    },
+    {
+      "name": "update",
+      "kind": "function",
+      "start_line": 104
+    },
+    {
+      "name": "eat",
+      "kind": "function",
+      "start_line": 111
+    },
+    {
+      "name": "configure",
+      "kind": "function",
+      "start_line": 116
+    },
+    {
+      "name": "process",
+      "kind": "function",
+      "start_line": 121
+    },
+    {
+      "name": "private_helper",
+      "kind": "function",
+      "start_line": 128
+    },
+    {
+      "name": "protected_helper",
+      "kind": "function",
+      "start_line": 135
+    },
+    {
+      "name": "Dog",
+      "kind": "class",
+      "start_line": 141
+    },
+    {
+      "name": "initialize",
+      "kind": "function",
+      "start_line": 142
+    },
+    {
+      "name": "breed",
+      "kind": "variable",
+      "start_line": 144
+    },
+    {
+      "name": "speak",
+      "kind": "function",
+      "start_line": 148
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 153
+    },
+    {
+      "name": "breed",
+      "kind": "function",
+      "start_line": 158
+    },
+    {
+      "name": "Cat",
+      "kind": "class",
+      "start_line": 164
+    },
+    {
+      "name": "initialize",
+      "kind": "function",
+      "start_line": 168
+    },
+    {
+      "name": "speak",
+      "kind": "function",
+      "start_line": 172
+    },
+    {
+      "name": "Database",
+      "kind": "class",
+      "start_line": 178
+    },
+    {
+      "name": "instance",
+      "kind": "variable",
+      "start_line": 179
+    },
+    {
+      "name": "instance",
+      "kind": "function",
+      "start_line": 183
+    },
+    {
+      "name": "connect",
+      "kind": "function",
+      "start_line": 187
+    },
+    {
+      "name": "singleton_method",
+      "kind": "function",
+      "start_line": 199
+    },
+    {
+      "name": "SingletonExample",
+      "kind": "class",
+      "start_line": 204
+    },
+    {
+      "name": "class_singleton_method",
+      "kind": "function",
+      "start_line": 205
+    },
+    {
+      "name": "AnotherSingleton",
+      "kind": "class",
+      "start_line": 211
+    },
+    {
+      "name": "another_class_method",
+      "kind": "function",
+      "start_line": 213
+    },
+    {
+      "name": "chained_method",
+      "kind": "function",
+      "start_line": 217
+    },
+    {
+      "name": "top_level_method",
+      "kind": "function",
+      "start_line": 228
+    },
+    {
+      "name": "explicit_return",
+      "kind": "function",
+      "start_line": 233
+    },
+    {
+      "name": "multiple_returns",
+      "kind": "function",
+      "start_line": 239
+    },
+    {
+      "name": "optional_params",
+      "kind": "function",
+      "start_line": 244
+    },
+    {
+      "name": "keyword_method",
+      "kind": "function",
+      "start_line": 249
+    },
+    {
+      "name": "complex_params",
+      "kind": "function",
+      "start_line": 254
+    },
+    {
+      "name": "method_with_rescue",
+      "kind": "function",
+      "start_line": 263
+    },
+    {
+      "name": "risky_operation",
+      "kind": "function",
+      "start_line": 271
+    },
+    {
+      "name": "method_with_yield",
+      "kind": "function",
+      "start_line": 276
+    },
+    {
+      "name": "iterator_method",
+      "kind": "function",
+      "start_line": 284
+    },
+    {
+      "name": "instance_var",
+      "kind": "variable",
+      "start_line": 330
+    },
+    {
+      "name": "AssignmentExample",
+      "kind": "class",
+      "start_line": 333
+    },
+    {
+      "name": "class_var",
+      "kind": "variable",
+      "start_line": 334
+    },
+    {
+      "name": "show_class_var",
+      "kind": "function",
+      "start_line": 336
+    },
+    {
+      "name": "CONSTANT",
+      "kind": "variable",
+      "start_line": 345
+    },
+    {
+      "name": "MAX_SIZE",
+      "kind": "variable",
+      "start_line": 346
+    },
+    {
+      "name": "accept_block",
+      "kind": "function",
+      "start_line": 412
+    },
+    {
+      "name": "custom_error",
+      "kind": "function",
+      "start_line": 656
+    },
+    {
+      "name": "DynamicClass",
+      "kind": "class",
+      "start_line": 743
+    },
+    {
+      "name": "method_missing",
+      "kind": "function",
+      "start_line": 749
+    },
+    {
+      "name": "respond_to_missing?",
+      "kind": "function",
+      "start_line": 753
+    },
+    {
+      "name": "AttributeExample",
+      "kind": "class",
+      "start_line": 759
+    },
+    {
+      "name": "read_only",
+      "kind": "function",
+      "start_line": 760
+    },
+    {
+      "name": "write_only",
+      "kind": "function",
+      "start_line": 761
+    },
+    {
+      "name": "read_write",
+      "kind": "function",
+      "start_line": 762
+    },
+    {
+      "name": "initialize",
+      "kind": "function",
+      "start_line": 764
+    },
+    {
+      "name": "read_only",
+      "kind": "variable",
+      "start_line": 765
+    },
+    {
+      "name": "write_only",
+      "kind": "variable",
+      "start_line": 766
+    },
+    {
+      "name": "read_write",
+      "kind": "variable",
+      "start_line": 767
+    },
+    {
+      "name": "AliasExample",
+      "kind": "class",
+      "start_line": 772
+    },
+    {
+      "name": "original_method",
+      "kind": "function",
+      "start_line": 773
+    },
+    {
+      "name": "custom_method",
+      "kind": "function",
+      "start_line": 783
+    },
+    {
+      "name": "singleton_via_eval",
+      "kind": "function",
+      "start_line": 791
+    },
+    {
+      "name": "ConstantExample",
+      "kind": "class",
+      "start_line": 845
+    },
+    {
+      "name": "VERSION",
+      "kind": "variable",
+      "start_line": 846
+    },
+    {
+      "name": "MAX_RETRIES",
+      "kind": "variable",
+      "start_line": 847
+    }
+  ],
+  "edges": []
+}

@@ -29,6 +29,7 @@ def server():
     return TreeSitterAnalyzerMCPServer()
 
 
+@pytest.mark.requires_fd
 class TestIntentAliasIntegration:
     """测试 Intent Alias 在 MCP Server 中的集成"""
 
@@ -59,6 +60,7 @@ class ExampleClass:
             # Cleanup automatic via TemporaryDirectory context manager
 
     @pytest.mark.asyncio
+    @pytest.mark.requires_ripgrep
     async def test_locate_usage_alias_calls_search_content(
         self, server, temp_python_file
     ):
@@ -83,6 +85,7 @@ class ExampleClass:
         assert found, f"Should find 'example_function' in results: {result['results']}"
 
     @pytest.mark.asyncio
+    @pytest.mark.requires_ripgrep
     async def test_map_structure_alias_calls_list_files(self, server, temp_python_file):
         """map_structure alias 应该调用 list_files 工具并返回正确格式"""
         result = await server.call_tool(
@@ -126,6 +129,7 @@ class ExampleClass:
         assert "ExampleClass" in result_str
 
     @pytest.mark.asyncio
+    @pytest.mark.requires_ripgrep
     async def test_original_tool_name_still_works(self, server, temp_python_file):
         """原始工具名应该仍然有效（向后兼容）"""
         # Call with original name
@@ -252,6 +256,8 @@ class TestMultipleAliasesForSameTool:
         assert result1["results"] == result2["results"]
 
 
+@pytest.mark.requires_ripgrep
+@pytest.mark.requires_fd
 class TestAliasWithAllToolParameters:
     """测试 Alias 支持原始工具的所有参数"""
 

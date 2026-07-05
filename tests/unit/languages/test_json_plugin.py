@@ -24,7 +24,7 @@ class TestJSONExtraction:
         tree, plugin = _parse(code)
         els = plugin.create_extractor().extract_elements(tree, code)
         assert "json_elements" in els
-        assert len(els["json_elements"]) > 0
+        assert len(els["json_elements"]) == 3  # object + pair + string value
 
     def test_extracts_pairs_with_key_names(self) -> None:
         code = '{"name": "demo", "count": 42}'
@@ -49,7 +49,7 @@ class TestJSONExtraction:
         tree, plugin = _parse(code)
         elements = plugin.create_extractor().extract_json_elements(tree, code)
         object_count = sum(1 for e in elements if e.element_type == "object")
-        assert object_count >= 2  # outer + inner
+        assert object_count == 2  # outer + inner
         pair_names = {e.name for e in elements if e.element_type == "pair"}
         assert {"outer", "inner"} <= pair_names
 
@@ -86,5 +86,7 @@ class TestJSONPluginMetadata:
         assert plugin.is_applicable("script.py") is False
 
     def test_create_extractor_is_fresh_instance(self) -> None:
+        from tree_sitter_analyzer.languages.json_plugin import JSONElementExtractor
+
         plugin = JSONPlugin()
-        assert plugin.create_extractor() is not None
+        assert isinstance(plugin.create_extractor(), JSONElementExtractor)

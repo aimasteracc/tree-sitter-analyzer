@@ -159,8 +159,7 @@ class TestPathFilter:
         assert result["success"] is True
         assert len(result["groups"]) == 1
         files = {
-            func["file"].replace("\\", "/")
-            for func in result["groups"][0]["functions"]
+            func["file"].replace("\\", "/") for func in result["groups"][0]["functions"]
         }
         assert files == {"tests/test_a.py", "tests/test_b.py"}
 
@@ -462,7 +461,6 @@ class TestFacadeRoutesSimilarityParams801:
         assert result["success"] is True
         assert len(result["groups"]) == 1
         files = {
-            func["file"].replace("\\", "/")
-            for func in result["groups"][0]["functions"]
+            func["file"].replace("\\", "/") for func in result["groups"][0]["functions"]
         }
         assert files == {"tests/test_a.py", "tests/test_b.py"}

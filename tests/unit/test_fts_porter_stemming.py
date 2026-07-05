@@ -18,13 +18,13 @@ import sqlite3
 
 import pytest
 
-from tree_sitter_analyzer._ast_cache_query import fts_search_ranked
-from tree_sitter_analyzer._ast_cache_schema import (
+from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.cache.query import fts_search_ranked
+from tree_sitter_analyzer.cache.schema import (
     SCHEMA_V1,
     SCHEMA_V2_FTS,
     SCHEMA_VERSIONS_DDL,
 )
-from tree_sitter_analyzer.ast_cache import ASTCache
 
 # ---------------------------------------------------------------------------
 # FTS5 availability guard (mirrors tests/unit/mcp/test_fts5_bm25_ranking.py)
@@ -230,7 +230,7 @@ class TestV12MigrationRebuild:
 
     def test_migration_degrades_silently_without_fts5(self):
         """FTS5-less builds: OperationalError is swallowed, version NOT stamped."""
-        from tree_sitter_analyzer._ast_cache_schema import apply_migration_v12
+        from tree_sitter_analyzer.cache.schema import apply_migration_v12
 
         class _NoFts5Conn:
             def execute(self, *args, **kwargs):

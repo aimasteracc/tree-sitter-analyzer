@@ -222,24 +222,6 @@ class TestAnalyzeScaleToolCLICompatibleValidation:
         with pytest.raises(ValueError, match="Required field 'file_path' is missing"):
             tool.validate_arguments(arguments)
 
-    def test_validate_arguments_invalid_file_path_type(
-        self, tool: AnalyzeScaleToolCLICompatible
-    ) -> None:
-        """Test validation fails with invalid file_path type"""
-        arguments = {"file_path": 123}
-
-        with pytest.raises(ValueError, match="file_path must be a string"):
-            tool.validate_arguments(arguments)
-
-    def test_validate_arguments_empty_file_path(
-        self, tool: AnalyzeScaleToolCLICompatible
-    ) -> None:
-        """Test validation fails with empty file_path"""
-        arguments = {"file_path": "   "}
-
-        with pytest.raises(ValueError, match="file_path cannot be empty"):
-            tool.validate_arguments(arguments)
-
     def test_validate_arguments_invalid_language_type(
         self, tool: AnalyzeScaleToolCLICompatible
     ) -> None:

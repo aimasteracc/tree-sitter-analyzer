@@ -32,6 +32,7 @@ SKIPPED_SCAN_DIRS = {
 }
 PLUGINS_DIR = PROJECT_ROOT / "tree_sitter_analyzer" / "languages"
 
+
 def _discover_plugin_files() -> list[tuple[str, Path]]:
     """Return [(language_name, path), ...] for all plugin files."""
     result = []

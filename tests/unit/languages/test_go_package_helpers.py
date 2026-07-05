@@ -1,8 +1,8 @@
-"""Tests for languages._go_package_helpers — Go package extraction."""
+"""Tests for languages._go_package — Go package extraction."""
 
 from unittest.mock import MagicMock
 
-from tree_sitter_analyzer.languages._go_package_helpers import (
+from tree_sitter_analyzer.languages._go_package import (
     _go_package_name,
     extract_go_package,
 )
@@ -33,7 +33,9 @@ def _get_text(node):
 
 class TestExtractGoPackage:
     def test_extracts_package(self):
-        node = _mock_node(children=[_mock_identifier_child("mypkg")], text="package mypkg")
+        node = _mock_node(
+            children=[_mock_identifier_child("mypkg")], text="package mypkg"
+        )
         result = extract_go_package(node, _get_text)
         assert isinstance(result, Package)
         assert result.name == "mypkg"

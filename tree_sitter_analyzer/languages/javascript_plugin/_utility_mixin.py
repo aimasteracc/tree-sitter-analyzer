@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 from ...utils import log_debug
 from .._complexity_decisions import count_decision_complexity
-from ._jsdoc_helpers import clean_jsdoc, extract_jsdoc_for_line
-from ._variable_helpers import infer_type_from_value
+from ._jsdoc import clean_jsdoc, extract_jsdoc_for_line
+from ._variable import infer_type_from_value
 
 if TYPE_CHECKING:
     import tree_sitter

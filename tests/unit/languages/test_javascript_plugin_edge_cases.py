@@ -410,25 +410,6 @@ class TestJavaScriptPluginEdgeCases:
         jsdoc = extractor._extract_jsdoc_for_line(5)
         assert isinstance(jsdoc, str | type(None))
 
-    def test_complexity_calculation_with_extreme_nesting(self, extractor):
-        """Test complexity calculation with extremely nested code"""
-        mock_node = Mock()
-
-        # Create mock children representing deeply nested control structures
-        mock_children = []
-        for _i in range(100):  # Very high nesting
-            child = Mock()
-            child.type = "if_statement"
-            child.children = []
-            mock_children.append(child)
-
-        mock_node.children = mock_children
-
-        # Should handle extreme nesting without crashing
-        complexity = extractor._calculate_complexity_optimized(mock_node)
-        assert isinstance(complexity, int)
-        assert complexity >= 0  # ratchet: nondeterministic
-
     def test_framework_detection_with_mixed_frameworks(self, extractor):
         """Test framework detection with mixed framework imports"""
         mixed_code = """

@@ -223,14 +223,6 @@ class SearchContentTool(BaseMCPTool):
     @handle_mcp_errors("search_content")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any] | int:
         """Execute ripgrep search with caching and parallel support."""
-        if not fd_rg_utils.check_external_command("rg"):
-            return {
-                "success": False,
-                "error": "rg (ripgrep) command not found. Please install ripgrep.",
-                "count": 0,
-                "results": [],
-            }
-
         # L10: detect file-as-root *before* validate_arguments raises a
         # triple-wrapped ``AnalysisError("Operation failed: ... Path is not
         # a directory: ...")``. The canonical envelope tells the agent
@@ -244,17 +236,27 @@ class SearchContentTool(BaseMCPTool):
 
         roots, files = self._resolve_inputs(arguments)
 
+        # Cache check before rg availability check: cache hits need no rg.
         cache_key = self._make_cache_key(arguments, roots)
         cached = self._check_cache(cache_key, arguments)
         if cached is not None:
             return cached
 
+        # FTS fast path before rg availability check: FTS uses SQLite, not rg.
         requested_format = determine_requested_format(arguments)
         fts_result = _try_fts5_fast_path(arguments, self.project_root, requested_format)
         if fts_result is not None:
             if output_format == "toon" and isinstance(fts_result, dict):
                 return apply_toon_format_to_response(fts_result, output_format)
             return fts_result
+
+        if not fd_rg_utils.check_external_command("rg"):
+            return {
+                "success": False,
+                "error": "rg (ripgrep) command not found. Please install ripgrep.",
+                "count": 0,
+                "results": [],
+            }
 
         no_ignore = self._resolve_no_ignore(arguments, roots)
         max_count = resolve_max_count(arguments, fd_rg_utils)

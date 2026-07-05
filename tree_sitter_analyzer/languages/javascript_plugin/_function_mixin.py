@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     import tree_sitter
 
 from ...models import Function
-from ._function_helpers import (
+from ._function import (
     extract_arrow_function,
     extract_function,
     extract_generator_function,

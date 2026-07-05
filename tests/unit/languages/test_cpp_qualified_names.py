@@ -164,7 +164,7 @@ def test_cpp17_nested_namespace_specifier(extractor):
 def test_namespace_name_accepts_str_text_nodes():
     # Defensive branch parity with _cpp_containing_class_name: node.text may
     # already be str on mocked/alternative node implementations.
-    from tree_sitter_analyzer.languages._cpp_element_helpers import _cpp_namespace_name
+    from tree_sitter_analyzer.languages._cpp_element import _cpp_namespace_name
 
     class _NameNode:
         type = "namespace_identifier"

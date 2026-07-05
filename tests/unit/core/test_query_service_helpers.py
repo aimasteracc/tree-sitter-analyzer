@@ -177,9 +177,7 @@ class TestWalkForPluginCategories:
         mid = SimpleNamespace(type="class_body", children=[leaf])
         root = SimpleNamespace(type="program", children=[mid])
         captures = []
-        _walk_for_plugin_categories(
-            root, ["method_declaration"], "method", captures
-        )
+        _walk_for_plugin_categories(root, ["method_declaration"], "method", captures)
         assert len(captures) == 1
         assert captures[0] == (leaf, "method")
 
@@ -329,6 +327,6 @@ class TestFallbackQueryCaptures:
         assert len(result) == 1
 
     def test_element_key_for_none_query(self):
-        assert fallback_query_captures(
-            SimpleNamespace(type="x", children=[]), None
-        ) == []
+        assert (
+            fallback_query_captures(SimpleNamespace(type="x", children=[]), None) == []
+        )

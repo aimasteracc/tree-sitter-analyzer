@@ -31,6 +31,7 @@ SKIPPED_SCAN_DIRS = {
     ".venv",
 }
 
+
 def test_reusable_test_workflow_has_job_timeout() -> None:
     """The CI matrix must fail fast instead of hanging forever on runner stalls."""
     workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"

@@ -446,9 +446,9 @@ module.exports = { Calculator, createCalculator };
         assert self.server.code_file_resource.get_resource_info()["uri_template"] == (
             "code://file/{file_path}"
         )
-        assert self.server.project_stats_resource.get_resource_info()["uri_template"] == (
-            "code://stats/{stats_type}"
-        )
+        assert self.server.project_stats_resource.get_resource_info()[
+            "uri_template"
+        ] == ("code://stats/{stats_type}")
 
 
 if __name__ == "__main__":

@@ -75,6 +75,7 @@ async def test_file_in_roots_returns_canonical_envelope(
     assert result["roots"] == [file_path]
 
 
+@pytest.mark.requires_ripgrep
 @pytest.mark.asyncio
 async def test_normal_directory_root_still_succeeds(
     tool: SearchContentTool,
@@ -93,6 +94,7 @@ async def test_normal_directory_root_still_succeeds(
     assert result >= 2  # two ``def`` declarations in src/  # ratchet: nondeterministic
 
 
+@pytest.mark.requires_ripgrep
 @pytest.mark.asyncio
 async def test_files_parameter_still_succeeds(
     tool: SearchContentTool,

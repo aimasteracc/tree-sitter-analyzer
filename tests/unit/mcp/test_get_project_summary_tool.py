@@ -50,6 +50,7 @@ class TestGetProjectSummaryToolInitialization:
     def test_init_creates_tool(self, tool: GetProjectSummaryTool) -> None:
         """Test that initialization creates a tool instance."""
         assert tool is not None
+        assert isinstance(tool, GetProjectSummaryTool)
 
 
 class TestGetProjectSummaryToolDefinition:

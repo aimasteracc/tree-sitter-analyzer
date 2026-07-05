@@ -1,6 +1,5 @@
 """Tests for import_extractors.py — multi-language import extraction."""
 
-
 from tree_sitter_analyzer.import_extractors import (
     _extract_cpp_imports,
     _extract_csharp_imports,
@@ -26,7 +25,9 @@ from tree_sitter_analyzer.import_extractors import (
 
 
 class MockNode:
-    def __init__(self, node_type: str, text: str = "", children: list | None = None, **fields):
+    def __init__(
+        self, node_type: str, text: str = "", children: list | None = None, **fields
+    ):
         self._type = node_type
         self._text = text
         self._children = children or []
@@ -226,9 +227,7 @@ class TestExtractJsImports:
 
 class TestExtractGoImports:
     def test_skips_stdlib(self):
-        str_child = MockNode(
-            "interpreted_string_literal", '"fmt"'
-        )
+        str_child = MockNode("interpreted_string_literal", '"fmt"')
         str_child.start_byte = 7
         str_child.end_byte = 12
         spec = MockNode(
@@ -400,7 +399,9 @@ class TestWalkImports:
         walk_imports(outer, "import app", "python", imports)
 
     def test_csharp_dispatch(self):
-        inner = MockNode("using_directive", "using Foo;", children=[MockNode("identifier", "Foo")])
+        inner = MockNode(
+            "using_directive", "using Foo;", children=[MockNode("identifier", "Foo")]
+        )
         inner.children[0].start_byte = 6
         inner.children[0].end_byte = 9
         outer = MockNode("compilation_unit", "", children=[inner])
@@ -418,7 +419,11 @@ class TestWalkImports:
         assert len(imports) == 1
 
     def test_swift_dispatch(self):
-        inner = MockNode("import_declaration", "import MyKit", children=[MockNode("identifier", "MyKit")])
+        inner = MockNode(
+            "import_declaration",
+            "import MyKit",
+            children=[MockNode("identifier", "MyKit")],
+        )
         inner.children[0].start_byte = 7
         inner.children[0].end_byte = 12
         outer = MockNode("source_file", "", children=[inner])
@@ -458,7 +463,11 @@ class TestWalkImports:
 
 class TestExtractCSharpImports:
     def test_skips_stdlib_system(self):
-        node = MockNode("using_directive", "using System;", children=[MockNode("identifier", "System")])
+        node = MockNode(
+            "using_directive",
+            "using System;",
+            children=[MockNode("identifier", "System")],
+        )
         node.children[0].start_byte = 6
         node.children[0].end_byte = 12
         imports: list[dict] = []
@@ -643,7 +652,9 @@ class TestExtractPhpImports:
         assert len(imports) == 1
 
     def test_aliased_use(self):
-        node = MockNode("namespace_use_declaration", "use App\\Models\\User as UserModel;")
+        node = MockNode(
+            "namespace_use_declaration", "use App\\Models\\User as UserModel;"
+        )
         node.start_byte = 0
         node.end_byte = 33
         imports: list[dict] = []

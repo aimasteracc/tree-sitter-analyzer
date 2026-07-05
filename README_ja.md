@@ -23,6 +23,14 @@ TSA は tree-sitter でコードベースをインデックスし、正確なコ
 
 > **Python 3.10 以上が必要です**（確認: `python3 --version`）。必要に応じて [python.org](https://www.python.org/downloads/) からインストールしてください。
 
+### 自動インストール（推奨）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh | bash
+```
+
+`install.sh` は `uv` の有無を確認して未インストールなら自動導入し、Claude Desktop / Claude Code / Cursor / VS Code の設定ファイルを検出して MCP エントリを自動書き込みします。セットアップ後は `tree-sitter-analyzer --doctor` で設定を確認できます。
+
 **Claude Code** へワンライナーでインストール:
 
 ```bash
@@ -152,7 +160,7 @@ CodeGraph には skill システムが存在しない。本ツールは `.claude
 
 各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要が無い。
 
-### 312 の CLI フラグ
+### 321 の CLI フラグ
 
 CodeGraph の CLI の厳密な上位互換。主なもの:
 
@@ -383,7 +391,7 @@ CodeGraph も類似の集合をサポート; 両ツール共に未実装の主�
 
 | 指標 | 値 |
 |---|---|
-| テスト通過 | 18,493 ✅ |
+| テスト通過 | 包括的テストスイート ✅ |
 | カバレッジ | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | 型安全性 | 100% mypy |
 | プラットフォーム | macOS · Linux · Windows |
@@ -405,10 +413,32 @@ uv run python check_quality.py --new-code-only  # 品質ゲート
 | 症状 | 修正 |
 |---|---|
 | `.swift / .kt / .rb / .php / .cs` で `unsupported language` | ≥ 1.12.x へ更新 — 5 言語 gap は commit `50e99a8f` で修正済み。extras 区分の文法モジュールはベースインストールに同梱されません。`pip install "tree-sitter-analyzer[swift]"`(または `kotlin`、`ruby`、`php`、`csharp`)で追加してください |
-| MCP サーバーがクライアントに表示されない | `TREE_SITTER_PROJECT_ROOT` は**絶対パス**必須; 設定編集後にクライアント再起動 |
+| MCP サーバーがクライアントに表示されない | `TREE_SITTER_PROJECT_ROOT` は**絶対パス**必須; 設定編集後にクライアント再起動。[TREE\_SITTER\_PROJECT\_ROOT に相対パスを指定した場合](#tree_sitter_project_root-に相対パスを指定した場合)も参照 |
 | `database is locked` | `.ast-cache/index.db` を保持する他プロセスを停止; 継続する場合は `rm -rf .ast-cache && tree-sitter-analyzer --autoindex` |
 | 初回呼び出しが遅い | 初回はインデックスを構築。後続はサブ秒。事前に `--full-index` を実行すれば償却可能 |
 | エージェントが誤ったツールを選ぶ | `tsa-*` skill (`/tsa-graph`、`/tsa-find` 等) を使用 — 各 skill は可視ツールを 1 ワークフローに制限 |
+
+### TREE\_SITTER\_PROJECT\_ROOT に相対パスを指定した場合
+
+**症状:** MCP サーバーはエラーなく起動するが、TSA が誤った解析結果を返すか `project root not found` のようなエラーが発生する。
+
+**原因:** `TREE_SITTER_PROJECT_ROOT` に相対パス（例: `./myproject`）が設定されている。`uvx` がサーバーを起動するとき、プロセスの作業ディレクトリがインストール実行時と異なる場合があり、相対パスが誤った場所に解決される。
+
+**修正:** 常に絶対パスを使用する:
+
+```bash
+# 正しい
+"TREE_SITTER_PROJECT_ROOT": "/home/user/myproject"
+
+# これも正しい（install.sh が実行時に解決する）
+"TREE_SITTER_PROJECT_ROOT": "$(pwd)"        # または $(realpath .)
+
+# 誤り
+"TREE_SITTER_PROJECT_ROOT": "./myproject"
+"TREE_SITTER_PROJECT_ROOT": "myproject"
+```
+
+`tree-sitter-analyzer --doctor` で設定を確認できます。
 
 ---
 

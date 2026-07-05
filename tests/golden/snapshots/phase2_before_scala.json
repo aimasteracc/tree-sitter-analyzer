@@ -1,0 +1,699 @@
+{
+  "language": "scala",
+  "corpus_file": "tests/golden/corpus_scala.scala",
+  "snapshot_timestamp": "2026-06-28T17:00:46.495247+00:00",
+  "symbol_count": 138,
+  "symbols": [
+    {
+      "name": "scala",
+      "kind": "import",
+      "start_line": 25
+    },
+    {
+      "name": "scala",
+      "kind": "import",
+      "start_line": 26
+    },
+    {
+      "name": "scala",
+      "kind": "import",
+      "start_line": 27
+    },
+    {
+      "name": "Constants",
+      "kind": "class",
+      "start_line": 34
+    },
+    {
+      "name": "PI",
+      "kind": "variable",
+      "start_line": 35
+    },
+    {
+      "name": "E",
+      "kind": "variable",
+      "start_line": 36
+    },
+    {
+      "name": "greeting",
+      "kind": "function",
+      "start_line": 38
+    },
+    {
+      "name": "MainApp",
+      "kind": "class",
+      "start_line": 42
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "start_line": 44
+    },
+    {
+      "name": "Calculator",
+      "kind": "class",
+      "start_line": 49
+    },
+    {
+      "name": "add",
+      "kind": "function",
+      "start_line": 50
+    },
+    {
+      "name": "subtract",
+      "kind": "function",
+      "start_line": 51
+    },
+    {
+      "name": "multiply",
+      "kind": "function",
+      "start_line": 52
+    },
+    {
+      "name": "divide",
+      "kind": "function",
+      "start_line": 53
+    },
+    {
+      "name": "Person",
+      "kind": "class",
+      "start_line": 63
+    },
+    {
+      "name": "this",
+      "kind": "function",
+      "start_line": 65
+    },
+    {
+      "name": "greet",
+      "kind": "function",
+      "start_line": 68
+    },
+    {
+      "name": "introduce",
+      "kind": "function",
+      "start_line": 71
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 76
+    },
+    {
+      "name": "PrivateConstructor",
+      "kind": "class",
+      "start_line": 82
+    },
+    {
+      "name": "getValue",
+      "kind": "function",
+      "start_line": 83
+    },
+    {
+      "name": "PrivateConstructor",
+      "kind": "class",
+      "start_line": 86
+    },
+    {
+      "name": "create",
+      "kind": "function",
+      "start_line": 87
+    },
+    {
+      "name": "Container",
+      "kind": "class",
+      "start_line": 91
+    },
+    {
+      "name": "get",
+      "kind": "function",
+      "start_line": 92
+    },
+    {
+      "name": "map",
+      "kind": "function",
+      "start_line": 93
+    },
+    {
+      "name": "Shape",
+      "kind": "class",
+      "start_line": 97
+    },
+    {
+      "name": "area",
+      "kind": "function",
+      "start_line": 98
+    },
+    {
+      "name": "perimeter",
+      "kind": "function",
+      "start_line": 99
+    },
+    {
+      "name": "describe",
+      "kind": "function",
+      "start_line": 101
+    },
+    {
+      "name": "Circle",
+      "kind": "class",
+      "start_line": 107
+    },
+    {
+      "name": "area",
+      "kind": "function",
+      "start_line": 108
+    },
+    {
+      "name": "perimeter",
+      "kind": "function",
+      "start_line": 109
+    },
+    {
+      "name": "Rectangle",
+      "kind": "class",
+      "start_line": 112
+    },
+    {
+      "name": "area",
+      "kind": "function",
+      "start_line": 113
+    },
+    {
+      "name": "perimeter",
+      "kind": "function",
+      "start_line": 114
+    },
+    {
+      "name": "Point",
+      "kind": "class",
+      "start_line": 122
+    },
+    {
+      "name": "Vector",
+      "kind": "class",
+      "start_line": 125
+    },
+    {
+      "name": "magnitude",
+      "kind": "function",
+      "start_line": 126
+    },
+    {
+      "name": "normalized",
+      "kind": "function",
+      "start_line": 127
+    },
+    {
+      "name": "mag",
+      "kind": "variable",
+      "start_line": 128
+    },
+    {
+      "name": "+",
+      "kind": "function",
+      "start_line": 132
+    },
+    {
+      "name": "-",
+      "kind": "function",
+      "start_line": 133
+    },
+    {
+      "name": "Expression",
+      "kind": "class",
+      "start_line": 137
+    },
+    {
+      "name": "Number",
+      "kind": "class",
+      "start_line": 138
+    },
+    {
+      "name": "Add",
+      "kind": "class",
+      "start_line": 139
+    },
+    {
+      "name": "Multiply",
+      "kind": "class",
+      "start_line": 140
+    },
+    {
+      "name": "Box",
+      "kind": "class",
+      "start_line": 143
+    },
+    {
+      "name": "map",
+      "kind": "function",
+      "start_line": 144
+    },
+    {
+      "name": "Describable",
+      "kind": "class",
+      "start_line": 152
+    },
+    {
+      "name": "description",
+      "kind": "function",
+      "start_line": 153
+    },
+    {
+      "name": "Loggable",
+      "kind": "class",
+      "start_line": 157
+    },
+    {
+      "name": "log",
+      "kind": "function",
+      "start_line": 158
+    },
+    {
+      "name": "Identifiable",
+      "kind": "class",
+      "start_line": 162
+    },
+    {
+      "name": "id",
+      "kind": "function",
+      "start_line": 163
+    },
+    {
+      "name": "displayId",
+      "kind": "function",
+      "start_line": 164
+    },
+    {
+      "name": "Comparable",
+      "kind": "class",
+      "start_line": 168
+    },
+    {
+      "name": "compareTo",
+      "kind": "function",
+      "start_line": 169
+    },
+    {
+      "name": "Named",
+      "kind": "class",
+      "start_line": 173
+    },
+    {
+      "name": "name",
+      "kind": "function",
+      "start_line": 174
+    },
+    {
+      "name": "Aged",
+      "kind": "class",
+      "start_line": 177
+    },
+    {
+      "name": "age",
+      "kind": "function",
+      "start_line": 178
+    },
+    {
+      "name": "Employee",
+      "kind": "class",
+      "start_line": 181
+    },
+    {
+      "name": "simpleFunction",
+      "kind": "function",
+      "start_line": 189
+    },
+    {
+      "name": "addNumbers",
+      "kind": "function",
+      "start_line": 192
+    },
+    {
+      "name": "greet",
+      "kind": "function",
+      "start_line": 195
+    },
+    {
+      "name": "identity",
+      "kind": "function",
+      "start_line": 200
+    },
+    {
+      "name": "max",
+      "kind": "function",
+      "start_line": 203
+    },
+    {
+      "name": "multiply",
+      "kind": "function",
+      "start_line": 208
+    },
+    {
+      "name": "applyTwice",
+      "kind": "function",
+      "start_line": 211
+    },
+    {
+      "name": "executeConditionally",
+      "kind": "function",
+      "start_line": 214
+    },
+    {
+      "name": "factorial",
+      "kind": "function",
+      "start_line": 219
+    },
+    {
+      "name": "fibonacciTail",
+      "kind": "function",
+      "start_line": 224
+    },
+    {
+      "name": "loop",
+      "kind": "function",
+      "start_line": 225
+    },
+    {
+      "name": "square",
+      "kind": "variable",
+      "start_line": 238
+    },
+    {
+      "name": "add",
+      "kind": "variable",
+      "start_line": 241
+    },
+    {
+      "name": "complexLambda",
+      "kind": "variable",
+      "start_line": 244
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "start_line": 245
+    },
+    {
+      "name": "increment",
+      "kind": "variable",
+      "start_line": 250
+    },
+    {
+      "name": "sum",
+      "kind": "variable",
+      "start_line": 251
+    },
+    {
+      "name": "numbers",
+      "kind": "variable",
+      "start_line": 254
+    },
+    {
+      "name": "doubled",
+      "kind": "variable",
+      "start_line": 255
+    },
+    {
+      "name": "evens",
+      "kind": "variable",
+      "start_line": 256
+    },
+    {
+      "name": "total",
+      "kind": "variable",
+      "start_line": 257
+    },
+    {
+      "name": "immutableInt",
+      "kind": "variable",
+      "start_line": 264
+    },
+    {
+      "name": "immutableString",
+      "kind": "variable",
+      "start_line": 265
+    },
+    {
+      "name": "inferredType",
+      "kind": "variable",
+      "start_line": 266
+    },
+    {
+      "name": "mutableInt",
+      "kind": "variable",
+      "start_line": 269
+    },
+    {
+      "name": "mutableString",
+      "kind": "variable",
+      "start_line": 270
+    },
+    {
+      "name": "counter",
+      "kind": "variable",
+      "start_line": 271
+    },
+    {
+      "name": "unknown",
+      "kind": "variable",
+      "start_line": 274
+    },
+    {
+      "name": "unknown",
+      "kind": "variable",
+      "start_line": 275
+    },
+    {
+      "name": "expensiveComputation",
+      "kind": "variable",
+      "start_line": 278
+    },
+    {
+      "name": "UserId",
+      "kind": "class",
+      "start_line": 288
+    },
+    {
+      "name": "UserMap",
+      "kind": "class",
+      "start_line": 289
+    },
+    {
+      "name": "Callback",
+      "kind": "class",
+      "start_line": 290
+    },
+    {
+      "name": "Container2",
+      "kind": "class",
+      "start_line": 293
+    },
+    {
+      "name": "Element",
+      "kind": "class",
+      "start_line": 294
+    },
+    {
+      "name": "get",
+      "kind": "function",
+      "start_line": 295
+    },
+    {
+      "name": "Temperature",
+      "kind": "class",
+      "start_line": 299
+    },
+    {
+      "name": "describeNumber",
+      "kind": "function",
+      "start_line": 306
+    },
+    {
+      "name": "evaluateExpression",
+      "kind": "function",
+      "start_line": 314
+    },
+    {
+      "name": "handleOption",
+      "kind": "function",
+      "start_line": 321
+    },
+    {
+      "name": "describePair",
+      "kind": "function",
+      "start_line": 327
+    },
+    {
+      "name": "forResult",
+      "kind": "variable",
+      "start_line": 339
+    },
+    {
+      "name": "evenSquares",
+      "kind": "variable",
+      "start_line": 344
+    },
+    {
+      "name": "pairs",
+      "kind": "variable",
+      "start_line": 350
+    },
+    {
+      "name": "combinations",
+      "kind": "variable",
+      "start_line": 357
+    },
+    {
+      "name": "safeDivide",
+      "kind": "function",
+      "start_line": 367
+    },
+    {
+      "name": "handleException",
+      "kind": "function",
+      "start_line": 371
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "start_line": 373
+    },
+    {
+      "name": "StringOps",
+      "kind": "class",
+      "start_line": 388
+    },
+    {
+      "name": "exclaim",
+      "kind": "function",
+      "start_line": 389
+    },
+    {
+      "name": "repeat",
+      "kind": "function",
+      "start_line": 390
+    },
+    {
+      "name": "greetImplicit",
+      "kind": "function",
+      "start_line": 394
+    },
+    {
+      "name": "defaultGreeting",
+      "kind": "variable",
+      "start_line": 398
+    },
+    {
+      "name": "describableInstance",
+      "kind": "variable",
+      "start_line": 405
+    },
+    {
+      "name": "description",
+      "kind": "function",
+      "start_line": 406
+    },
+    {
+      "name": "multiTraitInstance",
+      "kind": "variable",
+      "start_line": 410
+    },
+    {
+      "name": "name",
+      "kind": "function",
+      "start_line": 411
+    },
+    {
+      "name": "age",
+      "kind": "function",
+      "start_line": 412
+    },
+    {
+      "name": "NestedExample",
+      "kind": "class",
+      "start_line": 419
+    },
+    {
+      "name": "Outer",
+      "kind": "class",
+      "start_line": 420
+    },
+    {
+      "name": "Inner",
+      "kind": "class",
+      "start_line": 421
+    },
+    {
+      "name": "innerMethod",
+      "kind": "function",
+      "start_line": 422
+    },
+    {
+      "name": "outerMethod",
+      "kind": "function",
+      "start_line": 425
+    },
+    {
+      "name": "nestedFunction",
+      "kind": "function",
+      "start_line": 428
+    },
+    {
+      "name": "innerFunction",
+      "kind": "function",
+      "start_line": 429
+    },
+    {
+      "name": "Service",
+      "kind": "class",
+      "start_line": 438
+    },
+    {
+      "name": "start",
+      "kind": "function",
+      "start_line": 439
+    },
+    {
+      "name": "stop",
+      "kind": "function",
+      "start_line": 440
+    },
+    {
+      "name": "restart",
+      "kind": "function",
+      "start_line": 441
+    },
+    {
+      "name": "Component",
+      "kind": "class",
+      "start_line": 451
+    },
+    {
+      "name": "initialize",
+      "kind": "function",
+      "start_line": 453
+    },
+    {
+      "name": "User",
+      "kind": "class",
+      "start_line": 462
+    },
+    {
+      "name": "User",
+      "kind": "class",
+      "start_line": 464
+    },
+    {
+      "name": "apply",
+      "kind": "function",
+      "start_line": 465
+    },
+    {
+      "name": "unapply",
+      "kind": "function",
+      "start_line": 469
+    }
+  ],
+  "edges": []
+}

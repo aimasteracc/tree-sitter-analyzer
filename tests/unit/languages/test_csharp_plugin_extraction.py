@@ -47,6 +47,7 @@ namespace MyApp.Interfaces
 }
 """
 
+
 def get_tree_for_code(code: str, plugin: CSharpPlugin):
     """Helper to parse C# code and return tree."""
     language = plugin.get_tree_sitter_language()

@@ -34,7 +34,10 @@ class TestMCPServerLifecycle:
         """Test that all server components are initialized."""
         server = TreeSitterAnalyzerMCPServer()
         assert callable(server._analyze_code_scale)
-        assert server.read_partial_tool.get_tool_definition()["name"] == "extract_code_section"
+        assert (
+            server.read_partial_tool.get_tool_definition()["name"]
+            == "extract_code_section"
+        )
         assert (
             server.table_format_tool.get_tool_definition()["name"]
             == "analyze_code_structure"

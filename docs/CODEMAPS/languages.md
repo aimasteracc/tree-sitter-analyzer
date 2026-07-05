@@ -1,7 +1,7 @@
 <!-- Generated: 2026-05-24; doc-code re-sync: 2026-06-17 -->
 # Languages Codemap
 
-21 language plugins under `tree_sitter_analyzer/languages/` (16 single-file + 5 subdir packages).
+22 language plugins under `tree_sitter_analyzer/languages/` (17 single-file + 5 subdir packages).
 Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/base.py`).
 
 ## Wiring tiers (canonical breakdown — see README "Supported Languages")
@@ -11,7 +11,7 @@ Not every registered plugin is wired into the indexer to the same depth:
 - **13 fully wired** (full symbol + call graph): Python, Java, JavaScript, TypeScript, Go, Rust, C, C++, C#, Swift, Kotlin, Ruby, PHP
 - **2 symbol-indexed** (call-graph wiring pending): Bash, Scala — both graduated in v1.22.0
 - **5 data/markup** (reachable via the single-file CLI path): HTML, CSS, Markdown, SQL, YAML
-- **1 scaffold** (plugin exists, indexer wiring pending): JSON
+- **2 scaffold** (plugin exists, indexer wiring pending): JSON, Lua
 
 ## Supported Languages
 
@@ -38,6 +38,7 @@ Not every registered plugin is wired into the indexer to the same depth:
 | Markdown | `markdown_plugin/` | submodules | headings, code blocks, tables |
 | JSON | `languages/json_plugin.py` | inline | basic structure |
 | Bash | `languages/bash_plugin.py` | inline | functions, commands |
+| Lua | `languages/lua_plugin/` | `plugin.py` | extensibility demo; shows new language = 1 package, no central edits (Phase 2 capability system) |
 
 ## Shared helpers
 

@@ -285,7 +285,7 @@ class TestExtractMethodReceiverRegex:
         """Invoke extract_method_receiver with a fake node yielding receiver_text."""
         from unittest.mock import MagicMock
 
-        from tree_sitter_analyzer.languages._go_common_helpers import (
+        from tree_sitter_analyzer.languages._go_common import (
             extract_method_receiver,
         )
 
@@ -340,7 +340,7 @@ class TestExtractMethodReceiverRegex:
     def test_no_receiver_returns_none(self) -> None:
         from unittest.mock import MagicMock
 
-        from tree_sitter_analyzer.languages._go_common_helpers import (
+        from tree_sitter_analyzer.languages._go_common import (
             extract_method_receiver,
         )
 

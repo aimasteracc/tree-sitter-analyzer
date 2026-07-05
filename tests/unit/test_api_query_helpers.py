@@ -1,6 +1,6 @@
 """Unit tests for _api_query_helpers — capture grouping and element filtering."""
 
-from tree_sitter_analyzer._api_query_helpers import (
+from tree_sitter_analyzer.internal_api.query_helpers import (
     filter_elements_by_type,
     group_captures_by_main_node,
     query_captures_for_result,

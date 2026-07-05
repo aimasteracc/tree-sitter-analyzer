@@ -158,7 +158,7 @@ def test_extension_fun_receiver_type_and_is_method() -> None:
 def test_receiver_survives_api_serialization() -> None:
     """End-to-end Theme-A (Kotlin): the serializer allowlist must carry
     the receiver binding to API consumers."""
-    from tree_sitter_analyzer._api_result_helpers import element_to_dict
+    from tree_sitter_analyzer.internal_api.result_helpers import element_to_dict
 
     funcs = _functions(_CLASS_SRC)
     feed = element_to_dict(funcs["feed"])

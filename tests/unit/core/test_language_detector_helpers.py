@@ -6,7 +6,7 @@ import tempfile
 
 import pytest
 
-from tree_sitter_analyzer._language_detector_helpers import (
+from tree_sitter_analyzer.languages.language_detector_helpers import (
     build_content_pattern_weights,
     build_extension_confidence_map,
     get_cached_language,

@@ -8,73 +8,73 @@ to ensure backward compatibility for analyze_code_structure tool.
 
 from typing import Any
 
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     append_compact_fields_section as _append_compact_fields_section_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     append_compact_info_section as _append_compact_info_section_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     append_compact_methods_section as _append_compact_methods_section_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     append_detail_fields_section as _append_detail_fields_section_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     append_detailed_methods_section as _append_detailed_methods_section_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     append_full_class_info_section as _append_full_class_info_section_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     append_full_imports_section as _append_full_imports_section_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     append_full_package_section as _append_full_package_section_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     append_multi_class_full_sections as _append_multi_class_full_sections_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     append_single_class_full_sections as _append_single_class_full_sections_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     clean_csv_text as _clean_csv_text_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     compact_table_header as _compact_table_header_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     convert_visibility as _convert_visibility_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     create_full_signature as _create_full_signature_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     detail_method_groups as _detail_method_groups_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     extract_doc_summary as _extract_doc_summary_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     format_csv as _format_csv_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     full_table_header as _full_table_header_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     get_class_fields as _get_class_fields_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     get_class_methods as _get_class_methods_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     get_platform_newline as _get_platform_newline_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     get_visibility_symbol as _get_visibility_symbol_helper,
 )
-from ._legacy_table_formatter_helpers import (
+from .formatters.legacy.helpers import (
     shorten_type as _shorten_type_helper,
 )
 

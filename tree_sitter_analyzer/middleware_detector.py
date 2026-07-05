@@ -20,9 +20,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ._route_detector_helpers import unquote, walk
 from .core.parser import Parser
 from .project_graph import _language_from_ext
+from .route_detector.helpers import unquote, walk
 
 logger = logging.getLogger(__name__)
 

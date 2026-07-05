@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Python formatter signature, visibility, decorator, class method, compact tests."""
 
-
 import pytest
 
 from tree_sitter_analyzer.formatters.python_formatter import PythonTableFormatter

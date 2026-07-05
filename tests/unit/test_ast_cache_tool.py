@@ -34,9 +34,12 @@ class TestGetCache:
             tool.get_cache()
 
     def test_creates_cache_with_project_root(self, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
         tool = ASTCacheTool(project_root=str(tmp_path))
         cache = tool.get_cache()
         assert cache is not None
+        assert isinstance(cache, ASTCache)
 
     def test_reuses_existing_cache(self, tmp_path):
         tool = ASTCacheTool(project_root=str(tmp_path))

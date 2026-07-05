@@ -22,24 +22,33 @@ class TestSecurityValidatorInitialization:
 
     def test_default_initialization(self):
         """测试默认初始化"""
+        from tree_sitter_analyzer.security.regex_checker import RegexSafetyChecker
+
         validator = SecurityValidator()
-        assert validator is not None
+        assert isinstance(validator, SecurityValidator)
         assert validator.boundary_manager is None
-        assert validator.regex_checker is not None
+        assert isinstance(validator.regex_checker, RegexSafetyChecker)
 
     def test_initialization_with_project_root(self):
         """测试带项目根目录的初始化"""
+        from tree_sitter_analyzer.security.boundary_manager import (
+            ProjectBoundaryManager,
+        )
+        from tree_sitter_analyzer.security.regex_checker import RegexSafetyChecker
+
         with tempfile.TemporaryDirectory() as temp_dir:
             validator = SecurityValidator(temp_dir)
-            assert validator.boundary_manager is not None
-            assert validator.regex_checker is not None
+            assert isinstance(validator.boundary_manager, ProjectBoundaryManager)
+            assert isinstance(validator.regex_checker, RegexSafetyChecker)
 
     def test_initialization_with_invalid_project_root(self):
         """测试无效项目根目录的初始化"""
-        # Non-existent path should still initialize, but boundary_manager should be None
+        from tree_sitter_analyzer.security.regex_checker import RegexSafetyChecker
+
+        # Non-existent path: boundary_manager must be None; regex_checker still initializes
         validator = SecurityValidator("/nonexistent/path")
-        # The boundary_manager should be None or initialized gracefully
-        assert validator.regex_checker is not None
+        assert validator.boundary_manager is None
+        assert isinstance(validator.regex_checker, RegexSafetyChecker)
 
 
 class TestValidateFilePath:

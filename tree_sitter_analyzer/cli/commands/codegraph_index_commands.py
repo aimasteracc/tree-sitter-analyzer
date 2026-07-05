@@ -81,12 +81,21 @@ def _incremental_sync_payload(args: Any, output_format: str) -> dict[str, Any]:
 def _knowledge_graph_index_payload(args: Any, output_format: str) -> dict[str, Any]:
     return {
         "mode": getattr(args, "knowledge_graph_index_mode", "update") or "update",
-        "backend": getattr(args, "knowledge_graph_backend", "json") or "json",
+        "backend": getattr(args, "knowledge_graph_backend", "auto") or "auto",
         "max_files": int(getattr(args, "knowledge_graph_max_files", 1_000_000)),
-        "max_nodes": int(getattr(args, "knowledge_graph_max_nodes", 100_000)),
-        "max_edges": int(getattr(args, "knowledge_graph_max_edges", 500_000)),
+        "max_nodes": int(getattr(args, "knowledge_graph_max_nodes", 0)),
+        "max_edges": int(getattr(args, "knowledge_graph_max_edges", 0)),
         "include_docs": not bool(getattr(args, "knowledge_graph_no_docs", False)),
         "output_format": output_format,
+    }
+
+
+def _knowledge_graph_serve_payload(args: Any) -> dict[str, Any]:
+    return {
+        "project_root": _project_root(args),
+        "host": getattr(args, "knowledge_graph_host", "127.0.0.1") or "127.0.0.1",
+        "port": int(getattr(args, "knowledge_graph_port", 8765)),
+        "open_browser": not bool(getattr(args, "knowledge_graph_no_browser", False)),
     }
 
 
@@ -180,6 +189,84 @@ def run_knowledge_graph_index(args: Any, output_error: OutputErrorFn) -> int:
 
     _print(result, output_format)
     return _exit_code_for(result)
+
+
+def run_knowledge_graph_serve(args: Any, output_error: OutputErrorFn) -> int:
+    """Dispatch ``--knowledge-graph-serve`` → local HTTP service."""
+    try:
+        from ...knowledge_graph.server import serve_knowledge_graph
+    except Exception as exc:  # pragma: no cover  # noqa: BLE001
+        output_error(f"--knowledge-graph-serve failed to import service: {exc}")
+        return 1
+
+    payload = _knowledge_graph_serve_payload(args)
+    try:
+        serve_knowledge_graph(**payload)
+    except KeyboardInterrupt:
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        output_error(f"--knowledge-graph-serve failed: {exc}")
+        return 1
+    return 0
+
+
+def run_knowledge_graph_watch(args: Any) -> int:
+    """Dispatch ``--knowledge-graph-watch`` → resident watch daemon."""
+    from ...ast_cache import ASTCache
+    from ...file_watcher import FileWatcherDaemon
+    from ...knowledge_graph.builder import KnowledgeGraphBuilder
+    from ...knowledge_graph.stores import LadybugKnowledgeGraphStore
+
+    project_root = _project_root(args)
+
+    # Perform initial indexing
+    cache = ASTCache(project_root)
+    cache.index_project()
+    cache.close()
+
+    # Build initial knowledge graph
+    builder = KnowledgeGraphBuilder(project_root)
+    snapshot = builder.build(include_docs=True)
+    lb_store = LadybugKnowledgeGraphStore(project_root)
+    lb_store.write(snapshot)
+
+    # Define on_sync callback
+    def on_sync(sync_result: dict) -> None:
+        details = sync_result.get("details", [])
+        if not details:
+            return
+        changed = [
+            d["file"] for d in details if d.get("considered") in ("indexed", "updated")
+        ]
+        deleted = [d["file"] for d in details if d.get("considered") == "deleted"]
+        if not changed and not deleted:
+            return
+        try:
+            for fp in deleted:
+                lb_store.delete_by_file(fp)
+            if changed:
+                for fp in changed:
+                    lb_store.delete_by_file(fp)
+                delta = builder.build_delta(changed)
+                lb_store.patch(list(delta.nodes), [], list(delta.edges), [])
+        except Exception:
+            pass
+
+    # Start daemon
+    backend = getattr(args, "knowledge_graph_watch_backend", "poll") or "poll"
+    daemon = FileWatcherDaemon(cache, backend=backend, on_sync=on_sync)
+    daemon.start()
+    print(f"TSA knowledge graph watch started: {backend} backend", flush=True)
+    print("Press Ctrl-C to stop.", flush=True)
+
+    try:
+        import time
+
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        daemon.stop()
+        return 0
 
 
 def run_codegraph_metrics(args: Any, output_error: OutputErrorFn) -> int:

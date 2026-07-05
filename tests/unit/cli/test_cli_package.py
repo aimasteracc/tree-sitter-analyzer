@@ -22,6 +22,7 @@ def test_cli_exports() -> None:
     module cached with None-typed exports.
     """
     import importlib
+
     # Re-run cli/__init__.py without invalidating already-collected modules.
     # Deleting cli_main or command modules makes later patch("...") calls hit
     # freshly imported modules while tests still hold old function objects.

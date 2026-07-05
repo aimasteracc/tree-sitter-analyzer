@@ -97,7 +97,7 @@ class TestCompactTableHeaderNoUnknown:
 
     def test_no_unknown_when_classes_empty(self) -> None:
         """compact_table_header must not return 'Unknown' when classes is []."""
-        from tree_sitter_analyzer._legacy_table_formatter_compact import (
+        from tree_sitter_analyzer.formatters.legacy.compact import (
             compact_table_header,
         )
 
@@ -109,7 +109,7 @@ class TestCompactTableHeaderNoUnknown:
 
     def test_uses_filename_stem_when_no_classes(self) -> None:
         """When classes is empty, the header must use the filename without extension."""
-        from tree_sitter_analyzer._legacy_table_formatter_compact import (
+        from tree_sitter_analyzer.formatters.legacy.compact import (
             compact_table_header,
         )
 
@@ -120,7 +120,7 @@ class TestCompactTableHeaderNoUnknown:
 
     def test_class_name_still_used_when_classes_present(self) -> None:
         """When classes are present the class name must still be used (not filename)."""
-        from tree_sitter_analyzer._legacy_table_formatter_compact import (
+        from tree_sitter_analyzer.formatters.legacy.compact import (
             compact_table_header,
         )
 
@@ -133,7 +133,7 @@ class TestCompactTableHeaderNoUnknown:
 
     def test_package_plus_class_unchanged(self) -> None:
         """Package.ClassName format must be preserved when both are present."""
-        from tree_sitter_analyzer._legacy_table_formatter_compact import (
+        from tree_sitter_analyzer.formatters.legacy.compact import (
             compact_table_header,
         )
 

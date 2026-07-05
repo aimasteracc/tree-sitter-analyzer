@@ -32,7 +32,9 @@ def get_all_node_types(lang: tree_sitter.Language) -> dict[str, dict[str, Any]]:
                 "is_visible": lang.node_kind_is_visible(i),
             }
         except Exception as e:
-            print(f"Warning: Failed to get info for node type {i}: {e}", file=sys.stderr)
+            print(
+                f"Warning: Failed to get info for node type {i}: {e}", file=sys.stderr
+            )
     return result
 
 
@@ -55,7 +57,7 @@ def get_all_field_names(lang: tree_sitter.Language) -> dict[int, str]:
 
 
 def infer_wrapper_patterns_heuristic(
-    node_types: dict[str, dict[str, Any]]
+    node_types: dict[str, dict[str, Any]],
 ) -> list[str]:
     """
     启发式推断 wrapper nodes
@@ -218,9 +220,7 @@ lambda x: x + 1
     paths = enumerate_syntactic_paths_sample(lang, sample_code, max_depth=3)
     print(f"Total unique paths: {len(paths)}")
     print("\nSample paths involving decorated_definition:")
-    decorated_paths = [
-        p for p in paths if "decorated_definition" in (p[0],) + p[1]
-    ]
+    decorated_paths = [p for p in paths if "decorated_definition" in (p[0],) + p[1]]
     for node_type, parent_path in sorted(decorated_paths)[:10]:
         parent_str = " > ".join(parent_path) if parent_path else "(root)"
         print(f"  {parent_str} > {node_type}")

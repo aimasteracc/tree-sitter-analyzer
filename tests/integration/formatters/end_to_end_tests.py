@@ -492,7 +492,9 @@ def create_processor(processor_type: str, config: Dict[str, Any]) -> DataProcess
                         assert "## Info" in cli_output or "## Methods" in cli_output
                     elif format_type == "csv":
                         lines = cli_output.strip().split("\n")
-                        assert len(lines) >= 2  # Header + data  # ratchet: nondeterministic
+                        assert (
+                            len(lines) >= 2
+                        )  # Header + data  # ratchet: nondeterministic
                         assert "," in lines[0]  # CSV header
                 else:
                     pytest.skip(

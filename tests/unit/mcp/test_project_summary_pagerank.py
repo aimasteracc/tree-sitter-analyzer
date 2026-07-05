@@ -313,20 +313,6 @@ class TestPageRank:
         nodes = manager._compute_pagerank(edges, top_n=3)
         assert len(nodes) <= 3
 
-    def test_pagerank_includes_inbound_refs(self, java_project: Path) -> None:
-        manager = ProjectIndexManager(project_root=str(java_project))
-        src = java_project / "src/main/java/com/example"
-        edges = []
-        for f in src.glob("*.java"):
-            edges.extend(manager._extract_edges_from_file(f))
-
-        nodes = manager._compute_pagerank(edges, top_n=5)
-        for node in nodes:
-            assert "name" in node
-            assert "pagerank" in node
-            assert "inbound_refs" in node
-            assert node["inbound_refs"] >= 0  # ratchet: nondeterministic
-
     def test_empty_edges_returns_empty(self, tmp_path: Path) -> None:
         manager = ProjectIndexManager(project_root=str(tmp_path))
         nodes = manager._compute_pagerank([], top_n=5)

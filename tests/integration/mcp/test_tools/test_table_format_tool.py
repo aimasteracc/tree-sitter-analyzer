@@ -92,6 +92,7 @@ public class TestClass {
 
         # Basic assertion that result is returned
         assert result is not None
+        assert hasattr(result, "name") or isinstance(result, dict)
 
     def test_get_tool_definition_fallback(self, mocker) -> None:
         """Test get_tool_definition fallback when MCP is not available."""

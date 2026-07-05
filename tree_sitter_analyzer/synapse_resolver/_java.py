@@ -374,7 +374,7 @@ def _project_owns(ctx: JavaResolverContext, simple: str) -> bool:
     When a file's language is unknown (no tag), it is treated as a possible
     owner (conservative — same convention as ``languages_compatible``).
     """
-    from .._language_family import languages_compatible
+    from ..languages.language_family import languages_compatible
 
     for owner_file, _sym_id in ctx.global_name_table.get(simple, []):
         owner_lang = ctx.file_languages.get(owner_file, "")

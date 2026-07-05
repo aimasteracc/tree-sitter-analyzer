@@ -12,23 +12,23 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from ._api_query_helpers import (
+from .core.analysis_engine import AnalysisRequest, UnifiedAnalysisEngine
+from .internal_api.query_helpers import (
     filter_elements_by_type,
     group_captures_by_main_node,
     query_execution_result,
 )
-from ._api_result_helpers import (
+from .internal_api.result_helpers import (
     code_analysis_error,
     code_analysis_result,
     file_analysis_error,
     file_analysis_result,
 )
-from ._api_validation_helpers import (
+from .internal_api.validation_helpers import (
     apply_language_validation,
     mark_validation_readable,
     validation_result_template,
 )
-from .core.analysis_engine import AnalysisRequest, UnifiedAnalysisEngine
 from .utils import log_error
 
 logger = logging.getLogger(__name__)

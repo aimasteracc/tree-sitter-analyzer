@@ -447,8 +447,8 @@ class TestCssPropertyRecognition:
         for element in elements:
             if element.properties:
                 for prop_name, prop_value in element.properties.items():
-                    assert prop_name is not None
-                    assert prop_value is not None
+                    assert isinstance(prop_name, str) and prop_name != ""
+                    assert isinstance(prop_value, str)
 
 
 class TestCssRuleRecognition:

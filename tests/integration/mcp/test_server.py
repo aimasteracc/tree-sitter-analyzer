@@ -118,21 +118,6 @@ class TestMCPServerCore:
         """Set up test fixtures"""
         self.server = None  # Will be initialized when server class is implemented
 
-    def test_server_initialization_placeholder(self) -> None:
-        """Placeholder test for server initialization"""
-        # This test will be implemented once the server class exists
-        assert True, "Placeholder test - server class not yet implemented"
-
-    def test_tool_registration_placeholder(self) -> None:
-        """Placeholder test for tool registration"""
-        # This test will be implemented once the server class exists
-        assert True, "Placeholder test - tool registration not yet implemented"
-
-    def test_resource_registration_placeholder(self) -> None:
-        """Placeholder test for resource registration"""
-        # This test will be implemented once the server class exists
-        assert True, "Placeholder test - resource registration not yet implemented"
-
 
 class TestMCPProtocolCompliance:
     """Test MCP protocol compliance"""
@@ -157,19 +142,9 @@ class TestMCPProtocolCompliance:
 class TestMCPServerErrorHandling:
     """Test error handling in MCP server"""
 
-    def test_error_handling_placeholder(self) -> None:
-        """Placeholder test for error handling"""
-        # This test will be implemented once the server class exists
-        assert True, "Placeholder test - error handling not yet implemented"
-
 
 class TestMCPServerIntegration:
     """Test integration with existing analyzer components"""
-
-    def test_analyzer_integration_placeholder(self) -> None:
-        """Placeholder test for analyzer integration"""
-        # This test will be implemented once integration is complete
-        assert True, "Placeholder test - analyzer integration not yet implemented"
 
 
 if __name__ == "__main__":

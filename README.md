@@ -23,6 +23,13 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 > **Requires Python 3.10+** (check: `python3 --version`). Install from [python.org](https://www.python.org/downloads/) if needed.
 
+### Automated install (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh | bash
+```
+
+Auto-installs `uv` if missing, detects Claude Desktop / Claude Code / Cursor / VS Code, and writes the MCP entry. Run `tree-sitter-analyzer --doctor` to verify.
 One-line install for **Claude Code**:
 
 ```bash
@@ -155,7 +162,7 @@ CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 312 CLI flags
+### 321 CLI flags
 
 Superset of CodeGraph's CLI surface. Highlights:
 
@@ -413,14 +420,14 @@ MCP client config (the project root inside the container is the mount point `/wo
 
 ## Supported Languages
 
-21 language plugins; 13 fully wired into the indexer (full symbol + call graph) + 2 symbol-indexed (call-graph wiring pending) + 5 (data/markup) reachable via the single-file CLI path + 1 scaffold (plugin exists, indexer wiring pending). bash and scala graduated in v1.22.0; the 2026-05-24 patch unblocked Swift / Kotlin / Ruby / PHP / C# that had been silently skipped for months.
+22 language plugins; 13 fully wired into the indexer (full symbol + call graph) + 2 symbol-indexed (call-graph wiring pending) + 5 (data/markup) reachable via the single-file CLI path + 2 scaffold (plugin exists, indexer wiring pending). bash and scala graduated in v1.22.0; the 2026-05-24 patch unblocked Swift / Kotlin / Ruby / PHP / C# that had been silently skipped for months.
 
 | Tier | Languages |
 |---|---|
 | **Full index + symbol + call graph** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
 | **Full index + symbols (call-graph wiring pending)** | Bash · Scala |
 | **Single-file analysis (CLI)** | HTML · CSS · Markdown · SQL · YAML |
-| **Scaffold (plugin exists, indexer wiring pending)** | json |
+| **Scaffold (plugin exists, indexer wiring pending)** | JSON · Lua |
 
 CodeGraph supports a similar set. **Dart, Vue, Svelte, Lua** are not yet shipped — aspirational backlog, no committed date.
 
@@ -441,7 +448,7 @@ Mostly nothing. The defaults are designed so you can hook it into your agent and
 
 | Metric | Value |
 |---|---|
-| Tests passed | 18,493 ✅ |
+| Tests passed | Comprehensive test suite ✅ |
 | Coverage | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | Type safety | 100 % mypy |
 | Platforms | macOS · Linux · Windows |
@@ -463,8 +470,8 @@ uv run python check_quality.py --new-code-only  # quality gate
 | Symptom | Fix |
 |---|---|
 | `unsupported language` on `.swift / .kt / .rb / .php / .cs` | Update to ≥ 1.12.x — the 5-language gap was patched in commit `50e99a8f`. Grammar modules for extras-gated languages are not bundled in the base install; run `pip install "tree-sitter-analyzer[swift]"` (or `kotlin`, `ruby`, `php`, `csharp`) to add them. |
-| MCP server doesn't appear in client | `TREE_SITTER_PROJECT_ROOT` must be **absolute**; restart the client after config edit. |
-| `database is locked` | Stop any other process holding `.ast-cache/index.db`; if persistent, `rm -rf .ast-cache && tree-sitter-analyzer --autoindex`. |
+| MCP server doesn't appear in client | `TREE_SITTER_PROJECT_ROOT` must be an **absolute path** (e.g. `$(pwd)` or `/home/user/project`); a relative path causes the server to resolve against the wrong directory. Restart the client after editing. Run `tree-sitter-analyzer --doctor` to verify. |
+| `database is locked` | Stop any other process holding `.ast-cache/index.db`; if persistent, `rm -rf .ast-cache && tree-sitter-analyzer --full-index`. |
 | Slow first call | First call builds the index. Subsequent calls are sub-second. Run `--full-index` upfront to amortise. |
 | Agent picks the wrong tool | Use a `tsa-*` skill (`/tsa-graph`, `/tsa-find`, ...) — each skill restricts the visible tool set to one workflow. |
 

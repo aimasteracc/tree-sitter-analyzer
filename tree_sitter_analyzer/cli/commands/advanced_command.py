@@ -8,7 +8,8 @@ Handles advanced analysis functionality.
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from ..._api_result_helpers import element_to_dict
+from tree_sitter_analyzer.internal_api.result_helpers import element_to_dict
+
 from ...constants import (
     ELEMENT_TYPE_CLASS,
     ELEMENT_TYPE_FUNCTION,

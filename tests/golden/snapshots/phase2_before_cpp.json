@@ -1,0 +1,559 @@
+{
+  "language": "cpp",
+  "corpus_file": "tests/golden/corpus_cpp.cpp",
+  "snapshot_timestamp": "2026-06-28T17:00:46.007770+00:00",
+  "symbol_count": 110,
+  "symbols": [
+    {
+      "name": "iostream",
+      "kind": "import",
+      "start_line": 16
+    },
+    {
+      "name": "string",
+      "kind": "import",
+      "start_line": 17
+    },
+    {
+      "name": "vector",
+      "kind": "import",
+      "start_line": 18
+    },
+    {
+      "name": "memory",
+      "kind": "import",
+      "start_line": 19
+    },
+    {
+      "name": "functional",
+      "kind": "import",
+      "start_line": 20
+    },
+    {
+      "name": "nested_var",
+      "kind": "variable",
+      "start_line": 28
+    },
+    {
+      "name": "using std::string;",
+      "kind": "import",
+      "start_line": 33
+    },
+    {
+      "name": "using std::vector;",
+      "kind": "import",
+      "start_line": 34
+    },
+    {
+      "name": "using namespace std;",
+      "kind": "import",
+      "start_line": 35
+    },
+    {
+      "name": "ForwardDeclared",
+      "kind": "class",
+      "start_line": 41
+    },
+    {
+      "name": "ForwardStruct",
+      "kind": "class",
+      "start_line": 42
+    },
+    {
+      "name": "regular_function",
+      "kind": "function",
+      "start_line": 51
+    },
+    {
+      "name": "function_with_defaults",
+      "kind": "function",
+      "start_line": 58
+    },
+    {
+      "name": "swap_values",
+      "kind": "function",
+      "start_line": 65
+    },
+    {
+      "name": "get_const_pointer",
+      "kind": "function",
+      "start_line": 74
+    },
+    {
+      "name": "inline_function",
+      "kind": "function",
+      "start_line": 81
+    },
+    {
+      "name": "constexpr_factorial",
+      "kind": "function",
+      "start_line": 88
+    },
+    {
+      "name": "template_max",
+      "kind": "function",
+      "start_line": 100
+    },
+    {
+      "name": "template_add",
+      "kind": "function",
+      "start_line": 108
+    },
+    {
+      "name": "variadic_print",
+      "kind": "function",
+      "start_line": 116
+    },
+    {
+      "name": "sum",
+      "kind": "function",
+      "start_line": 124
+    },
+    {
+      "name": "lambda_examples",
+      "kind": "function",
+      "start_line": 139
+    },
+    {
+      "name": "Point",
+      "kind": "class",
+      "start_line": 175
+    },
+    {
+      "name": "x",
+      "kind": "variable",
+      "start_line": 176
+    },
+    {
+      "name": "y",
+      "kind": "variable",
+      "start_line": 177
+    },
+    {
+      "name": "Point",
+      "kind": "function",
+      "start_line": 179
+    },
+    {
+      "name": "distance",
+      "kind": "function",
+      "start_line": 181
+    },
+    {
+      "name": "OuterStruct",
+      "kind": "class",
+      "start_line": 189
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 190
+    },
+    {
+      "name": "InnerStruct",
+      "kind": "class",
+      "start_line": 192
+    },
+    {
+      "name": "name",
+      "kind": "variable",
+      "start_line": 193
+    },
+    {
+      "name": "id",
+      "kind": "variable",
+      "start_line": 194
+    },
+    {
+      "name": "inner",
+      "kind": "variable",
+      "start_line": 197
+    },
+    {
+      "name": "BaseClass",
+      "kind": "class",
+      "start_line": 207
+    },
+    {
+      "name": "private_field",
+      "kind": "variable",
+      "start_line": 209
+    },
+    {
+      "name": "protected_field",
+      "kind": "variable",
+      "start_line": 212
+    },
+    {
+      "name": "public_field",
+      "kind": "variable",
+      "start_line": 215
+    },
+    {
+      "name": "BaseClass",
+      "kind": "function",
+      "start_line": 218
+    },
+    {
+      "name": "~BaseClass",
+      "kind": "function",
+      "start_line": 221
+    },
+    {
+      "name": "virtual_method",
+      "kind": "function",
+      "start_line": 224
+    },
+    {
+      "name": "pure_virtual_method",
+      "kind": "function",
+      "start_line": 229
+    },
+    {
+      "name": "static_method",
+      "kind": "function",
+      "start_line": 232
+    },
+    {
+      "name": "get_value",
+      "kind": "function",
+      "start_line": 237
+    },
+    {
+      "name": "DerivedClass",
+      "kind": "class",
+      "start_line": 248
+    },
+    {
+      "name": "data",
+      "kind": "variable",
+      "start_line": 250
+    },
+    {
+      "name": "DerivedClass",
+      "kind": "function",
+      "start_line": 253
+    },
+    {
+      "name": "virtual_method",
+      "kind": "function",
+      "start_line": 257
+    },
+    {
+      "name": "pure_virtual_method",
+      "kind": "function",
+      "start_line": 262
+    },
+    {
+      "name": "final_method",
+      "kind": "function",
+      "start_line": 267
+    },
+    {
+      "name": "Interface1",
+      "kind": "class",
+      "start_line": 275
+    },
+    {
+      "name": "interface1_method",
+      "kind": "function",
+      "start_line": 277
+    },
+    {
+      "name": "Interface2",
+      "kind": "class",
+      "start_line": 280
+    },
+    {
+      "name": "interface2_method",
+      "kind": "function",
+      "start_line": 282
+    },
+    {
+      "name": "MultipleInheritance",
+      "kind": "class",
+      "start_line": 285
+    },
+    {
+      "name": "interface1_method",
+      "kind": "function",
+      "start_line": 287
+    },
+    {
+      "name": "interface2_method",
+      "kind": "function",
+      "start_line": 288
+    },
+    {
+      "name": "Stack",
+      "kind": "class",
+      "start_line": 299
+    },
+    {
+      "name": "elements",
+      "kind": "variable",
+      "start_line": 301
+    },
+    {
+      "name": "push",
+      "kind": "function",
+      "start_line": 304
+    },
+    {
+      "name": "pop",
+      "kind": "function",
+      "start_line": 308
+    },
+    {
+      "name": "empty",
+      "kind": "function",
+      "start_line": 314
+    },
+    {
+      "name": "Pair",
+      "kind": "class",
+      "start_line": 323
+    },
+    {
+      "name": "key",
+      "kind": "variable",
+      "start_line": 325
+    },
+    {
+      "name": "value",
+      "kind": "variable",
+      "start_line": 326
+    },
+    {
+      "name": "Pair",
+      "kind": "function",
+      "start_line": 329
+    },
+    {
+      "name": "get_key",
+      "kind": "function",
+      "start_line": 331
+    },
+    {
+      "name": "get_value",
+      "kind": "function",
+      "start_line": 332
+    },
+    {
+      "name": "FixedArray",
+      "kind": "class",
+      "start_line": 339
+    },
+    {
+      "name": "operator[]",
+      "kind": "function",
+      "start_line": 344
+    },
+    {
+      "name": "size",
+      "kind": "function",
+      "start_line": 348
+    },
+    {
+      "name": "Tuple",
+      "kind": "class",
+      "start_line": 357
+    },
+    {
+      "name": "head",
+      "kind": "variable",
+      "start_line": 366
+    },
+    {
+      "name": "Tuple",
+      "kind": "function",
+      "start_line": 368
+    },
+    {
+      "name": "Complex",
+      "kind": "class",
+      "start_line": 378
+    },
+    {
+      "name": "real",
+      "kind": "variable",
+      "start_line": 380
+    },
+    {
+      "name": "imag",
+      "kind": "variable",
+      "start_line": 381
+    },
+    {
+      "name": "Complex",
+      "kind": "function",
+      "start_line": 384
+    },
+    {
+      "name": "operator+",
+      "kind": "function",
+      "start_line": 387
+    },
+    {
+      "name": "operator-",
+      "kind": "function",
+      "start_line": 391
+    },
+    {
+      "name": "operator*",
+      "kind": "function",
+      "start_line": 395
+    },
+    {
+      "name": "operator-",
+      "kind": "function",
+      "start_line": 401
+    },
+    {
+      "name": "operator==",
+      "kind": "function",
+      "start_line": 406
+    },
+    {
+      "name": "operator=",
+      "kind": "function",
+      "start_line": 411
+    },
+    {
+      "name": "operator+=",
+      "kind": "function",
+      "start_line": 420
+    },
+    {
+      "name": "operator[]",
+      "kind": "function",
+      "start_line": 430
+    },
+    {
+      "name": "operator()",
+      "kind": "function",
+      "start_line": 435
+    },
+    {
+      "name": "operator double",
+      "kind": "function",
+      "start_line": 440
+    },
+    {
+      "name": "operator bool",
+      "kind": "function",
+      "start_line": 444
+    },
+    {
+      "name": "operator<<",
+      "kind": "function",
+      "start_line": 449
+    },
+    {
+      "name": "memory_management_examples",
+      "kind": "function",
+      "start_line": 460
+    },
+    {
+      "name": "Color",
+      "kind": "class",
+      "start_line": 488
+    },
+    {
+      "name": "Status",
+      "kind": "class",
+      "start_line": 497
+    },
+    {
+      "name": "Priority",
+      "kind": "class",
+      "start_line": 506
+    },
+    {
+      "name": "using IntVector = vector<int>;",
+      "kind": "import",
+      "start_line": 517
+    },
+    {
+      "name": "using StringMap = std::map<string, string>;",
+      "kind": "import",
+      "start_line": 518
+    },
+    {
+      "name": "using FunctionPtr = int(*)(int, int);",
+      "kind": "import",
+      "start_line": 521
+    },
+    {
+      "name": "FieldsExample",
+      "kind": "class",
+      "start_line": 531
+    },
+    {
+      "name": "field_int",
+      "kind": "variable",
+      "start_line": 534
+    },
+    {
+      "name": "field_double",
+      "kind": "variable",
+      "start_line": 535
+    },
+    {
+      "name": "field_string",
+      "kind": "variable",
+      "start_line": 536
+    },
+    {
+      "name": "const_field",
+      "kind": "variable",
+      "start_line": 537
+    },
+    {
+      "name": "static_field",
+      "kind": "variable",
+      "start_line": 538
+    },
+    {
+      "name": "static_const_field",
+      "kind": "variable",
+      "start_line": 539
+    },
+    {
+      "name": "mutable_field",
+      "kind": "variable",
+      "start_line": 540
+    },
+    {
+      "name": "FieldsExample",
+      "kind": "function",
+      "start_line": 543
+    },
+    {
+      "name": "method_with_params",
+      "kind": "function",
+      "start_line": 547
+    },
+    {
+      "name": "auto_examples",
+      "kind": "function",
+      "start_line": 568
+    },
+    {
+      "name": "decltype_examples",
+      "kind": "function",
+      "start_line": 588
+    },
+    {
+      "name": "structured_binding_examples",
+      "kind": "function",
+      "start_line": 599
+    },
+    {
+      "name": "main",
+      "kind": "function",
+      "start_line": 626
+    }
+  ],
+  "edges": []
+}

@@ -48,7 +48,7 @@ class TestPythonDecoratedMethodsRegression:
     @pytest.fixture
     def test_code(self):
         """测试代码：包含各种装饰器的类"""
-        return '''
+        return """
 class ClassWithNormalMethods:
     def method_a(self, x: int) -> str:
         return str(x)
@@ -83,7 +83,7 @@ class ClassWithProperty:
     @my_property.setter
     def my_property(self, value: str) -> None:
         pass
-'''
+"""
 
     def test_normal_methods_count(self, plugin, test_code):
         """测试普通方法被正确提取"""
@@ -107,8 +107,7 @@ class ClassWithProperty:
             methods = [
                 e
                 for e in result.elements
-                if hasattr(e, "name")
-                and e.name in ["method_a", "method_b"]
+                if hasattr(e, "name") and e.name in ["method_a", "method_b"]
             ]
             assert len(methods) == 2, f"Expected 2 methods, got {len(methods)}"
         finally:
@@ -136,19 +135,18 @@ class ClassWithProperty:
             class_methods = [
                 e
                 for e in result.elements
-                if hasattr(e, "name")
-                and e.name in ["class_method_a", "class_method_b"]
+                if hasattr(e, "name") and e.name in ["class_method_a", "class_method_b"]
             ]
-            assert (
-                len(class_methods) == 2
-            ), f"Expected 2 class methods, got {len(class_methods)}"
+            assert len(class_methods) == 2, (
+                f"Expected 2 class methods, got {len(class_methods)}"
+            )
 
             # 验证装饰器信息
             for method in class_methods:
                 if hasattr(method, "decorators"):
-                    assert (
-                        "classmethod" in method.decorators
-                    ), f"{method.name} missing @classmethod decorator"
+                    assert "classmethod" in method.decorators, (
+                        f"{method.name} missing @classmethod decorator"
+                    )
         finally:
             Path(temp_path).unlink()
 
@@ -176,16 +174,16 @@ class ClassWithProperty:
                 for e in result.elements
                 if hasattr(e, "name") and e.name == "static_method_a"
             ]
-            assert (
-                len(static_methods) == 1
-            ), f"Expected 1 static method, got {len(static_methods)}"
+            assert len(static_methods) == 1, (
+                f"Expected 1 static method, got {len(static_methods)}"
+            )
 
             # 验证装饰器信息
             method = static_methods[0]
             if hasattr(method, "decorators"):
-                assert (
-                    "staticmethod" in method.decorators
-                ), "static_method_a missing @staticmethod decorator"
+                assert "staticmethod" in method.decorators, (
+                    "static_method_a missing @staticmethod decorator"
+                )
         finally:
             Path(temp_path).unlink()
 
@@ -213,9 +211,9 @@ class ClassWithProperty:
                 if hasattr(e, "name")
                 and e.name in ["normal", "cls_method", "static_method"]
             ]
-            assert (
-                len(mixed_methods) == 3
-            ), f"Expected 3 methods, got {len(mixed_methods)}: {[m.name for m in mixed_methods]}"
+            assert len(mixed_methods) == 3, (
+                f"Expected 3 methods, got {len(mixed_methods)}: {[m.name for m in mixed_methods]}"
+            )
         finally:
             Path(temp_path).unlink()
 
@@ -242,9 +240,9 @@ class ClassWithProperty:
                 for e in result.elements
                 if hasattr(e, "name") and e.name == "my_property"
             ]
-            assert (
-                len(property_methods) == 2
-            ), f"Expected 2 property methods (getter + setter), got {len(property_methods)}"
+            assert len(property_methods) == 2, (
+                f"Expected 2 property methods (getter + setter), got {len(property_methods)}"
+            )
         finally:
             Path(temp_path).unlink()
 
@@ -261,7 +259,9 @@ class ClassWithProperty:
 
             # 统计所有函数/方法
             all_functions = [
-                e for e in result.elements if hasattr(e, "name") and hasattr(e, "parameters")
+                e
+                for e in result.elements
+                if hasattr(e, "name") and hasattr(e, "parameters")
             ]
 
             # 期望的方法列表

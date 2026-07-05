@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from ._health_history import HealthHistory
+from .registry.health_history import HealthHistory
 
 logger = logging.getLogger(__name__)
 

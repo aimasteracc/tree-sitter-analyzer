@@ -25,14 +25,14 @@ from ...language_loader import loader  # noqa: F401
 from ...models import Class, CodeElement, Function, Import, Variable
 from ...plugins.base import ElementExtractor
 from ...utils import log_debug
-from ._class_helpers import (
+from ._class import (
     extract_class,
     extract_enum,
     extract_interface,
     extract_namespace,
     extract_type_alias,
 )
-from ._function_helpers import (
+from ._function import (
     extract_abstract_method_signature,
     extract_arrow_function,
     extract_function,
@@ -40,16 +40,16 @@ from ._function_helpers import (
     extract_method,
     extract_method_signature,
 )
-from ._import_info_helpers import extract_import_info_simple
-from ._parameter_helpers import extract_parameters_with_types
-from ._signature_helpers import (
+from ._import_info import extract_import_info_simple
+from ._parameter import extract_parameters_with_types
+from ._signature import (
     parse_function_signature,
     parse_method_signature,
 )
-from ._text_helpers import calculate_complexity, get_node_text_optimized
-from ._traversal_helpers import traverse_and_extract_iterative
-from ._tsdoc_helpers import clean_tsdoc, extract_tsdoc_for_line
-from ._variable_helpers import (
+from ._text import calculate_complexity, get_node_text_optimized
+from ._traversal import traverse_and_extract_iterative
+from ._tsdoc import clean_tsdoc, extract_tsdoc_for_line
+from ._variable import (
     extract_property,
     extract_property_signature,
     extract_variables_from_declaration,
@@ -147,7 +147,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             "enum_declaration": self._extract_enum_optimized,
             "abstract_class_declaration": self._extract_class_optimized,
             # Theme-I (2026-06-10): namespace/module containers were invisible
-            # (and everything inside them lost — see _traversal_helpers).
+            # (and everything inside them lost — see _traversal).
             "internal_module": self._extract_namespace_optimized,
             "module": self._extract_namespace_optimized,
         }

@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from tree_sitter_analyzer._ast_cache_graph import bfs_callees, bfs_callers
+from tree_sitter_analyzer.cache.graph import bfs_callees, bfs_callers
 from tree_sitter_analyzer.graph.edge_store import EdgeKind, symbol_node
 
 # ---------------------------------------------------------------------------

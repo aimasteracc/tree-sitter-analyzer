@@ -242,13 +242,11 @@ class TestInformationLeakagePrevention:
     async def test_error_message_sanitization(self, safe_project_structure):
         """エラーメッセージのサニタイゼーション"""
         await assert_error_message_sanitization()
-        assert True
 
     @pytest.mark.asyncio
     async def test_stack_trace_filtering(self, safe_project_structure):
         """スタックトレースのフィルタリング"""
         await assert_stack_trace_filtering()
-        assert True
 
     @pytest.mark.asyncio
     async def test_file_content_filtering(self, tmp_path):

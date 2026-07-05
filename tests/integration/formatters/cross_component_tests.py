@@ -467,7 +467,9 @@ public class TestService {
             consistency_report = validation_result["consistency_report"]
 
             # Should have at least MCP and API working
-            assert len(consistency_report["successful_interfaces"]) >= 2, (  # ratchet: nondeterministic
+            assert (
+                len(consistency_report["successful_interfaces"]) >= 2
+            ), (  # ratchet: nondeterministic
                 f"Too few successful interfaces for {format_type}: {consistency_report['successful_interfaces']}"
             )
 

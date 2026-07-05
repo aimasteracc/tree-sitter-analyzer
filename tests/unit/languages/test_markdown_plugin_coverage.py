@@ -492,3 +492,170 @@ class TestMarkdownElementAttributes:
         assert elem.item_count is None
         assert elem.row_count is None
         assert elem.column_count is None
+
+
+# ---------------------------------------------------------------------------
+# Tests migrated from test_markdown_plugin_coverage_boost.py
+# ---------------------------------------------------------------------------
+
+
+class _Node:
+    def __init__(
+        self,
+        node_type,
+        *,
+        raw_text="",
+        children=None,
+        start_point=(0, 0),
+        end_point=(0, 1),
+    ):
+        self.type = node_type
+        self.raw_text = raw_text
+        self.children = children or []
+        self.start_point = start_point
+        self.end_point = end_point
+
+
+class TestFencedCodeBlockBehavioral:
+    def test_fenced_code_block_extracts_language_and_line_count(self):
+        extractor = MarkdownElementExtractor()
+        raw_text = "```python\nprint('hello')\nprint('bye')\n```"
+        code_node = _Node(
+            "fenced_code_block", raw_text=raw_text, start_point=(0, 0), end_point=(3, 3)
+        )
+        root = _Node("document", children=[code_node])
+
+        code_blocks = []
+        with patch.object(
+            extractor,
+            "_get_node_text_optimized",
+            side_effect=lambda node: node.raw_text,
+        ):
+            extractor._extract_fenced_code_blocks(root, code_blocks)
+
+        assert len(code_blocks) == 1
+        block = code_blocks[0]
+        assert block.name == "Code Block (python)"
+        assert block.element_type == "code_block"
+        assert block.language_info == "python"
+        assert block.language == "python"
+        assert block.line_count == 4
+        assert block.type == "code_block"
+
+    def test_fenced_code_block_without_language_uses_unknown_name(self):
+        extractor = MarkdownElementExtractor()
+        raw_text = "```\nplain text\n```"
+        code_node = _Node(
+            "fenced_code_block", raw_text=raw_text, start_point=(0, 0), end_point=(2, 3)
+        )
+        root = _Node("document", children=[code_node])
+
+        code_blocks = []
+        with patch.object(
+            extractor,
+            "_get_node_text_optimized",
+            side_effect=lambda node: node.raw_text,
+        ):
+            extractor._extract_fenced_code_blocks(root, code_blocks)
+
+        assert len(code_blocks) == 1
+        block = code_blocks[0]
+        assert block.name == "Code Block (unknown)"
+        assert block.language_info == ""
+        assert block.language == "text"
+        assert block.line_count == 3
+
+    def test_fenced_code_block_node_failure_returns_empty(self):
+        extractor = MarkdownElementExtractor()
+        code_node = _Node("fenced_code_block", raw_text="```python\nx\n```")
+        root = _Node("document", children=[code_node])
+
+        code_blocks = []
+        with patch.object(
+            extractor,
+            "_get_node_text_optimized",
+            side_effect=RuntimeError("node text failed"),
+        ):
+            extractor._extract_fenced_code_blocks(root, code_blocks)
+
+        assert code_blocks == []
+
+
+class TestAtxHeaderBehavioral:
+    def test_atx_header_extracts_level_and_text(self):
+        extractor = MarkdownElementExtractor()
+        header_node = _Node(
+            "atx_heading",
+            raw_text="### Release Notes",
+            start_point=(4, 0),
+            end_point=(4, 17),
+        )
+        root = _Node("document", children=[header_node])
+
+        headers = []
+        with patch.object(
+            extractor,
+            "_get_node_text_optimized",
+            side_effect=lambda node: node.raw_text,
+        ):
+            extractor._extract_atx_headers(root, headers)
+
+        assert len(headers) == 1
+        header = headers[0]
+        assert header.name == "Release Notes"
+        assert header.level == 3
+        assert header.text == "Release Notes"
+        assert header.type == "heading"
+
+
+class TestListItemBehavioral:
+    def test_list_items_classify_task_ordered_unordered(self):
+        extractor = MarkdownElementExtractor()
+        task_list = _Node(
+            "list",
+            raw_text="- [x] done",
+            children=[_Node("list_item", raw_text="- [x] done")],
+        )
+        ordered_list = _Node(
+            "list",
+            raw_text="1. first",
+            children=[_Node("list_item", raw_text="1. first")],
+        )
+        unordered_list = _Node(
+            "list",
+            raw_text="- first",
+            children=[_Node("list_item", raw_text="- first")],
+        )
+        root = _Node("document", children=[task_list, ordered_list, unordered_list])
+
+        lists = []
+        with patch.object(
+            extractor,
+            "_get_node_text_optimized",
+            side_effect=lambda node: node.raw_text,
+        ):
+            extractor._extract_list_items(root, lists)
+
+        assert [item.list_type for item in lists] == ["task", "ordered", "unordered"]
+        assert [item.element_type for item in lists] == ["task_list", "list", "list"]
+        assert [item.item_count for item in lists] == [1, 1, 1]
+        assert [item.type for item in lists] == ["task", "ordered", "unordered"]
+
+    def test_list_item_node_failure_returns_empty(self):
+        extractor = MarkdownElementExtractor()
+        list_node = _Node(
+            "list",
+            raw_text="- broken",
+            children=[_Node("list_item", raw_text="- broken")],
+        )
+        root = _Node("document", children=[list_node])
+
+        lists = []
+        with patch.object(
+            extractor,
+            "_get_node_text_optimized",
+            side_effect=RuntimeError("node text failed"),
+        ):
+            extractor._extract_list_items(root, lists)
+
+        assert lists == []

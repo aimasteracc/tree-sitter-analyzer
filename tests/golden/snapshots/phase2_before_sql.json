@@ -1,0 +1,14 @@
+{
+  "language": "sql",
+  "corpus_file": "tests/golden/corpus_sql.sql",
+  "snapshot_timestamp": "2026-06-28T17:00:46.521725+00:00",
+  "symbol_count": 1,
+  "symbols": [
+    {
+      "name": "__error__: Cannot load tree-sitter language for sql: No module named 'tree_sitter_languages'",
+      "kind": "error",
+      "start_line": 0
+    }
+  ],
+  "edges": []
+}

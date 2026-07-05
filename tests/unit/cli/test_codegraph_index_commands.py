@@ -15,6 +15,7 @@ from tree_sitter_analyzer.cli.commands.codegraph_index_commands import (
     _full_index_payload,
     _incremental_sync_payload,
     _knowledge_graph_index_payload,
+    _knowledge_graph_serve_payload,
     _metrics_payload,
     _print,
     _project_root,
@@ -23,6 +24,7 @@ from tree_sitter_analyzer.cli.commands.codegraph_index_commands import (
     run_full_index,
     run_incremental_sync,
     run_knowledge_graph_index,
+    run_knowledge_graph_serve,
 )
 
 
@@ -149,10 +151,10 @@ class TestKnowledgeGraphIndexPayload:
         args = _args()
         payload = _knowledge_graph_index_payload(args, "json")
         assert payload["mode"] == "update"
-        assert payload["backend"] == "json"
+        assert payload["backend"] == "auto"
         assert payload["max_files"] == 1_000_000
-        assert payload["max_nodes"] == 100_000
-        assert payload["max_edges"] == 500_000
+        assert payload["max_nodes"] == 0
+        assert payload["max_edges"] == 0
         assert payload["include_docs"] is True
         assert payload["output_format"] == "json"
 
@@ -204,6 +206,7 @@ _METRICS_CLS = (
 _KNOWLEDGE_INDEX_CLS = (
     "tree_sitter_analyzer.mcp.tools.knowledge_graph_tool.CodeGraphKnowledgeIndexTool"
 )
+_KNOWLEDGE_SERVE = "tree_sitter_analyzer.knowledge_graph.server.serve_knowledge_graph"
 _OUTPUT_FMT = (
     "tree_sitter_analyzer.cli.commands.codegraph_index_commands._output_format"
 )
@@ -339,6 +342,58 @@ class TestRunKnowledgeGraphIndex:
         out = capsys.readouterr().out
         assert code == 0
         assert "kg ok" in out
+
+
+# ---------------------------------------------------------------------------
+# run_knowledge_graph_serve
+# ---------------------------------------------------------------------------
+
+
+class TestRunKnowledgeGraphServe:
+    def test_payload_defaults(self, tmp_path):
+        args = _args(project_root=str(tmp_path))
+        payload = _knowledge_graph_serve_payload(args)
+        assert payload == {
+            "project_root": str(tmp_path),
+            "host": "127.0.0.1",
+            "port": 8765,
+            "open_browser": True,
+        }
+
+    def test_payload_custom_values(self, tmp_path):
+        args = _args(
+            project_root=str(tmp_path),
+            knowledge_graph_host="0.0.0.0",
+            knowledge_graph_port=9001,
+            knowledge_graph_no_browser=True,
+        )
+        payload = _knowledge_graph_serve_payload(args)
+        assert payload == {
+            "project_root": str(tmp_path),
+            "host": "0.0.0.0",
+            "port": 9001,
+            "open_browser": False,
+        }
+
+    def test_success_returns_0(self, tmp_path):
+        args = _args(project_root=str(tmp_path))
+        with patch(_KNOWLEDGE_SERVE) as serve:
+            code = run_knowledge_graph_serve(args, lambda e: None)
+        assert code == 0
+        serve.assert_called_once_with(
+            project_root=str(tmp_path),
+            host="127.0.0.1",
+            port=8765,
+            open_browser=True,
+        )
+
+    def test_execute_failure_returns_1(self, tmp_path):
+        args = _args(project_root=str(tmp_path))
+        errors: list[str] = []
+        with patch(_KNOWLEDGE_SERVE, side_effect=RuntimeError("serve fail")):
+            code = run_knowledge_graph_serve(args, errors.append)
+        assert code == 1
+        assert errors == ["--knowledge-graph-serve failed: serve fail"]
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Tests for JavaScriptTableFormatter full/compact table formatting output."""
 
-
 import pytest
 
 from tree_sitter_analyzer.formatters.javascript_formatter import (

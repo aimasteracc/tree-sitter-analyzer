@@ -6,7 +6,7 @@ offsets. Any multi-byte character upstream of an import (e.g. an em-dash in a
 module docstring) silently shifted every downstream import literal, producing
 mangled ``table_output`` lines like ``import port json`` instead of
 ``import json``. See the ``_import_package_mixin._extract_import_info`` and
-``_import_helpers.import_node_context`` byte-aware fix.
+``_import.import_node_context`` byte-aware fix.
 """
 
 from __future__ import annotations

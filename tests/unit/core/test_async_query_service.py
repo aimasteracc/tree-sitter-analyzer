@@ -248,7 +248,7 @@ const arrowFunction = () => {
                 timeout=10.0,  # 10秒のタイムアウト
             )
             assert results is not None
-            # 結果の数は実装依存なので、リストであることのみ確認
+            assert isinstance(results, list)
         except asyncio.TimeoutError:
             pytest.fail("Query execution timed out")
 
