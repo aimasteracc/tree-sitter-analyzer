@@ -1,0 +1,265 @@
+# Dogfood PR Check
+#
+# Runs on every PR to develop. Uses TSA's own tools to analyze the PR's
+# change impact, then runs the claim invariant suite (unit/smoke subset).
+# Posts a dogfood-report comment so reviewers can see the claim status.
+#
+# Does NOT block merge — provides signal, not gate.
+# The claim invariants themselves (if they assert exact values) are the gate.
+#
+# Model: read-only analysis + comment only. Never commits or pushes.
+
+name: Dogfood PR Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [develop]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: dogfood-pr-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claim-invariants:
+    name: Claim Invariant Suite (unit subset)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      impact_status: ${{ steps.impact.outputs.status }}
+      impact_summary: ${{ steps.impact.outputs.summary }}
+      impact_verification: ${{ steps.impact.outputs.verification_command }}
+      claim_status: ${{ steps.claims.outputs.status }}
+      claim_summary: ${{ steps.claims.outputs.summary }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Setup system deps
+        uses: ./.github/actions/setup-system
+        with:
+          os: ubuntu-latest
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run change impact
+        id: impact
+        run: |
+          set -euo pipefail
+          mkdir -p dogfood-artifacts
+
+          set +e
+          uv run python -m tree_sitter_analyzer --change-impact --output-format json \
+            > dogfood-artifacts/change-impact.json \
+            2> dogfood-artifacts/change-impact.txt
+          EXIT_CODE=$?
+          set -e
+          export EXIT_CODE
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          json_path = Path("dogfood-artifacts/change-impact.json")
+          txt_path = Path("dogfood-artifacts/change-impact.txt")
+          status = "failed"
+          summary = "change-impact produced no output"
+          verification = "uv run pytest -q"
+
+          if txt_path.exists():
+              text = txt_path.read_text(encoding="utf-8", errors="replace").strip()
+              if text:
+                  summary = text.splitlines()[-1][:500]
+
+          if json_path.exists():
+              try:
+                  data = json.loads(json_path.read_text(encoding="utf-8"))
+              except json.JSONDecodeError as exc:
+                  summary = f"invalid change-impact json: {exc}"
+              else:
+                  summary = (
+                      data.get("summary_line")
+                      or data.get("agent_summary", {}).get("summary_line")
+                      or summary
+                  )
+                  verification = (
+                      data.get("verification_command")
+                      or data.get("agent_summary", {}).get("verification_command")
+                      or verification
+                  )
+                  if os.environ.get("EXIT_CODE") == "0" and data.get("success", False):
+                      status = "passed"
+
+          if os.environ.get("EXIT_CODE") != "0":
+              status = "failed"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"status={status}\n")
+              f.write(f"summary={summary.replace(chr(10), ' ')}\n")
+              f.write(f"verification_command={verification}\n")
+          PY
+
+      - name: Run claim invariant suite (unit+smoke subset)
+        id: claims
+        run: |
+          set -euo pipefail
+          # Run only the fast, non-benchmark tests in the claims suite.
+          # Full benchmarks (390x, 96pct, index-speed) run on the Linux full_language axis.
+          set +e
+          uv run pytest tests/benchmarks/claims/ \
+            -v --tb=short --no-header -q \
+            --override-ini="addopts=--strict-markers --timeout=60" \
+            -m "claims_benchmark and not full_language" \
+            --junit-xml=dogfood-claims.xml 2>&1 | tee claims-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+
+          # Extract summary
+          SUMMARY=$(tail -5 claims-output.txt | grep -E "(passed|failed|error|warning)" | tail -1 || echo "no summary")
+          echo "summary=${SUMMARY}" >> "$GITHUB_OUTPUT"
+
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=passed" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Print full output for debugging
+          cat claims-output.txt
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+        continue-on-error: true
+
+      - name: Upload claims report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dogfood-claims-${{ github.run_id }}
+          path: |
+            claims-output.txt
+            dogfood-claims.xml
+          retention-days: 14
+
+  post-dogfood-comment:
+    name: Post Dogfood Report
+    needs: claim-invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download claims artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dogfood-claims-${{ github.run_id }}
+          path: ./dogfood-artifacts
+        continue-on-error: true
+
+      - name: Build and post dogfood comment
+        uses: actions/github-script@v9
+        env:
+          CLAIM_STATUS: ${{ needs.claim-invariants.outputs.claim_status }}
+          CLAIM_SUMMARY: ${{ needs.claim-invariants.outputs.claim_summary }}
+          IMPACT_STATUS: ${{ needs.claim-invariants.outputs.impact_status }}
+          IMPACT_SUMMARY: ${{ needs.claim-invariants.outputs.impact_summary }}
+          IMPACT_VERIFICATION: ${{ needs.claim-invariants.outputs.impact_verification }}
+        with:
+          script: |
+            const fs = require('fs');
+            const claimStatus = process.env.CLAIM_STATUS || 'unknown';
+            const claimSummary = process.env.CLAIM_SUMMARY || 'no summary';
+            const impactStatus = process.env.IMPACT_STATUS || 'unknown';
+            const impactSummary = process.env.IMPACT_SUMMARY || 'no summary';
+            const impactVerification = process.env.IMPACT_VERIFICATION || 'uv run pytest -q';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            let claimsOutput = '';
+            try {
+              claimsOutput = fs.readFileSync('./dogfood-artifacts/claims-output.txt', 'utf8')
+                .split('\n').slice(-30).join('\n');
+            } catch (e) {
+              claimsOutput = '(artifact not available)';
+            }
+
+            const statusIcon = status => status === 'passed' ? '✅' : status === 'failed' ? '❌' : '⚠️';
+
+            const body = [
+              `## 🔍 Dogfood PR Check`,
+              ``,
+              `| Layer | Status |`,
+              `|---|---|`,
+              `| Change Impact | ${statusIcon(impactStatus)} ${impactStatus} |`,
+              `| Claim Invariant Suite | ${statusIcon(claimStatus)} ${claimStatus} |`,
+              ``,
+              `**Change impact:** \`${impactSummary}\``,
+              `**Verification:** \`${impactVerification}\``,
+              `**Claim summary:** \`${claimSummary}\``,
+              ``,
+              `<details>`,
+              `<summary>Claim invariant test output (last 30 lines)</summary>`,
+              ``,
+              `\`\`\`text`,
+              claimsOutput,
+              `\`\`\``,
+              ``,
+              `</details>`,
+              ``,
+              `**What these tests guard:**`,
+              `- 390× cross-language mis-wire claim`,
+              `- BM25 ranked search with relevance_score`,
+              `- 5 safety layers (safe/guard/constraints/impact/verdicts)`,
+              `- Reactive push subscribe/unsubscribe (RFC-0001)`,
+              `- Index build speed regression`,
+              ``,
+              `Full results: [workflow run](${runUrl})`,
+              ``,
+              `---`,
+              `_Dogfood PR Check — [docs/superpowers/specs/2026-07-08-svcd-dogfood-system-design.md](docs/superpowers/specs/2026-07-08-svcd-dogfood-system-design.md)_`,
+            ].join('\n');
+
+            // Find and update existing dogfood comment, or create new one
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const marker = '## 🔍 Dogfood PR Check';
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+              console.log(`Updated dogfood comment #${existing.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+              console.log('Created dogfood comment');
+            }

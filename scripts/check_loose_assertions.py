@@ -453,8 +453,9 @@ def _check_added_ranges(added: dict[str, set[int]], source_label: str) -> int:
     if not all_violations:
         return 0
 
+    _CROSS = "\u274c" if sys.stdout.encoding and sys.stdout.encoding.lower().startswith("utf") else "FAIL"
     print(
-        f"❌ Found {len(all_violations)} new weak assertion(s) in the {source_label}:\n"
+        f"{_CROSS} Found {len(all_violations)} new weak assertion(s) in the {source_label}:\n"
     )
     for v in all_violations:
         print(f"  {v.path}:{v.lineno}: {v.snippet}")
