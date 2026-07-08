@@ -99,6 +99,7 @@ jobs:
       highest_priority: ${{ steps.analyze.outputs.highest_priority }}
       health_grade: ${{ steps.analyze.outputs.health_grade }}
       claim_failures: ${{ steps.analyze.outputs.claim_failures }}
+      tool_failure_count: ${{ steps.analyze.outputs.tool_failure_count }}
       work_item_count: ${{ steps.analyze.outputs.work_item_count }}
 
     steps:
@@ -153,6 +154,7 @@ jobs:
               f.write(f"highest_priority={s['highest_priority']}\n")
               f.write(f"health_grade={s['health_grade']}\n")
               f.write(f"claim_failures={s['claim_failures']}\n")
+              f.write(f"tool_failure_count={s.get('tool_failures', 0)}\n")
               f.write(f"work_item_count={s['work_item_count']}\n")
           PY
         shell: bash
@@ -173,6 +175,7 @@ jobs:
           lines.append(f"**Work items:** {s['work_item_count']}  ")
           lines.append(f"**Highest priority:** {s['highest_priority']}  ")
           lines.append(f"**Claim failures:** {s['claim_failures']}  ")
+          lines.append(f"**Tool failures:** {s.get('tool_failures', 0)}  ")
           lines.append("")
           lines.append("## Priority Matrix")
           lines.append("")
@@ -312,6 +315,17 @@ jobs:
           path: artifacts/opus-brief.md
           retention-days: 14
 
+      - name: Load brief prompt
+        if: steps.brief.outputs.has_items == 'true'
+        id: brief_prompt
+        shell: bash
+        run: |
+          {
+            echo 'prompt<<EOF'
+            cat artifacts/opus-brief.md
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Dispatch Claude Sonnet 4.6 dev agent
         if: >
           steps.brief.outputs.has_items == 'true' &&
@@ -320,7 +334,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           track_progress: true
-          prompt_file: artifacts/opus-brief.md
+          prompt: ${{ steps.brief_prompt.outputs.prompt }}
           claude_args: |
             --model claude-sonnet-4-6
             --allowedTools "Edit,Bash(uv run*),Bash(git add*),Bash(git commit*),Bash(git checkout*),Bash(git push*),Bash(gh pr create*)"
@@ -353,6 +367,7 @@ jobs:
             const grade = '${{ needs.full-dogfood.outputs.health_grade }}';
             const priority = '${{ needs.full-dogfood.outputs.highest_priority }}';
             const claimFails = '${{ needs.full-dogfood.outputs.claim_failures }}';
+            const toolFails = '${{ needs.full-dogfood.outputs.tool_failure_count }}';
             const workItems = '${{ needs.full-dogfood.outputs.work_item_count }}';
 
             const body = [
@@ -363,6 +378,7 @@ jobs:
               `| Health Grade | **${grade}** |`,
               `| Highest Priority | **${priority}** |`,
               `| Claim Failures | **${claimFails}** |`,
+              `| Tool Failures | **${toolFails}** |`,
               `| Work Items | **${workItems}** |`,
               ``,
               `**Run:** ${runUrl}`,
@@ -393,20 +409,23 @@ jobs:
                 body: body,
               });
             } else {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'dogfood-sprint',
+                color: '0052cc',
+                description: 'Auto-generated dogfood sprint report',
+              }).catch(error => {
+                if (error.status !== 422) {
+                  throw error;
+                }
+              });
+
               await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title: `Dogfood Sprint — ${today}`,
                 body: body,
                 labels: ['dogfood-sprint'],
-              }).catch(async () => {
-                // Label may not exist yet — create it
-                await github.rest.issues.createLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  name: 'dogfood-sprint',
-                  color: '0052cc',
-                  description: 'Auto-generated dogfood sprint report',
-                }).catch(() => {});
               });
             }

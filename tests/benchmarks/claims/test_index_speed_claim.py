@@ -28,7 +28,11 @@ import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
 
-pytestmark = [pytest.mark.benchmark, pytest.mark.claims_benchmark]
+pytestmark = [
+    pytest.mark.benchmark,
+    pytest.mark.claims_benchmark,
+    pytest.mark.full_language,
+]
 
 # Target: each file should be indexed in under 0.5 s on average.
 # This is a generous bound — the claim is 97 s for 2,950 files (~33 ms/file).

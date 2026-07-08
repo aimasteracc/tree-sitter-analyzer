@@ -181,8 +181,13 @@ def test_subscribe_is_idempotent(tmp_path):
     reset_subscription_registry()
     selector = "functions()"
     tool = HyphaeSubscribeTool(str(tmp_path))
-    r1 = asyncio.run(tool.execute({"selector": selector, "output_format": "json"}))
-    asyncio.run(tool.execute({"selector": selector, "output_format": "json"}))
+
+    async def _subscribe_twice():
+        first = await tool.execute({"selector": selector, "output_format": "json"})
+        await tool.execute({"selector": selector, "output_format": "json"})
+        return first
+
+    r1 = asyncio.run(_subscribe_twice())
 
     reg = get_subscription_registry()
     subs = reg.subscriptions_for(r1["sub_id"])

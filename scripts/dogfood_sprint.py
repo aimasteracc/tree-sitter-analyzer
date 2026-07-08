@@ -31,7 +31,8 @@ Output JSON schema
         "work_item_count": N,
         "highest_priority": "P0|P1|P2|None",
         "health_grade": "A|B|C|D|F",
-        "claim_failures": N
+        "claim_failures": N,
+        "tool_failures": N
     }
 }
 """
@@ -46,6 +47,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOL_BIN = [sys.executable, "-m", "tree_sitter_analyzer"]
@@ -92,6 +94,10 @@ def _run_tsa(args: list[str], *, timeout: int = 120) -> dict[str, Any]:
 
 def _run_claim_tests() -> list[dict[str, Any]]:
     """Run the claims benchmark suite and parse results."""
+    report_path = ROOT / "dogfood-claims-report.xml"
+    if report_path.exists():
+        report_path.unlink()
+
     cmd = [
         *PYTEST_BIN,
         "tests/benchmarks/claims/",
@@ -100,8 +106,7 @@ def _run_claim_tests() -> list[dict[str, Any]]:
         "--no-header",
         "-q",
         "--override-ini=addopts=--strict-markers --timeout=60",
-        "--json-report",
-        "--json-report-file=dogfood-claims-report.json",
+        "--junit-xml=dogfood-claims-report.xml",
     ]
     try:
         proc = subprocess.run(
@@ -112,22 +117,17 @@ def _run_claim_tests() -> list[dict[str, Any]]:
             timeout=120,
             check=False,
         )
-        # Try to parse json-report
-        report_path = ROOT / "dogfood-claims-report.json"
         if report_path.exists():
-            report = json.loads(report_path.read_text())
-            results = []
-            for test in report.get("tests", []):
-                results.append(
+            try:
+                return _parse_claim_junit_report(report_path)
+            except ET.ParseError as exc:
+                return [
                     {
-                        "test": test.get("nodeid", ""),
-                        "status": test.get("outcome", "unknown"),
-                        "message": (test.get("call", {}).get("longrepr", "") or "")[
-                            :500
-                        ],
+                        "test": "claims_suite",
+                        "status": "error",
+                        "message": f"invalid junit xml: {exc}",
                     }
-                )
-            return results
+                ]
         # Fallback: parse stdout
         results = []
         for line in proc.stdout.splitlines():
@@ -149,9 +149,55 @@ def _run_claim_tests() -> list[dict[str, Any]]:
                     else "xpass"
                 )
                 results.append({"test": name, "status": status, "message": ""})
-        return results
+        if results:
+            return results
+        return [
+            {
+                "test": "claims_suite",
+                "status": "error" if proc.returncode != 0 else "unknown",
+                "message": (proc.stderr or proc.stdout or "")[:500],
+            }
+        ]
     except Exception as exc:
         return [{"test": "claims_suite", "status": "error", "message": str(exc)}]
+
+
+def _parse_claim_junit_report(report_path: Path) -> list[dict[str, Any]]:
+    """Parse pytest's JUnit XML output into the script's claim result schema."""
+    root = ET.parse(report_path).getroot()
+    results: list[dict[str, Any]] = []
+    for case in root.findall(".//testcase"):
+        classname = case.get("classname", "")
+        name = case.get("name", "unknown")
+        test_id = f"{classname}::{name}" if classname else name
+        status = "passed"
+        message = ""
+
+        failure = case.find("failure")
+        error = case.find("error")
+        skipped = case.find("skipped")
+
+        if failure is not None:
+            status = (
+                "xpass"
+                if "xpass"
+                in (failure.get("message", "") + (failure.text or "")).lower()
+                else "failed"
+            )
+            message = (failure.get("message") or failure.text or "")[:500]
+        elif error is not None:
+            status = "error"
+            message = (error.get("message") or error.text or "")[:500]
+        elif skipped is not None:
+            status = (
+                "xfail"
+                if (skipped.get("type") or "").lower() == "pytest.xfail"
+                else "skipped"
+            )
+            message = (skipped.get("message") or skipped.text or "")[:500]
+
+        results.append({"test": test_id, "status": status, "message": message})
+    return results
 
 
 # ─── Priority matrix builder ──────────────────────────────────────────────────
@@ -166,7 +212,7 @@ def _build_priority_matrix(
     items: list[dict[str, Any]] = []
 
     # P0: Claim invariant failures (README claims that are false)
-    failed_claims = [c for c in claim_results if c["status"] in ("failed", "xpass")]
+    failed_claims = [c for c in claim_results if c["status"] == "failed"]
     for claim in failed_claims:
         items.append(
             {
@@ -241,6 +287,33 @@ def _build_priority_matrix(
         )
 
     return items
+
+
+def _project_health_grade(health_data: dict[str, Any]) -> str:
+    """Collapse project-health output into one A-F summary grade."""
+    grade_distribution = health_data.get("grade_distribution")
+    if not isinstance(grade_distribution, dict):
+        agent_summary = health_data.get("agent_summary", {})
+        if isinstance(agent_summary, dict):
+            grade_distribution = agent_summary.get("grade_distribution")
+
+    if not isinstance(grade_distribution, dict):
+        return "?"
+
+    for grade in ("F", "D", "C", "B", "A"):
+        count = grade_distribution.get(grade, 0)
+        if isinstance(count, (int, float)) and count > 0:
+            return grade
+    return "?"
+
+
+def _count_tool_failures(
+    sequence: list[dict[str, Any]], claim_results: list[dict[str, Any]]
+) -> int:
+    """Count TSA and claim-suite invocation failures."""
+    return sum(1 for s in sequence if s.get("status") == "error") + sum(
+        1 for c in claim_results if c.get("status") == "error"
+    )
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -344,11 +417,7 @@ def main() -> int:
     )
 
     # Overall grade from health data
-    health_grade = (
-        health_step.get("data", {}).get("overall_grade")
-        or health_step.get("data", {}).get("grade")
-        or "?"
-    )
+    health_grade = _project_health_grade(health_step.get("data", {}))
     highest_priority = "None"
     for level in ("P0", "P1", "P2", "P3"):
         if any(i["priority"] == level for i in priority_matrix):
@@ -356,6 +425,7 @@ def main() -> int:
             break
 
     claim_failures = sum(1 for c in claim_results if c["status"] == "failed")
+    tool_failures = _count_tool_failures(sequence, claim_results)
 
     report = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -367,6 +437,7 @@ def main() -> int:
             "highest_priority": highest_priority,
             "health_grade": health_grade,
             "claim_failures": claim_failures,
+            "tool_failures": tool_failures,
         },
     }
 
@@ -380,6 +451,8 @@ def main() -> int:
     log(
         f"Done. Work items: {len(priority_matrix)}, highest priority: {highest_priority}"
     )
+    if tool_failures:
+        return 2
     return 1 if priority_matrix else 0
 
 

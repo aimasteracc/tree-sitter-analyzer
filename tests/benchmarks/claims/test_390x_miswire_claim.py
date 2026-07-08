@@ -33,7 +33,11 @@ import pytest
 
 from tree_sitter_analyzer.miswire_audit import audit
 
-pytestmark = [pytest.mark.benchmark, pytest.mark.claims_benchmark]
+pytestmark = [
+    pytest.mark.benchmark,
+    pytest.mark.claims_benchmark,
+    pytest.mark.full_language,
+]
 
 # ─── Planted polyglot corpus ─────────────────────────────────────────────────
 

@@ -30,6 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
+      impact_status: ${{ steps.impact.outputs.status }}
+      impact_summary: ${{ steps.impact.outputs.summary }}
+      impact_verification: ${{ steps.impact.outputs.verification_command }}
       claim_status: ${{ steps.claims.outputs.status }}
       claim_summary: ${{ steps.claims.outputs.summary }}
 
@@ -53,19 +56,78 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
+      - name: Run change impact
+        id: impact
+        run: |
+          set -euo pipefail
+          mkdir -p dogfood-artifacts
+
+          set +e
+          uv run python -m tree_sitter_analyzer --change-impact --output-format json \
+            > dogfood-artifacts/change-impact.json \
+            2> dogfood-artifacts/change-impact.txt
+          EXIT_CODE=$?
+          set -e
+          export EXIT_CODE
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          json_path = Path("dogfood-artifacts/change-impact.json")
+          txt_path = Path("dogfood-artifacts/change-impact.txt")
+          status = "failed"
+          summary = "change-impact produced no output"
+          verification = "uv run pytest -q"
+
+          if txt_path.exists():
+              text = txt_path.read_text(encoding="utf-8", errors="replace").strip()
+              if text:
+                  summary = text.splitlines()[-1][:500]
+
+          if json_path.exists():
+              try:
+                  data = json.loads(json_path.read_text(encoding="utf-8"))
+              except json.JSONDecodeError as exc:
+                  summary = f"invalid change-impact json: {exc}"
+              else:
+                  summary = (
+                      data.get("summary_line")
+                      or data.get("agent_summary", {}).get("summary_line")
+                      or summary
+                  )
+                  verification = (
+                      data.get("verification_command")
+                      or data.get("agent_summary", {}).get("verification_command")
+                      or verification
+                  )
+                  if os.environ.get("EXIT_CODE") == "0" and data.get("success", False):
+                      status = "passed"
+
+          if os.environ.get("EXIT_CODE") != "0":
+              status = "failed"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"status={status}\n")
+              f.write(f"summary={summary.replace(chr(10), ' ')}\n")
+              f.write(f"verification_command={verification}\n")
+          PY
+
       - name: Run claim invariant suite (unit+smoke subset)
         id: claims
         run: |
           set -euo pipefail
           # Run only the fast, non-benchmark tests in the claims suite.
           # Full benchmarks (390x, 96pct, index-speed) run on the Linux full_language axis.
+          set +e
           uv run pytest tests/benchmarks/claims/ \
             -v --tb=short --no-header -q \
             --override-ini="addopts=--strict-markers --timeout=60" \
             -m "claims_benchmark and not full_language" \
-            --junit-xml=dogfood-claims.xml 2>&1 | tee claims-output.txt || true
-
+            --junit-xml=dogfood-claims.xml 2>&1 | tee claims-output.txt
           EXIT_CODE=${PIPESTATUS[0]}
+          set -e
 
           # Extract summary
           SUMMARY=$(tail -5 claims-output.txt | grep -E "(passed|failed|error|warning)" | tail -1 || echo "no summary")
@@ -114,11 +176,20 @@ jobs:
 
       - name: Build and post dogfood comment
         uses: actions/github-script@v9
+        env:
+          CLAIM_STATUS: ${{ needs.claim-invariants.outputs.claim_status }}
+          CLAIM_SUMMARY: ${{ needs.claim-invariants.outputs.claim_summary }}
+          IMPACT_STATUS: ${{ needs.claim-invariants.outputs.impact_status }}
+          IMPACT_SUMMARY: ${{ needs.claim-invariants.outputs.impact_summary }}
+          IMPACT_VERIFICATION: ${{ needs.claim-invariants.outputs.impact_verification }}
         with:
           script: |
             const fs = require('fs');
-            const status = '${{ needs.claim-invariants.outputs.claim_status }}';
-            const summary = '${{ needs.claim-invariants.outputs.claim_summary }}';
+            const claimStatus = process.env.CLAIM_STATUS || 'unknown';
+            const claimSummary = process.env.CLAIM_SUMMARY || 'no summary';
+            const impactStatus = process.env.IMPACT_STATUS || 'unknown';
+            const impactSummary = process.env.IMPACT_SUMMARY || 'no summary';
+            const impactVerification = process.env.IMPACT_VERIFICATION || 'uv run pytest -q';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
             let claimsOutput = '';
@@ -129,16 +200,19 @@ jobs:
               claimsOutput = '(artifact not available)';
             }
 
-            const statusIcon = status === 'passed' ? '✅' : status === 'failed' ? '❌' : '⚠️';
+            const statusIcon = status => status === 'passed' ? '✅' : status === 'failed' ? '❌' : '⚠️';
 
             const body = [
               `## 🔍 Dogfood PR Check`,
               ``,
               `| Layer | Status |`,
               `|---|---|`,
-              `| Claim Invariant Suite | ${statusIcon} ${status} |`,
+              `| Change Impact | ${statusIcon(impactStatus)} ${impactStatus} |`,
+              `| Claim Invariant Suite | ${statusIcon(claimStatus)} ${claimStatus} |`,
               ``,
-              `**Summary:** \`${summary}\``,
+              `**Change impact:** \`${impactSummary}\``,
+              `**Verification:** \`${impactVerification}\``,
+              `**Claim summary:** \`${claimSummary}\``,
               ``,
               `<details>`,
               `<summary>Claim invariant test output (last 30 lines)</summary>`,
