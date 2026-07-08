@@ -339,6 +339,13 @@ class ASTCache:
             language_filter=language_filter,
         )
 
+    def _post_index_backfill(self, stats: dict[str, Any]) -> None:
+        """Run cross-file, Synapse, and unresolved-ref backfills after indexing.
+
+        Thin back-compat delegate — implementation lives in cache/indexer.py.
+        """
+        _indexer.post_index_backfill(self, stats)
+
     @staticmethod
     def _completed_full_index_sweep(stats: dict[str, Any]) -> bool:
         """True when this run processed the whole source set without gaps."""
