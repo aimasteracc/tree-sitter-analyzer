@@ -30,17 +30,22 @@ pytestmark = [pytest.mark.benchmark, pytest.mark.claims_benchmark]
 
 # ─── Subscribe response contract ─────────────────────────────────────────────
 
+
 def test_subscribe_returns_sub_id_and_resource_uri(tmp_path):
     """subscribe must return sub_id and resource_uri (tsa://hyphae/ scheme).
 
     README: 'returns a tsa://hyphae/{selector} MCP resource URI'
     """
     from tree_sitter_analyzer.mcp.tools.hyphae_subscribe_tool import HyphaeSubscribeTool
-    from tree_sitter_analyzer.registry.singleton_registry import reset_subscription_registry
+    from tree_sitter_analyzer.registry.singleton_registry import (
+        reset_subscription_registry,
+    )
 
     reset_subscription_registry()
     tool = HyphaeSubscribeTool(str(tmp_path))
-    result = asyncio.run(tool.execute({"selector": "functions()", "output_format": "json"}))
+    result = asyncio.run(
+        tool.execute({"selector": "functions()", "output_format": "json"})
+    )
 
     assert result.get("success") is not False, f"subscribe failed: {result}"
     assert "sub_id" in result, (
@@ -59,7 +64,9 @@ def test_subscribe_resource_uri_uses_tsa_hyphae_scheme(tmp_path):
     README: 'tsa://hyphae/{selector} MCP resource URI'
     """
     from tree_sitter_analyzer.mcp.tools.hyphae_subscribe_tool import HyphaeSubscribeTool
-    from tree_sitter_analyzer.registry.singleton_registry import reset_subscription_registry
+    from tree_sitter_analyzer.registry.singleton_registry import (
+        reset_subscription_registry,
+    )
 
     reset_subscription_registry()
     selector = "classes(language='python')"
@@ -71,7 +78,7 @@ def test_subscribe_resource_uri_uses_tsa_hyphae_scheme(tmp_path):
         f"resource_uri '{uri}' does not start with 'tsa://hyphae/'. "
         f"README specifies the tsa://hyphae/ scheme."
     )
-    decoded = urllib.parse.unquote(uri[len("tsa://hyphae/"):])
+    decoded = urllib.parse.unquote(uri[len("tsa://hyphae/") :])
     assert decoded == selector, (
         f"Decoded URI '{decoded}' does not match selector '{selector}'. "
         f"The URI must encode the selector."
@@ -95,7 +102,9 @@ def test_unsubscribe_removes_subscription(tmp_path):
     reset_subscription_registry()
     selector = "functions()"
     sub_tool = HyphaeSubscribeTool(str(tmp_path))
-    sub_result = asyncio.run(sub_tool.execute({"selector": selector, "output_format": "json"}))
+    sub_result = asyncio.run(
+        sub_tool.execute({"selector": selector, "output_format": "json"})
+    )
     sub_id = sub_result["sub_id"]
 
     reg = get_subscription_registry()
@@ -104,15 +113,20 @@ def test_unsubscribe_removes_subscription(tmp_path):
     )
 
     unsub_tool = HyphaeUnsubscribeTool(str(tmp_path))
-    asyncio.run(unsub_tool.execute({"sub_id": sub_id, "selector": selector, "output_format": "json"}))
+    asyncio.run(
+        unsub_tool.execute(
+            {"sub_id": sub_id, "selector": selector, "output_format": "json"}
+        )
+    )
 
     assert selector not in reg.subscriptions_for(sub_id), (
-        f"Subscription still active after unsubscribe. "
-        f"README claims 'unsubscribe cancels it'."
+        "Subscription still active after unsubscribe. "
+        "README claims 'unsubscribe cancels it'."
     )
 
 
 # ─── SubscriptionRegistry delta engine (the push trigger) ────────────────────
+
 
 def test_subscription_registry_detects_added_items():
     """Registry must detect when new items appear in a snapshot.

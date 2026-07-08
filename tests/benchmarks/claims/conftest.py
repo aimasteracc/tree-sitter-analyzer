@@ -8,6 +8,7 @@ Design rules (CLAUDE.md §11):
 - Use strict=True xfail for claims that are currently not met.
 - Emit measured_value so CI history provides regression visibility.
 """
+
 from __future__ import annotations
 
 import pytest

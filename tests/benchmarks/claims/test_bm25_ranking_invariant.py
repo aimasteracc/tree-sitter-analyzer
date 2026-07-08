@@ -19,8 +19,6 @@ tests/unit/mcp/test_fts5_bm25_ranking.py. This file tests the
 from __future__ import annotations
 
 import asyncio
-import os
-import tempfile
 
 import pytest
 
@@ -64,9 +62,13 @@ def test_bm25_search_results_have_relevance_score(indexed_project_with_symbols):
     README: 'relevance_score on every result (min-max normalized: best=1.0, weakest=0.0)'
     """
     tool = CodeGraphSymbolSearchTool(str(indexed_project_with_symbols))
-    result = asyncio.run(tool.execute({"query": "UserService", "output_format": "json"}))
+    result = asyncio.run(
+        tool.execute({"query": "UserService", "output_format": "json"})
+    )
     assert result["success"] is True
-    assert result["match_count"] >= 1, "Expected at least one result for 'UserService'"  # ratchet: nondeterministic search result count
+    assert result["match_count"] >= 1, (
+        "Expected at least one result for 'UserService'"
+    )  # ratchet: nondeterministic search result count
 
     for r in result["results"]:
         assert "relevance_score" in r, (
@@ -75,7 +77,9 @@ def test_bm25_search_results_have_relevance_score(indexed_project_with_symbols):
         )
 
 
-def test_bm25_relevance_scores_are_normalized_between_0_and_1(indexed_project_with_symbols):
+def test_bm25_relevance_scores_are_normalized_between_0_and_1(
+    indexed_project_with_symbols,
+):
     """Relevance scores must be in [0.0, 1.0] (min-max normalized per README).
 
     README: 'min-max normalized: best=1.0, weakest=0.0'
@@ -99,7 +103,9 @@ def test_bm25_exact_match_ranks_first(indexed_project_with_symbols):
     Exact name matches should always beat partial matches in BM25 ranking.
     """
     tool = CodeGraphSymbolSearchTool(str(indexed_project_with_symbols))
-    result = asyncio.run(tool.execute({"query": "UserService", "output_format": "json"}))
+    result = asyncio.run(
+        tool.execute({"query": "UserService", "output_format": "json"})
+    )
     assert result["success"] is True
     assert result["match_count"] >= 1  # ratchet: nondeterministic search result count
 
@@ -125,6 +131,6 @@ def test_bm25_results_are_sorted_by_score_descending(indexed_project_with_symbol
     for i in range(len(scores) - 1):
         assert scores[i] >= scores[i + 1], (
             f"Results not sorted by relevance_score descending at index {i}: "
-            f"score[{i}]={scores[i]} < score[{i+1}]={scores[i+1]}. "
+            f"score[{i}]={scores[i]} < score[{i + 1}]={scores[i + 1]}. "
             f"Full scores: {scores}"
         )

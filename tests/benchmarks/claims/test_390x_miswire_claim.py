@@ -38,9 +38,21 @@ pytestmark = [pytest.mark.benchmark, pytest.mark.claims_benchmark]
 # ─── Planted polyglot corpus ─────────────────────────────────────────────────
 
 _LANGUAGES = [
-    ("app.py", "python", "def process():\n    tokenize()\n    compute()\n    sorted([1])\n"),
-    ("lib.swift", "swift", "func tokenize() -> [String] { [] }\nfunc compute() -> Int { 0 }\nfunc sorted(_ a: [Int]) -> [Int] { a }\n"),
-    ("util.go", "go", "func compute() int { return 0 }\nfunc tokenize() []string { return nil }\n"),
+    (
+        "app.py",
+        "python",
+        "def process():\n    tokenize()\n    compute()\n    sorted([1])\n",
+    ),
+    (
+        "lib.swift",
+        "swift",
+        "func tokenize() -> [String] { [] }\nfunc compute() -> Int { 0 }\nfunc sorted(_ a: [Int]) -> [Int] { a }\n",
+    ),
+    (
+        "util.go",
+        "go",
+        "func compute() int { return 0 }\nfunc tokenize() []string { return nil }\n",
+    ),
     ("helper.js", "javascript", "function tokenize() {}\nfunction compute() {}\n"),
 ]
 
@@ -54,6 +66,7 @@ def _make_polyglot_repo() -> str:
 
 
 # ─── Core mis-wire guarantee ──────────────────────────────────────────────────
+
 
 def test_tsa_cross_language_miswires_are_zero_on_polyglot_corpus():
     """TSA must refuse every cross-language binding in a planted 4-language repo.
@@ -82,7 +95,9 @@ def test_naive_resolver_miswires_are_nonzero_on_polyglot_corpus():
     d = _make_polyglot_repo()
     try:
         r = audit(d, reindex=True)
-        assert r.naive_miswires > 0, (  # ratchet: nondeterministic call-edge count varies by corpus
+        assert (
+            r.naive_miswires > 0
+        ), (  # ratchet: nondeterministic call-edge count varies by corpus
             "Expected name-only resolver to mis-wire at least one edge on a "
             "4-language polyglot corpus, but got 0 — the corpus may not have "
             "cross-language name collisions."
@@ -108,20 +123,30 @@ def test_multiplier_is_large_on_polyglot_corpus():
         r = audit(d, reindex=True)
 
         if not r.call_edges_available:
-            pytest.skip("No call edges available in this SQLite build — cannot measure multiplier")
+            pytest.skip(
+                "No call edges available in this SQLite build — cannot measure multiplier"
+            )
 
         if r.naive_miswires == 0:
             # If there are no call edges at all, the test can't measure anything
             if r.total_call_edges == 0:
-                pytest.skip("No call edges extracted from planted corpus — skipping multiplier check")
+                pytest.skip(
+                    "No call edges extracted from planted corpus — skipping multiplier check"
+                )
             # The corpus has calls but no cross-language collisions - this is unexpected
             # but not a failure of TSA correctness
             return
 
         # Emit for CI history
-        print(f"[claim] 390x_multiplier measured={r.multiplier:.1f}x naive={r.naive_miswires} tsa={r.tsa_miswires}")
-        assert r.tsa_miswires == 0, f"TSA has mis-wires that degrade the multiplier: {r.tsa_offenders[:3]}"
-        assert r.multiplier > 1, (  # ratchet: nondeterministic multiplier depends on call-edge extraction
+        print(
+            f"[claim] 390x_multiplier measured={r.multiplier:.1f}x naive={r.naive_miswires} tsa={r.tsa_miswires}"
+        )
+        assert r.tsa_miswires == 0, (
+            f"TSA has mis-wires that degrade the multiplier: {r.tsa_offenders[:3]}"
+        )
+        assert (
+            r.multiplier > 1
+        ), (  # ratchet: nondeterministic multiplier depends on call-edge extraction
             f"Multiplier {r.multiplier:.1f}x is not > 1 — TSA is no better than name-only. "
             f"naive={r.naive_miswires}, tsa={r.tsa_miswires}."
         )

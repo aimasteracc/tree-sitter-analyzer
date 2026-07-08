@@ -89,6 +89,7 @@ def test_call_edge_classification_rate_on_fresh_index():
     """
     import glob as _glob
     import shutil
+
     tmp = tempfile.mkdtemp()
     try:
         cache = _build_indexed_python_project(tmp)
@@ -103,7 +104,9 @@ def test_call_edge_classification_rate_on_fresh_index():
 
         if not db_path or not os.path.exists(db_path):
             cache.close()
-            pytest.skip("No index.db produced — call graph not built in test environment")
+            pytest.skip(
+                "No index.db produced — call graph not built in test environment"
+            )
 
         row = None
         skip_reason = None
@@ -125,12 +128,16 @@ def test_call_edge_classification_rate_on_fresh_index():
 
         total, classified = row
         if not total:
-            pytest.skip("No call edges found in the synthetic project — call graph not built")
+            pytest.skip(
+                "No call edges found in the synthetic project — call graph not built"
+            )
 
         classified = classified or 0
         rate = classified / total * 100
         # Emit for CI history
-        print(f"[claim] 96pct_classification measured={rate:.1f}% ({classified}/{total})")
+        print(
+            f"[claim] 96pct_classification measured={rate:.1f}% ({classified}/{total})"
+        )
         assert rate >= 80.0, (
             f"Call edge classification rate {rate:.1f}% is below 80% threshold. "
             f"Classified: {classified}/{total}. "
@@ -147,6 +154,7 @@ def test_classification_rate_sql_is_documented():
     the command in the test that guards the claim.
     """
     import inspect
+
     src = inspect.getfile(test_classification_rate_sql_is_documented)
     with open(src, encoding="utf-8") as f:
         content = f.read()

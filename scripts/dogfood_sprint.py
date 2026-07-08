@@ -54,13 +54,18 @@ PYTEST_BIN = [sys.executable, "-m", "pytest"]
 
 # ─── Tool runners ─────────────────────────────────────────────────────────────
 
+
 def _run_tsa(args: list[str], *, timeout: int = 120) -> dict[str, Any]:
     cmd = [*TOOL_BIN, *args, "--output-format", "json"]
     t0 = time.perf_counter()
     try:
         proc = subprocess.run(
-            cmd, cwd=str(ROOT), capture_output=True, text=True,
-            timeout=timeout, check=False,
+            cmd,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
         )
         elapsed = time.perf_counter() - t0
         if proc.stdout.strip():
@@ -70,14 +75,19 @@ def _run_tsa(args: list[str], *, timeout: int = 120) -> dict[str, Any]:
                 data = {"raw": proc.stdout[:2000]}
         else:
             data = {"stderr": proc.stderr[:1000]} if proc.stderr else {}
-        return {"status": "ok" if proc.returncode == 0 else "error",
-                "elapsed_s": round(elapsed, 2), "data": data}
+        return {
+            "status": "ok" if proc.returncode == 0 else "error",
+            "elapsed_s": round(elapsed, 2),
+            "data": data,
+        }
     except subprocess.TimeoutExpired:
-        return {"status": "error", "elapsed_s": timeout,
-                "data": {"error": f"timeout after {timeout}s"}}
+        return {
+            "status": "error",
+            "elapsed_s": timeout,
+            "data": {"error": f"timeout after {timeout}s"},
+        }
     except Exception as exc:
-        return {"status": "error", "elapsed_s": 0,
-                "data": {"error": str(exc)}}
+        return {"status": "error", "elapsed_s": 0, "data": {"error": str(exc)}}
 
 
 def _run_claim_tests() -> list[dict[str, Any]]:
@@ -85,14 +95,22 @@ def _run_claim_tests() -> list[dict[str, Any]]:
     cmd = [
         *PYTEST_BIN,
         "tests/benchmarks/claims/",
-        "-v", "--tb=line", "--no-header", "-q",
+        "-v",
+        "--tb=line",
+        "--no-header",
+        "-q",
         "--override-ini=addopts=--strict-markers --timeout=60",
-        "--json-report", "--json-report-file=dogfood-claims-report.json",
+        "--json-report",
+        "--json-report-file=dogfood-claims-report.json",
     ]
     try:
         proc = subprocess.run(
-            cmd, cwd=str(ROOT), capture_output=True, text=True,
-            timeout=120, check=False,
+            cmd,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
         )
         # Try to parse json-report
         report_path = ROOT / "dogfood-claims-report.json"
@@ -100,21 +118,36 @@ def _run_claim_tests() -> list[dict[str, Any]]:
             report = json.loads(report_path.read_text())
             results = []
             for test in report.get("tests", []):
-                results.append({
-                    "test": test.get("nodeid", ""),
-                    "status": test.get("outcome", "unknown"),
-                    "message": (test.get("call", {}).get("longrepr", "") or "")[:500],
-                })
+                results.append(
+                    {
+                        "test": test.get("nodeid", ""),
+                        "status": test.get("outcome", "unknown"),
+                        "message": (test.get("call", {}).get("longrepr", "") or "")[
+                            :500
+                        ],
+                    }
+                )
             return results
         # Fallback: parse stdout
         results = []
         for line in proc.stdout.splitlines():
-            if " PASSED" in line or " FAILED" in line or " XFAIL" in line or " XPASS" in line:
+            if (
+                " PASSED" in line
+                or " FAILED" in line
+                or " XFAIL" in line
+                or " XPASS" in line
+            ):
                 parts = line.strip().split()
                 name = parts[0] if parts else "unknown"
-                status = "passed" if "PASSED" in line else \
-                         "failed" if "FAILED" in line else \
-                         "xfail" if "XFAIL" in line else "xpass"
+                status = (
+                    "passed"
+                    if "PASSED" in line
+                    else "failed"
+                    if "FAILED" in line
+                    else "xfail"
+                    if "XFAIL" in line
+                    else "xpass"
+                )
                 results.append({"test": name, "status": status, "message": ""})
         return results
     except Exception as exc:
@@ -123,8 +156,11 @@ def _run_claim_tests() -> list[dict[str, Any]]:
 
 # ─── Priority matrix builder ──────────────────────────────────────────────────
 
+
 def _build_priority_matrix(
-    health: dict, dead_code: dict, constraints: dict,
+    health: dict,
+    dead_code: dict,
+    constraints: dict,
     claim_results: list[dict],
 ) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
@@ -132,80 +168,95 @@ def _build_priority_matrix(
     # P0: Claim invariant failures (README claims that are false)
     failed_claims = [c for c in claim_results if c["status"] in ("failed", "xpass")]
     for claim in failed_claims:
-        items.append({
-            "priority": "P0",
-            "category": "claim_failure",
-            "title": f"Claim invariant failed: {claim['test'].split('::')[-1]}",
-            "details": claim["message"][:300],
-            "verification_command": "uv run pytest tests/benchmarks/claims/ -v",
-        })
+        items.append(
+            {
+                "priority": "P0",
+                "category": "claim_failure",
+                "title": f"Claim invariant failed: {claim['test'].split('::')[-1]}",
+                "details": claim["message"][:300],
+                "verification_command": "uv run pytest tests/benchmarks/claims/ -v",
+            }
+        )
 
     # P0: Unexpected xpass (a fixed claim that needs un-xfail)
     xpass = [c for c in claim_results if c["status"] == "xpass"]
     for claim in xpass:
-        items.append({
-            "priority": "P0",
-            "category": "xpass_needs_un_xfail",
-            "title": f"xpass — remove strict xfail: {claim['test'].split('::')[-1]}",
-            "details": "A previously-failing claim now passes. Remove the xfail decorator.",
-            "verification_command": f"uv run pytest {claim['test']} -v",
-        })
+        items.append(
+            {
+                "priority": "P0",
+                "category": "xpass_needs_un_xfail",
+                "title": f"xpass — remove strict xfail: {claim['test'].split('::')[-1]}",
+                "details": "A previously-failing claim now passes. Remove the xfail decorator.",
+                "verification_command": f"uv run pytest {claim['test']} -v",
+            }
+        )
 
     # P1: Architectural constraint violations
-    violations = (constraints.get("data", {}).get("violations") or [])
+    violations = constraints.get("data", {}).get("violations") or []
     for v in violations[:5]:
-        items.append({
-            "priority": "P1",
-            "category": "constraint_violation",
-            "title": f"Architecture violation: {v.get('rule_name', '?')}",
-            "details": str(v)[:300],
-            "verification_command": "uv run python -m tree_sitter_analyzer --check-constraints",
-        })
+        items.append(
+            {
+                "priority": "P1",
+                "category": "constraint_violation",
+                "title": f"Architecture violation: {v.get('rule_name', '?')}",
+                "details": str(v)[:300],
+                "verification_command": "uv run python -m tree_sitter_analyzer --check-constraints",
+            }
+        )
 
     # P2: Files graded D or F in project health
     health_data = health.get("data", {})
     graded_files = health_data.get("files") or health_data.get("file_grades") or []
-    df_files = [f for f in graded_files
-                if isinstance(f, dict) and f.get("grade") in ("D", "F")]
+    df_files = [
+        f for f in graded_files if isinstance(f, dict) and f.get("grade") in ("D", "F")
+    ]
     for f in df_files[:5]:
-        items.append({
-            "priority": "P2",
-            "category": "health_grade_df",
-            "title": f"File graded {f.get('grade')}: {f.get('file_path', '?')}",
-            "details": f"Score: {f.get('score', '?')}, weakest: {f.get('weakest_dimension', '?')}",
-            "verification_command": (
-                f"uv run python -m tree_sitter_analyzer --file-health "
-                f"{f.get('file_path', '?')}"
-            ),
-        })
+        items.append(
+            {
+                "priority": "P2",
+                "category": "health_grade_df",
+                "title": f"File graded {f.get('grade')}: {f.get('file_path', '?')}",
+                "details": f"Score: {f.get('score', '?')}, weakest: {f.get('weakest_dimension', '?')}",
+                "verification_command": (
+                    f"uv run python -m tree_sitter_analyzer --file-health "
+                    f"{f.get('file_path', '?')}"
+                ),
+            }
+        )
 
     # P3: Dead code symbols
     dead_data = dead_code.get("data", {})
     dead_funcs = dead_data.get("dead_functions") or []
     if dead_funcs:
-        items.append({
-            "priority": "P3",
-            "category": "dead_code",
-            "title": f"{len(dead_funcs)} potentially dead function(s) detected",
-            "details": ", ".join(
-                f.get("name", "?") for f in dead_funcs[:10]
-            ),
-            "verification_command": (
-                "uv run python -m tree_sitter_analyzer --dead-code --output-format json"
-            ),
-        })
+        items.append(
+            {
+                "priority": "P3",
+                "category": "dead_code",
+                "title": f"{len(dead_funcs)} potentially dead function(s) detected",
+                "details": ", ".join(f.get("name", "?") for f in dead_funcs[:10]),
+                "verification_command": (
+                    "uv run python -m tree_sitter_analyzer --dead-code --output-format json"
+                ),
+            }
+        )
 
     return items
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default="-", help="Output file path (- = stdout)")
-    parser.add_argument("--skip-claims", action="store_true",
-                        help="Skip running claim invariant tests (faster)")
-    parser.add_argument("--quiet", action="store_true", help="Suppress progress messages")
+    parser.add_argument(
+        "--skip-claims",
+        action="store_true",
+        help="Skip running claim invariant tests (faster)",
+    )
+    parser.add_argument(
+        "--quiet", action="store_true", help="Suppress progress messages"
+    )
     args = parser.parse_args()
 
     def log(msg: str) -> None:
@@ -239,20 +290,39 @@ def main() -> int:
     log("5/6 README number verification...")
     try:
         readme_proc = subprocess.run(
-            [*PYTEST_BIN, "tests/", "-k", "readme_counts", "-v", "--no-header",
-             "--override-ini=addopts=--strict-markers --timeout=30"],
-            cwd=str(ROOT), capture_output=True, text=True, timeout=60, check=False,
+            [
+                *PYTEST_BIN,
+                "tests/",
+                "-k",
+                "readme_counts",
+                "-v",
+                "--no-header",
+                "--override-ini=addopts=--strict-markers --timeout=30",
+            ],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
         )
         readme_status = "ok" if readme_proc.returncode == 0 else "error"
-        sequence.append({
-            "tool": "readme_counts",
-            "status": readme_status,
-            "elapsed_s": 0,
-            "data": {"output": readme_proc.stdout[-1000:]},
-        })
+        sequence.append(
+            {
+                "tool": "readme_counts",
+                "status": readme_status,
+                "elapsed_s": 0,
+                "data": {"output": readme_proc.stdout[-1000:]},
+            }
+        )
     except Exception as exc:
-        sequence.append({"tool": "readme_counts", "status": "error",
-                          "elapsed_s": 0, "data": {"error": str(exc)}})
+        sequence.append(
+            {
+                "tool": "readme_counts",
+                "status": "error",
+                "elapsed_s": 0,
+                "data": {"error": str(exc)},
+            }
+        )
 
     # 6. Claim invariants
     claim_results: list[dict] = []
@@ -266,7 +336,9 @@ def main() -> int:
     log("Building priority matrix...")
     health_step = next((s for s in sequence if s["tool"] == "project_health"), {})
     dead_step = next((s for s in sequence if s["tool"] == "dead_code"), {})
-    constraint_step = next((s for s in sequence if s["tool"] == "check_constraints"), {})
+    constraint_step = next(
+        (s for s in sequence if s["tool"] == "check_constraints"), {}
+    )
     priority_matrix = _build_priority_matrix(
         health_step, dead_step, constraint_step, claim_results
     )
@@ -305,7 +377,9 @@ def main() -> int:
         Path(args.out).write_text(output, encoding="utf-8")
         log(f"Report written to {args.out}")
 
-    log(f"Done. Work items: {len(priority_matrix)}, highest priority: {highest_priority}")
+    log(
+        f"Done. Work items: {len(priority_matrix)}, highest priority: {highest_priority}"
+    )
     return 1 if priority_matrix else 0
 
 

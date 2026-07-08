@@ -98,6 +98,7 @@ def test_index_speed_claim_measurement_command_is_documented():
     Ensures the repro path is visible to anyone who needs to verify the claim.
     """
     import inspect
+
     src = inspect.getfile(test_index_speed_claim_measurement_command_is_documented)
     with open(src, encoding="utf-8") as f:
         content = f.read()
