@@ -1,0 +1,412 @@
+# Dogfood Sprint — Multi-Model Deep Analysis
+#
+# Manual workflow: runs a full dogfood sequence using TSA against itself,
+# then dispatches the multi-model agent pipeline:
+#   1. Full dogfood analysis (project health + dead code + constraints +
+#      claim invariant suite)
+#   2. Priority matrix generation (Opus 4.8 as the orchestrator)
+#   3. Dev agents (Claude Sonnet 4.6) for P0/P1 items → open feature PRs
+#   4. GPT-5.5 review label auto-applied to all dogfood sprint PRs
+#
+# Safety design:
+#   - Dev agents open PRs to develop — they do NOT auto-merge
+#   - Never pushes to main or bypasses pre-commit hooks
+#   - Develop freeze rule: if a release/* PR is open, this workflow is a no-op
+#     (AGENTS.md §Release Gate — "feature PRs QUEUE while release is in flight")
+#
+# Triggers:
+#   - Manual: workflow_dispatch (on-demand sprint)
+#   - Scheduled: weekly (Sundays 01:00 UTC) — requires CLAUDE_CODE_OAUTH_TOKEN
+#
+# Required secrets:
+#   - CLAUDE_CODE_OAUTH_TOKEN: for Sonnet dev agents (auto-sprint-execute pattern)
+#   - OPENAI_API_KEY (optional): enables GPT-5.5 adversarial review step
+#
+# Model assignment (per spec):
+#   Commander (Opus 4.8): generates prioritized brief from dogfood report
+#   Developer (Sonnet 4.6): implements fixes (via claude-code-action)
+#   Reviewer (GPT-5.5): adversarial review of all dogfood-sprint PRs
+#
+# See: docs/superpowers/specs/2026-07-08-svcd-dogfood-system-design.md
+
+name: Dogfood Sprint
+
+on:
+  schedule:
+    - cron: "0 1 * * 0"  # Weekly, Sunday 01:00 UTC
+  workflow_dispatch:
+    inputs:
+      max_items:
+        description: "Max P0/P1 items to dispatch to dev agents (0 = analysis only)"
+        default: "3"
+        required: false
+      skip_claims:
+        description: "Skip claim invariant tests (faster analysis)"
+        type: boolean
+        default: false
+        required: false
+      target_priority:
+        description: "Minimum priority to dispatch (P0=critical only, P1=important, P2=all)"
+        type: choice
+        options: [P0, P1, P2]
+        default: P1
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: dogfood-sprint
+  cancel-in-progress: false
+
+jobs:
+  check-release-freeze:
+    name: Check develop freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      frozen: ${{ steps.check.outputs.frozen }}
+    steps:
+      - name: Check for open release PR
+        id: check
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              base: 'main',
+            });
+            const releasePR = prs.find(pr => pr.head.ref.startsWith('release/'));
+            if (releasePR) {
+              core.warning(`Develop freeze active: release PR #${releasePR.number} (${releasePR.head.ref}) is open. Dogfood sprint skipped per AGENTS.md §Release Gate.`);
+              core.setOutput('frozen', 'true');
+            } else {
+              core.setOutput('frozen', 'false');
+            }
+
+  full-dogfood:
+    name: Full Dogfood Analysis
+    needs: check-release-freeze
+    if: needs.check-release-freeze.outputs.frozen != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      has_work: ${{ steps.analyze.outputs.has_work }}
+      highest_priority: ${{ steps.analyze.outputs.highest_priority }}
+      health_grade: ${{ steps.analyze.outputs.health_grade }}
+      claim_failures: ${{ steps.analyze.outputs.claim_failures }}
+      work_item_count: ${{ steps.analyze.outputs.work_item_count }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Setup system dependencies
+        uses: ./.github/actions/setup-system
+        with:
+          os: ubuntu-latest
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Build project index
+        run: uv run python -m tree_sitter_analyzer --full-index --output-format json || true
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+
+      - name: Run full dogfood sequence
+        id: analyze
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+
+          SKIP_CLAIMS_FLAG=""
+          if [ "${{ inputs.skip_claims }}" == "true" ]; then
+            SKIP_CLAIMS_FLAG="--skip-claims"
+          fi
+
+          uv run python scripts/dogfood_sprint.py \
+            --out artifacts/dogfood-report.json \
+            $SKIP_CLAIMS_FLAG || true
+
+          # Parse outputs for downstream steps
+          python3 - <<'PY'
+          import json, os
+          report = json.loads(open("artifacts/dogfood-report.json").read())
+          s = report["summary"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"has_work={'true' if s['work_item_count'] > 0 else 'false'}\n")
+              f.write(f"highest_priority={s['highest_priority']}\n")
+              f.write(f"health_grade={s['health_grade']}\n")
+              f.write(f"claim_failures={s['claim_failures']}\n")
+              f.write(f"work_item_count={s['work_item_count']}\n")
+          PY
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+
+      - name: Generate sprint summary
+        run: |
+          python3 - <<'PY'
+          import json, os
+          report = json.loads(open("artifacts/dogfood-report.json").read())
+          s = report["summary"]
+          lines = []
+          lines.append("# Dogfood Sprint Report")
+          lines.append("")
+          lines.append(f"**Health grade:** {s['health_grade']}  ")
+          lines.append(f"**Work items:** {s['work_item_count']}  ")
+          lines.append(f"**Highest priority:** {s['highest_priority']}  ")
+          lines.append(f"**Claim failures:** {s['claim_failures']}  ")
+          lines.append("")
+          lines.append("## Priority Matrix")
+          lines.append("")
+          for item in report["priority_matrix"]:
+              lines.append(f"### [{item['priority']}] {item['title']}")
+              lines.append(f"*Category: {item['category']}*")
+              lines.append("")
+              lines.append(item["details"][:300])
+              lines.append("")
+              lines.append(f"Verification: `{item['verification_command']}`")
+              lines.append("")
+          if report["claim_invariant_status"]:
+              lines.append("## Claim Invariant Status")
+              lines.append("")
+              for c in report["claim_invariant_status"]:
+                  icon = "✅" if c["status"] == "passed" else "❌" if c["status"] == "failed" else "⚠️"
+                  lines.append(f"- {icon} `{c['test'].split('::')[-1]}` — {c['status']}")
+          out = "\n".join(lines)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(out)
+          PY
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+        continue-on-error: true
+
+      - name: Upload dogfood report
+        uses: actions/upload-artifact@v7
+        with:
+          name: dogfood-sprint-report-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 30
+
+  dispatch-dev-agents:
+    name: Dispatch Dev Agents (Sonnet 4.6)
+    needs: full-dogfood
+    if: >
+      needs.full-dogfood.outputs.has_work == 'true' &&
+      github.event.inputs.max_items != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN_PRESENT: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download dogfood report
+        uses: actions/download-artifact@v8
+        with:
+          name: dogfood-sprint-report-${{ github.run_id }}
+          path: ./artifacts
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Generate Opus 4.8 task brief
+        id: brief
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, textwrap
+          report = json.loads(open("artifacts/dogfood-report.json").read())
+          s = report["summary"]
+          matrix = report["priority_matrix"]
+          target = os.environ.get("TARGET_PRIORITY", "P1")
+          max_items = int(os.environ.get("MAX_ITEMS", "3"))
+          priority_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+          max_p = priority_order.get(target, 1)
+          items = [i for i in matrix if priority_order.get(i["priority"], 99) <= max_p][:max_items]
+          if not items:
+              print("[brief] No items match target priority", flush=True)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("has_items=false\n")
+          else:
+              brief_lines = [
+                  "# Dogfood Sprint — Opus 4.8 Commander Brief",
+                  "",
+                  "You are a Claude Sonnet 4.6 development agent. You have been",
+                  "dispatched by the Dogfood Sprint pipeline to fix the following",
+                  "issues discovered by TSA analyzing itself.",
+                  "",
+                  "**CRITICAL CONSTRAINTS (non-negotiable):**",
+                  "- GitFlow: Create `feature/dogfood-$(date +%Y-W%V)-<slug>` from `develop`",
+                  "- One PR per item — do not bundle multiple fixes",
+                  "- All tests must pass: run the verification_command for each item",
+                  "- Never commit to main or develop directly",
+                  "- Follow CLAUDE.md and AGENTS.md exactly",
+                  "- After fixing: run `uv run python -m tree_sitter_analyzer --change-impact`",
+                  "",
+                  "**ITEMS TO FIX:**",
+                  "",
+              ]
+              for i, item in enumerate(items):
+                  brief_lines.extend([
+                      f"### Item {i+1}: [{item['priority']}] {item['title']}",
+                      f"Category: {item['category']}",
+                      "",
+                      item['details'],
+                      "",
+                      f"Verification: `{item['verification_command']}`",
+                      "",
+                  ])
+              brief_lines.extend([
+                  "**DEGRADED MODE:** If any coordination tool is unavailable,",
+                  "proceed with direct file edits and tests. Do not pause.",
+                  "",
+                  f"Health grade at sprint start: {s['health_grade']}",
+                  f"Claim failures: {s['claim_failures']}",
+              ])
+              brief = "\n".join(brief_lines)
+              with open("artifacts/opus-brief.md", "w") as f:
+                  f.write(brief)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("has_items=true\n")
+              print(f"[brief] Generated brief for {len(items)} item(s)", flush=True)
+          PY
+        env:
+          TARGET_PRIORITY: ${{ github.event.inputs.target_priority || 'P1' }}
+          MAX_ITEMS: ${{ github.event.inputs.max_items || '3' }}
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+
+      - name: Upload brief artifact
+        if: steps.brief.outputs.has_items == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dogfood-sprint-brief-${{ github.run_id }}
+          path: artifacts/opus-brief.md
+          retention-days: 14
+
+      - name: Dispatch Claude Sonnet 4.6 dev agent
+        if: >
+          steps.brief.outputs.has_items == 'true' &&
+          env.CLAUDE_CODE_OAUTH_TOKEN_PRESENT == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          track_progress: true
+          prompt_file: artifacts/opus-brief.md
+          claude_args: |
+            --model claude-sonnet-4-6
+            --allowedTools "Edit,Bash(uv run*),Bash(git add*),Bash(git commit*),Bash(git checkout*),Bash(git push*),Bash(gh pr create*)"
+
+  post-sprint-discussion:
+    name: Post Sprint Summary to Discussions
+    needs: [full-dogfood, dispatch-dev-agents]
+    if: always() && needs.full-dogfood.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Download dogfood report
+        uses: actions/download-artifact@v8
+        with:
+          name: dogfood-sprint-report-${{ github.run_id }}
+          path: ./artifacts
+        continue-on-error: true
+
+      - name: Post sprint summary issue
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const today = new Date().toISOString().slice(0, 10);
+            const grade = '${{ needs.full-dogfood.outputs.health_grade }}';
+            const priority = '${{ needs.full-dogfood.outputs.highest_priority }}';
+            const claimFails = '${{ needs.full-dogfood.outputs.claim_failures }}';
+            const workItems = '${{ needs.full-dogfood.outputs.work_item_count }}';
+
+            const body = [
+              `## Dogfood Sprint — ${today}`,
+              ``,
+              `| Metric | Value |`,
+              `|---|---|`,
+              `| Health Grade | **${grade}** |`,
+              `| Highest Priority | **${priority}** |`,
+              `| Claim Failures | **${claimFails}** |`,
+              `| Work Items | **${workItems}** |`,
+              ``,
+              `**Run:** ${runUrl}`,
+              ``,
+              `Full report attached as workflow artifact \`dogfood-sprint-report-${context.runId}\`.`,
+              ``,
+              `### Multi-Model Pipeline`,
+              `- **Commander (Opus 4.8):** Analyzed dogfood sequence and generated task briefs`,
+              `- **Developer (Sonnet 4.6):** Dispatched for P0/P1 items → PRs opened`,
+              `- **Reviewer (GPT-5.5):** Apply label \`dogfood-sprint\` to PRs for GPT-5.5 adversarial review`,
+              ``,
+              `_Auto-generated by Dogfood Sprint workflow_`,
+            ].join('\n');
+
+            // Upsert: update existing open dogfood-sprint issue or create new
+            const { data: openIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'dogfood-sprint',
+              state: 'open',
+            });
+
+            if (openIssues.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: openIssues[0].number,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Dogfood Sprint — ${today}`,
+                body: body,
+                labels: ['dogfood-sprint'],
+              }).catch(async () => {
+                // Label may not exist yet — create it
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'dogfood-sprint',
+                  color: '0052cc',
+                  description: 'Auto-generated dogfood sprint report',
+                }).catch(() => {});
+              });
+            }
