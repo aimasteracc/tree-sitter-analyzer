@@ -94,6 +94,17 @@ def test_pytest_runtime_dependencies_are_declared() -> None:
     assert "pytest-timeout>=2.4.0" in dev_dependencies
 
 
+def test_pytest_runtime_declares_quarantine_marker() -> None:
+    """Quarantined tests must be declared so strict-markers accepts them."""
+    config = configparser.ConfigParser()
+    config.read(PROJECT_ROOT / "pytest.ini")
+
+    assert (
+        "quarantine: mark test as known unstable; reruns disabled"
+        in config["pytest"]["markers"]
+    )
+
+
 def test_local_runtime_artifacts_are_gitignored_without_global_results_trap() -> None:
     """Dogfood/cache output must stay local without hiding every results dir."""
     gitignore = (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8")
