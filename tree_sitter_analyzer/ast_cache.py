@@ -11,11 +11,11 @@ import os
 import sqlite3
 import threading
 from collections.abc import Iterator
-from datetime import datetime, timezone
 from typing import Any
 
 from .cache.graph import bfs_callees as _bfs_callees_impl
 from .cache.graph import bfs_callers as _bfs_callers_impl
+from .cache import indexer as _indexer
 from .cache.query import (
     backfill_cross_file_edges as _backfill_cross_file_edges,
     fts_search as _fts_search,
@@ -29,22 +29,15 @@ from .cache.query import (
     search_symbols_linear as _search_symbols_linear,
 )
 from .cache.search import search_symbols_cascade as _search_symbols_cascade
-from .cache.build_state import (
-    clear_build_in_progress as _clear_build_in_progress,
-    mark_build_in_progress as _mark_build_in_progress,
-)
 from .cache.callgraph_state import (
     call_graph_built as _call_graph_built,
-    clear_call_graph_built as _clear_call_graph_built,
     mark_call_graph_built as _mark_call_graph_built,
 )
-from .cache.helpers import (
+from .cache.helpers import (  # noqa: F401
     _build_function_entry,
     _commit_index_results,
-    _make_error_entry,
-    _project_index_activation_enabled,
 )
-from .cache.maintenance import (
+from .cache.maintenance import (  # noqa: F401
     reclaim_storage_after_full_rebuild as _reclaim_storage_after_full_rebuild,
 )
 from .cache.schema import (
@@ -98,16 +91,11 @@ class SchemaIntegrityError(RuntimeError):
 
 # Extraction helpers — re-exported for back-compat; logic lives in _ast_extraction.py.
 from .cache.extraction import (  # noqa: E402
-    _EXCLUDE_DIRS,
     _content_hash,
     _extract_symbols,  # noqa: F401 - back-compat re-export used by tests
     _has_fts5,
     _node_text,  # noqa: F401 - public back-compat re-export
-    _worker_index_file,
 )
-
-# Back-compat alias imported by file_watcher.py and incremental_sync.py.
-from .languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG  # noqa: E402
 
 
 class ASTCache:
@@ -318,6 +306,11 @@ class ASTCache:
 
         _synapse.resolve_call_edges_for_file(self, conn, rel_path)
 
+    @staticmethod
+    def _clear_activation_for_file(conn: sqlite3.Connection, rel_path: str) -> None:
+        """Drop stale activation rows when project indexing runs in fast mode."""
+        _clear_activation_for_file_fn(conn, rel_path)
+
     def _run_synapse_backfill(self) -> dict[str, int] | None:
         """Re-resolve every unresolved call edge. Returns stats dict or None."""
         from .cache import synapse as _synapse
@@ -334,114 +327,15 @@ class ASTCache:
         include_activation: bool | None = None,
         language_filter: str | None = None,
     ) -> dict[str, Any]:
-        """Index every source file under ``self.project_root``.
-
-        ``language_filter`` (#1018): when provided, restrict the walk to files
-        whose detected language equals it. Non-matching files (e.g. ``.swift``
-        when ``language_filter="python"``) are skipped before any parse, so a
-        language-scoped run never emits "grammar not installed" errors for
-        other languages.
-        """
-        activation_enabled = _project_index_activation_enabled(include_activation)
-        if resolve_only:
-            synapse = self._run_synapse_backfill()
-            edge_store_refresh = self._refresh_graph_edges_from_cache()
-            unresolved = self._run_unresolved_refs_backfill()
-            return {
-                "mode_used": "resolve_only",
-                "resolve_only": True,
-                "indexed": 0,
-                "cached": 0,
-                "errors": 0,
-                "skipped": 0,
-                "files": [],
-                "synapse_backfill": synapse,
-                "edge_store_refresh": edge_store_refresh,
-                "unresolved_refs_backfill": unresolved,
-                "activation_enabled": activation_enabled,
-            }
-        try:
-            if force:
-                # #578: a full rebuild empties ast_index up front (the DELETE
-                # below commits), then re-populates in bounded batches over
-                # ~70 s. Stamp a persisted marker across that window so
-                # concurrent readers on other connections/processes warn
-                # instead of trusting the half-built table. MARK + DELETE live
-                # INSIDE the try so the finally clears the marker even if the
-                # DELETE/commit itself raises (e.g. SQLITE_FULL) — otherwise a
-                # failed rebuild would leave a stuck marker until TTL expiry.
-                conn = self._get_conn()
-                _mark_build_in_progress(conn)
-                _clear_call_graph_built(conn)
-                conn.execute("DELETE FROM ast_index")
-                conn.commit()
-            stats, candidates, count = self._walk_and_partition(
-                max_files, force, activation_enabled, language_filter
-            )
-            workers = self._resolve_worker_count(workers, candidates)
-            if workers and workers >= 2 and len(candidates) >= 2:
-                results = self._index_parallel(candidates, workers)
-            else:
-                results = [
-                    _worker_index_file((p, self.project_root, lang))
-                    for p, lang in candidates
-                ]
-            conn = self._get_conn()
-            indexed_at = datetime.now(timezone.utc).isoformat()
-            _commit_index_results(
-                conn,
-                results,
-                stats,
-                self._insert_index_row,
-                indexed_at,
-                activation_enabled,
-            )
-            stats["total_files"] = count
-            stats["workers"] = workers
-            if stats["indexed"] > 0:
-                self._post_index_backfill(stats)
-                if self._completed_full_index_sweep(stats):
-                    _mark_call_graph_built(self._get_conn())
-            # #978: a fully-cached re-run (indexed == 0) over an already-complete
-            # index never reaches the branch above, so a project whose marker was
-            # cleared (e.g. predates #708) would stay permanently un-stamped and
-            # leave callers/lineage hinting "--full-index". Stamp it when the
-            # index actually covers the whole source set.
-            # _indexed_source_files_are_complete() returns False for an empty,
-            # truncated, errored, or otherwise incomplete index, so this keeps
-            # #970's false-positive guard intact.
-            elif self._indexed_source_files_are_complete():
-                _mark_call_graph_built(self._get_conn())
-            if force:
-                stats["db_maintenance"] = _reclaim_storage_after_full_rebuild(
-                    conn, self.db_path
-                )
-            return stats
-        finally:
-            if force:
-                _clear_build_in_progress(self._get_conn())
-
-    def _walk_and_partition(
-        self,
-        max_files: int,
-        force: bool,
-        activation_enabled: bool,
-        language_filter: str | None = None,
-    ) -> tuple[dict[str, Any], list[tuple[str, str]], int]:
-        """Walk source files and partition into (stats, candidates, count)."""
-        from .cache import indexer as _indexer
-
-        return _indexer.walk_and_partition(
+        """Index every source file under ``self.project_root``."""
+        return _indexer.run_index_project(
             self,
-            self._get_conn(),
             max_files,
             force,
-            activation_enabled,
-            _walk_source_files,
-            _language_from_ext,
-            _AST_CACHE_EXTRACTOR_VERSION,
-            _make_error_entry,
-            language_filter,
+            workers=workers,
+            resolve_only=resolve_only,
+            include_activation=include_activation,
+            language_filter=language_filter,
         )
 
     @staticmethod
@@ -457,7 +351,7 @@ class ASTCache:
         """Return True when ast_index covers exactly the current source set."""
         source_files = {
             os.path.relpath(path, self.project_root).replace("\\", "/")
-            for path in _walk_source_files(self.project_root)
+            for path in _indexer._walk_source_files(self.project_root)
         }
         if not source_files:
             return False
@@ -478,58 +372,6 @@ class ASTCache:
             _cpu = os.cpu_count() or 4
             workers = 0 if len(candidates) < 64 else max(2, _cpu - 1)
         return workers
-
-    def _post_index_backfill(self, stats: dict[str, Any]) -> None:
-        """Run cross-file and Synapse backfills after indexing."""
-        try:
-            stats["cross_file_backfill"] = self.backfill_cross_file_edges()
-        except Exception:
-            logger.debug("cross-file backfill failed", exc_info=True)
-        try:
-            synapse = self._run_synapse_backfill()
-            if synapse is not None:
-                stats["synapse_backfill"] = synapse
-        except Exception:
-            logger.debug("synapse backfill failed", exc_info=True)
-        indexed_files = [
-            str(entry["file"])
-            for entry in stats.get("files", [])
-            if entry.get("status") == "indexed"
-        ]
-        # ``insert_index_row`` already writes every file's graph edges during
-        # commit when FTS5 is available (the common path) — re-deriving them
-        # here is pure duplicate work: ~85 s on django (47 % of total index
-        # time) for an IDENTICAL edge set (244,590 rows either way, verified).
-        # Only refresh when insert could NOT have written them (no FTS5), where
-        # this pass is the sole edge writer.
-        self._maybe_refresh_edge_store(stats, indexed_files)
-        try:
-            unresolved = self._run_unresolved_refs_backfill()
-            if unresolved is not None:
-                stats["unresolved_refs_backfill"] = unresolved
-        except Exception:
-            logger.debug("unresolved refs backfill failed", exc_info=True)
-        # Record that resolution has converged for this index state so a later
-        # cold ensure_indexed() can skip a redundant resolve-only pass (~40 s
-        # no-op) instead of blocking the first retrieval.
-        try:
-            from .cache.unresolved import mark_resolution_converged
-
-            mark_resolution_converged(self._get_conn())
-        except Exception:
-            logger.debug("could not mark resolution converged", exc_info=True)
-
-    def _maybe_refresh_edge_store(
-        self, stats: dict[str, Any], indexed_files: list[str]
-    ) -> None:
-        if self.fts5_available:
-            return
-        try:
-            stats["edge_store_refresh"] = self._refresh_graph_edges_from_cache(
-                indexed_files
-            )
-        except Exception:
-            logger.debug("edge store refresh failed", exc_info=True)
 
     def _refresh_graph_edges_from_cache(
         self, file_paths: list[str] | None = None
@@ -577,43 +419,6 @@ class ASTCache:
         from .cache import unresolved as _unresolved
 
         return _unresolved.resolve_unresolved_refs(self._get_conn())
-
-    def _index_parallel(
-        self, candidates: list[tuple[str, str]], workers: int
-    ) -> list[dict[str, Any]]:
-        """Dispatch parse+extract to a spawn process pool (safe on macOS/Linux)."""
-        from multiprocessing import get_context
-
-        from .cache.extraction import _init_worker_parser
-
-        ctx = get_context("spawn")
-        args_iter = [(p, self.project_root, lang) for p, lang in candidates]
-        with ctx.Pool(processes=workers, initializer=_init_worker_parser) as pool:
-            return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
-
-    def _insert_index_row(
-        self,
-        r: dict[str, Any],
-        indexed_at: str,
-        *,
-        include_activation: bool = True,
-    ) -> None:
-        """Write one worker result to SQLite (main table + optional FTS5)."""
-        from .cache import indexer as _indexer
-
-        _indexer.insert_index_row(
-            self,
-            self._get_conn(),
-            r,
-            indexed_at,
-            _AST_CACHE_EXTRACTOR_VERSION,
-            include_activation,
-        )
-
-    @staticmethod
-    def _clear_activation_for_file(conn: sqlite3.Connection, rel_path: str) -> None:
-        """Drop stale activation rows when project indexing runs in fast mode."""
-        _clear_activation_for_file_fn(conn, rel_path)
 
     def lookup(self, file_path: str) -> dict[str, Any] | None:
         return _lookup(self._get_conn(), file_path, self.project_root)
@@ -955,11 +760,4 @@ class ASTCache:
 
 
 def _walk_source_files(project_root: str) -> Iterator[str]:
-    for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [
-            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
-        ]
-        for fname in filenames:
-            ext = os.path.splitext(fname)[1].lower()
-            if ext in _EXT_TO_LANG:
-                yield os.path.join(dirpath, fname)
+    yield from _indexer._walk_source_files(project_root)
