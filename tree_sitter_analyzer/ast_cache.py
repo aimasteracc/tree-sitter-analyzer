@@ -16,6 +16,7 @@ from typing import Any
 from .cache.graph import bfs_callees as _bfs_callees_impl
 from .cache.graph import bfs_callers as _bfs_callers_impl
 from .cache import indexer as _indexer
+from .cache.indexer import _EXT_TO_LANG  # noqa: F401  # re-export for back-compat
 from .cache.query import (
     backfill_cross_file_edges as _backfill_cross_file_edges,
     fts_search as _fts_search,
