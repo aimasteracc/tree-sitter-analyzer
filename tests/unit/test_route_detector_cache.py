@@ -80,7 +80,6 @@ class TestRouteCachePersistence:
         assert key(cached) == key(cached_via_db) == key(no_cache)
 
     @pytest.mark.performance
-    @pytest.mark.slow
     @pytest.mark.quarantine
     def test_warm_pass_is_meaningfully_faster_than_cold(self, tmp_path: Path):
         """PERF-1 regression guard: the cache must produce a >=3x speedup on
