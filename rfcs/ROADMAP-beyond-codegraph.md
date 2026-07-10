@@ -39,10 +39,14 @@ edits to shared files, in parallel. First wave landed: **Go (#350), JavaScript
 (#346), TypeScript (#347), C++ (#348), Rust (#349)** — on top of Python + Java
 (#326). Every one: conservative stdlib/external tiers, **adversarially verified to
 never cross-language bind** (the moat), Java classification byte-identical (no
-regression), Codex-hardened over 3 precision rounds each. **Wave 2 next**:
-Kotlin / Scala / PHP / Ruby / C# (same new-files-only pattern). This is the
-largest lever for non-Python users and the axis CodeGraph structurally cannot
-match (it name-collides across languages — see REPORT-v1.21.0).
+regression), Codex-hardened over 3 precision rounds each. **Remaining: Scala**
+(same new-files-only pattern) — the only unimplemented resolver among TSA's 13
+active + 1 pending languages, confirmed by the absence of a
+`synapse_resolver/languages/scala.py` module (2026-07-10 audit; the existing
+`languages/scala_plugin.py` covers generic AST/structure parsing only, not
+cross-language-safe call resolution). This is the largest lever for non-Python
+users and the axis CodeGraph structurally cannot match (it name-collides across
+languages — see REPORT-v1.21.0).
 
 ### P2 — File-level resolution of stdlib/builtin methods (RFC-0004 phase 2)
 Today stdlib/external/builtin methods are classified but not file-resolved.
@@ -69,9 +73,15 @@ on-thesis ("agents know before they touch").
 
 ## Next action
 Landed on develop: RFC-0009 A/B/C (#330/#331/#333), the correctness report
-(REPORT-v1.21.0, #343), RFC-0010 registry foundation (#345), and the **first-wave
-language resolvers** Go/JS/TS/C++/Rust (#346-#350) — the correctness moat now
-spans 8 languages. Next: **wave 2 languages** (Kotlin/Scala/PHP/Ruby/C#, same
-new-files-only registry pattern); the **N≥5 cost benchmark** (P0) once the
-benchmark setup-validation gate lands; and **surface the moat** (README +
-REPORT-v1.21.0) so the 8-language correctness lead is visible to GitHub.
+(REPORT-v1.21.0, #343), RFC-0010 registry foundation (#345), the **first-wave
+language resolvers** Go/JS/TS/C++/Rust (#346-#350), and **wave 2**
+(csharp/kotlin/ruby/php, #360, plus swift, #364) — the correctness moat now
+spans **13 active languages** (Python + the 12 `synapse_resolver/languages/`
+modules). Next (2026-07-10 status): **Scala** is the sole remaining resolver
+(same new-files-only registry pattern); the **N≥5 cost benchmark** (P0) once the
+benchmark setup-validation gate lands; and **keep the moat numbers current**
+(README + REPORT-v1.21.0 + GAUNTLET.md) as the codebase grows — see the
+2026-07-10 re-measurement note in REPORT-v1.21.0.md (classification rate and
+cross-language edge count refreshed against `develop`@`6fe62fba`; the
+CodeGraph-vs-TSA ratio itself awaits a documented CodeGraph install path before
+it can be re-verified).

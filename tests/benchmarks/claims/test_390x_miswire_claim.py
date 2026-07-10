@@ -1,11 +1,30 @@
 """Claim invariant: 390× fewer cross-language mis-wires than name-only resolvers.
 
-README claim (benchmarks/codegraph_compare/REPORT-v1.21.0.md):
-    On this repo — CodeGraph: 745 mis-wires / Tree-sitter Analyzer: 6 mis-wires
-    → ~124× cleaner.
-    On HuggingFace tokenizers — name-only: 1,259 mis-wires / TSA: 0
-    → exact 390× figure from the README comes from a planted-fixture measurement
-      of naive_miswires / tsa_miswires.
+README claim (benchmarks/codegraph_compare/REPORT-v1.21.0.md), methodology-
+annotated 2026-07-10 (see GAUNTLET.md and REPORT-v1.21.0.md for the full note):
+    On this repo, same-session v1.21.0 — CodeGraph: 745 mis-wires / 38,103 edges
+    (1.96%) vs Tree-sitter Analyzer: 6 mis-wires / 114,160 edges (0.005%). Two
+    different ratios are derived from that ONE same-session pair, not two
+    measurements:
+      - count-based ratio: 745 / 6 ≈ **~124×** (GAUNTLET.md headline)
+      - rate-based ratio:   1.96% / 0.005% ≈ **~390×** (README.md / REPORT
+        headline — this test file's name)
+    Both are correct; they answer different questions. This project does not
+    collapse them into one figure.
+
+    Separately, on HuggingFace tokenizers — name-only: 1,259 mis-wires / TSA: 0.
+
+2026-07-10 re-verification session: a fresh same-session CodeGraph+TSA re-run
+against current develop (commit 6fe62fba) was attempted. The CodeGraph arm could
+not be completed (no documented/installable `codegraph` CLI matching
+`adapters/codegraph.py`'s `codegraph init -i` + SQLite-backed
+`.codegraph/codegraph.db` could be found or installed — see GAUNTLET.md's
+methodology note for the full account). Per the "re-measure both arms before
+quoting a new ratio" rule, the 124×/390× figures above are therefore NOT
+updated this session — they remain the last valid same-session pair. TSA's own
+arm (CodeGraph-independent) WAS refreshed: 133,377 call edges, 724 (0.54%)
+name-only genuine floor, 4 TSA mis-wires (see GAUNTLET.md's 5-Repo Summary
+Table and REPORT-v1.21.0.md's Headline-numbers re-measurement note).
 
 This invariant asserts the structural guarantee:
     1. TSA never cross-language-binds on a planted polyglot corpus.
@@ -14,7 +33,9 @@ This invariant asserts the structural guarantee:
 
 The "390×" headline is derived from real benchmark runs, not unit tests. The unit
 guarantee here is "TSA = 0 and naive >> 0" — the multiplier is a lower-bound check,
-not a pinned value, because it depends on the exact planted corpus size.
+not a pinned value, because it depends on the exact planted corpus size. Because
+this test only exercises the planted fixture (not the real 745/6/124x/390x
+figures), it remains valid and unchanged by the 2026-07-10 re-verification above.
 
 For the full head-to-head (both tools live):
     uv run python benchmarks/codegraph_compare/run.py phase full-warm --repos gin,django

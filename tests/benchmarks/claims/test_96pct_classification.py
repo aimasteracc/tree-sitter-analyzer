@@ -13,6 +13,18 @@ This invariant:
     2. Documents the measurement SQL so it can be re-run later.
     3. Marks the "96.3% on this repo" check as full_language + claims_benchmark
        because the claim belongs to the full repo benchmark, not the PR smoke set.
+
+2026-07-10 re-measurement note: re-running the same pinned SQL against current
+develop (commit 6fe62fba, TSA v1.29.0-line) gives **94.0%** (140,776 `calls`
+edges; `unknown` grew from ~3.7% to ~6.0% as the codebase and its edge-extraction
+surface grew over 13 releases). The 96.3% figure asserted below is deliberately
+NOT changed to 94.0% — REPORT-v1.21.0.md is a dated, versioned snapshot report
+and 96.3% is what was genuinely measured at v1.21.0; rewriting it would misrepresent
+that historical measurement. The live 94.0% figure is recorded as its own
+inline "Measurement note" in REPORT-v1.21.0.md (Headline correctness numbers
+section) and pinned separately by
+``test_v1_29_0_reverification_note_is_present_in_report`` below, so both the
+historical claim and the current live number stay independently verifiable.
 """
 
 from __future__ import annotations
@@ -59,4 +71,25 @@ def test_classification_rate_sql_is_documented():
     )
     assert "96.3" in content, (
         "The README claim value '96.3%' must be referenced in this test file."
+    )
+
+
+def test_v1_29_0_reverification_note_is_present_in_report():
+    """The 2026-07-10 TSA-only re-measurement note must remain in the report.
+
+    Guards the annotation added alongside the pinned v1.21.0 96.3% figure: the
+    historical claim is intentionally left unchanged (see module docstring),
+    but the live re-measurement (94.0%, current develop) must stay documented
+    next to it so the report does not silently drift back to looking like a
+    single, un-annotated, unverified snapshot.
+    """
+    content = REPORT.read_text(encoding="utf-8")
+    assert "94.0%" in content, (
+        "REPORT-v1.21.0.md must retain the 2026-07-10 re-measured 94.0% "
+        "classification-rate figure (develop@6fe62fba)."
+    )
+    assert "Measurement note (2026-07-10" in content, (
+        "REPORT-v1.21.0.md must retain the 2026-07-10 re-measurement note "
+        "documenting the TSA-only refresh (classification rate + "
+        "cross-language edge count) against current develop."
     )

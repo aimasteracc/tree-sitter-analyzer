@@ -42,6 +42,7 @@ For the project overview and install-and-go instructions, see the
 | Doc | What it covers |
 |---|---|
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guide (GitFlow, PR flow, quality gates) |
+| [CONTENT_GUIDELINES.md](CONTENT_GUIDELINES.md) | Rules for externally published content (articles, GitHub metadata) — prohibited citations |
 | [developer_guide.md](developer_guide.md) | Developer setup and internals |
 | [new-language-support-checklist.md](new-language-support-checklist.md) | ⭐ Adding a new language plugin |
 | [ai-coding-rules.md](ai-coding-rules.md) | Rules for AI-assisted contributions |
