@@ -207,13 +207,7 @@ Token cost is one axis; a code-intelligence tool's *first* job is a **correct gr
 | CodeGraph | **745** | 38,103 | 1.96 % |
 | **Tree-sitter Analyzer** | **6** | 114,160 | **0.005 %** |
 
-**~390× cleaner on cross-language correctness, while resolving 3× more call edges.** CodeGraph's mis-wires span 19+ language pairs (python→swift **408**, python→typescript 195, python→ruby 81, …); TSA's 6 are all `java→python/php` from single-word Java method names.
-
-> **Methodology: count vs. rate.** ~390× is the *rate* ratio (1.96% ÷ 0.005%); the
-> *count* ratio on the same same-session measurement is ~124× (745 ÷ 6) — both
-> numbers are correct, they just answer different questions. Full reconciliation,
-> re-verification status, and the TSA-only refresh against current `develop`:
-> [GAUNTLET.md](benchmarks/codegraph_compare/GAUNTLET.md#live-head-to-head-vs-codegraph-this-repo-same-commit).
+**~390× cleaner on cross-language correctness, while resolving 3× more call edges.** CodeGraph's mis-wires span 19+ language pairs (python→swift **408**, python→typescript 195, python→ruby 81, …); TSA's 6 are all `java→python/php` from single-word Java method names. *(Methodology: ~390× is the rate ratio, 1.96% ÷ 0.005%; the count ratio on the same measurement is ~124× (745 ÷ 6) — see [GAUNTLET.md](benchmarks/codegraph_compare/GAUNTLET.md#live-head-to-head-vs-codegraph-this-repo-same-commit) for the full reconciliation and re-verification status.)*
 
 > **Don't trust this table — run it on your own repo (no CodeGraph install needed):**
 > ```bash
