@@ -178,6 +178,37 @@ mis-wires, not symbol counts), see
 [GAUNTLET.md](../../benchmarks/codegraph_compare/GAUNTLET.md) and
 [REPORT-v1.21.0.md](../../benchmarks/codegraph_compare/REPORT-v1.21.0.md).
 
+## Try It on Your Own Repo
+
+The symbol-count comparison above is a one-file spot check. For the full
+cross-language call-graph correctness picture on your own codebase, use the
+mis-wire audit:
+
+```bash
+uvx --from tree-sitter-analyzer miswire-audit . --card
+```
+
+The `--card` flag produces a self-contained markdown scorecard you can paste
+into an issue or PR:
+
+```
+## Mis-wire scorecard: my-project
+
+| metric | value |
+|---|---|
+| total call edges | 24,831 |
+| name-only genuine floor | 1,204 (4.85%) |
+| TSA mis-wires | 0 |
+| multiplier | infinity (0 TSA vs 1,204 name-only) |
+
+Run: `uvx --from tree-sitter-analyzer miswire-audit . --card`
+```
+
+If your repo is single-language, the expected result is 0 and 0 (no
+cross-language collisions). If it is polyglot (Rust+Python, Go+TypeScript, etc.),
+the genuine-floor column shows the mis-wire exposure a name-only index would
+produce on your specific code.
+
 ---
 
 *Source: extracted and rewritten from an internal working note
