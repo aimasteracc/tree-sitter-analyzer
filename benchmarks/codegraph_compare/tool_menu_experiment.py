@@ -92,7 +92,6 @@ import json
 from dataclasses import dataclass, field
 from typing import Literal
 
-
 # ---------------------------------------------------------------------------
 # Condition definitions
 # ---------------------------------------------------------------------------
