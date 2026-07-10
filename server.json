@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.aimasteracc/tree-sitter-analyzer",
+  "description": "Cross-language-safe code-intelligence MCP for AI agents. 13 languages, family-gated call graph, 0 cross-language mis-wires on 4 polyglot repos (by mis-wire count: ~124x cleaner than name-only indexes; by mis-wire rate: ~390x cleaner). 8 facade MCP tools, 13 curated skills, TOON-compressed output, 100% local, no external service required.",
+  "repository": {
+    "url": "https://github.com/aimasteracc/tree-sitter-analyzer",
+    "source": "github"
+  },
+  "version": "1.29.0",
+  "license": "MIT",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "tree-sitter-analyzer",
+      "version": "1.29.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
