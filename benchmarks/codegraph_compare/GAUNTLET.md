@@ -27,10 +27,11 @@ All numbers in the summary table are lifted verbatim from
 | tree-sitter-analyzer (this repo) | 14 langs | 133,377 | **724** (0.54%) | **4** | v1.29.0-line (2026-07-10), `develop`@`6fe62fba` — **not** a clean tag checkout, see reproducibility protocol below <!-- re-measure: superseded 2026-06-10 v1.22.0 clean-tag row --> |
 | gin-gonic/gin | Go (single) | 9,134 | **0** | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
 
-**Across all four polyglot repos TSA resolves 0 cross-language mis-wires.** The 1
-on this repo is a single genuine collision on this repo's own test-corpus files —
-the documented ceiling without receiver-type inference.
+**Across all four polyglot repos TSA resolves 0 cross-language mis-wires.**
 The single-language repo (gin) correctly returns 0 and 0 — no false positives.
+On this repo's own test-corpus files, the mis-wire count varies by measurement point:
+**1** at the v1.22.0 clean-tag (2026-06-10); **4** at v1.29.0-line develop@`6fe62fba`
+(2026-07-10, not a clean tag checkout — see reproducibility note in the table).
 
 > **What "name-only genuine floor" means.** The audit models a name-only resolver: every
 > call whose name has a definition only in another language. The **genuine floor** excludes
@@ -40,7 +41,8 @@ The single-language repo (gin) correctly returns 0 and 0 — no false positives.
 > objection. The **worst case** (including builtins) for this repo is 3,928; the genuine
 > floor is **678** (`Counter()`→TS, `sleep()`→Java, `pop()`→Swift, `connect()`→Kotlin,
 > `draw()`→Kotlin). TSA resolves **0** genuine cross-language mis-wires on the four external
-> polyglot repos, and only **1** on its own repo.
+> polyglot repos; on its own repo **1** at v1.22.0 clean-tag / **4** at v1.29.0-line
+> (see 5-Repo Summary Table for per-version detail).
 >
 > **Reproducibility protocol.** These numbers are from a **clean checkout of the
 > tag** — untracked working files (build artifacts, scratch dirs) add call edges
