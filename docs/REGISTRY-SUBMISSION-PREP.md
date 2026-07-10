@@ -15,15 +15,25 @@ operator must perform the actual submissions.
 **Prerequisites:**
 - `server.json` at repo root (already created).
 - GitHub account `aimasteracc` with OAuth access to `mcp-publisher`.
+- **PyPI ownership marker**: the published PyPI package README must contain the line
+  `mcp-name: io.github.aimasteracc/tree-sitter-analyzer`
+  before `mcp-publisher publish` will pass ownership verification
+  (see https://modelcontextprotocol.io/registry/package-types#pypi-packages).
+  Add this line to `README.md` under a dedicated `## MCP Registry` section and
+  publish a new PyPI release first.
 
 **Command (human executes after OAuth login):**
 
 ```bash
-# Install mcp-publisher if not already installed
-npm install -g @modelcontextprotocol/publisher
+# Install mcp-publisher (Homebrew or direct download — see registry quickstart)
+brew install modelcontextprotocol/tap/mcp-publisher
+# or: download binary from https://github.com/modelcontextprotocol/registry/releases
+
+# Authenticate with GitHub OAuth:
+mcp-publisher login github
 
 # From the tree-sitter-analyzer repo root:
-mcp-publisher publish server.json
+mcp-publisher publish
 ```
 
 **Verify after submission:**
@@ -65,14 +75,14 @@ Key facts:
 - 8 facade MCP tools covering search, navigation, structure, health,
   editing, project management, indexing, and visualization
 - 13 curated skills for common code-intelligence patterns
-- 0 cross-language mis-wires measured on 4 polyglot open-source repos
-  (tokenizers, ruff, polars, tree-sitter-analyzer itself)
+- 0 cross-language mis-wires measured on 3 external polyglot open-source repos
+  (huggingface/tokenizers, astral-sh/ruff, pola-rs/polars — see GAUNTLET.md)
 - TOON-compressed output to keep agent context usage low
 - 100% local — no external API, no internet required after install
 - MIT license
 
 Install:
-  uvx --from tree-sitter-analyzer tsa-mcp
+  uvx --from tree-sitter-analyzer tree-sitter-analyzer-mcp
 
 Repository: https://github.com/aimasteracc/tree-sitter-analyzer
 PyPI: https://pypi.org/project/tree-sitter-analyzer/

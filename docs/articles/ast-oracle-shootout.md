@@ -11,21 +11,23 @@ product of tree-sitter-analyzer, CodeGraphContext, wrale/mcp-server-tree-sitter,
 or grep-ast — it is CPython's own parser, so it cannot be structured to favor
 any of them.
 
-**Fixture file:** `tree_sitter_analyzer/health_scorer.py` (891 lines, includes
-non-ASCII `≤` characters in a docstring — a small but real Unicode-handling
+**Fixture file:** `tree_sitter_analyzer/health_scorer.py` (765 lines as of 2026-07-10,
+includes non-ASCII `≤` characters in a docstring — a small but real Unicode-handling
 test).
 
-**Date:** 2026-05-23.
+**Original date:** 2026-05-23. **Oracle counts re-verified:** 2026-07-10 (file
+changed since original shootout — counts updated to current state; competitor
+behaviour unchanged).
 
 ## Summary
 
 | Tool | Classes | Functions | Imports | Status |
 |---|---|---|---|---|
-| Python stdlib `ast` (**ORACLE**) | 2 | 21 | 10 | ground truth |
-| **tree-sitter-analyzer** | **2** | **21** | **10** | **100% match** |
-| wrale/mcp-server-tree-sitter | 2 | 21 | 14 | imports over-counted by 4 |
-| CodeGraphContext (`cgc`) | **0** | **0** | **0** | silent index failure |
-| grep-ast (Aider) | — | — | — | crashes on Python 3.14 |
+| Python stdlib `ast` (**ORACLE**) | 2 | 22 | 14 | ground truth (re-verified 2026-07-10) |
+| **tree-sitter-analyzer** | **2** | **22** | **14** | **100% match** (re-verified 2026-07-10) |
+| wrale/mcp-server-tree-sitter | 2 | 21 | 14 | imports over-counted by 4 (2026-05-23, not re-tested) |
+| CodeGraphContext (`cgc`) | **0** | **0** | **0** | silent index failure (2026-05-23, not re-tested) |
+| grep-ast (Aider) | — | — | — | crashes on Python 3.14 (2026-05-23, not re-tested) |
 
 Of four tools measured against the same file and the same oracle, only one —
 tree-sitter-analyzer — matched the oracle exactly on all three counts.

@@ -6,12 +6,11 @@ read any file it knows about and ask the tool to process it. In a poorly designe
 system, the agent — or a prompt injected into the agent's context — can walk the
 tool outside the project and into the host's filesystem.
 
-Per industry survey, approximately 82% of MCP file-operation implementations
-lack real-path boundary enforcement against path-traversal attacks.
-(Note: this figure is cited from practitioner surveys on MCP server security;
-verify the source before quoting in a high-stakes context — it is a field estimate,
-not a peer-reviewed measurement. The structural concern it describes is real and
-independently verifiable from code review.)
+A simple code-search across public MCP server implementations turns up many
+that use `os.path.abspath()` or raw `startswith()` checks — neither of which
+follows symlinks — rather than `os.path.realpath()`. The structural risk is
+independently verifiable: clone any public MCP file-operation server and
+`grep -n 'abspath\|startswith.*root'` its path-check logic.
 
 This article documents how tree-sitter-analyzer addresses this problem through
 `ProjectBoundaryManager` in `tree_sitter_analyzer/security/boundary_manager.py`.
@@ -90,12 +89,17 @@ def _no_unsafe_symlink_hop(self, file_path_obj: Path) -> bool:
     return True
 ```
 
-This check is defense-in-depth: the fully-resolved boundary check in
-`is_within_project` catches most attacks; the per-component walk catches the
-specific case of a symlink chain that passes through an external location en route
-to a valid internal destination.
+This check handles the case where `is_within_project()` cannot help: when the
+fully-resolved destination is *outside* the project, `is_symlink_safe()` falls
+through to `_no_unsafe_symlink_hop()`, which walks each component and rejects
+any path whose intermediate symlinks leave the project.
 
-### Audit logging
+Note: `is_symlink_safe()` returns `True` immediately if the fully-resolved path
+is within the project, so `_no_unsafe_symlink_hop()` is not called in that case —
+it is a fallback for the outside-boundary case, not a parallel defense-in-depth
+layer on top of `is_within_project()`.
+
+### Audit logging (available, not automatic)
 
 ```python
 def audit_access(self, file_path: str, operation: str) -> None:
@@ -106,8 +110,11 @@ def audit_access(self, file_path: str, operation: str) -> None:
         log_warning(f"SECURITY: Unauthorized access attempt to {file_path}")
 ```
 
-Every file access — allowed or denied — is logged. This gives operators visibility
-into what the agent is accessing and creates an audit trail for security review.
+The `audit_access()` method is defined and ready to use, but it is not called
+automatically on every boundary check — callers must invoke it explicitly when
+they want an audit trail. Wrapping your tool's file-access path with
+`manager.audit_access(path, "read")` before calling `is_within_project()` gives
+you a structured log of every allowed and denied access attempt.
 
 ## Why This Matters for MCP
 
@@ -127,36 +134,23 @@ With `ProjectBoundaryManager`:
 - The rejection is logged as `SECURITY: Unauthorized access attempt`.
 - The tool returns an error; the agent cannot access the file.
 
-## Try It on Your Own Repo
+## Inspect the Boundary Manager on Your Repo
 
-tree-sitter-analyzer's mis-wire audit also catches structural security issues in
-the call graph. To see what your codebase's boundary-check coverage looks like:
-
-```bash
-uvx --from tree-sitter-analyzer miswire-audit . --card
-```
-
-The `--card` flag produces a self-contained markdown scorecard:
-
-```
-## Mis-wire scorecard: my-project
-
-| metric | value |
-|---|---|
-| total call edges | 24,831 |
-| name-only genuine floor | 1,204 (4.85%) |
-| TSA mis-wires | 0 |
-
-Run: `uvx --from tree-sitter-analyzer miswire-audit . --card`
-```
-
-For the full security picture — including call graph edges into your
-project's security module — use the `nav` tool:
+To see which callers in your codebase reach `boundary_manager.py` — and
+check that every file-operation path goes through the boundary check —
+start the MCP server and use the `nav` tool:
 
 ```bash
-# Start the MCP server, then in Claude Code:
+# Start the MCP server:
+uvx --from tree-sitter-analyzer tree-sitter-analyzer-mcp
+
+# Then in Claude Code, ask:
 # tsa: nav callers tree_sitter_analyzer/security/boundary_manager.py
+# tsa: find is_within_project
 ```
+
+This shows every call site that invokes the boundary check, so you can
+audit coverage rather than guess at it.
 
 ## The Broader Point
 
@@ -177,6 +171,4 @@ security consequence.
 ---
 
 *Code references: `tree_sitter_analyzer/security/boundary_manager.py`.
-The code in this article is read directly from that file; it is not paraphrased.
-The 82% industry figure is a practitioner field estimate — verify the primary
-source before citing in peer-reviewed or legal contexts.*
+The code in this article is read directly from that file; it is not paraphrased.*
