@@ -91,6 +91,25 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                     "description": "Output format (default: toon)",
                     "default": "toon",
                 },
+                "exclude_patterns": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Additional fnmatch glob patterns (relative to project root) "
+                        "to exclude from indexing. Example: [\"tests/golden/corpus_*\"]. "
+                        "Combined with built-in defaults unless no_default_excludes=true."
+                    ),
+                    "default": [],
+                },
+                "no_default_excludes": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, disable the built-in default exclude patterns "
+                        "(e.g. tests/golden/corpus_*) and use only the patterns "
+                        "supplied in exclude_patterns. Default: false."
+                    ),
+                    "default": False,
+                },
             },
             "additionalProperties": False,
         }
@@ -119,6 +138,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         resolve_synapse = arguments.get("resolve_synapse", True)
         include_activation = bool(arguments.get("include_activation", False))
         output_format = arguments.get("output_format", "toon")
+        extra_patterns: list[str] = list(arguments.get("exclude_patterns", None) or [])
+        no_default_excludes: bool = bool(arguments.get("no_default_excludes", False))
 
         phases: dict[str, Any] = {}
         t_start = time.monotonic()
@@ -130,6 +151,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             mode == "full",
             max_files,
             include_activation=include_activation,
+            extra_exclude_patterns=extra_patterns,
+            no_default_excludes=no_default_excludes,
         )
         phases["ast_cache"] = ast_phase
         phases["incremental_sync"] = self._phase_incremental_sync()
@@ -174,16 +197,26 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         max_files: int,
         *,
         include_activation: bool = False,
+        extra_exclude_patterns: list[str] | None = None,
+        no_default_excludes: bool = False,
     ) -> dict[str, Any]:
         t0 = time.monotonic()
         try:
             from ...ast_cache import ASTCache
+            from ...cache.indexer import _DEFAULT_EXCLUDE_PATTERNS
+
+            extra: frozenset[str] = frozenset(extra_exclude_patterns or [])
+            if no_default_excludes:
+                exclude_patterns: frozenset[str] = extra
+            else:
+                exclude_patterns = _DEFAULT_EXCLUDE_PATTERNS | extra
 
             cache = ASTCache(self.project_root or ".")
             result = cache.index_project(
                 max_files=max_files,
                 force=force,
                 include_activation=include_activation,
+                exclude_patterns=exclude_patterns,
             )
             elapsed = round(time.monotonic() - t0, 3)
             indexed = result.get("indexed", 0)

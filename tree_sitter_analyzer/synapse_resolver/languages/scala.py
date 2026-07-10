@@ -52,8 +52,16 @@ def build_scala_resolver_context(
         if name_map:
             name_to_source[caller_file] = name_map
 
+    # Filter file_symbols to Scala-only to prevent tier (c) from binding
+    # a Scala call to a Python/Go symbol that happens to share the same name.
+    scala_file_symbols = {
+        fp: syms
+        for fp, syms in file_symbols.items()
+        if file_languages.get(fp) == "scala"
+    }
+
     return ScalaResolverContext(
-        file_symbols=file_symbols,
+        file_symbols=scala_file_symbols,
         global_name_table={
             name: list(entries)
             for name, entries in global_name_table.items()

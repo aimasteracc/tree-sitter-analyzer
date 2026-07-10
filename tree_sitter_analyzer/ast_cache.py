@@ -327,6 +327,7 @@ class ASTCache:
         resolve_only: bool = False,
         include_activation: bool | None = None,
         language_filter: str | None = None,
+        exclude_patterns: frozenset[str] | None = None,
     ) -> dict[str, Any]:
         """Index every source file under ``self.project_root``."""
         return _indexer.run_index_project(
@@ -337,6 +338,7 @@ class ASTCache:
             resolve_only=resolve_only,
             include_activation=include_activation,
             language_filter=language_filter,
+            exclude_patterns=exclude_patterns,
         )
 
     def _post_index_backfill(self, stats: dict[str, Any]) -> None:

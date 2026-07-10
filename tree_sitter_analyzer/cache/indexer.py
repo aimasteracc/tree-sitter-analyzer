@@ -377,6 +377,7 @@ def run_index_project(
     resolve_only: bool = False,
     include_activation: bool | None = None,
     language_filter: str | None = None,
+    exclude_patterns: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Orchestrate a full ASTCache project index run.
 
@@ -417,6 +418,11 @@ def run_index_project(
             conn.execute("DELETE FROM ast_index")
             conn.commit()
         conn = cache._get_conn()
+        effective_exclude = (
+            exclude_patterns
+            if exclude_patterns is not None
+            else _DEFAULT_EXCLUDE_PATTERNS
+        )
         stats, candidates, count = walk_and_partition(
             cache,
             conn,
@@ -428,7 +434,7 @@ def run_index_project(
             _AST_CACHE_EXTRACTOR_VERSION,
             _make_error_entry,
             language_filter,
-            _DEFAULT_EXCLUDE_PATTERNS,
+            effective_exclude,
         )
         workers = cache._resolve_worker_count(workers, candidates)
         if workers and workers >= 2 and len(candidates) >= 2:
