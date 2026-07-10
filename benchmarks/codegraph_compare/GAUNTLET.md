@@ -24,7 +24,7 @@ All numbers in the summary table are lifted verbatim from
 | huggingface/tokenizers | Rust+Py+JS+TS | 16,329 | **1,259** (7.71%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
 | astral-sh/ruff | Rust+Py+TS | 187,418 | **7,557** (4.03%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
 | pola-rs/polars | Rust+Py | 267,066 | **9,016** (3.38%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
-| tree-sitter-analyzer (this repo) | 14 langs | 116,606 | **678** (0.58%) | **1** | 2026-06-10, clean checkout of tag v1.22.0 |
+| tree-sitter-analyzer (this repo) | 14 langs | 133,377 | **724** (0.54%) | **4** | v1.29.0-line (2026-07-10), `develop`@`6fe62fba` — **not** a clean tag checkout, see reproducibility protocol below <!-- re-measure: superseded 2026-06-10 v1.22.0 clean-tag row --> |
 | gin-gonic/gin | Go (single) | 9,134 | **0** | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
 
 **Across all four polyglot repos TSA resolves 0 cross-language mis-wires.** The 1
@@ -67,6 +67,46 @@ Same-session ratio at v1.21.0: **~124x cleaner** (6 vs 745) while resolving 3x m
 call edges total (114k vs 38k). TSA's arm alone, re-measured at v1.22.0 (clean tag
 checkout), improved further to **1** mis-wire / 116,606 edges — the CodeGraph arm
 has not been re-measured yet, so no updated ratio is claimed.
+
+> **Methodology note — why this page (and README.md / REPORT-v1.21.0.md) cite both
+> ~124x and ~390x.** Both multipliers come from the SAME same-session v1.21.0
+> measurement above (CodeGraph 745 mis-wires / 38,103 edges vs TSA 6 mis-wires /
+> 114,160 edges) — they are two different arithmetic operations on those two raw
+> numbers, not two different measurements:
+> - **Count-based ratio, ~124x** (this page's headline): raw mis-wire counts,
+>   745 ÷ 6 ≈ 124.2.
+> - **Rate-based ratio, ~390x** (README.md / REPORT-v1.21.0.md headline): mis-wire
+>   *rate* (mis-wires ÷ total call edges), 1.96% ÷ 0.005% ≈ 392.
+>
+> Both are honest; they answer different questions ("how many fewer wrong edges in
+> absolute terms" vs "how much cleaner is the graph once you normalize for TSA
+> resolving 3x more edges overall"). This project does **not** collapse them into a
+> single number — cite whichever matches your question, and say which one you mean.
+>
+> **Re-verification attempt (2026-07-10, this session).** A fresh same-session
+> CodeGraph + TSA re-run against current `develop` (TSA v1.29.0-line, commit
+> `6fe62fba`) was attempted, per the "re-measure both arms together before quoting a
+> ratio" rule above. **The CodeGraph arm could not be completed**: the `codegraph`
+> CLI that `gauntlet_runner.py` / `adapters/codegraph.py` invoke (`codegraph init -i`
+> against a SQLite-queryable `.codegraph/codegraph.db`) does not correspond to any
+> publicly documented, installable package found from this repository's own docs or
+> history. The closest candidate, `codegraphcontext` (`cgc`, installable via
+> `uv tool install codegraphcontext` — see `docs/articles/ast-oracle-shootout.md` for
+> an unrelated, already-reproducible comparison against that tool), has a different
+> CLI surface entirely (`index`/`update`/`stats`, no `init` subcommand) and a
+> Neo4j / FalkorDB / KuzuDB graph backend, not SQLite — it cannot produce the
+> `.codegraph/codegraph.db` file the existing repro commands query. No install
+> instructions for the actual `codegraph` binary exist anywhere in this repository.
+> Because the CodeGraph arm did not complete, **no new CodeGraph-vs-TSA ratio is
+> claimed this session** — the v1.21.0 same-session pair above remains the last
+> valid head-to-head. **TSA's own arm was re-measured** (CodeGraph-independent, so
+> this part is safe to refresh on its own): see the updated "tree-sitter-analyzer
+> (this repo)" row in the 5-Repo Summary Table above (133,377 call edges, 724
+> (0.54%) name-only genuine floor, **4** TSA mis-wires) and the classification-rate
+> and cross-language-edge update in
+> [REPORT-v1.21.0.md](REPORT-v1.21.0.md#headline-correctness-numbers-tsa). Re-attempt
+> the CodeGraph arm once a documented, reproducible install path for that exact tool
+> is confirmed.
 
 ---
 
