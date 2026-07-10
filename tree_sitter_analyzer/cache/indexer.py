@@ -11,11 +11,36 @@ import json
 import logging
 import os
 import sqlite3
+from collections.abc import Iterator
 from datetime import datetime, timezone
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     pass
+
+from ..constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
+from ..languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
+from ..project_graph import _language_from_ext
+from .build_state import (
+    clear_build_in_progress as _clear_build_in_progress,
+)
+from .build_state import (
+    mark_build_in_progress as _mark_build_in_progress,
+)
+from .callgraph_state import (
+    clear_call_graph_built as _clear_call_graph_built,
+)
+from .callgraph_state import (
+    mark_call_graph_built as _mark_call_graph_built,
+)
+from .helpers import (
+    _make_error_entry,
+    _project_index_activation_enabled,
+)
+from .schema import (
+    clear_activation_for_file as _clear_activation_for_file_fn,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +63,17 @@ logger = logging.getLogger(__name__)
 #      ``complexity`` so the cache-backed heatmap matches the extractor instead
 #      of re-deriving the count from the per-arm ``decision_points`` sum.
 _AST_CACHE_EXTRACTOR_VERSION = 14
+
+
+def _walk_source_files(project_root: str) -> Iterator[str]:
+    for dirpath, dirnames, filenames in os.walk(project_root):
+        dirnames[:] = [
+            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
+        ]
+        for fname in filenames:
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in _EXT_TO_LANG:
+                yield os.path.join(dirpath, fname)
 
 
 def check_cache_or_read(
@@ -280,4 +316,175 @@ def insert_index_row(
     if include_activation:
         cache._write_activation_for_file(conn, rel_path, inserted_symbol_rows)  # noqa: SLF001
     else:
-        cache._clear_activation_for_file(conn, rel_path)  # noqa: SLF001
+        _clear_activation_for_file_fn(conn, rel_path)
+
+
+def index_parallel(
+    cache: Any, candidates: list[tuple[str, str]], workers: int
+) -> list[dict[str, Any]]:
+    """Dispatch parse+extract to a spawn process pool (safe on macOS/Linux)."""
+    from multiprocessing import get_context
+
+    from .extraction import _init_worker_parser, _worker_index_file
+
+    ctx = get_context("spawn")
+    args_iter = [(p, cache.project_root, lang) for p, lang in candidates]
+    with ctx.Pool(processes=workers, initializer=_init_worker_parser) as pool:
+        return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
+
+
+def run_index_project(
+    cache: Any,
+    max_files: int = 20_000,
+    force: bool = False,
+    *,
+    workers: int | None = None,
+    resolve_only: bool = False,
+    include_activation: bool | None = None,
+    language_filter: str | None = None,
+) -> dict[str, Any]:
+    """Orchestrate a full ASTCache project index run.
+
+    ASTCache keeps the connection/backfill helpers; this module owns the
+    high-level control flow so ``ast_cache.py`` stays thin.
+    """
+    activation_enabled = _project_index_activation_enabled(include_activation)
+    if resolve_only:
+        synapse = cache._run_synapse_backfill()
+        edge_store_refresh = cache._refresh_graph_edges_from_cache()
+        unresolved = cache._run_unresolved_refs_backfill()
+        return {
+            "mode_used": "resolve_only",
+            "resolve_only": True,
+            "indexed": 0,
+            "cached": 0,
+            "errors": 0,
+            "skipped": 0,
+            "files": [],
+            "synapse_backfill": synapse,
+            "edge_store_refresh": edge_store_refresh,
+            "unresolved_refs_backfill": unresolved,
+            "activation_enabled": activation_enabled,
+        }
+    try:
+        if force:
+            # #578: a full rebuild empties ast_index up front (the DELETE
+            # below commits), then re-populates in bounded batches over
+            # ~70 s. Stamp a persisted marker across that window so
+            # concurrent readers on other connections/processes warn
+            # instead of trusting the half-built table. MARK + DELETE live
+            # INSIDE the try so the finally clears the marker even if the
+            # DELETE/commit itself raises (e.g. SQLITE_FULL) — otherwise a
+            # failed rebuild would leave a stuck marker until TTL expiry.
+            conn = cache._get_conn()
+            _mark_build_in_progress(conn)
+            _clear_call_graph_built(conn)
+            conn.execute("DELETE FROM ast_index")
+            conn.commit()
+        conn = cache._get_conn()
+        stats, candidates, count = walk_and_partition(
+            cache,
+            conn,
+            max_files,
+            force,
+            activation_enabled,
+            _walk_source_files,
+            _language_from_ext,
+            _AST_CACHE_EXTRACTOR_VERSION,
+            _make_error_entry,
+            language_filter,
+        )
+        workers = cache._resolve_worker_count(workers, candidates)
+        if workers and workers >= 2 and len(candidates) >= 2:
+            results = index_parallel(cache, candidates, workers)
+        else:
+            from .extraction import _worker_index_file
+
+            results = [
+                _worker_index_file((p, cache.project_root, lang))
+                for p, lang in candidates
+            ]
+        indexed_at = datetime.now(timezone.utc).isoformat()
+        from .. import ast_cache as _ast_cache_mod
+
+        _ast_cache_mod._commit_index_results(
+            conn,
+            results,
+            stats,
+            partial(
+                insert_index_row,
+                cache,
+                conn,
+                extractor_version=_AST_CACHE_EXTRACTOR_VERSION,
+            ),
+            indexed_at,
+            activation_enabled,
+        )
+        stats["total_files"] = count
+        stats["workers"] = workers
+        if stats["indexed"] > 0:
+            post_index_backfill(cache, stats)
+            if cache._completed_full_index_sweep(stats):
+                _mark_call_graph_built(cache._get_conn())
+        # #978: a fully-cached re-run (indexed == 0) over an already-complete
+        # index never reaches the branch above, so a project whose marker was
+        # cleared (e.g. predates #708) would stay permanently un-stamped and
+        # leave callers/lineage hinting "--full-index". Stamp it when the
+        # index actually covers the whole source set.
+        # _indexed_source_files_are_complete() returns False for an empty,
+        # truncated, errored, or otherwise incomplete index, so this keeps
+        # #970's false-positive guard intact.
+        elif cache._indexed_source_files_are_complete():
+            _mark_call_graph_built(cache._get_conn())
+        if force:
+            stats["db_maintenance"] = (
+                _ast_cache_mod._reclaim_storage_after_full_rebuild(conn, cache.db_path)
+            )
+        return stats
+    finally:
+        if force:
+            _clear_build_in_progress(cache._get_conn())
+
+
+def post_index_backfill(cache: Any, stats: dict[str, Any]) -> None:
+    """Run cross-file, Synapse, and unresolved-ref backfills after indexing."""
+    try:
+        stats["cross_file_backfill"] = cache.backfill_cross_file_edges()
+    except Exception:
+        logger.debug("cross-file backfill failed", exc_info=True)
+    try:
+        synapse = cache._run_synapse_backfill()
+        if synapse is not None:
+            stats["synapse_backfill"] = synapse
+    except Exception:
+        logger.debug("synapse backfill failed", exc_info=True)
+    indexed_files = [
+        str(entry["file"])
+        for entry in stats.get("files", [])
+        if entry.get("status") == "indexed"
+    ]
+    # ``insert_index_row`` already writes every file's graph edges during
+    # commit when FTS5 is available (the common path) — re-deriving them
+    # here is pure duplicate work: ~85 s on django (47 % of total index
+    # time) for an IDENTICAL edge set (244,590 rows either way, verified).
+    # Only refresh when insert could NOT have written them (no FTS5), where
+    # this pass is the sole edge writer.
+    if not cache.fts5_available:
+        try:
+            stats["edge_store_refresh"] = cache._refresh_graph_edges_from_cache(
+                indexed_files
+            )
+        except Exception:
+            logger.debug("edge store refresh failed", exc_info=True)
+    try:
+        unresolved = cache._run_unresolved_refs_backfill()
+        if unresolved is not None:
+            stats["unresolved_refs_backfill"] = unresolved
+    except Exception:
+        logger.debug("unresolved refs backfill failed", exc_info=True)
+    try:
+        from .unresolved import mark_resolution_converged
+
+        mark_resolution_converged(cache._get_conn())
+    except Exception:
+        logger.debug("could not mark resolution converged", exc_info=True)

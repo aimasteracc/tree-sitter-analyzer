@@ -17,6 +17,8 @@ if str(PROJECT_ROOT) not in sys.path:
 import pytest  # noqa: E402
 from hypothesis import settings as hypothesis_settings  # noqa: E402
 
+QUARANTINED_TESTS: list[str] = []
+
 # TEST-P3 root-cause fix: under pytest-xdist's load balancer, multiple
 # worker processes share the on-disk Hypothesis example database
 # (.hypothesis/examples), which produces flaky failures on text-generative
@@ -82,6 +84,10 @@ def pytest_configure(config):
         "slow_ok: test legitimately exceeds SLOW_TEST_BUDGET_S; "
         "opt-out of the unit-suite per-test perf budget (use sparingly)",
     )
+    config.addinivalue_line(
+        "markers",
+        "quarantine: test is known unstable; reruns are disabled for it",
+    )
 
     # HARD BLOCK: detect duplicate --cov arguments that cause memory blowup.
     # Only count --cov and --cov= (NOT --cov-report, --cov-fail-under, etc.)
@@ -121,6 +127,10 @@ def pytest_collection_modifyitems(config, items):
         # Skip tests that require fd if not available
         if "requires_fd" in item.keywords and not has_fd:
             item.add_marker(skip_fd)
+
+        if "quarantine" in item.keywords:
+            item.add_marker(pytest.mark.flaky(reruns=0, reruns_delay=0))
+            QUARANTINED_TESTS.append(item.nodeid)
 
 
 @pytest.fixture(scope="session")
@@ -245,6 +255,14 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
             )
     except ImportError:
         pass
+
+    if QUARANTINED_TESTS:
+        terminalreporter.write_sep(
+            "=",
+            f"quarantined tests ({len(QUARANTINED_TESTS)})",
+        )
+        for nodeid in QUARANTINED_TESTS:
+            terminalreporter.write_line(nodeid)
 
 
 @pytest.fixture(autouse=True)

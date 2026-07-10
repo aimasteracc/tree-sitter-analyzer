@@ -79,7 +79,8 @@ class TestRouteCachePersistence:
 
         assert key(cached) == key(cached_via_db) == key(no_cache)
 
-    @pytest.mark.flaky(reruns=2, reruns_delay=0)
+    @pytest.mark.performance
+    @pytest.mark.quarantine
     def test_warm_pass_is_meaningfully_faster_than_cold(self, tmp_path: Path):
         """PERF-1 regression guard: the cache must produce a >=3x speedup on
         second invocation. (Real-world numbers on the analyzer's own repo
@@ -89,7 +90,8 @@ class TestRouteCachePersistence:
 
         Skipped under heavily-loaded CI where wall-clock measurements are
         unreliable — set TSA_SKIP_PERF=1 to opt out.
-        Marked flaky(reruns=2) — timing is sensitive to xdist CPU contention.
+        Marked quarantine — timing is sensitive to xdist CPU contention,
+        so reruns must not hide a regression.
         """
         import os as _os
 
@@ -136,7 +138,7 @@ class TestRouteCachePersistence:
         speedup = cold_med / max(warm_med, 1e-6)
         assert (
             speedup >= 3
-        ), (  # ratchet: nondeterministic wall-clock timing, marked flaky(reruns=2)
+        ), (  # ratchet: nondeterministic wall-clock timing, quarantined
             f"Expected >=3x speedup, got {speedup:.1f}x "
             f"(cold={cold_med * 1000:.1f}ms warm={warm_med * 1000:.1f}ms). "
             "PERF-1 contract regressed — cache may be disabled or fast path broken."
@@ -371,6 +373,7 @@ class TestRouteEnvelopeConsistency:
         frameworks_from_routes = {r["framework"] for r in result["routes"]}
         assert frameworks == frameworks_from_routes
 
+    @pytest.mark.slow_ok
     def test_tree_sitter_analyzer_project_reports_zero_routes(self):
         """Regression guard for the original F4 reproducer: running the
         tool against this repo (which has no Flask/Django/FastAPI/Express/
