@@ -23,13 +23,26 @@ Our test targets (matching languages we support):
   - Express (TypeScript) — web framework
 """
 
+# HISTORICAL DATA NOTE (REQ-U-028):
+# benchmark_results.json was generated with an empty index for all rows
+# (index_symbols=0 for every BenchmarkRun). The recall numbers in that file
+# (approximately 0.14, 0.29, 0.43) are INVALID — they were computed against
+# an empty symbol table, not a real indexed project. Any reader of
+# benchmark_results.json must treat those recall figures as benchmark
+# infrastructure artifacts, not real measurements.
+# Re-running with a properly built index requires network access (cloning
+# real projects) and is tracked separately.
+
 import json
+import logging as _logging
 import subprocess
 import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+_bmark_logger = _logging.getLogger(__name__)
 
 # tempdir-style path; "cwqcdr3n…" looks like base64 entropy to
 # detect-secrets but is just a macOS-generated tempdir component.
@@ -290,6 +303,12 @@ def main():
             cg_time_s=cg.get("time_s", 0),
             cg_file_reads=cg.get("file_reads", 0),
         )
+        if run.index_symbols == 0:
+            _bmark_logger.warning(
+                "[%s] index_symbols=0 after index step — recall computation skipped "
+                "(empty symbol table). See HISTORICAL DATA NOTE in this file.",
+                run.project,
+            )
         results.append(run)
 
     print("\n" + "=" * 90)

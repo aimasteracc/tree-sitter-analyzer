@@ -332,5 +332,147 @@ public class EdgeCaseClass {
         assert "genericMethod" in results[0]["content"]
 
 
+class TestCLIQueryComplexityLineSpanFilter:
+    """Integration tests for complexity and line_span comparison filters."""
+
+    def _make_java_file(self, code: str) -> "tempfile.NamedTemporaryFile":
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".java", delete=False)
+        tmp.write(code)
+        tmp.close()
+        return tmp
+
+    def _make_args(self, file_path: str, query_key: str = "methods", filter_expr: str | None = None):
+        return type(
+            "Args",
+            (),
+            {
+                "file_path": file_path,
+                "query_key": query_key,
+                "query_string": None,
+                "filter": filter_expr,
+                "output_format": "json",
+            },
+        )()
+
+    @pytest.mark.asyncio
+    async def test_cli_filter_line_span_gt(self):
+        """filter='line_span>10' → only the long method (60 lines) is returned."""
+        # Build Java file with short_method (3 lines) and long_method (60 lines)
+        body_lines = "\n".join(f"        int x{i} = {i};" for i in range(58))
+        java_code = f"""
+public class SpanTest {{
+    public void shortMethod() {{
+        int x = 1;
+    }}
+
+    public void longMethod() {{
+{body_lines}
+    }}
+}}
+"""
+        tmp = self._make_java_file(java_code)
+        try:
+            args = self._make_args(tmp.name, filter_expr="line_span>10")
+            command = QueryCommand(args)
+            results = await command.execute_query("java", "methods", "methods")
+            assert results is not None
+            # longMethod spans > 10 lines; shortMethod spans <= 10 lines
+            names = [r.get("name") or r.get("content", "") for r in results]
+            assert any("longMethod" in n for n in names), f"longMethod not found in {names}"
+            assert not any("shortMethod" in n for n in names), f"shortMethod should be excluded, names={names}"
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_cli_filter_line_span_lt(self):
+        """filter='line_span<10' → only the short method (3 lines) is returned."""
+        body_lines = "\n".join(f"        int x{i} = {i};" for i in range(58))
+        java_code = f"""
+public class SpanTest {{
+    public void shortMethod() {{
+        int x = 1;
+    }}
+
+    public void longMethod() {{
+{body_lines}
+    }}
+}}
+"""
+        tmp = self._make_java_file(java_code)
+        try:
+            args = self._make_args(tmp.name, filter_expr="line_span<10")
+            command = QueryCommand(args)
+            results = await command.execute_query("java", "methods", "methods")
+            assert results is not None
+            names = [r.get("name") or r.get("content", "") for r in results]
+            assert any("shortMethod" in n for n in names), f"shortMethod not found in {names}"
+            assert not any("longMethod" in n for n in names), f"longMethod should be excluded, names={names}"
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_cli_filter_complexity_gt_no_complexity_score(self):
+        """filter='complexity>5' on a file without complexity_score → all items excluded (empty list)."""
+        java_code = """
+public class SimpleClass {
+    public void simpleMethod() {
+        int x = 1;
+    }
+    public void anotherMethod() {
+        int y = 2;
+    }
+}
+"""
+        tmp = self._make_java_file(java_code)
+        try:
+            args = self._make_args(tmp.name, filter_expr="complexity>5")
+            command = QueryCommand(args)
+            results = await command.execute_query("java", "methods", "methods")
+            assert results is not None
+            # Since these are fallback query nodes without complexity_score,
+            # the filter excludes all of them
+            for r in results:
+                assert "complexity_score" not in r, f"Unexpected complexity_score in {r}"
+            # Results should be empty since all items lack complexity_score
+            assert len(results) == 0
+
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_cli_filter_invalid_rhs_silent_fallback(self, capsys):
+        """filter='complexity>abc' → all results returned (filter ignored), stderr has warning."""
+        java_code = """
+public class TestClass {
+    public void methodA() { int x = 1; }
+    public void methodB() { int y = 2; }
+}
+"""
+        tmp = self._make_java_file(java_code)
+        try:
+            args = self._make_args(tmp.name, filter_expr="complexity>abc")
+            command = QueryCommand(args)
+
+            import io
+            import sys as _sys
+            old_stderr = _sys.stderr
+            _sys.stderr = captured_stderr = io.StringIO()
+            try:
+                results = await command.execute_query("java", "methods", "methods")
+            finally:
+                _sys.stderr = old_stderr
+            stderr_output = captured_stderr.getvalue()
+
+            assert results is not None
+            # All results returned because the invalid filter is skipped
+            assert len(results) >= 2
+            # Warning should have been written to stderr
+            assert "abc" in stderr_output or "complexity" in stderr_output, (
+                f"Expected warning in stderr, got: {stderr_output!r}"
+            )
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

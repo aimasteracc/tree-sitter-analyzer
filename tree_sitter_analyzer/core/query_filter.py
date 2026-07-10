@@ -6,6 +6,7 @@ Provides post-processing filtering for query results, supporting filtering by na
 """
 
 import re
+import sys
 from typing import Any
 
 
@@ -43,6 +44,20 @@ class QueryFilter:
             if self._matches_filters(result, filters):
                 filtered_results.append(result)
 
+        # Warn once when complexity filter is present but none of the input items have
+        # complexity_score — this typically means the query key (e.g. classes, imports)
+        # does not produce complexity data.
+        if (
+            "complexity" in filters
+            and results
+            and all("complexity_score" not in r for r in results)
+        ):
+            sys.stderr.write(
+                "Warning: '--filter complexity' was applied but none of the results "
+                "have 'complexity_score'. "
+                "Try --query-key methods or functions instead.\n"
+            )
+
         return filtered_results
 
     def _parse_filter_expression(self, expression: str) -> dict[str, Any]:
@@ -55,7 +70,28 @@ class QueryFilter:
         for condition in conditions:
             condition = condition.strip()
 
-            if "=" in condition:
+            # Check comparison operators first (>=/<= before >/<, to avoid mis-parsing)
+            if ">=" in condition:
+                key, raw_value = condition.split(">=", 1)
+                parsed = self._parse_numeric_value(key.strip(), raw_value.strip(), ">=")
+                if parsed is not None:
+                    filters[key.strip()] = {"type": "gte", "value": parsed}
+            elif "<=" in condition:
+                key, raw_value = condition.split("<=", 1)
+                parsed = self._parse_numeric_value(key.strip(), raw_value.strip(), "<=")
+                if parsed is not None:
+                    filters[key.strip()] = {"type": "lte", "value": parsed}
+            elif ">" in condition:
+                key, raw_value = condition.split(">", 1)
+                parsed = self._parse_numeric_value(key.strip(), raw_value.strip(), ">")
+                if parsed is not None:
+                    filters[key.strip()] = {"type": "gt", "value": parsed}
+            elif "<" in condition:
+                key, raw_value = condition.split("<", 1)
+                parsed = self._parse_numeric_value(key.strip(), raw_value.strip(), "<")
+                if parsed is not None:
+                    filters[key.strip()] = {"type": "lt", "value": parsed}
+            elif "=" in condition:
                 key, value = condition.split("=", 1)
                 key = key.strip()
                 value = value.strip()
@@ -67,6 +103,22 @@ class QueryFilter:
                     filters[key] = {"type": "exact", "value": value}
 
         return filters
+
+    def _parse_numeric_value(
+        self, key: str, raw_value: str, operator: str
+    ) -> float | None:
+        """Parse a numeric RHS value for comparison operators.
+
+        Returns the float value on success, or None on failure (with a warning to stderr).
+        """
+        try:
+            return float(raw_value)
+        except ValueError:
+            sys.stderr.write(
+                f"Warning: filter '{key}{operator}{raw_value}' — "
+                f"'{raw_value}' is not a valid number; condition ignored.\n"
+            )
+            return None
 
     def _matches_filters(self, result: dict[str, Any], filters: dict[str, Any]) -> bool:
         """Check if result matches all filter conditions"""
@@ -102,8 +154,37 @@ class QueryFilter:
             return self._match_modifier(result, "final", filter_value)
         elif filter_key == "abstract":
             return self._match_modifier(result, "abstract", filter_value)
+        elif filter_key == "complexity":
+            return self._match_numeric_comparison(result, "complexity_score", filter_config)
+        elif filter_key == "line_span":
+            return self._match_numeric_comparison(result, "line_span", filter_config)
 
         return True
+
+    def _match_numeric_comparison(
+        self, result: dict[str, Any], field_name: str, filter_config: dict[str, Any]
+    ) -> bool:
+        """Compare a numeric field in result against a filter config with type/value.
+
+        Returns False if the field is absent (excludes the result).
+        """
+        field_value = result.get(field_name)
+        if field_value is None:
+            return False
+
+        threshold = filter_config["value"]
+        comparison_type = filter_config["type"]
+
+        if comparison_type == "gt":
+            return float(field_value) > threshold
+        elif comparison_type == "lt":
+            return float(field_value) < threshold
+        elif comparison_type == "gte":
+            return float(field_value) >= threshold
+        elif comparison_type == "lte":
+            return float(field_value) <= threshold
+
+        return False
 
     def _match_name(self, result: dict[str, Any], match_type: str, value: str) -> bool:
         """Match method name"""
@@ -207,6 +288,12 @@ Basic Syntax:
   --filter "key=~pattern"            # Pattern match (supports wildcard *)
   --filter "key1=value1,key2=value2" # Multiple conditions (AND logic)
 
+Comparison Operators:
+  --filter "key>N"                   # Greater than
+  --filter "key<N"                   # Less than
+  --filter "key>=N"                  # Greater than or equal
+  --filter "key<=N"                  # Less than or equal
+
 Supported filter keys:
   name       - Method/function name
              e.g.: name=main, name=~auth*, name=~get*
@@ -235,8 +322,18 @@ Supported filter keys:
   abstract   - Whether it is abstract
              e.g.: abstract=true, abstract=false
 
+  complexity - Complexity score (比較演算子 >, <, >=, <= が有効)
+             e.g.: complexity>10, complexity<5, complexity>=3
+             Note: complexity_score を持たないアイテムは除外される
+
+  line_span  - 行数 (end_line - start_line + 1) (比較演算子 >, <, >=, <= が有効)
+             e.g.: line_span>50, line_span<20, line_span>=10
+
 Examples:
   --query-key methods --filter "name=main"
   --query-key methods --filter "name=~get*,public=true"
   --query-key methods --filter "params=0,static=true"
+  --query-key methods --filter "complexity>10"
+  --query-key methods --filter "line_span>50"
+  --query-key methods --filter "complexity>5,public=true"
 """

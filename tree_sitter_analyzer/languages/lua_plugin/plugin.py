@@ -18,8 +18,9 @@ if TYPE_CHECKING:
     from ...core.analysis_engine import AnalysisRequest
     from ...models import AnalysisResult
 
-from ...plugins.base import DefaultExtractor, ElementExtractor, LanguagePlugin
+from ...plugins.base import ElementExtractor, LanguagePlugin
 from ...utils import log_error
+from .extractor import LuaElementExtractor
 
 
 class LuaPlugin(LanguagePlugin):
@@ -32,7 +33,7 @@ class LuaPlugin(LanguagePlugin):
         return [".lua"]
 
     def create_extractor(self) -> ElementExtractor:
-        return DefaultExtractor()
+        return LuaElementExtractor()
 
     def get_tree_sitter_language(self) -> Any:
         try:
