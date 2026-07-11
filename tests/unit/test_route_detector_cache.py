@@ -81,6 +81,7 @@ class TestRouteCachePersistence:
 
     @pytest.mark.performance
     @pytest.mark.quarantine
+    @pytest.mark.slow
     def test_warm_pass_is_meaningfully_faster_than_cold(self, tmp_path: Path):
         """PERF-1 regression guard: the cache must produce a >=3x speedup on
         second invocation. (Real-world numbers on the analyzer's own repo
