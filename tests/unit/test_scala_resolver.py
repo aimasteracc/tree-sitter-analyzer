@@ -116,6 +116,83 @@ class TestResolveScalaCallee:
         assert sym_id is None
         assert resolved_file == ""
 
+    def test_receiver_guard_skips_local_for_dotted_callee(self) -> None:
+        """Tier (a) receiver guard: dotted callee_full must NOT match a local symbol.
+
+        When the call site is `items.map`, callee_full='items.map' contains a dot.
+        Even if 'map' exists locally, the resolver must skip local lookup and fall
+        through to tier (c) / unknown — preventing false edges for stdlib/receiver calls.
+        """
+        ctx = ScalaResolverContext(
+            file_symbols={
+                "src/Main.scala": [("map", "function", 5)],
+            },
+            global_name_table={},
+            name_to_source={},
+        )
+        sym_id, resolution, resolved_file = resolve_scala_callee(
+            "map", "items.map", "src/Main.scala", ctx
+        )
+        assert resolution == "unknown", (
+            "Receiver call items.map must not bind to local 'map' symbol (M-3 guard)"
+        )
+        assert sym_id is None
+        assert resolved_file == ""
+
+    def test_tier_b_named_import_returns_unknown(self) -> None:
+        """Tier (b): callee matching an explicit named import returns 'unknown'.
+
+        Scala import resolution to the actual source file is a follow-on task (P0).
+        Until that work lands, tier (b) must acknowledge the import with 'unknown'
+        rather than misrouting to a project-wide match.
+        """
+        ctx = ScalaResolverContext(
+            file_symbols={
+                "src/App.scala": [],
+                "src/Lib.scala": [("Helper", "class", 77)],
+            },
+            global_name_table={
+                "Helper": [("src/Lib.scala", 77)],
+            },
+            name_to_source={
+                "src/App.scala": {"Helper": "com.example.Lib.Helper"},
+            },
+        )
+        sym_id, resolution, resolved_file = resolve_scala_callee(
+            "Helper", "", "src/App.scala", ctx
+        )
+        assert resolution == "unknown"
+        assert sym_id is None
+
+    def test_build_context_populates_name_to_source(self) -> None:
+        """build_scala_resolver_context stores named imports in name_to_source."""
+
+        class _FakeImport:
+            def __init__(self, local_name: str, module_path: str, is_star: bool = False) -> None:
+                self.local_name = local_name
+                self.module_path = module_path
+                self.is_star = is_star
+
+        ctx = build_scala_resolver_context(
+            file_languages={"src/App.scala": "scala"},
+            imports_by_file={
+                "src/App.scala": [
+                    _FakeImport("JsonParser", "com.example.json.JsonParser"),
+                    _FakeImport("", "com.example.util"),           # no local_name — skip
+                    _FakeImport("*", "com.example.star", is_star=True),  # star — skip
+                ],
+            },
+            file_symbols={},
+            global_name_table={},
+            file_class_methods=None,
+        )
+        assert ctx is not None
+        assert "src/App.scala" in ctx.name_to_source
+        name_map = ctx.name_to_source["src/App.scala"]
+        assert "JsonParser" in name_map
+        assert name_map["JsonParser"] == "com.example.json.JsonParser"
+        assert "*" not in name_map, "star imports must be excluded from name_to_source"
+
     def test_scala_resolver_no_cross_language_binding(self) -> None:
         """Tier (c): a symbol that exists only in a Python file must NOT resolve to 'project'.
 
