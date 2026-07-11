@@ -642,8 +642,9 @@ class TestCreateResultDictComplexityScore:
 
     def test_create_result_dict_with_complexity(self, query_service: QueryService) -> None:
         """PluginQueryNode with complexity_score=10 → result dict has 'complexity_score': 10"""
-        from tree_sitter_analyzer.core._query_service_helpers import PluginQueryNode
         from types import SimpleNamespace
+
+        from tree_sitter_analyzer.core._query_service_helpers import PluginQueryNode
 
         elem = SimpleNamespace(
             element_type="method",
