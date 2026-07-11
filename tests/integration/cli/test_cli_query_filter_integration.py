@@ -464,8 +464,8 @@ public class TestClass {
             stderr_output = captured_stderr.getvalue()
 
             assert results is not None
-            # All results returned because the invalid filter is skipped
-            assert len(results) >= 2
+            # All results returned because the invalid filter is skipped (2 methods in fixture)
+            assert len(results) == 2
             # Warning should have been written to stderr
             assert "abc" in stderr_output or "complexity" in stderr_output, (
                 f"Expected warning in stderr, got: {stderr_output!r}"

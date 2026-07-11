@@ -12,7 +12,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Availability guard — defined BEFORE any skipif that references it
 # ---------------------------------------------------------------------------
@@ -69,7 +68,7 @@ def test_lua_extractor_graceful_when_no_tslua(monkeypatch: pytest.MonkeyPatch) -
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(not _tslua_available(), reason="tree_sitter_lua not installed")
+@pytest.mark.skipif(not _tslua_available(), reason="tree_sitter_lua not installed; tracked: optional-dep skip")
 def test_lua_extractor_extracts_functions_and_imports() -> None:
     """With tree_sitter_lua installed, named and local functions are extracted
     and require() calls appear as import elements.

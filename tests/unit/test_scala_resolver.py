@@ -14,17 +14,12 @@ Verifies that the Scala resolver:
 
 from __future__ import annotations
 
-import importlib
-
-import pytest
-
+from tree_sitter_analyzer.synapse_resolver._registry import registered_languages
 from tree_sitter_analyzer.synapse_resolver.languages.scala import (
     ScalaResolverContext,
     build_scala_resolver_context,
     resolve_scala_callee,
 )
-from tree_sitter_analyzer.synapse_resolver._registry import registered_languages
-
 
 # ---------------------------------------------------------------------------
 # build_scala_resolver_context — context construction gating
@@ -34,12 +29,12 @@ from tree_sitter_analyzer.synapse_resolver._registry import registered_languages
 class TestBuildScalaResolverContext:
     """build_scala_resolver_context must return None when no Scala files exist."""
 
-    _common_kwargs: dict = dict(
-        imports_by_file={},
-        file_symbols={},
-        global_name_table={},
-        file_class_methods=None,
-    )
+    _common_kwargs: dict = {
+        "imports_by_file": {},
+        "file_symbols": {},
+        "global_name_table": {},
+        "file_class_methods": None,
+    }
 
     def test_build_context_returns_none_for_non_scala_project(self) -> None:
         """Returns None for a Python-only project (zero cost for absent language)."""

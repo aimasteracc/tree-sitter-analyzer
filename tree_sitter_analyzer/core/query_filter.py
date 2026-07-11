@@ -176,13 +176,13 @@ class QueryFilter:
         comparison_type = filter_config["type"]
 
         if comparison_type == "gt":
-            return float(field_value) > threshold
+            return bool(float(field_value) > threshold)
         elif comparison_type == "lt":
-            return float(field_value) < threshold
+            return bool(float(field_value) < threshold)
         elif comparison_type == "gte":
-            return float(field_value) >= threshold
+            return bool(float(field_value) >= threshold)
         elif comparison_type == "lte":
-            return float(field_value) <= threshold
+            return bool(float(field_value) <= threshold)
 
         return False
 

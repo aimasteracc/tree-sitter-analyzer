@@ -89,10 +89,12 @@ def resolve_scala_callee(
     """Resolve one Scala call edge. Returns (symbol_id, resolution, resolved_file)."""
     name = callee_full or callee_name
 
-    # (a) local
-    sym_id = _lookup_in_file(ctx, caller_file, callee_name)
-    if sym_id is not None:
-        return sym_id, "local", caller_file
+    # (a) local — skip when the call has a receiver prefix (e.g., items.map)
+    # so a local symbol named `map` does not shadow a receiver method call.
+    if "." not in (callee_full or ""):
+        sym_id = _lookup_in_file(ctx, caller_file, callee_name)
+        if sym_id is not None:
+            return sym_id, "local", caller_file
 
     # (b) explicit named import — P0: returns unknown (file resolution is follow-on)
     if caller_file in ctx.name_to_source:

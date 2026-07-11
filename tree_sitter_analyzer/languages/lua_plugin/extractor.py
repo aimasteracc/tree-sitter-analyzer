@@ -18,16 +18,21 @@ from ..shared.traversal import node_range
 
 __all__ = ["LuaElementExtractor"]
 
-# Tree-sitter query: named and anonymous function definitions.
+# Tree-sitter query: named and local function declarations.
+# `function_declaration` covers both `function name()` and `local function name()`.
 _FUNCTION_QUERY = """
-(function_definition name: (identifier) @name)
-(local_function name: (identifier) @name)
+(function_declaration name: (identifier) @name)
 """
 
 # Tree-sitter query: require() calls (Lua's import mechanism).
+# Matches both `require("m")` (name is a bare identifier) and versions where
+# the grammar wraps the identifier in a `variable` node.
 _IMPORT_QUERY = """
 (function_call
   name: (identifier) @callee (#eq? @callee "require")
+  arguments: (arguments (string content: (string_content) @path)))
+(function_call
+  name: (variable (identifier) @callee (#eq? @callee "require"))
   arguments: (arguments (string content: (string_content) @path)))
 """
 
@@ -67,7 +72,7 @@ class LuaElementExtractor(ElementExtractor):
             return None
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelFunction]:
         """Extract Lua function and local-function definitions.
 
@@ -80,7 +85,7 @@ class LuaElementExtractor(ElementExtractor):
         try:
             import tree_sitter as _ts
             query = _ts.Query(language, _FUNCTION_QUERY)
-            captures: dict[str, list[Any]] = query.captures(tree.root_node)
+            captures: dict[str, list[Any]] = query.captures(tree.root_node)  # type: ignore[attr-defined]
             name_nodes: list[Any] = captures.get("name", [])
 
             functions: list[ModelFunction] = []
@@ -116,7 +121,7 @@ class LuaElementExtractor(ElementExtractor):
             return []
 
     def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelImport]:
         """Extract Lua require() calls as import elements.
 
@@ -129,7 +134,7 @@ class LuaElementExtractor(ElementExtractor):
         try:
             import tree_sitter as _ts
             query = _ts.Query(language, _IMPORT_QUERY)
-            captures: dict[str, list[Any]] = query.captures(tree.root_node)
+            captures: dict[str, list[Any]] = query.captures(tree.root_node)  # type: ignore[attr-defined]
             path_nodes: list[Any] = captures.get("path", [])
 
             imports: list[ModelImport] = []
@@ -166,13 +171,13 @@ class LuaElementExtractor(ElementExtractor):
             return []
 
     def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelClass]:
         """Lua has no class keyword; always returns an empty list."""
         return []
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelVariable]:
         """Variable extraction not implemented for Lua; returns an empty list."""
         return []

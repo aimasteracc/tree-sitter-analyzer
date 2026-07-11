@@ -9,17 +9,12 @@ Verifies that the Bash resolver:
 
 from __future__ import annotations
 
-import importlib
-
-import pytest
-
+from tree_sitter_analyzer.synapse_resolver._registry import registered_languages
 from tree_sitter_analyzer.synapse_resolver.languages.bash import (
     BashResolverContext,
     build_bash_resolver_context,
     resolve_bash_callee,
 )
-from tree_sitter_analyzer.synapse_resolver._registry import registered_languages
-
 
 # ---------------------------------------------------------------------------
 # resolve_bash_callee — always returns unknown
@@ -76,12 +71,12 @@ class TestResolveBashCallee:
 class TestBuildBashResolverContext:
     """build_bash_resolver_context must return None when no Bash files exist."""
 
-    _common_kwargs = dict(
-        imports_by_file={},
-        file_symbols={},
-        global_name_table={},
-        file_class_methods=None,
-    )
+    _common_kwargs = {
+        "imports_by_file": {},
+        "file_symbols": {},
+        "global_name_table": {},
+        "file_class_methods": None,
+    }
 
     def test_bash_context_none_when_no_bash_files(self) -> None:
         """Returns None for a Python-only project (zero cost)."""

@@ -10,7 +10,6 @@ from __future__ import annotations
 from tree_sitter_analyzer.synapse_resolver._context import _build_import_maps
 from tree_sitter_analyzer.synapse_resolver._imports import ImportEntry
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

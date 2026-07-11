@@ -17,8 +17,6 @@ Measurement SQL (run against tree-sitter-analyzer self-repo index):
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 pytestmark = [

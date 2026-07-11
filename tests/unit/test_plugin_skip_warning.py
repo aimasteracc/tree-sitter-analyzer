@@ -5,11 +5,8 @@ from __future__ import annotations
 import logging
 import sqlite3
 
-import pytest
-
 import tree_sitter_analyzer.cache.indexer as _indexer_mod
 from tree_sitter_analyzer.cache.indexer import walk_and_partition
-
 
 # ---------------------------------------------------------------------------
 # Helpers

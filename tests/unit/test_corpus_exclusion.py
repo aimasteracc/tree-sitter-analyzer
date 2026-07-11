@@ -5,15 +5,12 @@ from __future__ import annotations
 import os
 import sqlite3
 
-import pytest
-
 from tree_sitter_analyzer.cache.indexer import (
     _DEFAULT_EXCLUDE_PATTERNS,
     _walk_source_files,
     walk_and_partition,
 )
 from tree_sitter_analyzer.project_graph import _language_from_ext
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -132,8 +129,8 @@ class TestCorpusExclusion:
             exclude_patterns=_DEFAULT_EXCLUDE_PATTERNS,
         )
 
-        assert stats["skipped"] >= 1, (
-            "At least one file must be counted as skipped due to corpus exclusion"
+        assert stats["skipped"] == 1, (
+            "Exactly one corpus file must be counted as skipped"
         )
 
     def test_no_exclusion_when_patterns_is_none(self, tmp_path):
