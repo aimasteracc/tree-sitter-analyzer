@@ -60,7 +60,7 @@ def _autoindex_payload(args: Any, output_format: str) -> dict[str, Any]:
 
 
 def _full_index_payload(args: Any, output_format: str) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "mode": getattr(args, "full_index_mode", "incremental") or "incremental",
         "max_files": int(getattr(args, "full_index_max_files", 20_000)),
         "include_activation": bool(
@@ -68,6 +68,14 @@ def _full_index_payload(args: Any, output_format: str) -> dict[str, Any]:
         ),
         "output_format": output_format,
     }
+    extra_patterns: list[str] = list(
+        getattr(args, "full_index_exclude_patterns", None) or []
+    )
+    if extra_patterns:
+        payload["exclude_patterns"] = extra_patterns
+    if bool(getattr(args, "full_index_no_default_excludes", False)):
+        payload["no_default_excludes"] = True
+    return payload
 
 
 def _incremental_sync_payload(args: Any, output_format: str) -> dict[str, Any]:

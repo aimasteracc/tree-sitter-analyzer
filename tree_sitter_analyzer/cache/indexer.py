@@ -7,6 +7,7 @@ that delegate here.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 import os
@@ -43,6 +44,23 @@ from .schema import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Corpus-directory patterns excluded from full-index (REQ-E-016).
+# Uses fnmatch syntax relative to the project root (forward-slash normalised).
+_DEFAULT_EXCLUDE_PATTERNS: frozenset[str] = frozenset({
+    "tests/golden/corpus_*",
+})
+
+# Extensions that have a plugin but are NOT wired for full-index
+# (REQ-E-020).  When a file with one of these extensions is encountered and
+# language_fn returns None, a one-time WARNING is emitted so callers know why
+# the file was silently skipped.
+_PLUGIN_EXTS: frozenset[str] = frozenset({
+    ".css", ".html", ".md", ".sql", ".yaml", ".yml",
+})
+
+# De-duplication set: only warn once per extension per process lifetime.
+_warned_extensions: set[str] = set()
 
 # Extractor version constant — kept in sync with ast_cache.py.
 # v3: #610 — Python module-level constants extracted as kind="constant".
@@ -201,6 +219,7 @@ def walk_and_partition(
     extractor_version: int,
     make_error_entry: Any,
     language_filter: str | None = None,
+    exclude_patterns: frozenset[str] | None = None,
 ) -> tuple[dict[str, Any], list[tuple[str, str]], int]:
     """Walk source files and partition into (stats, candidates, count).
 
@@ -237,14 +256,30 @@ def walk_and_partition(
             stats["truncated_by_max_files"] = True
             break
         count += 1
+        rel_path = os.path.relpath(abs_path, cache.project_root).replace("\\", "/")
+        # REQ-E-016: skip files matching corpus-exclusion patterns.
+        if exclude_patterns:
+            if any(fnmatch.fnmatch(rel_path, pat) for pat in exclude_patterns):
+                stats["skipped"] += 1
+                continue
         lang = language_fn(abs_path)
         if lang is None:
+            # REQ-E-020: emit a one-time WARNING for plugin-registered extensions
+            # that are not wired into the full-index path.
+            ext = os.path.splitext(abs_path)[1].lower()
+            if ext and ext not in _warned_extensions and ext in _PLUGIN_EXTS:
+                logger.warning(
+                    "Extension %s is registered in a plugin but not wired for "
+                    "full-index; use single-file mode for this language. File: %s",
+                    ext,
+                    abs_path,
+                )
+                _warned_extensions.add(ext)
             stats["skipped"] += 1
             continue
         if language_filter is not None and lang != language_filter:
             stats["skipped"] += 1
             continue
-        rel_path = os.path.relpath(abs_path, cache.project_root).replace("\\", "/")
         try:
             stat = os.stat(abs_path)
         except OSError as e:
@@ -342,6 +377,7 @@ def run_index_project(
     resolve_only: bool = False,
     include_activation: bool | None = None,
     language_filter: str | None = None,
+    exclude_patterns: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Orchestrate a full ASTCache project index run.
 
@@ -382,6 +418,11 @@ def run_index_project(
             conn.execute("DELETE FROM ast_index")
             conn.commit()
         conn = cache._get_conn()
+        effective_exclude = (
+            exclude_patterns
+            if exclude_patterns is not None
+            else _DEFAULT_EXCLUDE_PATTERNS
+        )
         stats, candidates, count = walk_and_partition(
             cache,
             conn,
@@ -393,6 +434,7 @@ def run_index_project(
             _AST_CACHE_EXTRACTOR_VERSION,
             _make_error_entry,
             language_filter,
+            effective_exclude,
         )
         workers = cache._resolve_worker_count(workers, candidates)
         if workers and workers >= 2 and len(candidates) >= 2:

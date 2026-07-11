@@ -63,6 +63,27 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--full-index-exclude-pattern",
+        action="append",
+        dest="full_index_exclude_patterns",
+        metavar="PAT",
+        default=[],
+        help=(
+            "Glob pattern (fnmatch, relative to project root) to exclude from "
+            "--full-index. Repeatable: --full-index-exclude-pattern 'tests/golden/*' "
+            "--full-index-exclude-pattern 'vendor/**'. Patterns accumulate."
+        ),
+    )
+    parser.add_argument(
+        "--full-index-no-default-excludes",
+        action="store_true",
+        help=(
+            "Disable the built-in default exclude patterns for --full-index "
+            "(e.g. tests/golden/corpus_*). Use with --full-index-exclude-pattern "
+            "to supply a fully custom exclude set."
+        ),
+    )
+    parser.add_argument(
         "--codegraph-metrics",
         action="store_true",
         help=(

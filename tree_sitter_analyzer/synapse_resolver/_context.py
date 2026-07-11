@@ -384,15 +384,25 @@ def _build_file_class_methods_from_cache(
 def _build_import_maps(
     imports_by_file: dict[str, list[ImportEntry]],
     module_to_file: dict[str, str],
+    file_symbols: dict[str, list[tuple[str, str, int]]] | None = None,
 ) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
-    """Derive (name_to_source, alias_target) from per-file import entries."""
+    """Derive (name_to_source, alias_target) from per-file import entries.
+
+    When ``file_symbols`` is supplied, ``from M import *`` entries are
+    expanded: each name exported by the starred project module is mapped to
+    that module's file in the caller's ``name_to_source`` entry.  External
+    modules (not found in ``module_to_file``) are silently skipped
+    (REQ-N-013).
+    """
     name_to_source: dict[str, dict[str, str]] = {}
     alias_target: dict[str, dict[str, str]] = {}
+    star_imports: list[tuple[str, ImportEntry]] = []
     for caller_file, entries in imports_by_file.items():
         name_map: dict[str, str] = {}
         alias_map: dict[str, str] = {}
         for entry in entries:
             if entry.is_star:
+                star_imports.append((caller_file, entry))
                 continue
             target = _resolve_module_to_file(
                 entry.module_path, entry.is_relative, caller_file, module_to_file
@@ -421,6 +431,24 @@ def _build_import_maps(
             name_to_source[caller_file] = name_map
         if alias_map:
             alias_target[caller_file] = alias_map
+
+    # Second pass: expand star imports using the project's symbol table.
+    # Only expand when file_symbols is provided; if None, skip (unchanged
+    # behaviour for callers that do not supply the table).
+    if file_symbols is not None:
+        for caller_file, entry in star_imports:
+            target_file = _resolve_module_to_file(
+                entry.module_path, entry.is_relative, caller_file, module_to_file
+            )
+            if not target_file:
+                # External or unresolvable module — skip (REQ-N-013).
+                continue
+            symbols = file_symbols.get(target_file, [])
+            if symbols:
+                name_map = name_to_source.setdefault(caller_file, {})
+                for sym_name, _kind, _sym_id in symbols:
+                    name_map.setdefault(sym_name, target_file)
+
     return name_to_source, alias_target
 
 
@@ -503,7 +531,9 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
         file_paths.append(r["file_path"])
         file_languages[r["file_path"]] = r["language"]
     module_to_file = _build_module_to_file(file_paths)
-    name_to_source, alias_target = _build_import_maps(imports_by_file, module_to_file)
+    name_to_source, alias_target = _build_import_maps(
+        imports_by_file, module_to_file, file_symbols
+    )
     callee_resolver = _build_callee_resolver(
         file_symbols=file_symbols,
         global_name_table=global_name_table,

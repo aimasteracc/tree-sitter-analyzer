@@ -14,6 +14,7 @@ class PluginQueryNode:
         self.start_point = (getattr(element, "start_line", 1) - 1, 0)
         self.end_point = (getattr(element, "end_line", 1) - 1, 0)
         self.text = getattr(element, "raw_text", "").encode("utf-8")
+        self.complexity_score = getattr(element, "complexity_score", None)
 
 
 def _element_to_capture(element: Any, query_key: str | None) -> tuple[Any, str] | None:
