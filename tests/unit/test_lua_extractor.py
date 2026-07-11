@@ -2,7 +2,8 @@
 
 Covers:
   1. Graceful degradation when tree_sitter_lua is absent (always runs).
-  2. Actual function/import extraction with a real Lua parse tree
+  2. Mock-grammar extraction tests (always runs — no real Lua grammar needed).
+  3. Actual function/import extraction with a real Lua parse tree
      (skipped automatically when tree_sitter_lua is not installed).
 """
 from __future__ import annotations
@@ -64,7 +65,151 @@ def test_lua_extractor_graceful_when_no_tslua(monkeypatch: pytest.MonkeyPatch) -
 
 
 # ---------------------------------------------------------------------------
-# Test 2: real extraction (skipped unless tree_sitter_lua is installed)
+# Test 2: mock-grammar extraction (always runs — covers function body lines)
+# ---------------------------------------------------------------------------
+
+
+def _make_name_node(name: bytes, start: tuple[int, int] = (0, 0), end: tuple[int, int] = (5, 0)) -> MagicMock:
+    """Build a mock name node whose parent is a valid function declaration node."""
+    fn_node = MagicMock()
+    fn_node.type = "function_declaration"
+    fn_node.start_point = start
+    fn_node.end_point = end
+    fn_node.text = b"function " + name + b"() end"
+
+    name_node = MagicMock()
+    name_node.text = name
+    name_node.parent = fn_node
+    return name_node
+
+
+def _make_path_node(path: bytes) -> MagicMock:
+    """Build a mock path node (string_content) whose ancestor chain ends at a function_call."""
+    call_node = MagicMock()
+    call_node.type = "function_call"
+    call_node.start_point = (0, 0)
+    call_node.end_point = (0, len(path) + 10)
+    call_node.text = b'require("' + path + b'")'
+
+    string_node = MagicMock()
+    string_node.parent = call_node
+
+    path_node = MagicMock()
+    path_node.text = path
+    path_node.parent = string_node
+    return path_node
+
+
+def test_lua_extract_functions_with_mock_grammar(monkeypatch: pytest.MonkeyPatch) -> None:
+    """extract_functions returns ModelFunction entries when the grammar mock yields name nodes."""
+    from tree_sitter_analyzer.languages.lua_plugin.extractor import LuaElementExtractor
+
+    mock_lang = MagicMock()
+    mock_query = MagicMock()
+    mock_query.captures.return_value = {
+        "name": [_make_name_node(b"greet"), _make_name_node(b"add")],
+    }
+
+    MockQuery = MagicMock(return_value=mock_query)
+    mock_ts = MagicMock()
+    mock_ts.Query = MockQuery
+
+    extractor = LuaElementExtractor()
+    monkeypatch.setattr(extractor, "_get_lua_language", lambda: mock_lang)
+    monkeypatch.setitem(sys.modules, "tree_sitter", mock_ts)
+
+    mock_tree = MagicMock()
+    result = extractor.extract_functions(mock_tree, "")
+
+    assert len(result) == 2
+    names = [f.name for f in result]
+    assert "greet" in names
+    assert "add" in names
+    assert all(f.language == "lua" for f in result)
+
+
+def test_lua_extract_functions_skips_none_parent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Name node with no parent (parent=None) must be skipped without crashing."""
+    from tree_sitter_analyzer.languages.lua_plugin.extractor import LuaElementExtractor
+
+    orphan = MagicMock()
+    orphan.text = b"orphan"
+    orphan.parent = None
+
+    mock_lang = MagicMock()
+    mock_query = MagicMock()
+    mock_query.captures.return_value = {"name": [orphan]}
+
+    mock_ts = MagicMock()
+    mock_ts.Query = MagicMock(return_value=mock_query)
+
+    extractor = LuaElementExtractor()
+    monkeypatch.setattr(extractor, "_get_lua_language", lambda: mock_lang)
+    monkeypatch.setitem(sys.modules, "tree_sitter", mock_ts)
+
+    result = extractor.extract_functions(MagicMock(), "")
+    assert result == [], "orphan name node must be silently skipped"
+
+
+def test_lua_extract_functions_outer_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    """extract_functions catches outer exception and returns empty list."""
+    from tree_sitter_analyzer.languages.lua_plugin.extractor import LuaElementExtractor
+
+    mock_lang = MagicMock()
+    mock_ts = MagicMock()
+    mock_ts.Query.side_effect = RuntimeError("grammar broken")
+
+    extractor = LuaElementExtractor()
+    monkeypatch.setattr(extractor, "_get_lua_language", lambda: mock_lang)
+    monkeypatch.setitem(sys.modules, "tree_sitter", mock_ts)
+
+    result = extractor.extract_functions(MagicMock(), "")
+    assert result == []
+
+
+def test_lua_extract_imports_with_mock_grammar(monkeypatch: pytest.MonkeyPatch) -> None:
+    """extract_imports returns ModelImport entries when the grammar mock yields path nodes."""
+    from tree_sitter_analyzer.languages.lua_plugin.extractor import LuaElementExtractor
+
+    mock_lang = MagicMock()
+    mock_query = MagicMock()
+    mock_query.captures.return_value = {
+        "path": [_make_path_node(b"json"), _make_path_node(b"socket.http")],
+    }
+
+    mock_ts = MagicMock()
+    mock_ts.Query = MagicMock(return_value=mock_query)
+
+    extractor = LuaElementExtractor()
+    monkeypatch.setattr(extractor, "_get_lua_language", lambda: mock_lang)
+    monkeypatch.setitem(sys.modules, "tree_sitter", mock_ts)
+
+    result = extractor.extract_imports(MagicMock(), "")
+
+    assert len(result) == 2
+    paths = [i.module_path for i in result]
+    assert "json" in paths
+    assert "socket.http" in paths
+
+
+def test_lua_extract_imports_outer_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    """extract_imports catches outer exception and returns empty list."""
+    from tree_sitter_analyzer.languages.lua_plugin.extractor import LuaElementExtractor
+
+    mock_lang = MagicMock()
+    mock_ts = MagicMock()
+    mock_ts.Query.side_effect = RuntimeError("query compile error")
+
+    extractor = LuaElementExtractor()
+    monkeypatch.setattr(extractor, "_get_lua_language", lambda: mock_lang)
+    monkeypatch.setitem(sys.modules, "tree_sitter", mock_ts)
+
+    result = extractor.extract_imports(MagicMock(), "")
+    assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Test 3: real extraction (skipped unless tree_sitter_lua is installed)
 # ---------------------------------------------------------------------------
 
 
