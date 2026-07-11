@@ -1,4 +1,4 @@
-# 🌳 Tree-sitter Analyzer
+﻿# 🌳 Tree-sitter Analyzer
 
 **English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
 
@@ -497,4 +497,3 @@ See **[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)** for the development guide
 * Lead sponsor: **[@o93](https://github.com/o93)**.
 * MIT licensed — see [LICENSE](LICENSE).
 * Release history: [CHANGELOG.md](CHANGELOG.md).
-

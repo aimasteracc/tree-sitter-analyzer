@@ -1,4 +1,4 @@
-# 🌳 Tree-sitter Analyzer
+﻿# 🌳 Tree-sitter Analyzer
 
 **[English](README.md)** | **日本語** | **[简体中文](README_zh.md)**
 
@@ -461,4 +461,3 @@ uv run pytest -q
 * 💖 [スポンサー](https://github.com/sponsors/aimasteracc) — 継続的な MCP / Skills 開発を支援。
 * リード スポンサー: **[@o93](https://github.com/o93)**。
 * MIT ライセンス — [LICENSE](LICENSE) を参照。
-

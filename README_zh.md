@@ -1,4 +1,4 @@
-# 🌳 Tree-sitter Analyzer
+﻿# 🌳 Tree-sitter Analyzer
 
 **[English](README.md)** | **[日本語](README_ja.md)** | **简体中文**
 
@@ -464,4 +464,3 @@ uv run pytest -q
 * 首席赞助人：**[@o93](https://github.com/o93)**。
 * MIT 许可证 — 详见 [LICENSE](LICENSE)。
 * 发布历史：[CHANGELOG.md](CHANGELOG.md)。
-
