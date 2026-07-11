@@ -162,7 +162,7 @@ CodeGraph has zero skills. We ship 13 under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 321 CLI flags
+### 323 CLI flags
 
 Superset of CodeGraph's CLI surface. Highlights:
 
@@ -497,3 +497,4 @@ See **[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)** for the development guide
 * Lead sponsor: **[@o93](https://github.com/o93)**.
 * MIT licensed — see [LICENSE](LICENSE).
 * Release history: [CHANGELOG.md](CHANGELOG.md).
+

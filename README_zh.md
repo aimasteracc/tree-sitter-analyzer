@@ -160,7 +160,7 @@ CodeGraph 没有 skill 系统。我们在 `.claude/skills/tsa-*/` 下提供 13 �
 
 每个 skill 都带 `allowed-tools` 工具子集 + 操作流程 + 决策面 schema，agent 不必在 8 个工具间反复挑选。
 
-### 321 个 CLI flag
+### 323 个 CLI flag
 
 CodeGraph CLI 的严格超集。亮点：
 
@@ -464,3 +464,4 @@ uv run pytest -q
 * 首席赞助人：**[@o93](https://github.com/o93)**。
 * MIT 许可证 — 详见 [LICENSE](LICENSE)。
 * 发布历史：[CHANGELOG.md](CHANGELOG.md)。
+

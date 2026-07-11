@@ -160,7 +160,7 @@ CodeGraph には skill システムが存在しない。本ツールは `.claude
 
 各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要が無い。
 
-### 321 の CLI フラグ
+### 323 の CLI フラグ
 
 CodeGraph の CLI の厳密な上位互換。主なもの:
 
@@ -461,3 +461,4 @@ uv run pytest -q
 * 💖 [スポンサー](https://github.com/sponsors/aimasteracc) — 継続的な MCP / Skills 開発を支援。
 * リード スポンサー: **[@o93](https://github.com/o93)**。
 * MIT ライセンス — [LICENSE](LICENSE) を参照。
+
