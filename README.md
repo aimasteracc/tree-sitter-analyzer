@@ -200,14 +200,14 @@ See [`docs/CODEMAPS/cli.md`](docs/CODEMAPS/cli.md) for the full surface.
 
 Token cost is one axis; a code-intelligence tool's *first* job is a **correct graph**.
 
-**Head-to-head on this repo, both tools' live indexes** (count every call edge whose caller language differs from the callee's — a cross-language mis-wire by construction; [reproducible](benchmarks/codegraph_compare/REPORT-v1.21.0.md)):
+**Head-to-head on this repo, both tools' live indexes** (count every call edge whose caller language differs from the callee's — a cross-language mis-wire by construction; [reproducible](benchmarks/codegraph_compare/GAUNTLET.md)):
 
-| tool | cross-language mis-wires | total call edges | rate |
-|---|---|---|---|
-| CodeGraph | **745** | 38,103 | 1.96 % |
-| **Tree-sitter Analyzer** | **6** | 114,160 | **0.005 %** |
+| tool | cross-language mis-wires | total call edges | rate | measured |
+|---|---|---|---|---|
+| CodeGraph | **1,481** | 50,104 | 2.96 % | v1.4.1, 2026-07-12, same session |
+| **Tree-sitter Analyzer** | **4** | 134,203 | **0.003 %** | v1.29.0-line, 2026-07-12, same session |
 
-**~390× cleaner on cross-language correctness, while resolving 3× more call edges.** CodeGraph's mis-wires span 19+ language pairs (python→swift **408**, python→typescript 195, python→ruby 81, …); TSA's 6 are all `java→python/php` from single-word Java method names. *(Methodology: ~390× is the rate ratio, 1.96% ÷ 0.005%; the count ratio on the same measurement is ~124× (745 ÷ 6) — see [GAUNTLET.md](benchmarks/codegraph_compare/GAUNTLET.md#live-head-to-head-vs-codegraph-this-repo-same-commit) for the full reconciliation and re-verification status.)*
+**~370× fewer mis-wires; ~990× cleaner rate — while resolving 2.7× more call edges.** CodeGraph's mis-wires span 26 language pairs (python→swift **715**, python→rust 348, python→typescript 214, …). TSA's 4 are test-corpus collisions from single-word generic names (`draw`, `insert`, `sleep`, `connect`) — unavoidable false-positive floor of static analysis in a polyglot test suite. *(Methodology: ~990× is the rate ratio, 2.96% ÷ 0.003%; the count ratio is ~370× (1,481 ÷ 4) — see [GAUNTLET.md](benchmarks/codegraph_compare/GAUNTLET.md#live-head-to-head-vs-codegraph-this-repo-same-commit) for full reproducibility details and historical comparison.)*
 
 > **Don't trust this table — run it on your own repo (no CodeGraph install needed):**
 > ```bash
@@ -221,7 +221,7 @@ Concretely:
 
 | call (Python `_resolve_entry_points` / `build_response`) | CodeGraph | TSA |
 |---|---|---|
-| `sorted()` (Python builtin) | ❌ callee = **`tests/golden/corpus_swift.swift` — a Swift `func sorted`** (wired as a callee of **299** Python functions repo-wide) | ✅ `builtin` — no cross-language edge |
+| `sorted()` (Python builtin) | ❌ callee = **`tests/golden/corpus_swift.swift` — a Swift `func sorted`** (wired as a callee of **442** Python functions repo-wide, v1.4.1 live index) | ✅ `builtin` — no cross-language edge |
 | `fts_search()` / `fts_search_ranked()` | ❌ bound to the **test mock** (`FallbackCache`) instead of the real method | ✅ resolves to the source method (`_ast_cache_query.py` / `ast_cache.py`) |
 
 TSA's per-language resolver gates every binding by **language family** across **13 languages** (Python · Java · Go · JS · TS · C · C++ · Rust · C# · Kotlin · Ruby · PHP · Swift) and **demotes test-only definitions** for non-test callers, across all of its resolution paths. Telling an agent that a Python function *calls a Swift method*, or that a production call targets a test mock, is wrong structural data — and it is the dominant failure mode of a name-only index.
@@ -238,7 +238,7 @@ A correct graph that leaves most edges `unknown` is still half a graph. TSA's re
 
 The remaining ~4% `unknown` is dominated by genuinely-unresolvable dynamic dispatch (`BaseTool.execute()`), constructors, and ambiguous same-name project methods — the false-positive floor of static analysis, left honest rather than guessed.
 
-> **Now multi-language.** Cross-language-safe resolution is no longer Python-only. A per-language **resolver registry** ([RFC-0010](rfcs/0010-resolver-language-registry.md)) gives each language its own classification cascade with conservative stdlib/external tiers, gated by language family so a binding does not cross into an incompatible language. **Active classified call graph (call-edge extraction + per-language resolver), 13 languages: Python · Java · Go · JavaScript · TypeScript · C · C++ · Rust · C# · Kotlin · Ruby · PHP · Swift.** Each has its own conservative stdlib/external tiers and is adversarially verified to never bind across a language boundary. **Swift is notable**: CodeGraph's flagship mis-wire binds 299 Python `sorted()` callers to a Swift `func sorted` — TSA resolves Swift correctly *and* refuses that exact cross-language bind (verified both directions). Measured on the active set: **6** cross-language edges (6 of ~57,000 resolved edges, all generic 1-word Java method names) — **~390× cleaner than CodeGraph** (~124× by count; ~390× is the rate ratio, see [GAUNTLET.md](benchmarks/codegraph_compare/GAUNTLET.md#live-head-to-head-vs-codegraph-this-repo-same-commit)) on cross-language correctness, which wires **299** Python `sorted()` callers to a single Swift `func sorted` (TSA binds **0** of 298). Full reproducible audit: [`benchmarks/codegraph_compare/REPORT-v1.21.0.md`](benchmarks/codegraph_compare/REPORT-v1.21.0.md). Adding a language is one new resolver file (RFC-0010) plus a small call-extraction wiring.
+> **Now multi-language.** Cross-language-safe resolution is no longer Python-only. A per-language **resolver registry** ([RFC-0010](rfcs/0010-resolver-language-registry.md)) gives each language its own classification cascade with conservative stdlib/external tiers, gated by language family so a binding does not cross into an incompatible language. **Active classified call graph (call-edge extraction + per-language resolver), 13 languages: Python · Java · Go · JavaScript · TypeScript · C · C++ · Rust · C# · Kotlin · Ruby · PHP · Swift.** Each has its own conservative stdlib/external tiers and is adversarially verified to never bind across a language boundary. **Swift is notable**: CodeGraph's flagship mis-wire binds **442** Python `sorted()` callers to a Swift `func sorted` (v1.4.1 live index, 2026-07-12) — TSA resolves Swift correctly *and* refuses that exact cross-language bind (verified both directions). Measured on the active set: **4** cross-language edges (4 of ~129k resolved edges, test-corpus generic names) — **~370× fewer mis-wires than CodeGraph** (~124× by count; ~990× is the rate ratio, see [GAUNTLET.md](benchmarks/codegraph_compare/GAUNTLET.md#live-head-to-head-vs-codegraph-this-repo-same-commit)) on cross-language correctness, which wires **442** Python `sorted()` callers to a single Swift `func sorted` (TSA binds **0**). Full reproducible audit: [`benchmarks/codegraph_compare/GAUNTLET.md`](benchmarks/codegraph_compare/GAUNTLET.md). Adding a language is one new resolver file (RFC-0010) plus a small call-extraction wiring.
 
 > **Symbol kinds, too.** TSA classifies class members as `kind=method` (20,348 method rows on this repo) — `search action=symbol kind=method` returns them; CodeGraph parity, not a stub. The `index status` payload breaks symbols down by kind and language and edges by kind (`edges_by_kind` — a breakdown CodeGraph does not surface).
 
