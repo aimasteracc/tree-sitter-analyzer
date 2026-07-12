@@ -42,7 +42,6 @@ from . import BenchmarkAdapter, IndexStats, RunConfig, ToolMetrics
 # The leading-underscore names are module-internal by convention but fully
 # importable — sharing them is intentional here (experiment infrastructure).
 from .tree_sitter_analyzer import (
-    _ANALYZER_ROOT,
     _CACHE_DIR,
     _CACHE_INDEX,
     _build_cache,
