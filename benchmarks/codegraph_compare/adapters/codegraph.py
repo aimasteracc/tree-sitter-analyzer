@@ -5,7 +5,12 @@ Supports two modes:
   - ``arm_id="codegraph-warm"``: verifies the index exists; rebuilds only if absent.
 
 Index build is done via ``codegraph init -i`` with cwd=repo_path.
+The ``-i`` flag is a no-op since v1.4.x (indexing runs by default); it is kept for
+backward compatibility so older CodeGraph versions still work.
 Errors are logged, not raised, so the harness can continue with partial data.
+
+Install:
+    npm install -g @colbymchenry/codegraph   # confirmed: v1.4.1, 2026-07-12
 """
 
 from __future__ import annotations

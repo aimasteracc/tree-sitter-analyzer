@@ -106,9 +106,17 @@ has not been re-measured yet, so no updated ratio is claimed.
 > (this repo)" row in the 5-Repo Summary Table above (133,377 call edges, 724
 > (0.54%) name-only genuine floor, **4** TSA mis-wires) and the classification-rate
 > and cross-language-edge update in
-> [REPORT-v1.21.0.md](REPORT-v1.21.0.md#headline-correctness-numbers-tsa). Re-attempt
-> the CodeGraph arm once a documented, reproducible install path for that exact tool
-> is confirmed.
+> [REPORT-v1.21.0.md](REPORT-v1.21.0.md#headline-correctness-numbers-tsa).
+>
+> **Install path confirmed (2026-07-12):** `npm install -g @colbymchenry/codegraph`
+> installs CodeGraph v1.4.1 with the `codegraph` CLI. The `-i` flag in
+> `codegraph init -i` is accepted as a no-op for backward compatibility (deprecated
+> in v1.4.x; indexing runs by default). The existing `adapters/codegraph.py` adapter
+> is compatible with this version. Re-run both arms with:
+> ```bash
+> npm install -g @colbymchenry/codegraph   # one-time, global
+> uv run python benchmarks/codegraph_compare/gauntlet_runner.py --repo tsa
+> ```
 
 ---
 
@@ -179,6 +187,9 @@ uv run python -m tree_sitter_analyzer.miswire_audit /path/to/your/repo
 ### Re-run the Gauntlet table with fresh numbers
 
 ```bash
+# Prerequisite: install CodeGraph CLI (one-time, global)
+npm install -g @colbymchenry/codegraph   # installs v1.4.1+; adds `codegraph` to PATH
+
 # Dry-run (no clones, no indexing — just verify the script loads):
 uv run python benchmarks/codegraph_compare/gauntlet_runner.py --dry-run
 
