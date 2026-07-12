@@ -263,3 +263,67 @@ def test_routing_table_covers_all_task_types() -> None:
 
 def test_default_task_type_in_routing_table() -> None:
     assert _DEFAULT_TASK_TYPE in _ROUTING
+
+
+# ---------------------------------------------------------------------------
+# _get_facades — cache hit and cache miss paths
+# ---------------------------------------------------------------------------
+
+
+def test_get_facades_cache_hit() -> None:
+    """_get_facades returns the same dict on a second call with the same root."""
+    import tree_sitter_analyzer.mcp.tsa_explore as _mod
+
+    mock_nav = MagicMock()
+    mock_search = MagicMock()
+    mock_structure = MagicMock()
+    mock_health = MagicMock()
+
+    injected = {
+        "nav": mock_nav,
+        "search": mock_search,
+        "structure": mock_structure,
+        "health": mock_health,
+    }
+    sentinel = "__test_root_cache_hit__"
+    original_cache = dict(_mod._facade_cache)
+    _mod._facade_cache[sentinel] = injected
+
+    try:
+        result = _mod._get_facades(sentinel)
+        assert result is injected
+    finally:
+        _mod._facade_cache.clear()
+        _mod._facade_cache.update(original_cache)
+
+
+def test_get_facades_cache_miss_builds_facades() -> None:
+    """_get_facades builds and caches facades on first call."""
+    import tree_sitter_analyzer.mcp.tsa_explore as _mod
+
+    mock_nav = MagicMock()
+    mock_search = MagicMock()
+    mock_structure = MagicMock()
+    mock_health = MagicMock()
+
+    sentinel = "__test_root_cache_miss__"
+    original_cache = dict(_mod._facade_cache)
+    _mod._facade_cache.pop(sentinel, None)
+
+    with (
+        patch("tree_sitter_analyzer.mcp.tools.nav_facade.build_nav_facade", return_value=mock_nav),
+        patch("tree_sitter_analyzer.mcp.tools.search_facade.build_search_facade", return_value=mock_search),
+        patch("tree_sitter_analyzer.mcp.tools.structure_facade.build_structure_facade", return_value=mock_structure),
+        patch("tree_sitter_analyzer.mcp.tools.health_facade.build_health_facade", return_value=mock_health),
+    ):
+        result = _mod._get_facades(sentinel)
+
+    try:
+        assert result["nav"] is mock_nav
+        assert result["search"] is mock_search
+        assert result["structure"] is mock_structure
+        assert result["health"] is mock_health
+        assert _mod._facade_cache[sentinel] is result
+    finally:
+        _mod._facade_cache.clear()
+        _mod._facade_cache.update(original_cache)
