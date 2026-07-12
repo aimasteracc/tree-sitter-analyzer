@@ -96,11 +96,13 @@ def get_adapter(arm_id: str) -> BenchmarkAdapter:
       - ``"codegraph-warm"``
       - ``"tsa-cold"``
       - ``"tsa-warm"``
+      - ``"tsa-1tool-warm"``  (Condition B: single ``tsa_explore`` tool)
     """
     # Lazy imports keep module-level side effects out of this file.
     from .codegraph import CodeGraphAdapter
     from .native import NativeAdapter
     from .tree_sitter_analyzer import TSAAdapter
+    from .tsa_1tool import TSA1ToolAdapter
 
     if arm_id == "native-only":
         return NativeAdapter()
@@ -108,9 +110,11 @@ def get_adapter(arm_id: str) -> BenchmarkAdapter:
         return CodeGraphAdapter(arm_id=arm_id)
     if arm_id in ("tsa-cold", "tsa-warm"):
         return TSAAdapter(arm_id=arm_id)
+    if arm_id == "tsa-1tool-warm":
+        return TSA1ToolAdapter(arm_id=arm_id)
 
     raise ValueError(
         f"Unknown arm_id {arm_id!r}. "
         "Valid values: 'native-only', 'codegraph-cold', 'codegraph-warm', "
-        "'tsa-cold', 'tsa-warm'."
+        "'tsa-cold', 'tsa-warm', 'tsa-1tool-warm'."
     )

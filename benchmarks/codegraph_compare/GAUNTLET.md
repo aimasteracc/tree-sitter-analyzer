@@ -24,14 +24,14 @@ All numbers in the summary table are lifted verbatim from
 | huggingface/tokenizers | Rust+Py+JS+TS | 16,329 | **1,259** (7.71%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
 | astral-sh/ruff | Rust+Py+TS | 187,418 | **7,557** (4.03%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
 | pola-rs/polars | Rust+Py | 267,066 | **9,016** (3.38%) | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
-| tree-sitter-analyzer (this repo) | 14 langs | 133,377 | **724** (0.54%) | **4** | v1.29.0-line (2026-07-10), `develop`@`6fe62fba` — **not** a clean tag checkout, see reproducibility protocol below <!-- re-measure: superseded 2026-06-10 v1.22.0 clean-tag row --> |
+| tree-sitter-analyzer (this repo) | 13 langs | 134,203 | **728** (0.54%) | **4** | v1.29.0-line (2026-07-12), `develop` — **not** a clean tag checkout, see reproducibility protocol below |
 | gin-gonic/gin | Go (single) | 9,134 | **0** | **0** | v1.21.0 (2026-06-07) <!-- re-measure --> |
 
 **Across all four polyglot repos TSA resolves 0 cross-language mis-wires.**
 The single-language repo (gin) correctly returns 0 and 0 — no false positives.
 On this repo's own test-corpus files, the mis-wire count varies by measurement point:
-**1** at the v1.22.0 clean-tag (2026-06-10); **4** at v1.29.0-line develop@`6fe62fba`
-(2026-07-10, not a clean tag checkout — see reproducibility note in the table).
+**1** at the v1.22.0 clean-tag (2026-06-10); **4** at v1.29.0-line develop (2026-07-12,
+not a clean tag checkout — see reproducibility note in the table).
 
 > **What "name-only genuine floor" means.** The audit models a name-only resolver: every
 > call whose name has a definition only in another language. The **genuine floor** excludes
@@ -56,19 +56,36 @@ On this repo's own test-corpus files, the mis-wire count varies by measurement p
 Source: [REPORT-v1.21.0.md §Addendum 2](REPORT-v1.21.0.md)
 
 > **Note:** a head-to-head ratio is only honest when BOTH arms are measured in the
-> same session on the same commit. The last complete same-session pair is v1.21.0.
-> Re-run `gauntlet_runner.py --repo tsa` with a fresh CodeGraph index to produce a
-> new same-session pair before quoting a ratio. <!-- re-measure: both rows together -->
+> same session on the same commit.
+
+### Latest same-session pair (2026-07-12)
 
 | tool | cross-language mis-wires | total call edges | mis-wire rate | measured at |
 |---|---|---|---|---|
-| **CodeGraph** | **745** | 38,103 | **1.96%** | v1.21.0 (2026-06-07), same session <!-- re-measure --> |
-| **Tree-sitter Analyzer** | **6** | 114,160 | **0.005%** | v1.21.0 (2026-06-07), same session <!-- re-measure --> |
+| **CodeGraph** | **1,481** | 50,104 | **2.96%** | v1.4.1 (`npm install -g @colbymchenry/codegraph`), 2026-07-12, same session |
+| **Tree-sitter Analyzer** | **4** | 134,203 | **0.003%** | v1.29.0-line, `develop`, same session |
 
-Same-session ratio at v1.21.0: **~124x cleaner** (6 vs 745) while resolving 3x more
-call edges total (114k vs 38k). TSA's arm alone, re-measured at v1.22.0 (clean tag
-checkout), improved further to **1** mis-wire / 116,606 edges — the CodeGraph arm
-has not been re-measured yet, so no updated ratio is claimed.
+Same-session ratio at 2026-07-12: **~370x fewer mis-wires** (4 vs 1,481) while resolving
+**2.7x more call edges** (134k vs 50k). Rate-based ratio: **~990x cleaner**
+(0.003% vs 2.96%).
+
+**Top mis-wire pairs in CodeGraph v1.4.1 on this repo:**
+`python→swift` 715, `python→rust` 348, `python→typescript` 214, `python→ruby` 92, `python→scala` 57, `c→go` 13, and 12 more pairs.
+
+The `sorted()` case: **442 Python callers** are now wired to the same Swift
+`tests/golden/corpus_swift.swift:337` definition (up from 299 at v1.21.0 — the
+Python codebase grew; CodeGraph's name-only resolver continued wiring all of them).
+
+### Historical same-session pair (v1.21.0, 2026-06-07)
+
+| tool | cross-language mis-wires | total call edges | mis-wire rate | measured at |
+|---|---|---|---|---|
+| **CodeGraph** | **745** | 38,103 | **1.96%** | v1.21.0 (2026-06-07), same session |
+| **Tree-sitter Analyzer** | **6** | 114,160 | **0.005%** | v1.21.0 (2026-06-07), same session |
+
+v1.21.0 ratio: **~124x cleaner** (6 vs 745) while resolving 3x more edges (114k vs 38k).
+Rate-based: **~392x** cleaner. TSA's arm alone, re-measured at v1.22.0 (clean tag),
+improved further to **1** mis-wire / 116,606 edges.
 
 > **Methodology note — why this page (and README.md / REPORT-v1.21.0.md) cite both
 > ~124x and ~390x.** Both multipliers come from the SAME same-session v1.21.0
@@ -106,20 +123,30 @@ has not been re-measured yet, so no updated ratio is claimed.
 > (this repo)" row in the 5-Repo Summary Table above (133,377 call edges, 724
 > (0.54%) name-only genuine floor, **4** TSA mis-wires) and the classification-rate
 > and cross-language-edge update in
-> [REPORT-v1.21.0.md](REPORT-v1.21.0.md#headline-correctness-numbers-tsa). Re-attempt
-> the CodeGraph arm once a documented, reproducible install path for that exact tool
-> is confirmed.
+> [REPORT-v1.21.0.md](REPORT-v1.21.0.md#headline-correctness-numbers-tsa).
+>
+> **Re-measurement complete (2026-07-12):** `npm install -g @colbymchenry/codegraph`
+> installs CodeGraph v1.4.1 with the `codegraph` CLI. The `-i` flag in
+> `codegraph init -i` is accepted as a no-op for backward compatibility (deprecated
+> in v1.4.x; indexing runs by default). The existing `adapters/codegraph.py` adapter
+> is compatible with this version. A fresh same-session pair (CodeGraph v1.4.1 + TSA
+> v1.29.0-line) was measured on 2026-07-12 — see "Latest same-session pair" in the
+> head-to-head section above: **1,481 CodeGraph mis-wires vs 4 TSA mis-wires (~370x)**.
+> To re-run:
+> ```bash
+> npm install -g @colbymchenry/codegraph   # one-time, global
+> uv run python benchmarks/codegraph_compare/gauntlet_runner.py --repo tsa
+> ```
 
 ---
 
 ## Flagship: `sorted()` → Swift (original repro, v1.21.0)
 
-> **Measurement note (2026-06-10):** The numbers below were captured at v1.21.0.
-> At v1.22.0 the live index shows 392 Python `sorted()` call sites, all with
-> `callee_resolution='unknown'` — zero wired to Swift (same conclusion, updated count).
-> The Swift definition at `tests/golden/corpus_swift.swift:337` still exists.
-> The CodeGraph repro commands remain valid for demonstrating the mis-wire behaviour;
-> the TSA count will differ on a fresh index.
+> **Updated (2026-07-12):** At v1.4.1 CodeGraph, **442 Python callers** are wired to
+> the Swift `sorted()` (up from 299 at v1.21.0 — Python `sorted()` usage grew).
+> TSA (v1.29.0-line, same session): all Python `sorted()` call sites resolve to
+> `callee_resolution='unknown'` — zero wired to Swift. Same node id in CodeGraph DB:
+> `method:93b946c9bfbf7d0843dca5323ecd16c4`.
 
 The clearest case. Python's builtin `sorted()` is called hundreds of times across the
 Python codebase. There is no `sorted` definition in any `.py` file. The only `sorted`
@@ -179,6 +206,9 @@ uv run python -m tree_sitter_analyzer.miswire_audit /path/to/your/repo
 ### Re-run the Gauntlet table with fresh numbers
 
 ```bash
+# Prerequisite: install CodeGraph CLI (one-time, global)
+npm install -g @colbymchenry/codegraph   # installs v1.4.1+; adds `codegraph` to PATH
+
 # Dry-run (no clones, no indexing — just verify the script loads):
 uv run python benchmarks/codegraph_compare/gauntlet_runner.py --dry-run
 
