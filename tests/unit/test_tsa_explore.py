@@ -20,7 +20,6 @@ from tree_sitter_analyzer.mcp.tsa_explore import (
     tsa_explore,
 )
 
-
 # ---------------------------------------------------------------------------
 # _infer_task_type
 # ---------------------------------------------------------------------------
@@ -259,7 +258,7 @@ class TestTsaExplore:
 def test_routing_table_covers_all_task_types() -> None:
     """Every task_type in the routing table has at least one route entry."""
     for task_type, routes in _ROUTING.items():
-        assert len(routes) >= 1, f"{task_type} has empty route"
+        assert routes != [], f"{task_type} has empty route"
 
 
 def test_default_task_type_in_routing_table() -> None:
