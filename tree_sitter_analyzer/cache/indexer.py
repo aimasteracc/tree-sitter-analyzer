@@ -530,3 +530,16 @@ def post_index_backfill(cache: Any, stats: dict[str, Any]) -> None:
         mark_resolution_converged(cache._get_conn())
     except Exception:
         logger.debug("could not mark resolution converged", exc_info=True)
+    try:
+        from ..knowledge_graph.builder import KnowledgeGraphBuilder
+        from ..knowledge_graph.stores import JsonKnowledgeGraphStore
+
+        snapshot = KnowledgeGraphBuilder(cache.project_root).build()
+        write_result = JsonKnowledgeGraphStore(cache.project_root).write(snapshot)
+        stats["knowledge_graph"] = {
+            "node_count": snapshot.stats.get("node_count", 0),
+            "edge_count": snapshot.stats.get("edge_count", 0),
+            "bytes": write_result.get("bytes", 0),
+        }
+    except Exception:
+        logger.debug("auto knowledge graph build failed", exc_info=True)

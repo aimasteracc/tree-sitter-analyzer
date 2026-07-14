@@ -453,3 +453,196 @@ def _file_from_node_id(node_id: str) -> str:
 def _stable_edge_id(source: str, target: str, kind: str) -> str:
     digest = hashlib.sha256(f"{source}\0{target}\0{kind}".encode()).hexdigest()
     return "pkg-edge:" + digest[:16]
+
+
+# ---------------------------------------------------------------------------
+# DOT / Graphviz export
+# ---------------------------------------------------------------------------
+
+_DOT_COLORS: dict[str, str] = {
+    "package": "#5B8DEF",
+    "file": "#10B981",
+    "markdown": "#D97706",
+    "class": "#8B5CF6",
+    "method": "#EF4444",
+    "function": "#EF4444",
+    "symbol": "#64748B",
+}
+_DOT_SHAPES: dict[str, str] = {
+    "package": "folder",
+    "file": "box",
+    "markdown": "note",
+    "class": "ellipse",
+    "method": "diamond",
+    "function": "diamond",
+}
+
+
+def to_dot(
+    snapshot: KnowledgeGraphSnapshot,
+    *,
+    lod: str = "file",
+    focus: str | None = None,
+    max_nodes: int = 500,
+    max_edges: int = 2_000,
+    rankdir: str = "LR",
+) -> str:
+    """Return a Graphviz DOT string for the knowledge graph snapshot.
+
+    Compatible with ``dot``, ``neato``, ``fdp``, ``sfdp``, Gephi, and any
+    tool that consumes the DOT language.  Use ``lod`` to control the
+    level-of-detail (``"package"``, ``"file"``, ``"symbol"``).
+
+    Example::
+
+        dot_str = to_dot(snapshot, lod="file")
+        with open("graph.dot", "w") as f:
+            f.write(dot_str)
+        # Then: dot -Tsvg graph.dot -o graph.svg
+    """
+    nodes, edges, truncated = _select(snapshot, lod, focus, max_nodes, max_edges)
+    lines = [
+        "digraph tsa_knowledge_graph {",
+        f'  graph [rankdir={rankdir} fontname="Helvetica" bgcolor="#1a1a2e"];',
+        '  node [fontname="Helvetica" fontsize=10 style=filled fontcolor=white];',
+        '  edge [fontname="Helvetica" fontsize=8 color="#94a3b8"];',
+        "",
+    ]
+    # Write nodes
+    for node in nodes:
+        color = _DOT_COLORS.get(node.kind, "#64748B")
+        shape = _DOT_SHAPES.get(node.kind, "box")
+        label = _dot_escape(node.label or node.id)
+        size = _node_size(node)
+        width = round(0.3 + size * 0.12, 2)
+        node_id = _dot_id(node.id)
+        lines.append(
+            f'  {node_id} [label="{label}" shape={shape} '
+            f'fillcolor="{color}" width={width} '
+            f'tooltip="{_dot_escape(node.file_path or node.id)}"];'
+        )
+    lines.append("")
+    # Write edges
+    for edge in edges:
+        src = _dot_id(edge.source)
+        tgt = _dot_id(edge.target)
+        color = _dot_edge_color(edge.kind)
+        lines.append(
+            f'  {src} -> {tgt} [label="{edge.kind}" color="{color}" '
+            f'fontcolor="{color}"];'
+        )
+    if truncated:
+        lines.append('  // WARNING: graph truncated — increase max_nodes/max_edges')
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def _dot_id(raw: str) -> str:
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
+    return "n_" + digest
+
+
+def _dot_escape(s: str) -> str:
+    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")[:80]
+
+
+def _dot_edge_color(kind: str) -> str:
+    return {
+        "calls": "#EF4444",
+        "imports": "#3B82F6",
+        "extends": "#8B5CF6",
+        "implements": "#A855F7",
+        "contains": "#64748B",
+        "references": "#F59E0B",
+        "doc_links": "#D97706",
+    }.get(kind, "#94a3b8")
+
+
+# ---------------------------------------------------------------------------
+# GraphML export (Gephi / yEd / Cytoscape compatible)
+# ---------------------------------------------------------------------------
+
+
+def to_graphml(
+    snapshot: KnowledgeGraphSnapshot,
+    *,
+    lod: str = "file",
+    focus: str | None = None,
+    max_nodes: int = 5_000,
+    max_edges: int = 20_000,
+) -> str:
+    """Return a GraphML XML string for the knowledge graph snapshot.
+
+    Compatible with Gephi, yEd, Cytoscape, and any GraphML consumer.
+    Nodes carry ``kind``, ``label``, ``file_path``, ``language``,
+    ``degree_in``, ``degree_out``, and ``centrality`` attributes when
+    available in node metadata.
+
+    Example::
+
+        xml = to_graphml(snapshot, lod="file")
+        with open("graph.graphml", "w") as f:
+            f.write(xml)
+    """
+    nodes, edges, _truncated = _select(snapshot, lod, focus, max_nodes, max_edges)
+
+    lines: list[str] = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<graphml xmlns="http://graphml.graphdrawing.org/graphml"',
+        '         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"',
+        '         xsi:schemaLocation="http://graphml.graphdrawing.org/graphml '
+        'http://graphml.graphdrawing.org/graphml/graphml.xsd">',
+        # Declare attribute keys
+        '  <key id="d_label"    for="node" attr.name="label"       attr.type="string"/>',
+        '  <key id="d_kind"     for="node" attr.name="kind"        attr.type="string"/>',
+        '  <key id="d_file"     for="node" attr.name="file_path"   attr.type="string"/>',
+        '  <key id="d_lang"     for="node" attr.name="language"    attr.type="string"/>',
+        '  <key id="d_din"      for="node" attr.name="degree_in"   attr.type="int"/>',
+        '  <key id="d_dout"     for="node" attr.name="degree_out"  attr.type="int"/>',
+        '  <key id="d_central"  for="node" attr.name="centrality"  attr.type="double"/>',
+        '  <key id="e_kind"     for="edge" attr.name="kind"        attr.type="string"/>',
+        '  <key id="e_line"     for="edge" attr.name="line"        attr.type="int"/>',
+        '  <graph id="G" edgedefault="directed">',
+    ]
+
+    node_key_map = {node.id: f"n{i}" for i, node in enumerate(nodes)}
+    for node in nodes:
+        nk = node_key_map[node.id]
+        lines.append(f'    <node id="{nk}">')
+        lines.append(f'      <data key="d_label">{_xml_escape(node.label)}</data>')
+        lines.append(f'      <data key="d_kind">{_xml_escape(node.kind)}</data>')
+        lines.append(f'      <data key="d_file">{_xml_escape(node.file_path)}</data>')
+        lines.append(f'      <data key="d_lang">{_xml_escape(node.language)}</data>')
+        meta = node.metadata
+        if "degree_in" in meta:
+            lines.append(f'      <data key="d_din">{int(meta["degree_in"])}</data>')
+        if "degree_out" in meta:
+            lines.append(f'      <data key="d_dout">{int(meta["degree_out"])}</data>')
+        if "centrality" in meta:
+            lines.append(f'      <data key="d_central">{float(meta["centrality"]):.6f}</data>')
+        lines.append("    </node>")
+
+    for i, edge in enumerate(edges):
+        src = node_key_map.get(edge.source)
+        tgt = node_key_map.get(edge.target)
+        if src is None or tgt is None:
+            continue
+        lines.append(f'    <edge id="e{i}" source="{src}" target="{tgt}">')
+        lines.append(f'      <data key="e_kind">{_xml_escape(edge.kind)}</data>')
+        if edge.line is not None:
+            lines.append(f'      <data key="e_line">{edge.line}</data>')
+        lines.append("    </edge>")
+
+    lines += ["  </graph>", "</graphml>"]
+    return "\n".join(lines)
+
+
+def _xml_escape(s: str) -> str:
+    return (
+        str(s)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )

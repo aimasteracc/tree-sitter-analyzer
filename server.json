@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.aimasteracc/tree-sitter-analyzer",
-  "description": "Cross-language-safe code intelligence MCP. 13 languages, family-gated call graph, 100% local.",
+  "description": "Cross-language-safe code intelligence MCP. 16 languages, family-gated call graph, 100% local.",
   "repository": {
     "url": "https://github.com/aimasteracc/tree-sitter-analyzer",
     "source": "github"

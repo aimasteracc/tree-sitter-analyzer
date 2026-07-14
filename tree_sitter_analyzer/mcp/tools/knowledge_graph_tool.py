@@ -11,7 +11,7 @@ from ...knowledge_graph import (
     KnowledgeGraphBuilder,
     LadybugKnowledgeGraphStore,
 )
-from ...knowledge_graph.exporters import summarize, to_graphology, to_mermaid_uml
+from ...knowledge_graph.exporters import summarize, to_dot, to_graphml, to_graphology, to_mermaid_uml
 from ...knowledge_graph.html_viewer import to_html_viewer
 from ...knowledge_graph.stores import LadybugUnavailableError
 from ..utils.format_helper import apply_toon_format_to_response
@@ -19,7 +19,7 @@ from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
 
 _BACKENDS = {"auto", "json", "ladybug", "hybrid"}
-_EXPORT_FORMATS = {"graphology", "html", "raw", "summary", "uml"}
+_EXPORT_FORMATS = {"dot", "graphml", "graphology", "html", "raw", "summary", "uml"}
 _LOD_LEVELS = {"package", "file", "symbol", "docs"}
 _UML_KINDS = {"class", "package", "component", "sequence"}
 _UML_DEFAULT_MAX_NODES = 200
@@ -225,7 +225,7 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
                     "type": "string",
                     "enum": sorted(_EXPORT_FORMATS),
                     "default": "graphology",
-                    "description": "graphology=Sigma.js JSON, html=standalone browser viewer, uml=Mermaid, raw=full sidecar, summary=compact stats",
+                    "description": "graphology=Sigma.js JSON, html=force-directed browser viewer (D3), dot=Graphviz DOT, graphml=Gephi/yEd/Cytoscape XML, uml=Mermaid, raw=full sidecar, summary=compact stats",
                 },
                 "uml_kind": {
                     "type": "string",
@@ -266,7 +266,7 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
         export_format = arguments.get("export_format", "graphology")
         if export_format not in _EXPORT_FORMATS:
             raise ValueError(
-                "export_format must be one of: graphology, html, raw, summary, uml"
+                "export_format must be one of: dot, graphml, graphology, html, raw, summary, uml"
             )
         lod = arguments.get("lod", "file")
         if lod not in _LOD_LEVELS:
@@ -317,6 +317,34 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
                 html=to_html_viewer(graph),
                 graph=summarize(snapshot),
                 export_stats=graph.get("stats", {}),
+            )
+        elif export_format == "dot":
+            lod = arguments.get("lod", "file")
+            dot_str = to_dot(
+                snapshot,
+                lod=lod,
+                focus=arguments.get("focus") or None,
+                max_nodes=int(arguments.get("max_nodes", 500)),
+                max_edges=int(arguments.get("max_edges", 2_000)),
+            )
+            response = build_response(
+                verdict="INFO",
+                dot=dot_str,
+                instructions="Render with: dot -Tsvg graph.dot -o graph.svg  (or pass to Graphviz online)",
+            )
+        elif export_format == "graphml":
+            lod = arguments.get("lod", "file")
+            xml_str = to_graphml(
+                snapshot,
+                lod=lod,
+                focus=arguments.get("focus") or None,
+                max_nodes=int(arguments.get("max_nodes", 5_000)),
+                max_edges=int(arguments.get("max_edges", 20_000)),
+            )
+            response = build_response(
+                verdict="INFO",
+                graphml=xml_str,
+                instructions="Open in Gephi, yEd, or Cytoscape. Nodes carry centrality/degree metadata.",
             )
         elif export_format == "uml":
             response = build_response(

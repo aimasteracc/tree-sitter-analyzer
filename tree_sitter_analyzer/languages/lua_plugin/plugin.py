@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Lua Language Plugin — Phase 2 extensibility demo (REQ-VAL-004).
+"""Lua Language Plugin (RFC-0010 production plugin).
 
-This plugin proves that adding a new language requires ONLY this file —
-no changes to any central file (cache/extraction.py, import_extractors,
-function_extraction.py, cross_file_resolver.py).
+Demonstrates the new-language contract: adding Lua required only:
+  1. This plugin package (``languages/lua_plugin/``)
+  2. A resolver in ``synapse_resolver/languages/lua.py`` (moat slot)
+  3. An entry-point in ``pyproject.toml``
+  4. An optional dep ``tree-sitter-lua``
 
-Capability methods default to frozenset() / None so the plugin uses the
-Phase 2 plugin-dispatch paths in the central files without any central
-if-language== branch for "lua".
+No changes to any central file were needed. Capability methods default
+to ``frozenset()`` / ``None`` so the plugin uses the Phase 2
+plugin-dispatch paths in the central files without any central
+``if-language==`` branch for "lua".
+
+When ``tree-sitter-lua`` is not installed, ``get_tree_sitter_language``
+returns ``None`` and the plugin falls back to ``DefaultExtractor``.
 """
 
 from __future__ import annotations
