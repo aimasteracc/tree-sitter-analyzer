@@ -4,8 +4,8 @@ Date: 2026-06-23
 
 This benchmark validates the graph materialization and interactive query layer
 with synthetic Java-shaped project graphs. It does not measure tree-sitter Java
-parsing throughput; it measures the whole-project knowledge graph sidecar,
-LadybugDB mirror, LOD query, search, node detail, and local neighborhood paths.
+parsing throughput; it measures the SQLite-derived graph projection,
+LadybugDB materialization, LOD query, search, node detail, and neighborhood paths.
 
 ## Script
 
@@ -31,14 +31,13 @@ uv run python scripts/benchmark_java_corpus_end_to_end.py \
   --clean
 ```
 
-For a LadybugDB-only database stress run:
+For a larger LadybugDB stress run:
 
 ```bash
 uv run python scripts/benchmark_knowledge_graph_scale.py \
   --files 200000 \
   --packages 2000 \
   --methods-per-file 1 \
-  --no-json \
   --output-dir /tmp/tsa-kg-scale-200k-ladybug \
   --clean
 ```
@@ -47,7 +46,7 @@ uv run python scripts/benchmark_knowledge_graph_scale.py \
 
 ### Graph-Layer Synthetic Results
 
-| Files | Nodes | Edges | JSON write | Ladybug COPY write | LOD graph query | Neighborhood query |
+| Files | Nodes | Edges | Historical JSON write | Ladybug COPY write | LOD graph query | Neighborhood query |
 |---:|---:|---:|---:|---:|---:|---:|
 | 50,000 | 200,500 | 350,000 | 1.222s / 142MB | 2.055s | 0.844s | 0.104s |
 | 100,000 | 401,000 | 700,000 | 2.610s / 284MB | 3.648s | 0.835s | 0.144s |
@@ -61,8 +60,7 @@ limit a view, not the database.
 
 These runs generated real `.java` files and then executed the TSA path:
 ASTCache/tree-sitter parse, SQLite indexing, call-edge backfill, knowledge graph
-materialization, JSON fallback write, LadybugDB mirror write, and bounded LOD
-queries.
+materialization, LadybugDB projection write, and bounded LOD queries.
 
 | Java files | Nodes | Edges | Index + materialize | Ladybug COPY write | Total script time | LOD graph query | Neighborhood query |
 |---:|---:|---:|---:|---:|---:|---:|---:|
@@ -77,15 +75,16 @@ All real-Java runs used `--no-docs` and reported `truncated: false`.
 
 - LadybugDB mirror construction is no longer the bottleneck for large code
   graph visualization. CSV `COPY` writes a 1M-edge graph in seconds.
-- JSON fallback remains useful up to at least 100k Java-shaped files, but its
-  size grows quickly. For very large repositories, LadybugDB should be treated
-  as the primary interactive store and JSON as an optional fallback/export.
+- Historical JSON measurements are retained above for comparison only; RFC-0020
+  removed JSON as an operational storage backend because it could drift from SQLite.
+- For very large repositories, LadybugDB should be treated as the primary
+  interactive projection over the canonical SQLite index.
 - LOD query latency stays interactive for the tested graph sizes because the
   UI asks for bounded subgraphs instead of rendering the full database.
 - For real Java source repositories, first-build time is parser/indexer-bound
   first, then graph-materialization-bound. Use
   `benchmark_java_corpus_end_to_end.py` when measuring the full path from
-  `.java` files to browser-queryable sidecars.
+  `.java` files to the browser-queryable graph.
 - Large repositories should treat SQLite AST/cache data and LadybugDB as a
   division of labor, not a replacement: SQLite remains the source index and FTS
   store, while LadybugDB is the embedded traversal/visualization mirror.

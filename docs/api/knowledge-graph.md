@@ -7,12 +7,12 @@ the existing SQLite AST cache and unified edge store.
 
 - SQLite remains the canonical parser cache: AST rows, FTS5 search, file hashes,
   and compatibility for existing tools.
-- LadybugDB is the preferred embedded graph mirror for interactive traversal:
+- LadybugDB is the preferred embedded graph projection for interactive traversal:
   install with `tree-sitter-analyzer[graph]`. The default
-  `--knowledge-graph-backend auto` writes a LadybugDB mirror when the extra is
-  installed, plus a JSON fallback.
-- The knowledge graph JSON sidecar remains the stable export/fallback format and
-  is written under the local `.ast-cache` directory.
+  `--knowledge-graph-backend auto` writes LadybugDB when the extra is installed
+  and queries SQLite directly otherwise.
+- JSON and TOON are response/export encodings only. No JSON graph database or
+  operational sidecar is written.
 
 LadybugDB is a rebuildable mirror, not the canonical parser cache. The writer
 uses CSV `COPY` into a fresh temporary database and swaps it into
@@ -72,9 +72,9 @@ kinds), and `doc_links` from Markdown file references.
 `--knowledge-graph-serve` starts the local interactive Graph Studio service.
 On startup it runs the same incremental update path as
 `--knowledge-graph-index --knowledge-graph-index-mode update`, refreshes the
-JSON fallback and LadybugDB mirror when needed, then opens the browser service.
+optional LadybugDB projection when needed, then opens the browser service.
 Its API prefers LadybugDB for node details and neighborhood traversal, then
-falls back to the JSON sidecar when LadybugDB is unavailable.
+queries the canonical SQLite index when LadybugDB is unavailable.
 
 `--knowledge-graph-export-format graphology` emits Graphology-compatible JSON
 with deterministic positions and node styling, suitable for Sigma.js or another

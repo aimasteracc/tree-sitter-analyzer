@@ -427,9 +427,6 @@ def run_index_project(
             conn.execute("DELETE FROM ast_index")
             conn.commit()
         conn = cache._get_conn()
-        had_index_rows = (
-            conn.execute("SELECT 1 FROM ast_index LIMIT 1").fetchone() is not None
-        )
         effective_exclude = (
             exclude_patterns
             if exclude_patterns is not None
@@ -480,7 +477,6 @@ def run_index_project(
             post_index_backfill(
                 cache,
                 stats,
-                patch_knowledge_graph=had_index_rows and not force,
             )
             if cache._completed_full_index_sweep(stats):
                 _mark_call_graph_built(cache._get_conn())
@@ -507,8 +503,6 @@ def run_index_project(
 def post_index_backfill(
     cache: Any,
     stats: dict[str, Any],
-    *,
-    patch_knowledge_graph: bool = False,
 ) -> None:
     """Run cross-file, Synapse, and unresolved-ref backfills after indexing."""
     try:
@@ -552,38 +546,12 @@ def post_index_backfill(
     except Exception:
         logger.debug("could not mark resolution converged", exc_info=True)
     try:
-        from ..knowledge_graph.builder import KnowledgeGraphBuilder
-        from ..knowledge_graph.stores import (
-            JsonKnowledgeGraphStore,
-            LadybugKnowledgeGraphStore,
-        )
+        from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
 
-        builder = KnowledgeGraphBuilder(cache.project_root)
-        store = JsonKnowledgeGraphStore(cache.project_root)
-        if patch_knowledge_graph and store.exists():
-            snapshot = builder.build_delta(indexed_files)
-            write_result = store.patch_files(snapshot, indexed_files)
-            graph_mode = "incremental"
-        else:
-            snapshot = builder.build()
-            write_result = store.write(snapshot)
-            graph_mode = "full"
-        stats["knowledge_graph"] = {
-            "mode": graph_mode,
-            "node_count": write_result.get(
-                "node_count", snapshot.stats.get("node_count", 0)
-            ),
-            "edge_count": write_result.get(
-                "edge_count", snapshot.stats.get("edge_count", 0)
-            ),
-            "bytes": write_result.get("bytes", 0),
-        }
-        # Keep Ladybug/hybrid backends from serving stale graph data after
-        # auto-updating the JSON sidecar.
-        ladybug_removed = LadybugKnowledgeGraphStore(
-            cache.project_root
-        ).remove_if_exists()
+        # SQLite is the canonical graph index. LadybugDB is a derived projection
+        # and must never survive an SQLite update as an implicitly fresh mirror.
+        ladybug_removed = LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
         if ladybug_removed:
-            stats["knowledge_graph"]["ladybug_stale_removed"] = True
+            stats["knowledge_graph"] = {"ladybug_stale_removed": True}
     except Exception:
         logger.debug("auto knowledge graph build failed", exc_info=True)

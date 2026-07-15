@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from tree_sitter_analyzer.knowledge_graph import (
-    JsonKnowledgeGraphStore,
     KnowledgeEdge,
     KnowledgeGraphSnapshot,
     KnowledgeNode,
@@ -37,10 +36,6 @@ def main() -> int:
     build_seconds = time.perf_counter() - started
 
     writes: dict[str, Any] = {}
-    if not args.no_json:
-        writes["json"] = _timed(
-            lambda: JsonKnowledgeGraphStore(str(workspace)).write(snapshot)
-        )
     if not args.no_ladybug:
         writes["ladybug"] = _timed(
             lambda: LadybugKnowledgeGraphStore(str(workspace)).write(snapshot)
@@ -244,7 +239,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--methods-per-file", type=int, default=2)
     parser.add_argument("--output-dir")
     parser.add_argument("--clean", action="store_true")
-    parser.add_argument("--no-json", action="store_true")
     parser.add_argument("--no-ladybug", action="store_true")
     return parser
 

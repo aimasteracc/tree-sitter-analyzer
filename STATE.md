@@ -38,7 +38,7 @@ Key pillars:
   - Hub nodes are visually larger in the HTML viewer
 
 - [x] **Auto-build KnowledgeGraph after full index** (2026-07-15)
-  - `cache/indexer.py` `post_index_backfill()`: automatically builds `.ast-cache/knowledge-graph.json`
+  - `cache/indexer.py` `post_index_backfill()`: keeps SQLite canonical and invalidates stale LadybugDB projections
   - Agents get an up-to-date graph immediately after `tsa index`; no separate `--knowledge-graph-index` step
   - Failure is silently logged (never breaks indexing)
 

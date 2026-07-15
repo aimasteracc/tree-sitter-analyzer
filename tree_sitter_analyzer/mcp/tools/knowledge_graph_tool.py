@@ -7,7 +7,6 @@ from typing import Any
 
 from ...incremental_sync import IncrementalSync
 from ...knowledge_graph import (
-    JsonKnowledgeGraphStore,
     KnowledgeGraphBuilder,
     LadybugKnowledgeGraphStore,
 )
@@ -24,7 +23,7 @@ from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
 from .base_tool import BaseMCPTool
 
-_BACKENDS = {"auto", "json", "ladybug", "hybrid"}
+_BACKENDS = {"auto", "sqlite", "ladybug"}
 _EXPORT_FORMATS = {"dot", "graphml", "graphology", "html", "raw", "summary", "uml"}
 _LOD_LEVELS = {"package", "file", "symbol", "docs"}
 _UML_KINDS = {"class", "package", "component", "sequence"}
@@ -40,9 +39,8 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
             "name": "codegraph_knowledge_index",
             "description": (
                 "Build or update the whole-project code/doc knowledge graph. "
-                "Uses the existing SQLite AST cache and edge store as source, "
-                "then writes JSON and optionally an embedded LadybugDB mirror "
-                "for Cypher graph traversal."
+                "Uses the SQLite AST cache and edge store as the canonical "
+                "index, with an optional LadybugDB projection for Cypher traversal."
             ),
             "inputSchema": self.get_tool_schema(),
             "annotations": {
@@ -67,7 +65,7 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
                     "type": "string",
                     "enum": sorted(_BACKENDS),
                     "default": "auto",
-                    "description": "auto writes LadybugDB when available plus JSON fallback; json, ladybug, or hybrid force a backend",
+                    "description": "auto uses LadybugDB when available and SQLite otherwise; sqlite never materializes a second graph store",
                 },
                 "max_files": {
                     "type": "integer",
@@ -104,7 +102,7 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
             raise ValueError("mode must be one of: build, update, status")
         backend = arguments.get("backend", "auto")
         if backend not in _BACKENDS:
-            raise ValueError("backend must be one of: auto, json, ladybug, hybrid")
+            raise ValueError("backend must be one of: auto, ladybug, sqlite")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -118,17 +116,16 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
 
         mode = arguments.get("mode", "update")
         backend = arguments.get("backend", "auto")
-        json_store = JsonKnowledgeGraphStore(str(self.project_root))
         ladybug_store = LadybugKnowledgeGraphStore(str(self.project_root))
         effective_backend = backend
         if backend == "auto":
-            effective_backend = "hybrid" if ladybug_store.available() else "json"
+            effective_backend = "ladybug" if ladybug_store.available() else "sqlite"
         if mode == "status":
             response = build_response(
                 verdict="INFO",
                 mode=mode,
                 backend=backend,
-                json_store=json_store.status(),
+                sqlite_index=_sqlite_index_status(str(self.project_root)),
                 ladybug_store=ladybug_store.status(),
             )
             return apply_toon_format_to_response(response, output_format)
@@ -140,9 +137,13 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
         if (
             mode == "update"
             and not _sync_has_changes(sync_report)
-            and _stores_ready(effective_backend, json_store, ladybug_store)
+            and _backend_ready(effective_backend, ladybug_store)
         ):
-            snapshot = _snapshot_from_payload(json_store.read())
+            snapshot = KnowledgeGraphBuilder(str(self.project_root)).build(
+                include_docs=bool(arguments.get("include_docs", True)),
+                max_nodes=int(arguments.get("max_nodes", 0)),
+                max_edges=int(arguments.get("max_edges", 0)),
+            )
             response = build_response(
                 verdict="INFO",
                 mode=mode,
@@ -161,15 +162,13 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
             max_edges=int(arguments.get("max_edges", 0)),
         )
         writes: dict[str, Any] = {}
-        if effective_backend in {"json", "hybrid"}:
-            writes["json"] = json_store.write(snapshot)
-        if effective_backend in {"ladybug", "hybrid"}:
+        if effective_backend == "ladybug":
             try:
                 writes["ladybug"] = ladybug_store.write(snapshot)
             except LadybugUnavailableError as exc:
                 response = build_error(error=str(exc))
                 response["backend"] = backend
-                response["json_store"] = json_store.status()
+                response["sqlite_index"] = _sqlite_index_status(str(self.project_root))
                 return apply_toon_format_to_response(response, output_format)
 
         response = build_response(
@@ -293,21 +292,10 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
                 output_format,
             )
 
-        store = JsonKnowledgeGraphStore(str(self.project_root))
-        if not store.exists():
-            response = build_error(
-                error=(
-                    "Knowledge graph sidecar is missing. Run index action=knowledge "
-                    "or CLI --knowledge-graph-index first."
-                )
-            )
-            return apply_toon_format_to_response(response, output_format)
-
-        payload = store.read()
-        snapshot = _snapshot_from_payload(payload)
+        snapshot = KnowledgeGraphBuilder(str(self.project_root)).build()
         export_format = arguments.get("export_format", "graphology")
         if export_format == "raw":
-            response = build_response(verdict="INFO", graph=payload)
+            response = build_response(verdict="INFO", graph=snapshot.to_dict())
         elif export_format == "summary":
             response = build_response(verdict="INFO", graph=summarize(snapshot))
         elif export_format == "html":
@@ -377,31 +365,6 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
         return apply_toon_format_to_response(response, output_format)
 
 
-def _snapshot_from_payload(payload: dict[str, Any]) -> Any:
-    from ...knowledge_graph.models import (
-        KnowledgeEdge,
-        KnowledgeGraphSnapshot,
-        KnowledgeNode,
-    )
-
-    return KnowledgeGraphSnapshot(
-        nodes=[KnowledgeNode(**node) for node in payload.get("nodes", [])],
-        edges=[
-            KnowledgeEdge(
-                id=edge["id"],
-                source=edge["source"],
-                target=edge["target"],
-                kind=edge["kind"],
-                line=edge.get("line"),
-                provenance=edge.get("provenance", ""),
-                metadata=edge.get("metadata") or {},
-            )
-            for edge in payload.get("edges", [])
-        ],
-        stats=payload.get("stats", {}),
-    )
-
-
 def _compact_sync_report(report: dict[str, Any]) -> dict[str, Any]:
     """Drop per-file details from CLI/MCP responses; counts are enough here."""
     return {
@@ -418,13 +381,23 @@ def _sync_has_changes(report: dict[str, Any]) -> bool:
     )
 
 
-def _stores_ready(
+def _backend_ready(
     backend: str,
-    json_store: JsonKnowledgeGraphStore,
     ladybug_store: LadybugKnowledgeGraphStore,
 ) -> bool:
-    if backend in {"json", "hybrid"} and not json_store.exists():
-        return False
-    if backend in {"ladybug", "hybrid"} and not ladybug_store.exists():
-        return False
-    return True
+    return backend == "sqlite" or ladybug_store.exists()
+
+
+def _sqlite_index_status(project_root: str) -> dict[str, Any]:
+    from pathlib import Path
+
+    path = Path(project_root) / ".ast-cache" / "index.db"
+    if not path.exists():
+        return {"exists": False, "path": str(path)}
+    stat = path.stat()
+    return {
+        "exists": True,
+        "path": str(path),
+        "bytes": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+    }

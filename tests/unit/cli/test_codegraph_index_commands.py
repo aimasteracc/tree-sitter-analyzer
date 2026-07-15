@@ -161,7 +161,7 @@ class TestKnowledgeGraphIndexPayload:
     def test_custom_values(self):
         args = _args(
             knowledge_graph_index_mode="build",
-            knowledge_graph_backend="hybrid",
+            knowledge_graph_backend="ladybug",
             knowledge_graph_max_files=123,
             knowledge_graph_max_nodes=456,
             knowledge_graph_max_edges=789,
@@ -169,7 +169,7 @@ class TestKnowledgeGraphIndexPayload:
         )
         payload = _knowledge_graph_index_payload(args, "toon")
         assert payload["mode"] == "build"
-        assert payload["backend"] == "hybrid"
+        assert payload["backend"] == "ladybug"
         assert payload["max_files"] == 123
         assert payload["max_nodes"] == 456
         assert payload["max_edges"] == 789
@@ -330,7 +330,7 @@ class TestRunKnowledgeGraphIndex:
         assert errors == ["--knowledge-graph-index failed: kg fail"]
 
     def test_success_returns_0(self, tmp_path, capsys):
-        args = _args(project_root=str(tmp_path), knowledge_graph_backend="json")
+        args = _args(project_root=str(tmp_path), knowledge_graph_backend="sqlite")
         mock_tool = MagicMock()
         mock_tool.execute = AsyncMock(
             return_value={"success": True, "toon_content": "kg ok"}
