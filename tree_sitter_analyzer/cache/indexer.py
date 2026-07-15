@@ -553,7 +553,10 @@ def post_index_backfill(
         logger.debug("could not mark resolution converged", exc_info=True)
     try:
         from ..knowledge_graph.builder import KnowledgeGraphBuilder
-        from ..knowledge_graph.stores import JsonKnowledgeGraphStore
+        from ..knowledge_graph.stores import (
+            JsonKnowledgeGraphStore,
+            LadybugKnowledgeGraphStore,
+        )
 
         builder = KnowledgeGraphBuilder(cache.project_root)
         store = JsonKnowledgeGraphStore(cache.project_root)
@@ -575,5 +578,12 @@ def post_index_backfill(
             ),
             "bytes": write_result.get("bytes", 0),
         }
+        # Keep Ladybug/hybrid backends from serving stale graph data after
+        # auto-updating the JSON sidecar.
+        ladybug_removed = LadybugKnowledgeGraphStore(
+            cache.project_root
+        ).remove_if_exists()
+        if ladybug_removed:
+            stats["knowledge_graph"]["ladybug_stale_removed"] = True
     except Exception:
         logger.debug("auto knowledge graph build failed", exc_info=True)

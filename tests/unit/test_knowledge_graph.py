@@ -465,6 +465,50 @@ def test_incremental_index_patches_json_graph_without_full_rebuild(
     assert "before" not in labels
 
 
+def test_incremental_index_prunes_orphan_placeholder_nodes(tmp_path: Path) -> None:
+    store = JsonKnowledgeGraphStore(str(tmp_path))
+    existing = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py"),
+            KnowledgeNode(
+                id="a.py:fn:1", kind="function", label="fn", file_path="a.py"
+            ),
+            KnowledgeNode(
+                id="module:old_dep", kind="module", label="old_dep", file_path=""
+            ),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:old",
+                source="a.py:fn:1",
+                target="module:old_dep",
+                kind="imports",
+            )
+        ],
+        stats={"node_count": 3, "edge_count": 1},
+    )
+    store.write(existing)
+
+    delta = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py", file_path="a.py"),
+            KnowledgeNode(
+                id="a.py:fn:1", kind="function", label="fn", file_path="a.py"
+            ),
+        ],
+        edges=[],
+        stats={"node_count": 2, "edge_count": 0},
+    )
+
+    result = store.patch_files(delta, ["a.py"])
+    payload = store.read()
+    ids = {node["id"] for node in payload["nodes"]}
+
+    assert "module:old_dep" not in ids
+    assert result["node_count"] == 2
+    assert result["edge_count"] == 0
+
+
 def test_full_index_materializes_complete_json_graph(tmp_path: Path) -> None:
     source = tmp_path / "app.py"
     source.write_text("def main():\n    return 1\n", encoding="utf-8")
@@ -483,6 +527,191 @@ def test_full_index_materializes_complete_json_graph(tmp_path: Path) -> None:
         "app.py",
         "main",
     }
+
+
+def test_post_index_backfill_marks_ladybug_stale_removed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Materialize JSON sidecar so post-index backfill runs normally.
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.builder.KnowledgeGraphBuilder.build",
+        lambda self: KnowledgeGraphSnapshot(nodes=[], edges=[], stats={}),
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.stores.JsonKnowledgeGraphStore.write",
+        lambda self, snapshot: {"bytes": 1, "node_count": 0, "edge_count": 0},
+    )
+
+    removed = {"called": False}
+
+    def _remove(self: Any) -> bool:
+        removed["called"] = True
+        return True
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.stores.LadybugKnowledgeGraphStore.remove_if_exists",
+        _remove,
+    )
+
+    source = tmp_path / "app.py"
+    source.write_text("def f():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    assert removed["called"] is True
+    assert result["knowledge_graph"]["ladybug_stale_removed"] is True
+
+
+def test_post_index_backfill_sets_ladybug_flag_when_removed_without_json_patch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.builder.KnowledgeGraphBuilder.build",
+        lambda self: KnowledgeGraphSnapshot(nodes=[], edges=[], stats={}),
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.stores.JsonKnowledgeGraphStore.write",
+        lambda self, snapshot: {"bytes": 1, "node_count": 0, "edge_count": 0},
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.stores.LadybugKnowledgeGraphStore.remove_if_exists",
+        lambda self: True,
+    )
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    assert result["knowledge_graph"]["ladybug_stale_removed"] is True
+
+
+def test_post_index_backfill_skips_ladybug_flag_when_not_removed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("def f():\n    return 1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.builder.KnowledgeGraphBuilder.build",
+        lambda self: KnowledgeGraphSnapshot(nodes=[], edges=[], stats={}),
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.stores.JsonKnowledgeGraphStore.write",
+        lambda self, snapshot: {"bytes": 1, "node_count": 0, "edge_count": 0},
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.stores.LadybugKnowledgeGraphStore.remove_if_exists",
+        lambda self: False,
+    )
+
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    assert "ladybug_stale_removed" not in result["knowledge_graph"]
+
+
+def test_ladybug_remove_if_exists_true_and_false(tmp_path: Path) -> None:
+    store = LadybugKnowledgeGraphStore(str(tmp_path))
+
+    # false path: file absent
+    assert store.remove_if_exists() is False
+
+    # true path: file present
+    path = Path(store.path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("x", encoding="utf-8")
+    assert path.exists() is True
+    assert store.remove_if_exists() is True
+    assert path.exists() is False
+
+
+def test_cache_indexer_post_backfill_sets_ladybug_flag_direct() -> None:
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    class _FakeCache:
+        project_root = "."
+        fts5_available = True
+
+        def _run_synapse_backfill(self) -> None:
+            return None
+
+        def _run_unresolved_refs_backfill(self) -> None:
+            return None
+
+        def _get_conn(self) -> object:
+            return object()
+
+    stats = {"files": [{"file": "app.py", "status": "indexed"}]}
+    snapshot = KnowledgeGraphSnapshot(nodes=[], edges=[], stats={})
+
+    with (
+        patch(
+            "tree_sitter_analyzer.cache.unresolved.mark_resolution_converged",
+            lambda conn: None,
+        ),
+        patch(
+            "tree_sitter_analyzer.knowledge_graph.builder.KnowledgeGraphBuilder.build",
+            lambda self: snapshot,
+        ),
+        patch(
+            "tree_sitter_analyzer.knowledge_graph.stores.JsonKnowledgeGraphStore.write",
+            lambda self, snap: {"bytes": 1, "node_count": 0, "edge_count": 0},
+        ),
+        patch(
+            "tree_sitter_analyzer.knowledge_graph.stores.LadybugKnowledgeGraphStore.remove_if_exists",
+            lambda self: True,
+        ),
+    ):
+        post_index_backfill(_FakeCache(), stats)
+
+    assert stats["knowledge_graph"]["ladybug_stale_removed"] is True
+
+
+def test_cache_indexer_post_backfill_swallows_knowledge_graph_exception() -> None:
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    class _FakeCache:
+        project_root = "."
+        fts5_available = True
+
+        def _run_synapse_backfill(self) -> None:
+            return None
+
+        def _run_unresolved_refs_backfill(self) -> None:
+            return None
+
+        def _get_conn(self) -> object:
+            return object()
+
+    stats = {"files": [{"file": "app.py", "status": "indexed"}]}
+
+    with (
+        patch(
+            "tree_sitter_analyzer.cache.unresolved.mark_resolution_converged",
+            lambda conn: None,
+        ),
+        patch(
+            "tree_sitter_analyzer.knowledge_graph.builder.KnowledgeGraphBuilder.build",
+            lambda self: (_ for _ in ()).throw(RuntimeError("kg boom")),
+        ),
+    ):
+        # Must not raise; post_index_backfill should swallow and log.
+        post_index_backfill(_FakeCache(), stats)
+
+    assert "knowledge_graph" not in stats
 
 
 def test_graphology_export_filters_docs_lod_exactly() -> None:
@@ -806,6 +1035,29 @@ def test_cli_parser_accepts_knowledge_graph_uml_export_flags() -> None:
     assert args.knowledge_graph_export is True
     assert args.knowledge_graph_export_format == "uml"
     assert args.knowledge_graph_uml_kind == "class"
+
+
+def test_cli_parser_accepts_knowledge_graph_dot_and_graphml_export_flags() -> None:
+    from tree_sitter_analyzer.cli_main import create_argument_parser
+
+    parser = create_argument_parser()
+    dot_args = parser.parse_args(
+        [
+            "--knowledge-graph-export",
+            "--knowledge-graph-export-format",
+            "dot",
+        ]
+    )
+    graphml_args = parser.parse_args(
+        [
+            "--knowledge-graph-export",
+            "--knowledge-graph-export-format",
+            "graphml",
+        ]
+    )
+
+    assert dot_args.knowledge_graph_export_format == "dot"
+    assert graphml_args.knowledge_graph_export_format == "graphml"
 
 
 def test_knowledge_graph_service_serves_node_and_neighborhood(tmp_path: Path) -> None:

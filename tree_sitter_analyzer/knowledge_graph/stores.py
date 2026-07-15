@@ -105,6 +105,17 @@ def _merge_file_delta(
         or (edge.source not in removed_ids and edge.target not in removed_ids)
     }
     edges.update({edge.id: edge for edge in delta.edges})
+    # Prune placeholder nodes (often file_path="") that are no longer referenced
+    # by any edge after changed-file edge filtering.
+    referenced_ids = set()
+    for edge in edges.values():
+        referenced_ids.add(edge.source)
+        referenced_ids.add(edge.target)
+    nodes = {
+        node_id: node
+        for node_id, node in nodes.items()
+        if node.file_path or node_id in referenced_ids
+    }
     nodes = _annotate_centrality(nodes, edges)
     stats = {
         **existing.stats,
@@ -154,6 +165,13 @@ class LadybugKnowledgeGraphStore:
             result["fallback_error"] = str(exc)
             result["elapsed_seconds"] = round(time.perf_counter() - start, 3)
             return result
+
+    def remove_if_exists(self) -> bool:
+        """Remove the Ladybug store if present, returning whether it existed."""
+        if not os.path.exists(self.path):
+            return False
+        Path(self.path).unlink(missing_ok=True)
+        return True
 
     def _write_with_copy(
         self, lb: Any, snapshot: KnowledgeGraphSnapshot

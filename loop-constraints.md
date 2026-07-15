@@ -15,7 +15,7 @@
 - `synapse_resolver/_registry.py` — moat registry; human review required for any change
 
 ## Code
-- Always run `pytest tests/ -x --timeout=60` before proposing any fix
+- Always run `uv run pytest -q` before proposing any fix
 - Never disable tests or add xfail markers to make CI green
 - Never refactor unrelated code — one fix per run
 - Max 3 fix attempts per item; log each attempt to `loop-run-log.md` and escalate after 3
