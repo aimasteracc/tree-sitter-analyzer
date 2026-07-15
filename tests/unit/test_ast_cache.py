@@ -418,7 +418,7 @@ class TestIndexProject:
         result = cache.index_project(workers=0)
 
         assert result["indexed"] == 2
-        assert result["knowledge_graph"]["mode"] == "full"
+        assert "knowledge_graph" not in result
 
     def test_index_project_skips_activation_by_default(self, cache, monkeypatch):
         """Large-repo warm-cache builds must not run per-file git history by default."""
