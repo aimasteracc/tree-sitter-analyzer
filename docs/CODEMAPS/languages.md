@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-24; doc-code re-sync: 2026-06-17 -->
+<!-- Generated: 2026-05-24; doc-code re-sync: 2026-07-15 -->
 # Languages Codemap
 
 22 language plugins under `tree_sitter_analyzer/languages/` (17 single-file + 5 subdir packages).
@@ -38,7 +38,7 @@ Not every registered plugin is wired into the indexer to the same depth:
 | Markdown | `markdown_plugin/` | submodules | headings, code blocks, tables |
 | JSON | `languages/json_plugin.py` | inline | basic structure |
 | Bash | `languages/bash_plugin.py` | inline | functions, commands |
-| Lua | `languages/lua_plugin/` | `plugin.py` + `extractor.py` | `LuaElementExtractor` with tree-sitter queries for `function_declaration` and `require()` calls; extensibility demo (Phase 2 capability system) |
+| Lua | `languages/lua_plugin/` | `plugin.py` + `extractor.py` | Production scaffold plugin with `function_declaration` / `require()` extraction via the shared QueryCursor compatibility layer; Synapse claims the Lua resolver slot conservatively as `unknown` |
 
 ## Shared helpers
 

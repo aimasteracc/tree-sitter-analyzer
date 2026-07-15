@@ -23,6 +23,7 @@ _CALL_NODE_TYPES = {
         "member_call_expression",
         "scoped_call_expression",
     },
+    "lua": {"function_call"},
     "swift": {"call_expression"},
 }
 
@@ -39,6 +40,7 @@ _FUNC_DEF_TYPES = {
     "kotlin": {"function_declaration"},
     "ruby": {"method", "singleton_method"},
     "php": {"function_definition", "method_declaration"},
+    "lua": {"function_declaration"},
     # protocol stubs have no body + duplicate the impl name -> last-writer-wins
     # in file_funcs would steal caller attribution; keep only concrete defs.
     "swift": {"function_declaration"},
@@ -281,6 +283,14 @@ def _call_info_php(node: Any, source: str) -> dict[str, Any] | None:
     return None
 
 
+def _call_info_lua(node: Any, source: str) -> dict[str, Any] | None:
+    """Lua ``function_call``: callee is in the ``name`` field."""
+    name_node = node.child_by_field_name("name")
+    if name_node is None:
+        return None
+    return _call_from_text(_node_text(name_node, source), node)
+
+
 _CALL_DISPATCH: dict[str, Callable] = {
     "python": _call_info_field,
     "javascript": _call_info_field,
@@ -296,10 +306,22 @@ _CALL_DISPATCH: dict[str, Callable] = {
     "kotlin": _call_info_kotlin,
     "ruby": _call_info_ruby,
     "php": _call_info_php,
+    "lua": _call_info_lua,
     # Swift call_expression: callee is the first child (simple_identifier or
     # navigation_expression) — same shape as Kotlin.
     "swift": _call_info_kotlin,
 }
+
+
+def _func_name_lua(node: Any) -> str | None:
+    """Lua ``function_declaration`` exposes the function name in ``name``."""
+    name_node = node.child_by_field_name("name")
+    if name_node is not None:
+        return _node_text_value(name_node)
+    return None
+
+
+_FUNC_NAME_DISPATCH["lua"] = _func_name_lua
 
 # ---------------------------------------------------------------------------
 # Public API

@@ -129,6 +129,12 @@ class ASTCache:
             conn = sqlite3.connect(self.db_path, timeout=10)
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
+            # 64 MB page cache — reduces I/O on large repos significantly
+            conn.execute("PRAGMA cache_size=-65536")
+            # Memory-mapped I/O: 256 MB — avoids pread() syscalls on read paths
+            conn.execute("PRAGMA mmap_size=268435456")
+            # Temp tables in memory instead of disk
+            conn.execute("PRAGMA temp_store=MEMORY")
             conn.row_factory = sqlite3.Row
             self._local.conn = conn
         return conn
@@ -380,6 +386,8 @@ class ASTCache:
                 pass
         if workers is None:
             _cpu = os.cpu_count() or 4
+            # Spawn overhead dominates small repositories; parallelize only
+            # once there is enough extraction work to amortize process startup.
             workers = 0 if len(candidates) < 64 else max(2, _cpu - 1)
         return workers
 

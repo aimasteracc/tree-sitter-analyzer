@@ -80,6 +80,7 @@ class KnowledgeGraphBuilder:
                     max_edges=edge_cap,
                 )
 
+            nodes = _annotate_centrality(nodes, edges)
             stats = {
                 "project_root": self.project_root,
                 "node_count": len(nodes),
@@ -365,6 +366,45 @@ class KnowledgeGraphBuilder:
         if directory in ("", "."):
             directory = "<root>"
         return "package:" + directory.replace("/", ".")
+
+
+def _annotate_centrality(
+    nodes: dict[str, KnowledgeNode],
+    edges: dict[str, KnowledgeEdge],
+) -> dict[str, KnowledgeNode]:
+    """Return a new nodes dict with degree_in, degree_out, and centrality metadata.
+
+    centrality is normalised to [0, 1] where 1 = the most-connected node.
+    Keeps KnowledgeNode immutable — creates new instances.
+    """
+    degree_in: Counter[str] = Counter()
+    degree_out: Counter[str] = Counter()
+    for edge in edges.values():
+        degree_out[edge.source] += 1
+        degree_in[edge.target] += 1
+    max_total = max(
+        (degree_in[nid] + degree_out[nid] for nid in nodes),
+        default=1,
+    )
+    result: dict[str, KnowledgeNode] = {}
+    for node_id, node in nodes.items():
+        d_in = degree_in[node_id]
+        d_out = degree_out[node_id]
+        centrality = round((d_in + d_out) / max(max_total, 1), 6)
+        result[node_id] = KnowledgeNode(
+            id=node.id,
+            kind=node.kind,
+            label=node.label,
+            file_path=node.file_path,
+            language=node.language,
+            metadata={
+                **node.metadata,
+                "degree_in": d_in,
+                "degree_out": d_out,
+                "centrality": centrality,
+            },
+        )
+    return result
 
 
 def _edge_id(source: str, target: str, kind: str, line: int | None) -> str:

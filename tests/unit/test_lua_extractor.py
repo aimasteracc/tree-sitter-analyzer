@@ -6,6 +6,7 @@ Covers:
   3. Actual function/import extraction with a real Lua parse tree
      (skipped automatically when tree_sitter_lua is not installed).
 """
+
 from __future__ import annotations
 
 import sys
@@ -16,6 +17,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Availability guard — defined BEFORE any skipif that references it
 # ---------------------------------------------------------------------------
+
 
 def _tslua_available() -> bool:
     """Return True when tree_sitter_lua is importable in the current env."""
@@ -69,7 +71,9 @@ def test_lua_extractor_graceful_when_no_tslua(monkeypatch: pytest.MonkeyPatch) -
 # ---------------------------------------------------------------------------
 
 
-def _make_name_node(name: bytes, start: tuple[int, int] = (0, 0), end: tuple[int, int] = (5, 0)) -> MagicMock:
+def _make_name_node(
+    name: bytes, start: tuple[int, int] = (0, 0), end: tuple[int, int] = (5, 0)
+) -> MagicMock:
     """Build a mock name node whose parent is a valid function declaration node."""
     fn_node = MagicMock()
     fn_node.type = "function_declaration"
@@ -100,23 +104,26 @@ def _make_path_node(path: bytes) -> MagicMock:
     return path_node
 
 
-def test_lua_extract_functions_with_mock_grammar(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_lua_extract_functions_with_mock_grammar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """extract_functions returns ModelFunction entries when the grammar mock yields name nodes."""
     from tree_sitter_analyzer.languages.lua_plugin.extractor import LuaElementExtractor
 
     mock_lang = MagicMock()
-    mock_query = MagicMock()
-    mock_query.captures.return_value = {
-        "name": [_make_name_node(b"greet"), _make_name_node(b"add")],
-    }
-
-    MockQuery = MagicMock(return_value=mock_query)
-    mock_ts = MagicMock()
-    mock_ts.Query = MockQuery
+    captures = [
+        (_make_name_node(b"greet"), "name"),
+        (_make_name_node(b"ignored"), "other"),
+        (_make_name_node(b"add"), "name"),
+    ]
 
     extractor = LuaElementExtractor()
     monkeypatch.setattr(extractor, "_get_lua_language", lambda: mock_lang)
-    monkeypatch.setitem(sys.modules, "tree_sitter", mock_ts)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.languages.lua_plugin.extractor."
+        "TreeSitterQueryCompat.execute_query",
+        MagicMock(return_value=captures),
+    )
 
     mock_tree = MagicMock()
     result = extractor.extract_functions(mock_tree, "")
@@ -128,7 +135,9 @@ def test_lua_extract_functions_with_mock_grammar(monkeypatch: pytest.MonkeyPatch
     assert all(f.language == "lua" for f in result)
 
 
-def test_lua_extract_functions_skips_none_parent(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_lua_extract_functions_skips_none_parent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Name node with no parent (parent=None) must be skipped without crashing."""
     from tree_sitter_analyzer.languages.lua_plugin.extractor import LuaElementExtractor
 
@@ -136,16 +145,13 @@ def test_lua_extract_functions_skips_none_parent(monkeypatch: pytest.MonkeyPatch
     orphan.text = b"orphan"
     orphan.parent = None
 
-    mock_lang = MagicMock()
-    mock_query = MagicMock()
-    mock_query.captures.return_value = {"name": [orphan]}
-
-    mock_ts = MagicMock()
-    mock_ts.Query = MagicMock(return_value=mock_query)
-
     extractor = LuaElementExtractor()
-    monkeypatch.setattr(extractor, "_get_lua_language", lambda: mock_lang)
-    monkeypatch.setitem(sys.modules, "tree_sitter", mock_ts)
+    monkeypatch.setattr(extractor, "_get_lua_language", MagicMock())
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.languages.lua_plugin.extractor."
+        "TreeSitterQueryCompat.execute_query",
+        MagicMock(return_value=[(orphan, "name")]),
+    )
 
     result = extractor.extract_functions(MagicMock(), "")
     assert result == [], "orphan name node must be silently skipped"
@@ -155,13 +161,13 @@ def test_lua_extract_functions_outer_exception(monkeypatch: pytest.MonkeyPatch) 
     """extract_functions catches outer exception and returns empty list."""
     from tree_sitter_analyzer.languages.lua_plugin.extractor import LuaElementExtractor
 
-    mock_lang = MagicMock()
-    mock_ts = MagicMock()
-    mock_ts.Query.side_effect = RuntimeError("grammar broken")
-
     extractor = LuaElementExtractor()
-    monkeypatch.setattr(extractor, "_get_lua_language", lambda: mock_lang)
-    monkeypatch.setitem(sys.modules, "tree_sitter", mock_ts)
+    monkeypatch.setattr(extractor, "_get_lua_language", MagicMock())
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.languages.lua_plugin.extractor."
+        "TreeSitterQueryCompat.execute_query",
+        MagicMock(side_effect=RuntimeError("grammar broken")),
+    )
 
     result = extractor.extract_functions(MagicMock(), "")
     assert result == []
@@ -172,17 +178,19 @@ def test_lua_extract_imports_with_mock_grammar(monkeypatch: pytest.MonkeyPatch) 
     from tree_sitter_analyzer.languages.lua_plugin.extractor import LuaElementExtractor
 
     mock_lang = MagicMock()
-    mock_query = MagicMock()
-    mock_query.captures.return_value = {
-        "path": [_make_path_node(b"json"), _make_path_node(b"socket.http")],
-    }
-
-    mock_ts = MagicMock()
-    mock_ts.Query = MagicMock(return_value=mock_query)
+    captures = [
+        (_make_path_node(b"json"), "path"),
+        (_make_path_node(b"ignored"), "callee"),
+        (_make_path_node(b"socket.http"), "path"),
+    ]
 
     extractor = LuaElementExtractor()
     monkeypatch.setattr(extractor, "_get_lua_language", lambda: mock_lang)
-    monkeypatch.setitem(sys.modules, "tree_sitter", mock_ts)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.languages.lua_plugin.extractor."
+        "TreeSitterQueryCompat.execute_query",
+        MagicMock(return_value=captures),
+    )
 
     result = extractor.extract_imports(MagicMock(), "")
 
@@ -196,13 +204,13 @@ def test_lua_extract_imports_outer_exception(monkeypatch: pytest.MonkeyPatch) ->
     """extract_imports catches outer exception and returns empty list."""
     from tree_sitter_analyzer.languages.lua_plugin.extractor import LuaElementExtractor
 
-    mock_lang = MagicMock()
-    mock_ts = MagicMock()
-    mock_ts.Query.side_effect = RuntimeError("query compile error")
-
     extractor = LuaElementExtractor()
-    monkeypatch.setattr(extractor, "_get_lua_language", lambda: mock_lang)
-    monkeypatch.setitem(sys.modules, "tree_sitter", mock_ts)
+    monkeypatch.setattr(extractor, "_get_lua_language", MagicMock())
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.languages.lua_plugin.extractor."
+        "TreeSitterQueryCompat.execute_query",
+        MagicMock(side_effect=RuntimeError("query compile error")),
+    )
 
     result = extractor.extract_imports(MagicMock(), "")
     assert result == []
@@ -213,7 +221,10 @@ def test_lua_extract_imports_outer_exception(monkeypatch: pytest.MonkeyPatch) ->
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(not _tslua_available(), reason="tree_sitter_lua not installed; tracked: optional-dep skip")
+@pytest.mark.skipif(
+    not _tslua_available(),
+    reason="tree_sitter_lua not installed; tracked: optional-dep skip",
+)
 def test_lua_extractor_extracts_functions_and_imports() -> None:
     """With tree_sitter_lua installed, named and local functions are extracted
     and require() calls appear as import elements.

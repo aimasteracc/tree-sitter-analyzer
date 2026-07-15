@@ -14,6 +14,7 @@ from ...models import Import as ModelImport
 from ...models import Variable as ModelVariable
 from ...plugins.base import ElementExtractor
 from ...utils import log_error
+from ...utils.tree_sitter_compat import TreeSitterQueryCompat
 from ..shared.traversal import node_range
 
 __all__ = ["LuaElementExtractor"]
@@ -83,10 +84,10 @@ class LuaElementExtractor(ElementExtractor):
             return []
 
         try:
-            import tree_sitter as _ts
-            query = _ts.Query(language, _FUNCTION_QUERY)
-            captures: dict[str, list[Any]] = query.captures(tree.root_node)  # type: ignore[attr-defined]
-            name_nodes: list[Any] = captures.get("name", [])
+            captures = TreeSitterQueryCompat.execute_query(
+                language, _FUNCTION_QUERY, tree.root_node
+            )
+            name_nodes = [node for node, name in captures if name == "name"]
 
             functions: list[ModelFunction] = []
             for name_node in name_nodes:
@@ -132,10 +133,10 @@ class LuaElementExtractor(ElementExtractor):
             return []
 
         try:
-            import tree_sitter as _ts
-            query = _ts.Query(language, _IMPORT_QUERY)
-            captures: dict[str, list[Any]] = query.captures(tree.root_node)  # type: ignore[attr-defined]
-            path_nodes: list[Any] = captures.get("path", [])
+            captures = TreeSitterQueryCompat.execute_query(
+                language, _IMPORT_QUERY, tree.root_node
+            )
+            path_nodes = [node for node, name in captures if name == "path"]
 
             imports: list[ModelImport] = []
             for path_node in path_nodes:

@@ -275,6 +275,15 @@ class TestIndexProject:
         assert "workers" in result
         assert result["workers"] == 0
 
+    def test_auto_workers_start_at_64_candidates(self, monkeypatch):
+        """The auto pool starts only when spawn overhead can be amortized."""
+        # 2026-07-15 benchmark: 50 files took 5.77s serial vs 9.55s auto on Windows.
+        monkeypatch.delenv("TSA_INDEX_WORKERS", raising=False)
+        monkeypatch.setattr("tree_sitter_analyzer.ast_cache.os.cpu_count", lambda: 8)
+
+        assert ASTCache._resolve_worker_count(None, list(range(63))) == 0
+        assert ASTCache._resolve_worker_count(None, list(range(64))) == 7
+
     def test_index_project_serial_and_parallel_agree(self, tmp_project):
         """PERF-4 correctness: parallel and serial paths must produce
         identical indexed counts and SQLite contents."""
@@ -340,6 +349,76 @@ class TestIndexProject:
         # Pass workers=4 explicitly; env should win and force serial.
         result = cache.index_project(workers=4)
         assert result["workers"] == 0
+
+    def test_index_project_tolerates_knowledge_graph_build_failure(
+        self, cache, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.knowledge_graph.builder.KnowledgeGraphBuilder.build",
+            lambda self: (_ for _ in ()).throw(RuntimeError("graph failed")),
+        )
+
+        result = cache.index_project(workers=0)
+
+        assert result["indexed"] == 2
+        assert "knowledge_graph" not in result
+
+    def test_index_project_reports_unresolved_reference_backfill(
+        self, cache, monkeypatch
+    ):
+        monkeypatch.setattr(
+            cache,
+            "_run_unresolved_refs_backfill",
+            lambda: {"resolved": 3, "remaining": 1},
+        )
+
+        result = cache.index_project(workers=0)
+
+        assert result["unresolved_refs_backfill"] == {
+            "resolved": 3,
+            "remaining": 1,
+        }
+
+    def test_index_project_omits_empty_unresolved_backfill(self, cache, monkeypatch):
+        monkeypatch.setattr(cache, "_run_unresolved_refs_backfill", lambda: None)
+
+        result = cache.index_project(workers=0)
+
+        assert result["indexed"] == 2
+        assert "unresolved_refs_backfill" not in result
+
+    def test_index_project_tolerates_unresolved_backfill_failure(
+        self, cache, monkeypatch
+    ):
+        def fail_unresolved_backfill():
+            raise RuntimeError("unresolved failed")
+
+        monkeypatch.setattr(
+            cache,
+            "_run_unresolved_refs_backfill",
+            fail_unresolved_backfill,
+        )
+
+        result = cache.index_project(workers=0)
+
+        assert result["indexed"] == 2
+        assert "unresolved_refs_backfill" not in result
+
+    def test_index_project_tolerates_resolution_convergence_failure(
+        self, cache, monkeypatch
+    ):
+        def fail_mark_resolution_converged(conn):
+            raise RuntimeError("convergence failed")
+
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.cache.unresolved.mark_resolution_converged",
+            fail_mark_resolution_converged,
+        )
+
+        result = cache.index_project(workers=0)
+
+        assert result["indexed"] == 2
+        assert result["knowledge_graph"]["mode"] == "full"
 
     def test_index_project_skips_activation_by_default(self, cache, monkeypatch):
         """Large-repo warm-cache builds must not run per-file git history by default."""
