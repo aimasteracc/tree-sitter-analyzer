@@ -386,9 +386,9 @@ class ASTCache:
                 pass
         if workers is None:
             _cpu = os.cpu_count() or 4
-            # Threshold 4: even small repos (≥4 files) benefit from parallelism.
-            # Previously 64 — most single-module projects never hit the parallel path.
-            workers = 0 if len(candidates) < 4 else max(2, _cpu - 1)
+            # Spawn overhead dominates small repositories; parallelize only
+            # once there is enough extraction work to amortize process startup.
+            workers = 0 if len(candidates) < 64 else max(2, _cpu - 1)
         return workers
 
     def _refresh_graph_edges_from_cache(

@@ -45,6 +45,6 @@ Append one entry per run. Prune entries older than 30 days.
   "escalations": 0,
   "tokens_estimate": 320000,
   "outcome": "fix-proposed",
-  "summary": "Indexing: SQLite PRAGMAs (64MB cache/256MB mmap/temp-in-RAM) + parallelism threshold 64→4. Centrality: _annotate_centrality() on every KG build (degree_in/out/centrality per node). Auto-KG: post_index_backfill() auto-writes .ast-cache/knowledge-graph.json. Visualization: html_viewer.py rewritten with spring-electrical force simulation (180 init ticks, physics toggle, centrality glow, grid-cell approx >800 nodes). DOT export: to_dot() in exporters.py. GraphML export: to_graphml() in exporters.py (Gephi/yEd/Cytoscape, centrality attrs). MCP: export_format=dot|graphml wired. 3724 tests pass; 4 pre-existing failures."
+  "summary": "Indexing: SQLite PRAGMAs (64MB cache/256MB mmap/temp-in-RAM); retained the 64-file spawn threshold after a Windows 14-core benchmark measured 50 files at 5.77s serial vs 9.55s with threshold 4. Centrality: _annotate_centrality() on every KG build (degree_in/out/centrality per node). Auto-KG: post_index_backfill() auto-writes .ast-cache/knowledge-graph.json. Visualization: html_viewer.py rewritten with spring-electrical force simulation (180 init ticks, physics toggle, centrality glow, grid-cell approx >800 nodes). DOT export: to_dot() in exporters.py. GraphML export: to_graphml() in exporters.py (Gephi/yEd/Cytoscape, centrality attrs). MCP: export_format=dot|graphml wired."
 }
 ```

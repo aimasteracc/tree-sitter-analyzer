@@ -397,7 +397,12 @@ def _annotate_centrality(
             label=node.label,
             file_path=node.file_path,
             language=node.language,
-            metadata={**node.metadata, "degree_in": d_in, "degree_out": d_out, "centrality": centrality},
+            metadata={
+                **node.metadata,
+                "degree_in": d_in,
+                "degree_out": d_out,
+                "centrality": centrality,
+            },
         )
     return result
 

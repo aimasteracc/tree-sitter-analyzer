@@ -476,6 +476,7 @@ _DOT_SHAPES: dict[str, str] = {
     "method": "diamond",
     "function": "diamond",
 }
+_DOT_RANKDIRS = {"BT", "LR", "RL", "TB"}
 
 
 def to_dot(
@@ -500,6 +501,9 @@ def to_dot(
             f.write(dot_str)
         # Then: dot -Tsvg graph.dot -o graph.svg
     """
+    rankdir = rankdir.upper()
+    if rankdir not in _DOT_RANKDIRS:
+        raise ValueError("rankdir must be one of: BT, LR, RL, TB")
     nodes, edges, truncated = _select(snapshot, lod, focus, max_nodes, max_edges)
     lines = [
         "digraph tsa_knowledge_graph {",
@@ -527,12 +531,12 @@ def to_dot(
         src = _dot_id(edge.source)
         tgt = _dot_id(edge.target)
         color = _dot_edge_color(edge.kind)
+        label = _dot_escape(edge.kind)
         lines.append(
-            f'  {src} -> {tgt} [label="{edge.kind}" color="{color}" '
-            f'fontcolor="{color}"];'
+            f'  {src} -> {tgt} [label="{label}" color="{color}" fontcolor="{color}"];'
         )
     if truncated:
-        lines.append('  // WARNING: graph truncated — increase max_nodes/max_edges')
+        lines.append("  // WARNING: graph truncated — increase max_nodes/max_edges")
     lines.append("}")
     return "\n".join(lines)
 
@@ -543,7 +547,7 @@ def _dot_id(raw: str) -> str:
 
 
 def _dot_escape(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")[:80]
+    return s[:80].replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
 def _dot_edge_color(kind: str) -> str:
@@ -619,7 +623,9 @@ def to_graphml(
         if "degree_out" in meta:
             lines.append(f'      <data key="d_dout">{int(meta["degree_out"])}</data>')
         if "centrality" in meta:
-            lines.append(f'      <data key="d_central">{float(meta["centrality"]):.6f}</data>')
+            lines.append(
+                f'      <data key="d_central">{float(meta["centrality"]):.6f}</data>'
+            )
         lines.append("    </node>")
 
     for i, edge in enumerate(edges):

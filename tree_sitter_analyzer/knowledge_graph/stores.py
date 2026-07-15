@@ -10,6 +10,7 @@ import os
 import shutil
 import tempfile
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any, cast
 
@@ -36,6 +37,21 @@ class JsonKnowledgeGraphStore:
         )
         return {"path": self.path, "bytes": os.path.getsize(self.path)}
 
+    def patch_files(
+        self,
+        snapshot: KnowledgeGraphSnapshot,
+        changed_file_paths: list[str],
+    ) -> dict[str, Any]:
+        """Replace changed-file nodes and edges in the materialized snapshot."""
+        existing = _json_snapshot(self.read())
+        merged = _merge_file_delta(existing, snapshot, changed_file_paths)
+        result = self.write(merged)
+        return {
+            **result,
+            "node_count": len(merged.nodes),
+            "edge_count": len(merged.edges),
+        }
+
     def read(self) -> dict[str, Any]:
         payload = json.loads(Path(self.path).read_text(encoding="utf-8"))
         return cast(dict[str, Any], payload)
@@ -53,6 +69,56 @@ class JsonKnowledgeGraphStore:
             "bytes": stat.st_size,
             "mtime_ns": stat.st_mtime_ns,
         }
+
+
+def _json_snapshot(payload: dict[str, Any]) -> KnowledgeGraphSnapshot:
+    return KnowledgeGraphSnapshot(
+        nodes=[KnowledgeNode(**node) for node in payload.get("nodes", [])],
+        edges=[KnowledgeEdge(**edge) for edge in payload.get("edges", [])],
+        stats=dict(payload.get("stats", {})),
+    )
+
+
+def _merge_file_delta(
+    existing: KnowledgeGraphSnapshot,
+    delta: KnowledgeGraphSnapshot,
+    changed_file_paths: list[str],
+) -> KnowledgeGraphSnapshot:
+    from .builder import _annotate_centrality
+
+    changed = {path.replace("\\", "/") for path in changed_file_paths}
+    removed_ids = {
+        node.id
+        for node in existing.nodes
+        if node.file_path.replace("\\", "/") in changed
+    }
+    nodes = {node.id: node for node in existing.nodes if node.id not in removed_ids}
+    for node in delta.nodes:
+        node_path = node.file_path.replace("\\", "/")
+        if node_path in changed or node.id not in nodes:
+            nodes[node.id] = node
+
+    edges = {
+        edge.id: edge
+        for edge in existing.edges
+        if edge.kind == "doc_links"
+        or (edge.source not in removed_ids and edge.target not in removed_ids)
+    }
+    edges.update({edge.id: edge for edge in delta.edges})
+    nodes = _annotate_centrality(nodes, edges)
+    stats = {
+        **existing.stats,
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "node_kinds": dict(Counter(node.kind for node in nodes.values())),
+        "edge_kinds": dict(Counter(edge.kind for edge in edges.values())),
+        "incremental_files": len(changed),
+    }
+    return KnowledgeGraphSnapshot(
+        nodes=sorted(nodes.values(), key=lambda node: node.id),
+        edges=sorted(edges.values(), key=lambda edge: edge.id),
+        stats=stats,
+    )
 
 
 class LadybugUnavailableError(RuntimeError):

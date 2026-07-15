@@ -47,17 +47,26 @@ logger = logging.getLogger(__name__)
 
 # Corpus-directory patterns excluded from full-index (REQ-E-016).
 # Uses fnmatch syntax relative to the project root (forward-slash normalised).
-_DEFAULT_EXCLUDE_PATTERNS: frozenset[str] = frozenset({
-    "tests/golden/corpus_*",
-})
+_DEFAULT_EXCLUDE_PATTERNS: frozenset[str] = frozenset(
+    {
+        "tests/golden/corpus_*",
+    }
+)
 
 # Extensions that have a plugin but are NOT wired for full-index
 # (REQ-E-020).  When a file with one of these extensions is encountered and
 # language_fn returns None, a one-time WARNING is emitted so callers know why
 # the file was silently skipped.
-_PLUGIN_EXTS: frozenset[str] = frozenset({
-    ".css", ".html", ".md", ".sql", ".yaml", ".yml",
-})
+_PLUGIN_EXTS: frozenset[str] = frozenset(
+    {
+        ".css",
+        ".html",
+        ".md",
+        ".sql",
+        ".yaml",
+        ".yml",
+    }
+)
 
 # De-duplication set: only warn once per extension per process lifetime.
 _warned_extensions: set[str] = set()
@@ -418,6 +427,9 @@ def run_index_project(
             conn.execute("DELETE FROM ast_index")
             conn.commit()
         conn = cache._get_conn()
+        had_index_rows = (
+            conn.execute("SELECT 1 FROM ast_index LIMIT 1").fetchone() is not None
+        )
         effective_exclude = (
             exclude_patterns
             if exclude_patterns is not None
@@ -465,7 +477,11 @@ def run_index_project(
         stats["total_files"] = count
         stats["workers"] = workers
         if stats["indexed"] > 0:
-            post_index_backfill(cache, stats)
+            post_index_backfill(
+                cache,
+                stats,
+                patch_knowledge_graph=had_index_rows and not force,
+            )
             if cache._completed_full_index_sweep(stats):
                 _mark_call_graph_built(cache._get_conn())
         # #978: a fully-cached re-run (indexed == 0) over an already-complete
@@ -488,7 +504,12 @@ def run_index_project(
             _clear_build_in_progress(cache._get_conn())
 
 
-def post_index_backfill(cache: Any, stats: dict[str, Any]) -> None:
+def post_index_backfill(
+    cache: Any,
+    stats: dict[str, Any],
+    *,
+    patch_knowledge_graph: bool = False,
+) -> None:
     """Run cross-file, Synapse, and unresolved-ref backfills after indexing."""
     try:
         stats["cross_file_backfill"] = cache.backfill_cross_file_edges()
@@ -534,11 +555,24 @@ def post_index_backfill(cache: Any, stats: dict[str, Any]) -> None:
         from ..knowledge_graph.builder import KnowledgeGraphBuilder
         from ..knowledge_graph.stores import JsonKnowledgeGraphStore
 
-        snapshot = KnowledgeGraphBuilder(cache.project_root).build()
-        write_result = JsonKnowledgeGraphStore(cache.project_root).write(snapshot)
+        builder = KnowledgeGraphBuilder(cache.project_root)
+        store = JsonKnowledgeGraphStore(cache.project_root)
+        if patch_knowledge_graph and store.exists():
+            snapshot = builder.build_delta(indexed_files)
+            write_result = store.patch_files(snapshot, indexed_files)
+            graph_mode = "incremental"
+        else:
+            snapshot = builder.build()
+            write_result = store.write(snapshot)
+            graph_mode = "full"
         stats["knowledge_graph"] = {
-            "node_count": snapshot.stats.get("node_count", 0),
-            "edge_count": snapshot.stats.get("edge_count", 0),
+            "mode": graph_mode,
+            "node_count": write_result.get(
+                "node_count", snapshot.stats.get("node_count", 0)
+            ),
+            "edge_count": write_result.get(
+                "edge_count", snapshot.stats.get("edge_count", 0)
+            ),
             "bytes": write_result.get("bytes", 0),
         }
     except Exception:

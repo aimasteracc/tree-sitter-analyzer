@@ -29,8 +29,8 @@ Key pillars:
 
 - [x] **Indexing performance uplift** (2026-07-15)
   - `ast_cache.py` `get_conn()`: added PRAGMA cache_size=-65536 (64MB), mmap_size=268435456 (256MB), temp_store=MEMORY
-  - `ast_cache.py` `_resolve_worker_count()`: parallelism threshold lowered 64 → 4
-  - Net: parallel mode now activates on repos with ≥4 files; significant speedup for small/medium repos
+  - `ast_cache.py` `_resolve_worker_count()`: retained the measured 64-file spawn threshold
+  - Windows 14-core benchmark (50 files): serial 5.77s vs auto-at-4 9.55s; early spawn was 65% slower and was reverted
 
 - [x] **Degree centrality in KnowledgeGraph** (2026-07-15)
   - `knowledge_graph/builder.py`: `_annotate_centrality()` — degree_in, degree_out, centrality [0,1] per node

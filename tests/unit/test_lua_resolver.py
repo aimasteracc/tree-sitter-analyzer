@@ -16,7 +16,6 @@ from tree_sitter_analyzer.synapse_resolver.languages.lua import (
     resolve_lua_callee,
 )
 
-
 # ---------------------------------------------------------------------------
 # resolve_lua_callee — always returns unknown
 # ---------------------------------------------------------------------------

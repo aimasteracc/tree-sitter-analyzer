@@ -7,10 +7,12 @@ import os
 import sys
 import threading
 import urllib.request
+import xml.etree.ElementTree as ET
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import patch
 from urllib.error import HTTPError
 
 import pytest
@@ -35,14 +37,18 @@ from tree_sitter_analyzer.knowledge_graph import (
     LadybugKnowledgeGraphStore,
 )
 from tree_sitter_analyzer.knowledge_graph.builder import (
+    _annotate_centrality,
     _iter_markdown_files,
     _json_obj,
     _nullable_int,
     _resolve_project_ref,
 )
 from tree_sitter_analyzer.knowledge_graph.exporters import (
+    _dot_escape,
     aggregate_package_graph,
     summarize,
+    to_dot,
+    to_graphml,
     to_graphology,
 )
 from tree_sitter_analyzer.knowledge_graph.html_viewer import to_html_viewer
@@ -435,6 +441,50 @@ def test_json_store_round_trips_snapshot(tmp_path: Path) -> None:
     assert store.status()["exists"] is True
 
 
+def test_incremental_index_patches_json_graph_without_full_rebuild(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("def before():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project(workers=0)
+        source.write_text("def after():\n    return 2\n", encoding="utf-8")
+
+        with patch.object(KnowledgeGraphBuilder, "build") as full_build:
+            result = cache.index_project(workers=0)
+
+        full_build.assert_not_called()
+        payload = JsonKnowledgeGraphStore(str(tmp_path)).read()
+    finally:
+        cache.close()
+
+    labels = {node["label"] for node in payload["nodes"]}
+    assert result["knowledge_graph"]["mode"] == "incremental"
+    assert "after" in labels
+    assert "before" not in labels
+
+
+def test_full_index_materializes_complete_json_graph(tmp_path: Path) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("def main():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache.index_project(force=True, workers=0)
+        payload = JsonKnowledgeGraphStore(str(tmp_path)).read()
+    finally:
+        cache.close()
+
+    assert result["knowledge_graph"]["mode"] == "full"
+    assert result["knowledge_graph"]["node_count"] == 3
+    assert result["knowledge_graph"]["edge_count"] == 2
+    assert {node["label"] for node in payload["nodes"]} == {
+        "<root>",
+        "app.py",
+        "main",
+    }
+
+
 def test_graphology_export_filters_docs_lod_exactly() -> None:
     snapshot = KnowledgeGraphSnapshot(
         nodes=[
@@ -479,6 +529,155 @@ def test_graphology_export_filters_docs_lod_exactly() -> None:
     assert [edge["key"] for edge in graph["edges"]] == ["edge:doc"]
     assert graph["stats"]["export_node_count"] == 2
     assert graph["stats"]["export_edge_count"] == 1
+
+
+def test_dot_escape_truncates_before_escaping() -> None:
+    value = "a" * 79 + '"tail'
+
+    assert _dot_escape(value) == "a" * 79 + '\\"'
+
+
+def test_dot_rejects_invalid_rank_direction() -> None:
+    snapshot = KnowledgeGraphSnapshot(nodes=[], edges=[], stats={})
+
+    with pytest.raises(ValueError, match="rankdir must be one of"):
+        to_dot(snapshot, rankdir='LR"] ; injected [label="bad')
+
+
+def test_dot_escapes_edge_kind() -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(id="file:a.py", kind="file", label="a.py"),
+            KnowledgeNode(id="file:b.py", kind="file", label="b.py"),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:unsafe",
+                source="file:a.py",
+                target="file:b.py",
+                kind='calls"] ; injected [label="bad',
+            )
+        ],
+        stats={"node_count": 2, "edge_count": 1},
+    )
+
+    dot = to_dot(snapshot, lod="symbol")
+
+    assert 'label="calls\\"] ; injected [label=\\"bad"' in dot
+
+
+def test_dot_and_graphml_exports_preserve_graph_semantics() -> None:
+    nodes = {
+        "file:a.py": KnowledgeNode(
+            id="file:a.py",
+            kind="file",
+            label='a<&".py',
+            file_path='a<&".py',
+            language="python",
+        ),
+        "a.py:main:1": KnowledgeNode(
+            id="a.py:main:1",
+            kind="function",
+            label="main",
+            file_path="a.py",
+            language="python",
+        ),
+    }
+    edges = {
+        "edge:contains": KnowledgeEdge(
+            id="edge:contains",
+            source="file:a.py",
+            target="a.py:main:1",
+            kind="contains",
+            line=1,
+        )
+    }
+    annotated = _annotate_centrality(nodes, edges)
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[annotated["file:a.py"], annotated["a.py:main:1"]],
+        edges=list(edges.values()),
+        stats={"node_count": 2, "edge_count": 1},
+    )
+
+    dot = to_dot(snapshot, lod="symbol", max_nodes=2, max_edges=1)
+    truncated_dot = to_dot(snapshot, lod="symbol", max_nodes=1, max_edges=1)
+    graphml = to_graphml(snapshot, lod="symbol")
+    root = ET.fromstring(graphml)
+    namespace = {"g": "http://graphml.graphdrawing.org/graphml"}
+    graphml_nodes = root.findall(".//g:node", namespace)
+    graphml_edges = root.findall(".//g:edge", namespace)
+    graphml_data = [item.text for item in root.findall(".//g:data", namespace)]
+
+    assert annotated["file:a.py"].metadata == {
+        "degree_in": 0,
+        "degree_out": 1,
+        "centrality": 1.0,
+    }
+    assert annotated["a.py:main:1"].metadata == {
+        "degree_in": 1,
+        "degree_out": 0,
+        "centrality": 1.0,
+    }
+    assert dot.count(" shape=") == 2
+    assert 'label="a<&\\".py"' in dot
+    assert truncated_dot.count(" shape=") == 1
+    assert "WARNING: graph truncated" in truncated_dot
+    assert len(graphml_nodes) == 2
+    assert len(graphml_edges) == 1
+    assert 'a<&".py' in graphml_data
+    assert "1.000000" in graphml_data
+
+
+def test_graph_exports_handle_optional_metadata_and_dangling_edges(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(
+                id="file:a.py",
+                kind="file",
+                label="a.py",
+                file_path="a.py",
+            ),
+            KnowledgeNode(
+                id="file:b.py",
+                kind="file",
+                label="b.py",
+                file_path="b.py",
+            ),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:valid",
+                source="file:a.py",
+                target="file:b.py",
+                kind="references",
+            ),
+            KnowledgeEdge(
+                id="edge:dangling",
+                source="file:a.py",
+                target="file:missing.py",
+                kind="custom",
+            ),
+        ],
+        stats={"node_count": 1, "edge_count": 1},
+    )
+
+    dot = to_dot(snapshot, lod="symbol", max_nodes=2, max_edges=2)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.knowledge_graph.exporters._select",
+        lambda *args, **kwargs: (snapshot.nodes, snapshot.edges, False),
+    )
+    graphml = to_graphml(snapshot, lod="symbol")
+    root = ET.fromstring(graphml)
+    namespace = {"g": "http://graphml.graphdrawing.org/graphml"}
+    data_keys = {item.attrib["key"] for item in root.findall(".//g:data", namespace)}
+
+    assert "WARNING: graph truncated" not in dot
+    assert 'color="#94a3b8"' in dot
+    assert len(root.findall(".//g:node", namespace)) == 2
+    assert len(root.findall(".//g:edge", namespace)) == 1
+    assert data_keys == {"d_file", "d_kind", "d_label", "d_lang", "e_kind"}
 
 
 def test_graphology_export_supports_package_focus_and_empty_graph() -> None:
@@ -1679,6 +1878,68 @@ async def test_knowledge_graph_tool_exports_html_viewer(tmp_path: Path) -> None:
     assert result["graph"]["schema"] == "tsa.knowledge_graph.v1"
     assert result["export_stats"]["export_node_count"] == 2
     assert result["export_stats"]["export_edge_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_knowledge_graph_tool_exports_dot_and_graphml(tmp_path: Path) -> None:
+    snapshot = KnowledgeGraphSnapshot(
+        nodes=[
+            KnowledgeNode(
+                id="file:a.py",
+                kind="file",
+                label="a.py",
+                file_path="a.py",
+                metadata={"degree_in": 0, "degree_out": 1, "centrality": 1.0},
+            ),
+            KnowledgeNode(
+                id="a.py:main:1",
+                kind="function",
+                label="main",
+                file_path="a.py",
+                metadata={"degree_in": 1, "degree_out": 0, "centrality": 1.0},
+            ),
+        ],
+        edges=[
+            KnowledgeEdge(
+                id="edge:contains",
+                source="file:a.py",
+                target="a.py:main:1",
+                kind="contains",
+                line=1,
+            )
+        ],
+        stats={"node_count": 2, "edge_count": 1},
+    )
+    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
+
+    dot = await tool.execute(
+        {
+            "export_format": "dot",
+            "lod": "symbol",
+            "max_nodes": 2,
+            "max_edges": 1,
+            "output_format": "json",
+        }
+    )
+    graphml = await tool.execute(
+        {
+            "export_format": "graphml",
+            "lod": "symbol",
+            "max_nodes": 2,
+            "max_edges": 1,
+            "output_format": "json",
+        }
+    )
+
+    assert dot["success"] is True
+    assert dot["dot"].startswith("digraph tsa_knowledge_graph {")
+    assert dot["instructions"].startswith("Render with: dot -Tsvg")
+    assert graphml["success"] is True
+    assert ET.fromstring(graphml["graphml"]).tag == (
+        "{http://graphml.graphdrawing.org/graphml}graphml"
+    )
+    assert graphml["instructions"].startswith("Open in Gephi")
 
 
 def test_compact_sync_report_drops_per_file_payloads() -> None:

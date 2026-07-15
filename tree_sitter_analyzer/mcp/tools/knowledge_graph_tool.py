@@ -11,7 +11,13 @@ from ...knowledge_graph import (
     KnowledgeGraphBuilder,
     LadybugKnowledgeGraphStore,
 )
-from ...knowledge_graph.exporters import summarize, to_dot, to_graphml, to_graphology, to_mermaid_uml
+from ...knowledge_graph.exporters import (
+    summarize,
+    to_dot,
+    to_graphml,
+    to_graphology,
+    to_mermaid_uml,
+)
 from ...knowledge_graph.html_viewer import to_html_viewer
 from ...knowledge_graph.stores import LadybugUnavailableError
 from ..utils.format_helper import apply_toon_format_to_response
@@ -225,7 +231,7 @@ class CodeGraphKnowledgeGraphTool(BaseMCPTool):
                     "type": "string",
                     "enum": sorted(_EXPORT_FORMATS),
                     "default": "graphology",
-                    "description": "graphology=Sigma.js JSON, html=force-directed browser viewer (D3), dot=Graphviz DOT, graphml=Gephi/yEd/Cytoscape XML, uml=Mermaid, raw=full sidecar, summary=compact stats",
+                    "description": "graphology=Sigma.js JSON, html=standalone force-directed canvas viewer, dot=Graphviz DOT, graphml=Gephi/yEd/Cytoscape XML, uml=Mermaid, raw=full sidecar, summary=compact stats",
                 },
                 "uml_kind": {
                     "type": "string",
