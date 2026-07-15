@@ -102,7 +102,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `codegraph_autoindex` | `--autoindex` | Transparent AST cache auto-indexing |
 | `codegraph_full_index` | `--full-index` | One-shot complete project intelligence index |
 | `codegraph_incremental_sync` | `--incremental-sync` | Content-hash diff re-index (SHA-256 per file) |
-| `index_knowledge` | `--knowledge-graph-index` | Build/update/status for whole-project code/doc knowledge graph sidecar and optional LadybugDB mirror |
+| `index_knowledge` | `--knowledge-graph-index` | Build/update/status for the canonical SQLite code/doc graph index and optional LadybugDB projection |
 | `codegraph_metrics` | `--codegraph-metrics` | Aggregated project intelligence dashboard |
 | **CodeGraph parity — review** | | |
 | `codegraph_pr_review` | `--pr-review` | AST diff + semantic classify + blast-radius PR review |

@@ -526,9 +526,11 @@ class TestEvaluator:
                 "wall-clock perf budget; non-coverage CI enforces it."
             )
 
-        # Windows CI runners are ~10x slower than Linux; allow a wider
-        # budget rather than quarantining the correctness signal entirely.
-        budget_ms = 2000.0 if sys.platform == "win32" else 500.0
+        # Hosted Windows runners and macOS 26 ARM64 runners are materially
+        # slower than Linux for this SQLite-heavy benchmark. Keep the strict
+        # Linux budget while allowing both constrained hosted platforms enough
+        # headroom to preserve the regression signal without runner flakiness.
+        budget_ms = 2000.0 if sys.platform in {"win32", "darwin"} else 500.0
 
         conn = sqlite3.connect(str(db_path))
         try:

@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.knowledge_graph import (
-    JsonKnowledgeGraphStore,
     KnowledgeEdge,
+    KnowledgeGraphBuilder,
     KnowledgeGraphSnapshot,
     KnowledgeNode,
 )
@@ -307,7 +307,9 @@ def test_knowledge_graph_tool_rejects_bad_uml_kind(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_knowledge_graph_tool_exports_mermaid_uml(tmp_path: Path) -> None:
+async def test_knowledge_graph_tool_exports_mermaid_uml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     snapshot = KnowledgeGraphSnapshot(
         nodes=[
             KnowledgeNode(id="package:src", kind="package", label="src"),
@@ -347,7 +349,7 @@ async def test_knowledge_graph_tool_exports_mermaid_uml(tmp_path: Path) -> None:
         ],
         stats={"node_count": 4, "edge_count": 2},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    monkeypatch.setattr(KnowledgeGraphBuilder, "build", lambda self: snapshot)
     tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
 
     result = await tool.execute(
@@ -394,7 +396,7 @@ async def test_knowledge_graph_tool_uses_uml_sized_default_caps(
         edges=[],
         stats={"node_count": 1, "edge_count": 0},
     )
-    JsonKnowledgeGraphStore(str(tmp_path)).write(snapshot)
+    monkeypatch.setattr(KnowledgeGraphBuilder, "build", lambda self: snapshot)
     captured: dict[str, object] = {}
 
     def _fake_to_mermaid_uml(

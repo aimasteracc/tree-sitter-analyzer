@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import deque
 from typing import Any, Protocol
 
+from .builder import KnowledgeGraphBuilder
 from .exporters import to_graphology
 from .models import KnowledgeEdge, KnowledgeGraphSnapshot, KnowledgeNode
-from .stores import JsonKnowledgeGraphStore, LadybugKnowledgeGraphStore
+from .stores import LadybugKnowledgeGraphStore
 
 _LOD_KINDS: dict[str, set[str]] = {
     "package": {"package"},
@@ -79,28 +81,28 @@ class KnowledgeGraphQueryBackend(Protocol):
 
 
 def open_query_backend(project_root: str) -> KnowledgeGraphQueryBackend:
-    """Open LadybugDB when present, otherwise fall back to the JSON sidecar."""
+    """Open LadybugDB when present, otherwise query the canonical SQLite index."""
     ladybug_store = LadybugKnowledgeGraphStore(project_root)
     if LadybugKnowledgeGraphStore.available() and ladybug_store.exists():
         from .ladybug_query import LadybugKnowledgeGraphQuery
 
         return LadybugKnowledgeGraphQuery(project_root)
-    return JsonKnowledgeGraphQuery(project_root)
+    return SQLiteKnowledgeGraphQuery(project_root)
 
 
-class JsonKnowledgeGraphQuery:
-    """In-memory JSON sidecar query backend."""
+class SQLiteKnowledgeGraphQuery:
+    """In-memory query projection built from the canonical SQLite index."""
 
-    backend_name = "json"
+    backend_name = "sqlite"
 
     def __init__(self, project_root: str) -> None:
-        store = JsonKnowledgeGraphStore(project_root)
-        if not store.exists():
-            raise FileNotFoundError(
-                "Knowledge graph sidecar is missing. Run "
-                "`tree-sitter-analyzer --knowledge-graph-index` first."
-            )
-        self.snapshot = _snapshot_from_payload(store.read())
+        self.snapshot = KnowledgeGraphBuilder(project_root).build()
+        try:
+            self.snapshot.stats["mtime_ns"] = os.stat(
+                os.path.join(project_root, ".ast-cache", "index.db")
+            ).st_mtime_ns
+        except OSError:
+            pass
         self.nodes_by_id = {node.id: node for node in self.snapshot.nodes}
         self.edges = list(self.snapshot.edges)
         self.incoming: dict[str, list[KnowledgeEdge]] = {}

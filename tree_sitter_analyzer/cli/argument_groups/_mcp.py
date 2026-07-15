@@ -129,8 +129,8 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
         "--knowledge-graph-index",
         action="store_true",
         help=(
-            "Build/update the whole-project code+docs knowledge graph sidecar "
-            "(JSON by default, optional LadybugDB mirror)."
+            "Refresh the canonical SQLite code+docs knowledge graph index "
+            "and optionally build a LadybugDB projection."
         ),
     )
     parser.add_argument(
@@ -141,11 +141,11 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--knowledge-graph-backend",
-        choices=["auto", "json", "ladybug", "hybrid"],
+        choices=["auto", "sqlite", "ladybug"],
         default="auto",
         help=(
-            "Persistence backend for --knowledge-graph-index "
-            "(default: auto; writes LadybugDB when installed plus JSON fallback)"
+            "Graph backend for --knowledge-graph-index "
+            "(default: auto; LadybugDB when installed, SQLite otherwise)"
         ),
     )
     parser.add_argument(
