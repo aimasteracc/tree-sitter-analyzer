@@ -1810,6 +1810,9 @@ async def test_knowledge_index_tool_builds_sqlite_and_ladybug(
         def status(self) -> dict[str, Any]:
             return {"available": False}
 
+        def remove_if_exists(self) -> bool:
+            return False
+
         def write(self, snapshot: KnowledgeGraphSnapshot) -> dict[str, Any]:
             raise LadybugUnavailableError("missing ladybug")
 
@@ -1937,6 +1940,57 @@ async def test_knowledge_index_tool_skips_writes_when_update_has_no_changes(
     assert result["writes"] == {}
     assert result["skipped_write_reason"] == "no indexed file changes"
     assert result["graph"]["stats"]["node_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_sqlite_update_invalidates_existing_ladybug_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = KnowledgeGraphSnapshot(nodes=[], edges=[], stats={})
+    removed = {"called": False}
+
+    class FakeBuilder:
+        def __init__(self, project_root: str) -> None:
+            self.project_root = project_root
+
+        def build(self, **kwargs: Any) -> KnowledgeGraphSnapshot:
+            return snapshot
+
+    class FakeLadybugStore:
+        def __init__(self, project_root: str) -> None:
+            self.project_root = project_root
+
+        @staticmethod
+        def available() -> bool:
+            return False
+
+        def remove_if_exists(self) -> bool:
+            removed["called"] = True
+            return True
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_tool.KnowledgeGraphBuilder",
+        FakeBuilder,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.knowledge_graph_tool.LadybugKnowledgeGraphStore",
+        FakeLadybugStore,
+    )
+    tool = CodeGraphKnowledgeIndexTool(str(tmp_path))
+    monkeypatch.setattr(
+        tool,
+        "_prepare_index",
+        lambda **kwargs: {"updated_files": 1},
+    )
+
+    result = await tool.execute(
+        {"mode": "update", "backend": "sqlite", "output_format": "json"}
+    )
+
+    assert result["success"] is True
+    assert result["ladybug_invalidated"] is True
+    assert removed["called"] is True
 
 
 def test_knowledge_index_prepare_index_build_and_update(tmp_path: Path) -> None:

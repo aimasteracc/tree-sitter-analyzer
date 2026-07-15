@@ -134,6 +134,9 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
             mode=mode,
             max_files=int(arguments.get("max_files", 20_000)),
         )
+        ladybug_invalidated = False
+        if effective_backend == "sqlite" and _sync_has_changes(sync_report):
+            ladybug_invalidated = ladybug_store.remove_if_exists()
         if (
             mode == "update"
             and not _sync_has_changes(sync_report)
@@ -179,6 +182,7 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
             sync=sync_report,
             graph=summarize(snapshot),
             writes=writes,
+            ladybug_invalidated=ladybug_invalidated,
         )
         return apply_toon_format_to_response(response, output_format)
 
