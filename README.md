@@ -419,7 +419,6 @@ MCP client config (the project root inside the container is the mount point `/wo
 ---
 
 ## Supported Languages
-
 22 language plugins; 13 fully wired into the indexer (full symbol + call graph) + 2 symbol-indexed (call-graph wiring pending) + 1 partial function-symbol indexer + 5 (data/markup) reachable via the single-file CLI path + 1 scaffold (plugin exists, indexer wiring pending). bash and scala graduated in v1.22.0; Lua indexes function symbols while indexed imports and resolved calls remain pending. The 2026-05-24 patch unblocked Swift / Kotlin / Ruby / PHP / C# that had been silently skipped for months.
 
 | Tier | Languages |
