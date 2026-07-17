@@ -76,6 +76,8 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0017](0017-test-effectiveness-mutation-and-value-invariants.md) | Test effectiveness — mutation scoring, value invariants, outside-the-loop authorship | accepted (owner 2026-06-14; phase 1 = mutation baseline) |
 | [0018](0018-response-envelope-normalization-and-adaptive-toon.md) | Correct TOON wire + envelope normalization — the real token win | accepted (PR 1 scalar quoting + decoder + round-trip oracle #1063; raw wire + envelope normalization outstanding) |
 | [0019](0019-complexity-single-source-of-truth.md) | Cyclomatic complexity — one source of truth | implemented (#1099, #1101, #1102) |
+| [0020](0020-sqlite-canonical-knowledge-graph.md) | SQLite-canonical knowledge graph | draft |
+| [0021](0021-real-world-competitive-benchmark.md) | Real-world competitive benchmark | draft |
 
 ## Roadmap
 

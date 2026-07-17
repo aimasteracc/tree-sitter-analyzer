@@ -76,8 +76,10 @@ language resolvers** Go/JS/TS/C++/Rust (#346-#350), **wave 2**
 (csharp/kotlin/ruby/php, #360, plus swift, #364), and **Scala** (#1143,
 2026-07-11) — the correctness moat now spans **all 13 active languages**
 (Python + the 13 `synapse_resolver/languages/` modules). P1 is complete.
-Next: the **N≥5 cost benchmark** (P0) once the benchmark setup-validation gate
-lands; **keep the moat numbers current** (README + REPORT-v1.21.0 + GAUNTLET.md)
+Next: implement the pre-registered **N≥5 cost benchmark** in
+[RFC-0021](0021-real-world-competitive-benchmark.md), beginning with its
+no-model setup-validation and measurement-integrity gates; **keep the moat
+numbers current** (README + REPORT-v1.21.0 + GAUNTLET.md)
 as the codebase grows — see the 2026-07-10 re-measurement note in
 REPORT-v1.21.0.md (classification rate and cross-language edge count refreshed
 against `develop`@`6fe62fba`; the CodeGraph-vs-TSA ratio itself awaits a
