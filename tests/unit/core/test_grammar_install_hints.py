@@ -61,6 +61,11 @@ class TestGrammarInstallHint:
         assert hint is not None
         assert "pip install" in hint
 
+    def test_lua_hint_uses_canonical_acronym_and_extra(self):
+        assert grammar_install_hint("lua") == (
+            'LUA grammar not installed — pip install "tree-sitter-analyzer[lua]"'
+        )
+
     def test_all_loader_languages_have_a_hint(self):
         """Every language in LANGUAGE_MODULES must have a hint (extras or package)."""
         loader = LanguageLoader()

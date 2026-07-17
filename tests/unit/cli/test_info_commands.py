@@ -506,6 +506,7 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
             entry for entry in captured["languages"] if entry["language"] == "lua"
         ]
         import importlib.util
+        from tree_sitter_analyzer.language_loader import grammar_install_hint
 
         lua_installed = importlib.util.find_spec("tree_sitter_lua") is not None
         expected_lua = {
@@ -514,9 +515,7 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
             "installed": lua_installed,
         }
         if not lua_installed:
-            expected_lua["install_hint"] = (
-                'Lua grammar not installed — pip install "tree-sitter-analyzer[lua]"'
-            )
+            expected_lua["install_hint"] = grammar_install_hint("lua")
         assert lua_entries == [expected_lua]
 
     def test_show_supported_extensions_json_envelope(self):
@@ -537,6 +536,36 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
         assert captured.get("verdict") == "INFO"
         assert isinstance(captured.get("extensions"), list)
         assert captured.get("extension_count") == len(captured["extensions"])
+
+    def test_show_supported_languages_uses_canonical_lua_install_hint(self):
+        from tree_sitter_analyzer.language_loader import grammar_install_hint
+
+        args = Namespace(output_format="json", format="json")
+        captured: dict = {}
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.info_commands.importlib.util.find_spec",
+                return_value=None,
+            ),
+            patch(
+                "tree_sitter_analyzer.cli.info_commands.output_json",
+                side_effect=lambda data: captured.update(data),
+            ),
+        ):
+            rc = ShowLanguagesCommand(args).execute()
+
+        lua_entries = [
+            entry for entry in captured["languages"] if entry["language"] == "lua"
+        ]
+        assert rc == 0
+        assert lua_entries == [
+            {
+                "language": "lua",
+                "extensions": [".lua"],
+                "installed": False,
+                "install_hint": grammar_install_hint("lua"),
+            }
+        ]
 
     def test_show_languages_text_path_preserved(self):
         """Text default must still go through output_list (backward compat)."""
