@@ -242,6 +242,106 @@ class TestCodeGraphCompareTSAAdapter:
         assert result.file_count == 1
         build_cache.assert_not_called()
 
+    def test_failed_tsa_index_command_raises_instead_of_counting_cache_files(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters.tree_sitter_analyzer import (
+            _build_cache,
+        )
+
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        (cache_dir / "stale-metadata.json").write_text("{}", encoding="utf-8")
+        with patch(
+            "benchmarks.codegraph_compare.adapters.tree_sitter_analyzer.subprocess.run",
+            return_value=SimpleNamespace(returncode=2, stderr="index failed"),
+        ):
+            with pytest.raises(RuntimeError, match="exited with code 2"):
+                _build_cache(tmp_path, cache_dir)
+
+    def test_successful_tsa_command_does_not_count_metadata_as_indexed_source(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters.tree_sitter_analyzer import (
+            _build_cache,
+        )
+
+        cache_dir = tmp_path / ".ast-cache"
+        cache_dir.mkdir()
+        index_db = cache_dir / "index.db"
+        conn = sqlite3.connect(index_db)
+        conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+        conn.commit()
+        conn.close()
+        (cache_dir / "metadata.json").write_text("{}", encoding="utf-8")
+
+        with patch(
+            "benchmarks.codegraph_compare.adapters.tree_sitter_analyzer.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stderr=""),
+        ):
+            stats = _build_cache(tmp_path, cache_dir)
+
+        assert stats.file_count == 0
+
+    def test_failed_codegraph_index_command_raises_before_stale_files_count(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters.codegraph import _build_index
+
+        index_dir = tmp_path / ".codegraph"
+        index_dir.mkdir()
+        (index_dir / "stale.json").write_text("{}", encoding="utf-8")
+        with patch(
+            "benchmarks.codegraph_compare.adapters.codegraph.subprocess.run",
+            return_value=SimpleNamespace(returncode=3, stderr="codegraph failed"),
+        ):
+            with pytest.raises(RuntimeError, match="exited with code 3"):
+                _build_index(tmp_path, index_dir)
+
+    def test_codegraph_warm_rebuilds_stale_directory_without_valid_db(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters.codegraph import CodeGraphAdapter
+
+        index_dir = tmp_path / ".codegraph"
+        index_dir.mkdir()
+        (index_dir / "stale.json").write_text("{}", encoding="utf-8")
+        expected = IndexStats(1.0, 200, 3)
+
+        with patch(
+            "benchmarks.codegraph_compare.adapters.codegraph._build_index",
+            return_value=expected,
+        ) as build_index:
+            result = CodeGraphAdapter().prepare_index(tmp_path, cold=False)
+
+        assert result == expected
+        assert not (index_dir / "stale.json").exists()
+        build_index.assert_called_once_with(tmp_path, index_dir)
+
+    def test_codegraph_warm_counts_distinct_source_paths_from_database(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters.codegraph import CodeGraphAdapter
+
+        index_dir = tmp_path / ".codegraph"
+        index_dir.mkdir()
+        conn = sqlite3.connect(index_dir / "codegraph.db")
+        conn.execute("CREATE TABLE nodes (file_path TEXT)")
+        conn.executemany(
+            "INSERT INTO nodes VALUES (?)",
+            [("src/a.py",), ("src/a.py",), ("src/b.py",)],
+        )
+        conn.commit()
+        conn.close()
+
+        with patch(
+            "benchmarks.codegraph_compare.adapters.codegraph._build_index"
+        ) as build_index:
+            result = CodeGraphAdapter().prepare_index(tmp_path, cold=False)
+
+        assert result.file_count == 2
+        build_index.assert_not_called()
+
     def test_parse_tool_metrics_counts_mcp_calls_as_index_queries(self):
         # The TSA arm now runs through its MCP facade tools (not the CLI), so
         # mcp__tree-sitter-analyzer__* calls count as index queries, Bash as
@@ -383,6 +483,267 @@ class TestCodeGraphComparePhases:
 
         with pytest.raises(SystemExit):
             compare_run._phase_to_matrix_args(args)
+
+
+class TestCodeGraphCompareSetupGate:
+    """Model-backed matrix work must be fail-closed behind setup validation."""
+
+    @staticmethod
+    def _matrix_args() -> SimpleNamespace:
+        return SimpleNamespace(
+            repos="all",
+            arms="all",
+            repeats=1,
+            question_limit=None,
+            dry_run=False,
+            agent_backend="codex",
+            model="gpt-5",
+            timeout_seconds=1200,
+        )
+
+    @staticmethod
+    def _matrix_configs(repo_path: Path) -> tuple[list[dict], list[dict], list[dict]]:
+        repos = [{"id": "demo", "local_path": str(repo_path)}]
+        arms = [
+            {"id": "native-only", "index_mode": "none"},
+            {"id": "codegraph-warm", "index_mode": "warm"},
+            {"id": "tsa-warm", "index_mode": "warm"},
+        ]
+        questions = [
+            {
+                "id": "demo-q1",
+                "repo": "demo",
+                "prompt": "Where is the entry point?",
+            }
+        ]
+        return repos, arms, questions
+
+    @staticmethod
+    def _install_runner_modules(monkeypatch, get_adapter, run_one) -> None:
+        from types import ModuleType
+
+        adapters_module = ModuleType("adapters")
+        adapters_module.get_adapter = get_adapter
+        runner_module = ModuleType("adapters.claude_runner")
+        runner_module.run_one = run_one
+        monkeypatch.setitem(sys.modules, "adapters", adapters_module)
+        monkeypatch.setitem(sys.modules, "adapters.claude_runner", runner_module)
+
+    @staticmethod
+    def _patch_matrix_inputs(monkeypatch, tmp_path: Path) -> None:
+        repos, arms, questions = TestCodeGraphCompareSetupGate._matrix_configs(
+            tmp_path
+        )
+        configs = {
+            compare_run.REPOS_YAML: repos,
+            compare_run.ARMS_YAML: arms,
+            compare_run.QUESTIONS_YAML: questions,
+        }
+        monkeypatch.setattr(compare_run, "_load_yaml", configs.__getitem__)
+        monkeypatch.setattr(
+            compare_run, "_repo_local_path", lambda repo: Path(repo["local_path"])
+        )
+        monkeypatch.setattr(compare_run, "RESULTS_DIR", tmp_path / "results")
+
+    def test_setup_failure_checks_all_indexed_arms_and_blocks_model_calls(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+
+        events: list[str] = []
+
+        class Adapter:
+            def __init__(self, arm_id: str) -> None:
+                self.arm_id = arm_id
+
+            def prepare_index(self, repo_path: Path, cold: bool) -> IndexStats:
+                events.append(f"prepare:{self.arm_id}")
+                if self.arm_id == "codegraph-warm":
+                    raise RuntimeError("codegraph executable missing")
+                if self.arm_id == "tsa-warm":
+                    return IndexStats(0.1, 0, 0)
+                return IndexStats(0.1, 100, 2)
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm_id, repo_path, "system")
+
+        def run_one(**kwargs):
+            events.append(f"model:{kwargs['arm_id']}")
+            raise AssertionError("model call must remain unreachable")
+
+        self._patch_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(monkeypatch, Adapter, run_one)
+
+        exit_code = compare_run.cmd_run_matrix(self._matrix_args())
+
+        assert exit_code == 1
+        assert events == ["prepare:codegraph-warm", "prepare:tsa-warm"]
+        evidence_files = list((tmp_path / "results").glob("setup_failures_*.json"))
+        assert len(evidence_files) == 1
+        evidence = json.loads(evidence_files[0].read_text(encoding="utf-8"))
+        assert evidence["status"] == "setup_failed"
+        assert evidence["model_calls_started"] == 0
+        assert evidence["failures"] == [
+            {
+                "arm_id": "codegraph-warm",
+                "code": "PREPARE_EXCEPTION",
+                "index_mode": "warm",
+                "message": "codegraph executable missing",
+                "repo_id": "demo",
+            },
+            {
+                "arm_id": "tsa-warm",
+                "code": "EMPTY_INDEX",
+                "index_mode": "warm",
+                "message": "index preparation returned zero indexed files",
+                "repo_id": "demo",
+            },
+        ]
+
+    def test_all_indexed_setup_finishes_before_first_model_call(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+
+        events: list[str] = []
+
+        class Adapter:
+            def __init__(self, arm_id: str) -> None:
+                self.arm_id = arm_id
+
+            def prepare_index(self, repo_path: Path, cold: bool) -> IndexStats:
+                events.append(f"prepare:{self.arm_id}")
+                return IndexStats(0.1, 100, 2)
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                events.append(f"config:{self.arm_id}")
+                return RunConfig(self.arm_id, repo_path, "system")
+
+        def run_one(**kwargs):
+            events.append(f"model:{kwargs['arm_id']}")
+            return {
+                "answer": "ok",
+                "elapsed_seconds": 0.1,
+            }
+
+        self._patch_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(monkeypatch, Adapter, run_one)
+
+        exit_code = compare_run.cmd_run_matrix(self._matrix_args())
+
+        assert exit_code == 0
+        first_model = next(i for i, event in enumerate(events) if event.startswith("model:"))
+        assert events[:first_model] == [
+            "config:native-only",
+            "prepare:codegraph-warm",
+            "config:codegraph-warm",
+            "prepare:tsa-warm",
+            "config:tsa-warm",
+        ]
+        assert events.count("prepare:codegraph-warm") == 1
+        assert events.count("prepare:tsa-warm") == 1
+
+    def test_dry_run_preserves_stub_execution_without_index_setup(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+
+        dry_run_calls: list[bool] = []
+
+        class Adapter:
+            def __init__(self, arm_id: str) -> None:
+                self.arm_id = arm_id
+
+            def prepare_index(self, repo_path: Path, cold: bool) -> IndexStats:
+                raise AssertionError("dry-run must not prepare indexes")
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm_id, repo_path, "system")
+
+        def run_one(**kwargs):
+            dry_run_calls.append(kwargs["dry_run"])
+            return {"answer": "DRY_RUN", "elapsed_seconds": 0.0}
+
+        self._patch_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(monkeypatch, Adapter, run_one)
+        args = self._matrix_args()
+        args.dry_run = True
+
+        exit_code = compare_run.cmd_run_matrix(args)
+
+        assert exit_code == 0
+        assert dry_run_calls == [True, True, True]
+        assert not list((tmp_path / "results").glob("setup_failures_*.json"))
+
+    def test_run_config_failure_is_collected_before_model_execution(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+
+        model_calls = 0
+
+        class Adapter:
+            def __init__(self, arm_id: str) -> None:
+                self.arm_id = arm_id
+
+            def prepare_index(self, repo_path: Path, cold: bool) -> IndexStats:
+                return IndexStats(0.1, 100, 2)
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                if self.arm_id == "tsa-warm":
+                    raise RuntimeError("prompt unavailable")
+                return RunConfig(self.arm_id, repo_path, "system")
+
+        def run_one(**kwargs):
+            nonlocal model_calls
+            model_calls += 1
+            raise AssertionError("model call must remain unreachable")
+
+        self._patch_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(monkeypatch, Adapter, run_one)
+
+        assert compare_run.cmd_run_matrix(self._matrix_args()) == 1
+        assert model_calls == 0
+        evidence_path = next(
+            (tmp_path / "results").glob("setup_failures_*.json")
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert evidence["failures"] == [
+            {
+                "arm_id": "tsa-warm",
+                "code": "RUN_CONFIG_EXCEPTION",
+                "index_mode": "warm",
+                "message": "prompt unavailable",
+                "question_id": "demo-q1",
+                "repo_id": "demo",
+            }
+        ]
+
+    def test_invalid_mode_and_malformed_stats_fail_closed(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.setup_validation import (
+            validate_matrix_setup,
+        )
+
+        class InvalidStatsAdapter:
+            def prepare_index(self, repo_path: Path, cold: bool):
+                return None
+
+        result = validate_matrix_setup(
+            [{"id": "demo", "local_path": str(tmp_path)}],
+            [
+                {"id": "bad-mode", "index_mode": "typo"},
+                {"id": "bad-stats", "index_mode": "warm"},
+            ],
+            questions_by_repo={"demo": []},
+            repo_path_resolver=lambda repo: Path(repo["local_path"]),
+            adapter_factory=lambda arm_id: InvalidStatsAdapter(),
+        )
+
+        assert result.ok is False
+        assert [failure.code for failure in result.failures] == [
+            "INVALID_INDEX_MODE",
+            "INVALID_INDEX_STATS",
+        ]
 
 
 class TestCodeGraphCompareAnalysisGate:

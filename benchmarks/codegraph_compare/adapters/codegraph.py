@@ -7,7 +7,7 @@ Supports two modes:
 Index build is done via ``codegraph init -i`` with cwd=repo_path.
 The ``-i`` flag is a no-op since v1.4.x (indexing runs by default); it is kept for
 backward compatibility so older CodeGraph versions still work.
-Errors are logged, not raised, so the harness can continue with partial data.
+Preparation errors raise so the matrix setup gate can block model-backed work.
 
 Install:
     npm install -g @colbymchenry/codegraph   # confirmed: v1.4.1, 2026-07-12
@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import sqlite3
 import subprocess
 import time
 from pathlib import Path
@@ -54,6 +55,7 @@ _PROMPT_FILE = _PROMPTS_DIR / "system_codegraph.md"
 # ---------------------------------------------------------------------------
 
 _INDEX_DIR = ".codegraph"
+_INDEX_DB = "codegraph.db"
 
 # Tools Claude is allowed to call in this arm
 _ALLOWED_TOOLS = [
@@ -108,20 +110,25 @@ class CodeGraphAdapter(BenchmarkAdapter):
             _delete_index(index_dir)
             return _build_index(repo_path, index_dir)
 
-        # Warm path — rebuild only if absent
-        if not index_dir.exists():
+        # Warm path — only a queryable DB with indexed source paths is ready.
+        index_db = index_dir / _INDEX_DB
+        indexed_files = _indexed_source_file_count(index_db)
+        if indexed_files is None or indexed_files <= 0:
             logger.info(
-                "CodeGraph index not found at %s; running cold build.", index_dir
+                "CodeGraph index missing, unreadable, or empty at %s; rebuilding.",
+                index_db,
             )
+            _delete_index(index_dir)
             return _build_index(repo_path, index_dir)
 
         logger.info(
-            "CodeGraph index exists at %s; warm path — skipping build.", index_dir
+            "CodeGraph index at %s has %d source files; warm path — skipping build.",
+            index_db,
+            indexed_files,
         )
         size = _dir_size(index_dir)
-        file_count = _count_files(index_dir)
         return IndexStats(
-            build_seconds=0.0, index_size_bytes=size, file_count=file_count
+            build_seconds=0.0, index_size_bytes=size, file_count=indexed_files
         )
 
     # ------------------------------------------------------------------
@@ -207,6 +214,7 @@ def _delete_index(index_dir: Path) -> None:
             shutil.rmtree(index_dir)
         except OSError as exc:
             logger.error("Failed to delete %s: %s", index_dir, exc)
+            raise RuntimeError(f"failed to delete CodeGraph index: {exc}") from exc
 
 
 def _build_index(repo_path: Path, index_dir: Path) -> IndexStats:
@@ -231,9 +239,14 @@ def _build_index(repo_path: Path, index_dir: Path) -> IndexStats:
             result.returncode,
             result.stderr[:2000],
         )
+        raise RuntimeError(
+            f"codegraph init -i exited with code {result.returncode}: "
+            f"{result.stderr[:500]}"
+        )
 
     size = _dir_size(index_dir) if index_dir.exists() else 0
-    file_count = _count_files(index_dir) if index_dir.exists() else 0
+    indexed_files = _indexed_source_file_count(index_dir / _INDEX_DB)
+    file_count = indexed_files if indexed_files is not None else 0
 
     logger.info(
         "CodeGraph index built in %.2fs, size=%d bytes, files=%d",
@@ -255,11 +268,21 @@ def _dir_size(path: Path) -> int:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
 
 
-def _count_files(path: Path) -> int:
-    """Return the number of files under *path*."""
-    if not path.exists():
-        return 0
-    return sum(1 for f in path.rglob("*") if f.is_file())
+def _indexed_source_file_count(index_db: Path) -> int | None:
+    """Return distinct indexed source paths, or None for an invalid database."""
+
+    try:
+        conn = sqlite3.connect(f"file:{index_db}?mode=ro", uri=True)
+        try:
+            row = conn.execute(
+                "SELECT COUNT(DISTINCT file_path) FROM nodes "
+                "WHERE file_path IS NOT NULL AND file_path <> ''"
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    return int(row[0]) if row else None
 
 
 def _load_prompt(prompt_file: Path, default: str) -> str:
