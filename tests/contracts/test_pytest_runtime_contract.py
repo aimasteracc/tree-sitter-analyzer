@@ -22,6 +22,35 @@ from tree_sitter_analyzer.cli_main import create_argument_parser
 from tree_sitter_analyzer.mcp.server import _create_tool_registry
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_QUICK_TESTPATHS = (
+    "tests/contracts",
+    "tests/governance",
+    "tests/unit/test_ast_cache.py",
+    "tests/unit/test_call_graph_cached.py",
+    "tests/unit/test_change_impact_analysis.py",
+    "tests/unit/test_codegraph_context_tool.py",
+    "tests/unit/test_codegraph_pr_review_tool.py",
+    "tests/unit/test_constraint_dsl.py",
+    "tests/unit/test_knowledge_graph.py",
+    "tests/unit/test_symbol_resolver.py",
+    "tests/unit/test_tool_registry.py",
+    "tests/unit/test_xref.py",
+    "tests/unit/cli/test_codegraph_index_commands.py",
+    "tests/unit/cli/test_doctor_command.py",
+    "tests/unit/cli/test_mcp_commands.py",
+    "tests/unit/core/test_engine.py",
+    "tests/unit/core/test_language_detector.py",
+    "tests/unit/core/test_parser.py",
+    "tests/unit/languages/test_plugin_base_contract.py",
+    "tests/unit/languages/test_queries_module_contract.py",
+    "tests/unit/mcp/test_base_mcp_tool_contract.py",
+    "tests/unit/mcp/test_facade_envelope_contract.py",
+    "tests/unit/security/test_validator.py",
+)
+COMPREHENSIVE_COMMAND = (
+    'uv run pytest tests/ -q --timeout=120 '
+    '-m "not e2e and not network and not benchmark"'
+)
 SKIPPED_SCAN_DIRS = {
     ".git",
     ".benchmark-repos",
@@ -34,9 +63,16 @@ SKIPPED_SCAN_DIRS = {
 
 
 def test_default_pytest_runtime_contract_is_locked() -> None:
-    """The default full suite must stay parallel and bounded under 5 minutes."""
+    """The default quick gate must stay parallel and bounded under 5 minutes."""
     config = configparser.ConfigParser()
     config.read(PROJECT_ROOT / "pytest.ini")
+    testpaths = tuple(
+        line.strip()
+        for line in config["pytest"]["testpaths"].splitlines()
+        if line.strip()
+    )
+
+    assert testpaths == DEFAULT_QUICK_TESTPATHS
     _assert_pytest_runtime_contract(
         config["pytest"]["addopts"],
         config["pytest"]["filterwarnings"],
@@ -48,6 +84,28 @@ def test_pyproject_does_not_define_pytest_ini_options() -> None:
     data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert "pytest" not in data.get("tool", {})
+
+
+def test_uv_version_is_new_enough_for_committed_lockfile() -> None:
+    """Old uv releases silently rewrite modern lockfiles before pytest starts."""
+    data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert data["tool"]["uv"]["required-version"] == ">=0.11.0"
+
+
+def test_comprehensive_command_overrides_quick_marker_exclusions() -> None:
+    """Explicit tests/ discovery alone must not inherit the quick marker tier."""
+    docs = (
+        "AGENTS.md",
+        "README.md",
+        "docs/TESTING.md",
+        "docs/agent-tooling-gap-report.md",
+        "docs/developer_guide.md",
+    )
+
+    for relative_path in docs:
+        text = (PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
+        assert COMPREHENSIVE_COMMAND in text, relative_path
 
 
 def _assert_pytest_runtime_contract(
@@ -122,6 +180,49 @@ def test_local_runtime_artifacts_are_gitignored_without_global_results_trap() ->
     assert "results/" not in lines
     assert "benchmarks/codegraph_compare/results/*" in lines
     assert "!benchmarks/codegraph_compare/results/.gitkeep" in lines
+
+
+def test_cli_fixtures_do_not_create_collectable_python_inside_tests_tree() -> None:
+    """Runtime CLI inputs must not become tests after an interrupted worker."""
+    source = (
+        PROJECT_ROOT / "tests/integration/cli/test_cli_async.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'Path("tests") / "temp_cli_test"' not in source
+    assert 'Path("tests") / "temp_cli_test_large"' not in source
+
+
+def test_cli_subprocess_integration_suite_is_outside_default_gate() -> None:
+    """The 19-process CLI suite belongs to the explicit slow lane."""
+    source = (
+        PROJECT_ROOT / "tests/integration/cli/test_cli_async.py"
+    ).read_text(encoding="utf-8")
+
+    assert "pytestmark = pytest.mark.slow" in source
+
+
+def test_imported_test_mixins_are_not_collected_as_concrete_tests() -> None:
+    """Imported Test* mixins need private aliases to avoid duplicate collection."""
+    violations: list[str] = []
+    paths = (
+        PROJECT_ROOT / "tests/unit/cli/test_cli_main_module.py",
+        PROJECT_ROOT / "tests/unit/formatters/test_html_formatter_basic.py",
+        PROJECT_ROOT / "tests/unit/mcp/test_query_tool.py",
+    )
+    for path in paths:
+        module = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(module):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module is None or "mixin" not in node.module:
+                continue
+            for alias in node.names:
+                if alias.name.startswith("Test") and not (
+                    alias.asname and alias.asname.startswith("_")
+                ):
+                    violations.append(f"{path.relative_to(PROJECT_ROOT)}:{alias.name}")
+
+    assert violations == []
 
 
 def test_hypothesis_deadlines_are_disabled_for_parallel_suite_stability() -> None:

@@ -95,12 +95,33 @@ def test_ci_full_language_suite_runs_once_per_reusable_test_matrix() -> None:
     text = workflow.read_text(encoding="utf-8")
 
     assert (
-        '-m "not requires_ripgrep and not requires_fd and not slow and not e2e"' in text
+        '-m "not slow and not e2e and not network and not benchmark"' in text
     )
     assert (
-        '-m "not requires_ripgrep and not requires_fd and not slow and not e2e and not full_language"'
+        '-m "not slow and not e2e and not network and not benchmark and not full_language"'
         in text
     )
+
+
+def test_slow_suite_runs_once_per_reusable_test_matrix() -> None:
+    """Default exclusions need one explicit slow-test lane per profile."""
+    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
+    text = workflow.read_text(encoding="utf-8")
+    slow_marker = (
+        '-m "slow and not network and not e2e and not benchmark and not full_language"'
+    )
+
+    assert text.count(slow_marker) == 2
+
+
+def test_default_gate_has_a_real_five_minute_ci_deadline() -> None:
+    """The documented local quick-gate budget must be enforced in CI."""
+    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
+    text = workflow.read_text(encoding="utf-8")
+
+    assert text.count("- name: Run bounded default gate") == 2
+    assert text.count("timeout-minutes: 5") == 2
+    assert text.count("run: uv run pytest -q") == 2
 
 
 def test_standalone_coverage_workflow_is_manual_only() -> None:

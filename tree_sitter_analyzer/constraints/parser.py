@@ -64,6 +64,8 @@ class _CompiledConstraint:
     """
 
     constraint: Constraint
+    from_prefix: str
+    to_prefix: str
     from_re: re.Pattern[str]
     to_re: re.Pattern[str]
     exception_res: tuple[re.Pattern[str], ...]
@@ -294,6 +296,18 @@ def _compile_glob(pattern: str) -> re.Pattern[str]:
     return re.compile(final)
 
 
+def _literal_glob_prefix(pattern: str) -> str:
+    """Return the literal text before the first glob metacharacter."""
+    wildcard_positions = [
+        position
+        for marker in ("*", "?", "[")
+        if (position := pattern.find(marker)) != -1
+    ]
+    if not wildcard_positions:
+        return pattern
+    return pattern[: min(wildcard_positions)]
+
+
 def compile_constraints(
     constraints: list[Constraint],
 ) -> list[_CompiledConstraint]:
@@ -308,6 +322,8 @@ def compile_constraints(
         compiled.append(
             _CompiledConstraint(
                 constraint=constraint,
+                from_prefix=_literal_glob_prefix(constraint.from_glob),
+                to_prefix=_literal_glob_prefix(constraint.to_glob),
                 from_re=_compile_glob(constraint.from_glob),
                 to_re=_compile_glob(constraint.to_glob),
                 exception_res=tuple(

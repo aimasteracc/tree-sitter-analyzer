@@ -7,6 +7,7 @@ import ast
 import configparser
 import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -190,11 +191,68 @@ def test_skips_have_tracking_references() -> None:
         r"#\d+|GH-\d+|issue\s+\d+|POSTMORTEM|tracked\s*:|TODO\b|FIXME\b|XXX\b",
         re.IGNORECASE,
     )
-    tests_root = PROJECT_ROOT / "tests"
     untracked: list[str] = []
+    grep_args = [
+        "-F",
+        "-e",
+        "pytest.skip",
+        "-e",
+        "pytest.mark.skipif",
+        "-e",
+        "pytest.mark.skip",
+        "--",
+        "tests",
+    ]
+    matches_result = subprocess.run(
+        ["git", "grep", "-n", *grep_args],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert matches_result.returncode in {0, 1}, matches_result.stderr
+    context_result = subprocess.run(
+        ["git", "grep", "-n", "-C", "4", *grep_args],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert context_result.returncode in {0, 1}, context_result.stderr
 
-    for path in sorted(tests_root.rglob("*.py")):
-        rel = path.relative_to(PROJECT_ROOT).as_posix()
+    grep_line_re = re.compile(r"^(tests/.*?\.py)([:-])(\d+)\2(.*)$")
+    context_lines: dict[tuple[str, int], str] = {}
+    for output_line in context_result.stdout.splitlines():
+        match = grep_line_re.match(output_line)
+        if match:
+            context_lines[(match.group(1), int(match.group(3)))] = match.group(4)
+
+    for output_line in matches_result.stdout.splitlines():
+        match = grep_line_re.match(output_line)
+        assert match is not None, output_line
+        rel = match.group(1)
+        lineno = int(match.group(3))
+        window = "\n".join(
+            context_lines.get((rel, nearby), "")
+            for nearby in range(max(1, lineno - 4), lineno + 5)
+        )
+        if not has_tracker.search(window):
+            untracked.append(f"{rel}:{lineno}: {match.group(4).strip()}")
+
+    untracked_result = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard", "--", "tests"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    for rel in untracked_result.stdout.splitlines():
+        path = PROJECT_ROOT / rel
+        if path.suffix != ".py":
+            continue
         text = path.read_text(encoding="utf-8")
         if not skip_call_re.search(text):
             continue

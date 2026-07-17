@@ -75,7 +75,10 @@ disabling, and marker definitions. `pyproject.toml` must not contain
 
 Runtime-default changes must update the relevant contract tests in
 `tests/contracts/test_pytest_runtime_contract.py` and prove that
-`uv run pytest -q` remains bounded and safe.
+`uv run pytest -q` remains bounded and safe. The bare command uses a curated
+high-risk `testpaths` quick gate. The comprehensive local command explicitly
+restores slow and full-language tests while leaving e2e, network, and benchmarks
+to their dedicated lanes.
 
 ### Marker And CI Routing Expectations
 
@@ -85,7 +88,7 @@ Runtime-default changes must update the relevant contract tests in
 - `slow_ok` is a narrow exception for tests that must scan enough code to exceed
   the unit 5-second budget.
 - `benchmark` tests run only with benchmark-specific commands and are disabled
-  in the default full suite.
+  in the default quick gate.
 - `e2e` marks black-box workflow checks routed separately from the ordinary test
   matrix.
 - Platform, optional-dependency, and language-specific markers should preserve
@@ -350,10 +353,16 @@ uv run python scripts/check_patch_coverage.py --base origin/develop --coverage-j
 
 ## Running Tests
 
-### Run All Tests
+### Run The Local Quick Gate
 
 ```bash
 uv run pytest -q
+```
+
+### Run The Comprehensive Suite
+
+```bash
+uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"
 ```
 
 ### Run Faster During Development
@@ -369,7 +378,7 @@ PYTEST_XDIST_AUTO_NUM_WORKERS=1 uv run pytest -q --maxfail=1 -m "not slow and no
 ### Run with Coverage
 
 ```bash
-uv run pytest --cov=tree_sitter_analyzer --cov-report=term-missing
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing
 ```
 
 ### Run Specific Test Files

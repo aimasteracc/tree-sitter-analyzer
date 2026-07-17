@@ -93,6 +93,12 @@ jobs:
         uv sync --all-extras
       shell: bash
 
+    - name: Run bounded default gate
+      if: matrix.coverage
+      timeout-minutes: 5
+      run: uv run pytest -q
+      shell: bash
+
     - name: Run Tests with Coverage
       if: matrix.coverage
       id: test-coverage
@@ -101,7 +107,7 @@ jobs:
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
           --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
           --ignore=tests/e2e \
-          -m "not requires_ripgrep and not requires_fd and not slow and not e2e" > pytest-output.txt 2>&1 || touch test_failed
+          -m "not slow and not e2e and not network and not benchmark" > pytest-output.txt 2>&1 || touch test_failed
 
         cat pytest-output.txt
         echo '```text' >> $GITHUB_STEP_SUMMARY
@@ -119,7 +125,14 @@ jobs:
       run: |
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
           --ignore=tests/e2e \
-          -m "not requires_ripgrep and not requires_fd and not slow and not e2e and not full_language"
+          -m "not slow and not e2e and not network and not benchmark and not full_language"
+      shell: bash
+
+    - name: Run slow tests
+      if: matrix.coverage
+      run: |
+        uv run pytest tests/ -n auto -q --maxfail=200 --timeout=120 \
+          -m "slow and not network and not e2e and not benchmark and not full_language"
       shell: bash
 
     - name: Upload coverage to Codecov
@@ -187,6 +200,12 @@ jobs:
         uv sync --all-extras
       shell: bash
 
+    - name: Run bounded default gate
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
+      timeout-minutes: 5
+      run: uv run pytest -q
+      shell: bash
+
     - name: Run Tests with Coverage
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
       id: test-coverage
@@ -195,7 +214,7 @@ jobs:
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
           --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
           --ignore=tests/e2e \
-          -m "not requires_ripgrep and not requires_fd and not slow and not e2e" > pytest-output.txt 2>&1 || touch test_failed
+          -m "not slow and not e2e and not network and not benchmark" > pytest-output.txt 2>&1 || touch test_failed
 
         cat pytest-output.txt
         echo '```text' >> $GITHUB_STEP_SUMMARY
@@ -213,7 +232,14 @@ jobs:
       run: |
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
           --ignore=tests/e2e \
-          -m "not requires_ripgrep and not requires_fd and not slow and not e2e and not full_language"
+          -m "not slow and not e2e and not network and not benchmark and not full_language"
+      shell: bash
+
+    - name: Run slow tests
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
+      run: |
+        uv run pytest tests/ -n auto -q --maxfail=200 --timeout=120 \
+          -m "slow and not network and not e2e and not benchmark and not full_language"
       shell: bash
 
     - name: Upload coverage to Codecov
