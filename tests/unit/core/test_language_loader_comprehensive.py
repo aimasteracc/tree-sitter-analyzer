@@ -17,7 +17,7 @@ from tree_sitter_analyzer.language_loader import (
     loader,
 )
 
-EXPECTED_LANGUAGE_MODULE_COUNT = 24
+EXPECTED_LANGUAGE_MODULE_COUNT = 25
 
 
 class TestLanguageLoaderInitialization:

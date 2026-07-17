@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for cli/info_commands.py"""
 
+import importlib.util
 from argparse import Namespace
 from unittest.mock import patch
 
@@ -13,6 +14,7 @@ from tree_sitter_analyzer.cli.info_commands import (
     ShowExtensionsCommand,
     ShowLanguagesCommand,
 )
+from tree_sitter_analyzer.language_loader import grammar_install_hint
 
 
 @pytest.fixture
@@ -211,7 +213,6 @@ class TestQ3SupportedExtensionsParity:
             # extensions are wired end-to-end (see
             # test_bash_language_wiring.py / test_scala_language_wiring.py
             # + test_core_extensions_still_advertised).
-            ".lua",
             ".hs",
             ".dart",
             ".elm",
@@ -260,6 +261,7 @@ class TestQ3SupportedExtensionsParity:
             ".bash",
             ".zsh",
             ".scala",
+            ".lua",
             ".html",
             ".css",
             ".json",
@@ -495,12 +497,25 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
         assert captured.get("success") is True
         assert captured.get("verdict") == "INFO"
         assert isinstance(captured.get("languages"), list)
-        assert captured.get("language_count") == 21
+        assert captured.get("language_count") == 22
         # Each language entry must have the documented shape.
         sample = captured["languages"][0]
         assert "language" in sample
         assert "extensions" in sample
         assert isinstance(sample["extensions"], list)
+
+        lua_entries = [
+            entry for entry in captured["languages"] if entry["language"] == "lua"
+        ]
+        lua_installed = importlib.util.find_spec("tree_sitter_lua") is not None
+        expected_lua = {
+            "language": "lua",
+            "extensions": [".lua"],
+            "installed": lua_installed,
+        }
+        if not lua_installed:
+            expected_lua["install_hint"] = grammar_install_hint("lua")
+        assert lua_entries == [expected_lua]
 
     def test_show_supported_extensions_json_envelope(self):
         from argparse import Namespace
@@ -521,6 +536,34 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
         assert isinstance(captured.get("extensions"), list)
         assert captured.get("extension_count") == len(captured["extensions"])
 
+    def test_show_supported_languages_uses_canonical_lua_install_hint(self):
+        args = Namespace(output_format="json", format="json")
+        captured: dict = {}
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.info_commands.importlib.util.find_spec",
+                return_value=None,
+            ),
+            patch(
+                "tree_sitter_analyzer.cli.info_commands.output_json",
+                side_effect=lambda data: captured.update(data),
+            ),
+        ):
+            rc = ShowLanguagesCommand(args).execute()
+
+        lua_entries = [
+            entry for entry in captured["languages"] if entry["language"] == "lua"
+        ]
+        assert rc == 0
+        assert lua_entries == [
+            {
+                "language": "lua",
+                "extensions": [".lua"],
+                "installed": False,
+                "install_hint": grammar_install_hint("lua"),
+            }
+        ]
+
     def test_show_languages_text_path_preserved(self):
         """Text default must still go through output_list (backward compat)."""
         from argparse import Namespace
@@ -536,5 +579,5 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
             rc = cmd.execute()
         assert rc == 0
         assert mock_json.call_count == 0
-        # One header line + one line per supported language (21)
-        assert mock_list.call_count == 22
+        # One header line + one line per supported language (22)
+        assert mock_list.call_count == 23

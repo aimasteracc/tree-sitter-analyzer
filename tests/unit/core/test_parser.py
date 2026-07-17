@@ -201,13 +201,14 @@ class TestParserLanguageSupport:
         """Test getting list of supported languages."""
         languages = parser.get_supported_languages()
         assert isinstance(languages, list)
-        # 24 in CI (full grammar set). 23 locally when optional wheels such as
-        # tree-sitter-swift are absent. Acceptable range: [23, 24].
-        # A grammar add/remove outside this range should trip this test.
+        # 25 with both optional Swift and Lua grammars installed; otherwise the
+        # expectation subtracts each missing wheel exactly so a legitimate
+        # minimal install stays green and registry drift still trips the test.
         import importlib.util
 
         swift_available = importlib.util.find_spec("tree_sitter_swift") is not None
-        expected = 24 if swift_available else 23
+        lua_available = importlib.util.find_spec("tree_sitter_lua") is not None
+        expected = 23 + int(swift_available) + int(lua_available)
         assert len(languages) == expected, (
             f"expected {expected}, got {len(languages)}: {languages}"
         )

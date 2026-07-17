@@ -10,8 +10,9 @@ Not every registered plugin is wired into the indexer to the same depth:
 
 - **13 fully wired** (full symbol + call graph): Python, Java, JavaScript, TypeScript, Go, Rust, C, C++, C#, Swift, Kotlin, Ruby, PHP
 - **2 symbol-indexed** (call-graph wiring pending): Bash, Scala — both graduated in v1.22.0
+- **1 partial symbol-indexed**: Lua function symbols; resolved calls and indexed imports pending
 - **5 data/markup** (reachable via the single-file CLI path): HTML, CSS, Markdown, SQL, YAML
-- **2 scaffold** (plugin exists, indexer wiring pending): JSON, Lua
+- **1 scaffold** (plugin exists, indexer wiring pending): JSON
 
 ## Supported Languages
 
@@ -38,7 +39,7 @@ Not every registered plugin is wired into the indexer to the same depth:
 | Markdown | `markdown_plugin/` | submodules | headings, code blocks, tables |
 | JSON | `languages/json_plugin.py` | inline | basic structure |
 | Bash | `languages/bash_plugin.py` | inline | functions, commands |
-| Lua | `languages/lua_plugin/` | `plugin.py` + `extractor.py` | Production scaffold plugin with `function_declaration` / `require()` extraction via the shared QueryCursor compatibility layer; Synapse claims the Lua resolver slot conservatively as `unknown` |
+| Lua | `languages/lua_plugin/` | `plugin.py` + `extractor.py` | Loader-backed function-symbol indexing; `require()` extraction is available on the single-file plugin path but indexed imports and resolved calls remain pending; Synapse claims the resolver slot conservatively as `unknown` |
 
 ## Shared helpers
 

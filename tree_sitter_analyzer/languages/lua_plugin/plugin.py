@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Lua Language Plugin (RFC-0010 production plugin).
+"""Lua plugin with an RFC-0010 resolver slot.
 
-Demonstrates the new-language contract: adding Lua required only:
+Lua's plugin and resolver remain self-contained, while advertising it through
+the legacy CLI/parser discovery surfaces also requires central registry entries:
   1. This plugin package (``languages/lua_plugin/``)
   2. A resolver in ``synapse_resolver/languages/lua.py`` (moat slot)
   3. An entry-point in ``pyproject.toml``
   4. An optional dep ``tree-sitter-lua``
+  5. Loader/detector mappings until those legacy registries become dynamic
 
-No changes to any central file were needed. Capability methods default
-to ``frozenset()`` / ``None`` so the plugin uses the Phase 2
+Capability methods default to ``frozenset()`` / ``None`` so the plugin uses the Phase 2
 plugin-dispatch paths in the central files without any central
 ``if-language==`` branch for "lua".
 
@@ -30,7 +31,7 @@ from .extractor import LuaElementExtractor
 
 
 class LuaPlugin(LanguagePlugin):
-    """Lua language plugin — extensibility demo, no central file changes needed."""
+    """Lua plugin with partial function/import extraction."""
 
     def get_language_name(self) -> str:
         return "lua"

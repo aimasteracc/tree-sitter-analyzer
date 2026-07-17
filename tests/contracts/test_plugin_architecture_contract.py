@@ -48,6 +48,23 @@ def _discover_plugin_files() -> list[tuple[str, Path]]:
     return result
 
 
+def test_plugin_detector_and_loader_canonical_language_sets_match() -> None:
+    """Every built-in entry-point plugin has detector and loader truth entries."""
+    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text("utf-8"))
+    plugin_languages = set(
+        pyproject["project"]["entry-points"]["tree_sitter_analyzer.plugins"]
+    )
+
+    from tree_sitter_analyzer.language_detector import LanguageDetector
+    from tree_sitter_analyzer.language_loader import LanguageLoader
+
+    loader_aliases = {"cs", "tsx", "yml"}
+    loader_languages = set(LanguageLoader.LANGUAGE_MODULES) - loader_aliases
+    detector_languages = set(LanguageDetector.SUPPORTED_LANGUAGES)
+
+    assert plugin_languages == detector_languages == loader_languages
+
+
 def test_every_plugin_class_inherits_language_plugin() -> None:
     """All XxxPlugin classes must inherit from LanguagePlugin (not ElementExtractor)."""
 
