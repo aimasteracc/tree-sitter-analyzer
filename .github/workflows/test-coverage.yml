@@ -69,10 +69,10 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
 
         # Run tests with coverage
-        # Exclude tests requiring ripgrep or fd as they may not be available in all CI environments
+        # System dependencies are installed above; keep only dedicated lanes out.
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
           --ignore=tests/e2e \
-          -m "not requires_ripgrep and not requires_fd and not slow and not e2e" \
+          -m "not slow and not e2e and not network and not benchmark" \
           --cov=tree_sitter_analyzer \
           --cov-report=xml \
           --cov-report=html \

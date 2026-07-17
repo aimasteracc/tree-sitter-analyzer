@@ -349,6 +349,118 @@ class TestGlobMatching:
             is False
         )
 
+    def test_compiled_globs_preserve_literal_prefixes(self) -> None:
+        """Compiled rules expose safe prefixes for evaluator fast rejection."""
+        from tree_sitter_analyzer.constraints.parser import compile_constraints
+        from tree_sitter_analyzer.constraints.schema import Constraint
+
+        constraint = Constraint(
+            id="prefix-contract",
+            severity="error",
+            rule="forbid",
+            from_glob="tree_sitter_analyzer/mcp/**",
+            to_glob="tree_sitter_analyzer/cli/*.py",
+            reason="test",
+            exceptions=(),
+        )
+
+        compiled = compile_constraints([constraint])[0]
+
+        assert (compiled.from_prefix, compiled.to_prefix) == (
+            "tree_sitter_analyzer/mcp/",
+            "tree_sitter_analyzer/cli/",
+        )
+
+    @pytest.mark.parametrize(
+        ("pattern", "expected_prefix"),
+        [
+            ("src/exact.py", "src/exact.py"),
+            ("src/*/mod?.py", "src/"),
+            ("src/[ab]*/mod.py", "src/"),
+            ("**/generated.py", ""),
+        ],
+    )
+    def test_literal_prefix_is_a_safe_regex_precondition(
+        self,
+        pattern: str,
+        expected_prefix: str,
+    ) -> None:
+        """Every full glob match must also satisfy the fast prefix check."""
+        from tree_sitter_analyzer.constraints.parser import (
+            _compile_glob,
+            _literal_glob_prefix,
+        )
+
+        prefix = _literal_glob_prefix(pattern)
+        candidates = (
+            "src/exact.py",
+            "src/a/mod1.py",
+            "src/b/mod.py",
+            "pkg/generated.py",
+            "unrelated/file.py",
+        )
+
+        assert prefix == expected_prefix
+        for candidate in candidates:
+            if _compile_glob(pattern).fullmatch(candidate):
+                assert candidate.startswith(prefix)
+
+    def test_literal_prefix_rejects_irrelevant_edges_before_regex(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Unrelated callers never pay the full-regex cost in the hot loop."""
+        from dataclasses import replace
+        from typing import Any, cast
+
+        from tree_sitter_analyzer.constraints.evaluator import _iter_violations
+        from tree_sitter_analyzer.constraints.parser import compile_constraints
+        from tree_sitter_analyzer.constraints.schema import Constraint
+
+        class CountingPattern:
+            def __init__(self, inner: Any) -> None:
+                self.inner = inner
+                self.calls = 0
+
+            def fullmatch(self, value: str) -> Any:
+                self.calls += 1
+                return self.inner.fullmatch(value)
+
+        constraint = Constraint(
+            id="prefix-hot-loop",
+            severity="error",
+            rule="forbid",
+            from_glob="tree_sitter_analyzer/mcp/**",
+            to_glob="tree_sitter_analyzer/cli/**",
+            reason="test",
+            exceptions=(),
+        )
+        compiled = compile_constraints([constraint])[0]
+        from_spy = CountingPattern(compiled.from_re)
+        compiled = replace(compiled, from_re=cast(Any, from_spy))
+
+        db_path = tmp_path / "index.db"
+        rows = [
+            (
+                f"caller_{index}",
+                f"src/pkg/mod_{index}.py",
+                index + 1,
+                f"callee_{index}",
+                "",
+                f"src/other/mod_{index}.py",
+            )
+            for index in range(1_000)
+        ]
+        _build_call_edges_db(db_path, rows)
+        conn = sqlite3.connect(str(db_path))
+        try:
+            violations = list(_iter_violations([compiled], conn, detected_at=0))
+        finally:
+            conn.close()
+
+        assert violations == []
+        assert from_spy.calls == 0
+
 
 # ---------------------------------------------------------------------------
 # Evaluator tests — exercise the streaming edge scan.

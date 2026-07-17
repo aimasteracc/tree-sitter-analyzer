@@ -9,12 +9,7 @@ dict conversion, and CSV formatter coverage.
 
 import json
 
-from tests.unit.formatters._test_html_formatter_mixin import (
-    TestHtmlCompactFormatterMixin,
-    TestHtmlFormatterMixin,
-    TestHtmlFormatterRegistrationMixin,
-    TestHtmlJsonFormatterMixin,
-)
+from tests.unit.formatters import _test_html_formatter_mixin as _html_mixins
 from tree_sitter_analyzer.formatters.formatter_registry import IFormatter
 from tree_sitter_analyzer.formatters.html_formatter import (
     HtmlCompactFormatter,
@@ -25,25 +20,25 @@ from tree_sitter_analyzer.formatters.html_formatter import (
 from tree_sitter_analyzer.models import Function, MarkupElement, StyleElement
 
 
-class TestHtmlFormatter(TestHtmlFormatterMixin):
+class TestHtmlFormatter(_html_mixins.TestHtmlFormatterMixin):
     """Test HtmlFormatter functionality"""
 
     __test__ = True
 
 
-class TestHtmlJsonFormatter(TestHtmlJsonFormatterMixin):
+class TestHtmlJsonFormatter(_html_mixins.TestHtmlJsonFormatterMixin):
     """Test HtmlJsonFormatter functionality"""
 
     __test__ = True
 
 
-class TestHtmlCompactFormatter(TestHtmlCompactFormatterMixin):
+class TestHtmlCompactFormatter(_html_mixins.TestHtmlCompactFormatterMixin):
     """Test HtmlCompactFormatter functionality"""
 
     __test__ = True
 
 
-class TestHtmlFormatterRegistration(TestHtmlFormatterRegistrationMixin):
+class TestHtmlFormatterRegistration(_html_mixins.TestHtmlFormatterRegistrationMixin):
     """Test HTML formatter registration"""
 
     __test__ = True

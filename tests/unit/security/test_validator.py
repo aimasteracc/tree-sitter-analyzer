@@ -41,12 +41,12 @@ class TestSecurityValidatorInitialization:
             assert isinstance(validator.boundary_manager, ProjectBoundaryManager)
             assert isinstance(validator.regex_checker, RegexSafetyChecker)
 
-    def test_initialization_with_invalid_project_root(self):
+    def test_initialization_with_invalid_project_root(self, tmp_path):
         """测试无效项目根目录的初始化"""
         from tree_sitter_analyzer.security.regex_checker import RegexSafetyChecker
 
-        # Non-existent path: boundary_manager must be None; regex_checker still initializes
-        validator = SecurityValidator("/nonexistent/path")
+        missing_root = tmp_path / "missing-project-root"
+        validator = SecurityValidator(str(missing_root))
         assert validator.boundary_manager is None
         assert isinstance(validator.regex_checker, RegexSafetyChecker)
 

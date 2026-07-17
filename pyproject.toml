@@ -692,6 +692,9 @@ pytest_add_cli_args = ["-n", "0", "-x", "--timeout=30", "-q"]
 timeout_multiplier = 10.0
 timeout_constant = 10.0
 
+[tool.uv]
+required-version = ">=0.11.0"
+
 [dependency-groups]
 dev = [
     "build>=1.2.2.post1",

@@ -4,17 +4,17 @@
 import json
 import subprocess
 import sys
-import uuid
-from pathlib import Path
 
 import pytest
+
+pytestmark = pytest.mark.slow
 
 
 class TestCLIAsyncIntegration:
     """CLI非同期統合テスト"""
 
     @pytest.fixture
-    def sample_files(self):
+    def sample_files(self, tmp_path, monkeypatch):
         """複数のテストファイル"""
         files = []
         contents = [
@@ -62,58 +62,26 @@ def another_function():
 """,
         ]
 
-        # Create files in project directory to pass security validation
-        # Use unique suffix to avoid race conditions in parallel execution
-        test_id = str(uuid.uuid4())[:8]
-        temp_dir = Path("tests") / "temp_cli_test" / test_id
-        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_dir = tmp_path / "python-inputs"
+        temp_dir.mkdir()
+        monkeypatch.chdir(tmp_path)
 
-        try:
-            for i, content in enumerate(contents):
-                test_file = temp_dir / f"test_sample_{i}.py"
-                test_file.write_text(content)
-                files.append(str(test_file))
+        for i, content in enumerate(contents):
+            test_file = temp_dir / f"test_sample_{i}.py"
+            test_file.write_text(content)
+            files.append(str(test_file.relative_to(tmp_path)))
 
-            yield files
-        finally:
-            # Clean up all files and temporary directory
-            for file_path in files:
-                Path(file_path).unlink(missing_ok=True)
-            if temp_dir.exists():
-                # Remove all subdirectories first
-                for item in temp_dir.iterdir():
-                    if item.is_dir():
-                        for sub_item in item.iterdir():
-                            sub_item.unlink(missing_ok=True)
-                        item.rmdir()
-                    else:
-                        item.unlink(missing_ok=True)
-                # Remove temp_cli_test directory
-                try:
-                    temp_dir.rmdir()
-                except OSError:
-                    # Directory might not be empty due to parallel tests
-                    pass
-                # Try to remove parent if empty
-                parent = temp_dir.parent
-                if parent.exists() and not any(parent.iterdir()):
-                    try:
-                        parent.rmdir()
-                    except OSError:
-                        pass
+        yield files
 
     @pytest.fixture
-    def sample_javascript_file(self):
+    def sample_javascript_file(self, tmp_path, monkeypatch):
         """JavaScriptテストファイル"""
-        # Create files in project directory to pass security validation
-        # Use unique suffix to avoid race conditions in parallel execution
-        test_id = str(uuid.uuid4())[:8]
-        temp_dir = Path("tests") / "temp_cli_test_js" / test_id
-        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_dir = tmp_path / "javascript-inputs"
+        temp_dir.mkdir()
         test_file = temp_dir / "test_sample.js"
-        try:
-            test_file.write_text(
-                """
+        monkeypatch.chdir(tmp_path)
+        test_file.write_text(
+            """
 function testFunction() {
     return 42;
 }
@@ -138,34 +106,8 @@ async function asyncFunction() {
     });
 }
 """
-            )
-            yield str(test_file)
-        finally:
-            # Clean up file and temporary directory
-            if test_file.exists():
-                test_file.unlink(missing_ok=True)
-            if temp_dir.exists():
-                # Remove all subdirectories first
-                for item in temp_dir.iterdir():
-                    if item.is_dir():
-                        for sub_item in item.iterdir():
-                            sub_item.unlink(missing_ok=True)
-                        item.rmdir()
-                    else:
-                        item.unlink(missing_ok=True)
-                # Remove temp_cli_test_js directory
-                try:
-                    temp_dir.rmdir()
-                except OSError:
-                    # Directory might not be empty due to parallel tests
-                    pass
-                # Try to remove parent if empty
-                parent = temp_dir.parent
-                if parent.exists() and not any(parent.iterdir()):
-                    try:
-                        parent.rmdir()
-                    except OSError:
-                        pass
+        )
+        yield str(test_file.relative_to(tmp_path))
 
     def test_basic_cli_execution_python(self, sample_files):
         """基本的なPython CLIクエリ実行テスト"""
@@ -573,19 +515,14 @@ async function asyncFunction() {
                 len(result.stdout) > 0
             )  # ratchet: nondeterministic uuid-in-output-path
 
-    def test_large_file_cli_processing(self):
+    def test_large_file_cli_processing(self, tmp_path):
         """大きなファイルのCLI処理テスト"""
         # 大きなファイルを作成
-        test_id = str(uuid.uuid4())[:8]
-        large_file = (
-            Path("tests") / "temp_cli_test_large" / test_id / "test_large_cli.py"
-        )
-        large_file.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            content = ""
-            # 100個の関数を持つファイルを生成
-            for i in range(100):
-                content += f"""
+        large_file = tmp_path / "test_large_cli.py"
+        content = ""
+        # 100個の関数を持つファイルを生成
+        for i in range(100):
+            content += f"""
 def function_{i}():
     '''Function {i} for testing'''
     return {i}
@@ -594,42 +531,30 @@ class Class_{i}:
     def method_{i}(self):
         return {i}
 """
-            large_file.write_text(content)
+        large_file.write_text(content)
 
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "tree_sitter_analyzer",
-                    "--query-key",
-                    "function",
-                    str(large_file),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )  # 大きなファイルなので60秒のタイムアウト
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tree_sitter_analyzer",
+                "--project-root",
+                str(tmp_path),
+                "--query-key",
+                "function",
+                str(large_file),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )  # 大きなファイルなので60秒のタイムアウト
 
-            assert result.returncode == 0, (
-                f"Large file CLI processing failed with stderr: {result.stderr}"
-            )
-            assert (
-                len(result.stdout) > 0
-            )  # ratchet: nondeterministic uuid-in-output-path
-
-        finally:
-            large_file.unlink(missing_ok=True)
-            # Clean up directory
-            try:
-                large_file.parent.rmdir()
-            except OSError:
-                pass
-            parent = large_file.parent.parent
-            if parent.exists() and not any(parent.iterdir()):
-                try:
-                    parent.rmdir()
-                except OSError:
-                    pass
+        assert result.returncode == 0, (
+            f"Large file CLI processing failed with stderr: {result.stderr}"
+        )
+        assert (
+            len(result.stdout) > 0
+        )  # ratchet: nondeterministic uuid-in-output-path
 
     def test_cli_performance_baseline(self, sample_files):
         """CLIパフォーマンスベースラインテスト"""

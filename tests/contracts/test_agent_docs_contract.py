@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import ast
 import configparser
-import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -21,17 +21,6 @@ from tree_sitter_analyzer.cli_main import create_argument_parser
 from tree_sitter_analyzer.mcp.server import _create_tool_registry
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SKIPPED_SCAN_DIRS = {
-    ".git",
-    ".benchmark-repos",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".uv-cache",
-    ".venv",
-}
-
-
 def test_agent_facing_docs_do_not_recommend_bare_pytest() -> None:
     """Agent docs should route pytest through uv for consistent environments."""
     bare_pytest_command = re.compile(r"^(?:\$\s+)?pytest(?:\s|$)")
@@ -91,36 +80,53 @@ def test_agent_docs_require_dogfood_feedback_memory_loop() -> None:
     assert "verification" in agents_text
 
 
-@pytest.mark.slow_ok  # scans the Python API source for warning-prone patterns; ~5-5.5s, tips the 5s budget under Windows full-matrix load
 def test_warning_prone_python_api_patterns_are_blocked() -> None:
     """Keep future agents from reintroducing known Python 3.14 warning sources."""
     blocked_patterns = {
-        r"\basyncio\.iscoroutinefunction\(": "use inspect.iscoroutinefunction()",
-        r"\bdatetime\.utcnow\(": "use datetime.now(UTC)",
-        r"\blang_obj\.query\(": "use tree_sitter.Query(language, query)",
-        r"\byaml_language\.query\(": "use tree_sitter.Query(language, query)",
-        r"\blanguage\.query\(": "use tree_sitter.Query(language, query)",
+        "asyncio.iscoroutinefunction(": "use inspect.iscoroutinefunction()",
+        "datetime.utcnow(": "use datetime.now(UTC)",
+        "lang_obj.query(": "use tree_sitter.Query(language, query)",
+        "yaml_language.query(": "use tree_sitter.Query(language, query)",
+        "language.query(": "use tree_sitter.Query(language, query)",
     }
 
-    newline = "\n"
-    violations: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(PROJECT_ROOT):
-        dirnames[:] = [
-            name
-            for name in dirnames
-            if name not in SKIPPED_SCAN_DIRS and not name.startswith(".")
-        ]
-        for filename in filenames:
-            if not filename.endswith(".py"):
-                continue
-            path = Path(dirpath) / filename
-            rel = str(path.relative_to(PROJECT_ROOT))
-            text = path.read_text(encoding="utf-8")
-            for pattern, replacement in blocked_patterns.items():
-                for match in re.finditer(pattern, text):
-                    match_start = match.start()
-                    line_number = text.count(newline, 0, match_start) + 1
-                    msg = f"{rel}:{line_number} matches {pattern}; {replacement}"
-                    violations.append(msg)
+    grep_command = ["git", "grep", "-n", "-F"]
+    for pattern in blocked_patterns:
+        grep_command.extend(["-e", pattern])
+    grep_command.extend(["--", "tree_sitter_analyzer"])
+    result = subprocess.run(
+        grep_command,
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert result.returncode in {0, 1}, result.stderr
+
+    violations = result.stdout.splitlines()
+    untracked = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "tree_sitter_analyzer",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    for rel in untracked.stdout.splitlines():
+        path = PROJECT_ROOT / rel
+        if path.suffix != ".py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for pattern, replacement in blocked_patterns.items():
+            if pattern in text:
+                violations.append(f"{rel} matches {pattern}; {replacement}")
 
     assert violations == []

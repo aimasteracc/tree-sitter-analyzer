@@ -106,7 +106,11 @@ def _iter_violations(
             # false positives on dynamic / external symbols.
             continue
         for cc in compiled:
+            if cc.from_prefix and not caller_file.startswith(cc.from_prefix):
+                continue
             if cc.from_re.fullmatch(caller_file) is None:
+                continue
+            if cc.to_prefix and not callee_file.startswith(cc.to_prefix):
                 continue
             if cc.to_re.fullmatch(callee_file) is None:
                 continue

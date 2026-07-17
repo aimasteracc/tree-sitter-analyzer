@@ -31,7 +31,7 @@ The distinctive value is not "another chat coding tool." It is agent-grade code 
 - Bounded autonomy: project-root security, safe-to-edit risk checks, and change-impact test selection.
 - Reproducible tool use: every MCP capability has a CLI access path, smoke test, and docs.
 - Token leverage: TOON, summary-only, total-only, grouped output, and file-output modes.
-- Self-improvement loop: health scoring, refactoring suggestions, `pytest_command`, and a default full suite under 5 minutes.
+- Self-improvement loop: health scoring, refactoring suggestions, `pytest_command`, and a default quick gate under 5 minutes.
 
 ## What Competitors Have That We Still Need
 
@@ -54,7 +54,7 @@ The distinctive value is not "another chat coding tool." It is agent-grade code 
 - Every MCP tool change must include CLI parity in the same change.
 - The focused contract/governance suites must pass before handoff; they guard pytest runtime, dependencies, MCP/CLI parity, and known Python warning-prone API patterns.
 - `tests/unit/cli/test_mcp_commands.py` must pass after MCP-equivalent CLI changes; it guards delegated tool arguments, required file-path checks, and TOON output.
-- `uv run pytest -q` is the default full-suite command and must remain under 5 minutes.
+- `uv run pytest -q` is the default quick-gate command and must remain under 5 minutes; `uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"` is the comprehensive local path.
 - Benchmark runs must stay explicit: `--benchmark-enable --benchmark-only -n 0 --session-timeout=0`.
 - Every feature update must run the self-hosted workflow: `safe_to_edit` before risky edits, `file_health` on changed files, `change_impact` after edits, its reported `verification_command`, then the full default suite when risk remains.
 

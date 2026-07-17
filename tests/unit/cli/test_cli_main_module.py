@@ -10,15 +10,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from tests.unit.cli._test_cli_main_module_handle_special_commands_mixin import (
-    TestHandleSpecialCommandsTestMixin,
+from tests.unit.cli import (
+    _test_cli_main_module_handle_special_commands_mixin as _special_command_mixins,
 )
-from tests.unit.cli._test_cli_main_module_parser_mixin import (
-    TestCreateArgumentParserMixin,
-)
-from tests.unit.cli._test_cli_main_module_test_mixin import (
-    TestCLICommandFactoryTestMixin,
-)
+from tests.unit.cli import _test_cli_main_module_parser_mixin as _parser_mixins
+from tests.unit.cli import _test_cli_main_module_test_mixin as _cli_main_mixins
 from tree_sitter_analyzer.cli_main import (
     CLICommandFactory,
     create_argument_parser,
@@ -27,7 +23,7 @@ from tree_sitter_analyzer.cli_main import (
 )
 
 
-class TestCLICommandFactory(TestCLICommandFactoryTestMixin):
+class TestCLICommandFactory(_cli_main_mixins.TestCLICommandFactoryTestMixin):
     """Tests for CLICommandFactory class."""
 
     __test__ = True
@@ -35,7 +31,7 @@ class TestCLICommandFactory(TestCLICommandFactoryTestMixin):
     _cli_command_factory = CLICommandFactory
 
 
-class TestCreateArgumentParser(TestCreateArgumentParserMixin):
+class TestCreateArgumentParser(_parser_mixins.TestCreateArgumentParserMixin):
     """Tests for create_argument_parser function."""
 
     __test__ = True
@@ -612,7 +608,7 @@ class TestErrorHandling:
                 mock_exit.assert_called_once_with(1)
 
 
-class TestHandleSpecialCommands(TestHandleSpecialCommandsTestMixin):
+class TestHandleSpecialCommands(_special_command_mixins.TestHandleSpecialCommandsTestMixin):
     """Tests for handle_special_commands() covering all branches."""
 
     __test__ = True

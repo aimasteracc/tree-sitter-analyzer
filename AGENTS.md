@@ -15,16 +15,17 @@
 
 ## Test Runtime Contract
 
-- The default full-suite command is `uv run pytest -q`.
-- Do not run the full suite serially. Project pytest config enables xdist with `--numprocesses=auto --dist=loadfile`.
-- The full suite must finish in under 5 minutes. The config enforces `--session-timeout=900` and `--timeout=30`. (Bumped from 300 in v1.13.1 — see `docs/POSTMORTEM_v1.13.md` § 9.)
+- The default local quick-gate command is `uv run pytest -q`.
+- The comprehensive local command is `uv run pytest tests/ -q --timeout=120 -m "not e2e and not network and not benchmark"`; the explicit marker override restores slow and full-language tests that the quick gate excludes.
+- Do not run either tier serially. Project pytest config enables four xdist workers with work stealing.
+- The quick gate must finish in under 5 minutes. The config enforces `--session-timeout=900` and `--timeout=30`. (Bumped from 300 in v1.13.1 — see `docs/POSTMORTEM_v1.13.md` § 9.)
 - After edits, run `uv run python -m tree_sitter_analyzer --change-impact --format json` and follow its `verification_command`.
 - If `test_required` is `false`, do not run tests just to look busy; run the reported non-test verification such as `git diff --check`.
 - For targeted code feedback, prefer `verification_command`/`test_command`; `pytest_required` and `pytest_command` are retained for pytest-specific compatibility.
 - For PRs that change Python source, run focused tests with `--cov=tree_sitter_analyzer --cov-report=json`, then run `uv run python scripts/check_patch_coverage.py --base origin/develop --coverage-json coverage.json` before pushing. The local patch gate must report no added executable misses; add effective tests instead of waiting for CI Codecov to block the PR.
 - Benchmark-only runs are the exception: use `uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0`.
 - Do not remove or weaken these pytest defaults. They prevent repeated agent mistakes: serial full-suite runs, accidental benchmark execution, hidden hangs, and >5 minute feedback loops.
-- If a test-runtime setting must change, update `tests/contracts/test_pytest_runtime_contract.py`, explain why the new setting is faster or safer, and prove `uv run pytest -q` still finishes under 5 minutes.
+- If a test-runtime setting must change, update `tests/contracts/test_pytest_runtime_contract.py`, explain why the new setting is faster or safer, and prove `uv run pytest -q` still finishes under 5 minutes. Preserve the comprehensive command above as the broad local path.
 
 ## CI Test Tier Contract
 
