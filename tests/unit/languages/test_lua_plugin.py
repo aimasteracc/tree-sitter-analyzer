@@ -30,6 +30,86 @@ def _tslua_available() -> bool:
         return False
 
 
+def test_lua_loader_mapping_targets_installed_grammar() -> None:
+    """The public loader must wire Lua to its declared parser package."""
+    from tree_sitter_analyzer.language_loader import LanguageLoader
+
+    assert LanguageLoader.LANGUAGE_MODULES["lua"] == "tree_sitter_lua"
+
+
+@pytest.mark.skipif(
+    not _tslua_available(),
+    reason="tree_sitter_lua not installed; tracked: optional-dep skip",
+)
+def test_lua_loader_parses_minimal_chunk_without_errors() -> None:
+    """Loader-backed parsing must work before Lua is advertised as supported."""
+    from tree_sitter_analyzer.language_loader import LanguageLoader
+
+    parser = LanguageLoader().create_parser_safely("lua")
+    assert parser is not None
+    tree = parser.parse(b'local module = require("sample")')
+    assert tree.root_node.type == "chunk"
+    assert tree.root_node.has_error is False
+
+
+@pytest.mark.skipif(
+    not _tslua_available(),
+    reason="tree_sitter_lua not installed; tracked: optional-dep skip",
+)
+def test_lua_project_index_persists_exact_function_snapshot(tmp_path) -> None:
+    """A real project index must persist Lua's currently supported surface."""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "main.lua"
+    source.write_text(
+        'local json = require("json")\n'
+        'function greet(name) return name end\n'
+        'greet("world")\n',
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project()
+        conn = cache.get_conn()
+        indexed_files = [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT file_path, language FROM ast_index ORDER BY file_path"
+            )
+        ]
+        symbols = [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT name, kind, file_path, language, line, end_line "
+                "FROM ast_symbol_rows ORDER BY name"
+            )
+        ]
+        imports = [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT module_path, file_path, language FROM ast_imports "
+                "ORDER BY module_path"
+            )
+        ]
+        calls = [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT callee_name, callee_resolution, callee_resolved_file "
+                "FROM edges WHERE kind = 'calls' AND language = 'lua' "
+                "ORDER BY callee_name"
+            )
+        ]
+        assert indexed_files == [("main.lua", "lua")]
+        assert symbols == [("greet", "function", "main.lua", "lua", 2, 2)]
+        assert imports == []
+        assert calls == [
+            ("greet", "unknown", ""),
+            ("require", "unknown", ""),
+        ]
+    finally:
+        cache.close()
+
+
 # ---------------------------------------------------------------------------
 # Test 1: graceful degradation (always runs, no real Lua grammar needed)
 # ---------------------------------------------------------------------------

@@ -141,6 +141,7 @@ class LanguageDetector:
         "swift",
         "bash",
         "scala",
+        "lua",
         "markdown",
         "html",
         "css",
