@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for cli/info_commands.py"""
 
+import importlib.util
 from argparse import Namespace
 from unittest.mock import patch
 
@@ -13,6 +14,7 @@ from tree_sitter_analyzer.cli.info_commands import (
     ShowExtensionsCommand,
     ShowLanguagesCommand,
 )
+from tree_sitter_analyzer.language_loader import grammar_install_hint
 
 
 @pytest.fixture
@@ -505,9 +507,6 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
         lua_entries = [
             entry for entry in captured["languages"] if entry["language"] == "lua"
         ]
-        import importlib.util
-        from tree_sitter_analyzer.language_loader import grammar_install_hint
-
         lua_installed = importlib.util.find_spec("tree_sitter_lua") is not None
         expected_lua = {
             "language": "lua",
@@ -538,8 +537,6 @@ class TestR37aeRemainingInfoCommandsJsonEnvelope:
         assert captured.get("extension_count") == len(captured["extensions"])
 
     def test_show_supported_languages_uses_canonical_lua_install_hint(self):
-        from tree_sitter_analyzer.language_loader import grammar_install_hint
-
         args = Namespace(output_format="json", format="json")
         captured: dict = {}
         with (
