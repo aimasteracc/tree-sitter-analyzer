@@ -1530,3 +1530,66 @@ class TestBenchmarkExperimentIntegrity:
 
         assert "INDEX_NOT_READY" in {violation.code for violation in verdict.violations}
         assert verdict.publishable is False
+
+    def test_invalid_manifest_returns_verdict_instead_of_crashing(self):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.integrity import (
+            validate_publishable_experiment,
+        )
+
+        valid_manifest = _v1_manifest(
+            expected_run_ids=("q1__tsa-warm__codex__00",),
+            required_arms=("tsa-warm",),
+            tool_fingerprints={"tsa-warm": "tsa130"},
+        )
+        tampered_manifest = replace(valid_manifest, eligible_paths=())
+        run = _v1_run(valid_manifest, "q1__tsa-warm__codex__00")
+
+        verdict = validate_publishable_experiment(
+            tampered_manifest,
+            registry=_registry_for(tampered_manifest),
+            runs=(run,),
+            evals=(_v1_eval(run),),
+            reported_experiment_ids=(tampered_manifest.experiment_id,),
+        )
+
+        assert verdict.publishable is False
+        assert tuple(item.code for item in verdict.violations) == (
+            "INVALID_MANIFEST_HASH",
+            "INVALID_MANIFEST_STRUCTURE",
+        )
+
+    def test_failed_registry_status_is_terminal(self):
+        from benchmarks.codegraph_compare.integrity import (
+            RegistryEvent,
+            validate_publishable_experiment,
+        )
+
+        manifest = _v1_manifest(
+            expected_run_ids=("q1__tsa-warm__codex__00",),
+            required_arms=("tsa-warm",),
+            tool_fingerprints={"tsa-warm": "tsa130"},
+        )
+        run = _v1_run(manifest, "q1__tsa-warm__codex__00")
+        registry = (
+            RegistryEvent(
+                manifest.experiment_id,
+                manifest.manifest_hash,
+                "FAILED",
+                "runner failed",
+            ),
+        )
+
+        verdict = validate_publishable_experiment(
+            manifest,
+            registry=registry,
+            runs=(run,),
+            evals=(_v1_eval(run),),
+            reported_experiment_ids=(manifest.experiment_id,),
+        )
+
+        assert verdict.publishable is False
+        assert tuple(item.code for item in verdict.violations) == (
+            "REGISTRY_TERMINAL_FAILURE",
+        )
