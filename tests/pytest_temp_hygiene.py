@@ -21,9 +21,9 @@ def _pytest_temp_parent() -> Path:
 
     local_app_data = os.environ.get("LOCALAPPDATA")
     if local_app_data:
-        return Path(local_app_data).resolve() / "tree-sitter-analyzer" / "pytest"
+        return Path(local_app_data).resolve() / "tree-sitter-analyzer" / "runtime"
 
-    return Path(tempfile.gettempdir()).resolve() / "tree-sitter-analyzer-pytest"
+    return Path(tempfile.gettempdir()).resolve() / "tsa-run-cache"
 
 
 def _process_is_running(pid: int) -> bool:
@@ -77,7 +77,7 @@ def configure_pytest_temp_root(config: Any) -> None:
     if Path(tempfile.gettempdir()).resolve() != session_root:
         raise RuntimeError(f"pytest temp root is not writable: {session_root}")
 
-    config.option.basetemp = str(session_root)
+    config.option.basetemp = str(session_root / "work")
     config._tsa_pytest_temp_root = session_root
 
 

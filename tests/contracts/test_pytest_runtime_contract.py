@@ -197,10 +197,13 @@ def test_managed_pytest_temp_root_is_external_and_removed(monkeypatch, tmp_path)
 
     try:
         pytest_temp_hygiene.configure_pytest_temp_root(config)
-        session_root = Path(config.option.basetemp)
+        basetemp = Path(config.option.basetemp)
+        session_root = basetemp.parent
 
         assert session_root.parent == managed_parent
         assert session_root.is_dir()
+        assert basetemp.name == "work"
+        assert basetemp.exists() is False
         assert os.environ["TEMP"] == str(session_root)
         assert os.environ["TMP"] == str(session_root)
         assert os.environ["TMPDIR"] == str(session_root)
@@ -210,6 +213,19 @@ def test_managed_pytest_temp_root_is_external_and_removed(monkeypatch, tmp_path)
         assert session_root.exists() is False
     finally:
         tempfile.tempdir = None
+
+
+def test_posix_temp_parent_uses_neutral_directory_name(monkeypatch) -> None:
+    """Fixture paths must not be misclassified as tests from their parent name."""
+    from tests import pytest_temp_hygiene
+
+    monkeypatch.delenv("TSA_PYTEST_TEMP_ROOT", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(pytest_temp_hygiene.tempfile, "gettempdir", lambda: "/tmp")
+
+    parent = pytest_temp_hygiene._pytest_temp_parent()
+
+    assert parent.name == "tsa-run-cache"
 
 
 def test_dead_pytest_process_temp_root_is_removed(tmp_path) -> None:
