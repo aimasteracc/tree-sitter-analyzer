@@ -221,6 +221,7 @@ def _delete_cache(cache_dir: Path) -> None:
             shutil.rmtree(cache_dir)
         except OSError as exc:
             logger.error("Failed to delete %s: %s", cache_dir, exc)
+            raise RuntimeError(f"failed to delete TSA cache: {exc}") from exc
 
 
 def _build_cache(repo_path: Path, cache_dir: Path) -> IndexStats:
@@ -261,12 +262,15 @@ def _build_cache(repo_path: Path, cache_dir: Path) -> IndexStats:
             result.returncode,
             result.stderr[:2000],
         )
+        raise RuntimeError(
+            f"tree_sitter_analyzer exited with code {result.returncode}: "
+            f"{result.stderr[:500]}"
+        )
 
     size = _dir_size(cache_dir) if cache_dir.exists() else 0
     index_db = cache_dir / "index.db"
-    file_count = _indexed_file_count(index_db) or (
-        _count_files(cache_dir) if cache_dir.exists() else 0
-    )
+    indexed_file_count = _indexed_file_count(index_db)
+    file_count = indexed_file_count if indexed_file_count is not None else 0
 
     logger.info(
         "TSA cache built in %.2fs, size=%d bytes, files=%d",
@@ -286,13 +290,6 @@ def _dir_size(path: Path) -> int:
     if not path.exists():
         return 0
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
-
-
-def _count_files(path: Path) -> int:
-    """Return the number of files under *path*."""
-    if not path.exists():
-        return 0
-    return sum(1 for f in path.rglob("*") if f.is_file())
 
 
 def _indexed_file_count(index_db: Path) -> int | None:

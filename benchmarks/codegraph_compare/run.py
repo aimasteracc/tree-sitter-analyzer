@@ -34,7 +34,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 # ---------------------------------------------------------------------------
 # Path constants  (all relative to this file so the harness is portable)
@@ -332,6 +332,17 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     adapter = get_adapter(arm_id)
 
+    try:
+        from adapters.claude_runner import (  # noqa: PLC0415
+            validate_backend_arm_support,
+        )
+    except ImportError:
+        _die("Could not import adapters.claude_runner.")
+    try:
+        validate_backend_arm_support(args.agent_backend, arm_id)
+    except (ValueError, NotImplementedError) as exc:
+        _die(str(exc))
+
     # Prepare index (warm by default unless index_mode says cold)
     index_mode: str = arm_entry.get("index_mode", "warm")
     cold = index_mode == "cold"
@@ -422,7 +433,10 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
     # Lazy imports
     try:
         from adapters import get_adapter  # noqa: PLC0415
-        from adapters.claude_runner import run_one  # noqa: PLC0415
+        from adapters.claude_runner import (  # noqa: PLC0415
+            run_one,
+            validate_backend_arm_support,
+        )
     except ImportError:
         _die("Could not import adapters or adapters.claude_runner.")
 
@@ -438,6 +452,55 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
         )
         for repo_entry in repo_entries
     }
+
+    prepared_adapters: dict[tuple[str, str], Any] = {}
+    prepared_run_configs: dict[tuple[str, str, str], Any] = {}
+    if not args.dry_run:
+        try:
+            from benchmarks.codegraph_compare.setup_validation import (  # noqa: PLC0415
+                validate_matrix_setup,
+                write_setup_failure_evidence,
+            )
+        except ImportError:
+            import importlib  # noqa: PLC0415
+
+            setup_validation = importlib.import_module("setup_validation")
+            validate_matrix_setup = setup_validation.validate_matrix_setup
+            write_setup_failure_evidence = (
+                setup_validation.write_setup_failure_evidence
+            )
+
+        setup_result = validate_matrix_setup(
+            repo_entries,
+            arm_entries,
+            questions_by_repo=question_entries_by_repo,
+            repo_path_resolver=_repo_local_path,
+            adapter_factory=get_adapter,
+            backend_validator=lambda arm_id: validate_backend_arm_support(
+                args.agent_backend, arm_id
+            ),
+        )
+        if not setup_result.ok:
+            evidence_path = write_setup_failure_evidence(
+                RESULTS_DIR,
+                session_id=session_id,
+                result=setup_result,
+            )
+            print(
+                f"[setup] FAILED: {len(setup_result.failures)} indexed cell(s); "
+                "no model calls started.",
+                file=sys.stderr,
+            )
+            for failure in setup_result.failures:
+                print(
+                    f"  repo={failure.repo_id}  arm={failure.arm_id}  "
+                    f"{failure.code}: {failure.message}",
+                    file=sys.stderr,
+                )
+            print(f"Setup evidence: {evidence_path}", file=sys.stderr)
+            return 1
+        prepared_adapters = setup_result.prepared_adapters
+        prepared_run_configs = setup_result.prepared_run_configs
     total = (
         sum(len(items) for items in question_entries_by_repo.values())
         * len(arm_entries)
@@ -457,17 +520,13 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
 
         for arm_entry in arm_entries:
             arm_id: str = arm_entry["id"]
-            index_mode: str = arm_entry.get("index_mode", "warm")
-            cold = index_mode == "cold"
 
-            adapter = get_adapter(arm_id)
+            adapter = prepared_adapters.get((repo_id, arm_id)) or get_adapter(arm_id)
             if args.dry_run:
                 print(
                     f"[prepare] skipped dry-run  arm={arm_id}  repo={repo_id}",
                     file=sys.stderr,
                 )
-            else:
-                adapter.prepare_index(repo_path, cold=cold)
             run_config_cache: dict = {}
 
             for question_entry in question_entries:
@@ -475,8 +534,10 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
                 question_prompt: str = question_entry["prompt"]
 
                 if question_id not in run_config_cache:
-                    run_config_cache[question_id] = adapter.build_run_config(
-                        repo_path, question_prompt
+                    run_config_cache[question_id] = (
+                        adapter.build_run_config(repo_path, question_prompt)
+                        if args.dry_run
+                        else prepared_run_configs[(repo_id, arm_id, question_id)]
                     )
                 run_config = run_config_cache[question_id]
 

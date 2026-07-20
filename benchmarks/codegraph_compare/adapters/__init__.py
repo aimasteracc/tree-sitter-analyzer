@@ -65,9 +65,9 @@ class BenchmarkAdapter(ABC):
     def prepare_index(self, repo_path: Path, cold: bool) -> IndexStats:
         """Build (cold=True) or verify (cold=False, warm) the index.
 
-        Must always return an IndexStats even if preparation is a no-op.
-        Implementations should log errors rather than raise so the harness
-        can continue.
+        Must always return an IndexStats when preparation succeeds or is a
+        no-op. Implementations may raise on failure; the matrix setup gate
+        records the failure and blocks all model-backed work.
         """
         ...
 
