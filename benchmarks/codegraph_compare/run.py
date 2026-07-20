@@ -332,6 +332,17 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     adapter = get_adapter(arm_id)
 
+    try:
+        from adapters.claude_runner import (  # noqa: PLC0415
+            validate_backend_arm_support,
+        )
+    except ImportError:
+        _die("Could not import adapters.claude_runner.")
+    try:
+        validate_backend_arm_support(args.agent_backend, arm_id)
+    except (ValueError, NotImplementedError) as exc:
+        _die(str(exc))
+
     # Prepare index (warm by default unless index_mode says cold)
     index_mode: str = arm_entry.get("index_mode", "warm")
     cold = index_mode == "cold"
@@ -422,7 +433,10 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
     # Lazy imports
     try:
         from adapters import get_adapter  # noqa: PLC0415
-        from adapters.claude_runner import run_one  # noqa: PLC0415
+        from adapters.claude_runner import (  # noqa: PLC0415
+            run_one,
+            validate_backend_arm_support,
+        )
     except ImportError:
         _die("Could not import adapters or adapters.claude_runner.")
 
@@ -462,6 +476,9 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
             questions_by_repo=question_entries_by_repo,
             repo_path_resolver=_repo_local_path,
             adapter_factory=get_adapter,
+            backend_validator=lambda arm_id: validate_backend_arm_support(
+                args.agent_backend, arm_id
+            ),
         )
         if not setup_result.ok:
             evidence_path = write_setup_failure_evidence(

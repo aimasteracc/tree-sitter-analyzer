@@ -519,13 +519,18 @@ class TestCodeGraphCompareSetupGate:
         return repos, arms, questions
 
     @staticmethod
-    def _install_runner_modules(monkeypatch, get_adapter, run_one) -> None:
+    def _install_runner_modules(
+        monkeypatch, get_adapter, run_one, validate_backend=None
+    ) -> None:
         from types import ModuleType
 
         adapters_module = ModuleType("adapters")
         adapters_module.get_adapter = get_adapter
         runner_module = ModuleType("adapters.claude_runner")
         runner_module.run_one = run_one
+        runner_module.validate_backend_arm_support = validate_backend or (
+            lambda agent_backend, arm_id: None
+        )
         monkeypatch.setitem(sys.modules, "adapters", adapters_module)
         monkeypatch.setitem(sys.modules, "adapters.claude_runner", runner_module)
 
@@ -744,6 +749,70 @@ class TestCodeGraphCompareSetupGate:
             "INVALID_INDEX_MODE",
             "INVALID_INDEX_STATS",
         ]
+
+    def test_unsupported_backend_arms_block_native_model_before_index_setup(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+
+        events: list[str] = []
+
+        class Adapter:
+            def __init__(self, arm_id: str) -> None:
+                self.arm_id = arm_id
+
+            def prepare_index(self, repo_path: Path, cold: bool) -> IndexStats:
+                events.append(f"prepare:{self.arm_id}")
+                return IndexStats(0.1, 100, 2)
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm_id, repo_path, "system")
+
+        def validate_backend(agent_backend: str, arm_id: str) -> None:
+            events.append(f"validate:{agent_backend}:{arm_id}")
+            if agent_backend == "codex" and arm_id != "native-only":
+                raise NotImplementedError(f"codex does not support {arm_id}")
+
+        def run_one(**kwargs):
+            events.append(f"model:{kwargs['arm_id']}")
+            raise AssertionError("model call must remain unreachable")
+
+        self._patch_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(
+            monkeypatch, Adapter, run_one, validate_backend=validate_backend
+        )
+
+        assert compare_run.cmd_run_matrix(self._matrix_args()) == 1
+        assert events == [
+            "validate:codex:native-only",
+            "validate:codex:codegraph-warm",
+            "validate:codex:tsa-warm",
+        ]
+        evidence_path = next(
+            (tmp_path / "results").glob("setup_failures_*.json")
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [item["code"] for item in evidence["failures"]] == [
+            "BACKEND_UNSUPPORTED",
+            "BACKEND_UNSUPPORTED",
+        ]
+
+    @pytest.mark.parametrize("arm_id", ("codegraph-warm", "tsa-warm"))
+    def test_codex_backend_validator_rejects_indexed_mcp_arms(self, arm_id: str):
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            validate_backend_arm_support,
+        )
+
+        with pytest.raises(NotImplementedError, match="Per-arm MCP isolation"):
+            validate_backend_arm_support("codex", arm_id)
+
+    def test_backend_validator_allows_supported_combinations(self):
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            validate_backend_arm_support,
+        )
+
+        validate_backend_arm_support("codex", "native-only")
+        validate_backend_arm_support("claude", "tsa-warm")
 
 
 class TestCodeGraphCompareAnalysisGate:

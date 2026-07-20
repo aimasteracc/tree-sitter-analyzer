@@ -343,6 +343,7 @@ def _build_agent_cmd(
     agent_backend: str,
 ) -> list[str]:
     """Build the CLI command list for the given agent backend."""
+    validate_backend_arm_support(agent_backend, arm_id)
     if agent_backend == "claude":
         cmd = [
             "claude",
@@ -374,14 +375,6 @@ def _build_agent_cmd(
     # TSA-vs-CodeGraph comparison. Fail loudly rather than emit wrong numbers
     # (Codex P2 on #290). Use --agent-backend claude for MCP arms until codex
     # MCP wiring (codex -c mcp_servers.*) is implemented and verified.
-    if arm_id.startswith(("tsa", "codegraph")):
-        raise NotImplementedError(
-            f"Per-arm MCP isolation is not wired for the codex backend, but arm "
-            f"{arm_id!r} requires its own MCP server. Running `codex exec` here "
-            f"would miss the server or inherit the global ~/.codex MCP config, "
-            f"invalidating the comparison. Use --agent-backend claude for MCP "
-            f"arms, or wire `codex -c mcp_servers.*` before enabling this path."
-        )
     sandbox = _codex_sandbox_for_arm(arm_id)
     return [
         "codex",
@@ -398,6 +391,21 @@ def _build_agent_cmd(
         str(repo_path),
         "-",
     ]
+
+
+def validate_backend_arm_support(agent_backend: str, arm_id: str) -> None:
+    """Reject backend/arm combinations that cannot run a valid trial."""
+
+    if agent_backend not in {"claude", "codex"}:
+        raise ValueError("agent_backend must be one of: claude, codex")
+    if agent_backend == "codex" and arm_id.startswith(("tsa", "codegraph")):
+        raise NotImplementedError(
+            f"Per-arm MCP isolation is not wired for the codex backend, but arm "
+            f"{arm_id!r} requires its own MCP server. Running `codex exec` here "
+            f"would miss the server or inherit the global ~/.codex MCP config, "
+            f"invalidating the comparison. Use --agent-backend claude for MCP "
+            f"arms, or wire `codex -c mcp_servers.*` before enabling this path."
+        )
 
 
 def _usage_int(usage: dict[str, Any], key: str) -> int:

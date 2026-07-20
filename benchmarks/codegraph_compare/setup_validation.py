@@ -56,6 +56,7 @@ def validate_matrix_setup(
     questions_by_repo: Mapping[str, Sequence[dict]],
     repo_path_resolver: Callable[[dict], Path],
     adapter_factory: Callable[[str], Any],
+    backend_validator: Callable[[str], None] | None = None,
 ) -> SetupValidationResult:
     """Prepare every indexed repo/arm cell and collect all basic failures.
 
@@ -74,6 +75,7 @@ def validate_matrix_setup(
                 arm_entry,
                 repo_path_resolver=repo_path_resolver,
                 adapter_factory=adapter_factory,
+                backend_validator=backend_validator,
             )
             if failure is not None:
                 failures.append(failure)
@@ -99,6 +101,7 @@ def _prepare_cell(
     *,
     repo_path_resolver: Callable[[dict], Path],
     adapter_factory: Callable[[str], Any],
+    backend_validator: Callable[[str], None] | None,
 ) -> tuple[_PreparedCell | None, SetupFailure | None]:
     repo_id = str(repo_entry["id"])
     arm_id = str(arm_entry["id"])
@@ -108,6 +111,18 @@ def _prepare_cell(
             repo_id, arm_id, index_mode, "INVALID_INDEX_MODE",
             f"unsupported index_mode: {index_mode}",
         )
+
+    if backend_validator is not None:
+        try:
+            backend_validator(arm_id)
+        except Exception as exc:  # noqa: BLE001 - persist unsupported combinations
+            return None, _failure(
+                repo_id,
+                arm_id,
+                index_mode,
+                "BACKEND_UNSUPPORTED",
+                str(exc),
+            )
 
     try:
         repo_path = repo_path_resolver(repo_entry)
