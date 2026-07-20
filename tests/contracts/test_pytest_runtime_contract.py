@@ -8,7 +8,9 @@ import configparser
 import os
 import re
 import shlex
+import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -180,6 +182,65 @@ def test_local_runtime_artifacts_are_gitignored_without_global_results_trap() ->
     assert "results/" not in lines
     assert "benchmarks/codegraph_compare/results/*" in lines
     assert "!benchmarks/codegraph_compare/results/.gitkeep" in lines
+
+
+def test_managed_pytest_temp_root_is_external_and_removed(monkeypatch, tmp_path) -> None:
+    """Default pytest temp data must live outside the repo and be reclaimed."""
+    from tests import pytest_temp_hygiene
+
+    managed_parent = tmp_path / "managed-pytest-temp"
+    monkeypatch.setenv("TSA_PYTEST_TEMP_ROOT", str(managed_parent))
+    config = SimpleNamespace(
+        invocation_params=SimpleNamespace(args=()),
+        option=SimpleNamespace(basetemp=None),
+    )
+
+    try:
+        pytest_temp_hygiene.configure_pytest_temp_root(config)
+        session_root = Path(config.option.basetemp)
+
+        assert session_root.parent == managed_parent
+        assert session_root.is_dir()
+        assert os.environ["TEMP"] == str(session_root)
+        assert os.environ["TMP"] == str(session_root)
+        assert os.environ["TMPDIR"] == str(session_root)
+        assert Path(tempfile.gettempdir()) == session_root
+
+        pytest_temp_hygiene.cleanup_pytest_temp_root(config)
+        assert session_root.exists() is False
+    finally:
+        tempfile.tempdir = None
+
+
+def test_dead_pytest_process_temp_root_is_removed(tmp_path) -> None:
+    """A later pytest run must reclaim debris left by a killed process."""
+    from tests import pytest_temp_hygiene
+
+    stale_root = tmp_path / "run-99999999-deadbeef"
+    stale_root.mkdir()
+    (stale_root / "orphan.txt").write_text("orphan", encoding="utf-8")
+
+    pytest_temp_hygiene.remove_stale_pytest_temp_roots(tmp_path)
+
+    assert stale_root.exists() is False
+
+
+def test_xdist_worker_keeps_controller_temp_root(monkeypatch, tmp_path) -> None:
+    """Workers must inherit the controller root instead of replacing it."""
+    from tests import pytest_temp_hygiene
+    managed_parent = tmp_path / "managed-pytest-temp"
+    controller_root = managed_parent / "run-12345678-deadbeef"
+    monkeypatch.setenv("TSA_PYTEST_TEMP_ROOT", str(managed_parent))
+    config = SimpleNamespace(
+        invocation_params=SimpleNamespace(args=()),
+        option=SimpleNamespace(basetemp=str(controller_root)),
+        workerinput={},
+    )
+
+    pytest_temp_hygiene.configure_pytest_temp_root(config)
+
+    assert config.option.basetemp == str(controller_root)
+    assert managed_parent.exists() is False
 
 
 def test_cli_fixtures_do_not_create_collectable_python_inside_tests_tree() -> None:

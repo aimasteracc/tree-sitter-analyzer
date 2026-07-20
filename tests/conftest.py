@@ -17,6 +17,11 @@ if str(PROJECT_ROOT) not in sys.path:
 import pytest  # noqa: E402
 from hypothesis import settings as hypothesis_settings  # noqa: E402
 
+from tests.pytest_temp_hygiene import (  # noqa: E402
+    cleanup_pytest_temp_root,
+    configure_pytest_temp_root,
+)
+
 QUARANTINED_TESTS: list[str] = []
 
 # TEST-P3 root-cause fix: under pytest-xdist's load balancer, multiple
@@ -48,8 +53,10 @@ def pytest_xdist_auto_num_workers(config) -> int:
     return os.cpu_count() or 4
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
     """Configure pytest with custom markers and safety checks."""
+    configure_pytest_temp_root(config)
     if not hasattr(config, "workerinput"):
         _cleanup_pytest_git_repos()
 
@@ -226,6 +233,12 @@ def pytest_sessionfinish(session, exitstatus):
 
     if not hasattr(session.config, "workerinput"):
         _cleanup_pytest_git_repos()
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config):
+    """Reclaim this process's managed pytest temp directory."""
+    cleanup_pytest_temp_root(config)
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
