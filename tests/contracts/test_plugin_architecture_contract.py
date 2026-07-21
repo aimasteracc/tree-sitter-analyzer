@@ -150,7 +150,6 @@ def test_no_new_single_file_plugins_in_languages_root() -> None:
         "php_plugin.py",
         "ruby_plugin.py",
         "rust_plugin.py",
-        "scala_plugin.py",
         "swift_plugin.py",
         "yaml_plugin.py",
     }
