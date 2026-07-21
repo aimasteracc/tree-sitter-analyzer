@@ -8,7 +8,9 @@ import configparser
 import os
 import re
 import shlex
+import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -180,6 +182,238 @@ def test_local_runtime_artifacts_are_gitignored_without_global_results_trap() ->
     assert "results/" not in lines
     assert "benchmarks/codegraph_compare/results/*" in lines
     assert "!benchmarks/codegraph_compare/results/.gitkeep" in lines
+
+
+def _managed_temp_config(monkeypatch, tmp_path):
+    from tests import pytest_temp_hygiene
+
+    managed_parent = tmp_path / "managed-pytest-temp"
+    monkeypatch.setenv("TSA_PYTEST_TEMP_ROOT", str(managed_parent))
+    config = SimpleNamespace(
+        invocation_params=SimpleNamespace(args=()),
+        option=SimpleNamespace(basetemp=None),
+    )
+    pytest_temp_hygiene.configure_pytest_temp_root(config)
+    return pytest_temp_hygiene, config, managed_parent
+
+
+def test_managed_pytest_temp_root_routes_basetemp_to_work_child(
+    monkeypatch, tmp_path
+) -> None:
+    """The pytest work directory must be separate from the system temp root."""
+    pytest_temp_hygiene, config, managed_parent = _managed_temp_config(
+        monkeypatch, tmp_path
+    )
+
+    try:
+        basetemp = Path(config.option.basetemp)
+        assert (basetemp.parent.parent, basetemp.name) == (managed_parent, "work")
+    finally:
+        pytest_temp_hygiene.cleanup_pytest_temp_root(config)
+
+
+def test_managed_pytest_temp_root_updates_process_temp_settings(
+    monkeypatch, tmp_path
+) -> None:
+    """All process temp APIs must use the managed session root."""
+    pytest_temp_hygiene, config, _ = _managed_temp_config(monkeypatch, tmp_path)
+
+    try:
+        session_root = Path(config.option.basetemp).parent
+        assert (
+            os.environ["TEMP"],
+            os.environ["TMP"],
+            os.environ["TMPDIR"],
+            Path(tempfile.gettempdir()),
+        ) == (str(session_root), str(session_root), str(session_root), session_root)
+    finally:
+        pytest_temp_hygiene.cleanup_pytest_temp_root(config)
+
+
+def test_cleanup_removes_managed_pytest_temp_root(monkeypatch, tmp_path) -> None:
+    """Normal pytest shutdown must reclaim the managed session directory."""
+    pytest_temp_hygiene, config, _ = _managed_temp_config(monkeypatch, tmp_path)
+    session_root = Path(config.option.basetemp).parent
+
+    try:
+        pytest_temp_hygiene.cleanup_pytest_temp_root(config)
+        assert session_root.exists() is False
+    finally:
+        pytest_temp_hygiene.cleanup_pytest_temp_root(config)
+
+
+def test_cleanup_restores_process_temp_settings(monkeypatch, tmp_path) -> None:
+    """Embedded pytest runs must leave the caller's temp settings unchanged."""
+    original_temp = tmp_path / "caller-temp"
+    original_temp.mkdir()
+    for variable in ("TEMP", "TMP", "TMPDIR"):
+        monkeypatch.setenv(variable, str(original_temp))
+    previous_cache = tempfile.tempdir
+    tempfile.tempdir = str(original_temp)
+    pytest_temp_hygiene, config, _ = _managed_temp_config(monkeypatch, tmp_path)
+
+    try:
+        pytest_temp_hygiene.cleanup_pytest_temp_root(config)
+        assert (
+            os.environ["TEMP"],
+            os.environ["TMP"],
+            os.environ["TMPDIR"],
+            tempfile.tempdir,
+        ) == (
+            str(original_temp),
+            str(original_temp),
+            str(original_temp),
+            str(original_temp),
+        )
+    finally:
+        pytest_temp_hygiene.cleanup_pytest_temp_root(config)
+        tempfile.tempdir = previous_cache
+
+
+def test_posix_temp_parent_is_neutral_and_user_scoped(monkeypatch) -> None:
+    """Fallback temp data must use a neutral, per-user directory."""
+    from tests import pytest_temp_hygiene
+
+    monkeypatch.delenv("TSA_PYTEST_TEMP_ROOT", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(pytest_temp_hygiene.tempfile, "gettempdir", lambda: "/tmp")
+    monkeypatch.setattr(pytest_temp_hygiene, "_current_user_key", lambda: "user-123")
+
+    parent = pytest_temp_hygiene._pytest_temp_parent()
+
+    assert parent.parts[-2:] == ("tsa-temp-cache", "user-123")
+
+
+def test_posix_temp_parent_preserves_system_path_spelling(monkeypatch) -> None:
+    """macOS /var spelling must remain compatible with project path normalization."""
+    from tests import pytest_temp_hygiene
+
+    monkeypatch.delenv("TSA_PYTEST_TEMP_ROOT", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(
+        pytest_temp_hygiene.tempfile,
+        "gettempdir",
+        lambda: "/var/folders/system-temp",
+    )
+    monkeypatch.setattr(pytest_temp_hygiene, "_current_user_key", lambda: "user-501")
+
+    parent = pytest_temp_hygiene._pytest_temp_parent()
+
+    assert parent.as_posix() == "/var/folders/system-temp/tsa-temp-cache/user-501"
+
+
+def test_temp_directory_identity_normalizes_both_paths(monkeypatch) -> None:
+    """macOS filesystem aliases must compare as the same writable directory."""
+    from tests import pytest_temp_hygiene
+
+    observed_paths = []
+    monkeypatch.setattr(
+        Path,
+        "resolve",
+        lambda self: observed_paths.append(self) or Path("/canonical-temp"),
+    )
+
+    result = pytest_temp_hygiene._same_directory(
+        Path("/var/folders/temp"),
+        Path("/private/var/folders/temp"),
+    )
+
+    assert (result, observed_paths) == (
+        True,
+        [Path("/var/folders/temp"), Path("/private/var/folders/temp")],
+    )
+
+
+def test_local_app_data_temp_parent_has_temp_marker(monkeypatch, tmp_path) -> None:
+    """Windows security fixtures must recognize the managed root as temporary."""
+    from tests import pytest_temp_hygiene
+
+    monkeypatch.delenv("TSA_PYTEST_TEMP_ROOT", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    parent = pytest_temp_hygiene._pytest_temp_parent()
+
+    assert parent.name == "temp-runtime"
+
+
+def test_managed_temp_directories_are_private(monkeypatch, tmp_path) -> None:
+    """Managed directory creation must request owner-only permissions."""
+    from tests import pytest_temp_hygiene
+
+    chmod_calls = []
+    monkeypatch.setattr(Path, "chmod", lambda self, mode: chmod_calls.append((self, mode)))
+    private_root = tmp_path / "private"
+
+    pytest_temp_hygiene._ensure_private_directory(private_root)
+
+    assert chmod_calls == [(private_root, 0o700)]
+
+
+def test_configured_basetemp_is_preserved(monkeypatch, tmp_path) -> None:
+    """PYTEST_ADDOPTS and ini basetemp values must override managed defaults."""
+    from tests import pytest_temp_hygiene
+
+    managed_parent = tmp_path / "managed-pytest-temp"
+    configured_basetemp = tmp_path / "configured-basetemp"
+    monkeypatch.setenv("TSA_PYTEST_TEMP_ROOT", str(managed_parent))
+    config = SimpleNamespace(
+        invocation_params=SimpleNamespace(args=()),
+        option=SimpleNamespace(basetemp=str(configured_basetemp)),
+    )
+
+    pytest_temp_hygiene.configure_pytest_temp_root(config)
+
+    assert (config.option.basetemp, managed_parent.exists()) == (
+        str(configured_basetemp),
+        False,
+    )
+
+
+def test_process_probe_uses_non_destructive_pid_lookup(monkeypatch) -> None:
+    """Liveness checks must never send a signal to a Windows process."""
+    from tests import pytest_temp_hygiene
+
+    observed_pids = []
+    monkeypatch.setattr(
+        pytest_temp_hygiene.psutil,
+        "pid_exists",
+        lambda pid: observed_pids.append(pid) or True,
+    )
+
+    result = pytest_temp_hygiene._process_is_running(43210)
+
+    assert (result, observed_pids) == (True, [43210])
+
+
+def test_dead_pytest_process_temp_root_is_removed(tmp_path) -> None:
+    """A later pytest run must reclaim debris left by a killed process."""
+    from tests import pytest_temp_hygiene
+
+    stale_root = tmp_path / "run-99999999-deadbeef"
+    stale_root.mkdir()
+    (stale_root / "orphan.txt").write_text("orphan", encoding="utf-8")
+
+    pytest_temp_hygiene.remove_stale_pytest_temp_roots(tmp_path)
+
+    assert stale_root.exists() is False
+
+
+def test_xdist_worker_keeps_controller_temp_root(monkeypatch, tmp_path) -> None:
+    """Workers must inherit the controller root instead of replacing it."""
+    from tests import pytest_temp_hygiene
+    managed_parent = tmp_path / "managed-pytest-temp"
+    controller_root = managed_parent / "run-12345678-deadbeef"
+    monkeypatch.setenv("TSA_PYTEST_TEMP_ROOT", str(managed_parent))
+    config = SimpleNamespace(
+        invocation_params=SimpleNamespace(args=()),
+        option=SimpleNamespace(basetemp=str(controller_root)),
+        workerinput={},
+    )
+
+    pytest_temp_hygiene.configure_pytest_temp_root(config)
+
+    assert config.option.basetemp == str(controller_root)
+    assert managed_parent.exists() is False
 
 
 def test_cli_fixtures_do_not_create_collectable_python_inside_tests_tree() -> None:
