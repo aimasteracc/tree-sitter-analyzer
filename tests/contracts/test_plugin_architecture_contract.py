@@ -166,6 +166,40 @@ def test_no_new_single_file_plugins_in_languages_root() -> None:
     )
 
 
+def test_analyze_file_does_not_call_self_extract_elements() -> None:
+    """analyze_file must delegate to extractor.extract_xxx(), not self.extract_elements().
+
+    Calling self.extract_elements() from analyze_file bypasses the
+    create_extractor() delegation pattern the rest of the plugins follow,
+    reintroducing the same hidden-coupling risk create_extractor() exists
+    to avoid (see test_analyze_file_uses_create_extractor above).
+    """
+    violations = []
+    for _lang, path in _discover_plugin_files():
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        rel = str(path.relative_to(PROJECT_ROOT))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "analyze_file"
+            ):
+                for child in ast.walk(node):
+                    if (
+                        isinstance(child, ast.Call)
+                        and isinstance(child.func, ast.Attribute)
+                        and child.func.attr == "extract_elements"
+                        and isinstance(child.func.value, ast.Name)
+                        and child.func.value.id == "self"
+                    ):
+                        msg = (
+                            f"{rel}:{child.lineno} analyze_file calls "
+                            f"self.extract_elements() (must use extractor.extract_xxx delegation)"
+                        )
+                        violations.append(msg)
+    assert violations == [], "\n".join(violations)
+
+
 def test_analyze_file_uses_create_extractor() -> None:
     """All analyze_file methods must use create_extractor(), not self.extractor.
 

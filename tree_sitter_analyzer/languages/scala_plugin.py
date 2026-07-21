@@ -173,6 +173,27 @@ def _flatten_scala_elements(elements_dict: dict[str, list[Any]]) -> list[Any]:
     return flat
 
 
+def _build_scala_elements_dict(
+    extractor: ElementExtractor, tree: Any, source_code: str
+) -> dict[str, Any]:
+    """Delegate to ``extractor.extract_xxx`` for each element kind.
+
+    Shared by ``ScalaPlugin.extract_elements`` (public API) and
+    ``ScalaPlugin.analyze_file`` so neither has to call the other —
+    ``analyze_file`` calling ``self.extract_elements()`` was flagged as
+    hidden coupling by the plugin-architecture contract test.
+    """
+    return {
+        "functions": extractor.extract_functions(tree, source_code),
+        "classes": extractor.extract_classes(tree, source_code),
+        "variables": extractor.extract_variables(tree, source_code),
+        "imports": extractor.extract_imports(tree, source_code),
+        "packages": extractor.extract_packages(tree, source_code),
+        "comments": extractor.extract_comments(tree, source_code),  # type: ignore[attr-defined]
+        "annotations": extractor.extract_annotations(tree, source_code),
+    }
+
+
 def _parse_scaladoc_text(comment_text: str) -> str | None:
     """Convert raw ``/** ... */`` scaladoc to the cleaned multi-line string.
 
@@ -1279,9 +1300,9 @@ class ScalaPlugin(LanguagePlugin):
         """Analyze Scala code and return structured results.
 
         r37ed (dogfood): 85 lines → ~15 of orchestration. Per-phase helpers
-        (``_scala_empty_result`` / ``_make_scala_parser`` / ``_flatten_scala_elements``
-        / ``_scala_analysis_result`` / ``_scala_error_result``) own the
-        individual steps; this body is just dispatch.
+        (``_scala_empty_result`` / ``_make_scala_parser`` / ``_build_scala_elements_dict``
+        / ``_flatten_scala_elements`` / ``_scala_analysis_result`` / ``_scala_error_result``)
+        own the individual steps; this body is just dispatch.
         """
 
         try:
@@ -1295,7 +1316,8 @@ class ScalaPlugin(LanguagePlugin):
 
             parser = _make_scala_parser(language)
             tree = parser.parse(file_content.encode("utf-8"))
-            elements_dict = self.extract_elements(tree, file_content)
+            extractor = self.create_extractor()
+            elements_dict = _build_scala_elements_dict(extractor, tree, file_content)
             return self._scala_analysis_result(
                 file_path, file_content, tree, elements_dict
             )
@@ -1375,15 +1397,7 @@ class ScalaPlugin(LanguagePlugin):
             return _empty
         try:
             extractor = self.create_extractor()
-            return {
-                "functions": extractor.extract_functions(tree, source_code),
-                "classes": extractor.extract_classes(tree, source_code),
-                "variables": extractor.extract_variables(tree, source_code),
-                "imports": extractor.extract_imports(tree, source_code),
-                "packages": extractor.extract_packages(tree, source_code),
-                "comments": extractor.extract_comments(tree, source_code),  # type: ignore[attr-defined]
-                "annotations": extractor.extract_annotations(tree, source_code),
-            }
+            return _build_scala_elements_dict(extractor, tree, source_code)
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
             return _empty
