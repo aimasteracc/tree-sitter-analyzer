@@ -353,7 +353,7 @@ class TestScalaPlugin:
         with (
             patch.object(plugin, "get_tree_sitter_language", return_value=MagicMock()),
             patch(
-                "tree_sitter_analyzer.languages.scala_plugin._make_scala_parser",
+                "tree_sitter_analyzer.languages.scala_plugin.plugin._make_scala_parser",
                 return_value=mock_parser,
             ),
             patch.object(plugin, "create_extractor", return_value=mock_extractor),
@@ -424,7 +424,7 @@ class TestGetNodeText:
         node.end_byte = 5
         # Force an exception in safe_encode by making content_lines raise
         with patch(
-            "tree_sitter_analyzer.languages.scala_plugin.safe_encode",
+            "tree_sitter_analyzer.languages.scala_plugin.extractor.safe_encode",
             side_effect=RuntimeError("enc err"),
         ):
             result = e._get_node_text(node)
