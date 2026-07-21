@@ -15,11 +15,11 @@ from benchmarks.codegraph_compare.integrity import (
     _manifest_payload,
     _sha256,
     create_manifest,
+    validate_setup_index_stats,
 )
 from benchmarks.codegraph_compare.schemas import (
     BenchmarkStatus,
     EvalRecordV1,
-    IndexStatsV1,
     RunRecordV1,
 )
 
@@ -60,42 +60,6 @@ def _base_provenance_matches(
     )
 
 
-def _index_partition_is_exact(
-    stats: IndexStatsV1,
-    manifest: ExperimentManifestV1,
-    repo: str,
-) -> bool:
-    eligible_paths = set(dict(manifest.eligible_paths)[repo])
-    indexed_paths = set(stats.indexed_paths)
-    excluded_paths = set(stats.excluded_paths)
-    parse_error_paths = set(stats.parse_error_paths)
-    path_sets = (indexed_paths, excluded_paths, parse_error_paths)
-    partition_is_exact = (
-        not (indexed_paths & excluded_paths)
-        and not (indexed_paths & parse_error_paths)
-        and not (excluded_paths & parse_error_paths)
-        and set().union(*path_sets) == eligible_paths
-    )
-    hashes_match = (
-        stats.indexed_paths_hash == _sha256(list(stats.indexed_paths))
-        and stats.excluded_paths_hash == _sha256(list(stats.excluded_paths))
-        and stats.parse_error_paths_hash == _sha256(list(stats.parse_error_paths))
-    )
-    counts_match = (
-        stats.eligible_source_files == len(eligible_paths)
-        and stats.indexed_source_files == len(indexed_paths)
-        and stats.excluded_source_files == len(excluded_paths)
-        and stats.parse_error_files == len(parse_error_paths)
-    )
-    allowed_errors = set(dict(manifest.parse_error_allowlists)[repo])
-    return (
-        partition_is_exact
-        and hashes_match
-        and counts_match
-        and parse_error_paths == allowed_errors
-    )
-
-
 def _index_stats_violation(
     record: RunRecordV1, manifest: ExperimentManifestV1
 ) -> str | None:
@@ -104,25 +68,12 @@ def _index_stats_violation(
         return "UNEXPECTED_INDEX_STATS" if record.index_stats is not None else None
     if record.status is BenchmarkStatus.NOT_EVALUATED:
         return None
-    stats = record.index_stats
-    if stats is None:
-        return "INDEX_NOT_READY"
-    if (
-        stats.repo_fingerprint != dict(manifest.repo_fingerprints).get(record.repo)
-        or stats.tool_fingerprint != record.tool_fingerprint
-        or stats.eligible_paths_hash
-        != dict(manifest.eligible_paths_hashes).get(record.repo)
-    ):
-        return "MIXED_INDEX_PROVENANCE"
-    required_oracles = set(dict(manifest.required_readiness_oracles)[record.arm])
-    if (
-        stats.eligible_source_files <= 0
-        or stats.indexed_source_files <= 0
-        or not _index_partition_is_exact(stats, manifest, record.repo)
-        or not required_oracles <= set(stats.readiness_oracles)
-    ):
-        return "INDEX_NOT_READY"
-    return None
+    violation = validate_setup_index_stats(
+        record.index_stats, manifest, record.repo, record.arm
+    )
+    if violation == "MIXED_INDEX_PROVENANCE":
+        return violation
+    return "INDEX_NOT_READY" if violation is not None else None
 
 
 def _provenance_violation(

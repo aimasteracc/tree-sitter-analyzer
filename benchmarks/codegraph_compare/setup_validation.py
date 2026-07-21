@@ -1,18 +1,26 @@
 """Fail-closed, model-free setup validation for benchmark matrices.
 
-This module intentionally validates only the runner's basic index-readiness
-boundary. Manifest provenance, exact source partitions, and known-answer query
-checks are separate RFC-0021 slices and can extend this boundary without
-changing the rule that every selected indexed cell is checked first.
+Legacy runs keep the basic index-readiness boundary. Manifest-bound setup-only
+runs consume externally produced ``IndexStatsV1`` evidence and validate its
+provenance, source partition, and declared readiness-oracle results. Producing
+that evidence and executing known-answer queries remain a separate stage; this
+module does not treat oracle names as proof by itself.
 """
 
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any, cast
+
+from benchmarks.codegraph_compare.integrity import (
+    ExperimentManifestV1,
+    validate_setup_index_stats,
+)
+from benchmarks.codegraph_compare.schemas import IndexStatsV1
 
 
 @dataclass(frozen=True)
@@ -34,6 +42,7 @@ class SetupValidationResult:
     failures: tuple[SetupFailure, ...]
     prepared_adapters: dict[tuple[str, str], Any]
     prepared_run_configs: dict[tuple[str, str, str], Any]
+    prepared_index_stats: dict[tuple[str, str], IndexStatsV1]
 
     @property
     def ok(self) -> bool:
@@ -57,6 +66,11 @@ def validate_matrix_setup(
     repo_path_resolver: Callable[[dict], Path],
     adapter_factory: Callable[[str], Any],
     backend_validator: Callable[[str], None] | None = None,
+    manifest: ExperimentManifestV1 | None = None,
+    repeats: int = 1,
+    agent_backend: str = "",
+    model: str | None = None,
+    supplied_index_stats: Mapping[tuple[str, str], IndexStatsV1] | None = None,
 ) -> SetupValidationResult:
     """Prepare every indexed repo/arm cell and collect all basic failures.
 
@@ -67,6 +81,25 @@ def validate_matrix_setup(
     failures: list[SetupFailure] = []
     prepared_adapters: dict[tuple[str, str], Any] = {}
     prepared_run_configs: dict[tuple[str, str, str], Any] = {}
+
+    if manifest is not None:
+        mismatch = _validate_manifest_matrix(
+            repo_entries,
+            arm_entries,
+            questions_by_repo,
+            repeats=repeats,
+            agent_backend=agent_backend,
+            model=model,
+            manifest=manifest,
+        )
+        if mismatch is not None:
+            return SetupValidationResult((mismatch,), {}, {}, {})
+        return _validate_supplied_index_stats(
+            repo_entries,
+            arm_entries,
+            manifest=manifest,
+            supplied_index_stats=supplied_index_stats,
+        )
 
     for repo_entry in repo_entries:
         for arm_entry in arm_entries:
@@ -91,8 +124,141 @@ def validate_matrix_setup(
                 prepared_adapters[(cell.repo_id, cell.arm_id)] = cell.adapter
 
     return SetupValidationResult(
-        tuple(failures), prepared_adapters, prepared_run_configs
+        tuple(failures),
+        prepared_adapters,
+        prepared_run_configs,
+        {},
     )
+
+
+def _validate_manifest_matrix(
+    repo_entries: Sequence[dict],
+    arm_entries: Sequence[dict],
+    questions_by_repo: Mapping[str, Sequence[dict]],
+    *,
+    repeats: int,
+    agent_backend: str,
+    model: str | None,
+    manifest: ExperimentManifestV1,
+) -> SetupFailure | None:
+    actual_cells = [
+        (
+            str(repo["id"]),
+            str(question["id"]),
+            str(arm["id"]),
+            repeat,
+            agent_backend,
+            f"{question['id']}__{arm['id']}__{agent_backend}__{repeat:02d}",
+        )
+        for repo in repo_entries
+        for arm in arm_entries
+        for question in questions_by_repo.get(str(repo["id"]), ())
+        for repeat in range(repeats)
+    ]
+    expected_cells = [
+        (
+            cell.repo,
+            cell.question_id,
+            cell.arm,
+            cell.repeat,
+            cell.agent_backend,
+            cell.run_id,
+        )
+        for cell in manifest.expected_cells
+    ]
+    model_matches = model == manifest.model
+    if Counter(actual_cells) == Counter(expected_cells) and model_matches:
+        return None
+    return _failure(
+        "*",
+        "*",
+        "none",
+        "MATRIX_MANIFEST_MISMATCH",
+        "selected repos, arms, questions, repeats, backend, or model "
+        "do not exactly match the experiment manifest",
+    )
+
+
+def _validate_supplied_index_stats(
+    repo_entries: Sequence[dict],
+    arm_entries: Sequence[dict],
+    *,
+    manifest: ExperimentManifestV1,
+    supplied_index_stats: Mapping[tuple[str, str], IndexStatsV1] | None,
+) -> SetupValidationResult:
+    expected = {
+        (str(repo["id"]), str(arm["id"]))
+        for repo in repo_entries
+        for arm in arm_entries
+        if str(arm["id"]) in manifest.indexed_arms
+    }
+    if supplied_index_stats is None or set(supplied_index_stats) != expected:
+        failure = _failure(
+            "*",
+            "*",
+            "none",
+            "INDEX_EVIDENCE_SET_MISMATCH",
+            "V1 index evidence must exactly cover every selected indexed repo/arm cell",
+        )
+        return SetupValidationResult((failure,), {}, {}, {})
+
+    failures: list[SetupFailure] = []
+    prepared: dict[tuple[str, str], IndexStatsV1] = {}
+    for (repo_id, arm_id), stats in sorted(supplied_index_stats.items()):
+        code = validate_setup_index_stats(stats, manifest, repo_id, arm_id)
+        if code is None:
+            prepared[(repo_id, arm_id)] = stats
+        else:
+            failures.append(
+                _failure(
+                    repo_id,
+                    arm_id,
+                    "evidence",
+                    code,
+                    "strict index evidence does not satisfy the experiment manifest",
+                )
+            )
+    return SetupValidationResult(tuple(failures), {}, {}, prepared)
+
+
+def parse_index_evidence_v1(raw: object) -> dict[tuple[str, str], IndexStatsV1]:
+    """Parse a strict, duplicate-free V1 index-evidence document."""
+
+    if not isinstance(raw, dict) or set(raw) != {"schema_version", "cells"}:
+        raise ValueError("Index evidence must contain only schema_version and cells")
+    if raw["schema_version"] != 1 or not isinstance(raw["cells"], list):
+        raise ValueError(
+            "Index evidence schema_version must be 1 and cells must be a list"
+        )
+    stats_fields = {field.name for field in fields(IndexStatsV1)}
+    tuple_fields = {
+        "indexed_paths",
+        "excluded_paths",
+        "parse_error_paths",
+        "readiness_oracles",
+    }
+    parsed: dict[tuple[str, str], IndexStatsV1] = {}
+    for cell in raw["cells"]:
+        if not isinstance(cell, dict) or set(cell) != {
+            "repo_id",
+            "arm_id",
+            "index_stats",
+        }:
+            raise ValueError(
+                "Each evidence cell must contain repo_id, arm_id, index_stats"
+            )
+        stats_raw = cell["index_stats"]
+        if not isinstance(stats_raw, dict) or set(stats_raw) != stats_fields:
+            raise ValueError("Index evidence fields do not match IndexStatsV1")
+        normalized = {
+            key: tuple(value) if key in tuple_fields else value
+            for key, value in stats_raw.items()
+        }
+        key = (str(cell["repo_id"]), str(cell["arm_id"]))
+        if key in parsed:
+            raise ValueError(f"Duplicate index evidence cell: {key[0]}/{key[1]}")
+        parsed[key] = IndexStatsV1(**cast(Any, normalized))
+    return parsed
 
 
 def _prepare_cell(
@@ -108,7 +274,10 @@ def _prepare_cell(
     index_mode = str(arm_entry.get("index_mode", "warm"))
     if index_mode not in {"none", "warm", "cold"}:
         return None, _failure(
-            repo_id, arm_id, index_mode, "INVALID_INDEX_MODE",
+            repo_id,
+            arm_id,
+            index_mode,
+            "INVALID_INDEX_MODE",
             f"unsupported index_mode: {index_mode}",
         )
 
@@ -232,6 +401,47 @@ def write_setup_failure_evidence(
         "session_id": session_id,
         "status": "setup_failed",
         "model_calls_started": 0,
+        "failures": [
+            {key: value for key, value in asdict(failure).items() if value is not None}
+            for failure in result.failures
+        ],
+    }
+    with path.open("x", encoding="utf-8") as stream:
+        json.dump(payload, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+    return path
+
+
+def write_manifest_setup_evidence(
+    results_dir: Path,
+    *,
+    session_id: str,
+    manifest: ExperimentManifestV1,
+    result: SetupValidationResult,
+) -> Path:
+    """Persist immutable, experiment-scoped strict setup evidence."""
+
+    experiment_dir = results_dir / "experiments" / manifest.manifest_hash
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+    path = experiment_dir / f"setup_{session_id}.json"
+    cells = [
+        {
+            "repo_id": repo_id,
+            "arm_id": arm_id,
+            "index_stats": asdict(stats),
+        }
+        for (repo_id, arm_id), stats in sorted(result.prepared_index_stats.items())
+    ]
+    payload = {
+        "schema_version": 1,
+        "experiment_id": manifest.experiment_id,
+        "manifest_hash": manifest.manifest_hash,
+        "session_id": session_id,
+        "status": "setup_passed" if result.ok else "setup_failed",
+        "validation_level": "manifest-bound-v1-consumer",
+        "publishable": False,
+        "model_calls_started": 0,
+        "cells": cells,
         "failures": [
             {key: value for key, value in asdict(failure).items() if value is not None}
             for failure in result.failures

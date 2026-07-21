@@ -11,6 +11,7 @@ from typing import Any
 
 from benchmarks.codegraph_compare.schemas import (
     EvalRecordV1,
+    IndexStatsV1,
     RunRecordV1,
 )
 
@@ -367,6 +368,72 @@ def parse_manifest_v1(raw: dict[str, Any]) -> ExperimentManifestV1:
     if normalized != manifest:
         raise ValueError("Manifest hash or structure is invalid")
     return manifest
+
+
+def index_partition_is_exact(
+    stats: IndexStatsV1,
+    manifest: ExperimentManifestV1,
+    repo: str,
+) -> bool:
+    """Return whether index path sets exactly partition the manifest inputs."""
+
+    eligible_paths = set(dict(manifest.eligible_paths)[repo])
+    indexed_paths = set(stats.indexed_paths)
+    excluded_paths = set(stats.excluded_paths)
+    parse_error_paths = set(stats.parse_error_paths)
+    path_sets = (indexed_paths, excluded_paths, parse_error_paths)
+    partition_is_exact = (
+        not (indexed_paths & excluded_paths)
+        and not (indexed_paths & parse_error_paths)
+        and not (excluded_paths & parse_error_paths)
+        and set().union(*path_sets) == eligible_paths
+    )
+    hashes_match = (
+        stats.indexed_paths_hash == _sha256(list(stats.indexed_paths))
+        and stats.excluded_paths_hash == _sha256(list(stats.excluded_paths))
+        and stats.parse_error_paths_hash == _sha256(list(stats.parse_error_paths))
+    )
+    counts_match = (
+        stats.eligible_source_files == len(eligible_paths)
+        and stats.indexed_source_files == len(indexed_paths)
+        and stats.excluded_source_files == len(excluded_paths)
+        and stats.parse_error_files == len(parse_error_paths)
+    )
+    allowed_errors = set(dict(manifest.parse_error_allowlists)[repo])
+    return (
+        partition_is_exact
+        and hashes_match
+        and counts_match
+        and parse_error_paths == allowed_errors
+    )
+
+
+def validate_setup_index_stats(
+    stats: object,
+    manifest: ExperimentManifestV1,
+    repo: str,
+    arm: str,
+) -> str | None:
+    """Validate strict V1 index evidence before any model-backed work."""
+
+    if arm not in manifest.indexed_arms:
+        return "UNEXPECTED_INDEX_STATS" if stats is not None else None
+    if not isinstance(stats, IndexStatsV1):
+        return "INDEX_STATS_V1_REQUIRED"
+    if (
+        stats.repo_fingerprint != dict(manifest.repo_fingerprints).get(repo)
+        or stats.tool_fingerprint != dict(manifest.tool_fingerprints).get(arm)
+        or stats.eligible_paths_hash != dict(manifest.eligible_paths_hashes).get(repo)
+    ):
+        return "MIXED_INDEX_PROVENANCE"
+    if stats.eligible_source_files <= 0 or stats.indexed_source_files <= 0:
+        return "INDEX_PARTITION_MISMATCH"
+    if not index_partition_is_exact(stats, manifest, repo):
+        return "INDEX_PARTITION_MISMATCH"
+    required_oracles = set(dict(manifest.required_readiness_oracles)[arm])
+    if not required_oracles <= set(stats.readiness_oracles):
+        return "READINESS_ORACLE_MISMATCH"
+    return None
 
 
 def append_registry_event(path: Path, event: RegistryEvent) -> None:

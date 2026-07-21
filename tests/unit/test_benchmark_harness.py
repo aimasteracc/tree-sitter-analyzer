@@ -499,6 +499,9 @@ class TestCodeGraphCompareSetupGate:
             agent_backend="codex",
             model="gpt-5",
             timeout_seconds=1200,
+            manifest=None,
+            setup_only=False,
+            index_evidence=None,
         )
 
     @staticmethod
@@ -536,9 +539,7 @@ class TestCodeGraphCompareSetupGate:
 
     @staticmethod
     def _patch_matrix_inputs(monkeypatch, tmp_path: Path) -> None:
-        repos, arms, questions = TestCodeGraphCompareSetupGate._matrix_configs(
-            tmp_path
-        )
+        repos, arms, questions = TestCodeGraphCompareSetupGate._matrix_configs(tmp_path)
         configs = {
             compare_run.REPOS_YAML: repos,
             compare_run.ARMS_YAML: arms,
@@ -549,6 +550,402 @@ class TestCodeGraphCompareSetupGate:
             compare_run, "_repo_local_path", lambda repo: Path(repo["local_path"])
         )
         monkeypatch.setattr(compare_run, "RESULTS_DIR", tmp_path / "results")
+
+    @staticmethod
+    def _patch_v1_matrix_inputs(monkeypatch, tmp_path: Path) -> None:
+        configs = {
+            compare_run.REPOS_YAML: [{"id": "gin", "local_path": str(tmp_path)}],
+            compare_run.ARMS_YAML: [
+                {"id": "codegraph-warm", "index_mode": "warm"},
+                {"id": "tsa-warm", "index_mode": "warm"},
+            ],
+            compare_run.QUESTIONS_YAML: [
+                {
+                    "id": "q1",
+                    "repo": "gin",
+                    "prompt": "Where is the entry point?",
+                }
+            ],
+        }
+        monkeypatch.setattr(compare_run, "_load_yaml", configs.__getitem__)
+        monkeypatch.setattr(
+            compare_run, "_repo_local_path", lambda repo: Path(repo["local_path"])
+        )
+        monkeypatch.setattr(compare_run, "RESULTS_DIR", tmp_path / "results")
+
+    @staticmethod
+    def _write_v1_manifest(tmp_path: Path, manifest) -> Path:
+        from dataclasses import asdict
+
+        path = tmp_path / "experiment_manifest.json"
+        path.write_text(json.dumps(asdict(manifest)), encoding="utf-8")
+        return path
+
+    @staticmethod
+    def _write_v1_index_evidence(tmp_path: Path, manifest, *, readiness=True) -> Path:
+        from dataclasses import asdict, replace
+
+        cells = []
+        for arm_id in ("codegraph-warm", "tsa-warm"):
+            record = _v1_run(manifest, f"q1__{arm_id}__codex__00")
+            assert record.index_stats is not None
+            stats = record.index_stats
+            if not readiness and arm_id == "tsa-warm":
+                stats = replace(stats, readiness_oracles=("unexpected-symbol",))
+            cells.append(
+                {"repo_id": "gin", "arm_id": arm_id, "index_stats": asdict(stats)}
+            )
+        path = tmp_path / "index_evidence.json"
+        path.write_text(
+            json.dumps({"schema_version": 1, "cells": cells}), encoding="utf-8"
+        )
+        return path
+
+    def test_manifest_bound_setup_only_writes_success_evidence_without_model_calls(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+
+        manifest = _v1_manifest()
+        manifest_path = self._write_v1_manifest(tmp_path, manifest)
+        evidence_input = self._write_v1_index_evidence(tmp_path, manifest)
+        model_calls = 0
+
+        class Adapter:
+            def __init__(self, arm_id: str) -> None:
+                self.arm_id = arm_id
+
+            def prepare_index(self, repo_path: Path, cold: bool):
+                record = _v1_run(manifest, f"q1__{self.arm_id}__codex__00")
+                assert record.index_stats is not None
+                return record.index_stats
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm_id, repo_path, "system")
+
+        def run_one(**kwargs):
+            nonlocal model_calls
+            model_calls += 1
+            raise AssertionError("setup-only must not call the model")
+
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(monkeypatch, Adapter, run_one)
+        args = self._matrix_args()
+        args.manifest = str(manifest_path)
+        args.setup_only = True
+        args.index_evidence = evidence_input
+
+        assert compare_run.cmd_run_matrix(args) == 0
+        assert model_calls == 0
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert evidence["schema_version"] == 1
+        assert evidence["experiment_id"] == manifest.experiment_id
+        assert evidence["manifest_hash"] == manifest.manifest_hash
+        assert evidence["status"] == "setup_passed"
+        assert evidence["validation_level"] == "manifest-bound-v1-consumer"
+        assert evidence["publishable"] is False
+        assert evidence["model_calls_started"] == 0
+        assert [(cell["repo_id"], cell["arm_id"]) for cell in evidence["cells"]] == [
+            ("gin", "codegraph-warm"),
+            ("gin", "tsa-warm"),
+        ]
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert registry_events == [
+            {
+                "experiment_id": manifest.experiment_id,
+                "manifest_hash": manifest.manifest_hash,
+                "outcome": "setup_started",
+                "status": "PLANNED",
+            },
+            {
+                "experiment_id": manifest.experiment_id,
+                "manifest_hash": manifest.manifest_hash,
+                "outcome": "setup_passed",
+                "status": "PLANNED",
+            },
+        ]
+
+    def test_matrix_manifest_mismatch_fails_before_adapter_creation(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = _v1_manifest()
+        manifest_path = self._write_v1_manifest(tmp_path, manifest)
+        adapter_calls = 0
+        model_calls = 0
+
+        def get_adapter(arm_id: str):
+            nonlocal adapter_calls
+            adapter_calls += 1
+            raise AssertionError("mismatched matrix must not create an adapter")
+
+        def run_one(**kwargs):
+            nonlocal model_calls
+            model_calls += 1
+            raise AssertionError("mismatched matrix must not call the model")
+
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(monkeypatch, get_adapter, run_one)
+        args = self._matrix_args()
+        args.arms = "tsa-warm"
+        args.manifest = str(manifest_path)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+        assert adapter_calls == 0
+        assert model_calls == 0
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_MANIFEST_MISMATCH"
+        ]
+
+    def test_readiness_oracle_mismatch_fails_closed_without_model_calls(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = _v1_manifest()
+        manifest_path = self._write_v1_manifest(tmp_path, manifest)
+        evidence_input = self._write_v1_index_evidence(
+            tmp_path, manifest, readiness=False
+        )
+        model_calls = 0
+
+        def run_one(**kwargs):
+            nonlocal model_calls
+            model_calls += 1
+            raise AssertionError("failed readiness must not call the model")
+
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(
+            monkeypatch,
+            lambda arm_id: (_ for _ in ()).throw(
+                AssertionError("evidence consumer must not create adapters")
+            ),
+            run_one,
+        )
+        args = self._matrix_args()
+        args.manifest = str(manifest_path)
+        args.setup_only = True
+        args.index_evidence = evidence_input
+
+        assert compare_run.cmd_run_matrix(args) == 1
+        assert model_calls == 0
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "READINESS_ORACLE_MISMATCH"
+        ]
+
+    def test_setup_evidence_uses_exclusive_create(self, monkeypatch, tmp_path: Path):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+
+        manifest = _v1_manifest()
+        manifest_path = self._write_v1_manifest(tmp_path, manifest)
+        evidence_input = self._write_v1_index_evidence(tmp_path, manifest)
+        session_id = "20260721T010203000000Z"
+        experiment_dir = tmp_path / "results" / "experiments" / manifest.manifest_hash
+        experiment_dir.mkdir(parents=True)
+        evidence_path = experiment_dir / f"setup_{session_id}.json"
+        evidence_path.write_text("sentinel\n", encoding="utf-8")
+
+        class Adapter:
+            def __init__(self, arm_id: str) -> None:
+                self.arm_id = arm_id
+
+            def prepare_index(self, repo_path: Path, cold: bool):
+                record = _v1_run(manifest, f"q1__{self.arm_id}__codex__00")
+                assert record.index_stats is not None
+                return record.index_stats
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm_id, repo_path, "system")
+
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(
+            monkeypatch,
+            Adapter,
+            lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("setup-only must not call the model")
+            ),
+        )
+        monkeypatch.setattr(
+            compare_run,
+            "datetime",
+            SimpleNamespace(
+                now=lambda timezone: SimpleNamespace(
+                    strftime=lambda pattern: session_id
+                )
+            ),
+        )
+        args = self._matrix_args()
+        args.manifest = str(manifest_path)
+        args.setup_only = True
+        args.index_evidence = evidence_input
+
+        with pytest.raises(FileExistsError):
+            compare_run.cmd_run_matrix(args)
+
+        assert evidence_path.read_text(encoding="utf-8") == "sentinel\n"
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert registry_events == [
+            {
+                "experiment_id": manifest.experiment_id,
+                "manifest_hash": manifest.manifest_hash,
+                "outcome": "setup_started",
+                "status": "PLANNED",
+            },
+            {
+                "experiment_id": manifest.experiment_id,
+                "manifest_hash": manifest.manifest_hash,
+                "outcome": "setup_internal_failed",
+                "status": "BLOCKED",
+            },
+        ]
+
+    def test_invalid_index_evidence_records_started_and_blocked(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = _v1_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = tmp_path / "invalid.json"
+        args.index_evidence.write_text("{not-json", encoding="utf-8")
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert [event["outcome"] for event in registry_events] == [
+            "setup_started",
+            "setup_input_failed",
+        ]
+        assert [event["status"] for event in registry_events] == [
+            "PLANNED",
+            "BLOCKED",
+        ]
+
+    def test_invalid_matrix_yaml_shape_records_started_and_blocked(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = _v1_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        original_load = compare_run._load_yaml
+        monkeypatch.setattr(
+            compare_run,
+            "_load_yaml",
+            lambda path: (
+                [{"local_path": str(tmp_path)}]
+                if path == compare_run.REPOS_YAML
+                else original_load(path)
+            ),
+        )
+        args = self._matrix_args()
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert [event["outcome"] for event in registry_events] == [
+            "setup_started",
+            "setup_input_failed",
+        ]
+
+    def test_setup_only_rejects_dry_run_before_adapter_creation(
+        self, monkeypatch, tmp_path: Path, capsys
+    ):
+        manifest = _v1_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(
+            monkeypatch,
+            lambda arm_id: (_ for _ in ()).throw(
+                AssertionError("invalid setup flags must not create adapters")
+            ),
+            lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("invalid setup flags must not call the model")
+            ),
+        )
+        args = self._matrix_args()
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+        args.dry_run = True
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert "cannot be combined with --dry-run" in capsys.readouterr().err
+
+    def test_duplicate_matrix_entry_is_rejected_before_adapter_creation(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = _v1_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        original_load = compare_run._load_yaml
+        monkeypatch.setattr(
+            compare_run,
+            "_load_yaml",
+            lambda path: (
+                original_load(path) + [original_load(path)[0]]
+                if path == compare_run.ARMS_YAML
+                else original_load(path)
+            ),
+        )
+        self._install_runner_modules(
+            monkeypatch,
+            lambda arm_id: (_ for _ in ()).throw(
+                AssertionError("duplicate matrix must not create adapters")
+            ),
+            lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("duplicate matrix must not call the model")
+            ),
+        )
+        args = self._matrix_args()
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
 
     def test_setup_failure_checks_all_indexed_arms_and_blocks_model_calls(
         self, monkeypatch, tmp_path: Path
@@ -637,7 +1034,9 @@ class TestCodeGraphCompareSetupGate:
         exit_code = compare_run.cmd_run_matrix(self._matrix_args())
 
         assert exit_code == 0
-        first_model = next(i for i, event in enumerate(events) if event.startswith("model:"))
+        first_model = next(
+            i for i, event in enumerate(events) if event.startswith("model:")
+        )
         assert events[:first_model] == [
             "config:native-only",
             "prepare:codegraph-warm",
@@ -709,9 +1108,7 @@ class TestCodeGraphCompareSetupGate:
 
         assert compare_run.cmd_run_matrix(self._matrix_args()) == 1
         assert model_calls == 0
-        evidence_path = next(
-            (tmp_path / "results").glob("setup_failures_*.json")
-        )
+        evidence_path = next((tmp_path / "results").glob("setup_failures_*.json"))
         evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
         assert evidence["failures"] == [
             {
@@ -788,9 +1185,7 @@ class TestCodeGraphCompareSetupGate:
             "validate:codex:codegraph-warm",
             "validate:codex:tsa-warm",
         ]
-        evidence_path = next(
-            (tmp_path / "results").glob("setup_failures_*.json")
-        )
+        evidence_path = next((tmp_path / "results").glob("setup_failures_*.json"))
         evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
         assert [item["code"] for item in evidence["failures"]] == [
             "BACKEND_UNSUPPORTED",
