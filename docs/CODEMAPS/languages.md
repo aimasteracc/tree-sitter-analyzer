@@ -10,7 +10,7 @@ Not every registered plugin is wired into the indexer to the same depth:
 
 - **13 fully wired** (full symbol + call graph): Python, Java, JavaScript, TypeScript, Go, Rust, C, C++, C#, Swift, Kotlin, Ruby, PHP
 - **2 symbol-indexed** (call-graph wiring pending): Bash, Scala — both graduated in v1.22.0
-- **1 partial symbol-indexed**: Lua function symbols; resolved calls and indexed imports pending
+- **1 partial symbol-indexed**: Lua function symbols and same-file resolved calls; cross-file import-based resolution pending
 - **5 data/markup** (reachable via the single-file CLI path): HTML, CSS, Markdown, SQL, YAML
 - **1 scaffold** (plugin exists, indexer wiring pending): JSON
 

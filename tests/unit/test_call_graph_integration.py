@@ -28,6 +28,13 @@ JS_PROJECT = FIXTURES_DIR / "js_project"
 JAVA_PROJECT = FIXTURES_DIR / "java_project"
 GO_PROJECT = FIXTURES_DIR / "go_project"
 C_PROJECT = FIXTURES_DIR / "c_project"
+RUST_PROJECT = FIXTURES_DIR / "rust_project"
+CSHARP_PROJECT = FIXTURES_DIR / "csharp_project"
+KOTLIN_PROJECT = FIXTURES_DIR / "kotlin_project"
+RUBY_PROJECT = FIXTURES_DIR / "ruby_project"
+PHP_PROJECT = FIXTURES_DIR / "php_project"
+SWIFT_PROJECT = FIXTURES_DIR / "swift_project"
+LUA_PROJECT = FIXTURES_DIR / "lua_project"
 
 
 # ============================================================
@@ -83,6 +90,64 @@ class TestCallGraphBuild:
         assert s["function_count"] == 15
         assert s["call_edge_count"] == 8
         assert s["file_count"] == 5
+
+
+class TestCallGraphLanguageParity:
+    """Issue: CallGraph.build() hardcoded a 7-language supported_exts
+    allowlist that silently excluded rust/csharp/kotlin/ruby/php/swift/lua
+    even though function_extraction.py already implements their node-type
+    dispatch tables. These fixtures each define exactly two functions
+    (loadData + main calling it), so the exact count is pinned per the
+    no-approximate-assertions rule."""
+
+    def test_build_rust_project(self):
+        cg = CallGraph(str(RUST_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"load_data", "process_data", "main"}
+
+    def test_build_csharp_project(self):
+        cg = CallGraph(str(CSHARP_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"LoadData", "ProcessData", "Main"}
+
+    def test_build_kotlin_project(self):
+        cg = CallGraph(str(KOTLIN_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"loadData", "processData", "main"}
+
+    def test_build_ruby_project(self):
+        cg = CallGraph(str(RUBY_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"load_data", "process_data", "main"}
+
+    def test_build_php_project(self):
+        cg = CallGraph(str(PHP_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"loadData", "processData", "main"}
+
+    def test_build_swift_project(self):
+        cg = CallGraph(str(SWIFT_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"loadData", "processData", "main"}
+
+    def test_build_lua_project(self):
+        cg = CallGraph(str(LUA_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"loadData", "processData", "main"}
 
 
 class TestCallGraphCallersOf:
