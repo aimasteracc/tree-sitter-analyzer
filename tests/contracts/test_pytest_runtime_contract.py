@@ -281,7 +281,37 @@ def test_posix_temp_parent_is_neutral_and_user_scoped(monkeypatch) -> None:
 
     parent = pytest_temp_hygiene._pytest_temp_parent()
 
-    assert parent.parts[-2:] == ("tsa-run-cache", "user-123")
+    assert parent.parts[-2:] == ("tsa-temp-cache", "user-123")
+
+
+def test_posix_temp_parent_preserves_system_path_spelling(monkeypatch) -> None:
+    """macOS /var spelling must remain compatible with project path normalization."""
+    from tests import pytest_temp_hygiene
+
+    monkeypatch.delenv("TSA_PYTEST_TEMP_ROOT", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(
+        pytest_temp_hygiene.tempfile,
+        "gettempdir",
+        lambda: "/var/folders/system-temp",
+    )
+    monkeypatch.setattr(pytest_temp_hygiene, "_current_user_key", lambda: "user-501")
+
+    parent = pytest_temp_hygiene._pytest_temp_parent()
+
+    assert parent.as_posix() == "/var/folders/system-temp/tsa-temp-cache/user-501"
+
+
+def test_local_app_data_temp_parent_has_temp_marker(monkeypatch, tmp_path) -> None:
+    """Windows security fixtures must recognize the managed root as temporary."""
+    from tests import pytest_temp_hygiene
+
+    monkeypatch.delenv("TSA_PYTEST_TEMP_ROOT", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    parent = pytest_temp_hygiene._pytest_temp_parent()
+
+    assert parent.name == "temp-runtime"
 
 
 def test_managed_temp_directories_are_private(monkeypatch, tmp_path) -> None:

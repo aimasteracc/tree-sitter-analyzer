@@ -33,11 +33,15 @@ def _pytest_temp_parent() -> Path:
 
     local_app_data = os.environ.get("LOCALAPPDATA")
     if local_app_data:
-        return Path(local_app_data).resolve() / "tree-sitter-analyzer" / "runtime"
+        return (
+            Path(local_app_data).resolve()
+            / "tree-sitter-analyzer"
+            / "temp-runtime"
+        )
 
     return (
-        Path(tempfile.gettempdir()).resolve()
-        / "tsa-run-cache"
+        Path(tempfile.gettempdir())
+        / "tsa-temp-cache"
         / _current_user_key()
     )
 
