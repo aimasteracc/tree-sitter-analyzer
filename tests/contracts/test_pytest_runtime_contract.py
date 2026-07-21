@@ -302,6 +302,28 @@ def test_posix_temp_parent_preserves_system_path_spelling(monkeypatch) -> None:
     assert parent.as_posix() == "/var/folders/system-temp/tsa-temp-cache/user-501"
 
 
+def test_temp_directory_identity_normalizes_both_paths(monkeypatch) -> None:
+    """macOS filesystem aliases must compare as the same writable directory."""
+    from tests import pytest_temp_hygiene
+
+    observed_paths = []
+    monkeypatch.setattr(
+        Path,
+        "resolve",
+        lambda self: observed_paths.append(self) or Path("/canonical-temp"),
+    )
+
+    result = pytest_temp_hygiene._same_directory(
+        Path("/var/folders/temp"),
+        Path("/private/var/folders/temp"),
+    )
+
+    assert (result, observed_paths) == (
+        True,
+        [Path("/var/folders/temp"), Path("/private/var/folders/temp")],
+    )
+
+
 def test_local_app_data_temp_parent_has_temp_marker(monkeypatch, tmp_path) -> None:
     """Windows security fixtures must recognize the managed root as temporary."""
     from tests import pytest_temp_hygiene

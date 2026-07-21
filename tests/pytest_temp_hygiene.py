@@ -52,6 +52,11 @@ def _ensure_private_directory(path: Path) -> None:
     path.chmod(0o700)
 
 
+def _same_directory(first: Path, second: Path) -> bool:
+    """Return whether two path spellings identify the same directory."""
+    return first.resolve() == second.resolve()
+
+
 def _process_is_running(pid: int) -> bool:
     """Return whether a process id still belongs to a live process."""
     return psutil.pid_exists(pid)
@@ -115,7 +120,7 @@ def configure_pytest_temp_root(config: Any) -> None:
     for variable in _TEMP_VARIABLES:
         os.environ[variable] = str(session_root)
     tempfile.tempdir = None
-    if Path(tempfile.gettempdir()).resolve() != session_root:
+    if not _same_directory(Path(tempfile.gettempdir()), session_root):
         _restore_process_temp_settings(config)
         shutil.rmtree(session_root, ignore_errors=True)
         raise RuntimeError(f"pytest temp root is not writable: {session_root}")
