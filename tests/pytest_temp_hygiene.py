@@ -10,7 +10,19 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import psutil
+
 _MANAGED_TEMP_PATTERN = re.compile(r"run-(?P<pid>\d+)-[0-9a-f]{8}")
+_TEMP_VARIABLES = ("TEMP", "TMP", "TMPDIR")
+
+
+def _current_user_key() -> str:
+    """Return a filesystem-safe identifier for the current user."""
+    if hasattr(os, "getuid"):
+        return f"user-{os.getuid()}"
+    username = os.environ.get("USERNAME", "unknown")
+    safe_username = re.sub(r"[^A-Za-z0-9_.-]", "_", username)
+    return f"user-{safe_username}"
 
 
 def _pytest_temp_parent() -> Path:
@@ -23,20 +35,22 @@ def _pytest_temp_parent() -> Path:
     if local_app_data:
         return Path(local_app_data).resolve() / "tree-sitter-analyzer" / "runtime"
 
-    return Path(tempfile.gettempdir()).resolve() / "tsa-run-cache"
+    return (
+        Path(tempfile.gettempdir()).resolve()
+        / "tsa-run-cache"
+        / _current_user_key()
+    )
+
+
+def _ensure_private_directory(path: Path) -> None:
+    """Create a directory and restrict it to the current user."""
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.chmod(0o700)
 
 
 def _process_is_running(pid: int) -> bool:
     """Return whether a process id still belongs to a live process."""
-    if pid == os.getpid():
-        return True
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
+    return psutil.pid_exists(pid)
 
 
 def remove_stale_pytest_temp_roots(parent: Path) -> None:
@@ -54,8 +68,25 @@ def remove_stale_pytest_temp_roots(parent: Path) -> None:
 
 
 def _has_explicit_basetemp(config: Any) -> bool:
+    if getattr(config.option, "basetemp", None) is not None:
+        return True
     args = tuple(str(arg) for arg in config.invocation_params.args)
     return any(arg == "--basetemp" or arg.startswith("--basetemp=") for arg in args)
+
+
+def _restore_process_temp_settings(config: Any) -> None:
+    previous_environment = getattr(
+        config, "_tsa_previous_temp_environment", None
+    )
+    if previous_environment is None:
+        return
+
+    for variable, value in previous_environment.items():
+        if value is None:
+            os.environ.pop(variable, None)
+        else:
+            os.environ[variable] = value
+    tempfile.tempdir = config._tsa_previous_tempfile_tempdir
 
 
 def configure_pytest_temp_root(config: Any) -> None:
@@ -66,19 +97,26 @@ def configure_pytest_temp_root(config: Any) -> None:
         return
 
     parent = _pytest_temp_parent()
-    parent.mkdir(parents=True, exist_ok=True)
+    _ensure_private_directory(parent)
     remove_stale_pytest_temp_roots(parent)
     session_root = parent / f"run-{os.getpid()}-{uuid.uuid4().hex[:8]}"
-    session_root.mkdir()
+    _ensure_private_directory(session_root)
 
-    for variable in ("TEMP", "TMP", "TMPDIR"):
+    config._tsa_previous_temp_environment = {
+        variable: os.environ.get(variable) for variable in _TEMP_VARIABLES
+    }
+    config._tsa_previous_tempfile_tempdir = tempfile.tempdir
+    config._tsa_pytest_temp_root = session_root
+
+    for variable in _TEMP_VARIABLES:
         os.environ[variable] = str(session_root)
     tempfile.tempdir = None
     if Path(tempfile.gettempdir()).resolve() != session_root:
+        _restore_process_temp_settings(config)
+        shutil.rmtree(session_root, ignore_errors=True)
         raise RuntimeError(f"pytest temp root is not writable: {session_root}")
 
     config.option.basetemp = str(session_root / "work")
-    config._tsa_pytest_temp_root = session_root
 
 
 def cleanup_pytest_temp_root(config: Any) -> None:
@@ -87,6 +125,8 @@ def cleanup_pytest_temp_root(config: Any) -> None:
     if session_root is None:
         return
 
+    _restore_process_temp_settings(config)
+    config._tsa_pytest_temp_root = None
     parent = session_root.parent
     shutil.rmtree(session_root, ignore_errors=True)
     try:
