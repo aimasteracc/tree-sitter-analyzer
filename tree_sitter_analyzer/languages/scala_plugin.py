@@ -1317,7 +1317,18 @@ class ScalaPlugin(LanguagePlugin):
             parser = _make_scala_parser(language)
             tree = parser.parse(file_content.encode("utf-8"))
             extractor = self.create_extractor()
-            elements_dict = _build_scala_elements_dict(extractor, tree, file_content)
+            try:
+                elements_dict = _build_scala_elements_dict(
+                    extractor, tree, file_content
+                )
+            except Exception as e:
+                # Preserve extract_elements()'s graceful-degradation contract:
+                # a failure inside one extract_xxx() call must still return a
+                # successful, empty-elements AnalysisResult (correct
+                # source_code/line_count), not the outer except's
+                # success=False/empty-source error result (Codex #1158).
+                log_error(f"Error extracting elements: {e}")
+                elements_dict = {k: [] for k in _SCALA_ELEMENT_KEYS}
             return self._scala_analysis_result(
                 file_path, file_content, tree, elements_dict
             )
