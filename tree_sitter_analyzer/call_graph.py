@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from .callee_resolution import CalleeResolver
+from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from .core.parser import Parser, ParseResult
 from .function_extraction import SUPPORTED_LANGUAGES as _FUNC_EXTRACTION_LANGUAGES
 from .function_extraction import (
@@ -36,27 +37,12 @@ SUPPORTED_EXTS: frozenset[str] = frozenset(
     ext for ext, lang in EXT_TO_LANG.items() if lang in _FUNC_EXTRACTION_LANGUAGES
 )
 
-_EXCLUDE_DIRS = {
-    "node_modules",
-    ".git",
-    ".hg",
-    ".svn",
-    "__pycache__",
-    ".venv",
-    "venv",
-    ".tox",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "dist",
-    "build",
-    "htmlcov",
-    ".cache",
-    ".eggs",
-    ".idea",
-    ".vscode",
-    ".claude",
-}
+# _EXCLUDE_DIRS used to be a second, independently-maintained copy of
+# constants.EXCLUDE_DIRS missing target/obj/vendor/Pods/DerivedData (Codex
+# #1157 P1): once rust/csharp/php/swift files were admitted by SUPPORTED_EXTS
+# above, this scanner started walking into their build/vendor directories,
+# which can be enormous and made graph construction appear to hang. Import
+# the canonical set instead of re-copying it.
 
 
 class FunctionRef:

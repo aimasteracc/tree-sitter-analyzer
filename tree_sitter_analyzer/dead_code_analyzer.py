@@ -76,6 +76,16 @@ _KNOWN_ENTRY_PATTERNS = {
     "go": re.compile(r"^(main|init|TestMain)$"),
     "c": re.compile(r"^(main|WinMain)$"),
     "cpp": re.compile(r"^(main|WinMain)$"),
+    # Added alongside call_graph.py's language-parity fix (Codex P1 #1157):
+    # rust/csharp/kotlin/swift all have one unambiguous entry-point
+    # convention. ruby/php/lua are intentionally NOT added here — they
+    # execute top-level script code directly rather than via a single named
+    # entry function, so a regex guess would be as likely to be wrong as
+    # right; dead-code detection for those three remains a known follow-up.
+    "rust": re.compile(r"^(main)$"),
+    "csharp": re.compile(r"^(Main)$"),
+    "kotlin": re.compile(r"^(main)$"),
+    "swift": re.compile(r"^(main)$"),
 }
 
 _TEST_FILE_PATTERNS = re.compile(

@@ -63,14 +63,15 @@ def test_call_graph_supported_exts_covers_function_extraction_languages() -> Non
     """CallGraph's file-scan allowlist must not silently narrow past what
     function_extraction.py already knows how to walk.
 
-    Regression: CallGraph.build() historically hardcoded its own 7-language
-    supported_exts set, independent of function_extraction's per-language
-    dispatch tables. Rust/C#/Kotlin/Ruby/PHP/Swift/Lua all had working
-    _FUNC_DEF_TYPES/_CALL_NODE_TYPES entries but were silently excluded from
-    every CodeGraph-parity tool (--call-graph, --callers, --callees,
-    dead-code detection, codegraph_* MCP tools) because the file scanner
-    dropped their files before parsing. See call_graph.py's SUPPORTED_EXTS
-    docstring.
+    Regression: found in the 2026-07-21 architecture-consistency dogfood
+    pass (PR #1157). CallGraph.build() historically hardcoded its own
+    7-language supported_exts set, independent of function_extraction's
+    per-language dispatch tables. Rust/C#/Kotlin/Ruby/PHP/Swift/Lua all had
+    working _FUNC_DEF_TYPES/_CALL_NODE_TYPES entries but were silently
+    excluded from every CodeGraph-parity tool (--call-graph, --callers,
+    --callees, dead-code detection, codegraph_* MCP tools) because the file
+    scanner dropped their files before parsing. See call_graph.py's
+    SUPPORTED_EXTS docstring.
     """
     from tree_sitter_analyzer.call_graph import SUPPORTED_EXTS
     from tree_sitter_analyzer.function_extraction import SUPPORTED_LANGUAGES

@@ -1,5 +1,6 @@
 """Unit tests for call_graph.py — CallGraph integration tests."""
 
+import importlib
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,24 @@ from tree_sitter_analyzer.call_graph import (
     CallGraph,
     FunctionRef,
 )
+
+
+def _grammar_available(module_name: str) -> bool:
+    """Return True when an optional tree-sitter grammar package is importable.
+
+    tree-sitter-swift and tree-sitter-lua are optional extras, not part of
+    the default dev/test dependency set (Codex #1157). Mirrors the guard
+    pattern already used by test_swift_plugin.py / test_lua_plugin.py.
+    """
+    try:
+        importlib.import_module(module_name)
+        return True
+    except ImportError:
+        return False
+
+
+_SWIFT_GRAMMAR_AVAILABLE = _grammar_available("tree_sitter_swift")
+_LUA_GRAMMAR_AVAILABLE = _grammar_available("tree_sitter_lua")
 
 # Historical: this marker first gated three call_graph cross-file
 # resolution tests as Windows-only. Then we discovered Linux CI fails
@@ -93,7 +112,8 @@ class TestCallGraphBuild:
 
 
 class TestCallGraphLanguageParity:
-    """Issue: CallGraph.build() hardcoded a 7-language supported_exts
+    """Regression: found in the 2026-07-21 architecture-consistency dogfood
+    pass (PR #1157). CallGraph.build() hardcoded a 7-language supported_exts
     allowlist that silently excluded rust/csharp/kotlin/ruby/php/swift/lua
     even though function_extraction.py already implements their node-type
     dispatch tables. These fixtures each define exactly two functions
@@ -135,6 +155,10 @@ class TestCallGraphLanguageParity:
         names = {f["name"] for f in funcs}
         assert names == {"loadData", "processData", "main"}
 
+    @pytest.mark.skipif(
+        not _SWIFT_GRAMMAR_AVAILABLE,
+        reason="tree-sitter-swift not installed",
+    )
     def test_build_swift_project(self):
         cg = CallGraph(str(SWIFT_PROJECT))
         cg.build()
@@ -142,6 +166,10 @@ class TestCallGraphLanguageParity:
         names = {f["name"] for f in funcs}
         assert names == {"loadData", "processData", "main"}
 
+    @pytest.mark.skipif(
+        not _LUA_GRAMMAR_AVAILABLE,
+        reason="tree_sitter_lua not installed; tracked: optional-dep skip",
+    )
     def test_build_lua_project(self):
         cg = CallGraph(str(LUA_PROJECT))
         cg.build()
