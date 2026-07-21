@@ -46,6 +46,14 @@ _FUNC_DEF_TYPES = {
     "swift": {"function_declaration"},
 }
 
+# Languages this module can extract function definitions and call sites
+# for. Single source of truth for callers (e.g. CallGraph.build()) that
+# need to know which files are worth walking — do NOT re-derive this list
+# independently; a hardcoded copy is exactly what let call_graph.py's file
+# scanner silently exclude rust/csharp/kotlin/ruby/php/swift/lua for
+# months even after their dispatch entries above were added.
+SUPPORTED_LANGUAGES = frozenset(_FUNC_DEF_TYPES) | frozenset(_CALL_NODE_TYPES)
+
 # ---------------------------------------------------------------------------
 # Per-language function-name extractors
 # ---------------------------------------------------------------------------

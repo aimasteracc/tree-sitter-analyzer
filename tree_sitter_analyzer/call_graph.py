@@ -3,8 +3,9 @@
 Call Graph — Bidirectional function-level call tracking.
 
 Builds a directed graph of function/method calls within a project using
-Tree-sitter AST parsing. Supports Python, JavaScript, TypeScript, Java,
-Go, and C/C++.
+Tree-sitter AST parsing. Supported languages are derived from
+``function_extraction.SUPPORTED_LANGUAGES`` (see ``SUPPORTED_EXTS`` below),
+not hardcoded here.
 
 Key classes:
 - CallGraph: Construct and query function-level call relationships
@@ -13,38 +14,35 @@ Key classes:
 
 import os
 from collections import defaultdict, deque
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import Any
 
 from .callee_resolution import CalleeResolver
+from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from .core.parser import Parser, ParseResult
+from .function_extraction import SUPPORTED_LANGUAGES as _FUNC_EXTRACTION_LANGUAGES
 from .function_extraction import (
     walk_tree as _walk_tree,
 )
 from .import_extractors import walk_imports
+from .languages.lang_extension_map import EXT_TO_LANG
 from .project_graph import _language_from_ext
 
-_EXCLUDE_DIRS = {
-    "node_modules",
-    ".git",
-    ".hg",
-    ".svn",
-    "__pycache__",
-    ".venv",
-    "venv",
-    ".tox",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "dist",
-    "build",
-    "htmlcov",
-    ".cache",
-    ".eggs",
-    ".idea",
-    ".vscode",
-    ".claude",
-}
+# Derived (not hardcoded) from EXT_TO_LANG — the project's single source
+# of truth for ext->language — filtered to languages function_extraction
+# actually knows how to walk. See function_extraction.SUPPORTED_LANGUAGES
+# docstring for why a hardcoded copy of this set is a recurring bug class.
+SUPPORTED_EXTS: frozenset[str] = frozenset(
+    ext for ext, lang in EXT_TO_LANG.items() if lang in _FUNC_EXTRACTION_LANGUAGES
+)
+
+# _EXCLUDE_DIRS used to be a second, independently-maintained copy of
+# constants.EXCLUDE_DIRS missing target/obj/vendor/Pods/DerivedData (Codex
+# #1157 P1): once rust/csharp/php/swift files were admitted by SUPPORTED_EXTS
+# above, this scanner started walking into their build/vendor directories,
+# which can be enormous and made graph construction appear to hang. Import
+# the canonical set instead of re-copying it.
 
 
 class FunctionRef:
@@ -131,21 +129,7 @@ class CallGraph:
         if self._built:
             return
 
-        supported_exts = {
-            ".py",
-            ".js",
-            ".ts",
-            ".jsx",
-            ".tsx",
-            ".java",
-            ".go",
-            ".c",
-            ".cpp",
-            ".cc",
-            ".cxx",
-        }
-
-        all_files = self._iter_source_files(supported_exts)
+        all_files = self._iter_source_files(SUPPORTED_EXTS)
 
         rel_to_abs: dict[str, str] = {}
         for f in all_files:
@@ -241,7 +225,7 @@ class CallGraph:
             rel_parts = path.parts
         return any(part in _EXCLUDE_DIRS or part.startswith(".") for part in rel_parts)
 
-    def _iter_source_files(self, supported_exts: set[str]) -> list[Path]:
+    def _iter_source_files(self, supported_exts: AbstractSet[str]) -> list[Path]:
         """Return source files while pruning generated and hidden work dirs."""
         files: list[Path] = []
         for root, dirs, names in os.walk(self.project_root):
@@ -651,7 +635,7 @@ class CallGraph:
         """
         return self._is_excluded(path)
 
-    def iter_source_files(self, supported_exts: set) -> list["Path"]:
+    def iter_source_files(self, supported_exts: AbstractSet[str]) -> list["Path"]:
         """Public alias for :meth:`_iter_source_files`.
 
         Yields source files under the project root whose suffix is in

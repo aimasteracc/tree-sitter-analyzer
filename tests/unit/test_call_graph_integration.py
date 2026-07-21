@@ -1,5 +1,6 @@
 """Unit tests for call_graph.py — CallGraph integration tests."""
 
+import importlib
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,24 @@ from tree_sitter_analyzer.call_graph import (
     CallGraph,
     FunctionRef,
 )
+
+
+def _grammar_available(module_name: str) -> bool:
+    """Return True when an optional tree-sitter grammar package is importable.
+
+    tree-sitter-swift and tree-sitter-lua are optional extras, not part of
+    the default dev/test dependency set (Codex #1157). Mirrors the guard
+    pattern already used by test_swift_plugin.py / test_lua_plugin.py.
+    """
+    try:
+        importlib.import_module(module_name)
+        return True
+    except ImportError:
+        return False
+
+
+_SWIFT_GRAMMAR_AVAILABLE = _grammar_available("tree_sitter_swift")
+_LUA_GRAMMAR_AVAILABLE = _grammar_available("tree_sitter_lua")
 
 # Historical: this marker first gated three call_graph cross-file
 # resolution tests as Windows-only. Then we discovered Linux CI fails
@@ -28,6 +47,13 @@ JS_PROJECT = FIXTURES_DIR / "js_project"
 JAVA_PROJECT = FIXTURES_DIR / "java_project"
 GO_PROJECT = FIXTURES_DIR / "go_project"
 C_PROJECT = FIXTURES_DIR / "c_project"
+RUST_PROJECT = FIXTURES_DIR / "rust_project"
+CSHARP_PROJECT = FIXTURES_DIR / "csharp_project"
+KOTLIN_PROJECT = FIXTURES_DIR / "kotlin_project"
+RUBY_PROJECT = FIXTURES_DIR / "ruby_project"
+PHP_PROJECT = FIXTURES_DIR / "php_project"
+SWIFT_PROJECT = FIXTURES_DIR / "swift_project"
+LUA_PROJECT = FIXTURES_DIR / "lua_project"
 
 
 # ============================================================
@@ -83,6 +109,73 @@ class TestCallGraphBuild:
         assert s["function_count"] == 15
         assert s["call_edge_count"] == 8
         assert s["file_count"] == 5
+
+
+class TestCallGraphLanguageParity:
+    """Regression: found in the 2026-07-21 architecture-consistency dogfood
+    pass (PR #1157). CallGraph.build() hardcoded a 7-language supported_exts
+    allowlist that silently excluded rust/csharp/kotlin/ruby/php/swift/lua
+    even though function_extraction.py already implements their node-type
+    dispatch tables. These fixtures each define exactly two functions
+    (loadData + main calling it), so the exact count is pinned per the
+    no-approximate-assertions rule."""
+
+    def test_build_rust_project(self):
+        cg = CallGraph(str(RUST_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"load_data", "process_data", "main"}
+
+    def test_build_csharp_project(self):
+        cg = CallGraph(str(CSHARP_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"LoadData", "ProcessData", "Main"}
+
+    def test_build_kotlin_project(self):
+        cg = CallGraph(str(KOTLIN_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"loadData", "processData", "main"}
+
+    def test_build_ruby_project(self):
+        cg = CallGraph(str(RUBY_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"load_data", "process_data", "main"}
+
+    def test_build_php_project(self):
+        cg = CallGraph(str(PHP_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"loadData", "processData", "main"}
+
+    @pytest.mark.skipif(
+        not _SWIFT_GRAMMAR_AVAILABLE,
+        reason="tree-sitter-swift not installed",
+    )
+    def test_build_swift_project(self):
+        cg = CallGraph(str(SWIFT_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"loadData", "processData", "main"}
+
+    @pytest.mark.skipif(
+        not _LUA_GRAMMAR_AVAILABLE,
+        reason="tree_sitter_lua not installed; tracked: optional-dep skip",
+    )
+    def test_build_lua_project(self):
+        cg = CallGraph(str(LUA_PROJECT))
+        cg.build()
+        funcs = cg.all_functions()
+        names = {f["name"] for f in funcs}
+        assert names == {"loadData", "processData", "main"}
 
 
 class TestCallGraphCallersOf:
