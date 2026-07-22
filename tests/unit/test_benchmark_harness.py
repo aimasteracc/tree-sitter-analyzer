@@ -588,8 +588,9 @@ class TestCodeGraphCompareSetupGate:
         cells = []
         for arm_id in ("codegraph-warm", "tsa-warm"):
             record = _v1_run(manifest, f"q1__{arm_id}__codex__00")
-            assert record.index_stats is not None
             stats = record.index_stats
+            if stats is None:
+                pytest.fail(f"{arm_id} fixture must include V1 index statistics")
             if not readiness and arm_id == "tsa-warm":
                 stats = replace(stats, readiness_oracles=("unexpected-symbol",))
             cells.append(

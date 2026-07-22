@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-22T00:33:37Z",
+  "pattern": "pr-ci-repair",
+  "duration_s": 900,
+  "items_found": 1,
+  "actions_taken": 1,
+  "escalations": 0,
+  "tokens_estimate": 20000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1160 Weak Assertion Ratchet: replaced a fixture type-narrowing `assert ... is not None` with an explicit pytest failure; ratchet, benchmark harness, Ruff, and full pytest passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-15T00:00:00Z",
   "pattern": "tsa-self-repair",
   "duration_s": 420,
