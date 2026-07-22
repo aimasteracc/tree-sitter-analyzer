@@ -1,59 +1,87 @@
-# Loop Configuration — Codegraph #1 (Claude Code)
+# Loop Configuration — tree-sitter-analyzer No.1
 
-## Mission
+## Mission and proof standard
 
-**Become the #1 project in the codegraph industry.**
+Become the most trusted code-intelligence tool for AI coding agents. “No.1” is
+not a feature-count claim. Promotion requires four forms of evidence:
 
-- High-performance initial indexing (parallel pool, SQLite WAL + mmap tuning)
-- Graph database with centrality metrics and auto-build after every index
-- Visualization on par with Sourcegraph and CodeGraph (force-directed layout, DOT, GraphML)
-- Agent neural interface: 16-language moat, Synapse resolver, full MCP tool suite
+1. real agent task success or defect prevention;
+2. a reproducible benchmark against named outside baselines;
+3. bounded latency, installation and cross-platform reliability;
+4. self-dogfood results whose false positives and misses are tracked.
 
-**Dogfood protocol:** TSA uses its own MCP tools and skills to audit and repair its own
-codebase before writing a single line of code. Fixing TSA makes TSA a more trustworthy
-agent tool, which makes the next fix faster.
+SQLite remains the canonical index and LadybugDB a graph projection. JSON is
+not a persistence layer.
 
-## Active Loops
+## Priority scheduler
 
-| Pattern | Cadence | Status | Command |
-|---------|---------|--------|---------|
-| Daily Triage (dogfood) | 1d weekdays | L1 report-only | `/loop 1d $loop-triage` |
-| Architecture Fix | on-demand | L2 worktree | Invoke `$tsa-self-repair` skill |
+Only the first eligible loop runs; lower rows wait for higher actionable work.
 
-## Dogfood Protocol — Required MCP Calls Per Triage Run
+| Priority | Pattern | Trigger | Early exit | Action mode |
+|---:|---|---|---|---|
+| 0 | CI Sweeper | `develop` or active PR red | required checks green | L2, one cause |
+| 1 | PR Babysitter | check/review changed | no new failure/thread | L1→L2 |
+| 2 | Post-merge Cleanup | PR merged | worktree/artifacts clean | L2 |
+| 3 | No.1 Delivery | measurable queue item | throttle or no evidence plan | L2 |
+| 4 | Competitive Evidence | claim due/changed | evidence unchanged | L1→L2 |
+| 5 | Daily Triage | weekday | no state change | L1 report-only |
 
-Every triage run MUST call TSA's own MCP tools before writing its report:
+## Required protocol
 
-1. `mcp__tree-sitter-analyzer__health action=overview` — project health snapshot
-2. `mcp__tree-sitter-analyzer__structure action=sitemap mode=module` — language module landscape
-3. `mcp__tree-sitter-analyzer__nav action=xref symbol=register_language` — moat coverage check
-4. `mcp__tree-sitter-analyzer__health action=dead` — find orphaned code in language modules
-5. `mcp__tree-sitter-analyzer__edit action=constraints` — check architectural constraints
+### Before action
 
-These calls are ground truth. Do not substitute grep or file reads when a TSA MCP call
-can answer the question.
+1. Read constraints, budget, state and the last run log.
+2. Record visible `weekly_plan_used_pct`; otherwise apply the fallback.
+3. Fetch `origin/develop`; use GitFlow and an isolated worktree for L2.
+4. Run and time TSA health, safe-to-edit and change-impact first. Incorrect
+   recommendations are product defects, not unquestioned instructions.
+5. State one acceptance criterion and one stop condition.
 
-## Human Gates
+### During action
 
-- No auto-merge to develop or main — all PRs require human review
-- Moat changes (`synapse_resolver/`): human review before merge
-- RFC implementations: design review required before any code
+- One branch owner, one root cause, one finished PR.
+- TDD for behaviour; never lower timeout, performance or coverage gates.
+- Verify TSA's file/test routing against the actual subsystem.
+- Stop after three failed attempts and append evidence to the run log.
 
-## Worktrees
+### No-progress circuit breaker
 
-- Use `isolation: worktree` for all architecture changes (L2+)
-- One worktree per fix; run `pytest tests/ -x --timeout=60` before proposing PR
-- Discard worktree after verifier REJECT or after 3 failed attempts
+- Fingerprint each failure by command, normalized error and changed-file set.
+- The same fingerprint twice forbids repeating the same action; return to L1
+  diagnosis and require new evidence or a different bounded intervention.
+- Three failed attempts halt that queue item, record it in `STATE.md` and the
+  run log, and escalate. A different higher-priority independent item may run;
+  the halted action may not silently restart.
+- A run with no state, evidence, check or review change is a no-op and exits.
 
-## Budget
+### After action
 
-- Max sub-agent spawns per run: 2 (L2)
-- Token cap: see `loop-budget.md`
-- Kill switch: add `loop-pause-all` to STATE.md High Priority section
+1. Re-run change-impact and its exact command plus the relevant test.
+2. Run patch coverage and `uv run pytest -q` at the queue boundary. Do not
+   override `TMP`/`TEMP`; pytest owns its external managed temp root.
+3. Create a Draft PR and watch CI plus thread-aware Codex reviews.
+4. Never auto-merge. After human merge, run Post-merge Cleanup.
+5. Append reusable dogfood evidence to run log and project memory.
 
-## Links
+## Active queues
 
-- Pattern: `patterns/daily-triage.md` (in loop-engineering repo)
-- Checklist: `docs/loop-design-checklist.md` (in loop-engineering repo)
-- Self-repair skill: `.claude/skills/tsa-self-repair/SKILL.md`
-- Triage skill: `.claude/skills/loop-triage/SKILL.md`
+| Queue | Current item | Proof of completion |
+|---|---|---|
+| CI/PR | PR #1161 constraint SQL prefilter | all CI/build + no unresolved Codex thread |
+| Agent feedback | wrong same-name test and ~96 s impact | correct test + latency invariant |
+| Health trust | `no_data` graded F | unknown separated from measured failure |
+| Competitive proof | PR #1160 benchmark manifests | reproducible baselines and dashboard |
+
+## Human gates
+
+- Draft PR first; never auto-merge to `develop` or `main`.
+- Human review before moat/schema/RFC/public-surface changes.
+- Release/hotfix flows remain governed by `GITFLOW.md`.
+- `loop-pause-all` stops every loop immediately.
+
+## State ownership
+
+- Mission/queue: `STATE.md`
+- Budget/throttle: `loop-budget.md`
+- Append-only evidence: `loop-run-log.md`
+- Mutable implementation state stays in its branch/worktree.

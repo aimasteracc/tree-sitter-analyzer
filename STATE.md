@@ -1,16 +1,38 @@
 # Loop State — tree-sitter-analyzer
 
-Last run: 2026-07-15 (codegraph #1 mission — full auto)
+Last run: 2026-07-22 (CI Sweeper + No.1 loop calibration)
 
 ## Mission
 
-**Become the #1 project in the codegraph industry.**
+**Become the most trusted code-intelligence tool for AI coding agents.**
+
+No.1 requires reproducible task, benchmark, reliability and dogfood evidence;
+feature inventory alone is not proof of competitive leadership.
 
 Key pillars:
 1. **Indexing performance** — fast initial index, low latency incremental
 2. **Graph database excellence** — centrality metrics, auto-build, agent-readable
 3. **Visualization** — force-directed layout, DOT/GraphML/HTML export (competitor-parity)
 4. **Agent neural interface** — 16-language moat, Synapse resolver, MCP tool suite
+
+## High Priority
+
+- `loop-pause-all`: clear
+- `weekly_plan_used_pct`: unknown — record from the Codex Max UI before
+  speculative L2 work; CI/review closure remains allowed.
+- PR #1161: CI green and no Codex review threads at the 2026-07-22 snapshot.
+- Next product defect: change-impact took ~96 seconds and recommended
+  `tests/unit/hyphae/test_evaluator.py` for `constraints/evaluator.py`.
+- Next trust defect: project health reports `no_data` as grade F, creating 776
+  critical-looking false signals in the self-repository snapshot.
+
+## Loop Queue
+
+1. Close PR #1161 review/CI lifecycle without auto-merge.
+2. Fix change-impact same-basename routing and feedback latency.
+3. Separate health `unknown/no_data` from measured F grades.
+4. Turn PR #1160 manifests into reproducible competitor evidence.
+5. Re-measure installation, first/incremental index and agent task success.
 
 ---
 
@@ -80,17 +102,18 @@ Key pillars:
 
 ---
 
-## Competitive Benchmarks
+## Feature Inventory (not competitive proof)
 
-| Feature | TSA | Sourcegraph | CodeGraph |
-|---------|-----|-------------|-----------|
-| Force-directed layout | NEW | yes | yes |
-| DOT/Graphviz export | NEW | no | no |
-| GraphML export | NEW | no | partial |
-| Degree centrality metadata | NEW | no | no |
-| Auto-built graph after index | NEW | manual | manual |
-| 16-language moat | yes | yes | 8 |
-| MCP agent interface | yes | no | no |
+| Feature | TSA implementation | Outside baseline status |
+|---------|--------------------|-------------------------|
+| Force-directed layout | implemented | re-measure required |
+| DOT/Graphviz export | implemented | re-measure required |
+| GraphML export | implemented | re-measure required |
+| Degree centrality metadata | implemented | re-measure required |
+| Auto-built graph after index | implemented | re-measure required |
+| Language support | 16 resolver claim | manifest/invariant required |
+| MCP agent interface | implemented | agent-task comparison required |
 
 ---
-Run log: 2026-07-15 codegraph mission — indexing perf + centrality + auto-KG + force-viz + DOT + GraphML
+Run log: see `loop-run-log.md`; competitive claims remain unproven until the
+benchmark evidence queue is complete.

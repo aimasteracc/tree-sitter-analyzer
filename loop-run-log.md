@@ -17,6 +17,47 @@ Append one entry per run. Prune entries older than 30 days.
 }
 ```
 
+```json
+{
+  "run_id": "2026-07-22T01:00:00Z",
+  "pattern": "daily-triage",
+  "duration_s": 180,
+  "items_found": 4,
+  "actions_taken": 0,
+  "escalations": 1,
+  "tokens_estimate": 40000,
+  "outcome": "report-only",
+  "summary": "develop CI red on the 50k-edge constraint performance invariant; project health also returned 776 F grades whose signal was no_data; safe/file health and change-impact exceeded 60 seconds.",
+  "decision": "CI Sweeper outranks feature work; handle one root cause and queue health-signal trust separately."
+}
+```
+
+```json
+{
+  "run_id": "2026-07-22T03:37:00Z",
+  "pattern": "ci-sweeper",
+  "duration_s": 7200,
+  "items_found": 3,
+  "actions_taken": 1,
+  "escalations": 0,
+  "tokens_estimate": 296000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1161 pushes necessary caller-prefix filtering into SQLite. Windows 50k edges x 5 rules produced 8000 violations at a 192.7 ms seven-run median; default pytest passed 1261 tests in 109.43 seconds; patch coverage and CI build passed.",
+  "dogfood": {
+    "signals": [
+      "change-impact staged took about 96 seconds",
+      "change-impact routed constraints/evaluator.py to hyphae/test_evaluator.py",
+      "overriding TMP/TEMP caused an 8+ minute run; leaving them unset restored 109.43 seconds"
+    ],
+    "followups": [
+      "fix same-basename test routing",
+      "add feedback latency invariant",
+      "distinguish no_data from F health grades"
+    ]
+  }
+}
+```
+
 ## Recent Runs
 
 <!-- Loop appends below this line -->
