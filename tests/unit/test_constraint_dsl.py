@@ -551,6 +551,45 @@ class TestEvaluator:
             f"Excepted caller must produce zero violations, got: {violations}"
         )
 
+    def test_evaluate_keeps_rows_when_from_glob_has_no_literal_prefix(
+        self, tmp_path: Path
+    ) -> None:
+        """A leading wildcard disables SQL prefix filtering without data loss."""
+        from tree_sitter_analyzer.constraints import evaluate
+        from tree_sitter_analyzer.constraints.schema import Constraint
+
+        db_path = tmp_path / "index.db"
+        _build_call_edges_db(
+            db_path,
+            rows=[
+                (
+                    "use_cli",
+                    "custom/bridge.py",
+                    7,
+                    "run_cli",
+                    "run_cli",
+                    "cli/runner.py",
+                ),
+            ],
+        )
+        constraint = Constraint(
+            id="wildcard-caller",
+            severity="error",
+            rule="forbid",
+            from_glob="**",
+            to_glob="cli/**",
+            reason="test wildcard fallback",
+        )
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            violations = evaluate([constraint], conn)
+        finally:
+            conn.close()
+
+        assert len(violations) == 1
+        assert violations[0].rule_id == "wildcard-caller"
+
     @pytest.mark.slow_ok
     @pytest.mark.quarantine
     @pytest.mark.timeout(120)

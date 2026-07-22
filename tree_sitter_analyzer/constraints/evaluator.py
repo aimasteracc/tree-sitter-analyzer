@@ -97,8 +97,8 @@ def _iter_violations(
     """
     seen: set[tuple[str, str, int, str]] = set()
     import_index = _build_import_index(db_conn)
-    select_sql = _build_select_sql(db_conn)
-    cursor = db_conn.execute(select_sql)
+    select_sql, select_params = _build_select_query(db_conn, compiled)
+    cursor = db_conn.execute(select_sql, select_params)
     for row in cursor:
         caller_name, caller_file, caller_line, callee_name, callee_file = row
         if not callee_file:
@@ -227,8 +227,11 @@ def _callee_is_imported(
     return full_module in caller_imports or terminal in caller_imports
 
 
-def _build_select_sql(db_conn: sqlite3.Connection) -> str:
-    """Build the per-DB SELECT statement over the unified ``edges`` table.
+def _build_select_query(
+    db_conn: sqlite3.Connection,
+    compiled: list[_CompiledConstraint],
+) -> tuple[str, tuple[str, ...]]:
+    """Build the parameterized SELECT over the unified ``edges`` table.
 
     CALLS edges now live in ``edges`` with every resolution scalar promoted to
     a real column (B1.3). The callee file prefers ``callee_resolved_file`` and
@@ -236,16 +239,29 @@ def _build_select_sql(db_conn: sqlite3.Connection) -> str:
     resolved — preserving the legacy ``CASE WHEN callee_resolved_file != ''``
     behaviour.
 
-    The ``db_conn`` argument is retained for signature compatibility.
+    Rules with a literal caller prefix cannot match rows outside that prefix.
+    Push that necessary condition into SQLite so the Python hot loop only sees
+    plausible candidates. ``instr`` is case-sensitive and treats glob-special
+    characters literally, preserving the regex matcher's path semantics.
+
+    If any rule has no literal prefix, the query must retain every CALLS row
+    because that rule may match anywhere. The ``db_conn`` argument is retained
+    for signature compatibility.
     """
     callee_expr = (
         "CASE WHEN callee_resolved_file != '' "
         "THEN callee_resolved_file "
         "ELSE file_path END"
     )
-    return (
+    select_sql = (
         "SELECT caller_name, file_path AS caller_file, "
         "caller_line, callee_name, "
         f"{callee_expr} AS callee_file "  # nosec B608 — callee_expr is constructed from internal constants only
         "FROM edges WHERE kind = 'calls'"
     )
+    prefixes = tuple(dict.fromkeys(cc.from_prefix for cc in compiled))
+    if not prefixes or "" in prefixes:
+        return select_sql, ()
+
+    prefix_filter = " OR ".join("instr(file_path, ?) = 1" for _ in prefixes)
+    return f"{select_sql} AND ({prefix_filter})", prefixes
