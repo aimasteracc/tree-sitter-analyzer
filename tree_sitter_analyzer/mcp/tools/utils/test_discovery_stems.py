@@ -10,7 +10,43 @@ def related_test_stems_for_path(file_path: str | Path) -> list[str]:
     stems = python_package_test_stems(file_path)
     stems.extend(module_family_test_stems(file_path))
     stems.extend(fixture_test_stems(file_path))
+    stems.extend(stem for stem in source_subsystem_stems(file_path) if len(stem) > 6)
     return _unique_nonempty_stems(stems)
+
+
+def source_subsystem_stems(file_path: str | Path) -> list[str]:
+    """Return package subsystem names that can disambiguate generic modules."""
+    normalized = Path(str(file_path).replace("\\", "/"))
+    parts = normalized.parts
+    if "tree_sitter_analyzer" not in parts:
+        return []
+
+    package_index = parts.index("tree_sitter_analyzer")
+    if package_index + 2 > len(parts) - 1:
+        return []
+
+    subsystem = parts[package_index + 1]
+    stems = [subsystem]
+    if subsystem in {"cli", "mcp"}:
+        return []
+    if subsystem.endswith("s") and len(subsystem) > 4:
+        stems.append(subsystem[:-1])
+    return _unique_nonempty_stems(stems)
+
+
+def test_path_has_subsystem_affinity(test_file: str, changed_file: str) -> bool:
+    """Return whether a same-stem test belongs to the changed subsystem."""
+    subsystem_stems = source_subsystem_stems(changed_file)
+    if not subsystem_stems:
+        return True
+
+    normalized_test = Path(test_file.replace("\\", "/"))
+    test_parts = set(normalized_test.parts[:-1])
+    test_stem = normalized_test.stem
+    return any(
+        subsystem_stem in test_parts or related_stem_matches(test_stem, subsystem_stem)
+        for subsystem_stem in subsystem_stems
+    )
 
 
 def python_package_test_stems(file_path: str | Path) -> list[str]:

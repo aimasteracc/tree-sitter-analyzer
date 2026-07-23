@@ -440,6 +440,51 @@ def test_find_test_files_maps_extracted_analysis_modules_to_family_tests():
     ] == ["tests/unit/mcp/test_change_impact_tool.py"]
 
 
+def test_find_test_files_disambiguates_constraint_evaluator_by_subsystem():
+    """A generic evaluator stem must not cross into the Hyphae subsystem."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/constraints/evaluator.py"],
+        {
+            "tests/unit/hyphae/test_evaluator.py",
+            "tests/unit/test_constraint_dsl.py",
+        },
+    )
+
+    # Dogfood 2026-07-22: change-impact previously selected only Hyphae here.
+    assert mapping["tree_sitter_analyzer/constraints/evaluator.py"] == [
+        "tests/unit/test_constraint_dsl.py"
+    ]
+
+
+def test_find_test_files_keeps_same_stem_with_matching_subsystem():
+    """A same-stem test remains valid when its subsystem path also matches."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/hyphae/evaluator.py"],
+        {
+            "tests/unit/hyphae/test_evaluator.py",
+            "tests/unit/test_constraint_dsl.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/hyphae/evaluator.py"] == [
+        "tests/unit/hyphae/test_evaluator.py"
+    ]
+
+
+def test_find_test_files_keeps_direct_match_when_tests_omit_subsystem_path():
+    """A lone direct match remains useful when no affinity match exists."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/core/engine.py"],
+        {
+            "tests/unit/test_engine.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/core/engine.py"] == [
+        "tests/unit/test_engine.py"
+    ]
+
+
 def test_find_test_files_maps_refactoring_plan_builder_to_family_tests():
     """The precise-plan builder should not force auto-discovery."""
     mapping = change_impact_tool._find_test_files(

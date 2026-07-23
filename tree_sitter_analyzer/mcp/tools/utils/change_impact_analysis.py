@@ -34,7 +34,11 @@ from .constraint_violation_query import (
     verdict_from_violations,
     violations_for_files,
 )
-from .test_discovery_stems import related_stem_matches, related_test_stems_for_path
+from .test_discovery_stems import (
+    related_stem_matches,
+    related_test_stems_for_path,
+    test_path_has_subsystem_affinity,
+)
 from .verification_command import (
     DefaultTestCommand,
     build_test_command,
@@ -97,7 +101,14 @@ def _find_test_files(
             for test_file in sorted(test_files)
             if _test_file_matches_change(test_file, changed_file)
         ]
-        mapping[changed_file] = related or [AUTO_DISCOVER_TEST_HINT]
+        subsystem_related = [
+            test_file
+            for test_file in related
+            if test_path_has_subsystem_affinity(test_file, changed_file)
+        ]
+        mapping[changed_file] = (
+            subsystem_related or related or [AUTO_DISCOVER_TEST_HINT]
+        )
 
     return mapping
 
