@@ -385,6 +385,37 @@ def test_process_probe_uses_non_destructive_pid_lookup(monkeypatch) -> None:
     assert (result, observed_pids) == (True, [43210])
 
 
+def test_terminal_summary_ignores_process_exit_race(monkeypatch) -> None:
+    """A vanished controller must not hide unrelated terminal reporting."""
+    import psutil
+
+    from tests import conftest
+
+    # Incident 2026-07-26: the suite reached 100%, then psutil lost /proc/<pid>.
+    quarantined_test = "tests/unit/test_flaky.py::test_case"
+    monkeypatch.setattr(conftest, "QUARANTINED_TESTS", [quarantined_test])
+    monkeypatch.setattr(
+        psutil,
+        "Process",
+        lambda pid: (_ for _ in ()).throw(psutil.NoSuchProcess(pid)),
+    )
+    events = []
+
+    conftest.pytest_terminal_summary(
+        SimpleNamespace(
+            write_sep=lambda *args: events.append(("sep", args)),
+            write_line=lambda line: events.append(("line", line)),
+        ),
+        0,
+        SimpleNamespace(),
+    )
+
+    assert events == [
+        ("sep", ("=", "quarantined tests (1)")),
+        ("line", quarantined_test),
+    ]
+
+
 def test_dead_pytest_process_temp_root_is_removed(tmp_path) -> None:
     """A later pytest run must reclaim debris left by a killed process."""
     from tests import pytest_temp_hygiene
