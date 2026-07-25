@@ -196,9 +196,9 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
                     cache.index_project(max_files=max_files, force=True)
                 )
             sync = IncrementalSync(cache)
-            # IncrementalSync treats indexed files outside max_files as deleted.
-            # Knowledge graph update must be safe on large repos, so use a full
-            # scan floor and reserve max_files as a full-build cap.
+            # Knowledge graph updates intentionally use a full-scan floor so the
+            # materialized graph covers the complete project. ``max_files``
+            # remains the explicit cap for full builds.
             safe_max_files = max(max_files, 1_000_000)
             return _compact_sync_report(sync.sync(max_files=safe_max_files).to_dict())
         finally:

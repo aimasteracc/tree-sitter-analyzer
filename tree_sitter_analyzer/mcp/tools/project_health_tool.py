@@ -310,6 +310,7 @@ def _build_project_health_result(
         payload["total_files_scanned"] = scanned
         payload["total_files_analyzed"] = analyzed
         payload["total_files_skipped"] = int(walk_stats.get("total_files_skipped", 0))
+        payload["pruned_directories"] = int(walk_stats.get("pruned_directories", 0))
         payload["skip_reasons"] = walk_stats.get(
             "skip_reasons", {"excluded_dir": 0, "scoring_failed": 0}
         )
