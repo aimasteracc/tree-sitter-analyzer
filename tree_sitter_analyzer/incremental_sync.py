@@ -272,12 +272,15 @@ class IncrementalSync:
                 "error_message": str(exc),
             }
         status = index_result.get("status", "unknown")
-        return {
+        detail = {
             "file": rel_path,
             "considered": "indexed",
             "action": "indexed",
             "status": status,
         }
+        if status == "error" and "reason" in index_result:
+            detail["reason"] = index_result["reason"]
+        return detail
 
     def _reindex_modified(
         self,
@@ -316,12 +319,15 @@ class IncrementalSync:
                 "error_message": str(exc),
             }
         status = index_result.get("status", "unknown")
-        return {
+        detail = {
             "file": rel_path,
             "considered": "updated",
             "action": "updated",
             "status": status,
         }
+        if status == "error" and "reason" in index_result:
+            detail["reason"] = index_result["reason"]
+        return detail
 
     def get_changes(self) -> dict[str, list[str]]:
         """
