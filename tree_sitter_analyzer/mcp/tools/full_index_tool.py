@@ -29,6 +29,19 @@ from .base_tool import BaseMCPTool
 logger = setup_logger(__name__)
 
 
+def _resolve_exclude_patterns(
+    extra_patterns: list[str],
+    no_default_excludes: bool,
+) -> frozenset[str]:
+    """Resolve the one effective scope shared by both indexing phases."""
+    from ...cache.indexer import _DEFAULT_EXCLUDE_PATTERNS
+
+    extra = frozenset(pattern.replace("\\", "/") for pattern in extra_patterns)
+    if no_default_excludes:
+        return extra
+    return _DEFAULT_EXCLUDE_PATTERNS | extra
+
+
 class CodeGraphFullIndexTool(BaseMCPTool):
     """MCP Tool for one-shot complete project intelligence indexing."""
 
@@ -96,7 +109,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                     "items": {"type": "string"},
                     "description": (
                         "Additional fnmatch glob patterns (relative to project root) "
-                        "to exclude from indexing. Example: [\"tests/golden/corpus_*\"]. "
+                        'to exclude from indexing. Example: ["tests/golden/corpus_*"]. '
                         "Combined with built-in defaults unless no_default_excludes=true."
                     ),
                     "default": [],
@@ -140,6 +153,10 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
         extra_patterns: list[str] = list(arguments.get("exclude_patterns", None) or [])
         no_default_excludes: bool = bool(arguments.get("no_default_excludes", False))
+        exclude_patterns = _resolve_exclude_patterns(
+            extra_patterns,
+            no_default_excludes,
+        )
 
         phases: dict[str, Any] = {}
         t_start = time.monotonic()
@@ -151,11 +168,13 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             mode == "full",
             max_files,
             include_activation=include_activation,
-            extra_exclude_patterns=extra_patterns,
-            no_default_excludes=no_default_excludes,
+            exclude_patterns=exclude_patterns,
         )
         phases["ast_cache"] = ast_phase
-        phases["incremental_sync"] = self._phase_incremental_sync()
+        phases["incremental_sync"] = self._phase_incremental_sync(
+            max_files,
+            exclude_patterns,
+        )
         phases["fts5"] = self._phase_fts5_stats()
 
         if resolve_synapse:
@@ -197,19 +216,14 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         max_files: int,
         *,
         include_activation: bool = False,
-        extra_exclude_patterns: list[str] | None = None,
-        no_default_excludes: bool = False,
+        exclude_patterns: frozenset[str] | None = None,
     ) -> dict[str, Any]:
         t0 = time.monotonic()
         try:
             from ...ast_cache import ASTCache
-            from ...cache.indexer import _DEFAULT_EXCLUDE_PATTERNS
 
-            extra: frozenset[str] = frozenset(extra_exclude_patterns or [])
-            if no_default_excludes:
-                exclude_patterns: frozenset[str] = extra
-            else:
-                exclude_patterns = _DEFAULT_EXCLUDE_PATTERNS | extra
+            if exclude_patterns is None:
+                exclude_patterns = _resolve_exclude_patterns([], False)
 
             cache = ASTCache(self.project_root or ".")
             result = cache.index_project(
@@ -243,15 +257,24 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "elapsed_seconds": round(time.monotonic() - t0, 3),
             }
 
-    def _phase_incremental_sync(self) -> dict[str, Any]:
+    def _phase_incremental_sync(
+        self,
+        max_files: int = 20_000,
+        exclude_patterns: frozenset[str] | None = None,
+    ) -> dict[str, Any]:
         t0 = time.monotonic()
         try:
             from ...ast_cache import ASTCache
             from ...incremental_sync import IncrementalSync
 
+            if exclude_patterns is None:
+                exclude_patterns = _resolve_exclude_patterns([], False)
             cache = ASTCache(self.project_root or ".")
             sync = IncrementalSync(cache)
-            result = sync.sync(max_files=20_000)
+            result = sync.sync(
+                max_files=max_files,
+                exclude_patterns=exclude_patterns,
+            )
             cache.close()
             elapsed = round(time.monotonic() - t0, 3)
             # #860: surface DB flush failures — sync catches them into result.errors
