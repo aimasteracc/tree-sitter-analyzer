@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
 from tree_sitter_analyzer.mcp.utils.error_sanitizer import (
+    bounded_safe_error_message,
     safe_error_message,
+    sanitize_error_detail,
     sanitize_exception,
     sanitize_message,
 )
@@ -48,6 +51,126 @@ class TestSanitizeMessage:
         once = sanitize_message(msg, str(tmp_path))
         twice = sanitize_message(once, str(tmp_path))
         assert once == twice
+
+    @pytest.mark.parametrize(
+        ("message", "expected"),
+        [
+            ("failure path=/etc/shadow", "failure path=<external-path>"),
+            ("failure [/etc/shadow]", "failure [<external-path>]"),
+            ("failure {/etc/shadow}", "failure {<external-path>}"),
+        ],
+    )
+    def test_external_path_is_redacted_at_punctuation_boundaries(
+        self,
+        message: str,
+        expected: str,
+        tmp_path: Path,
+    ):
+        assert sanitize_message(message, str(tmp_path)) == expected
+
+    def test_project_path_is_relative_at_equals_boundary(self, tmp_path: Path):
+        target = tmp_path / "src" / "bad.py"
+        assert sanitize_message(f"path={target}", str(tmp_path)) == "path=./src/bad.py"
+
+    @pytest.mark.parametrize("prefix", ["failure-", "failure_", "failure."])
+    def test_external_path_is_redacted_after_word_punctuation(
+        self,
+        prefix: str,
+        tmp_path: Path,
+    ):
+        assert (
+            sanitize_message(f"{prefix}/etc/shadow", str(tmp_path))
+            == f"{prefix}<external-path>"
+        )
+
+    def test_unquoted_external_path_with_spaces_is_fully_redacted(self, tmp_path: Path):
+        assert (
+            sanitize_message(
+                "failed /Users/alice/My Secrets/key.txt",
+                str(tmp_path),
+            )
+            == "failed <external-path>"
+        )
+
+    def test_unquoted_project_path_with_spaces_stays_actionable(self, tmp_path: Path):
+        target = tmp_path / "My Secrets" / "key.txt"
+        assert (
+            sanitize_message(f"failed {target}", str(tmp_path))
+            == "failed ./My Secrets/key.txt"
+        )
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX host path interpretation")
+    @pytest.mark.parametrize(
+        "external_path",
+        [r"C:\Users\alice\secret.txt", r"\\server\share\secret.txt"],
+    )
+    def test_windows_paths_are_not_treated_as_project_relative_on_posix(
+        self,
+        external_path: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.chdir(tmp_path)
+        cleaned = sanitize_message(f"denied {external_path}", str(tmp_path))
+        assert cleaned == "denied <external-path>"
+
+
+class TestSanitizeErrorDetail:
+    def test_sanitizes_copy_without_mutating_core_detail(self, tmp_path: Path):
+        detail = {
+            "file": str(tmp_path / "src" / "bad.py"),
+            "status": "error",
+            "error_message": "denied /etc/shadow",
+        }
+
+        cleaned = sanitize_error_detail(detail, str(tmp_path))
+
+        assert cleaned == {
+            "file": "./src/bad.py",
+            "status": "error",
+            "error_message": "denied <external-path>",
+        }
+        assert detail["file"] == str(tmp_path / "src" / "bad.py")
+        assert detail["error_message"] == "denied /etc/shadow"
+
+    def test_truncation_is_exact_and_explicit(self):
+        cleaned = sanitize_error_detail(
+            {"file": "src/bad.swift", "status": "error", "reason": "x" * 501}
+        )
+
+        assert cleaned["reason"] == ("x" * 497) + "..."
+        assert cleaned["reason_truncated"] is True
+
+    def test_structured_file_path_handles_spaces(self, tmp_path: Path):
+        project_root = tmp_path / "my project"
+        file_path = project_root / "src folder" / "bad.py"
+
+        cleaned = sanitize_error_detail(
+            {"file": str(file_path), "status": "error"},
+            str(project_root),
+        )
+
+        assert cleaned["file"] == "./src folder/bad.py"
+
+    def test_structured_file_path_redacts_relative_traversal(self, tmp_path: Path):
+        cleaned = sanitize_error_detail(
+            {"file": "../outside/secret.py", "status": "error"},
+            str(tmp_path),
+        )
+
+        assert cleaned["file"] == "<external-path>"
+
+    def test_unknown_fields_are_dropped(self):
+        cleaned = sanitize_error_detail(
+            {
+                "file": "src/bad.py",
+                "status": "error",
+                "context": "path=/etc/passwd",
+                "blob": "x" * 2_000,
+            }
+        )
+
+        assert cleaned == {"file": "src/bad.py", "status": "error"}
 
 
 class TestSanitizeException:
@@ -94,6 +217,17 @@ class TestSafeErrorMessage:
             out = safe_error_message(e, str(tmp_path), include_class=False)
             assert "ValueError" not in out
             assert "boom" in out
+
+    def test_bounded_message_reports_exact_truncation(self, tmp_path: Path):
+        message, truncated = bounded_safe_error_message(
+            RuntimeError("x" * 1_000),
+            str(tmp_path),
+            prefix="Sync failed: ",
+        )
+
+        assert len(message) == 500
+        assert message.endswith("...")
+        assert truncated is True
 
 
 class TestIntegrationWithErrorRecovery:

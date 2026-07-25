@@ -18,12 +18,24 @@ from typing import Any
 from ...incremental_sync import IncrementalSync
 from ...utils import setup_logger
 from ..utils.auto_index_guard import ensure_indexed, is_indexed
+from ..utils.error_sanitizer import (
+    bounded_safe_error_message,
+    sanitize_error_detail,
+)
 from ..utils.format_helper import apply_toon_format_to_response
 from ._response_builder import build_error, build_response
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
+
+
+def _safe_close_cache(cache: Any) -> None:
+    """Close an owned cache without masking the primary tool result."""
+    try:
+        cache.close()
+    except Exception as exc:
+        logger.debug("AST cache close failed (%s)", type(exc).__name__)
 
 
 class CodeGraphIncrementalSyncTool(BaseMCPTool):
@@ -117,21 +129,42 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
             result = build_error(error="Failed to initialize AST cache")
             return apply_toon_format_to_response(result, output_format)
 
-        sync = IncrementalSync(cache)
         try:
+            sync = IncrementalSync(cache)
             sync_result = sync.sync(max_files=max_files)
         except Exception as exc:
-            logger.exception("Incremental sync raised %s", type(exc).__name__)
+            logger.error("Incremental sync raised %s", type(exc).__name__)
+            error, truncated = bounded_safe_error_message(
+                exc,
+                str(self.project_root),
+                prefix="Sync failed: ",
+            )
             result = build_error(
-                error=f"Sync failed ({type(exc).__name__}): {exc}",
+                error=error,
+                error_truncated=truncated,
             )
             return apply_toon_format_to_response(result, output_format)
+        finally:
+            _safe_close_cache(cache)
 
+        payload = sync_result.to_dict()
+        raw_details = payload.get("details", [])
+        details = raw_details if isinstance(raw_details, list) else []
+        payload["details"] = [
+            sanitize_error_detail(detail, str(self.project_root))
+            for detail in details
+            if isinstance(detail, dict)
+        ]
+        invalid_details_dropped = len(details) - len(payload["details"])
+        if not isinstance(raw_details, list):
+            invalid_details_dropped += 1
+        if invalid_details_dropped:
+            payload["invalid_details_dropped"] = invalid_details_dropped
         result = build_response(
-            verdict="INFO",
+            verdict="WARN" if sync_result.errors > 0 else "INFO",
             project_root=self.project_root,
             mode="sync",
-            **sync_result.to_dict(),
+            **payload,
         )
         return apply_toon_format_to_response(result, output_format)
 
@@ -141,12 +174,22 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
             result = build_error(error="Failed to initialize AST cache")
             return apply_toon_format_to_response(result, output_format)
 
-        sync = IncrementalSync(cache)
         try:
+            sync = IncrementalSync(cache)
             changes = sync.get_changes()
         except Exception as exc:
-            result = build_error(error=f"Change detection failed: {exc}")
+            error, truncated = bounded_safe_error_message(
+                exc,
+                str(self.project_root),
+                prefix="Change detection failed: ",
+            )
+            result = build_error(
+                error=error,
+                error_truncated=truncated,
+            )
             return apply_toon_format_to_response(result, output_format)
+        finally:
+            _safe_close_cache(cache)
 
         new_count = len(changes.get("new", []))
         modified_count = len(changes.get("modified", []))
@@ -169,30 +212,32 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
         from ...ast_cache import ASTCache
 
         cache = ASTCache(str(self.project_root))
-        stats = cache.get_stats()
-
         try:
-            sync = IncrementalSync(cache)
-            changes = sync.get_changes()
-            pending_changes = (
-                len(changes.get("new", []))
-                + len(changes.get("modified", []))
-                + len(changes.get("deleted", []))
+            stats = cache.get_stats()
+
+            try:
+                sync = IncrementalSync(cache)
+                changes = sync.get_changes()
+                pending_changes = (
+                    len(changes.get("new", []))
+                    + len(changes.get("modified", []))
+                    + len(changes.get("deleted", []))
+                )
+            except Exception:
+                pending_changes = -1
+
+            up_to_date = pending_changes == 0 if pending_changes >= 0 else None
+
+            result = build_response(
+                verdict="INFO",
+                project_root=self.project_root,
+                mode="status",
+                indexed_files=stats.get("total_files", 0),
+                total_symbols=stats.get("total_symbols", 0),
+                fts5_available=stats.get("fts5_available", False),
+                pending_changes=pending_changes,
+                up_to_date=up_to_date,
             )
-        except Exception:
-            pending_changes = -1
-            changes = {}
-
-        up_to_date = pending_changes == 0 if pending_changes >= 0 else None
-
-        result = build_response(
-            verdict="INFO",
-            project_root=self.project_root,
-            mode="status",
-            indexed_files=stats.get("total_files", 0),
-            total_symbols=stats.get("total_symbols", 0),
-            fts5_available=stats.get("fts5_available", False),
-            pending_changes=pending_changes,
-            up_to_date=up_to_date,
-        )
-        return apply_toon_format_to_response(result, output_format)
+            return apply_toon_format_to_response(result, output_format)
+        finally:
+            _safe_close_cache(cache)
