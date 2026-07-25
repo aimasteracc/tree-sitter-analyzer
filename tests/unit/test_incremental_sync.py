@@ -291,6 +291,89 @@ class TestContentHashComparison:
         assert result.updated_files == 0
 
 
+class TestReturnedErrorDetails:
+    """Incident 2026-07-26: returned parse failures must keep their reason."""
+
+    def test_new_file_error_result_preserves_reason(self, sync, cache):
+        with patch.object(
+            cache,
+            "index_file",
+            return_value={
+                "status": "error",
+                "reason": "Swift grammar not installed",
+            },
+        ):
+            detail = sync._index_new_file(
+                "src/bad.swift",
+                "/project/src/bad.swift",
+                cache.get_conn(),
+            )
+
+        assert detail == {
+            "file": "src/bad.swift",
+            "considered": "indexed",
+            "action": "indexed",
+            "status": "error",
+            "reason": "Swift grammar not installed",
+        }
+
+    def test_modified_file_error_result_preserves_reason(self, sync, cache):
+        with (
+            patch.object(cache, "invalidate"),
+            patch.object(
+                cache,
+                "index_file",
+                return_value={
+                    "status": "error",
+                    "reason": "LUA grammar not installed",
+                },
+            ),
+        ):
+            detail = sync._reindex_modified(
+                "src/bad.lua",
+                "/project/src/bad.lua",
+                cache.get_conn(),
+            )
+
+        assert detail == {
+            "file": "src/bad.lua",
+            "considered": "updated",
+            "action": "updated",
+            "status": "error",
+            "reason": "LUA grammar not installed",
+        }
+
+    def test_public_sync_attributes_returned_error_and_continues(
+        self, sync, cache, project
+    ):
+        bad_file = project / "src" / "bad.swift"
+        bad_file.write_text("func broken() {}\n")
+        original_index_file = cache.index_file
+
+        def index_file(path):
+            if path == str(bad_file):
+                return {
+                    "status": "error",
+                    "reason": "Swift grammar not installed",
+                }
+            return original_index_file(path)
+
+        with patch.object(cache, "index_file", side_effect=index_file):
+            result = sync.sync()
+
+        assert result.errors == 1
+        assert result.new_files == 4
+        assert [d for d in result.details if d.get("status") == "error"] == [
+            {
+                "file": "src/bad.swift",
+                "considered": "indexed",
+                "action": "indexed",
+                "status": "error",
+                "reason": "Swift grammar not installed",
+            }
+        ]
+
+
 class TestRecursionErrorHandling:
     """Issue #805: RecursionError from deeply-nested AST must not abort sync."""
 

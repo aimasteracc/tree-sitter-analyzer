@@ -78,6 +78,20 @@ def _make_sync_result_with_one_error() -> SyncResult:
     return result
 
 
+def _make_returned_parse_error() -> SyncResult:
+    result = SyncResult(scanned=1, new_files=1, errors=1)
+    result.details = [
+        {
+            "file": "src/bad.swift",
+            "considered": "indexed",
+            "action": "indexed",
+            "status": "error",
+            "reason": "Swift grammar not installed",
+        }
+    ]
+    return result
+
+
 # ---------------------------------------------------------------------------
 # MCP tool layer: response envelope must carry per-file error attribution
 # ---------------------------------------------------------------------------
@@ -184,6 +198,69 @@ class TestMCPResponseEnvelopeOnPerFileError:
         # 3 files scanned total
         assert result["scanned"] == 3
 
+    async def test_partial_error_escalates_verdict_to_warn(self, mcp_tool, project):
+        controlled_result = _make_returned_parse_error()
+
+        with patch.object(IncrementalSync, "sync", return_value=controlled_result):
+            result = await mcp_tool.execute(
+                {"mode": "sync", "max_files": 100, "output_format": "json"}
+            )
+
+        assert result["success"] is True
+        assert result["verdict"] == "WARN"
+
+    async def test_external_path_in_error_message_is_redacted(self, mcp_tool, project):
+        controlled_result = _make_sync_result_with_one_error()
+        controlled_result.details[-1]["error_message"] = "denied /etc/shadow"
+
+        with patch.object(IncrementalSync, "sync", return_value=controlled_result):
+            result = await mcp_tool.execute(
+                {"mode": "sync", "max_files": 100, "output_format": "json"}
+            )
+
+        assert result["details"][-1]["error_message"] == "denied <external-path>"
+
+    async def test_long_error_reason_has_explicit_truncation(self, mcp_tool, project):
+        controlled_result = _make_returned_parse_error()
+        controlled_result.details[0]["reason"] = "x" * 501
+
+        with patch.object(IncrementalSync, "sync", return_value=controlled_result):
+            result = await mcp_tool.execute(
+                {"mode": "sync", "max_files": 100, "output_format": "json"}
+            )
+
+        assert result["details"][0]["reason"] == ("x" * 497) + "..."
+        assert result["details"][0]["reason_truncated"] is True
+
+    async def test_invalid_and_unknown_details_do_not_cross_mcp_boundary(
+        self, mcp_tool, project
+    ):
+        controlled_result = _make_returned_parse_error()
+        controlled_result.details.extend(
+            [
+                "path=/etc/shadow",
+                None,
+                {
+                    "file": "src/other.swift",
+                    "status": "error",
+                    "context": "path=/etc/passwd",
+                    "blob": "x" * 2_000,
+                },
+            ]
+        )
+
+        with patch.object(IncrementalSync, "sync", return_value=controlled_result):
+            result = await mcp_tool.execute(
+                {"mode": "sync", "max_files": 100, "output_format": "json"}
+            )
+
+        assert result["invalid_details_dropped"] == 2
+        assert result["details"][-1] == {
+            "file": "src/other.swift",
+            "status": "error",
+        }
+        assert "/etc/" not in repr(result)
+
 
 # ---------------------------------------------------------------------------
 # Outer catch-all in MCP tool: must not swallow batch for outer exceptions
@@ -223,6 +300,22 @@ class TestMCPOuterExceptionSurface:
         error_msg = result.get("error", "")
         assert "RuntimeError" in error_msg
 
+    async def test_outer_exception_is_bounded_with_explicit_flag(
+        self, mcp_tool, project
+    ):
+        with patch.object(
+            IncrementalSync,
+            "sync",
+            side_effect=RuntimeError("x" * 10_000),
+        ):
+            result = await mcp_tool.execute(
+                {"mode": "sync", "max_files": 100, "output_format": "json"}
+            )
+
+        assert len(result["error"]) == 500
+        assert result["error"].endswith("...")
+        assert result["error_truncated"] is True
+
 
 # ---------------------------------------------------------------------------
 # TOON default path: error attribution must survive TOON formatting (#806)
@@ -257,3 +350,15 @@ class TestMCPResponseEnvelopeOnPerFileErrorToon:
             result = await mcp_tool.execute({"mode": "sync", "max_files": 100})
 
         assert result.get("errors") == 1
+
+    async def test_toon_response_contains_returned_parse_reason(
+        self, mcp_tool, project
+    ):
+        controlled_result = _make_returned_parse_error()
+
+        with patch.object(IncrementalSync, "sync", return_value=controlled_result):
+            result = await mcp_tool.execute({"mode": "sync", "max_files": 100})
+
+        assert result.get("format") == "toon"
+        assert "src/bad.swift" in result.get("toon_content", "")
+        assert "Swift grammar not installed" in result.get("toon_content", "")
