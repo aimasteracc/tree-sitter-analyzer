@@ -13,6 +13,7 @@ Key features:
 - Integration with ASTCache for automatic re-indexing
 """
 
+import fnmatch
 import hashlib
 import logging
 import os
@@ -79,6 +80,8 @@ class IncrementalSync:
         self,
         max_files: int = 20_000,
         callback: Any | None = None,
+        *,
+        exclude_patterns: frozenset[str] | None = None,
     ) -> SyncResult:
         """Sync the on-disk source tree with the AST cache.
 
@@ -91,11 +94,18 @@ class IncrementalSync:
         conn = self._cache.get_conn()
 
         indexed_rows = self._load_indexed_rows(conn)
-        disk_files = self._scan_disk_files(max_files)
+        disk_files, present_paths, truncated = self._scan_disk_files(
+            max_files,
+            exclude_patterns,
+        )
         result.scanned = len(disk_files)
 
-        deleted_paths = set(indexed_rows.keys()) - set(disk_files.keys())
-        self._invalidate_deleted_files(deleted_paths, result, callback)
+        # A capped walk is only a prefix of the live source set. Treating every
+        # indexed row outside that prefix as deleted corrupts a healthy cache.
+        # Deletion detection is safe only after a complete walk.
+        if not truncated:
+            deleted_paths = set(indexed_rows) - present_paths
+            self._invalidate_deleted_files(deleted_paths, result, callback)
         self._index_or_reindex_files(disk_files, indexed_rows, conn, result, callback)
 
         try:
@@ -137,14 +147,25 @@ class IncrementalSync:
             ).fetchall()
         }
 
-    def _scan_disk_files(self, max_files: int) -> dict[str, dict[str, Any]]:
-        """Walk the project tree; return ``{rel_path: {abs_path, mtime, size}}``."""
+    def _scan_disk_files(
+        self,
+        max_files: int,
+        exclude_patterns: frozenset[str] | None = None,
+    ) -> tuple[dict[str, dict[str, Any]], set[str], bool]:
+        """Return eligible files, all present paths, and truncation state."""
         disk_files: dict[str, dict[str, Any]] = {}
+        present_paths: set[str] = set()
         count = 0
         for abs_path in _walk_source_files(self._cache.project_root):
             if count >= max_files:
-                break
+                return disk_files, present_paths, True
+            count += 1
             rel = os.path.relpath(abs_path, self._cache.project_root).replace("\\", "/")
+            present_paths.add(rel)
+            if exclude_patterns and any(
+                fnmatch.fnmatch(rel, pattern) for pattern in exclude_patterns
+            ):
+                continue
             try:
                 stat = os.stat(abs_path)
                 disk_files[rel] = {
@@ -154,8 +175,7 @@ class IncrementalSync:
                 }
             except OSError:
                 continue
-            count += 1
-        return disk_files
+        return disk_files, present_paths, False
 
     def _invalidate_deleted_files(
         self,
