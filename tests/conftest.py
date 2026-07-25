@@ -244,10 +244,11 @@ def pytest_unconfigure(config):
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Warn if memory usage is dangerously high at end of session."""
     try:
-        import os
-
         import psutil
+    except ImportError:
+        return
 
+    try:
         process = psutil.Process(os.getpid())
         rss_gb = process.memory_info().rss / (1024**3)
         system_total_gb = psutil.virtual_memory().total / (1024**3)
@@ -266,8 +267,8 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
                 f"MEMORY CRITICAL: pytest RSS = {rss_gb:.1f} GB! "
                 f"This can crash the system. Reduce test batch size.",
             )
-    except ImportError:
-        pass
+    except psutil.Error:
+        return
 
     if QUARANTINED_TESTS:
         terminalreporter.write_sep(
