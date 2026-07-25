@@ -185,7 +185,16 @@ class TestHealthScorer:
         scores, stats = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
 
         assert scores == []
-        assert stats["skip_reasons"]["scoring_failed"] == 1
+        assert stats == {
+            "total_files_scanned": 1,
+            "total_files_scored": 0,
+            "total_files_skipped": 1,
+            "pruned_directories": 0,
+            "skip_reasons": {
+                "excluded_dir": 0,
+                "scoring_failed": 1,
+            },
+        }
 
     def test_score_project_counts_defensive_excluded_file(self, monkeypatch, tmp_path):
         """A defensive _is_excluded hit is still reported in project stats."""
@@ -205,8 +214,39 @@ class TestHealthScorer:
         scores, stats = scorer.score_project_with_stats(str(tmp_path), use_cache=False)
 
         assert scores == []
-        assert stats["total_files_scanned"] == 1
-        assert stats["skip_reasons"]["excluded_dir"] == 1
+        assert stats == {
+            "total_files_scanned": 1,
+            "total_files_scored": 0,
+            "total_files_skipped": 1,
+            "pruned_directories": 0,
+            "skip_reasons": {
+                "excluded_dir": 1,
+                "scoring_failed": 0,
+            },
+        }
+
+    def test_score_empty_project_has_zeroed_stats(self, tmp_path):
+        """An empty project should report an exact zero-valued partition."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        scores, stats = HealthScorer(
+            source_extensions={".py"}
+        ).score_project_with_stats(
+            str(tmp_path),
+            use_cache=False,
+        )
+
+        assert scores == []
+        assert stats == {
+            "total_files_scanned": 0,
+            "total_files_scored": 0,
+            "total_files_skipped": 0,
+            "pruned_directories": 0,
+            "skip_reasons": {
+                "excluded_dir": 0,
+                "scoring_failed": 0,
+            },
+        }
 
     def test_score_project_prunes_hidden_and_generated_dirs(self, tmp_path):
         """Project scoring should not descend into hidden/generated directories."""
@@ -231,7 +271,13 @@ class TestHealthScorer:
 
         assert {Path(score.file_path).name for score in scores} == {"main.py"}
         assert stats["total_files_scanned"] == 1
-        assert stats["skip_reasons"]["excluded_dir"] == 2
+        assert stats["total_files_scored"] == 1
+        assert stats["total_files_skipped"] == 0
+        assert stats["skip_reasons"] == {
+            "excluded_dir": 0,
+            "scoring_failed": 0,
+        }
+        assert stats["pruned_directories"] == 2
 
     def test_large_file_gets_penalized(self, scorer, tmp_path):
         """Files over 500 lines should have lower size score."""
