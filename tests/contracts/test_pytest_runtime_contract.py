@@ -385,6 +385,29 @@ def test_process_probe_uses_non_destructive_pid_lookup(monkeypatch) -> None:
     assert (result, observed_pids) == (True, [43210])
 
 
+def test_terminal_summary_ignores_process_exit_race(monkeypatch) -> None:
+    """A vanished controller process must not turn a green suite red."""
+    import psutil
+
+    from tests import conftest
+
+    # Incident 2026-07-26: the suite reached 100%, then psutil lost /proc/<pid>.
+    monkeypatch.setattr(
+        psutil,
+        "Process",
+        lambda pid: (_ for _ in ()).throw(psutil.NoSuchProcess(pid)),
+    )
+    writes = []
+
+    conftest.pytest_terminal_summary(
+        SimpleNamespace(write_sep=lambda *args: writes.append(args)),
+        0,
+        SimpleNamespace(),
+    )
+
+    assert writes == []
+
+
 def test_dead_pytest_process_temp_root_is_removed(tmp_path) -> None:
     """A later pytest run must reclaim debris left by a killed process."""
     from tests import pytest_temp_hygiene
