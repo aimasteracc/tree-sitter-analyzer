@@ -36,6 +36,8 @@ from .constraint_violation_query import (
 )
 from .test_discovery_stems import (
     module_stem_for_path,
+    raw_module_stem_for_path,
+    raw_test_file_subject_stem,
     related_stem_matches,
     related_test_stems_for_path,
     source_subsystem_stems,
@@ -118,6 +120,13 @@ def _find_test_files(
             if _test_file_has_direct_stem_match(test_file, changed_file)
             and test_paths_have_compatible_package_scope(test_file, changed_file)
         ]
+        raw_direct_related = [
+            test_file
+            for test_file in direct_related
+            if _test_file_has_raw_direct_stem_match(test_file, changed_file)
+        ]
+        if raw_direct_related:
+            direct_related = raw_direct_related
         has_named_subsystem = bool(
             source_subsystem_stems(changed_file, graph_nodes)
         )
@@ -214,6 +223,25 @@ def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
     )
 
 
+def _test_file_has_raw_direct_stem_match(
+    test_file: str,
+    changed_file: str,
+) -> bool:
+    """Return whether a test directly names a module without case folding."""
+    normalized_test = test_file.replace("\\", "/")
+    normalized_change = changed_file.replace("\\", "/")
+    if normalized_test == normalized_change:
+        return True
+
+    changed_stem = raw_module_stem_for_path(normalized_change)
+    test_stem = raw_test_file_subject_stem(normalized_test)
+    plural_stems = _pluralized_module_stems(changed_stem)
+    return f"_{changed_stem}_" in f"_{test_stem}_" or any(
+        test_stem == plural_stem or test_stem.startswith(f"{plural_stem}_")
+        for plural_stem in plural_stems
+    )
+
+
 def _pluralized_module_stems(stem: str) -> tuple[str, ...]:
     """Return accepted conventional plurals for an exact test subject."""
     irregular_plurals = {
@@ -236,7 +264,9 @@ def _pluralized_module_stems(stem: str) -> tuple[str, ...]:
     plurals: list[str] = []
     if irregular is not None:
         plurals.append(f"{prefix}{separator}{irregular}")
-    if stem.endswith("z"):
+    if stem.endswith("zz"):
+        regular = f"{stem}es"
+    elif stem.endswith("z"):
         regular = f"{stem}zes"
     elif stem.endswith(("s", "x", "ch", "sh")):
         regular = f"{stem}es"
