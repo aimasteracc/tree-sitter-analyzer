@@ -24,7 +24,7 @@ def source_subsystem_stems(file_path: str | Path) -> list[str]:
     ]
     if root_indexes:
         parents = parents[root_indexes[-1] + 1 :]
-    elif parents:
+    elif len(parents) > 1:
         # A leading package directory is not a subsystem. This covers both this
         # repository and arbitrary projects without hard-coding a package name.
         parents = parents[1:]
@@ -53,7 +53,10 @@ def test_path_is_unscoped(test_file: str) -> bool:
         index for index, part in enumerate(parts) if part.lower() in test_roots
     ]
     if root_indexes:
-        parts = parts[root_indexes[-1] + 1 :]
+        test_root_index = root_indexes[-1]
+        if test_root_index > 0:
+            return False
+        parts = parts[test_root_index + 1 :]
 
     generic_tiers = {
         "benchmark",
@@ -126,7 +129,7 @@ def module_stem_for_path(file_path: str | Path) -> str:
 def _normalize_module_identifier(stem: str) -> str:
     """Normalize snake, kebab, dotted, and CamelCase module identifiers."""
     snake_stem = re.sub(r"(?<!^)(?=[A-Z])", "_", stem)
-    return snake_stem.lower().replace("-", "_").replace(".", "_")
+    return snake_stem.lower().replace("-", "_").replace(".", "_").lstrip("_")
 
 
 def python_package_test_stems(file_path: str | Path) -> list[str]:
