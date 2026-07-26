@@ -209,6 +209,25 @@ def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
 
 def _pluralized_module_stem(stem: str) -> str:
     """Return the conventional English plural for an exact test subject."""
+    irregular_plurals = {
+        "analysis": "analyses",
+        "axis": "axes",
+        "basis": "bases",
+        "child": "children",
+        "crisis": "crises",
+        "diagnosis": "diagnoses",
+        "hypothesis": "hypotheses",
+        "index": "indices",
+        "matrix": "matrices",
+        "person": "people",
+        "synthesis": "syntheses",
+        "thesis": "theses",
+        "vertex": "vertices",
+    }
+    prefix, separator, subject = stem.rpartition("_")
+    irregular = irregular_plurals.get(subject)
+    if irregular is not None:
+        return f"{prefix}{separator}{irregular}"
     if stem.endswith(("s", "x", "z", "ch", "sh")):
         return f"{stem}es"
     if len(stem) > 1 and stem.endswith("y") and stem[-2] not in "aeiou":
