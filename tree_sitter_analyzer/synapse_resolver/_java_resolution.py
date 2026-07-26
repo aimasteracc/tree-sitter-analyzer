@@ -209,13 +209,15 @@ def resolve_java_callee(
 ) -> Resolution:
     """Resolve a Java call through the historical ordered 10-stage cascade."""
     receiver, simple = _split_receiver(callee_full, callee_name)
-    for result in (
-        _resolve_local(ctx, caller_file, receiver, simple),
-        _resolve_static_import(ctx, caller_file, receiver, simple),
-        _resolve_qualified(ctx, caller_file, receiver, simple),
-        _resolve_single_global(ctx, receiver, simple),
-        _resolve_known_method(ctx, simple),
-    ):
+    stages = (
+        lambda: _resolve_local(ctx, caller_file, receiver, simple),
+        lambda: _resolve_static_import(ctx, caller_file, receiver, simple),
+        lambda: _resolve_qualified(ctx, caller_file, receiver, simple),
+        lambda: _resolve_single_global(ctx, receiver, simple),
+        lambda: _resolve_known_method(ctx, simple),
+    )
+    for stage in stages:
+        result = stage()
         if result is not None:
             return result
     return None, "unknown", ""

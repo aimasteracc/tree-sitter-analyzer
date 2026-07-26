@@ -160,6 +160,28 @@ class TestBuildJavaContextBranches:
 
 
 class TestResolveJavaCallee:
+    def test_local_match_short_circuits_lower_stages(self, monkeypatch) -> None:
+        """PR #1180 (2026-07-27): resolved calls skip every lower tier."""
+        from tree_sitter_analyzer.synapse_resolver import _java_resolution
+
+        def unexpected_stage(*_args):
+            raise AssertionError("lower cascade stage executed")
+
+        monkeypatch.setattr(
+            _java_resolution,
+            "_resolve_static_import",
+            unexpected_stage,
+        )
+        ctx = JavaResolverContext(
+            file_symbols={"Caller.java": [("work", "method", 11)]},
+        )
+
+        assert resolve_java_callee("work", "work", "Caller.java", ctx) == (
+            11,
+            "local",
+            "Caller.java",
+        )
+
     def test_local_implicit_this(self) -> None:
         ctx = _build_two_file_ctx()
         sym, res, f = resolve_java_callee(
