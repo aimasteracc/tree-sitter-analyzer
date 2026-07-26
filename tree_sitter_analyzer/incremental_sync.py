@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""
-Incremental Sync — File watcher + content hash comparison for AST cache.
-
-Detects changed files via mtime + content-hash comparison and re-indexes
-only what actually changed. Like CodeGraph's incremental sync, avoids
-full project re-parses on every analysis run.
-
-Key features:
-- Content-hash comparison (SHA-256) to skip false-positive mtime changes
-- Detects new files, modified files, and deleted files
-- Prunes stale index entries for deleted/moved files
-- Integration with ASTCache for automatic re-indexing
-"""
+"""Incrementally reconcile source files with the persistent AST cache."""
 
 import fnmatch
 import hashlib
@@ -130,7 +118,7 @@ class IncrementalSync:
         if not truncated or candidate_snapshot is not None:
             deleted_paths = set(indexed_rows) - present_paths
             self._invalidate_deleted_files(deleted_paths, result, callback)
-        self._index_or_reindex_files(
+        action_by_file = self._index_or_reindex_files(
             disk_files,
             indexed_rows,
             conn,
@@ -149,6 +137,12 @@ class IncrementalSync:
                     late_changes.append((entry.rel_path, change_reason))
             for rel_path, reason in sorted(late_changes):
                 self._cache.invalidate(os.path.join(self._cache.project_root, rel_path))
+                counter_name = {
+                    "new": "new_files",
+                    "updated": "updated_files",
+                    "unchanged": "unchanged_files",
+                }[action_by_file[rel_path]]
+                setattr(result, counter_name, getattr(result, counter_name) - 1)
                 detail = {
                     "file": rel_path,
                     "considered": "skipped",
@@ -308,25 +302,30 @@ class IncrementalSync:
         callback: Any | None,
         *,
         preserve_order: bool = False,
-    ) -> None:
+    ) -> dict[str, str]:
         """For each disk file: index if new, re-index if changed, skip otherwise."""
+        action_by_file: dict[str, str] = {}
         items = disk_files.items() if preserve_order else sorted(disk_files.items())
         for rel, info in items:
             indexed_info = indexed_rows.get(rel)
             if indexed_info is None:
                 detail = self._index_new_file(rel, info["abs_path"], conn)
                 result.new_files += 1
+                action_by_file[rel] = "new"
             elif self._file_changed(info, indexed_info, rel):
                 detail = self._reindex_modified(rel, info["abs_path"], conn)
                 result.updated_files += 1
+                action_by_file[rel] = "updated"
             else:
                 result.unchanged_files += 1
+                action_by_file[rel] = "unchanged"
                 continue
             if detail.get("status") == "error":
                 result.errors += 1
             result.details.append(detail)
             if callback:
                 callback(detail)
+        return action_by_file
 
     def _file_changed(
         self,

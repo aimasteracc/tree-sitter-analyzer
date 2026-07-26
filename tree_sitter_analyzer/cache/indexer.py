@@ -451,13 +451,13 @@ def insert_index_row(
             indexed_at,
         ),
     )
-    if not cache.fts5_available:
-        return
     from . import write as _write
 
-    inserted_symbol_rows = _write.write_fts5_symbols_from_tuples(
-        conn, rel_path, r["language"], r["symbol_rows"]
-    )
+    inserted_symbol_rows: list[dict[str, Any]] = []
+    if cache.fts5_available:
+        inserted_symbol_rows = _write.write_fts5_symbols_from_tuples(
+            conn, rel_path, r["language"], r["symbol_rows"]
+        )
     call_edges = json.loads(r.get("call_edges_json", "[]"))
     imports_list = json.loads(r.get("imports_json", "[]"))
     cache._write_imports_for_file(conn, rel_path, r["language"], imports_list)  # noqa: SLF001
@@ -578,8 +578,12 @@ def run_index_project(
             conn = cache._get_conn()
             _mark_build_in_progress(conn)
             _clear_call_graph_built(conn)
-            _clear_full_rebuild_rows(cache, conn)
-            conn.commit()
+            try:
+                _clear_full_rebuild_rows(cache, conn)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
         conn = cache._get_conn()
         effective_exclude = (
             exclude_patterns
