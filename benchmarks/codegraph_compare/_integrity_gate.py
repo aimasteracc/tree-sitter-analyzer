@@ -23,7 +23,9 @@ from benchmarks.codegraph_compare.schemas import (
     RunRecordV1,
 )
 
-_PUBLISHABLE_REGISTRY_STATUSES = frozenset({"PLANNED"})
+_REGISTRY_STATUSES = frozenset({"PLANNED", "RUNNING", "BLOCKED", "COMPLETE", "INVALID"})
+_TERMINAL_FAILURE_STATUSES = frozenset({"BLOCKED", "INVALID"})
+_PRODUCER_COMPLETION = ("COMPLETE", "producer_completed")
 
 
 def _identity(record: RunRecordV1 | EvalRecordV1) -> tuple[str, str, str, int]:
@@ -171,10 +173,19 @@ def _registry_binding_violation(
             code="REGISTRY_MANIFEST_MISMATCH", experiment_id=manifest.experiment_id
         )
     if any(
-        item.status not in _PUBLISHABLE_REGISTRY_STATUSES for item in current_events
+        item.status not in _REGISTRY_STATUSES
+        or item.status in _TERMINAL_FAILURE_STATUSES
+        for item in current_events
     ):
         return IntegrityViolation(
             code="REGISTRY_TERMINAL_FAILURE", experiment_id=manifest.experiment_id
+        )
+    if not any(
+        (item.status, item.outcome) == _PRODUCER_COMPLETION for item in current_events
+    ):
+        return IntegrityViolation(
+            code="REGISTRY_PRODUCER_INCOMPLETE",
+            experiment_id=manifest.experiment_id,
         )
     return None
 

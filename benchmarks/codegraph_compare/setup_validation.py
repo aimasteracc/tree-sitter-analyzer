@@ -167,8 +167,22 @@ def _validate_manifest_matrix(
         )
         for cell in manifest.expected_cells
     ]
+    selected_repo_ids = [str(repo["id"]) for repo in repo_entries]
+    selected_arm_ids = [str(arm["id"]) for arm in arm_entries]
+    expected_repo_ids = {cell.repo for cell in manifest.expected_cells}
+    expected_arm_ids = set(manifest.required_arms)
+    selections_match = (
+        len(selected_repo_ids) == len(set(selected_repo_ids))
+        and set(selected_repo_ids) == expected_repo_ids
+        and len(selected_arm_ids) == len(set(selected_arm_ids))
+        and set(selected_arm_ids) == expected_arm_ids
+    )
     model_matches = model == manifest.model
-    if Counter(actual_cells) == Counter(expected_cells) and model_matches:
+    if (
+        selections_match
+        and Counter(actual_cells) == Counter(expected_cells)
+        and model_matches
+    ):
         return None
     return _failure(
         "*",
@@ -230,9 +244,7 @@ def parse_index_evidence_v1(raw: object) -> dict[tuple[str, str], IndexStatsV1]:
     if type(raw["schema_version"]) is not int or raw["schema_version"] != 1:
         raise ValueError("Index evidence schema_version must be the integer 1")
     if not isinstance(raw["cells"], list):
-        raise ValueError(
-            "Index evidence cells must be a list"
-        )
+        raise ValueError("Index evidence cells must be a list")
     stats_fields = {field.name for field in fields(IndexStatsV1)}
     tuple_fields = {
         "indexed_paths",
@@ -271,10 +283,13 @@ def parse_index_evidence_v1(raw: object) -> dict[tuple[str, str], IndexStatsV1]:
         if any(type(stats_raw[field]) is not int for field in integer_fields):
             raise ValueError("Index evidence count and size fields must be integers")
         build_seconds = stats_raw["build_seconds"]
-        if (
-            type(build_seconds) not in {int, float}
-            or not math.isfinite(build_seconds)
-        ):
+        if type(build_seconds) not in {int, float}:
+            raise ValueError("Index evidence build_seconds must be a finite number")
+        try:
+            build_seconds_is_finite = math.isfinite(build_seconds)
+        except OverflowError:
+            build_seconds_is_finite = False
+        if not build_seconds_is_finite:
             raise ValueError("Index evidence build_seconds must be a finite number")
         if any(not isinstance(stats_raw[field], str) for field in string_fields):
             raise ValueError("Index evidence provenance fields must be strings")
@@ -283,7 +298,9 @@ def parse_index_evidence_v1(raw: object) -> dict[tuple[str, str], IndexStatsV1]:
             or any(not isinstance(item, str) for item in stats_raw[field])
             for field in tuple_fields
         ):
-            raise ValueError("Index evidence path and oracle fields must be string lists")
+            raise ValueError(
+                "Index evidence path and oracle fields must be string lists"
+            )
         repo_id = cell["repo_id"]
         arm_id = cell["arm_id"]
         if (

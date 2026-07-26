@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T05:36:45Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 900,
+  "items_found": 4,
+  "actions_taken": 4,
+  "escalations": 0,
+  "tokens_estimate": 30000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1160: required exact selected repo/arm sets so zero-question selections cannot disappear; rejected oversized integer durations through the setup_input_failed path; rejected non-object manifests with the CLI diagnostic; and required a producer_completed registry event before publication. Benchmark harness (101 tests), patch coverage, full pytest, build, Ruff, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-22T00:33:37Z",
   "pattern": "pr-ci-repair",
   "duration_s": 900,

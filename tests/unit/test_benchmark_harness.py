@@ -633,9 +633,7 @@ class TestCodeGraphCompareSetupGate:
             "index_stats": stats_raw,
         }
         cell.update(cell_overrides or {})
-        return parse_index_evidence_v1(
-            {"schema_version": 1, "cells": [cell]}
-        )
+        return parse_index_evidence_v1({"schema_version": 1, "cells": [cell]})
 
     def test_index_evidence_schema_version_requires_integer_one(self):
         from benchmarks.codegraph_compare.setup_validation import (
@@ -697,14 +695,19 @@ class TestCodeGraphCompareSetupGate:
         with pytest.raises(ValueError, match=message):
             self._parse_v1_index_evidence(stats_overrides={field: value})
 
+    def test_index_evidence_rejects_integer_duration_too_large_for_float(self):
+        with pytest.raises(
+            ValueError,
+            match="Index evidence build_seconds must be a finite number",
+        ):
+            self._parse_v1_index_evidence(stats_overrides={"build_seconds": 10**400})
+
     def test_index_evidence_provenance_fields_require_strings(self):
         with pytest.raises(
             ValueError,
             match="Index evidence provenance fields must be strings",
         ):
-            self._parse_v1_index_evidence(
-                stats_overrides={"repo_fingerprint": 1}
-            )
+            self._parse_v1_index_evidence(stats_overrides={"repo_fingerprint": 1})
 
     @pytest.mark.parametrize(
         ("field", "value"),
@@ -836,6 +839,45 @@ class TestCodeGraphCompareSetupGate:
         assert [failure["code"] for failure in evidence["failures"]] == [
             "MATRIX_MANIFEST_MISMATCH"
         ]
+
+    def test_matrix_manifest_rejects_selected_repo_without_questions(
+        self,
+        tmp_path: Path,
+    ):
+        from benchmarks.codegraph_compare.setup_validation import (
+            validate_matrix_setup,
+        )
+
+        manifest = _v1_manifest(
+            expected_run_ids=("q1__native-only__codex__00",),
+            required_arms=("native-only",),
+            tool_fingerprints={"native-only": "native"},
+        )
+
+        result = validate_matrix_setup(
+            [
+                {"id": "gin"},
+                {"id": "empty"},
+            ],
+            [{"id": "native-only", "index_mode": "none"}],
+            questions_by_repo={
+                "gin": [{"id": "q1"}],
+                "empty": [],
+            },
+            repo_path_resolver=lambda repo: tmp_path / str(repo["id"]),
+            adapter_factory=lambda arm_id: pytest.fail(
+                f"manifest validation created adapter {arm_id}"
+            ),
+            manifest=manifest,
+            repeats=1,
+            agent_backend="codex",
+            model="gpt-5",
+            supplied_index_stats={},
+        )
+
+        assert tuple(failure.code for failure in result.failures) == (
+            "MATRIX_MANIFEST_MISMATCH",
+        )
 
     def test_readiness_oracle_mismatch_fails_closed_without_model_calls(
         self, monkeypatch, tmp_path: Path
@@ -977,6 +1019,55 @@ class TestCodeGraphCompareSetupGate:
             "PLANNED",
             "BLOCKED",
         ]
+
+    def test_oversized_index_duration_records_started_and_blocked(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = _v1_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        evidence_path = self._write_v1_index_evidence(tmp_path, manifest)
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        evidence["cells"][0]["index_stats"]["build_seconds"] = 10**400
+        evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+        args = self._matrix_args()
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = evidence_path
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert [event["outcome"] for event in registry_events] == [
+            "setup_started",
+            "setup_input_failed",
+        ]
+
+    def test_non_object_manifest_uses_cli_diagnostic(
+        self, monkeypatch, tmp_path: Path, capsys
+    ):
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        manifest_path = tmp_path / "manifest.json"
+        manifest_path.write_text("[]", encoding="utf-8")
+        args = self._matrix_args()
+        args.manifest = manifest_path
+        args.setup_only = True
+        args.index_evidence = tmp_path / "unused-index-evidence.json"
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert (
+            f"Invalid experiment manifest {manifest_path}: "
+            "Experiment manifest must be an object" in capsys.readouterr().err
+        )
 
     def test_invalid_matrix_yaml_shape_records_started_and_blocked(
         self, monkeypatch, tmp_path: Path
@@ -1775,8 +1866,8 @@ def _registry_for(manifest):
         RegistryEvent(
             manifest.experiment_id,
             manifest.manifest_hash,
-            "PLANNED",
-            "registered",
+            "COMPLETE",
+            "producer_completed",
         ),
     )
 
@@ -2059,6 +2150,47 @@ class TestBenchmarkExperimentIntegrity:
 
         assert tuple(item.code for item in verdict.violations) == (
             "UNREGISTERED_EXPERIMENT",
+        )
+        assert verdict.publishable is False
+
+    def test_consumer_only_setup_events_cannot_be_published(self):
+        from benchmarks.codegraph_compare.integrity import (
+            RegistryEvent,
+            validate_publishable_experiment,
+        )
+
+        manifest = _v1_manifest(
+            expected_run_ids=("q1__native-only__codex__00",),
+            required_arms=("native-only",),
+            indexed_arms=(),
+            tool_fingerprints={"native-only": "native1"},
+            required_readiness_oracles={},
+        )
+        native = _v1_run(
+            manifest,
+            "q1__native-only__codex__00",
+            index_stats=None,
+        )
+        registry = tuple(
+            RegistryEvent(
+                manifest.experiment_id,
+                manifest.manifest_hash,
+                "PLANNED",
+                outcome,
+            )
+            for outcome in ("setup_started", "setup_passed")
+        )
+
+        verdict = validate_publishable_experiment(
+            manifest,
+            registry=registry,
+            runs=(native,),
+            evals=(_v1_eval(native),),
+            reported_experiment_ids=(manifest.experiment_id,),
+        )
+
+        assert tuple(item.code for item in verdict.violations) == (
+            "REGISTRY_PRODUCER_INCOMPLETE",
         )
         assert verdict.publishable is False
 

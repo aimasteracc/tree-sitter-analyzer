@@ -294,8 +294,10 @@ def create_manifest(
     )
 
 
-def parse_manifest_v1(raw: dict[str, Any]) -> ExperimentManifestV1:
+def parse_manifest_v1(raw: object) -> ExperimentManifestV1:
     """Decode a persisted JSON manifest and revalidate its nested structures."""
+    if not isinstance(raw, dict):
+        raise ValueError("Experiment manifest must be an object")
     version = raw.get("benchmark_version")
     if type(version) is not int or version != 1:
         raise ValueError(f"Unsupported benchmark_version: {version}")
