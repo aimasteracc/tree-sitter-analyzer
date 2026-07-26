@@ -574,6 +574,22 @@ def test_find_test_files_preserves_unscoped_direct_stem_variants():
     ]
 
 
+def test_find_test_files_keeps_normalized_exact_beside_raw_variant():
+    """Raw contextual identity must not hide a normalized primary suite."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/FooBar.py"],
+        {
+            "tests/test_FooBar_windows.py",
+            "tests/test_foo_bar.py",
+        },
+    )
+
+    assert mapping["src/FooBar.py"] == [
+        "tests/test_FooBar_windows.py",
+        "tests/test_foo_bar.py",
+    ]
+
+
 def test_find_test_files_uses_path_specific_edge_extractor_family():
     """A Java edge extractor maps only to its existing path-specific suite."""
     mapping = change_impact_tool._find_test_files(
@@ -1210,14 +1226,19 @@ def test_find_test_files_supports_irregular_plural_subject():
 
 
 def test_find_test_files_supports_doubled_z_plural():
-    """Single and doubled terminal z stems use conventional es plurals."""
+    """Terminal z stems use their conventional doubled or regular plurals."""
     mapping = change_impact_tool._find_test_files(
-        ["src/buzz.py", "src/quiz.py"],
-        {"tests/test_buzzes.py", "tests/test_quizzes.py"},
+        ["src/buzz.py", "src/quiz.py", "src/waltz.py"],
+        {
+            "tests/test_buzzes.py",
+            "tests/test_quizzes.py",
+            "tests/test_waltzes.py",
+        },
     )
 
     assert mapping["src/buzz.py"] == ["tests/test_buzzes.py"]
     assert mapping["src/quiz.py"] == ["tests/test_quizzes.py"]
+    assert mapping["src/waltz.py"] == ["tests/test_waltzes.py"]
 
 
 def test_find_test_files_prefers_case_preserving_direct_identity():

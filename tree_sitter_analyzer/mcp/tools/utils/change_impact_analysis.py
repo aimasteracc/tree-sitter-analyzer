@@ -96,6 +96,7 @@ def _find_test_files(
         for node in graph_nodes
         if _is_runnable_test_file(node, TEST_DIRS, TEST_SUFFIXES)
     }
+    known_paths = graph_nodes | set(changed_files)
 
     mapping: dict[str, list[str]] = {}
     for changed_file in changed_files:
@@ -125,7 +126,10 @@ def _find_test_files(
             for test_file in direct_related
             if _test_file_has_raw_direct_stem_match(test_file, changed_file)
         ]
-        if raw_direct_related:
+        if raw_direct_related and _has_case_only_path_collision(
+            changed_file,
+            known_paths,
+        ):
             direct_related = raw_direct_related
         has_named_subsystem = bool(
             source_subsystem_stems(changed_file, graph_nodes)
@@ -194,6 +198,21 @@ def _most_specific_affinity_matches(
     return [test_file for rank, test_file in ranked if rank == best_rank]
 
 
+def _has_case_only_path_collision(
+    changed_file: str,
+    graph_nodes: set[str],
+) -> bool:
+    """Return whether another graph path differs only by filesystem case."""
+    normalized_change = changed_file.replace("\\", "/")
+    folded_change = normalized_change.casefold()
+    return any(
+        normalized_node != normalized_change
+        and normalized_node.casefold() == folded_change
+        for node in graph_nodes
+        if (normalized_node := node.replace("\\", "/"))
+    )
+
+
 def _test_file_matches_change(test_file: str, changed_file: str) -> bool:
     """Return True when a test filename appears related to a changed file."""
     if _test_file_has_direct_stem_match(test_file, changed_file):
@@ -258,8 +277,10 @@ def _pluralized_module_stems(stem: str) -> tuple[str, ...]:
         plurals.append(f"{prefix}{separator}{irregular}")
     if stem.endswith("zz"):
         regular = f"{stem}es"
-    elif stem.endswith("z"):
+    elif subject == "quiz":
         regular = f"{stem}zes"
+    elif stem.endswith("z"):
+        regular = f"{stem}es"
     elif stem.endswith(("s", "x", "ch", "sh")):
         regular = f"{stem}es"
     elif len(stem) > 1 and stem.endswith("y") and stem[-2] not in "aeiou":
@@ -285,11 +306,25 @@ def _is_runnable_test_file(
         for directory in test_dirs
     )
     has_java_test_suffix = name.endswith("Test.java")
+    path_parts = Path(normalized).parts[:-1]
+    in_java_test_source_set = any(
+        part.lower() == "src"
+        and index + 1 < len(path_parts)
+        and (
+            path_parts[index + 1].lower() in {"it", "test"}
+            or path_parts[index + 1].endswith("Test")
+        )
+        for index, part in enumerate(path_parts)
+    )
     return (
         (in_test_dir and name.startswith("test_"))
         or (
             name.endswith(test_suffixes)
-            and (not has_java_test_suffix or in_test_dir)
+            and (
+                not has_java_test_suffix
+                or in_test_dir
+                or in_java_test_source_set
+            )
         )
         or (in_test_dir and (".test." in name or ".spec." in name))
     )

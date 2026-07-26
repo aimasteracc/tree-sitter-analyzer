@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
     ChangeImpactRequest,
     _append_large_dirty_hint,
@@ -85,14 +87,36 @@ class TestIsRunnableTestFile:
             _is_runnable_test_file("src/example.py", {"tests/"}, ("_test.py",)) is False
         )
 
-    def test_java_suffix_requires_test_directory(self):
+    @pytest.mark.parametrize(
+        "path",
+        (
+            "examples/JavaDocTest.java",
+            "src/latest/java/FooTest.java",
+        ),
+    )
+    def test_java_suffix_requires_test_directory(self, path: str):
         assert (
             _is_runnable_test_file(
-                "examples/JavaDocTest.java",
+                path,
                 {"tests/", "test/"},
                 ("Test.java",),
             )
             is False
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        (
+            "src/integrationTest/java/FooTest.java",
+            "src/androidTest/java/FooTest.java",
+            "src/it/java/FooTest.java",
+        ),
+    )
+    def test_java_source_sets_are_runnable(self, path: str):
+        assert _is_runnable_test_file(
+            path,
+            {"tests/", "test/"},
+            ("Test.java",),
         )
 
 
