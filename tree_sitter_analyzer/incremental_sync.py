@@ -23,6 +23,7 @@ from typing import Any
 
 from .ast_cache import _EXT_TO_LANG, _walk_source_files
 from .indexing_limits import normalize_index_max_files
+from .indexing_snapshot import IndexCandidateSnapshot, changed_since_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,9 @@ class SyncResult:
     deleted_files: int = 0
     unchanged_files: int = 0
     errors: int = 0
+    processed: int = 0
+    changed_during_run: int = 0
+    changed_during_run_files: list[str] = field(default_factory=list)
     truncated_by_max_files: bool = False
     synapse_resolved: int = 0
     details: list[dict[str, Any]] = field(default_factory=list)
@@ -50,6 +54,9 @@ class SyncResult:
             "deleted_files": self.deleted_files,
             "unchanged_files": self.unchanged_files,
             "errors": self.errors,
+            "processed": self.processed,
+            "changed_during_run": self.changed_during_run,
+            "changed_during_run_files": self.changed_during_run_files,
             "truncated_by_max_files": self.truncated_by_max_files,
             "synapse_resolved": self.synapse_resolved,
             "details": self.details,
@@ -85,6 +92,7 @@ class IncrementalSync:
         callback: Any | None = None,
         *,
         exclude_patterns: frozenset[str] | None = None,
+        candidate_snapshot: IndexCandidateSnapshot | None = None,
     ) -> SyncResult:
         """Sync the on-disk source tree with the AST cache.
 
@@ -98,20 +106,72 @@ class IncrementalSync:
         conn = self._cache.get_conn()
 
         indexed_rows = self._load_indexed_rows(conn)
-        disk_files, present_paths, truncated = self._scan_disk_files(
+        disk_files, present_paths, truncated, changed_files = self._scan_disk_files(
             max_files,
             exclude_patterns,
+            candidate_snapshot,
         )
         result.scanned = len(disk_files)
+        result.processed = len(disk_files)
+        result.changed_during_run = len(changed_files)
+        result.changed_during_run_files = sorted(
+            path for path, _reason in changed_files
+        )
         result.truncated_by_max_files = truncated
+        for rel_path, reason in sorted(changed_files):
+            detail = {
+                "file": rel_path,
+                "considered": "skipped",
+                "action": "skipped",
+                "status": "skipped",
+                "reason": reason,
+            }
+            result.details.append(detail)
+            if callback:
+                callback(detail)
 
         # A capped walk is only a prefix of the live source set. Treating every
         # indexed row outside that prefix as deleted corrupts a healthy cache.
         # Deletion detection is safe only after a complete walk.
-        if not truncated:
+        if not truncated or candidate_snapshot is not None:
             deleted_paths = set(indexed_rows) - present_paths
             self._invalidate_deleted_files(deleted_paths, result, callback)
-        self._index_or_reindex_files(disk_files, indexed_rows, conn, result, callback)
+        self._index_or_reindex_files(
+            disk_files,
+            indexed_rows,
+            conn,
+            result,
+            callback,
+            preserve_order=candidate_snapshot is not None,
+        )
+        if candidate_snapshot is not None:
+            known_changed = set(result.changed_during_run_files)
+            late_changes: list[tuple[str, str]] = []
+            for entry in candidate_snapshot.selected_entries:
+                if entry.rel_path in known_changed:
+                    continue
+                change_reason = changed_since_snapshot(entry)
+                if change_reason is not None:
+                    late_changes.append((entry.rel_path, change_reason))
+            for rel_path, reason in sorted(late_changes):
+                detail = {
+                    "file": rel_path,
+                    "considered": "skipped",
+                    "action": "skipped",
+                    "status": "skipped",
+                    "reason": reason,
+                }
+                result.details.append(detail)
+                if callback:
+                    callback(detail)
+            result.changed_during_run_files = sorted(
+                known_changed | {path for path, _reason in late_changes}
+            )
+            result.changed_during_run = len(result.changed_during_run_files)
+            result.processed = max(
+                0,
+                candidate_snapshot.selected - result.changed_during_run,
+            )
 
         try:
             conn.commit()
@@ -156,15 +216,50 @@ class IncrementalSync:
         self,
         max_files: int,
         exclude_patterns: frozenset[str] | None = None,
-    ) -> tuple[dict[str, dict[str, Any]], set[str], bool]:
+        candidate_snapshot: IndexCandidateSnapshot | None = None,
+    ) -> tuple[dict[str, dict[str, Any]], set[str], bool, list[tuple[str, str]]]:
         """Return eligible files, all present paths, and truncation state."""
         max_files = normalize_index_max_files(max_files)
         disk_files: dict[str, dict[str, Any]] = {}
         present_paths: set[str] = set()
+
+        if candidate_snapshot is not None:
+            if (
+                os.path.abspath(self._cache.project_root)
+                != candidate_snapshot.project_root
+            ):
+                raise ValueError(
+                    "candidate snapshot belongs to a different project root"
+                )
+            if max_files != candidate_snapshot.max_files:
+                raise ValueError("candidate snapshot uses a different max_files limit")
+            changed_files: list[tuple[str, str]] = []
+            for entry in candidate_snapshot.selected_entries:
+                change_reason = changed_since_snapshot(entry)
+                if change_reason is not None:
+                    changed_files.append((entry.rel_path, change_reason))
+                    continue
+                fingerprint = entry.fingerprint
+                if fingerprint is None:
+                    raise ValueError(
+                        f"selected candidate lacks fingerprint: {entry.rel_path}"
+                    )
+                disk_files[entry.rel_path] = {
+                    "abs_path": entry.abs_path,
+                    "mtime_ns": fingerprint.mtime_ns,
+                    "file_size": fingerprint.file_size,
+                }
+            return (
+                disk_files,
+                set(candidate_snapshot.present_paths),
+                candidate_snapshot.truncated_by_max_files,
+                changed_files,
+            )
+
         count = 0
         for abs_path in _walk_source_files(self._cache.project_root):
             if count >= max_files:
-                return disk_files, present_paths, True
+                return disk_files, present_paths, True, []
             count += 1
             rel = os.path.relpath(abs_path, self._cache.project_root).replace("\\", "/")
             present_paths.add(rel)
@@ -181,7 +276,7 @@ class IncrementalSync:
                 }
             except OSError:
                 continue
-        return disk_files, present_paths, False
+        return disk_files, present_paths, False, []
 
     def _invalidate_deleted_files(
         self,
@@ -216,9 +311,12 @@ class IncrementalSync:
         conn: Any,
         result: SyncResult,
         callback: Any | None,
+        *,
+        preserve_order: bool = False,
     ) -> None:
         """For each disk file: index if new, re-index if changed, skip otherwise."""
-        for rel, info in sorted(disk_files.items()):
+        items = disk_files.items() if preserve_order else sorted(disk_files.items())
+        for rel, info in items:
             indexed_info = indexed_rows.get(rel)
             if indexed_info is None:
                 detail = self._index_new_file(rel, info["abs_path"], conn)

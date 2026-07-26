@@ -61,6 +61,14 @@ MCP:
 { "action": "full" }   // mode defaults to "incremental"
 ```
 
+A full-index operation walks the project once and freezes one immutable
+candidate snapshot for both its AST-cache and incremental-sync phases. This
+keeps ordering, exclusions, and the `max_files` boundary identical across the
+operation. Existing selected files that change or disappear after the snapshot
+are skipped with a `changed_during_run` reason and produce a `WARN` verdict;
+files created afterward wait for the next operation. Snapshot and phase
+reconciliation counters are returned in `candidate_snapshot`.
+
 CLI equivalent:
 ```bash
 # Guaranteed full rebuild (recommended after pull/rebase):

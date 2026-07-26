@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 from ..constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from ..indexing_limits import normalize_index_max_files
+from ..indexing_snapshot import IndexCandidateSnapshot, changed_since_snapshot
 from ..languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from ..project_graph import _language_from_ext
 from .build_state import (
@@ -102,6 +103,19 @@ def _walk_source_files(project_root: str) -> Iterator[str]:
             ext = os.path.splitext(fname)[1].lower()
             if ext in _EXT_TO_LANG:
                 yield os.path.join(dirpath, fname)
+
+
+def _warn_unwired_plugin_extension(abs_path: str) -> None:
+    """Emit the existing one-time warning for unsupported plugin extensions."""
+    ext = os.path.splitext(abs_path)[1].lower()
+    if ext and ext not in _warned_extensions and ext in _PLUGIN_EXTS:
+        logger.warning(
+            "Extension %s is registered in a plugin but not wired for "
+            "full-index; use single-file mode for this language. File: %s",
+            ext,
+            abs_path,
+        )
+        _warned_extensions.add(ext)
 
 
 def check_cache_or_read(
@@ -230,6 +244,7 @@ def walk_and_partition(
     make_error_entry: Any,
     language_filter: str | None = None,
     exclude_patterns: frozenset[str] | None = None,
+    candidate_snapshot: IndexCandidateSnapshot | None = None,
 ) -> tuple[dict[str, Any], list[tuple[str, str]], int]:
     """Walk source files and partition into (stats, candidates, count).
 
@@ -247,6 +262,9 @@ def walk_and_partition(
         "cached": 0,
         "errors": 0,
         "skipped": 0,
+        "processed": 0,
+        "changed_during_run": 0,
+        "changed_during_run_files": [],
         "files": [],
         "activation_enabled": activation_enabled,
         "truncated_by_max_files": False,
@@ -261,6 +279,68 @@ def walk_and_partition(
             r["file_path"]: (r["mtime_ns"], r["file_size"], r["extractor_version"])
             for r in rows
         }
+
+    if candidate_snapshot is not None:
+        if os.path.abspath(cache.project_root) != candidate_snapshot.project_root:
+            raise ValueError("candidate snapshot belongs to a different project root")
+        stats["truncated_by_max_files"] = candidate_snapshot.truncated_by_max_files
+        stats["snapshot_metrics"] = candidate_snapshot.metrics()
+        count = len(candidate_snapshot.entries)
+        for entry in candidate_snapshot.entries:
+            if entry.decision == "excluded":
+                stats["skipped"] += 1
+                continue
+            if entry.decision == "skipped":
+                if entry.language is None:
+                    _warn_unwired_plugin_extension(entry.abs_path)
+                stats["skipped"] += 1
+                continue
+            if entry.decision == "error":
+                stats["errors"] += 1
+                stats["files"].append(
+                    make_error_entry(entry.rel_path, entry.reason or "stat failed")
+                )
+                continue
+
+            change_reason = changed_since_snapshot(entry)
+            if change_reason is not None:
+                stats["skipped"] += 1
+                stats["changed_during_run"] += 1
+                stats["changed_during_run_files"].append(entry.rel_path)
+                stats["files"].append(
+                    {
+                        "file": entry.rel_path,
+                        "status": "skipped",
+                        "reason": change_reason,
+                    }
+                )
+                continue
+
+            fingerprint = entry.fingerprint
+            if fingerprint is None or entry.language is None:
+                raise ValueError(f"selected candidate lacks metadata: {entry.rel_path}")
+            row = indexed_map.get(entry.rel_path)
+            if (
+                row is not None
+                and row[0] == fingerprint.mtime_ns
+                and row[1] == fingerprint.file_size
+                and row[2] >= extractor_version
+            ):
+                already_cached.append(
+                    {
+                        "file": entry.rel_path,
+                        "status": "cached",
+                        "reason": "unchanged",
+                    }
+                )
+                continue
+            candidates.append((entry.abs_path, entry.language))
+
+        stats["cached"] += len(already_cached)
+        stats["files"].extend(already_cached)
+        stats["processed"] = len(candidates) + len(already_cached)
+        return stats, candidates, count
+
     count = 0
     for abs_path in walk_fn(cache.project_root):
         if count >= max_files:
@@ -277,15 +357,7 @@ def walk_and_partition(
         if lang is None:
             # REQ-E-020: emit a one-time WARNING for plugin-registered extensions
             # that are not wired into the full-index path.
-            ext = os.path.splitext(abs_path)[1].lower()
-            if ext and ext not in _warned_extensions and ext in _PLUGIN_EXTS:
-                logger.warning(
-                    "Extension %s is registered in a plugin but not wired for "
-                    "full-index; use single-file mode for this language. File: %s",
-                    ext,
-                    abs_path,
-                )
-                _warned_extensions.add(ext)
+            _warn_unwired_plugin_extension(abs_path)
             stats["skipped"] += 1
             continue
         if language_filter is not None and lang != language_filter:
@@ -311,6 +383,7 @@ def walk_and_partition(
         candidates.append((abs_path, lang))
     stats["cached"] += len(already_cached)
     stats["files"].extend(already_cached)
+    stats["processed"] = len(candidates) + len(already_cached)
     return stats, candidates, count
 
 
@@ -389,6 +462,7 @@ def run_index_project(
     include_activation: bool | None = None,
     language_filter: str | None = None,
     exclude_patterns: frozenset[str] | None = None,
+    candidate_snapshot: IndexCandidateSnapshot | None = None,
 ) -> dict[str, Any]:
     """Orchestrate a full ASTCache project index run.
 
@@ -447,6 +521,7 @@ def run_index_project(
             _make_error_entry,
             language_filter,
             effective_exclude,
+            candidate_snapshot,
         )
         workers = cache._resolve_worker_count(workers, candidates)
         if workers and workers >= 2 and len(candidates) >= 2:
@@ -491,7 +566,23 @@ def run_index_project(
         # _indexed_source_files_are_complete() returns False for an empty,
         # truncated, errored, or otherwise incomplete index, so this keeps
         # #970's false-positive guard intact.
-        elif cache._indexed_source_files_are_complete():
+        elif (
+            candidate_snapshot is not None
+            and not candidate_snapshot.truncated_by_max_files
+            and candidate_snapshot.excluded == 0
+            and candidate_snapshot.skipped == 0
+            and candidate_snapshot.errors == 0
+            and candidate_snapshot.selected > 0
+            and {
+                str(row["file_path"]).replace("\\", "/")
+                for row in cache._get_conn()
+                .execute("SELECT file_path FROM ast_index")
+                .fetchall()
+            }
+            == candidate_snapshot.present_paths
+        ) or (
+            candidate_snapshot is None and cache._indexed_source_files_are_complete()
+        ):
             _mark_call_graph_built(cache._get_conn())
         if force:
             stats["db_maintenance"] = (

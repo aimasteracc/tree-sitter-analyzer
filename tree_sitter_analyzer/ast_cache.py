@@ -61,6 +61,7 @@ from .cache.schema import (
     init_db as _schema_init_db,
 )
 from .core.parser import Parser
+from .indexing_snapshot import IndexCandidateSnapshot
 from .project_graph import _language_from_ext
 
 logger = logging.getLogger(__name__)
@@ -334,6 +335,7 @@ class ASTCache:
         include_activation: bool | None = None,
         language_filter: str | None = None,
         exclude_patterns: frozenset[str] | None = None,
+        candidate_snapshot: IndexCandidateSnapshot | None = None,
     ) -> dict[str, Any]:
         """Index every source file under ``self.project_root``."""
         return _indexer.run_index_project(
@@ -345,6 +347,7 @@ class ASTCache:
             include_activation=include_activation,
             language_filter=language_filter,
             exclude_patterns=exclude_patterns,
+            candidate_snapshot=candidate_snapshot,
         )
 
     def _post_index_backfill(self, stats: dict[str, Any]) -> None:

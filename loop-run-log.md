@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T08:44:06Z",
+  "pattern": "index-snapshot-repair",
+  "duration_s": 1500,
+  "items_found": 4,
+  "actions_taken": 4,
+  "escalations": 0,
+  "tokens_estimate": 30000,
+  "outcome": "fix-proposed",
+  "summary": "Issue #1168: full-index now freezes one immutable ordered candidate snapshot and shares it across AST-cache and incremental-sync phases; excludes and max_files are evaluated once, post-snapshot modifications/deletions are deterministically skipped with reasons, scope/phase totals reconcile, and claim coverage proves the second filesystem walk is gone. Focused coverage (190 tests), strict patch coverage, full pytest (1273 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T07:52:24Z",
   "pattern": "index-contract-repair",
   "duration_s": 900,

@@ -1848,6 +1848,15 @@ Modes: `summary` (stats), `matrix` (all pairs), `hotspots` (top-K coupling), `fi
 
 Modes: `full` (force re-index), `incremental` (only process changes).
 
+The response includes `candidate_snapshot` counters for `discovered`,
+`selected`, `excluded`, `skipped`, `processed`, and `changed_during_run`.
+Both AST-cache and incremental-sync phases consume the same immutable path
+ordering; exclusions and `max_files` are evaluated once. If a selected file's
+size, modification time, or change time differs after snapshot creation, that
+file is skipped for the remaining phase, the verdict becomes `WARN`, and
+`changed_during_run_details` gives the reason. New files created after the
+snapshot are intentionally deferred to the next index operation.
+
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --full-index --full-index-mode incremental --format json`
 
 **SMART Workflow**: Recommended first command of any agent session targeting a fresh checkout.

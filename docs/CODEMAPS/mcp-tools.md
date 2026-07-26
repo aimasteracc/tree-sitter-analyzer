@@ -100,7 +100,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | **CodeGraph parity — cache/index** | | |
 | `codegraph_status` | `--codegraph-status` | INDEX HEALTH at-a-glance (indexed?, files, symbols, lag) |
 | `codegraph_autoindex` | `--autoindex` | Transparent AST cache auto-indexing |
-| `codegraph_full_index` | `--full-index` | One-shot complete project intelligence index |
+| `codegraph_full_index` | `--full-index` | One-shot complete project intelligence index; AST and sync share one immutable candidate snapshot |
 | `codegraph_incremental_sync` | `--incremental-sync` | Content-hash diff re-index (SHA-256 per file) |
 | `index_knowledge` | `--knowledge-graph-index` | Build/update/status for the canonical SQLite code/doc graph index and optional LadybugDB projection |
 | `codegraph_metrics` | `--codegraph-metrics` | Aggregated project intelligence dashboard |

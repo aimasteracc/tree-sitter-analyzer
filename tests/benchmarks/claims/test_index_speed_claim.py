@@ -23,10 +23,12 @@ from __future__ import annotations
 import os
 import tempfile
 import time
+from unittest.mock import patch
 
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
 
 pytestmark = [
     pytest.mark.benchmark,
@@ -94,6 +96,32 @@ def test_index_speed_scales_linearly_not_quadratically():
             f"{_SYNTHETIC_FILE_COUNT} files. "
             f"README claims ~33ms/file on django (2950 files in 97s)."
         )
+
+
+@pytest.mark.asyncio
+async def test_full_index_uses_one_filesystem_walk_for_all_index_phases(tmp_path):
+    """The AST and incremental phases must reuse one immutable candidate walk."""
+    from tree_sitter_analyzer.cache import indexer
+
+    _generate_synthetic_project(str(tmp_path), 20)
+    tool = CodeGraphFullIndexTool(str(tmp_path))
+
+    with patch.object(
+        indexer,
+        "_walk_source_files",
+        wraps=indexer._walk_source_files,
+    ) as walk:
+        result = await tool.execute(
+            {
+                "mode": "full",
+                "resolve_synapse": False,
+                "output_format": "json",
+            }
+        )
+
+    assert walk.call_count == 1
+    assert result["candidate_snapshot"]["discovered"] == 20
+    assert result["candidate_snapshot"]["processed"] == 20
 
 
 def test_index_speed_claim_measurement_command_is_documented():
