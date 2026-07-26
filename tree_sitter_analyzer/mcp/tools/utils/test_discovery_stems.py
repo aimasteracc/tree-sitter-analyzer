@@ -56,9 +56,9 @@ def source_subsystem_stems(file_path: str | Path) -> list[str]:
     stems: list[str] = []
     structural_stems: list[str] = []
     for part in reversed(parents):
-        normalized_part = part.lower().replace("-", "_")
-        if not normalized_part or normalized_part.startswith("."):
+        if not part or part.startswith("."):
             continue
+        normalized_part = _normalize_module_identifier(part)
         if normalized_part in structural_parts:
             structural_stems.append(normalized_part)
             continue
@@ -123,9 +123,9 @@ def test_path_subsystem_affinity_rank(
     ):
         return None
     test_parts = {
-        part.lower().replace("-", "_") for part in normalized_test.parts[:-1]
+        _normalize_module_identifier(part) for part in normalized_test.parts[:-1]
     }
-    test_stem = normalized_test.stem.lower().replace("-", "_")
+    test_stem = _normalize_module_identifier(normalized_test.stem)
     for rank, subsystem_stem in enumerate(subsystem_stems):
         if subsystem_stem in test_parts or related_stem_matches(
             test_stem,
@@ -142,7 +142,11 @@ def test_paths_have_compatible_package_scope(
     """Return whether two paths do not identify different monorepo packages."""
     changed_package = _monorepo_package_identity(changed_file)
     test_package = _monorepo_package_identity(test_file)
-    return changed_package is None or changed_package == test_package
+    return (
+        changed_package is None
+        or test_package is None
+        or changed_package == test_package
+    )
 
 
 def test_file_has_exact_module_stem(test_file: str, changed_file: str) -> bool:
@@ -180,17 +184,18 @@ def _normalize_module_identifier(stem: str) -> str:
 
 
 def _monorepo_package_identity(file_path: str | Path) -> str | None:
-    """Return a package name encoded by a conventional monorepo container."""
+    """Return the full package lineage encoded by monorepo containers."""
     normalized = Path(str(file_path).replace("\\", "/"))
     parts = normalized.parts[:-1]
-    for index in range(len(parts) - 2, -1, -1):
-        part = parts[index]
+    package_lineage: list[str] = []
+    for index, part in enumerate(parts[:-1]):
         if part.lower() not in {"apps", "packages"}:
             continue
-        package = parts[index + 1].lower().replace("-", "_")
-        if package and not package.startswith("."):
-            return package
-    return None
+        package_part = parts[index + 1]
+        if not package_part or package_part.startswith("."):
+            continue
+        package_lineage.append(_normalize_module_identifier(package_part))
+    return "/".join(package_lineage) or None
 
 
 def python_package_test_stems(file_path: str | Path) -> list[str]:
@@ -254,6 +259,8 @@ def module_family_test_stems(file_path: str | Path) -> list[str]:
     stems = _special_module_family_stems(normalized.stem)
     if normalized.stem == "evaluator" and "constraints" in normalized.parts[:-1]:
         stems.append("constraint_dsl")
+    if "edge_extractors" in normalized.parts[:-1] and normalized.stem != "registry":
+        stems.append("registry")
     stems.extend(_strip_family_suffixes(normalized.stem, suffixes))
     return _unique_nonempty_stems(stems)
 
