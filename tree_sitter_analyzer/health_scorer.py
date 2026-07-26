@@ -169,6 +169,8 @@ class HealthScorer:
         self.weights = weights or dict(DIMENSION_WEIGHTS)
         self.source_extensions = set(source_extensions or PROJECT_HEALTH_SOURCE_EXTS)
         self._coverage_cache: dict[str, float] | None = None
+        self._coverage_casefold_cache: dict[str, float] | None = None
+        self._windows_coverage_cache: dict[str, float] | None = None
 
     def score_file(
         self, file_path: str, *, fast_dependencies: bool = False
@@ -341,7 +343,10 @@ class HealthScorer:
         from .registry.health_score_cache import HealthScoreCache
 
         root = Path(project_root)
-        cache = HealthScoreCache(str(root)) if use_cache else None
+        self._coverage_cache = None
+        self._coverage_casefold_cache = None
+        self._windows_coverage_cache = None
+        cache = HealthScoreCache(str(root), weights=self.weights) if use_cache else None
         results: list[HealthScore] = []
         scanned = 0
         excluded_files = 0
@@ -414,6 +419,8 @@ class HealthScorer:
             return self._coverage_cache
 
         self._coverage_cache = {}
+        self._coverage_casefold_cache = {}
+        self._windows_coverage_cache = {}
 
         search_paths = [Path.cwd()]
         for parent in Path.cwd().parents[:3]:
@@ -435,7 +442,17 @@ class HealthScorer:
                     for file_path, file_data in files.items():
                         summary = file_data.get("summary", {})
                         pct = summary.get("percent_covered", 0.0)
-                        self._coverage_cache[file_path] = float(pct)
+                        raw_path = str(file_path)
+                        normalized_path = raw_path.replace("\\", "/")
+                        coverage = float(pct)
+                        folded_path = _coverage_path_key(
+                            normalized_path,
+                            case_insensitive=True,
+                        )
+                        self._coverage_cache[normalized_path] = coverage
+                        self._coverage_casefold_cache[folded_path] = coverage
+                        if _is_windows_style_path(raw_path):
+                            self._windows_coverage_cache[folded_path] = coverage
 
                     total = data.get("totals", {}).get("percent_covered", 0)
                     logger.info(
@@ -456,17 +473,18 @@ class HealthScorer:
         if not coverage_data:
             return None
 
+        windows_file = _is_windows_style_path(file_path)
         path = Path(file_path)
-        candidates = [str(path), path.name]
+        candidates = [str(path).replace("\\", "/"), path.name]
 
         try:
-            candidates.append(str(path.relative_to(Path.cwd())))
+            candidates.append(str(path.relative_to(Path.cwd())).replace("\\", "/"))
         except ValueError:
             pass
 
         for parent in [Path.cwd()] + list(Path.cwd().parents[:3]):
             try:
-                candidates.append(str(path.relative_to(parent)))
+                candidates.append(str(path.relative_to(parent)).replace("\\", "/"))
             except ValueError:
                 continue
 
@@ -474,12 +492,64 @@ class HealthScorer:
             if candidate in coverage_data:
                 return coverage_data[candidate]
 
-        path_str = str(path)
+        folded_coverage, windows_coverage = self._coverage_casefold_indexes(
+            coverage_data
+        )
+        insensitive_coverage = folded_coverage if windows_file else windows_coverage
+        for candidate in candidates:
+            folded_candidate = _coverage_path_key(candidate, case_insensitive=True)
+            if folded_candidate in insensitive_coverage:
+                return insensitive_coverage[folded_candidate]
+
+        path_str = str(path).replace("\\", "/")
         for cov_path, pct in coverage_data.items():
-            if path_str.endswith(cov_path) or cov_path.endswith(path_str):
+            if _path_suffix_matches(path_str, cov_path):
+                return pct
+
+        folded_path = _coverage_path_key(path_str, case_insensitive=True)
+        for folded_cov_path, pct in insensitive_coverage.items():
+            if _path_suffix_matches(folded_path, folded_cov_path):
                 return pct
 
         return None
+
+    def _coverage_casefold_indexes(
+        self,
+        coverage_data: dict[str, float],
+    ) -> tuple[dict[str, float], dict[str, float]]:
+        """Build case-folded indexes once for Windows path matching."""
+        if self._coverage_casefold_cache is None:
+            self._coverage_casefold_cache = {
+                _coverage_path_key(path, case_insensitive=True): coverage
+                for path, coverage in coverage_data.items()
+            }
+        if self._windows_coverage_cache is None:
+            self._windows_coverage_cache = {
+                _coverage_path_key(path, case_insensitive=True): coverage
+                for path, coverage in coverage_data.items()
+                if _is_windows_style_path(path)
+            }
+        return self._coverage_casefold_cache, self._windows_coverage_cache
+
+
+def _path_suffix_matches(left: str, right: str) -> bool:
+    """Return whether either normalized path ends at the other's boundary."""
+    return (
+        left == right
+        or left.endswith(f"/{right.lstrip('/')}")
+        or right.endswith(f"/{left.lstrip('/')}")
+    )
+
+
+def _is_windows_style_path(value: str) -> bool:
+    """Return whether a path uses Windows separators or a drive prefix."""
+    return "\\" in value or (len(value) >= 2 and value[1] == ":")
+
+
+def _coverage_path_key(value: str, case_insensitive: bool) -> str:
+    """Normalize separators and optionally apply Windows case folding."""
+    normalized = value.replace("\\", "/")
+    return normalized.casefold() if case_insensitive else normalized
 
 
 def _coverage_json_is_stale(cov_file: Path, coverage_db: Path) -> bool:
