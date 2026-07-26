@@ -4,10 +4,12 @@ import os
 import sqlite3
 from dataclasses import replace
 from types import SimpleNamespace
+from typing import get_type_hints
 from unittest.mock import patch
 
 import pytest
 
+import tree_sitter_analyzer.ast_cache as ast_cache_module
 from tree_sitter_analyzer.ast_cache import (
     _AST_CACHE_EXTRACTOR_VERSION,
     _EXT_TO_LANG,
@@ -20,6 +22,7 @@ from tree_sitter_analyzer.cache.callgraph_state import clear_call_graph_built
 from tree_sitter_analyzer.cache.helpers import _commit_index_results
 from tree_sitter_analyzer.cache.indexer import _clear_full_rebuild_rows
 from tree_sitter_analyzer.cache.write import invalidate_file_rows
+from tree_sitter_analyzer.core.parser import Parser
 from tree_sitter_analyzer.indexing_snapshot import (
     IndexCandidateSnapshot,
     IndexFileFingerprint,
@@ -109,6 +112,37 @@ class TestAstExtractionWorker:
 
         assert extraction._worker_parser is not None
         assert hasattr(extraction._worker_parser, "parse_file")
+
+
+def test_facade_fts_hook_controls_schema_initialization(tmp_project, monkeypatch):
+    """The retained facade hook must remain live after the implementation split."""
+    # PR #1187 Codex review (2026-07-27): a copied binding ignored monkeypatches.
+    monkeypatch.setattr(ast_cache_module, "_has_fts5", lambda _conn: False)
+
+    cache = ASTCache(str(tmp_project), str(tmp_project / "no-fts.db"))
+
+    assert cache.fts5_available is False
+    cache.close()
+
+
+def test_parser_property_type_hint_resolves_at_runtime() -> None:
+    """Runtime API introspection must resolve the public parser annotation."""
+    # PR #1187 Codex review (2026-07-27): TYPE_CHECKING hid Parser at runtime.
+    assert get_type_hints(ASTCache.parser.fget)["return"] is Parser
+
+
+def test_symbol_query_propagates_connection_acquisition_failures(monkeypatch) -> None:
+    """An unavailable database must not masquerade as an empty legacy table."""
+    # PR #1187 Codex review (2026-07-27): only the legacy query is best-effort.
+    cache = ASTCache.__new__(ASTCache)
+
+    def fail_connection():
+        raise sqlite3.OperationalError("database unavailable")
+
+    monkeypatch.setattr(cache, "_get_conn", fail_connection)
+
+    with pytest.raises(sqlite3.OperationalError, match="database unavailable"):
+        cache.get_symbols_by_kind("class")
 
 
 class TestIndexFile:
