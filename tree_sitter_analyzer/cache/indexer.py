@@ -582,6 +582,12 @@ def run_index_project(
             try:
                 _clear_full_rebuild_rows(cache, conn)
                 conn.commit()
+                try:
+                    from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
+
+                    LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
+                except Exception:
+                    logger.debug("could not invalidate Ladybug mirror", exc_info=True)
             except Exception:
                 conn.rollback()
                 if had_call_graph:

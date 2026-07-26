@@ -1286,6 +1286,8 @@ def test_force_index_discards_all_stale_derived_rows(tmp_path):
     cache = ASTCache(str(tmp_path))
     cache.index_file(str(path))
     snapshot = _snapshot(tmp_path, path)
+    mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
+    mirror.write_text("stale mirror")
     real_worker = extraction._worker_index_file
 
     def worker_then_mutate(args):
@@ -1318,6 +1320,7 @@ def test_force_index_discards_all_stale_derived_rows(tmp_path):
                 "edges",
             )
         }
+        mirror_exists = mirror.exists()
     finally:
         cache.close()
 
@@ -1329,6 +1332,7 @@ def test_force_index_discards_all_stale_derived_rows(tmp_path):
         "ast_symbol_activation": 0,
         "edges": 0,
     }
+    assert mirror_exists is False
 
 
 def test_cached_snapshot_mutation_does_not_stamp_graph_complete(tmp_path):
@@ -1498,6 +1502,26 @@ def test_force_rebuild_clear_failure_preserves_existing_index(tmp_path):
         cache.close()
 
     assert after == before
+
+
+def test_force_rebuild_tolerates_ladybug_cleanup_failure(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        with patch(
+            "tree_sitter_analyzer.knowledge_graph.stores."
+            "LadybugKnowledgeGraphStore.remove_if_exists",
+            side_effect=OSError("mirror is busy"),
+        ):
+            result = cache.index_project(force=True, workers=0)
+        cached = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert result["indexed"] == 1
+    assert cached is not None
 
 
 def test_force_rebuild_clear_failure_restores_complete_graph_marker(tmp_path):

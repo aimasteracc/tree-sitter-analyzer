@@ -104,20 +104,23 @@ class IncrementalSync:
             if callback:
                 callback(detail)
 
-        # A capped walk is only a prefix of the live source set. Treating every
-        # indexed row outside that prefix as deleted corrupts a healthy cache.
-        # Deletion detection is safe only after a complete walk.
+        # Never infer deletions from a capped prefix of the live source set.
         if not truncated or candidate_snapshot is not None:
             deleted_paths = set(indexed_rows) - present_paths
             self._invalidate_deleted_files(deleted_paths, result, callback)
-        action_by_file = self._index_or_reindex_files(
-            disk_files,
-            indexed_rows,
-            conn,
-            result,
-            callback,
-            preserve_order=candidate_snapshot is not None,
-        )
+        previous_defer = getattr(self._cache, "_defer_single_file_backfill", False)
+        self._cache._defer_single_file_backfill = True
+        try:
+            action_by_file = self._index_or_reindex_files(
+                disk_files,
+                indexed_rows,
+                conn,
+                result,
+                callback,
+                preserve_order=candidate_snapshot is not None,
+            )
+        finally:
+            self._cache._defer_single_file_backfill = previous_defer
         if candidate_snapshot is not None:
             known_changed = set(result.changed_during_run_files)
             late_changes: list[tuple[str, str]] = []
@@ -160,13 +163,7 @@ class IncrementalSync:
             logger.error("Final DB commit failed after partial sync: %s", exc)
             result.errors += 1
 
-        # Synapse second pass: per-file resolution during indexing sees an
-        # incomplete file_class_methods (other files not yet indexed), so
-        # cross-file / receiver-typed callees stay 'unknown'. Re-resolve all
-        # unknown edges now that the whole project is indexed — this is what
-        # turns static type inference (self/unique-method/assignment/fixture/
-        # class-method) into actual resolved edges. Measured: unknown 65.8%→24.0%
-        # (resolved 47k). Only run when something changed (skip no-op syncs).
+        # Resolve cross-file/receiver-typed callees once the whole scope exists.
         backfill_complete = True
         if result.new_files or result.updated_files or result.deleted_files:
             try:
@@ -183,11 +180,15 @@ class IncrementalSync:
             str(row["file_path"])
             for row in conn.execute("SELECT file_path FROM ast_index").fetchall()
         }
+        snapshot_scope_complete = candidate_snapshot is None or (
+            candidate_snapshot.errors == 0 and candidate_snapshot.selected > 0
+        )
         if (
             not result.truncated_by_max_files
             and result.errors == 0
             and result.changed_during_run == 0
             and backfill_complete
+            and snapshot_scope_complete
             and indexed_paths == set(disk_files)
         ):
             from .cache.callgraph_state import mark_call_graph_built

@@ -32,6 +32,7 @@ from .cache.query import (
 from .cache.search import search_symbols_cascade as _search_symbols_cascade
 from .cache.callgraph_state import (
     call_graph_built as _call_graph_built,
+    clear_call_graph_built as _clear_call_graph_built,
     mark_call_graph_built as _mark_call_graph_built,
 )
 from .cache.helpers import (  # noqa: F401
@@ -227,6 +228,8 @@ class ASTCache:
             )
             return cached_or_source
         source_code, content_hash = cached_or_source
+        if had_built_marker:
+            _clear_call_graph_built(conn)
         result = self._parse_and_write(
             conn, abs_path, rel_path, language, stat, source_code, content_hash
         )
@@ -238,6 +241,8 @@ class ASTCache:
     ) -> None:
         """Refresh the built marker after a successful single-file reindex."""
         if result.get("status") not in {"indexed", "cached"}:
+            return
+        if getattr(self, "_defer_single_file_backfill", False):
             return
         if not had_built_marker and not self._indexed_source_files_are_complete():
             return

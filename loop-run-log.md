@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T11:36:00Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 600,
+  "items_found": 4,
+  "actions_taken": 4,
+  "escalations": 0,
+  "tokens_estimate": 15000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 seventh Codex Draft review: single-file writes now clear a preexisting call-graph marker before mutation so parse or Synapse failures cannot preserve false completeness; snapshot discovery errors and empty snapshot scopes cannot stamp completion; incremental bulk indexing defers per-file Synapse backfills and performs exactly one final pass; and a committed force-rebuild clear immediately removes the derived Ladybug projection even when every snapshot result is later rejected. Focused coverage (270 tests), strict worktree patch coverage, full pytest (1289 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, file-size, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T11:12:50Z",
   "pattern": "pr-review-repair",
   "duration_s": 430,

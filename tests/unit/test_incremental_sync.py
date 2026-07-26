@@ -108,6 +108,22 @@ class TestSyncModifiedFile:
         assert "goodbye" in names
         assert "hello" not in names
 
+    def test_bulk_reindex_runs_synapse_backfill_once(self, sync, cache, project):
+        sync.sync()
+        (project / "src" / "main.py").write_text("def changed():\n    return 1\n")
+        (project / "src" / "util.py").write_text("def changed_too():\n    return 2\n")
+
+        with patch.object(
+            cache,
+            "_run_synapse_backfill",
+            return_value={"resolved": 0, "errors": 0},
+        ) as backfill:
+            result = sync.sync()
+
+        assert result.updated_files == 2
+        assert backfill.call_count == 1
+        assert cache.call_graph_built() is True
+
 
 class TestSyncDeletedFile:
     def test_detects_deleted_file(self, sync, cache, project):
@@ -627,6 +643,43 @@ def test_incremental_sync_preserves_snapshot_candidate_order(tmp_path):
     assert seen == ["z.py", "a.py"]
 
 
+def test_incremental_sync_snapshot_error_does_not_mark_graph_complete(tmp_path):
+    missing = tmp_path / "missing.py"
+    snapshot = IndexCandidateSnapshot(
+        project_root=os.path.abspath(tmp_path),
+        max_files=10,
+        entries=(
+            IndexSnapshotEntry(
+                abs_path=str(missing),
+                rel_path="missing.py",
+                language="python",
+                decision="error",
+                reason="stat failed",
+            ),
+        ),
+        present_paths=frozenset({"missing.py"}),
+        discovered=1,
+        selected=0,
+        excluded=0,
+        skipped=0,
+        errors=1,
+        limited=0,
+    )
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        result = IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+        )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert result.errors == 0
+    assert graph_built is False
+
+
 def test_incremental_sync_reports_mutation_during_processing(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
@@ -904,6 +957,34 @@ def test_incremental_sync_rejects_selected_entry_without_fingerprint(tmp_path):
             )
     finally:
         cache.close()
+
+
+def test_incremental_sync_ignores_file_that_disappears_during_live_scan(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        with (
+            patch(
+                "tree_sitter_analyzer.incremental_sync._walk_source_files",
+                return_value=iter((str(path),)),
+            ),
+            patch(
+                "tree_sitter_analyzer.incremental_sync.os.stat",
+                side_effect=OSError("file disappeared"),
+            ),
+        ):
+            disk_files, present_paths, truncated, changed = IncrementalSync(
+                cache
+            )._scan_disk_files(10)
+    finally:
+        cache.close()
+
+    assert disk_files == {}
+    assert present_paths == {"app.py"}
+    assert truncated is False
+    assert changed == []
 
 
 def test_late_new_file_mutation_rolls_back_new_counter(tmp_path):

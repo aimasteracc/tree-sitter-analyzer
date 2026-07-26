@@ -296,6 +296,31 @@ def test_single_file_reindex_refreshes_existing_call_graph_built_marker(
         cache.close()
 
 
+def test_single_file_reindex_backfill_failure_clears_existing_marker(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "sample.py"
+    source_path.write_text("def sample():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        cache.index_project(workers=0)
+        assert cache.call_graph_built() is True
+        source_path.write_text("def sample():\n    return 2\n", encoding="utf-8")
+        with mock.patch.object(
+            cache,
+            "_run_synapse_backfill",
+            side_effect=RuntimeError("backfill crashed"),
+        ):
+            result = cache.index_file(str(source_path))
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert result["status"] == "indexed"
+    assert graph_built is False
+
+
 def test_single_file_reindex_restores_incoming_edge_resolution(tmp_path) -> None:
     target = tmp_path / "target.py"
     caller = tmp_path / "caller.py"
