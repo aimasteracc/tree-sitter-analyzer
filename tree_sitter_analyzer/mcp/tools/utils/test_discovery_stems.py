@@ -23,15 +23,20 @@ def source_subsystem_stems(file_path: str | Path) -> list[str]:
     ]
     if root_indexes:
         parents = parents[root_indexes[-1] + 1 :]
-    elif len(parents) > 1:
+    elif parents:
         # A leading package directory is not a subsystem. This covers both this
         # repository and arbitrary projects without hard-coding a package name.
         parents = parents[1:]
 
+    structural_parts = {"mcp", "tool", "tools", "util", "utils"}
     stems: list[str] = []
     for part in reversed(parents):
         normalized_part = part.lower().replace("-", "_")
-        if not normalized_part or normalized_part.startswith("."):
+        if (
+            not normalized_part
+            or normalized_part.startswith(".")
+            or normalized_part in structural_parts
+        ):
             continue
         stems.append(normalized_part)
         if normalized_part.endswith("s") and len(normalized_part) > 4:
@@ -67,21 +72,27 @@ def test_path_is_unscoped(test_file: str) -> bool:
     return not parts
 
 
-def test_path_has_subsystem_affinity(test_file: str, changed_file: str) -> bool:
-    """Return whether a test name or scoped path matches the source path."""
+def test_path_subsystem_affinity_rank(
+    test_file: str,
+    changed_file: str,
+) -> int | None:
+    """Return the nearest matching source-subsystem rank for a test."""
     subsystem_stems = source_subsystem_stems(changed_file)
     if not subsystem_stems:
-        return False
+        return None
 
     normalized_test = Path(test_file.replace("\\", "/"))
     test_parts = {
         part.lower().replace("-", "_") for part in normalized_test.parts[:-1]
     }
     test_stem = normalized_test.stem.lower().replace("-", "_")
-    return any(
-        subsystem_stem in test_parts or related_stem_matches(test_stem, subsystem_stem)
-        for subsystem_stem in subsystem_stems
-    )
+    for rank, subsystem_stem in enumerate(subsystem_stems):
+        if subsystem_stem in test_parts or related_stem_matches(
+            test_stem,
+            subsystem_stem,
+        ):
+            return rank
+    return None
 
 
 def test_file_has_exact_module_stem(test_file: str, changed_file: str) -> bool:
