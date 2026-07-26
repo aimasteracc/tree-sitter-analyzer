@@ -737,6 +737,24 @@ def test_find_test_files_treats_smoke_as_unscoped_test_tier():
     assert mapping["src/core/engine.py"] == ["tests/smoke/test_engine.py"]
 
 
+def test_find_test_files_treats_system_and_acceptance_as_unscoped_tiers():
+    """Conventional system tiers retain exact tests beside scoped coverage."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/acceptance/test_engine.py",
+            "tests/system/test_engine.py",
+            "tests/unit/core/test_engine.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == [
+        "tests/acceptance/test_engine.py",
+        "tests/system/test_engine.py",
+        "tests/unit/core/test_engine.py",
+    ]
+
+
 def test_find_test_files_supports_exact_plural_subject():
     """A plural suite subject may directly cover its singular module."""
     mapping = change_impact_tool._find_test_files(
@@ -792,6 +810,21 @@ def test_find_test_files_keeps_exact_direct_over_directory_only_affinity():
         {
             "tests/integration/api/test_engine.py",
             "tests/unit/core/test_helpers.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == [
+        "tests/integration/api/test_engine.py"
+    ]
+
+
+def test_find_test_files_keeps_exact_direct_over_scope_prefixed_filename():
+    """A scope-bearing but unrelated filename cannot replace exact direct."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/integration/api/test_engine.py",
+            "tests/unit/test_core_helpers.py",
         },
     )
 
@@ -870,6 +903,35 @@ def test_find_test_files_supports_irregular_plural_subject():
     assert mapping["src/query_analysis.py"] == [
         "tests/test_query_analyses_errors.py"
     ]
+
+
+def test_find_test_files_supports_regular_irregular_plural_alternatives():
+    """Code conventions may use regular variants of irregular English nouns."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/index.py", "src/matrix.py", "src/person.py"],
+        {
+            "tests/test_indexes.py",
+            "tests/test_matrixes.py",
+            "tests/test_persons.py",
+        },
+    )
+
+    assert mapping["src/index.py"] == ["tests/test_indexes.py"]
+    assert mapping["src/matrix.py"] == ["tests/test_matrixes.py"]
+    assert mapping["src/person.py"] == ["tests/test_persons.py"]
+
+
+def test_find_test_files_preserves_subsystem_after_outer_source_root():
+    """A nested app directory is a scope when src already supplied the root."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/app/config.py"],
+        {
+            "tests/unit/app/test_config.py",
+            "tests/unit/other/test_config.py",
+        },
+    )
+
+    assert mapping["src/app/config.py"] == ["tests/unit/app/test_config.py"]
 
 
 def test_find_test_files_keeps_camel_case_acronyms_intact():
