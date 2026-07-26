@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""State diagram (stateDiagram-v2) scanner implementation for RFC-0015.
+"""State-diagram scanner facade and stable public data types.
 
-This module now holds the implementation details; ``uml_state.py`` is a thin
-re-export wrapper so the public import path stays stable while the scanner
-logic can evolve independently.
+``uml_state.py`` remains the public import wrapper. Node discovery, transition
+scanning, and result shaping live in focused private stages behind this module.
 """
 
 from __future__ import annotations
@@ -12,6 +11,18 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from ._uml_state_nodes import (
+    extract_enum_members as _extract_members,
+)
+from ._uml_state_nodes import (
+    find_enum_classes as _find_classes,
+)
+from ._uml_state_nodes import (
+    node_text as _decode_node_text,
+)
+from ._uml_state_results import collect_state_data, finalize_states
+from ._uml_state_transitions import extract_transitions
 
 ParseFileForState = Callable[[str, str], tuple[Any, bytes] | None]
 
@@ -38,16 +49,10 @@ class StateResult:
 def _parse_file_for_state(
     file_path: str, language: str = "python"
 ) -> tuple[Any, bytes] | None:
-    """Parse *file_path* with tree-sitter and return (tree_root, source_bytes).
-
-    Returns None when the file does not exist, the language is unsupported,
-    or the parser fails. ONE parse per call — callers MUST NOT call this in
-    a loop for the same file (rule-11 invariant).
-    """
+    """Parse a file once and return its tree root plus source bytes."""
     from .core.parser import Parser
 
-    parser = Parser()
-    result = parser.parse_file(file_path, language)
+    result = Parser().parse_file(file_path, language)
     if not result.success or result.tree is None:
         return None
     raw_source = result.source_code
@@ -60,218 +65,35 @@ def _parse_file_for_state(
 
 
 def _node_text(node: Any, max_len: int = 60) -> str:
-    """Decode a tree-sitter node's text, capped at max_len chars."""
-    try:
-        raw = node.text
-        if raw is None:
-            return ""
-        text: str = raw.decode("utf-8", errors="replace").strip()
-        return text[:max_len] if len(text) > max_len else text
-    except Exception:
-        return ""
+    """Preserve the historical node-text helper surface."""
+    return _decode_node_text(node, max_len)
 
 
 def _find_enum_classes(
     root: Any, class_name_filter: str | None
 ) -> list[dict[str, Any]]:
-    """Walk the root node to find class definitions that inherit from Enum.
-
-    Returns a list of dicts: {"name": str, "node": ts_node}.
-    Looks for class_definition nodes whose argument_list or base_class
-    contains "Enum".
-    """
-    results: list[dict[str, Any]] = []
-
-    def _walk(node: Any) -> None:
-        if node.type == "class_definition":
-            name = ""
-            has_enum_base = False
-            for child in node.children:
-                if child.type == "identifier":
-                    name = _node_text(child)
-                elif child.type == "argument_list":
-                    # Python class bases are in argument_list.
-                    # Accept both bare names ("Enum") and qualified names
-                    # ("enum.Enum", "enum.IntEnum") — take the last segment.
-                    _ENUM_BASES = {"Enum", "IntEnum", "StrEnum", "Flag", "IntFlag"}
-                    for base in child.children:
-                        base_text = _node_text(base)
-                        # last segment handles "enum.Enum" → "Enum"
-                        if base_text.split(".")[-1] in _ENUM_BASES:
-                            has_enum_base = True
-            if name and has_enum_base:
-                if class_name_filter is None or name == class_name_filter:
-                    results.append({"name": name, "node": node})
-        for child in node.children:
-            _walk(child)
-
-    _walk(root)
-    return results
+    """Preserve the historical Enum discovery helper surface."""
+    return _find_classes(root, class_name_filter)
 
 
 def _extract_enum_members(class_node: Any) -> list[str]:
-    """Extract Enum member names from a class_definition body.
-
-    Returns member names in the order they appear (for stable ordering).
-    All assignment targets that are not underscore-prefixed are treated as
-    members (avoiding __doc__, __module__, _ignore_, etc.). This includes
-    UPPERCASE_NAMES, MixedCase, and lowercase names alike.
-    """
-    members: list[str] = []
-    for child in class_node.children:
-        if child.type == "block":
-            for stmt in child.children:
-                if stmt.type == "expression_statement":
-                    for sub in stmt.children:
-                        if sub.type == "assignment":
-                            lhs_children = list(sub.children)
-                            if lhs_children:
-                                lhs = lhs_children[0]
-                                if lhs.type == "identifier":
-                                    name = _node_text(lhs)
-                                    if name and not name.startswith("_"):
-                                        members.append(name)
-    return members
+    """Preserve the historical Enum-member helper surface."""
+    return _extract_members(class_node)
 
 
 def _extract_transitions(
     root: Any, class_name: str, known_members: set[str]
 ) -> list[StateTransition]:
-    """Walk root for match_statement nodes and extract FSM transitions.
+    """Preserve the historical transition helper surface."""
+    return extract_transitions(root, class_name, known_members, StateTransition)
 
-    Heuristic: a match_statement with a subject, where each case_clause
-    whose pattern references <class_name>.<MemberA> and whose body
-    contains a transition target becomes a transition A → B.
 
-    Two transition-target patterns are detected:
-    1. ``return <class_name>.<MemberB>``  — pure functional FSM style.
-    2. ``<target> = <class_name>.<MemberB>``  — OOP style (e.g.
-       ``self.state = Door.OPEN``), detected by scanning assignment
-       statements whose right-hand side is an enum member reference.
-    """
-    transitions: list[StateTransition] = []
-    seen: set[tuple[str, str]] = set()
-
-    def _find_match_statements(node: Any) -> list[Any]:
-        results: list[Any] = []
-        if node.type == "match_statement":
-            results.append(node)
-        for child in node.children:
-            results.extend(_find_match_statements(child))
-        return results
-
-    def _parse_enum_ref(node: Any) -> str | None:
-        """Return the member name if node is <class_name>.<member>."""
-        text = _node_text(node, 80)
-        prefix = class_name + "."
-        if text.startswith(prefix):
-            member = text[len(prefix) :]
-            if member in known_members:
-                return member
-        return None
-
-    def _find_return_enum_ref(node: Any) -> str | None:
-        """Recursively search for a return_statement or assignment whose RHS is
-        <class_name>.<member>.
-
-        Patterns detected:
-        - ``return <class_name>.<member>``  (return_statement)
-        - ``<anything> = <class_name>.<member>``  (assignment, e.g. self.state = Door.OPEN)
-        """
-        if node.type == "return_statement":
-            for child in node.children:
-                ref = _parse_enum_ref(child)
-                if ref is not None:
-                    return ref
-        elif node.type == "assignment":
-            # assignment children: [lhs, "=", rhs]
-            # We look for the RHS (last child that is not "=")
-            children = list(node.children)
-            for child in reversed(children):
-                if child.type != "=" and _node_text(child, 2) != "=":
-                    ref = _parse_enum_ref(child)
-                    if ref is not None:
-                        return ref
-                    break
-        for child in node.children:
-            result = _find_return_enum_ref(child)
-            if result is not None:
-                return result
-        return None
-
-    def _find_case_pattern_member(node: Any) -> str | None:
-        """Extract the enum member from a case pattern like TrafficLight.RED."""
-        # case_clause children include "case", the pattern, and ":"
-        for child in node.children:
-            if child.type in (
-                "dotted_name",
-                "attribute",
-                "identifier",
-                "case_pattern",
-            ):
-                ref = _parse_enum_ref(child)
-                if ref is not None:
-                    return ref
-                # attribute node: value.attribute
-                val = getattr(child, "children", [])
-                for sub in val:
-                    ref2 = _parse_enum_ref(sub)
-                    if ref2 is not None:
-                        return ref2
-        return None
-
-    def _iter_case_clauses(match_stmt: Any) -> list[Any]:
-        """Return all case_clause nodes from a match_statement.
-
-        Tree-sitter places case_clauses inside a 'block' child of
-        match_statement (not as direct children).
-        """
-        clauses: list[Any] = []
-        for child in match_stmt.children:
-            if child.type == "block":
-                for sub in child.children:
-                    if sub.type == "case_clause":
-                        clauses.append(sub)
-            elif child.type == "case_clause":
-                # Direct child fallback (some grammar versions)
-                clauses.append(child)
-        return clauses
-
-    match_stmts = _find_match_statements(root)
-    for match_stmt in match_stmts:
-        for case_clause in _iter_case_clauses(match_stmt):
-            source_member = None
-            target_member = None
-
-            for cc in case_clause.children:
-                if cc.type == "case_pattern":
-                    # case_pattern > dotted_name: "ClassName.MEMBER"
-                    for sub in cc.children:
-                        m = _parse_enum_ref(sub)
-                        if m is not None:
-                            source_member = m
-                            break
-                    if source_member is None:
-                        # fallback: try the case_pattern node text itself
-                        m = _parse_enum_ref(cc)
-                        if m is not None:
-                            source_member = m
-                elif cc.type in ("dotted_name", "attribute"):
-                    m = _parse_enum_ref(cc)
-                    if m is not None:
-                        source_member = m
-                elif cc.type == "block":
-                    target_member = _find_return_enum_ref(cc)
-
-            if source_member and target_member and source_member != target_member:
-                key = (source_member, target_member)
-                if key not in seen:
-                    seen.add(key)
-                    transitions.append(
-                        StateTransition(source=source_member, target=target_member)
-                    )
-
-    return transitions
+def _missing_enum_error(class_name: str | None) -> str:
+    return (
+        "NOT_FOUND:class_missing"
+        if class_name is not None
+        else "NOT_FOUND:no_enum_class"
+    )
 
 
 def build_state_result(
@@ -282,99 +104,29 @@ def build_state_result(
     *,
     parse_file_for_state: ParseFileForState = _parse_file_for_state,
 ) -> StateResult:
-    """Parse *file_path* and extract FSM states and transitions.
-
-    Cost: ONE disk read + ONE tree-sitter parse (rule-11 invariant).
-
-    Returns StateResult with error="" on success (even if transitions is empty —
-    the NOT_FOUND verdict for empty transitions is applied at the UMLExporter
-    level, not here).
-
-    Errors:
-      error="NOT_FOUND:file_missing"  — file does not exist
-      error="NOT_FOUND:no_enum_class" — no Enum subclass found in file
-      error="NOT_FOUND:class_missing" — class_name given but not found
-      error="PARSE_FAILED"            — tree-sitter parse failure
-    """
+    """Parse one file and extract deterministic FSM states and transitions."""
     if not Path(file_path).exists():
         return StateResult(error="NOT_FOUND:file_missing")
 
     parse_result = parse_file_for_state(file_path, language)
     if parse_result is None:
         return StateResult(error="PARSE_FAILED")
-
     root, _source = parse_result
 
     enum_classes = _find_enum_classes(root, class_name)
-
     if not enum_classes:
-        if class_name is not None:
-            # class_name was provided but not found as an Enum subclass
-            return StateResult(error="NOT_FOUND:class_missing")
-        return StateResult(error="NOT_FOUND:no_enum_class")
+        return StateResult(error=_missing_enum_error(class_name))
 
-    # Collect members per enum class and scan each for transitions.
-    # Semantics (P2-2): when class_name is omitted and multiple Enums are
-    # present, we scan every Enum for transitions; if any have transitions we
-    # prefer those (states from transition-bearing enums only).  When none
-    # have transitions we fall back to all members (caller will set NOT_FOUND).
-    per_enum_members: list[tuple[str, list[str]]] = []
-    for ec in enum_classes:
-        members = _extract_enum_members(ec["node"])
-        per_enum_members.append((ec["name"], members))
-
-    if class_name is not None:
-        # Filtered to a single enum — original behaviour, one scan.
-        all_members = per_enum_members[0][1] if per_enum_members else []
-        primary_class = class_name
-        known_members_set: set[str] = set(all_members)
-        all_transitions = _extract_transitions(root, primary_class, known_members_set)
-    else:
-        # Scan each discovered enum independently; aggregate results.
-        enum_transitions: list[tuple[str, list[str], list[StateTransition]]] = []
-        for ec_name, ec_members in per_enum_members:
-            km = set(ec_members)
-            txns = _extract_transitions(root, ec_name, km)
-            enum_transitions.append((ec_name, ec_members, txns))
-
-        # Prefer enums that have transitions (P2-2 semantics).
-        transition_bearing = [
-            (name, members, txns) for name, members, txns in enum_transitions if txns
-        ]
-        if transition_bearing:
-            chosen = transition_bearing
-        else:
-            chosen = enum_transitions  # fall back to all (will result in NOT_FOUND)
-
-        all_members = [m for _, members, _ in chosen for m in members]
-        # Aggregate transitions (deduplicated across enums)
-        seen_txn: set[tuple[str, str]] = set()
-        all_transitions = []
-        for _, _, txns in chosen:
-            for t in txns:
-                key = (t.source, t.target)
-                if key not in seen_txn:
-                    seen_txn.add(key)
-                    all_transitions.append(t)
-
-    # Deduplicate members while preserving order
-    seen_members: set[str] = set()
-    unique_members: list[str] = []
-    for m in all_members:
-        if m not in seen_members:
-            seen_members.add(m)
-            unique_members.append(m)
-
-    truncated = False
-    if len(unique_members) > max_nodes:
-        unique_members = unique_members[:max_nodes]
-        truncated = True
-
-    # Sort for deterministic output
-    states = sorted(unique_members)
-
+    members, transitions = collect_state_data(
+        root,
+        enum_classes,
+        class_name,
+        _extract_enum_members,
+        _extract_transitions,
+    )
+    states, truncated = finalize_states(members, max_nodes)
     return StateResult(
         states=states,
-        transitions=all_transitions,
+        transitions=transitions,
         truncated=truncated,
     )
