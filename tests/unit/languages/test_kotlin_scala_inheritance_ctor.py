@@ -109,6 +109,29 @@ class TestKotlinInheritance:
         # Displayable, Serializable, Result, Success, UserManager
         assert len(classes) == 5
 
+    def test_malformed_specifier_retains_all_recoverable_metadata(self) -> None:
+        """PR #1178 (2026-07-27): mixed children retain base and interface."""
+        from tree_sitter_analyzer.languages.kotlin_helpers import (
+            _extract_kotlin_delegation,
+        )
+
+        superclass = _StubNode("user_type")
+        superclass.text = "Base"
+        constructor = _StubNode("constructor_invocation", children=[superclass])
+        interface = _StubNode("user_type")
+        interface.text = "Recoverable"
+        specifier = _StubNode(
+            "delegation_specifier",
+            children=[constructor, interface],
+        )
+        delegates = _StubNode("delegation_specifiers", children=[specifier])
+        node = _StubNode("class_declaration", children=[delegates])
+
+        assert _extract_kotlin_delegation(node, lambda child: child.text) == (
+            "Base",
+            ["Recoverable"],
+        )
+
 
 # ---------------------------------------------------------------------------
 # Gap 2 — Scala inheritance via extends_clause

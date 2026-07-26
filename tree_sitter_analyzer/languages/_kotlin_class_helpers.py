@@ -42,13 +42,15 @@ def _constructor_supertype(
 def _delegation_specifier(
     node: Any,
     get_node_text: Callable[..., str],
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, list[str]]:
+    superclass: str | None = None
+    interfaces: list[str] = []
     for child in node.children:
-        if child.type == "constructor_invocation":
-            return _constructor_supertype(child, get_node_text), None
-        if child.type == "user_type":
-            return None, str(get_node_text(child))
-    return None, None
+        if child.type == "constructor_invocation" and superclass is None:
+            superclass = _constructor_supertype(child, get_node_text)
+        elif child.type == "user_type":
+            interfaces.append(str(get_node_text(child)))
+    return superclass, interfaces
 
 
 def _extract_kotlin_delegation(
@@ -66,13 +68,12 @@ def _extract_kotlin_delegation(
     for specifier in delegates.children:
         if specifier.type != "delegation_specifier":
             continue
-        candidate_superclass, interface = _delegation_specifier(
+        candidate_superclass, candidate_interfaces = _delegation_specifier(
             specifier, get_node_text
         )
         if superclass is None and candidate_superclass is not None:
             superclass = candidate_superclass
-        if interface is not None:
-            interfaces.append(interface)
+        interfaces.extend(candidate_interfaces)
     return superclass, interfaces
 
 

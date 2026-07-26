@@ -19,6 +19,33 @@ from tree_sitter_analyzer.languages.kotlin_plugin import (  # noqa: E402
 TREE_SITTER_KOTLIN_AVAILABLE = True
 
 
+def test_kotlin_helper_facade_preserves_star_import_surface() -> None:
+    """PR #1178 (2026-07-27): compatibility includes historical public names."""
+    namespace: dict[str, object] = {}
+    exec(  # noqa: S102 - exact import-surface compatibility regression
+        "from tree_sitter_analyzer.languages.kotlin_helpers import *",
+        namespace,
+    )
+
+    assert set(namespace) - {"__builtins__"} == {
+        "Any",
+        "Callable",
+        "Class",
+        "Function",
+        "Import",
+        "Variable",
+        "calculate_kotlin_complexity",
+        "determine_visibility",
+        "extract_import",
+        "extract_kotlin_class_or_object",
+        "extract_kotlin_function",
+        "extract_kotlin_parameters",
+        "extract_kotlin_primary_constructor",
+        "extract_kotlin_property",
+        "log_error",
+    }
+
+
 class TestKotlinElementExtractorInit:
     """Tests for KotlinElementExtractor initialization."""
 
