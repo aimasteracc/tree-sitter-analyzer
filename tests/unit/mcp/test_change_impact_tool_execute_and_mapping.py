@@ -654,7 +654,7 @@ def test_find_test_files_matches_context_prefixed_module_stem():
         {
             "tests/unit/test_ast_cache_build_state.py",
             "tests/unit/test_tool_registry.py",
-            "tests/unit/test_build_states.py",
+            "tests/unit/test_other_build_states.py",
         },
     )
 
@@ -712,6 +712,35 @@ def test_find_test_files_uses_lone_source_parent_as_affinity():
     assert mapping["constraints/evaluator.py"] == [
         "tests/unit/constraints/test_evaluator.py"
     ]
+
+
+def test_find_test_files_treats_smoke_as_unscoped_test_tier():
+    """A smoke tier must not let a source-affine but unrelated test win."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/smoke/test_engine.py",
+            "tests/unit/core/test_other.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == ["tests/smoke/test_engine.py"]
+
+
+def test_find_test_files_supports_exact_plural_subject():
+    """A plural suite subject may directly cover its singular module."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/extractor.py", "src/engine.py"],
+        {
+            "tests/test_extractors.py",
+            "tests/test_engines.py",
+            "tests/test_other_extractors.py",
+            "tests/test_other_engines.py",
+        },
+    )
+
+    assert mapping["src/extractor.py"] == ["tests/test_extractors.py"]
+    assert mapping["src/engine.py"] == ["tests/test_engines.py"]
 
 
 def test_find_test_files_maps_refactoring_plan_builder_to_family_tests():
