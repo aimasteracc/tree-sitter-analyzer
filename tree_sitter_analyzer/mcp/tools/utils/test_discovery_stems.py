@@ -83,6 +83,7 @@ def test_path_is_unscoped(test_file: str) -> bool:
         "integration",
         "performance",
         "regression",
+        "slow",
         "smoke",
         "unit",
     }
@@ -101,6 +102,14 @@ def test_path_subsystem_affinity_rank(
         return None
 
     normalized_test = Path(test_file.replace("\\", "/"))
+    changed_package = _monorepo_package_identity(changed_file)
+    test_package = _monorepo_package_identity(test_file)
+    if (
+        changed_package is not None
+        and test_package is not None
+        and changed_package != test_package
+    ):
+        return None
     test_parts = {
         part.lower().replace("-", "_") for part in normalized_test.parts[:-1]
     }
@@ -143,8 +152,22 @@ def module_stem_for_path(file_path: str | Path) -> str:
 
 def _normalize_module_identifier(stem: str) -> str:
     """Normalize snake, kebab, dotted, and CamelCase module identifiers."""
-    snake_stem = re.sub(r"(?<!^)(?=[A-Z])", "_", stem)
+    acronym_split = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", stem)
+    snake_stem = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", acronym_split)
     return snake_stem.lower().replace("-", "_").replace(".", "_").lstrip("_")
+
+
+def _monorepo_package_identity(file_path: str | Path) -> str | None:
+    """Return a package name encoded by a conventional monorepo container."""
+    normalized = Path(str(file_path).replace("\\", "/"))
+    parts = normalized.parts[:-1]
+    for index, part in enumerate(parts[:-1]):
+        if part.lower() not in {"apps", "packages"}:
+            continue
+        package = parts[index + 1].lower().replace("-", "_")
+        if package and not package.startswith("."):
+            return package
+    return None
 
 
 def python_package_test_stems(file_path: str | Path) -> list[str]:
