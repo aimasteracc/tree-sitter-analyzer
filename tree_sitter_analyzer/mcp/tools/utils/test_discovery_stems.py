@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+__test__ = False
+
 
 def related_test_stems_for_path(file_path: str | Path) -> list[str]:
     """Return non-filename stems that can connect a file to tests."""
@@ -69,6 +71,7 @@ def test_path_is_unscoped(test_file: str) -> bool:
         "integration",
         "performance",
         "regression",
+        "smoke",
         "unit",
     }
     while parts and parts[0].lower() in generic_tiers:
