@@ -6,6 +6,7 @@ import fnmatch
 import os
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from .indexing_limits import normalize_index_max_files
@@ -102,13 +103,15 @@ def build_index_candidate_snapshot(
     live file for a deleted one.
     """
     normalized_max = normalize_index_max_files(max_files)
-    normalized_root = os.path.abspath(project_root)
+    normalized_root = os.path.realpath(project_root)
     entries: list[IndexSnapshotEntry] = []
     present_paths: set[str] = set()
     discovered = selected = excluded = skipped = errors = limited = 0
 
     for raw_path in walk_fn(normalized_root):
-        abs_path = os.path.abspath(raw_path)
+        abs_path = os.path.realpath(raw_path)
+        if not Path(abs_path).is_relative_to(normalized_root):
+            raise ValueError(f"candidate path escapes project root: {raw_path}")
         rel_path = os.path.relpath(abs_path, normalized_root).replace("\\", "/")
         discovered += 1
         present_paths.add(rel_path)

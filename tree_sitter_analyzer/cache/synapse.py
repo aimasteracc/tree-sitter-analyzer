@@ -77,7 +77,8 @@ def resolve_call_edges_for_file(
 
 
 def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int] | None:
-    """Re-resolve every unresolved call edge. Returns stats dict or None."""
+    """Re-resolve unresolved call edges; return None only on indeterminate failure."""
+    empty_stats = {"total": 0, "resolved": 0, "unchanged": 0, "errors": 0}
     try:
         from ..synapse_resolver import (
             build_resolver_context,
@@ -88,7 +89,7 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         logger.debug("synapse_resolver import failed: %s", exc)
         return None
     if not is_enabled():
-        return None
+        return empty_stats
     try:
         # Re-scan only edges that are still genuinely unresolved. ``external``
         # and ``stdlib`` are *terminal* resolutions (target lives outside the
@@ -106,7 +107,7 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         logger.debug("synapse backfill select failed: %s", exc)
         return None
     if not rows:
-        return None
+        return empty_stats
     try:
         ctx = build_resolver_context(cache)
     except Exception as exc:

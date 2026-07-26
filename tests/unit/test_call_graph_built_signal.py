@@ -800,3 +800,18 @@ def test_single_file_backfill_error_keeps_marker_incomplete(tmp_path) -> None:
         cache.close()
 
     assert graph_built is False
+
+
+def test_single_file_indeterminate_backfill_keeps_marker_incomplete(tmp_path) -> None:
+    cache = ASTCache(str(tmp_path))
+    try:
+        with mock.patch.object(cache, "_run_synapse_backfill", return_value=None):
+            cache._mark_single_file_index_complete_if_needed(
+                had_built_marker=True,
+                result={"status": "indexed"},
+            )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is False

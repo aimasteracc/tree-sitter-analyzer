@@ -396,7 +396,7 @@ def _validate_candidate_snapshot(
     candidate_snapshot: IndexCandidateSnapshot,
 ) -> None:
     """Reject a snapshot before an index run performs any destructive work."""
-    if os.path.abspath(cache.project_root) != candidate_snapshot.project_root:
+    if os.path.realpath(cache.project_root) != candidate_snapshot.project_root:
         raise ValueError("candidate snapshot belongs to a different project root")
     if max_files != candidate_snapshot.max_files:
         raise ValueError("candidate snapshot uses a different max_files limit")
@@ -491,12 +491,10 @@ def index_parallel(
         return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
 
 
-def _snapshot_result_is_stable(
+def _snapshot_result_change_reason(
     result: dict[str, Any],
     entries: dict[str, IndexSnapshotEntry],
-    stats: dict[str, Any],
-) -> bool:
-    """Validate one worker result immediately before its database write."""
+) -> tuple[str, str | None]:
     rel_path = str(result["rel_path"]).replace("\\", "/")
     entry = entries[rel_path]
     fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
@@ -505,26 +503,65 @@ def _snapshot_result_is_stable(
         int(result.get("file_size", fingerprint.file_size)),
     )
     expected_fingerprint = (fingerprint.mtime_ns, fingerprint.file_size)
-    change_reason = (
+    return rel_path, (
         "file changed after candidate snapshot"
         if worker_fingerprint != expected_fingerprint
         else changed_since_snapshot(entry)
     )
-    if change_reason is None:
-        return True
 
+
+def _record_snapshot_change(
+    stats: dict[str, Any], rel_path: str, change_reason: str
+) -> None:
+    """Replace one processed result with a deterministic snapshot skip."""
     stats["skipped"] += 1
     stats["processed"] = max(0, int(stats["processed"]) - 1)
     stats["changed_during_run"] += 1
     stats["changed_during_run_files"].append(rel_path)
     stats["files"].append(
-        {
-            "file": rel_path,
-            "status": "skipped",
-            "reason": change_reason,
-        }
+        {"file": rel_path, "status": "skipped", "reason": change_reason}
     )
+
+
+def _snapshot_result_is_stable(
+    result: dict[str, Any],
+    entries: dict[str, IndexSnapshotEntry],
+    stats: dict[str, Any],
+) -> bool:
+    """Validate one worker result immediately before its database write."""
+    rel_path, change_reason = _snapshot_result_change_reason(result, entries)
+    if change_reason is None:
+        return True
+
+    _record_snapshot_change(stats, rel_path, change_reason)
     return False
+
+
+def _revalidate_snapshot_batch(
+    pending_results: list[dict[str, Any]],
+    *,
+    cache: Any,
+    conn: sqlite3.Connection,
+    entries: dict[str, IndexSnapshotEntry],
+    stats: dict[str, Any],
+) -> None:
+    """Discard pending generations that changed before their batch commit."""
+    from . import write as _write
+
+    for result in pending_results:
+        rel_path, change_reason = _snapshot_result_change_reason(result, entries)
+        if change_reason is None:
+            continue
+        if result["status"] in ("io_error", "parse_failed"):
+            stats["errors"] -= 1
+        else:
+            _write.discard_file_rows(conn, rel_path, cache.fts5_available)
+            stats["indexed"] -= 1
+        for index in range(len(stats["files"]) - 1, -1, -1):
+            if stats["files"][index]["file"] == rel_path:
+                del stats["files"][index]
+                break
+        _record_snapshot_change(stats, rel_path, change_reason)
 
 
 def run_index_project(
@@ -640,6 +677,17 @@ def run_index_project(
             if snapshot_entries is not None
             else None
         )
+        batch_guard = (
+            partial(
+                _revalidate_snapshot_batch,
+                cache=cache,
+                conn=conn,
+                entries=snapshot_entries,
+                stats=stats,
+            )
+            if snapshot_entries is not None
+            else None
+        )
         _ast_cache_mod._commit_index_results(
             conn,
             results,
@@ -653,7 +701,10 @@ def run_index_project(
             indexed_at,
             activation_enabled,
             result_guard=result_guard,
+            batch_guard=batch_guard,
         )
+        if stats["changed_during_run"] > 0:
+            _clear_call_graph_built(conn)
         stats["total_files"] = count
         stats["workers"] = workers
         if stats["indexed"] > 0:

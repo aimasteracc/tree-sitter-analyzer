@@ -252,7 +252,7 @@ class ASTCache:
             except Exception:
                 logger.debug("single-file Synapse backfill failed", exc_info=True)
                 return
-            if backfill is not None and int(backfill.get("errors", 0)) > 0:
+            if backfill is None or int(backfill.get("errors", 0)) > 0:
                 return
         _mark_call_graph_built(self._get_conn())
 
@@ -334,7 +334,7 @@ class ASTCache:
         _clear_activation_for_file_fn(conn, rel_path)
 
     def _run_synapse_backfill(self) -> dict[str, int] | None:
-        """Re-resolve every unresolved call edge. Returns stats dict or None."""
+        """Re-resolve unresolved call edges; return None on indeterminate failure."""
         from .cache import synapse as _synapse
 
         return _synapse.run_synapse_backfill(self, self._get_conn())

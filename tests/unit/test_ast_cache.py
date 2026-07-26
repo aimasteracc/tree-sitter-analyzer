@@ -17,6 +17,7 @@ from tree_sitter_analyzer.ast_cache import (
     _has_fts5,
 )
 from tree_sitter_analyzer.cache.callgraph_state import clear_call_graph_built
+from tree_sitter_analyzer.cache.helpers import _commit_index_results
 from tree_sitter_analyzer.cache.indexer import _clear_full_rebuild_rows
 from tree_sitter_analyzer.cache.write import invalidate_file_rows
 from tree_sitter_analyzer.indexing_snapshot import (
@@ -1230,6 +1231,22 @@ def test_force_index_rejects_wrong_root_before_clearing_cache(tmp_path):
     assert row == before
 
 
+def test_snapshot_rejects_candidate_outside_project_root(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_text("value = 1\n")
+
+    with pytest.raises(ValueError, match="escapes project root"):
+        build_index_candidate_snapshot(
+            str(project),
+            max_files=10,
+            exclude_patterns=frozenset(),
+            walk_fn=lambda _root: (str(outside),),
+            language_fn=lambda _path: "python",
+        )
+
+
 def test_force_index_rejects_wrong_limit_before_clearing_cache(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
@@ -1333,6 +1350,82 @@ def test_force_index_discards_all_stale_derived_rows(tmp_path):
         "edges": 0,
     }
     assert mirror_exists is False
+
+
+def test_snapshot_revalidates_pending_rows_at_batch_commit(tmp_path):
+    from tree_sitter_analyzer.cache import indexer
+
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_text("a = 1\n")
+    second.write_text("b = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(first), str(second)),
+        language_fn=_python_language,
+    )
+    cache = ASTCache(str(tmp_path))
+    real_insert = indexer.insert_index_row
+
+    def insert_then_mutate(*args, **kwargs):
+        real_insert(*args, **kwargs)
+        if args[2]["rel_path"] == "b.py":
+            first.write_text("a = 200\n")
+
+    try:
+        with patch.object(indexer, "insert_index_row", side_effect=insert_then_mutate):
+            result = cache.index_project(
+                max_files=10,
+                workers=0,
+                candidate_snapshot=snapshot,
+            )
+        first_cached = cache.lookup(str(first))
+        second_cached = cache.lookup(str(second))
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert result["indexed"] == 1
+    assert result["changed_during_run_files"] == ["a.py"]
+    assert first_cached is None
+    assert second_cached is not None
+    assert graph_built is False
+
+
+def test_commit_helper_guards_each_full_batch():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE committed_files (file_path TEXT)")
+    results = [
+        {
+            "rel_path": rel_path,
+            "status": "indexed",
+            "symbols_count": 0,
+            "content_hash": "0" * 64,
+        }
+        for rel_path in ("a.py", "b.py")
+    ]
+    stats = {"errors": 0, "indexed": 0, "files": []}
+    guarded: list[list[str]] = []
+
+    def insert(result, _indexed_at, *, include_activation):
+        conn.execute("INSERT INTO committed_files VALUES (?)", (result["rel_path"],))
+
+    _commit_index_results(
+        conn,
+        results,
+        stats,
+        insert,
+        "now",
+        False,
+        batch_size=1,
+        batch_guard=lambda batch: guarded.append(
+            [result["rel_path"] for result in batch]
+        ),
+    )
+
+    assert guarded == [["a.py"], ["b.py"]]
 
 
 def test_cached_snapshot_mutation_does_not_stamp_graph_complete(tmp_path):

@@ -66,6 +66,32 @@ def _reset_incoming_edge_resolutions(
         )
 
 
+def discard_file_rows(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    fts5_available: bool | None,
+) -> bool:
+    """Remove one file generation without committing the current transaction."""
+    if fts5_available:
+        conn.execute(
+            "DELETE FROM ast_symbols_fts WHERE file_path = ?",
+            (rel_path,),
+        )
+    _delete_file_rows_if_table_present(conn, "ast_symbol_rows", rel_path)
+    for table in ("ast_imports", "ast_symbol_activation"):
+        _delete_file_rows_if_table_present(conn, table, rel_path)
+    if _table_exists(conn, "edges"):
+        from ..graph.edge_store import EdgeStore
+
+        EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, [])
+        _reset_incoming_edge_resolutions(conn, rel_path)
+    cursor = conn.execute(
+        "DELETE FROM ast_index WHERE file_path = ?",
+        (rel_path,),
+    )
+    return cursor.rowcount > 0
+
+
 def invalidate_file_rows(
     conn: sqlite3.Connection,
     rel_path: str,
@@ -74,23 +100,7 @@ def invalidate_file_rows(
     """Remove one file's primary and derived cache rows."""
     changes_before = conn.total_changes
     try:
-        if fts5_available:
-            conn.execute(
-                "DELETE FROM ast_symbols_fts WHERE file_path = ?",
-                (rel_path,),
-            )
-        _delete_file_rows_if_table_present(conn, "ast_symbol_rows", rel_path)
-        for table in ("ast_imports", "ast_symbol_activation"):
-            _delete_file_rows_if_table_present(conn, table, rel_path)
-        if _table_exists(conn, "edges"):
-            from ..graph.edge_store import EdgeStore
-
-            EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, [])
-            _reset_incoming_edge_resolutions(conn, rel_path)
-        cursor = conn.execute(
-            "DELETE FROM ast_index WHERE file_path = ?",
-            (rel_path,),
-        )
+        removed = discard_file_rows(conn, rel_path, fts5_available)
     except Exception:
         conn.rollback()
         raise
@@ -101,7 +111,7 @@ def invalidate_file_rows(
         clear_call_graph_built(conn)
     else:
         conn.commit()
-    return cursor.rowcount > 0
+    return removed
 
 
 def write_fts5_symbols(

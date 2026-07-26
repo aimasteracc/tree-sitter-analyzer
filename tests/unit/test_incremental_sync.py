@@ -168,6 +168,17 @@ class TestSyncDeletedFile:
 
         assert cache.call_graph_built() is False
 
+    def test_deletion_sync_indeterminate_backfill_keeps_graph_incomplete(
+        self, sync, cache, project
+    ):
+        sync.sync()
+        (project / "src" / "helper.js").unlink()
+
+        with patch.object(cache, "_run_synapse_backfill", return_value=None):
+            sync.sync()
+
+        assert cache.call_graph_built() is False
+
 
 class TestSyncNewFile:
     def test_detects_new_file(self, sync, cache, project):
@@ -1009,6 +1020,40 @@ def test_late_new_file_mutation_rolls_back_new_counter(tmp_path):
         cache.close()
 
     assert result.new_files == 0
+
+
+def test_late_disappearance_reclassifies_index_error_as_snapshot_change(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    cache = ASTCache(str(tmp_path))
+    original = cache.index_file
+
+    def disappear_before_index(file_path: str, language: str | None = None):
+        path.unlink()
+        return original(file_path, language)
+
+    try:
+        with patch.object(cache, "index_file", side_effect=disappear_before_index):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        cache.close()
+
+    assert result.errors == 0
+    assert result.new_files == 0
+    assert result.changed_during_run_files == ["app.py"]
+    assert result.details == [
+        {
+            "file": "app.py",
+            "considered": "skipped",
+            "action": "skipped",
+            "status": "skipped",
+            "reason": "file disappeared after candidate snapshot",
+        }
+    ]
 
 
 def test_late_updated_file_mutation_rolls_back_updated_counter(tmp_path):

@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T12:04:31Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 760,
+  "items_found": 4,
+  "actions_taken": 4,
+  "escalations": 0,
+  "tokens_estimate": 20000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 eighth Codex Draft review: candidate paths are now realpath-contained inside the resolved project root; every bounded write batch revalidates pending snapshot generations immediately before COMMIT and transactionally discards changed rows while correcting metrics; late file disappearance reclassifies and removes its superseded incremental error; and Synapse returns explicit zero-work success while indeterminate failures keep graph completion false. Focused coverage (301 tests), strict worktree patch coverage, full pytest (1292 passed, 7 skipped), build, global Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, file-size, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T11:36:00Z",
   "pattern": "pr-review-repair",
   "duration_s": 600,

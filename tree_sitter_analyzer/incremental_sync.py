@@ -87,9 +87,7 @@ class IncrementalSync:
         result.scanned = len(disk_files)
         result.processed = len(disk_files)
         result.changed_during_run = len(changed_files)
-        result.changed_during_run_files = sorted(
-            path for path, _reason in changed_files
-        )
+        result.changed_during_run_files = sorted(path for path, _ in changed_files)
         result.truncated_by_max_files = truncated
         for rel_path, reason in sorted(changed_files):
             self._cache.invalidate(os.path.join(self._cache.project_root, rel_path))
@@ -132,6 +130,12 @@ class IncrementalSync:
                     late_changes.append((entry.rel_path, change_reason))
             for rel_path, reason in sorted(late_changes):
                 self._cache.invalidate(os.path.join(self._cache.project_root, rel_path))
+                for index in range(len(result.details) - 1, -1, -1):
+                    prior = result.details[index]
+                    if prior.get("file") == rel_path and prior.get("status") == "error":
+                        del result.details[index]
+                        result.errors -= 1
+                        break
                 counter_name = {
                     "new": "new_files",
                     "updated": "updated_files",
@@ -167,12 +171,12 @@ class IncrementalSync:
         backfill_complete = True
         if result.new_files or result.updated_files or result.deleted_files:
             try:
-                backfill = getattr(self._cache, "_run_synapse_backfill", None)
-                if callable(backfill):
-                    stats = backfill()
-                    if stats is not None:
-                        result.synapse_resolved = int(stats.get("resolved", 0))
-                        backfill_complete = int(stats.get("errors", 0)) == 0
+                stats = self._cache._run_synapse_backfill()
+                if stats is None:
+                    backfill_complete = False
+                else:
+                    result.synapse_resolved = int(stats.get("resolved", 0))
+                    backfill_complete = int(stats.get("errors", 0)) == 0
             except Exception:  # pragma: no cover - backfill is best-effort
                 backfill_complete = False
 
@@ -224,7 +228,7 @@ class IncrementalSync:
 
         if candidate_snapshot is not None:
             if (
-                os.path.abspath(self._cache.project_root)
+                os.path.realpath(self._cache.project_root)
                 != candidate_snapshot.project_root
             ):
                 raise ValueError(
@@ -352,12 +356,7 @@ class IncrementalSync:
         abs_path: str,
         conn: sqlite3.Connection,
     ) -> dict[str, Any]:
-        # J8: ``considered`` records what the sync engine attempted
-        # ("indexed" / "updated" / "deleted"); ``status`` records the actual
-        # outcome from the cache layer ("indexed" / "skipped" / "error" /
-        # "unknown"). Previously this was a single ``action`` field that
-        # confusingly read ``action: "indexed", status: "skipped"`` for files
-        # the cache refused. ``action`` is preserved as a back-compat alias.
+        # Keep attempted action separate from the cache layer's actual status.
         try:
             index_result = self._cache.index_file(abs_path)
         except Exception as exc:

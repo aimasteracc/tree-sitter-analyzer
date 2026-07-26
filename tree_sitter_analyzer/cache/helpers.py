@@ -81,6 +81,7 @@ def _commit_index_results(
     activation_enabled: bool,
     batch_size: int = _COMMIT_BATCH_SIZE,
     result_guard: Any | None = None,
+    batch_guard: Any | None = None,
 ) -> None:
     """Commit worker results to the DB in bounded-size transactions.
 
@@ -90,6 +91,7 @@ def _commit_index_results(
     re-raises; previously committed batches persist.
     """
     pending = 0
+    pending_results: list[dict[str, Any]] = []
     conn.execute("BEGIN")
     try:
         for r in results:
@@ -99,10 +101,16 @@ def _commit_index_results(
                 r, stats, insert_fn, indexed_at, activation_enabled
             )
             pending += 1
+            pending_results.append(r)
             if pending >= batch_size:
+                if batch_guard is not None:
+                    batch_guard(pending_results)
                 conn.execute("COMMIT")
                 pending = 0
+                pending_results.clear()
                 conn.execute("BEGIN")
+        if batch_guard is not None and pending_results:
+            batch_guard(pending_results)
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
