@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 _CACHE_CONTEXT_VERSION = "health-score-v3"
 _CONTEXT_COLUMN = "context_fingerprint"
 _MAX_GIT_METADATA_BYTES = 64 * 1024
+_MAX_SYMBOLIC_REF_DEPTH = 16
 _SECONDS_PER_DAY = 24 * 60 * 60
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS health_scores (
@@ -169,7 +170,7 @@ def _coverage_context_parts() -> list[str]:
 def _find_git_dir(project_root: Path) -> Path | None:
     """Resolve a repository or worktree git directory without spawning git."""
     try:
-        resolved_root = project_root.resolve()
+        resolved_root = project_root.resolve(strict=True)
     except (OSError, RuntimeError):
         return None
     for root in (resolved_root, *resolved_root.parents):
@@ -194,7 +195,7 @@ def _find_git_dir(project_root: Path) -> Path | None:
         if prefix != "gitdir":
             return None
         try:
-            return (root / value.strip()).resolve()
+            return (root / value.strip()).resolve(strict=True)
         except (OSError, RuntimeError):
             return None
     return None
@@ -209,7 +210,7 @@ def _git_context_parts(git_dir: Path | None) -> list[str]:
     common_value = _read_small_regular_text(common_marker)
     if common_value:
         try:
-            common_dir = (git_dir / common_value).resolve()
+            common_dir = (git_dir / common_value).resolve(strict=True)
         except (OSError, RuntimeError):
             return ["git:missing"]
 
@@ -222,9 +223,36 @@ def _git_context_parts(git_dir: Path | None) -> list[str]:
     head_value = _read_small_regular_text(head)
     if head_value is None:
         return parts
-    if head_value.startswith("ref: "):
-        parts.append(_metadata_signature(common_dir / head_value.removeprefix("ref: ")))
+    parts.extend(_symbolic_ref_context_parts(common_dir, head_value))
     return parts
+
+
+def _symbolic_ref_context_parts(common_dir: Path, value: str) -> list[str]:
+    """Fingerprint a bounded, non-following chain of loose symbolic refs."""
+    parts: list[str] = []
+    seen: set[str] = set()
+    current = value
+    for _ in range(_MAX_SYMBOLIC_REF_DEPTH):
+        if not current.startswith("ref: "):
+            return parts
+        ref_name = current.removeprefix("ref: ").strip()
+        ref_path = Path(ref_name)
+        if (
+            not ref_name.startswith("refs/")
+            or ref_path.is_absolute()
+            or ".." in ref_path.parts
+        ):
+            return [*parts, "git:invalid-symbolic-ref"]
+        if ref_name in seen:
+            return [*parts, "git:symbolic-ref-loop"]
+        seen.add(ref_name)
+        loose_ref = common_dir / ref_path
+        parts.append(_metadata_signature(loose_ref))
+        next_value = _read_small_regular_text(loose_ref)
+        if next_value is None:
+            return parts
+        current = next_value
+    return [*parts, "git:symbolic-ref-depth"]
 
 
 def _day_bucket(timestamp: float | None = None) -> int:
@@ -274,7 +302,7 @@ class HealthScoreCache:
     def _context_for_file(self, file_path: str) -> str:
         """Combine project context with the repository governing one file."""
         try:
-            source_parent = Path(file_path).resolve().parent
+            source_parent = Path(file_path).resolve(strict=True).parent
         except (OSError, RuntimeError):
             source_parent = Path(file_path).absolute().parent
         git_dir = _find_git_dir(source_parent)

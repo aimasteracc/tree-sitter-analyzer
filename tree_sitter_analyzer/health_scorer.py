@@ -458,6 +458,7 @@ class HealthScorer:
         if not coverage_data:
             return None
 
+        windows_file = _is_windows_style_path(file_path)
         path = Path(file_path)
         candidates = [str(path).replace("\\", "/"), path.name]
 
@@ -473,12 +474,20 @@ class HealthScorer:
                 continue
 
         for candidate in candidates:
-            if candidate in coverage_data:
-                return coverage_data[candidate]
+            for cov_path, pct in coverage_data.items():
+                case_insensitive = windows_file or _is_windows_style_path(cov_path)
+                if _coverage_path_key(
+                    candidate, case_insensitive
+                ) == _coverage_path_key(cov_path, case_insensitive):
+                    return pct
 
         path_str = str(path).replace("\\", "/")
         for cov_path, pct in coverage_data.items():
-            if _path_suffix_matches(path_str, cov_path):
+            case_insensitive = windows_file or _is_windows_style_path(cov_path)
+            if _path_suffix_matches(
+                _coverage_path_key(path_str, case_insensitive),
+                _coverage_path_key(cov_path, case_insensitive),
+            ):
                 return pct
 
         return None
@@ -491,6 +500,17 @@ def _path_suffix_matches(left: str, right: str) -> bool:
         or left.endswith(f"/{right.lstrip('/')}")
         or right.endswith(f"/{left.lstrip('/')}")
     )
+
+
+def _is_windows_style_path(value: str) -> bool:
+    """Return whether a path uses Windows separators or a drive prefix."""
+    return "\\" in value or (len(value) >= 2 and value[1] == ":")
+
+
+def _coverage_path_key(value: str, case_insensitive: bool) -> str:
+    """Normalize separators and optionally apply Windows case folding."""
+    normalized = value.replace("\\", "/")
+    return normalized.casefold() if case_insensitive else normalized
 
 
 def _coverage_json_is_stale(cov_file: Path, coverage_db: Path) -> bool:
