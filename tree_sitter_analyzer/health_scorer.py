@@ -310,7 +310,7 @@ class HealthScorer:
 
         Coverage stats let an agent answer "how many files did you
         actually look at?" honestly — the difference between scanned
-        and scored files (excluded directories, parse failures) is the
+        and scored files (defensive exclusions, parse failures) is the
         kind of information that used to be silently dropped before
         ``TRUST_BUT_VERIFY_2026-05-23.md``.
 
@@ -325,11 +325,12 @@ class HealthScorer:
             Tuple of (scores, stats) where stats has shape::
 
                 {
-                    "total_files_scanned":   int,  # rglob hits, pre-filter
+                    "total_files_scanned":   int,  # candidates after dir pruning
                     "total_files_scored":    int,  # actually scored
                     "total_files_skipped":   int,  # scanned but not scored
+                    "pruned_directories":    int,  # excluded before file scanning
                     "skip_reasons": {
-                        "excluded_dir":   int,  # in self._EXCLUDE_DIRS
+                        "excluded_dir":   int,  # defensive file-level exclusions
                         "scoring_failed": int,  # score_file raised
                     },
                 }
@@ -343,14 +344,15 @@ class HealthScorer:
         cache = HealthScoreCache(str(root)) if use_cache else None
         results: list[HealthScore] = []
         scanned = 0
-        excluded_dir = 0
+        excluded_files = 0
+        pruned_directories = 0
         scoring_failed = 0
         try:
-            files, excluded_dir = self._iter_source_files(root)
+            files, pruned_directories = self._iter_source_files(root)
             for f in files:
                 scanned += 1
                 if self._is_excluded(f, root):
-                    excluded_dir += 1
+                    excluded_files += 1
                     continue
                 score = self._score_file_with_cache(str(f), cache)
                 if score is None:
@@ -365,9 +367,10 @@ class HealthScorer:
         stats: dict[str, Any] = {
             "total_files_scanned": scanned,
             "total_files_scored": len(results),
-            "total_files_skipped": excluded_dir + scoring_failed,
+            "total_files_skipped": excluded_files + scoring_failed,
+            "pruned_directories": pruned_directories,
             "skip_reasons": {
-                "excluded_dir": excluded_dir,
+                "excluded_dir": excluded_files,
                 "scoring_failed": scoring_failed,
             },
         }

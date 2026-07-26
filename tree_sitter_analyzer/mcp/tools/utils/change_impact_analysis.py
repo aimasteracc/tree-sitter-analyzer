@@ -34,7 +34,18 @@ from .constraint_violation_query import (
     verdict_from_violations,
     violations_for_files,
 )
-from .test_discovery_stems import related_stem_matches, related_test_stems_for_path
+from .test_discovery_stems import (
+    module_stem_for_path,
+    raw_module_stem_for_path,
+    raw_test_file_subject_stem,
+    related_stem_matches,
+    related_test_stems_for_path,
+    source_subsystem_stems,
+    test_file_subject_stem,
+    test_path_is_unscoped,
+    test_path_subsystem_affinity_rank,
+    test_paths_have_compatible_package_scope,
+)
 from .verification_command import (
     DefaultTestCommand,
     build_test_command,
@@ -85,6 +96,7 @@ def _find_test_files(
         for node in graph_nodes
         if _is_runnable_test_file(node, TEST_DIRS, TEST_SUFFIXES)
     }
+    known_paths = graph_nodes | set(changed_files)
 
     mapping: dict[str, list[str]] = {}
     for changed_file in changed_files:
@@ -97,22 +109,186 @@ def _find_test_files(
             for test_file in sorted(test_files)
             if _test_file_matches_change(test_file, changed_file)
         ]
-        mapping[changed_file] = related or [AUTO_DISCOVER_TEST_HINT]
+        family_related = [
+            test_file
+            for test_file in related
+            if not _test_file_has_direct_stem_match(test_file, changed_file)
+            and test_paths_have_compatible_package_scope(test_file, changed_file)
+        ]
+        direct_related = [
+            test_file
+            for test_file in related
+            if _test_file_has_direct_stem_match(test_file, changed_file)
+            and test_paths_have_compatible_package_scope(test_file, changed_file)
+        ]
+        raw_direct_related = [
+            test_file
+            for test_file in direct_related
+            if _test_file_has_raw_direct_stem_match(test_file, changed_file)
+        ]
+        if raw_direct_related and _has_case_only_path_collision(
+            changed_file,
+            known_paths,
+        ):
+            direct_related = raw_direct_related
+        has_named_subsystem = bool(
+            source_subsystem_stems(changed_file, graph_nodes)
+        )
+        retained_direct = [
+            test_file
+            for test_file in direct_related
+            if test_path_is_unscoped(test_file) or not has_named_subsystem
+        ]
+        cross_layer_direct_variants = [
+            test_file
+            for test_file in direct_related
+            if test_file_subject_stem(test_file)
+            != module_stem_for_path(changed_file)
+        ]
+        scoped_direct = _most_specific_affinity_matches(
+            direct_related,
+            changed_file,
+        )
+        selected_direct = sorted(
+            set(retained_direct)
+            | set(cross_layer_direct_variants)
+            | set(scoped_direct)
+        )
+        if not selected_direct and direct_related:
+            # All filename matches belong to another named subsystem. Only in
+            # that ambiguous case, search the available tests by source-path
+            # affinity instead of adding subsystem stems unconditionally.
+            # Any recognized direct filename may only be replaced by an
+            # independently established module-family candidate. A path or
+            # scope-bearing filename alone is weaker evidence.
+            affinity_fallback = _most_specific_affinity_matches(
+                family_related,
+                changed_file,
+            )
+            selected_direct = (
+                affinity_fallback
+                if 0 < len(affinity_fallback) <= FOCUSED_TEST_COMMAND_LIMIT
+                else direct_related
+            )
+        # Derived module-family matches deliberately span surfaces such as CLI,
+        # core, and MCP. Preserve them, while disambiguating the independent
+        # direct-stem candidate set.
+        selected = sorted(set(family_related) | set(selected_direct))
+        mapping[changed_file] = selected or [AUTO_DISCOVER_TEST_HINT]
 
     return mapping
 
 
+def _most_specific_affinity_matches(
+    test_files: list[str],
+    changed_file: str,
+) -> list[str]:
+    """Return affinity matches for the nearest matching source subsystem."""
+    ranked = [
+        (rank, test_file)
+        for test_file in test_files
+        if (
+            rank := test_path_subsystem_affinity_rank(test_file, changed_file)
+        )
+        is not None
+    ]
+    if not ranked:
+        return []
+    best_rank = min(rank for rank, _test_file in ranked)
+    return [test_file for rank, test_file in ranked if rank == best_rank]
+
+
+def _has_case_only_path_collision(
+    changed_file: str,
+    graph_nodes: set[str],
+) -> bool:
+    """Return whether another graph path differs only by filesystem case."""
+    normalized_change = changed_file.replace("\\", "/")
+    folded_change = normalized_change.casefold()
+    return any(
+        normalized_node != normalized_change
+        and normalized_node.casefold() == folded_change
+        for node in graph_nodes
+        if (normalized_node := node.replace("\\", "/"))
+    )
+
+
 def _test_file_matches_change(test_file: str, changed_file: str) -> bool:
     """Return True when a test filename appears related to a changed file."""
-    changed_stem = Path(changed_file).stem
-    test_stem = Path(test_file).stem
-    direct_stem = test_stem.replace("_test", "").replace("test_", "")
-    if changed_stem in test_stem or direct_stem == changed_stem:
+    if _test_file_has_direct_stem_match(test_file, changed_file):
         return True
+    test_stem = Path(test_file).stem
     return any(
         related_stem_matches(test_stem, related_stem)
         for related_stem in related_test_stems_for_path(changed_file)
     )
+
+
+def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
+    """Return whether the test filename directly names the changed module."""
+    normalized_test = test_file.replace("\\", "/")
+    normalized_change = changed_file.replace("\\", "/")
+    if normalized_test == normalized_change:
+        return True
+
+    changed_stem = module_stem_for_path(normalized_change)
+    test_stem = test_file_subject_stem(normalized_test)
+    plural_stems = _pluralized_module_stems(changed_stem)
+    return f"_{changed_stem}_" in f"_{test_stem}_" or test_stem in plural_stems
+
+
+def _test_file_has_raw_direct_stem_match(
+    test_file: str,
+    changed_file: str,
+) -> bool:
+    """Return whether a test directly names a module without case folding."""
+    normalized_test = test_file.replace("\\", "/")
+    normalized_change = changed_file.replace("\\", "/")
+    if normalized_test == normalized_change:
+        return True
+
+    changed_stem = raw_module_stem_for_path(normalized_change)
+    test_stem = raw_test_file_subject_stem(normalized_test)
+    plural_stems = _pluralized_module_stems(changed_stem)
+    return f"_{changed_stem}_" in f"_{test_stem}_" or test_stem in plural_stems
+
+
+def _pluralized_module_stems(stem: str) -> tuple[str, ...]:
+    """Return accepted conventional plurals for an exact test subject."""
+    irregular_plurals = {
+        "analysis": "analyses",
+        "axis": "axes",
+        "basis": "bases",
+        "child": "children",
+        "crisis": "crises",
+        "diagnosis": "diagnoses",
+        "hypothesis": "hypotheses",
+        "index": "indices",
+        "matrix": "matrices",
+        "person": "people",
+        "synthesis": "syntheses",
+        "thesis": "theses",
+        "vertex": "vertices",
+    }
+    prefix, separator, subject = stem.rpartition("_")
+    irregular = irregular_plurals.get(subject)
+    plurals: list[str] = []
+    if irregular is not None:
+        plurals.append(f"{prefix}{separator}{irregular}")
+    if stem.endswith("zz"):
+        regular = f"{stem}es"
+    elif subject == "quiz":
+        regular = f"{stem}zes"
+    elif stem.endswith("z"):
+        regular = f"{stem}es"
+    elif stem.endswith(("s", "x", "ch", "sh")):
+        regular = f"{stem}es"
+    elif len(stem) > 1 and stem.endswith("y") and stem[-2] not in "aeiou":
+        regular = f"{stem[:-1]}ies"
+    else:
+        regular = f"{stem}s"
+    plurals.append(regular)
+    return tuple(dict.fromkeys(plurals))
 
 
 def _is_runnable_test_file(
@@ -129,9 +305,27 @@ def _is_runnable_test_file(
         normalized.startswith(directory) or f"/{directory}" in normalized
         for directory in test_dirs
     )
+    has_java_test_suffix = name.endswith("Test.java")
+    path_parts = Path(normalized).parts[:-1]
+    in_java_test_source_set = any(
+        part.lower() == "src"
+        and index + 1 < len(path_parts)
+        and (
+            path_parts[index + 1].lower() in {"it", "test"}
+            or path_parts[index + 1].endswith("Test")
+        )
+        for index, part in enumerate(path_parts)
+    )
     return (
         (in_test_dir and name.startswith("test_"))
-        or name.endswith(test_suffixes)
+        or (
+            name.endswith(test_suffixes)
+            and (
+                not has_java_test_suffix
+                or in_test_dir
+                or in_java_test_source_set
+            )
+        )
         or (in_test_dir and (".test." in name or ".spec." in name))
     )
 

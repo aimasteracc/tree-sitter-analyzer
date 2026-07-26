@@ -10,6 +10,7 @@ module does not treat oracle names as proof by itself.
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, fields
@@ -226,9 +227,11 @@ def parse_index_evidence_v1(raw: object) -> dict[tuple[str, str], IndexStatsV1]:
 
     if not isinstance(raw, dict) or set(raw) != {"schema_version", "cells"}:
         raise ValueError("Index evidence must contain only schema_version and cells")
-    if raw["schema_version"] != 1 or not isinstance(raw["cells"], list):
+    if type(raw["schema_version"]) is not int or raw["schema_version"] != 1:
+        raise ValueError("Index evidence schema_version must be the integer 1")
+    if not isinstance(raw["cells"], list):
         raise ValueError(
-            "Index evidence schema_version must be 1 and cells must be a list"
+            "Index evidence cells must be a list"
         )
     stats_fields = {field.name for field in fields(IndexStatsV1)}
     tuple_fields = {
@@ -236,6 +239,21 @@ def parse_index_evidence_v1(raw: object) -> dict[tuple[str, str], IndexStatsV1]:
         "excluded_paths",
         "parse_error_paths",
         "readiness_oracles",
+    }
+    integer_fields = {
+        "eligible_source_files",
+        "indexed_source_files",
+        "excluded_source_files",
+        "parse_error_files",
+        "index_size_bytes",
+    }
+    string_fields = {
+        "eligible_paths_hash",
+        "indexed_paths_hash",
+        "excluded_paths_hash",
+        "parse_error_paths_hash",
+        "repo_fingerprint",
+        "tool_fingerprint",
     }
     parsed: dict[tuple[str, str], IndexStatsV1] = {}
     for cell in raw["cells"]:
@@ -250,11 +268,36 @@ def parse_index_evidence_v1(raw: object) -> dict[tuple[str, str], IndexStatsV1]:
         stats_raw = cell["index_stats"]
         if not isinstance(stats_raw, dict) or set(stats_raw) != stats_fields:
             raise ValueError("Index evidence fields do not match IndexStatsV1")
+        if any(type(stats_raw[field]) is not int for field in integer_fields):
+            raise ValueError("Index evidence count and size fields must be integers")
+        build_seconds = stats_raw["build_seconds"]
+        if (
+            type(build_seconds) not in {int, float}
+            or not math.isfinite(build_seconds)
+        ):
+            raise ValueError("Index evidence build_seconds must be a finite number")
+        if any(not isinstance(stats_raw[field], str) for field in string_fields):
+            raise ValueError("Index evidence provenance fields must be strings")
+        if any(
+            not isinstance(stats_raw[field], list)
+            or any(not isinstance(item, str) for item in stats_raw[field])
+            for field in tuple_fields
+        ):
+            raise ValueError("Index evidence path and oracle fields must be string lists")
+        repo_id = cell["repo_id"]
+        arm_id = cell["arm_id"]
+        if (
+            not isinstance(repo_id, str)
+            or not repo_id
+            or not isinstance(arm_id, str)
+            or not arm_id
+        ):
+            raise ValueError("Index evidence repo_id and arm_id must be strings")
         normalized = {
             key: tuple(value) if key in tuple_fields else value
             for key, value in stats_raw.items()
         }
-        key = (str(cell["repo_id"]), str(cell["arm_id"]))
+        key = (repo_id, arm_id)
         if key in parsed:
             raise ValueError(f"Duplicate index evidence cell: {key[0]}/{key[1]}")
         parsed[key] = IndexStatsV1(**cast(Any, normalized))

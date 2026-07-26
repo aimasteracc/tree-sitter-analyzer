@@ -136,6 +136,91 @@ class TestSyncMaxFiles:
         result = sync.sync(max_files=2)
         assert result.scanned == 2
 
+    def test_truncated_scan_does_not_delete_unseen_indexed_files(self, sync, cache):
+        # Incident 2026-07-26: capped scans invalidated live files beyond the cap.
+        sync.sync()
+
+        result = sync.sync(max_files=1)
+
+        assert result.deleted_files == 0
+        assert cache.get_stats()["total_files"] == 3
+
+    def test_zero_limit_does_not_delete_existing_index(self, sync, cache):
+        # Incident 2026-07-26: an empty capped scan invalidated the entire cache.
+        sync.sync()
+
+        result = sync.sync(max_files=0)
+
+        assert result.scanned == 0
+        assert result.deleted_files == 0
+        assert cache.get_stats()["total_files"] == 3
+
+    def test_truncated_scan_defers_real_deletion_until_complete_scan(
+        self, sync, cache, project
+    ):
+        # Incident 2026-07-26: incomplete scans could not distinguish unseen/deleted.
+        sync.sync()
+        (project / "src" / "helper.js").unlink()
+
+        truncated = sync.sync(max_files=1)
+
+        assert truncated.deleted_files == 0
+        assert cache.get_stats()["total_files"] == 3
+
+        complete = sync.sync()
+        assert complete.deleted_files == 1
+        assert cache.get_stats()["total_files"] == 2
+
+
+class TestSyncExcludePatterns:
+    def test_excluded_new_file_is_not_indexed(self, sync, cache):
+        # Incident 2026-07-26: full-index sync ignored the requested scope.
+        result = sync.sync(exclude_patterns=frozenset({"src/helper.js"}))
+
+        assert result.scanned == 2
+        assert result.new_files == 2
+        assert cache.get_stats()["total_files"] == 2
+        assert {detail["file"] for detail in result.details} == {
+            "src/main.py",
+            "src/util.py",
+        }
+
+    def test_excluded_cached_file_is_not_treated_as_deleted(self, sync, cache):
+        # Incident 2026-07-26: exclusion filtering could mimic a disk deletion.
+        sync.sync()
+
+        result = sync.sync(exclude_patterns=frozenset({"src/helper.js"}))
+
+        assert result.deleted_files == 0
+        assert cache.get_stats()["total_files"] == 3
+
+    def test_deleted_excluded_file_is_removed_after_complete_scan(
+        self, sync, cache, project
+    ):
+        # Incident 2026-07-26: exclusions must not hide real deletions forever.
+        sync.sync()
+        (project / "src" / "helper.js").unlink()
+
+        result = sync.sync(exclude_patterns=frozenset({"src/helper.js"}))
+
+        assert result.deleted_files == 1
+        assert cache.get_stats()["total_files"] == 2
+
+    def test_excluded_file_consumes_the_shared_file_limit(self, sync, cache, project):
+        # Incident 2026-07-26: AST and sync phases counted scoped files differently.
+        excluded = project / "src" / "helper.js"
+        included = project / "src" / "main.py"
+        with patch(
+            "tree_sitter_analyzer.incremental_sync._walk_source_files",
+            return_value=iter([str(excluded), str(included)]),
+        ):
+            sync.sync(
+                max_files=1,
+                exclude_patterns=frozenset({"src/helper.js"}),
+            )
+
+        assert cache.get_stats()["total_files"] == 0
+
 
 class TestSyncCallback:
     def test_callback_receives_details(self, sync, cache, project):
@@ -204,6 +289,89 @@ class TestContentHashComparison:
         os.utime(str(main_py), times=None)
         result = sync.sync()
         assert result.updated_files == 0
+
+
+class TestReturnedErrorDetails:
+    """Incident 2026-07-26: returned parse failures must keep their reason."""
+
+    def test_new_file_error_result_preserves_reason(self, sync, cache):
+        with patch.object(
+            cache,
+            "index_file",
+            return_value={
+                "status": "error",
+                "reason": "Swift grammar not installed",
+            },
+        ):
+            detail = sync._index_new_file(
+                "src/bad.swift",
+                "/project/src/bad.swift",
+                cache.get_conn(),
+            )
+
+        assert detail == {
+            "file": "src/bad.swift",
+            "considered": "indexed",
+            "action": "indexed",
+            "status": "error",
+            "reason": "Swift grammar not installed",
+        }
+
+    def test_modified_file_error_result_preserves_reason(self, sync, cache):
+        with (
+            patch.object(cache, "invalidate"),
+            patch.object(
+                cache,
+                "index_file",
+                return_value={
+                    "status": "error",
+                    "reason": "LUA grammar not installed",
+                },
+            ),
+        ):
+            detail = sync._reindex_modified(
+                "src/bad.lua",
+                "/project/src/bad.lua",
+                cache.get_conn(),
+            )
+
+        assert detail == {
+            "file": "src/bad.lua",
+            "considered": "updated",
+            "action": "updated",
+            "status": "error",
+            "reason": "LUA grammar not installed",
+        }
+
+    def test_public_sync_attributes_returned_error_and_continues(
+        self, sync, cache, project
+    ):
+        bad_file = project / "src" / "bad.swift"
+        bad_file.write_text("func broken() {}\n")
+        original_index_file = cache.index_file
+
+        def index_file(path):
+            if path == str(bad_file):
+                return {
+                    "status": "error",
+                    "reason": "Swift grammar not installed",
+                }
+            return original_index_file(path)
+
+        with patch.object(cache, "index_file", side_effect=index_file):
+            result = sync.sync()
+
+        assert result.errors == 1
+        assert result.new_files == 4
+        assert [d for d in result.details if d.get("status") == "error"] == [
+            {
+                "file": "src/bad.swift",
+                "considered": "indexed",
+                "action": "indexed",
+                "status": "error",
+                "reason": "Swift grammar not installed",
+            }
+        ]
 
 
 class TestRecursionErrorHandling:

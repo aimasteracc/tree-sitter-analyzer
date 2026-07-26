@@ -602,6 +602,128 @@ class TestCodeGraphCompareSetupGate:
         )
         return path
 
+    @staticmethod
+    def _v1_index_stats_payload(manifest) -> dict:
+        from dataclasses import asdict
+
+        stats = _v1_run(
+            manifest,
+            "q1__codegraph-warm__codex__00",
+        ).index_stats
+        if stats is None:
+            pytest.fail("codegraph fixture must include V1 index statistics")
+        return json.loads(json.dumps(asdict(stats)))
+
+    @classmethod
+    def _parse_v1_index_evidence(
+        cls,
+        *,
+        cell_overrides: dict | None = None,
+        stats_overrides: dict | None = None,
+    ):
+        from benchmarks.codegraph_compare.setup_validation import (
+            parse_index_evidence_v1,
+        )
+
+        stats_raw = cls._v1_index_stats_payload(_v1_manifest())
+        stats_raw.update(stats_overrides or {})
+        cell = {
+            "repo_id": "gin",
+            "arm_id": "codegraph-warm",
+            "index_stats": stats_raw,
+        }
+        cell.update(cell_overrides or {})
+        return parse_index_evidence_v1(
+            {"schema_version": 1, "cells": [cell]}
+        )
+
+    def test_index_evidence_schema_version_requires_integer_one(self):
+        from benchmarks.codegraph_compare.setup_validation import (
+            parse_index_evidence_v1,
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="Index evidence schema_version must be the integer 1",
+        ):
+            parse_index_evidence_v1({"schema_version": True, "cells": []})
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        (
+            ("repo_id", 1),
+            ("repo_id", ""),
+            ("arm_id", 1),
+            ("arm_id", ""),
+        ),
+    )
+    def test_index_evidence_cell_ids_require_nonempty_strings(
+        self,
+        field: str,
+        value: object,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="Index evidence repo_id and arm_id must be strings",
+        ):
+            self._parse_v1_index_evidence(cell_overrides={field: value})
+
+    @pytest.mark.parametrize(
+        ("field", "value", "message"),
+        (
+            (
+                "eligible_source_files",
+                "10",
+                "Index evidence count and size fields must be integers",
+            ),
+            (
+                "build_seconds",
+                "1.0",
+                "Index evidence build_seconds must be a finite number",
+            ),
+            (
+                "build_seconds",
+                float("nan"),
+                "Index evidence build_seconds must be a finite number",
+            ),
+        ),
+    )
+    def test_index_evidence_numeric_fields_reject_strings(
+        self,
+        field: str,
+        value: object,
+        message: str,
+    ):
+        with pytest.raises(ValueError, match=message):
+            self._parse_v1_index_evidence(stats_overrides={field: value})
+
+    def test_index_evidence_provenance_fields_require_strings(self):
+        with pytest.raises(
+            ValueError,
+            match="Index evidence provenance fields must be strings",
+        ):
+            self._parse_v1_index_evidence(
+                stats_overrides={"repo_fingerprint": 1}
+            )
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        (
+            ("indexed_paths", "main.go"),
+            ("readiness_oracles", [1]),
+        ),
+    )
+    def test_index_evidence_tuple_fields_require_string_lists(
+        self,
+        field: str,
+        value: object,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="Index evidence path and oracle fields must be string lists",
+        ):
+            self._parse_v1_index_evidence(stats_overrides={field: value})
+
     def test_manifest_bound_setup_only_writes_success_evidence_without_model_calls(
         self, monkeypatch, tmp_path: Path
     ):

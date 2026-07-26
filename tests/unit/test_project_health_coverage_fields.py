@@ -12,9 +12,10 @@ flagged this as the Q2 ⚠. This test pins the fix so the fields cannot
 quietly disappear.
 
 Required fields:
-  - total_files_scanned   (rglob hits, pre-filter)
+  - total_files_scanned   (source candidates after directory pruning)
   - total_files_analyzed  (alias of total_files for the scored set)
   - total_files_skipped   (scanned but not scored)
+  - pruned_directories    (excluded before file scanning)
   - skip_reasons          {excluded_dir: N, scoring_failed: N}
   - coverage_pct          (analyzed / scanned * 100, rounded to 0.1)
 """
@@ -47,6 +48,7 @@ def test_project_health_emits_coverage_fields(tmp_path: Path) -> None:
         "total_files_scanned",
         "total_files_analyzed",
         "total_files_skipped",
+        "pruned_directories",
         "skip_reasons",
         "coverage_pct",
     ):
@@ -57,20 +59,21 @@ def test_project_health_emits_coverage_fields(tmp_path: Path) -> None:
         )
 
 
-def test_excluded_dirs_show_up_in_skip_reasons(tmp_path: Path) -> None:
-    """``__pycache__/ignored.py`` must be counted as excluded_dir skip."""
+def test_pruned_dirs_are_separate_from_skipped_files(tmp_path: Path) -> None:
+    """Pruned directories must not be mixed into file skip statistics."""
     project = _make_project(tmp_path)
     tool = ProjectHealthTool(str(project))
     result = asyncio.run(tool.execute({"output_format": "json", "max_files": 5}))
 
-    skip_reasons = result["skip_reasons"]
-    # The excluded-dir count must reflect the pycache file we planted.
-    assert skip_reasons["excluded_dir"], (
-        f"expected at least 1 excluded_dir skip (the __pycache__ file), "
-        f"got skip_reasons={skip_reasons}"
-    )
-    # No scoring failures expected on this trivial fixture.
-    assert skip_reasons["scoring_failed"] == 0
+    assert result["total_files_scanned"] == 2
+    assert result["total_files_analyzed"] == 2
+    assert result["total_files_skipped"] == 0
+    assert result["skip_reasons"] == {
+        "excluded_dir": 0,
+        "scoring_failed": 0,
+    }
+    # The fixture plants __pycache__; the default health cache adds .ast-cache.
+    assert result["pruned_directories"] == 2
 
 
 def test_coverage_pct_is_consistent(tmp_path: Path) -> None:

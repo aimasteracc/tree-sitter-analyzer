@@ -244,30 +244,32 @@ def pytest_unconfigure(config):
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Warn if memory usage is dangerously high at end of session."""
     try:
-        import os
-
         import psutil
-
-        process = psutil.Process(os.getpid())
-        rss_gb = process.memory_info().rss / (1024**3)
-        system_total_gb = psutil.virtual_memory().total / (1024**3)
-        usage_pct = process.memory_info().rss / psutil.virtual_memory().total * 100
-
-        if rss_gb > 2.0:
-            terminalreporter.write_sep(
-                "!",
-                f"MEMORY WARNING: pytest RSS = {rss_gb:.1f} GB "
-                f"({usage_pct:.0f}% of {system_total_gb:.0f} GB system RAM). "
-                f"Consider running fewer tests or using -x.",
-            )
-        if rss_gb > 4.0:
-            terminalreporter.write_sep(
-                "!",
-                f"MEMORY CRITICAL: pytest RSS = {rss_gb:.1f} GB! "
-                f"This can crash the system. Reduce test batch size.",
-            )
     except ImportError:
-        pass
+        psutil = None
+
+    if psutil is not None:
+        try:
+            process = psutil.Process(os.getpid())
+            rss_gb = process.memory_info().rss / (1024**3)
+            system_total_gb = psutil.virtual_memory().total / (1024**3)
+            usage_pct = process.memory_info().rss / psutil.virtual_memory().total * 100
+
+            if rss_gb > 2.0:
+                terminalreporter.write_sep(
+                    "!",
+                    f"MEMORY WARNING: pytest RSS = {rss_gb:.1f} GB "
+                    f"({usage_pct:.0f}% of {system_total_gb:.0f} GB system RAM). "
+                    f"Consider running fewer tests or using -x.",
+                )
+            if rss_gb > 4.0:
+                terminalreporter.write_sep(
+                    "!",
+                    f"MEMORY CRITICAL: pytest RSS = {rss_gb:.1f} GB! "
+                    f"This can crash the system. Reduce test batch size.",
+                )
+        except psutil.Error:
+            pass
 
     if QUARANTINED_TESTS:
         terminalreporter.write_sep(
