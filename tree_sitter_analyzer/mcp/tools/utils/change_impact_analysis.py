@@ -118,17 +118,29 @@ def _find_test_files(
             if _test_file_has_direct_stem_match(test_file, changed_file)
             and test_paths_have_compatible_package_scope(test_file, changed_file)
         ]
-        has_named_subsystem = bool(source_subsystem_stems(changed_file))
+        has_named_subsystem = bool(
+            source_subsystem_stems(changed_file, graph_nodes)
+        )
         retained_direct = [
             test_file
             for test_file in direct_related
             if test_path_is_unscoped(test_file) or not has_named_subsystem
         ]
+        cross_layer_direct_variants = [
+            test_file
+            for test_file in direct_related
+            if test_file_subject_stem(test_file)
+            != module_stem_for_path(changed_file)
+        ]
         scoped_direct = _most_specific_affinity_matches(
             direct_related,
             changed_file,
         )
-        selected_direct = sorted(set(retained_direct) | set(scoped_direct))
+        selected_direct = sorted(
+            set(retained_direct)
+            | set(cross_layer_direct_variants)
+            | set(scoped_direct)
+        )
         if not selected_direct and direct_related:
             # All filename matches belong to another named subsystem. Only in
             # that ambiguous case, search the available tests by source-path
