@@ -97,8 +97,43 @@ def _metadata_signature(path: Path) -> str:
     )
 
 
+def _coverage_metadata_signature(path: Path) -> str:
+    """Fingerprint a coverage candidate and a regular symlink target."""
+    signature = _metadata_signature(path)
+    try:
+        link_metadata = path.lstat()
+    except OSError:
+        return signature
+    if not stat.S_ISLNK(link_metadata.st_mode):
+        return signature
+    try:
+        target_metadata = path.stat()
+    except OSError:
+        return f"{signature}:target-unavailable"
+    if not stat.S_ISREG(target_metadata.st_mode):
+        return f"{signature}:target-special"
+    return ":".join(
+        (
+            signature,
+            "target-regular",
+            str(target_metadata.st_mode),
+            str(target_metadata.st_dev),
+            str(target_metadata.st_ino),
+            str(target_metadata.st_size),
+            str(target_metadata.st_mtime_ns),
+            str(target_metadata.st_ctime_ns),
+        )
+    )
+
+
 def _read_small_regular_text(path: Path) -> str | None:
     """Read bounded Git metadata without following links or special files."""
+    try:
+        path_metadata = path.lstat()
+    except OSError:
+        return None
+    if not stat.S_ISREG(path_metadata.st_mode):
+        return None
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     try:
@@ -125,7 +160,7 @@ def _coverage_context_parts() -> list[str]:
     """Fingerprint every report candidate used by ``HealthScorer``."""
     search_dirs = [Path.cwd(), *Path.cwd().parents[:3]]
     return [
-        _metadata_signature(search_dir / file_name)
+        _coverage_metadata_signature(search_dir / file_name)
         for search_dir in search_dirs
         for file_name in ("coverage.json", ".coverage")
     ]
@@ -133,7 +168,11 @@ def _coverage_context_parts() -> list[str]:
 
 def _find_git_dir(project_root: Path) -> Path | None:
     """Resolve a repository or worktree git directory without spawning git."""
-    for root in (project_root.resolve(), *project_root.resolve().parents):
+    try:
+        resolved_root = project_root.resolve()
+    except (OSError, RuntimeError):
+        return None
+    for root in (resolved_root, *resolved_root.parents):
         marker = root / ".git"
         try:
             marker_stat = marker.lstat()
@@ -154,7 +193,10 @@ def _find_git_dir(project_root: Path) -> Path | None:
             return None
         if prefix != "gitdir":
             return None
-        return (root / value.strip()).resolve()
+        try:
+            return (root / value.strip()).resolve()
+        except (OSError, RuntimeError):
+            return None
     return None
 
 
@@ -166,7 +208,10 @@ def _git_context_parts(git_dir: Path | None) -> list[str]:
     common_marker = git_dir / "commondir"
     common_value = _read_small_regular_text(common_marker)
     if common_value:
-        common_dir = (git_dir / common_value).resolve()
+        try:
+            common_dir = (git_dir / common_value).resolve()
+        except (OSError, RuntimeError):
+            return ["git:missing"]
 
     head = git_dir / "HEAD"
     parts = [
@@ -228,7 +273,11 @@ class HealthScoreCache:
 
     def _context_for_file(self, file_path: str) -> str:
         """Combine project context with the repository governing one file."""
-        git_dir = _find_git_dir(Path(file_path).parent)
+        try:
+            source_parent = Path(file_path).resolve().parent
+        except (OSError, RuntimeError):
+            source_parent = Path(file_path).absolute().parent
+        git_dir = _find_git_dir(source_parent)
         git_digest = self._git_context_cache.get(git_dir)
         if git_digest is None:
             git_parts = _git_context_parts(git_dir)

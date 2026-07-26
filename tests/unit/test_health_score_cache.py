@@ -19,6 +19,7 @@ from tree_sitter_analyzer.health_scorer import HealthScore, HealthScorer
 from tree_sitter_analyzer.registry import health_score_cache as cache_module
 from tree_sitter_analyzer.registry.health_score_cache import (
     HealthScoreCache,
+    _coverage_metadata_signature,
     _find_git_dir,
     _git_context_parts,
     _metadata_signature,
@@ -63,10 +64,62 @@ def test_metadata_signature_rejects_non_regular_candidates(tmp_path):
     assert ":special:" in signature
 
 
+def test_coverage_signature_tracks_a_regular_symlink_target(tmp_path):
+    """A rewritten report target must invalidate an unchanged report link."""
+    # PR #1184 Codex review (2026-07-27): the loader follows report links, so
+    # the persistent context must include the regular target's metadata too.
+    target = tmp_path / "report-a.json"
+    target.write_text("{}", encoding="utf-8")
+    report = tmp_path / "coverage.json"
+    report.symlink_to(target)
+    first = _coverage_metadata_signature(report)
+    target.write_text('{"files": {}}', encoding="utf-8")
+
+    second = _coverage_metadata_signature(report)
+
+    assert first != second
+    assert "target-regular" in second
+
+
+def test_coverage_signature_marks_a_dangling_symlink_target(tmp_path):
+    """A dangling report link must have an explicit unavailable signature."""
+    # PR #1184 Codex review (2026-07-27): broken links remain safe cache inputs.
+    report = tmp_path / "coverage.json"
+    report.symlink_to(tmp_path / "missing.json")
+
+    assert _coverage_metadata_signature(report).endswith(":target-unavailable")
+
+
+def test_coverage_signature_marks_a_special_symlink_target(tmp_path):
+    """A report link to a non-file must never be treated as readable coverage."""
+    # PR #1184 Codex review (2026-07-27): only regular report targets are safe.
+    report = tmp_path / "coverage.json"
+    report.symlink_to(tmp_path, target_is_directory=True)
+
+    assert _coverage_metadata_signature(report).endswith(":target-special")
+
+
 def test_small_metadata_reader_rejects_special_files(tmp_path):
     """Git metadata discovery must not consume directory or device streams."""
     # PR #1184 Codex review (2026-07-27): special files could block forever.
     assert _read_small_regular_text(tmp_path) is None
+
+
+def test_small_metadata_reader_rejects_links_without_nofollow(tmp_path, monkeypatch):
+    """Windows fallback must reject a link before calling ``os.open``."""
+    # PR #1184 Codex review (2026-07-27): O_NOFOLLOW is unavailable on Windows.
+    target = tmp_path / "target"
+    target.write_text("ref: refs/heads/main\n", encoding="utf-8")
+    link = tmp_path / "HEAD"
+    link.symlink_to(target)
+    monkeypatch.setattr(cache_module.os, "O_NOFOLLOW", 0, raising=False)
+    monkeypatch.setattr(
+        cache_module.os,
+        "open",
+        lambda *_args, **_kwargs: pytest.fail("a symlink must not be opened"),
+    )
+
+    assert _read_small_regular_text(link) is None
 
 
 def test_small_metadata_reader_rejects_oversized_files(tmp_path):
@@ -74,6 +127,30 @@ def test_small_metadata_reader_rejects_oversized_files(tmp_path):
     # PR #1184 Codex review (2026-07-27): metadata reads need a hard size bound.
     metadata = tmp_path / "HEAD"
     metadata.write_bytes(b"x" * (cache_module._MAX_GIT_METADATA_BYTES + 1))
+
+    assert _read_small_regular_text(metadata) is None
+
+
+def test_small_metadata_reader_handles_open_failures(tmp_path, monkeypatch):
+    """An open-time metadata failure must degrade to unavailable."""
+    # PR #1184 Codex review (2026-07-27): lstat success does not guarantee open.
+    metadata = tmp_path / "HEAD"
+    metadata.write_text("ref: refs/heads/main\n", encoding="utf-8")
+
+    def fail_open(_path, _flags):
+        raise OSError("sharing violation")
+
+    monkeypatch.setattr(cache_module.os, "open", fail_open)
+
+    assert _read_small_regular_text(metadata) is None
+
+
+def test_small_metadata_reader_rechecks_file_type_after_open(tmp_path, monkeypatch):
+    """A path swap after lstat must be rejected by descriptor metadata."""
+    # PR #1184 Codex review (2026-07-27): post-open validation closes the race.
+    metadata = tmp_path / "HEAD"
+    metadata.write_text("ref: refs/heads/main\n", encoding="utf-8")
+    monkeypatch.setattr(cache_module.os, "fstat", lambda _descriptor: tmp_path.stat())
 
     assert _read_small_regular_text(metadata) is None
 
@@ -165,6 +242,24 @@ def test_find_git_dir_handles_unreadable_pointer(tmp_path, monkeypatch):
     assert _find_git_dir(tmp_path) is None
 
 
+def test_find_git_dir_handles_a_pointer_resolution_loop(tmp_path):
+    """A looping linked-worktree pointer must degrade to no Git context."""
+    # PR #1184 Codex review (2026-07-27): Path.resolve can raise RuntimeError.
+    (tmp_path / ".git").write_text("gitdir: loop\n", encoding="utf-8")
+    (tmp_path / "loop").symlink_to("loop")
+
+    assert _find_git_dir(tmp_path) is None
+
+
+def test_find_git_dir_handles_a_source_path_resolution_loop(tmp_path):
+    """Repository discovery must reject a looping starting path."""
+    # PR #1184 Codex review (2026-07-27): even the initial resolve can fail.
+    loop = tmp_path / "loop"
+    loop.symlink_to("loop")
+
+    assert _find_git_dir(loop) is None
+
+
 def test_git_context_marks_a_non_repository():
     """A project outside Git must receive an explicit stable context marker."""
     # Issue #1183 (2026-07-27): git-hotspot context may be unavailable.
@@ -239,6 +334,17 @@ def test_git_context_handles_unreadable_worktree_metadata(tmp_path, monkeypatch)
         _metadata_signature(git_dir / "packed-refs"),
         _metadata_signature(git_dir / "shallow"),
     ]
+
+
+def test_git_context_handles_a_commondir_resolution_loop(tmp_path):
+    """A looping commondir must make the Git context explicitly unavailable."""
+    # PR #1184 Codex review (2026-07-27): worktree metadata is best-effort.
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (git_dir / "commondir").write_text("loop\n", encoding="utf-8")
+    (git_dir / "loop").symlink_to("loop")
+
+    assert _git_context_parts(git_dir) == ["git:missing"]
 
 
 class _MigrationConnection:
@@ -353,6 +459,43 @@ def test_cache_uses_the_repository_governing_each_file(project, monkeypatch):
     assert second.lookup(str(outer_target)) is not None
     assert second.lookup(str(nested_target)) is None
     second.close()
+
+
+def test_cache_uses_the_repository_governing_a_source_link(project, monkeypatch):
+    """A source link must inherit Git context from its resolved target."""
+    # PR #1184 Codex review (2026-07-27): hotspot scoring resolves source links.
+    monkeypatch.chdir(project)
+    _create_git_metadata(project)
+    nested = project / "vendor"
+    nested.mkdir()
+    target = nested / "linked.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    nested_ref = _create_git_metadata(nested)
+    source_link = project / "src" / "linked.py"
+    source_link.symlink_to(target)
+    first = HealthScoreCache(str(project))
+    first.store(HealthScore(file_path=str(source_link), total=80.0, dimensions={}))
+    first.close()
+    nested_ref.write_text("def456\n", encoding="utf-8")
+
+    second = HealthScoreCache(str(project))
+
+    assert second.lookup(str(source_link)) is None
+    second.close()
+
+
+def test_file_context_handles_a_source_link_resolution_loop(project, monkeypatch):
+    """A looping source link must fall back to its unresolved parent safely."""
+    # PR #1184 Codex review (2026-07-27): cache setup is best-effort.
+    monkeypatch.chdir(project)
+    source_link = project / "src" / "loop.py"
+    source_link.symlink_to("loop.py")
+    cache = HealthScoreCache(str(project))
+
+    context = cache._context_for_file(str(source_link))
+
+    assert len(context) == 64
+    cache.close()
 
 
 def test_cache_misses_when_shallow_history_changes(project, monkeypatch):
@@ -519,6 +662,15 @@ def test_coverage_lookup_normalizes_windows_separators():
     scorer._coverage_cache = {"src/main.py": 100.0}
 
     assert scorer._score_coverage(r"C:\workspace\src\main.py") == 100.0
+
+
+def test_coverage_lookup_requires_a_path_component_boundary():
+    """A directory name ending in the covered path prefix must not match."""
+    # PR #1184 Codex review (2026-07-27): ``othersrc`` is not the ``src`` dir.
+    scorer = HealthScorer()
+    scorer._coverage_cache = {"src/foo.py": 100.0}
+
+    assert scorer._score_coverage(r"C:\workspace\othersrc\foo.py") is None
 
 
 def test_cache_misses_when_coverage_report_disappears(project, monkeypatch):

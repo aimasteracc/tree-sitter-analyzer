@@ -478,10 +478,19 @@ class HealthScorer:
 
         path_str = str(path).replace("\\", "/")
         for cov_path, pct in coverage_data.items():
-            if path_str.endswith(cov_path) or cov_path.endswith(path_str):
+            if _path_suffix_matches(path_str, cov_path):
                 return pct
 
         return None
+
+
+def _path_suffix_matches(left: str, right: str) -> bool:
+    """Return whether either normalized path ends at the other's boundary."""
+    return (
+        left == right
+        or left.endswith(f"/{right.lstrip('/')}")
+        or right.endswith(f"/{left.lstrip('/')}")
+    )
 
 
 def _coverage_json_is_stale(cov_file: Path, coverage_db: Path) -> bool:
