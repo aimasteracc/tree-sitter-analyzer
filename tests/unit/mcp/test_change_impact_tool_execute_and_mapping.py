@@ -885,7 +885,7 @@ def test_find_test_files_does_not_restore_sibling_package_direct_match():
         )
         is None
     )
-    assert not change_impact_tool.test_paths_have_compatible_package_scope(
+    assert change_impact_tool.test_paths_have_compatible_package_scope(
         "packages/.hidden/tests/core/test_config.py",
         "packages/a/src/core/config.py",
     )
@@ -904,6 +904,31 @@ def test_find_test_files_uses_innermost_nested_package_identity():
     assert mapping["packages/a/packages/b/src/core/config.py"] == [
         "packages/a/packages/b/tests/core/test_config.py"
     ]
+
+
+def test_find_test_files_retains_full_nested_package_lineage():
+    """Equal inner names do not erase distinct enclosing workspaces."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/frontend/packages/shared/src/core/config.py"],
+        {
+            "packages/backend/packages/shared/tests/core/test_config.py",
+            "packages/frontend/packages/shared/tests/core/test_config.py",
+        },
+    )
+
+    assert mapping["packages/frontend/packages/shared/src/core/config.py"] == [
+        "packages/frontend/packages/shared/tests/core/test_config.py"
+    ]
+
+
+def test_find_test_files_keeps_central_tests_for_workspace_sources():
+    """A test with no package marker remains compatible with a workspace."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/a/src/config.py"],
+        {"tests/a/test_config.py"},
+    )
+
+    assert mapping["packages/a/src/config.py"] == ["tests/a/test_config.py"]
 
 
 def test_find_test_files_filters_cross_package_family_matches():
@@ -964,6 +989,21 @@ def test_find_test_files_supports_regular_irregular_plural_alternatives():
     assert mapping["src/person.py"] == ["tests/test_persons.py"]
 
 
+def test_find_test_files_protects_plural_direct_from_affinity_fallback():
+    """A recognized plural direct match cannot be replaced by path affinity."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/config.py"],
+        {
+            "tests/integration/api/test_configs.py",
+            "tests/unit/core/test_helpers.py",
+        },
+    )
+
+    assert mapping["src/core/config.py"] == [
+        "tests/integration/api/test_configs.py"
+    ]
+
+
 def test_find_test_files_preserves_subsystem_after_outer_source_root():
     """A nested app directory is a scope when src already supplied the root."""
     mapping = change_impact_tool._find_test_files(
@@ -975,6 +1015,21 @@ def test_find_test_files_preserves_subsystem_after_outer_source_root():
     )
 
     assert mapping["src/app/config.py"] == ["tests/unit/app/test_config.py"]
+
+
+def test_find_test_files_normalizes_camel_case_subsystem_paths():
+    """Source and test directory segments share module-name normalization."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/XMLParser/config.py"],
+        {
+            "tests/unit/http/test_config.py",
+            "tests/unit/xml_parser/test_config.py",
+        },
+    )
+
+    assert mapping["src/XMLParser/config.py"] == [
+        "tests/unit/xml_parser/test_config.py"
+    ]
 
 
 def test_find_test_files_keeps_camel_case_acronyms_intact():
