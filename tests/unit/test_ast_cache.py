@@ -1495,6 +1495,80 @@ def test_snapshot_guard_discards_preexisting_stale_generation(tmp_path):
     assert cached is None
 
 
+def test_snapshot_guard_removes_ladybug_mirror(tmp_path):
+    # PR #1172 review 2026-07-27: direct row discard must stale the projection.
+    from tree_sitter_analyzer.cache.indexer import _snapshot_result_is_stable
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.write_text("value = 20\n")
+    entry = _snapshot(tmp_path, path).selected_entries[0]
+    mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
+    mirror.write_text("stale")
+    path.write_text("value = 300\n")
+    stats = {
+        "skipped": 0,
+        "processed": 1,
+        "changed_during_run": 0,
+        "changed_during_run_files": [],
+        "files": [],
+    }
+
+    try:
+        stable = _snapshot_result_is_stable(
+            {"rel_path": "app.py"},
+            {"app.py": entry},
+            stats,
+            cache=cache,
+            conn=cache.get_conn(),
+        )
+        mirror_exists = mirror.exists()
+    finally:
+        cache.close()
+
+    assert (stable, mirror_exists) == (False, False)
+
+
+def test_snapshot_guard_tolerates_ladybug_cleanup_failure(tmp_path):
+    # PR #1172 review 2026-07-27: mirror cleanup remains best-effort.
+    from tree_sitter_analyzer.cache.indexer import _snapshot_result_is_stable
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.write_text("value = 20\n")
+    entry = _snapshot(tmp_path, path).selected_entries[0]
+    path.write_text("value = 300\n")
+    stats = {
+        "skipped": 0,
+        "processed": 1,
+        "changed_during_run": 0,
+        "changed_during_run_files": [],
+        "files": [],
+    }
+
+    try:
+        with patch(
+            "tree_sitter_analyzer.knowledge_graph.stores."
+            "LadybugKnowledgeGraphStore.remove_if_exists",
+            side_effect=OSError("mirror is busy"),
+        ):
+            stable = _snapshot_result_is_stable(
+                {"rel_path": "app.py"},
+                {"app.py": entry},
+                stats,
+                cache=cache,
+                conn=cache.get_conn(),
+            )
+    finally:
+        cache.close()
+
+    assert stable is False
+
+
 def test_snapshot_revalidates_rows_from_earlier_committed_batches(tmp_path):
     # PR #1172 review 2026-07-27: only the pending batch was revalidated.
     from tree_sitter_analyzer.cache import indexer
@@ -1689,13 +1763,21 @@ def test_snapshot_batch_revalidation_handles_missing_error_detail(tmp_path):
         "files": [],
     }
 
-    _revalidate_snapshot_batch(
-        [{"rel_path": "app.py", "status": "io_error"}],
-        cache=SimpleNamespace(fts5_available=False),
-        conn=sqlite3.connect(":memory:"),
-        entries={"app.py": entry},
-        stats=stats,
-    )
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT PRIMARY KEY)")
+    try:
+        _revalidate_snapshot_batch(
+            [{"rel_path": "app.py", "status": "io_error"}],
+            cache=SimpleNamespace(
+                fts5_available=False,
+                project_root=str(tmp_path),
+            ),
+            conn=conn,
+            entries={"app.py": entry},
+            stats=stats,
+        )
+    finally:
+        conn.close()
 
     assert stats == {
         "errors": 0,
@@ -1712,6 +1794,42 @@ def test_snapshot_batch_revalidation_handles_missing_error_detail(tmp_path):
             }
         ],
     }
+
+
+def test_failed_worker_snapshot_revalidation_discards_old_generation(tmp_path):
+    # PR #1172 review 2026-07-27: a late failed worker cannot retain stale rows.
+    from tree_sitter_analyzer.cache.indexer import _revalidate_snapshot_batch
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.write_text("value = 20\n")
+    entry = _snapshot(tmp_path, path).selected_entries[0]
+    path.write_text("value = 300\n")
+    stats = {
+        "errors": 1,
+        "indexed": 0,
+        "skipped": 0,
+        "processed": 1,
+        "changed_during_run": 0,
+        "changed_during_run_files": [],
+        "files": [{"file": "app.py", "status": "error", "reason": "read failed"}],
+    }
+
+    try:
+        _revalidate_snapshot_batch(
+            [{"rel_path": "app.py", "status": "io_error"}],
+            cache=cache,
+            conn=cache.get_conn(),
+            entries={"app.py": entry},
+            stats=stats,
+        )
+        cached = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert cached is None
 
 
 def test_disabled_synapse_backfill_returns_complete_zero_stats(tmp_path, monkeypatch):

@@ -511,6 +511,23 @@ def _record_snapshot_change(
     )
 
 
+def _discard_snapshot_generation(
+    cache: Any,
+    conn: sqlite3.Connection,
+    rel_path: str,
+) -> None:
+    """Remove canonical rows and invalidate their derived graph projection."""
+    from . import write as _write
+
+    _write.discard_file_rows(conn, rel_path, cache.fts5_available)
+    try:
+        from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
+
+        LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
+    except Exception:
+        logger.debug("could not invalidate Ladybug mirror", exc_info=True)
+
+
 def _snapshot_result_is_stable(
     result: dict[str, Any],
     entries: dict[str, IndexSnapshotEntry],
@@ -524,9 +541,7 @@ def _snapshot_result_is_stable(
     if change_reason is None:
         return True
 
-    from . import write as _write
-
-    _write.discard_file_rows(conn, rel_path, cache.fts5_available)
+    _discard_snapshot_generation(cache, conn, rel_path)
     _record_snapshot_change(stats, rel_path, change_reason)
     return False
 
@@ -540,16 +555,14 @@ def _revalidate_snapshot_batch(
     stats: dict[str, Any],
 ) -> None:
     """Discard pending generations that changed before their batch commit."""
-    from . import write as _write
-
     for result in pending_results:
         rel_path, change_reason = _snapshot_result_change_reason(result, entries)
         if change_reason is None:
             continue
+        _discard_snapshot_generation(cache, conn, rel_path)
         if result["status"] in ("io_error", "parse_failed"):
             stats["errors"] -= 1
         else:
-            _write.discard_file_rows(conn, rel_path, cache.fts5_available)
             stats["indexed"] -= 1
         for index in range(len(stats["files"]) - 1, -1, -1):
             if stats["files"][index]["file"] == rel_path:
@@ -566,8 +579,6 @@ def _revalidate_committed_snapshot(
     stats: dict[str, Any],
 ) -> None:
     """Invalidate any earlier committed generation changed before backfill."""
-    from . import write as _write
-
     known_changed = set(stats["changed_during_run_files"])
     for rel_path, entry in entries.items():
         change_reason = (
@@ -575,7 +586,7 @@ def _revalidate_committed_snapshot(
         )
         if change_reason is None:
             continue
-        _write.discard_file_rows(conn, rel_path, cache.fts5_available)
+        _discard_snapshot_generation(cache, conn, rel_path)
         detail_files = [detail["file"] for detail in stats["files"]]
         detail_index = detail_files.index(rel_path)
         detail = stats["files"].pop(detail_index)

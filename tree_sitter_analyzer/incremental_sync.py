@@ -91,6 +91,10 @@ class IncrementalSync:
         result.changed_during_run = len(changed_files)
         result.changed_during_run_files = sorted(path for path, _ in changed_files)
         result.truncated_by_max_files = truncated
+        if candidate_snapshot is not None and candidate_snapshot.errors:
+            from .cache.callgraph_state import clear_call_graph_built_strict
+
+            clear_call_graph_built_strict(conn)
         for rel_path, reason in sorted(changed_files):
             self._cache.invalidate(os.path.join(self._cache.project_root, rel_path))
             detail = {
@@ -209,6 +213,7 @@ class IncrementalSync:
             and indexed_paths == present_paths
         ):
             from .cache.callgraph_state import mark_call_graph_built
+
             mark_call_graph_built(conn)
 
         return result

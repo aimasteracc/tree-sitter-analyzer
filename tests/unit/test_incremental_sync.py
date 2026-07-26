@@ -724,7 +724,10 @@ def test_incremental_sync_preserves_snapshot_candidate_order(tmp_path):
     assert seen == ["z.py", "a.py"]
 
 
-def test_incremental_sync_snapshot_error_does_not_mark_graph_complete(tmp_path):
+def test_incremental_sync_snapshot_error_clears_graph_complete_marker(tmp_path):
+    # PR #1172 review 2026-07-27: discovery errors must invalidate an old marker.
+    from tree_sitter_analyzer.cache.callgraph_state import mark_call_graph_built
+
     missing = tmp_path / "missing.py"
     snapshot = IndexCandidateSnapshot(
         project_root=os.path.abspath(tmp_path),
@@ -747,6 +750,7 @@ def test_incremental_sync_snapshot_error_does_not_mark_graph_complete(tmp_path):
         limited=0,
     )
     cache = ASTCache(str(tmp_path))
+    mark_call_graph_built(cache.get_conn())
 
     try:
         result = IncrementalSync(cache).sync(
