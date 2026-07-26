@@ -532,6 +532,59 @@ def test_find_test_files_does_not_expand_subsystem_for_exact_match():
     ]
 
 
+def test_find_test_files_preserves_unscoped_direct_stem_variants():
+    """Root-level direct variants must remain beside the exact module test."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/ast_cache.py"],
+        {
+            "tests/unit/test_ast_cache.py",
+            "tests/unit/test_ast_cache_build_state.py",
+            "tests/unit/test_ast_cache_utf8_bug.py",
+            "tests/unit/test_cache_manager.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/ast_cache.py"] == [
+        "tests/unit/test_ast_cache.py",
+        "tests/unit/test_ast_cache_build_state.py",
+        "tests/unit/test_ast_cache_utf8_bug.py",
+    ]
+
+
+def test_find_test_files_limits_fallback_to_nearest_specific_subsystem():
+    """A broad MCP ancestor must not turn a helper edit into every MCP test."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/mcp/utils/edge_extractors/python.py"],
+        {
+            "tests/unit/mcp/edge_extractors/test_registry.py",
+            "tests/unit/mcp/test_python_parser.py",
+            "tests/unit/mcp/test_server.py",
+            "tests/unit/mcp/test_change_impact_tool.py",
+        },
+    )
+
+    assert mapping[
+        "tree_sitter_analyzer/mcp/utils/edge_extractors/python.py"
+    ] == ["tests/unit/mcp/edge_extractors/test_registry.py"]
+
+
+def test_find_test_files_disambiguates_direct_matches_alongside_family_matches():
+    """A family match must not bypass filtering of unrelated direct matches."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/languages/lua_plugin/extractor.py"],
+        {
+            "tests/unit/languages/test_lua_plugin.py",
+            "tests/unit/test_import_extractors.py",
+            "tests/unit/test_symbol_extractors.py",
+            "tests/unit/mcp/test_element_extractors.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/languages/lua_plugin/extractor.py"] == [
+        "tests/unit/languages/test_lua_plugin.py"
+    ]
+
+
 def test_find_test_files_maps_refactoring_plan_builder_to_family_tests():
     """The precise-plan builder should not force auto-discovery."""
     mapping = change_impact_tool._find_test_files(
