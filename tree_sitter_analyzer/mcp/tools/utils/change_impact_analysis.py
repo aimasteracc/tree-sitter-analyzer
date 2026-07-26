@@ -215,12 +215,7 @@ def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
     changed_stem = module_stem_for_path(normalized_change)
     test_stem = test_file_subject_stem(normalized_test)
     plural_stems = _pluralized_module_stems(changed_stem)
-    return f"_{changed_stem}_" in f"_{test_stem}_" or (
-        any(
-            test_stem == plural_stem or test_stem.startswith(f"{plural_stem}_")
-            for plural_stem in plural_stems
-        )
-    )
+    return f"_{changed_stem}_" in f"_{test_stem}_" or test_stem in plural_stems
 
 
 def _test_file_has_raw_direct_stem_match(
@@ -236,10 +231,7 @@ def _test_file_has_raw_direct_stem_match(
     changed_stem = raw_module_stem_for_path(normalized_change)
     test_stem = raw_test_file_subject_stem(normalized_test)
     plural_stems = _pluralized_module_stems(changed_stem)
-    return f"_{changed_stem}_" in f"_{test_stem}_" or any(
-        test_stem == plural_stem or test_stem.startswith(f"{plural_stem}_")
-        for plural_stem in plural_stems
-    )
+    return f"_{changed_stem}_" in f"_{test_stem}_" or test_stem in plural_stems
 
 
 def _pluralized_module_stems(stem: str) -> tuple[str, ...]:
@@ -292,9 +284,13 @@ def _is_runnable_test_file(
         normalized.startswith(directory) or f"/{directory}" in normalized
         for directory in test_dirs
     )
+    has_java_test_suffix = name.endswith("Test.java")
     return (
         (in_test_dir and name.startswith("test_"))
-        or name.endswith(test_suffixes)
+        or (
+            name.endswith(test_suffixes)
+            and (not has_java_test_suffix or in_test_dir)
+        )
         or (in_test_dir and (".test." in name or ".spec." in name))
     )
 

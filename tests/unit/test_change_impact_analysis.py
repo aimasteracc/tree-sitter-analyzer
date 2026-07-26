@@ -85,6 +85,16 @@ class TestIsRunnableTestFile:
             _is_runnable_test_file("src/example.py", {"tests/"}, ("_test.py",)) is False
         )
 
+    def test_java_suffix_requires_test_directory(self):
+        assert (
+            _is_runnable_test_file(
+                "examples/JavaDocTest.java",
+                {"tests/", "test/"},
+                ("Test.java",),
+            )
+            is False
+        )
+
 
 class TestIsTestOnlyChangeSet:
     def test_true_for_runnable_test_files(self):

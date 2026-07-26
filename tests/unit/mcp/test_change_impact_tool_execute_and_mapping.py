@@ -459,8 +459,13 @@ def test_find_test_files_disambiguates_constraint_evaluator_by_subsystem():
 def test_find_test_files_does_not_export_repository_specific_family_aliases():
     """Project-local aliases must not invent coverage in external source trees."""
     mapping = change_impact_tool._find_test_files(
-        ["src/constraints/evaluator.py", "src/edge_extractors/python.py"],
+        [
+            "src/constraints/evaluator.py",
+            "src/edge_extractors/python.py",
+            "src/test_discovery_stems.py",
+        ],
         {
+            "tests/test_change_impact_tool_execute_and_mapping.py",
             "tests/test_constraint_dsl.py",
             "tests/test_registry.py",
         },
@@ -470,6 +475,9 @@ def test_find_test_files_does_not_export_repository_specific_family_aliases():
         change_impact_tool.AUTO_DISCOVER_TEST_HINT
     ]
     assert mapping["src/edge_extractors/python.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+    assert mapping["src/test_discovery_stems.py"] == [
         change_impact_tool.AUTO_DISCOVER_TEST_HINT
     ]
 
@@ -771,7 +779,7 @@ def test_find_test_files_treats_system_and_acceptance_as_unscoped_tiers():
 
 
 def test_find_test_files_supports_exact_plural_subject():
-    """A plural suite subject may directly cover its singular module."""
+    """Only an exact unscoped plural subject directly covers its module."""
     mapping = change_impact_tool._find_test_files(
         ["src/extractor.py", "src/engine.py"],
         {
@@ -783,10 +791,7 @@ def test_find_test_files_supports_exact_plural_subject():
         },
     )
 
-    assert mapping["src/extractor.py"] == [
-        "tests/test_extractors.py",
-        "tests/test_extractors_errors.py",
-    ]
+    assert mapping["src/extractor.py"] == ["tests/test_extractors.py"]
     assert mapping["src/engine.py"] == ["tests/test_engines.py"]
 
 
@@ -817,6 +822,46 @@ def test_find_test_files_keeps_only_nearest_exact_subsystem_match():
 
     assert mapping["src/api/client/config.py"] == [
         "tests/unit/client/test_config.py"
+    ]
+
+
+def test_find_test_files_normalizes_test_prefixed_subsystem_directories():
+    """Test-directory aliases retain exact suites beside direct variants."""
+    mapping = change_impact_tool._find_test_files(
+        [
+            "tree_sitter_analyzer/mcp/tools/base_tool.py",
+            "tree_sitter_analyzer/mcp/utils/path_resolver.py",
+        ],
+        {
+            "tests/unit/mcp/test_tools/test_base_tool.py",
+            "tests/unit/mcp/tools/test_base_tool_output_schema.py",
+            "tests/unit/mcp/test_utils/test_path_resolver.py",
+            "tests/unit/mcp/utils/test_path_resolver_errors.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/mcp/tools/base_tool.py"] == [
+        "tests/unit/mcp/test_tools/test_base_tool.py",
+        "tests/unit/mcp/tools/test_base_tool_output_schema.py",
+    ]
+    assert mapping["tree_sitter_analyzer/mcp/utils/path_resolver.py"] == [
+        "tests/unit/mcp/test_utils/test_path_resolver.py",
+        "tests/unit/mcp/utils/test_path_resolver_errors.py",
+    ]
+
+
+def test_find_test_files_rejects_unscoped_plural_prefix_collisions():
+    """Plural-prefixed suites need independent subsystem or family evidence."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/core/query.py"],
+        {
+            "tests/unit/core/test_queries_cpp.py",
+            "tests/unit/core/test_queries_python.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/core/query.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
     ]
 
 
@@ -973,6 +1018,14 @@ def test_package_scope_ignores_hidden_workspace_marker():
     assert change_impact_tool.test_paths_have_compatible_package_scope(
         "packages/.hidden/tests/core/test_config.py",
         "packages/a/src/core/config.py",
+    )
+
+
+def test_package_scope_ignores_hidden_scoped_package_name():
+    """A hidden name after an npm scope is not package identity."""
+    assert change_impact_tool.test_paths_have_compatible_package_scope(
+        "packages/@scope/.hidden/tests/core/config.test.ts",
+        "packages/@scope/.hidden/src/core/config.ts",
     )
 
 

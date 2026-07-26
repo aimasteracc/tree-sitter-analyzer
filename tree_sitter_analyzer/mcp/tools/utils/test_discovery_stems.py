@@ -128,9 +128,12 @@ def test_path_subsystem_affinity_rank(
         changed_package is None or changed_package != test_package
     ):
         return None
-    test_parts = {
-        _normalize_module_identifier(part) for part in normalized_test.parts[:-1]
-    }
+    test_parts: set[str] = set()
+    for part in normalized_test.parts[:-1]:
+        normalized_part = _normalize_module_identifier(part)
+        test_parts.add(normalized_part)
+        if normalized_part.startswith("test_"):
+            test_parts.add(normalized_part[len("test_") :])
     test_stem = _normalize_module_identifier(normalized_test.stem)
     for rank, subsystem_stem in enumerate(subsystem_stems):
         if subsystem_stem in test_parts or related_stem_matches(
@@ -301,6 +304,8 @@ def module_family_test_stems(file_path: str | Path) -> list[str]:
         and normalized.stem == "java"
     ):
         stems.append("project_summary_pagerank")
+    if is_repository_source and normalized.stem == "test_discovery_stems":
+        stems.append("change_impact_tool_execute_and_mapping")
     stems.extend(_strip_family_suffixes(normalized.stem, suffixes))
     return _unique_nonempty_stems(stems)
 
@@ -339,8 +344,6 @@ def _special_module_family_stems(stem: str) -> list[str]:
     """Return family stems for helper modules that do not share a direct name."""
     if stem.lstrip("_") == "refactoring_plan_builder":
         return ["refactoring_suggestions"]
-    if stem == "test_discovery_stems":
-        return ["change_impact_tool_execute_and_mapping"]
     return []
 
 
