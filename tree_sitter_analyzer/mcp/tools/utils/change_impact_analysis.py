@@ -39,6 +39,7 @@ from .test_discovery_stems import (
     related_stem_matches,
     related_test_stems_for_path,
     source_subsystem_stems,
+    test_file_has_exact_module_stem,
     test_file_subject_stem,
     test_path_is_unscoped,
     test_path_subsystem_affinity_rank,
@@ -121,12 +122,20 @@ def _find_test_files(
             for test_file in direct_related
             if test_path_is_unscoped(test_file) or not has_named_subsystem
         ]
+        outer_scoped_exact = [
+            test_file
+            for test_file in direct_related
+            if test_file_has_exact_module_stem(test_file, changed_file)
+            and test_path_subsystem_affinity_rank(test_file, changed_file) is not None
+        ]
         scoped_direct = _most_specific_affinity_matches(
             direct_related,
             changed_file,
             maximum_rank=0,
         )
-        selected_direct = sorted(set(retained_direct) | set(scoped_direct))
+        selected_direct = sorted(
+            set(retained_direct) | set(outer_scoped_exact) | set(scoped_direct)
+        )
         if not selected_direct and direct_related:
             # All filename matches belong to another named subsystem. Only in
             # that ambiguous case, search the available tests by source-path
@@ -192,9 +201,9 @@ def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
 
     changed_stem = module_stem_for_path(normalized_change)
     test_stem = test_file_subject_stem(normalized_test)
-    return (
-        f"_{changed_stem}_" in f"_{test_stem}_"
-        or test_stem == _pluralized_module_stem(changed_stem)
+    plural_stem = _pluralized_module_stem(changed_stem)
+    return f"_{changed_stem}_" in f"_{test_stem}_" or (
+        test_stem == plural_stem or test_stem.startswith(f"{plural_stem}_")
     )
 
 
