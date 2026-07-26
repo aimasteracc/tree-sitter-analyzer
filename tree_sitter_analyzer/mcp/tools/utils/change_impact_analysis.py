@@ -192,7 +192,19 @@ def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
 
     changed_stem = module_stem_for_path(normalized_change)
     test_stem = test_file_subject_stem(normalized_test)
-    return f"_{changed_stem}_" in f"_{test_stem}_"
+    return (
+        f"_{changed_stem}_" in f"_{test_stem}_"
+        or test_stem == _pluralized_module_stem(changed_stem)
+    )
+
+
+def _pluralized_module_stem(stem: str) -> str:
+    """Return the conventional English plural for an exact test subject."""
+    if stem.endswith(("s", "x", "z", "ch", "sh")):
+        return f"{stem}es"
+    if len(stem) > 1 and stem.endswith("y") and stem[-2] not in "aeiou":
+        return f"{stem[:-1]}ies"
+    return f"{stem}s"
 
 
 def _is_runnable_test_file(
