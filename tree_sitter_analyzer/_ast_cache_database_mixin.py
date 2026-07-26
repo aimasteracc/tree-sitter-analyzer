@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
-from .cache.extraction import _has_fts5
 from .cache.schema import (
     EXPECTED_SCHEMA_VERSIONS as _EXPECTED_SCHEMA_VERSIONS,
 )
@@ -54,9 +53,7 @@ from .cache.schema import (
 from .cache.schema import (
     init_db as _schema_init_db,
 )
-
-if TYPE_CHECKING:
-    from .core.parser import Parser
+from .core.parser import Parser
 
 
 class SchemaIntegrityError(RuntimeError):
@@ -141,6 +138,8 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
         return self._parser
 
     def _init_db(self) -> None:
+        from . import ast_cache as ast_cache_facade
+
         conn = self._get_conn()
         migrations = [
             (3, _apply_migration_v3),
@@ -157,7 +156,7 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
         self._fts5_available = _schema_init_db(
             conn,
             self._fts5_available,
-            _has_fts5,
+            ast_cache_facade._has_fts5,
             migrations,
         )
         self._verify_schema_integrity(conn)

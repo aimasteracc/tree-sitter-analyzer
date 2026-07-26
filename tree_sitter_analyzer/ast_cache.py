@@ -19,7 +19,7 @@ from .cache.helpers import (  # noqa: F401
     _build_function_entry,
     _commit_index_results,
 )
-from .cache.indexer import _EXT_TO_LANG  # noqa: F401
+from .cache.indexer import _EXT_TO_LANG, _language_from_ext  # noqa: F401
 from .cache.maintenance import (  # noqa: F401
     reclaim_storage_after_full_rebuild as _reclaim_storage_after_full_rebuild,
 )

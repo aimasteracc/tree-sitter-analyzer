@@ -144,8 +144,8 @@ class ASTCacheQueryMixin(ASTCacheSurface):
         limit: int = 50000,
     ) -> list[dict[str, Any]]:
         """Return flat symbol rows for one kind."""
+        conn = self._get_conn()
         try:
-            conn = self._get_conn()
             rows = conn.execute(
                 "SELECT name, file_path, line, end_line, language "
                 "FROM ast_symbol_rows WHERE kind = ? LIMIT ?",
