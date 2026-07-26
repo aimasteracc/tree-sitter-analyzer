@@ -1862,6 +1862,33 @@ class TestPythonDocstring:
 
 
 class TestExtractCallEdgesReal:
+    def test_call_edges_preserve_exact_order_shape_and_attribution(self):
+        # Issue #1173: module extraction must remain byte-shape compatible.
+        from tree_sitter_analyzer.core.parser import Parser
+
+        src = "def helper():\n    pass\n\ndef main():\n    helper()\nprint()\n"
+        result = Parser().parse_code(src, "python")
+        assert result.success and result.tree is not None
+
+        edges = _extract_call_edges(result.tree, src, "python", {"symbols": []})
+
+        assert edges == [
+            {
+                "caller_name": "main",
+                "caller_line": 4,
+                "callee_name": "helper",
+                "callee_full": "helper",
+                "callee_line": 5,
+            },
+            {
+                "caller_name": "",
+                "caller_line": 0,
+                "callee_name": "print",
+                "callee_full": "print",
+                "callee_line": 6,
+            },
+        ]
+
     def test_call_edges_python_simple_caller(self):
         """A function that calls another produces a non-empty edge list."""
         from tree_sitter_analyzer.cache.extraction import _extract_symbols
