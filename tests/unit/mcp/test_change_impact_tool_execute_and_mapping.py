@@ -474,6 +474,18 @@ def test_find_test_files_does_not_export_repository_specific_family_aliases():
     ]
 
 
+def test_find_test_files_preserves_dunder_module_identity():
+    """A package initializer must not match an unrelated plain init module."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/api/__init__.py"],
+        {"tests/unit/worker/test_init.py"},
+    )
+
+    assert mapping["src/api/__init__.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+
+
 def test_find_test_files_keeps_same_stem_with_matching_subsystem():
     """A same-stem test remains valid when its subsystem path also matches."""
     mapping = change_impact_tool._find_test_files(
@@ -554,21 +566,21 @@ def test_find_test_files_preserves_unscoped_direct_stem_variants():
     ]
 
 
-def test_find_test_files_limits_fallback_to_nearest_specific_subsystem():
-    """A broad MCP ancestor must not turn a helper edit into every MCP test."""
+def test_find_test_files_uses_path_specific_edge_extractor_family():
+    """A Java edge extractor maps only to its existing path-specific suite."""
     mapping = change_impact_tool._find_test_files(
-        ["tree_sitter_analyzer/mcp/utils/edge_extractors/python.py"],
+        ["tree_sitter_analyzer/mcp/utils/edge_extractors/java.py"],
         {
+            "tests/unit/formatters/test_formatter_registry.py",
             "tests/unit/mcp/edge_extractors/test_registry.py",
-            "tests/unit/mcp/test_python_parser.py",
-            "tests/unit/mcp/test_server.py",
-            "tests/unit/mcp/test_change_impact_tool.py",
+            "tests/unit/mcp/test_project_summary_pagerank.py",
+            "tests/unit/test_tool_registry.py",
         },
     )
 
     assert mapping[
-        "tree_sitter_analyzer/mcp/utils/edge_extractors/python.py"
-    ] == ["tests/unit/mcp/edge_extractors/test_registry.py"]
+        "tree_sitter_analyzer/mcp/utils/edge_extractors/java.py"
+    ] == ["tests/unit/mcp/test_project_summary_pagerank.py"]
 
 
 def test_find_test_files_disambiguates_direct_matches_alongside_family_matches():
@@ -808,6 +820,26 @@ def test_find_test_files_keeps_only_nearest_exact_subsystem_match():
     ]
 
 
+def test_find_test_files_preserves_direct_variants_across_test_layers():
+    """Direct behavioral suites remain selected outside the source subsystem."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/mcp/tools/analyze_scale_tool.py"],
+        {
+            "tests/integration/core/test_analyze_scale_tool_batch_metrics.py",
+            "tests/integration/core/test_analyze_scale_tool_file_output.py",
+            "tests/integration/mcp/test_tools/test_analyze_scale_tool.py",
+        },
+    )
+
+    assert mapping[
+        "tree_sitter_analyzer/mcp/tools/analyze_scale_tool.py"
+    ] == [
+        "tests/integration/core/test_analyze_scale_tool_batch_metrics.py",
+        "tests/integration/core/test_analyze_scale_tool_file_output.py",
+        "tests/integration/mcp/test_tools/test_analyze_scale_tool.py",
+    ]
+
+
 def test_find_test_files_avoids_discarded_full_suite_affinity_scan(monkeypatch):
     """An ambiguous direct match must rank only relevant candidate sets."""
     candidates_seen: list[list[str]] = []
@@ -934,6 +966,10 @@ def test_find_test_files_does_not_restore_sibling_package_direct_match():
         )
         is None
     )
+
+
+def test_package_scope_ignores_hidden_workspace_marker():
+    """A hidden placeholder after packages does not declare a workspace."""
     assert change_impact_tool.test_paths_have_compatible_package_scope(
         "packages/.hidden/tests/core/test_config.py",
         "packages/a/src/core/config.py",
@@ -993,6 +1029,25 @@ def test_find_test_files_keeps_central_tests_for_workspace_sources():
     )
 
     assert mapping["packages/a/src/config.py"] == ["tests/a/test_config.py"]
+
+
+def test_find_test_files_excludes_top_level_package_from_affinity():
+    """A package root is not a subsystem for modules directly beneath it."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/api.py"],
+        {
+            "tree_sitter_analyzer/__init__.py",
+            "tests/integration/core/test_api.py",
+            "tests/integration/core/test_api_errors.py",
+            "tests/unit/test_api.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/api.py"] == [
+        "tests/integration/core/test_api.py",
+        "tests/integration/core/test_api_errors.py",
+        "tests/unit/test_api.py",
+    ]
 
 
 def test_find_test_files_rejects_workspace_tests_for_central_sources():
