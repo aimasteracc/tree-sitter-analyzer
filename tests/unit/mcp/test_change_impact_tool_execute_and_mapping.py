@@ -687,7 +687,11 @@ def test_find_test_files_keeps_direct_tests_when_affinity_is_too_broad():
 def test_find_test_files_preserves_monorepo_package_scope():
     """Nested package test roots must not make sibling tests unscoped."""
     mapping = change_impact_tool._find_test_files(
-        ["packages/a/core/config.py"],
+        [
+            "packages/a/core/config.py",
+            "packages/a/src/config.py",
+            "packages/a/src/core/config.py",
+        ],
         {
             "packages/a/tests/test_config.py",
             "packages/b/tests/test_config.py",
@@ -695,6 +699,12 @@ def test_find_test_files_preserves_monorepo_package_scope():
     )
 
     assert mapping["packages/a/core/config.py"] == [
+        "packages/a/tests/test_config.py"
+    ]
+    assert mapping["packages/a/src/config.py"] == [
+        "packages/a/tests/test_config.py"
+    ]
+    assert mapping["packages/a/src/core/config.py"] == [
         "packages/a/tests/test_config.py"
     ]
 
@@ -733,14 +743,33 @@ def test_find_test_files_supports_exact_plural_subject():
         ["src/extractor.py", "src/engine.py"],
         {
             "tests/test_extractors.py",
+            "tests/test_extractors_errors.py",
             "tests/test_engines.py",
             "tests/test_other_extractors.py",
             "tests/test_other_engines.py",
         },
     )
 
-    assert mapping["src/extractor.py"] == ["tests/test_extractors.py"]
+    assert mapping["src/extractor.py"] == [
+        "tests/test_extractors.py",
+        "tests/test_extractors_errors.py",
+    ]
     assert mapping["src/engine.py"] == ["tests/test_engines.py"]
+
+
+def test_find_test_files_preserves_outer_affinity_for_exact_direct():
+    """A nearer unrelated path must not replace an exact direct test."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/api/client/request.py"],
+        {
+            "tests/unit/api/test_request.py",
+            "tests/unit/client/test_unrelated.py",
+        },
+    )
+
+    assert mapping["src/api/client/request.py"] == [
+        "tests/unit/api/test_request.py"
+    ]
 
 
 def test_find_test_files_maps_refactoring_plan_builder_to_family_tests():
