@@ -43,6 +43,7 @@ from .test_discovery_stems import (
     test_file_subject_stem,
     test_path_is_unscoped,
     test_path_subsystem_affinity_rank,
+    test_paths_have_compatible_package_scope,
 )
 from .verification_command import (
     DefaultTestCommand,
@@ -110,6 +111,7 @@ def _find_test_files(
             test_file
             for test_file in related
             if not _test_file_has_direct_stem_match(test_file, changed_file)
+            and test_paths_have_compatible_package_scope(test_file, changed_file)
         ]
         direct_related = [
             test_file
@@ -144,6 +146,17 @@ def _find_test_files(
                 sorted(test_files),
                 changed_file,
             )
+            if any(
+                test_file_has_exact_module_stem(test_file, changed_file)
+                for test_file in direct_related
+            ):
+                # A directory-only affinity is weaker than an exact filename.
+                # It may replace an exact direct candidate only when the
+                # fallback filename itself also expresses the source scope.
+                affinity_fallback = _most_specific_filename_affinity_matches(
+                    sorted(test_files),
+                    changed_file,
+                )
             selected_direct = (
                 affinity_fallback
                 if 0 < len(affinity_fallback) <= FOCUSED_TEST_COMMAND_LIMIT
@@ -178,6 +191,36 @@ def _most_specific_affinity_matches(
     best_rank = min(rank for rank, _test_file in ranked)
     if maximum_rank is not None and best_rank > maximum_rank:
         return []
+    return [test_file for rank, test_file in ranked if rank == best_rank]
+
+
+def _most_specific_filename_affinity_matches(
+    test_files: list[str],
+    changed_file: str,
+) -> list[str]:
+    """Return nearest source-scope matches encoded in test filenames."""
+    subsystem_stems = source_subsystem_stems(changed_file)
+    ranked = [
+        (rank, test_file)
+        for test_file in test_files
+        if (
+            rank := next(
+                (
+                    rank
+                    for rank, subsystem_stem in enumerate(subsystem_stems)
+                    if related_stem_matches(
+                        Path(test_file).stem.lower().replace("-", "_"),
+                        subsystem_stem,
+                    )
+                ),
+                None,
+            )
+        )
+        is not None
+    ]
+    if not ranked:
+        return []
+    best_rank = min(rank for rank, _test_file in ranked)
     return [test_file for rank, test_file in ranked if rank == best_rank]
 
 
