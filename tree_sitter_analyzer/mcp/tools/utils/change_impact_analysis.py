@@ -37,7 +37,9 @@ from .constraint_violation_query import (
 from .test_discovery_stems import (
     related_stem_matches,
     related_test_stems_for_path,
+    test_file_has_exact_module_stem,
     test_path_has_subsystem_affinity,
+    test_path_is_unscoped,
 )
 from .verification_command import (
     DefaultTestCommand,
@@ -101,29 +103,60 @@ def _find_test_files(
             for test_file in sorted(test_files)
             if _test_file_matches_change(test_file, changed_file)
         ]
-        subsystem_related = [
+        family_related = [
+            test_file
+            for test_file in related
+            if not _test_file_has_direct_stem_match(test_file, changed_file)
+        ]
+        if family_related:
+            # Derived module-family matches deliberately span surfaces such as
+            # CLI, core, and MCP; subsystem affinity must not narrow them.
+            mapping[changed_file] = related
+            continue
+
+        unscoped_exact = [
+            test_file
+            for test_file in related
+            if test_file_has_exact_module_stem(test_file, changed_file)
+            and test_path_is_unscoped(test_file)
+        ]
+        scoped_related = [
             test_file
             for test_file in related
             if test_path_has_subsystem_affinity(test_file, changed_file)
         ]
-        mapping[changed_file] = (
-            subsystem_related or related or [AUTO_DISCOVER_TEST_HINT]
-        )
+        selected = sorted(set(unscoped_exact) | set(scoped_related))
+        if not selected and related:
+            # All filename matches belong to another named subsystem. Only in
+            # that ambiguous case, search the available tests by source-path
+            # affinity instead of adding broad subsystem stems unconditionally.
+            selected = [
+                test_file
+                for test_file in sorted(test_files)
+                if test_path_has_subsystem_affinity(test_file, changed_file)
+            ]
+        mapping[changed_file] = selected or related or [AUTO_DISCOVER_TEST_HINT]
 
     return mapping
 
 
 def _test_file_matches_change(test_file: str, changed_file: str) -> bool:
     """Return True when a test filename appears related to a changed file."""
-    changed_stem = Path(changed_file).stem
-    test_stem = Path(test_file).stem
-    direct_stem = test_stem.replace("_test", "").replace("test_", "")
-    if changed_stem in test_stem or direct_stem == changed_stem:
+    if _test_file_has_direct_stem_match(test_file, changed_file):
         return True
+    test_stem = Path(test_file).stem
     return any(
         related_stem_matches(test_stem, related_stem)
         for related_stem in related_test_stems_for_path(changed_file)
     )
+
+
+def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
+    """Return whether the test filename directly contains the module stem."""
+    changed_stem = Path(changed_file).stem
+    test_stem = Path(test_file).stem
+    direct_stem = test_stem.replace("_test", "").replace("test_", "")
+    return changed_stem in test_stem or direct_stem == changed_stem
 
 
 def _is_runnable_test_file(
