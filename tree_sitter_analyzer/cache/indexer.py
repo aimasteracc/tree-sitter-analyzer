@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     pass
 
 from ..constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
+from ..indexing_limits import normalize_index_max_files
 from ..languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from ..project_graph import _language_from_ext
 from .build_state import (
@@ -237,6 +238,7 @@ def walk_and_partition(
     attempt, so a Python-scoped run never tries to load an optional grammar
     (e.g. Swift) and never surfaces a "grammar not installed" error.
     """
+    max_files = normalize_index_max_files(max_files)
     candidates: list[tuple[str, str]] = []
     already_cached: list[dict[str, Any]] = []
     stats: dict[str, Any] = {
@@ -393,6 +395,7 @@ def run_index_project(
     ASTCache keeps the connection/backfill helpers; this module owns the
     high-level control flow so ``ast_cache.py`` stays thin.
     """
+    max_files = normalize_index_max_files(max_files)
     activation_enabled = _project_index_activation_enabled(include_activation)
     if resolve_only:
         synapse = cache._run_synapse_backfill()
@@ -550,7 +553,9 @@ def post_index_backfill(
 
         # SQLite is the canonical graph index. LadybugDB is a derived projection
         # and must never survive an SQLite update as an implicitly fresh mirror.
-        ladybug_removed = LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
+        ladybug_removed = LadybugKnowledgeGraphStore(
+            cache.project_root
+        ).remove_if_exists()
         if ladybug_removed:
             stats["knowledge_graph"] = {"ladybug_stale_removed": True}
     except Exception:

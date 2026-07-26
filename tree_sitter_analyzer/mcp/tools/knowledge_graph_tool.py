@@ -6,6 +6,10 @@ from __future__ import annotations
 from typing import Any
 
 from ...incremental_sync import IncrementalSync
+from ...indexing_limits import (
+    KNOWLEDGE_INDEX_MAX_FILES,
+    normalize_index_max_files,
+)
 from ...knowledge_graph import (
     KnowledgeGraphBuilder,
     LadybugKnowledgeGraphStore,
@@ -69,8 +73,12 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
                 },
                 "max_files": {
                     "type": "integer",
+                    "minimum": 1,
                     "default": 1000000,
-                    "description": "Max source files for full build; update mode uses a safe full-project scan",
+                    "description": (
+                        "Positive maximum source files for full build; zero is "
+                        "invalid. Update mode uses a safe full-project scan."
+                    ),
                 },
                 "max_nodes": {
                     "type": "integer",
@@ -103,6 +111,10 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
         backend = arguments.get("backend", "auto")
         if backend not in _BACKENDS:
             raise ValueError("backend must be one of: auto, ladybug, sqlite")
+        arguments["max_files"] = normalize_index_max_files(
+            arguments.get("max_files"),
+            default=KNOWLEDGE_INDEX_MAX_FILES,
+        )
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -132,7 +144,7 @@ class CodeGraphKnowledgeIndexTool(BaseMCPTool):
 
         sync_report = self._prepare_index(
             mode=mode,
-            max_files=int(arguments.get("max_files", 20_000)),
+            max_files=arguments["max_files"],
         )
         ladybug_invalidated = False
         if effective_backend == "sqlite" and _sync_has_changes(sync_report):

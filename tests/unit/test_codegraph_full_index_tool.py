@@ -65,6 +65,9 @@ class TestToolDefinition:
         assert hints["readOnlyHint"] is False
         assert hints["destructiveHint"] is True
 
+    def test_schema_requires_positive_max_files(self, tool):
+        assert tool.get_tool_schema()["properties"]["max_files"]["minimum"] == 1
+
 
 class TestValidation:
     def test_valid_incremental(self, tool):
@@ -76,6 +79,17 @@ class TestValidation:
     def test_invalid_mode_rejected(self, tool):
         with pytest.raises(ValueError, match="Invalid mode"):
             tool.validate_arguments({"mode": "partial"})
+
+    @pytest.mark.parametrize("value", [True, 0, -1])
+    def test_invalid_max_files_rejected(self, tool, value):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            tool.validate_arguments({"mode": "incremental", "max_files": value})
+
+    def test_omitted_max_files_is_normalized(self, tool):
+        arguments = {"mode": "incremental"}
+
+        assert tool.validate_arguments(arguments) is True
+        assert arguments["max_files"] == 20_000
 
 
 class TestExcludeResolution:
@@ -293,7 +307,7 @@ class TestExecute:
         (tmp_path / "b.py").write_text("b = 2\n")
         full_tool = CodeGraphFullIndexTool(str(tmp_path))
 
-        await full_tool.execute(
+        result = await full_tool.execute(
             {
                 "mode": "full",
                 "max_files": 1,
@@ -303,6 +317,8 @@ class TestExecute:
         )
 
         assert _cache_total_files(tmp_path) == 1
+        assert result["phases"]["ast_cache"]["truncated_by_max_files"] is True
+        assert result["phases"]["incremental_sync"]["truncated_by_max_files"] is True
 
     async def test_default_exclude_is_not_reintroduced_by_sync(self, tmp_path):
         # Incident 2026-07-26: sync reintroduced a default-excluded corpus file.

@@ -135,6 +135,8 @@ class TestSyncMaxFiles:
         (project / "src" / "extra2.py").write_text("y = 2\n")
         result = sync.sync(max_files=2)
         assert result.scanned == 2
+        assert result.truncated_by_max_files is True
+        assert result.to_dict()["truncated_by_max_files"] is True
 
     def test_truncated_scan_does_not_delete_unseen_indexed_files(self, sync, cache):
         # Incident 2026-07-26: capped scans invalidated live files beyond the cap.
@@ -145,14 +147,13 @@ class TestSyncMaxFiles:
         assert result.deleted_files == 0
         assert cache.get_stats()["total_files"] == 3
 
-    def test_zero_limit_does_not_delete_existing_index(self, sync, cache):
-        # Incident 2026-07-26: an empty capped scan invalidated the entire cache.
+    def test_zero_limit_is_rejected_without_deleting_existing_index(self, sync, cache):
+        # Issue #1169: zero is invalid, and validation must precede mutations.
         sync.sync()
 
-        result = sync.sync(max_files=0)
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            sync.sync(max_files=0)
 
-        assert result.scanned == 0
-        assert result.deleted_files == 0
         assert cache.get_stats()["total_files"] == 3
 
     def test_truncated_scan_defers_real_deletion_until_complete_scan(

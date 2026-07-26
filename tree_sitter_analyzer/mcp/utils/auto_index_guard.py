@@ -32,6 +32,8 @@ import logging
 import threading
 from typing import Any
 
+from ...indexing_limits import normalize_index_max_files
+
 logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
@@ -60,9 +62,10 @@ def ensure_indexed(
     * **False** — fail fast. If the cache is empty, return ``None``
       immediately so the calling tool can surface "run
       codegraph_autoindex first" rather than blocking. Read-only
-      tools that don't *need* to build the cache (``codegraph_metrics``,
-      ``codegraph_status``) should pass this.
+    tools that don't *need* to build the cache (``codegraph_metrics``,
+    ``codegraph_status``) should pass this.
     """
+    max_files = normalize_index_max_files(max_files)
     if project_root is None:
         return None
 

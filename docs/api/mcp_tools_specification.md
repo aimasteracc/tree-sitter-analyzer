@@ -1517,6 +1517,12 @@ uv run tree-sitter-analyzer --parser-readiness --parser-readiness-include-suppor
 
 The v1.13.0 release adds 40 specialised tools for autonomous-agent workflows: AST cache + FTS5 indexing, function-level CodeGraph parity (callers/callees/blast-radius/visualise), pre-edit safety verdicts, anti-pattern / dead-code / route detection, architectural-constraint enforcement, and a persistent decision journal. All tools default to TOON output for 50-70% token savings versus JSON. Tools are listed alphabetically.
 
+For project-indexing tools, `max_files` is always a positive integer. Omitting
+it selects the tool's documented default. Zero, negative values, booleans, and
+non-integral values are rejected; zero is never an alias for “unlimited” or “no work.”
+Capped incremental results expose `truncated_by_max_files` so callers can
+distinguish a complete scan from a bounded prefix.
+
 ### 16. ast_cache
 
 **Purpose**: Pre-indexed AST cache with FTS5 search and incremental sync (CodeGraph parity). The only tool that persists AST data across sessions — other codegraph tools build on top of this cache.

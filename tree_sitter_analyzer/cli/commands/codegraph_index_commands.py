@@ -20,6 +20,11 @@ import os
 from collections.abc import Callable
 from typing import Any
 
+from ...indexing_limits import (
+    KNOWLEDGE_INDEX_MAX_FILES,
+    normalize_index_max_files,
+)
+
 OutputJsonFn = Callable[[dict[str, Any]], None]
 OutputErrorFn = Callable[[str], None]
 
@@ -54,7 +59,9 @@ def _exit_code_for(result: dict[str, Any]) -> int:
 def _autoindex_payload(args: Any, output_format: str) -> dict[str, Any]:
     return {
         "mode": getattr(args, "autoindex_mode", "status") or "status",
-        "max_files": int(getattr(args, "autoindex_max_files", 20_000)),
+        "max_files": normalize_index_max_files(
+            getattr(args, "autoindex_max_files", None)
+        ),
         "output_format": output_format,
     }
 
@@ -62,7 +69,9 @@ def _autoindex_payload(args: Any, output_format: str) -> dict[str, Any]:
 def _full_index_payload(args: Any, output_format: str) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "mode": getattr(args, "full_index_mode", "incremental") or "incremental",
-        "max_files": int(getattr(args, "full_index_max_files", 20_000)),
+        "max_files": normalize_index_max_files(
+            getattr(args, "full_index_max_files", None)
+        ),
         "include_activation": bool(
             getattr(args, "full_index_include_activation", False)
         ),
@@ -81,7 +90,9 @@ def _full_index_payload(args: Any, output_format: str) -> dict[str, Any]:
 def _incremental_sync_payload(args: Any, output_format: str) -> dict[str, Any]:
     return {
         "mode": getattr(args, "incremental_sync_mode", "sync") or "sync",
-        "max_files": int(getattr(args, "incremental_sync_max_files", 20_000)),
+        "max_files": normalize_index_max_files(
+            getattr(args, "incremental_sync_max_files", None)
+        ),
         "output_format": output_format,
     }
 
@@ -90,7 +101,10 @@ def _knowledge_graph_index_payload(args: Any, output_format: str) -> dict[str, A
     return {
         "mode": getattr(args, "knowledge_graph_index_mode", "update") or "update",
         "backend": getattr(args, "knowledge_graph_backend", "auto") or "auto",
-        "max_files": int(getattr(args, "knowledge_graph_max_files", 1_000_000)),
+        "max_files": normalize_index_max_files(
+            getattr(args, "knowledge_graph_max_files", None),
+            default=KNOWLEDGE_INDEX_MAX_FILES,
+        ),
         "max_nodes": int(getattr(args, "knowledge_graph_max_nodes", 0)),
         "max_edges": int(getattr(args, "knowledge_graph_max_edges", 0)),
         "include_docs": not bool(getattr(args, "knowledge_graph_no_docs", False)),

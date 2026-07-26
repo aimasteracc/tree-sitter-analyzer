@@ -9,6 +9,8 @@ import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer.cli.commands.codegraph_index_commands import (
     _autoindex_payload,
     _exit_code_for,
@@ -117,6 +119,10 @@ class TestAutoindexPayload:
         payload = _autoindex_payload(args, "json")
         assert payload["mode"] == "status"
 
+    def test_zero_max_files_is_rejected(self):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            _autoindex_payload(_args(autoindex_max_files=0), "json")
+
 
 class TestFullIndexPayload:
     def test_default_values(self):
@@ -132,6 +138,10 @@ class TestFullIndexPayload:
         payload = _full_index_payload(args, "json")
         assert payload["include_activation"] is True
 
+    def test_zero_max_files_is_rejected(self):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            _full_index_payload(_args(full_index_max_files=0), "json")
+
 
 class TestIncrementalSyncPayload:
     def test_default_values(self):
@@ -144,6 +154,10 @@ class TestIncrementalSyncPayload:
         args = _args(incremental_sync_mode="check")
         payload = _incremental_sync_payload(args, "toon")
         assert payload["mode"] == "check"
+
+    def test_zero_max_files_is_rejected(self):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            _incremental_sync_payload(_args(incremental_sync_max_files=0), "json")
 
 
 class TestKnowledgeGraphIndexPayload:
@@ -175,6 +189,13 @@ class TestKnowledgeGraphIndexPayload:
         assert payload["max_edges"] == 789
         assert payload["include_docs"] is False
         assert payload["output_format"] == "toon"
+
+    def test_zero_max_files_is_rejected(self):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            _knowledge_graph_index_payload(
+                _args(knowledge_graph_max_files=0),
+                "json",
+            )
 
 
 class TestMetricsPayload:

@@ -21,6 +21,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
 from ..utils.auto_index_guard import mark_dirty
 from ..utils.error_sanitizer import (
@@ -160,7 +161,11 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 },
                 "max_files": {
                     "type": "integer",
-                    "description": "Max files to index (default: 20000)",
+                    "minimum": 1,
+                    "description": (
+                        "Positive maximum files to index; zero is invalid "
+                        "(default: 20000)"
+                    ),
                     "default": 20000,
                 },
                 "resolve_synapse": {
@@ -209,6 +214,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         mode = arguments.get("mode", "incremental")
         if mode not in ("full", "incremental"):
             raise ValueError(f"Invalid mode: {mode}. Must be 'full' or 'incremental'")
+        arguments["max_files"] = normalize_index_max_files(arguments.get("max_files"))
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -225,7 +231,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             )
 
         mode = arguments.get("mode", "incremental")
-        max_files = int(arguments.get("max_files", 20_000))
+        max_files = arguments["max_files"]
         resolve_synapse = arguments.get("resolve_synapse", True)
         include_activation = bool(arguments.get("include_activation", False))
         output_format = arguments.get("output_format", "toon")
@@ -333,6 +339,9 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "errors": errors,
                 "mode_used": result.get("mode_used", "unknown"),
                 "activation_enabled": result.get("activation_enabled", False),
+                "truncated_by_max_files": bool(
+                    result.get("truncated_by_max_files", False)
+                ),
                 # Surface the backfill counts produced by _post_index_backfill so
                 # the synapse_resolution phase can report without re-running (A1).
                 "synapse_backfill": result.get("synapse_backfill"),
@@ -390,6 +399,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "deleted_files": result.deleted_files,
                 "unchanged_files": result.unchanged_files,
                 "errors": result.errors,
+                "truncated_by_max_files": result.truncated_by_max_files,
                 **error_summary,
             }
         except Exception as exc:

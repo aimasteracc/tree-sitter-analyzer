@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from ...constants import EDIT_KINDS
+from ...indexing_limits import parse_index_max_files
 from ._analysis_codegraph import _add_mcp_codegraph_map_options
 from ._analysis_graph_nav import _add_mcp_graph_nav_options
 
@@ -303,9 +304,12 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--ast-cache-max-files",
-        type=int,
+        type=parse_index_max_files,
         default=20_000,
-        help="Max files to index with --ast-cache (default: 20000)",
+        help=(
+            "Positive max files to index or sync with --ast-cache; "
+            "zero is invalid (default: 20000)"
+        ),
     )
     parser.add_argument(
         "--ast-cache-force",
