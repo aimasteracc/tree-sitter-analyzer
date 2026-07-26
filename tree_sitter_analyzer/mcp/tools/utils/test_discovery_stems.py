@@ -195,8 +195,15 @@ def _monorepo_package_identity(file_path: str | Path) -> str | None:
         package_part = parts[index + 1]
         if not package_part or package_part.startswith("."):
             continue
+        package_parts = [package_part]
+        if package_part.startswith("@") and index + 2 < len(parts):
+            scoped_name = parts[index + 2]
+            if scoped_name and not scoped_name.startswith("."):
+                package_parts.append(scoped_name)
         container = _normalize_module_identifier(part)
-        package = _normalize_module_identifier(package_part)
+        package = "/".join(
+            _normalize_module_identifier(component) for component in package_parts
+        )
         package_lineage.append(f"{container}/{package}")
     return "/".join(package_lineage) or None
 
@@ -311,6 +318,8 @@ def _special_module_family_stems(stem: str) -> list[str]:
     """Return family stems for helper modules that do not share a direct name."""
     if stem.lstrip("_") == "refactoring_plan_builder":
         return ["refactoring_suggestions"]
+    if stem == "test_discovery_stems":
+        return ["change_impact_tool_execute_and_mapping"]
     return []
 
 
