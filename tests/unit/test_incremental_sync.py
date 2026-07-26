@@ -180,6 +180,28 @@ class TestSyncDeletedFile:
         assert cache.call_graph_built() is False
 
 
+def test_noop_sync_preserves_incomplete_backfill_state(tmp_path):
+    # PR #1172 review 2026-07-27: a no-op retry certified a failed backfill.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    sync = IncrementalSync(cache)
+
+    try:
+        with patch.object(
+            cache,
+            "_run_synapse_backfill",
+            return_value={"resolved": 0, "errors": 1},
+        ):
+            sync.sync()
+        sync.sync()
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is False
+
+
 class TestSyncNewFile:
     def test_detects_new_file(self, sync, cache, project):
         sync.sync()
@@ -302,6 +324,12 @@ class TestSyncExcludePatterns:
             "src/main.py",
             "src/util.py",
         }
+
+    def test_excluded_source_keeps_graph_incomplete(self, sync, cache):
+        # PR #1172 review 2026-07-27: selected-only equality hid exclusions.
+        sync.sync(exclude_patterns=frozenset({"src/helper.js"}))
+
+        assert cache.call_graph_built() is False
 
     def test_excluded_cached_file_is_not_treated_as_deleted(self, sync, cache):
         # Incident 2026-07-26: exclusion filtering could mimic a disk deletion.
@@ -759,8 +787,59 @@ def test_incremental_sync_reports_mutation_during_processing(tmp_path):
     assert result.changed_during_run == 1
     assert result.changed_during_run_files == ["app.py"]
     assert result.processed == 0
-    assert result.details[-1]["reason"] == "file changed after candidate snapshot"
+    assert result.details == [
+        {
+            "file": "app.py",
+            "considered": "skipped",
+            "action": "skipped",
+            "status": "skipped",
+            "reason": "file changed after candidate snapshot",
+        }
+    ]
     assert callback_details[-1]["reason"] == "file changed after candidate snapshot"
+
+
+def test_late_reclassification_preserves_other_file_details(tmp_path):
+    # PR #1172 review 2026-07-27: reclassification left duplicate file details.
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_text("a = 1\n")
+    second.write_text("b = 1\n")
+    snapshot = _snapshot(tmp_path, first, second)
+    cache = ASTCache(str(tmp_path))
+    original = cache.index_file
+
+    def mutate_first_after_second(file_path: str, language: str | None = None):
+        indexed = original(file_path, language)
+        if file_path == str(second):
+            first.write_text("a = 200\n")
+        return indexed
+
+    try:
+        with patch.object(cache, "index_file", side_effect=mutate_first_after_second):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        cache.close()
+
+    assert result.changed_during_run_files == ["a.py"]
+    assert result.details == [
+        {
+            "file": "b.py",
+            "considered": "indexed",
+            "action": "indexed",
+            "status": "indexed",
+        },
+        {
+            "file": "a.py",
+            "considered": "skipped",
+            "action": "skipped",
+            "status": "skipped",
+            "reason": "file changed after candidate snapshot",
+        },
+    ]
 
 
 def test_incremental_sync_rolls_back_mutation_during_processing(tmp_path):

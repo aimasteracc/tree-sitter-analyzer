@@ -396,7 +396,7 @@ def _validate_candidate_snapshot(
     candidate_snapshot: IndexCandidateSnapshot,
 ) -> None:
     """Reject a snapshot before an index run performs any destructive work."""
-    if os.path.realpath(cache.project_root) != candidate_snapshot.project_root:
+    if os.path.abspath(cache.project_root) != candidate_snapshot.project_root:
         raise ValueError("candidate snapshot belongs to a different project root")
     if max_files != candidate_snapshot.max_files:
         raise ValueError("candidate snapshot uses a different max_files limit")
@@ -564,6 +564,36 @@ def _revalidate_snapshot_batch(
         _record_snapshot_change(stats, rel_path, change_reason)
 
 
+def _revalidate_committed_snapshot(
+    *,
+    cache: Any,
+    conn: sqlite3.Connection,
+    entries: dict[str, IndexSnapshotEntry],
+    stats: dict[str, Any],
+) -> None:
+    """Invalidate any earlier committed generation changed before backfill."""
+    from . import write as _write
+
+    known_changed = set(stats["changed_during_run_files"])
+    for rel_path, entry in entries.items():
+        change_reason = (
+            None if rel_path in known_changed else changed_since_snapshot(entry)
+        )
+        if change_reason is None:
+            continue
+        _write.discard_file_rows(conn, rel_path, cache.fts5_available)
+        detail_files = [detail["file"] for detail in stats["files"]]
+        detail_index = detail_files.index(rel_path)
+        detail = stats["files"].pop(detail_index)
+        counter = {
+            "error": "errors",
+            "indexed": "indexed",
+            "cached": "cached",
+        }[detail["status"]]
+        stats[counter] -= 1
+        _record_snapshot_change(stats, rel_path, change_reason)
+
+
 def run_index_project(
     cache: Any,
     max_files: int = 20_000,
@@ -703,6 +733,13 @@ def run_index_project(
             result_guard=result_guard,
             batch_guard=batch_guard,
         )
+        if snapshot_entries is not None:
+            _revalidate_committed_snapshot(
+                cache=cache,
+                conn=conn,
+                entries=snapshot_entries,
+                stats=stats,
+            )
         if stats["changed_during_run"] > 0:
             _clear_call_graph_built(conn)
         stats["total_files"] = count

@@ -1394,6 +1394,126 @@ def test_snapshot_revalidates_pending_rows_at_batch_commit(tmp_path):
     assert graph_built is False
 
 
+def test_snapshot_revalidates_rows_from_earlier_committed_batches(tmp_path):
+    # PR #1172 review 2026-07-27: only the pending batch was revalidated.
+    from tree_sitter_analyzer.cache import indexer
+
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_text("a = 1\n")
+    second.write_text("b = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(first), str(second)),
+        language_fn=_python_language,
+    )
+    cache = ASTCache(str(tmp_path))
+    real_commit = _commit_index_results
+    real_insert = indexer.insert_index_row
+
+    def commit_one_at_a_time(*args, **kwargs):
+        real_commit(*args, batch_size=1, **kwargs)
+
+    def insert_then_mutate(*args, **kwargs):
+        real_insert(*args, **kwargs)
+        if args[2]["rel_path"] == "b.py":
+            first.write_text("a = 200\n")
+
+    try:
+        with (
+            patch(
+                "tree_sitter_analyzer.ast_cache._commit_index_results",
+                side_effect=commit_one_at_a_time,
+            ),
+            patch.object(indexer, "insert_index_row", side_effect=insert_then_mutate),
+        ):
+            result = cache.index_project(
+                max_files=10,
+                workers=0,
+                candidate_snapshot=snapshot,
+            )
+        outcome = (
+            result["indexed"],
+            result["changed_during_run_files"],
+            cache.lookup(str(first)),
+            cache.lookup(str(second)) is not None,
+            cache.call_graph_built(),
+        )
+    finally:
+        cache.close()
+
+    assert outcome == (1, ["a.py"], None, True, False)
+
+
+def test_snapshot_preserves_logical_project_root_spelling(tmp_path):
+    # PR #1172 review 2026-07-27: realpath broke macOS /var cache lookups.
+    physical_root = tmp_path / "physical"
+    logical_root = tmp_path / "logical"
+    physical_root.mkdir()
+    logical_root.symlink_to(physical_root, target_is_directory=True)
+    path = logical_root / "app.py"
+    path.write_text("value = 1\n")
+
+    snapshot = build_index_candidate_snapshot(
+        str(logical_root),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda root: (os.path.join(root, "app.py"),),
+        language_fn=_python_language,
+    )
+
+    assert snapshot.project_root == os.path.abspath(logical_root)
+    assert snapshot.selected_entries[0].abs_path == os.path.abspath(path)
+    assert snapshot.selected_entries[0].rel_path == "app.py"
+
+
+@pytest.mark.parametrize("kind", ["extends", "implements"])
+def test_invalidation_removes_incoming_resolved_hierarchy_edges(tmp_path, kind):
+    # PR #1172 review 2026-07-27: target invalidation left derived hierarchy rows.
+    from tree_sitter_analyzer.graph.edge_store import Edge, EdgeStore
+
+    target = tmp_path / "target.py"
+    target.write_text("class Base:\n    pass\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(target))
+    conn = cache.get_conn()
+    EdgeStore(conn, ensure_schema=False).upsert_edges(
+        [
+            Edge("caller.py:Child:1", "class:Base", kind, line=1),
+            Edge(
+                "caller.py:Child:1",
+                "target.py:Base:1",
+                kind,
+                line=1,
+                provenance="unresolved_refs",
+                metadata={
+                    "resolution": "unresolved_refs",
+                    "resolved_file": "target.py",
+                    "resolved_name": "Base",
+                    "resolved_symbol_id": 1,
+                },
+            ),
+        ]
+    )
+    conn.commit()
+
+    try:
+        cache.invalidate(str(target))
+        targets = [
+            row["target_node_id"]
+            for row in conn.execute(
+                "SELECT target_node_id FROM edges WHERE kind = ? ORDER BY target_node_id",
+                (kind,),
+            ).fetchall()
+        ]
+    finally:
+        cache.close()
+
+    assert targets == ["class:Base"]
+
+
 def test_commit_helper_guards_each_full_batch():
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE committed_files (file_path TEXT)")

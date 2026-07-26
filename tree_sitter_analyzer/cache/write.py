@@ -43,7 +43,7 @@ def _reset_incoming_edge_resolutions(
     conn: sqlite3.Connection,
     rel_path: str,
 ) -> None:
-    """Unresolve calls from other files whose target generation was removed."""
+    """Unresolve calls and drop hierarchy edges targeting a removed generation."""
     rows = conn.execute(
         "SELECT id, metadata FROM edges "
         "WHERE kind = 'calls' AND callee_resolved_file = ?",
@@ -64,6 +64,12 @@ def _reset_incoming_edge_resolutions(
             "WHERE id = ?",
             (json.dumps(metadata, ensure_ascii=False, sort_keys=True), row["id"]),
         )
+    target_prefix = f"{rel_path}:"
+    conn.execute(
+        "DELETE FROM edges WHERE kind IN ('extends', 'implements') "
+        "AND target_node_id >= ? AND target_node_id < ?",
+        (target_prefix, target_prefix + "\U0010ffff"),
+    )
 
 
 def discard_file_rows(

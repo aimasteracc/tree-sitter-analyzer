@@ -132,10 +132,12 @@ class IncrementalSync:
                 self._cache.invalidate(os.path.join(self._cache.project_root, rel_path))
                 for index in range(len(result.details) - 1, -1, -1):
                     prior = result.details[index]
-                    if prior.get("file") == rel_path and prior.get("status") == "error":
-                        del result.details[index]
+                    if prior.get("file") != rel_path:
+                        continue
+                    if prior.get("status") == "error":
                         result.errors -= 1
-                        break
+                    del result.details[index]
+                    break
                 counter_name = {
                     "new": "new_files",
                     "updated": "updated_files",
@@ -169,7 +171,7 @@ class IncrementalSync:
             result.errors += 1
 
         # Resolve cross-file/receiver-typed callees once the whole scope exists.
-        backfill_complete = True
+        backfill_complete = self._cache.call_graph_built()
         if result.new_files or result.updated_files or result.deleted_files:
             try:
                 stats = self._cache._run_synapse_backfill()
@@ -195,10 +197,9 @@ class IncrementalSync:
             and result.changed_during_run == 0
             and backfill_complete
             and snapshot_scope_complete
-            and indexed_paths == set(disk_files)
+            and indexed_paths == present_paths
         ):
             from .cache.callgraph_state import mark_call_graph_built
-
             mark_call_graph_built(conn)
 
         return result
@@ -230,7 +231,7 @@ class IncrementalSync:
 
         if candidate_snapshot is not None:
             if (
-                os.path.realpath(self._cache.project_root)
+                os.path.abspath(self._cache.project_root)
                 != candidate_snapshot.project_root
             ):
                 raise ValueError(
