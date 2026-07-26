@@ -772,6 +772,66 @@ def test_find_test_files_preserves_outer_affinity_for_exact_direct():
     ]
 
 
+def test_find_test_files_never_replaces_direct_test_with_affinity_fallback():
+    """A mirrored directory must not make an unrelated helper replace direct."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/unit/core/test_helpers.py",
+            "tests/unit/slow/test_engine.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == ["tests/unit/slow/test_engine.py"]
+
+
+def test_find_test_files_keeps_monorepo_package_identity_during_affinity():
+    """Shared inner subsystem names must not cross package boundaries."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/a/src/core/config.py"],
+        {
+            "packages/a/tests/core/test_config.py",
+            "packages/b/tests/core/test_config.py",
+        },
+    )
+
+    assert mapping["packages/a/src/core/config.py"] == [
+        "packages/a/tests/core/test_config.py"
+    ]
+
+
+def test_find_test_files_supports_irregular_plural_subject():
+    """Common irregular plurals may directly name their singular module."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/analysis.py", "src/query_analysis.py"],
+        {
+            "tests/test_analyses.py",
+            "tests/test_query_analyses_errors.py",
+        },
+    )
+
+    assert mapping["src/analysis.py"] == ["tests/test_analyses.py"]
+    assert mapping["src/query_analysis.py"] == [
+        "tests/test_query_analyses_errors.py"
+    ]
+
+
+def test_find_test_files_keeps_camel_case_acronyms_intact():
+    """Acronym runs normalize as words across source and test conventions."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/XMLHttpRequest.ts"],
+        {"slow/xml-http-request.test.ts"},
+    )
+
+    assert mapping["src/XMLHttpRequest.ts"] == [
+        "slow/xml-http-request.test.ts"
+    ]
+    assert (
+        change_impact_tool.test_file_subject_stem("XMLHttpRequest.ts")
+        == "xml_http_request"
+    )
+
+
 def test_find_test_files_maps_refactoring_plan_builder_to_family_tests():
     """The precise-plan builder should not force auto-discovery."""
     mapping = change_impact_tool._find_test_files(
