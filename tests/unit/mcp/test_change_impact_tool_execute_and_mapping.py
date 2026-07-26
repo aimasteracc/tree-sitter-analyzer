@@ -620,7 +620,7 @@ def test_find_test_files_preserves_flat_variants_for_nested_modules():
         {
             "tests/unit/test_engine.py",
             "tests/unit/test_engine_errors.py",
-            "tests/unit/test_other_engine.py",
+            "tests/unit/test_other_engines.py",
         },
     )
 
@@ -642,6 +642,76 @@ def test_find_test_files_maps_changed_test_to_itself_in_mixed_diff():
 
     assert mapping["src/foo.py"] == ["tests/unit/test_foo.py"]
     assert mapping["tests/unit/test_foo.py"] == ["tests/unit/test_foo.py"]
+
+
+def test_find_test_files_matches_context_prefixed_module_stem():
+    """Package context may prefix a module stem at identifier boundaries."""
+    mapping = change_impact_tool._find_test_files(
+        [
+            "tree_sitter_analyzer/cache/build_state.py",
+            "tree_sitter_analyzer/mcp/_tool_registry.py",
+        ],
+        {
+            "tests/unit/test_ast_cache_build_state.py",
+            "tests/unit/test_tool_registry.py",
+            "tests/unit/test_build_states.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/cache/build_state.py"] == [
+        "tests/unit/test_ast_cache_build_state.py"
+    ]
+    assert mapping["tree_sitter_analyzer/mcp/_tool_registry.py"] == [
+        "tests/unit/test_tool_registry.py"
+    ]
+
+
+def test_find_test_files_keeps_direct_tests_when_affinity_is_too_broad():
+    """A large CLI fallback must not replace a small direct candidate set."""
+    cli_tests = {f"tests/unit/cli/test_cli_case_{index}.py" for index in range(21)}
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/cli/agent_workflow.py"],
+        {
+            "tests/unit/mcp/test_agent_workflow_tool.py",
+            "tests/unit/demos/test_agent_workflow_comparison_demo.py",
+            *cli_tests,
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/cli/agent_workflow.py"] == [
+        "tests/unit/demos/test_agent_workflow_comparison_demo.py",
+        "tests/unit/mcp/test_agent_workflow_tool.py",
+    ]
+
+
+def test_find_test_files_preserves_monorepo_package_scope():
+    """Nested package test roots must not make sibling tests unscoped."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/a/core/config.py"],
+        {
+            "packages/a/tests/test_config.py",
+            "packages/b/tests/test_config.py",
+        },
+    )
+
+    assert mapping["packages/a/core/config.py"] == [
+        "packages/a/tests/test_config.py"
+    ]
+
+
+def test_find_test_files_uses_lone_source_parent_as_affinity():
+    """Package-relative source paths retain their only available scope."""
+    mapping = change_impact_tool._find_test_files(
+        ["constraints/evaluator.py"],
+        {
+            "tests/unit/constraints/test_evaluator.py",
+            "tests/unit/hyphae/test_evaluator.py",
+        },
+    )
+
+    assert mapping["constraints/evaluator.py"] == [
+        "tests/unit/constraints/test_evaluator.py"
+    ]
 
 
 def test_find_test_files_maps_refactoring_plan_builder_to_family_tests():
