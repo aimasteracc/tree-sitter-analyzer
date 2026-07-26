@@ -104,8 +104,8 @@ def run_claim_tests(
     if report_path.exists():
         try:
             return report_parser(report_path)
-        except ET.ParseError as exc:
-            return [_claim_suite_error(f"invalid junit xml: {exc}")]
+        except (OSError, ET.ParseError) as exc:
+            return [_claim_suite_error(f"unreadable junit xml: {exc}")]
     fallback = _parse_claim_stdout(process.stdout)
     if fallback:
         return fallback

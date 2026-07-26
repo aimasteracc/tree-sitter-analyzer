@@ -44,13 +44,7 @@ def run_dogfood(
         grade_resolver,
         failure_counter,
     )
-    summary = report["summary"]
-    log(
-        "Done. Work items: "
-        f"{summary['work_item_count']}, "
-        f"highest priority: {summary['highest_priority']}"
-    )
-    return report, _exit_code(summary)
+    return report, _exit_code(report["summary"])
 
 
 def _run_tool_sequence(
