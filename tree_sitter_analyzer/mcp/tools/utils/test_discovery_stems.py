@@ -155,6 +155,11 @@ def test_paths_have_compatible_package_scope(
 
 def test_file_subject_stem(test_file: str) -> str:
     """Return the source-module subject encoded by a runnable test filename."""
+    return _normalize_module_identifier(raw_test_file_subject_stem(test_file))
+
+
+def raw_test_file_subject_stem(test_file: str) -> str:
+    """Return a test's source-module subject while preserving identifier case."""
     normalized = Path(test_file.replace("\\", "/"))
     stem = normalized.stem
     if normalized.suffix.lower() == ".java" and stem.endswith("Test"):
@@ -166,13 +171,18 @@ def test_file_subject_stem(test_file: str) -> str:
             if stem.lower().endswith(suffix):
                 stem = stem[: -len(suffix)]
                 break
-    return _normalize_module_identifier(stem)
+    return stem
 
 
 def module_stem_for_path(file_path: str | Path) -> str:
     """Return a cross-language normalized source-module stem."""
+    return _normalize_module_identifier(raw_module_stem_for_path(file_path))
+
+
+def raw_module_stem_for_path(file_path: str | Path) -> str:
+    """Return a source module stem while preserving identifier case."""
     normalized = Path(str(file_path).replace("\\", "/"))
-    return _normalize_module_identifier(normalized.stem)
+    return normalized.stem
 
 
 def _normalize_module_identifier(stem: str) -> str:
@@ -188,9 +198,20 @@ def _monorepo_package_identity(file_path: str | Path) -> str | None:
     """Return the full package lineage encoded by monorepo containers."""
     normalized = Path(str(file_path).replace("\\", "/"))
     parts = normalized.parts[:-1]
+    test_roots = {"__tests__", "spec", "test", "tests"}
+    test_root_index = next(
+        (
+            index
+            for index, part in enumerate(parts)
+            if part.lower() in test_roots
+        ),
+        len(parts),
+    )
     package_lineage: list[str] = []
     for index, part in enumerate(parts[:-1]):
         if part.lower() not in {"apps", "packages"}:
+            continue
+        if index > test_root_index:
             continue
         package_part = parts[index + 1]
         if not package_part or package_part.startswith("."):
