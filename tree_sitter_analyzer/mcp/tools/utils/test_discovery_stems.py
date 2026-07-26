@@ -10,43 +10,93 @@ def related_test_stems_for_path(file_path: str | Path) -> list[str]:
     stems = python_package_test_stems(file_path)
     stems.extend(module_family_test_stems(file_path))
     stems.extend(fixture_test_stems(file_path))
-    stems.extend(stem for stem in source_subsystem_stems(file_path) if len(stem) > 6)
     return _unique_nonempty_stems(stems)
 
 
 def source_subsystem_stems(file_path: str | Path) -> list[str]:
-    """Return package subsystem names that can disambiguate generic modules."""
+    """Return generic source-path scopes for disambiguating test matches."""
     normalized = Path(str(file_path).replace("\\", "/"))
-    parts = normalized.parts
-    if "tree_sitter_analyzer" not in parts:
-        return []
+    parents = list(normalized.parts[:-1])
+    source_roots = {"app", "apps", "lib", "package", "packages", "pkg", "src"}
+    root_indexes = [
+        index for index, part in enumerate(parents) if part.lower() in source_roots
+    ]
+    if root_indexes:
+        parents = parents[root_indexes[-1] + 1 :]
+    elif len(parents) > 1:
+        # A leading package directory is not a subsystem. This covers both this
+        # repository and arbitrary projects without hard-coding a package name.
+        parents = parents[1:]
 
-    package_index = parts.index("tree_sitter_analyzer")
-    if package_index + 2 > len(parts) - 1:
-        return []
-
-    subsystem = parts[package_index + 1]
-    stems = [subsystem]
-    if subsystem in {"cli", "mcp"}:
-        return []
-    if subsystem.endswith("s") and len(subsystem) > 4:
-        stems.append(subsystem[:-1])
+    stems: list[str] = []
+    for part in reversed(parents):
+        normalized_part = part.lower().replace("-", "_")
+        if not normalized_part or normalized_part.startswith("."):
+            continue
+        stems.append(normalized_part)
+        if normalized_part.endswith("s") and len(normalized_part) > 4:
+            stems.append(normalized_part[:-1])
     return _unique_nonempty_stems(stems)
 
 
+def test_path_is_unscoped(test_file: str) -> bool:
+    """Return whether a test sits directly in a generic test collection root."""
+    parts = list(Path(test_file.replace("\\", "/")).parts[:-1])
+    test_roots = {"__tests__", "spec", "test", "tests"}
+    root_indexes = [
+        index for index, part in enumerate(parts) if part.lower() in test_roots
+    ]
+    if root_indexes:
+        parts = parts[root_indexes[-1] + 1 :]
+
+    generic_tiers = {
+        "benchmark",
+        "benchmarks",
+        "contract",
+        "contracts",
+        "e2e",
+        "functional",
+        "governance",
+        "integration",
+        "performance",
+        "regression",
+        "unit",
+    }
+    while parts and parts[0].lower() in generic_tiers:
+        parts.pop(0)
+    return not parts
+
+
 def test_path_has_subsystem_affinity(test_file: str, changed_file: str) -> bool:
-    """Return whether a same-stem test belongs to the changed subsystem."""
+    """Return whether a test name or scoped path matches the source path."""
     subsystem_stems = source_subsystem_stems(changed_file)
     if not subsystem_stems:
-        return True
+        return False
 
     normalized_test = Path(test_file.replace("\\", "/"))
-    test_parts = set(normalized_test.parts[:-1])
-    test_stem = normalized_test.stem
+    test_parts = {
+        part.lower().replace("-", "_") for part in normalized_test.parts[:-1]
+    }
+    test_stem = normalized_test.stem.lower().replace("-", "_")
     return any(
         subsystem_stem in test_parts or related_stem_matches(test_stem, subsystem_stem)
         for subsystem_stem in subsystem_stems
     )
+
+
+def test_file_has_exact_module_stem(test_file: str, changed_file: str) -> bool:
+    """Return whether a test filename exactly names the changed module."""
+    changed_stem = Path(changed_file).stem.lower()
+    test_stem = Path(test_file).stem.lower()
+    if test_stem.endswith(".test"):
+        test_stem = test_stem[: -len(".test")]
+    if test_stem.endswith(".spec"):
+        test_stem = test_stem[: -len(".spec")]
+    return test_stem in {
+        f"test_{changed_stem}",
+        f"{changed_stem}_test",
+        f"{changed_stem}_spec",
+    }
 
 
 def python_package_test_stems(file_path: str | Path) -> list[str]:
