@@ -23,10 +23,101 @@ from typing import Any
 
 from ...utils import setup_logger
 from ..utils.auto_index_guard import mark_dirty
+from ..utils.error_sanitizer import (
+    bounded_safe_error_message,
+    sanitize_error_detail,
+)
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
+
+_ERROR_DETAILS_CAP = 20
+_INCREMENTAL_DETAILS_NEXT_STEP = (
+    "Run --incremental-sync --format json for uncapped per-file details."
+)
+
+
+def _safe_close_cache(cache: Any | None) -> None:
+    """Close an owned cache without masking the primary phase result."""
+    if cache is None:
+        return
+    try:
+        cache.close()
+    except Exception as exc:
+        logger.debug("AST cache close failed (%s)", type(exc).__name__)
+
+
+def _phase_error(
+    exc: BaseException,
+    project_root: str | None,
+    *,
+    elapsed_seconds: float | None = None,
+) -> dict[str, Any]:
+    error, truncated = bounded_safe_error_message(exc, project_root)
+    result: dict[str, Any] = {
+        "status": "error",
+        "error": error,
+        "error_truncated": truncated,
+    }
+    if elapsed_seconds is not None:
+        result["elapsed_seconds"] = elapsed_seconds
+    return result
+
+
+def _bounded_error_details(
+    details: Any,
+    errors: int,
+    project_root: str | None,
+    *,
+    next_step: str,
+) -> dict[str, Any]:
+    """Build a deterministic, response-safe summary of per-file errors."""
+    detail_items = details if isinstance(details, list) else []
+    candidates = [
+        sanitize_error_detail(detail, project_root)
+        for detail in detail_items
+        if isinstance(detail, dict) and detail.get("status") == "error"
+    ]
+    candidates.sort(
+        key=lambda detail: (
+            str(detail.get("file", "")),
+            str(detail.get("error_type", "")),
+            str(
+                detail.get(
+                    "reason",
+                    detail.get("error_message", detail.get("error", "")),
+                )
+            ),
+        )
+    )
+    total = len(candidates)
+    listed = min(total, _ERROR_DETAILS_CAP)
+    truncated = total > listed
+    summary: dict[str, Any] = {
+        "error_details": candidates[:listed],
+        "error_details_total": total,
+        "error_details_listed": listed,
+        "error_details_cap": _ERROR_DETAILS_CAP,
+        "error_details_truncated": truncated,
+        "unattributed_errors": max(0, errors - total),
+    }
+    if truncated:
+        summary["error_details_next_step"] = next_step
+    return summary
+
+
+def _resolve_exclude_patterns(
+    extra_patterns: list[str],
+    no_default_excludes: bool,
+) -> frozenset[str]:
+    """Resolve the one effective scope shared by both indexing phases."""
+    from ...cache.indexer import _DEFAULT_EXCLUDE_PATTERNS
+
+    extra = frozenset(pattern.replace("\\", "/") for pattern in extra_patterns)
+    if no_default_excludes:
+        return extra
+    return _DEFAULT_EXCLUDE_PATTERNS | extra
 
 
 class CodeGraphFullIndexTool(BaseMCPTool):
@@ -96,7 +187,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                     "items": {"type": "string"},
                     "description": (
                         "Additional fnmatch glob patterns (relative to project root) "
-                        "to exclude from indexing. Example: [\"tests/golden/corpus_*\"]. "
+                        'to exclude from indexing. Example: ["tests/golden/corpus_*"]. '
                         "Combined with built-in defaults unless no_default_excludes=true."
                     ),
                     "default": [],
@@ -140,6 +231,10 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
         extra_patterns: list[str] = list(arguments.get("exclude_patterns", None) or [])
         no_default_excludes: bool = bool(arguments.get("no_default_excludes", False))
+        exclude_patterns = _resolve_exclude_patterns(
+            extra_patterns,
+            no_default_excludes,
+        )
 
         phases: dict[str, Any] = {}
         t_start = time.monotonic()
@@ -151,11 +246,13 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             mode == "full",
             max_files,
             include_activation=include_activation,
-            extra_exclude_patterns=extra_patterns,
-            no_default_excludes=no_default_excludes,
+            exclude_patterns=exclude_patterns,
         )
         phases["ast_cache"] = ast_phase
-        phases["incremental_sync"] = self._phase_incremental_sync()
+        phases["incremental_sync"] = self._phase_incremental_sync(
+            max_files,
+            exclude_patterns,
+        )
         phases["fts5"] = self._phase_fts5_stats()
 
         if resolve_synapse:
@@ -197,19 +294,15 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         max_files: int,
         *,
         include_activation: bool = False,
-        extra_exclude_patterns: list[str] | None = None,
-        no_default_excludes: bool = False,
+        exclude_patterns: frozenset[str] | None = None,
     ) -> dict[str, Any]:
         t0 = time.monotonic()
+        cache: Any | None = None
         try:
             from ...ast_cache import ASTCache
-            from ...cache.indexer import _DEFAULT_EXCLUDE_PATTERNS
 
-            extra: frozenset[str] = frozenset(extra_exclude_patterns or [])
-            if no_default_excludes:
-                exclude_patterns: frozenset[str] = extra
-            else:
-                exclude_patterns = _DEFAULT_EXCLUDE_PATTERNS | extra
+            if exclude_patterns is None:
+                exclude_patterns = _resolve_exclude_patterns([], False)
 
             cache = ASTCache(self.project_root or ".")
             result = cache.index_project(
@@ -222,9 +315,18 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             indexed = result.get("indexed", 0)
             cached = result.get("cached", 0)
             errors = result.get("errors", 0)
-            cache.close()
+            error_summary = _bounded_error_details(
+                result.get("files", []),
+                errors,
+                str(self.project_root) if self.project_root else None,
+                next_step=_INCREMENTAL_DETAILS_NEXT_STEP,
+            )
             return {
-                "status": "ok",
+                "status": (
+                    "error"
+                    if errors > 0 or error_summary["error_details_total"] > 0
+                    else "ok"
+                ),
                 "elapsed_seconds": elapsed,
                 "files_indexed": indexed,
                 "files_cached": cached,
@@ -235,28 +337,50 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 # the synapse_resolution phase can report without re-running (A1).
                 "synapse_backfill": result.get("synapse_backfill"),
                 "unresolved_refs_backfill": result.get("unresolved_refs_backfill"),
+                **error_summary,
             }
         except Exception as exc:
-            return {
-                "status": "error",
-                "error": str(exc),
-                "elapsed_seconds": round(time.monotonic() - t0, 3),
-            }
+            return _phase_error(
+                exc,
+                str(self.project_root) if self.project_root else None,
+                elapsed_seconds=round(time.monotonic() - t0, 3),
+            )
+        finally:
+            _safe_close_cache(cache)
 
-    def _phase_incremental_sync(self) -> dict[str, Any]:
+    def _phase_incremental_sync(
+        self,
+        max_files: int = 20_000,
+        exclude_patterns: frozenset[str] | None = None,
+    ) -> dict[str, Any]:
         t0 = time.monotonic()
+        cache: Any | None = None
         try:
             from ...ast_cache import ASTCache
             from ...incremental_sync import IncrementalSync
 
+            if exclude_patterns is None:
+                exclude_patterns = _resolve_exclude_patterns([], False)
             cache = ASTCache(self.project_root or ".")
             sync = IncrementalSync(cache)
-            result = sync.sync(max_files=20_000)
-            cache.close()
+            result = sync.sync(
+                max_files=max_files,
+                exclude_patterns=exclude_patterns,
+            )
             elapsed = round(time.monotonic() - t0, 3)
+            error_summary = _bounded_error_details(
+                result.details,
+                result.errors,
+                str(self.project_root) if self.project_root else None,
+                next_step=_INCREMENTAL_DETAILS_NEXT_STEP,
+            )
             # #860: surface DB flush failures — sync catches them into result.errors
             # so they never raise but also must NOT be silently reported as "ok".
-            status = "error" if result.errors > 0 else "ok"
+            status = (
+                "error"
+                if result.errors > 0 or error_summary["error_details_total"] > 0
+                else "ok"
+            )
             return {
                 "status": status,
                 "elapsed_seconds": elapsed,
@@ -266,28 +390,35 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "deleted_files": result.deleted_files,
                 "unchanged_files": result.unchanged_files,
                 "errors": result.errors,
+                **error_summary,
             }
         except Exception as exc:
-            return {
-                "status": "error",
-                "error": str(exc),
-                "elapsed_seconds": round(time.monotonic() - t0, 3),
-            }
+            return _phase_error(
+                exc,
+                str(self.project_root) if self.project_root else None,
+                elapsed_seconds=round(time.monotonic() - t0, 3),
+            )
+        finally:
+            _safe_close_cache(cache)
 
     def _phase_fts5_stats(self) -> dict[str, Any]:
+        cache: Any | None = None
         try:
             from ...ast_cache import ASTCache
 
             cache = ASTCache(self.project_root or ".")
             stats = cache.get_stats()
-            cache.close()
             return {
                 "status": "ok",
                 "fts5_available": stats.get("fts5_available", False),
                 "fts_indexed_symbols": stats.get("fts_indexed_symbols", 0),
             }
         except Exception as exc:
-            return {"status": "error", "error": str(exc)}
+            return _phase_error(
+                exc, str(self.project_root) if self.project_root else None
+            )
+        finally:
+            _safe_close_cache(cache)
 
     def _phase_synapse(self, ast_phase: dict[str, Any]) -> dict[str, Any]:
         """Report cross-file resolution results.
@@ -313,13 +444,13 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         }
 
     def _phase_call_edge_stats(self) -> dict[str, Any]:
+        cache: Any | None = None
         try:
             from ...ast_cache import ASTCache
 
             cache = ASTCache(self.project_root or ".")
             has_edges = cache.has_call_edges()
             stats = cache.get_stats()
-            cache.close()
             return {
                 "status": "ok",
                 "has_call_edges": has_edges,
@@ -327,15 +458,19 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "total_symbols": stats.get("total_symbols", 0),
             }
         except Exception as exc:
-            return {"status": "error", "error": str(exc)}
+            return _phase_error(
+                exc, str(self.project_root) if self.project_root else None
+            )
+        finally:
+            _safe_close_cache(cache)
 
     def _collect_final_stats(self) -> dict[str, Any]:
+        cache: Any | None = None
         try:
             from ...ast_cache import ASTCache
 
             cache = ASTCache(self.project_root or ".")
             stats = cache.get_stats()
-            cache.close()
             return {
                 "total_files": stats.get("total_files", 0),
                 "total_symbols": stats.get("total_symbols", 0),
@@ -345,3 +480,5 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             }
         except Exception:
             return {}
+        finally:
+            _safe_close_cache(cache)

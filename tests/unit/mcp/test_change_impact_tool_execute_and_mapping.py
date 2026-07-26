@@ -440,6 +440,896 @@ def test_find_test_files_maps_extracted_analysis_modules_to_family_tests():
     ] == ["tests/unit/mcp/test_change_impact_tool.py"]
 
 
+def test_find_test_files_disambiguates_constraint_evaluator_by_subsystem():
+    """A generic evaluator stem must not cross into the Hyphae subsystem."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/constraints/evaluator.py"],
+        {
+            "tests/unit/hyphae/test_evaluator.py",
+            "tests/unit/test_constraint_dsl.py",
+        },
+    )
+
+    # Dogfood 2026-07-22: change-impact previously selected only Hyphae here.
+    assert mapping["tree_sitter_analyzer/constraints/evaluator.py"] == [
+        "tests/unit/test_constraint_dsl.py"
+    ]
+
+
+def test_find_test_files_does_not_export_repository_specific_family_aliases():
+    """Project-local aliases must not invent coverage in external source trees."""
+    mapping = change_impact_tool._find_test_files(
+        [
+            "src/constraints/evaluator.py",
+            "src/edge_extractors/python.py",
+            "src/test_discovery_stems.py",
+        ],
+        {
+            "tests/test_change_impact_tool_execute_and_mapping.py",
+            "tests/test_constraint_dsl.py",
+            "tests/test_registry.py",
+        },
+    )
+
+    assert mapping["src/constraints/evaluator.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+    assert mapping["src/edge_extractors/python.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+    assert mapping["src/test_discovery_stems.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+
+
+def test_find_test_files_preserves_dunder_module_identity():
+    """A package initializer must not match an unrelated plain init module."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/api/__init__.py"],
+        {"tests/unit/worker/test_init.py"},
+    )
+
+    assert mapping["src/api/__init__.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+
+
+def test_find_test_files_keeps_same_stem_with_matching_subsystem():
+    """A same-stem test remains valid when its subsystem path also matches."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/hyphae/evaluator.py"],
+        {
+            "tests/unit/hyphae/test_evaluator.py",
+            "tests/unit/test_constraint_dsl.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/hyphae/evaluator.py"] == [
+        "tests/unit/hyphae/test_evaluator.py"
+    ]
+
+
+def test_find_test_files_keeps_direct_match_when_tests_omit_subsystem_path():
+    """A lone direct match remains useful when no affinity match exists."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/core/engine.py"],
+        {
+            "tests/unit/test_engine.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/core/engine.py"] == [
+        "tests/unit/test_engine.py"
+    ]
+
+
+def test_find_test_files_preserves_unscoped_exact_module_test():
+    """Generic subsystem tests must not replace an exact root-level test."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/languages/lang_extension_map.py"],
+        {
+            "tests/unit/languages/test_python_plugin.py",
+            "tests/unit/languages/test_queries_module_contract.py",
+            "tests/unit/test_lang_extension_map.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/languages/lang_extension_map.py"] == [
+        "tests/unit/test_lang_extension_map.py"
+    ]
+
+
+def test_find_test_files_does_not_expand_subsystem_for_exact_match():
+    """A formatter module match must not pull in every formatter test."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/formatters/json_formatter.py"],
+        {
+            "tests/unit/formatters/test_csv_formatter.py",
+            "tests/unit/formatters/test_markdown_formatter.py",
+            "tests/unit/test_json_formatter.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/formatters/json_formatter.py"] == [
+        "tests/unit/test_json_formatter.py"
+    ]
+
+
+def test_find_test_files_preserves_unscoped_direct_stem_variants():
+    """Root-level direct variants must remain beside the exact module test."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/ast_cache.py"],
+        {
+            "tests/unit/test_ast_cache.py",
+            "tests/unit/test_ast_cache_build_state.py",
+            "tests/unit/test_ast_cache_utf8_bug.py",
+            "tests/unit/test_cache_manager.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/ast_cache.py"] == [
+        "tests/unit/test_ast_cache.py",
+        "tests/unit/test_ast_cache_build_state.py",
+        "tests/unit/test_ast_cache_utf8_bug.py",
+    ]
+
+
+def test_find_test_files_keeps_normalized_exact_beside_raw_variant():
+    """Raw contextual identity must not hide a normalized primary suite."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/FooBar.py"],
+        {
+            "tests/test_FooBar_windows.py",
+            "tests/test_foo_bar.py",
+        },
+    )
+
+    assert mapping["src/FooBar.py"] == [
+        "tests/test_FooBar_windows.py",
+        "tests/test_foo_bar.py",
+    ]
+
+
+def test_find_test_files_uses_path_specific_edge_extractor_family():
+    """A Java edge extractor maps only to its existing path-specific suite."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/mcp/utils/edge_extractors/java.py"],
+        {
+            "tests/unit/formatters/test_formatter_registry.py",
+            "tests/unit/mcp/edge_extractors/test_registry.py",
+            "tests/unit/mcp/test_project_summary_pagerank.py",
+            "tests/unit/test_tool_registry.py",
+        },
+    )
+
+    assert mapping[
+        "tree_sitter_analyzer/mcp/utils/edge_extractors/java.py"
+    ] == ["tests/unit/mcp/test_project_summary_pagerank.py"]
+
+
+def test_find_test_files_disambiguates_direct_matches_alongside_family_matches():
+    """A family match must not bypass filtering of unrelated direct matches."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/languages/lua_plugin/extractor.py"],
+        {
+            "tests/unit/languages/test_lua_plugin.py",
+            "tests/unit/test_import_extractors.py",
+            "tests/unit/test_symbol_extractors.py",
+            "tests/unit/mcp/test_element_extractors.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/languages/lua_plugin/extractor.py"] == [
+        "tests/unit/languages/test_lua_plugin.py"
+    ]
+
+
+def test_find_test_files_supports_java_test_suffix():
+    """Java's FooTest convention must remain a direct module match."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/main/java/example/Foo.java"],
+        {
+            "tests/FooTest.java",
+            "tests/BarTest.java",
+        },
+    )
+
+    assert mapping["src/main/java/example/Foo.java"] == ["tests/FooTest.java"]
+
+
+def test_find_test_files_supports_dotted_javascript_and_typescript_tests():
+    """Dotted .test/.spec names must survive flat-layout disambiguation."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/foo/bar.js", "src/foo/baz.ts"],
+        {
+            "tests/bar.test.js",
+            "tests/baz.spec.ts",
+            "tests/quux.test.js",
+        },
+    )
+
+    assert mapping["src/foo/bar.js"] == ["tests/bar.test.js"]
+    assert mapping["src/foo/baz.ts"] == ["tests/baz.spec.ts"]
+
+
+def test_find_test_files_preserves_flat_variants_for_nested_modules():
+    """Nested source directories must not hide flat direct-stem variants."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/unit/test_engine.py",
+            "tests/unit/test_engine_errors.py",
+            "tests/unit/test_other_engines.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == [
+        "tests/unit/test_engine.py",
+        "tests/unit/test_engine_errors.py",
+    ]
+
+
+def test_find_test_files_maps_changed_test_to_itself_in_mixed_diff():
+    """A changed test remains an exact target when runtime files also change."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/foo.py", "tests/unit/test_foo.py"],
+        {
+            "tests/unit/test_foo.py",
+            "tests/unit/test_bar.py",
+        },
+    )
+
+    assert mapping["src/foo.py"] == ["tests/unit/test_foo.py"]
+    assert mapping["tests/unit/test_foo.py"] == ["tests/unit/test_foo.py"]
+
+
+def test_find_test_files_matches_context_prefixed_module_stem():
+    """Package context may prefix a module stem at identifier boundaries."""
+    mapping = change_impact_tool._find_test_files(
+        [
+            "tree_sitter_analyzer/cache/build_state.py",
+            "tree_sitter_analyzer/mcp/_tool_registry.py",
+        ],
+        {
+            "tests/unit/test_ast_cache_build_state.py",
+            "tests/unit/test_tool_registry.py",
+            "tests/unit/test_other_build_states.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/cache/build_state.py"] == [
+        "tests/unit/test_ast_cache_build_state.py"
+    ]
+    assert mapping["tree_sitter_analyzer/mcp/_tool_registry.py"] == [
+        "tests/unit/test_tool_registry.py"
+    ]
+
+
+def test_find_test_files_keeps_direct_tests_when_affinity_is_too_broad():
+    """A large CLI fallback must not replace a small direct candidate set."""
+    cli_tests = {f"tests/unit/cli/test_cli_case_{index}.py" for index in range(21)}
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/cli/agent_workflow.py"],
+        {
+            "tests/unit/mcp/test_agent_workflow_tool.py",
+            "tests/unit/demos/test_agent_workflow_comparison_demo.py",
+            *cli_tests,
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/cli/agent_workflow.py"] == [
+        "tests/unit/demos/test_agent_workflow_comparison_demo.py",
+        "tests/unit/mcp/test_agent_workflow_tool.py",
+    ]
+
+
+def test_find_test_files_preserves_monorepo_package_scope():
+    """Nested package test roots must not make sibling tests unscoped."""
+    mapping = change_impact_tool._find_test_files(
+        [
+            "packages/a/core/config.py",
+            "packages/a/src/config.py",
+            "packages/a/src/core/config.py",
+        ],
+        {
+            "packages/a/tests/test_config.py",
+            "packages/b/tests/test_config.py",
+        },
+    )
+
+    assert mapping["packages/a/core/config.py"] == [
+        "packages/a/tests/test_config.py"
+    ]
+    assert mapping["packages/a/src/config.py"] == [
+        "packages/a/tests/test_config.py"
+    ]
+    assert mapping["packages/a/src/core/config.py"] == [
+        "packages/a/tests/test_config.py"
+    ]
+
+
+def test_find_test_files_uses_lone_source_parent_as_affinity():
+    """Package-relative source paths retain their only available scope."""
+    mapping = change_impact_tool._find_test_files(
+        ["constraints/evaluator.py"],
+        {
+            "tests/unit/constraints/test_evaluator.py",
+            "tests/unit/hyphae/test_evaluator.py",
+        },
+    )
+
+    assert mapping["constraints/evaluator.py"] == [
+        "tests/unit/constraints/test_evaluator.py"
+    ]
+
+
+def test_find_test_files_treats_smoke_as_unscoped_test_tier():
+    """A smoke tier must not let a source-affine but unrelated test win."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/smoke/test_engine.py",
+            "tests/unit/core/test_other.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == ["tests/smoke/test_engine.py"]
+
+
+def test_find_test_files_treats_system_and_acceptance_as_unscoped_tiers():
+    """Conventional system tiers retain exact tests beside scoped coverage."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/acceptance/test_engine.py",
+            "tests/system/test_engine.py",
+            "tests/unit/core/test_engine.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == [
+        "tests/acceptance/test_engine.py",
+        "tests/system/test_engine.py",
+        "tests/unit/core/test_engine.py",
+    ]
+
+
+def test_find_test_files_supports_exact_plural_subject():
+    """Only an exact unscoped plural subject directly covers its module."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/extractor.py", "src/engine.py"],
+        {
+            "tests/test_extractors.py",
+            "tests/test_extractors_errors.py",
+            "tests/test_engines.py",
+            "tests/test_other_extractors.py",
+            "tests/test_other_engines.py",
+        },
+    )
+
+    assert mapping["src/extractor.py"] == ["tests/test_extractors.py"]
+    assert mapping["src/engine.py"] == ["tests/test_engines.py"]
+
+
+def test_find_test_files_preserves_outer_affinity_for_exact_direct():
+    """A nearer unrelated path must not replace an exact direct test."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/api/client/request.py"],
+        {
+            "tests/unit/api/test_request.py",
+            "tests/unit/client/test_unrelated.py",
+        },
+    )
+
+    assert mapping["src/api/client/request.py"] == [
+        "tests/unit/api/test_request.py"
+    ]
+
+
+def test_find_test_files_keeps_only_nearest_exact_subsystem_match():
+    """Same-stem exact tests must resolve to the nearest source subsystem."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/api/client/config.py"],
+        {
+            "tests/unit/api/test_config.py",
+            "tests/unit/client/test_config.py",
+        },
+    )
+
+    assert mapping["src/api/client/config.py"] == [
+        "tests/unit/client/test_config.py"
+    ]
+
+
+def test_find_test_files_normalizes_test_prefixed_subsystem_directories():
+    """Test-directory aliases retain exact suites beside direct variants."""
+    mapping = change_impact_tool._find_test_files(
+        [
+            "tree_sitter_analyzer/mcp/tools/base_tool.py",
+            "tree_sitter_analyzer/mcp/utils/path_resolver.py",
+        ],
+        {
+            "tests/unit/mcp/test_tools/test_base_tool.py",
+            "tests/unit/mcp/tools/test_base_tool_output_schema.py",
+            "tests/unit/mcp/test_utils/test_path_resolver.py",
+            "tests/unit/mcp/utils/test_path_resolver_errors.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/mcp/tools/base_tool.py"] == [
+        "tests/unit/mcp/test_tools/test_base_tool.py",
+        "tests/unit/mcp/tools/test_base_tool_output_schema.py",
+    ]
+    assert mapping["tree_sitter_analyzer/mcp/utils/path_resolver.py"] == [
+        "tests/unit/mcp/test_utils/test_path_resolver.py",
+        "tests/unit/mcp/utils/test_path_resolver_errors.py",
+    ]
+
+
+def test_find_test_files_rejects_unscoped_plural_prefix_collisions():
+    """Plural-prefixed suites need independent subsystem or family evidence."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/core/query.py"],
+        {
+            "tests/unit/core/test_queries_cpp.py",
+            "tests/unit/core/test_queries_python.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/core/query.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+
+
+def test_find_test_files_preserves_direct_variants_across_test_layers():
+    """Direct behavioral suites remain selected outside the source subsystem."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/mcp/tools/analyze_scale_tool.py"],
+        {
+            "tests/integration/core/test_analyze_scale_tool_batch_metrics.py",
+            "tests/integration/core/test_analyze_scale_tool_file_output.py",
+            "tests/integration/mcp/test_tools/test_analyze_scale_tool.py",
+        },
+    )
+
+    assert mapping[
+        "tree_sitter_analyzer/mcp/tools/analyze_scale_tool.py"
+    ] == [
+        "tests/integration/core/test_analyze_scale_tool_batch_metrics.py",
+        "tests/integration/core/test_analyze_scale_tool_file_output.py",
+        "tests/integration/mcp/test_tools/test_analyze_scale_tool.py",
+    ]
+
+
+def test_find_test_files_avoids_discarded_full_suite_affinity_scan(monkeypatch):
+    """An ambiguous direct match must rank only relevant candidate sets."""
+    candidates_seen: list[list[str]] = []
+    rank_candidates = change_impact_tool._most_specific_affinity_matches
+
+    def recording_rank(test_files, changed_file):
+        candidates_seen.append(test_files)
+        return rank_candidates(test_files, changed_file)
+
+    monkeypatch.setattr(
+        change_impact_tool,
+        "_most_specific_affinity_matches",
+        recording_rank,
+    )
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/constraints/evaluator.py"],
+        {
+            "tests/unit/hyphae/test_evaluator.py",
+            "tests/unit/test_constraint_dsl.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/constraints/evaluator.py"] == [
+        "tests/unit/test_constraint_dsl.py"
+    ]
+    assert candidates_seen == [
+        ["tests/unit/hyphae/test_evaluator.py"],
+        ["tests/unit/test_constraint_dsl.py"],
+    ]
+
+
+def test_find_test_files_preserves_direct_variants_at_best_outer_affinity():
+    """Nested source modules retain all direct variants at the best outer rank."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/cli/commands/find_and_grep_cli.py"],
+        {
+            "tests/unit/cli/test_find_and_grep_cli.py",
+            "tests/unit/cli/test_find_and_grep_cli_main.py",
+            "tests/unit/cli/test_find_and_grep_cli_parser.py",
+            "tests/unit/cli/test_find_and_grep_cli_run.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/cli/commands/find_and_grep_cli.py"] == [
+        "tests/unit/cli/test_find_and_grep_cli.py",
+        "tests/unit/cli/test_find_and_grep_cli_main.py",
+        "tests/unit/cli/test_find_and_grep_cli_parser.py",
+        "tests/unit/cli/test_find_and_grep_cli_run.py",
+    ]
+
+
+def test_find_test_files_never_replaces_direct_test_with_affinity_fallback():
+    """A mirrored directory must not make an unrelated helper replace direct."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/unit/core/test_helpers.py",
+            "tests/unit/slow/test_engine.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == ["tests/unit/slow/test_engine.py"]
+
+
+def test_find_test_files_keeps_exact_direct_over_directory_only_affinity():
+    """A directory-only affinity is weaker than an exact direct filename."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/integration/api/test_engine.py",
+            "tests/unit/core/test_helpers.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == [
+        "tests/integration/api/test_engine.py"
+    ]
+
+
+def test_find_test_files_keeps_exact_direct_over_scope_prefixed_filename():
+    """A scope-bearing but unrelated filename cannot replace exact direct."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/integration/api/test_engine.py",
+            "tests/unit/test_core_helpers.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == [
+        "tests/integration/api/test_engine.py"
+    ]
+
+
+def test_find_test_files_keeps_monorepo_package_identity_during_affinity():
+    """Shared inner subsystem names must not cross package boundaries."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/a/src/core/config.py"],
+        {
+            "packages/a/tests/core/test_config.py",
+            "packages/b/tests/core/test_config.py",
+        },
+    )
+
+    assert mapping["packages/a/src/core/config.py"] == [
+        "packages/a/tests/core/test_config.py"
+    ]
+
+
+def test_find_test_files_does_not_restore_sibling_package_direct_match():
+    """A sibling-only direct name must fall back instead of appearing focused."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/a/src/core/config.py"],
+        {"packages/b/tests/core/test_config.py"},
+    )
+
+    assert mapping["packages/a/src/core/config.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+    assert (
+        change_impact_tool.test_path_subsystem_affinity_rank(
+            "packages/b/tests/core/test_config.py",
+            "packages/a/src/core/config.py",
+        )
+        is None
+    )
+
+
+def test_package_scope_ignores_hidden_workspace_marker():
+    """A hidden placeholder after packages does not declare a workspace."""
+    assert change_impact_tool.test_paths_have_compatible_package_scope(
+        "packages/.hidden/tests/core/test_config.py",
+        "packages/a/src/core/config.py",
+    )
+
+
+def test_package_scope_ignores_hidden_scoped_package_name():
+    """A hidden name after an npm scope is not package identity."""
+    assert change_impact_tool.test_paths_have_compatible_package_scope(
+        "packages/@scope/.hidden/tests/core/config.test.ts",
+        "packages/@scope/.hidden/src/core/config.ts",
+    )
+
+
+def test_find_test_files_uses_innermost_nested_package_identity():
+    """Nested workspaces use their nearest enclosing package container."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/a/packages/b/src/core/config.py"],
+        {
+            "packages/a/packages/b/tests/core/test_config.py",
+            "packages/a/packages/c/tests/core/test_config.py",
+        },
+    )
+
+    assert mapping["packages/a/packages/b/src/core/config.py"] == [
+        "packages/a/packages/b/tests/core/test_config.py"
+    ]
+
+
+def test_find_test_files_retains_full_nested_package_lineage():
+    """Equal inner names do not erase distinct enclosing workspaces."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/frontend/packages/shared/src/core/config.py"],
+        {
+            "packages/backend/packages/shared/tests/core/test_config.py",
+            "packages/frontend/packages/shared/tests/core/test_config.py",
+        },
+    )
+
+    assert mapping["packages/frontend/packages/shared/src/core/config.py"] == [
+        "packages/frontend/packages/shared/tests/core/test_config.py"
+    ]
+
+
+def test_find_test_files_preserves_workspace_container_in_package_identity():
+    """Equal workspace names under apps and packages remain distinct."""
+    mapping = change_impact_tool._find_test_files(
+        ["apps/shared/src/core/config.py"],
+        {
+            "apps/shared/tests/core/test_config.py",
+            "packages/shared/tests/core/test_config.py",
+        },
+    )
+
+    assert mapping["apps/shared/src/core/config.py"] == [
+        "apps/shared/tests/core/test_config.py"
+    ]
+
+
+def test_find_test_files_preserves_scoped_npm_package_identity():
+    """The package name after an npm scope participates in compatibility."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/@scope/a/src/core/config.ts"],
+        {
+            "packages/@scope/a/tests/core/config.test.ts",
+            "packages/@scope/b/tests/core/config.test.ts",
+        },
+    )
+
+    assert mapping["packages/@scope/a/src/core/config.ts"] == [
+        "packages/@scope/a/tests/core/config.test.ts"
+    ]
+
+
+def test_find_test_files_keeps_central_tests_for_workspace_sources():
+    """A test with no package marker remains compatible with a workspace."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/a/src/config.py"],
+        {"tests/a/test_config.py"},
+    )
+
+    assert mapping["packages/a/src/config.py"] == ["tests/a/test_config.py"]
+
+
+def test_find_test_files_excludes_top_level_package_from_affinity():
+    """A package root is not a subsystem for modules directly beneath it."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/api.py"],
+        {
+            "tree_sitter_analyzer/__init__.py",
+            "tests/integration/core/test_api.py",
+            "tests/integration/core/test_api_errors.py",
+            "tests/unit/test_api.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/api.py"] == [
+        "tests/integration/core/test_api.py",
+        "tests/integration/core/test_api_errors.py",
+        "tests/unit/test_api.py",
+    ]
+
+
+def test_find_test_files_rejects_workspace_tests_for_central_sources():
+    """A central source must not claim package-specific tests as coverage."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/config.py"],
+        {
+            "packages/a/tests/core/test_config.py",
+            "packages/b/tests/core/test_config.py",
+        },
+    )
+
+    assert mapping["src/core/config.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+
+
+def test_find_test_files_ignores_workspace_markers_below_test_root():
+    """A nested apps test folder remains central test organization."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/users/config.py"],
+        {"tests/apps/users/test_config.py"},
+    )
+
+    assert mapping["src/users/config.py"] == [
+        "tests/apps/users/test_config.py"
+    ]
+
+
+def test_find_test_files_filters_cross_package_family_matches():
+    """Derived family coverage must not cross into a sibling package."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/a/src/languages/lua_plugin/extractor.py"],
+        {"packages/b/tests/test_lua_plugin.py"},
+    )
+
+    assert mapping["packages/a/src/languages/lua_plugin/extractor.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+
+
+def test_find_test_files_uses_structural_directory_as_fallback_scope():
+    """A lone structural source directory still disambiguates direct tests."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/mcp/server.py"],
+        {
+            "tests/unit/http/test_server.py",
+            "tests/unit/mcp/test_server.py",
+        },
+    )
+
+    assert mapping["src/mcp/server.py"] == ["tests/unit/mcp/test_server.py"]
+
+
+def test_source_subsystem_stems_ignores_generated_directory():
+    """A hidden generated directory does not become subsystem evidence."""
+    assert change_impact_tool.source_subsystem_stems("src/.generated/server.py") == []
+
+
+def test_find_test_files_routes_stem_helper_to_behavioral_suite():
+    """Stem helper edits select both discovery and change-impact behavior tests."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/mcp/tools/utils/test_discovery_stems.py"],
+        {
+            "tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py",
+            "tests/unit/mcp/test_test_discovery.py",
+        },
+    )
+
+    assert mapping[
+        "tree_sitter_analyzer/mcp/tools/utils/test_discovery_stems.py"
+    ] == [
+        "tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py",
+        "tests/unit/mcp/test_test_discovery.py",
+    ]
+
+
+def test_find_test_files_supports_irregular_plural_subject():
+    """Common irregular plurals may directly name their singular module."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/analysis.py", "src/query_analysis.py"],
+        {
+            "tests/test_analyses.py",
+            "tests/test_query_analyses_errors.py",
+        },
+    )
+
+    assert mapping["src/analysis.py"] == ["tests/test_analyses.py"]
+    assert mapping["src/query_analysis.py"] == [
+        "tests/test_query_analyses_errors.py"
+    ]
+
+
+def test_find_test_files_supports_doubled_z_plural():
+    """Terminal z stems use their conventional doubled or regular plurals."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/buzz.py", "src/quiz.py", "src/waltz.py"],
+        {
+            "tests/test_buzzes.py",
+            "tests/test_quizzes.py",
+            "tests/test_waltzes.py",
+        },
+    )
+
+    assert mapping["src/buzz.py"] == ["tests/test_buzzes.py"]
+    assert mapping["src/quiz.py"] == ["tests/test_quizzes.py"]
+    assert mapping["src/waltz.py"] == ["tests/test_waltzes.py"]
+
+
+def test_find_test_files_prefers_case_preserving_direct_identity():
+    """Normalized collisions resolve to the exact case-sensitive module name."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/Foo.ts", "src/foo.ts"],
+        {
+            "tests/Foo.test.ts",
+            "tests/foo.test.ts",
+        },
+    )
+
+    assert mapping["src/Foo.ts"] == ["tests/Foo.test.ts"]
+    assert mapping["src/foo.ts"] == ["tests/foo.test.ts"]
+
+
+def test_find_test_files_supports_regular_irregular_plural_alternatives():
+    """Code conventions may use regular variants of irregular English nouns."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/index.py", "src/matrix.py", "src/person.py"],
+        {
+            "tests/test_indexes.py",
+            "tests/test_matrixes.py",
+            "tests/test_persons.py",
+        },
+    )
+
+    assert mapping["src/index.py"] == ["tests/test_indexes.py"]
+    assert mapping["src/matrix.py"] == ["tests/test_matrixes.py"]
+    assert mapping["src/person.py"] == ["tests/test_persons.py"]
+
+
+def test_find_test_files_protects_plural_direct_from_affinity_fallback():
+    """A recognized plural direct match cannot be replaced by path affinity."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/config.py"],
+        {
+            "tests/integration/api/test_configs.py",
+            "tests/unit/core/test_helpers.py",
+        },
+    )
+
+    assert mapping["src/core/config.py"] == [
+        "tests/integration/api/test_configs.py"
+    ]
+
+
+def test_find_test_files_preserves_subsystem_after_outer_source_root():
+    """A nested app directory is a scope when src already supplied the root."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/app/config.py"],
+        {
+            "tests/unit/app/test_config.py",
+            "tests/unit/other/test_config.py",
+        },
+    )
+
+    assert mapping["src/app/config.py"] == ["tests/unit/app/test_config.py"]
+
+
+def test_find_test_files_normalizes_camel_case_subsystem_paths():
+    """Source and test directory segments share module-name normalization."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/XMLParser/config.py"],
+        {
+            "tests/unit/http/test_config.py",
+            "tests/unit/xml_parser/test_config.py",
+        },
+    )
+
+    assert mapping["src/XMLParser/config.py"] == [
+        "tests/unit/xml_parser/test_config.py"
+    ]
+
+
+def test_find_test_files_keeps_camel_case_acronyms_intact():
+    """Acronym runs normalize as words across source and test conventions."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/XMLHttpRequest.ts"],
+        {"slow/xml-http-request.test.ts"},
+    )
+
+    assert mapping["src/XMLHttpRequest.ts"] == [
+        "slow/xml-http-request.test.ts"
+    ]
+    assert (
+        change_impact_tool.test_file_subject_stem("XMLHttpRequest.ts")
+        == "xml_http_request"
+    )
+
+
 def test_find_test_files_maps_refactoring_plan_builder_to_family_tests():
     """The precise-plan builder should not force auto-discovery."""
     mapping = change_impact_tool._find_test_files(

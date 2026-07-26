@@ -499,6 +499,9 @@ class TestCodeGraphCompareSetupGate:
             agent_backend="codex",
             model="gpt-5",
             timeout_seconds=1200,
+            manifest=None,
+            setup_only=False,
+            index_evidence=None,
         )
 
     @staticmethod
@@ -536,7 +539,21 @@ class TestCodeGraphCompareSetupGate:
 
     @staticmethod
     def _patch_matrix_inputs(monkeypatch, tmp_path: Path) -> None:
-        repos, arms, questions = TestCodeGraphCompareSetupGate._matrix_configs(
+        repos, arms, questions = TestCodeGraphCompareSetupGate._matrix_configs(tmp_path)
+        configs = {
+            compare_run.REPOS_YAML: repos,
+            compare_run.ARMS_YAML: arms,
+            compare_run.QUESTIONS_YAML: questions,
+        }
+        monkeypatch.setattr(compare_run, "_load_yaml", configs.__getitem__)
+        monkeypatch.setattr(
+            compare_run, "_repo_local_path", lambda repo: Path(repo["local_path"])
+        )
+        monkeypatch.setattr(compare_run, "RESULTS_DIR", tmp_path / "results")
+
+    @staticmethod
+    def _patch_v1_matrix_inputs(monkeypatch, tmp_path: Path) -> None:
+        repos, arms, questions = TestCodeGraphCompareSetupGate._v1_matrix_configs(
             tmp_path
         )
         configs = {
@@ -549,6 +566,1013 @@ class TestCodeGraphCompareSetupGate:
             compare_run, "_repo_local_path", lambda repo: Path(repo["local_path"])
         )
         monkeypatch.setattr(compare_run, "RESULTS_DIR", tmp_path / "results")
+
+    @staticmethod
+    def _v1_matrix_configs(
+        repo_path: Path,
+    ) -> tuple[list[dict], list[dict], list[dict]]:
+        return (
+            [{"id": "gin", "local_path": str(repo_path), "commit": "repo123"}],
+            [
+                {"id": "codegraph-warm", "index_mode": "warm"},
+                {"id": "tsa-warm", "index_mode": "warm"},
+            ],
+            [
+                {
+                    "id": "q1",
+                    "repo": "gin",
+                    "prompt": "Where is the entry point?",
+                }
+            ],
+        )
+
+    @classmethod
+    def _v1_setup_manifest(cls, *, agent_backend: str = "claude", **overrides):
+        from benchmarks.codegraph_compare.setup_validation import (
+            selected_matrix_config_hash,
+            selected_questions_hash,
+            selected_schedule_hash,
+        )
+
+        repos, arms, questions = cls._v1_matrix_configs(Path("/runtime-path"))
+        questions_by_repo = {"gin": questions}
+        values = {
+            "agent_backend": agent_backend,
+            "expected_run_ids": tuple(
+                f"q1__{arm['id']}__{agent_backend}__00" for arm in arms
+            ),
+            "config_hash": selected_matrix_config_hash(repos, arms),
+            "question_hash": selected_questions_hash(questions_by_repo),
+            "schedule_hash": selected_schedule_hash(
+                repos,
+                arms,
+                questions_by_repo,
+                repeats=1,
+                agent_backend=agent_backend,
+            ),
+            "timeout_seconds": 1200,
+        }
+        values.update(overrides)
+        return _v1_manifest(
+            **values,
+        )
+
+    @staticmethod
+    def _write_v1_manifest(tmp_path: Path, manifest) -> Path:
+        from dataclasses import asdict
+
+        path = tmp_path / "experiment_manifest.json"
+        path.write_text(json.dumps(asdict(manifest)), encoding="utf-8")
+        return path
+
+    @staticmethod
+    def _write_v1_index_evidence(tmp_path: Path, manifest, *, readiness=True) -> Path:
+        from dataclasses import asdict, replace
+
+        cells = []
+        for arm_id in ("codegraph-warm", "tsa-warm"):
+            record = _v1_run(
+                manifest,
+                f"q1__{arm_id}__{manifest.agent_backend}__00",
+            )
+            stats = record.index_stats
+            if stats is None:
+                pytest.fail(f"{arm_id} fixture must include V1 index statistics")
+            if not readiness and arm_id == "tsa-warm":
+                stats = replace(stats, readiness_oracles=("unexpected-symbol",))
+            cells.append(
+                {"repo_id": "gin", "arm_id": arm_id, "index_stats": asdict(stats)}
+            )
+        path = tmp_path / "index_evidence.json"
+        path.write_text(
+            json.dumps({"schema_version": 1, "cells": cells}), encoding="utf-8"
+        )
+        return path
+
+    @staticmethod
+    def _v1_index_stats_payload(manifest) -> dict:
+        from dataclasses import asdict
+
+        stats = _v1_run(
+            manifest,
+            "q1__codegraph-warm__codex__00",
+        ).index_stats
+        if stats is None:
+            pytest.fail("codegraph fixture must include V1 index statistics")
+        return json.loads(json.dumps(asdict(stats)))
+
+    @classmethod
+    def _parse_v1_index_evidence(
+        cls,
+        *,
+        cell_overrides: dict | None = None,
+        stats_overrides: dict | None = None,
+    ):
+        from benchmarks.codegraph_compare.setup_validation import (
+            parse_index_evidence_v1,
+        )
+
+        stats_raw = cls._v1_index_stats_payload(_v1_manifest())
+        stats_raw.update(stats_overrides or {})
+        cell = {
+            "repo_id": "gin",
+            "arm_id": "codegraph-warm",
+            "index_stats": stats_raw,
+        }
+        cell.update(cell_overrides or {})
+        return parse_index_evidence_v1({"schema_version": 1, "cells": [cell]})
+
+    def test_index_evidence_schema_version_requires_integer_one(self):
+        from benchmarks.codegraph_compare.setup_validation import (
+            parse_index_evidence_v1,
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="Index evidence schema_version must be the integer 1",
+        ):
+            parse_index_evidence_v1({"schema_version": True, "cells": []})
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        (
+            ("repo_id", 1),
+            ("repo_id", ""),
+            ("arm_id", 1),
+            ("arm_id", ""),
+        ),
+    )
+    def test_index_evidence_cell_ids_require_nonempty_strings(
+        self,
+        field: str,
+        value: object,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="Index evidence repo_id and arm_id must be strings",
+        ):
+            self._parse_v1_index_evidence(cell_overrides={field: value})
+
+    @pytest.mark.parametrize(
+        ("field", "value", "message"),
+        (
+            (
+                "eligible_source_files",
+                "10",
+                "Index evidence count and size fields must be integers",
+            ),
+            (
+                "build_seconds",
+                "1.0",
+                "Index evidence build_seconds must be a finite number",
+            ),
+            (
+                "build_seconds",
+                float("nan"),
+                "Index evidence build_seconds must be a finite number",
+            ),
+        ),
+    )
+    def test_index_evidence_numeric_fields_reject_strings(
+        self,
+        field: str,
+        value: object,
+        message: str,
+    ):
+        with pytest.raises(ValueError, match=message):
+            self._parse_v1_index_evidence(stats_overrides={field: value})
+
+    def test_index_evidence_rejects_integer_duration_too_large_for_float(self):
+        with pytest.raises(
+            ValueError,
+            match="Index evidence build_seconds must be a finite number",
+        ):
+            self._parse_v1_index_evidence(stats_overrides={"build_seconds": 10**400})
+
+    def test_index_evidence_provenance_fields_require_strings(self):
+        with pytest.raises(
+            ValueError,
+            match="Index evidence provenance fields must be strings",
+        ):
+            self._parse_v1_index_evidence(stats_overrides={"repo_fingerprint": 1})
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        (
+            ("indexed_paths", "main.go"),
+            ("readiness_oracles", [1]),
+        ),
+    )
+    def test_index_evidence_tuple_fields_require_string_lists(
+        self,
+        field: str,
+        value: object,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="Index evidence path and oracle fields must be string lists",
+        ):
+            self._parse_v1_index_evidence(stats_overrides={field: value})
+
+    def test_manifest_bound_setup_only_writes_success_evidence_without_model_calls(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+
+        manifest = self._v1_setup_manifest()
+        manifest_path = self._write_v1_manifest(tmp_path, manifest)
+        evidence_input = self._write_v1_index_evidence(tmp_path, manifest)
+        model_calls = 0
+
+        class Adapter:
+            def __init__(self, arm_id: str) -> None:
+                self.arm_id = arm_id
+
+            def prepare_index(self, repo_path: Path, cold: bool):
+                record = _v1_run(
+                    manifest,
+                    f"q1__{self.arm_id}__{manifest.agent_backend}__00",
+                )
+                assert record.index_stats is not None
+                return record.index_stats
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm_id, repo_path, "system")
+
+        def run_one(**kwargs):
+            nonlocal model_calls
+            model_calls += 1
+            raise AssertionError("setup-only must not call the model")
+
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(monkeypatch, Adapter, run_one)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = str(manifest_path)
+        args.setup_only = True
+        args.index_evidence = evidence_input
+
+        assert compare_run.cmd_run_matrix(args) == 0
+        assert model_calls == 0
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert evidence["schema_version"] == 1
+        assert evidence["experiment_id"] == manifest.experiment_id
+        assert evidence["manifest_hash"] == manifest.manifest_hash
+        assert evidence["status"] == "setup_passed"
+        assert evidence["validation_level"] == "manifest-bound-v1-consumer"
+        assert evidence["publishable"] is False
+        assert evidence["model_calls_started"] == 0
+        assert [(cell["repo_id"], cell["arm_id"]) for cell in evidence["cells"]] == [
+            ("gin", "codegraph-warm"),
+            ("gin", "tsa-warm"),
+        ]
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert registry_events == [
+            {
+                "experiment_id": manifest.experiment_id,
+                "manifest_hash": manifest.manifest_hash,
+                "outcome": "setup_started",
+                "status": "PLANNED",
+            },
+            {
+                "experiment_id": manifest.experiment_id,
+                "manifest_hash": manifest.manifest_hash,
+                "outcome": "setup_passed",
+                "status": "PLANNED",
+            },
+        ]
+
+    def test_matrix_manifest_mismatch_fails_before_adapter_creation(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest()
+        manifest_path = self._write_v1_manifest(tmp_path, manifest)
+        adapter_calls = 0
+        model_calls = 0
+
+        def get_adapter(arm_id: str):
+            nonlocal adapter_calls
+            adapter_calls += 1
+            raise AssertionError("mismatched matrix must not create an adapter")
+
+        def run_one(**kwargs):
+            nonlocal model_calls
+            model_calls += 1
+            raise AssertionError("mismatched matrix must not call the model")
+
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(monkeypatch, get_adapter, run_one)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.arms = "tsa-warm"
+        args.manifest = str(manifest_path)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+        assert adapter_calls == 0
+        assert model_calls == 0
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_MANIFEST_MISMATCH"
+        ]
+
+    def test_setup_only_rejects_timeout_that_differs_from_manifest(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.timeout_seconds = manifest.timeout_seconds + 1
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_TIMEOUT_MISMATCH"
+        ]
+
+    def test_matrix_rejects_zero_repeats_instead_of_defaulting_to_one(
+        self, monkeypatch, tmp_path: Path, capsys
+    ):
+        manifest = self._v1_setup_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.repeats = 0
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert "--repeats must be greater than zero" in capsys.readouterr().err
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert [event["outcome"] for event in registry_events] == [
+            "setup_started",
+            "setup_input_failed",
+        ]
+
+    def test_setup_only_rejects_unsupported_backend_arm_pairs(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest(agent_backend="codex")
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "BACKEND_UNSUPPORTED",
+            "BACKEND_UNSUPPORTED",
+        ]
+
+    def test_setup_only_rejects_changed_arm_configuration(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        original_load = compare_run._load_yaml
+        changed_arms = [
+            {**arm, "adapter": "changed-adapter"}
+            for arm in original_load(compare_run.ARMS_YAML)
+        ]
+        monkeypatch.setattr(
+            compare_run,
+            "_load_yaml",
+            lambda path: (
+                changed_arms if path == compare_run.ARMS_YAML else original_load(path)
+            ),
+        )
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_CONFIG_HASH_MISMATCH"
+        ]
+
+    def test_setup_only_rejects_changed_question_configuration(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        original_load = compare_run._load_yaml
+        changed_questions = [
+            {**question, "prompt": "Changed after manifest creation"}
+            for question in original_load(compare_run.QUESTIONS_YAML)
+        ]
+        monkeypatch.setattr(
+            compare_run,
+            "_load_yaml",
+            lambda path: (
+                changed_questions
+                if path == compare_run.QUESTIONS_YAML
+                else original_load(path)
+            ),
+        )
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_QUESTION_HASH_MISMATCH"
+        ]
+
+    def test_setup_only_rejects_indexed_arm_omission(self, monkeypatch, tmp_path: Path):
+        manifest = self._v1_setup_manifest(
+            indexed_arms=(),
+            required_readiness_oracles={},
+        )
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_INDEXED_ARMS_MISMATCH"
+        ]
+
+    def test_setup_only_rejects_conflicting_repo_commit(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest(repo_commits={"gin": "conflicting-revision"})
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_REPO_COMMIT_MISMATCH"
+        ]
+
+    def test_setup_only_accepts_pre_registered_interleaved_schedule(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.setup_validation import (
+            selected_schedule_hash,
+        )
+
+        repos, arms, questions = self._v1_matrix_configs(Path("/runtime-path"))
+        backend = "claude"
+        interleaved_arms = list(reversed(arms))
+        manifest = self._v1_setup_manifest(
+            expected_run_ids=tuple(
+                f"q1__{arm['id']}__{backend}__00" for arm in interleaved_arms
+            ),
+            schedule_hash=selected_schedule_hash(
+                repos,
+                interleaved_arms,
+                {"gin": questions},
+                repeats=1,
+                agent_backend=backend,
+            ),
+        )
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 0
+
+    def test_setup_only_rejects_schedule_hash_not_bound_to_manifest_cells(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest(schedule_hash="wrong-schedule")
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_SCHEDULE_HASH_MISMATCH"
+        ]
+
+    def test_matrix_manifest_rejects_selected_repo_without_questions(
+        self,
+        tmp_path: Path,
+    ):
+        from benchmarks.codegraph_compare.setup_validation import (
+            validate_matrix_setup,
+        )
+
+        manifest = _v1_manifest(
+            expected_run_ids=("q1__native-only__codex__00",),
+            required_arms=("native-only",),
+            tool_fingerprints={"native-only": "native"},
+        )
+
+        result = validate_matrix_setup(
+            [
+                {"id": "gin"},
+                {"id": "empty"},
+            ],
+            [{"id": "native-only", "index_mode": "none"}],
+            questions_by_repo={
+                "gin": [{"id": "q1"}],
+                "empty": [],
+            },
+            repo_path_resolver=lambda repo: tmp_path / str(repo["id"]),
+            adapter_factory=lambda arm_id: pytest.fail(
+                f"manifest validation created adapter {arm_id}"
+            ),
+            manifest=manifest,
+            repeats=1,
+            agent_backend="codex",
+            model="gpt-5",
+            supplied_index_stats={},
+        )
+
+        assert tuple(failure.code for failure in result.failures) == (
+            "MATRIX_MANIFEST_MISMATCH",
+        )
+
+    def test_readiness_oracle_mismatch_fails_closed_without_model_calls(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest()
+        manifest_path = self._write_v1_manifest(tmp_path, manifest)
+        evidence_input = self._write_v1_index_evidence(
+            tmp_path, manifest, readiness=False
+        )
+        model_calls = 0
+
+        def run_one(**kwargs):
+            nonlocal model_calls
+            model_calls += 1
+            raise AssertionError("failed readiness must not call the model")
+
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(
+            monkeypatch,
+            lambda arm_id: (_ for _ in ()).throw(
+                AssertionError("evidence consumer must not create adapters")
+            ),
+            run_one,
+        )
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = str(manifest_path)
+        args.setup_only = True
+        args.index_evidence = evidence_input
+
+        assert compare_run.cmd_run_matrix(args) == 1
+        assert model_calls == 0
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "READINESS_ORACLE_MISMATCH"
+        ]
+
+    def test_setup_evidence_uses_exclusive_create(self, monkeypatch, tmp_path: Path):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+
+        manifest = self._v1_setup_manifest()
+        manifest_path = self._write_v1_manifest(tmp_path, manifest)
+        evidence_input = self._write_v1_index_evidence(tmp_path, manifest)
+        session_id = "20260721T010203000000Z"
+        experiment_dir = tmp_path / "results" / "experiments" / manifest.manifest_hash
+        experiment_dir.mkdir(parents=True)
+        evidence_path = experiment_dir / f"setup_{session_id}.json"
+        evidence_path.write_text("sentinel\n", encoding="utf-8")
+
+        class Adapter:
+            def __init__(self, arm_id: str) -> None:
+                self.arm_id = arm_id
+
+            def prepare_index(self, repo_path: Path, cold: bool):
+                record = _v1_run(
+                    manifest,
+                    f"q1__{self.arm_id}__{manifest.agent_backend}__00",
+                )
+                assert record.index_stats is not None
+                return record.index_stats
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm_id, repo_path, "system")
+
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(
+            monkeypatch,
+            Adapter,
+            lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("setup-only must not call the model")
+            ),
+        )
+        monkeypatch.setattr(
+            compare_run,
+            "datetime",
+            SimpleNamespace(
+                now=lambda timezone: SimpleNamespace(
+                    strftime=lambda pattern: session_id
+                )
+            ),
+        )
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = str(manifest_path)
+        args.setup_only = True
+        args.index_evidence = evidence_input
+
+        with pytest.raises(FileExistsError):
+            compare_run.cmd_run_matrix(args)
+
+        assert evidence_path.read_text(encoding="utf-8") == "sentinel\n"
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert registry_events == [
+            {
+                "experiment_id": manifest.experiment_id,
+                "manifest_hash": manifest.manifest_hash,
+                "outcome": "setup_started",
+                "status": "PLANNED",
+            },
+            {
+                "experiment_id": manifest.experiment_id,
+                "manifest_hash": manifest.manifest_hash,
+                "outcome": "setup_internal_failed",
+                "status": "BLOCKED",
+            },
+        ]
+
+    def test_invalid_index_evidence_records_started_and_blocked(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = _v1_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = tmp_path / "invalid.json"
+        args.index_evidence.write_text("{not-json", encoding="utf-8")
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert [event["outcome"] for event in registry_events] == [
+            "setup_started",
+            "setup_input_failed",
+        ]
+        assert [event["status"] for event in registry_events] == [
+            "PLANNED",
+            "BLOCKED",
+        ]
+
+    def test_oversized_index_duration_records_started_and_blocked(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = _v1_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        evidence_path = self._write_v1_index_evidence(tmp_path, manifest)
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        evidence["cells"][0]["index_stats"]["build_seconds"] = 10**400
+        evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+        args = self._matrix_args()
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = evidence_path
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert [event["outcome"] for event in registry_events] == [
+            "setup_started",
+            "setup_input_failed",
+        ]
+
+    def test_non_object_manifest_uses_cli_diagnostic(
+        self, monkeypatch, tmp_path: Path, capsys
+    ):
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        manifest_path = tmp_path / "manifest.json"
+        manifest_path.write_text("[]", encoding="utf-8")
+        args = self._matrix_args()
+        args.manifest = manifest_path
+        args.setup_only = True
+        args.index_evidence = tmp_path / "unused-index-evidence.json"
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert (
+            f"Invalid experiment manifest {manifest_path}: "
+            "Experiment manifest must be an object" in capsys.readouterr().err
+        )
+
+    def test_duplicate_manifest_member_uses_cli_diagnostic(
+        self, tmp_path: Path, capsys
+    ):
+        manifest_path = tmp_path / "manifest.json"
+        manifest_path.write_text(
+            '{"benchmark_version":1,"benchmark_version":1}',
+            encoding="utf-8",
+        )
+        args = self._matrix_args()
+        args.manifest = manifest_path
+        args.setup_only = True
+        args.index_evidence = tmp_path / "unused-index-evidence.json"
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert (
+            f"Invalid experiment manifest {manifest_path}: "
+            "Duplicate JSON member: benchmark_version" in capsys.readouterr().err
+        )
+
+    def test_duplicate_index_evidence_member_records_input_failure(
+        self, monkeypatch, tmp_path: Path, capsys
+    ):
+        manifest = self._v1_setup_manifest()
+        evidence_path = tmp_path / "index-evidence.json"
+        evidence_path.write_text(
+            '{"schema_version":1,"schema_version":1,"cells":[]}',
+            encoding="utf-8",
+        )
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = evidence_path
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert "Duplicate JSON member: schema_version" in capsys.readouterr().err
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert [event["outcome"] for event in registry_events] == [
+            "setup_started",
+            "setup_input_failed",
+        ]
+
+    def test_malformed_nested_manifest_uses_cli_diagnostic(
+        self, monkeypatch, tmp_path: Path, capsys
+    ):
+        from dataclasses import asdict
+
+        manifest = self._v1_setup_manifest()
+        payload = json.loads(json.dumps(asdict(manifest)))
+        payload["eligible_paths"] = [[]]
+        manifest_path = tmp_path / "manifest.json"
+        manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.manifest = manifest_path
+        args.setup_only = True
+        args.index_evidence = tmp_path / "unused-index-evidence.json"
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert (
+            f"Invalid experiment manifest {manifest_path}: "
+            "Manifest nested fields do not match the V1 schema"
+            in capsys.readouterr().err
+        )
+
+    def test_setup_only_direct_script_preserves_package_imports(self, tmp_path: Path):
+        import subprocess
+
+        script = Path(compare_run.__file__).resolve()
+        missing_manifest = tmp_path / "missing-manifest.json"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                str(script),
+                "run-matrix",
+                "--manifest",
+                str(missing_manifest),
+                "--index-evidence",
+                str(tmp_path / "unused-index-evidence.json"),
+                "--setup-only",
+            ],
+            cwd=tmp_path,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 1
+        assert f"Invalid experiment manifest {missing_manifest}" in result.stderr
+        assert "ModuleNotFoundError" not in result.stderr
+
+    def test_invalid_matrix_yaml_shape_records_started_and_blocked(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = _v1_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        original_load = compare_run._load_yaml
+        monkeypatch.setattr(
+            compare_run,
+            "_load_yaml",
+            lambda path: (
+                [{"local_path": str(tmp_path)}]
+                if path == compare_run.REPOS_YAML
+                else original_load(path)
+            ),
+        )
+        args = self._matrix_args()
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert [event["outcome"] for event in registry_events] == [
+            "setup_started",
+            "setup_input_failed",
+        ]
+
+    def test_setup_only_rejects_dry_run_before_adapter_creation(
+        self, monkeypatch, tmp_path: Path, capsys
+    ):
+        manifest = _v1_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(
+            monkeypatch,
+            lambda arm_id: (_ for _ in ()).throw(
+                AssertionError("invalid setup flags must not create adapters")
+            ),
+            lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("invalid setup flags must not call the model")
+            ),
+        )
+        args = self._matrix_args()
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+        args.dry_run = True
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert "cannot be combined with --dry-run" in capsys.readouterr().err
+
+    def test_duplicate_matrix_entry_is_rejected_before_adapter_creation(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = _v1_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        original_load = compare_run._load_yaml
+        monkeypatch.setattr(
+            compare_run,
+            "_load_yaml",
+            lambda path: (
+                original_load(path) + [original_load(path)[0]]
+                if path == compare_run.ARMS_YAML
+                else original_load(path)
+            ),
+        )
+        self._install_runner_modules(
+            monkeypatch,
+            lambda arm_id: (_ for _ in ()).throw(
+                AssertionError("duplicate matrix must not create adapters")
+            ),
+            lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("duplicate matrix must not call the model")
+            ),
+        )
+        args = self._matrix_args()
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
 
     def test_setup_failure_checks_all_indexed_arms_and_blocks_model_calls(
         self, monkeypatch, tmp_path: Path
@@ -637,7 +1661,9 @@ class TestCodeGraphCompareSetupGate:
         exit_code = compare_run.cmd_run_matrix(self._matrix_args())
 
         assert exit_code == 0
-        first_model = next(i for i, event in enumerate(events) if event.startswith("model:"))
+        first_model = next(
+            i for i, event in enumerate(events) if event.startswith("model:")
+        )
         assert events[:first_model] == [
             "config:native-only",
             "prepare:codegraph-warm",
@@ -709,9 +1735,7 @@ class TestCodeGraphCompareSetupGate:
 
         assert compare_run.cmd_run_matrix(self._matrix_args()) == 1
         assert model_calls == 0
-        evidence_path = next(
-            (tmp_path / "results").glob("setup_failures_*.json")
-        )
+        evidence_path = next((tmp_path / "results").glob("setup_failures_*.json"))
         evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
         assert evidence["failures"] == [
             {
@@ -788,9 +1812,7 @@ class TestCodeGraphCompareSetupGate:
             "validate:codex:codegraph-warm",
             "validate:codex:tsa-warm",
         ]
-        evidence_path = next(
-            (tmp_path / "results").glob("setup_failures_*.json")
-        )
+        evidence_path = next((tmp_path / "results").glob("setup_failures_*.json"))
         evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
         assert [item["code"] for item in evidence["failures"]] == [
             "BACKEND_UNSUPPORTED",
@@ -1257,8 +2279,8 @@ def _registry_for(manifest):
         RegistryEvent(
             manifest.experiment_id,
             manifest.manifest_hash,
-            "PLANNED",
-            "registered",
+            "COMPLETE",
+            "producer_completed",
         ),
     )
 
@@ -1458,6 +2480,107 @@ class TestBenchmarkExperimentIntegrity:
 
         assert parsed == manifest
 
+    @pytest.mark.parametrize(
+        ("field", "value", "message"),
+        (
+            (
+                "benchmark_git_sha",
+                1,
+                "Manifest scalar fields do not match the V1 schema",
+            ),
+            (
+                "seed",
+                True,
+                "Manifest integer fields do not match the V1 schema",
+            ),
+            (
+                "retry_session_ids",
+                "RS",
+                "Manifest sequence fields do not match the V1 schema",
+            ),
+            (
+                "expected_cells",
+                {},
+                "Manifest expected cells do not match the V1 schema",
+            ),
+            (
+                "tool_fingerprints",
+                {},
+                "Manifest mapping fields do not match the V1 schema",
+            ),
+            (
+                "eligible_paths",
+                [["gin", "src/main.py"]],
+                "Manifest nested fields do not match the V1 schema",
+            ),
+        ),
+    )
+    def test_manifest_parser_rejects_noncanonical_json_shapes(
+        self,
+        field: str,
+        value: object,
+        message: str,
+    ):
+        from dataclasses import asdict
+
+        from benchmarks.codegraph_compare.integrity import parse_manifest_v1
+
+        payload = json.loads(json.dumps(asdict(_v1_manifest())))
+        payload[field] = value
+
+        with pytest.raises(ValueError, match=message):
+            parse_manifest_v1(payload)
+
+    def test_manifest_constructor_requires_string_provenance(self):
+        with pytest.raises(
+            ValueError,
+            match=("Manifest identity and provenance fields must be non-empty strings"),
+        ):
+            _v1_manifest(benchmark_git_sha=1)
+
+    @pytest.mark.parametrize(
+        ("field", "message"),
+        (
+            ("seed", "seed must be an integer"),
+            ("timeout_seconds", "timeout_seconds must be a positive integer"),
+        ),
+    )
+    def test_manifest_integer_fields_reject_booleans(self, field: str, message: str):
+        with pytest.raises(ValueError, match=message):
+            _v1_manifest(**{field: True})
+
+    def test_expected_cell_repeat_rejects_boolean(self):
+        from benchmarks.codegraph_compare.integrity import ExpectedCellV1
+
+        with pytest.raises(
+            ValueError,
+            match="Expected cell repeat must be a non-negative integer",
+        ):
+            ExpectedCellV1(
+                repo="gin",
+                question_id="q1",
+                arm="native-only",
+                repeat=True,
+                agent_backend="codex",
+                run_id="q1__native-only__codex__01",
+            )
+
+    def test_expected_cell_identity_requires_strings(self):
+        from benchmarks.codegraph_compare.integrity import ExpectedCellV1
+
+        with pytest.raises(
+            ValueError,
+            match="Expected cell identity fields must be non-empty strings",
+        ):
+            ExpectedCellV1(
+                repo=1,
+                question_id="q1",
+                arm="native-only",
+                repeat=0,
+                agent_backend="codex",
+                run_id="q1__native-only__codex__00",
+            )
+
     def test_manifest_rejects_required_arm_without_expected_cell(self):
         with pytest.raises(
             ValueError, match="Required arms must exactly match expected cell arms"
@@ -1466,6 +2589,35 @@ class TestBenchmarkExperimentIntegrity:
                 expected_run_ids=("q1__tsa-warm__codex__00",),
                 required_arms=("codegraph-warm", "tsa-warm"),
             )
+
+    def test_manifest_rejects_empty_required_readiness_oracle(self):
+        with pytest.raises(
+            ValueError,
+            match="Readiness oracles must exactly cover indexed arms",
+        ):
+            _v1_manifest(
+                required_readiness_oracles={
+                    "codegraph-warm": ("",),
+                    "tsa-warm": ("known-symbol",),
+                }
+            )
+
+    def test_index_stats_rejects_empty_supplied_readiness_oracle(self):
+        from dataclasses import replace
+
+        manifest = _v1_manifest()
+        stats = _v1_run(
+            manifest,
+            "q1__codegraph-warm__codex__00",
+        ).index_stats
+        if stats is None:
+            pytest.fail("indexed fixture must include V1 index statistics")
+
+        with pytest.raises(
+            ValueError,
+            match=("Readiness oracle identifiers must be non-empty canonical strings"),
+        ):
+            replace(stats, readiness_oracles=("",))
 
     def test_registry_rejects_conflicting_manifest_for_same_experiment(
         self, tmp_path: Path
@@ -1541,6 +2693,129 @@ class TestBenchmarkExperimentIntegrity:
 
         assert tuple(item.code for item in verdict.violations) == (
             "UNREGISTERED_EXPERIMENT",
+        )
+        assert verdict.publishable is False
+
+    def test_consumer_only_setup_events_cannot_be_published(self):
+        from benchmarks.codegraph_compare.integrity import (
+            RegistryEvent,
+            validate_publishable_experiment,
+        )
+
+        manifest = _v1_manifest(
+            expected_run_ids=("q1__native-only__codex__00",),
+            required_arms=("native-only",),
+            indexed_arms=(),
+            tool_fingerprints={"native-only": "native1"},
+            required_readiness_oracles={},
+        )
+        native = _v1_run(
+            manifest,
+            "q1__native-only__codex__00",
+            index_stats=None,
+        )
+        registry = tuple(
+            RegistryEvent(
+                manifest.experiment_id,
+                manifest.manifest_hash,
+                "PLANNED",
+                outcome,
+            )
+            for outcome in ("setup_started", "setup_passed")
+        )
+
+        verdict = validate_publishable_experiment(
+            manifest,
+            registry=registry,
+            runs=(native,),
+            evals=(_v1_eval(native),),
+            reported_experiment_ids=(manifest.experiment_id,),
+        )
+
+        assert tuple(item.code for item in verdict.violations) == (
+            "REGISTRY_PRODUCER_INCOMPLETE",
+        )
+        assert verdict.publishable is False
+
+    def test_registry_rejects_activity_after_producer_completion(self):
+        from benchmarks.codegraph_compare.integrity import (
+            RegistryEvent,
+            validate_publishable_experiment,
+        )
+
+        manifest = _v1_manifest(
+            expected_run_ids=("q1__native-only__codex__00",),
+            required_arms=("native-only",),
+            indexed_arms=(),
+            tool_fingerprints={"native-only": "native1"},
+            required_readiness_oracles={},
+        )
+        native = _v1_run(
+            manifest,
+            "q1__native-only__codex__00",
+            index_stats=None,
+        )
+        registry = (
+            *_registry_for(manifest),
+            RegistryEvent(
+                manifest.experiment_id,
+                manifest.manifest_hash,
+                "RUNNING",
+                "producer_restarted",
+            ),
+        )
+
+        verdict = validate_publishable_experiment(
+            manifest,
+            registry=registry,
+            runs=(native,),
+            evals=(_v1_eval(native),),
+            reported_experiment_ids=(manifest.experiment_id,),
+        )
+
+        assert tuple(item.code for item in verdict.violations) == (
+            "REGISTRY_PRODUCER_INCOMPLETE",
+        )
+        assert verdict.publishable is False
+
+    def test_registry_rejects_nonfinal_complete_with_alternate_outcome(self):
+        from benchmarks.codegraph_compare.integrity import (
+            RegistryEvent,
+            validate_publishable_experiment,
+        )
+
+        manifest = _v1_manifest(
+            expected_run_ids=("q1__native-only__codex__00",),
+            required_arms=("native-only",),
+            indexed_arms=(),
+            tool_fingerprints={"native-only": "native1"},
+            required_readiness_oracles={},
+        )
+        native = _v1_run(
+            manifest,
+            "q1__native-only__codex__00",
+            index_stats=None,
+        )
+        registry = (
+            RegistryEvent(
+                manifest.experiment_id,
+                manifest.manifest_hash,
+                "COMPLETE",
+                "alternate_completion",
+            ),
+            *_registry_for(manifest),
+        )
+
+        verdict = validate_publishable_experiment(
+            manifest,
+            registry=registry,
+            runs=(native,),
+            evals=(_v1_eval(native),),
+            reported_experiment_ids=(manifest.experiment_id,),
+        )
+
+        assert tuple(item.code for item in verdict.violations) == (
+            "REGISTRY_PRODUCER_INCOMPLETE",
         )
         assert verdict.publishable is False
 

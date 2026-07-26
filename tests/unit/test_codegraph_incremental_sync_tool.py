@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
+from tree_sitter_analyzer.incremental_sync import IncrementalSync, SyncResult
 from tree_sitter_analyzer.mcp.tools.incremental_sync_tool import (
     CodeGraphIncrementalSyncTool,
 )
@@ -80,3 +83,66 @@ class TestExecute:
         result = await tool_with_root.execute({"mode": "status"})
         assert result["format"] == "toon"
         assert "toon_content" in result
+
+
+class TestCacheLifecycle:
+    def test_sync_closes_cache_after_success(self, tool_with_root):
+        cache = MagicMock()
+        with (
+            patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+            patch.object(IncrementalSync, "sync", return_value=SyncResult()),
+        ):
+            tool_with_root._sync(100, "json")
+
+        cache.close.assert_called_once_with()
+
+    def test_sync_closes_cache_after_exception(self, tool_with_root):
+        cache = MagicMock()
+        with (
+            patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+            patch.object(
+                IncrementalSync,
+                "sync",
+                side_effect=RuntimeError("sync failed"),
+            ),
+        ):
+            tool_with_root._sync(100, "json")
+
+        cache.close.assert_called_once_with()
+
+    def test_sync_closes_cache_after_sync_constructor_exception(self, tool_with_root):
+        cache = MagicMock()
+        with (
+            patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.incremental_sync_tool.IncrementalSync",
+                side_effect=RuntimeError("constructor failed"),
+            ),
+        ):
+            tool_with_root._sync(100, "json")
+
+        cache.close.assert_called_once_with()
+
+    def test_changes_closes_cache(self, tool_with_root):
+        cache = MagicMock()
+        with (
+            patch.object(tool_with_root, "_ensure_cache", return_value=cache),
+            patch.object(IncrementalSync, "get_changes", return_value={}),
+        ):
+            tool_with_root._changes("json")
+
+        cache.close.assert_called_once_with()
+
+    def test_status_closes_cache(self, tool_with_root):
+        cache = MagicMock()
+        cache.get_stats.return_value = {}
+        with (
+            patch(
+                "tree_sitter_analyzer.ast_cache.ASTCache",
+                return_value=cache,
+            ),
+            patch.object(IncrementalSync, "get_changes", return_value={}),
+        ):
+            tool_with_root._status("json")
+
+        cache.close.assert_called_once_with()

@@ -41,6 +41,8 @@ from .schema import Constraint, Violation
 
 logger = logging.getLogger(__name__)
 
+_MAX_SQL_PREFIX_FILTERS = 256
+
 
 def evaluate(
     constraints: list[Constraint],
@@ -260,7 +262,7 @@ def _build_select_query(
         "FROM edges WHERE kind = 'calls'"
     )
     prefixes = tuple(dict.fromkeys(cc.from_prefix for cc in compiled))
-    if not prefixes or "" in prefixes:
+    if not prefixes or "" in prefixes or len(prefixes) > _MAX_SQL_PREFIX_FILTERS:
         return select_sql, ()
 
     prefix_filter = " OR ".join("instr(file_path, ?) = 1" for _ in prefixes)

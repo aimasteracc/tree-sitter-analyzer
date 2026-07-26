@@ -36,6 +36,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, NoReturn
 
+if __package__ in (None, ""):
+    repo_root = str(Path(__file__).resolve().parents[2])
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
 # ---------------------------------------------------------------------------
 # Path constants  (all relative to this file so the harness is portable)
 # ---------------------------------------------------------------------------
@@ -94,6 +99,26 @@ PHASE_PRESETS: dict[str, PhasePreset] = {
         description="all repos, all questions, 4 repeats, cold arms",
     ),
 }
+
+
+def _reject_duplicate_json_members(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON member: {key}")
+        result[key] = value
+    return result
+
+
+def _load_strict_json(path: str | Path) -> object:
+    """Load canonical JSON while rejecting duplicate members at every depth."""
+
+    return json.loads(
+        Path(path).read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_json_members,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -407,28 +432,205 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _append_manifest_setup_event(manifest: Any, status: str, outcome: str) -> None:
+    from benchmarks.codegraph_compare.integrity import (  # noqa: PLC0415
+        RegistryEvent,
+        append_registry_event,
+    )
+
+    append_registry_event(
+        RESULTS_DIR / "experiment_registry.jsonl",
+        RegistryEvent(
+            manifest.experiment_id,
+            manifest.manifest_hash,
+            status,
+            outcome,
+        ),
+    )
+
+
+def _run_manifest_setup_gate(
+    *,
+    args: argparse.Namespace,
+    manifest: Any,
+    supplied_index_stats: Any,
+    repo_entries: list[dict],
+    arm_entries: list[dict],
+    question_entries_by_repo: dict[str, list[dict]],
+    repeats: int,
+    session_id: str,
+) -> int:
+    """Validate external V1 evidence without creating adapters or model calls."""
+
+    from benchmarks.codegraph_compare.adapters.claude_runner import (  # noqa: PLC0415
+        validate_backend_arm_support,
+    )
+    from benchmarks.codegraph_compare.setup_validation import (  # noqa: PLC0415
+        validate_matrix_setup,
+        write_manifest_setup_evidence,
+    )
+
+    def unused_adapter_factory(arm_id: str) -> NoReturn:
+        raise AssertionError(f"setup-only must not create adapter {arm_id}")
+
+    setup_result = validate_matrix_setup(
+        repo_entries,
+        arm_entries,
+        questions_by_repo=question_entries_by_repo,
+        repo_path_resolver=_repo_local_path,
+        adapter_factory=unused_adapter_factory,
+        manifest=manifest,
+        repeats=repeats,
+        agent_backend=args.agent_backend,
+        model=args.model,
+        timeout_seconds=args.timeout_seconds,
+        supplied_index_stats=supplied_index_stats,
+        backend_validator=lambda arm_id: validate_backend_arm_support(
+            args.agent_backend, arm_id
+        ),
+    )
+    evidence_path = write_manifest_setup_evidence(
+        RESULTS_DIR,
+        session_id=session_id,
+        manifest=manifest,
+        result=setup_result,
+    )
+    if not setup_result.ok:
+        _append_manifest_setup_event(manifest, "BLOCKED", "setup_failed")
+        print(
+            f"[setup] FAILED: {len(setup_result.failures)} indexed cell(s); "
+            "no model calls started.",
+            file=sys.stderr,
+        )
+        for failure in setup_result.failures:
+            print(
+                f"  repo={failure.repo_id}  arm={failure.arm_id}  "
+                f"{failure.code}: {failure.message}",
+                file=sys.stderr,
+            )
+        print(f"Setup evidence: {evidence_path}", file=sys.stderr)
+        return 1
+
+    _append_manifest_setup_event(manifest, "PLANNED", "setup_passed")
+    print(
+        "[setup] PASSED: manifest-bound V1 evidence validated; no model calls started.",
+        file=sys.stderr,
+    )
+    print(f"Setup evidence: {evidence_path}", file=sys.stderr)
+    return 0
+
+
 def cmd_run_matrix(args: argparse.Namespace) -> int:
     """Run all combinations of repos × arms × questions × repeats."""
-    repos_data = _load_yaml(REPOS_YAML)
-    arms_data = _load_yaml(ARMS_YAML)
-    questions_data = _load_yaml(QUESTIONS_YAML)
+    manifest = None
+    manifest_path = getattr(args, "manifest", None)
+    setup_only = bool(getattr(args, "setup_only", False))
+    index_evidence_path = getattr(args, "index_evidence", None)
+    if setup_only and not manifest_path:
+        _die("--setup-only requires --manifest <experiment-manifest.json>")
+    if setup_only and args.dry_run:
+        _die("--setup-only cannot be combined with --dry-run")
+    if setup_only and not index_evidence_path:
+        _die("--setup-only requires --index-evidence <index-evidence.json>")
+    if index_evidence_path and not setup_only:
+        _die("--index-evidence requires --setup-only")
+    if manifest_path and not setup_only:
+        _die(
+            "Manifest-bound model execution is not wired yet; "
+            "use --setup-only to run the fail-closed setup gate."
+        )
+    if manifest_path:
+        from benchmarks.codegraph_compare.integrity import (  # noqa: PLC0415
+            parse_manifest_v1,
+        )
 
-    # Resolve repos
-    if args.repos in ("all", None):
-        repo_entries = _all_repos(repos_data)
-    else:
-        repo_entries = [_get_repo(repos_data, rid) for rid in args.repos.split(",")]
+        try:
+            raw_manifest = _load_strict_json(manifest_path)
+            manifest = parse_manifest_v1(raw_manifest)
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            _die(f"Invalid experiment manifest {manifest_path}: {exc}")
 
-    # Resolve arms
-    if not args.arms or args.arms == "all":
-        arm_entries = _all_arms(arms_data)
-    else:
-        arm_entries = [_get_arm(arms_data, aid) for aid in args.arms.split(",")]
+    if manifest is not None:
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        _append_manifest_setup_event(manifest, "PLANNED", "setup_started")
 
-    repeats: int = args.repeats if hasattr(args, "repeats") and args.repeats else 1
-    question_limit = getattr(args, "question_limit", None)
-    if question_limit is not None and question_limit < 1:
-        _die("--question-limit must be greater than zero")
+    supplied_index_stats = None
+    try:
+        repos_data = _load_yaml(REPOS_YAML)
+        arms_data = _load_yaml(ARMS_YAML)
+        questions_data = _load_yaml(QUESTIONS_YAML)
+        if index_evidence_path:
+            from benchmarks.codegraph_compare.setup_validation import (  # noqa: PLC0415
+                parse_index_evidence_v1,
+            )
+
+            raw_evidence = _load_strict_json(index_evidence_path)
+            supplied_index_stats = parse_index_evidence_v1(raw_evidence)
+
+        # Resolve repos
+        if args.repos in ("all", None):
+            repo_entries = _all_repos(repos_data)
+        else:
+            repo_entries = [_get_repo(repos_data, rid) for rid in args.repos.split(",")]
+
+        # Resolve arms
+        if not args.arms or args.arms == "all":
+            arm_entries = _all_arms(arms_data)
+        else:
+            arm_entries = [_get_arm(arms_data, aid) for aid in args.arms.split(",")]
+
+        repeats: int = (
+            args.repeats if hasattr(args, "repeats") and args.repeats is not None else 1
+        )
+        if type(repeats) is not int or repeats < 1:
+            _die("--repeats must be greater than zero")
+        question_limit = getattr(args, "question_limit", None)
+        if question_limit is not None and question_limit < 1:
+            _die("--question-limit must be greater than zero")
+
+        question_entries_by_repo = {
+            repo_entry["id"]: _limited_questions_for_repo(
+                questions_data, repo_entry["id"], question_limit
+            )
+            for repo_entry in repo_entries
+        }
+    except (
+        OSError,
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        SystemExit,
+    ) as exc:
+        if manifest is not None:
+            _append_manifest_setup_event(manifest, "BLOCKED", "setup_input_failed")
+        if isinstance(exc, SystemExit):
+            raise
+        _die(f"Invalid manifest setup input: {exc}")
+
+    # One session id per matrix invocation so repeated runs don't overwrite each
+    # other's raw transcripts (cost data must survive re-runs for n>1 analysis).
+    session_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    if setup_only:
+        assert manifest is not None
+        try:
+            return _run_manifest_setup_gate(
+                args=args,
+                manifest=manifest,
+                supplied_index_stats=supplied_index_stats,
+                repo_entries=repo_entries,
+                arm_entries=arm_entries,
+                question_entries_by_repo=question_entries_by_repo,
+                repeats=repeats,
+                session_id=session_id,
+            )
+        except Exception:
+            _append_manifest_setup_event(manifest, "BLOCKED", "setup_internal_failed")
+            raise
 
     # Lazy imports
     try:
@@ -439,19 +641,6 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
         )
     except ImportError:
         _die("Could not import adapters or adapters.claude_runner.")
-
-    # One session id per matrix invocation so repeated runs don't overwrite each
-    # other's raw transcripts (cost data must survive re-runs for n>1 analysis).
-    session_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    question_entries_by_repo = {
-        repo_entry["id"]: _limited_questions_for_repo(
-            questions_data, repo_entry["id"], question_limit
-        )
-        for repo_entry in repo_entries
-    }
 
     prepared_adapters: dict[tuple[str, str], Any] = {}
     prepared_run_configs: dict[tuple[str, str, str], Any] = {}
@@ -466,9 +655,7 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
 
             setup_validation = importlib.import_module("setup_validation")
             validate_matrix_setup = setup_validation.validate_matrix_setup
-            write_setup_failure_evidence = (
-                setup_validation.write_setup_failure_evidence
-            )
+            write_setup_failure_evidence = setup_validation.write_setup_failure_evidence
 
         setup_result = validate_matrix_setup(
             repo_entries,
@@ -803,6 +990,26 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Limit questions per repo; useful for smoke runs.",
+    )
+    p_matrix.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="RFC-0021 V1 experiment manifest for setup evidence precheck.",
+    )
+    p_matrix.add_argument(
+        "--setup-only",
+        action="store_true",
+        help=(
+            "Consume manifest-bound V1 setup evidence without starting "
+            "model-backed work. Requires --manifest."
+        ),
+    )
+    p_matrix.add_argument(
+        "--index-evidence",
+        type=Path,
+        default=None,
+        help="Strict V1 index evidence consumed by --setup-only.",
     )
 
     # ---- phase ----
