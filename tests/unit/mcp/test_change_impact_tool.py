@@ -32,6 +32,7 @@ from test_change_impact_tool_execute_and_mapping import (  # noqa: F401
     test_find_test_files_matches_context_prefixed_module_stem,
     test_find_test_files_preserves_flat_variants_for_nested_modules,
     test_find_test_files_preserves_monorepo_package_scope,
+    test_find_test_files_preserves_outer_affinity_for_exact_direct,
     test_find_test_files_preserves_unscoped_direct_stem_variants,
     test_find_test_files_preserves_unscoped_exact_module_test,
     test_find_test_files_supports_dotted_javascript_and_typescript_tests,
