@@ -365,7 +365,12 @@ def _reset_all_singletons():
         (
             "tree_sitter_analyzer.formatters.formatter_registry",
             "FormatterRegistry",
-            lambda cls: (cls.clear(), cls.register_builtin_formatters()),
+            lambda cls: (
+                cls.clear_registry(),
+                importlib.import_module(
+                    "tree_sitter_analyzer.formatters.formatter_registry"
+                ).register_builtin_formatters(),
+            ),
         ),
         (
             "tree_sitter_analyzer.core.engine_manager",

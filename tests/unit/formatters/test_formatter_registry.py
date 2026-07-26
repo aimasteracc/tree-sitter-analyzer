@@ -7,6 +7,10 @@ including IFormatter interface, FormatterRegistry, and built-in formatters.
 """
 
 import json
+import logging
+import pickle
+import subprocess
+import sys
 
 import pytest
 
@@ -551,6 +555,87 @@ class TestFormatterRegistryIntegration:
 
         assert formatter1 is not formatter2
         assert isinstance(formatter1, type(formatter2))
+
+    def test_default_formatter_first_import_registers_java(self):
+        """Import order must not degrade language lookup to a generic formatter."""
+        # Issue #1181 (2026-07-27): a partial default-formatter import skipped
+        # every language registration on a fresh interpreter.
+        script = """
+from tree_sitter_analyzer.default_table_formatter import DefaultTableFormatter
+from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
+formatter = FormatterRegistry.get_formatter_for_language("java", "full")
+print(type(formatter).__name__)
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.stdout == "JavaTableFormatter\n"
+        assert result.stderr == ""
+
+    def test_global_reset_restores_java_language_formatter(self):
+        """The autouse reset helper must restore language-specific state."""
+        # Issue #1181 (2026-07-27): the fixture called nonexistent registry
+        # methods and swallowed the resulting AttributeError.
+        from tests.conftest import _reset_all_singletons
+
+        FormatterRegistry.clear_registry()
+        _reset_all_singletons()
+
+        formatter = FormatterRegistry.get_formatter_for_language("java", "full")
+        assert isinstance(formatter, JavaTableFormatter)
+
+    def test_failed_language_loading_preserves_generic_json_fallback(self, monkeypatch):
+        """A partial installation must keep generic formatters usable."""
+        # PR #1182 Codex review (2026-07-27): installing the table default
+        # before a failed language load stole the generic JSON fallback.
+        from tree_sitter_analyzer.formatters import (
+            _language_formatter_registration as registration,
+        )
+
+        def fail_language_import():
+            raise ImportError("optional formatter missing")
+
+        monkeypatch.setattr(
+            registration, "_code_language_formatters", fail_language_import
+        )
+        FormatterRegistry.clear_registry()
+        for formatter_class in (
+            JsonFormatter,
+            CsvFormatter,
+            FullFormatter,
+            CompactFormatter,
+        ):
+            FormatterRegistry.register_formatter(formatter_class)
+
+        registration.register_language_formatters(
+            FormatterRegistry, logging.getLogger(__name__)
+        )
+        formatter = FormatterRegistry.get_formatter_for_language("unknown", "json")
+
+        assert FormatterRegistry._default_language_formatter is None
+        assert isinstance(formatter, JsonFormatter)
+        assert formatter.format([]) == "[]"
+
+    def test_builtin_formatter_pickle_identity_remains_public(self):
+        """Moved public formatter classes must retain their stable pickle path."""
+        # PR #1182 Codex review (2026-07-27): the private module path would
+        # make new pickles unreadable by the preceding release.
+        expected_module = "tree_sitter_analyzer.formatters.formatter_registry"
+
+        assert {
+            formatter_class.__module__
+            for formatter_class in (
+                JsonFormatter,
+                CsvFormatter,
+                FullFormatter,
+                CompactFormatter,
+            )
+        } == {expected_module}
+        assert type(pickle.loads(pickle.dumps(JsonFormatter()))) is JsonFormatter
 
 
 class TestFormatterRegistryLanguageSupport:

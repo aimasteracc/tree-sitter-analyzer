@@ -11,10 +11,23 @@ This is the unified entry point for all formatter operations in the project.
 import logging
 from typing import Any
 
-from ..models import CodeElement
+from ._builtin_formatters import (
+    CompactFormatter,
+    CsvFormatter,
+    FullFormatter,
+    JsonFormatter,
+)
 from ._formatter_interface import IFormatter, IStructureFormatter  # noqa: F401
+from ._language_formatter_registration import (
+    ensure_default_language_formatter,
+    register_language_formatters,
+)
 
 logger = logging.getLogger(__name__)
+
+# Keep the historical public identity after moving implementations behind the facade.
+for _formatter_class in (JsonFormatter, CsvFormatter, FullFormatter, CompactFormatter):
+    _formatter_class.__module__ = __name__
 
 
 class FormatterRegistry:
@@ -32,6 +45,7 @@ class FormatterRegistry:
     _formatters: dict[str, type[IFormatter]] = {}
     _language_formatters: dict[str, Any] = {}
     _default_language_formatter: type[Any] | None = None
+    _language_registration_complete = False
 
     @classmethod
     # Format data for output: register_formatter
@@ -137,6 +151,7 @@ class FormatterRegistry:
         cls._formatters.clear()
         cls._language_formatters.clear()
         cls._default_language_formatter = None
+        cls._language_registration_complete = False
         logger.debug("Cleared all registered formatters")
 
     @classmethod
@@ -191,24 +206,9 @@ class FormatterRegistry:
         format_type: str = "full",
         **kwargs: Any,
     ) -> Any:
-        """
-        Get a formatter instance for the specified language and format type.
+        """Return the best language-specific, default, or generic formatter.
 
-        This is the primary method for obtaining formatters in the unified architecture.
-        It handles language-specific formatter lookup with fallback to defaults.
-
-        Args:
-            language: Programming language name
-            format_type: Format type (full, compact, csv, json, etc.)
-            **kwargs: Additional arguments passed to formatter constructor
-                - include_javadoc: bool - Include JavaDoc in output
-
-        Returns:
-            Formatter instance appropriate for the language and format
-
-        Example:
-            >>> formatter = FormatterRegistry.get_formatter_for_language("java", "full")
-            >>> output = formatter.format_structure(analysis_data)
+        Extra keyword arguments are forwarded to table-style constructors.
         """
         lang_key = language.lower()
         format_key = format_type.lower()
@@ -220,6 +220,9 @@ class FormatterRegistry:
             return cls._create_formatter_instance(
                 formatter_class, format_key, language, **kwargs
             )
+
+        if cls._language_registration_complete:
+            ensure_default_language_formatter(cls, logger)
 
         # Fall back to default language formatter if set
         if cls._default_language_formatter is not None:
@@ -298,315 +301,16 @@ class FormatterRegistry:
         return language.lower() in cls._language_formatters
 
 
-# Built-in formatter implementations
-
-
-class JsonFormatter(IFormatter):
-    """JSON formatter for CodeElement lists"""
-
-    @staticmethod
-    # Format data for output: get_format_name
-    def get_format_name() -> str:
-        return "json"
-
-    @staticmethod
-    def _element_to_dict(element: Any) -> dict[str, Any]:
-        """Convert one element to a JSON-serialisable dict."""
-        elem_type = getattr(element, "element_type", "unknown")
-        d: dict[str, Any] = {
-            "name": element.name,
-            "type": elem_type,
-            "start_line": element.start_line,
-            "end_line": element.end_line,
-            "language": element.language,
-        }
-        if hasattr(element, "parameters"):
-            d["parameters"] = element.parameters
-        if hasattr(element, "return_type"):
-            d["return_type"] = element.return_type
-        if hasattr(element, "visibility"):
-            d["visibility"] = element.visibility
-        if hasattr(element, "modifiers"):
-            d["modifiers"] = element.modifiers
-        if hasattr(element, "tag_name"):
-            d["tag_name"] = element.tag_name
-        if hasattr(element, "selector"):
-            d["selector"] = element.selector
-        if hasattr(element, "element_class"):
-            d["element_class"] = element.element_class
-        return d
-
-    # Format data for output: format
-    def format(self, elements: list[CodeElement]) -> str:
-        """Format elements as JSON"""
-        import json
-
-        result = [JsonFormatter._element_to_dict(el) for el in elements]
-        return json.dumps(result, indent=2, ensure_ascii=False)
-
-
-class CsvFormatter(IFormatter):
-    """CSV formatter for CodeElement lists"""
-
-    @staticmethod
-    # Format data for output: get_format_name
-    def get_format_name() -> str:
-        return "csv"
-
-    # Format data for output: format
-    def format(self, elements: list[CodeElement]) -> str:
-        """Format elements as CSV"""
-        import csv
-        import io
-
-        from ._csv_safety import csv_safe_row
-
-        output = io.StringIO()
-        writer = csv.writer(output, lineterminator="\n")
-
-        # Write header
-        writer.writerow(
-            [
-                "Type",
-                "Name",
-                "Start Line",
-                "End Line",
-                "Language",
-                "Visibility",
-                "Parameters",
-                "Return Type",
-                "Modifiers",
-            ]
-        )
-
-        # Write data rows
-        for element in elements:
-            elem_type = getattr(element, "element_type", "unknown")
-            visibility = getattr(element, "visibility", "")
-            return_type = getattr(element, "return_type", "")
-            params_raw = getattr(element, "parameters", [])
-            mods_raw = getattr(element, "modifiers", [])
-            params_str = str(params_raw)
-            mods_str = str(mods_raw)
-            writer.writerow(
-                csv_safe_row(
-                    [
-                        elem_type,
-                        element.name,
-                        element.start_line,
-                        element.end_line,
-                        element.language,
-                        visibility,
-                        params_str,
-                        return_type,
-                        mods_str,
-                    ]
-                )
-            )
-
-        csv_content = output.getvalue()
-        output.close()
-        return csv_content.rstrip("\n")
-
-
-def _append_full_element_lines(lines: list[str], element: CodeElement) -> None:
-    """Append the per-element block lines used by ``FullFormatter.format``.
-
-    r37cl (dogfood): tool flagged ``FullFormatter.format`` at nesting
-    depth 7 (L498). The per-element ``hasattr`` chain (visibility →
-    parameters → return_type) moves here so the outer formatter body
-    stays flat.
-    """
-    lines.append(f"  {element.name}")
-    lines.append(f"    Lines: {element.start_line}-{element.end_line}")
-    lines.append(f"    Language: {element.language}")
-
-    if hasattr(element, "visibility"):
-        lines.append(f"    Visibility: {element.visibility}")
-    if hasattr(element, "parameters") and (params := element.parameters):
-        params_str = ", ".join(map(str, params))
-        lines.append(f"    Parameters: {params_str}")
-    if hasattr(element, "return_type"):
-        ret_type = getattr(element, "return_type", None)
-        if ret_type:
-            lines.append(f"    Return Type: {ret_type}")
-    lines.append("")
-
-
-class FullFormatter(IFormatter):
-    """Full table formatter for CodeElement lists"""
-
-    @staticmethod
-    # Format data for output: get_format_name
-    def get_format_name() -> str:
-        return "full"
-
-    # Format data for output: format
-    def format(self, elements: list[CodeElement]) -> str:
-        """Format elements as full table"""
-        if not elements:
-            return "No elements found."
-
-        lines = []
-        lines.append("=" * 80)
-        lines.append("CODE STRUCTURE ANALYSIS")
-        lines.append("=" * 80)
-        lines.append("")
-
-        # Group elements by type
-        element_groups: dict[str, Any] = {}
-        for element in elements:
-            element_type = getattr(element, "element_type", "unknown")
-            if element_type not in element_groups:
-                element_groups[element_type] = []
-            element_groups[element_type].append(element)
-
-        # Format each group
-        for element_type, group_elements in element_groups.items():
-            type_label = element_type.upper()
-            group_count = len(group_elements)
-            lines.append(f"{type_label}S ({group_count})")
-            lines.append("-" * 40)
-            for element in group_elements:
-                # r37cl (dogfood): extracted to flatten nesting 7 → 3.
-                _append_full_element_lines(lines, element)
-            lines.append("")
-
-        return "\n".join(lines)
-
-
-class CompactFormatter(IFormatter):
-    """Compact formatter for CodeElement lists"""
-
-    @staticmethod
-    # Format data for output: get_format_name
-    def get_format_name() -> str:
-        return "compact"
-
-    # Format data for output: format
-    def format(self, elements: list[CodeElement]) -> str:
-        """Format elements in compact format"""
-        if not elements:
-            return "No elements found."
-
-        lines = []
-        lines.append("CODE ELEMENTS")
-        lines.append("-" * 20)
-
-        for element in elements:
-            element_type = getattr(element, "element_type", "unknown")
-            visibility = getattr(element, "visibility", "")
-            vis_symbol = self._get_visibility_symbol(visibility)
-
-            line = f"{vis_symbol} {element.name} ({element_type}) [{element.start_line}-{element.end_line}]"
-            lines.append(line)
-
-        return "\n".join(lines)
-
-    def _get_visibility_symbol(self, visibility: str) -> str:
-        """Get symbol for visibility"""
-        mapping = {"public": "+", "private": "-", "protected": "#", "package": "~"}
-        return mapping.get(visibility, "?")
-
-
-# Register built-in formatters
 def register_builtin_formatters() -> None:
-    """Register all built-in formatters"""
-    FormatterRegistry.register_formatter(JsonFormatter)
-
-    # Fallback to simple formatters first to avoid circular import issues
-    FormatterRegistry.register_formatter(CsvFormatter)
-    FormatterRegistry.register_formatter(FullFormatter)
-    FormatterRegistry.register_formatter(CompactFormatter)
-
-    # Register language-specific formatters
-    _register_language_formatters_safe()
-
-
-# Format data for output: _register_language_formatters_safe
-def _register_language_formatters_safe() -> None:
-    """Register language-specific formatters safely to avoid circular imports"""
-    try:
-        # Import language-specific formatters
-        from ..default_table_formatter import DefaultTableFormatter
-        from .bash_formatter import BashTableFormatter
-        from .cpp_formatter import CppTableFormatter
-        from .csharp_formatter import CSharpTableFormatter
-        from .css_formatter import CSSFormatter
-        from .go_formatter import GoTableFormatter
-        from .html_formatter import HtmlFormatter
-        from .java_formatter import JavaTableFormatter
-        from .javascript_formatter import JavaScriptTableFormatter
-        from .json_formatter import JSONFormatter
-        from .kotlin_formatter import KotlinTableFormatter
-        from .markdown_formatter import MarkdownFormatter
-        from .php_formatter import PHPTableFormatter
-        from .python_formatter import PythonTableFormatter
-        from .ruby_formatter import RubyTableFormatter
-        from .rust_formatter import RustTableFormatter
-        from .sql_formatter_wrapper import SQLFormatterWrapper
-        from .typescript_formatter import TypeScriptTableFormatter
-        from .yaml_formatter import YAMLFormatter
-
-        # Set DefaultTableFormatter as default for unsupported languages
-        FormatterRegistry.set_default_language_formatter(DefaultTableFormatter)
-
-        # Language to formatter mapping
-        language_formatters = {
-            "java": JavaTableFormatter,
-            "python": PythonTableFormatter,
-            "py": PythonTableFormatter,
-            "javascript": JavaScriptTableFormatter,
-            "js": JavaScriptTableFormatter,
-            "typescript": TypeScriptTableFormatter,
-            "ts": TypeScriptTableFormatter,
-            "csharp": CSharpTableFormatter,
-            "cs": CSharpTableFormatter,
-            "php": PHPTableFormatter,
-            "ruby": RubyTableFormatter,
-            "rb": RubyTableFormatter,
-            "kotlin": KotlinTableFormatter,
-            "kt": KotlinTableFormatter,
-            "kts": KotlinTableFormatter,
-            "bash": BashTableFormatter,
-            "sh": BashTableFormatter,
-            "go": GoTableFormatter,
-            "rust": RustTableFormatter,
-            "rs": RustTableFormatter,
-            "c": CppTableFormatter,
-            "cpp": CppTableFormatter,
-            "h": CppTableFormatter,
-            "hpp": CppTableFormatter,
-            "yaml": YAMLFormatter,
-            "yml": YAMLFormatter,
-            "json": JSONFormatter,
-            "jsonc": JSONFormatter,
-            "json5": JSONFormatter,
-            "css": CSSFormatter,
-            "html": HtmlFormatter,
-            "htm": HtmlFormatter,
-            "markdown": MarkdownFormatter,
-            "md": MarkdownFormatter,
-            "sql": SQLFormatterWrapper,
-        }
-
-        # Register each language with all format types
-        # "signatures" is the lightweight method-directory mode (~25 % of full tokens).
-        format_types = ["full", "compact", "csv", "signatures"]
-        for lang, formatter_class in language_formatters.items():
-            for fmt in format_types:
-                FormatterRegistry.register_language_formatter(
-                    lang, fmt, formatter_class
-                )
-
-        logger.info("Registered language-specific formatters")
-    except ImportError as e:
-        logger.warning(f"Failed to register language formatters: {e}")
-
-
-# NOTE: HTML formatters are intentionally excluded from analyze_code_structure
-# as they are not part of the v1.6.1.4 specification and cause format regression.
-# HTML formatters can still be registered separately for other tools if needed.
+    """Register generic and language-specific built-in formatters."""
+    for formatter_class in (
+        JsonFormatter,
+        CsvFormatter,
+        FullFormatter,
+        CompactFormatter,
+    ):
+        FormatterRegistry.register_formatter(formatter_class)
+    register_language_formatters(FormatterRegistry, logger)
 
 
 # Auto-register built-in formatters when module is imported
