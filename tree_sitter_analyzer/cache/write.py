@@ -8,12 +8,45 @@ ASTCache keeps thin wrapper methods that delegate here.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sqlite3
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _reset_incoming_edge_resolutions(
+    conn: sqlite3.Connection,
+    rel_path: str,
+) -> None:
+    """Unresolve calls from other files whose target generation was removed."""
+    edge_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'edges'"
+    ).fetchone()
+    if edge_table is None:
+        return
+    rows = conn.execute(
+        "SELECT id, metadata FROM edges "
+        "WHERE kind = 'calls' AND callee_resolved_file = ?",
+        (rel_path,),
+    ).fetchall()
+    for row in rows:
+        metadata = json.loads(row["metadata"] or "{}")
+        metadata.update(
+            {
+                "callee_resolution": "unknown",
+                "callee_resolved_file": "",
+                "callee_symbol_id": None,
+            }
+        )
+        conn.execute(
+            "UPDATE edges SET callee_resolution = 'unknown', "
+            "callee_resolved_file = '', callee_symbol_id = NULL, metadata = ? "
+            "WHERE id = ?",
+            (json.dumps(metadata, ensure_ascii=False, sort_keys=True), row["id"]),
+        )
 
 
 def invalidate_file_rows(
@@ -48,6 +81,7 @@ def invalidate_file_rows(
         EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, [])
     except sqlite3.OperationalError:
         pass
+    _reset_incoming_edge_resolutions(conn, rel_path)
     cursor = conn.execute(
         "DELETE FROM ast_index WHERE file_path = ?",
         (rel_path,),

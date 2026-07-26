@@ -10,6 +10,7 @@ from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.incremental_sync import SyncResult
 from tree_sitter_analyzer.mcp.tools.full_index_tool import (
     CodeGraphFullIndexTool,
+    _candidate_snapshot_report,
     _resolve_exclude_patterns,
 )
 
@@ -40,6 +41,37 @@ def _cache_file_paths(project_root) -> set[str]:
         return {str(row["file_path"]) for row in rows}
     finally:
         cache.close()
+
+
+def test_snapshot_report_intersects_phase_processed_files(tmp_path):
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_text("a = 1\n")
+    second.write_text("b = 1\n")
+    snapshot = CodeGraphFullIndexTool(str(tmp_path))._build_candidate_snapshot(
+        10,
+        frozenset(),
+    )
+
+    report = _candidate_snapshot_report(
+        snapshot,
+        {
+            "processed": 1,
+            "changed_during_run": 1,
+            "changed_during_run_files": ["a.py"],
+        },
+        {
+            "processed": 1,
+            "changed_during_run": 1,
+            "changed_during_run_files": ["b.py"],
+        },
+    )
+
+    assert (
+        report["processed"],
+        report["selection_reconciled"],
+        report["phase_totals_reconciled"],
+    ) == (0, True, True)
 
 
 class TestToolDefinition:

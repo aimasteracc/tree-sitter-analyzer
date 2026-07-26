@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T10:28:20Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 750,
+  "items_found": 5,
+  "actions_taken": 5,
+  "escalations": 0,
+  "tokens_estimate": 20000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 fourth Codex Draft review: operation-wide processed counts now use the intersection of phase-success path sets; invalidation unresolves incoming cross-file calls and their metadata; rebuild cleanup propagates real database failures while tolerating only absent legacy tables; every snapshot worker result is revalidated at its actual write point; and an explicit-incomplete graph sentinel prevents nonempty partial edge sets from masquerading as complete while preserving legacy fallback compatibility. Focused coverage (254 tests), strict worktree patch coverage, full pytest (1285 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T10:03:13Z",
   "pattern": "pr-review-repair",
   "duration_s": 720,

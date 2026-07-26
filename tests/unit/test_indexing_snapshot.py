@@ -362,6 +362,101 @@ def test_ast_cache_discards_worker_result_with_mismatched_fingerprint(tmp_path):
     assert result["changed_during_run_files"] == ["app.py"]
 
 
+def test_ast_cache_revalidates_each_result_at_write_point(tmp_path):
+    from tree_sitter_analyzer.cache import indexer
+
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_text("a = 1\n")
+    second.write_text("b = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(first), str(second)),
+        language_fn=_python_language,
+    )
+    cache = ASTCache(str(tmp_path))
+    real_insert = indexer.insert_index_row
+
+    def insert_first_then_mutate_second(*args, **kwargs):
+        real_insert(*args, **kwargs)
+        result = args[2]
+        if result["rel_path"] == "a.py":
+            second.write_text("b = 200\n")
+
+    try:
+        with patch.object(
+            indexer,
+            "insert_index_row",
+            side_effect=insert_first_then_mutate_second,
+        ):
+            result = cache.index_project(
+                max_files=10,
+                workers=0,
+                exclude_patterns=frozenset(),
+                candidate_snapshot=snapshot,
+            )
+        rows = [
+            row["file_path"]
+            for row in cache.get_conn()
+            .execute("SELECT file_path FROM ast_index ORDER BY file_path")
+            .fetchall()
+        ]
+    finally:
+        cache.close()
+
+    assert (rows, result["processed"], result["changed_during_run_files"]) == (
+        ["a.py"],
+        1,
+        ["b.py"],
+    )
+
+
+def test_partial_force_snapshot_does_not_fallback_to_existing_edges(tmp_path):
+    from tree_sitter_analyzer.cache import extraction
+
+    changed = tmp_path / "a.py"
+    stable = tmp_path / "b.py"
+    changed.write_text("a = 1\n")
+    stable.write_text("def caller():\n    return caller()\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(changed), str(stable)),
+        language_fn=_python_language,
+    )
+    cache = ASTCache(str(tmp_path))
+    real_worker = extraction._worker_index_file
+
+    def mutate_first_after_worker(args):
+        result = real_worker(args)
+        if result["rel_path"] == "a.py":
+            changed.write_text("a = 200\n")
+        return result
+
+    try:
+        with patch.object(
+            extraction,
+            "_worker_index_file",
+            side_effect=mutate_first_after_worker,
+        ):
+            cache.index_project(
+                max_files=10,
+                workers=0,
+                force=True,
+                exclude_patterns=frozenset(),
+                candidate_snapshot=snapshot,
+            )
+        has_edges = cache.has_call_edges()
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (has_edges, graph_built) == (True, False)
+
+
 def test_ast_partition_rejects_selected_entry_without_metadata(tmp_path):
     snapshot = IndexCandidateSnapshot(
         project_root=os.path.abspath(tmp_path),

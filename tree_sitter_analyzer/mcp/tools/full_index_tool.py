@@ -147,7 +147,9 @@ def _candidate_snapshot_report(
     ]
     ast_processed = int(ast_phase.get("processed", 0))
     incremental_processed = int(incremental_phase.get("processed", 0))
-    processed = min(ast_processed, incremental_processed)
+    selected_paths = {entry.rel_path for entry in snapshot.selected_entries}
+    changed_paths = set(changed_files)
+    processed = len(selected_paths - changed_paths)
     report: dict[str, Any] = {
         **snapshot.metrics(),
         "processed": processed,
@@ -159,8 +161,8 @@ def _candidate_snapshot_report(
             len(changed_details) > _ERROR_DETAILS_CAP
         ),
     }
-    report["selection_reconciled"] = snapshot.selected == (
-        processed + len(changed_files)
+    report["selection_reconciled"] = changed_paths <= selected_paths and (
+        snapshot.selected == processed + len(changed_paths)
     )
     report["phase_totals_reconciled"] = snapshot.selected == ast_processed + int(
         ast_phase.get("changed_during_run", 0)

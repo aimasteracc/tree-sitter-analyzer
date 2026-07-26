@@ -1,5 +1,6 @@
 """Tests for incremental sync engine (incremental_sync module)."""
 
+import json
 import os
 import sys
 import time
@@ -866,3 +867,52 @@ def test_late_unchanged_file_mutation_rolls_back_unchanged_counter(tmp_path):
         cache.close()
 
     assert result.unchanged_files == 0
+
+
+def test_late_mutation_unresolves_edges_from_other_files(tmp_path):
+    target = tmp_path / "target.py"
+    caller = tmp_path / "caller.py"
+    target.write_text("def target():\n    return 1\n")
+    caller.write_text(
+        "from target import target\n\ndef caller():\n    return target()\n"
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    snapshot = _snapshot(tmp_path, target, caller)
+    sync = IncrementalSync(cache)
+    real_file_changed = sync._file_changed
+    conn = cache.get_conn()
+    before = conn.execute(
+        "SELECT callee_resolved_file FROM edges "
+        "WHERE kind = 'calls' AND file_path = 'caller.py' "
+        "AND callee_name = 'target'"
+    ).fetchone()
+
+    def unchanged_then_mutate(disk_info, indexed_info, rel_path):
+        if rel_path == "target.py":
+            target.write_text("def target():\n    return 200\n")
+            return False
+        return real_file_changed(disk_info, indexed_info, rel_path)
+
+    try:
+        with patch.object(sync, "_file_changed", side_effect=unchanged_then_mutate):
+            sync.sync(max_files=10, candidate_snapshot=snapshot)
+        after = conn.execute(
+            "SELECT callee_resolution, callee_resolved_file, "
+            "callee_symbol_id, metadata FROM edges "
+            "WHERE kind = 'calls' AND file_path = 'caller.py' "
+            "AND callee_name = 'target'"
+        ).fetchone()
+    finally:
+        cache.close()
+
+    metadata = json.loads(after["metadata"])
+    assert (
+        before["callee_resolved_file"],
+        after["callee_resolution"],
+        after["callee_resolved_file"],
+        after["callee_symbol_id"],
+        metadata["callee_resolution"],
+        metadata["callee_resolved_file"],
+        metadata["callee_symbol_id"],
+    ) == ("target.py", "unknown", "", None, "unknown", "", None)

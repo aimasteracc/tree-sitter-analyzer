@@ -411,15 +411,18 @@ def _clear_full_rebuild_rows(cache: Any, conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT INTO ast_symbols_fts(ast_symbols_fts) VALUES('delete-all')"
         )
-    try:
-        conn.execute("DELETE FROM ast_symbol_rows")
-    except sqlite3.OperationalError:
-        pass
+    _delete_all_rows_if_present(conn, "ast_symbol_rows")
     for table in ("ast_imports", "ast_symbol_activation", "edges"):
-        try:
-            conn.execute(f"DELETE FROM {table}")  # nosec B608 - fixed table names
-        except sqlite3.OperationalError:
-            pass
+        _delete_all_rows_if_present(conn, table)
+
+
+def _delete_all_rows_if_present(conn: sqlite3.Connection, table: str) -> None:
+    """Delete a legacy-optional table, propagating every real database failure."""
+    try:
+        conn.execute(f"DELETE FROM {table}")  # nosec B608 - fixed table names
+    except sqlite3.OperationalError as exc:
+        if "no such table" not in str(exc).lower():
+            raise
 
 
 def insert_index_row(
@@ -487,44 +490,41 @@ def index_parallel(
         return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
 
 
-def _discard_changed_snapshot_results(
-    results: list[dict[str, Any]],
+def _snapshot_result_is_stable(
+    result: dict[str, Any],
     candidate_snapshot: IndexCandidateSnapshot,
     stats: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """Discard worker output that no longer represents the frozen snapshot."""
+) -> bool:
+    """Validate one worker result immediately before its database write."""
     entries = {entry.rel_path: entry for entry in candidate_snapshot.selected_entries}
-    stable_results: list[dict[str, Any]] = []
-    for result in results:
-        rel_path = str(result["rel_path"]).replace("\\", "/")
-        entry = entries[rel_path]
-        fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
-        worker_fingerprint = (
-            int(result.get("mtime_ns", fingerprint.mtime_ns)),
-            int(result.get("file_size", fingerprint.file_size)),
-        )
-        expected_fingerprint = (fingerprint.mtime_ns, fingerprint.file_size)
-        change_reason = (
-            "file changed after candidate snapshot"
-            if worker_fingerprint != expected_fingerprint
-            else changed_since_snapshot(entry)
-        )
-        if change_reason is None:
-            stable_results.append(result)
-            continue
+    rel_path = str(result["rel_path"]).replace("\\", "/")
+    entry = entries[rel_path]
+    fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
+    worker_fingerprint = (
+        int(result.get("mtime_ns", fingerprint.mtime_ns)),
+        int(result.get("file_size", fingerprint.file_size)),
+    )
+    expected_fingerprint = (fingerprint.mtime_ns, fingerprint.file_size)
+    change_reason = (
+        "file changed after candidate snapshot"
+        if worker_fingerprint != expected_fingerprint
+        else changed_since_snapshot(entry)
+    )
+    if change_reason is None:
+        return True
 
-        stats["skipped"] += 1
-        stats["processed"] = max(0, int(stats["processed"]) - 1)
-        stats["changed_during_run"] += 1
-        stats["changed_during_run_files"].append(rel_path)
-        stats["files"].append(
-            {
-                "file": rel_path,
-                "status": "skipped",
-                "reason": change_reason,
-            }
-        )
-    return stable_results
+    stats["skipped"] += 1
+    stats["processed"] = max(0, int(stats["processed"]) - 1)
+    stats["changed_during_run"] += 1
+    stats["changed_during_run_files"].append(rel_path)
+    stats["files"].append(
+        {
+            "file": rel_path,
+            "status": "skipped",
+            "reason": change_reason,
+        }
+    )
+    return False
 
 
 def run_index_project(
@@ -576,6 +576,7 @@ def run_index_project(
             # DELETE/commit itself raises (e.g. SQLITE_FULL) — otherwise a
             # failed rebuild would leave a stuck marker until TTL expiry.
             conn = cache._get_conn()
+            had_call_graph = cache.call_graph_built()
             _mark_build_in_progress(conn)
             _clear_call_graph_built(conn)
             try:
@@ -583,6 +584,8 @@ def run_index_project(
                 conn.commit()
             except Exception:
                 conn.rollback()
+                if had_call_graph:
+                    _mark_call_graph_built(conn)
                 raise
         conn = cache._get_conn()
         effective_exclude = (
@@ -614,15 +617,18 @@ def run_index_project(
                 _worker_index_file((p, cache.project_root, lang))
                 for p, lang in candidates
             ]
-        if candidate_snapshot is not None:
-            results = _discard_changed_snapshot_results(
-                results,
-                candidate_snapshot,
-                stats,
-            )
         indexed_at = datetime.now(timezone.utc).isoformat()
         from .. import ast_cache as _ast_cache_mod
 
+        result_guard = (
+            partial(
+                _snapshot_result_is_stable,
+                candidate_snapshot=candidate_snapshot,
+                stats=stats,
+            )
+            if candidate_snapshot is not None
+            else None
+        )
         _ast_cache_mod._commit_index_results(
             conn,
             results,
@@ -635,6 +641,7 @@ def run_index_project(
             ),
             indexed_at,
             activation_enabled,
+            result_guard=result_guard,
         )
         stats["total_files"] = count
         stats["workers"] = workers

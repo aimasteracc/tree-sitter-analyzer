@@ -1375,6 +1375,27 @@ def test_full_rebuild_clear_tolerates_legacy_primary_only_schema():
     conn.close()
 
 
+def test_full_rebuild_clear_propagates_derived_table_failure(tmp_path):
+    cache = ASTCache(str(tmp_path))
+    conn = cache.get_conn()
+
+    class FailingDerivedDelete:
+        def execute(self, sql, *args, **kwargs):
+            if sql == "DELETE FROM ast_imports":
+                raise sqlite3.OperationalError("database or disk is full")
+            return conn.execute(sql, *args, **kwargs)
+
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="disk is full"):
+            _clear_full_rebuild_rows(
+                SimpleNamespace(fts5_available=False),
+                FailingDerivedDelete(),
+            )
+        conn.rollback()
+    finally:
+        cache.close()
+
+
 def test_file_invalidation_tolerates_legacy_primary_only_schema():
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE ast_index (file_path TEXT PRIMARY KEY)")
@@ -1411,3 +1432,51 @@ def test_force_rebuild_clear_failure_preserves_existing_index(tmp_path):
         cache.close()
 
     assert after == before
+
+
+def test_force_rebuild_clear_failure_restores_complete_graph_marker(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("def caller():\n    return caller()\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+
+    def clear_then_fail(_cache, conn):
+        conn.execute("DELETE FROM ast_index")
+        raise sqlite3.OperationalError("simulated derived cleanup failure")
+
+    try:
+        with (
+            patch(
+                "tree_sitter_analyzer.cache.indexer._clear_full_rebuild_rows",
+                side_effect=clear_then_fail,
+            ),
+            pytest.raises(sqlite3.OperationalError, match="cleanup failure"),
+        ):
+            cache.index_project(force=True, workers=0)
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is True
+
+
+def test_force_rebuild_clear_failure_keeps_incomplete_graph_marker(tmp_path):
+    cache = ASTCache(str(tmp_path))
+
+    def fail_clear(_cache, _conn):
+        raise sqlite3.OperationalError("simulated derived cleanup failure")
+
+    try:
+        with (
+            patch(
+                "tree_sitter_analyzer.cache.indexer._clear_full_rebuild_rows",
+                side_effect=fail_clear,
+            ),
+            pytest.raises(sqlite3.OperationalError, match="cleanup failure"),
+        ):
+            cache.index_project(force=True, workers=0)
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is False
