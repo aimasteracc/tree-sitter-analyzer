@@ -790,6 +790,26 @@ def test_find_test_files_preserves_outer_affinity_for_exact_direct():
     ]
 
 
+def test_find_test_files_preserves_direct_variants_at_best_outer_affinity():
+    """Nested source modules retain all direct variants at the best outer rank."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/cli/commands/find_and_grep_cli.py"],
+        {
+            "tests/unit/cli/test_find_and_grep_cli.py",
+            "tests/unit/cli/test_find_and_grep_cli_main.py",
+            "tests/unit/cli/test_find_and_grep_cli_parser.py",
+            "tests/unit/cli/test_find_and_grep_cli_run.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/cli/commands/find_and_grep_cli.py"] == [
+        "tests/unit/cli/test_find_and_grep_cli.py",
+        "tests/unit/cli/test_find_and_grep_cli_main.py",
+        "tests/unit/cli/test_find_and_grep_cli_parser.py",
+        "tests/unit/cli/test_find_and_grep_cli_run.py",
+    ]
+
+
 def test_find_test_files_never_replaces_direct_test_with_affinity_fallback():
     """A mirrored directory must not make an unrelated helper replace direct."""
     mapping = change_impact_tool._find_test_files(
@@ -846,6 +866,29 @@ def test_find_test_files_keeps_monorepo_package_identity_during_affinity():
     assert mapping["packages/a/src/core/config.py"] == [
         "packages/a/tests/core/test_config.py"
     ]
+
+
+def test_find_test_files_does_not_restore_sibling_package_direct_match():
+    """A sibling-only direct name must fall back instead of appearing focused."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/a/src/core/config.py"],
+        {"packages/b/tests/core/test_config.py"},
+    )
+
+    assert mapping["packages/a/src/core/config.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+    assert (
+        change_impact_tool.test_path_subsystem_affinity_rank(
+            "packages/b/tests/core/test_config.py",
+            "packages/a/src/core/config.py",
+        )
+        is None
+    )
+    assert not change_impact_tool.test_paths_have_compatible_package_scope(
+        "packages/.hidden/tests/core/test_config.py",
+        "packages/a/src/core/config.py",
+    )
 
 
 def test_find_test_files_uses_innermost_nested_package_identity():
