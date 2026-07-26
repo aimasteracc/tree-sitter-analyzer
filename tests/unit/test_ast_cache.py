@@ -1428,6 +1428,83 @@ def test_commit_helper_guards_each_full_batch():
     assert guarded == [["a.py"], ["b.py"]]
 
 
+def test_commit_helper_commits_full_batch_without_guard():
+    # PR #1172: optional snapshot guards must not change ordinary batch commits.
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE committed_files (file_path TEXT)")
+    result = {
+        "rel_path": "a.py",
+        "status": "indexed",
+        "symbols_count": 0,
+        "content_hash": "0" * 64,
+    }
+    stats = {"errors": 0, "indexed": 0, "files": []}
+
+    def insert(item, _indexed_at, *, include_activation):
+        conn.execute("INSERT INTO committed_files VALUES (?)", (item["rel_path"],))
+
+    _commit_index_results(conn, [result], stats, insert, "now", False, batch_size=1)
+
+    assert conn.execute("SELECT file_path FROM committed_files").fetchall() == [
+        ("a.py",)
+    ]
+
+
+def test_snapshot_batch_revalidation_handles_missing_error_detail(tmp_path):
+    # PR #1172: a failed worker may have no prior detail row to replace.
+    from tree_sitter_analyzer.cache.indexer import _revalidate_snapshot_batch
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    entry = _snapshot(tmp_path, path).selected_entries[0]
+    path.write_text("value = 200\n")
+    stats = {
+        "errors": 1,
+        "indexed": 0,
+        "skipped": 0,
+        "processed": 1,
+        "changed_during_run": 0,
+        "changed_during_run_files": [],
+        "files": [],
+    }
+
+    _revalidate_snapshot_batch(
+        [{"rel_path": "app.py", "status": "io_error"}],
+        cache=SimpleNamespace(fts5_available=False),
+        conn=sqlite3.connect(":memory:"),
+        entries={"app.py": entry},
+        stats=stats,
+    )
+
+    assert stats == {
+        "errors": 0,
+        "indexed": 0,
+        "skipped": 1,
+        "processed": 0,
+        "changed_during_run": 1,
+        "changed_during_run_files": ["app.py"],
+        "files": [
+            {
+                "file": "app.py",
+                "status": "skipped",
+                "reason": "file changed after candidate snapshot",
+            }
+        ],
+    }
+
+
+def test_disabled_synapse_backfill_returns_complete_zero_stats(tmp_path, monkeypatch):
+    # PR #1172: disabled resolution is complete no-op work, not indeterminate.
+    monkeypatch.setenv("TSA_SYNAPSE", "0")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache._run_synapse_backfill()
+    finally:
+        cache.close()
+
+    assert result == {"total": 0, "resolved": 0, "unchanged": 0, "errors": 0}
+
+
 def test_cached_snapshot_mutation_does_not_stamp_graph_complete(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")

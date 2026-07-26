@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Incrementally reconcile source files with the persistent AST cache."""
 
 import fnmatch
@@ -77,7 +76,6 @@ class IncrementalSync:
         max_files = normalize_index_max_files(max_files)
         result = SyncResult()
         conn = self._cache.get_conn()
-
         indexed_rows = self._load_indexed_rows(conn)
         disk_files, present_paths, truncated, changed_files = self._scan_disk_files(
             max_files,
@@ -119,15 +117,17 @@ class IncrementalSync:
             )
         finally:
             self._cache._defer_single_file_backfill = previous_defer
-        if candidate_snapshot is not None:
+
+        def invalidate_snapshot_changes() -> None:
+            if candidate_snapshot is None:
+                return
             known_changed = set(result.changed_during_run_files)
-            late_changes: list[tuple[str, str]] = []
-            for entry in candidate_snapshot.selected_entries:
-                if entry.rel_path in known_changed:
-                    continue
-                change_reason = changed_since_snapshot(entry)
-                if change_reason is not None:
-                    late_changes.append((entry.rel_path, change_reason))
+            late_changes = [
+                (entry.rel_path, reason)
+                for entry in candidate_snapshot.selected_entries
+                if entry.rel_path not in known_changed
+                and (reason := changed_since_snapshot(entry)) is not None
+            ]
             for rel_path, reason in sorted(late_changes):
                 self._cache.invalidate(os.path.join(self._cache.project_root, rel_path))
                 for index in range(len(result.details) - 1, -1, -1):
@@ -161,6 +161,7 @@ class IncrementalSync:
                 candidate_snapshot.selected - result.changed_during_run,
             )
 
+        invalidate_snapshot_changes()
         try:
             conn.commit()
         except Exception as exc:  # pragma: no cover - DB commit failure is rare
@@ -180,13 +181,14 @@ class IncrementalSync:
             except Exception:  # pragma: no cover - backfill is best-effort
                 backfill_complete = False
 
+        invalidate_snapshot_changes()
         indexed_paths = {
             str(row["file_path"])
             for row in conn.execute("SELECT file_path FROM ast_index").fetchall()
         }
-        snapshot_scope_complete = candidate_snapshot is None or (
-            candidate_snapshot.errors == 0 and candidate_snapshot.selected > 0
-        )
+        snapshot_scope_complete = bool(
+            disk_files if candidate_snapshot is None else candidate_snapshot.selected
+        ) and (candidate_snapshot is None or candidate_snapshot.errors == 0)
         if (
             not result.truncated_by_max_files
             and result.errors == 0

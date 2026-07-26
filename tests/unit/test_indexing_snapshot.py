@@ -119,9 +119,7 @@ def test_snapshot_detects_modification(tmp_path):
         language_fn=_python_language,
     )
     entry = snapshot.selected_entries[0]
-
     assert changed_since_snapshot(entry) is None
-
     path.write_text("value = 200\n")
     os.utime(path, None)
     assert changed_since_snapshot(entry) == "file changed after candidate snapshot"
@@ -138,7 +136,6 @@ def test_snapshot_detects_deletion(tmp_path):
         language_fn=_python_language,
     )
     entry = snapshot.selected_entries[0]
-
     path.unlink()
     assert changed_since_snapshot(entry) == "file disappeared after candidate snapshot"
 
@@ -153,9 +150,31 @@ def test_snapshot_is_structurally_immutable(tmp_path):
         walk_fn=lambda _root: (str(path),),
         language_fn=_python_language,
     )
-
     assert isinstance(snapshot.entries, tuple)
     assert isinstance(snapshot.present_paths, frozenset)
+
+
+def test_snapshot_deduplicates_candidates_after_path_resolution(tmp_path):
+    # PR #1172: in-root symlink aliases must not index one source twice.
+    target = tmp_path / "app.py"
+    alias = tmp_path / "alias.py"
+    target.write_text("value = 1\n")
+    realpath = os.path.realpath
+
+    def resolve(path):
+        return str(target) if path == str(alias) else realpath(path)
+
+    with patch(
+        "tree_sitter_analyzer.indexing_snapshot.os.path.realpath", side_effect=resolve
+    ):
+        snapshot = build_index_candidate_snapshot(
+            str(tmp_path),
+            max_files=10,
+            exclude_patterns=frozenset(),
+            walk_fn=lambda _root: (str(target), str(alias)),
+            language_fn=_python_language,
+        )
+    assert (snapshot.discovered, snapshot.selected, len(snapshot.entries)) == (1, 1, 1)
 
 
 def test_ast_partition_consumes_every_frozen_decision(tmp_path):
@@ -202,7 +221,6 @@ def test_ast_partition_consumes_every_frozen_decision(tmp_path):
         ),
     )
     changed.write_text("changed = 200\n")
-
     stats, candidates, count = _partition(snapshot, conn)
 
     assert candidates == []

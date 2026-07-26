@@ -189,6 +189,48 @@ class TestSyncNewFile:
         assert any("new_module.py" in d["file"] for d in result.details)
 
 
+def test_snapshot_mutation_during_backfill_is_invalidated(tmp_path):
+    # PR #1172: the final backfill must not certify a stale snapshot.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    cache = ASTCache(str(tmp_path))
+
+    def backfill_then_mutate():
+        path.write_text("value = 200\n")
+        return {"resolved": 0, "errors": 0}
+
+    try:
+        with patch.object(
+            cache, "_run_synapse_backfill", side_effect=backfill_then_mutate
+        ):
+            result = IncrementalSync(cache).sync(
+                max_files=10, candidate_snapshot=snapshot
+            )
+        outcome = (
+            result.changed_during_run_files,
+            result.processed,
+            cache.lookup(str(path)),
+            cache.call_graph_built(),
+        )
+    finally:
+        cache.close()
+
+    assert outcome == (["app.py"], 0, None, False)
+
+
+def test_empty_incremental_scan_keeps_graph_incomplete(tmp_path):
+    # PR #1172: zero live candidates are not a complete call graph.
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = IncrementalSync(cache).sync()
+        outcome = (result.scanned, cache.call_graph_built())
+    finally:
+        cache.close()
+
+    assert outcome == (0, False)
+
+
 class TestSyncMixedChanges:
     def test_handles_mixed_changes(self, sync, cache, project):
         sync.sync()
