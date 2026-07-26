@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -97,17 +98,35 @@ def test_path_subsystem_affinity_rank(
 
 def test_file_has_exact_module_stem(test_file: str, changed_file: str) -> bool:
     """Return whether a test filename exactly names the changed module."""
-    changed_stem = Path(changed_file).stem.lower()
-    test_stem = Path(test_file).stem.lower()
-    if test_stem.endswith(".test"):
-        test_stem = test_stem[: -len(".test")]
-    if test_stem.endswith(".spec"):
-        test_stem = test_stem[: -len(".spec")]
-    return test_stem in {
-        f"test_{changed_stem}",
-        f"{changed_stem}_test",
-        f"{changed_stem}_spec",
-    }
+    return test_file_subject_stem(test_file) == module_stem_for_path(changed_file)
+
+
+def test_file_subject_stem(test_file: str) -> str:
+    """Return the source-module subject encoded by a runnable test filename."""
+    normalized = Path(test_file.replace("\\", "/"))
+    stem = normalized.stem
+    if normalized.suffix.lower() == ".java" and stem.endswith("Test"):
+        stem = stem[: -len("Test")]
+    elif stem.startswith("test_"):
+        stem = stem[len("test_") :]
+    else:
+        for suffix in (".test", ".spec", "_test", "_spec"):
+            if stem.lower().endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+    return _normalize_module_identifier(stem)
+
+
+def module_stem_for_path(file_path: str | Path) -> str:
+    """Return a cross-language normalized source-module stem."""
+    normalized = Path(str(file_path).replace("\\", "/"))
+    return _normalize_module_identifier(normalized.stem)
+
+
+def _normalize_module_identifier(stem: str) -> str:
+    """Normalize snake, kebab, dotted, and CamelCase module identifiers."""
+    snake_stem = re.sub(r"(?<!^)(?=[A-Z])", "_", stem)
+    return snake_stem.lower().replace("-", "_").replace(".", "_")
 
 
 def python_package_test_stems(file_path: str | Path) -> list[str]:
