@@ -25,7 +25,19 @@ def source_subsystem_stems(file_path: str | Path) -> list[str]:
         index for index, part in enumerate(parents) if part.lower() in source_roots
     ]
     if root_indexes:
-        parents = parents[root_indexes[-1] + 1 :]
+        root_index = root_indexes[-1]
+        package_prefix = parents[:root_index]
+        nested_package_markers = {"app", "apps", "package", "packages", "pkg"}
+        marker_indexes = [
+            index
+            for index, part in enumerate(package_prefix)
+            if part.lower() in nested_package_markers
+        ]
+        if marker_indexes:
+            package_scope = package_prefix[marker_indexes[-1] + 1 :]
+        else:
+            package_scope = package_prefix[-1:]
+        parents = [*package_scope, *parents[root_index + 1 :]]
     elif len(parents) > 1:
         # A leading package directory is not a subsystem. This covers both this
         # repository and arbitrary projects without hard-coding a package name.
