@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T06:48:21Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 900,
+  "items_found": 3,
+  "actions_taken": 3,
+  "escalations": 0,
+  "tokens_estimate": 24000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1160 fifth Codex loop: bound manifest indexed_arms to selected arm index modes, cross-checked manifest repo_commits against selected repository revisions, and rejected empty/noncanonical required or supplied readiness-oracle identifiers. Benchmark harness (126 tests), focused coverage, patch coverage, full pytest, build, Ruff, formatting, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T06:32:18Z",
   "pattern": "pr-review-repair",
   "duration_s": 720,

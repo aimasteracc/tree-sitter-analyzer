@@ -572,7 +572,7 @@ class TestCodeGraphCompareSetupGate:
         repo_path: Path,
     ) -> tuple[list[dict], list[dict], list[dict]]:
         return (
-            [{"id": "gin", "local_path": str(repo_path)}],
+            [{"id": "gin", "local_path": str(repo_path), "commit": "repo123"}],
             [
                 {"id": "codegraph-warm", "index_mode": "warm"},
                 {"id": "tsa-warm", "index_mode": "warm"},
@@ -587,7 +587,7 @@ class TestCodeGraphCompareSetupGate:
         )
 
     @classmethod
-    def _v1_setup_manifest(cls, *, agent_backend: str = "claude"):
+    def _v1_setup_manifest(cls, *, agent_backend: str = "claude", **overrides):
         from benchmarks.codegraph_compare.setup_validation import (
             selected_matrix_config_hash,
             selected_questions_hash,
@@ -596,21 +596,25 @@ class TestCodeGraphCompareSetupGate:
 
         repos, arms, questions = cls._v1_matrix_configs(Path("/runtime-path"))
         questions_by_repo = {"gin": questions}
-        return _v1_manifest(
-            agent_backend=agent_backend,
-            expected_run_ids=tuple(
+        values = {
+            "agent_backend": agent_backend,
+            "expected_run_ids": tuple(
                 f"q1__{arm['id']}__{agent_backend}__00" for arm in arms
             ),
-            config_hash=selected_matrix_config_hash(repos, arms),
-            question_hash=selected_questions_hash(questions_by_repo),
-            schedule_hash=selected_schedule_hash(
+            "config_hash": selected_matrix_config_hash(repos, arms),
+            "question_hash": selected_questions_hash(questions_by_repo),
+            "schedule_hash": selected_schedule_hash(
                 repos,
                 arms,
                 questions_by_repo,
                 repeats=1,
                 agent_backend=agent_backend,
             ),
-            timeout_seconds=1200,
+            "timeout_seconds": 1200,
+        }
+        values.update(overrides)
+        return _v1_manifest(
+            **values,
         )
 
     @staticmethod
@@ -1034,6 +1038,53 @@ class TestCodeGraphCompareSetupGate:
         evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
         assert [failure["code"] for failure in evidence["failures"]] == [
             "MATRIX_QUESTION_HASH_MISMATCH"
+        ]
+
+    def test_setup_only_rejects_indexed_arm_omission(self, monkeypatch, tmp_path: Path):
+        manifest = self._v1_setup_manifest(
+            indexed_arms=(),
+            required_readiness_oracles={},
+        )
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_INDEXED_ARMS_MISMATCH"
+        ]
+
+    def test_setup_only_rejects_conflicting_repo_commit(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest(repo_commits={"gin": "conflicting-revision"})
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_REPO_COMMIT_MISMATCH"
         ]
 
     def test_setup_only_rejects_reordered_execution_schedule(
@@ -2463,6 +2514,35 @@ class TestBenchmarkExperimentIntegrity:
                 expected_run_ids=("q1__tsa-warm__codex__00",),
                 required_arms=("codegraph-warm", "tsa-warm"),
             )
+
+    def test_manifest_rejects_empty_required_readiness_oracle(self):
+        with pytest.raises(
+            ValueError,
+            match="Readiness oracles must exactly cover indexed arms",
+        ):
+            _v1_manifest(
+                required_readiness_oracles={
+                    "codegraph-warm": ("",),
+                    "tsa-warm": ("known-symbol",),
+                }
+            )
+
+    def test_index_stats_rejects_empty_supplied_readiness_oracle(self):
+        from dataclasses import replace
+
+        manifest = _v1_manifest()
+        stats = _v1_run(
+            manifest,
+            "q1__codegraph-warm__codex__00",
+        ).index_stats
+        if stats is None:
+            pytest.fail("indexed fixture must include V1 index statistics")
+
+        with pytest.raises(
+            ValueError,
+            match=("Readiness oracle identifiers must be non-empty canonical strings"),
+        ):
+            replace(stats, readiness_oracles=("",))
 
     def test_registry_rejects_conflicting_manifest_for_same_experiment(
         self, tmp_path: Path

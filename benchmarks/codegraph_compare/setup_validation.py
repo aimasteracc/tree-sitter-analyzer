@@ -284,6 +284,39 @@ def _validate_manifest_config_hashes(
             "MATRIX_QUESTION_HASH_MISMATCH",
             "selected question configuration does not match question_hash",
         )
+    indexed_arm_ids: set[str] = set()
+    for arm in arm_entries:
+        arm_id = str(arm["id"])
+        index_mode = str(arm.get("index_mode", "warm"))
+        if index_mode not in {"none", "warm", "cold"}:
+            return _failure(
+                "*",
+                arm_id,
+                index_mode,
+                "MATRIX_INDEXED_ARMS_MISMATCH",
+                f"selected arm has unsupported index_mode: {index_mode}",
+            )
+        if index_mode != "none":
+            indexed_arm_ids.add(arm_id)
+    if indexed_arm_ids != set(manifest.indexed_arms):
+        return _failure(
+            "*",
+            "*",
+            "none",
+            "MATRIX_INDEXED_ARMS_MISMATCH",
+            "manifest indexed_arms does not match selected arm index modes",
+        )
+    selected_repo_commits = {
+        str(repo["id"]): repo.get("commit") for repo in repo_entries
+    }
+    if selected_repo_commits != dict(manifest.repo_commits):
+        return _failure(
+            "*",
+            "*",
+            "none",
+            "MATRIX_REPO_COMMIT_MISMATCH",
+            "manifest repo_commits does not match selected repository commits",
+        )
     return None
 
 

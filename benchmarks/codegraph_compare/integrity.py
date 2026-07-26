@@ -253,7 +253,15 @@ def create_manifest(
         if not set(allowed_errors) <= set(paths):
             raise ValueError("Parse-error allowlists must be eligible paths")
     if set(required_readiness_oracles) != indexed_set or any(
-        not value for value in required_readiness_oracles.values()
+        type(identifiers) is not tuple
+        or not identifiers
+        or any(
+            type(identifier) is not str
+            or not identifier
+            or identifier != identifier.strip()
+            for identifier in identifiers
+        )
+        for identifiers in required_readiness_oracles.values()
     ):
         raise ValueError("Readiness oracles must exactly cover indexed arms")
     if any(cell.agent_backend != agent_backend for cell in expected_cells):
