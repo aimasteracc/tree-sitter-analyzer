@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T06:32:18Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 720,
+  "items_found": 1,
+  "actions_taken": 1,
+  "escalations": 0,
+  "tokens_estimate": 16000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1160 fourth Codex loop: restored the documented direct-script setup-only path by bootstrapping the repository root before package imports. An isolated real subprocess regression proves the CLI now reaches its normal Invalid experiment manifest diagnostic without editable-install or PYTHONPATH help. Benchmark harness (122 tests), focused coverage, patch coverage, full pytest, build, Ruff, formatting, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T06:18:17Z",
   "pattern": "pr-review-repair",
   "duration_s": 1200,

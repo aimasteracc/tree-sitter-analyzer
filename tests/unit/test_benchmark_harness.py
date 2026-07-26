@@ -1329,6 +1329,33 @@ class TestCodeGraphCompareSetupGate:
             in capsys.readouterr().err
         )
 
+    def test_setup_only_direct_script_preserves_package_imports(self, tmp_path: Path):
+        import subprocess
+
+        script = Path(compare_run.__file__).resolve()
+        missing_manifest = tmp_path / "missing-manifest.json"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                str(script),
+                "run-matrix",
+                "--manifest",
+                str(missing_manifest),
+                "--index-evidence",
+                str(tmp_path / "unused-index-evidence.json"),
+                "--setup-only",
+            ],
+            cwd=tmp_path,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 1
+        assert f"Invalid experiment manifest {missing_manifest}" in result.stderr
+        assert "ModuleNotFoundError" not in result.stderr
+
     def test_invalid_matrix_yaml_shape_records_started_and_blocked(
         self, monkeypatch, tmp_path: Path
     ):
