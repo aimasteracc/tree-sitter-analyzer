@@ -40,6 +40,13 @@ Interfaces live in `formatters/_formatter_interface.py` (no upward imports — b
 | `IStructureFormatter` | legacy adapters | `format_structure(dict)` → str |
 
 `formatters/formatter_registry.py` re-exports both for backward compat.
+Generic `CodeElement` implementations (`JsonFormatter`, `CsvFormatter`,
+`FullFormatter`, and `CompactFormatter`) live in
+`formatters/_builtin_formatters.py`; the registry remains their stable import
+facade. `formatters/_language_formatter_registration.py` owns bundled-language
+registration and defers only the legacy default formatter during circular
+imports, so importing `default_table_formatter` first cannot silently disable
+the language-specific registry.
 `formatters/html_formatter.py` imports directly from `formatters/_formatter_interface.py` to avoid the
 `formatter_registry ↔ html_formatter` import cycle (fixed 2026-05-30).
 
