@@ -150,11 +150,11 @@ def _find_test_files(
                 test_file_has_exact_module_stem(test_file, changed_file)
                 for test_file in direct_related
             ):
-                # A directory-only affinity is weaker than an exact filename.
-                # It may replace an exact direct candidate only when the
-                # fallback filename itself also expresses the source scope.
-                affinity_fallback = _most_specific_filename_affinity_matches(
-                    sorted(test_files),
+                # An exact filename may only be replaced by an independently
+                # established module-family candidate. A path or scope-bearing
+                # filename alone is weaker evidence than the direct name.
+                affinity_fallback = _most_specific_affinity_matches(
+                    family_related,
                     changed_file,
                 )
             selected_direct = (
@@ -194,36 +194,6 @@ def _most_specific_affinity_matches(
     return [test_file for rank, test_file in ranked if rank == best_rank]
 
 
-def _most_specific_filename_affinity_matches(
-    test_files: list[str],
-    changed_file: str,
-) -> list[str]:
-    """Return nearest source-scope matches encoded in test filenames."""
-    subsystem_stems = source_subsystem_stems(changed_file)
-    ranked = [
-        (rank, test_file)
-        for test_file in test_files
-        if (
-            rank := next(
-                (
-                    rank
-                    for rank, subsystem_stem in enumerate(subsystem_stems)
-                    if related_stem_matches(
-                        Path(test_file).stem.lower().replace("-", "_"),
-                        subsystem_stem,
-                    )
-                ),
-                None,
-            )
-        )
-        is not None
-    ]
-    if not ranked:
-        return []
-    best_rank = min(rank for rank, _test_file in ranked)
-    return [test_file for rank, test_file in ranked if rank == best_rank]
-
-
 def _test_file_matches_change(test_file: str, changed_file: str) -> bool:
     """Return True when a test filename appears related to a changed file."""
     if _test_file_has_direct_stem_match(test_file, changed_file):
@@ -244,14 +214,17 @@ def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
 
     changed_stem = module_stem_for_path(normalized_change)
     test_stem = test_file_subject_stem(normalized_test)
-    plural_stem = _pluralized_module_stem(changed_stem)
+    plural_stems = _pluralized_module_stems(changed_stem)
     return f"_{changed_stem}_" in f"_{test_stem}_" or (
-        test_stem == plural_stem or test_stem.startswith(f"{plural_stem}_")
+        any(
+            test_stem == plural_stem or test_stem.startswith(f"{plural_stem}_")
+            for plural_stem in plural_stems
+        )
     )
 
 
-def _pluralized_module_stem(stem: str) -> str:
-    """Return the conventional English plural for an exact test subject."""
+def _pluralized_module_stems(stem: str) -> tuple[str, ...]:
+    """Return accepted conventional plurals for an exact test subject."""
     irregular_plurals = {
         "analysis": "analyses",
         "axis": "axes",
@@ -269,13 +242,17 @@ def _pluralized_module_stem(stem: str) -> str:
     }
     prefix, separator, subject = stem.rpartition("_")
     irregular = irregular_plurals.get(subject)
+    plurals: list[str] = []
     if irregular is not None:
-        return f"{prefix}{separator}{irregular}"
+        plurals.append(f"{prefix}{separator}{irregular}")
     if stem.endswith(("s", "x", "z", "ch", "sh")):
-        return f"{stem}es"
-    if len(stem) > 1 and stem.endswith("y") and stem[-2] not in "aeiou":
-        return f"{stem[:-1]}ies"
-    return f"{stem}s"
+        regular = f"{stem}es"
+    elif len(stem) > 1 and stem.endswith("y") and stem[-2] not in "aeiou":
+        regular = f"{stem[:-1]}ies"
+    else:
+        regular = f"{stem}s"
+    plurals.append(regular)
+    return tuple(dict.fromkeys(plurals))
 
 
 def _is_runnable_test_file(
