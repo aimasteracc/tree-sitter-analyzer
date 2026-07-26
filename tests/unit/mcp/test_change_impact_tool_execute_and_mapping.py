@@ -1021,6 +1021,21 @@ def test_find_test_files_preserves_workspace_container_in_package_identity():
     ]
 
 
+def test_find_test_files_preserves_scoped_npm_package_identity():
+    """The package name after an npm scope participates in compatibility."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/@scope/a/src/core/config.ts"],
+        {
+            "packages/@scope/a/tests/core/config.test.ts",
+            "packages/@scope/b/tests/core/config.test.ts",
+        },
+    )
+
+    assert mapping["packages/@scope/a/src/core/config.ts"] == [
+        "packages/@scope/a/tests/core/config.test.ts"
+    ]
+
+
 def test_find_test_files_keeps_central_tests_for_workspace_sources():
     """A test with no package marker remains compatible with a workspace."""
     mapping = change_impact_tool._find_test_files(
@@ -1088,7 +1103,29 @@ def test_find_test_files_uses_structural_directory_as_fallback_scope():
     )
 
     assert mapping["src/mcp/server.py"] == ["tests/unit/mcp/test_server.py"]
+
+
+def test_source_subsystem_stems_ignores_generated_directory():
+    """A hidden generated directory does not become subsystem evidence."""
     assert change_impact_tool.source_subsystem_stems("src/.generated/server.py") == []
+
+
+def test_find_test_files_routes_stem_helper_to_behavioral_suite():
+    """Stem helper edits select both discovery and change-impact behavior tests."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/mcp/tools/utils/test_discovery_stems.py"],
+        {
+            "tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py",
+            "tests/unit/mcp/test_test_discovery.py",
+        },
+    )
+
+    assert mapping[
+        "tree_sitter_analyzer/mcp/tools/utils/test_discovery_stems.py"
+    ] == [
+        "tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py",
+        "tests/unit/mcp/test_test_discovery.py",
+    ]
 
 
 def test_find_test_files_supports_irregular_plural_subject():
@@ -1105,6 +1142,16 @@ def test_find_test_files_supports_irregular_plural_subject():
     assert mapping["src/query_analysis.py"] == [
         "tests/test_query_analyses_errors.py"
     ]
+
+
+def test_find_test_files_supports_doubled_z_plural():
+    """A terminal z is doubled before the conventional es suffix."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/quiz.py"],
+        {"tests/test_quizzes.py"},
+    )
+
+    assert mapping["src/quiz.py"] == ["tests/test_quizzes.py"]
 
 
 def test_find_test_files_supports_regular_irregular_plural_alternatives():
