@@ -146,17 +146,13 @@ def _find_test_files(
                 sorted(test_files),
                 changed_file,
             )
-            if any(
-                test_file_has_exact_module_stem(test_file, changed_file)
-                for test_file in direct_related
-            ):
-                # An exact filename may only be replaced by an independently
-                # established module-family candidate. A path or scope-bearing
-                # filename alone is weaker evidence than the direct name.
-                affinity_fallback = _most_specific_affinity_matches(
-                    family_related,
-                    changed_file,
-                )
+            # Any recognized direct filename may only be replaced by an
+            # independently established module-family candidate. A path or
+            # scope-bearing filename alone is weaker evidence.
+            affinity_fallback = _most_specific_affinity_matches(
+                family_related,
+                changed_file,
+            )
             selected_direct = (
                 affinity_fallback
                 if 0 < len(affinity_fallback) <= FOCUSED_TEST_COMMAND_LIMIT
