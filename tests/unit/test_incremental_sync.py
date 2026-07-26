@@ -729,6 +729,67 @@ def test_incremental_sync_reports_preexisting_snapshot_change_to_callback(tmp_pa
     ]
 
 
+def test_preexisting_snapshot_modification_invalidates_cached_rows(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("import os\n\ndef before():\n    return os.getcwd()\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    snapshot = _snapshot(tmp_path, path)
+    path.write_text("def after():\n    return 2\n")
+
+    try:
+        IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+        )
+        conn = cache.get_conn()
+        counts = {
+            table: conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE file_path = ?",
+                ("app.py",),
+            ).fetchone()[0]
+            for table in (
+                "ast_index",
+                "ast_symbol_rows",
+                "ast_symbols_fts",
+                "ast_imports",
+                "ast_symbol_activation",
+                "edges",
+            )
+        }
+    finally:
+        cache.close()
+
+    assert counts == {
+        "ast_index": 0,
+        "ast_symbol_rows": 0,
+        "ast_symbols_fts": 0,
+        "ast_imports": 0,
+        "ast_symbol_activation": 0,
+        "edges": 0,
+    }
+
+
+def test_preexisting_snapshot_deletion_invalidates_cached_row(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    snapshot = _snapshot(tmp_path, path)
+    path.unlink()
+
+    try:
+        IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+        )
+        cached = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert cached is None
+
+
 def test_incremental_sync_rejects_snapshot_root_mismatch(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")

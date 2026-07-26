@@ -239,8 +239,17 @@ class ASTCache:
         """Refresh the built marker after a successful single-file reindex."""
         if result.get("status") not in {"indexed", "cached"}:
             return
-        if had_built_marker or self._indexed_source_files_are_complete():
-            _mark_call_graph_built(self._get_conn())
+        if not had_built_marker and not self._indexed_source_files_are_complete():
+            return
+        if result.get("status") == "indexed":
+            try:
+                backfill = self._run_synapse_backfill()
+            except Exception:
+                logger.debug("single-file Synapse backfill failed", exc_info=True)
+                return
+            if backfill is not None and int(backfill.get("errors", 0)) > 0:
+                return
+        _mark_call_graph_built(self._get_conn())
 
     def _check_cache_or_read(
         self,

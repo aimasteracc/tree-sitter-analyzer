@@ -296,6 +296,39 @@ def test_single_file_reindex_refreshes_existing_call_graph_built_marker(
         cache.close()
 
 
+def test_single_file_reindex_restores_incoming_edge_resolution(tmp_path) -> None:
+    target = tmp_path / "target.py"
+    caller = tmp_path / "caller.py"
+    target.write_text("def target():\n    return 1\n")
+    caller.write_text(
+        "from target import target\n\ndef caller():\n    return target()\n"
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+
+    try:
+        cache.invalidate(str(target))
+        cache.index_file(str(target))
+        incoming = (
+            cache.get_conn()
+            .execute(
+                "SELECT callee_resolution, callee_resolved_file "
+                "FROM edges WHERE kind = 'calls' AND file_path = 'caller.py' "
+                "AND callee_name = 'target'"
+            )
+            .fetchone()
+        )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (
+        incoming["callee_resolution"],
+        incoming["callee_resolved_file"],
+        graph_built,
+    ) == ("project", "target.py", True)
+
+
 def test_cache_call_graph_built_degrades_false_on_reader_error() -> None:
     class BrokenCache:
         def call_graph_built(self) -> bool:
@@ -704,3 +737,41 @@ def test_mark_single_file_complete_no_marker_when_index_incomplete(
         assert cache.call_graph_built() is False
     finally:
         cache.close()
+
+
+def test_single_file_backfill_exception_keeps_marker_incomplete(tmp_path) -> None:
+    cache = ASTCache(str(tmp_path))
+    try:
+        with mock.patch.object(
+            cache,
+            "_run_synapse_backfill",
+            side_effect=RuntimeError("backfill crashed"),
+        ):
+            cache._mark_single_file_index_complete_if_needed(
+                had_built_marker=True,
+                result={"status": "indexed"},
+            )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is False
+
+
+def test_single_file_backfill_error_keeps_marker_incomplete(tmp_path) -> None:
+    cache = ASTCache(str(tmp_path))
+    try:
+        with mock.patch.object(
+            cache,
+            "_run_synapse_backfill",
+            return_value={"errors": 1},
+        ):
+            cache._mark_single_file_index_complete_if_needed(
+                had_built_marker=True,
+                result={"status": "indexed"},
+            )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is False

@@ -25,6 +25,7 @@ from ..indexing_limits import normalize_index_max_files
 from ..indexing_snapshot import (
     IndexCandidateSnapshot,
     IndexFileFingerprint,
+    IndexSnapshotEntry,
     changed_since_snapshot,
 )
 from ..languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
@@ -492,11 +493,10 @@ def index_parallel(
 
 def _snapshot_result_is_stable(
     result: dict[str, Any],
-    candidate_snapshot: IndexCandidateSnapshot,
+    entries: dict[str, IndexSnapshotEntry],
     stats: dict[str, Any],
 ) -> bool:
     """Validate one worker result immediately before its database write."""
-    entries = {entry.rel_path: entry for entry in candidate_snapshot.selected_entries}
     rel_path = str(result["rel_path"]).replace("\\", "/")
     entry = entries[rel_path]
     fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
@@ -620,13 +620,18 @@ def run_index_project(
         indexed_at = datetime.now(timezone.utc).isoformat()
         from .. import ast_cache as _ast_cache_mod
 
+        snapshot_entries = (
+            {entry.rel_path: entry for entry in candidate_snapshot.selected_entries}
+            if candidate_snapshot is not None
+            else None
+        )
         result_guard = (
             partial(
                 _snapshot_result_is_stable,
-                candidate_snapshot=candidate_snapshot,
+                entries=snapshot_entries,
                 stats=stats,
             )
-            if candidate_snapshot is not None
+            if snapshot_entries is not None
             else None
         )
         _ast_cache_mod._commit_index_results(

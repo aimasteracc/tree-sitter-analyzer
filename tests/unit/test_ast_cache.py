@@ -1407,6 +1407,52 @@ def test_file_invalidation_tolerates_legacy_primary_only_schema():
     conn.close()
 
 
+def test_missing_file_invalidation_preserves_complete_graph_marker(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("def caller():\n    return caller()\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+
+    try:
+        removed = cache.invalidate(str(tmp_path / "missing.py"))
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (removed, graph_built) == (False, True)
+
+
+def test_file_invalidation_rolls_back_derived_table_failure(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    conn = cache.get_conn()
+    before = cache.lookup(str(path))
+
+    class FailingDerivedDelete:
+        @property
+        def total_changes(self):
+            return conn.total_changes
+
+        def execute(self, sql, *args, **kwargs):
+            if sql == "DELETE FROM ast_imports WHERE file_path = ?":
+                raise sqlite3.OperationalError("database or disk is full")
+            return conn.execute(sql, *args, **kwargs)
+
+        def rollback(self):
+            conn.rollback()
+
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="disk is full"):
+            invalidate_file_rows(FailingDerivedDelete(), "app.py", True)
+        after = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert after == before
+
+
 def test_force_rebuild_clear_failure_preserves_existing_index(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")

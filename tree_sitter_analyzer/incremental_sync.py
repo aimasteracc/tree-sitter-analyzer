@@ -101,6 +101,7 @@ class IncrementalSync:
         )
         result.truncated_by_max_files = truncated
         for rel_path, reason in sorted(changed_files):
+            self._cache.invalidate(os.path.join(self._cache.project_root, rel_path))
             detail = {
                 "file": rel_path,
                 "considered": "skipped",

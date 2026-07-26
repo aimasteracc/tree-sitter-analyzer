@@ -17,16 +17,33 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table,),
+        ).fetchone()
+        is not None
+    )
+
+
+def _delete_file_rows_if_table_present(
+    conn: sqlite3.Connection,
+    table: str,
+    rel_path: str,
+) -> None:
+    if _table_exists(conn, table):
+        conn.execute(
+            f"DELETE FROM {table} WHERE file_path = ?",  # nosec B608
+            (rel_path,),
+        )
+
+
 def _reset_incoming_edge_resolutions(
     conn: sqlite3.Connection,
     rel_path: str,
 ) -> None:
     """Unresolve calls from other files whose target generation was removed."""
-    edge_table = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'edges'"
-    ).fetchone()
-    if edge_table is None:
-        return
     rows = conn.execute(
         "SELECT id, metadata FROM edges "
         "WHERE kind = 'calls' AND callee_resolved_file = ?",
@@ -55,41 +72,35 @@ def invalidate_file_rows(
     fts5_available: bool | None,
 ) -> bool:
     """Remove one file's primary and derived cache rows."""
-    if fts5_available:
-        conn.execute(
-            "DELETE FROM ast_symbols_fts WHERE file_path = ?",
-            (rel_path,),
-        )
+    changes_before = conn.total_changes
     try:
-        conn.execute(
-            "DELETE FROM ast_symbol_rows WHERE file_path = ?",
-            (rel_path,),
-        )
-    except sqlite3.OperationalError:
-        pass
-    for table in ("ast_imports", "ast_symbol_activation"):
-        try:
+        if fts5_available:
             conn.execute(
-                f"DELETE FROM {table} WHERE file_path = ?",  # nosec B608
+                "DELETE FROM ast_symbols_fts WHERE file_path = ?",
                 (rel_path,),
             )
-        except sqlite3.OperationalError:
-            pass
-    try:
-        from ..graph.edge_store import EdgeStore
+        _delete_file_rows_if_table_present(conn, "ast_symbol_rows", rel_path)
+        for table in ("ast_imports", "ast_symbol_activation"):
+            _delete_file_rows_if_table_present(conn, table, rel_path)
+        if _table_exists(conn, "edges"):
+            from ..graph.edge_store import EdgeStore
 
-        EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, [])
-    except sqlite3.OperationalError:
-        pass
-    _reset_incoming_edge_resolutions(conn, rel_path)
-    cursor = conn.execute(
-        "DELETE FROM ast_index WHERE file_path = ?",
-        (rel_path,),
-    )
-    from .callgraph_state import clear_call_graph_built
+            EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, [])
+            _reset_incoming_edge_resolutions(conn, rel_path)
+        cursor = conn.execute(
+            "DELETE FROM ast_index WHERE file_path = ?",
+            (rel_path,),
+        )
+    except Exception:
+        conn.rollback()
+        raise
 
-    clear_call_graph_built(conn)
-    conn.commit()
+    if conn.total_changes > changes_before:
+        from .callgraph_state import clear_call_graph_built
+
+        clear_call_graph_built(conn)
+    else:
+        conn.commit()
     return cursor.rowcount > 0
 
 

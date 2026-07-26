@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T10:49:44Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 440,
+  "items_found": 5,
+  "actions_taken": 5,
+  "escalations": 0,
+  "tokens_estimate": 14000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 fifth Codex Draft review: snapshot write guards now reuse one precomputed entry map instead of rebuilding it per result; incremental sync invalidates cached generations that changed or disappeared before its scan; file invalidation is atomic, propagates real derived-table failures, and preserves graph completeness on no-op targets; and successful single-file rebuilds re-resolve incoming edges before restoring the graph marker. Focused coverage (261 tests), strict worktree patch coverage, full pytest (1287 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T10:28:20Z",
   "pattern": "pr-review-repair",
   "duration_s": 750,
