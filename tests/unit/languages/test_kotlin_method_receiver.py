@@ -32,6 +32,19 @@ import tree_sitter_kotlin
 
 from tree_sitter_analyzer.languages.kotlin_helpers import extract_kotlin_function
 
+
+class _NameStub:
+    """Small malformed-tree stand-in used by issue #1177 regressions."""
+
+    def __init__(self, type_: str, text: str = "", children=()):
+        self.type = type_
+        self.text = text
+        self.children = list(children)
+
+    def child_by_field_name(self, _name: str):
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -153,6 +166,47 @@ def test_extension_fun_receiver_type_and_is_method() -> None:
         f"got {funcs['shout'].receiver_type!r}"
     )
     assert funcs["shout"].is_method is True
+
+
+def test_function_name_falls_back_to_simple_identifier() -> None:
+    """Issue #1177 (2026-07-27): tolerate grammars without a named field."""
+    from tree_sitter_analyzer.languages._kotlin_function_helpers import (
+        _kotlin_function_name,
+    )
+
+    name = _NameStub("simple_identifier", "legacyName")
+    node = _NameStub("function_declaration", children=[name])
+
+    assert _kotlin_function_name(node, lambda child: child.text) == "legacyName"
+
+
+def test_extension_function_name_falls_back_after_dot() -> None:
+    """Issue #1177 (2026-07-27): preserve the extension identifier fallback."""
+    from tree_sitter_analyzer.languages._kotlin_function_helpers import (
+        _kotlin_function_name,
+    )
+
+    node = _NameStub(
+        "function_declaration",
+        children=[
+            _NameStub("user_type", "String"),
+            _NameStub(".", "."),
+            _NameStub("identifier", "shout"),
+        ],
+    )
+
+    assert _kotlin_function_name(node, lambda child: child.text) == "shout"
+
+
+def test_function_without_identifier_is_anonymous() -> None:
+    """Issue #1177 (2026-07-27): malformed declarations keep the exact fallback."""
+    from tree_sitter_analyzer.languages._kotlin_function_helpers import (
+        _kotlin_function_name,
+    )
+
+    node = _NameStub("function_declaration")
+
+    assert _kotlin_function_name(node, lambda child: child.text) == "anonymous"
 
 
 def test_receiver_survives_api_serialization() -> None:
