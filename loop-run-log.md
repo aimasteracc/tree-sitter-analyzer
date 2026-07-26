@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T07:26:49Z",
+  "pattern": "pr-readiness",
+  "duration_s": 600,
+  "items_found": 0,
+  "actions_taken": 1,
+  "escalations": 0,
+  "tokens_estimate": 12000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1161 was synchronized with the latest develop branch and its bounded, parameterized SQLite caller-prefix prefilter was revalidated. Focused constraint tests (19 passed, 1 quarantined), patch coverage, full pytest (1275 passed, 1 skipped), build, Ruff, formatting, focused MyPy, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T07:04:35Z",
   "pattern": "pr-review-repair",
   "duration_s": 900,

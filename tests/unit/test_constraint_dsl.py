@@ -551,6 +551,78 @@ class TestEvaluator:
             f"Excepted caller must produce zero violations, got: {violations}"
         )
 
+    def test_evaluate_keeps_rows_when_from_glob_has_no_literal_prefix(
+        self, tmp_path: Path
+    ) -> None:
+        """A leading wildcard disables SQL prefix filtering without data loss."""
+        from tree_sitter_analyzer.constraints import evaluate
+        from tree_sitter_analyzer.constraints.schema import Constraint
+
+        db_path = tmp_path / "index.db"
+        _build_call_edges_db(
+            db_path,
+            rows=[
+                (
+                    "use_cli",
+                    "custom/bridge.py",
+                    7,
+                    "run_cli",
+                    "run_cli",
+                    "cli/runner.py",
+                ),
+            ],
+        )
+        constraint = Constraint(
+            id="wildcard-caller",
+            severity="error",
+            rule="forbid",
+            from_glob="**",
+            to_glob="cli/**",
+            reason="test wildcard fallback",
+        )
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            violations = evaluate([constraint], conn)
+        finally:
+            conn.close()
+
+        assert len(violations) == 1
+        assert violations[0].rule_id == "wildcard-caller"
+
+    def test_select_query_falls_back_for_large_prefix_sets(self) -> None:
+        """Large rule sets avoid SQLite expression and parameter limits."""
+        from tree_sitter_analyzer.constraints.evaluator import (
+            _MAX_SQL_PREFIX_FILTERS,
+            _build_select_query,
+        )
+        from tree_sitter_analyzer.constraints.parser import compile_constraints
+        from tree_sitter_analyzer.constraints.schema import Constraint
+
+        constraints = [
+            Constraint(
+                id=f"rule-{index}",
+                severity="error",
+                rule="forbid",
+                from_glob=f"package-{index}/**",
+                to_glob="forbidden/**",
+                reason="test SQL filter bound",
+            )
+            for index in range(_MAX_SQL_PREFIX_FILTERS + 1)
+        ]
+
+        conn = sqlite3.connect(":memory:")
+        try:
+            select_sql, params = _build_select_query(
+                conn,
+                compile_constraints(constraints),
+            )
+        finally:
+            conn.close()
+
+        assert select_sql.endswith("FROM edges WHERE kind = 'calls'")
+        assert params == ()
+
     @pytest.mark.slow_ok
     @pytest.mark.quarantine
     @pytest.mark.timeout(120)
