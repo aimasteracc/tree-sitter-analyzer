@@ -456,18 +456,21 @@ def test_find_test_files_disambiguates_constraint_evaluator_by_subsystem():
     ]
 
 
-def test_find_test_files_disambiguates_external_source_tree_by_subsystem():
-    """Subsystem affinity must work without this project's package name."""
+def test_find_test_files_does_not_export_repository_specific_family_aliases():
+    """Project-local aliases must not invent coverage in external source trees."""
     mapping = change_impact_tool._find_test_files(
-        ["src/constraints/evaluator.py"],
+        ["src/constraints/evaluator.py", "src/edge_extractors/python.py"],
         {
-            "tests/unit/hyphae/test_evaluator.py",
-            "tests/unit/test_constraint_dsl.py",
+            "tests/test_constraint_dsl.py",
+            "tests/test_registry.py",
         },
     )
 
     assert mapping["src/constraints/evaluator.py"] == [
-        "tests/unit/test_constraint_dsl.py"
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+    assert mapping["src/edge_extractors/python.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
     ]
 
 
@@ -790,6 +793,52 @@ def test_find_test_files_preserves_outer_affinity_for_exact_direct():
     ]
 
 
+def test_find_test_files_keeps_only_nearest_exact_subsystem_match():
+    """Same-stem exact tests must resolve to the nearest source subsystem."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/api/client/config.py"],
+        {
+            "tests/unit/api/test_config.py",
+            "tests/unit/client/test_config.py",
+        },
+    )
+
+    assert mapping["src/api/client/config.py"] == [
+        "tests/unit/client/test_config.py"
+    ]
+
+
+def test_find_test_files_avoids_discarded_full_suite_affinity_scan(monkeypatch):
+    """An ambiguous direct match must rank only relevant candidate sets."""
+    candidates_seen: list[list[str]] = []
+    rank_candidates = change_impact_tool._most_specific_affinity_matches
+
+    def recording_rank(test_files, changed_file):
+        candidates_seen.append(test_files)
+        return rank_candidates(test_files, changed_file)
+
+    monkeypatch.setattr(
+        change_impact_tool,
+        "_most_specific_affinity_matches",
+        recording_rank,
+    )
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/constraints/evaluator.py"],
+        {
+            "tests/unit/hyphae/test_evaluator.py",
+            "tests/unit/test_constraint_dsl.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/constraints/evaluator.py"] == [
+        "tests/unit/test_constraint_dsl.py"
+    ]
+    assert candidates_seen == [
+        ["tests/unit/hyphae/test_evaluator.py"],
+        ["tests/unit/test_constraint_dsl.py"],
+    ]
+
+
 def test_find_test_files_preserves_direct_variants_at_best_outer_affinity():
     """Nested source modules retain all direct variants at the best outer rank."""
     mapping = change_impact_tool._find_test_files(
@@ -921,6 +970,21 @@ def test_find_test_files_retains_full_nested_package_lineage():
     ]
 
 
+def test_find_test_files_preserves_workspace_container_in_package_identity():
+    """Equal workspace names under apps and packages remain distinct."""
+    mapping = change_impact_tool._find_test_files(
+        ["apps/shared/src/core/config.py"],
+        {
+            "apps/shared/tests/core/test_config.py",
+            "packages/shared/tests/core/test_config.py",
+        },
+    )
+
+    assert mapping["apps/shared/src/core/config.py"] == [
+        "apps/shared/tests/core/test_config.py"
+    ]
+
+
 def test_find_test_files_keeps_central_tests_for_workspace_sources():
     """A test with no package marker remains compatible with a workspace."""
     mapping = change_impact_tool._find_test_files(
@@ -929,6 +993,21 @@ def test_find_test_files_keeps_central_tests_for_workspace_sources():
     )
 
     assert mapping["packages/a/src/config.py"] == ["tests/a/test_config.py"]
+
+
+def test_find_test_files_rejects_workspace_tests_for_central_sources():
+    """A central source must not claim package-specific tests as coverage."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/config.py"],
+        {
+            "packages/a/tests/core/test_config.py",
+            "packages/b/tests/core/test_config.py",
+        },
+    )
+
+    assert mapping["src/core/config.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
 
 
 def test_find_test_files_filters_cross_package_family_matches():
