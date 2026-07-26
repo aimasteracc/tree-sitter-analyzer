@@ -37,9 +37,10 @@ from .constraint_violation_query import (
 from .test_discovery_stems import (
     related_stem_matches,
     related_test_stems_for_path,
+    source_subsystem_stems,
     test_file_has_exact_module_stem,
-    test_path_has_subsystem_affinity,
     test_path_is_unscoped,
+    test_path_subsystem_affinity_rank,
 )
 from .verification_command import (
     DefaultTestCommand,
@@ -108,36 +109,62 @@ def _find_test_files(
             for test_file in related
             if not _test_file_has_direct_stem_match(test_file, changed_file)
         ]
-        if family_related:
-            # Derived module-family matches deliberately span surfaces such as
-            # CLI, core, and MCP; subsystem affinity must not narrow them.
-            mapping[changed_file] = related
-            continue
-
-        unscoped_exact = [
+        direct_related = [
             test_file
             for test_file in related
-            if test_file_has_exact_module_stem(test_file, changed_file)
-            and test_path_is_unscoped(test_file)
+            if _test_file_has_direct_stem_match(test_file, changed_file)
         ]
-        scoped_related = [
+        has_named_subsystem = bool(source_subsystem_stems(changed_file))
+        retained_direct = [
             test_file
-            for test_file in related
-            if test_path_has_subsystem_affinity(test_file, changed_file)
+            for test_file in direct_related
+            if (
+                not has_named_subsystem
+                or (
+                    test_path_is_unscoped(test_file)
+                    and test_file_has_exact_module_stem(test_file, changed_file)
+                )
+            )
         ]
-        selected = sorted(set(unscoped_exact) | set(scoped_related))
-        if not selected and related:
+        scoped_direct = _most_specific_affinity_matches(
+            direct_related,
+            changed_file,
+        )
+        selected_direct = sorted(set(retained_direct) | set(scoped_direct))
+        if not selected_direct and direct_related:
             # All filename matches belong to another named subsystem. Only in
             # that ambiguous case, search the available tests by source-path
-            # affinity instead of adding broad subsystem stems unconditionally.
-            selected = [
-                test_file
-                for test_file in sorted(test_files)
-                if test_path_has_subsystem_affinity(test_file, changed_file)
-            ]
-        mapping[changed_file] = selected or related or [AUTO_DISCOVER_TEST_HINT]
+            # affinity instead of adding subsystem stems unconditionally.
+            selected_direct = _most_specific_affinity_matches(
+                sorted(test_files),
+                changed_file,
+            )
+        # Derived module-family matches deliberately span surfaces such as CLI,
+        # core, and MCP. Preserve them, while disambiguating the independent
+        # direct-stem candidate set.
+        selected = sorted(set(family_related) | set(selected_direct))
+        mapping[changed_file] = selected or [AUTO_DISCOVER_TEST_HINT]
 
     return mapping
+
+
+def _most_specific_affinity_matches(
+    test_files: list[str],
+    changed_file: str,
+) -> list[str]:
+    """Return affinity matches for the nearest matching source subsystem."""
+    ranked = [
+        (rank, test_file)
+        for test_file in test_files
+        if (
+            rank := test_path_subsystem_affinity_rank(test_file, changed_file)
+        )
+        is not None
+    ]
+    if not ranked:
+        return []
+    best_rank = min(rank for rank, _test_file in ranked)
+    return [test_file for rank, test_file in ranked if rank == best_rank]
 
 
 def _test_file_matches_change(test_file: str, changed_file: str) -> bool:
@@ -152,11 +179,19 @@ def _test_file_matches_change(test_file: str, changed_file: str) -> bool:
 
 
 def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
-    """Return whether the test filename directly contains the module stem."""
-    changed_stem = Path(changed_file).stem
-    test_stem = Path(test_file).stem
-    direct_stem = test_stem.replace("_test", "").replace("test_", "")
-    return changed_stem in test_stem or direct_stem == changed_stem
+    """Return whether the test filename directly names the changed module."""
+    changed_stem = Path(changed_file).stem.lower()
+    test_stem = Path(test_file).stem.lower()
+    for suffix in (".test", ".spec", "_test", "_spec"):
+        if test_stem.endswith(suffix):
+            test_stem = test_stem[: -len(suffix)]
+            break
+    if test_stem.startswith("test_"):
+        test_stem = test_stem[len("test_") :]
+    return (
+        test_stem == changed_stem
+        or test_stem.startswith(f"{changed_stem}_")
+    )
 
 
 def _is_runnable_test_file(
