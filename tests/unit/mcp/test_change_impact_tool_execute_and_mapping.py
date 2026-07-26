@@ -456,6 +456,21 @@ def test_find_test_files_disambiguates_constraint_evaluator_by_subsystem():
     ]
 
 
+def test_find_test_files_disambiguates_external_source_tree_by_subsystem():
+    """Subsystem affinity must work without this project's package name."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/constraints/evaluator.py"],
+        {
+            "tests/unit/hyphae/test_evaluator.py",
+            "tests/unit/test_constraint_dsl.py",
+        },
+    )
+
+    assert mapping["src/constraints/evaluator.py"] == [
+        "tests/unit/test_constraint_dsl.py"
+    ]
+
+
 def test_find_test_files_keeps_same_stem_with_matching_subsystem():
     """A same-stem test remains valid when its subsystem path also matches."""
     mapping = change_impact_tool._find_test_files(
@@ -482,6 +497,38 @@ def test_find_test_files_keeps_direct_match_when_tests_omit_subsystem_path():
 
     assert mapping["tree_sitter_analyzer/core/engine.py"] == [
         "tests/unit/test_engine.py"
+    ]
+
+
+def test_find_test_files_preserves_unscoped_exact_module_test():
+    """Generic subsystem tests must not replace an exact root-level test."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/languages/lang_extension_map.py"],
+        {
+            "tests/unit/languages/test_python_plugin.py",
+            "tests/unit/languages/test_queries_module_contract.py",
+            "tests/unit/test_lang_extension_map.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/languages/lang_extension_map.py"] == [
+        "tests/unit/test_lang_extension_map.py"
+    ]
+
+
+def test_find_test_files_does_not_expand_subsystem_for_exact_match():
+    """A formatter module match must not pull in every formatter test."""
+    mapping = change_impact_tool._find_test_files(
+        ["tree_sitter_analyzer/formatters/json_formatter.py"],
+        {
+            "tests/unit/formatters/test_csv_formatter.py",
+            "tests/unit/formatters/test_markdown_formatter.py",
+            "tests/unit/test_json_formatter.py",
+        },
+    )
+
+    assert mapping["tree_sitter_analyzer/formatters/json_formatter.py"] == [
+        "tests/unit/test_json_formatter.py"
     ]
 
 
