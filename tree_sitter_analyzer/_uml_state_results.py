@@ -67,9 +67,10 @@ def collect_state_data(
     transition_extractor: TransitionExtractor[TransitionT],
 ) -> tuple[list[str], list[TransitionT]]:
     """Return selected member names and deduplicated transitions."""
+    classes_to_scan = enum_classes[:1] if class_name is not None else enum_classes
     scans = _scan_enums(
         root,
-        enum_classes,
+        classes_to_scan,
         member_extractor,
         transition_extractor,
     )
