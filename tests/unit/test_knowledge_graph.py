@@ -122,7 +122,11 @@ def _seed_sqlite_knowledge_graph(
                 "(file_path, content_hash, language, mtime_ns, file_size, "
                 "extractor_version, symbols_json, imports_json, structure_json, indexed_at) "
                 "VALUES (?, '', ?, 0, 0, 0, ?, '[]', '{}', 'test')",
-                (file_path, file_node.language or "python", json.dumps({"symbols": symbols})),
+                (
+                    file_path,
+                    file_node.language or "python",
+                    json.dumps({"symbols": symbols}),
+                ),
             )
         EdgeStore(conn).upsert_edges(
             [
@@ -1429,7 +1433,7 @@ def test_ensure_knowledge_graph_ready_updates_by_default_even_when_fresh(
             ],
             edges=[],
             stats={"node_count": 1, "edge_count": 0},
-        )
+        ),
     )
     os.utime(ast_cache / "index.db", ns=(1, 1))
     monkeypatch.setattr(LadybugKnowledgeGraphStore, "available", lambda: False)
@@ -1751,6 +1755,10 @@ def test_knowledge_index_tool_validation_rejects_bad_values(tmp_path: Path) -> N
         tool.validate_arguments({"mode": "bad"})
     with pytest.raises(ValueError, match="backend must be one of"):
         tool.validate_arguments({"backend": "bad"})
+    for value in (True, 0, -1):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            tool.validate_arguments({"max_files": value})
+    assert tool.get_tool_schema()["properties"]["max_files"]["minimum"] == 1
 
 
 @pytest.mark.asyncio
@@ -2025,7 +2033,9 @@ async def test_knowledge_graph_tool_requires_project_root() -> None:
 
 
 @pytest.mark.asyncio
-async def test_knowledge_graph_tool_reads_empty_sqlite_projection(tmp_path: Path) -> None:
+async def test_knowledge_graph_tool_reads_empty_sqlite_projection(
+    tmp_path: Path,
+) -> None:
     tool = CodeGraphKnowledgeGraphTool(str(tmp_path))
 
     result = await tool.execute({"output_format": "json"})

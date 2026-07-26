@@ -16,6 +16,7 @@ from typing import Any
 from ...ast_cache import ASTCache
 from ...file_watcher import FileWatcherDaemon
 from ...incremental_sync import IncrementalSync
+from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
@@ -289,7 +290,11 @@ class ASTCacheTool(BaseMCPTool):
                 },
                 "max_files": {
                     "type": "integer",
-                    "description": "Max files to index (default: 20000)",
+                    "minimum": 1,
+                    "description": (
+                        "Positive maximum files to index or sync; zero is invalid "
+                        "(default: 20000)"
+                    ),
                     "default": 20000,
                 },
                 "force": {
@@ -372,6 +377,7 @@ class ASTCacheTool(BaseMCPTool):
             raise ValueError(f"file_path is required for mode '{mode}'")
         if mode in ("search", "fts_search") and not arguments.get("query"):
             raise ValueError(f"query is required for {mode} mode")
+        arguments["max_files"] = normalize_index_max_files(arguments.get("max_files"))
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -432,7 +438,7 @@ class ASTCacheTool(BaseMCPTool):
                 "to retrieve the cached entry"
             )
         else:
-            max_files = int(arguments.get("max_files", 20_000))
+            max_files = arguments["max_files"]
             force = arguments.get("force", False)
             include_activation = bool(arguments.get("include_activation", False))
             # #1018: honor the language scope on the index path. Without this the
@@ -595,7 +601,7 @@ class ASTCacheTool(BaseMCPTool):
     def _handle_sync(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """``mode=sync``: drift-detect + reconcile + M15 considered alias."""
         sync_engine = self._get_sync()
-        max_files = int(arguments.get("max_files", 20_000))
+        max_files = arguments["max_files"]
         sync_result = sync_engine.sync(max_files=max_files)
         sync_dict = sync_result.to_dict()
         # M15: surface J8's ``considered`` vocabulary at the top level too.

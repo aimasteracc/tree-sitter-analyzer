@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...incremental_sync import IncrementalSync
+from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
 from ..utils.auto_index_guard import ensure_indexed, is_indexed
 from ..utils.error_sanitizer import (
@@ -75,7 +76,11 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
                 },
                 "max_files": {
                     "type": "integer",
-                    "description": "Max files to scan (default: 20000)",
+                    "minimum": 1,
+                    "description": (
+                        "Positive maximum files to scan; zero is invalid "
+                        "(default: 20000)"
+                    ),
                     "default": 20000,
                 },
                 "output_format": {
@@ -93,6 +98,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
         valid_modes = ["sync", "changes", "status"]
         if mode not in valid_modes:
             raise invalid_enum_error("mode", mode, valid_modes)
+        arguments["max_files"] = normalize_index_max_files(arguments.get("max_files"))
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -105,7 +111,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
             return apply_toon_format_to_response(result, output_format)
 
         if mode == "sync":
-            return self._sync(arguments.get("max_files", 20_000), output_format)
+            return self._sync(arguments["max_files"], output_format)
         elif mode == "changes":
             return self._changes(output_format)
         elif mode == "status":
@@ -113,9 +119,14 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
 
         return build_error(error=f"Unknown mode: {mode}")
 
-    def _ensure_cache(self, output_format: str) -> Any | None:
+    def _ensure_cache(
+        self,
+        output_format: str,
+        *,
+        max_files: int = 20_000,
+    ) -> Any | None:
         if not is_indexed(str(self.project_root)):
-            cache = ensure_indexed(str(self.project_root))
+            cache = ensure_indexed(str(self.project_root), max_files=max_files)
             if cache is None:
                 return None
             return cache
@@ -124,7 +135,7 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
         return ASTCache(str(self.project_root))
 
     def _sync(self, max_files: int, output_format: str) -> dict[str, Any]:
-        cache = self._ensure_cache(output_format)
+        cache = self._ensure_cache(output_format, max_files=max_files)
         if cache is None:
             result = build_error(error="Failed to initialize AST cache")
             return apply_toon_format_to_response(result, output_format)

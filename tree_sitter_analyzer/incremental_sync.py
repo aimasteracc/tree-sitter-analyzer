@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .ast_cache import _EXT_TO_LANG, _walk_source_files
+from .indexing_limits import normalize_index_max_files
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class SyncResult:
     deleted_files: int = 0
     unchanged_files: int = 0
     errors: int = 0
+    truncated_by_max_files: bool = False
     synapse_resolved: int = 0
     details: list[dict[str, Any]] = field(default_factory=list)
 
@@ -48,6 +50,7 @@ class SyncResult:
             "deleted_files": self.deleted_files,
             "unchanged_files": self.unchanged_files,
             "errors": self.errors,
+            "truncated_by_max_files": self.truncated_by_max_files,
             "synapse_resolved": self.synapse_resolved,
             "details": self.details,
         }
@@ -90,6 +93,7 @@ class IncrementalSync:
         ``_invalidate_deleted_files`` / ``_index_or_reindex_files``) own
         per-phase logic; ``sync`` becomes a thin orchestrator.
         """
+        max_files = normalize_index_max_files(max_files)
         result = SyncResult()
         conn = self._cache.get_conn()
 
@@ -99,6 +103,7 @@ class IncrementalSync:
             exclude_patterns,
         )
         result.scanned = len(disk_files)
+        result.truncated_by_max_files = truncated
 
         # A capped walk is only a prefix of the live source set. Treating every
         # indexed row outside that prefix as deleted corrupts a healthy cache.
@@ -153,6 +158,7 @@ class IncrementalSync:
         exclude_patterns: frozenset[str] | None = None,
     ) -> tuple[dict[str, dict[str, Any]], set[str], bool]:
         """Return eligible files, all present paths, and truncation state."""
+        max_files = normalize_index_max_files(max_files)
         disk_files: dict[str, dict[str, Any]] = {}
         present_paths: set[str] = set()
         count = 0

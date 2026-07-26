@@ -99,6 +99,13 @@ Use `project-health --max-files <n>` when working inside a noisy repository.
 It limits detailed file rows, top targets, and the agent backlog so the next
 queue head stays compact and intentional.
 
+Project-index commands use one stricter limit contract:
+`--ast-cache-max-files`, `--autoindex-max-files`, `--full-index-max-files`,
+`--incremental-sync-max-files`, and `--knowledge-graph-max-files` accept only a
+positive integer. Omitting the option selects its documented default; zero,
+negative values, and booleans are invalid. Zero never means “unlimited” or
+“process no files.”
+
 `file-health` JSON and TOON responses include an `agent_summary` with the weakest
 dimension and score plus the first actionable smell, its line, symbol, and detail
 when those can be inferred, so an agent can jump straight to the right function

@@ -45,6 +45,9 @@ class TestToolDefinition:
         assert hints["destructiveHint"] is True
         assert hints["readOnlyHint"] is False
 
+    def test_schema_requires_positive_max_files(self, tool):
+        assert tool.get_tool_schema()["properties"]["max_files"]["minimum"] == 1
+
 
 class TestValidation:
     def test_valid_sync(self, tool):
@@ -59,6 +62,17 @@ class TestValidation:
     def test_invalid_mode_rejected(self, tool):
         with pytest.raises(ValueError, match="Invalid mode"):
             tool.validate_arguments({"mode": "rebuild"})
+
+    @pytest.mark.parametrize("value", [True, 0, -1])
+    def test_invalid_max_files_rejected(self, tool, value):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            tool.validate_arguments({"mode": "sync", "max_files": value})
+
+    def test_omitted_max_files_is_normalized(self, tool):
+        arguments = {"mode": "sync"}
+
+        assert tool.validate_arguments(arguments) is True
+        assert arguments["max_files"] == 20_000
 
 
 @pytest.mark.asyncio
@@ -86,6 +100,16 @@ class TestExecute:
 
 
 class TestCacheLifecycle:
+    def test_sync_uses_limit_for_cold_cache_warmup(self, tool_with_root):
+        cache = MagicMock()
+        with (
+            patch.object(tool_with_root, "_ensure_cache", return_value=cache) as ensure,
+            patch.object(IncrementalSync, "sync", return_value=SyncResult()),
+        ):
+            tool_with_root._sync(7, "json")
+
+        ensure.assert_called_once_with("json", max_files=7)
+
     def test_sync_closes_cache_after_success(self, tool_with_root):
         cache = MagicMock()
         with (

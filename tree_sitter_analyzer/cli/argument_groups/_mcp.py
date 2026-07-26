@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 
+from ...indexing_limits import parse_index_max_files
+
 
 def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     """Add cache/index management flags (codegraph_autoindex / full_index / metrics).
@@ -29,9 +31,12 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--autoindex-max-files",
-        type=int,
+        type=parse_index_max_files,
         default=20_000,
-        help="Max files to index when --autoindex-mode=warm (default: 20000)",
+        help=(
+            "Positive max files to index when --autoindex-mode=warm; "
+            "zero is invalid (default: 20000)"
+        ),
     )
     parser.add_argument(
         "--full-index",
@@ -50,9 +55,12 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--full-index-max-files",
-        type=int,
+        type=parse_index_max_files,
         default=20_000,
-        help="Max files to index per --full-index run (default: 20000)",
+        help=(
+            "Positive max files to index per --full-index run; "
+            "zero is invalid (default: 20000)"
+        ),
     )
     parser.add_argument(
         "--full-index-include-activation",
@@ -121,9 +129,12 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--incremental-sync-max-files",
-        type=int,
+        type=parse_index_max_files,
         default=20_000,
-        help="Max files for --incremental-sync (default: 20000)",
+        help=(
+            "Positive max files for --incremental-sync; "
+            "zero is invalid (default: 20000)"
+        ),
     )
     parser.add_argument(
         "--knowledge-graph-index",
@@ -150,11 +161,12 @@ def _add_mcp_index_management_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--knowledge-graph-max-files",
-        type=int,
+        type=parse_index_max_files,
         default=1_000_000,
         help=(
-            "Max files for --knowledge-graph-index-mode build; update mode "
-            "uses a safe full-project scan (default: 1000000)"
+            "Positive max files for --knowledge-graph-index-mode build; zero is "
+            "invalid and update mode uses a safe full-project scan "
+            "(default: 1000000)"
         ),
     )
     parser.add_argument(

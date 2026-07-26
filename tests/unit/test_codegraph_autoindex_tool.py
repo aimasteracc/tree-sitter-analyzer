@@ -60,6 +60,9 @@ class TestToolDefinition:
         assert hints["readOnlyHint"] is False
         assert hints["destructiveHint"] is True
 
+    def test_schema_requires_positive_max_files(self, tool):
+        assert tool.get_tool_schema()["properties"]["max_files"]["minimum"] == 1
+
 
 class TestValidation:
     def test_valid_status(self, tool):
@@ -74,6 +77,11 @@ class TestValidation:
     def test_invalid_mode_rejected(self, tool):
         with pytest.raises(ValueError, match="Invalid mode"):
             tool.validate_arguments({"mode": "delete"})
+
+    @pytest.mark.parametrize("value", [True, 0, -1])
+    def test_invalid_max_files_rejected(self, tool, value):
+        with pytest.raises(ValueError, match="max_files must be a positive integer"):
+            tool.validate_arguments({"mode": "warm", "max_files": value})
 
 
 @pytest.mark.asyncio

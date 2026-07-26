@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T07:52:24Z",
+  "pattern": "index-contract-repair",
+  "duration_s": 900,
+  "items_found": 4,
+  "actions_taken": 4,
+  "escalations": 0,
+  "tokens_estimate": 24000,
+  "outcome": "fix-proposed",
+  "summary": "Issue #1169: unified max_files normalization across CLI, MCP, AST walking, incremental sync, knowledge indexing, and cold-cache warming; zero/negative/bool limits now fail before mutation, and capped syncs report truncated_by_max_files. Focused coverage (228 tests), patch coverage, full pytest (1273 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T07:26:49Z",
   "pattern": "pr-readiness",
   "duration_s": 600,

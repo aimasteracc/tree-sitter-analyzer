@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
 from ..utils.auto_index_guard import (
     ensure_indexed,
@@ -68,7 +69,11 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
                 },
                 "max_files": {
                     "type": "integer",
-                    "description": "Max files to index when warming (default: 20000)",
+                    "minimum": 1,
+                    "description": (
+                        "Positive maximum files to index when warming; "
+                        "zero is invalid (default: 20000)"
+                    ),
                     "default": 20000,
                 },
                 "output_format": {
@@ -86,6 +91,7 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
         valid_modes = ["status", "warm", "reset"]
         if mode not in valid_modes:
             raise invalid_enum_error("mode", mode, valid_modes)
+        arguments["max_files"] = normalize_index_max_files(arguments.get("max_files"))
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -96,7 +102,7 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
         if mode == "status":
             return self._status(output_format)
         elif mode == "warm":
-            return self._warm(arguments.get("max_files", 20_000), output_format)
+            return self._warm(arguments["max_files"], output_format)
         elif mode == "reset":
             return self._reset(output_format)
 
