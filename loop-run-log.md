@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T05:57:19Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 1200,
+  "items_found": 4,
+  "actions_taken": 4,
+  "escalations": 0,
+  "tokens_estimate": 42000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1160 second Codex loop: setup-only now rejects unsupported backend/arm pairs, binds selected repo/arm/question contents to deterministic manifest hashes, requires producer_completed to be the sole terminal registry completion, and rejects boolean manifest integer fields. Benchmark harness (108 tests), patch coverage, full pytest, build, Ruff, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T05:36:45Z",
   "pattern": "pr-review-repair",
   "duration_s": 900,

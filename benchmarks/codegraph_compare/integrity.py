@@ -28,6 +28,8 @@ class ExpectedCellV1:
     run_id: str
 
     def __post_init__(self) -> None:
+        if type(self.repeat) is not int or self.repeat < 0:
+            raise ValueError("Expected cell repeat must be a non-negative integer")
         expected = (
             f"{self.question_id}__{self.arm}__{self.agent_backend}__{self.repeat:02d}"
         )
@@ -35,8 +37,6 @@ class ExpectedCellV1:
             raise ValueError(f"run_id must equal {expected}")
         if not all((self.repo, self.question_id, self.arm, self.agent_backend)):
             raise ValueError("Expected cell fields must be non-empty")
-        if self.repeat < 0:
-            raise ValueError("Expected cell repeat must be non-negative")
 
 
 @dataclass(frozen=True)
@@ -193,8 +193,10 @@ def create_manifest(
     )
     if not all(strings):
         raise ValueError("Manifest identity and provenance fields must be non-empty")
-    if timeout_seconds <= 0:
-        raise ValueError("timeout_seconds must be positive")
+    if type(seed) is not int:
+        raise ValueError("seed must be an integer")
+    if type(timeout_seconds) is not int or timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be a positive integer")
     if len(set(retry_session_ids)) != len(retry_session_ids):
         raise ValueError("retry_session_ids must be unique")
     if primary_session_id in retry_session_ids or any(

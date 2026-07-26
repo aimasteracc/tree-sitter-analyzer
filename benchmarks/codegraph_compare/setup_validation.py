@@ -19,6 +19,7 @@ from typing import Any, cast
 
 from benchmarks.codegraph_compare.integrity import (
     ExperimentManifestV1,
+    _sha256,
     validate_setup_index_stats,
 )
 from benchmarks.codegraph_compare.schemas import IndexStatsV1
@@ -59,6 +60,48 @@ class _PreparedCell:
     adapter: Any
 
 
+def selected_matrix_config_hash(
+    repo_entries: Sequence[dict],
+    arm_entries: Sequence[dict],
+) -> str:
+    """Hash the selected, machine-independent repo and arm configuration."""
+
+    repos = [
+        {key: value for key, value in entry.items() if key != "local_path"}
+        for entry in repo_entries
+    ]
+    return _sha256(
+        {
+            "repos": sorted(repos, key=lambda entry: str(entry.get("id", ""))),
+            "arms": sorted(
+                (dict(entry) for entry in arm_entries),
+                key=lambda entry: str(entry.get("id", "")),
+            ),
+        }
+    )
+
+
+def selected_questions_hash(
+    questions_by_repo: Mapping[str, Sequence[dict]],
+) -> str:
+    """Hash every selected question and its repository binding."""
+
+    questions = [
+        {"repo_id": repo_id, "question": dict(question)}
+        for repo_id, entries in questions_by_repo.items()
+        for question in entries
+    ]
+    return _sha256(
+        sorted(
+            questions,
+            key=lambda item: (
+                str(item["repo_id"]),
+                str(item["question"].get("id", "")),
+            ),
+        )
+    )
+
+
 def validate_matrix_setup(
     repo_entries: Sequence[dict],
     arm_entries: Sequence[dict],
@@ -95,6 +138,20 @@ def validate_matrix_setup(
         )
         if mismatch is not None:
             return SetupValidationResult((mismatch,), {}, {}, {})
+        backend_failures = _validate_manifest_backend_arms(
+            arm_entries,
+            backend_validator=backend_validator,
+        )
+        if backend_failures:
+            return SetupValidationResult(backend_failures, {}, {}, {})
+        config_failure = _validate_manifest_config_hashes(
+            repo_entries,
+            arm_entries,
+            questions_by_repo,
+            manifest=manifest,
+        )
+        if config_failure is not None:
+            return SetupValidationResult((config_failure,), {}, {}, {})
         return _validate_supplied_index_stats(
             repo_entries,
             arm_entries,
@@ -130,6 +187,57 @@ def validate_matrix_setup(
         prepared_run_configs,
         {},
     )
+
+
+def _validate_manifest_backend_arms(
+    arm_entries: Sequence[dict],
+    *,
+    backend_validator: Callable[[str], None] | None,
+) -> tuple[SetupFailure, ...]:
+    if backend_validator is None:
+        return ()
+    failures: list[SetupFailure] = []
+    for arm in arm_entries:
+        arm_id = str(arm["id"])
+        try:
+            backend_validator(arm_id)
+        except Exception as exc:  # noqa: BLE001 - persist every unsupported arm
+            failures.append(
+                _failure(
+                    "*",
+                    arm_id,
+                    str(arm.get("index_mode", "none")),
+                    "BACKEND_UNSUPPORTED",
+                    str(exc),
+                )
+            )
+    return tuple(failures)
+
+
+def _validate_manifest_config_hashes(
+    repo_entries: Sequence[dict],
+    arm_entries: Sequence[dict],
+    questions_by_repo: Mapping[str, Sequence[dict]],
+    *,
+    manifest: ExperimentManifestV1,
+) -> SetupFailure | None:
+    if selected_matrix_config_hash(repo_entries, arm_entries) != manifest.config_hash:
+        return _failure(
+            "*",
+            "*",
+            "none",
+            "MATRIX_CONFIG_HASH_MISMATCH",
+            "selected repository or arm configuration does not match config_hash",
+        )
+    if selected_questions_hash(questions_by_repo) != manifest.question_hash:
+        return _failure(
+            "*",
+            "*",
+            "none",
+            "MATRIX_QUESTION_HASH_MISMATCH",
+            "selected question configuration does not match question_hash",
+        )
+    return None
 
 
 def _validate_manifest_matrix(

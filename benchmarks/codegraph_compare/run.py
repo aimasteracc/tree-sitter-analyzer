@@ -435,8 +435,11 @@ def _run_manifest_setup_gate(
     repeats: int,
     session_id: str,
 ) -> int:
-    """Validate external V1 evidence without importing the execution stack."""
+    """Validate external V1 evidence without creating adapters or model calls."""
 
+    from benchmarks.codegraph_compare.adapters.claude_runner import (  # noqa: PLC0415
+        validate_backend_arm_support,
+    )
     from benchmarks.codegraph_compare.setup_validation import (  # noqa: PLC0415
         validate_matrix_setup,
         write_manifest_setup_evidence,
@@ -456,6 +459,9 @@ def _run_manifest_setup_gate(
         agent_backend=args.agent_backend,
         model=args.model,
         supplied_index_stats=supplied_index_stats,
+        backend_validator=lambda arm_id: validate_backend_arm_support(
+            args.agent_backend, arm_id
+        ),
     )
     evidence_path = write_manifest_setup_evidence(
         RESULTS_DIR,

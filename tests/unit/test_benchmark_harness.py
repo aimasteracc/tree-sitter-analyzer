@@ -553,25 +553,55 @@ class TestCodeGraphCompareSetupGate:
 
     @staticmethod
     def _patch_v1_matrix_inputs(monkeypatch, tmp_path: Path) -> None:
+        repos, arms, questions = TestCodeGraphCompareSetupGate._v1_matrix_configs(
+            tmp_path
+        )
         configs = {
-            compare_run.REPOS_YAML: [{"id": "gin", "local_path": str(tmp_path)}],
-            compare_run.ARMS_YAML: [
-                {"id": "codegraph-warm", "index_mode": "warm"},
-                {"id": "tsa-warm", "index_mode": "warm"},
-            ],
-            compare_run.QUESTIONS_YAML: [
-                {
-                    "id": "q1",
-                    "repo": "gin",
-                    "prompt": "Where is the entry point?",
-                }
-            ],
+            compare_run.REPOS_YAML: repos,
+            compare_run.ARMS_YAML: arms,
+            compare_run.QUESTIONS_YAML: questions,
         }
         monkeypatch.setattr(compare_run, "_load_yaml", configs.__getitem__)
         monkeypatch.setattr(
             compare_run, "_repo_local_path", lambda repo: Path(repo["local_path"])
         )
         monkeypatch.setattr(compare_run, "RESULTS_DIR", tmp_path / "results")
+
+    @staticmethod
+    def _v1_matrix_configs(
+        repo_path: Path,
+    ) -> tuple[list[dict], list[dict], list[dict]]:
+        return (
+            [{"id": "gin", "local_path": str(repo_path)}],
+            [
+                {"id": "codegraph-warm", "index_mode": "warm"},
+                {"id": "tsa-warm", "index_mode": "warm"},
+            ],
+            [
+                {
+                    "id": "q1",
+                    "repo": "gin",
+                    "prompt": "Where is the entry point?",
+                }
+            ],
+        )
+
+    @classmethod
+    def _v1_setup_manifest(cls, *, agent_backend: str = "claude"):
+        from benchmarks.codegraph_compare.setup_validation import (
+            selected_matrix_config_hash,
+            selected_questions_hash,
+        )
+
+        repos, arms, questions = cls._v1_matrix_configs(Path("/runtime-path"))
+        return _v1_manifest(
+            agent_backend=agent_backend,
+            expected_run_ids=tuple(
+                f"q1__{arm['id']}__{agent_backend}__00" for arm in arms
+            ),
+            config_hash=selected_matrix_config_hash(repos, arms),
+            question_hash=selected_questions_hash({"gin": questions}),
+        )
 
     @staticmethod
     def _write_v1_manifest(tmp_path: Path, manifest) -> Path:
@@ -587,7 +617,10 @@ class TestCodeGraphCompareSetupGate:
 
         cells = []
         for arm_id in ("codegraph-warm", "tsa-warm"):
-            record = _v1_run(manifest, f"q1__{arm_id}__codex__00")
+            record = _v1_run(
+                manifest,
+                f"q1__{arm_id}__{manifest.agent_backend}__00",
+            )
             stats = record.index_stats
             if stats is None:
                 pytest.fail(f"{arm_id} fixture must include V1 index statistics")
@@ -732,7 +765,7 @@ class TestCodeGraphCompareSetupGate:
     ):
         from benchmarks.codegraph_compare.adapters import RunConfig
 
-        manifest = _v1_manifest()
+        manifest = self._v1_setup_manifest()
         manifest_path = self._write_v1_manifest(tmp_path, manifest)
         evidence_input = self._write_v1_index_evidence(tmp_path, manifest)
         model_calls = 0
@@ -742,7 +775,10 @@ class TestCodeGraphCompareSetupGate:
                 self.arm_id = arm_id
 
             def prepare_index(self, repo_path: Path, cold: bool):
-                record = _v1_run(manifest, f"q1__{self.arm_id}__codex__00")
+                record = _v1_run(
+                    manifest,
+                    f"q1__{self.arm_id}__{manifest.agent_backend}__00",
+                )
                 assert record.index_stats is not None
                 return record.index_stats
 
@@ -757,6 +793,7 @@ class TestCodeGraphCompareSetupGate:
         self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
         self._install_runner_modules(monkeypatch, Adapter, run_one)
         args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
         args.manifest = str(manifest_path)
         args.setup_only = True
         args.index_evidence = evidence_input
@@ -804,7 +841,7 @@ class TestCodeGraphCompareSetupGate:
     def test_matrix_manifest_mismatch_fails_before_adapter_creation(
         self, monkeypatch, tmp_path: Path
     ):
-        manifest = _v1_manifest()
+        manifest = self._v1_setup_manifest()
         manifest_path = self._write_v1_manifest(tmp_path, manifest)
         adapter_calls = 0
         model_calls = 0
@@ -822,6 +859,7 @@ class TestCodeGraphCompareSetupGate:
         self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
         self._install_runner_modules(monkeypatch, get_adapter, run_one)
         args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
         args.arms = "tsa-warm"
         args.manifest = str(manifest_path)
         args.setup_only = True
@@ -838,6 +876,102 @@ class TestCodeGraphCompareSetupGate:
         evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
         assert [failure["code"] for failure in evidence["failures"]] == [
             "MATRIX_MANIFEST_MISMATCH"
+        ]
+
+    def test_setup_only_rejects_unsupported_backend_arm_pairs(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest(agent_backend="codex")
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "BACKEND_UNSUPPORTED",
+            "BACKEND_UNSUPPORTED",
+        ]
+
+    def test_setup_only_rejects_changed_arm_configuration(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        original_load = compare_run._load_yaml
+        changed_arms = [
+            {**arm, "adapter": "changed-adapter"}
+            for arm in original_load(compare_run.ARMS_YAML)
+        ]
+        monkeypatch.setattr(
+            compare_run,
+            "_load_yaml",
+            lambda path: (
+                changed_arms if path == compare_run.ARMS_YAML else original_load(path)
+            ),
+        )
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_CONFIG_HASH_MISMATCH"
+        ]
+
+    def test_setup_only_rejects_changed_question_configuration(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        original_load = compare_run._load_yaml
+        changed_questions = [
+            {**question, "prompt": "Changed after manifest creation"}
+            for question in original_load(compare_run.QUESTIONS_YAML)
+        ]
+        monkeypatch.setattr(
+            compare_run,
+            "_load_yaml",
+            lambda path: (
+                changed_questions
+                if path == compare_run.QUESTIONS_YAML
+                else original_load(path)
+            ),
+        )
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_QUESTION_HASH_MISMATCH"
         ]
 
     def test_matrix_manifest_rejects_selected_repo_without_questions(
@@ -882,7 +1016,7 @@ class TestCodeGraphCompareSetupGate:
     def test_readiness_oracle_mismatch_fails_closed_without_model_calls(
         self, monkeypatch, tmp_path: Path
     ):
-        manifest = _v1_manifest()
+        manifest = self._v1_setup_manifest()
         manifest_path = self._write_v1_manifest(tmp_path, manifest)
         evidence_input = self._write_v1_index_evidence(
             tmp_path, manifest, readiness=False
@@ -903,6 +1037,7 @@ class TestCodeGraphCompareSetupGate:
             run_one,
         )
         args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
         args.manifest = str(manifest_path)
         args.setup_only = True
         args.index_evidence = evidence_input
@@ -922,7 +1057,7 @@ class TestCodeGraphCompareSetupGate:
     def test_setup_evidence_uses_exclusive_create(self, monkeypatch, tmp_path: Path):
         from benchmarks.codegraph_compare.adapters import RunConfig
 
-        manifest = _v1_manifest()
+        manifest = self._v1_setup_manifest()
         manifest_path = self._write_v1_manifest(tmp_path, manifest)
         evidence_input = self._write_v1_index_evidence(tmp_path, manifest)
         session_id = "20260721T010203000000Z"
@@ -936,7 +1071,10 @@ class TestCodeGraphCompareSetupGate:
                 self.arm_id = arm_id
 
             def prepare_index(self, repo_path: Path, cold: bool):
-                record = _v1_run(manifest, f"q1__{self.arm_id}__codex__00")
+                record = _v1_run(
+                    manifest,
+                    f"q1__{self.arm_id}__{manifest.agent_backend}__00",
+                )
                 assert record.index_stats is not None
                 return record.index_stats
 
@@ -961,6 +1099,7 @@ class TestCodeGraphCompareSetupGate:
             ),
         )
         args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
         args.manifest = str(manifest_path)
         args.setup_only = True
         args.index_evidence = evidence_input
@@ -2067,6 +2206,33 @@ class TestBenchmarkExperimentIntegrity:
 
         assert parsed == manifest
 
+    @pytest.mark.parametrize(
+        ("field", "message"),
+        (
+            ("seed", "seed must be an integer"),
+            ("timeout_seconds", "timeout_seconds must be a positive integer"),
+        ),
+    )
+    def test_manifest_integer_fields_reject_booleans(self, field: str, message: str):
+        with pytest.raises(ValueError, match=message):
+            _v1_manifest(**{field: True})
+
+    def test_expected_cell_repeat_rejects_boolean(self):
+        from benchmarks.codegraph_compare.integrity import ExpectedCellV1
+
+        with pytest.raises(
+            ValueError,
+            match="Expected cell repeat must be a non-negative integer",
+        ):
+            ExpectedCellV1(
+                repo="gin",
+                question_id="q1",
+                arm="native-only",
+                repeat=True,
+                agent_backend="codex",
+                run_id="q1__native-only__codex__01",
+            )
+
     def test_manifest_rejects_required_arm_without_expected_cell(self):
         with pytest.raises(
             ValueError, match="Required arms must exactly match expected cell arms"
@@ -2179,6 +2345,47 @@ class TestBenchmarkExperimentIntegrity:
                 outcome,
             )
             for outcome in ("setup_started", "setup_passed")
+        )
+
+        verdict = validate_publishable_experiment(
+            manifest,
+            registry=registry,
+            runs=(native,),
+            evals=(_v1_eval(native),),
+            reported_experiment_ids=(manifest.experiment_id,),
+        )
+
+        assert tuple(item.code for item in verdict.violations) == (
+            "REGISTRY_PRODUCER_INCOMPLETE",
+        )
+        assert verdict.publishable is False
+
+    def test_registry_rejects_activity_after_producer_completion(self):
+        from benchmarks.codegraph_compare.integrity import (
+            RegistryEvent,
+            validate_publishable_experiment,
+        )
+
+        manifest = _v1_manifest(
+            expected_run_ids=("q1__native-only__codex__00",),
+            required_arms=("native-only",),
+            indexed_arms=(),
+            tool_fingerprints={"native-only": "native1"},
+            required_readiness_oracles={},
+        )
+        native = _v1_run(
+            manifest,
+            "q1__native-only__codex__00",
+            index_stats=None,
+        )
+        registry = (
+            *_registry_for(manifest),
+            RegistryEvent(
+                manifest.experiment_id,
+                manifest.manifest_hash,
+                "RUNNING",
+                "producer_restarted",
+            ),
         )
 
         verdict = validate_publishable_experiment(
