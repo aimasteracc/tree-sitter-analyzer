@@ -585,6 +585,65 @@ def test_find_test_files_disambiguates_direct_matches_alongside_family_matches()
     ]
 
 
+def test_find_test_files_supports_java_test_suffix():
+    """Java's FooTest convention must remain a direct module match."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/main/java/example/Foo.java"],
+        {
+            "tests/FooTest.java",
+            "tests/BarTest.java",
+        },
+    )
+
+    assert mapping["src/main/java/example/Foo.java"] == ["tests/FooTest.java"]
+
+
+def test_find_test_files_supports_dotted_javascript_and_typescript_tests():
+    """Dotted .test/.spec names must survive flat-layout disambiguation."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/foo/bar.js", "src/foo/baz.ts"],
+        {
+            "tests/bar.test.js",
+            "tests/baz.spec.ts",
+            "tests/quux.test.js",
+        },
+    )
+
+    assert mapping["src/foo/bar.js"] == ["tests/bar.test.js"]
+    assert mapping["src/foo/baz.ts"] == ["tests/baz.spec.ts"]
+
+
+def test_find_test_files_preserves_flat_variants_for_nested_modules():
+    """Nested source directories must not hide flat direct-stem variants."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/unit/test_engine.py",
+            "tests/unit/test_engine_errors.py",
+            "tests/unit/test_other_engine.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == [
+        "tests/unit/test_engine.py",
+        "tests/unit/test_engine_errors.py",
+    ]
+
+
+def test_find_test_files_maps_changed_test_to_itself_in_mixed_diff():
+    """A changed test remains an exact target when runtime files also change."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/foo.py", "tests/unit/test_foo.py"],
+        {
+            "tests/unit/test_foo.py",
+            "tests/unit/test_bar.py",
+        },
+    )
+
+    assert mapping["src/foo.py"] == ["tests/unit/test_foo.py"]
+    assert mapping["tests/unit/test_foo.py"] == ["tests/unit/test_foo.py"]
+
+
 def test_find_test_files_maps_refactoring_plan_builder_to_family_tests():
     """The precise-plan builder should not force auto-discovery."""
     mapping = change_impact_tool._find_test_files(
