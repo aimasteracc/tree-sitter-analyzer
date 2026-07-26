@@ -21,11 +21,20 @@ def source_subsystem_stems(file_path: str | Path) -> list[str]:
     normalized = Path(str(file_path).replace("\\", "/"))
     parents = list(normalized.parts[:-1])
     source_roots = {"app", "apps", "lib", "package", "packages", "pkg", "src"}
-    root_indexes = [
-        index for index, part in enumerate(parents) if part.lower() in source_roots
+    strict_root_indexes = [
+        index for index, part in enumerate(parents) if part.lower() in {"lib", "src"}
     ]
-    if root_indexes:
-        root_index = root_indexes[-1]
+    root_index = next(
+        (
+            index
+            for index, part in enumerate(parents)
+            if part.lower() in source_roots
+        ),
+        None,
+    )
+    if strict_root_indexes:
+        root_index = strict_root_indexes[0]
+    if root_index is not None:
         package_prefix = parents[:root_index]
         nested_package_markers = {"app", "apps", "package", "packages", "pkg"}
         marker_indexes = [
@@ -73,11 +82,13 @@ def test_path_is_unscoped(test_file: str) -> bool:
         parts = parts[test_root_index + 1 :]
 
     generic_tiers = {
+        "acceptance",
         "benchmark",
         "benchmarks",
         "contract",
         "contracts",
         "e2e",
+        "fast",
         "functional",
         "governance",
         "integration",
@@ -85,6 +96,7 @@ def test_path_is_unscoped(test_file: str) -> bool:
         "regression",
         "slow",
         "smoke",
+        "system",
         "unit",
     }
     while parts and parts[0].lower() in generic_tiers:
@@ -130,11 +142,7 @@ def test_paths_have_compatible_package_scope(
     """Return whether two paths do not identify different monorepo packages."""
     changed_package = _monorepo_package_identity(changed_file)
     test_package = _monorepo_package_identity(test_file)
-    return (
-        changed_package is None
-        or test_package is None
-        or changed_package == test_package
-    )
+    return changed_package is None or changed_package == test_package
 
 
 def test_file_has_exact_module_stem(test_file: str, changed_file: str) -> bool:
@@ -244,6 +252,8 @@ def module_family_test_stems(file_path: str | Path) -> list[str]:
         "_verification",
     )
     stems = _special_module_family_stems(normalized.stem)
+    if normalized.stem == "evaluator" and "constraints" in normalized.parts[:-1]:
+        stems.append("constraint_dsl")
     stems.extend(_strip_family_suffixes(normalized.stem, suffixes))
     return _unique_nonempty_stems(stems)
 
