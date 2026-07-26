@@ -39,7 +39,6 @@ from .test_discovery_stems import (
     related_stem_matches,
     related_test_stems_for_path,
     source_subsystem_stems,
-    test_file_has_exact_module_stem,
     test_file_subject_stem,
     test_path_is_unscoped,
     test_path_subsystem_affinity_rank,
@@ -125,27 +124,15 @@ def _find_test_files(
             for test_file in direct_related
             if test_path_is_unscoped(test_file) or not has_named_subsystem
         ]
-        outer_scoped_exact = [
-            test_file
-            for test_file in direct_related
-            if test_file_has_exact_module_stem(test_file, changed_file)
-            and test_path_subsystem_affinity_rank(test_file, changed_file) is not None
-        ]
         scoped_direct = _most_specific_affinity_matches(
             direct_related,
             changed_file,
         )
-        selected_direct = sorted(
-            set(retained_direct) | set(outer_scoped_exact) | set(scoped_direct)
-        )
+        selected_direct = sorted(set(retained_direct) | set(scoped_direct))
         if not selected_direct and direct_related:
             # All filename matches belong to another named subsystem. Only in
             # that ambiguous case, search the available tests by source-path
             # affinity instead of adding subsystem stems unconditionally.
-            affinity_fallback = _most_specific_affinity_matches(
-                sorted(test_files),
-                changed_file,
-            )
             # Any recognized direct filename may only be replaced by an
             # independently established module-family candidate. A path or
             # scope-bearing filename alone is weaker evidence.
