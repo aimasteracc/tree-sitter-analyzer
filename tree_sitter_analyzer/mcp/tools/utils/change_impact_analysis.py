@@ -35,10 +35,11 @@ from .constraint_violation_query import (
     violations_for_files,
 )
 from .test_discovery_stems import (
+    module_stem_for_path,
     related_stem_matches,
     related_test_stems_for_path,
     source_subsystem_stems,
-    test_file_has_exact_module_stem,
+    test_file_subject_stem,
     test_path_is_unscoped,
     test_path_subsystem_affinity_rank,
 )
@@ -118,13 +119,7 @@ def _find_test_files(
         retained_direct = [
             test_file
             for test_file in direct_related
-            if (
-                not has_named_subsystem
-                or (
-                    test_path_is_unscoped(test_file)
-                    and test_file_has_exact_module_stem(test_file, changed_file)
-                )
-            )
+            if test_path_is_unscoped(test_file) or not has_named_subsystem
         ]
         scoped_direct = _most_specific_affinity_matches(
             direct_related,
@@ -180,14 +175,13 @@ def _test_file_matches_change(test_file: str, changed_file: str) -> bool:
 
 def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
     """Return whether the test filename directly names the changed module."""
-    changed_stem = Path(changed_file).stem.lower()
-    test_stem = Path(test_file).stem.lower()
-    for suffix in (".test", ".spec", "_test", "_spec"):
-        if test_stem.endswith(suffix):
-            test_stem = test_stem[: -len(suffix)]
-            break
-    if test_stem.startswith("test_"):
-        test_stem = test_stem[len("test_") :]
+    normalized_test = test_file.replace("\\", "/")
+    normalized_change = changed_file.replace("\\", "/")
+    if normalized_test == normalized_change:
+        return True
+
+    changed_stem = module_stem_for_path(normalized_change)
+    test_stem = test_file_subject_stem(normalized_test)
     return (
         test_stem == changed_stem
         or test_stem.startswith(f"{changed_stem}_")
