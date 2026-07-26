@@ -285,10 +285,7 @@ def walk_and_partition(
         }
 
     if candidate_snapshot is not None:
-        if os.path.abspath(cache.project_root) != candidate_snapshot.project_root:
-            raise ValueError("candidate snapshot belongs to a different project root")
-        if max_files != candidate_snapshot.max_files:
-            raise ValueError("candidate snapshot uses a different max_files limit")
+        _validate_candidate_snapshot(cache, max_files, candidate_snapshot)
         stats["truncated_by_max_files"] = candidate_snapshot.truncated_by_max_files
         stats["snapshot_metrics"] = candidate_snapshot.metrics()
         count = len(candidate_snapshot.entries)
@@ -322,9 +319,8 @@ def walk_and_partition(
                 )
                 continue
 
-            fingerprint = entry.fingerprint
-            if fingerprint is None or entry.language is None:
-                raise ValueError(f"selected candidate lacks metadata: {entry.rel_path}")
+            fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
+            language = cast(str, entry.language)
             row = indexed_map.get(entry.rel_path)
             if (
                 row is not None
@@ -340,7 +336,7 @@ def walk_and_partition(
                     }
                 )
                 continue
-            candidates.append((entry.abs_path, entry.language))
+            candidates.append((entry.abs_path, language))
 
         stats["cached"] += len(already_cached)
         stats["files"].extend(already_cached)
@@ -391,6 +387,39 @@ def walk_and_partition(
     stats["files"].extend(already_cached)
     stats["processed"] = len(candidates) + len(already_cached)
     return stats, candidates, count
+
+
+def _validate_candidate_snapshot(
+    cache: Any,
+    max_files: int,
+    candidate_snapshot: IndexCandidateSnapshot,
+) -> None:
+    """Reject a snapshot before an index run performs any destructive work."""
+    if os.path.abspath(cache.project_root) != candidate_snapshot.project_root:
+        raise ValueError("candidate snapshot belongs to a different project root")
+    if max_files != candidate_snapshot.max_files:
+        raise ValueError("candidate snapshot uses a different max_files limit")
+    for entry in candidate_snapshot.selected_entries:
+        if entry.fingerprint is None or entry.language is None:
+            raise ValueError(f"selected candidate lacks metadata: {entry.rel_path}")
+
+
+def _clear_full_rebuild_rows(cache: Any, conn: sqlite3.Connection) -> None:
+    """Clear primary and derived index rows before a forced rebuild."""
+    conn.execute("DELETE FROM ast_index")
+    if cache.fts5_available:
+        conn.execute(
+            "INSERT INTO ast_symbols_fts(ast_symbols_fts) VALUES('delete-all')"
+        )
+    try:
+        conn.execute("DELETE FROM ast_symbol_rows")
+    except sqlite3.OperationalError:
+        pass
+    for table in ("ast_imports", "ast_symbol_activation", "edges"):
+        try:
+            conn.execute(f"DELETE FROM {table}")  # nosec B608 - fixed table names
+        except sqlite3.OperationalError:
+            pass
 
 
 def insert_index_row(
@@ -534,6 +563,8 @@ def run_index_project(
             "unresolved_refs_backfill": unresolved,
             "activation_enabled": activation_enabled,
         }
+    if candidate_snapshot is not None:
+        _validate_candidate_snapshot(cache, max_files, candidate_snapshot)
     try:
         if force:
             # #578: a full rebuild empties ast_index up front (the DELETE
@@ -547,7 +578,7 @@ def run_index_project(
             conn = cache._get_conn()
             _mark_build_in_progress(conn)
             _clear_call_graph_built(conn)
-            conn.execute("DELETE FROM ast_index")
+            _clear_full_rebuild_rows(cache, conn)
             conn.commit()
         conn = cache._get_conn()
         effective_exclude = (
@@ -620,6 +651,10 @@ def run_index_project(
         # #970's false-positive guard intact.
         elif (
             candidate_snapshot is not None
+            and all(
+                changed_since_snapshot(entry) is None
+                for entry in candidate_snapshot.selected_entries
+            )
             and not candidate_snapshot.truncated_by_max_files
             and candidate_snapshot.excluded == 0
             and candidate_snapshot.skipped == 0

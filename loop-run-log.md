@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T09:36:38Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 900,
+  "items_found": 5,
+  "actions_taken": 5,
+  "escalations": 0,
+  "tokens_estimate": 22000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 second Codex Draft review: forced rebuilds now validate snapshots before destructive work and clear every primary/derived index table coherently; late incremental mutations are rolled back across AST, FTS, imports, activation, and graph rows; cached files are revalidated before graph-complete stamping; and the oversized snapshot test module was split into three bounded files. Focused coverage (235 tests), strict worktree patch coverage, full pytest (1273 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T09:10:05Z",
   "pattern": "pr-review-repair",
   "duration_s": 720,

@@ -94,13 +94,7 @@ class IncrementalSync:
         exclude_patterns: frozenset[str] | None = None,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
     ) -> SyncResult:
-        """Sync the on-disk source tree with the AST cache.
-
-        r37e6 (dogfood): 79 lines → ~15 lines of phase dispatch.
-        Phase helpers (``_load_indexed_rows`` / ``_scan_disk_files`` /
-        ``_invalidate_deleted_files`` / ``_index_or_reindex_files``) own
-        per-phase logic; ``sync`` becomes a thin orchestrator.
-        """
+        """Sync the on-disk source tree with the AST cache."""
         max_files = normalize_index_max_files(max_files)
         result = SyncResult()
         conn = self._cache.get_conn()
@@ -154,6 +148,7 @@ class IncrementalSync:
                 if change_reason is not None:
                     late_changes.append((entry.rel_path, change_reason))
             for rel_path, reason in sorted(late_changes):
+                self._cache.invalidate(os.path.join(self._cache.project_root, rel_path))
                 detail = {
                     "file": rel_path,
                     "considered": "skipped",
