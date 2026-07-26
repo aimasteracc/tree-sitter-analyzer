@@ -1080,6 +1080,18 @@ def test_find_test_files_rejects_workspace_tests_for_central_sources():
     ]
 
 
+def test_find_test_files_ignores_workspace_markers_below_test_root():
+    """A nested apps test folder remains central test organization."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/users/config.py"],
+        {"tests/apps/users/test_config.py"},
+    )
+
+    assert mapping["src/users/config.py"] == [
+        "tests/apps/users/test_config.py"
+    ]
+
+
 def test_find_test_files_filters_cross_package_family_matches():
     """Derived family coverage must not cross into a sibling package."""
     mapping = change_impact_tool._find_test_files(
@@ -1145,13 +1157,28 @@ def test_find_test_files_supports_irregular_plural_subject():
 
 
 def test_find_test_files_supports_doubled_z_plural():
-    """A terminal z is doubled before the conventional es suffix."""
+    """Single and doubled terminal z stems use conventional es plurals."""
     mapping = change_impact_tool._find_test_files(
-        ["src/quiz.py"],
-        {"tests/test_quizzes.py"},
+        ["src/buzz.py", "src/quiz.py"],
+        {"tests/test_buzzes.py", "tests/test_quizzes.py"},
     )
 
+    assert mapping["src/buzz.py"] == ["tests/test_buzzes.py"]
     assert mapping["src/quiz.py"] == ["tests/test_quizzes.py"]
+
+
+def test_find_test_files_prefers_case_preserving_direct_identity():
+    """Normalized collisions resolve to the exact case-sensitive module name."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/Foo.ts", "src/foo.ts"],
+        {
+            "tests/Foo.test.ts",
+            "tests/foo.test.ts",
+        },
+    )
+
+    assert mapping["src/Foo.ts"] == ["tests/Foo.test.ts"]
+    assert mapping["src/foo.ts"] == ["tests/foo.test.ts"]
 
 
 def test_find_test_files_supports_regular_irregular_plural_alternatives():
