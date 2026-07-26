@@ -236,7 +236,9 @@ def _pluralized_module_stems(stem: str) -> tuple[str, ...]:
     plurals: list[str] = []
     if irregular is not None:
         plurals.append(f"{prefix}{separator}{irregular}")
-    if stem.endswith(("s", "x", "z", "ch", "sh")):
+    if stem.endswith("z"):
+        regular = f"{stem}zes"
+    elif stem.endswith(("s", "x", "ch", "sh")):
         regular = f"{stem}es"
     elif len(stem) > 1 and stem.endswith("y") and stem[-2] not in "aeiou":
         regular = f"{stem[:-1]}ies"
