@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T07:04:35Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 900,
+  "items_found": 2,
+  "actions_taken": 2,
+  "escalations": 0,
+  "tokens_estimate": 22000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1160 sixth Codex loop: setup now validates the manifest's authoritative seeded/interleaved expected-cell schedule without imposing legacy CLI traversal order, and strict JSON loading rejects duplicate members at every nesting level for manifests and index evidence. Benchmark harness (129 tests), focused coverage, patch coverage, full pytest, build, Ruff, formatting, focused MyPy, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T06:48:21Z",
   "pattern": "pr-review-repair",
   "duration_s": 900,

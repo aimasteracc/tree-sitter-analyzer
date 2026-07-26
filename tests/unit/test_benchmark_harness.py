@@ -1087,21 +1087,42 @@ class TestCodeGraphCompareSetupGate:
             "MATRIX_REPO_COMMIT_MISMATCH"
         ]
 
-    def test_setup_only_rejects_reordered_execution_schedule(
+    def test_setup_only_accepts_pre_registered_interleaved_schedule(
         self, monkeypatch, tmp_path: Path
     ):
-        manifest = self._v1_setup_manifest()
-        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
-        original_load = compare_run._load_yaml
-        monkeypatch.setattr(
-            compare_run,
-            "_load_yaml",
-            lambda path: (
-                list(reversed(original_load(path)))
-                if path == compare_run.ARMS_YAML
-                else original_load(path)
+        from benchmarks.codegraph_compare.setup_validation import (
+            selected_schedule_hash,
+        )
+
+        repos, arms, questions = self._v1_matrix_configs(Path("/runtime-path"))
+        backend = "claude"
+        interleaved_arms = list(reversed(arms))
+        manifest = self._v1_setup_manifest(
+            expected_run_ids=tuple(
+                f"q1__{arm['id']}__{backend}__00" for arm in interleaved_arms
+            ),
+            schedule_hash=selected_schedule_hash(
+                repos,
+                interleaved_arms,
+                {"gin": questions},
+                repeats=1,
+                agent_backend=backend,
             ),
         )
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 0
+
+    def test_setup_only_rejects_schedule_hash_not_bound_to_manifest_cells(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest(schedule_hash="wrong-schedule")
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
         args = self._matrix_args()
         args.agent_backend = manifest.agent_backend
         args.manifest = self._write_v1_manifest(tmp_path, manifest)
@@ -1353,6 +1374,60 @@ class TestCodeGraphCompareSetupGate:
             f"Invalid experiment manifest {manifest_path}: "
             "Experiment manifest must be an object" in capsys.readouterr().err
         )
+
+    def test_duplicate_manifest_member_uses_cli_diagnostic(
+        self, tmp_path: Path, capsys
+    ):
+        manifest_path = tmp_path / "manifest.json"
+        manifest_path.write_text(
+            '{"benchmark_version":1,"benchmark_version":1}',
+            encoding="utf-8",
+        )
+        args = self._matrix_args()
+        args.manifest = manifest_path
+        args.setup_only = True
+        args.index_evidence = tmp_path / "unused-index-evidence.json"
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert (
+            f"Invalid experiment manifest {manifest_path}: "
+            "Duplicate JSON member: benchmark_version" in capsys.readouterr().err
+        )
+
+    def test_duplicate_index_evidence_member_records_input_failure(
+        self, monkeypatch, tmp_path: Path, capsys
+    ):
+        manifest = self._v1_setup_manifest()
+        evidence_path = tmp_path / "index-evidence.json"
+        evidence_path.write_text(
+            '{"schema_version":1,"schema_version":1,"cells":[]}',
+            encoding="utf-8",
+        )
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = evidence_path
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert "Duplicate JSON member: schema_version" in capsys.readouterr().err
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert [event["outcome"] for event in registry_events] == [
+            "setup_started",
+            "setup_input_failed",
+        ]
 
     def test_malformed_nested_manifest_uses_cli_diagnostic(
         self, monkeypatch, tmp_path: Path, capsys

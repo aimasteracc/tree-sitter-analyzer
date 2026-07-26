@@ -101,6 +101,26 @@ PHASE_PRESETS: dict[str, PhasePreset] = {
 }
 
 
+def _reject_duplicate_json_members(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON member: {key}")
+        result[key] = value
+    return result
+
+
+def _load_strict_json(path: str | Path) -> object:
+    """Load canonical JSON while rejecting duplicate members at every depth."""
+
+    return json.loads(
+        Path(path).read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_json_members,
+    )
+
+
 # ---------------------------------------------------------------------------
 # YAML helpers  (lazy import keeps --help snappy without pydantic/PyYAML)
 # ---------------------------------------------------------------------------
@@ -525,7 +545,7 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
         )
 
         try:
-            raw_manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+            raw_manifest = _load_strict_json(manifest_path)
             manifest = parse_manifest_v1(raw_manifest)
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
             _die(f"Invalid experiment manifest {manifest_path}: {exc}")
@@ -544,9 +564,7 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
                 parse_index_evidence_v1,
             )
 
-            raw_evidence = json.loads(
-                Path(index_evidence_path).read_text(encoding="utf-8")
-            )
+            raw_evidence = _load_strict_json(index_evidence_path)
             supplied_index_stats = parse_index_evidence_v1(raw_evidence)
 
         # Resolve repos

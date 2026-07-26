@@ -381,16 +381,16 @@ def _validate_manifest_matrix(
             "MATRIX_TIMEOUT_MISMATCH",
             "selected timeout does not exactly match the experiment manifest",
         )
-    if (
-        actual_cells != expected_cells
-        or _sha256(actual_cells) != manifest.schedule_hash
-    ):
+    # ``expected_cells`` is the authoritative seeded/interleaved schedule.
+    # Setup-only proves that it covers the selected matrix above; it must not
+    # replace that pre-registered order with the legacy CLI selection order.
+    if _sha256(expected_cells) != manifest.schedule_hash:
         return _failure(
             "*",
             "*",
             "none",
             "MATRIX_SCHEDULE_HASH_MISMATCH",
-            "selected execution order does not match schedule_hash",
+            "manifest expected-cell order does not match schedule_hash",
         )
     return None
 
