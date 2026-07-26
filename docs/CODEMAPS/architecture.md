@@ -71,6 +71,9 @@ Every path is validated against `TREE_SITTER_PROJECT_ROOT` by `security/validato
 2. `_route_cache.py` — SQLite store of detected routes (Flask/Django/Express/Spring)
 3. `core/cache_service.py` — in-process LRU for formatter outputs
 4. `mcp/utils/search_cache.py` — fd/ripgrep result cache
+5. `registry/health_score_cache.py` — persistent per-file health scores keyed by
+   source fingerprint plus coverage, weights, moving-window, repository-specific
+   git metadata, and scoring-version context
 
 ### MCP / CLI parity
 Every MCP tool has a CLI equivalent — enforced by `tests/contracts/test_mcp_cli_parity_contract.py`

@@ -341,7 +341,8 @@ class HealthScorer:
         from .registry.health_score_cache import HealthScoreCache
 
         root = Path(project_root)
-        cache = HealthScoreCache(str(root)) if use_cache else None
+        self._coverage_cache = None
+        cache = HealthScoreCache(str(root), weights=self.weights) if use_cache else None
         results: list[HealthScore] = []
         scanned = 0
         excluded_files = 0
@@ -435,7 +436,8 @@ class HealthScorer:
                     for file_path, file_data in files.items():
                         summary = file_data.get("summary", {})
                         pct = summary.get("percent_covered", 0.0)
-                        self._coverage_cache[file_path] = float(pct)
+                        normalized_path = str(file_path).replace("\\", "/")
+                        self._coverage_cache[normalized_path] = float(pct)
 
                     total = data.get("totals", {}).get("percent_covered", 0)
                     logger.info(
@@ -457,16 +459,16 @@ class HealthScorer:
             return None
 
         path = Path(file_path)
-        candidates = [str(path), path.name]
+        candidates = [str(path).replace("\\", "/"), path.name]
 
         try:
-            candidates.append(str(path.relative_to(Path.cwd())))
+            candidates.append(str(path.relative_to(Path.cwd())).replace("\\", "/"))
         except ValueError:
             pass
 
         for parent in [Path.cwd()] + list(Path.cwd().parents[:3]):
             try:
-                candidates.append(str(path.relative_to(parent)))
+                candidates.append(str(path.relative_to(parent)).replace("\\", "/"))
             except ValueError:
                 continue
 
@@ -474,7 +476,7 @@ class HealthScorer:
             if candidate in coverage_data:
                 return coverage_data[candidate]
 
-        path_str = str(path)
+        path_str = str(path).replace("\\", "/")
         for cov_path, pct in coverage_data.items():
             if path_str.endswith(cov_path) or cov_path.endswith(path_str):
                 return pct
