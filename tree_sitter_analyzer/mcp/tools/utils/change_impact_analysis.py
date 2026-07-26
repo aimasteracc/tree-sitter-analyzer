@@ -117,6 +117,7 @@ def _find_test_files(
             test_file
             for test_file in related
             if _test_file_has_direct_stem_match(test_file, changed_file)
+            and test_paths_have_compatible_package_scope(test_file, changed_file)
         ]
         has_named_subsystem = bool(source_subsystem_stems(changed_file))
         retained_direct = [
@@ -133,7 +134,6 @@ def _find_test_files(
         scoped_direct = _most_specific_affinity_matches(
             direct_related,
             changed_file,
-            maximum_rank=0,
         )
         selected_direct = sorted(
             set(retained_direct) | set(outer_scoped_exact) | set(scoped_direct)
@@ -174,8 +174,6 @@ def _find_test_files(
 def _most_specific_affinity_matches(
     test_files: list[str],
     changed_file: str,
-    *,
-    maximum_rank: int | None = None,
 ) -> list[str]:
     """Return affinity matches for the nearest matching source subsystem."""
     ranked = [
@@ -189,8 +187,6 @@ def _most_specific_affinity_matches(
     if not ranked:
         return []
     best_rank = min(rank for rank, _test_file in ranked)
-    if maximum_rank is not None and best_rank > maximum_rank:
-        return []
     return [test_file for rank, test_file in ranked if rank == best_rank]
 
 
