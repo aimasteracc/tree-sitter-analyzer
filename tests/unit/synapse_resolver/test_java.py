@@ -112,6 +112,53 @@ def _build_two_file_ctx() -> JavaResolverContext:
     )
 
 
+class TestBuildJavaContextBranches:
+    def test_records_wildcard_package(self) -> None:
+        """Issue #1179 (2026-07-27): wildcard rows remain caller-scoped."""
+        ctx = build_java_context(
+            imports_by_file={
+                "Caller.java": parse_java_imports(
+                    "import com.acme.shared.*;",
+                    "Caller.java",
+                    1,
+                )
+            },
+            file_symbols={},
+            file_class_methods={},
+            global_name_table={},
+        )
+
+        assert ctx.wildcard_pkgs_by_file == {
+            "Caller.java": ["com.acme.shared"],
+        }
+
+    def test_ignores_empty_non_wildcard_binding(self) -> None:
+        """Issue #1179 (2026-07-27): malformed empty rows create no maps."""
+        empty = ImportEntry(
+            file_path="Caller.java",
+            language="java",
+            module_path="",
+            local_name="",
+            is_relative=False,
+            is_star=False,
+            alias_of="",
+            line=1,
+        )
+
+        ctx = build_java_context(
+            imports_by_file={"Caller.java": [empty]},
+            file_symbols={},
+            file_class_methods={},
+            global_name_table={},
+        )
+
+        assert (
+            ctx.simple_to_fqn_by_file,
+            ctx.static_imports_by_file,
+            ctx.wildcard_pkgs_by_file,
+        ) == ({}, {}, {})
+
+
 class TestResolveJavaCallee:
     def test_local_implicit_this(self) -> None:
         ctx = _build_two_file_ctx()
@@ -187,3 +234,81 @@ class TestResolveJavaCallee:
         _sym, res, f = resolve_java_callee("greet", "Helper.greet", "Sibling.java", ctx)
         assert res == "project"
         assert f == "Helper.java"
+
+    def test_class_method_map_is_local_fallback(self) -> None:
+        """Issue #1179 (2026-07-27): class maps resolve absent flat symbols."""
+        ctx = JavaResolverContext(
+            file_class_methods={"Caller.java": {"Caller": {"work": 17}}},
+        )
+
+        assert resolve_java_callee("work", "work", "Caller.java", ctx) == (
+            17,
+            "local",
+            "Caller.java",
+        )
+
+    def test_project_static_import_resolves_owner_file(self) -> None:
+        """Issue #1179 (2026-07-27): project static imports remain resolvable."""
+        ctx = JavaResolverContext(
+            fqn_to_file={"com.acme.Tools": "Tools.java"},
+            static_imports_by_file={
+                "Caller.java": {"make": "com.acme.Tools"},
+            },
+            file_symbols={"Tools.java": [("make", "method", 23)]},
+        )
+
+        assert resolve_java_callee("make", "make", "Caller.java", ctx) == (
+            23,
+            "project",
+            "Tools.java",
+        )
+
+    def test_project_wildcard_resolves_type(self) -> None:
+        """Issue #1179 (2026-07-27): wildcard imports retain project lookup."""
+        ctx = JavaResolverContext(
+            fqn_to_file={"com.acme.Tools": "Tools.java"},
+            wildcard_pkgs_by_file={"Caller.java": ["com.acme"]},
+            file_symbols={"Tools.java": [("make", "method", 29)]},
+        )
+
+        assert resolve_java_callee(
+            "make",
+            "Tools.make",
+            "Caller.java",
+            ctx,
+        ) == (29, "project", "Tools.java")
+
+    def test_jdk_wildcard_is_terminal_external(self) -> None:
+        """Issue #1179 (2026-07-27): JDK wildcard misses do not rescan."""
+        ctx = JavaResolverContext(
+            wildcard_pkgs_by_file={"Caller.java": ["java.util"]},
+        )
+
+        assert resolve_java_callee(
+            "sort",
+            "Collections.sort",
+            "Caller.java",
+            ctx,
+        ) == (None, "external", "")
+
+    def test_third_party_wildcard_miss_stays_unknown(self) -> None:
+        """Issue #1179 (2026-07-27): unresolved vendor wildcards may rescan."""
+        ctx = JavaResolverContext(
+            wildcard_pkgs_by_file={"Caller.java": ["org.vendor"]},
+        )
+
+        assert resolve_java_callee(
+            "make",
+            "Tools.make",
+            "Caller.java",
+            ctx,
+        ) == (None, "unknown", "")
+
+    def test_jdk_fqn_receiver_is_terminal_external(self) -> None:
+        """Issue #1179 (2026-07-27): explicit JDK FQNs stay external."""
+        assert resolve_java_callee(
+            "emptyList",
+            "java.util.Collections.emptyList",
+            "Caller.java",
+            JavaResolverContext(),
+        ) == (None, "external", "")
