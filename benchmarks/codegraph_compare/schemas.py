@@ -156,6 +156,15 @@ class IndexStatsV1:
                 raise ValueError(
                     "Index path sets must be sorted, unique, and non-empty"
                 )
+        if any(
+            type(identifier) is not str
+            or not identifier
+            or identifier != identifier.strip()
+            for identifier in self.readiness_oracles
+        ):
+            raise ValueError(
+                "Readiness oracle identifiers must be non-empty canonical strings"
+            )
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))

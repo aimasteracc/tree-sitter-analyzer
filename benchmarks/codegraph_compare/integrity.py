@@ -11,6 +11,7 @@ from typing import Any
 
 from benchmarks.codegraph_compare.schemas import (
     EvalRecordV1,
+    IndexStatsV1,
     RunRecordV1,
 )
 
@@ -27,15 +28,24 @@ class ExpectedCellV1:
     run_id: str
 
     def __post_init__(self) -> None:
+        if type(self.repeat) is not int or self.repeat < 0:
+            raise ValueError("Expected cell repeat must be a non-negative integer")
+        if any(
+            type(value) is not str or not value
+            for value in (
+                self.repo,
+                self.question_id,
+                self.arm,
+                self.agent_backend,
+                self.run_id,
+            )
+        ):
+            raise ValueError("Expected cell identity fields must be non-empty strings")
         expected = (
             f"{self.question_id}__{self.arm}__{self.agent_backend}__{self.repeat:02d}"
         )
         if self.run_id != expected:
             raise ValueError(f"run_id must equal {expected}")
-        if not all((self.repo, self.question_id, self.arm, self.agent_backend)):
-            raise ValueError("Expected cell fields must be non-empty")
-        if self.repeat < 0:
-            raise ValueError("Expected cell repeat must be non-negative")
 
 
 @dataclass(frozen=True)
@@ -190,10 +200,14 @@ def create_manifest(
         environment_fingerprint,
         primary_session_id,
     )
-    if not all(strings):
-        raise ValueError("Manifest identity and provenance fields must be non-empty")
-    if timeout_seconds <= 0:
-        raise ValueError("timeout_seconds must be positive")
+    if any(type(value) is not str or not value for value in strings):
+        raise ValueError(
+            "Manifest identity and provenance fields must be non-empty strings"
+        )
+    if type(seed) is not int:
+        raise ValueError("seed must be an integer")
+    if type(timeout_seconds) is not int or timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be a positive integer")
     if len(set(retry_session_ids)) != len(retry_session_ids):
         raise ValueError("retry_session_ids must be unique")
     if primary_session_id in retry_session_ids or any(
@@ -239,7 +253,15 @@ def create_manifest(
         if not set(allowed_errors) <= set(paths):
             raise ValueError("Parse-error allowlists must be eligible paths")
     if set(required_readiness_oracles) != indexed_set or any(
-        not value for value in required_readiness_oracles.values()
+        type(identifiers) is not tuple
+        or not identifiers
+        or any(
+            type(identifier) is not str
+            or not identifier
+            or identifier != identifier.strip()
+            for identifier in identifiers
+        )
+        for identifiers in required_readiness_oracles.values()
     ):
         raise ValueError("Readiness oracles must exactly cover indexed arms")
     if any(cell.agent_backend != agent_backend for cell in expected_cells):
@@ -293,14 +315,88 @@ def create_manifest(
     )
 
 
-def parse_manifest_v1(raw: dict[str, Any]) -> ExperimentManifestV1:
+def _is_json_string_list(value: object) -> bool:
+    return isinstance(value, list) and all(type(item) is str for item in value)
+
+
+def _is_json_string_pairs(value: object) -> bool:
+    return isinstance(value, list) and all(
+        isinstance(item, list)
+        and len(item) == 2
+        and all(type(part) is str for part in item)
+        for item in value
+    )
+
+
+def _is_json_nested_string_pairs(value: object) -> bool:
+    return isinstance(value, list) and all(
+        isinstance(item, list)
+        and len(item) == 2
+        and type(item[0]) is str
+        and _is_json_string_list(item[1])
+        for item in value
+    )
+
+
+def parse_manifest_v1(raw: object) -> ExperimentManifestV1:
     """Decode a persisted JSON manifest and revalidate its nested structures."""
+    if not isinstance(raw, dict):
+        raise ValueError("Experiment manifest must be an object")
     version = raw.get("benchmark_version")
     if type(version) is not int or version != 1:
         raise ValueError(f"Unsupported benchmark_version: {version}")
     expected_keys = {field.name for field in fields(ExperimentManifestV1)}
     if set(raw) != expected_keys:
         raise ValueError("Manifest fields do not match the V1 schema")
+    string_fields = {
+        "experiment_id",
+        "manifest_hash",
+        "benchmark_git_sha",
+        "config_hash",
+        "question_hash",
+        "oracle_hash",
+        "schedule_hash",
+        "agent_backend",
+        "model",
+        "agent_cli_fingerprint",
+        "platform",
+        "environment_fingerprint",
+        "primary_session_id",
+    }
+    if any(type(raw[field]) is not str for field in string_fields):
+        raise ValueError("Manifest scalar fields do not match the V1 schema")
+    if type(raw["seed"]) is not int or type(raw["timeout_seconds"]) is not int:
+        raise ValueError("Manifest integer fields do not match the V1 schema")
+    if any(
+        not _is_json_string_list(raw[field])
+        for field in ("retry_session_ids", "required_arms", "indexed_arms")
+    ):
+        raise ValueError("Manifest sequence fields do not match the V1 schema")
+    expected_cell_fields = {field.name for field in fields(ExpectedCellV1)}
+    if not isinstance(raw["expected_cells"], list) or any(
+        not isinstance(cell, dict) or set(cell) != expected_cell_fields
+        for cell in raw["expected_cells"]
+    ):
+        raise ValueError("Manifest expected cells do not match the V1 schema")
+    if any(
+        not _is_json_string_pairs(raw[field])
+        for field in (
+            "tool_fingerprints",
+            "repo_commits",
+            "repo_fingerprints",
+            "eligible_paths_hashes",
+        )
+    ):
+        raise ValueError("Manifest mapping fields do not match the V1 schema")
+    if any(
+        not _is_json_nested_string_pairs(raw[field])
+        for field in (
+            "eligible_paths",
+            "parse_error_allowlists",
+            "required_readiness_oracles",
+        )
+    ):
+        raise ValueError("Manifest nested fields do not match the V1 schema")
     manifest = ExperimentManifestV1(
         benchmark_version=1,
         experiment_id=raw["experiment_id"],
@@ -367,6 +463,72 @@ def parse_manifest_v1(raw: dict[str, Any]) -> ExperimentManifestV1:
     if normalized != manifest:
         raise ValueError("Manifest hash or structure is invalid")
     return manifest
+
+
+def index_partition_is_exact(
+    stats: IndexStatsV1,
+    manifest: ExperimentManifestV1,
+    repo: str,
+) -> bool:
+    """Return whether index path sets exactly partition the manifest inputs."""
+
+    eligible_paths = set(dict(manifest.eligible_paths)[repo])
+    indexed_paths = set(stats.indexed_paths)
+    excluded_paths = set(stats.excluded_paths)
+    parse_error_paths = set(stats.parse_error_paths)
+    path_sets = (indexed_paths, excluded_paths, parse_error_paths)
+    partition_is_exact = (
+        not (indexed_paths & excluded_paths)
+        and not (indexed_paths & parse_error_paths)
+        and not (excluded_paths & parse_error_paths)
+        and set().union(*path_sets) == eligible_paths
+    )
+    hashes_match = (
+        stats.indexed_paths_hash == _sha256(list(stats.indexed_paths))
+        and stats.excluded_paths_hash == _sha256(list(stats.excluded_paths))
+        and stats.parse_error_paths_hash == _sha256(list(stats.parse_error_paths))
+    )
+    counts_match = (
+        stats.eligible_source_files == len(eligible_paths)
+        and stats.indexed_source_files == len(indexed_paths)
+        and stats.excluded_source_files == len(excluded_paths)
+        and stats.parse_error_files == len(parse_error_paths)
+    )
+    allowed_errors = set(dict(manifest.parse_error_allowlists)[repo])
+    return (
+        partition_is_exact
+        and hashes_match
+        and counts_match
+        and parse_error_paths == allowed_errors
+    )
+
+
+def validate_setup_index_stats(
+    stats: object,
+    manifest: ExperimentManifestV1,
+    repo: str,
+    arm: str,
+) -> str | None:
+    """Validate strict V1 index evidence before any model-backed work."""
+
+    if arm not in manifest.indexed_arms:
+        return "UNEXPECTED_INDEX_STATS" if stats is not None else None
+    if not isinstance(stats, IndexStatsV1):
+        return "INDEX_STATS_V1_REQUIRED"
+    if (
+        stats.repo_fingerprint != dict(manifest.repo_fingerprints).get(repo)
+        or stats.tool_fingerprint != dict(manifest.tool_fingerprints).get(arm)
+        or stats.eligible_paths_hash != dict(manifest.eligible_paths_hashes).get(repo)
+    ):
+        return "MIXED_INDEX_PROVENANCE"
+    if stats.eligible_source_files <= 0 or stats.indexed_source_files <= 0:
+        return "INDEX_PARTITION_MISMATCH"
+    if not index_partition_is_exact(stats, manifest, repo):
+        return "INDEX_PARTITION_MISMATCH"
+    required_oracles = set(dict(manifest.required_readiness_oracles)[arm])
+    if not required_oracles <= set(stats.readiness_oracles):
+        return "READINESS_ORACLE_MISMATCH"
+    return None
 
 
 def append_registry_event(path: Path, event: RegistryEvent) -> None:
