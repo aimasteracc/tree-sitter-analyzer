@@ -116,10 +116,8 @@ def test_path_subsystem_affinity_rank(
     normalized_test = Path(test_file.replace("\\", "/"))
     changed_package = _monorepo_package_identity(changed_file)
     test_package = _monorepo_package_identity(test_file)
-    if (
-        changed_package is not None
-        and test_package is not None
-        and changed_package != test_package
+    if test_package is not None and (
+        changed_package is None or changed_package != test_package
     ):
         return None
     test_parts = {
@@ -139,19 +137,12 @@ def test_paths_have_compatible_package_scope(
     test_file: str,
     changed_file: str,
 ) -> bool:
-    """Return whether two paths do not identify different monorepo packages."""
+    """Return whether a test can cover the changed path's package scope."""
     changed_package = _monorepo_package_identity(changed_file)
     test_package = _monorepo_package_identity(test_file)
-    return (
-        changed_package is None
-        or test_package is None
-        or changed_package == test_package
+    return test_package is None or (
+        changed_package is not None and changed_package == test_package
     )
-
-
-def test_file_has_exact_module_stem(test_file: str, changed_file: str) -> bool:
-    """Return whether a test filename exactly names the changed module."""
-    return test_file_subject_stem(test_file) == module_stem_for_path(changed_file)
 
 
 def test_file_subject_stem(test_file: str) -> str:
@@ -194,7 +185,9 @@ def _monorepo_package_identity(file_path: str | Path) -> str | None:
         package_part = parts[index + 1]
         if not package_part or package_part.startswith("."):
             continue
-        package_lineage.append(_normalize_module_identifier(package_part))
+        container = _normalize_module_identifier(part)
+        package = _normalize_module_identifier(package_part)
+        package_lineage.append(f"{container}/{package}")
     return "/".join(package_lineage) or None
 
 
@@ -257,9 +250,18 @@ def module_family_test_stems(file_path: str | Path) -> list[str]:
         "_verification",
     )
     stems = _special_module_family_stems(normalized.stem)
-    if normalized.stem == "evaluator" and "constraints" in normalized.parts[:-1]:
+    is_repository_source = "tree_sitter_analyzer" in normalized.parts[:-1]
+    if (
+        is_repository_source
+        and normalized.stem == "evaluator"
+        and "constraints" in normalized.parts[:-1]
+    ):
         stems.append("constraint_dsl")
-    if "edge_extractors" in normalized.parts[:-1] and normalized.stem != "registry":
+    if (
+        is_repository_source
+        and "edge_extractors" in normalized.parts[:-1]
+        and normalized.stem != "registry"
+    ):
         stems.append("registry")
     stems.extend(_strip_family_suffixes(normalized.stem, suffixes))
     return _unique_nonempty_stems(stems)
