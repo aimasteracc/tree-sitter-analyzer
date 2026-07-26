@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T06:18:17Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 1200,
+  "items_found": 6,
+  "actions_taken": 6,
+  "escalations": 0,
+  "tokens_estimate": 40000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1160 third Codex loop plus adversarial parser check: setup-only now binds timeout and ordered schedule, rejects zero repeats, rejects every nonfinal COMPLETE event, and strictly validates every persisted JSON collection/identity shape before conversion. Benchmark harness (121 tests), focused coverage, patch coverage, full pytest, build, Ruff, formatting, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T05:57:19Z",
   "pattern": "pr-review-repair",
   "duration_s": 1200,

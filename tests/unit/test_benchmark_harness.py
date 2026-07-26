@@ -591,16 +591,26 @@ class TestCodeGraphCompareSetupGate:
         from benchmarks.codegraph_compare.setup_validation import (
             selected_matrix_config_hash,
             selected_questions_hash,
+            selected_schedule_hash,
         )
 
         repos, arms, questions = cls._v1_matrix_configs(Path("/runtime-path"))
+        questions_by_repo = {"gin": questions}
         return _v1_manifest(
             agent_backend=agent_backend,
             expected_run_ids=tuple(
                 f"q1__{arm['id']}__{agent_backend}__00" for arm in arms
             ),
             config_hash=selected_matrix_config_hash(repos, arms),
-            question_hash=selected_questions_hash({"gin": questions}),
+            question_hash=selected_questions_hash(questions_by_repo),
+            schedule_hash=selected_schedule_hash(
+                repos,
+                arms,
+                questions_by_repo,
+                repeats=1,
+                agent_backend=agent_backend,
+            ),
+            timeout_seconds=1200,
         )
 
     @staticmethod
@@ -878,6 +888,58 @@ class TestCodeGraphCompareSetupGate:
             "MATRIX_MANIFEST_MISMATCH"
         ]
 
+    def test_setup_only_rejects_timeout_that_differs_from_manifest(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.timeout_seconds = manifest.timeout_seconds + 1
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_TIMEOUT_MISMATCH"
+        ]
+
+    def test_matrix_rejects_zero_repeats_instead_of_defaulting_to_one(
+        self, monkeypatch, tmp_path: Path, capsys
+    ):
+        manifest = self._v1_setup_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.repeats = 0
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert "--repeats must be greater than zero" in capsys.readouterr().err
+        registry_events = [
+            json.loads(line)
+            for line in (tmp_path / "results" / "experiment_registry.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert [event["outcome"] for event in registry_events] == [
+            "setup_started",
+            "setup_input_failed",
+        ]
+
     def test_setup_only_rejects_unsupported_backend_arm_pairs(
         self, monkeypatch, tmp_path: Path
     ):
@@ -972,6 +1034,39 @@ class TestCodeGraphCompareSetupGate:
         evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
         assert [failure["code"] for failure in evidence["failures"]] == [
             "MATRIX_QUESTION_HASH_MISMATCH"
+        ]
+
+    def test_setup_only_rejects_reordered_execution_schedule(
+        self, monkeypatch, tmp_path: Path
+    ):
+        manifest = self._v1_setup_manifest()
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        original_load = compare_run._load_yaml
+        monkeypatch.setattr(
+            compare_run,
+            "_load_yaml",
+            lambda path: (
+                list(reversed(original_load(path)))
+                if path == compare_run.ARMS_YAML
+                else original_load(path)
+            ),
+        )
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = self._write_v1_manifest(tmp_path, manifest)
+        args.setup_only = True
+        args.index_evidence = self._write_v1_index_evidence(tmp_path, manifest)
+
+        assert compare_run.cmd_run_matrix(args) == 1
+
+        evidence_path = next(
+            (tmp_path / "results" / "experiments" / manifest.manifest_hash).glob(
+                "setup_*.json"
+            )
+        )
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        assert [failure["code"] for failure in evidence["failures"]] == [
+            "MATRIX_SCHEDULE_HASH_MISMATCH"
         ]
 
     def test_matrix_manifest_rejects_selected_repo_without_questions(
@@ -1206,6 +1301,32 @@ class TestCodeGraphCompareSetupGate:
         assert (
             f"Invalid experiment manifest {manifest_path}: "
             "Experiment manifest must be an object" in capsys.readouterr().err
+        )
+
+    def test_malformed_nested_manifest_uses_cli_diagnostic(
+        self, monkeypatch, tmp_path: Path, capsys
+    ):
+        from dataclasses import asdict
+
+        manifest = self._v1_setup_manifest()
+        payload = json.loads(json.dumps(asdict(manifest)))
+        payload["eligible_paths"] = [[]]
+        manifest_path = tmp_path / "manifest.json"
+        manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        args = self._matrix_args()
+        args.manifest = manifest_path
+        args.setup_only = True
+        args.index_evidence = tmp_path / "unused-index-evidence.json"
+
+        with pytest.raises(SystemExit) as exc_info:
+            compare_run.cmd_run_matrix(args)
+
+        assert exc_info.value.code == 1
+        assert (
+            f"Invalid experiment manifest {manifest_path}: "
+            "Manifest nested fields do not match the V1 schema"
+            in capsys.readouterr().err
         )
 
     def test_invalid_matrix_yaml_shape_records_started_and_blocked(
@@ -2207,6 +2328,64 @@ class TestBenchmarkExperimentIntegrity:
         assert parsed == manifest
 
     @pytest.mark.parametrize(
+        ("field", "value", "message"),
+        (
+            (
+                "benchmark_git_sha",
+                1,
+                "Manifest scalar fields do not match the V1 schema",
+            ),
+            (
+                "seed",
+                True,
+                "Manifest integer fields do not match the V1 schema",
+            ),
+            (
+                "retry_session_ids",
+                "RS",
+                "Manifest sequence fields do not match the V1 schema",
+            ),
+            (
+                "expected_cells",
+                {},
+                "Manifest expected cells do not match the V1 schema",
+            ),
+            (
+                "tool_fingerprints",
+                {},
+                "Manifest mapping fields do not match the V1 schema",
+            ),
+            (
+                "eligible_paths",
+                [["gin", "src/main.py"]],
+                "Manifest nested fields do not match the V1 schema",
+            ),
+        ),
+    )
+    def test_manifest_parser_rejects_noncanonical_json_shapes(
+        self,
+        field: str,
+        value: object,
+        message: str,
+    ):
+        from dataclasses import asdict
+
+        from benchmarks.codegraph_compare.integrity import parse_manifest_v1
+
+        payload = json.loads(json.dumps(asdict(_v1_manifest())))
+        payload[field] = value
+
+        with pytest.raises(ValueError, match=message):
+            parse_manifest_v1(payload)
+
+    def test_manifest_constructor_requires_string_provenance(self):
+        with pytest.raises(
+            ValueError,
+            match=("Manifest identity and provenance fields must be non-empty strings"),
+        ):
+            _v1_manifest(benchmark_git_sha=1)
+
+    @pytest.mark.parametrize(
         ("field", "message"),
         (
             ("seed", "seed must be an integer"),
@@ -2231,6 +2410,22 @@ class TestBenchmarkExperimentIntegrity:
                 repeat=True,
                 agent_backend="codex",
                 run_id="q1__native-only__codex__01",
+            )
+
+    def test_expected_cell_identity_requires_strings(self):
+        from benchmarks.codegraph_compare.integrity import ExpectedCellV1
+
+        with pytest.raises(
+            ValueError,
+            match="Expected cell identity fields must be non-empty strings",
+        ):
+            ExpectedCellV1(
+                repo=1,
+                question_id="q1",
+                arm="native-only",
+                repeat=0,
+                agent_backend="codex",
+                run_id="q1__native-only__codex__00",
             )
 
     def test_manifest_rejects_required_arm_without_expected_cell(self):
@@ -2386,6 +2581,47 @@ class TestBenchmarkExperimentIntegrity:
                 "RUNNING",
                 "producer_restarted",
             ),
+        )
+
+        verdict = validate_publishable_experiment(
+            manifest,
+            registry=registry,
+            runs=(native,),
+            evals=(_v1_eval(native),),
+            reported_experiment_ids=(manifest.experiment_id,),
+        )
+
+        assert tuple(item.code for item in verdict.violations) == (
+            "REGISTRY_PRODUCER_INCOMPLETE",
+        )
+        assert verdict.publishable is False
+
+    def test_registry_rejects_nonfinal_complete_with_alternate_outcome(self):
+        from benchmarks.codegraph_compare.integrity import (
+            RegistryEvent,
+            validate_publishable_experiment,
+        )
+
+        manifest = _v1_manifest(
+            expected_run_ids=("q1__native-only__codex__00",),
+            required_arms=("native-only",),
+            indexed_arms=(),
+            tool_fingerprints={"native-only": "native1"},
+            required_readiness_oracles={},
+        )
+        native = _v1_run(
+            manifest,
+            "q1__native-only__codex__00",
+            index_stats=None,
+        )
+        registry = (
+            RegistryEvent(
+                manifest.experiment_id,
+                manifest.manifest_hash,
+                "COMPLETE",
+                "alternate_completion",
+            ),
+            *_registry_for(manifest),
         )
 
         verdict = validate_publishable_experiment(

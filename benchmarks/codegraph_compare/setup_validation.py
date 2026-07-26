@@ -102,6 +102,51 @@ def selected_questions_hash(
     )
 
 
+def _selected_schedule_cells(
+    repo_entries: Sequence[dict],
+    arm_entries: Sequence[dict],
+    questions_by_repo: Mapping[str, Sequence[dict]],
+    *,
+    repeats: int,
+    agent_backend: str,
+) -> list[tuple[str, str, str, int, str, str]]:
+    return [
+        (
+            str(repo["id"]),
+            str(question["id"]),
+            str(arm["id"]),
+            repeat,
+            agent_backend,
+            f"{question['id']}__{arm['id']}__{agent_backend}__{repeat:02d}",
+        )
+        for repo in repo_entries
+        for arm in arm_entries
+        for question in questions_by_repo.get(str(repo["id"]), ())
+        for repeat in range(repeats)
+    ]
+
+
+def selected_schedule_hash(
+    repo_entries: Sequence[dict],
+    arm_entries: Sequence[dict],
+    questions_by_repo: Mapping[str, Sequence[dict]],
+    *,
+    repeats: int,
+    agent_backend: str,
+) -> str:
+    """Hash the exact ordered sequence of executable matrix cells."""
+
+    return _sha256(
+        _selected_schedule_cells(
+            repo_entries,
+            arm_entries,
+            questions_by_repo,
+            repeats=repeats,
+            agent_backend=agent_backend,
+        )
+    )
+
+
 def validate_matrix_setup(
     repo_entries: Sequence[dict],
     arm_entries: Sequence[dict],
@@ -114,6 +159,7 @@ def validate_matrix_setup(
     repeats: int = 1,
     agent_backend: str = "",
     model: str | None = None,
+    timeout_seconds: int | None = None,
     supplied_index_stats: Mapping[tuple[str, str], IndexStatsV1] | None = None,
 ) -> SetupValidationResult:
     """Prepare every indexed repo/arm cell and collect all basic failures.
@@ -134,6 +180,7 @@ def validate_matrix_setup(
             repeats=repeats,
             agent_backend=agent_backend,
             model=model,
+            timeout_seconds=timeout_seconds,
             manifest=manifest,
         )
         if mismatch is not None:
@@ -248,22 +295,16 @@ def _validate_manifest_matrix(
     repeats: int,
     agent_backend: str,
     model: str | None,
+    timeout_seconds: int | None,
     manifest: ExperimentManifestV1,
 ) -> SetupFailure | None:
-    actual_cells = [
-        (
-            str(repo["id"]),
-            str(question["id"]),
-            str(arm["id"]),
-            repeat,
-            agent_backend,
-            f"{question['id']}__{arm['id']}__{agent_backend}__{repeat:02d}",
-        )
-        for repo in repo_entries
-        for arm in arm_entries
-        for question in questions_by_repo.get(str(repo["id"]), ())
-        for repeat in range(repeats)
-    ]
+    actual_cells = _selected_schedule_cells(
+        repo_entries,
+        arm_entries,
+        questions_by_repo,
+        repeats=repeats,
+        agent_backend=agent_backend,
+    )
     expected_cells = [
         (
             cell.repo,
@@ -287,19 +328,38 @@ def _validate_manifest_matrix(
     )
     model_matches = model == manifest.model
     if (
-        selections_match
-        and Counter(actual_cells) == Counter(expected_cells)
-        and model_matches
+        not selections_match
+        or Counter(actual_cells) != Counter(expected_cells)
+        or not model_matches
     ):
-        return None
-    return _failure(
-        "*",
-        "*",
-        "none",
-        "MATRIX_MANIFEST_MISMATCH",
-        "selected repos, arms, questions, repeats, backend, or model "
-        "do not exactly match the experiment manifest",
-    )
+        return _failure(
+            "*",
+            "*",
+            "none",
+            "MATRIX_MANIFEST_MISMATCH",
+            "selected repos, arms, questions, repeats, backend, or model "
+            "do not exactly match the experiment manifest",
+        )
+    if type(timeout_seconds) is not int or timeout_seconds != manifest.timeout_seconds:
+        return _failure(
+            "*",
+            "*",
+            "none",
+            "MATRIX_TIMEOUT_MISMATCH",
+            "selected timeout does not exactly match the experiment manifest",
+        )
+    if (
+        actual_cells != expected_cells
+        or _sha256(actual_cells) != manifest.schedule_hash
+    ):
+        return _failure(
+            "*",
+            "*",
+            "none",
+            "MATRIX_SCHEDULE_HASH_MISMATCH",
+            "selected execution order does not match schedule_hash",
+        )
+    return None
 
 
 def _validate_supplied_index_stats(

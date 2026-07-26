@@ -458,6 +458,7 @@ def _run_manifest_setup_gate(
         repeats=repeats,
         agent_backend=args.agent_backend,
         model=args.model,
+        timeout_seconds=args.timeout_seconds,
         supplied_index_stats=supplied_index_stats,
         backend_validator=lambda arm_id: validate_backend_arm_support(
             args.agent_backend, arm_id
@@ -555,7 +556,11 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
         else:
             arm_entries = [_get_arm(arms_data, aid) for aid in args.arms.split(",")]
 
-        repeats: int = args.repeats if hasattr(args, "repeats") and args.repeats else 1
+        repeats: int = (
+            args.repeats if hasattr(args, "repeats") and args.repeats is not None else 1
+        )
+        if type(repeats) is not int or repeats < 1:
+            _die("--repeats must be greater than zero")
         question_limit = getattr(args, "question_limit", None)
         if question_limit is not None and question_limit < 1:
             _die("--question-limit must be greater than zero")

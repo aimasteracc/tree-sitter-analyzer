@@ -30,13 +30,22 @@ class ExpectedCellV1:
     def __post_init__(self) -> None:
         if type(self.repeat) is not int or self.repeat < 0:
             raise ValueError("Expected cell repeat must be a non-negative integer")
+        if any(
+            type(value) is not str or not value
+            for value in (
+                self.repo,
+                self.question_id,
+                self.arm,
+                self.agent_backend,
+                self.run_id,
+            )
+        ):
+            raise ValueError("Expected cell identity fields must be non-empty strings")
         expected = (
             f"{self.question_id}__{self.arm}__{self.agent_backend}__{self.repeat:02d}"
         )
         if self.run_id != expected:
             raise ValueError(f"run_id must equal {expected}")
-        if not all((self.repo, self.question_id, self.arm, self.agent_backend)):
-            raise ValueError("Expected cell fields must be non-empty")
 
 
 @dataclass(frozen=True)
@@ -191,8 +200,10 @@ def create_manifest(
         environment_fingerprint,
         primary_session_id,
     )
-    if not all(strings):
-        raise ValueError("Manifest identity and provenance fields must be non-empty")
+    if any(type(value) is not str or not value for value in strings):
+        raise ValueError(
+            "Manifest identity and provenance fields must be non-empty strings"
+        )
     if type(seed) is not int:
         raise ValueError("seed must be an integer")
     if type(timeout_seconds) is not int or timeout_seconds <= 0:
@@ -296,6 +307,29 @@ def create_manifest(
     )
 
 
+def _is_json_string_list(value: object) -> bool:
+    return isinstance(value, list) and all(type(item) is str for item in value)
+
+
+def _is_json_string_pairs(value: object) -> bool:
+    return isinstance(value, list) and all(
+        isinstance(item, list)
+        and len(item) == 2
+        and all(type(part) is str for part in item)
+        for item in value
+    )
+
+
+def _is_json_nested_string_pairs(value: object) -> bool:
+    return isinstance(value, list) and all(
+        isinstance(item, list)
+        and len(item) == 2
+        and type(item[0]) is str
+        and _is_json_string_list(item[1])
+        for item in value
+    )
+
+
 def parse_manifest_v1(raw: object) -> ExperimentManifestV1:
     """Decode a persisted JSON manifest and revalidate its nested structures."""
     if not isinstance(raw, dict):
@@ -306,6 +340,55 @@ def parse_manifest_v1(raw: object) -> ExperimentManifestV1:
     expected_keys = {field.name for field in fields(ExperimentManifestV1)}
     if set(raw) != expected_keys:
         raise ValueError("Manifest fields do not match the V1 schema")
+    string_fields = {
+        "experiment_id",
+        "manifest_hash",
+        "benchmark_git_sha",
+        "config_hash",
+        "question_hash",
+        "oracle_hash",
+        "schedule_hash",
+        "agent_backend",
+        "model",
+        "agent_cli_fingerprint",
+        "platform",
+        "environment_fingerprint",
+        "primary_session_id",
+    }
+    if any(type(raw[field]) is not str for field in string_fields):
+        raise ValueError("Manifest scalar fields do not match the V1 schema")
+    if type(raw["seed"]) is not int or type(raw["timeout_seconds"]) is not int:
+        raise ValueError("Manifest integer fields do not match the V1 schema")
+    if any(
+        not _is_json_string_list(raw[field])
+        for field in ("retry_session_ids", "required_arms", "indexed_arms")
+    ):
+        raise ValueError("Manifest sequence fields do not match the V1 schema")
+    expected_cell_fields = {field.name for field in fields(ExpectedCellV1)}
+    if not isinstance(raw["expected_cells"], list) or any(
+        not isinstance(cell, dict) or set(cell) != expected_cell_fields
+        for cell in raw["expected_cells"]
+    ):
+        raise ValueError("Manifest expected cells do not match the V1 schema")
+    if any(
+        not _is_json_string_pairs(raw[field])
+        for field in (
+            "tool_fingerprints",
+            "repo_commits",
+            "repo_fingerprints",
+            "eligible_paths_hashes",
+        )
+    ):
+        raise ValueError("Manifest mapping fields do not match the V1 schema")
+    if any(
+        not _is_json_nested_string_pairs(raw[field])
+        for field in (
+            "eligible_paths",
+            "parse_error_allowlists",
+            "required_readiness_oracles",
+        )
+    ):
+        raise ValueError("Manifest nested fields do not match the V1 schema")
     manifest = ExperimentManifestV1(
         benchmark_version=1,
         experiment_id=raw["experiment_id"],

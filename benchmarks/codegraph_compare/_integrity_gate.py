@@ -180,12 +180,17 @@ def _registry_binding_violation(
         return IntegrityViolation(
             code="REGISTRY_TERMINAL_FAILURE", experiment_id=manifest.experiment_id
         )
-    completion_positions = [
-        index
-        for index, item in enumerate(current_events)
-        if (item.status, item.outcome) == _PRODUCER_COMPLETION
+    complete_positions = [
+        index for index, item in enumerate(current_events) if item.status == "COMPLETE"
     ]
-    if completion_positions != [len(current_events) - 1]:
+    if (
+        complete_positions != [len(current_events) - 1]
+        or (
+            current_events[-1].status,
+            current_events[-1].outcome,
+        )
+        != _PRODUCER_COMPLETION
+    ):
         return IntegrityViolation(
             code="REGISTRY_PRODUCER_INCOMPLETE",
             experiment_id=manifest.experiment_id,
