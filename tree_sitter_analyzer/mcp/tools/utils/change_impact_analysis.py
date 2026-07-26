@@ -124,15 +124,21 @@ def _find_test_files(
         scoped_direct = _most_specific_affinity_matches(
             direct_related,
             changed_file,
+            maximum_rank=0,
         )
         selected_direct = sorted(set(retained_direct) | set(scoped_direct))
         if not selected_direct and direct_related:
             # All filename matches belong to another named subsystem. Only in
             # that ambiguous case, search the available tests by source-path
             # affinity instead of adding subsystem stems unconditionally.
-            selected_direct = _most_specific_affinity_matches(
+            affinity_fallback = _most_specific_affinity_matches(
                 sorted(test_files),
                 changed_file,
+            )
+            selected_direct = (
+                affinity_fallback
+                if 0 < len(affinity_fallback) <= FOCUSED_TEST_COMMAND_LIMIT
+                else direct_related
             )
         # Derived module-family matches deliberately span surfaces such as CLI,
         # core, and MCP. Preserve them, while disambiguating the independent
@@ -146,6 +152,8 @@ def _find_test_files(
 def _most_specific_affinity_matches(
     test_files: list[str],
     changed_file: str,
+    *,
+    maximum_rank: int | None = None,
 ) -> list[str]:
     """Return affinity matches for the nearest matching source subsystem."""
     ranked = [
@@ -159,6 +167,8 @@ def _most_specific_affinity_matches(
     if not ranked:
         return []
     best_rank = min(rank for rank, _test_file in ranked)
+    if maximum_rank is not None and best_rank > maximum_rank:
+        return []
     return [test_file for rank, test_file in ranked if rank == best_rank]
 
 
@@ -182,10 +192,7 @@ def _test_file_has_direct_stem_match(test_file: str, changed_file: str) -> bool:
 
     changed_stem = module_stem_for_path(normalized_change)
     test_stem = test_file_subject_stem(normalized_test)
-    return (
-        test_stem == changed_stem
-        or test_stem.startswith(f"{changed_stem}_")
-    )
+    return f"_{changed_stem}_" in f"_{test_stem}_"
 
 
 def _is_runnable_test_file(
