@@ -4,8 +4,6 @@ The cache makes ``HealthScorer.score_project`` fast on warm runs: the first
 run scores every file, while subsequent runs reuse scores whose source and
 external scoring context are unchanged.
 
-Cache location: ``<project_root>/.ast-cache/health_scores.db``
-
 The cache is best-effort:
 - If SQLite is unavailable or the directory cannot be created, scoring
   proceeds without caching (no warning, no failure).
@@ -43,6 +41,7 @@ _CONTEXT_COLUMN = "context_fingerprint"
 _MAX_GIT_METADATA_BYTES = 64 * 1024
 _MAX_SYMBOLIC_REF_DEPTH = 16
 _SECONDS_PER_DAY = 24 * 60 * 60
+_WORKTREE_REF_PREFIXES = ("refs/bisect/", "refs/rewritten/", "refs/worktree/")
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS health_scores (
     file_path TEXT PRIMARY KEY,
@@ -223,11 +222,15 @@ def _git_context_parts(git_dir: Path | None) -> list[str]:
     head_value = _read_small_regular_text(head)
     if head_value is None:
         return parts
-    parts.extend(_symbolic_ref_context_parts(common_dir, head_value))
+    parts.extend(_symbolic_ref_context_parts(git_dir, common_dir, head_value))
     return parts
 
 
-def _symbolic_ref_context_parts(common_dir: Path, value: str) -> list[str]:
+def _symbolic_ref_context_parts(
+    git_dir: Path,
+    common_dir: Path,
+    value: str,
+) -> list[str]:
     """Fingerprint a bounded, non-following chain of loose symbolic refs."""
     parts: list[str] = []
     seen: set[str] = set()
@@ -246,7 +249,8 @@ def _symbolic_ref_context_parts(common_dir: Path, value: str) -> list[str]:
         if ref_name in seen:
             return [*parts, "git:symbolic-ref-loop"]
         seen.add(ref_name)
-        loose_ref = common_dir / ref_path
+        ref_dir = git_dir if ref_name.startswith(_WORKTREE_REF_PREFIXES) else common_dir
+        loose_ref = ref_dir / ref_path
         parts.append(_metadata_signature(loose_ref))
         next_value = _read_small_regular_text(loose_ref)
         if next_value is None:

@@ -169,6 +169,8 @@ class HealthScorer:
         self.weights = weights or dict(DIMENSION_WEIGHTS)
         self.source_extensions = set(source_extensions or PROJECT_HEALTH_SOURCE_EXTS)
         self._coverage_cache: dict[str, float] | None = None
+        self._coverage_casefold_cache: dict[str, float] | None = None
+        self._windows_coverage_cache: dict[str, float] | None = None
 
     def score_file(
         self, file_path: str, *, fast_dependencies: bool = False
@@ -342,6 +344,8 @@ class HealthScorer:
 
         root = Path(project_root)
         self._coverage_cache = None
+        self._coverage_casefold_cache = None
+        self._windows_coverage_cache = None
         cache = HealthScoreCache(str(root), weights=self.weights) if use_cache else None
         results: list[HealthScore] = []
         scanned = 0
@@ -415,6 +419,8 @@ class HealthScorer:
             return self._coverage_cache
 
         self._coverage_cache = {}
+        self._coverage_casefold_cache = {}
+        self._windows_coverage_cache = {}
 
         search_paths = [Path.cwd()]
         for parent in Path.cwd().parents[:3]:
@@ -436,8 +442,17 @@ class HealthScorer:
                     for file_path, file_data in files.items():
                         summary = file_data.get("summary", {})
                         pct = summary.get("percent_covered", 0.0)
-                        normalized_path = str(file_path).replace("\\", "/")
-                        self._coverage_cache[normalized_path] = float(pct)
+                        raw_path = str(file_path)
+                        normalized_path = raw_path.replace("\\", "/")
+                        coverage = float(pct)
+                        folded_path = _coverage_path_key(
+                            normalized_path,
+                            case_insensitive=True,
+                        )
+                        self._coverage_cache[normalized_path] = coverage
+                        self._coverage_casefold_cache[folded_path] = coverage
+                        if _is_windows_style_path(raw_path):
+                            self._windows_coverage_cache[folded_path] = coverage
 
                     total = data.get("totals", {}).get("percent_covered", 0)
                     logger.info(
@@ -474,23 +489,47 @@ class HealthScorer:
                 continue
 
         for candidate in candidates:
-            for cov_path, pct in coverage_data.items():
-                case_insensitive = windows_file or _is_windows_style_path(cov_path)
-                if _coverage_path_key(
-                    candidate, case_insensitive
-                ) == _coverage_path_key(cov_path, case_insensitive):
-                    return pct
+            if candidate in coverage_data:
+                return coverage_data[candidate]
+
+        folded_coverage, windows_coverage = self._coverage_casefold_indexes(
+            coverage_data
+        )
+        insensitive_coverage = folded_coverage if windows_file else windows_coverage
+        for candidate in candidates:
+            folded_candidate = _coverage_path_key(candidate, case_insensitive=True)
+            if folded_candidate in insensitive_coverage:
+                return insensitive_coverage[folded_candidate]
 
         path_str = str(path).replace("\\", "/")
         for cov_path, pct in coverage_data.items():
-            case_insensitive = windows_file or _is_windows_style_path(cov_path)
-            if _path_suffix_matches(
-                _coverage_path_key(path_str, case_insensitive),
-                _coverage_path_key(cov_path, case_insensitive),
-            ):
+            if _path_suffix_matches(path_str, cov_path):
+                return pct
+
+        folded_path = _coverage_path_key(path_str, case_insensitive=True)
+        for folded_cov_path, pct in insensitive_coverage.items():
+            if _path_suffix_matches(folded_path, folded_cov_path):
                 return pct
 
         return None
+
+    def _coverage_casefold_indexes(
+        self,
+        coverage_data: dict[str, float],
+    ) -> tuple[dict[str, float], dict[str, float]]:
+        """Build case-folded indexes once for Windows path matching."""
+        if self._coverage_casefold_cache is None:
+            self._coverage_casefold_cache = {
+                _coverage_path_key(path, case_insensitive=True): coverage
+                for path, coverage in coverage_data.items()
+            }
+        if self._windows_coverage_cache is None:
+            self._windows_coverage_cache = {
+                _coverage_path_key(path, case_insensitive=True): coverage
+                for path, coverage in coverage_data.items()
+                if _is_windows_style_path(path)
+            }
+        return self._coverage_casefold_cache, self._windows_coverage_cache
 
 
 def _path_suffix_matches(left: str, right: str) -> bool:

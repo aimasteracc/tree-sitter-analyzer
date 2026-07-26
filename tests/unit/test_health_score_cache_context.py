@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from tree_sitter_analyzer.health_scorer import HealthScorer
 from tree_sitter_analyzer.registry import health_score_cache as cache_module
 from tree_sitter_analyzer.registry.health_score_cache import (
     HealthScoreCache,
@@ -79,6 +80,31 @@ def test_coverage_signature_marks_a_special_symlink_target(tmp_path):
     report.symlink_to(tmp_path, target_is_directory=True)
 
     assert _coverage_metadata_signature(report).endswith(":target-special")
+
+
+def test_coverage_loader_indexes_windows_report_paths(tmp_path, monkeypatch):
+    """Windows report keys must enter the case-insensitive lookup index."""
+    # PR #1184 Codex review (2026-07-27): Windows normalization stays O(C), once.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "coverage.json").write_text(
+        '{"files":{"C:\\\\Workspace\\\\src\\\\main.py":'
+        '{"summary":{"percent_covered":72.5}}}}',
+        encoding="utf-8",
+    )
+    scorer = HealthScorer()
+
+    scorer._load_coverage_data()
+
+    assert scorer._windows_coverage_cache == {"c:/workspace/src/main.py": 72.5}
+
+
+def test_windows_coverage_lookup_casefolds_suffix_once():
+    """A Windows source may match a shorter report path by folded suffix."""
+    # PR #1184 Codex review (2026-07-27): suffix fallback uses the built index.
+    scorer = HealthScorer()
+    scorer._coverage_cache = {"SRC/Foo.py": 84.0}
+
+    assert scorer._score_coverage(r"C:\workspace\src\foo.py") == 84.0
 
 
 def test_small_metadata_reader_rejects_special_files(tmp_path):
@@ -277,6 +303,28 @@ def test_git_context_supports_linked_worktrees(tmp_path):
     ]
 
 
+@pytest.mark.parametrize("namespace", ["bisect", "rewritten", "worktree"])
+def test_git_context_reads_per_worktree_ref_namespaces(tmp_path, namespace):
+    """Per-worktree refs must be fingerprinted below the worktree Git dir."""
+    # PR #1184 Codex review (2026-07-27): common-dir lookup stayed permanently missing.
+    common_dir = tmp_path / "common"
+    git_dir = common_dir / "worktrees" / "feature"
+    git_dir.mkdir(parents=True)
+    (git_dir / "commondir").write_text("../..\n", encoding="utf-8")
+    ref_name = f"refs/{namespace}/current"
+    (git_dir / "HEAD").write_text(f"ref: {ref_name}\n", encoding="utf-8")
+    worktree_ref = git_dir / ref_name
+    worktree_ref.parent.mkdir(parents=True)
+    worktree_ref.write_text("abc123\n", encoding="utf-8")
+    original_signature = _metadata_signature(worktree_ref)
+
+    first = _git_context_parts(git_dir)
+    worktree_ref.write_text("def456-expanded\n", encoding="utf-8")
+    second = _git_context_parts(git_dir)
+
+    assert (first[-1], first == second) == (original_signature, False)
+
+
 def test_git_context_follows_a_symbolic_ref_chain(tmp_path):
     """Every loose ref in a recursive symbolic chain must be fingerprinted."""
     # PR #1184 Codex review (2026-07-27): Git dereferences symbolic refs by default.
@@ -328,7 +376,8 @@ def test_git_context_marks_a_missing_symbolic_ref(tmp_path):
     git_dir.mkdir()
     (git_dir / "HEAD").write_text("ref: refs/heads/packed\n", encoding="utf-8")
 
-    assert _git_context_parts(git_dir)[-1].endswith("refs/heads/packed:missing")
+    expected = f"{(git_dir / 'refs' / 'heads' / 'packed').absolute()}:missing"
+    assert _git_context_parts(git_dir)[-1] == expected
 
 
 def test_git_context_bounds_a_deep_symbolic_ref_chain(tmp_path):

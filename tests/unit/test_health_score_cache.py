@@ -313,6 +313,20 @@ def test_coverage_lookup_casefolds_windows_paths():
     assert scorer._score_coverage(r"c:\workspace\src\foo.py") == 87.5
 
 
+def test_posix_coverage_lookup_does_not_scan_report_entries():
+    """An exact POSIX lookup must retain its constant-time dictionary path."""
+
+    # PR #1184 Codex review (2026-07-27): nested scans made cold health O(F*C).
+    class NonIterableCoverage(dict):
+        def items(self):
+            raise AssertionError("exact POSIX lookup iterated coverage entries")
+
+    scorer = HealthScorer()
+    scorer._coverage_cache = NonIterableCoverage({"src/main.py": 91.25})
+
+    assert scorer._score_coverage("src/main.py") == 91.25
+
+
 def test_cache_misses_when_coverage_report_disappears(project, monkeypatch):
     """Removing a report must invalidate scores that embedded its coverage."""
     # Issue #1183 (2026-07-27): report disappearance was invisible to cache keys.
