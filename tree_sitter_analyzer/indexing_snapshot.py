@@ -86,6 +86,37 @@ class IndexCandidateSnapshot:
         }
 
 
+def validate_index_candidate_snapshot(
+    project_root: str,
+    max_files: int,
+    snapshot: IndexCandidateSnapshot,
+) -> None:
+    """Reject forged or incompatible snapshots before they drive cache writes."""
+    logical_root = os.path.abspath(project_root)
+    if logical_root != snapshot.project_root:
+        raise ValueError("candidate snapshot belongs to a different project root")
+    if max_files != snapshot.max_files:
+        raise ValueError("candidate snapshot uses a different max_files limit")
+
+    resolved_root = os.path.realpath(logical_root)
+    for entry in snapshot.entries:
+        logical_path = os.path.abspath(entry.abs_path)
+        resolved_path = os.path.realpath(logical_path)
+        if not Path(resolved_path).is_relative_to(resolved_root):
+            raise ValueError(f"candidate path escapes project root: {entry.abs_path}")
+        expected_rel_path = os.path.relpath(logical_path, logical_root).replace("\\", "/")
+        if entry.rel_path != expected_rel_path:
+            raise ValueError(f"candidate relative path mismatch: {entry.rel_path}")
+        if entry.decision == "selected" and entry.fingerprint is None:
+            raise ValueError(
+                f"selected candidate lacks metadata; lacks fingerprint: {entry.rel_path}"
+            )
+        if entry.decision == "selected" and entry.language is None:
+            raise ValueError(
+                f"selected candidate lacks metadata; lacks language: {entry.rel_path}"
+            )
+
+
 def build_index_candidate_snapshot(
     project_root: str,
     *,

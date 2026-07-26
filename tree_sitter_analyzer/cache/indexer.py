@@ -27,6 +27,7 @@ from ..indexing_snapshot import (
     IndexFileFingerprint,
     IndexSnapshotEntry,
     changed_since_snapshot,
+    validate_index_candidate_snapshot,
 )
 from ..languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from ..project_graph import _language_from_ext
@@ -286,7 +287,9 @@ def walk_and_partition(
         }
 
     if candidate_snapshot is not None:
-        _validate_candidate_snapshot(cache, max_files, candidate_snapshot)
+        validate_index_candidate_snapshot(
+            cache.project_root, max_files, candidate_snapshot
+        )
         stats["truncated_by_max_files"] = candidate_snapshot.truncated_by_max_files
         stats["snapshot_metrics"] = candidate_snapshot.metrics()
         count = len(candidate_snapshot.entries)
@@ -388,21 +391,6 @@ def walk_and_partition(
     stats["files"].extend(already_cached)
     stats["processed"] = len(candidates) + len(already_cached)
     return stats, candidates, count
-
-
-def _validate_candidate_snapshot(
-    cache: Any,
-    max_files: int,
-    candidate_snapshot: IndexCandidateSnapshot,
-) -> None:
-    """Reject a snapshot before an index run performs any destructive work."""
-    if os.path.abspath(cache.project_root) != candidate_snapshot.project_root:
-        raise ValueError("candidate snapshot belongs to a different project root")
-    if max_files != candidate_snapshot.max_files:
-        raise ValueError("candidate snapshot uses a different max_files limit")
-    for entry in candidate_snapshot.selected_entries:
-        if entry.fingerprint is None or entry.language is None:
-            raise ValueError(f"selected candidate lacks metadata: {entry.rel_path}")
 
 
 def _clear_full_rebuild_rows(cache: Any, conn: sqlite3.Connection) -> None:
@@ -527,12 +515,18 @@ def _snapshot_result_is_stable(
     result: dict[str, Any],
     entries: dict[str, IndexSnapshotEntry],
     stats: dict[str, Any],
+    *,
+    cache: Any,
+    conn: sqlite3.Connection,
 ) -> bool:
     """Validate one worker result immediately before its database write."""
     rel_path, change_reason = _snapshot_result_change_reason(result, entries)
     if change_reason is None:
         return True
 
+    from . import write as _write
+
+    _write.discard_file_rows(conn, rel_path, cache.fts5_available)
     _record_snapshot_change(stats, rel_path, change_reason)
     return False
 
@@ -631,7 +625,9 @@ def run_index_project(
             "activation_enabled": activation_enabled,
         }
     if candidate_snapshot is not None:
-        _validate_candidate_snapshot(cache, max_files, candidate_snapshot)
+        validate_index_candidate_snapshot(
+            cache.project_root, max_files, candidate_snapshot
+        )
     try:
         if force:
             # #578: a full rebuild empties ast_index up front (the DELETE
@@ -703,6 +699,8 @@ def run_index_project(
                 _snapshot_result_is_stable,
                 entries=snapshot_entries,
                 stats=stats,
+                cache=cache,
+                conn=conn,
             )
             if snapshot_entries is not None
             else None

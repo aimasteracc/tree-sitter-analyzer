@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
@@ -138,6 +139,18 @@ def test_snapshot_detects_deletion(tmp_path):
     entry = snapshot.selected_entries[0]
     path.unlink()
     assert changed_since_snapshot(entry) == "file disappeared after candidate snapshot"
+
+
+def test_non_selected_entry_never_reports_snapshot_change(tmp_path):
+    # PR #1172 review 2026-07-27: validation covers every snapshot decision.
+    entry = IndexSnapshotEntry(
+        abs_path=str(tmp_path / "excluded.py"),
+        rel_path="excluded.py",
+        language=None,
+        decision="excluded",
+    )
+
+    assert changed_since_snapshot(entry) is None
 
 
 def test_snapshot_is_structurally_immutable(tmp_path):
@@ -498,3 +511,23 @@ def test_ast_partition_rejects_selected_entry_without_metadata(tmp_path):
 
     with pytest.raises(ValueError, match="lacks metadata"):
         _partition(snapshot, _index_conn())
+
+
+def test_ast_partition_rejects_selected_entry_without_language(tmp_path):
+    # PR #1172 review 2026-07-27: forged snapshots must retain parse metadata.
+    path = tmp_path / "bad.py"
+    path.write_text("value = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+    )
+    malformed = replace(
+        snapshot,
+        entries=(replace(snapshot.selected_entries[0], language=None),),
+    )
+
+    with pytest.raises(ValueError, match="lacks language"):
+        _partition(malformed, _index_conn())

@@ -10,7 +10,11 @@ from typing import Any
 
 from .ast_cache import _EXT_TO_LANG, _walk_source_files
 from .indexing_limits import normalize_index_max_files
-from .indexing_snapshot import IndexCandidateSnapshot, changed_since_snapshot
+from .indexing_snapshot import (
+    IndexCandidateSnapshot,
+    changed_since_snapshot,
+    validate_index_candidate_snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +174,6 @@ class IncrementalSync:
             logger.error("Final DB commit failed after partial sync: %s", exc)
             result.errors += 1
 
-        # Resolve cross-file/receiver-typed callees once the whole scope exists.
         backfill_complete = self._cache.call_graph_built()
         if result.new_files or result.updated_files or result.deleted_files:
             try:
@@ -180,6 +183,12 @@ class IncrementalSync:
                 else:
                     result.synapse_resolved = int(stats.get("resolved", 0))
                     backfill_complete = int(stats.get("errors", 0)) == 0
+            except Exception:  # pragma: no cover - backfill is best-effort
+                backfill_complete = False
+            try:
+                stats = self._cache._run_unresolved_refs_backfill()
+                clean = stats is not None and not int(stats.get("errors", 0))
+                backfill_complete = bool(backfill_complete and clean)
             except Exception:  # pragma: no cover - backfill is best-effort
                 backfill_complete = False
 
@@ -230,15 +239,9 @@ class IncrementalSync:
         present_paths: set[str] = set()
 
         if candidate_snapshot is not None:
-            if (
-                os.path.abspath(self._cache.project_root)
-                != candidate_snapshot.project_root
-            ):
-                raise ValueError(
-                    "candidate snapshot belongs to a different project root"
-                )
-            if max_files != candidate_snapshot.max_files:
-                raise ValueError("candidate snapshot uses a different max_files limit")
+            validate_index_candidate_snapshot(
+                self._cache.project_root, max_files, candidate_snapshot
+            )
             changed_files: list[tuple[str, str]] = []
             for entry in candidate_snapshot.selected_entries:
                 change_reason = changed_since_snapshot(entry)
@@ -246,10 +249,7 @@ class IncrementalSync:
                     changed_files.append((entry.rel_path, change_reason))
                     continue
                 fingerprint = entry.fingerprint
-                if fingerprint is None:
-                    raise ValueError(
-                        f"selected candidate lacks fingerprint: {entry.rel_path}"
-                    )
+                assert fingerprint is not None
                 disk_files[entry.rel_path] = {
                     "abs_path": entry.abs_path,
                     "mtime_ns": fingerprint.mtime_ns,

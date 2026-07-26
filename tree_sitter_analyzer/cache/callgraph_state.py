@@ -42,26 +42,31 @@ def mark_call_graph_built(conn: sqlite3.Connection) -> None:
 def clear_call_graph_built(conn: sqlite3.Connection) -> None:
     """Clear the marker before replacing the derived call graph."""
     try:
-        conn.execute(_CREATE_DDL)
-        conn.execute(
-            "INSERT INTO ast_call_graph_state (id, built, built_at) "
-            "VALUES (1, 0, ?) "
-            "ON CONFLICT(id) DO UPDATE SET "
-            "built = excluded.built, "
-            "built_at = excluded.built_at",
-            (time.time(),),
-        )
-        conn.execute(
-            "INSERT INTO ast_call_graph_state (id, built, built_at) "
-            "VALUES (?, 0, ?) "
-            "ON CONFLICT(id) DO UPDATE SET "
-            "built = excluded.built, "
-            "built_at = excluded.built_at",
-            (_EXPLICITLY_INCOMPLETE_ID, time.time()),
-        )
-        conn.commit()
+        clear_call_graph_built_strict(conn)
     except sqlite3.OperationalError:
         logger.debug("could not clear call-graph-built", exc_info=True)
+
+
+def clear_call_graph_built_strict(conn: sqlite3.Connection) -> None:
+    """Clear the marker, propagating failures to transactional callers."""
+    conn.execute(_CREATE_DDL)
+    conn.execute(
+        "INSERT INTO ast_call_graph_state (id, built, built_at) "
+        "VALUES (1, 0, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "built = excluded.built, "
+        "built_at = excluded.built_at",
+        (time.time(),),
+    )
+    conn.execute(
+        "INSERT INTO ast_call_graph_state (id, built, built_at) "
+        "VALUES (?, 0, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "built = excluded.built, "
+        "built_at = excluded.built_at",
+        (_EXPLICITLY_INCOMPLETE_ID, time.time()),
+    )
+    conn.commit()
 
 
 def call_graph_built(conn: sqlite3.Connection) -> bool:

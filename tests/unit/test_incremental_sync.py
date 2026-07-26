@@ -1274,3 +1274,31 @@ def test_late_mutation_unresolves_edges_from_other_files(tmp_path):
         metadata["callee_resolved_file"],
         metadata["callee_symbol_id"],
     ) == ("target.py", "unknown", "", None, "unknown", "", None)
+
+
+def test_modified_base_rebuilds_resolved_hierarchy_edge(tmp_path):
+    # PR #1172 review 2026-07-27: incremental sync deleted but never rebuilt it.
+    base = tmp_path / "base.py"
+    child = tmp_path / "child.py"
+    base.write_text("class Base:\n    marker = 1\n")
+    child.write_text("from base import Base\n\nclass Child(Base):\n    pass\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    base.write_text("class Base:\n    marker = 200\n")
+
+    try:
+        IncrementalSync(cache).sync()
+        targets = [
+            row["target_node_id"]
+            for row in cache.get_conn()
+            .execute(
+                "SELECT target_node_id FROM edges "
+                "WHERE kind = 'extends' AND file_path = 'child.py' "
+                "ORDER BY target_node_id"
+            )
+            .fetchall()
+        ]
+    finally:
+        cache.close()
+
+    assert targets == ["base.py:Base:1", "class:Base"]

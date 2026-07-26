@@ -107,16 +107,15 @@ def invalidate_file_rows(
     changes_before = conn.total_changes
     try:
         removed = discard_file_rows(conn, rel_path, fts5_available)
+        if conn.total_changes > changes_before:
+            from .callgraph_state import clear_call_graph_built_strict
+
+            clear_call_graph_built_strict(conn)
+        else:
+            conn.commit()
     except Exception:
         conn.rollback()
         raise
-
-    if conn.total_changes > changes_before:
-        from .callgraph_state import clear_call_graph_built
-
-        clear_call_graph_built(conn)
-    else:
-        conn.commit()
     return removed
 
 

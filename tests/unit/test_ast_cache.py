@@ -22,6 +22,8 @@ from tree_sitter_analyzer.cache.indexer import _clear_full_rebuild_rows
 from tree_sitter_analyzer.cache.write import invalidate_file_rows
 from tree_sitter_analyzer.indexing_snapshot import (
     IndexCandidateSnapshot,
+    IndexFileFingerprint,
+    IndexSnapshotEntry,
     build_index_candidate_snapshot,
 )
 
@@ -1247,6 +1249,70 @@ def test_snapshot_rejects_candidate_outside_project_root(tmp_path):
         )
 
 
+def test_force_index_rejects_fabricated_external_snapshot_entry(tmp_path):
+    # PR #1172 review 2026-07-27: direct snapshots bypassed builder containment.
+    project = tmp_path / "project"
+    project.mkdir()
+    indexed = project / "app.py"
+    indexed.write_text("value = 1\n")
+    outside = tmp_path / "secret.py"
+    outside.write_text("secret = 1\n")
+    cache = ASTCache(str(project))
+    cache.index_file(str(indexed))
+    before = cache.lookup(str(indexed))
+    snapshot = IndexCandidateSnapshot(
+        project_root=os.path.abspath(project),
+        max_files=10,
+        entries=(
+            IndexSnapshotEntry(
+                abs_path=str(outside),
+                rel_path="../secret.py",
+                language="python",
+                decision="selected",
+                fingerprint=IndexFileFingerprint.from_stat(outside.stat()),
+            ),
+        ),
+        present_paths=frozenset({"../secret.py"}),
+        discovered=1,
+        selected=1,
+        excluded=0,
+        skipped=0,
+        errors=0,
+        limited=0,
+    )
+
+    try:
+        with pytest.raises(ValueError, match="escapes project root"):
+            cache.index_project(
+                max_files=10,
+                force=True,
+                candidate_snapshot=snapshot,
+            )
+        after = cache.lookup(str(indexed))
+    finally:
+        cache.close()
+
+    assert after == before
+
+
+def test_index_rejects_snapshot_relative_path_mismatch(tmp_path):
+    # PR #1172 review 2026-07-27: cache keys could disagree with absolute paths.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    malformed = replace(
+        snapshot,
+        entries=(replace(snapshot.selected_entries[0], rel_path="other.py"),),
+    )
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        with pytest.raises(ValueError, match="relative path mismatch"):
+            cache.index_project(max_files=10, candidate_snapshot=malformed)
+    finally:
+        cache.close()
+
+
 def test_force_index_rejects_wrong_limit_before_clearing_cache(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
@@ -1392,6 +1458,41 @@ def test_snapshot_revalidates_pending_rows_at_batch_commit(tmp_path):
     assert first_cached is None
     assert second_cached is not None
     assert graph_built is False
+
+
+def test_snapshot_guard_discards_preexisting_stale_generation(tmp_path):
+    # PR #1172 review 2026-07-27: a rejected worker left the old cache row live.
+    from tree_sitter_analyzer.cache import extraction
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.write_text("value = 20\n")
+    snapshot = _snapshot(tmp_path, path)
+    real_worker = extraction._worker_index_file
+
+    def worker_then_mutate(args):
+        result = real_worker(args)
+        path.write_text("value = 300\n")
+        return result
+
+    try:
+        with patch.object(
+            extraction,
+            "_worker_index_file",
+            side_effect=worker_then_mutate,
+        ):
+            cache.index_project(
+                max_files=10,
+                workers=0,
+                candidate_snapshot=snapshot,
+            )
+        cached = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert cached is None
 
 
 def test_snapshot_revalidates_rows_from_earlier_committed_batches(tmp_path):
@@ -1760,6 +1861,41 @@ def test_file_invalidation_rolls_back_derived_table_failure(tmp_path):
     try:
         with pytest.raises(sqlite3.OperationalError, match="disk is full"):
             invalidate_file_rows(FailingDerivedDelete(), "app.py", True)
+        after = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert after == before
+
+
+def test_file_invalidation_rolls_back_marker_clear_failure(tmp_path):
+    # PR #1172 review 2026-07-27: marker failures left deletes uncommitted.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    conn = cache.get_conn()
+    before = cache.lookup(str(path))
+
+    class FailingMarkerClear:
+        @property
+        def total_changes(self):
+            return conn.total_changes
+
+        def execute(self, sql, *args, **kwargs):
+            if sql.startswith("INSERT INTO ast_call_graph_state"):
+                raise sqlite3.OperationalError("database or disk is full")
+            return conn.execute(sql, *args, **kwargs)
+
+        def commit(self):
+            conn.commit()
+
+        def rollback(self):
+            conn.rollback()
+
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="disk is full"):
+            invalidate_file_rows(FailingMarkerClear(), "app.py", True)
         after = cache.lookup(str(path))
     finally:
         cache.close()
