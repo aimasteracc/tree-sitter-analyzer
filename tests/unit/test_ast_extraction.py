@@ -1861,7 +1861,43 @@ class TestPythonDocstring:
 # ---------------------------------------------------------------------------
 
 
+def _mixed_scope_call_edges():
+    from tree_sitter_analyzer.core.parser import Parser
+
+    src = "def helper():\n    pass\n\ndef main():\n    helper()\nprint()\n"
+    result = Parser().parse_code(src, "python")
+    assert result.success and result.tree is not None
+    return _extract_call_edges(result.tree, src, "python", {"symbols": []})
+
+
 class TestExtractCallEdgesReal:
+    def test_call_edge_mapping_preserves_exact_shape(self):
+        # Issue #1173 (2026-07-27): extraction must remain shape compatible.
+        edge = _mixed_scope_call_edges()[0]
+
+        assert tuple(edge) == (
+            "caller_name",
+            "caller_line",
+            "callee_name",
+            "callee_full",
+            "callee_line",
+        )
+
+    def test_call_edges_preserve_source_order(self):
+        # Issue #1173 (2026-07-27): extraction must retain walker ordering.
+        edges = _mixed_scope_call_edges()
+
+        assert [edge["callee_name"] for edge in edges] == ["helper", "print"]
+
+    def test_call_edges_preserve_scope_attribution(self):
+        # Issue #1173 (2026-07-27): module calls must remain unattributed.
+        edges = _mixed_scope_call_edges()
+
+        assert [(edge["caller_name"], edge["caller_line"]) for edge in edges] == [
+            ("main", 4),
+            ("", 0),
+        ]
+
     def test_call_edges_python_simple_caller(self):
         """A function that calls another produces a non-empty edge list."""
         from tree_sitter_analyzer.cache.extraction import _extract_symbols
