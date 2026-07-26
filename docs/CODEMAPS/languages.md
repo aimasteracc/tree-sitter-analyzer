@@ -1,4 +1,4 @@
-<!-- Generated: 2026-05-24; doc-code re-sync: 2026-07-15 -->
+<!-- Generated: 2026-05-24; doc-code re-sync: 2026-07-27 -->
 # Languages Codemap
 
 22 language plugins under `tree_sitter_analyzer/languages/` (17 single-file + 5 subdir packages).
@@ -27,7 +27,7 @@ Not every registered plugin is wired into the indexer to the same depth:
 | C# | `languages/csharp_plugin.py` | `languages/csharp_helpers.py` | records, async/await, attributes; block and file-scoped namespaces surface as packages |
 | Go | `languages/go_plugin.py` | `_go_*_helpers.py` ×6 | structs, interfaces, goroutines |
 | Rust | `languages/rust_plugin.py` | inline | traits, impl, macros, derive, enum variants as variables |
-| Kotlin | `languages/kotlin_plugin.py` | `languages/kotlin_helpers.py` | data classes, coroutines |
+| Kotlin | `languages/kotlin_plugin.py` | `kotlin_helpers.py` facade + `_kotlin_{core,function,class}_helpers.py` | data classes, coroutines |
 | Scala | `languages/scala_plugin.py` | inline | objects/traits, scaladoc; Scala 3 enum cases, givens, type members, extensions, and AST-cache symbol rows |
 | Swift | `languages/swift_plugin.py` | `_swift_plugin_*.py` ×3 | classes, structs, protocols; `.swift` + `.swiftinterface` (issue #131) |
 | Ruby | `languages/ruby_plugin.py` | `languages/ruby_helpers.py` | Rails patterns, metaprogramming |
