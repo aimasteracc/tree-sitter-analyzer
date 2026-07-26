@@ -16,7 +16,10 @@ def related_test_stems_for_path(file_path: str | Path) -> list[str]:
     return _unique_nonempty_stems(stems)
 
 
-def source_subsystem_stems(file_path: str | Path) -> list[str]:
+def source_subsystem_stems(
+    file_path: str | Path,
+    known_files: set[str] | None = None,
+) -> list[str]:
     """Return generic source-path scopes for disambiguating test matches."""
     normalized = Path(str(file_path).replace("\\", "/"))
     parents = list(normalized.parts[:-1])
@@ -51,6 +54,11 @@ def source_subsystem_stems(file_path: str | Path) -> list[str]:
         # A leading package directory is not a subsystem. This covers both this
         # repository and arbitrary projects without hard-coding a package name.
         parents = parents[1:]
+    elif parents and known_files is not None:
+        package_init = f"{parents[0]}/__init__.py"
+        windows_package_init = package_init.replace("/", "\\")
+        if package_init in known_files or windows_package_init in known_files:
+            parents = []
 
     structural_parts = {"mcp", "tool", "tools", "util", "utils"}
     stems: list[str] = []
@@ -169,6 +177,8 @@ def module_stem_for_path(file_path: str | Path) -> str:
 
 def _normalize_module_identifier(stem: str) -> str:
     """Normalize snake, kebab, dotted, and CamelCase module identifiers."""
+    if stem.startswith("__") and stem.endswith("__"):
+        return stem.lower()
     acronym_split = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", stem)
     snake_stem = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", acronym_split)
     return snake_stem.lower().replace("-", "_").replace(".", "_").lstrip("_")
@@ -260,9 +270,9 @@ def module_family_test_stems(file_path: str | Path) -> list[str]:
     if (
         is_repository_source
         and "edge_extractors" in normalized.parts[:-1]
-        and normalized.stem != "registry"
+        and normalized.stem == "java"
     ):
-        stems.append("registry")
+        stems.append("project_summary_pagerank")
     stems.extend(_strip_family_suffixes(normalized.stem, suffixes))
     return _unique_nonempty_stems(stems)
 
