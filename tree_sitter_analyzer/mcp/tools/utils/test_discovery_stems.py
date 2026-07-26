@@ -45,18 +45,18 @@ def source_subsystem_stems(file_path: str | Path) -> list[str]:
 
     structural_parts = {"mcp", "tool", "tools", "util", "utils"}
     stems: list[str] = []
+    structural_stems: list[str] = []
     for part in reversed(parents):
         normalized_part = part.lower().replace("-", "_")
-        if (
-            not normalized_part
-            or normalized_part.startswith(".")
-            or normalized_part in structural_parts
-        ):
+        if not normalized_part or normalized_part.startswith("."):
+            continue
+        if normalized_part in structural_parts:
+            structural_stems.append(normalized_part)
             continue
         stems.append(normalized_part)
         if normalized_part.endswith("s") and len(normalized_part) > 4:
             stems.append(normalized_part[:-1])
-    return _unique_nonempty_stems(stems)
+    return _unique_nonempty_stems(stems or structural_stems)
 
 
 def test_path_is_unscoped(test_file: str) -> bool:
@@ -123,6 +123,20 @@ def test_path_subsystem_affinity_rank(
     return None
 
 
+def test_paths_have_compatible_package_scope(
+    test_file: str,
+    changed_file: str,
+) -> bool:
+    """Return whether two paths do not identify different monorepo packages."""
+    changed_package = _monorepo_package_identity(changed_file)
+    test_package = _monorepo_package_identity(test_file)
+    return (
+        changed_package is None
+        or test_package is None
+        or changed_package == test_package
+    )
+
+
 def test_file_has_exact_module_stem(test_file: str, changed_file: str) -> bool:
     """Return whether a test filename exactly names the changed module."""
     return test_file_subject_stem(test_file) == module_stem_for_path(changed_file)
@@ -161,7 +175,8 @@ def _monorepo_package_identity(file_path: str | Path) -> str | None:
     """Return a package name encoded by a conventional monorepo container."""
     normalized = Path(str(file_path).replace("\\", "/"))
     parts = normalized.parts[:-1]
-    for index, part in enumerate(parts[:-1]):
+    for index in range(len(parts) - 2, -1, -1):
+        part = parts[index]
         if part.lower() not in {"apps", "packages"}:
             continue
         package = parts[index + 1].lower().replace("-", "_")
