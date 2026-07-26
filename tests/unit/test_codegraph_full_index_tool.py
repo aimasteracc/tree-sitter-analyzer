@@ -459,6 +459,70 @@ class TestExecute:
         assert received[0] is received[1]
         assert received[0].selected_entries[0].rel_path == "app.py"
 
+    async def test_elapsed_time_includes_snapshot_discovery(self, tmp_path):
+        path = tmp_path / "app.py"
+        path.write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        snapshot = full_tool._build_candidate_snapshot(
+            10,
+            frozenset(),
+        )
+        events = []
+        ticks = iter((10.0, 15.0))
+
+        def clock():
+            events.append("clock")
+            return next(ticks)
+
+        def build_snapshot(*_args):
+            events.append("snapshot")
+            return snapshot
+
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.full_index_tool.time.monotonic",
+                side_effect=clock,
+            ),
+            patch.object(
+                full_tool,
+                "_build_candidate_snapshot",
+                side_effect=build_snapshot,
+            ),
+            patch.object(
+                full_tool,
+                "_phase_ast_cache",
+                return_value={"status": "ok", "processed": 1},
+            ),
+            patch.object(
+                full_tool,
+                "_phase_incremental_sync",
+                return_value={"status": "ok", "processed": 1},
+            ),
+            patch.object(
+                full_tool,
+                "_phase_fts5_stats",
+                return_value={"status": "ok"},
+            ),
+            patch.object(
+                full_tool,
+                "_phase_call_edge_stats",
+                return_value={"status": "ok"},
+            ),
+            patch.object(full_tool, "_collect_final_stats", return_value={}),
+        ):
+            result = await full_tool.execute(
+                {
+                    "mode": "incremental",
+                    "max_files": 10,
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                    "no_default_excludes": True,
+                }
+            )
+
+        assert events == ["clock", "snapshot", "clock"]
+        assert result["elapsed_seconds"] == 5.0
+
     async def test_mutation_between_phases_is_skipped_and_reported(self, tmp_path):
         path = tmp_path / "app.py"
         path.write_text("value = 1\n")

@@ -15,14 +15,18 @@ import sqlite3
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     pass
 
 from ..constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from ..indexing_limits import normalize_index_max_files
-from ..indexing_snapshot import IndexCandidateSnapshot, changed_since_snapshot
+from ..indexing_snapshot import (
+    IndexCandidateSnapshot,
+    IndexFileFingerprint,
+    changed_since_snapshot,
+)
 from ..languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from ..project_graph import _language_from_ext
 from .build_state import (
@@ -283,6 +287,8 @@ def walk_and_partition(
     if candidate_snapshot is not None:
         if os.path.abspath(cache.project_root) != candidate_snapshot.project_root:
             raise ValueError("candidate snapshot belongs to a different project root")
+        if max_files != candidate_snapshot.max_files:
+            raise ValueError("candidate snapshot uses a different max_files limit")
         stats["truncated_by_max_files"] = candidate_snapshot.truncated_by_max_files
         stats["snapshot_metrics"] = candidate_snapshot.metrics()
         count = len(candidate_snapshot.entries)
@@ -452,6 +458,46 @@ def index_parallel(
         return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
 
 
+def _discard_changed_snapshot_results(
+    results: list[dict[str, Any]],
+    candidate_snapshot: IndexCandidateSnapshot,
+    stats: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Discard worker output that no longer represents the frozen snapshot."""
+    entries = {entry.rel_path: entry for entry in candidate_snapshot.selected_entries}
+    stable_results: list[dict[str, Any]] = []
+    for result in results:
+        rel_path = str(result["rel_path"]).replace("\\", "/")
+        entry = entries[rel_path]
+        fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
+        worker_fingerprint = (
+            int(result.get("mtime_ns", fingerprint.mtime_ns)),
+            int(result.get("file_size", fingerprint.file_size)),
+        )
+        expected_fingerprint = (fingerprint.mtime_ns, fingerprint.file_size)
+        change_reason = (
+            "file changed after candidate snapshot"
+            if worker_fingerprint != expected_fingerprint
+            else changed_since_snapshot(entry)
+        )
+        if change_reason is None:
+            stable_results.append(result)
+            continue
+
+        stats["skipped"] += 1
+        stats["processed"] = max(0, int(stats["processed"]) - 1)
+        stats["changed_during_run"] += 1
+        stats["changed_during_run_files"].append(rel_path)
+        stats["files"].append(
+            {
+                "file": rel_path,
+                "status": "skipped",
+                "reason": change_reason,
+            }
+        )
+    return stable_results
+
+
 def run_index_project(
     cache: Any,
     max_files: int = 20_000,
@@ -533,6 +579,12 @@ def run_index_project(
                 _worker_index_file((p, cache.project_root, lang))
                 for p, lang in candidates
             ]
+        if candidate_snapshot is not None:
+            results = _discard_changed_snapshot_results(
+                results,
+                candidate_snapshot,
+                stats,
+            )
         indexed_at = datetime.now(timezone.utc).isoformat()
         from .. import ast_cache as _ast_cache_mod
 

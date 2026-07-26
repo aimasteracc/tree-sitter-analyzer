@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T09:10:05Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 720,
+  "items_found": 5,
+  "actions_taken": 5,
+  "escalations": 0,
+  "tokens_estimate": 18000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 Codex Draft review: AST-cache now validates each worker result against the immutable snapshot immediately before commit and discards stale output; AST and incremental consumers independently reject snapshot max_files mismatches; full-index elapsed time includes snapshot discovery; and combined-behavior tests were split. Focused coverage (352 tests), strict worktree patch coverage, full pytest (1273 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T08:44:06Z",
   "pattern": "index-snapshot-repair",
   "duration_s": 1500,

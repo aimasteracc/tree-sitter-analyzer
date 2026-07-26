@@ -290,13 +290,13 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             extra_patterns,
             no_default_excludes,
         )
+        t_start = time.monotonic()
         candidate_snapshot = self._build_candidate_snapshot(
             max_files,
             exclude_patterns,
         )
 
         phases: dict[str, Any] = {}
-        t_start = time.monotonic()
 
         if mode == "full":
             mark_dirty(self.project_root)

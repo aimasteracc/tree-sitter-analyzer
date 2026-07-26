@@ -109,7 +109,7 @@ def test_max_files_window_is_evaluated_before_exclusions(tmp_path):
     assert snapshot.limited == 1
 
 
-def test_snapshot_detects_modification_and_deletion(tmp_path):
+def test_snapshot_detects_modification(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = build_index_candidate_snapshot(
@@ -126,6 +126,19 @@ def test_snapshot_detects_modification_and_deletion(tmp_path):
     path.write_text("value = 200\n")
     os.utime(path, None)
     assert changed_since_snapshot(entry) == "file changed after candidate snapshot"
+
+
+def test_snapshot_detects_deletion(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+    )
+    entry = snapshot.selected_entries[0]
 
     path.unlink()
     assert changed_since_snapshot(entry) == "file disappeared after candidate snapshot"
@@ -232,6 +245,122 @@ def test_ast_partition_rejects_snapshot_from_another_root(tmp_path):
             },
             candidate_snapshot=snapshot,
         )
+
+
+def test_ast_partition_rejects_snapshot_limit_mismatch(tmp_path):
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (),
+        language_fn=_python_language,
+    )
+
+    with pytest.raises(ValueError, match="different max_files"):
+        walk_and_partition(
+            _CacheRoot(str(tmp_path)),
+            _index_conn(),
+            max_files=11,
+            force=False,
+            activation_enabled=False,
+            walk_fn=lambda _root: (),
+            language_fn=_python_language,
+            extractor_version=1,
+            make_error_entry=lambda path, reason: {
+                "file": path,
+                "status": "error",
+                "reason": reason,
+            },
+            candidate_snapshot=snapshot,
+        )
+
+
+def test_ast_cache_discards_worker_result_changed_after_snapshot(tmp_path):
+    from tree_sitter_analyzer.cache import extraction
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+    )
+    cache = ASTCache(str(tmp_path))
+    real_worker = extraction._worker_index_file
+
+    def worker_then_mutate(args):
+        result = real_worker(args)
+        path.write_text("value = 200\n")
+        return result
+
+    try:
+        with patch.object(
+            extraction,
+            "_worker_index_file",
+            side_effect=worker_then_mutate,
+        ):
+            result = cache.index_project(
+                max_files=10,
+                workers=0,
+                exclude_patterns=frozenset(),
+                candidate_snapshot=snapshot,
+            )
+        rows = cache.get_conn().execute("SELECT file_path FROM ast_index").fetchall()
+    finally:
+        cache.close()
+
+    assert rows == []
+    assert result["processed"] == 0
+    assert result["changed_during_run_files"] == ["app.py"]
+    assert result["files"] == [
+        {
+            "file": "app.py",
+            "status": "skipped",
+            "reason": "file changed after candidate snapshot",
+        }
+    ]
+
+
+def test_ast_cache_discards_worker_result_with_mismatched_fingerprint(tmp_path):
+    from tree_sitter_analyzer.cache import extraction
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+    )
+    cache = ASTCache(str(tmp_path))
+    real_worker = extraction._worker_index_file
+
+    def worker_with_mismatched_fingerprint(args):
+        result = real_worker(args)
+        result["mtime_ns"] += 1
+        return result
+
+    try:
+        with patch.object(
+            extraction,
+            "_worker_index_file",
+            side_effect=worker_with_mismatched_fingerprint,
+        ):
+            result = cache.index_project(
+                max_files=10,
+                workers=0,
+                exclude_patterns=frozenset(),
+                candidate_snapshot=snapshot,
+            )
+        rows = cache.get_conn().execute("SELECT file_path FROM ast_index").fetchall()
+    finally:
+        cache.close()
+
+    assert rows == []
+    assert result["changed_during_run_files"] == ["app.py"]
 
 
 def test_ast_partition_rejects_selected_entry_without_metadata(tmp_path):
@@ -394,7 +523,7 @@ def test_incremental_sync_reports_preexisting_snapshot_change_to_callback(tmp_pa
     ]
 
 
-def test_incremental_sync_rejects_snapshot_root_and_limit_mismatch(tmp_path):
+def test_incremental_sync_rejects_snapshot_root_mismatch(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = build_index_candidate_snapshot(
@@ -407,7 +536,6 @@ def test_incremental_sync_rejects_snapshot_root_and_limit_mismatch(tmp_path):
     other = tmp_path / "other"
     other.mkdir()
     other_cache = ASTCache(str(other))
-    cache = ASTCache(str(tmp_path))
 
     try:
         with pytest.raises(ValueError, match="different project root"):
@@ -415,13 +543,29 @@ def test_incremental_sync_rejects_snapshot_root_and_limit_mismatch(tmp_path):
                 10,
                 candidate_snapshot=snapshot,
             )
+    finally:
+        other_cache.close()
+
+
+def test_incremental_sync_rejects_snapshot_limit_mismatch(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+    )
+    cache = ASTCache(str(tmp_path))
+
+    try:
         with pytest.raises(ValueError, match="different max_files"):
             IncrementalSync(cache)._scan_disk_files(
                 11,
                 candidate_snapshot=snapshot,
             )
     finally:
-        other_cache.close()
         cache.close()
 
 
