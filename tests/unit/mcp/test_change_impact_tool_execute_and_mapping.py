@@ -785,6 +785,21 @@ def test_find_test_files_never_replaces_direct_test_with_affinity_fallback():
     assert mapping["src/core/engine.py"] == ["tests/unit/slow/test_engine.py"]
 
 
+def test_find_test_files_keeps_exact_direct_over_directory_only_affinity():
+    """A directory-only affinity is weaker than an exact direct filename."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/core/engine.py"],
+        {
+            "tests/integration/api/test_engine.py",
+            "tests/unit/core/test_helpers.py",
+        },
+    )
+
+    assert mapping["src/core/engine.py"] == [
+        "tests/integration/api/test_engine.py"
+    ]
+
+
 def test_find_test_files_keeps_monorepo_package_identity_during_affinity():
     """Shared inner subsystem names must not cross package boundaries."""
     mapping = change_impact_tool._find_test_files(
@@ -798,6 +813,47 @@ def test_find_test_files_keeps_monorepo_package_identity_during_affinity():
     assert mapping["packages/a/src/core/config.py"] == [
         "packages/a/tests/core/test_config.py"
     ]
+
+
+def test_find_test_files_uses_innermost_nested_package_identity():
+    """Nested workspaces use their nearest enclosing package container."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/a/packages/b/src/core/config.py"],
+        {
+            "packages/a/packages/b/tests/core/test_config.py",
+            "packages/a/packages/c/tests/core/test_config.py",
+        },
+    )
+
+    assert mapping["packages/a/packages/b/src/core/config.py"] == [
+        "packages/a/packages/b/tests/core/test_config.py"
+    ]
+
+
+def test_find_test_files_filters_cross_package_family_matches():
+    """Derived family coverage must not cross into a sibling package."""
+    mapping = change_impact_tool._find_test_files(
+        ["packages/a/src/languages/lua_plugin/extractor.py"],
+        {"packages/b/tests/test_lua_plugin.py"},
+    )
+
+    assert mapping["packages/a/src/languages/lua_plugin/extractor.py"] == [
+        change_impact_tool.AUTO_DISCOVER_TEST_HINT
+    ]
+
+
+def test_find_test_files_uses_structural_directory_as_fallback_scope():
+    """A lone structural source directory still disambiguates direct tests."""
+    mapping = change_impact_tool._find_test_files(
+        ["src/mcp/server.py"],
+        {
+            "tests/unit/http/test_server.py",
+            "tests/unit/mcp/test_server.py",
+        },
+    )
+
+    assert mapping["src/mcp/server.py"] == ["tests/unit/mcp/test_server.py"]
+    assert change_impact_tool.source_subsystem_stems("src/.generated/server.py") == []
 
 
 def test_find_test_files_supports_irregular_plural_subject():
