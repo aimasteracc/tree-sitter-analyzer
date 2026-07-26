@@ -516,9 +516,17 @@ class ASTCache:
         return _get_stats(self._get_conn(), self._fts5_available, self.db_path)
 
     def invalidate(self, file_path: str) -> bool:
-        return _invalidate(
+        removed = _invalidate(
             self._get_conn(), file_path, self.project_root, self._fts5_available
         )
+        if removed:
+            try:
+                from .knowledge_graph.stores import LadybugKnowledgeGraphStore
+
+                LadybugKnowledgeGraphStore(self.project_root).remove_if_exists()
+            except Exception:
+                logger.debug("could not invalidate Ladybug mirror", exc_info=True)
+        return removed
 
     def get_call_edges(self) -> list[dict[str, Any]]:
         """Return all stored call edges from the cache.

@@ -60,16 +60,7 @@ def _file_content_hash(path: str) -> str:
 
 
 class IncrementalSync:
-    """
-    Incremental sync engine for ASTCache.
-
-    Compares the on-disk file tree against the SQLite index to determine
-    what needs re-parsing:
-    - New files: present on disk but not in index → index them
-    - Modified files: content hash differs → re-index them
-    - Deleted files: in index but not on disk → prune from index
-    - Unchanged files: hash matches → skip
-    """
+    """Reconcile new, modified, deleted, and unchanged source files."""
 
     def __init__(self, cache: Any) -> None:
         self._cache = cache
@@ -176,6 +167,7 @@ class IncrementalSync:
         # turns static type inference (self/unique-method/assignment/fixture/
         # class-method) into actual resolved edges. Measured: unknown 65.8%→24.0%
         # (resolved 47k). Only run when something changed (skip no-op syncs).
+        backfill_complete = True
         if result.new_files or result.updated_files or result.deleted_files:
             try:
                 backfill = getattr(self._cache, "_run_synapse_backfill", None)
@@ -183,8 +175,24 @@ class IncrementalSync:
                     stats = backfill()
                     if stats is not None:
                         result.synapse_resolved = int(stats.get("resolved", 0))
+                        backfill_complete = int(stats.get("errors", 0)) == 0
             except Exception:  # pragma: no cover - backfill is best-effort
-                pass
+                backfill_complete = False
+
+        indexed_paths = {
+            str(row["file_path"])
+            for row in conn.execute("SELECT file_path FROM ast_index").fetchall()
+        }
+        if (
+            not result.truncated_by_max_files
+            and result.errors == 0
+            and result.changed_during_run == 0
+            and backfill_complete
+            and indexed_paths == set(disk_files)
+        ):
+            from .cache.callgraph_state import mark_call_graph_built
+
+            mark_call_graph_built(conn)
 
         return result
 
@@ -274,14 +282,7 @@ class IncrementalSync:
         result: SyncResult,
         callback: Any | None,
     ) -> None:
-        """Drop AST rows for files that vanished from disk.
-
-        Only invalidates files whose extension maps to a known language —
-        random files (``.md`` notes, etc.) might exist as deleted rows but
-        re-creating them produces no useful AST. J8: each detail row uses
-        ``considered`` instead of the older confusingly-named ``action``,
-        with ``action`` kept as an alias for back-compat.
-        """
+        """Drop supported-language cache rows for files absent from disk."""
         for rel in deleted_paths:
             ext = os.path.splitext(rel)[1].lower()
             if ext not in _EXT_TO_LANG:

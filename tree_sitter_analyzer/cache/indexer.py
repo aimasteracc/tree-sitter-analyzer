@@ -712,24 +712,10 @@ def post_index_backfill(
             stats["synapse_backfill"] = synapse
     except Exception:
         logger.debug("synapse backfill failed", exc_info=True)
-    indexed_files = [
-        str(entry["file"])
-        for entry in stats.get("files", [])
-        if entry.get("status") == "indexed"
-    ]
     # ``insert_index_row`` already writes every file's graph edges during
-    # commit when FTS5 is available (the common path) — re-deriving them
-    # here is pure duplicate work: ~85 s on django (47 % of total index
-    # time) for an IDENTICAL edge set (244,590 rows either way, verified).
-    # Only refresh when insert could NOT have written them (no FTS5), where
-    # this pass is the sole edge writer.
-    if not cache.fts5_available:
-        try:
-            stats["edge_store_refresh"] = cache._refresh_graph_edges_from_cache(
-                indexed_files
-            )
-        except Exception:
-            logger.debug("edge store refresh failed", exc_info=True)
+    # commit on every SQLite backend. Re-deriving them here is pure duplicate
+    # work: ~85 s on django (47 % of total index time) for an identical edge
+    # set (244,590 rows either way, verified).
     try:
         unresolved = cache._run_unresolved_refs_backfill()
         if unresolved is not None:

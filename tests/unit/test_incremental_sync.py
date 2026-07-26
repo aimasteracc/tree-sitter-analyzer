@@ -124,6 +124,34 @@ class TestSyncDeletedFile:
         sync.sync()
         assert cache.lookup(str(helper)) is None
 
+    def test_complete_deletion_sync_restores_graph_marker(self, sync, cache, project):
+        sync.sync()
+        (project / "src" / "helper.js").unlink()
+
+        with patch.object(
+            cache,
+            "_run_synapse_backfill",
+            return_value={"resolved": 0, "errors": 0},
+        ):
+            sync.sync()
+
+        assert cache.call_graph_built() is True
+
+    def test_deletion_sync_backfill_error_keeps_graph_incomplete(
+        self, sync, cache, project
+    ):
+        sync.sync()
+        (project / "src" / "helper.js").unlink()
+
+        with patch.object(
+            cache,
+            "_run_synapse_backfill",
+            return_value={"resolved": 0, "errors": 1},
+        ):
+            sync.sync()
+
+        assert cache.call_graph_built() is False
+
 
 class TestSyncNewFile:
     def test_detects_new_file(self, sync, cache, project):
@@ -788,6 +816,28 @@ def test_preexisting_snapshot_deletion_invalidates_cached_row(tmp_path):
         cache.close()
 
     assert cached is None
+
+
+def test_preexisting_snapshot_mutation_removes_ladybug_mirror(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    snapshot = _snapshot(tmp_path, path)
+    mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
+    mirror.write_text("stale")
+    path.write_text("value = 200\n")
+
+    try:
+        IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+        )
+        mirror_exists = mirror.exists()
+    finally:
+        cache.close()
+
+    assert mirror_exists is False
 
 
 def test_incremental_sync_rejects_snapshot_root_mismatch(tmp_path):

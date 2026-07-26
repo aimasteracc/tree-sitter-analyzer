@@ -23,6 +23,20 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T11:12:50Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 430,
+  "items_found": 3,
+  "actions_taken": 3,
+  "escalations": 0,
+  "tokens_estimate": 12000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 sixth Codex Draft review: complete error-free incremental reconciliation now restores the call-graph marker after deletions while backfill failures keep it incomplete; graph rows are no longer redundantly regenerated on no-FTS5 SQLite because commit writes them on every backend; and every primary cache invalidation removes the derived Ladybug projection, including deferred snapshot mutations. Focused coverage (265 tests), strict worktree patch coverage, full pytest (1288 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T10:49:44Z",
   "pattern": "pr-review-repair",
   "duration_s": 440,

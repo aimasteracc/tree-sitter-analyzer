@@ -1020,12 +1020,12 @@ class TestPostIndexEdgeRefreshSkip:
         finally:
             c.close()
 
-    def test_refresh_runs_when_fts5_unavailable(self, tmp_project, monkeypatch):
+    def test_refresh_skipped_when_fts5_unavailable(self, tmp_project, monkeypatch):
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         c = ASTCache(str(tmp_project))
         try:
-            # Force the no-FTS5 path so the refresh becomes the sole edge writer.
+            # Graph rows are now written independently of FTS availability.
             monkeypatch.setattr(type(c), "fts5_available", property(lambda self: False))
             calls = {"n": 0}
             orig = c._refresh_graph_edges_from_cache
@@ -1037,7 +1037,7 @@ class TestPostIndexEdgeRefreshSkip:
             monkeypatch.setattr(c, "_refresh_graph_edges_from_cache", spy)
             c.index_project(force=True)
 
-            assert calls["n"] == 1
+            assert calls["n"] == 0
         finally:
             c.close()
 
@@ -1420,6 +1420,26 @@ def test_missing_file_invalidation_preserves_complete_graph_marker(tmp_path):
         cache.close()
 
     assert (removed, graph_built) == (False, True)
+
+
+def test_file_invalidation_tolerates_ladybug_cleanup_failure(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+
+    try:
+        with patch(
+            "tree_sitter_analyzer.knowledge_graph.stores."
+            "LadybugKnowledgeGraphStore.remove_if_exists",
+            side_effect=OSError("mirror is busy"),
+        ):
+            removed = cache.invalidate(str(path))
+        cached = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert (removed, cached) == (True, None)
 
 
 def test_file_invalidation_rolls_back_derived_table_failure(tmp_path):
