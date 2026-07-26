@@ -1,6 +1,9 @@
 """Tests for the pre-indexed AST cache (ast_cache module)."""
 
+import os
 import sqlite3
+from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -12,6 +15,16 @@ from tree_sitter_analyzer.ast_cache import (
     _content_hash,
     _extract_symbols,
     _has_fts5,
+)
+from tree_sitter_analyzer.cache.callgraph_state import clear_call_graph_built
+from tree_sitter_analyzer.cache.helpers import _commit_index_results
+from tree_sitter_analyzer.cache.indexer import _clear_full_rebuild_rows
+from tree_sitter_analyzer.cache.write import invalidate_file_rows
+from tree_sitter_analyzer.indexing_snapshot import (
+    IndexCandidateSnapshot,
+    IndexFileFingerprint,
+    IndexSnapshotEntry,
+    build_index_candidate_snapshot,
 )
 
 
@@ -37,6 +50,20 @@ def cache(tmp_project):
 def _query_plan(conn: sqlite3.Connection, sql: str, params: tuple[str, ...]) -> str:
     rows = conn.execute(f"EXPLAIN QUERY PLAN {sql}", params).fetchall()
     return " ".join(str(row[3]) for row in rows)
+
+
+def _python_language(path: str) -> str | None:
+    return "python" if path.endswith(".py") else None
+
+
+def _snapshot(tmp_path, path) -> IndexCandidateSnapshot:
+    return build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(path),),
+        language_fn=_python_language,
+    )
 
 
 class TestContentHash:
@@ -996,12 +1023,12 @@ class TestPostIndexEdgeRefreshSkip:
         finally:
             c.close()
 
-    def test_refresh_runs_when_fts5_unavailable(self, tmp_project, monkeypatch):
+    def test_refresh_skipped_when_fts5_unavailable(self, tmp_project, monkeypatch):
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         c = ASTCache(str(tmp_project))
         try:
-            # Force the no-FTS5 path so the refresh becomes the sole edge writer.
+            # Graph rows are now written independently of FTS availability.
             monkeypatch.setattr(type(c), "fts5_available", property(lambda self: False))
             calls = {"n": 0}
             orig = c._refresh_graph_edges_from_cache
@@ -1013,9 +1040,31 @@ class TestPostIndexEdgeRefreshSkip:
             monkeypatch.setattr(c, "_refresh_graph_edges_from_cache", spy)
             c.index_project(force=True)
 
-            assert calls["n"] == 1
+            assert calls["n"] == 0
         finally:
             c.close()
+
+    def test_force_rebuild_writes_non_fts_derived_rows(self, tmp_path):
+        path = tmp_path / "app.py"
+        path.write_text("import os\n\ndef current():\n    return os.getcwd()\n")
+        cache = ASTCache(str(tmp_path))
+        cache._fts5_available = False
+
+        try:
+            cache.index_project(force=True, workers=0)
+            conn = cache.get_conn()
+            counts = {
+                "imports": conn.execute("SELECT COUNT(*) FROM ast_imports").fetchone()[
+                    0
+                ],
+                "calls": conn.execute(
+                    "SELECT COUNT(*) FROM edges WHERE kind = 'calls'"
+                ).fetchone()[0],
+            }
+        finally:
+            cache.close()
+
+        assert counts == {"imports": 1, "calls": 1}
 
 
 # ---------------------------------------------------------------------------
@@ -1157,3 +1206,911 @@ class TestMethodKindClassification:
         finally:
             serial_cache.close()
             parallel_cache.close()
+
+
+def test_force_index_rejects_wrong_root_before_clearing_cache(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    before = cache.lookup(str(path))
+    snapshot = replace(
+        _snapshot(tmp_path, path),
+        project_root=os.path.abspath(tmp_path / "other"),
+    )
+
+    try:
+        with pytest.raises(ValueError, match="different project root"):
+            cache.index_project(
+                max_files=10,
+                force=True,
+                candidate_snapshot=snapshot,
+            )
+        row = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert row == before
+
+
+def test_snapshot_rejects_candidate_outside_project_root(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_text("value = 1\n")
+
+    with pytest.raises(ValueError, match="escapes project root"):
+        build_index_candidate_snapshot(
+            str(project),
+            max_files=10,
+            exclude_patterns=frozenset(),
+            walk_fn=lambda _root: (str(outside),),
+            language_fn=lambda _path: "python",
+        )
+
+
+def test_force_index_rejects_fabricated_external_snapshot_entry(tmp_path):
+    # PR #1172 review 2026-07-27: direct snapshots bypassed builder containment.
+    project = tmp_path / "project"
+    project.mkdir()
+    indexed = project / "app.py"
+    indexed.write_text("value = 1\n")
+    outside = tmp_path / "secret.py"
+    outside.write_text("secret = 1\n")
+    cache = ASTCache(str(project))
+    cache.index_file(str(indexed))
+    before = cache.lookup(str(indexed))
+    snapshot = IndexCandidateSnapshot(
+        project_root=os.path.abspath(project),
+        max_files=10,
+        entries=(
+            IndexSnapshotEntry(
+                abs_path=str(outside),
+                rel_path="../secret.py",
+                language="python",
+                decision="selected",
+                fingerprint=IndexFileFingerprint.from_stat(outside.stat()),
+            ),
+        ),
+        present_paths=frozenset({"../secret.py"}),
+        discovered=1,
+        selected=1,
+        excluded=0,
+        skipped=0,
+        errors=0,
+        limited=0,
+    )
+
+    try:
+        with pytest.raises(ValueError, match="escapes project root"):
+            cache.index_project(
+                max_files=10,
+                force=True,
+                candidate_snapshot=snapshot,
+            )
+        after = cache.lookup(str(indexed))
+    finally:
+        cache.close()
+
+    assert after == before
+
+
+def test_index_rejects_snapshot_relative_path_mismatch(tmp_path):
+    # PR #1172 review 2026-07-27: cache keys could disagree with absolute paths.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    malformed = replace(
+        snapshot,
+        entries=(replace(snapshot.selected_entries[0], rel_path="other.py"),),
+    )
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        with pytest.raises(ValueError, match="relative path mismatch"):
+            cache.index_project(max_files=10, candidate_snapshot=malformed)
+    finally:
+        cache.close()
+
+
+def test_force_index_rejects_wrong_limit_before_clearing_cache(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    before = cache.lookup(str(path))
+    snapshot = _snapshot(tmp_path, path)
+
+    try:
+        with pytest.raises(ValueError, match="different max_files"):
+            cache.index_project(
+                max_files=11,
+                force=True,
+                candidate_snapshot=snapshot,
+            )
+        row = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert row == before
+
+
+def test_force_index_rejects_missing_metadata_before_clearing_cache(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    before = cache.lookup(str(path))
+    snapshot = _snapshot(tmp_path, path)
+    malformed = replace(
+        snapshot,
+        entries=(replace(snapshot.selected_entries[0], fingerprint=None),),
+    )
+
+    try:
+        with pytest.raises(ValueError, match="lacks metadata"):
+            cache.index_project(
+                max_files=10,
+                force=True,
+                candidate_snapshot=malformed,
+            )
+        row = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert row == before
+
+
+def test_force_index_discards_all_stale_derived_rows(tmp_path):
+    from tree_sitter_analyzer.cache import extraction
+
+    path = tmp_path / "app.py"
+    path.write_text("import os\n\ndef stale():\n    return os.getcwd()\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    snapshot = _snapshot(tmp_path, path)
+    mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
+    mirror.write_text("stale mirror")
+    real_worker = extraction._worker_index_file
+
+    def worker_then_mutate(args):
+        result = real_worker(args)
+        path.write_text("def changed():\n    return 2\n")
+        return result
+
+    try:
+        with patch.object(
+            extraction,
+            "_worker_index_file",
+            side_effect=worker_then_mutate,
+        ):
+            cache.index_project(
+                max_files=10,
+                force=True,
+                workers=0,
+                exclude_patterns=frozenset(),
+                candidate_snapshot=snapshot,
+            )
+        conn = cache.get_conn()
+        counts = {
+            table: conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in (
+                "ast_index",
+                "ast_symbol_rows",
+                "ast_symbols_fts",
+                "ast_imports",
+                "ast_symbol_activation",
+                "edges",
+            )
+        }
+        mirror_exists = mirror.exists()
+    finally:
+        cache.close()
+
+    assert counts == {
+        "ast_index": 0,
+        "ast_symbol_rows": 0,
+        "ast_symbols_fts": 0,
+        "ast_imports": 0,
+        "ast_symbol_activation": 0,
+        "edges": 0,
+    }
+    assert mirror_exists is False
+
+
+def test_snapshot_revalidates_pending_rows_at_batch_commit(tmp_path):
+    from tree_sitter_analyzer.cache import indexer
+
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_text("a = 1\n")
+    second.write_text("b = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(first), str(second)),
+        language_fn=_python_language,
+    )
+    cache = ASTCache(str(tmp_path))
+    real_insert = indexer.insert_index_row
+
+    def insert_then_mutate(*args, **kwargs):
+        real_insert(*args, **kwargs)
+        if args[2]["rel_path"] == "b.py":
+            first.write_text("a = 200\n")
+
+    try:
+        with patch.object(indexer, "insert_index_row", side_effect=insert_then_mutate):
+            result = cache.index_project(
+                max_files=10,
+                workers=0,
+                candidate_snapshot=snapshot,
+            )
+        first_cached = cache.lookup(str(first))
+        second_cached = cache.lookup(str(second))
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert result["indexed"] == 1
+    assert result["changed_during_run_files"] == ["a.py"]
+    assert first_cached is None
+    assert second_cached is not None
+    assert graph_built is False
+
+
+def test_snapshot_guard_discards_preexisting_stale_generation(tmp_path):
+    # PR #1172 review 2026-07-27: a rejected worker left the old cache row live.
+    from tree_sitter_analyzer.cache import extraction
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.write_text("value = 20\n")
+    snapshot = _snapshot(tmp_path, path)
+    real_worker = extraction._worker_index_file
+
+    def worker_then_mutate(args):
+        result = real_worker(args)
+        path.write_text("value = 300\n")
+        return result
+
+    try:
+        with patch.object(
+            extraction,
+            "_worker_index_file",
+            side_effect=worker_then_mutate,
+        ):
+            cache.index_project(
+                max_files=10,
+                workers=0,
+                candidate_snapshot=snapshot,
+            )
+        cached = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert cached is None
+
+
+def test_snapshot_guard_removes_ladybug_mirror(tmp_path):
+    # PR #1172 review 2026-07-27: direct row discard must stale the projection.
+    from tree_sitter_analyzer.cache.indexer import _snapshot_result_is_stable
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.write_text("value = 20\n")
+    entry = _snapshot(tmp_path, path).selected_entries[0]
+    mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
+    mirror.write_text("stale")
+    path.write_text("value = 300\n")
+    stats = {
+        "skipped": 0,
+        "processed": 1,
+        "changed_during_run": 0,
+        "changed_during_run_files": [],
+        "files": [],
+    }
+
+    try:
+        stable = _snapshot_result_is_stable(
+            {"rel_path": "app.py"},
+            {"app.py": entry},
+            stats,
+            cache=cache,
+            conn=cache.get_conn(),
+        )
+        mirror_exists = mirror.exists()
+    finally:
+        cache.close()
+
+    assert (stable, mirror_exists) == (False, False)
+
+
+def test_snapshot_guard_tolerates_ladybug_cleanup_failure(tmp_path):
+    # PR #1172 review 2026-07-27: mirror cleanup remains best-effort.
+    from tree_sitter_analyzer.cache.indexer import _snapshot_result_is_stable
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.write_text("value = 20\n")
+    entry = _snapshot(tmp_path, path).selected_entries[0]
+    path.write_text("value = 300\n")
+    stats = {
+        "skipped": 0,
+        "processed": 1,
+        "changed_during_run": 0,
+        "changed_during_run_files": [],
+        "files": [],
+    }
+
+    try:
+        with patch(
+            "tree_sitter_analyzer.knowledge_graph.stores."
+            "LadybugKnowledgeGraphStore.remove_if_exists",
+            side_effect=OSError("mirror is busy"),
+        ):
+            stable = _snapshot_result_is_stable(
+                {"rel_path": "app.py"},
+                {"app.py": entry},
+                stats,
+                cache=cache,
+                conn=cache.get_conn(),
+            )
+    finally:
+        cache.close()
+
+    assert stable is False
+
+
+def test_snapshot_revalidates_rows_from_earlier_committed_batches(tmp_path):
+    # PR #1172 review 2026-07-27: only the pending batch was revalidated.
+    from tree_sitter_analyzer.cache import indexer
+
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_text("a = 1\n")
+    second.write_text("b = 1\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(first), str(second)),
+        language_fn=_python_language,
+    )
+    cache = ASTCache(str(tmp_path))
+    real_commit = _commit_index_results
+    real_insert = indexer.insert_index_row
+
+    def commit_one_at_a_time(*args, **kwargs):
+        real_commit(*args, batch_size=1, **kwargs)
+
+    def insert_then_mutate(*args, **kwargs):
+        real_insert(*args, **kwargs)
+        if args[2]["rel_path"] == "b.py":
+            first.write_text("a = 200\n")
+
+    try:
+        with (
+            patch(
+                "tree_sitter_analyzer.ast_cache._commit_index_results",
+                side_effect=commit_one_at_a_time,
+            ),
+            patch.object(indexer, "insert_index_row", side_effect=insert_then_mutate),
+        ):
+            result = cache.index_project(
+                max_files=10,
+                workers=0,
+                candidate_snapshot=snapshot,
+            )
+        outcome = (
+            result["indexed"],
+            result["changed_during_run_files"],
+            cache.lookup(str(first)),
+            cache.lookup(str(second)) is not None,
+            cache.call_graph_built(),
+        )
+    finally:
+        cache.close()
+
+    assert outcome == (1, ["a.py"], None, True, False)
+
+
+def test_snapshot_preserves_logical_project_root_spelling(tmp_path):
+    # PR #1172 review 2026-07-27: realpath broke macOS /var cache lookups.
+    physical_root = tmp_path / "physical"
+    logical_root = tmp_path / "logical"
+    physical_root.mkdir()
+    logical_root.symlink_to(physical_root, target_is_directory=True)
+    path = logical_root / "app.py"
+    path.write_text("value = 1\n")
+
+    snapshot = build_index_candidate_snapshot(
+        str(logical_root),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda root: (os.path.join(root, "app.py"),),
+        language_fn=_python_language,
+    )
+
+    assert snapshot.project_root == os.path.abspath(logical_root)
+    assert snapshot.selected_entries[0].abs_path == os.path.abspath(path)
+    assert snapshot.selected_entries[0].rel_path == "app.py"
+
+
+@pytest.mark.parametrize("kind", ["extends", "implements"])
+def test_invalidation_removes_incoming_resolved_hierarchy_edges(tmp_path, kind):
+    # PR #1172 review 2026-07-27: target invalidation left derived hierarchy rows.
+    from tree_sitter_analyzer.graph.edge_store import Edge, EdgeStore
+
+    target = tmp_path / "target.py"
+    target.write_text("class Base:\n    pass\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(target))
+    conn = cache.get_conn()
+    EdgeStore(conn, ensure_schema=False).upsert_edges(
+        [
+            Edge("caller.py:Child:1", "class:Base", kind, line=1),
+            Edge(
+                "caller.py:Child:1",
+                "target.py:Base:1",
+                kind,
+                line=1,
+                provenance="unresolved_refs",
+                metadata={
+                    "resolution": "unresolved_refs",
+                    "resolved_file": "target.py",
+                    "resolved_name": "Base",
+                    "resolved_symbol_id": 1,
+                },
+            ),
+        ]
+    )
+    conn.commit()
+
+    try:
+        cache.invalidate(str(target))
+        targets = [
+            row["target_node_id"]
+            for row in conn.execute(
+                "SELECT target_node_id FROM edges WHERE kind = ? ORDER BY target_node_id",
+                (kind,),
+            ).fetchall()
+        ]
+    finally:
+        cache.close()
+
+    assert targets == ["class:Base"]
+
+
+def test_commit_helper_guards_each_full_batch():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE committed_files (file_path TEXT)")
+    results = [
+        {
+            "rel_path": rel_path,
+            "status": "indexed",
+            "symbols_count": 0,
+            "content_hash": "0" * 64,
+        }
+        for rel_path in ("a.py", "b.py")
+    ]
+    stats = {"errors": 0, "indexed": 0, "files": []}
+    guarded: list[list[str]] = []
+
+    def insert(result, _indexed_at, *, include_activation):
+        conn.execute("INSERT INTO committed_files VALUES (?)", (result["rel_path"],))
+
+    _commit_index_results(
+        conn,
+        results,
+        stats,
+        insert,
+        "now",
+        False,
+        batch_size=1,
+        batch_guard=lambda batch: guarded.append(
+            [result["rel_path"] for result in batch]
+        ),
+    )
+
+    assert guarded == [["a.py"], ["b.py"]]
+
+
+def test_commit_helper_commits_full_batch_without_guard():
+    # PR #1172: optional snapshot guards must not change ordinary batch commits.
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE committed_files (file_path TEXT)")
+    result = {
+        "rel_path": "a.py",
+        "status": "indexed",
+        "symbols_count": 0,
+        "content_hash": "0" * 64,
+    }
+    stats = {"errors": 0, "indexed": 0, "files": []}
+
+    def insert(item, _indexed_at, *, include_activation):
+        conn.execute("INSERT INTO committed_files VALUES (?)", (item["rel_path"],))
+
+    _commit_index_results(conn, [result], stats, insert, "now", False, batch_size=1)
+
+    assert conn.execute("SELECT file_path FROM committed_files").fetchall() == [
+        ("a.py",)
+    ]
+
+
+def test_snapshot_batch_revalidation_handles_missing_error_detail(tmp_path):
+    # PR #1172: a failed worker may have no prior detail row to replace.
+    from tree_sitter_analyzer.cache.indexer import _revalidate_snapshot_batch
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    entry = _snapshot(tmp_path, path).selected_entries[0]
+    path.write_text("value = 200\n")
+    stats = {
+        "errors": 1,
+        "indexed": 0,
+        "skipped": 0,
+        "processed": 1,
+        "changed_during_run": 0,
+        "changed_during_run_files": [],
+        "files": [],
+    }
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT PRIMARY KEY)")
+    try:
+        _revalidate_snapshot_batch(
+            [{"rel_path": "app.py", "status": "io_error"}],
+            cache=SimpleNamespace(
+                fts5_available=False,
+                project_root=str(tmp_path),
+            ),
+            conn=conn,
+            entries={"app.py": entry},
+            stats=stats,
+        )
+    finally:
+        conn.close()
+
+    assert stats == {
+        "errors": 0,
+        "indexed": 0,
+        "skipped": 1,
+        "processed": 0,
+        "changed_during_run": 1,
+        "changed_during_run_files": ["app.py"],
+        "files": [
+            {
+                "file": "app.py",
+                "status": "skipped",
+                "reason": "file changed after candidate snapshot",
+            }
+        ],
+    }
+
+
+def test_failed_worker_snapshot_revalidation_discards_old_generation(tmp_path):
+    # PR #1172 review 2026-07-27: a late failed worker cannot retain stale rows.
+    from tree_sitter_analyzer.cache.indexer import _revalidate_snapshot_batch
+
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.write_text("value = 20\n")
+    entry = _snapshot(tmp_path, path).selected_entries[0]
+    path.write_text("value = 300\n")
+    stats = {
+        "errors": 1,
+        "indexed": 0,
+        "skipped": 0,
+        "processed": 1,
+        "changed_during_run": 0,
+        "changed_during_run_files": [],
+        "files": [{"file": "app.py", "status": "error", "reason": "read failed"}],
+    }
+
+    try:
+        _revalidate_snapshot_batch(
+            [{"rel_path": "app.py", "status": "io_error"}],
+            cache=cache,
+            conn=cache.get_conn(),
+            entries={"app.py": entry},
+            stats=stats,
+        )
+        cached = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert cached is None
+
+
+def test_disabled_synapse_backfill_returns_complete_zero_stats(tmp_path, monkeypatch):
+    # PR #1172: disabled resolution is complete no-op work, not indeterminate.
+    monkeypatch.setenv("TSA_SYNAPSE", "0")
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = cache._run_synapse_backfill()
+    finally:
+        cache.close()
+
+    assert result == {"total": 0, "resolved": 0, "unchanged": 0, "errors": 0}
+
+
+def test_cached_snapshot_mutation_does_not_stamp_graph_complete(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    snapshot = _snapshot(tmp_path, path)
+    clear_call_graph_built(cache.get_conn())
+
+    def mutate_after_partition(_workers, _candidates):
+        path.write_text("value = 200\n")
+        return 0
+
+    try:
+        with patch.object(
+            cache,
+            "_resolve_worker_count",
+            side_effect=mutate_after_partition,
+        ):
+            cache.index_project(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+        built = (
+            cache.get_conn()
+            .execute("SELECT built FROM ast_call_graph_state WHERE id = 1")
+            .fetchone()[0]
+        )
+    finally:
+        cache.close()
+
+    assert built == 0
+
+
+def test_full_rebuild_clear_tolerates_legacy_primary_only_schema():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT PRIMARY KEY)")
+    conn.execute("INSERT INTO ast_index VALUES ('app.py')")
+
+    _clear_full_rebuild_rows(SimpleNamespace(fts5_available=False), conn)
+
+    assert conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()[0] == 0
+    conn.close()
+
+
+def test_full_rebuild_clear_propagates_derived_table_failure(tmp_path):
+    cache = ASTCache(str(tmp_path))
+    conn = cache.get_conn()
+
+    class FailingDerivedDelete:
+        def execute(self, sql, *args, **kwargs):
+            if sql == "DELETE FROM ast_imports":
+                raise sqlite3.OperationalError("database or disk is full")
+            return conn.execute(sql, *args, **kwargs)
+
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="disk is full"):
+            _clear_full_rebuild_rows(
+                SimpleNamespace(fts5_available=False),
+                FailingDerivedDelete(),
+            )
+        conn.rollback()
+    finally:
+        cache.close()
+
+
+def test_file_invalidation_tolerates_legacy_primary_only_schema():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT PRIMARY KEY)")
+    conn.execute("INSERT INTO ast_index VALUES ('app.py')")
+
+    removed = invalidate_file_rows(conn, "app.py", False)
+
+    assert removed is True
+    conn.close()
+
+
+def test_missing_file_invalidation_preserves_complete_graph_marker(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("def caller():\n    return caller()\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+
+    try:
+        removed = cache.invalidate(str(tmp_path / "missing.py"))
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (removed, graph_built) == (False, True)
+
+
+def test_file_invalidation_tolerates_ladybug_cleanup_failure(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+
+    try:
+        with patch(
+            "tree_sitter_analyzer.knowledge_graph.stores."
+            "LadybugKnowledgeGraphStore.remove_if_exists",
+            side_effect=OSError("mirror is busy"),
+        ):
+            removed = cache.invalidate(str(path))
+        cached = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert (removed, cached) == (True, None)
+
+
+def test_file_invalidation_rolls_back_derived_table_failure(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    conn = cache.get_conn()
+    before = cache.lookup(str(path))
+
+    class FailingDerivedDelete:
+        @property
+        def total_changes(self):
+            return conn.total_changes
+
+        def execute(self, sql, *args, **kwargs):
+            if sql == "DELETE FROM ast_imports WHERE file_path = ?":
+                raise sqlite3.OperationalError("database or disk is full")
+            return conn.execute(sql, *args, **kwargs)
+
+        def rollback(self):
+            conn.rollback()
+
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="disk is full"):
+            invalidate_file_rows(FailingDerivedDelete(), "app.py", True)
+        after = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert after == before
+
+
+def test_file_invalidation_rolls_back_marker_clear_failure(tmp_path):
+    # PR #1172 review 2026-07-27: marker failures left deletes uncommitted.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    conn = cache.get_conn()
+    before = cache.lookup(str(path))
+
+    class FailingMarkerClear:
+        @property
+        def total_changes(self):
+            return conn.total_changes
+
+        def execute(self, sql, *args, **kwargs):
+            if sql.startswith("INSERT INTO ast_call_graph_state"):
+                raise sqlite3.OperationalError("database or disk is full")
+            return conn.execute(sql, *args, **kwargs)
+
+        def commit(self):
+            conn.commit()
+
+        def rollback(self):
+            conn.rollback()
+
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="disk is full"):
+            invalidate_file_rows(FailingMarkerClear(), "app.py", True)
+        after = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert after == before
+
+
+def test_force_rebuild_clear_failure_preserves_existing_index(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    before = cache.lookup(str(path))
+
+    def clear_then_fail(_cache, conn):
+        conn.execute("DELETE FROM ast_index")
+        raise sqlite3.OperationalError("simulated FTS cleanup failure")
+
+    try:
+        with (
+            patch(
+                "tree_sitter_analyzer.cache.indexer._clear_full_rebuild_rows",
+                side_effect=clear_then_fail,
+            ),
+            pytest.raises(sqlite3.OperationalError, match="FTS cleanup failure"),
+        ):
+            cache.index_project(force=True)
+        after = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert after == before
+
+
+def test_force_rebuild_tolerates_ladybug_cleanup_failure(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        with patch(
+            "tree_sitter_analyzer.knowledge_graph.stores."
+            "LadybugKnowledgeGraphStore.remove_if_exists",
+            side_effect=OSError("mirror is busy"),
+        ):
+            result = cache.index_project(force=True, workers=0)
+        cached = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert result["indexed"] == 1
+    assert cached is not None
+
+
+def test_force_rebuild_clear_failure_restores_complete_graph_marker(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("def caller():\n    return caller()\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+
+    def clear_then_fail(_cache, conn):
+        conn.execute("DELETE FROM ast_index")
+        raise sqlite3.OperationalError("simulated derived cleanup failure")
+
+    try:
+        with (
+            patch(
+                "tree_sitter_analyzer.cache.indexer._clear_full_rebuild_rows",
+                side_effect=clear_then_fail,
+            ),
+            pytest.raises(sqlite3.OperationalError, match="cleanup failure"),
+        ):
+            cache.index_project(force=True, workers=0)
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is True
+
+
+def test_force_rebuild_clear_failure_keeps_incomplete_graph_marker(tmp_path):
+    cache = ASTCache(str(tmp_path))
+
+    def fail_clear(_cache, _conn):
+        raise sqlite3.OperationalError("simulated derived cleanup failure")
+
+    try:
+        with (
+            patch(
+                "tree_sitter_analyzer.cache.indexer._clear_full_rebuild_rows",
+                side_effect=fail_clear,
+            ),
+            pytest.raises(sqlite3.OperationalError, match="cleanup failure"),
+        ):
+            cache.index_project(force=True, workers=0)
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is False

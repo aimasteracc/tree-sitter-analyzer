@@ -15,13 +15,20 @@ import sqlite3
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     pass
 
 from ..constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from ..indexing_limits import normalize_index_max_files
+from ..indexing_snapshot import (
+    IndexCandidateSnapshot,
+    IndexFileFingerprint,
+    IndexSnapshotEntry,
+    changed_since_snapshot,
+    validate_index_candidate_snapshot,
+)
 from ..languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from ..project_graph import _language_from_ext
 from .build_state import (
@@ -102,6 +109,19 @@ def _walk_source_files(project_root: str) -> Iterator[str]:
             ext = os.path.splitext(fname)[1].lower()
             if ext in _EXT_TO_LANG:
                 yield os.path.join(dirpath, fname)
+
+
+def _warn_unwired_plugin_extension(abs_path: str) -> None:
+    """Emit the existing one-time warning for unsupported plugin extensions."""
+    ext = os.path.splitext(abs_path)[1].lower()
+    if ext and ext not in _warned_extensions and ext in _PLUGIN_EXTS:
+        logger.warning(
+            "Extension %s is registered in a plugin but not wired for "
+            "full-index; use single-file mode for this language. File: %s",
+            ext,
+            abs_path,
+        )
+        _warned_extensions.add(ext)
 
 
 def check_cache_or_read(
@@ -230,6 +250,7 @@ def walk_and_partition(
     make_error_entry: Any,
     language_filter: str | None = None,
     exclude_patterns: frozenset[str] | None = None,
+    candidate_snapshot: IndexCandidateSnapshot | None = None,
 ) -> tuple[dict[str, Any], list[tuple[str, str]], int]:
     """Walk source files and partition into (stats, candidates, count).
 
@@ -247,6 +268,9 @@ def walk_and_partition(
         "cached": 0,
         "errors": 0,
         "skipped": 0,
+        "processed": 0,
+        "changed_during_run": 0,
+        "changed_during_run_files": [],
         "files": [],
         "activation_enabled": activation_enabled,
         "truncated_by_max_files": False,
@@ -261,6 +285,68 @@ def walk_and_partition(
             r["file_path"]: (r["mtime_ns"], r["file_size"], r["extractor_version"])
             for r in rows
         }
+
+    if candidate_snapshot is not None:
+        validate_index_candidate_snapshot(
+            cache.project_root, max_files, candidate_snapshot
+        )
+        stats["truncated_by_max_files"] = candidate_snapshot.truncated_by_max_files
+        stats["snapshot_metrics"] = candidate_snapshot.metrics()
+        count = len(candidate_snapshot.entries)
+        for entry in candidate_snapshot.entries:
+            if entry.decision == "excluded":
+                stats["skipped"] += 1
+                continue
+            if entry.decision == "skipped":
+                if entry.language is None:
+                    _warn_unwired_plugin_extension(entry.abs_path)
+                stats["skipped"] += 1
+                continue
+            if entry.decision == "error":
+                stats["errors"] += 1
+                stats["files"].append(
+                    make_error_entry(entry.rel_path, entry.reason or "stat failed")
+                )
+                continue
+
+            change_reason = changed_since_snapshot(entry)
+            if change_reason is not None:
+                stats["skipped"] += 1
+                stats["changed_during_run"] += 1
+                stats["changed_during_run_files"].append(entry.rel_path)
+                stats["files"].append(
+                    {
+                        "file": entry.rel_path,
+                        "status": "skipped",
+                        "reason": change_reason,
+                    }
+                )
+                continue
+
+            fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
+            language = cast(str, entry.language)
+            row = indexed_map.get(entry.rel_path)
+            if (
+                row is not None
+                and row[0] == fingerprint.mtime_ns
+                and row[1] == fingerprint.file_size
+                and row[2] >= extractor_version
+            ):
+                already_cached.append(
+                    {
+                        "file": entry.rel_path,
+                        "status": "cached",
+                        "reason": "unchanged",
+                    }
+                )
+                continue
+            candidates.append((entry.abs_path, language))
+
+        stats["cached"] += len(already_cached)
+        stats["files"].extend(already_cached)
+        stats["processed"] = len(candidates) + len(already_cached)
+        return stats, candidates, count
+
     count = 0
     for abs_path in walk_fn(cache.project_root):
         if count >= max_files:
@@ -277,15 +363,7 @@ def walk_and_partition(
         if lang is None:
             # REQ-E-020: emit a one-time WARNING for plugin-registered extensions
             # that are not wired into the full-index path.
-            ext = os.path.splitext(abs_path)[1].lower()
-            if ext and ext not in _warned_extensions and ext in _PLUGIN_EXTS:
-                logger.warning(
-                    "Extension %s is registered in a plugin but not wired for "
-                    "full-index; use single-file mode for this language. File: %s",
-                    ext,
-                    abs_path,
-                )
-                _warned_extensions.add(ext)
+            _warn_unwired_plugin_extension(abs_path)
             stats["skipped"] += 1
             continue
         if language_filter is not None and lang != language_filter:
@@ -311,7 +389,29 @@ def walk_and_partition(
         candidates.append((abs_path, lang))
     stats["cached"] += len(already_cached)
     stats["files"].extend(already_cached)
+    stats["processed"] = len(candidates) + len(already_cached)
     return stats, candidates, count
+
+
+def _clear_full_rebuild_rows(cache: Any, conn: sqlite3.Connection) -> None:
+    """Clear primary and derived index rows before a forced rebuild."""
+    conn.execute("DELETE FROM ast_index")
+    if cache.fts5_available:
+        conn.execute(
+            "INSERT INTO ast_symbols_fts(ast_symbols_fts) VALUES('delete-all')"
+        )
+    _delete_all_rows_if_present(conn, "ast_symbol_rows")
+    for table in ("ast_imports", "ast_symbol_activation", "edges"):
+        _delete_all_rows_if_present(conn, table)
+
+
+def _delete_all_rows_if_present(conn: sqlite3.Connection, table: str) -> None:
+    """Delete a legacy-optional table, propagating every real database failure."""
+    try:
+        conn.execute(f"DELETE FROM {table}")  # nosec B608 - fixed table names
+    except sqlite3.OperationalError as exc:
+        if "no such table" not in str(exc).lower():
+            raise
 
 
 def insert_index_row(
@@ -343,13 +443,13 @@ def insert_index_row(
             indexed_at,
         ),
     )
-    if not cache.fts5_available:
-        return
     from . import write as _write
 
-    inserted_symbol_rows = _write.write_fts5_symbols_from_tuples(
-        conn, rel_path, r["language"], r["symbol_rows"]
-    )
+    inserted_symbol_rows: list[dict[str, Any]] = []
+    if cache.fts5_available:
+        inserted_symbol_rows = _write.write_fts5_symbols_from_tuples(
+            conn, rel_path, r["language"], r["symbol_rows"]
+        )
     call_edges = json.loads(r.get("call_edges_json", "[]"))
     imports_list = json.loads(r.get("imports_json", "[]"))
     cache._write_imports_for_file(conn, rel_path, r["language"], imports_list)  # noqa: SLF001
@@ -379,6 +479,126 @@ def index_parallel(
         return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
 
 
+def _snapshot_result_change_reason(
+    result: dict[str, Any],
+    entries: dict[str, IndexSnapshotEntry],
+) -> tuple[str, str | None]:
+    rel_path = str(result["rel_path"]).replace("\\", "/")
+    entry = entries[rel_path]
+    fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
+    worker_fingerprint = (
+        int(result.get("mtime_ns", fingerprint.mtime_ns)),
+        int(result.get("file_size", fingerprint.file_size)),
+    )
+    expected_fingerprint = (fingerprint.mtime_ns, fingerprint.file_size)
+    return rel_path, (
+        "file changed after candidate snapshot"
+        if worker_fingerprint != expected_fingerprint
+        else changed_since_snapshot(entry)
+    )
+
+
+def _record_snapshot_change(
+    stats: dict[str, Any], rel_path: str, change_reason: str
+) -> None:
+    """Replace one processed result with a deterministic snapshot skip."""
+    stats["skipped"] += 1
+    stats["processed"] = max(0, int(stats["processed"]) - 1)
+    stats["changed_during_run"] += 1
+    stats["changed_during_run_files"].append(rel_path)
+    stats["files"].append(
+        {"file": rel_path, "status": "skipped", "reason": change_reason}
+    )
+
+
+def _discard_snapshot_generation(
+    cache: Any,
+    conn: sqlite3.Connection,
+    rel_path: str,
+) -> None:
+    """Remove canonical rows and invalidate their derived graph projection."""
+    from . import write as _write
+
+    _write.discard_file_rows(conn, rel_path, cache.fts5_available)
+    try:
+        from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
+
+        LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
+    except Exception:
+        logger.debug("could not invalidate Ladybug mirror", exc_info=True)
+
+
+def _snapshot_result_is_stable(
+    result: dict[str, Any],
+    entries: dict[str, IndexSnapshotEntry],
+    stats: dict[str, Any],
+    *,
+    cache: Any,
+    conn: sqlite3.Connection,
+) -> bool:
+    """Validate one worker result immediately before its database write."""
+    rel_path, change_reason = _snapshot_result_change_reason(result, entries)
+    if change_reason is None:
+        return True
+
+    _discard_snapshot_generation(cache, conn, rel_path)
+    _record_snapshot_change(stats, rel_path, change_reason)
+    return False
+
+
+def _revalidate_snapshot_batch(
+    pending_results: list[dict[str, Any]],
+    *,
+    cache: Any,
+    conn: sqlite3.Connection,
+    entries: dict[str, IndexSnapshotEntry],
+    stats: dict[str, Any],
+) -> None:
+    """Discard pending generations that changed before their batch commit."""
+    for result in pending_results:
+        rel_path, change_reason = _snapshot_result_change_reason(result, entries)
+        if change_reason is None:
+            continue
+        _discard_snapshot_generation(cache, conn, rel_path)
+        if result["status"] in ("io_error", "parse_failed"):
+            stats["errors"] -= 1
+        else:
+            stats["indexed"] -= 1
+        for index in range(len(stats["files"]) - 1, -1, -1):
+            if stats["files"][index]["file"] == rel_path:
+                del stats["files"][index]
+                break
+        _record_snapshot_change(stats, rel_path, change_reason)
+
+
+def _revalidate_committed_snapshot(
+    *,
+    cache: Any,
+    conn: sqlite3.Connection,
+    entries: dict[str, IndexSnapshotEntry],
+    stats: dict[str, Any],
+) -> None:
+    """Invalidate any earlier committed generation changed before backfill."""
+    known_changed = set(stats["changed_during_run_files"])
+    for rel_path, entry in entries.items():
+        change_reason = (
+            None if rel_path in known_changed else changed_since_snapshot(entry)
+        )
+        if change_reason is None:
+            continue
+        _discard_snapshot_generation(cache, conn, rel_path)
+        detail_files = [detail["file"] for detail in stats["files"]]
+        detail_index = detail_files.index(rel_path)
+        detail = stats["files"].pop(detail_index)
+        counter = {
+            "error": "errors",
+            "indexed": "indexed",
+            "cached": "cached",
+        }[detail["status"]]
+        stats[counter] -= 1
+        _record_snapshot_change(stats, rel_path, change_reason)
+
+
 def run_index_project(
     cache: Any,
     max_files: int = 20_000,
@@ -389,6 +609,7 @@ def run_index_project(
     include_activation: bool | None = None,
     language_filter: str | None = None,
     exclude_patterns: frozenset[str] | None = None,
+    candidate_snapshot: IndexCandidateSnapshot | None = None,
 ) -> dict[str, Any]:
     """Orchestrate a full ASTCache project index run.
 
@@ -414,6 +635,10 @@ def run_index_project(
             "unresolved_refs_backfill": unresolved,
             "activation_enabled": activation_enabled,
         }
+    if candidate_snapshot is not None:
+        validate_index_candidate_snapshot(
+            cache.project_root, max_files, candidate_snapshot
+        )
     try:
         if force:
             # #578: a full rebuild empties ast_index up front (the DELETE
@@ -425,10 +650,23 @@ def run_index_project(
             # DELETE/commit itself raises (e.g. SQLITE_FULL) — otherwise a
             # failed rebuild would leave a stuck marker until TTL expiry.
             conn = cache._get_conn()
+            had_call_graph = cache.call_graph_built()
             _mark_build_in_progress(conn)
             _clear_call_graph_built(conn)
-            conn.execute("DELETE FROM ast_index")
-            conn.commit()
+            try:
+                _clear_full_rebuild_rows(cache, conn)
+                conn.commit()
+                try:
+                    from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
+
+                    LadybugKnowledgeGraphStore(cache.project_root).remove_if_exists()
+                except Exception:
+                    logger.debug("could not invalidate Ladybug mirror", exc_info=True)
+            except Exception:
+                conn.rollback()
+                if had_call_graph:
+                    _mark_call_graph_built(conn)
+                raise
         conn = cache._get_conn()
         effective_exclude = (
             exclude_patterns
@@ -447,6 +685,7 @@ def run_index_project(
             _make_error_entry,
             language_filter,
             effective_exclude,
+            candidate_snapshot,
         )
         workers = cache._resolve_worker_count(workers, candidates)
         if workers and workers >= 2 and len(candidates) >= 2:
@@ -461,6 +700,33 @@ def run_index_project(
         indexed_at = datetime.now(timezone.utc).isoformat()
         from .. import ast_cache as _ast_cache_mod
 
+        snapshot_entries = (
+            {entry.rel_path: entry for entry in candidate_snapshot.selected_entries}
+            if candidate_snapshot is not None
+            else None
+        )
+        result_guard = (
+            partial(
+                _snapshot_result_is_stable,
+                entries=snapshot_entries,
+                stats=stats,
+                cache=cache,
+                conn=conn,
+            )
+            if snapshot_entries is not None
+            else None
+        )
+        batch_guard = (
+            partial(
+                _revalidate_snapshot_batch,
+                cache=cache,
+                conn=conn,
+                entries=snapshot_entries,
+                stats=stats,
+            )
+            if snapshot_entries is not None
+            else None
+        )
         _ast_cache_mod._commit_index_results(
             conn,
             results,
@@ -473,7 +739,18 @@ def run_index_project(
             ),
             indexed_at,
             activation_enabled,
+            result_guard=result_guard,
+            batch_guard=batch_guard,
         )
+        if snapshot_entries is not None:
+            _revalidate_committed_snapshot(
+                cache=cache,
+                conn=conn,
+                entries=snapshot_entries,
+                stats=stats,
+            )
+        if stats["changed_during_run"] > 0:
+            _clear_call_graph_built(conn)
         stats["total_files"] = count
         stats["workers"] = workers
         if stats["indexed"] > 0:
@@ -491,7 +768,27 @@ def run_index_project(
         # _indexed_source_files_are_complete() returns False for an empty,
         # truncated, errored, or otherwise incomplete index, so this keeps
         # #970's false-positive guard intact.
-        elif cache._indexed_source_files_are_complete():
+        elif (
+            candidate_snapshot is not None
+            and all(
+                changed_since_snapshot(entry) is None
+                for entry in candidate_snapshot.selected_entries
+            )
+            and not candidate_snapshot.truncated_by_max_files
+            and candidate_snapshot.excluded == 0
+            and candidate_snapshot.skipped == 0
+            and candidate_snapshot.errors == 0
+            and candidate_snapshot.selected > 0
+            and {
+                str(row["file_path"]).replace("\\", "/")
+                for row in cache._get_conn()
+                .execute("SELECT file_path FROM ast_index")
+                .fetchall()
+            }
+            == candidate_snapshot.present_paths
+        ) or (
+            candidate_snapshot is None and cache._indexed_source_files_are_complete()
+        ):
             _mark_call_graph_built(cache._get_conn())
         if force:
             stats["db_maintenance"] = (
@@ -518,24 +815,10 @@ def post_index_backfill(
             stats["synapse_backfill"] = synapse
     except Exception:
         logger.debug("synapse backfill failed", exc_info=True)
-    indexed_files = [
-        str(entry["file"])
-        for entry in stats.get("files", [])
-        if entry.get("status") == "indexed"
-    ]
     # ``insert_index_row`` already writes every file's graph edges during
-    # commit when FTS5 is available (the common path) — re-deriving them
-    # here is pure duplicate work: ~85 s on django (47 % of total index
-    # time) for an IDENTICAL edge set (244,590 rows either way, verified).
-    # Only refresh when insert could NOT have written them (no FTS5), where
-    # this pass is the sole edge writer.
-    if not cache.fts5_available:
-        try:
-            stats["edge_store_refresh"] = cache._refresh_graph_edges_from_cache(
-                indexed_files
-            )
-        except Exception:
-            logger.debug("edge store refresh failed", exc_info=True)
+    # commit on every SQLite backend. Re-deriving them here is pure duplicate
+    # work: ~85 s on django (47 % of total index time) for an identical edge
+    # set (244,590 rows either way, verified).
     try:
         unresolved = cache._run_unresolved_refs_backfill()
         if unresolved is not None:

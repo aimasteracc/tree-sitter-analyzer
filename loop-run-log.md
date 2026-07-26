@@ -23,6 +23,132 @@ Append one entry per run. Prune entries older than 30 days.
 
 ```json
 {
+  "run_id": "2026-07-26T12:04:31Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 760,
+  "items_found": 4,
+  "actions_taken": 4,
+  "escalations": 0,
+  "tokens_estimate": 20000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 eighth Codex Draft review: candidate paths are now realpath-contained inside the resolved project root; every bounded write batch revalidates pending snapshot generations immediately before COMMIT and transactionally discards changed rows while correcting metrics; late file disappearance reclassifies and removes its superseded incremental error; and Synapse returns explicit zero-work success while indeterminate failures keep graph completion false. Focused coverage (301 tests), strict worktree patch coverage, full pytest (1292 passed, 7 skipped), build, global Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, file-size, and diff checks passed."
+}
+```
+
+```json
+{
+  "run_id": "2026-07-26T11:36:00Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 600,
+  "items_found": 4,
+  "actions_taken": 4,
+  "escalations": 0,
+  "tokens_estimate": 15000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 seventh Codex Draft review: single-file writes now clear a preexisting call-graph marker before mutation so parse or Synapse failures cannot preserve false completeness; snapshot discovery errors and empty snapshot scopes cannot stamp completion; incremental bulk indexing defers per-file Synapse backfills and performs exactly one final pass; and a committed force-rebuild clear immediately removes the derived Ladybug projection even when every snapshot result is later rejected. Focused coverage (270 tests), strict worktree patch coverage, full pytest (1289 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, file-size, and diff checks passed."
+}
+```
+
+```json
+{
+  "run_id": "2026-07-26T11:12:50Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 430,
+  "items_found": 3,
+  "actions_taken": 3,
+  "escalations": 0,
+  "tokens_estimate": 12000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 sixth Codex Draft review: complete error-free incremental reconciliation now restores the call-graph marker after deletions while backfill failures keep it incomplete; graph rows are no longer redundantly regenerated on no-FTS5 SQLite because commit writes them on every backend; and every primary cache invalidation removes the derived Ladybug projection, including deferred snapshot mutations. Focused coverage (265 tests), strict worktree patch coverage, full pytest (1288 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, and diff checks passed."
+}
+```
+
+```json
+{
+  "run_id": "2026-07-26T10:49:44Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 440,
+  "items_found": 5,
+  "actions_taken": 5,
+  "escalations": 0,
+  "tokens_estimate": 14000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 fifth Codex Draft review: snapshot write guards now reuse one precomputed entry map instead of rebuilding it per result; incremental sync invalidates cached generations that changed or disappeared before its scan; file invalidation is atomic, propagates real derived-table failures, and preserves graph completeness on no-op targets; and successful single-file rebuilds re-resolve incoming edges before restoring the graph marker. Focused coverage (261 tests), strict worktree patch coverage, full pytest (1287 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, and diff checks passed."
+}
+```
+
+```json
+{
+  "run_id": "2026-07-26T10:28:20Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 750,
+  "items_found": 5,
+  "actions_taken": 5,
+  "escalations": 0,
+  "tokens_estimate": 20000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 fourth Codex Draft review: operation-wide processed counts now use the intersection of phase-success path sets; invalidation unresolves incoming cross-file calls and their metadata; rebuild cleanup propagates real database failures while tolerating only absent legacy tables; every snapshot worker result is revalidated at its actual write point; and an explicit-incomplete graph sentinel prevents nonempty partial edge sets from masquerading as complete while preserving legacy fallback compatibility. Focused coverage (254 tests), strict worktree patch coverage, full pytest (1285 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, and diff checks passed."
+}
+```
+
+```json
+{
+  "run_id": "2026-07-26T10:03:13Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 720,
+  "items_found": 4,
+  "actions_taken": 4,
+  "escalations": 0,
+  "tokens_estimate": 18000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 third Codex Draft review: force rebuilds now recreate imports and graph edges without FTS5, roll back the destructive clear if any backend cleanup fails, and retract new/updated/unchanged counters when late snapshot mutations invalidate work; snapshot regressions were consolidated into the canonical AST-cache and incremental-sync test modules. Focused coverage (240 tests), strict worktree patch coverage, full pytest (1282 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, and diff checks passed."
+}
+```
+
+```json
+{
+  "run_id": "2026-07-26T09:36:38Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 900,
+  "items_found": 5,
+  "actions_taken": 5,
+  "escalations": 0,
+  "tokens_estimate": 22000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 second Codex Draft review: forced rebuilds now validate snapshots before destructive work and clear every primary/derived index table coherently; late incremental mutations are rolled back across AST, FTS, imports, activation, and graph rows; cached files are revalidated before graph-complete stamping; and the oversized snapshot test module was split into three bounded files. Focused coverage (235 tests), strict worktree patch coverage, full pytest (1273 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, test-quality audit, weak-assertion ratchet, and diff checks passed."
+}
+```
+
+```json
+{
+  "run_id": "2026-07-26T09:10:05Z",
+  "pattern": "pr-review-repair",
+  "duration_s": 720,
+  "items_found": 5,
+  "actions_taken": 5,
+  "escalations": 0,
+  "tokens_estimate": 18000,
+  "outcome": "fix-proposed",
+  "summary": "PR #1172 Codex Draft review: AST-cache now validates each worker result against the immutable snapshot immediately before commit and discards stale output; AST and incremental consumers independently reject snapshot max_files mismatches; full-index elapsed time includes snapshot discovery; and combined-behavior tests were split. Focused coverage (352 tests), strict worktree patch coverage, full pytest (1273 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, and diff checks passed."
+}
+```
+
+```json
+{
+  "run_id": "2026-07-26T08:44:06Z",
+  "pattern": "index-snapshot-repair",
+  "duration_s": 1500,
+  "items_found": 4,
+  "actions_taken": 4,
+  "escalations": 0,
+  "tokens_estimate": 30000,
+  "outcome": "fix-proposed",
+  "summary": "Issue #1168: full-index now freezes one immutable ordered candidate snapshot and shares it across AST-cache and incremental-sync phases; excludes and max_files are evaluated once, post-snapshot modifications/deletions are deterministically skipped with reasons, scope/phase totals reconcile, and claim coverage proves the second filesystem walk is gone. Focused coverage (190 tests), strict patch coverage, full pytest (1273 passed, 7 skipped), build, Ruff, changed-file formatting, focused MyPy, and diff checks passed."
+}
+```
+
+```json
+{
   "run_id": "2026-07-26T07:52:24Z",
   "pattern": "index-contract-repair",
   "duration_s": 900,

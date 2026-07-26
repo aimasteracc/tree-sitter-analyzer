@@ -63,6 +63,8 @@ Every path is validated against `TREE_SITTER_PROJECT_ROOT` by `security/validato
 - **TOON** is the default MCP output format — 50-70% fewer tokens than JSON (see `CLAUDE.md` §1).
 - AST results are stored in **SQLite** via `ast_cache.py` (content-hash keyed).
 - `incremental_sync.py` reindexes only changed files (mtime + SHA-256).
+- `indexing_snapshot.py` freezes one ordered project scope for both full-index
+  phases and detects selected files that mutate while the operation is running.
 
 ### Caching layers
 1. `ast_cache.py` — persistent SQLite store of parsed AST symbols/imports/structure

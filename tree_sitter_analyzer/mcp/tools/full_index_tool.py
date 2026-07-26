@@ -22,6 +22,10 @@ import time
 from typing import Any
 
 from ...indexing_limits import normalize_index_max_files
+from ...indexing_snapshot import (
+    IndexCandidateSnapshot,
+    build_index_candidate_snapshot,
+)
 from ...utils import setup_logger
 from ..utils.auto_index_guard import mark_dirty
 from ..utils.error_sanitizer import (
@@ -119,6 +123,53 @@ def _resolve_exclude_patterns(
     if no_default_excludes:
         return extra
     return _DEFAULT_EXCLUDE_PATTERNS | extra
+
+
+def _candidate_snapshot_report(
+    snapshot: IndexCandidateSnapshot,
+    ast_phase: dict[str, Any],
+    incremental_phase: dict[str, Any],
+) -> dict[str, Any]:
+    """Reconcile immutable scope metrics with both phase outcomes."""
+    ast_changed = set(ast_phase.get("changed_during_run_files", []))
+    incremental_changed = set(incremental_phase.get("changed_during_run_files", []))
+    changed_files = sorted(ast_changed | incremental_changed)
+    detail_by_file = {
+        str(detail.get("file", "")): detail
+        for detail in (
+            list(ast_phase.get("changed_during_run_details", []))
+            + list(incremental_phase.get("changed_during_run_details", []))
+        )
+        if isinstance(detail, dict) and detail.get("file")
+    }
+    changed_details = [
+        detail_by_file[path] for path in changed_files if path in detail_by_file
+    ]
+    ast_processed = int(ast_phase.get("processed", 0))
+    incremental_processed = int(incremental_phase.get("processed", 0))
+    selected_paths = {entry.rel_path for entry in snapshot.selected_entries}
+    changed_paths = set(changed_files)
+    processed = len(selected_paths - changed_paths)
+    report: dict[str, Any] = {
+        **snapshot.metrics(),
+        "processed": processed,
+        "changed_during_run": len(changed_files),
+        "changed_during_run_files": changed_files,
+        "changed_during_run_details": changed_details[:_ERROR_DETAILS_CAP],
+        "changed_during_run_details_total": len(changed_details),
+        "changed_during_run_details_truncated": (
+            len(changed_details) > _ERROR_DETAILS_CAP
+        ),
+    }
+    report["selection_reconciled"] = changed_paths <= selected_paths and (
+        snapshot.selected == processed + len(changed_paths)
+    )
+    report["phase_totals_reconciled"] = snapshot.selected == ast_processed + int(
+        ast_phase.get("changed_during_run", 0)
+    ) and snapshot.selected == incremental_processed + int(
+        incremental_phase.get("changed_during_run", 0)
+    )
+    return report
 
 
 class CodeGraphFullIndexTool(BaseMCPTool):
@@ -241,9 +292,13 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             extra_patterns,
             no_default_excludes,
         )
+        t_start = time.monotonic()
+        candidate_snapshot = self._build_candidate_snapshot(
+            max_files,
+            exclude_patterns,
+        )
 
         phases: dict[str, Any] = {}
-        t_start = time.monotonic()
 
         if mode == "full":
             mark_dirty(self.project_root)
@@ -253,12 +308,15 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             max_files,
             include_activation=include_activation,
             exclude_patterns=exclude_patterns,
+            candidate_snapshot=candidate_snapshot,
         )
         phases["ast_cache"] = ast_phase
-        phases["incremental_sync"] = self._phase_incremental_sync(
+        incremental_phase = self._phase_incremental_sync(
             max_files,
             exclude_patterns,
+            candidate_snapshot=candidate_snapshot,
         )
+        phases["incremental_sync"] = incremental_phase
         phases["fts5"] = self._phase_fts5_stats()
 
         if resolve_synapse:
@@ -281,7 +339,17 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         any_phase_error = any(
             p.get("status") == "error" for p in phases.values() if isinstance(p, dict)
         )
-        top_verdict = "WARN" if any_phase_error else "INFO"
+        snapshot_report = _candidate_snapshot_report(
+            candidate_snapshot,
+            ast_phase,
+            incremental_phase,
+        )
+        snapshot_warning = (
+            snapshot_report["changed_during_run"] > 0
+            or not snapshot_report["selection_reconciled"]
+            or not snapshot_report["phase_totals_reconciled"]
+        )
+        top_verdict = "WARN" if any_phase_error or snapshot_warning else "INFO"
 
         result: dict[str, Any] = {
             "success": True,
@@ -289,10 +357,27 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             "mode": mode,
             "elapsed_seconds": elapsed,
             "phases": phases,
+            "candidate_snapshot": snapshot_report,
             **stats,
         }
 
         return apply_toon_format_to_response(result, output_format)
+
+    def _build_candidate_snapshot(
+        self,
+        max_files: int,
+        exclude_patterns: frozenset[str],
+    ) -> IndexCandidateSnapshot:
+        from ...cache.indexer import _walk_source_files
+        from ...project_graph import _language_from_ext
+
+        return build_index_candidate_snapshot(
+            self.project_root or ".",
+            max_files=max_files,
+            exclude_patterns=exclude_patterns,
+            walk_fn=_walk_source_files,
+            language_fn=_language_from_ext,
+        )
 
     def _phase_ast_cache(
         self,
@@ -301,6 +386,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         *,
         include_activation: bool = False,
         exclude_patterns: frozenset[str] | None = None,
+        candidate_snapshot: IndexCandidateSnapshot | None = None,
     ) -> dict[str, Any]:
         t0 = time.monotonic()
         cache: Any | None = None
@@ -311,12 +397,15 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 exclude_patterns = _resolve_exclude_patterns([], False)
 
             cache = ASTCache(self.project_root or ".")
-            result = cache.index_project(
-                max_files=max_files,
-                force=force,
-                include_activation=include_activation,
-                exclude_patterns=exclude_patterns,
-            )
+            index_kwargs: dict[str, Any] = {
+                "max_files": max_files,
+                "force": force,
+                "include_activation": include_activation,
+                "exclude_patterns": exclude_patterns,
+            }
+            if candidate_snapshot is not None:
+                index_kwargs["candidate_snapshot"] = candidate_snapshot
+            result = cache.index_project(**index_kwargs)
             elapsed = round(time.monotonic() - t0, 3)
             indexed = result.get("indexed", 0)
             cached = result.get("cached", 0)
@@ -327,6 +416,17 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 str(self.project_root) if self.project_root else None,
                 next_step=_INCREMENTAL_DETAILS_NEXT_STEP,
             )
+            changed_details = [
+                {
+                    "file": detail.get("file"),
+                    "status": "skipped",
+                    "reason": detail.get("reason"),
+                }
+                for detail in result.get("files", [])
+                if isinstance(detail, dict)
+                and detail.get("status") == "skipped"
+                and "candidate snapshot" in str(detail.get("reason", ""))
+            ]
             return {
                 "status": (
                     "error"
@@ -337,6 +437,12 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "files_indexed": indexed,
                 "files_cached": cached,
                 "errors": errors,
+                "processed": int(result.get("processed", indexed + cached)),
+                "changed_during_run": int(result.get("changed_during_run", 0)),
+                "changed_during_run_files": sorted(
+                    result.get("changed_during_run_files", [])
+                ),
+                "changed_during_run_details": changed_details,
                 "mode_used": result.get("mode_used", "unknown"),
                 "activation_enabled": result.get("activation_enabled", False),
                 "truncated_by_max_files": bool(
@@ -361,6 +467,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         self,
         max_files: int = 20_000,
         exclude_patterns: frozenset[str] | None = None,
+        *,
+        candidate_snapshot: IndexCandidateSnapshot | None = None,
     ) -> dict[str, Any]:
         t0 = time.monotonic()
         cache: Any | None = None
@@ -372,10 +480,13 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 exclude_patterns = _resolve_exclude_patterns([], False)
             cache = ASTCache(self.project_root or ".")
             sync = IncrementalSync(cache)
-            result = sync.sync(
-                max_files=max_files,
-                exclude_patterns=exclude_patterns,
-            )
+            sync_kwargs: dict[str, Any] = {
+                "max_files": max_files,
+                "exclude_patterns": exclude_patterns,
+            }
+            if candidate_snapshot is not None:
+                sync_kwargs["candidate_snapshot"] = candidate_snapshot
+            result = sync.sync(**sync_kwargs)
             elapsed = round(time.monotonic() - t0, 3)
             error_summary = _bounded_error_details(
                 result.details,
@@ -383,6 +494,17 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 str(self.project_root) if self.project_root else None,
                 next_step=_INCREMENTAL_DETAILS_NEXT_STEP,
             )
+            changed_details = [
+                {
+                    "file": detail.get("file"),
+                    "status": "skipped",
+                    "reason": detail.get("reason"),
+                }
+                for detail in result.details
+                if isinstance(detail, dict)
+                and detail.get("status") == "skipped"
+                and "candidate snapshot" in str(detail.get("reason", ""))
+            ]
             # #860: surface DB flush failures — sync catches them into result.errors
             # so they never raise but also must NOT be silently reported as "ok".
             status = (
@@ -399,6 +521,10 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "deleted_files": result.deleted_files,
                 "unchanged_files": result.unchanged_files,
                 "errors": result.errors,
+                "processed": result.processed,
+                "changed_during_run": result.changed_during_run,
+                "changed_during_run_files": result.changed_during_run_files,
+                "changed_during_run_details": changed_details,
                 "truncated_by_max_files": result.truncated_by_max_files,
                 **error_summary,
             }

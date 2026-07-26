@@ -125,15 +125,24 @@ def test_call_graph_built_marker_set_takes_fast_path() -> None:
         conn.close()
 
 
-def test_call_graph_built_recovers_when_marker_zero_but_edges_exist() -> None:
-    # Marker table exists but built=0, while real edges exist → recovered True.
-    # #1005 intent: "edges exist → the graph is usable", so the false-negative
-    # cleared marker is overridden by the populated edges safety net.
+def test_call_graph_built_recovers_legacy_zero_marker_with_edges() -> None:
+    # Legacy marker table has built=0 but no explicit-incomplete sentinel.
     conn = sqlite3.connect(":memory:")
     try:
         callgraph_state.clear_call_graph_built(conn)  # built = 0
+        conn.execute("DELETE FROM ast_call_graph_state WHERE id = 2")
         _make_edges_table(conn, with_row=True)
         assert callgraph_state.call_graph_built(conn) is True
+    finally:
+        conn.close()
+
+
+def test_call_graph_built_respects_explicit_incomplete_marker() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        callgraph_state.clear_call_graph_built(conn)
+        _make_edges_table(conn, with_row=True)
+        assert callgraph_state.call_graph_built(conn) is False
     finally:
         conn.close()
 
@@ -210,9 +219,10 @@ def _seed_call_edges_without_built_marker(root: Path) -> None:
         result = cache.index_file(str(source_path))
         assert result["status"] == "indexed"
         assert cache.has_call_edges() is True
-        # Cleared marker row, but edges remain → edges-table safety net (#1005)
-        # recovers the signal to True.
+        # Model a legacy zero marker without today's explicit-incomplete row.
         callgraph_state.clear_call_graph_built(cache.get_conn())
+        cache.get_conn().execute("DELETE FROM ast_call_graph_state WHERE id = 2")
+        cache.get_conn().commit()
         assert cache.call_graph_built() is True
     finally:
         cache.close()
@@ -284,6 +294,64 @@ def test_single_file_reindex_refreshes_existing_call_graph_built_marker(
         assert _call_graph_built_at(cache) > before
     finally:
         cache.close()
+
+
+def test_single_file_reindex_backfill_failure_clears_existing_marker(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "sample.py"
+    source_path.write_text("def sample():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        cache.index_project(workers=0)
+        assert cache.call_graph_built() is True
+        source_path.write_text("def sample():\n    return 2\n", encoding="utf-8")
+        with mock.patch.object(
+            cache,
+            "_run_synapse_backfill",
+            side_effect=RuntimeError("backfill crashed"),
+        ):
+            result = cache.index_file(str(source_path))
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert result["status"] == "indexed"
+    assert graph_built is False
+
+
+def test_single_file_reindex_restores_incoming_edge_resolution(tmp_path) -> None:
+    target = tmp_path / "target.py"
+    caller = tmp_path / "caller.py"
+    target.write_text("def target():\n    return 1\n")
+    caller.write_text(
+        "from target import target\n\ndef caller():\n    return target()\n"
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+
+    try:
+        cache.invalidate(str(target))
+        cache.index_file(str(target))
+        incoming = (
+            cache.get_conn()
+            .execute(
+                "SELECT callee_resolution, callee_resolved_file "
+                "FROM edges WHERE kind = 'calls' AND file_path = 'caller.py' "
+                "AND callee_name = 'target'"
+            )
+            .fetchone()
+        )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert (
+        incoming["callee_resolution"],
+        incoming["callee_resolved_file"],
+        graph_built,
+    ) == ("project", "target.py", True)
 
 
 def test_cache_call_graph_built_degrades_false_on_reader_error() -> None:
@@ -694,3 +762,56 @@ def test_mark_single_file_complete_no_marker_when_index_incomplete(
         assert cache.call_graph_built() is False
     finally:
         cache.close()
+
+
+def test_single_file_backfill_exception_keeps_marker_incomplete(tmp_path) -> None:
+    cache = ASTCache(str(tmp_path))
+    try:
+        with mock.patch.object(
+            cache,
+            "_run_synapse_backfill",
+            side_effect=RuntimeError("backfill crashed"),
+        ):
+            cache._mark_single_file_index_complete_if_needed(
+                had_built_marker=True,
+                result={"status": "indexed"},
+            )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is False
+
+
+def test_single_file_backfill_error_keeps_marker_incomplete(tmp_path) -> None:
+    cache = ASTCache(str(tmp_path))
+    try:
+        with mock.patch.object(
+            cache,
+            "_run_synapse_backfill",
+            return_value={"errors": 1},
+        ):
+            cache._mark_single_file_index_complete_if_needed(
+                had_built_marker=True,
+                result={"status": "indexed"},
+            )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is False
+
+
+def test_single_file_indeterminate_backfill_keeps_marker_incomplete(tmp_path) -> None:
+    cache = ASTCache(str(tmp_path))
+    try:
+        with mock.patch.object(cache, "_run_synapse_backfill", return_value=None):
+            cache._mark_single_file_index_complete_if_needed(
+                had_built_marker=True,
+                result={"status": "indexed"},
+            )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is False

@@ -32,6 +32,7 @@ from .cache.query import (
 from .cache.search import search_symbols_cascade as _search_symbols_cascade
 from .cache.callgraph_state import (
     call_graph_built as _call_graph_built,
+    clear_call_graph_built as _clear_call_graph_built,
     mark_call_graph_built as _mark_call_graph_built,
 )
 from .cache.helpers import (  # noqa: F401
@@ -61,6 +62,7 @@ from .cache.schema import (
     init_db as _schema_init_db,
 )
 from .core.parser import Parser
+from .indexing_snapshot import IndexCandidateSnapshot
 from .project_graph import _language_from_ext
 
 logger = logging.getLogger(__name__)
@@ -226,6 +228,8 @@ class ASTCache:
             )
             return cached_or_source
         source_code, content_hash = cached_or_source
+        if had_built_marker:
+            _clear_call_graph_built(conn)
         result = self._parse_and_write(
             conn, abs_path, rel_path, language, stat, source_code, content_hash
         )
@@ -238,8 +242,19 @@ class ASTCache:
         """Refresh the built marker after a successful single-file reindex."""
         if result.get("status") not in {"indexed", "cached"}:
             return
-        if had_built_marker or self._indexed_source_files_are_complete():
-            _mark_call_graph_built(self._get_conn())
+        if getattr(self, "_defer_single_file_backfill", False):
+            return
+        if not had_built_marker and not self._indexed_source_files_are_complete():
+            return
+        if result.get("status") == "indexed":
+            try:
+                backfill = self._run_synapse_backfill()
+            except Exception:
+                logger.debug("single-file Synapse backfill failed", exc_info=True)
+                return
+            if backfill is None or int(backfill.get("errors", 0)) > 0:
+                return
+        _mark_call_graph_built(self._get_conn())
 
     def _check_cache_or_read(
         self,
@@ -319,7 +334,7 @@ class ASTCache:
         _clear_activation_for_file_fn(conn, rel_path)
 
     def _run_synapse_backfill(self) -> dict[str, int] | None:
-        """Re-resolve every unresolved call edge. Returns stats dict or None."""
+        """Re-resolve unresolved call edges; return None on indeterminate failure."""
         from .cache import synapse as _synapse
 
         return _synapse.run_synapse_backfill(self, self._get_conn())
@@ -334,6 +349,7 @@ class ASTCache:
         include_activation: bool | None = None,
         language_filter: str | None = None,
         exclude_patterns: frozenset[str] | None = None,
+        candidate_snapshot: IndexCandidateSnapshot | None = None,
     ) -> dict[str, Any]:
         """Index every source file under ``self.project_root``."""
         return _indexer.run_index_project(
@@ -345,6 +361,7 @@ class ASTCache:
             include_activation=include_activation,
             language_filter=language_filter,
             exclude_patterns=exclude_patterns,
+            candidate_snapshot=candidate_snapshot,
         )
 
     def _post_index_backfill(self, stats: dict[str, Any]) -> None:
@@ -504,9 +521,17 @@ class ASTCache:
         return _get_stats(self._get_conn(), self._fts5_available, self.db_path)
 
     def invalidate(self, file_path: str) -> bool:
-        return _invalidate(
+        removed = _invalidate(
             self._get_conn(), file_path, self.project_root, self._fts5_available
         )
+        if removed:
+            try:
+                from .knowledge_graph.stores import LadybugKnowledgeGraphStore
+
+                LadybugKnowledgeGraphStore(self.project_root).remove_if_exists()
+            except Exception:
+                logger.debug("could not invalidate Ladybug mirror", exc_info=True)
+        return removed
 
     def get_call_edges(self) -> list[dict[str, Any]]:
         """Return all stored call edges from the cache.

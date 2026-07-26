@@ -106,6 +106,12 @@ positive integer. Omitting the option selects its documented default; zero,
 negative values, and booleans are invalid. Zero never means “unlimited” or
 “process no files.”
 
+`--full-index` evaluates that limit and all exclude patterns once, then shares
+one immutable candidate ordering between its AST and incremental-sync phases.
+Its JSON result reports reconciled discovery/selection/processing counts and
+warns with `changed_during_run` details when a selected file changes while the
+operation is in progress.
+
 `file-health` JSON and TOON responses include an `agent_summary` with the weakest
 dimension and score plus the first actionable smell, its line, symbol, and detail
 when those can be inferred, so an agent can jump straight to the right function

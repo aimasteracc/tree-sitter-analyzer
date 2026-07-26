@@ -10,6 +10,7 @@ from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.incremental_sync import SyncResult
 from tree_sitter_analyzer.mcp.tools.full_index_tool import (
     CodeGraphFullIndexTool,
+    _candidate_snapshot_report,
     _resolve_exclude_patterns,
 )
 
@@ -40,6 +41,37 @@ def _cache_file_paths(project_root) -> set[str]:
         return {str(row["file_path"]) for row in rows}
     finally:
         cache.close()
+
+
+def test_snapshot_report_intersects_phase_processed_files(tmp_path):
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_text("a = 1\n")
+    second.write_text("b = 1\n")
+    snapshot = CodeGraphFullIndexTool(str(tmp_path))._build_candidate_snapshot(
+        10,
+        frozenset(),
+    )
+
+    report = _candidate_snapshot_report(
+        snapshot,
+        {
+            "processed": 1,
+            "changed_during_run": 1,
+            "changed_during_run_files": ["a.py"],
+        },
+        {
+            "processed": 1,
+            "changed_during_run": 1,
+            "changed_during_run_files": ["b.py"],
+        },
+    )
+
+    assert (
+        report["processed"],
+        report["selection_reconciled"],
+        report["phase_totals_reconciled"],
+    ) == (0, True, True)
 
 
 class TestToolDefinition:
@@ -113,6 +145,23 @@ class TestExecute:
             {"mode": "incremental", "output_format": "json"}
         )
         assert result["success"] is True
+
+    async def test_incremental_on_truly_empty_project_reconciles_zero_scope(
+        self, tmp_path
+    ):
+        empty_tool = CodeGraphFullIndexTool(str(tmp_path))
+
+        result = await empty_tool.execute(
+            {
+                "mode": "incremental",
+                "resolve_synapse": False,
+                "output_format": "json",
+            }
+        )
+
+        assert result["success"] is True
+        assert result["candidate_snapshot"]["selected"] == 0
+        assert result["candidate_snapshot"]["selection_reconciled"] is True
 
     async def test_toon_format_default(self, tool_with_root):
         result = await tool_with_root.execute({"mode": "incremental"})
@@ -258,10 +307,15 @@ class TestExecute:
                 }
             )
 
-        incremental_phase.assert_called_once_with(
+        incremental_phase.assert_called_once()
+        call_args, call_kwargs = incremental_phase.call_args
+        assert call_args == (
             7,
             frozenset({"tests/golden/corpus_*", "vendor/*"}),
         )
+        snapshot = call_kwargs["candidate_snapshot"]
+        assert snapshot.max_files == 7
+        assert snapshot.selected == 1
 
     async def test_no_default_excludes_are_forwarded_exactly(self, tool_with_root):
         # Incident 2026-07-26: sync silently restored disabled default excludes.
@@ -299,7 +353,12 @@ class TestExecute:
                 }
             )
 
-        incremental_phase.assert_called_once_with(3, frozenset({"vendor/*"}))
+        incremental_phase.assert_called_once()
+        call_args, call_kwargs = incremental_phase.call_args
+        assert call_args == (3, frozenset({"vendor/*"}))
+        snapshot = call_kwargs["candidate_snapshot"]
+        assert snapshot.max_files == 3
+        assert snapshot.selected == 1
 
     async def test_full_mode_max_files_bounds_both_phases(self, tmp_path):
         # Incident 2026-07-26: sync re-indexed files beyond the requested cap.
@@ -319,6 +378,225 @@ class TestExecute:
         assert _cache_total_files(tmp_path) == 1
         assert result["phases"]["ast_cache"]["truncated_by_max_files"] is True
         assert result["phases"]["incremental_sync"]["truncated_by_max_files"] is True
+        assert result["candidate_snapshot"]["discovered"] == 2
+        assert result["candidate_snapshot"]["selected"] == 1
+        assert result["candidate_snapshot"]["limited_by_max_files"] == 1
+        assert result["candidate_snapshot"]["discovery_reconciled"] is True
+        assert result["candidate_snapshot"]["phase_totals_reconciled"] is True
+
+    async def test_full_index_walks_project_once_for_both_phases(self, tmp_path):
+        from tree_sitter_analyzer.cache import indexer
+
+        (tmp_path / "a.py").write_text("a = 1\n")
+        (tmp_path / "b.py").write_text("b = 2\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+
+        with patch.object(
+            indexer,
+            "_walk_source_files",
+            wraps=indexer._walk_source_files,
+        ) as walk:
+            result = await full_tool.execute(
+                {
+                    "mode": "full",
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        assert walk.call_count == 1
+        assert result["candidate_snapshot"]["selected"] == 2
+        assert result["candidate_snapshot"]["processed"] == 2
+
+    async def test_cached_snapshot_completeness_does_not_trigger_another_walk(
+        self, tmp_path
+    ):
+        (tmp_path / "app.py").write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        await full_tool.execute(
+            {
+                "mode": "incremental",
+                "resolve_synapse": False,
+                "output_format": "json",
+            }
+        )
+
+        with patch.object(
+            ASTCache,
+            "_indexed_source_files_are_complete",
+            side_effect=AssertionError("legacy completeness walk used"),
+        ):
+            result = await full_tool.execute(
+                {
+                    "mode": "incremental",
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        assert result["candidate_snapshot"]["processed"] == 1
+        assert result["candidate_snapshot"]["phase_totals_reconciled"] is True
+
+    async def test_both_index_phases_receive_the_same_snapshot_object(self, tmp_path):
+        (tmp_path / "app.py").write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        received = []
+
+        def ast_phase(*_args, candidate_snapshot, **_kwargs):
+            received.append(candidate_snapshot)
+            return {
+                "status": "ok",
+                "processed": candidate_snapshot.selected,
+                "changed_during_run": 0,
+                "changed_during_run_files": [],
+            }
+
+        def incremental_phase(*_args, candidate_snapshot, **_kwargs):
+            received.append(candidate_snapshot)
+            return {
+                "status": "ok",
+                "processed": candidate_snapshot.selected,
+                "changed_during_run": 0,
+                "changed_during_run_files": [],
+            }
+
+        with (
+            patch.object(full_tool, "_phase_ast_cache", side_effect=ast_phase),
+            patch.object(
+                full_tool,
+                "_phase_incremental_sync",
+                side_effect=incremental_phase,
+            ),
+            patch.object(
+                full_tool,
+                "_phase_fts5_stats",
+                return_value={"status": "ok"},
+            ),
+            patch.object(
+                full_tool,
+                "_phase_call_edge_stats",
+                return_value={"status": "ok"},
+            ),
+            patch.object(full_tool, "_collect_final_stats", return_value={}),
+        ):
+            await full_tool.execute(
+                {
+                    "mode": "incremental",
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        assert len(received) == 2
+        assert received[0] is received[1]
+        assert received[0].selected_entries[0].rel_path == "app.py"
+
+    async def test_elapsed_time_includes_snapshot_discovery(self, tmp_path):
+        path = tmp_path / "app.py"
+        path.write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        snapshot = full_tool._build_candidate_snapshot(
+            10,
+            frozenset(),
+        )
+        events = []
+        ticks = iter((10.0, 15.0))
+
+        def clock():
+            events.append("clock")
+            return next(ticks)
+
+        def build_snapshot(*_args):
+            events.append("snapshot")
+            return snapshot
+
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.full_index_tool.time.monotonic",
+                side_effect=clock,
+            ),
+            patch.object(
+                full_tool,
+                "_build_candidate_snapshot",
+                side_effect=build_snapshot,
+            ),
+            patch.object(
+                full_tool,
+                "_phase_ast_cache",
+                return_value={"status": "ok", "processed": 1},
+            ),
+            patch.object(
+                full_tool,
+                "_phase_incremental_sync",
+                return_value={"status": "ok", "processed": 1},
+            ),
+            patch.object(
+                full_tool,
+                "_phase_fts5_stats",
+                return_value={"status": "ok"},
+            ),
+            patch.object(
+                full_tool,
+                "_phase_call_edge_stats",
+                return_value={"status": "ok"},
+            ),
+            patch.object(full_tool, "_collect_final_stats", return_value={}),
+        ):
+            result = await full_tool.execute(
+                {
+                    "mode": "incremental",
+                    "max_files": 10,
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                    "no_default_excludes": True,
+                }
+            )
+
+        assert events == ["clock", "snapshot", "clock"]
+        assert result["elapsed_seconds"] == 5.0
+
+    async def test_mutation_between_phases_is_skipped_and_reported(self, tmp_path):
+        path = tmp_path / "app.py"
+        path.write_text("value = 1\n")
+        full_tool = CodeGraphFullIndexTool(str(tmp_path))
+        original_ast_phase = full_tool._phase_ast_cache
+
+        def ast_then_mutate(*args, **kwargs):
+            phase = original_ast_phase(*args, **kwargs)
+            path.write_text("value = 200\n")
+            return phase
+
+        with patch.object(
+            full_tool,
+            "_phase_ast_cache",
+            side_effect=ast_then_mutate,
+        ):
+            result = await full_tool.execute(
+                {
+                    "mode": "full",
+                    "resolve_synapse": False,
+                    "output_format": "json",
+                }
+            )
+
+        scope = result["candidate_snapshot"]
+        incremental = result["phases"]["incremental_sync"]
+        assert result["verdict"] == "WARN"
+        assert scope["selected"] == 1
+        assert scope["processed"] == 0
+        assert scope["changed_during_run"] == 1
+        assert scope["changed_during_run_files"] == ["app.py"]
+        assert scope["changed_during_run_details"] == [
+            {
+                "file": "app.py",
+                "status": "skipped",
+                "reason": "file changed after candidate snapshot",
+            }
+        ]
+        assert scope["selection_reconciled"] is True
+        assert scope["phase_totals_reconciled"] is True
+        assert incremental["changed_during_run"] == 1
+        assert incremental["processed"] == 0
 
     async def test_default_exclude_is_not_reintroduced_by_sync(self, tmp_path):
         # Incident 2026-07-26: sync reintroduced a default-excluded corpus file.

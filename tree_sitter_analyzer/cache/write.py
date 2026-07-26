@@ -8,12 +8,115 @@ ASTCache keeps thin wrapper methods that delegate here.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sqlite3
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table,),
+        ).fetchone()
+        is not None
+    )
+
+
+def _delete_file_rows_if_table_present(
+    conn: sqlite3.Connection,
+    table: str,
+    rel_path: str,
+) -> None:
+    if _table_exists(conn, table):
+        conn.execute(
+            f"DELETE FROM {table} WHERE file_path = ?",  # nosec B608
+            (rel_path,),
+        )
+
+
+def _reset_incoming_edge_resolutions(
+    conn: sqlite3.Connection,
+    rel_path: str,
+) -> None:
+    """Unresolve calls and drop hierarchy edges targeting a removed generation."""
+    rows = conn.execute(
+        "SELECT id, metadata FROM edges "
+        "WHERE kind = 'calls' AND callee_resolved_file = ?",
+        (rel_path,),
+    ).fetchall()
+    for row in rows:
+        metadata = json.loads(row["metadata"] or "{}")
+        metadata.update(
+            {
+                "callee_resolution": "unknown",
+                "callee_resolved_file": "",
+                "callee_symbol_id": None,
+            }
+        )
+        conn.execute(
+            "UPDATE edges SET callee_resolution = 'unknown', "
+            "callee_resolved_file = '', callee_symbol_id = NULL, metadata = ? "
+            "WHERE id = ?",
+            (json.dumps(metadata, ensure_ascii=False, sort_keys=True), row["id"]),
+        )
+    target_prefix = f"{rel_path}:"
+    conn.execute(
+        "DELETE FROM edges WHERE kind IN ('extends', 'implements') "
+        "AND target_node_id >= ? AND target_node_id < ?",
+        (target_prefix, target_prefix + "\U0010ffff"),
+    )
+
+
+def discard_file_rows(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    fts5_available: bool | None,
+) -> bool:
+    """Remove one file generation without committing the current transaction."""
+    if fts5_available:
+        conn.execute(
+            "DELETE FROM ast_symbols_fts WHERE file_path = ?",
+            (rel_path,),
+        )
+    _delete_file_rows_if_table_present(conn, "ast_symbol_rows", rel_path)
+    for table in ("ast_imports", "ast_symbol_activation"):
+        _delete_file_rows_if_table_present(conn, table, rel_path)
+    if _table_exists(conn, "edges"):
+        from ..graph.edge_store import EdgeStore
+
+        EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, [])
+        _reset_incoming_edge_resolutions(conn, rel_path)
+    cursor = conn.execute(
+        "DELETE FROM ast_index WHERE file_path = ?",
+        (rel_path,),
+    )
+    return cursor.rowcount > 0
+
+
+def invalidate_file_rows(
+    conn: sqlite3.Connection,
+    rel_path: str,
+    fts5_available: bool | None,
+) -> bool:
+    """Remove one file's primary and derived cache rows."""
+    changes_before = conn.total_changes
+    try:
+        removed = discard_file_rows(conn, rel_path, fts5_available)
+        if conn.total_changes > changes_before:
+            from .callgraph_state import clear_call_graph_built_strict
+
+            clear_call_graph_built_strict(conn)
+        else:
+            conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return removed
 
 
 def write_fts5_symbols(

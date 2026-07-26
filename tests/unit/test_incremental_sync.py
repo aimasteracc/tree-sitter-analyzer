@@ -1,5 +1,6 @@
 """Tests for incremental sync engine (incremental_sync module)."""
 
+import json
 import os
 import sys
 import time
@@ -9,6 +10,11 @@ import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.incremental_sync import IncrementalSync
+from tree_sitter_analyzer.indexing_snapshot import (
+    IndexCandidateSnapshot,
+    IndexSnapshotEntry,
+    build_index_candidate_snapshot,
+)
 
 
 @pytest.fixture
@@ -31,6 +37,20 @@ def cache(project):
 @pytest.fixture
 def sync(cache):
     return IncrementalSync(cache)
+
+
+def _python_language(path: str) -> str | None:
+    return "python" if path.endswith(".py") else None
+
+
+def _snapshot(tmp_path, *paths) -> IndexCandidateSnapshot:
+    return build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: tuple(str(path) for path in paths),
+        language_fn=_python_language,
+    )
 
 
 class TestSyncFromScratch:
@@ -88,6 +108,22 @@ class TestSyncModifiedFile:
         assert "goodbye" in names
         assert "hello" not in names
 
+    def test_bulk_reindex_runs_synapse_backfill_once(self, sync, cache, project):
+        sync.sync()
+        (project / "src" / "main.py").write_text("def changed():\n    return 1\n")
+        (project / "src" / "util.py").write_text("def changed_too():\n    return 2\n")
+
+        with patch.object(
+            cache,
+            "_run_synapse_backfill",
+            return_value={"resolved": 0, "errors": 0},
+        ) as backfill:
+            result = sync.sync()
+
+        assert result.updated_files == 2
+        assert backfill.call_count == 1
+        assert cache.call_graph_built() is True
+
 
 class TestSyncDeletedFile:
     def test_detects_deleted_file(self, sync, cache, project):
@@ -104,6 +140,67 @@ class TestSyncDeletedFile:
         sync.sync()
         assert cache.lookup(str(helper)) is None
 
+    def test_complete_deletion_sync_restores_graph_marker(self, sync, cache, project):
+        sync.sync()
+        (project / "src" / "helper.js").unlink()
+
+        with patch.object(
+            cache,
+            "_run_synapse_backfill",
+            return_value={"resolved": 0, "errors": 0},
+        ):
+            sync.sync()
+
+        assert cache.call_graph_built() is True
+
+    def test_deletion_sync_backfill_error_keeps_graph_incomplete(
+        self, sync, cache, project
+    ):
+        sync.sync()
+        (project / "src" / "helper.js").unlink()
+
+        with patch.object(
+            cache,
+            "_run_synapse_backfill",
+            return_value={"resolved": 0, "errors": 1},
+        ):
+            sync.sync()
+
+        assert cache.call_graph_built() is False
+
+    def test_deletion_sync_indeterminate_backfill_keeps_graph_incomplete(
+        self, sync, cache, project
+    ):
+        sync.sync()
+        (project / "src" / "helper.js").unlink()
+
+        with patch.object(cache, "_run_synapse_backfill", return_value=None):
+            sync.sync()
+
+        assert cache.call_graph_built() is False
+
+
+def test_noop_sync_preserves_incomplete_backfill_state(tmp_path):
+    # PR #1172 review 2026-07-27: a no-op retry certified a failed backfill.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    sync = IncrementalSync(cache)
+
+    try:
+        with patch.object(
+            cache,
+            "_run_synapse_backfill",
+            return_value={"resolved": 0, "errors": 1},
+        ):
+            sync.sync()
+        sync.sync()
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert graph_built is False
+
 
 class TestSyncNewFile:
     def test_detects_new_file(self, sync, cache, project):
@@ -112,6 +209,48 @@ class TestSyncNewFile:
         result = sync.sync()
         assert result.new_files == 1
         assert any("new_module.py" in d["file"] for d in result.details)
+
+
+def test_snapshot_mutation_during_backfill_is_invalidated(tmp_path):
+    # PR #1172: the final backfill must not certify a stale snapshot.
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    cache = ASTCache(str(tmp_path))
+
+    def backfill_then_mutate():
+        path.write_text("value = 200\n")
+        return {"resolved": 0, "errors": 0}
+
+    try:
+        with patch.object(
+            cache, "_run_synapse_backfill", side_effect=backfill_then_mutate
+        ):
+            result = IncrementalSync(cache).sync(
+                max_files=10, candidate_snapshot=snapshot
+            )
+        outcome = (
+            result.changed_during_run_files,
+            result.processed,
+            cache.lookup(str(path)),
+            cache.call_graph_built(),
+        )
+    finally:
+        cache.close()
+
+    assert outcome == (["app.py"], 0, None, False)
+
+
+def test_empty_incremental_scan_keeps_graph_incomplete(tmp_path):
+    # PR #1172: zero live candidates are not a complete call graph.
+    cache = ASTCache(str(tmp_path))
+    try:
+        result = IncrementalSync(cache).sync()
+        outcome = (result.scanned, cache.call_graph_built())
+    finally:
+        cache.close()
+
+    assert outcome == (0, False)
 
 
 class TestSyncMixedChanges:
@@ -185,6 +324,12 @@ class TestSyncExcludePatterns:
             "src/main.py",
             "src/util.py",
         }
+
+    def test_excluded_source_keeps_graph_incomplete(self, sync, cache):
+        # PR #1172 review 2026-07-27: selected-only equality hid exclusions.
+        sync.sync(exclude_patterns=frozenset({"src/helper.js"}))
+
+        assert cache.call_graph_built() is False
 
     def test_excluded_cached_file_is_not_treated_as_deleted(self, sync, cache):
         # Incident 2026-07-26: exclusion filtering could mimic a disk deletion.
@@ -550,3 +695,614 @@ class TestSavepointRollbackOnPartialWrite:
         assert any("fragile.py" in f for f in new_file_names), (
             f"fragile.py must be re-indexed as new on second sync; got {new_file_names}"
         )
+
+
+def test_incremental_sync_preserves_snapshot_candidate_order(tmp_path):
+    first = tmp_path / "z.py"
+    second = tmp_path / "a.py"
+    first.write_text("z = 1\n")
+    second.write_text("a = 1\n")
+    snapshot = _snapshot(tmp_path, first, second)
+    cache = ASTCache(str(tmp_path))
+    seen: list[str] = []
+    original = cache.index_file
+
+    def record(path: str, language: str | None = None):
+        seen.append(os.path.basename(path))
+        return original(path, language)
+
+    try:
+        with patch.object(cache, "index_file", side_effect=record):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        cache.close()
+
+    assert result.processed == 2
+    assert seen == ["z.py", "a.py"]
+
+
+def test_incremental_sync_snapshot_error_clears_graph_complete_marker(tmp_path):
+    # PR #1172 review 2026-07-27: discovery errors must invalidate an old marker.
+    from tree_sitter_analyzer.cache.callgraph_state import mark_call_graph_built
+
+    missing = tmp_path / "missing.py"
+    snapshot = IndexCandidateSnapshot(
+        project_root=os.path.abspath(tmp_path),
+        max_files=10,
+        entries=(
+            IndexSnapshotEntry(
+                abs_path=str(missing),
+                rel_path="missing.py",
+                language="python",
+                decision="error",
+                reason="stat failed",
+            ),
+        ),
+        present_paths=frozenset({"missing.py"}),
+        discovered=1,
+        selected=0,
+        excluded=0,
+        skipped=0,
+        errors=1,
+        limited=0,
+    )
+    cache = ASTCache(str(tmp_path))
+    mark_call_graph_built(cache.get_conn())
+
+    try:
+        result = IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+        )
+        graph_built = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert result.errors == 0
+    assert graph_built is False
+
+
+def test_incremental_sync_reports_mutation_during_processing(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    cache = ASTCache(str(tmp_path))
+    original = cache.index_file
+    callback_details: list[dict] = []
+
+    def index_then_mutate(file_path: str, language: str | None = None):
+        indexed = original(file_path, language)
+        path.write_text("value = 200\n")
+        return indexed
+
+    try:
+        with patch.object(cache, "index_file", side_effect=index_then_mutate):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+                callback=callback_details.append,
+            )
+    finally:
+        cache.close()
+
+    assert result.changed_during_run == 1
+    assert result.changed_during_run_files == ["app.py"]
+    assert result.processed == 0
+    assert result.details == [
+        {
+            "file": "app.py",
+            "considered": "skipped",
+            "action": "skipped",
+            "status": "skipped",
+            "reason": "file changed after candidate snapshot",
+        }
+    ]
+    assert callback_details[-1]["reason"] == "file changed after candidate snapshot"
+
+
+def test_late_reclassification_preserves_other_file_details(tmp_path):
+    # PR #1172 review 2026-07-27: reclassification left duplicate file details.
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_text("a = 1\n")
+    second.write_text("b = 1\n")
+    snapshot = _snapshot(tmp_path, first, second)
+    cache = ASTCache(str(tmp_path))
+    original = cache.index_file
+
+    def mutate_first_after_second(file_path: str, language: str | None = None):
+        indexed = original(file_path, language)
+        if file_path == str(second):
+            first.write_text("a = 200\n")
+        return indexed
+
+    try:
+        with patch.object(cache, "index_file", side_effect=mutate_first_after_second):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        cache.close()
+
+    assert result.changed_during_run_files == ["a.py"]
+    assert result.details == [
+        {
+            "file": "b.py",
+            "considered": "indexed",
+            "action": "indexed",
+            "status": "indexed",
+        },
+        {
+            "file": "a.py",
+            "considered": "skipped",
+            "action": "skipped",
+            "status": "skipped",
+            "reason": "file changed after candidate snapshot",
+        },
+    ]
+
+
+def test_incremental_sync_rolls_back_mutation_during_processing(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("import os\n\ndef before():\n    return os.getcwd()\n")
+    snapshot = _snapshot(tmp_path, path)
+    cache = ASTCache(str(tmp_path))
+    original = cache.index_file
+
+    def index_then_mutate(file_path: str, language: str | None = None):
+        indexed = original(file_path, language)
+        path.write_text("def after():\n    return 2\n")
+        return indexed
+
+    try:
+        with patch.object(cache, "index_file", side_effect=index_then_mutate):
+            IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+        conn = cache.get_conn()
+        counts = {
+            table: conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE file_path = ?",
+                ("app.py",),
+            ).fetchone()[0]
+            for table in (
+                "ast_index",
+                "ast_symbol_rows",
+                "ast_symbols_fts",
+                "ast_imports",
+                "ast_symbol_activation",
+                "edges",
+            )
+        }
+    finally:
+        cache.close()
+
+    assert counts == {
+        "ast_index": 0,
+        "ast_symbol_rows": 0,
+        "ast_symbols_fts": 0,
+        "ast_imports": 0,
+        "ast_symbol_activation": 0,
+        "edges": 0,
+    }
+
+
+def test_incremental_sync_detects_late_mutation_without_callback(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    cache = ASTCache(str(tmp_path))
+    original = cache.index_file
+
+    def index_then_mutate(file_path: str, language: str | None = None):
+        indexed = original(file_path, language)
+        path.write_text("value = 200\n")
+        return indexed
+
+    try:
+        with patch.object(cache, "index_file", side_effect=index_then_mutate):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        cache.close()
+
+    assert result.changed_during_run_files == ["app.py"]
+
+
+def test_incremental_sync_reports_preexisting_snapshot_change_to_callback(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    path.unlink()
+    cache = ASTCache(str(tmp_path))
+    callback_details: list[dict] = []
+
+    try:
+        result = IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+            callback=callback_details.append,
+        )
+    finally:
+        cache.close()
+
+    assert result.changed_during_run == 1
+    assert result.processed == 0
+    assert callback_details == [
+        {
+            "file": "app.py",
+            "considered": "skipped",
+            "action": "skipped",
+            "status": "skipped",
+            "reason": "file disappeared after candidate snapshot",
+        }
+    ]
+
+
+def test_preexisting_snapshot_modification_invalidates_cached_rows(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("import os\n\ndef before():\n    return os.getcwd()\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    snapshot = _snapshot(tmp_path, path)
+    path.write_text("def after():\n    return 2\n")
+
+    try:
+        IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+        )
+        conn = cache.get_conn()
+        counts = {
+            table: conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE file_path = ?",
+                ("app.py",),
+            ).fetchone()[0]
+            for table in (
+                "ast_index",
+                "ast_symbol_rows",
+                "ast_symbols_fts",
+                "ast_imports",
+                "ast_symbol_activation",
+                "edges",
+            )
+        }
+    finally:
+        cache.close()
+
+    assert counts == {
+        "ast_index": 0,
+        "ast_symbol_rows": 0,
+        "ast_symbols_fts": 0,
+        "ast_imports": 0,
+        "ast_symbol_activation": 0,
+        "edges": 0,
+    }
+
+
+def test_preexisting_snapshot_deletion_invalidates_cached_row(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    snapshot = _snapshot(tmp_path, path)
+    path.unlink()
+
+    try:
+        IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+        )
+        cached = cache.lookup(str(path))
+    finally:
+        cache.close()
+
+    assert cached is None
+
+
+def test_preexisting_snapshot_mutation_removes_ladybug_mirror(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    snapshot = _snapshot(tmp_path, path)
+    mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
+    mirror.write_text("stale")
+    path.write_text("value = 200\n")
+
+    try:
+        IncrementalSync(cache).sync(
+            max_files=10,
+            candidate_snapshot=snapshot,
+        )
+        mirror_exists = mirror.exists()
+    finally:
+        cache.close()
+
+    assert mirror_exists is False
+
+
+def test_incremental_sync_rejects_snapshot_root_mismatch(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    other = tmp_path / "other"
+    other.mkdir()
+    other_cache = ASTCache(str(other))
+
+    try:
+        with pytest.raises(ValueError, match="different project root"):
+            IncrementalSync(other_cache)._scan_disk_files(
+                10,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        other_cache.close()
+
+
+def test_incremental_sync_rejects_snapshot_limit_mismatch(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        with pytest.raises(ValueError, match="different max_files"):
+            IncrementalSync(cache)._scan_disk_files(
+                11,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        cache.close()
+
+
+def test_incremental_sync_rejects_selected_entry_without_fingerprint(tmp_path):
+    snapshot = IndexCandidateSnapshot(
+        project_root=os.path.abspath(tmp_path),
+        max_files=10,
+        entries=(
+            IndexSnapshotEntry(
+                abs_path=str(tmp_path / "bad.py"),
+                rel_path="bad.py",
+                language="python",
+                decision="selected",
+            ),
+        ),
+        present_paths=frozenset({"bad.py"}),
+        discovered=1,
+        selected=1,
+        excluded=0,
+        skipped=0,
+        errors=0,
+        limited=0,
+    )
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        with pytest.raises(ValueError, match="lacks fingerprint"):
+            IncrementalSync(cache)._scan_disk_files(
+                10,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        cache.close()
+
+
+def test_incremental_sync_ignores_file_that_disappears_during_live_scan(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+
+    try:
+        with (
+            patch(
+                "tree_sitter_analyzer.incremental_sync._walk_source_files",
+                return_value=iter((str(path),)),
+            ),
+            patch(
+                "tree_sitter_analyzer.incremental_sync.os.stat",
+                side_effect=OSError("file disappeared"),
+            ),
+        ):
+            disk_files, present_paths, truncated, changed = IncrementalSync(
+                cache
+            )._scan_disk_files(10)
+    finally:
+        cache.close()
+
+    assert disk_files == {}
+    assert present_paths == {"app.py"}
+    assert truncated is False
+    assert changed == []
+
+
+def test_late_new_file_mutation_rolls_back_new_counter(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    cache = ASTCache(str(tmp_path))
+    original = cache.index_file
+
+    def index_then_mutate(file_path: str, language: str | None = None):
+        indexed = original(file_path, language)
+        path.write_text("value = 200\n")
+        return indexed
+
+    try:
+        with patch.object(cache, "index_file", side_effect=index_then_mutate):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        cache.close()
+
+    assert result.new_files == 0
+
+
+def test_late_disappearance_reclassifies_index_error_as_snapshot_change(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    snapshot = _snapshot(tmp_path, path)
+    cache = ASTCache(str(tmp_path))
+    original = cache.index_file
+
+    def disappear_before_index(file_path: str, language: str | None = None):
+        path.unlink()
+        return original(file_path, language)
+
+    try:
+        with patch.object(cache, "index_file", side_effect=disappear_before_index):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        cache.close()
+
+    assert result.errors == 0
+    assert result.new_files == 0
+    assert result.changed_during_run_files == ["app.py"]
+    assert result.details == [
+        {
+            "file": "app.py",
+            "considered": "skipped",
+            "action": "skipped",
+            "status": "skipped",
+            "reason": "file disappeared after candidate snapshot",
+        }
+    ]
+
+
+def test_late_updated_file_mutation_rolls_back_updated_counter(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    path.write_text("value = 2\n")
+    snapshot = _snapshot(tmp_path, path)
+    original = cache.index_file
+
+    def index_then_mutate(file_path: str, language: str | None = None):
+        indexed = original(file_path, language)
+        path.write_text("value = 300\n")
+        return indexed
+
+    try:
+        with patch.object(cache, "index_file", side_effect=index_then_mutate):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        cache.close()
+
+    assert result.updated_files == 0
+
+
+def test_late_unchanged_file_mutation_rolls_back_unchanged_counter(tmp_path):
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(path))
+    snapshot = _snapshot(tmp_path, path)
+
+    def unchanged_then_mutate(*_args):
+        path.write_text("value = 200\n")
+        return False
+
+    try:
+        sync = IncrementalSync(cache)
+        with patch.object(sync, "_file_changed", side_effect=unchanged_then_mutate):
+            result = sync.sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+            )
+    finally:
+        cache.close()
+
+    assert result.unchanged_files == 0
+
+
+def test_late_mutation_unresolves_edges_from_other_files(tmp_path):
+    target = tmp_path / "target.py"
+    caller = tmp_path / "caller.py"
+    target.write_text("def target():\n    return 1\n")
+    caller.write_text(
+        "from target import target\n\ndef caller():\n    return target()\n"
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    snapshot = _snapshot(tmp_path, target, caller)
+    sync = IncrementalSync(cache)
+    real_file_changed = sync._file_changed
+    conn = cache.get_conn()
+    before = conn.execute(
+        "SELECT callee_resolved_file FROM edges "
+        "WHERE kind = 'calls' AND file_path = 'caller.py' "
+        "AND callee_name = 'target'"
+    ).fetchone()
+
+    def unchanged_then_mutate(disk_info, indexed_info, rel_path):
+        if rel_path == "target.py":
+            target.write_text("def target():\n    return 200\n")
+            return False
+        return real_file_changed(disk_info, indexed_info, rel_path)
+
+    try:
+        with patch.object(sync, "_file_changed", side_effect=unchanged_then_mutate):
+            sync.sync(max_files=10, candidate_snapshot=snapshot)
+        after = conn.execute(
+            "SELECT callee_resolution, callee_resolved_file, "
+            "callee_symbol_id, metadata FROM edges "
+            "WHERE kind = 'calls' AND file_path = 'caller.py' "
+            "AND callee_name = 'target'"
+        ).fetchone()
+    finally:
+        cache.close()
+
+    metadata = json.loads(after["metadata"])
+    assert (
+        before["callee_resolved_file"],
+        after["callee_resolution"],
+        after["callee_resolved_file"],
+        after["callee_symbol_id"],
+        metadata["callee_resolution"],
+        metadata["callee_resolved_file"],
+        metadata["callee_symbol_id"],
+    ) == ("target.py", "unknown", "", None, "unknown", "", None)
+
+
+def test_modified_base_rebuilds_resolved_hierarchy_edge(tmp_path):
+    # PR #1172 review 2026-07-27: incremental sync deleted but never rebuilt it.
+    base = tmp_path / "base.py"
+    child = tmp_path / "child.py"
+    base.write_text("class Base:\n    marker = 1\n")
+    child.write_text("from base import Base\n\nclass Child(Base):\n    pass\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    base.write_text("class Base:\n    marker = 200\n")
+
+    try:
+        IncrementalSync(cache).sync()
+        targets = [
+            row["target_node_id"]
+            for row in cache.get_conn()
+            .execute(
+                "SELECT target_node_id FROM edges "
+                "WHERE kind = 'extends' AND file_path = 'child.py' "
+                "ORDER BY target_node_id"
+            )
+            .fetchall()
+        ]
+    finally:
+        cache.close()
+
+    assert targets == ["base.py:Base:1", "class:Base"]
