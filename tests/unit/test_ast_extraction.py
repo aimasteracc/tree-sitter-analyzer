@@ -84,6 +84,39 @@ class TestWorkerIndexFile:
         assert "content_hash" in result
         assert "mtime_ns" in result
 
+    def test_uses_facade_symbol_extractor_hook(self, tmp_path, monkeypatch):
+        """Worker dispatch keeps the extraction module's live compatibility hook."""
+        import json
+
+        import tree_sitter_analyzer.cache.extraction as extraction
+
+        f = tmp_path / "module.py"
+        f.write_text("value = 1\n")
+        expected_symbols = {
+            "symbols": [
+                {
+                    "kind": "variable",
+                    "name": "facade_hook",
+                    "line": 1,
+                    "language": "python",
+                }
+            ],
+            "node_count": 1,
+            "truncated_depth": False,
+        }
+        monkeypatch.setattr(extraction, "_worker_parser", None)
+        monkeypatch.setattr(
+            extraction,
+            "_extract_symbols",
+            lambda _tree, _source, _language: expected_symbols,
+        )
+
+        result = extraction._worker_index_file((str(f), str(tmp_path), "python"))
+
+        assert result["status"] == "ok"
+        assert result["symbols_count"] == 1
+        assert json.loads(result["symbols_json"]) == expected_symbols
+
     def test_returns_ok_for_class_with_inheritance(self, tmp_path):
         """Python class with base class → extracted symbols include parent."""
         src = "class Dog(Animal):\n    def bark(self):\n        pass\n"
