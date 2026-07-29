@@ -332,14 +332,20 @@ class TestExtractParentClasses:
         """PR #1193: a malformed Rust impl does not invent a parent class."""
         from tree_sitter_analyzer.cache.extraction import _find_parent_class
 
+        outer_name = SimpleNamespace(text=b"Outer")
+        outer = SimpleNamespace(
+            type="class_definition",
+            child_by_field_name=lambda field: (outer_name if field == "name" else None),
+            parent=None,
+        )
         impl = SimpleNamespace(
             type="impl_item",
             child_by_field_name=lambda _field: None,
-            parent=None,
+            parent=outer,
         )
         node = SimpleNamespace(parent=impl)
 
-        assert _find_parent_class(node, "") is None
+        assert _find_parent_class(node, "") == "Outer"
 
 
 # ---------------------------------------------------------------------------
