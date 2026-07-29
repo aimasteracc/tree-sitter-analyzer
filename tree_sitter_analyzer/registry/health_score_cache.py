@@ -1,12 +1,10 @@
 """SQLite-backed persistent cache for ``HealthScore`` results.
 
-The cache makes ``HealthScorer.score_project`` fast on warm runs: the first
-run scores every file, while subsequent runs reuse scores whose source and
-external scoring context are unchanged.
+The cache makes ``HealthScorer.score_project`` fast on warm runs by reusing
+scores whose source and external scoring context are unchanged.
 
-The cache is best-effort:
-- If SQLite is unavailable or the directory cannot be created, scoring
-  proceeds without caching (no warning, no failure).
+The cache is best-effort: if SQLite is unavailable or its directory cannot be
+created, scoring proceeds without caching (no warning, no failure).
 - Stale rows are silently overwritten by ``store``.
 - Legacy schemas are migrated in place and their context-free rows miss once.
 - ``invalidate_changed`` clears entries whose fingerprint no longer matches
@@ -16,8 +14,7 @@ The cache deliberately stores no project-aggregate state — it is a pure
 per-file score store. Aggregates (grade distribution, etc.) are rebuilt
 in-memory each run.
 
-agent-ux: this was the #1 pain on tsa-landing dogfood — full project
-health was 130s, warm cache target <2s.
+agent-ux: tsa-landing dogfood saw 130s scans; warm cache target <2s.
 """
 
 from __future__ import annotations
@@ -146,7 +143,12 @@ def _read_small_regular_text(path: Path) -> str | None:
             return None
         if metadata.st_size > _MAX_GIT_METADATA_BYTES:
             return None
-        content = os.read(descriptor, _MAX_GIT_METADATA_BYTES + 1)
+        content = bytearray()
+        while len(content) <= _MAX_GIT_METADATA_BYTES:
+            chunk = os.read(descriptor, _MAX_GIT_METADATA_BYTES + 1 - len(content))
+            if not chunk:
+                break
+            content.extend(chunk)
     except OSError:
         return None
     finally:

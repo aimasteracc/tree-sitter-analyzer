@@ -1,6 +1,6 @@
-"""UTF-8 encoding regression tests for ``read_source_file`` (health scorer).
+"""Regression tests for the health-scorer helper module.
 
-Background: ``_health_scorer_helpers.read_source_file`` previously called
+Encoding background: ``health_scorer_helpers.read_source_file`` previously called
 ``path.read_text()`` without an ``encoding`` argument. On hosts whose default
 locale encoding is not UTF-8 (e.g. Windows cp1252/cp932/mbcs), decoding a
 UTF-8 source file with non-ASCII bytes raised ``UnicodeDecodeError``; the
@@ -25,13 +25,51 @@ Traceability:
   - AC-1 RED proof / REQ-ENC-001   -> test_read_text_called_with_utf8_encoding
 """
 
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from tree_sitter_analyzer.registry import health_scorer_helpers
+
 # Non-ASCII fixture content reused across cases (Japanese comment + string).
 _NON_ASCII_SOURCE = "# 日本語コメント\nmessage = 'こんにちは世界'\nx = 1\n"
+
+
+@pytest.mark.parametrize("overlay", ["replace", "graft"])
+def test_recent_commit_count_ignores_replacement_and_graft_overrides(tmp_path, overlay):
+    """Hotspot history must reflect immutable commits, not local Git overlays."""
+    # PR #1184 Codex review (2026-07-27): refs/replace and info/grafts made
+    # cached hotspot scores stale without changing the fingerprinted HEAD.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*arguments):
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test")
+    source = repo / "module.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    git("add", "module.py")
+    git("commit", "-qm", "root")
+    source.write_text("value = 2\n", encoding="utf-8")
+    git("commit", "-qam", "second")
+    head = git("rev-parse", "HEAD").stdout.strip()
+    if overlay == "replace":
+        git("replace", head, git("rev-parse", "HEAD^").stdout.strip())
+    else:
+        (repo / ".git" / "info" / "grafts").write_text(f"{head}\n", encoding="utf-8")
+
+    assert health_scorer_helpers.count_recent_commits(repo, "module.py") == 2
 
 
 @pytest.mark.regression
