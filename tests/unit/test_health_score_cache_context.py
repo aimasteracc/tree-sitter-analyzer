@@ -126,7 +126,6 @@ def test_small_metadata_reader_rejects_links_without_nofollow(tmp_path, monkeypa
         "open",
         lambda *_args, **_kwargs: pytest.fail("a symlink must not be opened"),
     )
-
     assert _read_small_regular_text(link) is None
 
 
@@ -135,7 +134,6 @@ def test_small_metadata_reader_rejects_oversized_files(tmp_path):
     # PR #1184 Codex review (2026-07-27): metadata reads need a hard size bound.
     metadata = tmp_path / "HEAD"
     metadata.write_bytes(b"x" * (cache_module._MAX_GIT_METADATA_BYTES + 1))
-
     assert _read_small_regular_text(metadata) is None
 
 
@@ -149,7 +147,6 @@ def test_small_metadata_reader_handles_open_failures(tmp_path, monkeypatch):
         raise OSError("sharing violation")
 
     monkeypatch.setattr(cache_module.os, "open", fail_open)
-
     assert _read_small_regular_text(metadata) is None
 
 
@@ -159,7 +156,6 @@ def test_small_metadata_reader_rechecks_file_type_after_open(tmp_path, monkeypat
     metadata = tmp_path / "HEAD"
     metadata.write_text("ref: refs/heads/main\n", encoding="utf-8")
     monkeypatch.setattr(cache_module.os, "fstat", lambda _descriptor: tmp_path.stat())
-
     assert _read_small_regular_text(metadata) is None
 
 
@@ -173,7 +169,6 @@ def test_small_metadata_reader_handles_read_failures(tmp_path, monkeypatch):
         raise OSError("device failure")
 
     monkeypatch.setattr(cache_module.os, "read", fail_read)
-
     assert _read_small_regular_text(metadata) is None
 
 
@@ -184,8 +179,20 @@ def test_small_metadata_reader_enforces_post_read_bound(tmp_path, monkeypatch):
     metadata.write_text("ref: refs/heads/main\n", encoding="utf-8")
     oversized = b"x" * (cache_module._MAX_GIT_METADATA_BYTES + 1)
     monkeypatch.setattr(cache_module.os, "read", lambda _descriptor, _size: oversized)
-
     assert _read_small_regular_text(metadata) is None
+
+
+def test_small_metadata_reader_reads_short_chunks_through_eof(tmp_path, monkeypatch):
+    """Short descriptor reads must not truncate a valid symbolic ref."""
+    # PR #1184 Codex review (2026-07-27): one os.read call could cache a
+    # partial but valid ref and then miss changes to the real branch.
+    metadata = tmp_path / "HEAD"
+    metadata.write_text("ref: refs/heads/main\n", encoding="utf-8")
+    chunks = iter((b"ref: refs/heads/ma", b"in\n", b""))
+    monkeypatch.setattr(
+        cache_module.os, "read", lambda _descriptor, _size: next(chunks)
+    )
+    assert _read_small_regular_text(metadata) == "ref: refs/heads/main"
 
 
 def test_find_git_dir_supports_standard_repositories(tmp_path):
