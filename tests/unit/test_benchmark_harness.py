@@ -651,7 +651,7 @@ class TestCodeGraphCompareTSAAdapter:
             _build_index(tmp_path, index_dir)
 
         assert run.call_args.args[0] == [
-            "/cached/codegraph",
+            str(Path("/cached/codegraph")),
             "init",
             "-i",
         ]
