@@ -148,6 +148,22 @@ def _reject_special_tree(root: Path, label: str) -> None:
                 raise ValueError(f"{label} namespace contains a special node: {path}")
 
 
+def validate_index_content_v1(
+    workspace: SmokeWorkspaceV1,
+    manifest: ExperimentManifestV1,
+    arm_id: str,
+) -> None:
+    """Revalidate one indexed arm against its manifest-bound byte digest."""
+
+    cell = workspace.cell(arm_id)
+    expected = dict(manifest.index_content_hashes).get(arm_id)
+    if cell.index_path is None or expected is None:
+        raise ValueError(f"{arm_id} lacks manifest-bound index content")
+    _reject_special_tree(cell.index_path, "index")
+    if index_content_hash(cell.index_path) != expected:
+        raise ValueError(f"{arm_id} index content hash mismatch")
+
+
 def _git_output(checkout: Path, *args: str) -> str:
     return subprocess.run(
         ["git", *args],
@@ -265,8 +281,7 @@ def validate_workspace_v1(
             raise ValueError(f"{cell.arm_id} index namespace does not exist")
         expected_index_hash = dict(manifest.index_content_hashes).get(cell.arm_id)
         if cell.index_path is not None and expected_index_hash is not None:
-            if index_content_hash(cell.index_path) != expected_index_hash:
-                raise ValueError(f"{cell.arm_id} index content hash mismatch")
+            validate_index_content_v1(workspace, manifest, cell.arm_id)
         if not cell.artifact_path.is_dir():
             raise ValueError(f"{cell.arm_id} artifact namespace does not exist")
         if any(cell.artifact_path.iterdir()):

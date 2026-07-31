@@ -2654,6 +2654,36 @@ class TestGinSmokeManifestExecution:
 
         assert audit.violations == (violation,)
 
+    @pytest.mark.parametrize(
+        "command",
+        (
+            "find . -name '*.go'",
+            "rg -n ServeHTTP .",
+            "sed -n '1,40p' gin.go",
+        ),
+    )
+    def test_codex_transcript_accepts_declared_readonly_discovery(
+        self, tmp_path: Path, command: str
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "readonly.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {"type": "command_execution", "command": command},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "native-only")
+
+        assert audit.violations == ()
+
     def test_v1_attempt_is_manifest_bound_and_append_only(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_execution import (
             PolicyAudit,
@@ -3125,6 +3155,7 @@ class TestGinSmokeWorkspace:
             index_content_hash,
         )
         from benchmarks.codegraph_compare.smoke_workspace import (
+            validate_index_content_v1,
             validate_workspace_v1,
         )
 
@@ -3151,6 +3182,9 @@ class TestGinSmokeWorkspace:
 
         with pytest.raises(ValueError, match="index content hash mismatch"):
             validate_workspace_v1(workspace, bound_manifest)
+
+        with pytest.raises(ValueError, match="index content hash mismatch"):
+            validate_index_content_v1(workspace, bound_manifest, "tsa-warm")
 
     def test_workspace_schema_rejects_unknown_fields(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_workspace import (

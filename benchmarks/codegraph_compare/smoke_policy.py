@@ -50,10 +50,13 @@ _READ_COMMANDS = frozenset(
         "cat",
         "cd",
         "cut",
+        "find",
         "grep",
         "head",
         "ls",
         "pwd",
+        "rg",
+        "sed",
         "sort",
         "tail",
         "tr",
@@ -201,5 +204,17 @@ def _command_is_allowlisted(command: str) -> bool:
             continue
         executable = Path(segment[0]).name
         if executable not in _READ_COMMANDS:
+            return False
+        if executable == "find" and any(
+            token in {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint"}
+            or token.startswith("-fprint")
+            for token in segment[1:]
+        ):
+            return False
+        if executable == "sed" and (
+            "-n" not in segment[1:]
+            or any(token == "-i" or token.startswith("-i") for token in segment[1:])
+            or any("e" in token.lstrip("-") for token in segment[1:] if token.startswith("-"))
+        ):
             return False
     return True

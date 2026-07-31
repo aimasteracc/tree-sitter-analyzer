@@ -25,6 +25,7 @@ from benchmarks.codegraph_compare.smoke_policy import (
 )
 from benchmarks.codegraph_compare.smoke_workspace import (
     SmokeWorkspaceV1,
+    validate_index_content_v1,
     validate_workspace_v1,
 )
 
@@ -254,6 +255,8 @@ def run_manifest_smoke(
                 dry_run=False,
                 session_id=manifest.primary_session_id,
             )
+            if workspace is not None and cell.arm in manifest.indexed_arms:
+                validate_index_content_v1(workspace, manifest, cell.arm)
             transcript = Path(str(legacy.get("transcript_path", "")))
             audit = audit_codex_transcript(transcript, cell.arm)
         except Exception as exc:  # noqa: BLE001 - every cell needs a terminal record
