@@ -2455,6 +2455,8 @@ class TestGinSmokeManifestExecution:
         (
             {"status": "failed"},
             {"error": {"message": "server unavailable"}},
+            {"isError": True},
+            {"result": {"isError": True}},
             {"result": {"is_error": True}},
         ),
     )

@@ -144,11 +144,16 @@ def _mcp_call_failed(item: dict[str, object]) -> bool:
     """Recognize Codex MCP terminal failure shapes without trusting one field."""
 
     status = str(item.get("status") or "").lower()
-    if status in {"failed", "error", "cancelled"} or item.get("error"):
+    if (
+        status in {"failed", "error", "cancelled"}
+        or item.get("error")
+        or item.get("isError")
+        or item.get("is_error")
+    ):
         return True
     result = item.get("result")
     return isinstance(result, dict) and bool(
-        result.get("error") or result.get("is_error")
+        result.get("error") or result.get("isError") or result.get("is_error")
     )
 
 
