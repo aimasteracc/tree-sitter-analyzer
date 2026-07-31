@@ -131,6 +131,31 @@ def _git_output(checkout: Path, *args: str) -> str:
     ).stdout.strip()
 
 
+def _unprovenanced_paths(checkout: Path, allowed_root: str | None) -> tuple[str, ...]:
+    paths: set[str] = set()
+    for args in (
+        ("ls-files", "-z", "--others", "--exclude-standard"),
+        ("ls-files", "-z", "--others", "--ignored", "--exclude-standard"),
+    ):
+        output = subprocess.run(
+            ["git", *args],
+            cwd=checkout,
+            capture_output=True,
+            check=True,
+        ).stdout
+        paths.update(
+            item.decode("utf-8") for item in output.split(b"\0") if item
+        )
+    if allowed_root is not None:
+        prefix = allowed_root + "/"
+        paths = {
+            path
+            for path in paths
+            if path != allowed_root and not path.startswith(prefix)
+        }
+    return tuple(sorted(paths))
+
+
 def validate_workspace_v1(
     workspace: SmokeWorkspaceV1,
     manifest: ExperimentManifestV1,
@@ -190,6 +215,11 @@ def validate_workspace_v1(
         )
         if any((cell.checkout_path / name).exists() for name in forbidden):
             raise ValueError(f"{cell.arm_id} contains a foreign index namespace")
+        unprovenanced = _unprovenanced_paths(cell.checkout_path, index_name)
+        if unprovenanced:
+            raise ValueError(
+                f"{cell.arm_id} contains unprovenanced paths: {unprovenanced}"
+            )
         if cell.index_path is not None and not cell.index_path.is_dir():
             raise ValueError(f"{cell.arm_id} index namespace does not exist")
         if not cell.artifact_path.is_dir():

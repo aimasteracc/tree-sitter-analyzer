@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +44,29 @@ _NETWORK_COMMAND = re.compile(
     r"(?:curl|wget|ssh|scp|sftp|nc|netcat|telnet|python|python3|node|ruby|perl|php)"
     r"\b|\bgit\s+(?:clone|fetch|pull|push|ls-remote)\b",
     re.IGNORECASE,
+)
+_READ_COMMANDS = frozenset(
+    {
+        "awk",
+        "cat",
+        "cd",
+        "cut",
+        "find",
+        "grep",
+        "head",
+        "ls",
+        "pwd",
+        "rg",
+        "sed",
+        "sort",
+        "tail",
+        "tr",
+        "uniq",
+        "wc",
+    }
+)
+_GIT_READ_COMMANDS = frozenset(
+    {"blame", "diff", "grep", "log", "ls-files", "rev-parse", "show", "status"}
 )
 
 
@@ -121,6 +145,7 @@ def audit_codex_transcript(transcript_path: Path, arm: str) -> PolicyAudit:
 def _audit_command(
     command: str, line_number: int, violations: list[str]
 ) -> None:
+    violation_count = len(violations)
     checks = (
         (_WRITE_COMMAND, "MUTATING_COMMAND"),
         (_INDEX_COMMAND, "INDEX_COMMAND_OUTSIDE_MCP"),
@@ -133,3 +158,32 @@ def _audit_command(
         violations.append(f"FILESYSTEM_BOUNDARY_ESCAPE:{line_number}")
     if _NETWORK_COMMAND.search(command):
         violations.append(f"NETWORK_COMMAND:{line_number}")
+    if len(violations) == violation_count and not _command_is_allowlisted(command):
+        violations.append(f"UNDECLARED_SHELL_COMMAND:{line_number}")
+
+
+def _command_is_allowlisted(command: str) -> bool:
+    if "$(" in command or "`" in command:
+        return False
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return False
+    segments: list[list[str]] = [[]]
+    for token in tokens:
+        if token and set(token) <= {";", "&", "|"}:
+            segments.append([])
+        else:
+            segments[-1].append(token)
+    for segment in segments:
+        if not segment:
+            continue
+        executable = Path(segment[0]).name
+        if executable == "git":
+            if len(segment) < 2 or segment[1] not in _GIT_READ_COMMANDS:
+                return False
+        elif executable not in _READ_COMMANDS:
+            return False
+    return True

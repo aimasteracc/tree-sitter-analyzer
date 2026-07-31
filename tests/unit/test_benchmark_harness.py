@@ -2486,6 +2486,17 @@ class TestGinSmokeManifestExecution:
                 },
                 "NETWORK_COMMAND:1",
             ),
+            (
+                {"type": "command_execution", "command": "gh api repos/x/y"},
+                "UNDECLARED_SHELL_COMMAND:1",
+            ),
+            (
+                {
+                    "type": "command_execution",
+                    "command": "git -c credential.helper=x fetch origin",
+                },
+                "UNDECLARED_SHELL_COMMAND:1",
+            ),
         ),
     )
     def test_codex_transcript_rejects_non_readonly_events(
@@ -2900,6 +2911,19 @@ class TestGinSmokeWorkspace:
         (workspace.cell("native-only").checkout_path / ".codegraph").mkdir()
 
         with pytest.raises(ValueError, match="foreign index namespace"):
+            validate_workspace_v1(workspace, manifest)
+
+    def test_workspace_rejects_untracked_checkout_input(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            validate_workspace_v1,
+        )
+
+        manifest, _, workspace = self._fixture(tmp_path)
+        (workspace.cell("native-only").checkout_path / "misleading.md").write_text(
+            "not part of the pinned repository\n", encoding="utf-8"
+        )
+
+        with pytest.raises(ValueError, match="unprovenanced paths"):
             validate_workspace_v1(workspace, manifest)
 
     def test_workspace_schema_rejects_unknown_fields(self, tmp_path: Path):
