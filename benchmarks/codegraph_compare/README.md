@@ -107,11 +107,13 @@ These rules are enforced by the harness. Violating any of them invalidates a run
 9. **Auto-penalize phantom citations** — citations to files that do not exist in the pinned repo reduce `citation_quality` automatically before human/LLM review.
 10. **No silent drops** — timeouts and exceptions are recorded as `RunRecord` entries with `error` set; they appear in the report as `FAILED` rather than being omitted.
 
-Claude runs use hard CLI tool allowlists. Codex runs use the same arm policy as
-prompted instructions because `codex exec` currently does not expose a matching
-per-tool allowlist flag. Codex native-only runs use a read-only sandbox. Codex
-indexed arms use a workspace-write sandbox because CodeGraph and TSA query paths
-may update SQLite WAL/cache metadata during otherwise read-only queries.
+Claude runs use hard CLI tool allowlists. Codex runs ignore the user's global
+configuration and inject exactly one required MCP server for each indexed arm,
+with an explicit MCP tool allowlist; native-only injects no MCP server. Codex
+native-only runs use a read-only sandbox. Codex indexed arms use a
+workspace-write sandbox because CodeGraph and TSA query paths may update SQLite
+WAL/cache metadata during otherwise read-only queries. CodeGraph's Codex MCP
+server is pinned to `@colbymchenry/codegraph@1.5.0`.
 
 ---
 

@@ -1280,7 +1280,7 @@ class TestCodeGraphCompareSetupGate:
     def test_setup_only_rejects_unsupported_backend_arm_pairs(
         self, monkeypatch, tmp_path: Path
     ):
-        manifest = self._v1_setup_manifest(agent_backend="codex")
+        manifest = self._v1_setup_manifest(agent_backend="unsupported")
         self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
         args = self._matrix_args()
         args.agent_backend = manifest.agent_backend
@@ -2152,14 +2152,15 @@ class TestCodeGraphCompareSetupGate:
             "BACKEND_UNSUPPORTED",
         ]
 
-    @pytest.mark.parametrize("arm_id", ("codegraph-warm", "tsa-warm"))
-    def test_codex_backend_validator_rejects_indexed_mcp_arms(self, arm_id: str):
+    @pytest.mark.parametrize(
+        "arm_id", ("native-only", "codegraph-warm", "tsa-warm")
+    )
+    def test_codex_backend_validator_allows_isolated_smoke_arms(self, arm_id: str):
         from benchmarks.codegraph_compare.adapters.claude_runner import (
             validate_backend_arm_support,
         )
 
-        with pytest.raises(NotImplementedError, match="Per-arm MCP isolation"):
-            validate_backend_arm_support("codex", arm_id)
+        validate_backend_arm_support("codex", arm_id)
 
     def test_backend_validator_allows_supported_combinations(self):
         from benchmarks.codegraph_compare.adapters.claude_runner import (
@@ -2168,6 +2169,63 @@ class TestCodeGraphCompareSetupGate:
 
         validate_backend_arm_support("codex", "native-only")
         validate_backend_arm_support("claude", "tsa-warm")
+
+    @pytest.mark.parametrize(
+        ("arm_id", "server_name"),
+        (
+            ("tsa-warm", "tree-sitter-analyzer"),
+            ("codegraph-warm", "codegraph"),
+        ),
+    )
+    def test_codex_indexed_arm_command_ignores_user_config_and_requires_one_server(
+        self, arm_id: str, server_name: str, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _build_agent_cmd,
+        )
+
+        command = _build_agent_cmd(
+            arm_id,
+            "gpt-5",
+            tmp_path,
+            RunConfig(arm_id, tmp_path, "system"),
+            "Read",
+            "ToolSearch",
+            "codex",
+        )
+
+        assert "--ignore-user-config" in command
+        assert "--strict-config" in command
+        assert f"mcp_servers.{server_name}.required=true" in command
+        configured_servers = [
+            value
+            for value in command
+            if value.startswith("mcp_servers.") and value.endswith(".required=true")
+        ]
+        assert configured_servers == [f"mcp_servers.{server_name}.required=true"]
+
+    def test_codex_native_command_ignores_user_config_without_mcp_servers(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _build_agent_cmd,
+        )
+
+        command = _build_agent_cmd(
+            "native-only",
+            "gpt-5",
+            tmp_path,
+            RunConfig("native-only", tmp_path, "system"),
+            "Read",
+            "ToolSearch",
+            "codex",
+        )
+
+        assert "--ignore-user-config" in command
+        assert "--strict-config" in command
+        assert not any(value.startswith("mcp_servers.") for value in command)
 
 
 class TestCodeGraphCompareAnalysisGate:

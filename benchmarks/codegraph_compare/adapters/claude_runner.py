@@ -90,6 +90,7 @@ _DEFAULT_MODELS = {
     "claude": "claude-sonnet-4-6",
     "codex": "gpt-5.2",
 }
+_CODEGRAPH_PACKAGE = "@colbymchenry/codegraph@1.5.0"
 
 
 def _make_run_id(question_id: str, arm_id: str, repeat: int, agent_backend: str) -> str:
@@ -367,20 +368,14 @@ def _build_agent_cmd(
         mcp_cfg = _write_arm_mcp_config(arm_id, repo_path)
         cmd += ["--strict-mcp-config", "--mcp-config", str(mcp_cfg)]
         return cmd
-    # codex backend: the MCP arms (tsa*, codegraph*) need their server wired in
-    # with the SAME per-arm isolation the claude branch gets via
-    # --strict-mcp-config. `codex exec` has no equivalent strict flag here, so
-    # it would either miss the server entirely or silently inherit the
-    # developer's global ~/.codex MCP config — both invalidate the
-    # TSA-vs-CodeGraph comparison. Fail loudly rather than emit wrong numbers
-    # (Codex P2 on #290). Use --agent-backend claude for MCP arms until codex
-    # MCP wiring (codex -c mcp_servers.*) is implemented and verified.
     sandbox = _codex_sandbox_for_arm(arm_id)
-    return [
+    cmd = [
         "codex",
         "--ask-for-approval",
         "never",
         "exec",
+        "--ignore-user-config",
+        "--strict-config",
         "--json",
         "--ephemeral",
         "--sandbox",
@@ -391,6 +386,44 @@ def _build_agent_cmd(
         str(repo_path),
         "-",
     ]
+    cmd[4:4] = _codex_mcp_config_args(arm_id, repo_path)
+    return cmd
+
+
+def _codex_mcp_config_args(arm_id: str, repo_path: Path) -> list[str]:
+    """Return one isolated, required MCP server configuration for an arm."""
+
+    if arm_id.startswith("tsa"):
+        server_name = "tree-sitter-analyzer"
+        command = str(_ANALYZER_ROOT / ".venv" / "bin" / "python")
+        args = [
+            "-m",
+            "tree_sitter_analyzer.mcp.server",
+            "--project-root",
+            str(repo_path),
+        ]
+        enabled_tools = [name.rsplit("__", 1)[-1] for name in _TSA_TOOLS]
+    elif arm_id.startswith("codegraph"):
+        server_name = "codegraph"
+        command = "npx"
+        args = ["--yes", _CODEGRAPH_PACKAGE, "serve", "--mcp"]
+        enabled_tools = [name.rsplit("__", 1)[-1] for name in _CODEGRAPH_TOOLS]
+    else:
+        return []
+
+    values = {
+        "command": command,
+        "args": args,
+        "enabled_tools": enabled_tools,
+        "required": True,
+        "startup_timeout_sec": 30,
+        "tool_timeout_sec": 30,
+    }
+    config: list[str] = []
+    for key, value in values.items():
+        encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":"))
+        config.extend(["-c", f"mcp_servers.{server_name}.{key}={encoded}"])
+    return config
 
 
 def validate_backend_arm_support(agent_backend: str, arm_id: str) -> None:
@@ -398,14 +431,6 @@ def validate_backend_arm_support(agent_backend: str, arm_id: str) -> None:
 
     if agent_backend not in {"claude", "codex"}:
         raise ValueError("agent_backend must be one of: claude, codex")
-    if agent_backend == "codex" and arm_id.startswith(("tsa", "codegraph")):
-        raise NotImplementedError(
-            f"Per-arm MCP isolation is not wired for the codex backend, but arm "
-            f"{arm_id!r} requires its own MCP server. Running `codex exec` here "
-            f"would miss the server or inherit the global ~/.codex MCP config, "
-            f"invalidating the comparison. Use --agent-backend claude for MCP "
-            f"arms, or wire `codex -c mcp_servers.*` before enabling this path."
-        )
 
 
 def _usage_int(usage: dict[str, Any], key: str) -> int:
