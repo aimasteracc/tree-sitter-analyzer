@@ -5017,6 +5017,34 @@ class TestBenchmarkExperimentIntegrity:
             "INVALID_MANIFEST_STRUCTURE",
         )
 
+    def test_bound_index_hashes_survive_manifest_normalization(self):
+        from benchmarks.codegraph_compare.integrity import (
+            validate_publishable_experiment,
+        )
+
+        manifest = _v1_manifest(
+            index_content_hashes={
+                "codegraph-warm": "codegraph-index-hash",
+                "tsa-warm": "tsa-index-hash",
+            }
+        )
+        runs = tuple(
+            _v1_run(manifest, cell.run_id) for cell in manifest.expected_cells
+        )
+
+        verdict = validate_publishable_experiment(
+            manifest,
+            registry=_registry_for(manifest),
+            runs=runs,
+            evals=tuple(_v1_eval(run) for run in runs),
+            reported_experiment_ids=(manifest.experiment_id,),
+        )
+
+        # Issue #1201: index-bound manifests must normalize with their hashes.
+        assert "INVALID_MANIFEST_STRUCTURE" not in {
+            item.code for item in verdict.violations
+        }
+
     def test_failed_registry_status_is_terminal(self):
         from benchmarks.codegraph_compare.integrity import (
             RegistryEvent,
