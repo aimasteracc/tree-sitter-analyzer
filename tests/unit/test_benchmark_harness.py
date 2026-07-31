@@ -3241,6 +3241,24 @@ class TestGinSmokeBundle:
         (plan / "experiment-manifest.json").write_text(
             json.dumps(asdict(manifest)), encoding="utf-8"
         )
+        from benchmarks.codegraph_compare.smoke_preflight import SENTINEL
+
+        (plan / "model-preflight.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "status": "PASSED",
+                    "provider": "OpenAI",
+                    "account_surface": "ChatGPT",
+                    "model": manifest.model,
+                    "checked_at": "2026-07-31T00:00:00+00:00",
+                    "agent_cli": {},
+                    "agent_cli_fingerprint": manifest.agent_cli_fingerprint,
+                    "sentinel_sha256": hashlib.sha256(SENTINEL.encode()).hexdigest(),
+                }
+            ),
+            encoding="utf-8",
+        )
         for name in (
             "eligibility.json",
             "index-evidence.json",
@@ -4887,3 +4905,112 @@ class TestBenchmarkExperimentIntegrity:
         assert tuple(item.code for item in verdict.violations) == (
             "REGISTRY_TERMINAL_FAILURE",
         )
+
+
+class TestSmokeModelPreflight:
+    def test_preflight_runs_exact_model_outside_benchmark_tree(self, tmp_path: Path):
+        from benchmarks.codegraph_compare import smoke_preflight
+
+        identity = {
+            "command": "codex --version",
+            "version": "codex-cli 1.2.3",
+            "executable": "/tools/codex",
+            "executable_sha256": "a" * 64,
+        }
+        event = json.dumps(
+            {
+                "type": "item.completed",
+                "item": {
+                    "type": "agent_message",
+                    "text": smoke_preflight.SENTINEL,
+                },
+            }
+        )
+        output = tmp_path / "preflight.json"
+        completed = subprocess.CompletedProcess([], 0, stdout=event, stderr="")
+
+        with (
+            patch.object(smoke_preflight, "_codex_identity", return_value=identity),
+            patch.object(smoke_preflight, "_account_surface", return_value="ChatGPT"),
+            patch.object(smoke_preflight.subprocess, "run", return_value=completed) as run,
+        ):
+            evidence = smoke_preflight.run_model_preflight(
+                model="gpt-fixture", output_path=output
+            )
+
+        command = run.call_args.args[0]
+        assert command[command.index("--model") + 1] == "gpt-fixture"
+        assert "--ephemeral" in command
+        assert "--ignore-user-config" in command
+        assert "--skip-git-repo-check" in command
+        assert Path(run.call_args.kwargs["cwd"]) != Path.cwd()
+        assert evidence["status"] == "PASSED"
+        assert json.loads(output.read_text()) == evidence
+
+    @pytest.mark.parametrize(
+        ("field", "value", "message"),
+        [
+            ("status", "FAILED", "not a successful V1 record"),
+            ("model", "wrong-model", "does not match"),
+            ("account_surface", "API", "not approved"),
+            ("agent_cli_fingerprint", "stale", "stale or mismatched"),
+        ],
+    )
+    def test_preflight_rejects_unbound_evidence(
+        self, tmp_path: Path, field: str, value: str, message: str
+    ):
+        from benchmarks.codegraph_compare import smoke_preflight
+
+        evidence = {
+            "schema_version": 1,
+            "status": "PASSED",
+            "provider": "OpenAI",
+            "account_surface": "ChatGPT",
+            "model": "gpt-fixture",
+            "checked_at": "2026-07-31T00:00:00+00:00",
+            "agent_cli": {},
+            "agent_cli_fingerprint": "bound",
+            "sentinel_sha256": hashlib.sha256(
+                smoke_preflight.SENTINEL.encode()
+            ).hexdigest(),
+        }
+        evidence[field] = value
+        path = tmp_path / "preflight.json"
+        path.write_text(json.dumps(evidence))
+
+        with pytest.raises(ValueError, match=message):
+            smoke_preflight.validate_model_preflight(
+                path,
+                expected_model="gpt-fixture",
+                expected_cli_fingerprint="bound",
+            )
+
+    def test_preflight_rejects_stale_evidence_before_freeze(self, tmp_path: Path):
+        from benchmarks.codegraph_compare import smoke_preflight
+
+        path = tmp_path / "preflight.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "status": "PASSED",
+                    "provider": "OpenAI",
+                    "account_surface": "ChatGPT",
+                    "model": "gpt-fixture",
+                    "checked_at": "2020-01-01T00:00:00+00:00",
+                    "agent_cli": {},
+                    "agent_cli_fingerprint": "bound",
+                    "sentinel_sha256": hashlib.sha256(
+                        smoke_preflight.SENTINEL.encode()
+                    ).hexdigest(),
+                }
+            )
+        )
+
+        with pytest.raises(ValueError, match="stale or has a future timestamp"):
+            smoke_preflight.validate_model_preflight(
+                path,
+                expected_model="gpt-fixture",
+                expected_cli_fingerprint="bound",
+                max_age_seconds=900,
+            )

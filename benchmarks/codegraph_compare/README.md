@@ -170,6 +170,33 @@ uv run python benchmarks/codegraph_compare/run.py phase full-warm --agent-backen
 uv run python benchmarks/codegraph_compare/run.py phase cold --agent-backend codex
 ```
 
+### Manifest-bound Gin Smoke
+
+Before freezing a real three-arm Gin Smoke, prove that the exact Codex model is
+available without exposing the repository, benchmark question, or oracle:
+
+```bash
+uv run python -m benchmarks.codegraph_compare.smoke_preflight \
+  --model gpt-5.4 \
+  --output .benchmark-runs/no1-001c/model-preflight.json
+```
+
+Then pass that immutable evidence to the plan freezer:
+
+```bash
+uv run python -m benchmarks.codegraph_compare.smoke_plan \
+  --checkout-root .benchmark-runs/no1-001c/checkouts \
+  --destination .benchmark-runs/no1-001c/frozen \
+  --model-preflight .benchmark-runs/no1-001c/model-preflight.json \
+  --model gpt-5.4 \
+  --session-id NO1-001C-PRIMARY
+```
+
+The freezer rejects failed, stale, future-dated, differently authenticated,
+different-model, or different-CLI preflight evidence before it creates the
+destination or reads benchmark questions. The evidence is copied into the
+immutable plan and included in bundle checksums and byte-identical replay.
+
 ---
 
 ## Reading the Summary Table

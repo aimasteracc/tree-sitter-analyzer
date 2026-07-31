@@ -32,6 +32,7 @@ from benchmarks.codegraph_compare.smoke_evidence import (
     index_content_hash,
     produce_gin_index_evidence,
 )
+from benchmarks.codegraph_compare.smoke_preflight import validate_model_preflight
 
 ARMS = ("native-only", "tsa-warm", "codegraph-warm")
 INDEXED_ARMS = ("tsa-warm", "codegraph-warm")
@@ -149,6 +150,7 @@ def freeze_smoke_plan(
     benchmark_repo: Path,
     checkout_root: Path,
     destination: Path,
+    model_preflight: Path,
     model: str,
     session_id: str,
     timeout_seconds: int,
@@ -161,13 +163,20 @@ def freeze_smoke_plan(
         benchmark_repo, "status", "--porcelain", "--untracked-files=no"
     ):
         raise ValueError("Benchmark implementation has tracked modifications")
+    tools, agent_fingerprint = tool_fingerprints(benchmark_repo)
+    preflight = validate_model_preflight(
+        model_preflight,
+        expected_model=model,
+        expected_cli_fingerprint=agent_fingerprint,
+        max_age_seconds=900,
+    )
     destination.mkdir(parents=True, exist_ok=False)
+    _write_exclusive(destination / "model-preflight.json", preflight)
     config_dir = benchmark_repo / "benchmarks" / "codegraph_compare"
     repo, arms, question = _load_selected_config(config_dir)
     checkouts = {
         arm: (checkout_root / arm / "gin").resolve() for arm in ARMS
     }
-    tools, agent_fingerprint = tool_fingerprints(benchmark_repo)
     index_path = destination / "index-evidence.json"
     eligibility_path = destination / "eligibility.json"
     eligibility = produce_gin_index_evidence(
@@ -267,6 +276,7 @@ def freeze_smoke_plan(
     )
     return {
         "manifest": manifest_path,
+        "model_preflight": destination / "model-preflight.json",
         "index_evidence": index_path,
         "eligibility": eligibility_path,
         "workspace": workspace_path,
@@ -277,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkout-root", required=True, type=Path)
     parser.add_argument("--destination", required=True, type=Path)
+    parser.add_argument("--model-preflight", required=True, type=Path)
     parser.add_argument("--model", required=True)
     parser.add_argument("--session-id", required=True)
     parser.add_argument("--timeout-seconds", type=int, default=1200)
@@ -287,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
             benchmark_repo=Path.cwd(),
             checkout_root=args.checkout_root,
             destination=args.destination,
+            model_preflight=args.model_preflight,
             model=args.model,
             session_id=args.session_id,
             timeout_seconds=args.timeout_seconds,
