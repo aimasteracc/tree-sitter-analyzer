@@ -141,6 +141,23 @@ def append_v1_attempt(
     experiment_dir = results_dir / "experiments" / manifest.manifest_hash
     experiment_dir.mkdir(parents=True, exist_ok=True)
     attempts_path = experiment_dir / "runs.jsonl"
+    audit_path = experiment_dir / f"policy_{attempt.run_id}.json"
+    audit_payload = (
+        json.dumps(
+            asdict(policy_audit),
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    if audit_path.exists():
+        if audit_path.read_text(encoding="utf-8") != audit_payload:
+            raise ValueError(f"Policy audit conflicts: {audit_path.name}")
+    else:
+        with audit_path.open("x", encoding="utf-8") as stream:
+            stream.write(audit_payload)
+
     identity = (
         attempt.experiment_id,
         attempt.session_id,
@@ -168,20 +185,6 @@ def append_v1_attempt(
             )
             + "\n"
         )
-
-    audit_path = experiment_dir / f"policy_{attempt.run_id}.json"
-    if audit_path.exists():
-        raise ValueError(f"Policy audit already exists: {audit_path.name}")
-    audit_path.write_text(
-        json.dumps(
-            asdict(policy_audit),
-            ensure_ascii=True,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
     return attempts_path
 
 

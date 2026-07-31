@@ -2652,6 +2652,9 @@ class TestGinSmokeManifestExecution:
         assert persisted["session_id"] == manifest.primary_session_id
         assert persisted["run_id"] == cell.run_id
         assert persisted["status"] == "SUCCESS"
+        path.unlink()
+        recovered = append_v1_attempt(tmp_path, manifest, attempt, audit)
+        assert json.loads(recovered.read_text(encoding="utf-8"))["run_id"] == cell.run_id
         with pytest.raises(ValueError, match="Duplicate physical attempt"):
             append_v1_attempt(tmp_path, manifest, attempt, audit)
 
