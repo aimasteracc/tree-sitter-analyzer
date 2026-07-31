@@ -2888,6 +2888,109 @@ class TestGinSmokeManifestExecution:
             "TRANSCRIPT_MISSING",
         ]
 
+    def test_manifest_smoke_preserves_completed_evidence_after_index_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.smoke_execution import (
+            run_manifest_smoke,
+        )
+
+        manifest = _v1_manifest()
+        cells = iter(manifest.expected_cells)
+
+        class Adapter:
+            def __init__(self, arm: str) -> None:
+                self.arm = arm
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm, repo_path, "system")
+
+        def run_one(**kwargs):
+            cell = next(cells)
+            transcript = tmp_path / f"{cell.run_id}.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {
+                            "type": "mcp_tool_call",
+                            "server": (
+                                "codegraph"
+                                if cell.arm == "codegraph-warm"
+                                else "tree-sitter-analyzer"
+                            ),
+                            "tool": "query",
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            record = self._legacy_record(manifest, cell.run_id, transcript)
+            record["answer"] = f"completed answer for {cell.arm}"
+            return record
+
+        validation_calls = 0
+
+        def validate(*args):
+            nonlocal validation_calls
+            validation_calls += 1
+            if validation_calls == 1:
+                raise ValueError("index changed after completed model call")
+
+        workspace_cell = SimpleNamespace(
+            checkout_path=tmp_path,
+            artifact_path=tmp_path / "artifacts",
+        )
+        workspace = SimpleNamespace(cell=lambda arm: workspace_cell)
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.smoke_execution.validate_index_content_v1",
+            validate,
+        )
+        stats = {
+            ("gin", cell.arm): _v1_run(manifest, cell.run_id).index_stats
+            for cell in manifest.expected_cells
+        }
+
+        result = run_manifest_smoke(
+            manifest=manifest,
+            repo_entries=[{"id": "gin", "local_path": str(tmp_path)}],
+            arm_entries=[
+                {"id": "codegraph-warm"},
+                {"id": "tsa-warm"},
+            ],
+            questions_by_repo={
+                "gin": [{"id": "q1", "prompt": "Where is it?"}]
+            },
+            supplied_index_stats=stats,
+            results_dir=tmp_path / "results",
+            workspace=workspace,
+            repo_path_resolver=lambda repo: Path(repo["local_path"]),
+            adapter_factory=Adapter,
+            run_one=run_one,
+        )
+
+        experiment = (
+            tmp_path / "results" / "experiments" / manifest.manifest_hash
+        )
+        first = json.loads(
+            (experiment / "runs.jsonl").read_text(encoding="utf-8").splitlines()[0]
+        )
+        policy = json.loads(
+            (
+                experiment
+                / f"policy_{manifest.expected_cells[0].run_id}.json"
+            ).read_text(encoding="utf-8")
+        )
+        # Issue #1201: post-run index validation must not erase model evidence.
+        assert result == 1
+        assert first["answer"] == "completed answer for codegraph-warm"
+        assert first["transcript_path"].endswith(
+            f"{manifest.expected_cells[0].run_id}.jsonl"
+        )
+        assert policy["violations"] == ["EXECUTION_EXCEPTION:ValueError"]
+
 
 class TestGinSmokeIndexEvidence:
     def test_go_eligibility_excludes_generated_files(self, tmp_path: Path):
@@ -3360,6 +3463,48 @@ class TestGinSmokeBundle:
         assert verdict["claim_level"] == "INVALID"
         assert verdict["dominance_allowed"] is False
         assert verdict["winner"] is None
+
+    def test_bundle_accepts_bound_legacy_terminal_exception(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        runs_path = experiment / "runs.jsonl"
+        runs = [
+            json.loads(line)
+            for line in runs_path.read_text(encoding="utf-8").splitlines()
+        ]
+        run = runs[0]
+        violations = [
+            "EXECUTION_EXCEPTION:ValueError",
+            "TRANSCRIPT_MISSING",
+        ]
+        run["status"] = "INVALID"
+        run["answer"] = "ERROR"
+        run["transcript_path"] = ""
+        run["blocker_reason"] = "POLICY_AUDIT:" + ",".join(violations)
+        runs_path.write_text(
+            "".join(json.dumps(item) + "\n" for item in runs),
+            encoding="utf-8",
+        )
+        policy_path = experiment / f"policy_{run['run_id']}.json"
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        policy["transcript_path"] = ""
+        policy["observed_mcp_servers"] = []
+        policy["observed_mcp_tools"] = []
+        policy["violations"] = violations
+        policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
+
+        # Issue #1201: immutable INVALID evidence predates transcript retention.
+        digest = create_smoke_bundle(
+            tmp_path / "bundle",
+            plan_dir=plan,
+            experiment_dir=experiment,
+            registry_path=registry,
+        )
+
+        assert len(digest) == 64
 
     def test_bundle_replay_is_byte_identical(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_bundle import (

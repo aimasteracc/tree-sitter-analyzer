@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, cast
@@ -23,6 +24,9 @@ _PLAN_FILES = (
     "index-evidence.json",
     "model-preflight.json",
     "workspace-evidence.json",
+)
+_TERMINAL_EXCEPTION = re.compile(
+    r"^(?:EXECUTION|EVIDENCE)_EXCEPTION:[A-Za-z_][A-Za-z0-9_]*$"
 )
 
 
@@ -62,6 +66,31 @@ def _copy_tree_files(source: Path, destination: Path) -> None:
         target.write_bytes(path.read_bytes())
 
 
+def _without_terminal_exception(
+    stored: dict[str, Any], run: RunRecordV1
+) -> dict[str, Any]:
+    """Validate and remove one terminal marker before transcript comparison."""
+
+    violations = stored.get("violations")
+    if (
+        not isinstance(violations, list)
+        or not violations
+        or not isinstance(violations[0], str)
+        or _TERMINAL_EXCEPTION.fullmatch(violations[0]) is None
+    ):
+        return stored
+    expected_blocker = "POLICY_AUDIT:" + ",".join(violations)
+    if (
+        run.status.value != "INVALID"
+        or run.blocker_reason != expected_blocker
+        or (not run.transcript_path and run.answer != "ERROR")
+    ):
+        raise ValueError(f"terminal exception binding mismatch: {run.run_id}")
+    comparable = dict(stored)
+    comparable["violations"] = violations[1:]
+    return comparable
+
+
 def _validate_policy_evidence(
     bundle_root: Path,
     runs: tuple[RunRecordV1, ...],
@@ -93,9 +122,11 @@ def _validate_policy_evidence(
             ),
         )
         recomputed["transcript_path"] = run.transcript_path
-        if recomputed != stored:
+        stored_violations = stored.get("violations")
+        comparable = _without_terminal_exception(stored, run)
+        if recomputed != comparable:
             raise ValueError(f"policy audit mismatch: {run.run_id}")
-        if recomputed["violations"] and run.status.value != "INVALID":
+        if stored_violations and run.status.value != "INVALID":
             raise ValueError(f"policy-invalid run has wrong status: {run.run_id}")
 
 

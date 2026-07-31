@@ -217,6 +217,7 @@ def run_manifest_smoke(
     configs: dict[tuple[str, str, str], Any] = {}
     failed = 0
     for cell in manifest.expected_cells:
+        legacy: dict[str, Any] | None = None
         try:
             _ = arms[cell.arm]
             question = questions[(cell.repo, cell.question_id)]
@@ -260,14 +261,30 @@ def run_manifest_smoke(
             transcript = Path(str(legacy.get("transcript_path", "")))
             audit = audit_codex_transcript(transcript, cell.arm)
         except Exception as exc:  # noqa: BLE001 - every cell needs a terminal record
-            legacy = _exception_record(manifest, cell, exc)
-            audit = PolicyAudit(
-                cell.arm,
-                "",
-                (),
-                (),
-                (f"EXECUTION_EXCEPTION:{type(exc).__name__}", "TRANSCRIPT_MISSING"),
-            )
+            marker = f"EXECUTION_EXCEPTION:{type(exc).__name__}"
+            if legacy is None:
+                legacy = _exception_record(manifest, cell, exc)
+                audit = PolicyAudit(
+                    cell.arm,
+                    "",
+                    (),
+                    (),
+                    (marker, "TRANSCRIPT_MISSING"),
+                )
+            else:
+                legacy = dict(legacy)
+                legacy["error"] = f"{type(exc).__name__}: {exc}"
+                transcript_path = str(legacy.get("transcript_path", ""))
+                transcript_audit = audit_codex_transcript(
+                    Path(transcript_path), cell.arm
+                )
+                audit = PolicyAudit(
+                    transcript_audit.arm,
+                    transcript_path,
+                    transcript_audit.observed_mcp_servers,
+                    transcript_audit.observed_mcp_tools,
+                    (marker, *transcript_audit.violations),
+                )
         try:
             attempt = build_v1_attempt(
                 manifest,
