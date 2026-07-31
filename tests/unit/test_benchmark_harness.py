@@ -2951,7 +2951,9 @@ class TestGinSmokeWorkspace:
 
         manifest, raw, workspace = self._fixture(tmp_path)
         tsa_index = workspace.cell("tsa-warm").index_path
-        assert tsa_index is not None
+        assert tsa_index == (
+            workspace.cell("tsa-warm").checkout_path / ".ast-cache"
+        )
         tsa_index.rmdir()
         external = tmp_path / "shared-index"
         external.mkdir()
