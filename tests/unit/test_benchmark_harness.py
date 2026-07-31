@@ -1185,6 +1185,101 @@ class TestCodeGraphCompareSetupGate:
             },
         ]
 
+    def test_manifest_bound_execution_persists_v1_attempts_in_frozen_order(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+
+        manifest = self._v1_setup_manifest(agent_backend="codex")
+        manifest_path = self._write_v1_manifest(tmp_path, manifest)
+        evidence_input = self._write_v1_index_evidence(tmp_path, manifest)
+        observed: list[str] = []
+
+        class Adapter:
+            def __init__(self, arm_id: str) -> None:
+                self.arm_id = arm_id
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm_id, repo_path, "system")
+
+        def run_one(**kwargs):
+            run_id = (
+                f"{kwargs['question_id']}__{kwargs['arm_id']}__"
+                f"{kwargs['agent_backend']}__{kwargs['repeat']:02d}"
+            )
+            observed.append(run_id)
+            transcript = tmp_path / f"{run_id}.jsonl"
+            server = (
+                "codegraph"
+                if kwargs["arm_id"] == "codegraph-warm"
+                else "tree-sitter-analyzer"
+            )
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {
+                            "type": "mcp_tool_call",
+                            "server": server,
+                            "tool": "search",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "run_id": run_id,
+                "session_id": kwargs["session_id"],
+                "repo": "gin",
+                "question_id": kwargs["question_id"],
+                "arm": kwargs["arm_id"],
+                "repeat": kwargs["repeat"],
+                "agent_backend": kwargs["agent_backend"],
+                "model": kwargs["model"],
+                "started_at": "2026-07-31T00:00:00Z",
+                "ended_at": "2026-07-31T00:00:01Z",
+                "elapsed_seconds": 1.0,
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "total_tokens": 15,
+                "estimated_cost_usd": 0.0,
+                "total_cost_usd": 0.0,
+                "tool_calls": 1,
+                "file_reads": 0,
+                "search_calls": 0,
+                "index_queries": 1,
+                "answer": "answer",
+                "citations": ["gin.go"],
+                "transcript_path": str(transcript),
+                "error": None,
+            }
+
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(monkeypatch, Adapter, run_one)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = str(manifest_path)
+        args.index_evidence = evidence_input
+
+        assert compare_run.cmd_run_matrix(args) == 0
+        assert observed == [cell.run_id for cell in manifest.expected_cells]
+        attempts_path = (
+            tmp_path
+            / "results"
+            / "experiments"
+            / manifest.manifest_hash
+            / "runs.jsonl"
+        )
+        attempts = [
+            json.loads(line)
+            for line in attempts_path.read_text(encoding="utf-8").splitlines()
+        ]
+        assert [attempt["run_id"] for attempt in attempts] == observed
+        assert [attempt["status"] for attempt in attempts] == [
+            "SUCCESS",
+            "SUCCESS",
+        ]
+
     def test_matrix_manifest_mismatch_fails_before_adapter_creation(
         self, monkeypatch, tmp_path: Path
     ):
@@ -2226,6 +2321,173 @@ class TestCodeGraphCompareSetupGate:
         assert "--ignore-user-config" in command
         assert "--strict-config" in command
         assert not any(value.startswith("mcp_servers.") for value in command)
+
+
+class TestGinSmokeManifestExecution:
+    @staticmethod
+    def _legacy_record(manifest, run_id: str, transcript_path: Path) -> dict:
+        cell = next(cell for cell in manifest.expected_cells if cell.run_id == run_id)
+        return {
+            "run_id": cell.run_id,
+            "session_id": manifest.primary_session_id,
+            "repo": cell.repo,
+            "question_id": cell.question_id,
+            "arm": cell.arm,
+            "repeat": cell.repeat,
+            "agent_backend": cell.agent_backend,
+            "model": manifest.model,
+            "started_at": "2026-07-31T00:00:00Z",
+            "ended_at": "2026-07-31T00:00:01Z",
+            "elapsed_seconds": 1.0,
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "total_tokens": 15,
+            "estimated_cost_usd": 0.0,
+            "total_cost_usd": 0.0,
+            "tool_calls": 1,
+            "file_reads": 0,
+            "search_calls": 0,
+            "index_queries": 1,
+            "answer": "answer",
+            "citations": ["gin.go"],
+            "transcript_path": str(transcript_path),
+            "error": None,
+        }
+
+    def test_codex_transcript_accepts_only_the_declared_index_server(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "tsa.jsonl"
+        transcript.write_text(
+            "\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "type": "command_execution",
+                                "command": "grep -n ServeHTTP gin.go",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "type": "mcp_tool_call",
+                                "server": "tree-sitter-analyzer",
+                                "tool": "nav",
+                            },
+                        }
+                    ),
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "tsa-warm")
+
+        assert audit.violations == ()
+        assert audit.observed_mcp_servers == ("tree-sitter-analyzer",)
+        assert audit.observed_mcp_tools == ("nav",)
+
+    def test_codex_transcript_rejects_cross_arm_mcp(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "cross-arm.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "mcp_tool_call",
+                        "server": "codegraph",
+                        "tool": "codegraph_search",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "tsa-warm")
+
+        assert audit.violations == ("CROSS_ARM_MCP:1", "MISSING_INDEX_QUERY")
+
+    @pytest.mark.parametrize(
+        ("item", "violation"),
+        (
+            ({"type": "file_change"}, "FILE_CHANGE:1"),
+            (
+                {"type": "command_execution", "command": "rm -rf .ast-cache"},
+                "MUTATING_COMMAND:1",
+            ),
+            (
+                {
+                    "type": "command_execution",
+                    "command": "tree_sitter_analyzer --outline",
+                },
+                "INDEX_COMMAND_OUTSIDE_MCP:1",
+            ),
+        ),
+    )
+    def test_codex_transcript_rejects_non_readonly_events(
+        self, tmp_path: Path, item: dict, violation: str
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "forbidden.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "item.completed", "item": item}),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "native-only")
+
+        assert audit.violations == (violation,)
+
+    def test_v1_attempt_is_manifest_bound_and_append_only(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            PolicyAudit,
+            append_v1_attempt,
+            build_v1_attempt,
+        )
+
+        manifest = _v1_manifest()
+        cell = manifest.expected_cells[0]
+        legacy = self._legacy_record(manifest, cell.run_id, tmp_path / "raw.jsonl")
+        stats = _v1_run(manifest, cell.run_id).index_stats
+        audit = PolicyAudit(
+            cell.arm,
+            legacy["transcript_path"],
+            ("codegraph",),
+            ("codegraph_search",),
+            (),
+        )
+
+        attempt = build_v1_attempt(
+            manifest,
+            cell,
+            legacy,
+            index_stats=stats,
+            policy_audit=audit,
+        )
+        path = append_v1_attempt(tmp_path, manifest, attempt, audit)
+
+        persisted = json.loads(path.read_text(encoding="utf-8"))
+        assert persisted["experiment_id"] == manifest.experiment_id
+        assert persisted["session_id"] == manifest.primary_session_id
+        assert persisted["run_id"] == cell.run_id
+        assert persisted["status"] == "SUCCESS"
+        with pytest.raises(ValueError, match="Duplicate physical attempt"):
+            append_v1_attempt(tmp_path, manifest, attempt, audit)
 
 
 class TestCodeGraphCompareAnalysisGate:
