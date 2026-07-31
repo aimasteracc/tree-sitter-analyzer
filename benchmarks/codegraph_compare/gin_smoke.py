@@ -87,6 +87,16 @@ def _digest_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _is_sha256(value: object) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return True
+
+
 def _write(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(_canonical(payload) + b"\n")
@@ -288,7 +298,11 @@ def validate_bundle(
     root: Path, *, expected_git_sha: str, expected_bundle_digest: str
 ) -> dict[str, Any]:
     """Validate a bundle against an external, trusted Git SHA anchor."""
-    if not root.is_dir() or not expected_git_sha or not expected_bundle_digest:
+    if (
+        not root.is_dir()
+        or not expected_git_sha
+        or not _is_sha256(expected_bundle_digest)
+    ):
         raise QualificationError("bundle directory and external anchors are required")
     names = _regular_files(root)
     _validate_names(names)
@@ -308,6 +322,8 @@ def validate_bundle(
         or manifest.get("expected_arms") != list(EXPECTED_ARMS)
         or manifest.get("network") != "disabled"
         or manifest.get("allowed_native_tools") != ["read", "search"]
+        or not _is_sha256(manifest.get("question_sha256"))
+        or not _is_sha256(manifest.get("config_fingerprint"))
         or type(manifest.get("timeout_seconds")) is not int
         or manifest["timeout_seconds"] <= 0
         or not isinstance(manifest.get("model"), str)
@@ -329,7 +345,11 @@ def validate_bundle(
     if manifest.get("config_fingerprint") != _sha256(shared):
         raise QualificationError("config fingerprint mismatch")
     expected_checksums = checksum_doc.get("sha256")
-    if not isinstance(expected_checksums, dict) or set(expected_checksums) != set(FILES):
+    if (
+        not isinstance(expected_checksums, dict)
+        or set(expected_checksums) != set(FILES)
+        or any(not _is_sha256(value) for value in expected_checksums.values())
+    ):
         raise QualificationError("invalid checksum inventory")
     actual = {name: _digest_bytes((root / name).read_bytes()) for name in FILES}
     if actual != expected_checksums:
@@ -352,6 +372,9 @@ def validate_bundle(
                 "model_executed",
             })
             or cell.get("arm") != arm
+            or not _is_sha256(cell.get("input_fingerprint"))
+            or not _is_sha256(cell.get("config_fingerprint"))
+            or not _is_sha256(cell.get("tool_policy_fingerprint"))
             or policy != _policy(arm)
         ):
             raise QualificationError("mixed or invalid cell")

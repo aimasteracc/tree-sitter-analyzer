@@ -153,7 +153,7 @@ class TestGinSmokeQualification:
                 "cells/native.json",
                 "input_fingerprint",
                 "wrong",
-                "input fingerprint mismatch",
+                "mixed or invalid cell",
             ),
             (
                 "cells/native.json",
@@ -352,7 +352,11 @@ class TestGinSmokeQualification:
 
     @pytest.mark.parametrize(
         ("field", "value"),
-        [("ground_truth", "secret"), ("expected_arms", None)],
+        [
+            ("ground_truth", "secret"),
+            ("expected_arms", None),
+            ("question_sha256", ""),
+        ],
     )
     def test_manifest_schema_is_exact(
         self, tmp_path: Path, field: str, value: object
