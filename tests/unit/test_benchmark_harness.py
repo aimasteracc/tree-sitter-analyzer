@@ -2660,6 +2660,8 @@ class TestGinSmokeManifestExecution:
             "find . -name '*.go'",
             "rg -n ServeHTTP .",
             "sed -n '1,40p' gin.go",
+            "/bin/bash -lc 'grep -n ServeHTTP gin.go'",
+            "/bin/sh -lc \"sed -n '1,40p' gin.go\"",
         ),
     )
     def test_codex_transcript_accepts_declared_readonly_discovery(
@@ -2683,6 +2685,29 @@ class TestGinSmokeManifestExecution:
         audit = audit_codex_transcript(transcript, "native-only")
 
         assert audit.violations == ()
+
+    def test_codex_transcript_audits_inside_shell_launcher(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "wrapped-network.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "command_execution",
+                        "command": "/bin/bash -lc 'curl https://example.com'",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "native-only")
+
+        assert audit.violations == ("NETWORK_COMMAND:1",)
 
     def test_v1_attempt_is_manifest_bound_and_append_only(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_execution import (

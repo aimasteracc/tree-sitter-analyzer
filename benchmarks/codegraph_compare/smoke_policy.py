@@ -167,6 +167,7 @@ def _mcp_call_failed(item: dict[str, object]) -> bool:
 def _audit_command(
     command: str, line_number: int, violations: list[str]
 ) -> None:
+    command = _unwrap_shell_launcher(command)
     violation_count = len(violations)
     checks = (
         (_WRITE_COMMAND, "MUTATING_COMMAND"),
@@ -182,6 +183,22 @@ def _audit_command(
         violations.append(f"NETWORK_COMMAND:{line_number}")
     if len(violations) == violation_count and not _command_is_allowlisted(command):
         violations.append(f"UNDECLARED_SHELL_COMMAND:{line_number}")
+
+
+def _unwrap_shell_launcher(command: str) -> str:
+    """Unwrap only Codex's exact non-interactive shell transcript envelope."""
+
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return command
+    if (
+        len(tokens) == 3
+        and Path(tokens[0]).name in {"bash", "sh"}
+        and tokens[1] == "-lc"
+    ):
+        return tokens[2]
+    return command
 
 
 def _command_is_allowlisted(command: str) -> bool:
