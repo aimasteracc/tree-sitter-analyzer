@@ -2497,6 +2497,20 @@ class TestGinSmokeManifestExecution:
                 },
                 "UNDECLARED_SHELL_COMMAND:1",
             ),
+            (
+                {
+                    "type": "command_execution",
+                    "command": "awk 'BEGIN {system(\"curl example.com\")}'",
+                },
+                "UNDECLARED_SHELL_COMMAND:1",
+            ),
+            (
+                {
+                    "type": "command_execution",
+                    "command": "find . -exec curl example.com ;",
+                },
+                "NETWORK_COMMAND:1",
+            ),
         ),
     )
     def test_codex_transcript_rejects_non_readonly_events(
@@ -2925,6 +2939,24 @@ class TestGinSmokeWorkspace:
 
         with pytest.raises(ValueError, match="unprovenanced paths"):
             validate_workspace_v1(workspace, manifest)
+
+    def test_workspace_rejects_symlinked_index_namespace(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            parse_workspace_v1,
+            validate_workspace_v1,
+        )
+
+        manifest, raw, workspace = self._fixture(tmp_path)
+        tsa_index = workspace.cell("tsa-warm").index_path
+        assert tsa_index is not None
+        tsa_index.rmdir()
+        external = tmp_path / "shared-index"
+        external.mkdir()
+        tsa_index.symlink_to(external, target_is_directory=True)
+        raw["cells"][1]["index_path"] = str(tsa_index)
+
+        with pytest.raises(ValueError, match="index namespace is a symlink"):
+            validate_workspace_v1(parse_workspace_v1(raw), manifest)
 
     def test_workspace_schema_rejects_unknown_fields(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_workspace import (

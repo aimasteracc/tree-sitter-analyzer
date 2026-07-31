@@ -64,7 +64,7 @@ def _absolute_path(value: Any, label: str) -> Path:
     path = Path(value)
     if not path.is_absolute():
         raise ValueError(f"{label} must be an absolute path")
-    return path.resolve()
+    return path.absolute()
 
 
 def parse_workspace_v1(raw: Any) -> SmokeWorkspaceV1:
@@ -172,8 +172,14 @@ def validate_workspace_v1(
         raise ValueError(f"workspace arms must equal {_ARMS}")
     checkouts = tuple(cell.checkout_path for cell in workspace.cells)
     artifacts = tuple(cell.artifact_path for cell in workspace.cells)
+    indexes = tuple(
+        cell.index_path for cell in workspace.cells if cell.index_path is not None
+    )
     _require_disjoint(checkouts, "checkout")
     _require_disjoint(artifacts, "artifact")
+    _require_disjoint(indexes, "index")
+    if any(path.is_symlink() for path in (*checkouts, *artifacts)):
+        raise ValueError("checkout and artifact namespaces cannot be symlinks")
     if any(
         _paths_overlap(artifact, checkout)
         for artifact in artifacts
@@ -202,7 +208,7 @@ def validate_workspace_v1(
 
         index_name = _INDEX_DIRS[cell.arm_id]
         expected_index = (
-            None if index_name is None else (cell.checkout_path / index_name).resolve()
+            None if index_name is None else cell.checkout_path / index_name
         )
         if cell.index_path != expected_index:
             raise ValueError(f"{cell.arm_id} index namespace mismatch")
@@ -215,6 +221,11 @@ def validate_workspace_v1(
         )
         if any((cell.checkout_path / name).exists() for name in forbidden):
             raise ValueError(f"{cell.arm_id} contains a foreign index namespace")
+        if cell.index_path is not None:
+            if cell.index_path.is_symlink():
+                raise ValueError(f"{cell.arm_id} index namespace is a symlink")
+            if cell.index_path.resolve().parent != cell.checkout_path.resolve():
+                raise ValueError(f"{cell.arm_id} index namespace escapes checkout")
         unprovenanced = _unprovenanced_paths(cell.checkout_path, index_name)
         if unprovenanced:
             raise ValueError(

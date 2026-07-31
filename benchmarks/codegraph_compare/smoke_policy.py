@@ -47,26 +47,19 @@ _NETWORK_COMMAND = re.compile(
 )
 _READ_COMMANDS = frozenset(
     {
-        "awk",
         "cat",
         "cd",
         "cut",
-        "find",
         "grep",
         "head",
         "ls",
         "pwd",
-        "rg",
-        "sed",
         "sort",
         "tail",
         "tr",
         "uniq",
         "wc",
     }
-)
-_GIT_READ_COMMANDS = frozenset(
-    {"blame", "diff", "grep", "log", "ls-files", "rev-parse", "show", "status"}
 )
 
 
@@ -181,9 +174,6 @@ def _command_is_allowlisted(command: str) -> bool:
         if not segment:
             continue
         executable = Path(segment[0]).name
-        if executable == "git":
-            if len(segment) < 2 or segment[1] not in _GIT_READ_COMMANDS:
-                return False
-        elif executable not in _READ_COMMANDS:
+        if executable not in _READ_COMMANDS:
             return False
     return True
