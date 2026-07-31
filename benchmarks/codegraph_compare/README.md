@@ -10,6 +10,8 @@ does not run an index, backend, or model and can only emit E0 evidence:
 RECEIPT=$(python -m benchmarks.codegraph_compare.gin_smoke create /tmp/gin-smoke \
   --benchmark-git-sha "$(git rev-parse HEAD)" \
   --repository-path /fixture/gin \
+  --repository-commit 0123456789abcdef0123456789abcdef01234567 \
+  --repository-fingerprint 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
   --question "Where is the Gin router assembled?" \
   --model fixture-model --timeout-seconds 60)
 DIGEST=$(printf '%s' "$RECEIPT" | jq -r .bundle_digest)

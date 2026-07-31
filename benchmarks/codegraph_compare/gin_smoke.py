@@ -44,6 +44,8 @@ MANIFEST_KEYS = frozenset(
         "mode",
         "benchmark_git_sha",
         "repository_path",
+        "repository_commit",
+        "repository_fingerprint",
         "question_sha256",
         "config_fingerprint",
         "expected_arms",
@@ -65,6 +67,8 @@ class QualificationError(ValueError):
 class Cell:
     arm: str
     repository_path: str
+    repository_commit: str
+    repository_fingerprint: str
     checkout_namespace: str
     mcp_namespace: str
     index_namespace: str
@@ -89,6 +93,16 @@ def _digest_bytes(payload: bytes) -> str:
 
 def _is_sha256(value: object) -> bool:
     if not isinstance(value, str) or len(value) != 64:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_git_sha(value: object) -> bool:
+    if not isinstance(value, str) or len(value) != 40:
         return False
     try:
         int(value, 16)
@@ -124,6 +138,8 @@ def _cell(
     arm: str,
     *,
     repository_path: str,
+    repository_commit: str,
+    repository_fingerprint: str,
     input_fingerprint: str,
     config_fingerprint: str,
 ) -> Cell:
@@ -132,6 +148,8 @@ def _cell(
     return Cell(
         arm=arm,
         repository_path=repository_path,
+        repository_commit=repository_commit,
+        repository_fingerprint=repository_fingerprint,
         checkout_namespace=f"checkout/{slug}",
         mcp_namespace=f"mcp/{slug}",
         index_namespace=f"index/{slug}",
@@ -147,6 +165,8 @@ def create_bundle(
     *,
     benchmark_git_sha: str,
     repository_path: str,
+    repository_commit: str,
+    repository_fingerprint: str,
     question: str,
     model: str,
     timeout_seconds: int,
@@ -154,15 +174,29 @@ def create_bundle(
     """Create an immutable fixture bundle without executing a backend or model."""
     if destination.exists():
         raise QualificationError("destination already exists")
-    if not benchmark_git_sha or not repository_path or not question or not model:
+    if (
+        not _is_git_sha(benchmark_git_sha)
+        or not repository_path
+        or not _is_git_sha(repository_commit)
+        or not _is_sha256(repository_fingerprint)
+        or not question
+        or not model
+    ):
         raise QualificationError("identity fields must be non-empty")
     if timeout_seconds <= 0:
         raise QualificationError("timeout_seconds must be positive")
 
     destination.mkdir(parents=True)
-    input_fingerprint = _digest_bytes(question.encode())
+    question_sha256 = _digest_bytes(question.encode())
+    input_fingerprint = _sha256(
+        {
+            "question_sha256": question_sha256,
+            "repository_commit": repository_commit,
+            "repository_fingerprint": repository_fingerprint,
+        }
+    )
     shared = {
-        "question_sha256": input_fingerprint,
+        "question_sha256": question_sha256,
         "model": model,
         "timeout_seconds": timeout_seconds,
         "network": "disabled",
@@ -173,6 +207,8 @@ def create_bundle(
         _cell(
             arm,
             repository_path=repository_path,
+            repository_commit=repository_commit,
+            repository_fingerprint=repository_fingerprint,
             input_fingerprint=input_fingerprint,
             config_fingerprint=config_fingerprint,
         )
@@ -197,7 +233,9 @@ def create_bundle(
         "mode": "fixture",
         "benchmark_git_sha": benchmark_git_sha,
         "repository_path": repository_path,
-        "question_sha256": input_fingerprint,
+        "repository_commit": repository_commit,
+        "repository_fingerprint": repository_fingerprint,
+        "question_sha256": question_sha256,
         "config_fingerprint": config_fingerprint,
         "expected_arms": list(EXPECTED_ARMS),
         "retry_policy": {"kind": "none", "selective_reruns": False},
@@ -312,7 +350,10 @@ def validate_bundle(
     if _digest_bytes((root / "checksums.json").read_bytes()) != expected_bundle_digest:
         raise QualificationError("external bundle digest mismatch")
     _reject_forbidden_keys((manifest, qualification, checksum_doc))
-    if manifest.get("benchmark_git_sha") != expected_git_sha:
+    if (
+        manifest.get("benchmark_git_sha") != expected_git_sha
+        or not _is_git_sha(expected_git_sha)
+    ):
         raise QualificationError("wrong benchmark Git SHA")
     if (
         set(manifest) != MANIFEST_KEYS
@@ -330,6 +371,8 @@ def validate_bundle(
         or not manifest["model"]
         or not isinstance(manifest.get("repository_path"), str)
         or not manifest["repository_path"]
+        or not _is_git_sha(manifest.get("repository_commit"))
+        or not _is_sha256(manifest.get("repository_fingerprint"))
         or manifest.get("oracle_material_in_bundle") is not False
         or manifest.get("retry_policy")
         != {"kind": "none", "selective_reruns": False}
@@ -346,7 +389,8 @@ def validate_bundle(
         raise QualificationError("config fingerprint mismatch")
     expected_checksums = checksum_doc.get("sha256")
     if (
-        not isinstance(expected_checksums, dict)
+        set(checksum_doc) != {"sha256"}
+        or not isinstance(expected_checksums, dict)
         or set(expected_checksums) != set(FILES)
         or any(not _is_sha256(value) for value in expected_checksums.values())
     ):
@@ -364,6 +408,7 @@ def validate_bundle(
     _reject_forbidden_keys((cells, policies))
     cell_keys = {field.name for field in fields(Cell)}
     for arm, cell, policy in zip(EXPECTED_ARMS, cells, policies, strict=True):
+        slug = arm.replace("-", "_")
         if (
             set(cell) != cell_keys
             or any(not isinstance(cell[key], str) for key in cell_keys - {
@@ -372,6 +417,10 @@ def validate_bundle(
                 "model_executed",
             })
             or cell.get("arm") != arm
+            or cell.get("checkout_namespace") != f"checkout/{slug}"
+            or cell.get("mcp_namespace") != f"mcp/{slug}"
+            or cell.get("index_namespace") != f"index/{slug}"
+            or cell.get("artifact_namespace") != f"artifact/{slug}"
             or not _is_sha256(cell.get("input_fingerprint"))
             or not _is_sha256(cell.get("config_fingerprint"))
             or not _is_sha256(cell.get("tool_policy_fingerprint"))
@@ -380,7 +429,20 @@ def validate_bundle(
             raise QualificationError("mixed or invalid cell")
         if cell.get("repository_path") != manifest.get("repository_path"):
             raise QualificationError("wrong repository")
-        if cell.get("input_fingerprint") != manifest.get("question_sha256"):
+        if (
+            cell.get("repository_commit") != manifest.get("repository_commit")
+            or cell.get("repository_fingerprint")
+            != manifest.get("repository_fingerprint")
+        ):
+            raise QualificationError("wrong repository provenance")
+        expected_input = _sha256(
+            {
+                "question_sha256": manifest.get("question_sha256"),
+                "repository_commit": manifest.get("repository_commit"),
+                "repository_fingerprint": manifest.get("repository_fingerprint"),
+            }
+        )
+        if cell.get("input_fingerprint") != expected_input:
             raise QualificationError("input fingerprint mismatch")
         if cell.get("config_fingerprint") != manifest.get("config_fingerprint"):
             raise QualificationError("config fingerprint mismatch")
@@ -468,6 +530,8 @@ def _parser() -> argparse.ArgumentParser:
     create.add_argument("destination", type=Path)
     create.add_argument("--benchmark-git-sha", required=True)
     create.add_argument("--repository-path", required=True)
+    create.add_argument("--repository-commit", required=True)
+    create.add_argument("--repository-fingerprint", required=True)
     create.add_argument("--question", required=True)
     create.add_argument("--model", required=True)
     create.add_argument("--timeout-seconds", type=int, required=True)
@@ -491,6 +555,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.destination,
                 benchmark_git_sha=args.benchmark_git_sha,
                 repository_path=args.repository_path,
+                repository_commit=args.repository_commit,
+                repository_fingerprint=args.repository_fingerprint,
                 question=args.question,
                 model=args.model,
                 timeout_seconds=args.timeout_seconds,

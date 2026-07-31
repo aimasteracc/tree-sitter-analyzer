@@ -91,6 +91,8 @@ class TestGinSmokeQualification:
             bundle,
             benchmark_git_sha="a" * 40,
             repository_path="/fixture/repository",
+            repository_commit="b" * 40,
+            repository_fingerprint="c" * 64,
             question="Where is the Gin router assembled?",
             model="fixture-model",
             timeout_seconds=60,
@@ -159,7 +161,13 @@ class TestGinSmokeQualification:
                 "cells/native.json",
                 "index_namespace",
                 "index/tree_sitter_analyzer",
-                "namespace collision",
+                "mixed or invalid cell",
+            ),
+            (
+                "cells/native.json",
+                "repository_commit",
+                "d" * 40,
+                "wrong repository provenance",
             ),
         ],
     )
@@ -383,6 +391,19 @@ class TestGinSmokeQualification:
             gin_smoke.QualificationError, match="wrong benchmark Git SHA"
         ):
             self._validate(bundle, git_sha="b" * 40)
+
+    def test_mutable_benchmark_ref_is_rejected(self, tmp_path: Path):
+        with pytest.raises(gin_smoke.QualificationError, match="identity fields"):
+            gin_smoke.create_bundle(
+                tmp_path / "bundle",
+                benchmark_git_sha="main",
+                repository_path="/fixture/repository",
+                repository_commit="b" * 40,
+                repository_fingerprint="c" * 64,
+                question="Where is the Gin router assembled?",
+                model="fixture-model",
+                timeout_seconds=60,
+            )
 
     def test_missing_cell_is_rejected(self, tmp_path: Path):
         bundle = self._bundle(tmp_path)
