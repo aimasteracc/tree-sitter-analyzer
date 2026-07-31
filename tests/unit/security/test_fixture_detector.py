@@ -183,6 +183,9 @@ class TestTier2Scan:
 
 
 class TestRealRepoRegression:
+    # Issue #1206: this deliberate whole-repository scan can exceed the
+    # five-second unit budget on macOS runners.
+    @pytest.mark.slow_ok
     def test_real_repo_finds_java_plugin(self) -> None:
         # Regression test for feedback_test-fixture-files (memory):
         # java_plugin.py IS a negative fixture in the real repo and the
