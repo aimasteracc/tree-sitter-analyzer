@@ -187,7 +187,7 @@ def _looks_like_index_query(command: str) -> bool:
 
 
 def _parse_codex_tool_calls_from_stream(lines: list[str]) -> tuple[int, int, int, int]:
-    """Count Codex CLI command_execution events by benchmark category."""
+    """Count Codex CLI command and MCP events by benchmark category."""
     tool_calls = 0
     file_reads = 0
     search_calls = 0
@@ -202,6 +202,10 @@ def _parse_codex_tool_calls_from_stream(lines: list[str]) -> tuple[int, int, int
             continue
 
         item = event.get("item", {})
+        if item.get("type") == "mcp_tool_call":
+            tool_calls += 1
+            index_queries += 1
+            continue
         if item.get("type") != "command_execution":
             continue
 
@@ -429,9 +433,21 @@ def _codex_mcp_config_args(arm_id: str, repo_path: Path) -> list[str]:
         }
     config: list[str] = []
     for key, value in values.items():
-        encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":"))
+        encoded = _toml_cli_value(value)
         config.extend(["-c", f"mcp_servers.{server_name}.{key}={encoded}"])
     return config
+
+
+def _toml_cli_value(value: Any) -> str:
+    """Encode a value for Codex's ``-c key=value`` TOML parser."""
+
+    if isinstance(value, dict):
+        entries = ", ".join(
+            f"{key} = {json.dumps(item, ensure_ascii=True)}"
+            for key, item in value.items()
+        )
+        return "{ " + entries + " }"
+    return json.dumps(value, ensure_ascii=True, separators=(",", ":"))
 
 
 def validate_backend_arm_support(agent_backend: str, arm_id: str) -> None:

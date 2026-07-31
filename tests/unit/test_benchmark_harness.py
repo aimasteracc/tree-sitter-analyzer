@@ -2329,8 +2329,8 @@ class TestCodeGraphCompareSetupGate:
         assert configured_servers == [f"mcp_servers.{server_name}.required=true"]
         if arm_id == "codegraph-warm":
             assert (
-                'mcp_servers.codegraph.env={"CODEGRAPH_TELEMETRY":"0",'
-                '"CODEGRAPH_NO_DAEMON":"1"}'
+                'mcp_servers.codegraph.env={ CODEGRAPH_TELEMETRY = "0", '
+                'CODEGRAPH_NO_DAEMON = "1" }'
             ) in command
 
     def test_codex_native_command_ignores_user_config_without_mcp_servers(
@@ -2354,6 +2354,28 @@ class TestCodeGraphCompareSetupGate:
         assert "--ignore-user-config" in command
         assert "--strict-config" in command
         assert not any(value.startswith("mcp_servers.") for value in command)
+
+    def test_codex_metrics_count_mcp_calls_as_index_queries(self):
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _parse_codex_tool_calls_from_stream,
+        )
+
+        metrics = _parse_codex_tool_calls_from_stream(
+            [
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {
+                            "type": "mcp_tool_call",
+                            "server": "codegraph",
+                            "tool": "codegraph_search",
+                        },
+                    }
+                )
+            ]
+        )
+
+        assert metrics == (1, 0, 0, 1)
 
 
 class TestGinSmokeManifestExecution:
