@@ -56,9 +56,15 @@ def _agent_message(stdout: str) -> str:
             if not isinstance(text, str):
                 raise ValueError("Model preflight agent message is not text")
             messages.append(text)
-    if messages != [SENTINEL]:
+    if len(messages) != 1:
+        raise ValueError("Model preflight did not return exactly one terminal message")
+    try:
+        payload = json.loads(messages[0])
+    except json.JSONDecodeError as exc:
+        raise ValueError("Model preflight terminal message is not JSON") from exc
+    if payload != {"status": SENTINEL}:
         raise ValueError("Model preflight did not return the exact terminal sentinel")
-    return messages[0]
+    return SENTINEL
 
 
 def run_model_preflight(
@@ -69,6 +75,21 @@ def run_model_preflight(
     identity = _codex_identity()
     account_surface = _account_surface()
     with tempfile.TemporaryDirectory(prefix="no1-model-preflight-") as directory:
+        schema_path = Path(directory) / "output-schema.json"
+        schema_path.write_text(
+            json.dumps(
+                {
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string", "const": SENTINEL},
+                    },
+                    "required": ["status"],
+                    "additionalProperties": False,
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
         result = subprocess.run(
             [
                 "codex",
@@ -81,7 +102,9 @@ def run_model_preflight(
                 "--ignore-user-config",
                 "--skip-git-repo-check",
                 "--json",
-                SENTINEL,
+                "--output-schema",
+                str(schema_path),
+                "Return the required JSON object.",
             ],
             cwd=directory,
             env={**os.environ, "CODEX_NETWORK_DISABLED": "1"},
