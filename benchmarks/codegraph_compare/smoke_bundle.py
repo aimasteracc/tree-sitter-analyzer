@@ -15,11 +15,13 @@ from benchmarks.codegraph_compare.integrity import (
 )
 from benchmarks.codegraph_compare.schemas import RunRecordV1, parse_run_record
 from benchmarks.codegraph_compare.smoke_policy import audit_codex_transcript
+from benchmarks.codegraph_compare.smoke_preflight import validate_model_preflight
 
 _PLAN_FILES = (
     "eligibility.json",
     "experiment-manifest.json",
     "index-evidence.json",
+    "model-preflight.json",
     "workspace-evidence.json",
 )
 
@@ -112,6 +114,11 @@ def create_smoke_bundle(
     for name in _PLAN_FILES:
         (plan_target / name).write_bytes((plan_dir / name).read_bytes())
     manifest = parse_manifest_v1(_json(plan_target / "experiment-manifest.json"))
+    validate_model_preflight(
+        plan_target / "model-preflight.json",
+        expected_model=manifest.model,
+        expected_cli_fingerprint=manifest.agent_cli_fingerprint,
+    )
     evidence_target = destination / "evidence"
     _copy_tree_files(experiment_dir, evidence_target)
     artifact_target = destination / "artifacts"
@@ -197,6 +204,11 @@ def validate_smoke_bundle(bundle: Path, *, external_digest: str) -> dict[str, An
             raise ValueError(f"bundle checksum mismatch: {relative}")
 
     manifest = parse_manifest_v1(_json(bundle / "plan/experiment-manifest.json"))
+    validate_model_preflight(
+        bundle / "plan/model-preflight.json",
+        expected_model=manifest.model,
+        expected_cli_fingerprint=manifest.agent_cli_fingerprint,
+    )
     events = _registry(bundle / "registry.jsonl", manifest.experiment_id)
     runs = _runs(bundle / "evidence/runs.jsonl")
     _validate_policy_evidence(bundle, runs)
