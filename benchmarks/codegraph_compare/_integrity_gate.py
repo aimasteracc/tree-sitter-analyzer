@@ -115,6 +115,7 @@ def _validate_manifest(manifest: ExperimentManifestV1) -> list[IntegrityViolatio
             expected_cells=manifest.expected_cells,
             required_arms=manifest.required_arms,
             indexed_arms=manifest.indexed_arms,
+            index_content_hashes=dict(manifest.index_content_hashes),
             tool_fingerprints=dict(manifest.tool_fingerprints),
             repo_commits=dict(manifest.repo_commits),
             repo_fingerprints=dict(manifest.repo_fingerprints),
