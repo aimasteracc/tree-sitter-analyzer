@@ -85,6 +85,7 @@ def audit_codex_transcript(transcript_path: Path, arm: str) -> PolicyAudit:
         raise ValueError(f"Unsupported Smoke arm: {arm}")
     violations: list[str] = []
     servers: list[str] = []
+    successful_servers: list[str] = []
     tools: list[str] = []
     if not transcript_path.is_file():
         violations.append("TRANSCRIPT_MISSING")
@@ -123,8 +124,12 @@ def audit_codex_transcript(transcript_path: Path, arm: str) -> PolicyAudit:
             tools.append(tool)
             if not server or server != expected_server:
                 violations.append(f"CROSS_ARM_MCP:{line_number}")
+            elif _mcp_call_failed(item):
+                violations.append(f"MCP_CALL_FAILED:{line_number}")
+            else:
+                successful_servers.append(server)
 
-    if expected_server is not None and expected_server not in servers:
+    if expected_server is not None and expected_server not in successful_servers:
         violations.append("MISSING_INDEX_QUERY")
     return PolicyAudit(
         arm,
@@ -132,6 +137,18 @@ def audit_codex_transcript(transcript_path: Path, arm: str) -> PolicyAudit:
         tuple(servers),
         tuple(tools),
         tuple(dict.fromkeys(violations)),
+    )
+
+
+def _mcp_call_failed(item: dict[str, object]) -> bool:
+    """Recognize Codex MCP terminal failure shapes without trusting one field."""
+
+    status = str(item.get("status") or "").lower()
+    if status in {"failed", "error", "cancelled"} or item.get("error"):
+        return True
+    result = item.get("result")
+    return isinstance(result, dict) and bool(
+        result.get("error") or result.get("is_error")
     )
 
 

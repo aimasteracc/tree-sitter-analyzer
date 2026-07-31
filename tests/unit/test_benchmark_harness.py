@@ -2450,6 +2450,41 @@ class TestGinSmokeManifestExecution:
         assert audit.observed_mcp_servers == ("tree-sitter-analyzer",)
         assert audit.observed_mcp_tools == ("nav",)
 
+    @pytest.mark.parametrize(
+        "failure",
+        (
+            {"status": "failed"},
+            {"error": {"message": "server unavailable"}},
+            {"result": {"is_error": True}},
+        ),
+    )
+    def test_codex_transcript_rejects_failed_index_query(
+        self, tmp_path: Path, failure: dict
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "failed-mcp.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "mcp_tool_call",
+                        "server": "tree-sitter-analyzer",
+                        "tool": "nav",
+                        **failure,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "tsa-warm")
+
+        assert audit.violations == ("MCP_CALL_FAILED:1", "MISSING_INDEX_QUERY")
+
     def test_codex_transcript_rejects_cross_arm_mcp(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_execution import (
             audit_codex_transcript,
