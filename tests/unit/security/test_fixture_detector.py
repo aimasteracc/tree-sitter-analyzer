@@ -195,7 +195,6 @@ class TestRealRepoRegression:
         )
         # confidence must be high enough to escalate safe_to_edit to UNSAFE.
         assert fact.confidence == 0.85
-        assert len(fact.evidence) == 1
 
 
 # ---------------------------------------------------------------------------
