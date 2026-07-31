@@ -49,7 +49,6 @@ _TSA_TOOLS = [
     "mcp__tree-sitter-analyzer__search",
     "mcp__tree-sitter-analyzer__structure",
     "mcp__tree-sitter-analyzer__health",
-    "mcp__tree-sitter-analyzer__index",
     "mcp__tree-sitter-analyzer__project",
 ]
 

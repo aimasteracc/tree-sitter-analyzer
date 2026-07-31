@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import subprocess
@@ -20,6 +21,23 @@ from benchmarks.codegraph_compare.schemas import IndexStatsV1
 READINESS_ORACLE = "gin.Engine.ServeHTTP@gin.go"
 _GENERATED_MARKER = "Code generated"
 _GENERATED_SUFFIX = "DO NOT EDIT."
+
+
+def index_content_hash(index_dir: Path) -> str:
+    """Hash every relative path and byte in a closed, regular-file index tree."""
+
+    digest = hashlib.sha256()
+    files = sorted(path for path in index_dir.rglob("*") if path.is_file())
+    for path in files:
+        if path.is_symlink():
+            raise ValueError(f"Index content cannot contain symlinks: {path}")
+        relative = path.relative_to(index_dir).as_posix().encode()
+        payload = path.read_bytes()
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+    return digest.hexdigest()
 
 
 def tracked_paths(repo_path: Path) -> tuple[str, ...]:

@@ -351,6 +351,12 @@ def run_manifest_setup_gate(
 
     if workspace is not None:
         try:
+            if set(dict(manifest.index_content_hashes)) != set(
+                manifest.indexed_arms
+            ):
+                raise ValueError(
+                    "manifest-backed execution requires bound index content hashes"
+                )
             validate_workspace_v1(workspace, manifest)
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
             append_event(manifest, "BLOCKED", "workspace_failed")

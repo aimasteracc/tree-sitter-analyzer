@@ -29,6 +29,7 @@ from benchmarks.codegraph_compare.setup_validation import (
 )
 from benchmarks.codegraph_compare.smoke_evidence import (
     READINESS_ORACLE,
+    index_content_hash,
     produce_gin_index_evidence,
 )
 
@@ -176,6 +177,12 @@ def freeze_smoke_plan(
         eligibility_path=eligibility_path,
         tool_fingerprints=tools,
     )
+    index_content_hashes = {
+        "tsa-warm": index_content_hash(checkouts["tsa-warm"] / ".ast-cache"),
+        "codegraph-warm": index_content_hash(
+            checkouts["codegraph-warm"] / ".codegraph"
+        ),
+    }
     expected_cells = tuple(
         ExpectedCellV1(
             repo="gin",
@@ -226,6 +233,7 @@ def freeze_smoke_plan(
         required_readiness_oracles=dict.fromkeys(
             INDEXED_ARMS, (READINESS_ORACLE,)
         ),
+        index_content_hashes=index_content_hashes,
     )
     artifacts = destination / "artifacts"
     workspace_cells = []

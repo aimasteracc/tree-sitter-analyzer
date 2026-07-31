@@ -11,6 +11,7 @@ from typing import Any
 
 from benchmarks.codegraph_compare.integrity import ExperimentManifestV1
 from benchmarks.codegraph_compare.smoke_evidence import (
+    index_content_hash,
     repository_fingerprint,
     tracked_paths,
 )
@@ -262,6 +263,10 @@ def validate_workspace_v1(
             )
         if cell.index_path is not None and not cell.index_path.is_dir():
             raise ValueError(f"{cell.arm_id} index namespace does not exist")
+        expected_index_hash = dict(manifest.index_content_hashes).get(cell.arm_id)
+        if cell.index_path is not None and expected_index_hash is not None:
+            if index_content_hash(cell.index_path) != expected_index_hash:
+                raise ValueError(f"{cell.arm_id} index content hash mismatch")
         if not cell.artifact_path.is_dir():
             raise ValueError(f"{cell.arm_id} artifact namespace does not exist")
         if any(cell.artifact_path.iterdir()):

@@ -2327,6 +2327,12 @@ class TestCodeGraphCompareSetupGate:
             if value.startswith("mcp_servers.") and value.endswith(".required=true")
         ]
         assert configured_servers == [f"mcp_servers.{server_name}.required=true"]
+        if arm_id == "tsa-warm":
+            assert not any(
+                value.endswith('enabled_tools=["nav","search","structure","health","index","project"]')
+                for value in command
+            )
+            assert not any('"index"' in value for value in command)
         if arm_id == "codegraph-warm":
             assert (
                 'mcp_servers.codegraph.env={ CODEGRAPH_TELEMETRY = "0", '
@@ -2513,6 +2519,35 @@ class TestGinSmokeManifestExecution:
 
         assert audit.violations == ("MISSING_INDEX_QUERY",)
         assert audit.observed_mcp_servers == ()
+
+    def test_codex_transcript_rejects_mutating_tsa_index_tool(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "mutating-index.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "mcp_tool_call",
+                        "server": "tree-sitter-analyzer",
+                        "tool": "index",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "tsa-warm")
+
+        assert audit.violations == (
+            "MUTATING_INDEX_TOOL:1",
+            "MISSING_INDEX_QUERY",
+        )
 
     def test_codex_transcript_rejects_cross_arm_mcp(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_execution import (
@@ -3080,6 +3115,42 @@ class TestGinSmokeWorkspace:
 
         with pytest.raises(ValueError, match="contains a special node"):
             validate_workspace_v1(workspace, manifest)
+
+    def test_workspace_rejects_index_content_not_bound_to_manifest(
+        self, tmp_path: Path
+    ):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.smoke_evidence import (
+            index_content_hash,
+        )
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            validate_workspace_v1,
+        )
+
+        manifest, _, workspace = self._fixture(tmp_path)
+        tsa_index = workspace.cell("tsa-warm").index_path
+        codegraph_index = workspace.cell("codegraph-warm").index_path
+        assert tsa_index == workspace.cell("tsa-warm").checkout_path / ".ast-cache"
+        assert codegraph_index == (
+            workspace.cell("codegraph-warm").checkout_path / ".codegraph"
+        )
+        hashes = tuple(
+            (
+                arm,
+                index_content_hash(index),
+            )
+            for arm, index in (
+                ("tsa-warm", tsa_index),
+                ("codegraph-warm", codegraph_index),
+            )
+        )
+        bound_manifest = replace(manifest, index_content_hashes=hashes)
+        validate_workspace_v1(workspace, bound_manifest)
+        (tsa_index / "tampered.db").write_bytes(b"foreign index bytes")
+
+        with pytest.raises(ValueError, match="index content hash mismatch"):
+            validate_workspace_v1(workspace, bound_manifest)
 
     def test_workspace_schema_rejects_unknown_fields(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_workspace import (

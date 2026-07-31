@@ -126,6 +126,8 @@ def audit_codex_transcript(transcript_path: Path, arm: str) -> PolicyAudit:
             tools.append(tool)
             if not server or server != expected_server:
                 violations.append(f"CROSS_ARM_MCP:{line_number}")
+            elif server == "tree-sitter-analyzer" and tool == "index":
+                violations.append(f"MUTATING_INDEX_TOOL:{line_number}")
             elif _mcp_call_failed(item):
                 violations.append(f"MCP_CALL_FAILED:{line_number}")
             else:
