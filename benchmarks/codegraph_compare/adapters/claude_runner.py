@@ -21,6 +21,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from . import CODEGRAPH_NPM_PACKAGE
+
 if TYPE_CHECKING:
     from . import RunConfig
 
@@ -90,7 +92,6 @@ _DEFAULT_MODELS = {
     "claude": "claude-sonnet-4-6",
     "codex": "gpt-5.2",
 }
-_CODEGRAPH_PACKAGE = "@colbymchenry/codegraph@1.5.0"
 
 
 def _make_run_id(question_id: str, arm_id: str, repeat: int, agent_backend: str) -> str:
@@ -406,7 +407,7 @@ def _codex_mcp_config_args(arm_id: str, repo_path: Path) -> list[str]:
     elif arm_id.startswith("codegraph"):
         server_name = "codegraph"
         command = "npx"
-        args = ["--yes", _CODEGRAPH_PACKAGE, "serve", "--mcp"]
+        args = ["--yes", CODEGRAPH_NPM_PACKAGE, "serve", "--mcp"]
         enabled_tools = [name.rsplit("__", 1)[-1] for name in _CODEGRAPH_TOOLS]
     else:
         return []
@@ -419,6 +420,11 @@ def _codex_mcp_config_args(arm_id: str, repo_path: Path) -> list[str]:
         "startup_timeout_sec": 30,
         "tool_timeout_sec": 30,
     }
+    if arm_id.startswith("codegraph"):
+        values["env"] = {
+            "CODEGRAPH_TELEMETRY": "0",
+            "CODEGRAPH_NO_DAEMON": "1",
+        }
     config: list[str] = []
     for key, value in values.items():
         encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":"))

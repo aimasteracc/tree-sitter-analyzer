@@ -14,6 +14,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
+CODEGRAPH_NPM_PACKAGE = "@colbymchenry/codegraph@1.5.0"
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
