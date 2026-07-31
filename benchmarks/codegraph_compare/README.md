@@ -1,5 +1,29 @@
 # CodeGraph Comparison Benchmark
 
+## NO1-001A Gin Smoke qualification
+
+The model-free qualification adapter proves that the fixed native,
+tree-sitter-analyzer, and CodeGraph cells can be isolated and replayed. It
+does not run an index, backend, or model and can only emit E0 evidence:
+
+```bash
+RECEIPT=$(python -m benchmarks.codegraph_compare.gin_smoke create /tmp/gin-smoke \
+  --benchmark-git-sha "$(git rev-parse HEAD)" \
+  --repository-path /fixture/gin \
+  --question "Where is the Gin router assembled?" \
+  --model fixture-model --timeout-seconds 60)
+DIGEST=$(printf '%s' "$RECEIPT" | jq -r .bundle_digest)
+python -m benchmarks.codegraph_compare.gin_smoke validate /tmp/gin-smoke \
+  --expected-git-sha "$(git rev-parse HEAD)" --expected-bundle-digest "$DIGEST"
+python -m benchmarks.codegraph_compare.gin_smoke replay \
+  /tmp/gin-smoke /tmp/gin-smoke-replay \
+  --expected-git-sha "$(git rev-parse HEAD)" --expected-bundle-digest "$DIGEST"
+```
+
+Validation requires a trusted Git SHA supplied outside the bundle. Any
+checksum change, missing or mixed cell, namespace collision, tool leakage,
+oracle material, selective retry, or claim above E0 invalidates the bundle.
+
 Measures answer quality, token cost, and latency across three code-intelligence approaches on real open-source repositories:
 
 | Arm | Tool(s) | Index |
