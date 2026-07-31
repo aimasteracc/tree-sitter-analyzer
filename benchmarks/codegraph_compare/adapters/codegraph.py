@@ -16,6 +16,7 @@ Install:
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import sqlite3
@@ -23,7 +24,13 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import BenchmarkAdapter, IndexStats, RunConfig, ToolMetrics
+from . import (
+    BenchmarkAdapter,
+    IndexStats,
+    RunConfig,
+    ToolMetrics,
+    resolve_codegraph_executable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -223,13 +230,18 @@ def _build_index(repo_path: Path, index_dir: Path) -> IndexStats:
     t0 = time.perf_counter()
 
     result = subprocess.run(
-        ["codegraph", "init", "-i"],
+        [str(resolve_codegraph_executable()), "init", "-i"],
         cwd=repo_path,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         check=False,
+        env={
+            **os.environ,
+            "CODEGRAPH_TELEMETRY": "0",
+            "CODEGRAPH_NO_DAEMON": "1",
+        },
     )
     elapsed = time.perf_counter() - t0
 

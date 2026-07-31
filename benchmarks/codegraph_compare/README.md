@@ -66,9 +66,16 @@ uv run python benchmarks/codegraph_compare/run.py phase smoke \
     --dry-run
 
 # 3. Run a real Codex-backed smoke
-uv run python benchmarks/codegraph_compare/run.py phase smoke \
+uv run python benchmarks/codegraph_compare/run.py run-matrix \
+    --repos gin \
+    --arms native-only,tsa-warm,codegraph-warm \
+    --question-limit 1 \
+    --repeats 1 \
     --agent-backend codex \
-    --timeout-seconds 1200
+    --model <exact-model-id> \
+    --timeout-seconds 1200 \
+    --manifest <frozen-manifest.json> \
+    --index-evidence <validated-index-evidence.json>
 
 # 4. Evaluate answers (LLM judge, writes EvalRecord JSONL)
 uv run python benchmarks/codegraph_compare/evaluate.py \
@@ -84,6 +91,13 @@ Use `--agent-backend claude` to reproduce the original Claude Code arm, or
 `--agent-backend codex` to spend Codex quota through `codex exec --json`.
 Run IDs include the backend name so Claude and Codex results never overwrite
 each other.
+
+Manifest-backed execution first consumes the strict setup evidence without a
+model call, then follows `expected_cells` in manifest order. Each terminal
+attempt is written under `results/experiments/<manifest-hash>/runs.jsonl` as a
+V1 record and receives a mechanical transcript-policy audit. The older
+unmanifested `phase smoke` path remains available only for historical harness
+compatibility and cannot establish RFC-0021 evidence.
 
 Codex records include `cached_input_tokens` and `reasoning_output_tokens` when
 the CLI reports them. These are stored separately because Codex reports them as
@@ -107,11 +121,13 @@ These rules are enforced by the harness. Violating any of them invalidates a run
 9. **Auto-penalize phantom citations** — citations to files that do not exist in the pinned repo reduce `citation_quality` automatically before human/LLM review.
 10. **No silent drops** — timeouts and exceptions are recorded as `RunRecord` entries with `error` set; they appear in the report as `FAILED` rather than being omitted.
 
-Claude runs use hard CLI tool allowlists. Codex runs use the same arm policy as
-prompted instructions because `codex exec` currently does not expose a matching
-per-tool allowlist flag. Codex native-only runs use a read-only sandbox. Codex
-indexed arms use a workspace-write sandbox because CodeGraph and TSA query paths
-may update SQLite WAL/cache metadata during otherwise read-only queries.
+Claude runs use hard CLI tool allowlists. Codex runs ignore the user's global
+configuration and inject exactly one required MCP server for each indexed arm,
+with an explicit MCP tool allowlist; native-only injects no MCP server. Codex
+native-only runs use a read-only sandbox. Codex indexed arms use a
+workspace-write sandbox because CodeGraph and TSA query paths may update SQLite
+WAL/cache metadata during otherwise read-only queries. CodeGraph's Codex MCP
+server is pinned to `@colbymchenry/codegraph@1.5.0`.
 
 ---
 

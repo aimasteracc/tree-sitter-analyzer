@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import subprocess
 import sys
 import textwrap
 from pathlib import Path
@@ -627,9 +628,35 @@ class TestCodeGraphCompareTSAAdapter:
         with patch(
             "benchmarks.codegraph_compare.adapters.codegraph.subprocess.run",
             return_value=SimpleNamespace(returncode=3, stderr="codegraph failed"),
+        ), patch(
+            "benchmarks.codegraph_compare.adapters.codegraph.resolve_codegraph_executable",
+            return_value=Path("/cached/codegraph"),
         ):
             with pytest.raises(RuntimeError, match="exited with code 3"):
                 _build_index(tmp_path, index_dir)
+
+    def test_codegraph_index_uses_pinned_package_without_telemetry(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters.codegraph import _build_index
+
+        index_dir = tmp_path / ".codegraph"
+        with patch(
+            "benchmarks.codegraph_compare.adapters.codegraph.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stderr=""),
+        ) as run, patch(
+            "benchmarks.codegraph_compare.adapters.codegraph.resolve_codegraph_executable",
+            return_value=Path("/cached/codegraph"),
+        ):
+            _build_index(tmp_path, index_dir)
+
+        assert run.call_args.args[0] == [
+            str(Path("/cached/codegraph")),
+            "init",
+            "-i",
+        ]
+        assert run.call_args.kwargs["env"]["CODEGRAPH_TELEMETRY"] == "0"
+        assert run.call_args.kwargs["env"]["CODEGRAPH_NO_DAEMON"] == "1"
 
     def test_codegraph_warm_rebuilds_stale_directory_without_valid_db(
         self, tmp_path: Path
@@ -1185,6 +1212,101 @@ class TestCodeGraphCompareSetupGate:
             },
         ]
 
+    def test_manifest_bound_execution_persists_v1_attempts_in_frozen_order(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+
+        manifest = self._v1_setup_manifest(agent_backend="codex")
+        manifest_path = self._write_v1_manifest(tmp_path, manifest)
+        evidence_input = self._write_v1_index_evidence(tmp_path, manifest)
+        observed: list[str] = []
+
+        class Adapter:
+            def __init__(self, arm_id: str) -> None:
+                self.arm_id = arm_id
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm_id, repo_path, "system")
+
+        def run_one(**kwargs):
+            run_id = (
+                f"{kwargs['question_id']}__{kwargs['arm_id']}__"
+                f"{kwargs['agent_backend']}__{kwargs['repeat']:02d}"
+            )
+            observed.append(run_id)
+            transcript = tmp_path / f"{run_id}.jsonl"
+            server = (
+                "codegraph"
+                if kwargs["arm_id"] == "codegraph-warm"
+                else "tree-sitter-analyzer"
+            )
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {
+                            "type": "mcp_tool_call",
+                            "server": server,
+                            "tool": "search",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "run_id": run_id,
+                "session_id": kwargs["session_id"],
+                "repo": "gin",
+                "question_id": kwargs["question_id"],
+                "arm": kwargs["arm_id"],
+                "repeat": kwargs["repeat"],
+                "agent_backend": kwargs["agent_backend"],
+                "model": kwargs["model"],
+                "started_at": "2026-07-31T00:00:00Z",
+                "ended_at": "2026-07-31T00:00:01Z",
+                "elapsed_seconds": 1.0,
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "total_tokens": 15,
+                "estimated_cost_usd": 0.0,
+                "total_cost_usd": 0.0,
+                "tool_calls": 1,
+                "file_reads": 0,
+                "search_calls": 0,
+                "index_queries": 1,
+                "answer": "answer",
+                "citations": ["gin.go"],
+                "transcript_path": str(transcript),
+                "error": None,
+            }
+
+        self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
+        self._install_runner_modules(monkeypatch, Adapter, run_one)
+        args = self._matrix_args()
+        args.agent_backend = manifest.agent_backend
+        args.manifest = str(manifest_path)
+        args.index_evidence = evidence_input
+
+        assert compare_run.cmd_run_matrix(args) == 0
+        assert observed == [cell.run_id for cell in manifest.expected_cells]
+        attempts_path = (
+            tmp_path
+            / "results"
+            / "experiments"
+            / manifest.manifest_hash
+            / "runs.jsonl"
+        )
+        attempts = [
+            json.loads(line)
+            for line in attempts_path.read_text(encoding="utf-8").splitlines()
+        ]
+        assert [attempt["run_id"] for attempt in attempts] == observed
+        assert [attempt["status"] for attempt in attempts] == [
+            "SUCCESS",
+            "SUCCESS",
+        ]
+
     def test_matrix_manifest_mismatch_fails_before_adapter_creation(
         self, monkeypatch, tmp_path: Path
     ):
@@ -1280,7 +1402,7 @@ class TestCodeGraphCompareSetupGate:
     def test_setup_only_rejects_unsupported_backend_arm_pairs(
         self, monkeypatch, tmp_path: Path
     ):
-        manifest = self._v1_setup_manifest(agent_backend="codex")
+        manifest = self._v1_setup_manifest(agent_backend="unsupported")
         self._patch_v1_matrix_inputs(monkeypatch, tmp_path)
         args = self._matrix_args()
         args.agent_backend = manifest.agent_backend
@@ -2152,14 +2274,15 @@ class TestCodeGraphCompareSetupGate:
             "BACKEND_UNSUPPORTED",
         ]
 
-    @pytest.mark.parametrize("arm_id", ("codegraph-warm", "tsa-warm"))
-    def test_codex_backend_validator_rejects_indexed_mcp_arms(self, arm_id: str):
+    @pytest.mark.parametrize(
+        "arm_id", ("native-only", "codegraph-warm", "tsa-warm")
+    )
+    def test_codex_backend_validator_allows_isolated_smoke_arms(self, arm_id: str):
         from benchmarks.codegraph_compare.adapters.claude_runner import (
             validate_backend_arm_support,
         )
 
-        with pytest.raises(NotImplementedError, match="Per-arm MCP isolation"):
-            validate_backend_arm_support("codex", arm_id)
+        validate_backend_arm_support("codex", arm_id)
 
     def test_backend_validator_allows_supported_combinations(self):
         from benchmarks.codegraph_compare.adapters.claude_runner import (
@@ -2168,6 +2291,1139 @@ class TestCodeGraphCompareSetupGate:
 
         validate_backend_arm_support("codex", "native-only")
         validate_backend_arm_support("claude", "tsa-warm")
+
+    @pytest.mark.parametrize(
+        ("arm_id", "server_name"),
+        (
+            ("tsa-warm", "tree-sitter-analyzer"),
+            ("codegraph-warm", "codegraph"),
+        ),
+    )
+    def test_codex_indexed_arm_command_ignores_user_config_and_requires_one_server(
+        self, arm_id: str, server_name: str, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _build_agent_cmd,
+        )
+
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.adapters.claude_runner.resolve_codegraph_executable",
+            lambda: Path("/preinstalled/codegraph"),
+        )
+        command = _build_agent_cmd(
+            arm_id,
+            "gpt-5",
+            tmp_path,
+            RunConfig(arm_id, tmp_path, "system"),
+            "Read",
+            "ToolSearch",
+            "codex",
+        )
+
+        assert "--ignore-user-config" in command
+        assert "--strict-config" in command
+        assert f"mcp_servers.{server_name}.required=true" in command
+        assert "sandbox_workspace_write.network_access=false" in command
+        configured_servers = [
+            value
+            for value in command
+            if value.startswith("mcp_servers.") and value.endswith(".required=true")
+        ]
+        assert configured_servers == [f"mcp_servers.{server_name}.required=true"]
+        if arm_id == "tsa-warm":
+            assert not any(
+                value.endswith('enabled_tools=["nav","search","structure","health","index","project"]')
+                for value in command
+            )
+            assert not any('"index"' in value for value in command)
+        if arm_id == "codegraph-warm":
+            assert (
+                'mcp_servers.codegraph.env={ CODEGRAPH_TELEMETRY = "0", '
+                'CODEGRAPH_NO_DAEMON = "1" }'
+            ) in command
+
+    def test_codex_native_command_ignores_user_config_without_mcp_servers(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _build_agent_cmd,
+        )
+
+        command = _build_agent_cmd(
+            "native-only",
+            "gpt-5",
+            tmp_path,
+            RunConfig("native-only", tmp_path, "system"),
+            "Read",
+            "ToolSearch",
+            "codex",
+        )
+
+        assert "--ignore-user-config" in command
+        assert "--strict-config" in command
+        assert not any(value.startswith("mcp_servers.") for value in command)
+
+    def test_codex_metrics_count_mcp_calls_as_index_queries(self):
+        from benchmarks.codegraph_compare.adapters.claude_runner import (
+            _parse_codex_tool_calls_from_stream,
+        )
+
+        metrics = _parse_codex_tool_calls_from_stream(
+            [
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {
+                            "type": "mcp_tool_call",
+                            "server": "codegraph",
+                            "tool": "codegraph_search",
+                        },
+                    }
+                )
+            ]
+        )
+
+        assert metrics == (1, 0, 0, 1)
+
+
+class TestGinSmokeManifestExecution:
+    @staticmethod
+    def _legacy_record(manifest, run_id: str, transcript_path: Path) -> dict:
+        cell = next(cell for cell in manifest.expected_cells if cell.run_id == run_id)
+        return {
+            "run_id": cell.run_id,
+            "session_id": manifest.primary_session_id,
+            "repo": cell.repo,
+            "question_id": cell.question_id,
+            "arm": cell.arm,
+            "repeat": cell.repeat,
+            "agent_backend": cell.agent_backend,
+            "model": manifest.model,
+            "started_at": "2026-07-31T00:00:00Z",
+            "ended_at": "2026-07-31T00:00:01Z",
+            "elapsed_seconds": 1.0,
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "total_tokens": 15,
+            "estimated_cost_usd": 0.0,
+            "total_cost_usd": 0.0,
+            "tool_calls": 1,
+            "file_reads": 0,
+            "search_calls": 0,
+            "index_queries": 1,
+            "answer": "answer",
+            "citations": ["gin.go"],
+            "transcript_path": str(transcript_path),
+            "error": None,
+        }
+
+    def test_codex_transcript_accepts_only_the_declared_index_server(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "tsa.jsonl"
+        transcript.write_text(
+            "\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "type": "command_execution",
+                                "command": "grep -n ServeHTTP gin.go",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "type": "mcp_tool_call",
+                                "server": "tree-sitter-analyzer",
+                                "tool": "nav",
+                            },
+                        }
+                    ),
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "tsa-warm")
+
+        assert audit.violations == ()
+        assert audit.observed_mcp_servers == ("tree-sitter-analyzer",)
+        assert audit.observed_mcp_tools == ("nav",)
+
+    @pytest.mark.parametrize(
+        "failure",
+        (
+            {"status": "failed"},
+            {"error": {"message": "server unavailable"}},
+            {"isError": True},
+            {"result": {"isError": True}},
+            {"result": {"is_error": True}},
+        ),
+    )
+    def test_codex_transcript_rejects_failed_index_query(
+        self, tmp_path: Path, failure: dict
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "failed-mcp.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "mcp_tool_call",
+                        "server": "tree-sitter-analyzer",
+                        "tool": "nav",
+                        **failure,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "tsa-warm")
+
+        assert audit.violations == ("MCP_CALL_FAILED:1", "MISSING_INDEX_QUERY")
+
+    def test_codex_transcript_does_not_accept_started_index_query(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "started-mcp.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.started",
+                    "item": {
+                        "type": "mcp_tool_call",
+                        "server": "tree-sitter-analyzer",
+                        "tool": "nav",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "tsa-warm")
+
+        assert audit.violations == ("MISSING_INDEX_QUERY",)
+        assert audit.observed_mcp_servers == ()
+
+    def test_codex_transcript_rejects_mutating_tsa_index_tool(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "mutating-index.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "mcp_tool_call",
+                        "server": "tree-sitter-analyzer",
+                        "tool": "index",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "tsa-warm")
+
+        assert audit.violations == (
+            "MUTATING_INDEX_TOOL:1",
+            "MISSING_INDEX_QUERY",
+        )
+
+    def test_codex_transcript_rejects_cross_arm_mcp(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "cross-arm.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "mcp_tool_call",
+                        "server": "codegraph",
+                        "tool": "codegraph_search",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "tsa-warm")
+
+        assert audit.violations == ("CROSS_ARM_MCP:1", "MISSING_INDEX_QUERY")
+
+    @pytest.mark.parametrize(
+        ("item", "violation"),
+        (
+            ({"type": "file_change"}, "FILE_CHANGE:1"),
+            (
+                {"type": "command_execution", "command": "touch marker"},
+                "MUTATING_COMMAND:1",
+            ),
+            (
+                {
+                    "type": "command_execution",
+                    "command": "tree_sitter_analyzer --outline",
+                },
+                "INDEX_COMMAND_OUTSIDE_MCP:1",
+            ),
+            (
+                {
+                    "type": "command_execution",
+                    "command": "sqlite3 .ast-cache/index.db '.tables'",
+                },
+                "INDEX_NAMESPACE_OUTSIDE_MCP:1",
+            ),
+            (
+                {"type": "command_execution", "command": "cat /etc/hosts"},
+                "FILESYSTEM_BOUNDARY_ESCAPE:1",
+            ),
+            (
+                {"type": "command_execution", "command": "ps aux"},
+                "FILESYSTEM_BOUNDARY_ESCAPE:1",
+            ),
+            (
+                {
+                    "type": "command_execution",
+                    "command": "curl https://example.com",
+                },
+                "NETWORK_COMMAND:1",
+            ),
+            (
+                {"type": "command_execution", "command": "gh api repos/x/y"},
+                "UNDECLARED_SHELL_COMMAND:1",
+            ),
+            (
+                {
+                    "type": "command_execution",
+                    "command": "git -c credential.helper=x fetch origin",
+                },
+                "UNDECLARED_SHELL_COMMAND:1",
+            ),
+            (
+                {
+                    "type": "command_execution",
+                    "command": "awk 'BEGIN {system(\"curl example.com\")}'",
+                },
+                "UNDECLARED_SHELL_COMMAND:1",
+            ),
+            (
+                {
+                    "type": "command_execution",
+                    "command": "find . -exec curl example.com ;",
+                },
+                "NETWORK_COMMAND:1",
+            ),
+        ),
+    )
+    def test_codex_transcript_rejects_non_readonly_events(
+        self, tmp_path: Path, item: dict, violation: str
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "forbidden.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "item.completed", "item": item}),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "native-only")
+
+        assert audit.violations == (violation,)
+
+    @pytest.mark.parametrize(
+        "command",
+        (
+            "find . -name '*.go'",
+            "rg -n ServeHTTP .",
+            "sed -n '1,40p' gin.go",
+            "/bin/bash -lc 'grep -n ServeHTTP gin.go'",
+            "/bin/sh -lc \"sed -n '1,40p' gin.go\"",
+        ),
+    )
+    def test_codex_transcript_accepts_declared_readonly_discovery(
+        self, tmp_path: Path, command: str
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "readonly.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {"type": "command_execution", "command": command},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "native-only")
+
+        assert audit.violations == ()
+
+    def test_codex_transcript_audits_inside_shell_launcher(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "wrapped-network.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "command_execution",
+                        "command": "/bin/bash -lc 'curl https://example.com'",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "native-only")
+
+        assert audit.violations == ("NETWORK_COMMAND:1",)
+
+    def test_v1_attempt_is_manifest_bound_and_append_only(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            PolicyAudit,
+            append_v1_attempt,
+            build_v1_attempt,
+        )
+
+        manifest = _v1_manifest()
+        cell = manifest.expected_cells[0]
+        legacy = self._legacy_record(manifest, cell.run_id, tmp_path / "raw.jsonl")
+        stats = _v1_run(manifest, cell.run_id).index_stats
+        audit = PolicyAudit(
+            cell.arm,
+            legacy["transcript_path"],
+            ("codegraph",),
+            ("codegraph_search",),
+            (),
+        )
+
+        attempt = build_v1_attempt(
+            manifest,
+            cell,
+            legacy,
+            index_stats=stats,
+            policy_audit=audit,
+        )
+        path = append_v1_attempt(tmp_path, manifest, attempt, audit)
+
+        persisted = json.loads(path.read_text(encoding="utf-8"))
+        assert persisted["experiment_id"] == manifest.experiment_id
+        assert persisted["session_id"] == manifest.primary_session_id
+        assert persisted["run_id"] == cell.run_id
+        assert persisted["status"] == "SUCCESS"
+        path.unlink()
+        recovered = append_v1_attempt(tmp_path, manifest, attempt, audit)
+        assert json.loads(recovered.read_text(encoding="utf-8"))["run_id"] == cell.run_id
+        with pytest.raises(ValueError, match="Duplicate physical attempt"):
+            append_v1_attempt(tmp_path, manifest, attempt, audit)
+
+    def test_failed_manifest_smoke_records_supported_invalid_registry_status(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            execute_bound_manifest,
+        )
+
+        manifest = _v1_manifest()
+        events: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.smoke_execution.run_manifest_setup_gate",
+            lambda **kwargs: 0,
+        )
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.smoke_execution.run_manifest_smoke",
+            lambda **kwargs: 1,
+        )
+
+        result = execute_bound_manifest(
+            manifest=manifest,
+            args=SimpleNamespace(),
+            supplied_index_stats={},
+            workspace=None,
+            repo_entries=[],
+            arm_entries=[],
+            question_entries_by_repo={},
+            repeats=1,
+            session_id=manifest.primary_session_id,
+            results_dir=tmp_path,
+            repo_path_resolver=lambda repo: tmp_path,
+            append_event=lambda _, status, outcome: events.append(
+                (status, outcome)
+            ),
+            adapter_factory=lambda arm: None,
+            run_one=lambda **kwargs: None,
+        )
+
+        assert result == 1
+        assert events == [
+            ("RUNNING", "smoke_started"),
+            ("INVALID", "smoke_invalid"),
+        ]
+
+    def test_manifest_smoke_retains_exception_and_continues_schedule(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.smoke_execution import (
+            run_manifest_smoke,
+        )
+
+        manifest = _v1_manifest()
+        calls = 0
+
+        class Adapter:
+            def __init__(self, arm: str) -> None:
+                self.arm = arm
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm, repo_path, "system")
+
+        def run_one(**kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("backend crashed")
+            cell = manifest.expected_cells[1]
+            transcript = tmp_path / "second.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {
+                            "type": "mcp_tool_call",
+                            "server": "tree-sitter-analyzer",
+                            "tool": "nav",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return self._legacy_record(manifest, cell.run_id, transcript)
+
+        stats = {
+            ("gin", cell.arm): _v1_run(manifest, cell.run_id).index_stats
+            for cell in manifest.expected_cells
+        }
+        result = run_manifest_smoke(
+            manifest=manifest,
+            repo_entries=[{"id": "gin", "local_path": str(tmp_path)}],
+            arm_entries=[
+                {"id": "codegraph-warm"},
+                {"id": "tsa-warm"},
+            ],
+            questions_by_repo={
+                "gin": [{"id": "q1", "prompt": "Where is it?"}]
+            },
+            supplied_index_stats=stats,
+            results_dir=tmp_path / "results",
+            workspace=None,
+            repo_path_resolver=lambda repo: Path(repo["local_path"]),
+            adapter_factory=Adapter,
+            run_one=run_one,
+        )
+
+        records = [
+            json.loads(line)
+            for line in (
+                tmp_path
+                / "results"
+                / "experiments"
+                / manifest.manifest_hash
+                / "runs.jsonl"
+            )
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert result == 1
+        assert calls == 2
+        assert [record["status"] for record in records] == [
+            "INVALID",
+            "SUCCESS",
+        ]
+        assert json.loads(
+            (
+                tmp_path
+                / "results"
+                / "experiments"
+                / manifest.manifest_hash
+                / f"policy_{manifest.expected_cells[0].run_id}.json"
+            ).read_text(encoding="utf-8")
+        )["violations"] == [
+            "EXECUTION_EXCEPTION:RuntimeError",
+            "TRANSCRIPT_MISSING",
+        ]
+
+
+class TestGinSmokeIndexEvidence:
+    def test_go_eligibility_excludes_generated_files(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_evidence import classify_go_paths
+
+        (tmp_path / "gin.go").write_text("package gin\n", encoding="utf-8")
+        generated = tmp_path / "test.pb.go"
+        generated.write_text(
+            "// Code generated by protoc-gen-go. DO NOT EDIT.\npackage gin\n",
+            encoding="utf-8",
+        )
+
+        eligible, excluded = classify_go_paths(
+            tmp_path, ("gin.go", "test.pb.go")
+        )
+
+        assert eligible == ("gin.go",)
+        assert excluded == ("test.pb.go",)
+
+    def test_masked_paths_restore_exclusions_after_failure(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_evidence import masked_paths
+
+        generated = tmp_path / "testdata" / "test.pb.go"
+        generated.parent.mkdir()
+        generated.write_text("generated", encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="index failed"):
+            with masked_paths(tmp_path, ("testdata/test.pb.go",)):
+                assert not generated.exists()
+                raise RuntimeError("index failed")
+
+        assert generated.read_text(encoding="utf-8") == "generated"
+
+    def test_index_stats_reject_paths_outside_frozen_eligibility(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import IndexStats
+        from benchmarks.codegraph_compare.smoke_evidence import _build_stats
+
+        cache = tmp_path / ".ast-cache"
+        cache.mkdir()
+        connection = sqlite3.connect(cache / "index.db")
+        connection.execute(
+            "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT)"
+        )
+        connection.executemany(
+            "INSERT INTO ast_index VALUES (?, ?)",
+            (("gin.go", "ServeHTTP"), ("unexpected.go", "{}")),
+        )
+        connection.commit()
+        connection.close()
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.smoke_evidence.TSAAdapter.prepare_index",
+            lambda self, repo_path, cold: IndexStats(1.0, 10, 2),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=r"unexpected=\('unexpected.go',\)",
+        ):
+            _build_stats(
+                repo_path=tmp_path,
+                arm="tsa-warm",
+                eligible_paths=("gin.go",),
+                generated_paths=(),
+                repo_fingerprint="repo",
+                tool_fingerprint="tool",
+            )
+
+
+class TestGinSmokeWorkspace:
+    @staticmethod
+    def _fixture(tmp_path: Path):
+        from benchmarks.codegraph_compare.integrity import (
+            ExpectedCellV1,
+            create_manifest,
+        )
+        from benchmarks.codegraph_compare.smoke_evidence import (
+            repository_fingerprint,
+            tracked_paths,
+        )
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            parse_workspace_v1,
+        )
+
+        source = tmp_path / "source"
+        source.mkdir()
+        (source / "gin.go").write_text("package gin\n", encoding="utf-8")
+        generated = source / "testdata" / "test.pb.go"
+        generated.parent.mkdir()
+        generated.write_text(
+            "// Code generated by test. DO NOT EDIT.\npackage testdata\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "init", "-q"], cwd=source, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "benchmark@example.invalid"],
+            cwd=source,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Benchmark Test"],
+            cwd=source,
+            check=True,
+        )
+        subprocess.run(["git", "add", "."], cwd=source, check=True)
+        subprocess.run(
+            ["git", "commit", "-qm", "fixture"], cwd=source, check=True
+        )
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=source,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        fingerprint = repository_fingerprint(source, tracked_paths(source))
+        arms = ("native-only", "tsa-warm", "codegraph-warm")
+        cells = tuple(
+            ExpectedCellV1(
+                repo="gin",
+                question_id="q1",
+                arm=arm,
+                repeat=0,
+                agent_backend="codex",
+                run_id=f"q1__{arm}__codex__00",
+            )
+            for arm in arms
+        )
+        manifest = create_manifest(
+            benchmark_git_sha="benchmark-sha",
+            config_hash="config-hash",
+            question_hash="question-hash",
+            oracle_hash="oracle-hash",
+            seed=210021,
+            timeout_seconds=1200,
+            schedule_hash="schedule-hash",
+            agent_backend="codex",
+            model="gpt-5",
+            agent_cli_fingerprint="codex-cli",
+            platform="linux-x86_64",
+            environment_fingerprint="environment",
+            primary_session_id="PRIMARY",
+            retry_session_ids=(),
+            expected_cells=cells,
+            required_arms=arms,
+            indexed_arms=("tsa-warm", "codegraph-warm"),
+            tool_fingerprints=dict.fromkeys(arms, "tool"),
+            repo_commits={"gin": commit},
+            repo_fingerprints={"gin": fingerprint},
+            eligible_paths={"gin": ("gin.go",)},
+            eligible_paths_hashes={"gin": _v1_paths_hash(("gin.go",))},
+            parse_error_allowlists={"gin": ()},
+            required_readiness_oracles={
+                "tsa-warm": ("known-symbol",),
+                "codegraph-warm": ("known-symbol",),
+            },
+        )
+        raw_cells = []
+        for arm in arms:
+            checkout = tmp_path / "checkouts" / arm / "gin"
+            checkout.parent.mkdir(parents=True)
+            subprocess.run(
+                ["git", "clone", "-q", str(source), str(checkout)], check=True
+            )
+            index_path = None
+            if arm == "tsa-warm":
+                index_path = checkout / ".ast-cache"
+                index_path.mkdir()
+            elif arm == "codegraph-warm":
+                index_path = checkout / ".codegraph"
+                index_path.mkdir()
+            artifact = tmp_path / "artifacts" / arm
+            artifact.mkdir(parents=True)
+            raw_cells.append(
+                {
+                    "arm_id": arm,
+                    "checkout_path": str(checkout),
+                    "index_path": str(index_path) if index_path else None,
+                    "artifact_path": str(artifact),
+                }
+            )
+        raw = {
+            "schema_version": 1,
+            "experiment_id": manifest.experiment_id,
+            "manifest_hash": manifest.manifest_hash,
+            "cells": raw_cells,
+        }
+        return manifest, raw, parse_workspace_v1(raw)
+
+    def test_workspace_accepts_three_independent_clean_checkouts(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            validate_workspace_v1,
+        )
+
+        manifest, _, workspace = self._fixture(tmp_path)
+
+        validate_workspace_v1(workspace, manifest)
+
+    def test_workspace_rejects_cross_arm_artifact_collision(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            parse_workspace_v1,
+            validate_workspace_v1,
+        )
+
+        manifest, raw, _ = self._fixture(tmp_path)
+        raw["cells"][1]["artifact_path"] = raw["cells"][0]["artifact_path"]
+
+        with pytest.raises(ValueError, match="artifact namespace collision"):
+            validate_workspace_v1(parse_workspace_v1(raw), manifest)
+
+    def test_workspace_rejects_foreign_index_in_native_checkout(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            validate_workspace_v1,
+        )
+
+        manifest, _, workspace = self._fixture(tmp_path)
+        (workspace.cell("native-only").checkout_path / ".codegraph").mkdir()
+
+        with pytest.raises(ValueError, match="foreign index namespace"):
+            validate_workspace_v1(workspace, manifest)
+
+    def test_workspace_rejects_untracked_checkout_input(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            validate_workspace_v1,
+        )
+
+        manifest, _, workspace = self._fixture(tmp_path)
+        (workspace.cell("native-only").checkout_path / "misleading.md").write_text(
+            "not part of the pinned repository\n", encoding="utf-8"
+        )
+
+        with pytest.raises(ValueError, match="unprovenanced paths"):
+            validate_workspace_v1(workspace, manifest)
+
+    def test_workspace_rejects_symlinked_index_namespace(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            parse_workspace_v1,
+            validate_workspace_v1,
+        )
+
+        manifest, raw, workspace = self._fixture(tmp_path)
+        tsa_index = workspace.cell("tsa-warm").index_path
+        assert tsa_index == (
+            workspace.cell("tsa-warm").checkout_path / ".ast-cache"
+        )
+        tsa_index.rmdir()
+        external = tmp_path / "shared-index"
+        external.mkdir()
+        tsa_index.symlink_to(external, target_is_directory=True)
+        raw["cells"][1]["index_path"] = str(tsa_index)
+
+        with pytest.raises(ValueError, match="index namespace contains a symlink"):
+            validate_workspace_v1(parse_workspace_v1(raw), manifest)
+
+    def test_workspace_rejects_symlinked_ancestor(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            parse_workspace_v1,
+            validate_workspace_v1,
+        )
+
+        manifest, raw, workspace = self._fixture(tmp_path)
+        checkout = workspace.cell("native-only").checkout_path
+        alias = tmp_path / "checkout-alias"
+        alias.symlink_to(checkout.parent, target_is_directory=True)
+        raw["cells"][0]["checkout_path"] = str(alias / checkout.name)
+
+        with pytest.raises(ValueError, match="contains a symlink"):
+            validate_workspace_v1(parse_workspace_v1(raw), manifest)
+
+    def test_workspace_rejects_symlink_nested_in_index(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            validate_workspace_v1,
+        )
+
+        manifest, _, workspace = self._fixture(tmp_path)
+        index = workspace.cell("tsa-warm").index_path
+        assert index == workspace.cell("tsa-warm").checkout_path / ".ast-cache"
+        (index / "external.db").symlink_to(tmp_path / "outside.db")
+
+        with pytest.raises(ValueError, match="contains a special node"):
+            validate_workspace_v1(workspace, manifest)
+
+    def test_workspace_rejects_index_content_not_bound_to_manifest(
+        self, tmp_path: Path
+    ):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.smoke_evidence import (
+            index_content_hash,
+        )
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            validate_index_content_v1,
+            validate_workspace_v1,
+        )
+
+        manifest, _, workspace = self._fixture(tmp_path)
+        tsa_index = workspace.cell("tsa-warm").index_path
+        codegraph_index = workspace.cell("codegraph-warm").index_path
+        assert tsa_index == workspace.cell("tsa-warm").checkout_path / ".ast-cache"
+        assert codegraph_index == (
+            workspace.cell("codegraph-warm").checkout_path / ".codegraph"
+        )
+        hashes = tuple(
+            (
+                arm,
+                index_content_hash(index),
+            )
+            for arm, index in (
+                ("tsa-warm", tsa_index),
+                ("codegraph-warm", codegraph_index),
+            )
+        )
+        bound_manifest = replace(manifest, index_content_hashes=hashes)
+        validate_workspace_v1(workspace, bound_manifest)
+        (tsa_index / "tampered.db").write_bytes(b"foreign index bytes")
+
+        with pytest.raises(ValueError, match="index content hash mismatch"):
+            validate_workspace_v1(workspace, bound_manifest)
+
+        with pytest.raises(ValueError, match="index content hash mismatch"):
+            validate_index_content_v1(workspace, bound_manifest, "tsa-warm")
+
+    def test_workspace_schema_rejects_unknown_fields(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            parse_workspace_v1,
+        )
+
+        _, raw, _ = self._fixture(tmp_path)
+        raw["undeclared"] = True
+
+        with pytest.raises(ValueError, match="workspace keys mismatch"):
+            parse_workspace_v1(raw)
+
+
+class TestGinSmokeBundle:
+    @staticmethod
+    def _bundle_inputs(tmp_path: Path):
+        from dataclasses import asdict
+
+        from benchmarks.codegraph_compare.integrity import RegistryEvent
+        from benchmarks.codegraph_compare.smoke_policy import PolicyAudit
+
+        manifest = _v1_manifest()
+        plan = tmp_path / "plan-source"
+        plan.mkdir()
+        (plan / "experiment-manifest.json").write_text(
+            json.dumps(asdict(manifest)), encoding="utf-8"
+        )
+        for name in (
+            "eligibility.json",
+            "index-evidence.json",
+            "workspace-evidence.json",
+        ):
+            (plan / name).write_text("{}\n", encoding="utf-8")
+        experiment = tmp_path / "experiment"
+        experiment.mkdir()
+        runs = []
+        servers = {
+            "codegraph-warm": "codegraph",
+            "tsa-warm": "tree-sitter-analyzer",
+        }
+        for cell in manifest.expected_cells:
+            transcript_path = f"/original/{cell.run_id}.jsonl"
+            transcript = (
+                plan
+                / "artifacts"
+                / cell.arm
+                / "raw"
+                / Path(transcript_path).name
+            )
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {
+                            "type": "mcp_tool_call",
+                            "server": servers[cell.arm],
+                            "tool": "query",
+                        }
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            run = _v1_run(
+                manifest, cell.run_id, transcript_path=transcript_path
+            )
+            runs.append(run)
+            (experiment / f"policy_{cell.run_id}.json").write_text(
+                json.dumps(
+                    asdict(
+                        PolicyAudit(
+                            cell.arm,
+                            transcript_path,
+                            (servers[cell.arm],),
+                            ("query",),
+                            (),
+                        )
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        (experiment / "runs.jsonl").write_text(
+            "".join(json.dumps(asdict(run)) + "\n" for run in runs),
+            encoding="utf-8",
+        )
+        registry = tmp_path / "registry.jsonl"
+        events = (
+            RegistryEvent(
+                manifest.experiment_id,
+                manifest.manifest_hash,
+                "RUNNING",
+                "smoke_started",
+            ),
+            RegistryEvent(
+                manifest.experiment_id,
+                manifest.manifest_hash,
+                "INVALID",
+                "smoke_invalid",
+            ),
+        )
+        registry.write_text(
+            "".join(json.dumps(asdict(event)) + "\n" for event in events),
+            encoding="utf-8",
+        )
+        return plan, experiment, registry
+
+    def test_bundle_recomputes_invalid_claim_bounded_verdict(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_bundle import (
+            create_smoke_bundle,
+            validate_smoke_bundle,
+        )
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        bundle = tmp_path / "bundle"
+        digest = create_smoke_bundle(
+            bundle,
+            plan_dir=plan,
+            experiment_dir=experiment,
+            registry_path=registry,
+        )
+
+        verdict = validate_smoke_bundle(bundle, external_digest=digest)
+
+        assert verdict["claim_level"] == "INVALID"
+        assert verdict["dominance_allowed"] is False
+        assert verdict["winner"] is None
+
+    def test_bundle_replay_is_byte_identical(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_bundle import (
+            create_smoke_bundle,
+            replay_smoke_bundle,
+        )
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        bundle = tmp_path / "bundle"
+        digest = create_smoke_bundle(
+            bundle,
+            plan_dir=plan,
+            experiment_dir=experiment,
+            registry_path=registry,
+        )
+
+        replay_smoke_bundle(
+            bundle, tmp_path / "replay", external_digest=digest
+        )
+
+        assert {
+            path.relative_to(bundle): path.read_bytes()
+            for path in bundle.rglob("*")
+            if path.is_file()
+        } == {
+            path.relative_to(tmp_path / "replay"): path.read_bytes()
+            for path in (tmp_path / "replay").rglob("*")
+            if path.is_file()
+        }
+
+    def test_bundle_rejects_tampering_against_external_digest(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_bundle import (
+            create_smoke_bundle,
+            validate_smoke_bundle,
+        )
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        bundle = tmp_path / "bundle"
+        digest = create_smoke_bundle(
+            bundle,
+            plan_dir=plan,
+            experiment_dir=experiment,
+            registry_path=registry,
+        )
+        (bundle / "evidence" / "runs.jsonl").write_text(
+            "tampered\n", encoding="utf-8"
+        )
+
+        with pytest.raises(ValueError, match="bundle checksum mismatch"):
+            validate_smoke_bundle(bundle, external_digest=digest)
+
+    def test_bundle_reaudits_transcript_instead_of_trusting_policy_file(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_bundle import (
+            create_smoke_bundle,
+        )
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        transcript = next((plan / "artifacts").rglob("*.jsonl"))
+        transcript.write_text(
+            json.dumps(
+                {
+                    "item": {
+                        "type": "command_execution",
+                        "command": "curl https://example.com",
+                    }
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="policy audit mismatch"):
+            create_smoke_bundle(
+                tmp_path / "bundle",
+                plan_dir=plan,
+                experiment_dir=experiment,
+                registry_path=registry,
+            )
 
 
 class TestCodeGraphCompareAnalysisGate:

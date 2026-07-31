@@ -316,6 +316,7 @@ tree-sitter-*/
 benchmark_results/
 performance_data/
 .benchmark-repos/
+.benchmark-runs/
 benchmarks/codegraph_compare/results/raw/
 benchmarks/codegraph_compare/results/runs.jsonl
 benchmarks/codegraph_compare/results/evals.jsonl

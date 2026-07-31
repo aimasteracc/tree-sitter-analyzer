@@ -79,6 +79,7 @@ class ExperimentManifestV1:
     eligible_paths_hashes: tuple[tuple[str, str], ...]
     parse_error_allowlists: tuple[tuple[str, tuple[str, ...]], ...]
     required_readiness_oracles: tuple[tuple[str, tuple[str, ...]], ...]
+    index_content_hashes: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -130,7 +131,7 @@ def _sha256(payload: Any) -> str:
 
 
 def _manifest_payload(manifest: ExperimentManifestV1) -> dict[str, Any]:
-    return {
+    payload = {
         "benchmark_version": 1,
         "benchmark_git_sha": manifest.benchmark_git_sha,
         "config_hash": manifest.config_hash,
@@ -157,6 +158,9 @@ def _manifest_payload(manifest: ExperimentManifestV1) -> dict[str, Any]:
         "parse_error_allowlists": dict(manifest.parse_error_allowlists),
         "required_readiness_oracles": dict(manifest.required_readiness_oracles),
     }
+    if manifest.index_content_hashes:
+        payload["index_content_hashes"] = dict(manifest.index_content_hashes)
+    return payload
 
 
 def create_manifest(
@@ -185,6 +189,7 @@ def create_manifest(
     eligible_paths_hashes: dict[str, str],
     parse_error_allowlists: dict[str, tuple[str, ...]],
     required_readiness_oracles: dict[str, tuple[str, ...]],
+    index_content_hashes: dict[str, str] | None = None,
 ) -> ExperimentManifestV1:
     """Create and validate a canonical experiment manifest."""
     strings = (
@@ -222,6 +227,7 @@ def create_manifest(
     if arm_set != required_set or len(required_set) != len(required_arms):
         raise ValueError("Required arms must exactly match expected cell arms")
     indexed_set = set(indexed_arms)
+    index_content_hashes = index_content_hashes or {}
     if not indexed_set <= required_set or len(indexed_set) != len(indexed_arms):
         raise ValueError("Indexed arms must be a unique subset of required arms")
     if set(tool_fingerprints) != required_set or any(
@@ -264,6 +270,11 @@ def create_manifest(
         for identifiers in required_readiness_oracles.values()
     ):
         raise ValueError("Readiness oracles must exactly cover indexed arms")
+    if index_content_hashes and (
+        set(index_content_hashes) != indexed_set
+        or any(not digest for digest in index_content_hashes.values())
+    ):
+        raise ValueError("Index content hashes must exactly cover indexed arms")
     if any(cell.agent_backend != agent_backend for cell in expected_cells):
         raise ValueError("Expected cell backend must match manifest backend")
     blocks: dict[tuple[str, str, int, str], set[str]] = {}
@@ -301,6 +312,7 @@ def create_manifest(
         eligible_paths_hashes=tuple(sorted(eligible_paths_hashes.items())),
         parse_error_allowlists=tuple(sorted(parse_error_allowlists.items())),
         required_readiness_oracles=tuple(sorted(required_readiness_oracles.items())),
+        index_content_hashes=tuple(sorted(index_content_hashes.items())),
     )
     manifest_hash = _sha256(_manifest_payload(provisional))
     return ExperimentManifestV1(
@@ -346,7 +358,8 @@ def parse_manifest_v1(raw: object) -> ExperimentManifestV1:
     if type(version) is not int or version != 1:
         raise ValueError(f"Unsupported benchmark_version: {version}")
     expected_keys = {field.name for field in fields(ExperimentManifestV1)}
-    if set(raw) != expected_keys:
+    legacy_keys = expected_keys - {"index_content_hashes"}
+    if set(raw) not in {frozenset(expected_keys), frozenset(legacy_keys)}:
         raise ValueError("Manifest fields do not match the V1 schema")
     string_fields = {
         "experiment_id",
@@ -385,6 +398,11 @@ def parse_manifest_v1(raw: object) -> ExperimentManifestV1:
             "repo_commits",
             "repo_fingerprints",
             "eligible_paths_hashes",
+            *(
+                ("index_content_hashes",)
+                if "index_content_hashes" in raw
+                else ()
+            ),
         )
     ):
         raise ValueError("Manifest mapping fields do not match the V1 schema")
@@ -433,6 +451,9 @@ def parse_manifest_v1(raw: object) -> ExperimentManifestV1:
         required_readiness_oracles=tuple(
             (item[0], tuple(item[1])) for item in raw["required_readiness_oracles"]
         ),
+        index_content_hashes=tuple(
+            tuple(item) for item in raw.get("index_content_hashes", [])
+        ),
     )
     normalized = create_manifest(
         benchmark_git_sha=manifest.benchmark_git_sha,
@@ -459,6 +480,7 @@ def parse_manifest_v1(raw: object) -> ExperimentManifestV1:
         eligible_paths_hashes=dict(manifest.eligible_paths_hashes),
         parse_error_allowlists=dict(manifest.parse_error_allowlists),
         required_readiness_oracles=dict(manifest.required_readiness_oracles),
+        index_content_hashes=dict(manifest.index_content_hashes),
     )
     if normalized != manifest:
         raise ValueError("Manifest hash or structure is invalid")
