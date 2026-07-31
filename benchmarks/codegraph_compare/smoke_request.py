@@ -17,6 +17,7 @@ def parse_manifest_request(
     setup_only: bool,
     dry_run: bool,
     index_evidence_path: str | Path | None,
+    workspace_evidence_path: str | Path | None,
     strict_json_loader: Any,
 ) -> ExperimentManifestV1 | None:
     """Validate CLI option relationships and parse one immutable manifest."""
@@ -33,9 +34,21 @@ def parse_manifest_request(
         raise ValueError("--index-evidence requires --manifest")
     if manifest_path and not index_evidence_path:
         raise ValueError("--manifest requires --index-evidence <index-evidence.json>")
+    if workspace_evidence_path and not manifest_path:
+        raise ValueError("--workspace-evidence requires --manifest")
     if not manifest_path:
         return None
     try:
-        return parse_manifest_v1(strict_json_loader(manifest_path))
+        manifest = parse_manifest_v1(strict_json_loader(manifest_path))
     except (OSError, TypeError, ValueError) as exc:
         raise ValueError(f"Invalid experiment manifest {manifest_path}: {exc}") from exc
+    if manifest.required_arms == (
+        "native-only",
+        "tsa-warm",
+        "codegraph-warm",
+    ) and not workspace_evidence_path:
+        raise ValueError(
+            "Three-arm Smoke manifests require "
+            "--workspace-evidence <workspace-evidence.json>"
+        )
+    return manifest

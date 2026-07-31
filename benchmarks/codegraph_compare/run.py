@@ -454,6 +454,7 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
     manifest_path = getattr(args, "manifest", None)
     setup_only = bool(getattr(args, "setup_only", False))
     index_evidence_path = getattr(args, "index_evidence", None)
+    workspace_evidence_path = getattr(args, "workspace_evidence", None)
     from benchmarks.codegraph_compare.smoke_request import (  # noqa: PLC0415
         parse_manifest_request,
     )
@@ -464,6 +465,7 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
             setup_only=setup_only,
             dry_run=args.dry_run,
             index_evidence_path=index_evidence_path,
+            workspace_evidence_path=workspace_evidence_path,
             strict_json_loader=_load_strict_json,
         )
     except ValueError as exc:
@@ -474,6 +476,7 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
         _append_manifest_setup_event(manifest, "PLANNED", "setup_started")
 
     supplied_index_stats = None
+    workspace = None
     try:
         repos_data = _load_yaml(REPOS_YAML)
         arms_data = _load_yaml(ARMS_YAML)
@@ -485,6 +488,14 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
 
             raw_evidence = _load_strict_json(index_evidence_path)
             supplied_index_stats = parse_index_evidence_v1(raw_evidence)
+        if workspace_evidence_path:
+            from benchmarks.codegraph_compare.smoke_workspace import (  # noqa: PLC0415
+                parse_workspace_v1,
+            )
+
+            workspace = parse_workspace_v1(
+                _load_strict_json(workspace_evidence_path)
+            )
 
         # Resolve repos
         if args.repos in ("all", None):
@@ -547,6 +558,7 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
                 args=args,
                 manifest=manifest,
                 supplied_index_stats=supplied_index_stats,
+                workspace=workspace,
                 repo_entries=repo_entries,
                 arm_entries=arm_entries,
                 question_entries_by_repo=question_entries_by_repo,
@@ -578,6 +590,7 @@ def cmd_run_matrix(args: argparse.Namespace) -> int:
         manifest=manifest,
         args=args,
         supplied_index_stats=supplied_index_stats,
+        workspace=workspace,
         repo_entries=repo_entries,
         arm_entries=arm_entries,
         question_entries_by_repo=question_entries_by_repo,
@@ -960,6 +973,15 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Strict V1 index evidence required with --manifest.",
+    )
+    p_matrix.add_argument(
+        "--workspace-evidence",
+        type=Path,
+        default=None,
+        help=(
+            "Strict V1 physical checkout/index/artifact evidence required "
+            "with --manifest."
+        ),
     )
 
     # ---- phase ----

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-import re
+import subprocess
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Literal
 
@@ -18,105 +18,14 @@ from benchmarks.codegraph_compare.schemas import (
     IndexStatsV1,
     RunRecordV1,
 )
-
-_ARM_SERVER = {
-    "native-only": None,
-    "tsa-warm": "tree-sitter-analyzer",
-    "codegraph-warm": "codegraph",
-}
-_FORBIDDEN_ORACLE_TERMS = (
-    "expected_key_points",
-    "anti_hallucination_checks",
-    "oracle_hash",
+from benchmarks.codegraph_compare.smoke_policy import (
+    PolicyAudit,
+    audit_codex_transcript,
 )
-_WRITE_COMMAND = re.compile(
-    r"(?:^|[;&|]\s*)"
-    r"(?:rm|mv|cp|install|tee|touch|mkdir|chmod|chown)\b"
-    r"|\bgit\s+(?:add|commit|checkout|switch|reset|clean|restore)\b"
-    r"|\bsed\s+-i\b|(?:^|[^<])>{1,2}(?!=)",
-    re.IGNORECASE,
+from benchmarks.codegraph_compare.smoke_workspace import (
+    SmokeWorkspaceV1,
+    validate_workspace_v1,
 )
-_INDEX_COMMAND = re.compile(
-    r"\b(?:codegraph|tree[-_]sitter[-_]analyzer)\b",
-    re.IGNORECASE,
-)
-
-
-@dataclass(frozen=True)
-class PolicyAudit:
-    """Mechanical transcript-policy decision for one physical attempt."""
-
-    arm: str
-    transcript_path: str
-    observed_mcp_servers: tuple[str, ...]
-    observed_mcp_tools: tuple[str, ...]
-    violations: tuple[str, ...]
-
-    @property
-    def ok(self) -> bool:
-        return not self.violations
-
-
-def audit_codex_transcript(transcript_path: Path, arm: str) -> PolicyAudit:
-    """Fail closed on malformed, cross-arm, mutating, or oracle-bearing events."""
-
-    if arm not in _ARM_SERVER:
-        raise ValueError(f"Unsupported Smoke arm: {arm}")
-    violations: list[str] = []
-    servers: list[str] = []
-    tools: list[str] = []
-    if not transcript_path.is_file():
-        violations.append("TRANSCRIPT_MISSING")
-        return PolicyAudit(arm, str(transcript_path), (), (), tuple(violations))
-
-    expected_server = _ARM_SERVER[arm]
-    for line_number, line in enumerate(
-        transcript_path.read_text(encoding="utf-8").splitlines(), start=1
-    ):
-        if not line.strip():
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            violations.append(f"MALFORMED_JSON:{line_number}")
-            continue
-        if not isinstance(event, dict):
-            violations.append(f"NON_OBJECT_EVENT:{line_number}")
-            continue
-        lowered = line.lower()
-        if any(term in lowered for term in _FORBIDDEN_ORACLE_TERMS):
-            violations.append(f"ORACLE_EXPOSURE:{line_number}")
-        item = event.get("item")
-        if not isinstance(item, dict):
-            continue
-        item_type = item.get("type")
-        if item_type == "file_change":
-            violations.append(f"FILE_CHANGE:{line_number}")
-        elif item_type == "web_search":
-            violations.append(f"NETWORK_TOOL:{line_number}")
-        elif item_type == "command_execution":
-            command = str(item.get("command") or "")
-            if _WRITE_COMMAND.search(command):
-                violations.append(f"MUTATING_COMMAND:{line_number}")
-            if _INDEX_COMMAND.search(command):
-                violations.append(f"INDEX_COMMAND_OUTSIDE_MCP:{line_number}")
-        elif item_type == "mcp_tool_call":
-            server = str(item.get("server") or item.get("server_name") or "")
-            tool = str(item.get("tool") or item.get("tool_name") or "")
-            servers.append(server)
-            tools.append(tool)
-            if not server or server != expected_server:
-                violations.append(f"CROSS_ARM_MCP:{line_number}")
-
-    if expected_server is not None and expected_server not in servers:
-        violations.append("MISSING_INDEX_QUERY")
-    return PolicyAudit(
-        arm,
-        str(transcript_path),
-        tuple(servers),
-        tuple(tools),
-        tuple(dict.fromkeys(violations)),
-    )
 
 
 def build_v1_attempt(
@@ -283,6 +192,7 @@ def run_manifest_smoke(
     questions_by_repo: dict[str, list[dict[str, Any]]],
     supplied_index_stats: dict[tuple[str, str], IndexStatsV1],
     results_dir: Path,
+    workspace: SmokeWorkspaceV1 | None,
     repo_path_resolver: Any,
     adapter_factory: Any,
     run_one: Any,
@@ -302,10 +212,15 @@ def run_manifest_smoke(
     configs: dict[tuple[str, str, str], Any] = {}
     failed = 0
     for cell in manifest.expected_cells:
-        repo_entry = repos[cell.repo]
+        _ = repos[cell.repo]
         _ = arms[cell.arm]
         question = questions[(cell.repo, cell.question_id)]
-        repo_path = repo_path_resolver(repo_entry)
+        workspace_cell = workspace.cell(cell.arm) if workspace is not None else None
+        repo_path = (
+            workspace_cell.checkout_path
+            if workspace_cell is not None
+            else repo_path_resolver(repos[cell.repo])
+        )
         adapter_key = (cell.repo, cell.arm)
         if adapter_key not in adapters:
             adapters[adapter_key] = adapter_factory(cell.arm)
@@ -322,7 +237,11 @@ def run_manifest_smoke(
             repo_path=repo_path,
             repeat=cell.repeat,
             run_config=configs[config_key],
-            results_dir=results_dir,
+            results_dir=(
+                workspace_cell.artifact_path
+                if workspace_cell is not None
+                else results_dir
+            ),
             timeout_seconds=manifest.timeout_seconds,
             model=manifest.model,
             agent_backend=manifest.agent_backend,
@@ -349,6 +268,7 @@ def run_manifest_setup_gate(
     args: Any,
     manifest: ExperimentManifestV1,
     supplied_index_stats: dict[tuple[str, str], IndexStatsV1] | None,
+    workspace: SmokeWorkspaceV1 | None,
     repo_entries: list[dict[str, Any]],
     arm_entries: list[dict[str, Any]],
     question_entries_by_repo: dict[str, list[dict[str, Any]]],
@@ -370,6 +290,14 @@ def run_manifest_setup_gate(
 
     def unused_adapter_factory(arm_id: str) -> Any:
         raise AssertionError(f"setup-only must not create adapter {arm_id}")
+
+    if workspace is not None:
+        try:
+            validate_workspace_v1(workspace, manifest)
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            append_event(manifest, "BLOCKED", "workspace_failed")
+            print(f"[setup] FAILED: workspace isolation: {exc}", file=sys.stderr)
+            return 1
 
     setup_result = validate_matrix_setup(
         repo_entries,
@@ -423,6 +351,7 @@ def execute_bound_manifest(
     manifest: ExperimentManifestV1 | None,
     args: Any,
     supplied_index_stats: dict[tuple[str, str], IndexStatsV1] | None,
+    workspace: SmokeWorkspaceV1 | None,
     repo_entries: list[dict[str, Any]],
     arm_entries: list[dict[str, Any]],
     question_entries_by_repo: dict[str, list[dict[str, Any]]],
@@ -442,6 +371,7 @@ def execute_bound_manifest(
         args=args,
         manifest=manifest,
         supplied_index_stats=supplied_index_stats,
+        workspace=workspace,
         repo_entries=repo_entries,
         arm_entries=arm_entries,
         question_entries_by_repo=question_entries_by_repo,
@@ -460,8 +390,9 @@ def execute_bound_manifest(
         arm_entries=arm_entries,
         questions_by_repo=question_entries_by_repo,
         supplied_index_stats=supplied_index_stats or {},
-        results_dir=results_dir,
+        workspace=workspace,
         repo_path_resolver=repo_path_resolver,
+        results_dir=results_dir,
         adapter_factory=adapter_factory,
         run_one=run_one,
     )

@@ -388,6 +388,8 @@ def _build_agent_cmd(
         "-",
     ]
     cmd[4:4] = _codex_mcp_config_args(arm_id, repo_path)
+    if sandbox == "workspace-write":
+        cmd[4:4] = ["-c", "sandbox_workspace_write.network_access=false"]
     return cmd
 
 

@@ -22,6 +22,24 @@ _GENERATED_MARKER = "Code generated"
 _GENERATED_SUFFIX = "DO NOT EDIT."
 
 
+def tracked_paths(repo_path: Path) -> tuple[str, ...]:
+    """Return the exact sorted inventory of every tracked repository path."""
+
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=repo_path,
+        capture_output=True,
+        check=True,
+    )
+    return tuple(
+        sorted(
+            path.decode("utf-8")
+            for path in result.stdout.split(b"\0")
+            if path
+        )
+    )
+
+
 def tracked_go_paths(repo_path: Path) -> tuple[str, ...]:
     """Return the exact sorted tracked Go path inventory."""
 
@@ -230,8 +248,14 @@ def produce_gin_index_evidence(
     cg_eligible, cg_generated = classify_go_paths(codegraph_repo, tracked)
     if (tsa_eligible, tsa_generated) != (cg_eligible, cg_generated):
         raise ValueError("Indexed-arm eligibility classifications differ")
+    full_inventories = {
+        str(repo): tracked_paths(repo) for repo in (tsa_repo, codegraph_repo)
+    }
+    if len(set(full_inventories.values())) != 1:
+        raise ValueError("Indexed-arm full tracked inventories differ")
+    full_tracked = next(iter(full_inventories.values()))
     fingerprints = {
-        str(repo): repository_fingerprint(repo, tracked)
+        str(repo): repository_fingerprint(repo, full_tracked)
         for repo in (tsa_repo, codegraph_repo)
     }
     if len(set(fingerprints.values())) != 1:
@@ -257,6 +281,7 @@ def produce_gin_index_evidence(
         "schema_version": 1,
         "repo_id": "gin",
         "tracked_go_paths": list(tracked),
+        "tracked_paths_hash": _sha256(list(full_tracked)),
         "eligible_paths": list(tsa_eligible),
         "generated_exclusions": list(tsa_generated),
         "eligible_paths_hash": _sha256(list(tsa_eligible)),
