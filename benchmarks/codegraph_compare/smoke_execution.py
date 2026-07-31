@@ -397,6 +397,6 @@ def execute_bound_manifest(
         run_one=run_one,
     )
     outcome = "smoke_completed" if result == 0 else "smoke_invalid"
-    status = "COMPLETE" if result == 0 else "FAILED"
+    status = "COMPLETE" if result == 0 else "INVALID"
     append_event(manifest, status, outcome)
     return result

@@ -2534,6 +2534,49 @@ class TestGinSmokeManifestExecution:
         with pytest.raises(ValueError, match="Duplicate physical attempt"):
             append_v1_attempt(tmp_path, manifest, attempt, audit)
 
+    def test_failed_manifest_smoke_records_supported_invalid_registry_status(
+        self, monkeypatch, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            execute_bound_manifest,
+        )
+
+        manifest = _v1_manifest()
+        events: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.smoke_execution.run_manifest_setup_gate",
+            lambda **kwargs: 0,
+        )
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.smoke_execution.run_manifest_smoke",
+            lambda **kwargs: 1,
+        )
+
+        result = execute_bound_manifest(
+            manifest=manifest,
+            args=SimpleNamespace(),
+            supplied_index_stats={},
+            workspace=None,
+            repo_entries=[],
+            arm_entries=[],
+            question_entries_by_repo={},
+            repeats=1,
+            session_id=manifest.primary_session_id,
+            results_dir=tmp_path,
+            repo_path_resolver=lambda repo: tmp_path,
+            append_event=lambda _, status, outcome: events.append(
+                (status, outcome)
+            ),
+            adapter_factory=lambda arm: None,
+            run_one=lambda **kwargs: None,
+        )
+
+        assert result == 1
+        assert events == [
+            ("RUNNING", "smoke_started"),
+            ("INVALID", "smoke_invalid"),
+        ]
+
 
 class TestGinSmokeIndexEvidence:
     def test_go_eligibility_excludes_generated_files(self, tmp_path: Path):
@@ -2770,6 +2813,132 @@ class TestGinSmokeWorkspace:
 
         with pytest.raises(ValueError, match="workspace keys mismatch"):
             parse_workspace_v1(raw)
+
+
+class TestGinSmokeBundle:
+    @staticmethod
+    def _bundle_inputs(tmp_path: Path):
+        from dataclasses import asdict
+
+        from benchmarks.codegraph_compare.integrity import RegistryEvent
+
+        manifest = _v1_manifest()
+        plan = tmp_path / "plan-source"
+        plan.mkdir()
+        (plan / "experiment-manifest.json").write_text(
+            json.dumps(asdict(manifest)), encoding="utf-8"
+        )
+        for name in (
+            "eligibility.json",
+            "index-evidence.json",
+            "workspace-evidence.json",
+        ):
+            (plan / name).write_text("{}\n", encoding="utf-8")
+        artifact = plan / "artifacts" / "native-only"
+        artifact.mkdir(parents=True)
+        (artifact / "transcript.jsonl").write_text("{}\n", encoding="utf-8")
+        experiment = tmp_path / "experiment"
+        experiment.mkdir()
+        runs = tuple(
+            _v1_run(manifest, cell.run_id) for cell in manifest.expected_cells
+        )
+        (experiment / "runs.jsonl").write_text(
+            "".join(json.dumps(asdict(run)) + "\n" for run in runs),
+            encoding="utf-8",
+        )
+        registry = tmp_path / "registry.jsonl"
+        events = (
+            RegistryEvent(
+                manifest.experiment_id,
+                manifest.manifest_hash,
+                "RUNNING",
+                "smoke_started",
+            ),
+            RegistryEvent(
+                manifest.experiment_id,
+                manifest.manifest_hash,
+                "INVALID",
+                "smoke_invalid",
+            ),
+        )
+        registry.write_text(
+            "".join(json.dumps(asdict(event)) + "\n" for event in events),
+            encoding="utf-8",
+        )
+        return plan, experiment, registry
+
+    def test_bundle_recomputes_invalid_claim_bounded_verdict(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_bundle import (
+            create_smoke_bundle,
+            validate_smoke_bundle,
+        )
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        bundle = tmp_path / "bundle"
+        digest = create_smoke_bundle(
+            bundle,
+            plan_dir=plan,
+            experiment_dir=experiment,
+            registry_path=registry,
+        )
+
+        verdict = validate_smoke_bundle(bundle, external_digest=digest)
+
+        assert verdict["claim_level"] == "INVALID"
+        assert verdict["dominance_allowed"] is False
+        assert verdict["winner"] is None
+
+    def test_bundle_replay_is_byte_identical(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_bundle import (
+            create_smoke_bundle,
+            replay_smoke_bundle,
+        )
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        bundle = tmp_path / "bundle"
+        digest = create_smoke_bundle(
+            bundle,
+            plan_dir=plan,
+            experiment_dir=experiment,
+            registry_path=registry,
+        )
+
+        replay_smoke_bundle(
+            bundle, tmp_path / "replay", external_digest=digest
+        )
+
+        assert {
+            path.relative_to(bundle): path.read_bytes()
+            for path in bundle.rglob("*")
+            if path.is_file()
+        } == {
+            path.relative_to(tmp_path / "replay"): path.read_bytes()
+            for path in (tmp_path / "replay").rglob("*")
+            if path.is_file()
+        }
+
+    def test_bundle_rejects_tampering_against_external_digest(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_bundle import (
+            create_smoke_bundle,
+            validate_smoke_bundle,
+        )
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        bundle = tmp_path / "bundle"
+        digest = create_smoke_bundle(
+            bundle,
+            plan_dir=plan,
+            experiment_dir=experiment,
+            registry_path=registry,
+        )
+        (bundle / "evidence" / "runs.jsonl").write_text(
+            "tampered\n", encoding="utf-8"
+        )
+
+        with pytest.raises(ValueError, match="bundle checksum mismatch"):
+            validate_smoke_bundle(bundle, external_digest=digest)
 
 
 class TestCodeGraphCompareAnalysisGate:
