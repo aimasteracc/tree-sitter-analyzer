@@ -37,6 +37,24 @@ FILES = (
     "transcripts/tree-sitter-analyzer.jsonl",
     "transcripts/codegraph.jsonl",
 )
+MANIFEST_KEYS = frozenset(
+    {
+        "schema_version",
+        "objective_id",
+        "mode",
+        "benchmark_git_sha",
+        "repository_path",
+        "question_sha256",
+        "config_fingerprint",
+        "expected_arms",
+        "retry_policy",
+        "oracle_material_in_bundle",
+        "model",
+        "timeout_seconds",
+        "network",
+        "allowed_native_tools",
+    }
+)
 
 
 class QualificationError(ValueError):
@@ -283,10 +301,11 @@ def validate_bundle(
     if manifest.get("benchmark_git_sha") != expected_git_sha:
         raise QualificationError("wrong benchmark Git SHA")
     if (
-        manifest.get("schema_version") != SCHEMA_VERSION
+        set(manifest) != MANIFEST_KEYS
+        or manifest.get("schema_version") != SCHEMA_VERSION
         or manifest.get("objective_id") != OBJECTIVE_ID
         or manifest.get("mode") != "fixture"
-        or tuple(manifest.get("expected_arms", ())) != EXPECTED_ARMS
+        or manifest.get("expected_arms") != list(EXPECTED_ARMS)
         or manifest.get("network") != "disabled"
         or manifest.get("allowed_native_tools") != ["read", "search"]
         or type(manifest.get("timeout_seconds")) is not int

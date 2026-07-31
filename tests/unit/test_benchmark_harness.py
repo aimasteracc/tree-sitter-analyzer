@@ -350,6 +350,28 @@ class TestGinSmokeQualification:
         ):
             self._validate(bundle)
 
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [("ground_truth", "secret"), ("expected_arms", None)],
+    )
+    def test_manifest_schema_is_exact(
+        self, tmp_path: Path, field: str, value: object
+    ):
+        bundle = self._bundle(tmp_path)
+        path = "manifest.json"
+        target = bundle / path
+        manifest = json.loads(target.read_text())
+        manifest[field] = value
+        target.write_text(json.dumps(manifest, sort_keys=True) + "\n")
+        checksums = json.loads((bundle / "checksums.json").read_text())
+        checksums["sha256"][path] = hashlib.sha256(target.read_bytes()).hexdigest()
+        (bundle / "checksums.json").write_text(
+            json.dumps(checksums, sort_keys=True) + "\n"
+        )
+
+        with pytest.raises(gin_smoke.QualificationError, match="invalid manifest"):
+            self._validate(bundle)
+
     def test_external_git_anchor_is_required(self, tmp_path: Path):
         bundle = self._bundle(tmp_path)
 
