@@ -38,6 +38,12 @@ _PROCESS_INSPECTION = re.compile(
     r"(?:^|[;&|]\s*|\s)(?:ps|pgrep|lsof|env|printenv|mount)\b",
     re.IGNORECASE,
 )
+_NETWORK_COMMAND = re.compile(
+    r"(?:^|[;&|]\s*|\s)"
+    r"(?:curl|wget|ssh|scp|sftp|nc|netcat|telnet|python|python3|node|ruby|perl|php)"
+    r"\b|\bgit\s+(?:clone|fetch|pull|push|ls-remote)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -125,3 +131,5 @@ def _audit_command(
             violations.append(f"{code}:{line_number}")
     if _BOUNDARY_ESCAPE.search(command) or _PROCESS_INSPECTION.search(command):
         violations.append(f"FILESYSTEM_BOUNDARY_ESCAPE:{line_number}")
+    if _NETWORK_COMMAND.search(command):
+        violations.append(f"NETWORK_COMMAND:{line_number}")

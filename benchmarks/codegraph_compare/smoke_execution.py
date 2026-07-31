@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -212,44 +213,55 @@ def run_manifest_smoke(
     configs: dict[tuple[str, str, str], Any] = {}
     failed = 0
     for cell in manifest.expected_cells:
-        _ = repos[cell.repo]
-        _ = arms[cell.arm]
-        question = questions[(cell.repo, cell.question_id)]
-        workspace_cell = workspace.cell(cell.arm) if workspace is not None else None
-        repo_path = (
-            workspace_cell.checkout_path
-            if workspace_cell is not None
-            else repo_path_resolver(repos[cell.repo])
-        )
-        adapter_key = (cell.repo, cell.arm)
-        if adapter_key not in adapters:
-            adapters[adapter_key] = adapter_factory(cell.arm)
-        adapter = adapters[adapter_key]
-        config_key = (cell.repo, cell.arm, cell.question_id)
-        if config_key not in configs:
-            configs[config_key] = adapter.build_run_config(
-                repo_path, str(question["prompt"])
+        try:
+            _ = arms[cell.arm]
+            question = questions[(cell.repo, cell.question_id)]
+            workspace_cell = (
+                workspace.cell(cell.arm) if workspace is not None else None
             )
-        legacy = run_one(
-            question_id=cell.question_id,
-            question_prompt=str(question["prompt"]),
-            arm_id=cell.arm,
-            repo_path=repo_path,
-            repeat=cell.repeat,
-            run_config=configs[config_key],
-            results_dir=(
-                workspace_cell.artifact_path
+            repo_path = (
+                workspace_cell.checkout_path
                 if workspace_cell is not None
-                else results_dir
-            ),
-            timeout_seconds=manifest.timeout_seconds,
-            model=manifest.model,
-            agent_backend=manifest.agent_backend,
-            dry_run=False,
-            session_id=manifest.primary_session_id,
-        )
-        transcript = Path(str(legacy.get("transcript_path", "")))
-        audit = audit_codex_transcript(transcript, cell.arm)
+                else repo_path_resolver(repos[cell.repo])
+            )
+            adapter_key = (cell.repo, cell.arm)
+            if adapter_key not in adapters:
+                adapters[adapter_key] = adapter_factory(cell.arm)
+            adapter = adapters[adapter_key]
+            config_key = (cell.repo, cell.arm, cell.question_id)
+            if config_key not in configs:
+                configs[config_key] = adapter.build_run_config(
+                    repo_path, str(question["prompt"])
+                )
+            legacy = run_one(
+                question_id=cell.question_id,
+                question_prompt=str(question["prompt"]),
+                arm_id=cell.arm,
+                repo_path=repo_path,
+                repeat=cell.repeat,
+                run_config=configs[config_key],
+                results_dir=(
+                    workspace_cell.artifact_path
+                    if workspace_cell is not None
+                    else results_dir
+                ),
+                timeout_seconds=manifest.timeout_seconds,
+                model=manifest.model,
+                agent_backend=manifest.agent_backend,
+                dry_run=False,
+                session_id=manifest.primary_session_id,
+            )
+            transcript = Path(str(legacy.get("transcript_path", "")))
+            audit = audit_codex_transcript(transcript, cell.arm)
+        except Exception as exc:  # noqa: BLE001 - every cell needs a terminal record
+            legacy = _exception_record(manifest, cell, exc)
+            audit = PolicyAudit(
+                cell.arm,
+                "",
+                (),
+                (),
+                (f"EXECUTION_EXCEPTION:{type(exc).__name__}", "TRANSCRIPT_MISSING"),
+            )
         attempt = build_v1_attempt(
             manifest,
             cell,
@@ -261,6 +273,29 @@ def run_manifest_smoke(
         if attempt.status is not BenchmarkStatus.SUCCESS:
             failed += 1
     return 0 if failed == 0 else 1
+
+
+def _exception_record(
+    manifest: ExperimentManifestV1,
+    cell: ExpectedCellV1,
+    error: Exception,
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc).isoformat()
+    return {
+        "run_id": cell.run_id,
+        "session_id": manifest.primary_session_id,
+        "repo": cell.repo,
+        "question_id": cell.question_id,
+        "arm": cell.arm,
+        "repeat": cell.repeat,
+        "agent_backend": cell.agent_backend,
+        "model": manifest.model,
+        "started_at": now,
+        "ended_at": now,
+        "answer": "ERROR",
+        "transcript_path": "",
+        "error": f"{type(error).__name__}: {error}",
+    }
 
 
 def run_manifest_setup_gate(

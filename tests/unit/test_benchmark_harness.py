@@ -2479,6 +2479,13 @@ class TestGinSmokeManifestExecution:
                 {"type": "command_execution", "command": "ps aux"},
                 "FILESYSTEM_BOUNDARY_ESCAPE:1",
             ),
+            (
+                {
+                    "type": "command_execution",
+                    "command": "curl https://example.com",
+                },
+                "NETWORK_COMMAND:1",
+            ),
         ),
     )
     def test_codex_transcript_rejects_non_readonly_events(
@@ -2575,6 +2582,98 @@ class TestGinSmokeManifestExecution:
         assert events == [
             ("RUNNING", "smoke_started"),
             ("INVALID", "smoke_invalid"),
+        ]
+
+    def test_manifest_smoke_retains_exception_and_continues_schedule(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.adapters import RunConfig
+        from benchmarks.codegraph_compare.smoke_execution import (
+            run_manifest_smoke,
+        )
+
+        manifest = _v1_manifest()
+        calls = 0
+
+        class Adapter:
+            def __init__(self, arm: str) -> None:
+                self.arm = arm
+
+            def build_run_config(self, repo_path: Path, prompt: str) -> RunConfig:
+                return RunConfig(self.arm, repo_path, "system")
+
+        def run_one(**kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("backend crashed")
+            cell = manifest.expected_cells[1]
+            transcript = tmp_path / "second.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "item": {
+                            "type": "mcp_tool_call",
+                            "server": "tree-sitter-analyzer",
+                            "tool": "nav",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return self._legacy_record(manifest, cell.run_id, transcript)
+
+        stats = {
+            ("gin", cell.arm): _v1_run(manifest, cell.run_id).index_stats
+            for cell in manifest.expected_cells
+        }
+        result = run_manifest_smoke(
+            manifest=manifest,
+            repo_entries=[{"id": "gin", "local_path": str(tmp_path)}],
+            arm_entries=[
+                {"id": "codegraph-warm"},
+                {"id": "tsa-warm"},
+            ],
+            questions_by_repo={
+                "gin": [{"id": "q1", "prompt": "Where is it?"}]
+            },
+            supplied_index_stats=stats,
+            results_dir=tmp_path / "results",
+            workspace=None,
+            repo_path_resolver=lambda repo: Path(repo["local_path"]),
+            adapter_factory=Adapter,
+            run_one=run_one,
+        )
+
+        records = [
+            json.loads(line)
+            for line in (
+                tmp_path
+                / "results"
+                / "experiments"
+                / manifest.manifest_hash
+                / "runs.jsonl"
+            )
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert result == 1
+        assert calls == 2
+        assert [record["status"] for record in records] == [
+            "INVALID",
+            "SUCCESS",
+        ]
+        assert json.loads(
+            (
+                tmp_path
+                / "results"
+                / "experiments"
+                / manifest.manifest_hash
+                / f"policy_{manifest.expected_cells[0].run_id}.json"
+            ).read_text(encoding="utf-8")
+        )["violations"] == [
+            "EXECUTION_EXCEPTION:RuntimeError",
+            "TRANSCRIPT_MISSING",
         ]
 
 
@@ -2821,6 +2920,7 @@ class TestGinSmokeBundle:
         from dataclasses import asdict
 
         from benchmarks.codegraph_compare.integrity import RegistryEvent
+        from benchmarks.codegraph_compare.smoke_policy import PolicyAudit
 
         manifest = _v1_manifest()
         plan = tmp_path / "plan-source"
@@ -2834,14 +2934,55 @@ class TestGinSmokeBundle:
             "workspace-evidence.json",
         ):
             (plan / name).write_text("{}\n", encoding="utf-8")
-        artifact = plan / "artifacts" / "native-only"
-        artifact.mkdir(parents=True)
-        (artifact / "transcript.jsonl").write_text("{}\n", encoding="utf-8")
         experiment = tmp_path / "experiment"
         experiment.mkdir()
-        runs = tuple(
-            _v1_run(manifest, cell.run_id) for cell in manifest.expected_cells
-        )
+        runs = []
+        servers = {
+            "codegraph-warm": "codegraph",
+            "tsa-warm": "tree-sitter-analyzer",
+        }
+        for cell in manifest.expected_cells:
+            transcript_path = f"/original/{cell.run_id}.jsonl"
+            transcript = (
+                plan
+                / "artifacts"
+                / cell.arm
+                / "raw"
+                / Path(transcript_path).name
+            )
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "item": {
+                            "type": "mcp_tool_call",
+                            "server": servers[cell.arm],
+                            "tool": "query",
+                        }
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            run = _v1_run(
+                manifest, cell.run_id, transcript_path=transcript_path
+            )
+            runs.append(run)
+            (experiment / f"policy_{cell.run_id}.json").write_text(
+                json.dumps(
+                    asdict(
+                        PolicyAudit(
+                            cell.arm,
+                            transcript_path,
+                            (servers[cell.arm],),
+                            ("query",),
+                            (),
+                        )
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
         (experiment / "runs.jsonl").write_text(
             "".join(json.dumps(asdict(run)) + "\n" for run in runs),
             encoding="utf-8",
@@ -2939,6 +3080,36 @@ class TestGinSmokeBundle:
 
         with pytest.raises(ValueError, match="bundle checksum mismatch"):
             validate_smoke_bundle(bundle, external_digest=digest)
+
+    def test_bundle_reaudits_transcript_instead_of_trusting_policy_file(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_bundle import (
+            create_smoke_bundle,
+        )
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        transcript = next((plan / "artifacts").rglob("*.jsonl"))
+        transcript.write_text(
+            json.dumps(
+                {
+                    "item": {
+                        "type": "command_execution",
+                        "command": "curl https://example.com",
+                    }
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="policy audit mismatch"):
+            create_smoke_bundle(
+                tmp_path / "bundle",
+                plan_dir=plan,
+                experiment_dir=experiment,
+                registry_path=registry,
+            )
 
 
 class TestCodeGraphCompareAnalysisGate:

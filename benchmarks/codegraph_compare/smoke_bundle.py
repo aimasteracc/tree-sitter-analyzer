@@ -14,6 +14,7 @@ from benchmarks.codegraph_compare.integrity import (
     parse_manifest_v1,
 )
 from benchmarks.codegraph_compare.schemas import RunRecordV1, parse_run_record
+from benchmarks.codegraph_compare.smoke_policy import audit_codex_transcript
 
 _PLAN_FILES = (
     "eligibility.json",
@@ -59,6 +60,43 @@ def _copy_tree_files(source: Path, destination: Path) -> None:
         target.write_bytes(path.read_bytes())
 
 
+def _validate_policy_evidence(
+    bundle_root: Path,
+    runs: tuple[RunRecordV1, ...],
+) -> None:
+    evidence = bundle_root / "evidence"
+    expected_policy_files = {
+        f"policy_{run.run_id}.json" for run in runs
+    }
+    actual_policy_files = {
+        path.name for path in evidence.glob("policy_*.json")
+    }
+    if actual_policy_files != expected_policy_files:
+        raise ValueError("policy evidence inventory mismatch")
+    for run in runs:
+        stored = _json(evidence / f"policy_{run.run_id}.json")
+        if stored.get("transcript_path") != run.transcript_path:
+            raise ValueError(f"policy transcript binding mismatch: {run.run_id}")
+        transcript = (
+            bundle_root
+            / "artifacts"
+            / run.arm
+            / "raw"
+            / Path(run.transcript_path).name
+        )
+        recomputed = cast(
+            dict[str, Any],
+            json.loads(
+                json.dumps(asdict(audit_codex_transcript(transcript, run.arm)))
+            ),
+        )
+        recomputed["transcript_path"] = run.transcript_path
+        if recomputed != stored:
+            raise ValueError(f"policy audit mismatch: {run.run_id}")
+        if recomputed["violations"] and run.status.value != "INVALID":
+            raise ValueError(f"policy-invalid run has wrong status: {run.run_id}")
+
+
 def create_smoke_bundle(
     destination: Path,
     *,
@@ -94,10 +132,12 @@ def create_smoke_bundle(
         ),
         encoding="utf-8",
     )
+    runs = _runs(evidence_target / "runs.jsonl")
+    _validate_policy_evidence(destination, runs)
     verdict = validate_experiment(
         manifest,
         registry=events,
-        runs=_runs(evidence_target / "runs.jsonl"),
+        runs=runs,
         evals=(),
         reported_experiment_ids=(manifest.experiment_id,),
     )
@@ -158,10 +198,12 @@ def validate_smoke_bundle(bundle: Path, *, external_digest: str) -> dict[str, An
 
     manifest = parse_manifest_v1(_json(bundle / "plan/experiment-manifest.json"))
     events = _registry(bundle / "registry.jsonl", manifest.experiment_id)
+    runs = _runs(bundle / "evidence/runs.jsonl")
+    _validate_policy_evidence(bundle, runs)
     verdict = validate_experiment(
         manifest,
         registry=events,
-        runs=_runs(bundle / "evidence/runs.jsonl"),
+        runs=runs,
         evals=(),
         reported_experiment_ids=(manifest.experiment_id,),
     )
