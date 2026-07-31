@@ -2300,13 +2300,17 @@ class TestCodeGraphCompareSetupGate:
         ),
     )
     def test_codex_indexed_arm_command_ignores_user_config_and_requires_one_server(
-        self, arm_id: str, server_name: str, tmp_path: Path
+        self, arm_id: str, server_name: str, monkeypatch, tmp_path: Path
     ):
         from benchmarks.codegraph_compare.adapters import RunConfig
         from benchmarks.codegraph_compare.adapters.claude_runner import (
             _build_agent_cmd,
         )
 
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.adapters.claude_runner.resolve_codegraph_executable",
+            lambda: Path("/preinstalled/codegraph"),
+        )
         command = _build_agent_cmd(
             arm_id,
             "gpt-5",
