@@ -118,6 +118,8 @@ def audit_codex_transcript(transcript_path: Path, arm: str) -> PolicyAudit:
         elif item_type == "command_execution":
             _audit_command(str(item.get("command") or ""), line_number, violations)
         elif item_type == "mcp_tool_call":
+            if event.get("type") != "item.completed":
+                continue
             server = str(item.get("server") or item.get("server_name") or "")
             tool = str(item.get("tool") or item.get("tool_name") or "")
             servers.append(server)

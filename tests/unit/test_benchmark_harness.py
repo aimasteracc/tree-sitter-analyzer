@@ -2487,6 +2487,33 @@ class TestGinSmokeManifestExecution:
 
         assert audit.violations == ("MCP_CALL_FAILED:1", "MISSING_INDEX_QUERY")
 
+    def test_codex_transcript_does_not_accept_started_index_query(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "started-mcp.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.started",
+                    "item": {
+                        "type": "mcp_tool_call",
+                        "server": "tree-sitter-analyzer",
+                        "tool": "nav",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "tsa-warm")
+
+        assert audit.violations == ("MISSING_INDEX_QUERY",)
+        assert audit.observed_mcp_servers == ()
+
     def test_codex_transcript_rejects_cross_arm_mcp(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_execution import (
             audit_codex_transcript,
@@ -2699,6 +2726,7 @@ class TestGinSmokeManifestExecution:
             transcript.write_text(
                 json.dumps(
                     {
+                        "type": "item.completed",
                         "item": {
                             "type": "mcp_tool_call",
                             "server": "tree-sitter-analyzer",
@@ -3037,6 +3065,19 @@ class TestGinSmokeWorkspace:
         with pytest.raises(ValueError, match="contains a symlink"):
             validate_workspace_v1(parse_workspace_v1(raw), manifest)
 
+    def test_workspace_rejects_symlink_nested_in_index(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            validate_workspace_v1,
+        )
+
+        manifest, _, workspace = self._fixture(tmp_path)
+        index = workspace.cell("tsa-warm").index_path
+        assert index == workspace.cell("tsa-warm").checkout_path / ".ast-cache"
+        (index / "external.db").symlink_to(tmp_path / "outside.db")
+
+        with pytest.raises(ValueError, match="contains a special node"):
+            validate_workspace_v1(workspace, manifest)
+
     def test_workspace_schema_rejects_unknown_fields(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_workspace import (
             parse_workspace_v1,
@@ -3089,6 +3130,7 @@ class TestGinSmokeBundle:
             transcript.write_text(
                 json.dumps(
                     {
+                        "type": "item.completed",
                         "item": {
                             "type": "mcp_tool_call",
                             "server": servers[cell.arm],

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -132,6 +134,19 @@ def _canonical_root(path: Path, label: str) -> Path:
     return path.resolve(strict=False)
 
 
+def _reject_special_tree(root: Path, label: str) -> None:
+    """Require every existing index node to be a physical file or directory."""
+
+    if not root.exists():
+        return
+    for current, directories, files in os.walk(root, followlinks=False):
+        for name in (*directories, *files):
+            path = Path(current) / name
+            mode = path.lstat().st_mode
+            if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
+                raise ValueError(f"{label} namespace contains a special node: {path}")
+
+
 def _git_output(checkout: Path, *args: str) -> str:
     return subprocess.run(
         ["git", *args],
@@ -189,6 +204,8 @@ def validate_workspace_v1(
     checkouts = tuple(_canonical_root(path, "checkout") for path in checkouts)
     artifacts = tuple(_canonical_root(path, "artifact") for path in artifacts)
     indexes = tuple(_canonical_root(path, "index") for path in indexes)
+    for index in indexes:
+        _reject_special_tree(index, "index")
     _require_disjoint(checkouts, "checkout")
     _require_disjoint(artifacts, "artifact")
     _require_disjoint(indexes, "index")
