@@ -628,6 +628,9 @@ class TestCodeGraphCompareTSAAdapter:
         with patch(
             "benchmarks.codegraph_compare.adapters.codegraph.subprocess.run",
             return_value=SimpleNamespace(returncode=3, stderr="codegraph failed"),
+        ), patch(
+            "benchmarks.codegraph_compare.adapters.codegraph.resolve_codegraph_executable",
+            return_value=Path("/cached/codegraph"),
         ):
             with pytest.raises(RuntimeError, match="exited with code 3"):
                 _build_index(tmp_path, index_dir)
@@ -635,20 +638,20 @@ class TestCodeGraphCompareTSAAdapter:
     def test_codegraph_index_uses_pinned_package_without_telemetry(
         self, tmp_path: Path
     ):
-        from benchmarks.codegraph_compare.adapters import CODEGRAPH_NPM_PACKAGE
         from benchmarks.codegraph_compare.adapters.codegraph import _build_index
 
         index_dir = tmp_path / ".codegraph"
         with patch(
             "benchmarks.codegraph_compare.adapters.codegraph.subprocess.run",
             return_value=SimpleNamespace(returncode=0, stderr=""),
-        ) as run:
+        ) as run, patch(
+            "benchmarks.codegraph_compare.adapters.codegraph.resolve_codegraph_executable",
+            return_value=Path("/cached/codegraph"),
+        ):
             _build_index(tmp_path, index_dir)
 
         assert run.call_args.args[0] == [
-            "npx",
-            "--yes",
-            CODEGRAPH_NPM_PACKAGE,
+            "/cached/codegraph",
             "init",
             "-i",
         ]
@@ -2955,7 +2958,22 @@ class TestGinSmokeWorkspace:
         tsa_index.symlink_to(external, target_is_directory=True)
         raw["cells"][1]["index_path"] = str(tsa_index)
 
-        with pytest.raises(ValueError, match="index namespace is a symlink"):
+        with pytest.raises(ValueError, match="index namespace contains a symlink"):
+            validate_workspace_v1(parse_workspace_v1(raw), manifest)
+
+    def test_workspace_rejects_symlinked_ancestor(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            parse_workspace_v1,
+            validate_workspace_v1,
+        )
+
+        manifest, raw, workspace = self._fixture(tmp_path)
+        checkout = workspace.cell("native-only").checkout_path
+        alias = tmp_path / "checkout-alias"
+        alias.symlink_to(checkout.parent, target_is_directory=True)
+        raw["cells"][0]["checkout_path"] = str(alias / checkout.name)
+
+        with pytest.raises(ValueError, match="contains a symlink"):
             validate_workspace_v1(parse_workspace_v1(raw), manifest)
 
     def test_workspace_schema_rejects_unknown_fields(self, tmp_path: Path):

@@ -25,11 +25,11 @@ import time
 from pathlib import Path
 
 from . import (
-    CODEGRAPH_NPM_PACKAGE,
     BenchmarkAdapter,
     IndexStats,
     RunConfig,
     ToolMetrics,
+    resolve_codegraph_executable,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,7 +230,7 @@ def _build_index(repo_path: Path, index_dir: Path) -> IndexStats:
     t0 = time.perf_counter()
 
     result = subprocess.run(
-        ["npx", "--yes", CODEGRAPH_NPM_PACKAGE, "init", "-i"],
+        [str(resolve_codegraph_executable()), "init", "-i"],
         cwd=repo_path,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,

@@ -121,6 +121,17 @@ def _require_disjoint(paths: tuple[Path, ...], label: str) -> None:
                 raise ValueError(f"{label} namespace collision: {left} <> {right}")
 
 
+def _canonical_root(path: Path, label: str) -> Path:
+    """Reject symlinks in every existing component and return physical identity."""
+
+    current = Path(path.anchor)
+    for part in path.parts[1:]:
+        current /= part
+        if current.exists() and current.is_symlink():
+            raise ValueError(f"{label} namespace contains a symlink: {current}")
+    return path.resolve(strict=False)
+
+
 def _git_output(checkout: Path, *args: str) -> str:
     return subprocess.run(
         ["git", *args],
@@ -175,11 +186,12 @@ def validate_workspace_v1(
     indexes = tuple(
         cell.index_path for cell in workspace.cells if cell.index_path is not None
     )
+    checkouts = tuple(_canonical_root(path, "checkout") for path in checkouts)
+    artifacts = tuple(_canonical_root(path, "artifact") for path in artifacts)
+    indexes = tuple(_canonical_root(path, "index") for path in indexes)
     _require_disjoint(checkouts, "checkout")
     _require_disjoint(artifacts, "artifact")
     _require_disjoint(indexes, "index")
-    if any(path.is_symlink() for path in (*checkouts, *artifacts)):
-        raise ValueError("checkout and artifact namespaces cannot be symlinks")
     if any(
         _paths_overlap(artifact, checkout)
         for artifact in artifacts

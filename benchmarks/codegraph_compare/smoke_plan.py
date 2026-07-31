@@ -16,7 +16,7 @@ from typing import Any
 
 import yaml
 
-from benchmarks.codegraph_compare.adapters import CODEGRAPH_NPM_PACKAGE
+from benchmarks.codegraph_compare.adapters import codegraph_executable_identity
 from benchmarks.codegraph_compare.integrity import (
     ExpectedCellV1,
     _sha256,
@@ -75,9 +75,7 @@ def tool_fingerprints(benchmark_repo: Path) -> tuple[dict[str, str], str]:
 
     benchmark_sha = _git_output(benchmark_repo, "rev-parse", "HEAD")
     codex = _command_identity(["codex", "--version"])
-    codegraph = _command_identity(
-        ["npx", "--yes", CODEGRAPH_NPM_PACKAGE, "--version"]
-    )
+    codegraph = codegraph_executable_identity()
     tools = {
         "native-only": _sha256(
             {
@@ -99,7 +97,6 @@ def tool_fingerprints(benchmark_repo: Path) -> tuple[dict[str, str], str]:
         "codegraph-warm": _sha256(
             {
                 "arm": "codegraph-warm",
-                "package": CODEGRAPH_NPM_PACKAGE,
                 "binary": codegraph,
                 "telemetry": False,
                 "daemon": False,

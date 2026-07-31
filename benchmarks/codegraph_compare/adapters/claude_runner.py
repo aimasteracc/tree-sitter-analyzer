@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from . import CODEGRAPH_NPM_PACKAGE
+from . import resolve_codegraph_executable
 
 if TYPE_CHECKING:
     from . import RunConfig
@@ -408,8 +408,8 @@ def _codex_mcp_config_args(arm_id: str, repo_path: Path) -> list[str]:
         enabled_tools = [name.rsplit("__", 1)[-1] for name in _TSA_TOOLS]
     elif arm_id.startswith("codegraph"):
         server_name = "codegraph"
-        command = "npx"
-        args = ["--yes", CODEGRAPH_NPM_PACKAGE, "serve", "--mcp"]
+        command = str(resolve_codegraph_executable())
+        args = ["serve", "--mcp"]
         enabled_tools = [name.rsplit("__", 1)[-1] for name in _CODEGRAPH_TOOLS]
     else:
         return []

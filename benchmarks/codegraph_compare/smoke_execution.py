@@ -262,14 +262,34 @@ def run_manifest_smoke(
                 (),
                 (f"EXECUTION_EXCEPTION:{type(exc).__name__}", "TRANSCRIPT_MISSING"),
             )
-        attempt = build_v1_attempt(
-            manifest,
-            cell,
-            legacy,
-            index_stats=supplied_index_stats.get((cell.repo, cell.arm)),
-            policy_audit=audit,
-        )
-        append_v1_attempt(results_dir, manifest, attempt, audit)
+        try:
+            attempt = build_v1_attempt(
+                manifest,
+                cell,
+                legacy,
+                index_stats=supplied_index_stats.get((cell.repo, cell.arm)),
+                policy_audit=audit,
+            )
+            append_v1_attempt(results_dir, manifest, attempt, audit)
+        except Exception as exc:  # noqa: BLE001 - retain conversion/storage failures
+            audit = PolicyAudit(
+                cell.arm,
+                "",
+                (),
+                (),
+                (
+                    f"EVIDENCE_EXCEPTION:{type(exc).__name__}",
+                    "TRANSCRIPT_MISSING",
+                ),
+            )
+            attempt = build_v1_attempt(
+                manifest,
+                cell,
+                _exception_record(manifest, cell, exc),
+                index_stats=supplied_index_stats.get((cell.repo, cell.arm)),
+                policy_audit=audit,
+            )
+            append_v1_attempt(results_dir, manifest, attempt, audit)
         if attempt.status is not BenchmarkStatus.SUCCESS:
             failed += 1
     return 0 if failed == 0 else 1
