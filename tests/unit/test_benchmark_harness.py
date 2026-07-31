@@ -4909,6 +4909,7 @@ class TestBenchmarkExperimentIntegrity:
 
 class TestSmokeModelPreflight:
     def test_preflight_runs_exact_model_outside_benchmark_tree(self, tmp_path: Path):
+        # Issue #1201: unconstrained prompts produced "Acknowledged." intermittently.
         from benchmarks.codegraph_compare import smoke_preflight
 
         identity = {
@@ -4922,7 +4923,9 @@ class TestSmokeModelPreflight:
                 "type": "item.completed",
                 "item": {
                     "type": "agent_message",
-                    "text": smoke_preflight.SENTINEL,
+                    "text": json.dumps(
+                        {"status": smoke_preflight.SENTINEL}
+                    ),
                 },
             }
         )
@@ -4943,9 +4946,24 @@ class TestSmokeModelPreflight:
         assert "--ephemeral" in command
         assert "--ignore-user-config" in command
         assert "--skip-git-repo-check" in command
+        assert "--output-schema" in command
         assert Path(run.call_args.kwargs["cwd"]) != Path.cwd()
         assert evidence["status"] == "PASSED"
         assert json.loads(output.read_text()) == evidence
+
+    def test_preflight_rejects_unstructured_acknowledgement(self):
+        # Issue #1201: availability must be proven by schema-bound output.
+        from benchmarks.codegraph_compare import smoke_preflight
+
+        event = json.dumps(
+            {
+                "type": "item.completed",
+                "item": {"type": "agent_message", "text": "Acknowledged."},
+            }
+        )
+
+        with pytest.raises(ValueError, match="terminal message is not JSON"):
+            smoke_preflight._agent_message(event)
 
     @pytest.mark.parametrize(
         ("field", "value", "message"),
