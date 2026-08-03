@@ -3376,8 +3376,9 @@ class TestGinSmokeWorkspace:
 
         manifest, _, workspace = self._fixture(tmp_path)
         index = workspace.cell("tsa-warm").index_path
-        assert index is not None
-        (tmp_path / "alias.db").hardlink_to(index / "index.db")
+        expected_index = tmp_path / "frozen-indexes" / "tsa-warm" / ".ast-cache"
+        assert index == expected_index
+        (tmp_path / "alias.db").hardlink_to(expected_index / "index.db")
 
         with pytest.raises(ValueError, match="hardlinked file"):
             validate_workspace_v1(workspace, manifest)
