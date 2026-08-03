@@ -33,6 +33,7 @@ from benchmarks.codegraph_compare.smoke_evidence import (
     produce_gin_index_evidence,
 )
 from benchmarks.codegraph_compare.smoke_preflight import validate_model_preflight
+from benchmarks.codegraph_compare.smoke_workspace import create_frozen_index_snapshot
 
 ARMS = ("native-only", "tsa-warm", "codegraph-warm")
 INDEXED_ARMS = ("tsa-warm", "codegraph-warm")
@@ -121,9 +122,7 @@ def _load_selected_config(config_dir: Path) -> tuple[dict, list[dict], dict]:
         next(item for item in arms["arms"] if item["id"] == arm) for arm in ARMS
     ]
     question = next(
-        item
-        for item in questions["questions"]
-        if item["id"] == "gin-route-matching"
+        item for item in questions["questions"] if item["id"] == "gin-route-matching"
     )
     return repo, selected_arms, question
 
@@ -145,6 +144,67 @@ def _write_exclusive(path: Path, payload: Any) -> None:
         stream.write("\n")
 
 
+def freeze_index_baselines(
+    checkouts: dict[str, Path],
+    checkout_root: Path,
+    indexed_paths: dict[str, tuple[str, ...]],
+) -> dict[str, Path]:
+    """Checkpoint and move warm indexes into isolated frozen namespaces."""
+
+    layout = (
+        ("tsa-warm", ".ast-cache"),
+        ("codegraph-warm", ".codegraph"),
+    )
+    paths = {
+        arm: (
+            checkouts[arm] / index_name,
+            (checkout_root / "frozen-indexes" / arm / index_name).resolve(),
+        )
+        for arm, index_name in layout
+    }
+    for _source, target in paths.values():
+        if target.exists() or target.parent.exists():
+            raise ValueError(f"Frozen index destination already exists: {target}")
+    created: list[Path] = []
+    try:
+        for arm, (source, target) in paths.items():
+            create_frozen_index_snapshot(source, target, arm, indexed_paths[arm])
+            created.append(target)
+    except Exception:
+        for target in reversed(created):
+            shutil.rmtree(target.parent)
+        raise
+    quarantines = {
+        arm: source.with_name(source.name + ".freeze-quarantine")
+        for arm, (source, _) in paths.items()
+    }
+    if any(os.path.lexists(path) for path in quarantines.values()):
+        for target in reversed(created):
+            shutil.rmtree(target.parent)
+        raise ValueError("Frozen index quarantine already exists")
+    renamed: list[tuple[Path, Path]] = []
+    try:
+        for arm, (source, _) in paths.items():
+            quarantine = quarantines[arm]
+            source.rename(quarantine)
+            renamed.append((source, quarantine))
+    except OSError:
+        for source, quarantine in reversed(renamed):
+            quarantine.rename(source)
+        for target in reversed(created):
+            shutil.rmtree(target.parent)
+        raise
+    try:
+        for quarantine in quarantines.values():
+            shutil.rmtree(quarantine)
+    except OSError as exc:
+        raise RuntimeError(
+            "Frozen index committed but quarantine cleanup failed; "
+            "frozen authority and recoverable quarantine were preserved"
+        ) from exc
+    return {arm: target for arm, (_, target) in paths.items()}
+
+
 def freeze_smoke_plan(
     *,
     benchmark_repo: Path,
@@ -159,9 +219,7 @@ def freeze_smoke_plan(
     """Build indexes and freeze manifest/workspace evidence before model use."""
 
     benchmark_repo = benchmark_repo.resolve()
-    if _git_output(
-        benchmark_repo, "status", "--porcelain", "--untracked-files=no"
-    ):
+    if _git_output(benchmark_repo, "status", "--porcelain", "--untracked-files=no"):
         raise ValueError("Benchmark implementation has tracked modifications")
     tools, agent_fingerprint = tool_fingerprints(benchmark_repo)
     preflight = validate_model_preflight(
@@ -174,9 +232,7 @@ def freeze_smoke_plan(
     _write_exclusive(destination / "model-preflight.json", preflight)
     config_dir = benchmark_repo / "benchmarks" / "codegraph_compare"
     repo, arms, question = _load_selected_config(config_dir)
-    checkouts = {
-        arm: (checkout_root / arm / "gin").resolve() for arm in ARMS
-    }
+    checkouts = {arm: (checkout_root / arm / "gin").resolve() for arm in ARMS}
     index_path = destination / "index-evidence.json"
     eligibility_path = destination / "eligibility.json"
     eligibility = produce_gin_index_evidence(
@@ -186,11 +242,14 @@ def freeze_smoke_plan(
         eligibility_path=eligibility_path,
         tool_fingerprints=tools,
     )
+    evidence_cells = json.loads(index_path.read_text(encoding="utf-8"))["cells"]
+    evidence_paths = {
+        str(cell["arm_id"]): tuple(cell["index_stats"]["indexed_paths"])
+        for cell in evidence_cells
+    }
+    frozen_indexes = freeze_index_baselines(checkouts, checkout_root, evidence_paths)
     index_content_hashes = {
-        "tsa-warm": index_content_hash(checkouts["tsa-warm"] / ".ast-cache"),
-        "codegraph-warm": index_content_hash(
-            checkouts["codegraph-warm"] / ".codegraph"
-        ),
+        arm: index_content_hash(path) for arm, path in frozen_indexes.items()
     }
     expected_cells = tuple(
         ExpectedCellV1(
@@ -239,9 +298,7 @@ def freeze_smoke_plan(
         eligible_paths={"gin": tuple(eligibility["eligible_paths"])},
         eligible_paths_hashes={"gin": eligibility["eligible_paths_hash"]},
         parse_error_allowlists={"gin": ()},
-        required_readiness_oracles=dict.fromkeys(
-            INDEXED_ARMS, (READINESS_ORACLE,)
-        ),
+        required_readiness_oracles=dict.fromkeys(INDEXED_ARMS, (READINESS_ORACLE,)),
         index_content_hashes=index_content_hashes,
     )
     artifacts = destination / "artifacts"
@@ -251,8 +308,8 @@ def freeze_smoke_plan(
         artifact.mkdir(parents=True)
         index_dir = {
             "native-only": None,
-            "tsa-warm": checkouts[arm] / ".ast-cache",
-            "codegraph-warm": checkouts[arm] / ".codegraph",
+            "tsa-warm": frozen_indexes.get(arm),
+            "codegraph-warm": frozen_indexes.get(arm),
         }[arm]
         workspace_cells.append(
             {

@@ -19,6 +19,53 @@ from benchmarks.codegraph_compare.integrity import _sha256
 from benchmarks.codegraph_compare.schemas import IndexStatsV1
 
 READINESS_ORACLE = "gin.Engine.ServeHTTP@gin.go"
+INDEX_LAYOUT = {
+    "tsa-warm": (".ast-cache", "index.db"),
+    "codegraph-warm": (".codegraph", "codegraph.db"),
+}
+
+
+def canonical_semantic_digest(database: Path) -> str:
+    """Hash every user table's schema and rows without creating sidecars."""
+
+    payload = []
+    uri = f"file:{database}?mode=ro&immutable=1"
+    with sqlite3.connect(uri, uri=True) as connection:
+        tables = connection.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        ).fetchall()
+        for table, sql in tables:
+            columns = tuple(
+                row[1]
+                for row in connection.execute(
+                    f'PRAGMA table_info("{str(table).replace(chr(34), chr(34) * 2)}")'
+                ).fetchall()
+            )
+            quoted = str(table).replace('"', '""')
+            rows = connection.execute(f'SELECT * FROM "{quoted}"').fetchall()
+            canonical_rows = sorted(
+                json.dumps(
+                    [_semantic_value(value) for value in row],
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                )
+                for row in rows
+            )
+            payload.append((table, sql, columns, canonical_rows))
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _semantic_value(value: Any) -> tuple[str, Any]:
+    if value is None:
+        return ("null", None)
+    if isinstance(value, bytes):
+        return ("blob", value.hex())
+    return (type(value).__name__, value)
+
+
 _GENERATED_MARKER = "Code generated"
 _GENERATED_SUFFIX = "DO NOT EDIT."
 
@@ -50,11 +97,7 @@ def tracked_paths(repo_path: Path) -> tuple[str, ...]:
         check=True,
     )
     return tuple(
-        sorted(
-            path.decode("utf-8")
-            for path in result.stdout.split(b"\0")
-            if path
-        )
+        sorted(path.decode("utf-8") for path in result.stdout.split(b"\0") if path)
     )
 
 
@@ -68,11 +111,7 @@ def tracked_go_paths(repo_path: Path) -> tuple[str, ...]:
         check=True,
     )
     return tuple(
-        sorted(
-            path.decode("utf-8")
-            for path in result.stdout.split(b"\0")
-            if path
-        )
+        sorted(path.decode("utf-8") for path in result.stdout.split(b"\0") if path)
     )
 
 
@@ -86,7 +125,11 @@ def classify_go_paths(
     for relative in paths:
         path = repo_path / relative
         prefix = path.read_text(encoding="utf-8", errors="replace")[:2048]
-        target = generated if _GENERATED_MARKER in prefix and _GENERATED_SUFFIX in prefix else eligible
+        target = (
+            generated
+            if _GENERATED_MARKER in prefix and _GENERATED_SUFFIX in prefix
+            else eligible
+        )
         target.append(relative)
     return tuple(eligible), tuple(generated)
 
@@ -182,6 +225,67 @@ def _codegraph_readiness(repo_path: Path) -> bool:
             ("gin.go", "%ServeHTTP%"),
         ).fetchone()
     return row is not None
+
+
+def inspect_frozen_index(arm: str, index_root: Path) -> tuple[str, ...]:
+    """Validate one fixed arm snapshot without creating SQLite sidecars."""
+
+    if arm not in INDEX_LAYOUT:
+        raise ValueError(f"Unsupported indexed Smoke arm: {arm}")
+    _, database_name = INDEX_LAYOUT[arm]
+    database = index_root / database_name
+    regular_files = tuple(
+        sorted(
+            path.relative_to(index_root)
+            for path in index_root.rglob("*")
+            if path.is_file()
+        )
+    )
+    candidates = tuple(
+        path.as_posix()
+        for path in regular_files
+        if path.suffix in {".db", ".sqlite", ".sqlite3"}
+    )
+    if candidates != (database_name,):
+        raise ValueError(f"{arm} must contain exactly one primary database")
+    sidecars = tuple(
+        path.as_posix()
+        for path in regular_files
+        if path.name.endswith(("-wal", "-shm", "-journal"))
+    )
+    if sidecars:
+        raise ValueError(f"Frozen index contains SQLite sidecars: {sidecars}")
+    uri = f"file:{database}?mode=ro&immutable=1"
+    with sqlite3.connect(uri, uri=True) as connection:
+        if connection.execute("PRAGMA integrity_check").fetchone() != ("ok",):
+            raise ValueError(f"{arm} frozen database failed integrity_check")
+        if arm == "tsa-warm":
+            rows = connection.execute(
+                "SELECT file_path FROM ast_index ORDER BY file_path"
+            ).fetchall()
+            ready = connection.execute(
+                "SELECT symbols_json FROM ast_index WHERE file_path = 'gin.go'"
+            ).fetchone()
+            if not ready or "ServeHTTP" not in str(ready[0]):
+                raise ValueError(f"{arm} failed readiness oracle {READINESS_ORACLE}")
+        else:
+            columns = {
+                str(row[1])
+                for row in connection.execute("PRAGMA table_info(nodes)").fetchall()
+            }
+            if not {"name", "file_path"} <= columns:
+                raise ValueError("CodeGraph nodes schema lacks readiness columns")
+            rows = connection.execute(
+                "SELECT DISTINCT file_path FROM nodes "
+                "WHERE file_path IS NOT NULL AND file_path <> '' ORDER BY file_path"
+            ).fetchall()
+            ready = connection.execute(
+                "SELECT 1 FROM nodes WHERE file_path = ? AND name LIKE ? LIMIT 1",
+                ("gin.go", "%ServeHTTP%"),
+            ).fetchone()
+            if ready is None:
+                raise ValueError(f"{arm} failed readiness oracle {READINESS_ORACLE}")
+    return tuple(str(row[0]).replace("\\", "/") for row in rows)
 
 
 def _dir_size(path: Path) -> int:
