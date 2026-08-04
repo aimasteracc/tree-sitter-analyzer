@@ -4213,6 +4213,59 @@ class TestGinSmokeBundle:
 
         assert len(digest) == 64
 
+    def test_bundle_accepts_evidence_fallback_after_runtime_failure(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        runs_path = experiment / "runs.jsonl"
+        runs = [
+            json.loads(line)
+            for line in runs_path.read_text(encoding="utf-8").splitlines()
+        ]
+        run = runs[0]
+        violations = ["EVIDENCE_EXCEPTION:ValueError", "TRANSCRIPT_MISSING"]
+        run["status"] = "INVALID"
+        run["answer"] = "ERROR"
+        run["transcript_path"] = ""
+        run["blocker_reason"] = "POLICY_AUDIT:" + ",".join(violations)
+        runs_path.write_text(
+            "".join(json.dumps(item) + "\n" for item in runs), encoding="utf-8"
+        )
+        policy_path = experiment / f"policy_{run['run_id']}.json"
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        policy.update(
+            transcript_path="",
+            observed_mcp_servers=[],
+            observed_mcp_tools=[],
+            violations=violations,
+        )
+        policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
+        (experiment / f"runtime_index_{run['run_id']}.json").write_text(
+            json.dumps(
+                {
+                    "experiment_id": run["experiment_id"],
+                    "session_id": run["session_id"],
+                    "run_id": run["run_id"],
+                    "arm": run["arm"],
+                    "failure_codes": ["RUNTIME_SEMANTIC_DRIFT"],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        # Issue #1219: evidence fallback replaces the earlier runtime policy audit.
+        digest = create_smoke_bundle(
+            tmp_path / "bundle",
+            plan_dir=plan,
+            experiment_dir=experiment,
+            registry_path=registry,
+        )
+
+        assert len(digest) == 64
+
     def test_bundle_accepts_runtime_marker_with_product_failure(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
 

@@ -130,9 +130,12 @@ def _without_terminal_exception(
     violations = stored.get("violations")
     if not isinstance(violations, list) or not violations:
         return stored
+    evidence_fallback = isinstance(violations[0], str) and bool(
+        _EVIDENCE_EXCEPTION_MARKER.fullmatch(violations[0])
+    )
     runtime_path = evidence / f"runtime_index_{run.run_id}.json"
     runtime_markers: list[str] = []
-    if runtime_path.is_file():
+    if runtime_path.is_file() and not evidence_fallback:
         runtime = _json(runtime_path)
         failure_codes = runtime.get("failure_codes")
         if not isinstance(failure_codes, list) or not all(
@@ -158,15 +161,11 @@ def _without_terminal_exception(
                 raise ValueError(f"runtime evidence binding mismatch: {run.run_id}")
             if violations[: len(runtime_markers)] != runtime_markers:
                 raise ValueError(f"runtime evidence ordering mismatch: {run.run_id}")
-    marker_count = len(runtime_markers)
+    marker_count = 1 if evidence_fallback else len(runtime_markers)
     remaining = violations[marker_count:]
-    if remaining and isinstance(remaining[0], str):
+    if not evidence_fallback and remaining and isinstance(remaining[0], str):
         marker = remaining[0]
         if _EXECUTION_EVIDENCE_MARKER.fullmatch(marker):
-            marker_count += 1
-        elif _EVIDENCE_EXCEPTION_MARKER.fullmatch(marker):
-            if runtime_markers:
-                raise ValueError(f"terminal evidence ordering mismatch: {run.run_id}")
             marker_count += 1
     if marker_count == 0:
         return stored
