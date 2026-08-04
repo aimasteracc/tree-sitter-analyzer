@@ -11,6 +11,7 @@ from typing import Any, cast
 
 from benchmarks.codegraph_compare._integrity_gate import validate_experiment
 from benchmarks.codegraph_compare.integrity import (
+    ExperimentManifestV1,
     RegistryEvent,
     parse_manifest_v1,
 )
@@ -34,6 +35,12 @@ _RUNTIME_EVIDENCE_MARKER = re.compile(
     r"^(?:(?:RUNTIME_POST_AUDIT|FROZEN_POSTCHECK|RUNTIME_CLEANUP)_FAILED:"
     r"[A-Za-z_][A-Za-z0-9_]*|(?:INDEX_CONTENT|RUNTIME_SEMANTIC)_DRIFT)$"
 )
+_EXECUTION_EVIDENCE_MARKER = re.compile(
+    r"^(?:EXECUTION_EXCEPTION:[A-Za-z_][A-Za-z0-9_]*|INDEX_CONTENT_DRIFT)$"
+)
+_EVIDENCE_EXCEPTION_MARKER = re.compile(
+    r"^EVIDENCE_EXCEPTION:[A-Za-z_][A-Za-z0-9_]*$"
+)
 _ARM_TOOL_SERVERS = {
     "tsa-warm": "tree-sitter-analyzer",
     "codegraph-warm": "codegraph",
@@ -46,6 +53,25 @@ def _sha256_bytes(payload: bytes) -> str:
 
 def _json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _valid_runtime_marker_sequence(markers: list[str]) -> bool:
+    index = 0
+    if index < len(markers) and (
+        markers[index] == "RUNTIME_SEMANTIC_DRIFT"
+        or markers[index].startswith("RUNTIME_POST_AUDIT_FAILED:")
+    ):
+        index += 1
+    if index < len(markers) and (
+        markers[index] == "INDEX_CONTENT_DRIFT"
+        or markers[index].startswith("FROZEN_POSTCHECK_FAILED:")
+    ):
+        index += 1
+    if index < len(markers) and markers[index].startswith(
+        "RUNTIME_CLEANUP_FAILED:"
+    ):
+        index += 1
+    return index == len(markers)
 
 
 def _validate_arm_tool_preflight(path: Path, *, require_executables: bool) -> None:
@@ -94,48 +120,74 @@ def _copy_tree_files(source: Path, destination: Path) -> None:
 
 
 def _without_terminal_exception(
-    stored: dict[str, Any], run: RunRecordV1, evidence: Path
+    stored: dict[str, Any],
+    run: RunRecordV1,
+    evidence: Path,
+    manifest: ExperimentManifestV1,
 ) -> dict[str, Any]:
     """Validate and remove terminal markers before transcript comparison."""
 
     violations = stored.get("violations")
     if not isinstance(violations, list) or not violations:
         return stored
-    marker_count = 0
-    for violation in violations:
-        if (
-            not isinstance(violation, str)
-            or _TERMINAL_EVIDENCE_MARKER.fullmatch(violation) is None
-        ):
-            break
-        marker_count += 1
+    runtime_path = evidence / f"runtime_index_{run.run_id}.json"
+    runtime_markers: list[str] = []
+    if runtime_path.is_file():
+        runtime = _json(runtime_path)
+        failure_codes = runtime.get("failure_codes")
+        if not isinstance(failure_codes, list) or not all(
+            isinstance(marker, str)
+            and _RUNTIME_EVIDENCE_MARKER.fullmatch(marker)
+            for marker in failure_codes
+        ) or not _valid_runtime_marker_sequence(failure_codes):
+            raise ValueError(f"runtime evidence marker mismatch: {run.run_id}")
+        runtime_markers = failure_codes
+        if runtime_markers:
+            if run.arm not in manifest.indexed_arms:
+                raise ValueError(f"runtime evidence on non-indexed arm: {run.run_id}")
+            expected_identity = {
+                "experiment_id": run.experiment_id,
+                "session_id": run.session_id,
+                "run_id": run.run_id,
+                "arm": run.arm,
+                "failure_codes": runtime_markers,
+            }
+            if any(
+                runtime.get(key) != value for key, value in expected_identity.items()
+            ):
+                raise ValueError(f"runtime evidence binding mismatch: {run.run_id}")
+            if violations[: len(runtime_markers)] != runtime_markers:
+                raise ValueError(f"runtime evidence ordering mismatch: {run.run_id}")
+    marker_count = len(runtime_markers)
+    remaining = violations[marker_count:]
+    if remaining and isinstance(remaining[0], str):
+        marker = remaining[0]
+        if _EXECUTION_EVIDENCE_MARKER.fullmatch(marker):
+            marker_count += 1
+        elif _EVIDENCE_EXCEPTION_MARKER.fullmatch(marker):
+            if runtime_markers:
+                raise ValueError(f"terminal evidence ordering mismatch: {run.run_id}")
+            marker_count += 1
     if marker_count == 0:
         return stored
+    if marker_count < len(violations):
+        next_violation = violations[marker_count]
+        if isinstance(next_violation, str) and _TERMINAL_EVIDENCE_MARKER.fullmatch(
+            next_violation
+        ):
+            raise ValueError(f"terminal evidence ordering mismatch: {run.run_id}")
     expected_blocker = "POLICY_AUDIT:" + ",".join(violations)
     blocker = run.blocker_reason or ""
-    product_failure = blocker.removeprefix(expected_blocker + ";PRODUCT_FAILURE:")
+    product_prefix = expected_blocker + ";PRODUCT_FAILURE:"
+    has_product_failure = blocker.startswith(product_prefix) and bool(
+        blocker[len(product_prefix) :]
+    )
     if (
         run.status.value != "INVALID"
-        or (blocker != expected_blocker and not product_failure)
+        or (blocker != expected_blocker and not has_product_failure)
         or (not run.transcript_path and run.answer != "ERROR")
     ):
         raise ValueError(f"terminal exception binding mismatch: {run.run_id}")
-    runtime_markers = [
-        marker
-        for marker in violations[:marker_count]
-        if _RUNTIME_EVIDENCE_MARKER.fullmatch(marker)
-    ]
-    if runtime_markers:
-        runtime = _json(evidence / f"runtime_index_{run.run_id}.json")
-        expected_identity = {
-            "experiment_id": run.experiment_id,
-            "session_id": run.session_id,
-            "run_id": run.run_id,
-            "arm": run.arm,
-            "failure_codes": runtime_markers,
-        }
-        if any(runtime.get(key) != value for key, value in expected_identity.items()):
-            raise ValueError(f"runtime evidence binding mismatch: {run.run_id}")
     comparable = dict(stored)
     comparable["violations"] = violations[marker_count:]
     return comparable
@@ -144,6 +196,7 @@ def _without_terminal_exception(
 def _validate_policy_evidence(
     bundle_root: Path,
     runs: tuple[RunRecordV1, ...],
+    manifest: ExperimentManifestV1,
 ) -> None:
     evidence = bundle_root / "evidence"
     expected_policy_files = {f"policy_{run.run_id}.json" for run in runs}
@@ -163,7 +216,7 @@ def _validate_policy_evidence(
         )
         recomputed["transcript_path"] = run.transcript_path
         stored_violations = stored.get("violations")
-        comparable = _without_terminal_exception(stored, run, evidence)
+        comparable = _without_terminal_exception(stored, run, evidence, manifest)
         if recomputed != comparable:
             raise ValueError(f"policy audit mismatch: {run.run_id}")
         if stored_violations and run.status.value != "INVALID":
@@ -216,7 +269,7 @@ def create_smoke_bundle(
         encoding="utf-8",
     )
     runs = _runs(evidence_target / "runs.jsonl")
-    _validate_policy_evidence(destination, runs)
+    _validate_policy_evidence(destination, runs, manifest)
     verdict = validate_experiment(
         manifest,
         registry=events,
@@ -290,7 +343,7 @@ def validate_smoke_bundle(bundle: Path, *, external_digest: str) -> dict[str, An
         _validate_arm_tool_preflight(arm_tool_preflight, require_executables=False)
     events = _registry(bundle / "registry.jsonl", manifest.experiment_id)
     runs = _runs(bundle / "evidence/runs.jsonl")
-    _validate_policy_evidence(bundle, runs)
+    _validate_policy_evidence(bundle, runs, manifest)
     verdict = validate_experiment(
         manifest,
         registry=events,

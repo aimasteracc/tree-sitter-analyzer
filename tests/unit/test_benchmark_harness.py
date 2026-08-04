@@ -4296,7 +4296,7 @@ class TestGinSmokeBundle:
         )
 
         # Issue #1219: a policy marker cannot self-authorize runtime evidence.
-        with pytest.raises(ValueError, match="runtime evidence binding mismatch"):
+        with pytest.raises(ValueError, match="runtime evidence ordering mismatch"):
             create_smoke_bundle(
                 tmp_path / "bundle",
                 plan_dir=plan,
