@@ -228,7 +228,7 @@ def _load_gitignore_patterns(root: Path) -> pathspec.PathSpec | None:
     """Load .gitignore patterns from the project root.
 
     Returns a pathspec.PathSpec object if .gitignore exists, None otherwise.
-    Uses gitwildmatch syntax to match git's semantics.
+    Uses gitignore syntax to match git's semantics.
     """
     gitignore_path = root / ".gitignore"
     if not gitignore_path.exists():
@@ -246,7 +246,7 @@ def _load_gitignore_patterns(root: Path) -> pathspec.PathSpec | None:
         if not patterns:
             return None
 
-        return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
+        return pathspec.GitIgnoreSpec.from_lines(patterns)
     except Exception as e:
         logger.warning(f"Failed to load .gitignore from {gitignore_path}: {e}")
         return None
