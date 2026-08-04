@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -248,9 +249,7 @@ class TestGinSmokeQualification:
         ):
             self._validate(bundle)
 
-    def test_external_bundle_digest_rejects_recomputed_checksums(
-        self, tmp_path: Path
-    ):
+    def test_external_bundle_digest_rejects_recomputed_checksums(self, tmp_path: Path):
         bundle = self._bundle(tmp_path)
         original_digest = hashlib.sha256(
             (bundle / "checksums.json").read_bytes()
@@ -367,9 +366,7 @@ class TestGinSmokeQualification:
             ("question_sha256", ""),
         ],
     )
-    def test_manifest_schema_is_exact(
-        self, tmp_path: Path, field: str, value: object
-    ):
+    def test_manifest_schema_is_exact(self, tmp_path: Path, field: str, value: object):
         bundle = self._bundle(tmp_path)
         path = "manifest.json"
         target = bundle / path
@@ -625,12 +622,15 @@ class TestCodeGraphCompareTSAAdapter:
         index_dir = tmp_path / ".codegraph"
         index_dir.mkdir()
         (index_dir / "stale.json").write_text("{}", encoding="utf-8")
-        with patch(
-            "benchmarks.codegraph_compare.adapters.codegraph.subprocess.run",
-            return_value=SimpleNamespace(returncode=3, stderr="codegraph failed"),
-        ), patch(
-            "benchmarks.codegraph_compare.adapters.codegraph.resolve_codegraph_executable",
-            return_value=Path("/cached/codegraph"),
+        with (
+            patch(
+                "benchmarks.codegraph_compare.adapters.codegraph.subprocess.run",
+                return_value=SimpleNamespace(returncode=3, stderr="codegraph failed"),
+            ),
+            patch(
+                "benchmarks.codegraph_compare.adapters.codegraph.resolve_codegraph_executable",
+                return_value=Path("/cached/codegraph"),
+            ),
         ):
             with pytest.raises(RuntimeError, match="exited with code 3"):
                 _build_index(tmp_path, index_dir)
@@ -641,12 +641,15 @@ class TestCodeGraphCompareTSAAdapter:
         from benchmarks.codegraph_compare.adapters.codegraph import _build_index
 
         index_dir = tmp_path / ".codegraph"
-        with patch(
-            "benchmarks.codegraph_compare.adapters.codegraph.subprocess.run",
-            return_value=SimpleNamespace(returncode=0, stderr=""),
-        ) as run, patch(
-            "benchmarks.codegraph_compare.adapters.codegraph.resolve_codegraph_executable",
-            return_value=Path("/cached/codegraph"),
+        with (
+            patch(
+                "benchmarks.codegraph_compare.adapters.codegraph.subprocess.run",
+                return_value=SimpleNamespace(returncode=0, stderr=""),
+            ) as run,
+            patch(
+                "benchmarks.codegraph_compare.adapters.codegraph.resolve_codegraph_executable",
+                return_value=Path("/cached/codegraph"),
+            ),
         ):
             _build_index(tmp_path, index_dir)
 
@@ -1291,11 +1294,7 @@ class TestCodeGraphCompareSetupGate:
         assert compare_run.cmd_run_matrix(args) == 0
         assert observed == [cell.run_id for cell in manifest.expected_cells]
         attempts_path = (
-            tmp_path
-            / "results"
-            / "experiments"
-            / manifest.manifest_hash
-            / "runs.jsonl"
+            tmp_path / "results" / "experiments" / manifest.manifest_hash / "runs.jsonl"
         )
         attempts = [
             json.loads(line)
@@ -2274,9 +2273,7 @@ class TestCodeGraphCompareSetupGate:
             "BACKEND_UNSUPPORTED",
         ]
 
-    @pytest.mark.parametrize(
-        "arm_id", ("native-only", "codegraph-warm", "tsa-warm")
-    )
+    @pytest.mark.parametrize("arm_id", ("native-only", "codegraph-warm", "tsa-warm"))
     def test_codex_backend_validator_allows_isolated_smoke_arms(self, arm_id: str):
         from benchmarks.codegraph_compare.adapters.claude_runner import (
             validate_backend_arm_support,
@@ -2333,7 +2330,9 @@ class TestCodeGraphCompareSetupGate:
         assert configured_servers == [f"mcp_servers.{server_name}.required=true"]
         if arm_id == "tsa-warm":
             assert not any(
-                value.endswith('enabled_tools=["nav","search","structure","health","index","project"]')
+                value.endswith(
+                    'enabled_tools=["nav","search","structure","health","index","project"]'
+                )
                 for value in command
             )
             assert not any('"index"' in value for value in command)
@@ -2497,9 +2496,7 @@ class TestGinSmokeManifestExecution:
 
         assert audit.violations == ("MCP_CALL_FAILED:1", "MISSING_INDEX_QUERY")
 
-    def test_codex_transcript_does_not_accept_started_index_query(
-        self, tmp_path: Path
-    ):
+    def test_codex_transcript_does_not_accept_started_index_query(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_execution import (
             audit_codex_transcript,
         )
@@ -2524,9 +2521,7 @@ class TestGinSmokeManifestExecution:
         assert audit.violations == ("MISSING_INDEX_QUERY",)
         assert audit.observed_mcp_servers == ()
 
-    def test_codex_transcript_rejects_mutating_tsa_index_tool(
-        self, tmp_path: Path
-    ):
+    def test_codex_transcript_rejects_mutating_tsa_index_tool(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_execution import (
             audit_codex_transcript,
         )
@@ -2748,7 +2743,9 @@ class TestGinSmokeManifestExecution:
         assert persisted["status"] == "SUCCESS"
         path.unlink()
         recovered = append_v1_attempt(tmp_path, manifest, attempt, audit)
-        assert json.loads(recovered.read_text(encoding="utf-8"))["run_id"] == cell.run_id
+        assert (
+            json.loads(recovered.read_text(encoding="utf-8"))["run_id"] == cell.run_id
+        )
         with pytest.raises(ValueError, match="Duplicate physical attempt"):
             append_v1_attempt(tmp_path, manifest, attempt, audit)
 
@@ -2782,9 +2779,7 @@ class TestGinSmokeManifestExecution:
             session_id=manifest.primary_session_id,
             results_dir=tmp_path,
             repo_path_resolver=lambda repo: tmp_path,
-            append_event=lambda _, status, outcome: events.append(
-                (status, outcome)
-            ),
+            append_event=lambda _, status, outcome: events.append((status, outcome)),
             adapter_factory=lambda arm: None,
             run_one=lambda **kwargs: None,
         )
@@ -2828,7 +2823,7 @@ class TestGinSmokeManifestExecution:
                             "type": "mcp_tool_call",
                             "server": "tree-sitter-analyzer",
                             "tool": "nav",
-                        }
+                        },
                     }
                 ),
                 encoding="utf-8",
@@ -2846,9 +2841,7 @@ class TestGinSmokeManifestExecution:
                 {"id": "codegraph-warm"},
                 {"id": "tsa-warm"},
             ],
-            questions_by_repo={
-                "gin": [{"id": "q1", "prompt": "Where is it?"}]
-            },
+            questions_by_repo={"gin": [{"id": "q1", "prompt": "Where is it?"}]},
             supplied_index_stats=stats,
             results_dir=tmp_path / "results",
             workspace=None,
@@ -2891,12 +2884,23 @@ class TestGinSmokeManifestExecution:
     def test_manifest_smoke_preserves_completed_evidence_after_index_failure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
+        from dataclasses import replace
+
         from benchmarks.codegraph_compare.adapters import RunConfig
         from benchmarks.codegraph_compare.smoke_execution import (
             run_manifest_smoke,
         )
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            IndexContentDriftError,
+        )
 
-        manifest = _v1_manifest()
+        manifest = replace(
+            _v1_manifest(),
+            index_content_hashes=(
+                ("codegraph-warm", "codegraph-index-hash"),
+                ("tsa-warm", "tsa-index-hash"),
+            ),
+        )
         cells = iter(manifest.expected_cells)
 
         class Adapter:
@@ -2929,6 +2933,25 @@ class TestGinSmokeManifestExecution:
             )
             record = self._legacy_record(manifest, cell.run_id, transcript)
             record["answer"] = f"completed answer for {cell.arm}"
+            record["input_tokens"] = 101
+            record["output_tokens"] = 23
+            record["total_tokens"] = 124
+            record["tool_calls"] = 7
+            record["file_reads"] = 3
+            record["search_calls"] = 2
+            record["index_queries"] = 1
+            record["cached_input_tokens"] = 41
+            record["reasoning_output_tokens"] = 11
+            record["cache_read_tokens"] = 37
+            record["cache_creation_tokens"] = 4
+            record["total_cost_usd"] = 0.125
+            record["estimated_cost_usd"] = 0.25
+            record["citations"] = ["gin.go", "tree.go"]
+            record["started_at"] = "2026-07-31T01:02:03Z"
+            record["ended_at"] = "2026-07-31T01:02:08Z"
+            record["elapsed_seconds"] = 5.0
+            if cell.arm == "codegraph-warm":
+                record["error"] = "provider returned a partial failure"
             return record
 
         validation_calls = 0
@@ -2937,13 +2960,54 @@ class TestGinSmokeManifestExecution:
             nonlocal validation_calls
             validation_calls += 1
             if validation_calls == 1:
-                raise ValueError("index changed after completed model call")
+                raise IndexContentDriftError("index changed after completed model call")
+            raise OSError("index digest could not be read")
 
-        workspace_cell = SimpleNamespace(
-            checkout_path=tmp_path,
-            artifact_path=tmp_path / "artifacts",
+        workspace_cells = {}
+        for arm, index_name in (
+            ("codegraph-warm", ".codegraph"),
+            ("tsa-warm", ".ast-cache"),
+        ):
+            checkout_path = tmp_path / "checkouts" / arm
+            artifact_path = tmp_path / "artifacts" / arm
+            index_path = tmp_path / "frozen-indexes" / arm / index_name
+            checkout_path.mkdir(parents=True)
+            artifact_path.mkdir(parents=True)
+            index_path.mkdir(parents=True)
+            workspace_cells[arm] = SimpleNamespace(
+                checkout_path=checkout_path,
+                artifact_path=artifact_path,
+                index_path=index_path,
+            )
+        workspace = SimpleNamespace(cell=workspace_cells.__getitem__)
+        expected_hashes = dict(manifest.index_content_hashes)
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.smoke_execution.index_content_hash",
+            lambda path: expected_hashes[
+                next(arm for arm in manifest.indexed_arms if arm in path.parts)
+            ],
         )
-        workspace = SimpleNamespace(cell=lambda arm: workspace_cell)
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.smoke_execution.canonical_semantic_digest",
+            lambda path: "semantic-digest",
+        )
+
+        def materialize(index_path, checkout_path, arm, expected_hash, expected_paths):
+            runtime_path = checkout_path / index_path.name
+            runtime_path.mkdir()
+            return runtime_path
+
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.smoke_execution.materialize_runtime_index",
+            materialize,
+        )
+        monkeypatch.setattr(
+            "benchmarks.codegraph_compare.smoke_execution.audit_runtime_index",
+            lambda runtime_path, audit_path, arm, expected_paths: (
+                "semantic-digest",
+                expected_paths,
+            ),
+        )
         monkeypatch.setattr(
             "benchmarks.codegraph_compare.smoke_execution.validate_index_content_v1",
             validate,
@@ -2960,9 +3024,7 @@ class TestGinSmokeManifestExecution:
                 {"id": "codegraph-warm"},
                 {"id": "tsa-warm"},
             ],
-            questions_by_repo={
-                "gin": [{"id": "q1", "prompt": "Where is it?"}]
-            },
+            questions_by_repo={"gin": [{"id": "q1", "prompt": "Where is it?"}]},
             supplied_index_stats=stats,
             results_dir=tmp_path / "results",
             workspace=workspace,
@@ -2971,17 +3033,17 @@ class TestGinSmokeManifestExecution:
             run_one=run_one,
         )
 
-        experiment = (
-            tmp_path / "results" / "experiments" / manifest.manifest_hash
-        )
+        experiment = tmp_path / "results" / "experiments" / manifest.manifest_hash
         first = json.loads(
             (experiment / "runs.jsonl").read_text(encoding="utf-8").splitlines()[0]
         )
+        second = json.loads(
+            (experiment / "runs.jsonl").read_text(encoding="utf-8").splitlines()[1]
+        )
         policy = json.loads(
-            (
-                experiment
-                / f"policy_{manifest.expected_cells[0].run_id}.json"
-            ).read_text(encoding="utf-8")
+            (experiment / f"policy_{manifest.expected_cells[0].run_id}.json").read_text(
+                encoding="utf-8"
+            )
         )
         # Issue #1201: post-run index validation must not erase model evidence.
         assert result == 1
@@ -2989,7 +3051,31 @@ class TestGinSmokeManifestExecution:
         assert first["transcript_path"].endswith(
             f"{manifest.expected_cells[0].run_id}.jsonl"
         )
-        assert policy["violations"] == ["EXECUTION_EXCEPTION:ValueError"]
+        assert first["input_tokens"] == 101
+        assert first["output_tokens"] == 23
+        assert first["total_tokens"] == 124
+        assert first["tool_calls"] == 7
+        assert first["file_reads"] == 3
+        assert first["search_calls"] == 2
+        assert first["index_queries"] == 1
+        assert first["cached_input_tokens"] == 41
+        assert first["reasoning_output_tokens"] == 11
+        assert first["cache_read_tokens"] == 37
+        assert first["cache_creation_tokens"] == 4
+        assert first["total_cost_usd"] == 0.125
+        assert first["estimated_cost_usd"] == 0.25
+        assert first["citations"] == ["gin.go", "tree.go"]
+        assert first["started_at"] == "2026-07-31T01:02:03Z"
+        assert first["ended_at"] == "2026-07-31T01:02:08Z"
+        assert first["elapsed_seconds"] == 5.0
+        assert first["status"] == "INVALID"
+        assert first["blocker_reason"] == (
+            "POLICY_AUDIT:INDEX_CONTENT_DRIFT;"
+            "PRODUCT_FAILURE:provider returned a partial failure"
+        )
+        assert policy["violations"] == ["INDEX_CONTENT_DRIFT"]
+        assert second["status"] == "INVALID"
+        assert second["blocker_reason"] == "POLICY_AUDIT:EXECUTION_EXCEPTION:OSError"
 
 
 class TestGinSmokeIndexEvidence:
@@ -3003,9 +3089,7 @@ class TestGinSmokeIndexEvidence:
             encoding="utf-8",
         )
 
-        eligible, excluded = classify_go_paths(
-            tmp_path, ("gin.go", "test.pb.go")
-        )
+        eligible, excluded = classify_go_paths(tmp_path, ("gin.go", "test.pb.go"))
 
         assert eligible == ("gin.go",)
         assert excluded == ("test.pb.go",)
@@ -3033,9 +3117,7 @@ class TestGinSmokeIndexEvidence:
         cache = tmp_path / ".ast-cache"
         cache.mkdir()
         connection = sqlite3.connect(cache / "index.db")
-        connection.execute(
-            "CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT)"
-        )
+        connection.execute("CREATE TABLE ast_index (file_path TEXT, symbols_json TEXT)")
         connection.executemany(
             "INSERT INTO ast_index VALUES (?, ?)",
             (("gin.go", "ServeHTTP"), ("unexpected.go", "{}")),
@@ -3062,13 +3144,66 @@ class TestGinSmokeIndexEvidence:
 
 
 class TestGinSmokeWorkspace:
+    def test_freeze_index_baselines_moves_indexes_out_of_checkouts(
+        self, tmp_path: Path
+    ):
+        from benchmarks.codegraph_compare.smoke_plan import freeze_index_baselines
+
+        checkouts = {}
+        for arm, name in (
+            ("tsa-warm", ".ast-cache"),
+            ("codegraph-warm", ".codegraph"),
+        ):
+            checkout = tmp_path / "checkouts" / arm / "gin"
+            index = checkout / name
+            index.mkdir(parents=True)
+            database_name = "index.db" if arm == "tsa-warm" else "codegraph.db"
+            connection = sqlite3.connect(index / database_name)
+            if arm == "tsa-warm":
+                connection.execute(
+                    "CREATE TABLE ast_index(file_path TEXT, symbols_json TEXT)"
+                )
+                connection.execute(
+                    "INSERT INTO ast_index VALUES ('gin.go', 'ServeHTTP')"
+                )
+            else:
+                connection.execute("CREATE TABLE nodes(file_path TEXT, name TEXT)")
+                connection.execute("INSERT INTO nodes VALUES ('gin.go', 'ServeHTTP')")
+            connection.commit()
+            connection.close()
+            checkouts[arm] = checkout
+
+        frozen = freeze_index_baselines(
+            checkouts,
+            tmp_path / "checkouts",
+            {"tsa-warm": ("gin.go",), "codegraph-warm": ("gin.go",)},
+        )
+
+        assert tuple(sorted(frozen)) == ("codegraph-warm", "tsa-warm")
+        assert tuple(
+            (checkouts[arm] / name).exists()
+            for arm, name in (
+                ("tsa-warm", ".ast-cache"),
+                ("codegraph-warm", ".codegraph"),
+            )
+        ) == (False, False)
+        assert tuple(path.parent.parent.name for path in frozen.values()) == (
+            "frozen-indexes",
+            "frozen-indexes",
+        )
+
     @staticmethod
     def _fixture(tmp_path: Path):
+        from dataclasses import replace
+
         from benchmarks.codegraph_compare.integrity import (
             ExpectedCellV1,
+            _manifest_payload,
+            _sha256,
             create_manifest,
         )
         from benchmarks.codegraph_compare.smoke_evidence import (
+            index_content_hash,
             repository_fingerprint,
             tracked_paths,
         )
@@ -3097,9 +3232,7 @@ class TestGinSmokeWorkspace:
             check=True,
         )
         subprocess.run(["git", "add", "."], cwd=source, check=True)
-        subprocess.run(
-            ["git", "commit", "-qm", "fixture"], cwd=source, check=True
-        )
+        subprocess.run(["git", "commit", "-qm", "fixture"], cwd=source, check=True)
         commit = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=source,
@@ -3158,11 +3291,15 @@ class TestGinSmokeWorkspace:
             )
             index_path = None
             if arm == "tsa-warm":
-                index_path = checkout / ".ast-cache"
+                index_path = tmp_path / "frozen-indexes" / arm / ".ast-cache"
+                index_path.parent.mkdir(parents=True)
                 index_path.mkdir()
+                (index_path / "index.db").write_bytes(b"tsa")
             elif arm == "codegraph-warm":
-                index_path = checkout / ".codegraph"
+                index_path = tmp_path / "frozen-indexes" / arm / ".codegraph"
+                index_path.parent.mkdir(parents=True)
                 index_path.mkdir()
+                (index_path / "codegraph.db").write_bytes(b"codegraph")
             artifact = tmp_path / "artifacts" / arm
             artifact.mkdir(parents=True)
             raw_cells.append(
@@ -3179,11 +3316,24 @@ class TestGinSmokeWorkspace:
             "manifest_hash": manifest.manifest_hash,
             "cells": raw_cells,
         }
+        manifest = replace(
+            manifest,
+            index_content_hashes=tuple(
+                (cell["arm_id"], index_content_hash(Path(cell["index_path"])))
+                for cell in raw_cells
+                if cell["index_path"] is not None
+            ),
+        )
+        manifest = replace(
+            manifest,
+            manifest_hash=_sha256(_manifest_payload(manifest)),
+        )
+        manifest = replace(manifest, experiment_id=f"sha256:{manifest.manifest_hash}")
+        raw["experiment_id"] = manifest.experiment_id
+        raw["manifest_hash"] = manifest.manifest_hash
         return manifest, raw, parse_workspace_v1(raw)
 
-    def test_workspace_accepts_three_independent_clean_checkouts(
-        self, tmp_path: Path
-    ):
+    def test_workspace_accepts_three_independent_clean_checkouts(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_workspace import (
             validate_workspace_v1,
         )
@@ -3191,6 +3341,386 @@ class TestGinSmokeWorkspace:
         manifest, _, workspace = self._fixture(tmp_path)
 
         validate_workspace_v1(workspace, manifest)
+
+    def test_workspace_rejects_frozen_index_inside_checkout(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import validate_workspace_v1
+
+        manifest, _, workspace = self._fixture(tmp_path)
+        cell = workspace.cell("tsa-warm")
+        object.__setattr__(cell, "index_path", cell.checkout_path)
+
+        with pytest.raises(ValueError, match="frozen index overlaps checkout"):
+            validate_workspace_v1(workspace, manifest)
+
+    def test_workspace_rejects_existing_runtime_index(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import validate_workspace_v1
+
+        manifest, _, workspace = self._fixture(tmp_path)
+        (workspace.cell("tsa-warm").checkout_path / ".ast-cache").mkdir()
+
+        with pytest.raises(ValueError, match="runtime index already exists"):
+            validate_workspace_v1(workspace, manifest)
+
+    def test_workspace_rejects_frozen_index_inside_artifact(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import validate_workspace_v1
+
+        manifest, _, workspace = self._fixture(tmp_path)
+        cell = workspace.cell("tsa-warm")
+        object.__setattr__(cell, "index_path", cell.artifact_path)
+
+        with pytest.raises(ValueError, match="frozen index overlaps artifact"):
+            validate_workspace_v1(workspace, manifest)
+
+    def test_workspace_rejects_hardlinked_frozen_index_file(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import validate_workspace_v1
+
+        manifest, _, workspace = self._fixture(tmp_path)
+        index = workspace.cell("tsa-warm").index_path
+        expected_index = tmp_path / "frozen-indexes" / "tsa-warm" / ".ast-cache"
+        assert index == expected_index
+        (tmp_path / "alias.db").hardlink_to(expected_index / "index.db")
+
+        with pytest.raises(ValueError, match="hardlinked file"):
+            validate_workspace_v1(workspace, manifest)
+
+    def test_snapshot_includes_committed_wal_with_open_writer(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            create_frozen_index_snapshot,
+        )
+
+        baseline = tmp_path / "baseline" / ".codegraph"
+        baseline.mkdir(parents=True)
+        connection = sqlite3.connect(baseline / "codegraph.db")
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("CREATE TABLE nodes (file_path TEXT, name TEXT)")
+        connection.execute("INSERT INTO nodes VALUES ('gin.go', 'ServeHTTP')")
+        connection.commit()
+        assert ((baseline / "codegraph.db-wal").stat().st_size == 0) is False
+        frozen = create_frozen_index_snapshot(
+            baseline,
+            tmp_path / "frozen" / ".codegraph",
+            "codegraph-warm",
+            ("gin.go",),
+        )
+        connection.close()
+        assert sqlite3.connect(frozen / "codegraph.db").execute(
+            "SELECT file_path, name FROM nodes"
+        ).fetchone() == ("gin.go", "ServeHTTP")
+
+    def test_snapshot_excludes_uncommitted_rows(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            create_frozen_index_snapshot,
+        )
+
+        source = tmp_path / "live" / ".codegraph"
+        source.mkdir(parents=True)
+        writer = sqlite3.connect(source / "codegraph.db")
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("CREATE TABLE nodes(file_path TEXT, name TEXT)")
+        writer.execute("INSERT INTO nodes VALUES ('gin.go', 'ServeHTTP')")
+        writer.commit()
+        writer.execute("BEGIN IMMEDIATE")
+        writer.execute("INSERT INTO nodes VALUES ('secret.go', 'Uncommitted')")
+        try:
+            frozen = create_frozen_index_snapshot(
+                source,
+                tmp_path / "frozen" / ".codegraph",
+                "codegraph-warm",
+                ("gin.go",),
+            )
+        finally:
+            writer.rollback()
+            writer.close()
+        assert sqlite3.connect(frozen / "codegraph.db").execute(
+            "SELECT file_path FROM nodes ORDER BY file_path"
+        ).fetchall() == [("gin.go",)]
+
+    def test_snapshot_rejects_multiple_primary_databases(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            create_frozen_index_snapshot,
+        )
+
+        source = tmp_path / "live" / ".codegraph"
+        source.mkdir(parents=True)
+        sqlite3.connect(source / "codegraph.db").close()
+        sqlite3.connect(source / "extra.db").close()
+        with pytest.raises(ValueError, match="undeclared SQLite database: extra.db"):
+            create_frozen_index_snapshot(
+                source, tmp_path / "frozen", "codegraph-warm", ()
+            )
+
+    @pytest.mark.parametrize(
+        ("relative", "message"),
+        (
+            ("nested/extra.db", "undeclared SQLite database"),
+            ("nested/codegraph.db", "undeclared SQLite database"),
+            ("nested/codegraph.db-wal", "undeclared SQLite sidecar"),
+        ),
+    )
+    def test_snapshot_rejects_nested_sqlite_artifact(
+        self, tmp_path: Path, relative: str, message: str
+    ):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            create_frozen_index_snapshot,
+        )
+
+        source = tmp_path / "live" / ".codegraph"
+        source.mkdir(parents=True)
+        connection = sqlite3.connect(source / "codegraph.db")
+        connection.execute("CREATE TABLE nodes(file_path TEXT, name TEXT)")
+        connection.execute("INSERT INTO nodes VALUES ('gin.go', 'ServeHTTP')")
+        connection.commit()
+        connection.close()
+        artifact = source / relative
+        artifact.parent.mkdir()
+        artifact.write_bytes(b"foreign")
+        with pytest.raises(ValueError, match=message):
+            create_frozen_index_snapshot(
+                source, tmp_path / "frozen", "codegraph-warm", ("gin.go",)
+            )
+
+    def test_snapshot_rejects_evidence_path_mismatch(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            create_frozen_index_snapshot,
+        )
+
+        source = tmp_path / "live" / ".codegraph"
+        source.mkdir(parents=True)
+        connection = sqlite3.connect(source / "codegraph.db")
+        connection.execute("CREATE TABLE nodes(file_path TEXT, name TEXT)")
+        connection.execute("INSERT INTO nodes VALUES ('gin.go', 'ServeHTTP')")
+        connection.commit()
+        connection.close()
+        with pytest.raises(ValueError, match="paths do not match index evidence"):
+            create_frozen_index_snapshot(
+                source, tmp_path / "frozen", "codegraph-warm", ("other.go",)
+            )
+
+    def test_snapshot_oracle_creates_no_sqlite_sidecars(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            create_frozen_index_snapshot,
+        )
+
+        source = tmp_path / "live" / ".codegraph"
+        source.mkdir(parents=True)
+        connection = sqlite3.connect(source / "codegraph.db")
+        connection.execute("CREATE TABLE nodes(file_path TEXT, name TEXT)")
+        connection.execute("INSERT INTO nodes VALUES ('gin.go', 'ServeHTTP')")
+        connection.commit()
+        connection.close()
+        frozen = create_frozen_index_snapshot(
+            source, tmp_path / "frozen" / ".codegraph", "codegraph-warm", ("gin.go",)
+        )
+        assert tuple(sorted(path.name for path in frozen.iterdir())) == (
+            "codegraph.db",
+        )
+
+    def test_snapshot_closes_oracle_connection_before_publish(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        # PR #1213: Windows refuses to rename a directory containing an open DB.
+        from benchmarks.codegraph_compare import smoke_evidence
+
+        source = tmp_path / "live" / ".codegraph"
+        source.mkdir(parents=True)
+        connection = sqlite3.connect(source / "codegraph.db")
+        connection.execute("CREATE TABLE nodes(file_path TEXT, name TEXT)")
+        connection.execute("INSERT INTO nodes VALUES ('gin.go', 'ServeHTTP')")
+        connection.commit()
+        connection.close()
+
+        original_connect = smoke_evidence.sqlite3.connect
+        oracle_connections = []
+
+        class TrackingConnection:
+            def __init__(self, wrapped):
+                self.wrapped = wrapped
+                self.closed = False
+
+            def __getattr__(self, name):
+                return getattr(self.wrapped, name)
+
+            def __enter__(self):
+                self.wrapped.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.wrapped.__exit__(*args)
+
+            def close(self):
+                self.closed = True
+                self.wrapped.close()
+
+        def track_connect(database, *args, **kwargs):
+            tracked = TrackingConnection(original_connect(database, *args, **kwargs))
+            oracle_connections.append(tracked)
+            return tracked
+
+        monkeypatch.setattr(smoke_evidence.sqlite3, "connect", track_connect)
+
+        observed = smoke_evidence.inspect_frozen_index("codegraph-warm", source)
+
+        assert observed == ("gin.go",)
+        assert tuple(item.closed for item in oracle_connections) == (True,)
+
+    def test_materialize_uses_fixed_arm_oracle_and_distinct_copy(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_evidence import index_content_hash
+        from benchmarks.codegraph_compare.smoke_workspace import (
+            create_frozen_index_snapshot,
+            materialize_runtime_index,
+        )
+
+        source = tmp_path / "live" / ".codegraph"
+        source.mkdir(parents=True)
+        connection = sqlite3.connect(source / "codegraph.db")
+        connection.execute("CREATE TABLE nodes(file_path TEXT, name TEXT)")
+        connection.execute("INSERT INTO nodes VALUES ('gin.go', 'ServeHTTP')")
+        connection.commit()
+        connection.close()
+        frozen = create_frozen_index_snapshot(
+            source, tmp_path / "frozen" / ".codegraph", "codegraph-warm", ("gin.go",)
+        )
+        checkout = tmp_path / "checkout"
+        checkout.mkdir()
+        runtime = materialize_runtime_index(
+            frozen, checkout, "codegraph-warm", index_content_hash(frozen), ("gin.go",)
+        )
+        assert (
+            (frozen / "codegraph.db").stat().st_ino
+            == (runtime / "codegraph.db").stat().st_ino
+        ) is False
+
+    def test_freeze_rolls_back_both_live_indexes_when_second_rename_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        from benchmarks.codegraph_compare.smoke_plan import freeze_index_baselines
+
+        checkouts = self._indexed_checkout_pair(tmp_path)
+        original = Path.rename
+
+        def fail_second(path: Path, target: Path):
+            if path.name == ".codegraph" and target.name.endswith("freeze-quarantine"):
+                raise OSError("rename failed")
+            return original(path, target)
+
+        monkeypatch.setattr(Path, "rename", fail_second)
+        with pytest.raises(OSError, match="rename failed"):
+            freeze_index_baselines(
+                checkouts,
+                tmp_path / "checkouts",
+                {"tsa-warm": ("gin.go",), "codegraph-warm": ("gin.go",)},
+            )
+        assert tuple(
+            (checkouts[arm] / name).is_dir()
+            for arm, name in (
+                ("tsa-warm", ".ast-cache"),
+                ("codegraph-warm", ".codegraph"),
+            )
+        ) == (True, True)
+        assert tuple((tmp_path / "checkouts").rglob("*.freeze-quarantine")) == ()
+        assert tuple((tmp_path / "checkouts" / "frozen-indexes").rglob("*.db")) == ()
+
+    def test_freeze_cleanup_failure_preserves_frozen_authority(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        from benchmarks.codegraph_compare.smoke_plan import freeze_index_baselines
+
+        checkouts = self._indexed_checkout_pair(tmp_path)
+        original = shutil.rmtree
+
+        def fail_quarantine(path: Path, *args, **kwargs):
+            if Path(path).name == ".codegraph.freeze-quarantine":
+                raise OSError("cleanup failed")
+            return original(path, *args, **kwargs)
+
+        monkeypatch.setattr(shutil, "rmtree", fail_quarantine)
+        with pytest.raises(RuntimeError, match="frozen authority"):
+            freeze_index_baselines(
+                checkouts,
+                tmp_path / "checkouts",
+                {"tsa-warm": ("gin.go",), "codegraph-warm": ("gin.go",)},
+            )
+        assert tuple(
+            sorted(
+                path.name
+                for path in (tmp_path / "checkouts" / "frozen-indexes").rglob("*.db")
+            )
+        ) == ("codegraph.db", "index.db")
+        assert (
+            checkouts["codegraph-warm"] / ".codegraph.freeze-quarantine"
+        ).is_dir() is True
+
+    @staticmethod
+    def _indexed_checkout_pair(tmp_path: Path) -> dict[str, Path]:
+        checkouts = {}
+        for arm, index_name, database_name in (
+            ("tsa-warm", ".ast-cache", "index.db"),
+            ("codegraph-warm", ".codegraph", "codegraph.db"),
+        ):
+            checkout = tmp_path / "checkouts" / arm / "gin"
+            index = checkout / index_name
+            index.mkdir(parents=True)
+            connection = sqlite3.connect(index / database_name)
+            if arm == "tsa-warm":
+                connection.execute(
+                    "CREATE TABLE ast_index(file_path TEXT, symbols_json TEXT)"
+                )
+                connection.execute(
+                    "INSERT INTO ast_index VALUES ('gin.go', 'ServeHTTP')"
+                )
+            else:
+                connection.execute("CREATE TABLE nodes(file_path TEXT, name TEXT)")
+                connection.execute("INSERT INTO nodes VALUES ('gin.go', 'ServeHTTP')")
+            connection.commit()
+            connection.close()
+            checkouts[arm] = checkout
+        return checkouts
+
+    def test_cleanup_runtime_index_rejects_path_escape(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import cleanup_runtime_index
+
+        checkout = tmp_path / "checkout"
+        checkout.mkdir()
+        outside = tmp_path / ".ast-cache"
+        outside.mkdir()
+
+        with pytest.raises(ValueError, match="runtime cleanup target mismatch"):
+            cleanup_runtime_index(checkout, ".ast-cache", outside)
+
+    def test_cleanup_runtime_index_removes_exact_runtime_tree(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_workspace import cleanup_runtime_index
+
+        checkout = tmp_path / "checkout"
+        runtime = checkout / ".ast-cache"
+        runtime.mkdir(parents=True)
+        (runtime / "index.db").write_bytes(b"index")
+
+        cleanup_runtime_index(checkout, ".ast-cache", runtime)
+
+        assert runtime.exists() is False
+
+    @pytest.mark.parametrize(
+        "target_kind", ("dotdot", "broken_symlink", "checkout", "baseline", "root")
+    )
+    def test_cleanup_rejects_unsafe_target(self, tmp_path: Path, target_kind: str):
+        from benchmarks.codegraph_compare.smoke_workspace import cleanup_runtime_index
+
+        checkout = tmp_path / "checkout"
+        checkout.mkdir()
+        baseline = tmp_path / "baseline"
+        baseline.mkdir()
+        targets = {
+            "dotdot": checkout / ".." / ".ast-cache",
+            "broken_symlink": checkout / ".ast-cache",
+            "checkout": checkout,
+            "baseline": baseline,
+            "root": Path("/"),
+        }
+        target = targets[target_kind]
+        if target_kind == "broken_symlink":
+            target.symlink_to(tmp_path / "missing")
+        with pytest.raises(ValueError, match="runtime cleanup"):
+            cleanup_runtime_index(checkout, ".ast-cache", target)
 
     def test_workspace_rejects_cross_arm_artifact_collision(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_workspace import (
@@ -3204,9 +3734,7 @@ class TestGinSmokeWorkspace:
         with pytest.raises(ValueError, match="artifact namespace collision"):
             validate_workspace_v1(parse_workspace_v1(raw), manifest)
 
-    def test_workspace_rejects_foreign_index_in_native_checkout(
-        self, tmp_path: Path
-    ):
+    def test_workspace_rejects_foreign_index_in_native_checkout(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_workspace import (
             validate_workspace_v1,
         )
@@ -3238,9 +3766,8 @@ class TestGinSmokeWorkspace:
 
         manifest, raw, workspace = self._fixture(tmp_path)
         tsa_index = workspace.cell("tsa-warm").index_path
-        assert tsa_index == (
-            workspace.cell("tsa-warm").checkout_path / ".ast-cache"
-        )
+        assert tsa_index.name == ".ast-cache"
+        (tsa_index / "index.db").unlink()
         tsa_index.rmdir()
         external = tmp_path / "shared-index"
         external.mkdir()
@@ -3272,7 +3799,7 @@ class TestGinSmokeWorkspace:
 
         manifest, _, workspace = self._fixture(tmp_path)
         index = workspace.cell("tsa-warm").index_path
-        assert index == workspace.cell("tsa-warm").checkout_path / ".ast-cache"
+        assert index.name == ".ast-cache"
         (index / "external.db").symlink_to(tmp_path / "outside.db")
 
         with pytest.raises(ValueError, match="contains a special node"):
@@ -3294,10 +3821,8 @@ class TestGinSmokeWorkspace:
         manifest, _, workspace = self._fixture(tmp_path)
         tsa_index = workspace.cell("tsa-warm").index_path
         codegraph_index = workspace.cell("codegraph-warm").index_path
-        assert tsa_index == workspace.cell("tsa-warm").checkout_path / ".ast-cache"
-        assert codegraph_index == (
-            workspace.cell("codegraph-warm").checkout_path / ".codegraph"
-        )
+        assert tsa_index.name == ".ast-cache"
+        assert codegraph_index.name == ".codegraph"
         hashes = tuple(
             (
                 arm,
@@ -3378,11 +3903,7 @@ class TestGinSmokeBundle:
         for cell in manifest.expected_cells:
             transcript_path = f"/original/{cell.run_id}.jsonl"
             transcript = (
-                plan
-                / "artifacts"
-                / cell.arm
-                / "raw"
-                / Path(transcript_path).name
+                plan / "artifacts" / cell.arm / "raw" / Path(transcript_path).name
             )
             transcript.parent.mkdir(parents=True)
             transcript.write_text(
@@ -3393,15 +3914,13 @@ class TestGinSmokeBundle:
                             "type": "mcp_tool_call",
                             "server": servers[cell.arm],
                             "tool": "query",
-                        }
+                        },
                     }
                 )
                 + "\n",
                 encoding="utf-8",
             )
-            run = _v1_run(
-                manifest, cell.run_id, transcript_path=transcript_path
-            )
+            run = _v1_run(manifest, cell.run_id, transcript_path=transcript_path)
             runs.append(run)
             (experiment / f"policy_{cell.run_id}.json").write_text(
                 json.dumps(
@@ -3464,9 +3983,7 @@ class TestGinSmokeBundle:
         assert verdict["dominance_allowed"] is False
         assert verdict["winner"] is None
 
-    def test_bundle_accepts_bound_legacy_terminal_exception(
-        self, tmp_path: Path
-    ):
+    def test_bundle_accepts_bound_legacy_terminal_exception(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
 
         plan, experiment, registry = self._bundle_inputs(tmp_path)
@@ -3521,9 +4038,7 @@ class TestGinSmokeBundle:
             registry_path=registry,
         )
 
-        replay_smoke_bundle(
-            bundle, tmp_path / "replay", external_digest=digest
-        )
+        replay_smoke_bundle(bundle, tmp_path / "replay", external_digest=digest)
 
         assert {
             path.relative_to(bundle): path.read_bytes()
@@ -3535,9 +4050,7 @@ class TestGinSmokeBundle:
             if path.is_file()
         }
 
-    def test_bundle_rejects_tampering_against_external_digest(
-        self, tmp_path: Path
-    ):
+    def test_bundle_rejects_tampering_against_external_digest(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_bundle import (
             create_smoke_bundle,
             validate_smoke_bundle,
@@ -3551,9 +4064,7 @@ class TestGinSmokeBundle:
             experiment_dir=experiment,
             registry_path=registry,
         )
-        (bundle / "evidence" / "runs.jsonl").write_text(
-            "tampered\n", encoding="utf-8"
-        )
+        (bundle / "evidence" / "runs.jsonl").write_text("tampered\n", encoding="utf-8")
 
         with pytest.raises(ValueError, match="bundle checksum mismatch"):
             validate_smoke_bundle(bundle, external_digest=digest)
@@ -5028,9 +5539,7 @@ class TestBenchmarkExperimentIntegrity:
                 "tsa-warm": "tsa-index-hash",
             }
         )
-        runs = tuple(
-            _v1_run(manifest, cell.run_id) for cell in manifest.expected_cells
-        )
+        runs = tuple(_v1_run(manifest, cell.run_id) for cell in manifest.expected_cells)
 
         verdict = validate_publishable_experiment(
             manifest,
@@ -5096,9 +5605,7 @@ class TestSmokeModelPreflight:
                 "type": "item.completed",
                 "item": {
                     "type": "agent_message",
-                    "text": json.dumps(
-                        {"status": smoke_preflight.SENTINEL}
-                    ),
+                    "text": json.dumps({"status": smoke_preflight.SENTINEL}),
                 },
             }
         )
@@ -5108,7 +5615,9 @@ class TestSmokeModelPreflight:
         with (
             patch.object(smoke_preflight, "_codex_identity", return_value=identity),
             patch.object(smoke_preflight, "_account_surface", return_value="ChatGPT"),
-            patch.object(smoke_preflight.subprocess, "run", return_value=completed) as run,
+            patch.object(
+                smoke_preflight.subprocess, "run", return_value=completed
+            ) as run,
         ):
             evidence = smoke_preflight.run_model_preflight(
                 model="gpt-fixture", output_path=output

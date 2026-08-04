@@ -19,12 +19,21 @@ from benchmarks.codegraph_compare.schemas import (
     IndexStatsV1,
     RunRecordV1,
 )
+from benchmarks.codegraph_compare.smoke_evidence import (
+    INDEX_LAYOUT,
+    canonical_semantic_digest,
+    index_content_hash,
+)
 from benchmarks.codegraph_compare.smoke_policy import (
     PolicyAudit,
     audit_codex_transcript,
 )
 from benchmarks.codegraph_compare.smoke_workspace import (
+    IndexContentDriftError,
     SmokeWorkspaceV1,
+    audit_runtime_index,
+    cleanup_runtime_index,
+    materialize_runtime_index,
     validate_index_content_v1,
     validate_workspace_v1,
 )
@@ -64,6 +73,8 @@ def build_v1_attempt(
     if not policy_audit.ok:
         status = BenchmarkStatus.INVALID
         blocker = "POLICY_AUDIT:" + ",".join(policy_audit.violations)
+        if error:
+            blocker += f";PRODUCT_FAILURE:{error}"
     elif error:
         status = BenchmarkStatus.PRODUCT_FAILURE
         blocker = str(error)
@@ -116,9 +127,7 @@ def build_v1_attempt(
         estimated_cost_usd=estimated_cost,
         cost_source=cost_source,
         cached_input_tokens=int(legacy_record.get("cached_input_tokens", 0)),
-        reasoning_output_tokens=int(
-            legacy_record.get("reasoning_output_tokens", 0)
-        ),
+        reasoning_output_tokens=int(legacy_record.get("reasoning_output_tokens", 0)),
         cache_read_tokens=int(legacy_record.get("cache_read_tokens", 0)),
         cache_creation_tokens=int(legacy_record.get("cache_creation_tokens", 0)),
         num_turns=int(legacy_record.get("num_turns", 0)),
@@ -218,17 +227,59 @@ def run_manifest_smoke(
     failed = 0
     for cell in manifest.expected_cells:
         legacy: dict[str, Any] | None = None
+        runtime_state: dict[str, Any] | None = None
+        runtime_path: Path | None = None
         try:
             _ = arms[cell.arm]
             question = questions[(cell.repo, cell.question_id)]
-            workspace_cell = (
-                workspace.cell(cell.arm) if workspace is not None else None
-            )
+            workspace_cell = workspace.cell(cell.arm) if workspace is not None else None
             repo_path = (
                 workspace_cell.checkout_path
                 if workspace_cell is not None
                 else repo_path_resolver(repos[cell.repo])
             )
+            if workspace_cell is not None and cell.arm in manifest.indexed_arms:
+                stats = supplied_index_stats[(cell.repo, cell.arm)]
+                expected_hash = dict(manifest.index_content_hashes)[cell.arm]
+                expected_paths = stats.indexed_paths
+                _, database_name = INDEX_LAYOUT[cell.arm]
+                frozen_before = index_content_hash(workspace_cell.index_path)
+                runtime_state = {
+                    "schema_version": 1,
+                    "experiment_id": manifest.experiment_id,
+                    "manifest_hash": manifest.manifest_hash,
+                    "session_id": manifest.primary_session_id,
+                    "run_id": cell.run_id,
+                    "repo": cell.repo,
+                    "arm": cell.arm,
+                    "repeat": cell.repeat,
+                    "expected_hash": expected_hash,
+                    "expected_paths": list(expected_paths),
+                    "frozen_hash_before": frozen_before,
+                    "runtime_hash_before": None,
+                    "runtime_hash_after": None,
+                    "frozen_hash_after": None,
+                    "semantic_digest_before": canonical_semantic_digest(
+                        workspace_cell.index_path / database_name
+                    ),
+                    "semantic_digest_after": None,
+                    "post_paths": None,
+                    "materialized": False,
+                    "runtime_mutated": None,
+                    "cleanup_status": "NOT_STARTED",
+                    "failure_codes": [],
+                }
+                if frozen_before != expected_hash:
+                    raise IndexContentDriftError("frozen index content hash mismatch")
+                runtime_path = materialize_runtime_index(
+                    workspace_cell.index_path,
+                    repo_path,
+                    cell.arm,
+                    expected_hash,
+                    expected_paths,
+                )
+                runtime_state["materialized"] = True
+                runtime_state["runtime_hash_before"] = index_content_hash(runtime_path)
             adapter_key = (cell.repo, cell.arm)
             if adapter_key not in adapters:
                 adapters[adapter_key] = adapter_factory(cell.arm)
@@ -261,7 +312,11 @@ def run_manifest_smoke(
             transcript = Path(str(legacy.get("transcript_path", "")))
             audit = audit_codex_transcript(transcript, cell.arm)
         except Exception as exc:  # noqa: BLE001 - every cell needs a terminal record
-            marker = f"EXECUTION_EXCEPTION:{type(exc).__name__}"
+            marker = (
+                "INDEX_CONTENT_DRIFT"
+                if isinstance(exc, IndexContentDriftError)
+                else f"EXECUTION_EXCEPTION:{type(exc).__name__}"
+            )
             if legacy is None:
                 legacy = _exception_record(manifest, cell, exc)
                 audit = PolicyAudit(
@@ -273,7 +328,6 @@ def run_manifest_smoke(
                 )
             else:
                 legacy = dict(legacy)
-                legacy["error"] = f"{type(exc).__name__}: {exc}"
                 transcript_path = str(legacy.get("transcript_path", ""))
                 transcript_audit = audit_codex_transcript(
                     Path(transcript_path), cell.arm
@@ -285,6 +339,64 @@ def run_manifest_smoke(
                     transcript_audit.observed_mcp_tools,
                     (marker, *transcript_audit.violations),
                 )
+        if runtime_state is not None:
+            runtime_failures: list[str] = []
+            if runtime_path is not None and runtime_path.exists():
+                try:
+                    runtime_state["runtime_hash_after"] = index_content_hash(
+                        runtime_path
+                    )
+                    digest, paths = audit_runtime_index(
+                        runtime_path,
+                        workspace_cell.artifact_path / f".{cell.run_id}.runtime-audit",
+                        cell.arm,
+                        tuple(runtime_state["expected_paths"]),
+                    )
+                    runtime_state["semantic_digest_after"] = digest
+                    runtime_state["post_paths"] = list(paths)
+                    if digest != runtime_state["semantic_digest_before"]:
+                        runtime_failures.append("RUNTIME_SEMANTIC_DRIFT")
+                except Exception as exc:  # noqa: BLE001 - preserve all stages
+                    runtime_failures.append(
+                        f"RUNTIME_POST_AUDIT_FAILED:{type(exc).__name__}"
+                    )
+            try:
+                runtime_state["frozen_hash_after"] = index_content_hash(
+                    workspace_cell.index_path
+                )
+                if runtime_state["frozen_hash_after"] != runtime_state["expected_hash"]:
+                    runtime_failures.append("INDEX_CONTENT_DRIFT")
+            except Exception as exc:  # noqa: BLE001
+                runtime_failures.append(f"FROZEN_POSTCHECK_FAILED:{type(exc).__name__}")
+            if runtime_path is not None:
+                try:
+                    cleanup_runtime_index(
+                        workspace_cell.checkout_path,
+                        INDEX_LAYOUT[cell.arm][0],
+                        runtime_path,
+                    )
+                    runtime_state["cleanup_status"] = "SUCCESS"
+                except Exception as exc:  # noqa: BLE001
+                    runtime_state["cleanup_status"] = "FAILED"
+                    runtime_failures.append(
+                        f"RUNTIME_CLEANUP_FAILED:{type(exc).__name__}"
+                    )
+            runtime_state["runtime_mutated"] = (
+                runtime_state["runtime_hash_after"]
+                != runtime_state["runtime_hash_before"]
+                if runtime_state["runtime_hash_after"] is not None
+                else None
+            )
+            runtime_state["failure_codes"] = runtime_failures
+            if runtime_failures:
+                audit = PolicyAudit(
+                    audit.arm,
+                    audit.transcript_path,
+                    audit.observed_mcp_servers,
+                    audit.observed_mcp_tools,
+                    (*runtime_failures, *audit.violations),
+                )
+            _write_runtime_audit(results_dir, manifest, cell, runtime_state)
         try:
             attempt = build_v1_attempt(
                 manifest,
@@ -316,6 +428,23 @@ def run_manifest_smoke(
         if attempt.status is not BenchmarkStatus.SUCCESS:
             failed += 1
     return 0 if failed == 0 else 1
+
+
+def _write_runtime_audit(
+    results_dir: Path,
+    manifest: ExperimentManifestV1,
+    cell: ExpectedCellV1,
+    payload: dict[str, Any],
+) -> Path:
+    experiment = results_dir / "experiments" / manifest.manifest_hash
+    experiment.mkdir(parents=True, exist_ok=True)
+    path = experiment / f"runtime_index_{cell.run_id}.json"
+    with path.open("x", encoding="utf-8") as stream:
+        json.dump(
+            payload, stream, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+        )
+        stream.write("\n")
+    return path
 
 
 def _exception_record(
@@ -371,9 +500,7 @@ def run_manifest_setup_gate(
 
     if workspace is not None:
         try:
-            if set(dict(manifest.index_content_hashes)) != set(
-                manifest.indexed_arms
-            ):
+            if set(dict(manifest.index_content_hashes)) != set(manifest.indexed_arms):
                 raise ValueError(
                     "manifest-backed execution requires bound index content hashes"
                 )
