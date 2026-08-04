@@ -75,6 +75,10 @@ def _valid_runtime_marker_sequence(markers: list[str]) -> bool:
 
 
 def _runtime_measurements_match(runtime: dict[str, Any], markers: list[str]) -> bool:
+    if runtime.get("cleanup_status") in {"SUCCESS", "FAILED"} and runtime.get(
+        "materialized"
+    ) is not True:
+        return False
     for marker in markers:
         if marker.startswith("RUNTIME_POST_AUDIT_FAILED:") and (
             runtime.get("semantic_digest_after") is not None
@@ -102,8 +106,6 @@ def _runtime_measurements_match(runtime: dict[str, Any], markers: list[str]) -> 
         ) != "FAILED":
             return False
     required = {
-        "runtime_post": runtime.get("materialized") is True
-        and runtime.get("semantic_digest_after") is None,
         "semantic_drift": isinstance(runtime.get("semantic_digest_before"), str)
         and isinstance(runtime.get("semantic_digest_after"), str)
         and runtime["semantic_digest_before"] != runtime["semantic_digest_after"],
@@ -114,9 +116,6 @@ def _runtime_measurements_match(runtime: dict[str, Any], markers: list[str]) -> 
         "cleanup": runtime.get("cleanup_status") == "FAILED",
     }
     represented = {
-        "runtime_post": any(
-            marker.startswith("RUNTIME_POST_AUDIT_FAILED:") for marker in markers
-        ),
         "semantic_drift": "RUNTIME_SEMANTIC_DRIFT" in markers,
         "index_drift": "INDEX_CONTENT_DRIFT" in markers,
         "frozen_postcheck": any(
@@ -190,7 +189,7 @@ def _without_terminal_exception(
     )
     runtime_path = evidence / f"runtime_index_{run.run_id}.json"
     runtime_markers: list[str] = []
-    if runtime_path.is_file() and not evidence_fallback:
+    if runtime_path.is_file():
         runtime = _json(runtime_path)
         failure_codes = runtime.get("failure_codes")
         if not isinstance(failure_codes, list) or not all(
@@ -200,27 +199,25 @@ def _without_terminal_exception(
         ) or not _valid_runtime_marker_sequence(failure_codes):
             raise ValueError(f"runtime evidence marker mismatch: {run.run_id}")
         runtime_markers = failure_codes
-        if runtime_markers:
-            if run.arm not in manifest.indexed_arms:
-                raise ValueError(f"runtime evidence on non-indexed arm: {run.run_id}")
-            expected_identity = {
-                "schema_version": 1,
-                "experiment_id": run.experiment_id,
-                "manifest_hash": manifest.manifest_hash,
-                "session_id": run.session_id,
-                "run_id": run.run_id,
-                "repo": run.repo,
-                "arm": run.arm,
-                "repeat": run.repeat,
-                "expected_hash": dict(manifest.index_content_hashes)[run.arm],
-                "failure_codes": runtime_markers,
-            }
-            if any(
-                runtime.get(key) != value for key, value in expected_identity.items()
-            ):
-                raise ValueError(f"runtime evidence binding mismatch: {run.run_id}")
-            if not _runtime_measurements_match(runtime, runtime_markers):
-                raise ValueError(f"runtime evidence measurement mismatch: {run.run_id}")
+        if run.arm not in manifest.indexed_arms:
+            raise ValueError(f"runtime evidence on non-indexed arm: {run.run_id}")
+        expected_identity = {
+            "schema_version": 1,
+            "experiment_id": run.experiment_id,
+            "manifest_hash": manifest.manifest_hash,
+            "session_id": run.session_id,
+            "run_id": run.run_id,
+            "repo": run.repo,
+            "arm": run.arm,
+            "repeat": run.repeat,
+            "expected_hash": dict(manifest.index_content_hashes)[run.arm],
+            "failure_codes": runtime_markers,
+        }
+        if any(runtime.get(key) != value for key, value in expected_identity.items()):
+            raise ValueError(f"runtime evidence binding mismatch: {run.run_id}")
+        if not _runtime_measurements_match(runtime, runtime_markers):
+            raise ValueError(f"runtime evidence measurement mismatch: {run.run_id}")
+        if not evidence_fallback:
             if violations[: len(runtime_markers)] != runtime_markers:
                 raise ValueError(f"runtime evidence ordering mismatch: {run.run_id}")
     marker_count = 1 if evidence_fallback else len(runtime_markers)
@@ -228,7 +225,7 @@ def _without_terminal_exception(
     if not evidence_fallback and remaining and isinstance(remaining[0], str):
         marker = remaining[0]
         if _EXECUTION_EVIDENCE_MARKER.fullmatch(marker):
-            if marker == "INDEX_CONTENT_DRIFT" and marker not in runtime_markers:
+            if marker == "INDEX_CONTENT_DRIFT" and not runtime_path.is_file():
                 raise ValueError(f"runtime evidence missing for drift: {run.run_id}")
             marker_count += 1
     if marker_count == 0:

@@ -4247,14 +4247,26 @@ class TestGinSmokeBundle:
             violations=violations,
         )
         policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
+        manifest = json.loads((plan / "experiment-manifest.json").read_text())
+        expected_hash = dict(manifest["index_content_hashes"])[run["arm"]]
         (experiment / f"runtime_index_{run['run_id']}.json").write_text(
             json.dumps(
                 {
+                    "schema_version": 1,
                     "experiment_id": run["experiment_id"],
+                    "manifest_hash": manifest["manifest_hash"],
                     "session_id": run["session_id"],
                     "run_id": run["run_id"],
+                    "repo": run["repo"],
                     "arm": run["arm"],
+                    "repeat": run["repeat"],
+                    "expected_hash": expected_hash,
                     "failure_codes": ["RUNTIME_SEMANTIC_DRIFT"],
+                    "materialized": True,
+                    "semantic_digest_before": "before-digest",
+                    "semantic_digest_after": "after-digest",
+                    "frozen_hash_after": expected_hash,
+                    "cleanup_status": "SUCCESS",
                 }
             )
             + "\n",
@@ -4310,7 +4322,7 @@ class TestGinSmokeBundle:
                     "repeat": run["repeat"],
                     "expected_hash": expected_hash,
                     "failure_codes": [marker],
-                    "materialized": False,
+                    "materialized": True,
                     "semantic_digest_before": "same-digest",
                     "semantic_digest_after": "same-digest",
                     "frozen_hash_after": expected_hash,
