@@ -25,10 +25,13 @@ _PLAN_FILES = (
     "model-preflight.json",
     "workspace-evidence.json",
 )
-_OPTIONAL_PLAN_FILES = ("arm-tool-preflight.json",)
 _TERMINAL_EXCEPTION = re.compile(
     r"^(?:EXECUTION|EVIDENCE)_EXCEPTION:[A-Za-z_][A-Za-z0-9_]*$"
 )
+_ARM_TOOL_SERVERS = {
+    "tsa-warm": "tree-sitter-analyzer",
+    "codegraph-warm": "codegraph",
+}
 
 
 def _sha256_bytes(payload: bytes) -> str:
@@ -37,6 +40,24 @@ def _sha256_bytes(payload: bytes) -> str:
 
 def _json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _validate_arm_tool_preflight(path: Path, *, require_executables: bool) -> None:
+    raw = _json(path)
+    if not isinstance(raw, dict) or set(raw) != set(_ARM_TOOL_SERVERS):
+        raise ValueError("arm-tool preflight must contain both indexed arms")
+    expected_fields = {"server", "enabled", "command", "args"}
+    for arm, server in _ARM_TOOL_SERVERS.items():
+        record = raw[arm]
+        if not isinstance(record, dict) or set(record) != expected_fields:
+            raise ValueError(f"arm-tool preflight fields are invalid for {arm}")
+        if record["server"] != server or record["enabled"] is not True:
+            raise ValueError(f"arm-tool preflight server is invalid for {arm}")
+        command = Path(str(record["command"]))
+        if not command.is_absolute() or not isinstance(record["args"], list):
+            raise ValueError(f"arm-tool preflight transport is invalid for {arm}")
+        if require_executables and not command.is_file():
+            raise ValueError(f"arm-tool preflight executable is unavailable for {arm}")
 
 
 def _runs(path: Path) -> tuple[RunRecordV1, ...]:
@@ -134,10 +155,11 @@ def create_smoke_bundle(
     plan_target.mkdir()
     for name in _PLAN_FILES:
         (plan_target / name).write_bytes((plan_dir / name).read_bytes())
-    for name in _OPTIONAL_PLAN_FILES:
-        source = plan_dir / name
-        if source.is_file():
-            (plan_target / name).write_bytes(source.read_bytes())
+    arm_tool_preflight = plan_dir / "arm-tool-preflight.json"
+    _validate_arm_tool_preflight(arm_tool_preflight, require_executables=True)
+    (plan_target / "arm-tool-preflight.json").write_bytes(
+        arm_tool_preflight.read_bytes()
+    )
     manifest = parse_manifest_v1(_json(plan_target / "experiment-manifest.json"))
     validate_model_preflight(
         plan_target / "model-preflight.json",
@@ -234,6 +256,9 @@ def validate_smoke_bundle(bundle: Path, *, external_digest: str) -> dict[str, An
         expected_model=manifest.model,
         expected_cli_fingerprint=manifest.agent_cli_fingerprint,
     )
+    arm_tool_preflight = bundle / "plan/arm-tool-preflight.json"
+    if arm_tool_preflight.is_file():
+        _validate_arm_tool_preflight(arm_tool_preflight, require_executables=False)
     events = _registry(bundle / "registry.jsonl", manifest.experiment_id)
     runs = _runs(bundle / "evidence/runs.jsonl")
     _validate_policy_evidence(bundle, runs)

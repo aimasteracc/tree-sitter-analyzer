@@ -420,6 +420,7 @@ def _codex_mcp_config_args(arm_id: str, repo_path: Path) -> list[str]:
     values = {
         "command": command,
         "args": args,
+        "enabled": True,
         "enabled_tools": enabled_tools,
         "required": True,
         "startup_timeout_sec": 30,
@@ -437,7 +438,9 @@ def _codex_mcp_config_args(arm_id: str, repo_path: Path) -> list[str]:
     return config
 
 
-def preflight_codex_arm_tools(repo_path: Path) -> dict[str, dict[str, Any]]:
+def preflight_codex_arm_tools(
+    repo_paths: dict[str, Path],
+) -> dict[str, dict[str, Any]]:
     """Validate indexed-arm MCP configuration without invoking a model."""
 
     evidence: dict[str, dict[str, Any]] = {}
@@ -445,6 +448,7 @@ def preflight_codex_arm_tools(repo_path: Path) -> dict[str, dict[str, Any]]:
         ("tsa-warm", "tree-sitter-analyzer"),
         ("codegraph-warm", "codegraph"),
     ):
+        repo_path = repo_paths[arm_id]
         config = _codex_mcp_config_args(arm_id, repo_path)
         result = subprocess.run(
             ["codex", "mcp", *config, "list", "--json"],

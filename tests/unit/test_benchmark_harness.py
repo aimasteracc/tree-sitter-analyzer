@@ -2379,7 +2379,9 @@ class TestCodeGraphCompareSetupGate:
 
         monkeypatch.setattr(claude_runner.subprocess, "run", fake_run)
 
-        evidence = claude_runner.preflight_codex_arm_tools(tmp_path)
+        evidence = claude_runner.preflight_codex_arm_tools(
+            {"tsa-warm": tmp_path, "codegraph-warm": tmp_path}
+        )
 
         assert set(evidence) == {"tsa-warm", "codegraph-warm"}
         assert all(item["enabled"] for item in evidence.values())
@@ -2419,7 +2421,9 @@ class TestCodeGraphCompareSetupGate:
         )
 
         with pytest.raises(ValueError, match="executable is unavailable"):
-            claude_runner.preflight_codex_arm_tools(tmp_path)
+            claude_runner.preflight_codex_arm_tools(
+                {"tsa-warm": tmp_path, "codegraph-warm": tmp_path}
+            )
 
     def test_codex_native_command_ignores_user_config_without_mcp_servers(
         self, tmp_path: Path
@@ -2512,8 +2516,9 @@ class TestGinSmokeManifestExecution:
                         {
                             "type": "item.completed",
                             "item": {
-                                "type": "command_execution",
-                                "command": "grep -n ServeHTTP gin.go",
+                                "type": "mcp_tool_call",
+                                "server": "tree-sitter-analyzer",
+                                "tool": "nav",
                             },
                         }
                     ),
@@ -2521,9 +2526,8 @@ class TestGinSmokeManifestExecution:
                         {
                             "type": "item.completed",
                             "item": {
-                                "type": "mcp_tool_call",
-                                "server": "tree-sitter-analyzer",
-                                "tool": "nav",
+                                "type": "command_execution",
+                                "command": "grep -n ServeHTTP gin.go",
                             },
                         }
                     ),
@@ -2817,6 +2821,66 @@ class TestGinSmokeManifestExecution:
         audit = audit_codex_transcript(transcript, "native-only")
 
         assert audit.violations == ("NETWORK_COMMAND:1",)
+
+    def test_codex_transcript_audits_literal_newline_commands(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "multiline-network.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "type": "command_execution",
+                        "command": "rg -n foo .\ncurl https://example.com",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "native-only")
+
+        assert audit.violations == ("NETWORK_COMMAND:1",)
+
+    def test_indexed_arm_rejects_source_discovery_before_mcp(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "mcp-second.jsonl"
+        transcript.write_text(
+            "\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "type": "command_execution",
+                                "command": "rg -n ServeHTTP .",
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "type": "mcp_tool_call",
+                                "server": "tree-sitter-analyzer",
+                                "tool": "search",
+                            },
+                        }
+                    ),
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "tsa-warm")
+
+        assert audit.violations == ("SOURCE_DISCOVERY_BEFORE_INDEX:1",)
 
     def test_v1_attempt_is_manifest_bound_and_append_only(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_execution import (
@@ -3997,8 +4061,24 @@ class TestGinSmokeBundle:
             ),
             encoding="utf-8",
         )
+        (plan / "arm-tool-preflight.json").write_text(
+            json.dumps(
+                {
+                    arm: {
+                        "server": server,
+                        "enabled": True,
+                        "command": sys.executable,
+                        "args": ["serve", "--mcp"],
+                    }
+                    for arm, server in {
+                        "tsa-warm": "tree-sitter-analyzer",
+                        "codegraph-warm": "codegraph",
+                    }.items()
+                }
+            ),
+            encoding="utf-8",
+        )
         for name in (
-            "arm-tool-preflight.json",
             "eligibility.json",
             "index-evidence.json",
             "workspace-evidence.json",

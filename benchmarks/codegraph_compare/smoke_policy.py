@@ -101,6 +101,7 @@ def audit_codex_transcript(transcript_path: Path, arm: str) -> PolicyAudit:
     servers: list[str] = []
     successful_servers: list[str] = []
     tools: list[str] = []
+    successful_index_seen = False
     if not transcript_path.is_file():
         violations.append("TRANSCRIPT_MISSING")
         return PolicyAudit(arm, str(transcript_path), (), (), tuple(violations))
@@ -130,7 +131,14 @@ def audit_codex_transcript(transcript_path: Path, arm: str) -> PolicyAudit:
         elif item_type == "web_search":
             violations.append(f"NETWORK_TOOL:{line_number}")
         elif item_type == "command_execution":
-            _audit_command(str(item.get("command") or ""), line_number, violations)
+            command = str(item.get("command") or "")
+            if (
+                expected_server is not None
+                and not successful_index_seen
+                and _is_source_discovery_command(command)
+            ):
+                violations.append(f"SOURCE_DISCOVERY_BEFORE_INDEX:{line_number}")
+            _audit_command(command, line_number, violations)
         elif item_type == "mcp_tool_call":
             if event.get("type") != "item.completed":
                 continue
@@ -146,6 +154,7 @@ def audit_codex_transcript(transcript_path: Path, arm: str) -> PolicyAudit:
                 violations.append(f"MCP_CALL_FAILED:{line_number}")
             else:
                 successful_servers.append(server)
+                successful_index_seen = True
 
     if expected_server is not None and expected_server not in successful_servers:
         violations.append("MISSING_INDEX_QUERY")
@@ -213,18 +222,9 @@ def _unwrap_shell_launcher(command: str) -> str:
 def _command_is_allowlisted(command: str) -> bool:
     if "$(" in command or "`" in command:
         return False
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
-        lexer.whitespace_split = True
-        tokens = list(lexer)
-    except ValueError:
+    segments = _shell_segments(command)
+    if segments is None:
         return False
-    segments: list[list[str]] = [[]]
-    for token in tokens:
-        if token and set(token) <= {";", "&", "|"}:
-            segments.append([])
-        else:
-            segments[-1].append(token)
     for segment in segments:
         if not segment:
             continue
@@ -253,18 +253,9 @@ def _command_is_allowlisted(command: str) -> bool:
 def _contains_network_execution(command: str) -> bool:
     """Inspect executable positions, not inert grep patterns or file contents."""
 
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
-        lexer.whitespace_split = True
-        tokens = list(lexer)
-    except ValueError:
+    segments = _shell_segments(command)
+    if segments is None:
         return False
-    segments: list[list[str]] = [[]]
-    for token in tokens:
-        if token and set(token) <= {";", "&", "|"}:
-            segments.append([])
-        else:
-            segments[-1].append(token)
     for segment in segments:
         if not segment:
             continue
@@ -281,3 +272,36 @@ def _contains_network_execution(command: str) -> bool:
                     if Path(segment[index + 1]).name.lower() in _NETWORK_EXECUTABLES:
                         return True
     return False
+
+
+def _shell_segments(command: str) -> list[list[str]] | None:
+    """Tokenize shell segments, including literal newline separators."""
+
+    try:
+        lexer = shlex.shlex(
+            command.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ; "),
+            posix=True,
+            punctuation_chars=";&|",
+        )
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    segments: list[list[str]] = [[]]
+    for token in tokens:
+        if token and set(token) <= {";", "&", "|"}:
+            segments.append([])
+        else:
+            segments[-1].append(token)
+    return segments
+
+
+def _is_source_discovery_command(command: str) -> bool:
+    command = _unwrap_shell_launcher(command)
+    segments = _shell_segments(command)
+    if segments is None:
+        return True
+    return any(
+        segment and Path(segment[0]).name in _READ_COMMANDS - {"cd", "pwd"}
+        for segment in segments
+    )
