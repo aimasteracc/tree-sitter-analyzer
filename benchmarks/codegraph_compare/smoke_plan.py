@@ -17,6 +17,9 @@ from typing import Any
 import yaml
 
 from benchmarks.codegraph_compare.adapters import codegraph_executable_identity
+from benchmarks.codegraph_compare.adapters.claude_runner import (
+    preflight_codex_arm_tools,
+)
 from benchmarks.codegraph_compare.integrity import (
     ExpectedCellV1,
     _sha256,
@@ -221,7 +224,9 @@ def freeze_smoke_plan(
     benchmark_repo = benchmark_repo.resolve()
     if _git_output(benchmark_repo, "status", "--porcelain", "--untracked-files=no"):
         raise ValueError("Benchmark implementation has tracked modifications")
+    checkouts = {arm: (checkout_root / arm / "gin").resolve() for arm in ARMS}
     tools, agent_fingerprint = tool_fingerprints(benchmark_repo)
+    arm_tool_preflight = preflight_codex_arm_tools(checkouts)
     preflight = validate_model_preflight(
         model_preflight,
         expected_model=model,
@@ -230,9 +235,9 @@ def freeze_smoke_plan(
     )
     destination.mkdir(parents=True, exist_ok=False)
     _write_exclusive(destination / "model-preflight.json", preflight)
+    _write_exclusive(destination / "arm-tool-preflight.json", arm_tool_preflight)
     config_dir = benchmark_repo / "benchmarks" / "codegraph_compare"
     repo, arms, question = _load_selected_config(config_dir)
-    checkouts = {arm: (checkout_root / arm / "gin").resolve() for arm in ARMS}
     index_path = destination / "index-evidence.json"
     eligibility_path = destination / "eligibility.json"
     eligibility = produce_gin_index_evidence(
@@ -334,6 +339,7 @@ def freeze_smoke_plan(
     return {
         "manifest": manifest_path,
         "model_preflight": destination / "model-preflight.json",
+        "arm_tool_preflight": destination / "arm-tool-preflight.json",
         "index_evidence": index_path,
         "eligibility": eligibility_path,
         "workspace": workspace_path,
