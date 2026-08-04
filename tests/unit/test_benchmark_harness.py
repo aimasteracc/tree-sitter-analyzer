@@ -4037,7 +4037,12 @@ class TestGinSmokeBundle:
         from benchmarks.codegraph_compare.integrity import RegistryEvent
         from benchmarks.codegraph_compare.smoke_policy import PolicyAudit
 
-        manifest = _v1_manifest()
+        manifest = _v1_manifest(
+            index_content_hashes={
+                "codegraph-warm": "codegraph-index-hash",
+                "tsa-warm": "tsa-index-hash",
+            },
+        )
         plan = tmp_path / "plan-source"
         plan.mkdir()
         (plan / "experiment-manifest.json").write_text(
@@ -4290,14 +4295,25 @@ class TestGinSmokeBundle:
         runs_path.write_text(
             "".join(json.dumps(item) + "\n" for item in runs), encoding="utf-8"
         )
+        manifest = json.loads((plan / "experiment-manifest.json").read_text())
+        expected_hash = dict(manifest["index_content_hashes"])[run["arm"]]
         (experiment / f"runtime_index_{run['run_id']}.json").write_text(
             json.dumps(
                 {
+                    "schema_version": 1,
                     "experiment_id": run["experiment_id"],
+                    "manifest_hash": manifest["manifest_hash"],
                     "session_id": run["session_id"],
                     "run_id": run["run_id"],
+                    "repo": run["repo"],
                     "arm": run["arm"],
+                    "repeat": run["repeat"],
+                    "expected_hash": expected_hash,
                     "failure_codes": [marker],
+                    "materialized": False,
+                    "semantic_digest_before": "same-digest",
+                    "semantic_digest_after": "same-digest",
+                    "frozen_hash_after": expected_hash,
                     "cleanup_status": "FAILED",
                 }
             )
@@ -4335,16 +4351,27 @@ class TestGinSmokeBundle:
         runs_path.write_text(
             "".join(json.dumps(item) + "\n" for item in runs), encoding="utf-8"
         )
+        manifest = json.loads((plan / "experiment-manifest.json").read_text())
+        expected_hash = dict(manifest["index_content_hashes"])[run["arm"]]
         (experiment / f"runtime_index_{run['run_id']}.json").write_text(
             json.dumps(
                 {
+                    "schema_version": 1,
                     "experiment_id": run["experiment_id"],
+                    "manifest_hash": manifest["manifest_hash"],
                     "session_id": run["session_id"],
                     "run_id": run["run_id"],
+                    "repo": run["repo"],
                     "arm": run["arm"],
+                    "repeat": run["repeat"],
+                    "expected_hash": expected_hash,
                     "failure_codes": [marker],
+                    "materialized": True,
+                    "semantic_digest_before": "original-digest",
                     "semantic_digest_after": "unexpected-digest",
                     "post_paths": None,
+                    "frozen_hash_after": expected_hash,
+                    "cleanup_status": "SUCCESS",
                 }
             )
             + "\n",
@@ -4381,16 +4408,27 @@ class TestGinSmokeBundle:
         )
         policy["violations"] = violations
         policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
+        manifest = json.loads((plan / "experiment-manifest.json").read_text())
+        expected_hash = dict(manifest["index_content_hashes"])[run["arm"]]
         (experiment / f"runtime_index_{run['run_id']}.json").write_text(
             json.dumps(
                 {
+                    "schema_version": 1,
                     "experiment_id": run["experiment_id"],
+                    "manifest_hash": manifest["manifest_hash"],
                     "session_id": run["session_id"],
                     "run_id": run["run_id"],
+                    "repo": run["repo"],
                     "arm": run["arm"],
+                    "repeat": run["repeat"],
+                    "expected_hash": expected_hash,
                     "failure_codes": [violations[0]],
+                    "materialized": True,
+                    "semantic_digest_before": "original-digest",
                     "semantic_digest_after": None,
                     "post_paths": None,
+                    "frozen_hash_after": expected_hash,
+                    "cleanup_status": "SUCCESS",
                 }
             )
             + "\n",

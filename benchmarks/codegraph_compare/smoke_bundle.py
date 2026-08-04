@@ -101,7 +101,32 @@ def _runtime_measurements_match(runtime: dict[str, Any], markers: list[str]) -> 
             "cleanup_status"
         ) != "FAILED":
             return False
-    return True
+    required = {
+        "runtime_post": runtime.get("materialized") is True
+        and runtime.get("semantic_digest_after") is None,
+        "semantic_drift": isinstance(runtime.get("semantic_digest_before"), str)
+        and isinstance(runtime.get("semantic_digest_after"), str)
+        and runtime["semantic_digest_before"] != runtime["semantic_digest_after"],
+        "index_drift": isinstance(runtime.get("expected_hash"), str)
+        and isinstance(runtime.get("frozen_hash_after"), str)
+        and runtime["expected_hash"] != runtime["frozen_hash_after"],
+        "frozen_postcheck": runtime.get("frozen_hash_after") is None,
+        "cleanup": runtime.get("cleanup_status") == "FAILED",
+    }
+    represented = {
+        "runtime_post": any(
+            marker.startswith("RUNTIME_POST_AUDIT_FAILED:") for marker in markers
+        ),
+        "semantic_drift": "RUNTIME_SEMANTIC_DRIFT" in markers,
+        "index_drift": "INDEX_CONTENT_DRIFT" in markers,
+        "frozen_postcheck": any(
+            marker.startswith("FROZEN_POSTCHECK_FAILED:") for marker in markers
+        ),
+        "cleanup": any(
+            marker.startswith("RUNTIME_CLEANUP_FAILED:") for marker in markers
+        ),
+    }
+    return represented == required
 
 
 def _validate_arm_tool_preflight(path: Path, *, require_executables: bool) -> None:
@@ -179,10 +204,15 @@ def _without_terminal_exception(
             if run.arm not in manifest.indexed_arms:
                 raise ValueError(f"runtime evidence on non-indexed arm: {run.run_id}")
             expected_identity = {
+                "schema_version": 1,
                 "experiment_id": run.experiment_id,
+                "manifest_hash": manifest.manifest_hash,
                 "session_id": run.session_id,
                 "run_id": run.run_id,
+                "repo": run.repo,
                 "arm": run.arm,
+                "repeat": run.repeat,
+                "expected_hash": dict(manifest.index_content_hashes)[run.arm],
                 "failure_codes": runtime_markers,
             }
             if any(
@@ -198,6 +228,8 @@ def _without_terminal_exception(
     if not evidence_fallback and remaining and isinstance(remaining[0], str):
         marker = remaining[0]
         if _EXECUTION_EVIDENCE_MARKER.fullmatch(marker):
+            if marker == "INDEX_CONTENT_DRIFT" and marker not in runtime_markers:
+                raise ValueError(f"runtime evidence missing for drift: {run.run_id}")
             marker_count += 1
     if marker_count == 0:
         return stored
