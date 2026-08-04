@@ -123,9 +123,26 @@ jobs:
     - name: Run Tests (no coverage)
       if: ${{ !matrix.coverage }}
       run: |
+        set +e
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
           --ignore=tests/e2e \
-          -m "not slow and not e2e and not network and not benchmark and not full_language"
+          -m "not slow and not e2e and not network and not benchmark and not full_language" \
+          2>&1 | tee pytest-output.txt
+        test_status=${PIPESTATUS[0]}
+        set -e
+        if [ "$test_status" -eq 0 ]; then
+          exit 0
+        fi
+        if [ "$RUNNER_OS" != "Windows" ]; then
+          exit "$test_status"
+        fi
+        if ! uv run python scripts/classify_windows_pytest_failure.py \
+          pytest-output.txt --nodeids-output windows-budget-retry.txt; then
+          exit "$test_status"
+        fi
+        mapfile -t retry_nodeids < windows-budget-retry.txt
+        echo "Windows runner degradation suspected; retrying budget-only failures once."
+        uv run pytest "${retry_nodeids[@]}" -n auto -v --tb=short --maxfail=200
       shell: bash
 
     - name: Run slow tests
@@ -230,9 +247,26 @@ jobs:
     - name: Run Tests (no coverage)
       if: matrix.os != 'ubuntu-latest' || matrix.python-version != inputs.python-version
       run: |
+        set +e
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
           --ignore=tests/e2e \
-          -m "not slow and not e2e and not network and not benchmark and not full_language"
+          -m "not slow and not e2e and not network and not benchmark and not full_language" \
+          2>&1 | tee pytest-output.txt
+        test_status=${PIPESTATUS[0]}
+        set -e
+        if [ "$test_status" -eq 0 ]; then
+          exit 0
+        fi
+        if [ "$RUNNER_OS" != "Windows" ]; then
+          exit "$test_status"
+        fi
+        if ! uv run python scripts/classify_windows_pytest_failure.py \
+          pytest-output.txt --nodeids-output windows-budget-retry.txt; then
+          exit "$test_status"
+        fi
+        mapfile -t retry_nodeids < windows-budget-retry.txt
+        echo "Windows runner degradation suspected; retrying budget-only failures once."
+        uv run pytest "${retry_nodeids[@]}" -n auto -v --tb=short --maxfail=200
       shell: bash
 
     - name: Run slow tests

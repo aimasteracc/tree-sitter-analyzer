@@ -114,6 +114,17 @@ def test_slow_suite_runs_once_per_reusable_test_matrix() -> None:
     assert text.count(slow_marker) == 2
 
 
+def test_windows_budget_retry_is_bounded_and_budget_only() -> None:
+    """Windows may retry measured runner stalls, never functional failures."""
+    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
+    text = workflow.read_text(encoding="utf-8")
+
+    assert text.count('if [ "$RUNNER_OS" != "Windows" ]; then') == 2
+    assert text.count("scripts/classify_windows_pytest_failure.py") == 2
+    assert text.count('uv run pytest "${retry_nodeids[@]}" -n auto') == 2
+    assert text.count("retrying budget-only failures once") == 2
+
+
 def test_default_gate_has_a_real_five_minute_ci_deadline() -> None:
     """The documented local quick-gate budget must be enforced in CI."""
     workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
