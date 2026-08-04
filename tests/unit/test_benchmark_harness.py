@@ -4203,7 +4203,6 @@ class TestGinSmokeBundle:
         policy["observed_mcp_tools"] = []
         policy["violations"] = violations
         policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
-
         # Issue #1201: immutable INVALID evidence predates transcript retention.
         digest = create_smoke_bundle(
             tmp_path / "bundle",
@@ -4213,6 +4212,97 @@ class TestGinSmokeBundle:
         )
 
         assert len(digest) == 64
+
+    def test_bundle_accepts_runtime_marker_with_product_failure(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        runs_path = experiment / "runs.jsonl"
+        runs = [
+            json.loads(line)
+            for line in runs_path.read_text(encoding="utf-8").splitlines()
+        ]
+        run = runs[0]
+        policy_path = experiment / f"policy_{run['run_id']}.json"
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        marker = "RUNTIME_CLEANUP_FAILED:OSError"
+        policy["violations"] = [marker, *policy["violations"]]
+        policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
+        run["status"] = "INVALID"
+        run["blocker_reason"] = (
+            "POLICY_AUDIT:"
+            + ",".join(policy["violations"])
+            + ";PRODUCT_FAILURE:backend unavailable"
+        )
+        runs_path.write_text(
+            "".join(json.dumps(item) + "\n" for item in runs), encoding="utf-8"
+        )
+        (experiment / f"runtime_index_{run['run_id']}.json").write_text(
+            json.dumps(
+                {
+                    "experiment_id": run["experiment_id"],
+                    "session_id": run["session_id"],
+                    "run_id": run["run_id"],
+                    "arm": run["arm"],
+                    "failure_codes": [marker],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        # Issue #1219: product failures remain bound to runtime policy evidence.
+        digest = create_smoke_bundle(
+            tmp_path / "bundle",
+            plan_dir=plan,
+            experiment_dir=experiment,
+            registry_path=registry,
+        )
+
+        assert len(digest) == 64
+
+    def test_bundle_rejects_runtime_marker_missing_from_audit(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        runs_path = experiment / "runs.jsonl"
+        runs = [
+            json.loads(line)
+            for line in runs_path.read_text(encoding="utf-8").splitlines()
+        ]
+        run = runs[0]
+        policy_path = experiment / f"policy_{run['run_id']}.json"
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        marker = "RUNTIME_POST_AUDIT_FAILED:ValueError"
+        policy["violations"] = [marker, *policy["violations"]]
+        policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
+        run["status"] = "INVALID"
+        run["blocker_reason"] = "POLICY_AUDIT:" + ",".join(policy["violations"])
+        runs_path.write_text(
+            "".join(json.dumps(item) + "\n" for item in runs), encoding="utf-8"
+        )
+        (experiment / f"runtime_index_{run['run_id']}.json").write_text(
+            json.dumps(
+                {
+                    "experiment_id": run["experiment_id"],
+                    "session_id": run["session_id"],
+                    "run_id": run["run_id"],
+                    "arm": run["arm"],
+                    "failure_codes": ["RUNTIME_SEMANTIC_DRIFT"],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        # Issue #1219: a policy marker cannot self-authorize runtime evidence.
+        with pytest.raises(ValueError, match="runtime evidence binding mismatch"):
+            create_smoke_bundle(
+                tmp_path / "bundle",
+                plan_dir=plan,
+                experiment_dir=experiment,
+                registry_path=registry,
+            )
 
     def test_bundle_accepts_bound_runtime_post_audit_failure(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
@@ -4235,6 +4325,19 @@ class TestGinSmokeBundle:
         )
         policy["violations"] = violations
         policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
+        (experiment / f"runtime_index_{run['run_id']}.json").write_text(
+            json.dumps(
+                {
+                    "experiment_id": run["experiment_id"],
+                    "session_id": run["session_id"],
+                    "run_id": run["run_id"],
+                    "arm": run["arm"],
+                    "failure_codes": [violations[0]],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
         # Issue #1219: runtime terminal evidence must remain bundleable.
         digest = create_smoke_bundle(

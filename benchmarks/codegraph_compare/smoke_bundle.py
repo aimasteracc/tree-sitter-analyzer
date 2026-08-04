@@ -30,6 +30,10 @@ _TERMINAL_EVIDENCE_MARKER = re.compile(
     r"(?:RUNTIME_POST_AUDIT|FROZEN_POSTCHECK|RUNTIME_CLEANUP)_FAILED):"
     r"[A-Za-z_][A-Za-z0-9_]*$|^(?:INDEX_CONTENT|RUNTIME_SEMANTIC)_DRIFT$"
 )
+_RUNTIME_EVIDENCE_MARKER = re.compile(
+    r"^(?:(?:RUNTIME_POST_AUDIT|FROZEN_POSTCHECK|RUNTIME_CLEANUP)_FAILED:"
+    r"[A-Za-z_][A-Za-z0-9_]*|(?:INDEX_CONTENT|RUNTIME_SEMANTIC)_DRIFT)$"
+)
 _ARM_TOOL_SERVERS = {
     "tsa-warm": "tree-sitter-analyzer",
     "codegraph-warm": "codegraph",
@@ -90,7 +94,7 @@ def _copy_tree_files(source: Path, destination: Path) -> None:
 
 
 def _without_terminal_exception(
-    stored: dict[str, Any], run: RunRecordV1
+    stored: dict[str, Any], run: RunRecordV1, evidence: Path
 ) -> dict[str, Any]:
     """Validate and remove terminal markers before transcript comparison."""
 
@@ -108,12 +112,30 @@ def _without_terminal_exception(
     if marker_count == 0:
         return stored
     expected_blocker = "POLICY_AUDIT:" + ",".join(violations)
+    blocker = run.blocker_reason or ""
+    product_failure = blocker.removeprefix(expected_blocker + ";PRODUCT_FAILURE:")
     if (
         run.status.value != "INVALID"
-        or run.blocker_reason != expected_blocker
+        or (blocker != expected_blocker and not product_failure)
         or (not run.transcript_path and run.answer != "ERROR")
     ):
         raise ValueError(f"terminal exception binding mismatch: {run.run_id}")
+    runtime_markers = [
+        marker
+        for marker in violations[:marker_count]
+        if _RUNTIME_EVIDENCE_MARKER.fullmatch(marker)
+    ]
+    if runtime_markers:
+        runtime = _json(evidence / f"runtime_index_{run.run_id}.json")
+        expected_identity = {
+            "experiment_id": run.experiment_id,
+            "session_id": run.session_id,
+            "run_id": run.run_id,
+            "arm": run.arm,
+            "failure_codes": runtime_markers,
+        }
+        if any(runtime.get(key) != value for key, value in expected_identity.items()):
+            raise ValueError(f"runtime evidence binding mismatch: {run.run_id}")
     comparable = dict(stored)
     comparable["violations"] = violations[marker_count:]
     return comparable
@@ -141,7 +163,7 @@ def _validate_policy_evidence(
         )
         recomputed["transcript_path"] = run.transcript_path
         stored_violations = stored.get("violations")
-        comparable = _without_terminal_exception(stored, run)
+        comparable = _without_terminal_exception(stored, run, evidence)
         if recomputed != comparable:
             raise ValueError(f"policy audit mismatch: {run.run_id}")
         if stored_violations and run.status.value != "INVALID":
