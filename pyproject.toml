@@ -715,7 +715,7 @@ dev = [
     "types-jsonschema",
     "types-PyYAML",
     "types-cachetools",
-    "mypy==1.19.1",
+    "mypy==2.3.0",
     "hypothesis>=6.0.0",
     "pytest-xdist>=3.8.0",
     "pytest-timeout>=2.4.0",
