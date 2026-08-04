@@ -74,6 +74,36 @@ def _valid_runtime_marker_sequence(markers: list[str]) -> bool:
     return index == len(markers)
 
 
+def _runtime_measurements_match(runtime: dict[str, Any], markers: list[str]) -> bool:
+    for marker in markers:
+        if marker.startswith("RUNTIME_POST_AUDIT_FAILED:") and (
+            runtime.get("semantic_digest_after") is not None
+            or runtime.get("post_paths") is not None
+        ):
+            return False
+        if marker == "RUNTIME_SEMANTIC_DRIFT" and (
+            not isinstance(runtime.get("semantic_digest_before"), str)
+            or not isinstance(runtime.get("semantic_digest_after"), str)
+            or runtime["semantic_digest_before"] == runtime["semantic_digest_after"]
+        ):
+            return False
+        if marker == "INDEX_CONTENT_DRIFT" and (
+            not isinstance(runtime.get("expected_hash"), str)
+            or not isinstance(runtime.get("frozen_hash_after"), str)
+            or runtime["expected_hash"] == runtime["frozen_hash_after"]
+        ):
+            return False
+        if marker.startswith("FROZEN_POSTCHECK_FAILED:") and runtime.get(
+            "frozen_hash_after"
+        ) is not None:
+            return False
+        if marker.startswith("RUNTIME_CLEANUP_FAILED:") and runtime.get(
+            "cleanup_status"
+        ) != "FAILED":
+            return False
+    return True
+
+
 def _validate_arm_tool_preflight(path: Path, *, require_executables: bool) -> None:
     raw = _json(path)
     if not isinstance(raw, dict) or set(raw) != set(_ARM_TOOL_SERVERS):
@@ -159,6 +189,8 @@ def _without_terminal_exception(
                 runtime.get(key) != value for key, value in expected_identity.items()
             ):
                 raise ValueError(f"runtime evidence binding mismatch: {run.run_id}")
+            if not _runtime_measurements_match(runtime, runtime_markers):
+                raise ValueError(f"runtime evidence measurement mismatch: {run.run_id}")
             if violations[: len(runtime_markers)] != runtime_markers:
                 raise ValueError(f"runtime evidence ordering mismatch: {run.run_id}")
     marker_count = 1 if evidence_fallback else len(runtime_markers)

@@ -4298,6 +4298,7 @@ class TestGinSmokeBundle:
                     "run_id": run["run_id"],
                     "arm": run["arm"],
                     "failure_codes": [marker],
+                    "cleanup_status": "FAILED",
                 }
             )
             + "\n",
@@ -4314,7 +4315,7 @@ class TestGinSmokeBundle:
 
         assert len(digest) == 64
 
-    def test_bundle_rejects_runtime_marker_missing_from_audit(self, tmp_path: Path):
+    def test_bundle_rejects_runtime_marker_contradicting_audit(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
 
         plan, experiment, registry = self._bundle_inputs(tmp_path)
@@ -4341,7 +4342,9 @@ class TestGinSmokeBundle:
                     "session_id": run["session_id"],
                     "run_id": run["run_id"],
                     "arm": run["arm"],
-                    "failure_codes": ["RUNTIME_SEMANTIC_DRIFT"],
+                    "failure_codes": [marker],
+                    "semantic_digest_after": "unexpected-digest",
+                    "post_paths": None,
                 }
             )
             + "\n",
@@ -4349,7 +4352,7 @@ class TestGinSmokeBundle:
         )
 
         # Issue #1219: a policy marker cannot self-authorize runtime evidence.
-        with pytest.raises(ValueError, match="runtime evidence ordering mismatch"):
+        with pytest.raises(ValueError, match="runtime evidence measurement mismatch"):
             create_smoke_bundle(
                 tmp_path / "bundle",
                 plan_dir=plan,
@@ -4386,6 +4389,8 @@ class TestGinSmokeBundle:
                     "run_id": run["run_id"],
                     "arm": run["arm"],
                     "failure_codes": [violations[0]],
+                    "semantic_digest_after": None,
+                    "post_paths": None,
                 }
             )
             + "\n",
