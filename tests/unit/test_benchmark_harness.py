@@ -3515,6 +3515,54 @@ class TestGinSmokeWorkspace:
             "codegraph.db",
         )
 
+    def test_snapshot_closes_oracle_connection_before_publish(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        # PR #1213: Windows refuses to rename a directory containing an open DB.
+        from benchmarks.codegraph_compare import smoke_evidence
+
+        source = tmp_path / "live" / ".codegraph"
+        source.mkdir(parents=True)
+        connection = sqlite3.connect(source / "codegraph.db")
+        connection.execute("CREATE TABLE nodes(file_path TEXT, name TEXT)")
+        connection.execute("INSERT INTO nodes VALUES ('gin.go', 'ServeHTTP')")
+        connection.commit()
+        connection.close()
+
+        original_connect = smoke_evidence.sqlite3.connect
+        oracle_connections = []
+
+        class TrackingConnection:
+            def __init__(self, wrapped):
+                self.wrapped = wrapped
+                self.closed = False
+
+            def __getattr__(self, name):
+                return getattr(self.wrapped, name)
+
+            def __enter__(self):
+                self.wrapped.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.wrapped.__exit__(*args)
+
+            def close(self):
+                self.closed = True
+                self.wrapped.close()
+
+        def track_connect(database, *args, **kwargs):
+            tracked = TrackingConnection(original_connect(database, *args, **kwargs))
+            oracle_connections.append(tracked)
+            return tracked
+
+        monkeypatch.setattr(smoke_evidence.sqlite3, "connect", track_connect)
+
+        observed = smoke_evidence.inspect_frozen_index("codegraph-warm", source)
+
+        assert observed == ("gin.go",)
+        assert tuple(item.closed for item in oracle_connections) == (True,)
+
     def test_materialize_uses_fixed_arm_oracle_and_distinct_copy(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_evidence import index_content_hash
         from benchmarks.codegraph_compare.smoke_workspace import (

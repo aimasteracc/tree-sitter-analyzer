@@ -8,7 +8,7 @@ import sqlite3
 import subprocess
 import tempfile
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -30,7 +30,7 @@ def canonical_semantic_digest(database: Path) -> str:
 
     payload = []
     uri = f"file:{database}?mode=ro&immutable=1"
-    with sqlite3.connect(uri, uri=True) as connection:
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
         tables = connection.execute(
             "SELECT name, sql FROM sqlite_master WHERE type='table' "
             "AND name NOT LIKE 'sqlite_%' ORDER BY name"
@@ -185,7 +185,9 @@ def masked_paths(repo_path: Path, paths: tuple[str, ...]) -> Iterator[None]:
 
 def _tsa_indexed_paths(repo_path: Path) -> tuple[str, ...]:
     database = repo_path / ".ast-cache" / "index.db"
-    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+    with closing(
+        sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    ) as connection:
         rows = connection.execute(
             "SELECT file_path FROM ast_index ORDER BY file_path"
         ).fetchall()
@@ -194,7 +196,9 @@ def _tsa_indexed_paths(repo_path: Path) -> tuple[str, ...]:
 
 def _codegraph_indexed_paths(repo_path: Path) -> tuple[str, ...]:
     database = repo_path / ".codegraph" / "codegraph.db"
-    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+    with closing(
+        sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    ) as connection:
         rows = connection.execute(
             "SELECT DISTINCT file_path FROM nodes "
             "WHERE file_path IS NOT NULL AND file_path <> '' ORDER BY file_path"
@@ -204,7 +208,9 @@ def _codegraph_indexed_paths(repo_path: Path) -> tuple[str, ...]:
 
 def _tsa_readiness(repo_path: Path) -> bool:
     database = repo_path / ".ast-cache" / "index.db"
-    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+    with closing(
+        sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    ) as connection:
         row = connection.execute(
             "SELECT symbols_json FROM ast_index WHERE file_path = 'gin.go'"
         ).fetchone()
@@ -213,7 +219,9 @@ def _tsa_readiness(repo_path: Path) -> bool:
 
 def _codegraph_readiness(repo_path: Path) -> bool:
     database = repo_path / ".codegraph" / "codegraph.db"
-    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+    with closing(
+        sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    ) as connection:
         columns = {
             str(row[1])
             for row in connection.execute("PRAGMA table_info(nodes)").fetchall()
@@ -256,7 +264,7 @@ def inspect_frozen_index(arm: str, index_root: Path) -> tuple[str, ...]:
     if sidecars:
         raise ValueError(f"Frozen index contains SQLite sidecars: {sidecars}")
     uri = f"file:{database}?mode=ro&immutable=1"
-    with sqlite3.connect(uri, uri=True) as connection:
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
         if connection.execute("PRAGMA integrity_check").fetchone() != ("ok",):
             raise ValueError(f"{arm} frozen database failed integrity_check")
         if arm == "tsa-warm":
