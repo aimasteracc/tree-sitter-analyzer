@@ -25,8 +25,10 @@ _PLAN_FILES = (
     "model-preflight.json",
     "workspace-evidence.json",
 )
-_TERMINAL_EXCEPTION = re.compile(
-    r"^(?:EXECUTION|EVIDENCE)_EXCEPTION:[A-Za-z_][A-Za-z0-9_]*$"
+_TERMINAL_EVIDENCE_MARKER = re.compile(
+    r"^(?:(?:EXECUTION|EVIDENCE)_EXCEPTION|"
+    r"(?:RUNTIME_POST_AUDIT|FROZEN_POSTCHECK|RUNTIME_CLEANUP)_FAILED):"
+    r"[A-Za-z_][A-Za-z0-9_]*$|^(?:INDEX_CONTENT|RUNTIME_SEMANTIC)_DRIFT$"
 )
 _ARM_TOOL_SERVERS = {
     "tsa-warm": "tree-sitter-analyzer",
@@ -90,15 +92,20 @@ def _copy_tree_files(source: Path, destination: Path) -> None:
 def _without_terminal_exception(
     stored: dict[str, Any], run: RunRecordV1
 ) -> dict[str, Any]:
-    """Validate and remove one terminal marker before transcript comparison."""
+    """Validate and remove terminal markers before transcript comparison."""
 
     violations = stored.get("violations")
-    if (
-        not isinstance(violations, list)
-        or not violations
-        or not isinstance(violations[0], str)
-        or _TERMINAL_EXCEPTION.fullmatch(violations[0]) is None
-    ):
+    if not isinstance(violations, list) or not violations:
+        return stored
+    marker_count = 0
+    for violation in violations:
+        if (
+            not isinstance(violation, str)
+            or _TERMINAL_EVIDENCE_MARKER.fullmatch(violation) is None
+        ):
+            break
+        marker_count += 1
+    if marker_count == 0:
         return stored
     expected_blocker = "POLICY_AUDIT:" + ",".join(violations)
     if (
@@ -108,7 +115,7 @@ def _without_terminal_exception(
     ):
         raise ValueError(f"terminal exception binding mismatch: {run.run_id}")
     comparable = dict(stored)
-    comparable["violations"] = violations[1:]
+    comparable["violations"] = violations[marker_count:]
     return comparable
 
 

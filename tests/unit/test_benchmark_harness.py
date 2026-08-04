@@ -4214,6 +4214,38 @@ class TestGinSmokeBundle:
 
         assert len(digest) == 64
 
+    def test_bundle_accepts_bound_runtime_post_audit_failure(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        runs_path = experiment / "runs.jsonl"
+        runs = [
+            json.loads(line)
+            for line in runs_path.read_text(encoding="utf-8").splitlines()
+        ]
+        run = runs[0]
+        policy_path = experiment / f"policy_{run['run_id']}.json"
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        violations = ["RUNTIME_POST_AUDIT_FAILED:ValueError", *policy["violations"]]
+        run["status"] = "INVALID"
+        run["blocker_reason"] = "POLICY_AUDIT:" + ",".join(violations)
+        runs_path.write_text(
+            "".join(json.dumps(item) + "\n" for item in runs),
+            encoding="utf-8",
+        )
+        policy["violations"] = violations
+        policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
+
+        # Issue #1219: runtime terminal evidence must remain bundleable.
+        digest = create_smoke_bundle(
+            tmp_path / "bundle",
+            plan_dir=plan,
+            experiment_dir=experiment,
+            registry_path=registry,
+        )
+
+        assert len(digest) == 64
+
     def test_bundle_replay_is_byte_identical(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_bundle import (
             create_smoke_bundle,
