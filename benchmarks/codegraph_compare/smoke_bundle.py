@@ -25,6 +25,7 @@ _PLAN_FILES = (
     "model-preflight.json",
     "workspace-evidence.json",
 )
+_OPTIONAL_PLAN_FILES = ("arm-tool-preflight.json",)
 _TERMINAL_EXCEPTION = re.compile(
     r"^(?:EXECUTION|EVIDENCE)_EXCEPTION:[A-Za-z_][A-Za-z0-9_]*$"
 )
@@ -52,8 +53,7 @@ def _registry(path: Path, experiment_id: str) -> tuple[RegistryEvent, ...]:
     return tuple(
         RegistryEvent(**raw)
         for raw in (
-            json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
         )
         if raw["experiment_id"] == experiment_id
     )
@@ -96,12 +96,8 @@ def _validate_policy_evidence(
     runs: tuple[RunRecordV1, ...],
 ) -> None:
     evidence = bundle_root / "evidence"
-    expected_policy_files = {
-        f"policy_{run.run_id}.json" for run in runs
-    }
-    actual_policy_files = {
-        path.name for path in evidence.glob("policy_*.json")
-    }
+    expected_policy_files = {f"policy_{run.run_id}.json" for run in runs}
+    actual_policy_files = {path.name for path in evidence.glob("policy_*.json")}
     if actual_policy_files != expected_policy_files:
         raise ValueError("policy evidence inventory mismatch")
     for run in runs:
@@ -109,17 +105,11 @@ def _validate_policy_evidence(
         if stored.get("transcript_path") != run.transcript_path:
             raise ValueError(f"policy transcript binding mismatch: {run.run_id}")
         transcript = (
-            bundle_root
-            / "artifacts"
-            / run.arm
-            / "raw"
-            / Path(run.transcript_path).name
+            bundle_root / "artifacts" / run.arm / "raw" / Path(run.transcript_path).name
         )
         recomputed = cast(
             dict[str, Any],
-            json.loads(
-                json.dumps(asdict(audit_codex_transcript(transcript, run.arm)))
-            ),
+            json.loads(json.dumps(asdict(audit_codex_transcript(transcript, run.arm)))),
         )
         recomputed["transcript_path"] = run.transcript_path
         stored_violations = stored.get("violations")
@@ -144,6 +134,10 @@ def create_smoke_bundle(
     plan_target.mkdir()
     for name in _PLAN_FILES:
         (plan_target / name).write_bytes((plan_dir / name).read_bytes())
+    for name in _OPTIONAL_PLAN_FILES:
+        source = plan_dir / name
+        if source.is_file():
+            (plan_target / name).write_bytes(source.read_bytes())
     manifest = parse_manifest_v1(_json(plan_target / "experiment-manifest.json"))
     validate_model_preflight(
         plan_target / "model-preflight.json",

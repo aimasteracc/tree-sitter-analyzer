@@ -29,9 +29,7 @@ _INDEX_COMMAND = re.compile(
     r"\b(?:codegraph|tree[-_]sitter[-_]analyzer)\b",
     re.IGNORECASE,
 )
-_INDEX_NAMESPACE = re.compile(
-    r"(?:^|[\s/\\])(?:\.ast-cache|\.codegraph)(?:[/\\]|$)"
-)
+_INDEX_NAMESPACE = re.compile(r"(?:^|[\s/\\])(?:\.ast-cache|\.codegraph)(?:[/\\]|$)")
 _BOUNDARY_ESCAPE = re.compile(
     r"(?:^|[\s'\"=])(?:/|~|\.\.(?:[/\\]|\s|$)|\$HOME\b|\$\{HOME\}|[A-Za-z]:[/\\])"
 )
@@ -39,12 +37,25 @@ _PROCESS_INSPECTION = re.compile(
     r"(?:^|[;&|]\s*|\s)(?:ps|pgrep|lsof|env|printenv|mount)\b",
     re.IGNORECASE,
 )
-_NETWORK_COMMAND = re.compile(
-    r"(?:^|[;&|]\s*|\s)"
-    r"(?:curl|wget|ssh|scp|sftp|nc|netcat|telnet|python|python3|node|ruby|perl|php)"
-    r"\b|\bgit\s+(?:clone|fetch|pull|push|ls-remote)\b",
-    re.IGNORECASE,
+_NETWORK_EXECUTABLES = frozenset(
+    {
+        "curl",
+        "wget",
+        "ssh",
+        "scp",
+        "sftp",
+        "nc",
+        "netcat",
+        "telnet",
+        "python",
+        "python3",
+        "node",
+        "ruby",
+        "perl",
+        "php",
+    }
 )
+_NETWORK_GIT_SUBCOMMANDS = frozenset({"clone", "fetch", "pull", "push", "ls-remote"})
 _READ_COMMANDS = frozenset(
     {
         "cat",
@@ -164,9 +175,7 @@ def _mcp_call_failed(item: dict[str, object]) -> bool:
     )
 
 
-def _audit_command(
-    command: str, line_number: int, violations: list[str]
-) -> None:
+def _audit_command(command: str, line_number: int, violations: list[str]) -> None:
     command = _unwrap_shell_launcher(command)
     violation_count = len(violations)
     checks = (
@@ -179,7 +188,7 @@ def _audit_command(
             violations.append(f"{code}:{line_number}")
     if _BOUNDARY_ESCAPE.search(command) or _PROCESS_INSPECTION.search(command):
         violations.append(f"FILESYSTEM_BOUNDARY_ESCAPE:{line_number}")
-    if _NETWORK_COMMAND.search(command):
+    if _contains_network_execution(command):
         violations.append(f"NETWORK_COMMAND:{line_number}")
     if len(violations) == violation_count and not _command_is_allowlisted(command):
         violations.append(f"UNDECLARED_SHELL_COMMAND:{line_number}")
@@ -231,7 +240,44 @@ def _command_is_allowlisted(command: str) -> bool:
         if executable == "sed" and (
             "-n" not in segment[1:]
             or any(token == "-i" or token.startswith("-i") for token in segment[1:])
-            or any("e" in token.lstrip("-") for token in segment[1:] if token.startswith("-"))
+            or any(
+                "e" in token.lstrip("-")
+                for token in segment[1:]
+                if token.startswith("-")
+            )
         ):
             return False
     return True
+
+
+def _contains_network_execution(command: str) -> bool:
+    """Inspect executable positions, not inert grep patterns or file contents."""
+
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return False
+    segments: list[list[str]] = [[]]
+    for token in tokens:
+        if token and set(token) <= {";", "&", "|"}:
+            segments.append([])
+        else:
+            segments[-1].append(token)
+    for segment in segments:
+        if not segment:
+            continue
+        executable = Path(segment[0]).name.lower()
+        if executable in _NETWORK_EXECUTABLES:
+            return True
+        if executable == "git" and any(
+            token in _NETWORK_GIT_SUBCOMMANDS for token in segment[1:]
+        ):
+            return True
+        if executable == "find":
+            for index, token in enumerate(segment[:-1]):
+                if token in {"-exec", "-execdir", "-ok", "-okdir"}:
+                    if Path(segment[index + 1]).name.lower() in _NETWORK_EXECUTABLES:
+                        return True
+    return False

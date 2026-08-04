@@ -2342,6 +2342,85 @@ class TestCodeGraphCompareSetupGate:
                 'CODEGRAPH_NO_DAEMON = "1" }'
             ) in command
 
+    def test_codex_arm_tool_preflight_qualifies_both_indexed_servers(
+        self, monkeypatch, tmp_path: Path
+    ):
+        import subprocess
+
+        from benchmarks.codegraph_compare.adapters import claude_runner
+
+        executable = tmp_path / "server"
+        executable.write_text("fixture", encoding="utf-8")
+        monkeypatch.setattr(
+            claude_runner,
+            "_codex_mcp_config_args",
+            lambda arm, repo: ["-c", f"fixture={arm}:{repo.name}"],
+        )
+
+        def fake_run(command, **kwargs):
+            server = "tree-sitter-analyzer" if "tsa-warm" in command[3] else "codegraph"
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    [
+                        {
+                            "name": server,
+                            "enabled": True,
+                            "transport": {
+                                "command": str(executable),
+                                "args": ["serve", "--mcp"],
+                            },
+                        }
+                    ]
+                ),
+                stderr="",
+            )
+
+        monkeypatch.setattr(claude_runner.subprocess, "run", fake_run)
+
+        evidence = claude_runner.preflight_codex_arm_tools(tmp_path)
+
+        assert set(evidence) == {"tsa-warm", "codegraph-warm"}
+        assert all(item["enabled"] for item in evidence.values())
+
+    def test_codex_arm_tool_preflight_rejects_missing_executable(
+        self, monkeypatch, tmp_path: Path
+    ):
+        import subprocess
+
+        from benchmarks.codegraph_compare.adapters import claude_runner
+
+        monkeypatch.setattr(
+            claude_runner,
+            "_codex_mcp_config_args",
+            lambda arm, repo: ["-c", f"fixture={arm}:{repo.name}"],
+        )
+        monkeypatch.setattr(
+            claude_runner.subprocess,
+            "run",
+            lambda command, **kwargs: subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    [
+                        {
+                            "name": "tree-sitter-analyzer",
+                            "enabled": True,
+                            "transport": {
+                                "command": str(tmp_path / "missing"),
+                                "args": [],
+                            },
+                        }
+                    ]
+                ),
+                stderr="",
+            ),
+        )
+
+        with pytest.raises(ValueError, match="executable is unavailable"):
+            claude_runner.preflight_codex_arm_tools(tmp_path)
+
     def test_codex_native_command_ignores_user_config_without_mcp_servers(
         self, tmp_path: Path
     ):
@@ -2618,7 +2697,7 @@ class TestGinSmokeManifestExecution:
                     "type": "command_execution",
                     "command": "git -c credential.helper=x fetch origin",
                 },
-                "UNDECLARED_SHELL_COMMAND:1",
+                "NETWORK_COMMAND:1",
             ),
             (
                 {
@@ -2671,6 +2750,37 @@ class TestGinSmokeManifestExecution:
         )
 
         transcript = tmp_path / "readonly.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {"type": "command_execution", "command": command},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        audit = audit_codex_transcript(transcript, "native-only")
+
+        assert audit.violations == ()
+
+    @pytest.mark.parametrize(
+        "command",
+        (
+            "grep -RIn 'http.MethodGet|http.ListenAndServe' .",
+            "rg -n 'python|node|curl' README.md",
+            "/bin/bash -lc \"grep -n 'func ServeHTTP' gin.go\"",
+        ),
+    )
+    def test_codex_transcript_does_not_treat_search_terms_as_network_commands(
+        self, tmp_path: Path, command: str
+    ):
+        """Regression for the retained NO1-001C false policy failures (#1216)."""
+        from benchmarks.codegraph_compare.smoke_execution import (
+            audit_codex_transcript,
+        )
+
+        transcript = tmp_path / "source-search.jsonl"
         transcript.write_text(
             json.dumps(
                 {
@@ -3888,6 +3998,7 @@ class TestGinSmokeBundle:
             encoding="utf-8",
         )
         for name in (
+            "arm-tool-preflight.json",
             "eligibility.json",
             "index-evidence.json",
             "workspace-evidence.json",

@@ -437,6 +437,40 @@ def _codex_mcp_config_args(arm_id: str, repo_path: Path) -> list[str]:
     return config
 
 
+def preflight_codex_arm_tools(repo_path: Path) -> dict[str, dict[str, Any]]:
+    """Validate indexed-arm MCP configuration without invoking a model."""
+
+    evidence: dict[str, dict[str, Any]] = {}
+    for arm_id, server_name in (
+        ("tsa-warm", "tree-sitter-analyzer"),
+        ("codegraph-warm", "codegraph"),
+    ):
+        config = _codex_mcp_config_args(arm_id, repo_path)
+        result = subprocess.run(
+            ["codex", "mcp", *config, "list", "--json"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        servers = json.loads(result.stdout)
+        matches = [item for item in servers if item.get("name") == server_name]
+        if len(matches) != 1 or not matches[0].get("enabled"):
+            raise ValueError(f"Codex MCP preflight failed for {arm_id}")
+        transport = matches[0].get("transport")
+        if not isinstance(transport, dict):
+            raise ValueError(f"Codex MCP transport is missing for {arm_id}")
+        command = Path(str(transport.get("command") or ""))
+        if not command.is_absolute() or not command.is_file():
+            raise ValueError(f"Codex MCP executable is unavailable for {arm_id}")
+        evidence[arm_id] = {
+            "server": server_name,
+            "enabled": True,
+            "command": str(command.resolve()),
+            "args": list(transport.get("args") or []),
+        }
+    return evidence
+
+
 def _toml_cli_value(value: Any) -> str:
     """Encode a value for Codex's ``-c key=value`` TOML parser."""
 
@@ -589,6 +623,9 @@ def run_one(
             "files or project configuration. For indexed arms, the only allowed "
             "writes are tool-maintained cache/database side effects such as "
             ".codegraph SQLite WAL files or .ast-cache metadata. "
+            "For an indexed arm, successfully call at least one configured MCP "
+            "tool before direct source discovery; never substitute its CLI through "
+            "the shell. "
             "Answer the architecture question with concrete file citations."
         )
         user_message = f"{tool_policy}\n\n{user_message}"
