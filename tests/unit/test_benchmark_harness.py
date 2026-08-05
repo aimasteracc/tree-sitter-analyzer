@@ -6775,17 +6775,35 @@ class TestSmokeModelPreflight:
 
 class TestCanaryLaunchPreflight:
     @staticmethod
+    def _identity_probe(arm: str, executable: Path) -> dict[str, str]:
+        if arm == "tsa-warm":
+            return {
+                "trusted_repo": "fixture",
+                "entrypoint": "fixture",
+                "entrypoint_sha256": "1" * 64,
+                "source_root": "fixture",
+                "source_sha256": "2" * 64,
+                "dependency_lock": "fixture",
+                "dependency_lock_sha256": "3" * 64,
+            }
+        return {
+            "package": "@colbymchenry/codegraph@1.5.0",
+            "version": "1.5.0",
+        }
+
+    @staticmethod
     def _fixture(tmp_path: Path):
         from benchmarks.codegraph_compare import canary_preflight
 
         checkout = tmp_path / "checkout"
         checkout.mkdir()
         tsa = Path(sys.executable)
-        codegraph = tmp_path / "codegraph"
-        codegraph.write_text("#!/bin/sh\necho 1.5.0\n", encoding="utf-8")
-        codegraph.chmod(0o755)
+        codegraph = Path(sys.executable)
         contracts = canary_preflight.build_canary_launch_contracts(
-            checkout, tsa_executable=tsa, codegraph_executable=codegraph
+            checkout,
+            tsa_executable=tsa,
+            codegraph_executable=codegraph,
+            identity_probe=TestCanaryLaunchPreflight._identity_probe,
         )
         return canary_preflight, checkout, tsa, codegraph, contracts
 
@@ -6861,16 +6879,20 @@ class TestCanaryLaunchPreflight:
         assert contracts[module.CODEGRAPH_ARM]["command"] == str(codegraph.resolve())
         assert (
             contracts[module.CODEGRAPH_ARM]["executable_sha256"]
-            == hashlib.sha256(b"#!/bin/sh\necho 1.5.0\n").hexdigest()
+            == hashlib.sha256(codegraph.read_bytes()).hexdigest()
         )
 
     def test_builder_rejects_non_executable_server(self, tmp_path: Path):
-        module, checkout, tsa, codegraph, _contracts = self._fixture(tmp_path)
-        codegraph.chmod(0o644)
+        module, checkout, tsa, _codegraph, _contracts = self._fixture(tmp_path)
+        codegraph = tmp_path / "codegraph"
+        codegraph.write_bytes(b"not executable")
 
         with pytest.raises(ValueError, match="is not executable"):
             module.build_canary_launch_contracts(
-                checkout, tsa_executable=tsa, codegraph_executable=codegraph
+                checkout,
+                tsa_executable=tsa,
+                codegraph_executable=codegraph,
+                identity_probe=self._identity_probe,
             )
 
     def test_builder_rejects_untrusted_tsa_interpreter(self, tmp_path: Path):
@@ -6885,11 +6907,18 @@ class TestCanaryLaunchPreflight:
 
     def test_builder_rejects_wrong_codegraph_version(self, tmp_path: Path):
         module, checkout, tsa, codegraph, _contracts = self._fixture(tmp_path)
-        codegraph.write_text("#!/bin/sh\necho 1.4.9\n", encoding="utf-8")
+
+        def wrong_version(arm: str, executable: Path) -> dict[str, str]:
+            if arm == module.CODEGRAPH_ARM:
+                raise ValueError("CodeGraph version identity mismatch: '1.4.9'")
+            return self._identity_probe(arm, executable)
 
         with pytest.raises(ValueError, match="version identity mismatch"):
             module.build_canary_launch_contracts(
-                checkout, tsa_executable=tsa, codegraph_executable=codegraph
+                checkout,
+                tsa_executable=tsa,
+                codegraph_executable=codegraph,
+                identity_probe=wrong_version,
             )
 
     def test_injected_identity_probe_marks_contract_as_scaffold(self, tmp_path: Path):
@@ -6944,6 +6973,7 @@ class TestCanaryLaunchPreflight:
                 checkout,
                 tsa_executable=tsa,
                 codegraph_executable=codegraph,
+                identity_probe=self._identity_probe,
             )
 
     def test_validator_rejects_rehashed_foreign_tool(self, tmp_path: Path):
@@ -6961,6 +6991,7 @@ class TestCanaryLaunchPreflight:
                 checkout,
                 tsa_executable=tsa,
                 codegraph_executable=codegraph,
+                identity_probe=self._identity_probe,
             )
 
     def test_validator_rejects_rehashed_ambient_environment_inheritance(
@@ -6980,6 +7011,7 @@ class TestCanaryLaunchPreflight:
                 checkout,
                 tsa_executable=tsa,
                 codegraph_executable=codegraph,
+                identity_probe=self._identity_probe,
             )
 
     def test_validator_accepts_exact_contracts(self, tmp_path: Path):
@@ -6990,6 +7022,7 @@ class TestCanaryLaunchPreflight:
             checkout,
             tsa_executable=tsa,
             codegraph_executable=codegraph,
+            identity_probe=self._identity_probe,
         )
 
         assert validated == contracts

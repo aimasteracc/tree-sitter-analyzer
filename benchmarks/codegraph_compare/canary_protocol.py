@@ -41,6 +41,18 @@ _TOOLS = {"tsa-warm": "nav", "codegraph-warm": "codegraph_search"}
 _ZERO_HASH = "0" * 64
 
 
+def _fsync_directory(path: Path) -> None:
+    """Flush a directory entry where the platform exposes directory handles."""
+
+    if os.name == "nt":
+        return
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 @dataclass(frozen=True)
 class CanaryRunResult:
     transcript_path: Path
@@ -187,11 +199,7 @@ class CanaryProtocol:
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        directory = os.open(self._journal_path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        _fsync_directory(self._journal_path.parent)
 
     def _terminalize(self, result: CanaryProtocolResult) -> CanaryProtocolResult:
         """Atomically replace the reservation with durable terminal evidence."""
@@ -210,11 +218,7 @@ class CanaryProtocol:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, self._journal_path)
-        directory = os.open(self._journal_path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        _fsync_directory(self._journal_path.parent)
         return result
 
     def _persist_artifact(

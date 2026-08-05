@@ -30,7 +30,16 @@ def _executable(path: Path) -> tuple[str, str]:
     resolved = path.resolve(strict=True)
     if not resolved.is_file():
         raise ValueError(f"Canary executable is not a file: {resolved}")
-    if not os.access(resolved, os.X_OK):
+    windows_suffixes = {
+        suffix.lower()
+        for suffix in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";")
+    }
+    executable = (
+        resolved.suffix.lower() in windows_suffixes
+        if os.name == "nt"
+        else os.access(resolved, os.X_OK)
+    )
+    if not executable:
         raise ValueError(f"Canary executable is not executable: {resolved}")
     return str(resolved), hashlib.sha256(resolved.read_bytes()).hexdigest()
 
