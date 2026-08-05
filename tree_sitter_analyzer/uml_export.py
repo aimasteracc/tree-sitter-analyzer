@@ -13,7 +13,6 @@ from typing import Any
 from .call_path import CallPathFinder  # noqa: F401 - public monkeypatch seam
 from .class_hierarchy import ClassHierarchy
 from .import_graph import ImportGraph
-from .utils.test_detection import is_test_file
 
 _EXTERNAL_BASES = frozenset(
     {
