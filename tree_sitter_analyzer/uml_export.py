@@ -436,93 +436,15 @@ class UMLExporter:
             if should_close:
                 cache.close()
 
-        # P1-C: strip test-corpus classes from whole-project view by default
-        if not include_tests:
-            classes = [c for c in classes if not is_test_file(c.get("file"))]
+        from ._uml_export_builders import build_class_diagram
 
-        internal_names = {c.get("name", "") for c in classes if c.get("name")}
-        raw_edges: list[UMLEdge] = []
-        # Bug #789: track test edges separately for whole-project include_tests view
-        raw_test_edges: list[UMLEdge] = []
-        nodes: set[str] = set()
-
-        # Determine scope label for metadata
-        if class_name is not None:
-            scope = "class_neighbourhood"
-        elif file_path is not None:
-            scope = "file"
-        else:
-            scope = "whole_project"
-
-        # P2-1: an unknown class_name must be distinguishable from a known
-        # class with an empty neighbourhood — agents can't tell them apart
-        # from an empty diagram alone.
-        not_found = class_name is not None and class_name not in internal_names
-
-        for cls in classes:
-            child = cls.get("name", "")
-            if not child:
-                continue
-
-            # P1-A scoping: apply file_path / class_name filter
-            if scope == "file":
-                cls_file = cls.get("file", "")
-                if not _file_matches(cls_file, file_path):
-                    continue
-            elif scope == "class_neighbourhood":
-                # Include: the named class itself, its direct parents, and
-                # classes that list it as a direct parent (subclasses one hop)
-                if not _is_neighbourhood(child, cls, class_name, classes):
-                    continue
-
-            nodes.add(child)
-            child_is_test = is_test_file(cls.get("file"))
-            for parent_text in cls.get("parents") or []:
-                parent = str(parent_text).rsplit(".", 1)[-1]
-                if parent in internal_names or (
-                    include_external_bases and parent in _EXTERNAL_BASES
-                ):
-                    nodes.add(parent)
-                    edge = UMLEdge(parent, child, "inherits")
-                    # Bug #789: when include_tests=True in whole-project view,
-                    # separate test-child edges so production edges are prioritised
-                    # first during clamping. Test classes fill remaining slots.
-                    if include_tests and scope == "whole_project" and child_is_test:
-                        raw_test_edges.append(edge)
-                    else:
-                        raw_edges.append(edge)
-
-        # Bug #789: production edges first; test edges fill remaining capacity.
-        if raw_test_edges:
-            prod_edges, prod_truncated = _clamp_edges(raw_edges, max_edges)
-            remaining = max_edges - len(prod_edges)
-            if remaining > 0:
-                test_edges, test_truncated = _clamp_edges(raw_test_edges, remaining)
-                edges = _dedupe_edges_by_signature(prod_edges + test_edges)
-                truncated = prod_truncated or test_truncated
-            else:
-                edges = _dedupe_edges_by_signature(prod_edges)
-                truncated = prod_truncated or bool(raw_test_edges)
-        else:
-            edges, truncated = _clamp_edges(raw_edges, max_edges)
-            edges = _dedupe_edges_by_signature(edges)
-        rendered_nodes = sorted(
-            {n for edge in edges for n in (edge.source, edge.target)}
-        )
-        if not rendered_nodes:
-            rendered_nodes = sorted(nodes)[:max_edges]
-        return UMLDiagram(
-            diagram_type="class",
-            mermaid_type="classDiagram",
-            mermaid=render_class_mermaid(rendered_nodes, edges, truncated=truncated),
-            nodes=rendered_nodes,
-            edges=edges,
-            truncated=truncated,
-            metadata={
-                "source": "class_hierarchy",
-                "scope": scope,
-                **({"not_found": True} if not_found else {}),
-            },
+        return build_class_diagram(
+            classes,
+            max_edges=max_edges,
+            include_external_bases=include_external_bases,
+            file_path=file_path,
+            class_name=class_name,
+            include_tests=include_tests,
         )
 
     def package_diagram(

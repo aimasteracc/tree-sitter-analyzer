@@ -11,6 +11,104 @@ if TYPE_CHECKING:
     from .uml_export import UMLDiagram, UMLEdge
 
 
+def build_class_diagram(
+    classes: list[dict[str, Any]],
+    *,
+    max_edges: int,
+    include_external_bases: bool,
+    file_path: str | None,
+    class_name: str | None,
+    include_tests: bool,
+) -> UMLDiagram:
+    """Build the class-diagram payload from an already-loaded hierarchy."""
+    from . import uml_export as api
+    from .utils.test_detection import is_test_file
+
+    if not include_tests:
+        classes = [item for item in classes if not is_test_file(item.get("file"))]
+    internal_names = {item.get("name", "") for item in classes if item.get("name")}
+    scope = (
+        "class_neighbourhood"
+        if class_name is not None
+        else "file"
+        if file_path is not None
+        else "whole_project"
+    )
+    nodes: set[str] = set()
+    production_edges: list[api.UMLEdge] = []
+    test_edges: list[api.UMLEdge] = []
+    for item in classes:
+        child = item.get("name", "")
+        if not child or (
+            scope == "file" and not api._file_matches(item.get("file", ""), file_path)
+        ):
+            continue
+        if scope == "class_neighbourhood" and not api._is_neighbourhood(
+            child, item, class_name, classes
+        ):
+            continue
+        nodes.add(child)
+        for parent_text in item.get("parents") or []:
+            parent = str(parent_text).rsplit(".", 1)[-1]
+            if parent not in internal_names and not (
+                include_external_bases and parent in api._EXTERNAL_BASES
+            ):
+                continue
+            nodes.add(parent)
+            edge = api.UMLEdge(parent, child, "inherits")
+            target = (
+                test_edges
+                if include_tests
+                and scope == "whole_project"
+                and is_test_file(item.get("file"))
+                else production_edges
+            )
+            target.append(edge)
+
+    edges, truncated = _prioritized_class_edges(production_edges, test_edges, max_edges)
+    rendered_nodes = (
+        sorted({name for edge in edges for name in (edge.source, edge.target)})
+        or sorted(nodes)[:max_edges]
+    )
+    return api.UMLDiagram(
+        diagram_type="class",
+        mermaid_type="classDiagram",
+        mermaid=api.render_class_mermaid(rendered_nodes, edges, truncated=truncated),
+        nodes=rendered_nodes,
+        edges=edges,
+        truncated=truncated,
+        metadata={
+            "source": "class_hierarchy",
+            "scope": scope,
+            **(
+                {"not_found": True}
+                if class_name is not None and class_name not in internal_names
+                else {}
+            ),
+        },
+    )
+
+
+def _prioritized_class_edges(
+    production_edges: list[UMLEdge], test_edges: list[UMLEdge], max_edges: int
+) -> tuple[list[UMLEdge], bool]:
+    from . import uml_export as api
+
+    if not test_edges:
+        edges, truncated = api._clamp_edges(production_edges, max_edges)
+        return api._dedupe_edges_by_signature(edges), truncated
+    edges, production_truncated = api._clamp_edges(production_edges, max_edges)
+    remaining = max_edges - len(edges)
+    if remaining <= 0:
+        return api._dedupe_edges_by_signature(edges), (
+            production_truncated or bool(test_edges)
+        )
+    selected_tests, tests_truncated = api._clamp_edges(test_edges, remaining)
+    return api._dedupe_edges_by_signature(edges + selected_tests), (
+        production_truncated or tests_truncated
+    )
+
+
 def build_sequence_diagram(
     exporter: Any,
     source: str,
