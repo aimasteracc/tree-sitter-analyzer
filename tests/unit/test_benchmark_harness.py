@@ -4249,6 +4249,7 @@ class TestGinSmokeBundle:
         policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
         manifest = json.loads((plan / "experiment-manifest.json").read_text())
         expected_hash = dict(manifest["index_content_hashes"])[run["arm"]]
+        expected_paths = run["index_stats"]["indexed_paths"]
         (experiment / f"runtime_index_{run['run_id']}.json").write_text(
             json.dumps(
                 {
@@ -4261,10 +4262,15 @@ class TestGinSmokeBundle:
                     "arm": run["arm"],
                     "repeat": run["repeat"],
                     "expected_hash": expected_hash,
+                    "expected_paths": expected_paths,
                     "failure_codes": ["RUNTIME_SEMANTIC_DRIFT"],
                     "materialized": True,
+                    "runtime_hash_before": expected_hash,
+                    "runtime_hash_after": expected_hash,
+                    "runtime_mutated": False,
                     "semantic_digest_before": "before-digest",
                     "semantic_digest_after": "after-digest",
+                    "post_paths": expected_paths,
                     "frozen_hash_after": expected_hash,
                     "cleanup_status": "SUCCESS",
                 }
@@ -4282,6 +4288,28 @@ class TestGinSmokeBundle:
         )
 
         assert len(digest) == 64
+
+        runtime_path = experiment / f"runtime_index_{run['run_id']}.json"
+        valid_runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+        for name, mutation, message in (
+            ("wrong-paths", {"expected_paths": ["unrelated.go"]}, "path mismatch"),
+            (
+                "wrong-baseline",
+                {"runtime_hash_before": "wrong"},
+                "measurement mismatch",
+            ),
+            ("wrong-mutated", {"runtime_mutated": True}, "measurement mismatch"),
+        ):
+            runtime_path.write_text(
+                json.dumps({**valid_runtime, **mutation}) + "\n", encoding="utf-8"
+            )
+            with pytest.raises(ValueError, match=message):
+                create_smoke_bundle(
+                    tmp_path / f"bundle-{name}",
+                    plan_dir=plan,
+                    experiment_dir=experiment,
+                    registry_path=registry,
+                )
 
     def test_bundle_accepts_runtime_marker_with_product_failure(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
@@ -4309,6 +4337,7 @@ class TestGinSmokeBundle:
         )
         manifest = json.loads((plan / "experiment-manifest.json").read_text())
         expected_hash = dict(manifest["index_content_hashes"])[run["arm"]]
+        expected_paths = run["index_stats"]["indexed_paths"]
         (experiment / f"runtime_index_{run['run_id']}.json").write_text(
             json.dumps(
                 {
@@ -4321,10 +4350,15 @@ class TestGinSmokeBundle:
                     "arm": run["arm"],
                     "repeat": run["repeat"],
                     "expected_hash": expected_hash,
+                    "expected_paths": expected_paths,
                     "failure_codes": [marker],
                     "materialized": True,
+                    "runtime_hash_before": expected_hash,
+                    "runtime_hash_after": expected_hash,
+                    "runtime_mutated": False,
                     "semantic_digest_before": "same-digest",
                     "semantic_digest_after": "same-digest",
+                    "post_paths": expected_paths,
                     "frozen_hash_after": expected_hash,
                     "cleanup_status": "FAILED",
                 }
@@ -4365,6 +4399,7 @@ class TestGinSmokeBundle:
         )
         manifest = json.loads((plan / "experiment-manifest.json").read_text())
         expected_hash = dict(manifest["index_content_hashes"])[run["arm"]]
+        expected_paths = run["index_stats"]["indexed_paths"]
         (experiment / f"runtime_index_{run['run_id']}.json").write_text(
             json.dumps(
                 {
@@ -4377,11 +4412,15 @@ class TestGinSmokeBundle:
                     "arm": run["arm"],
                     "repeat": run["repeat"],
                     "expected_hash": expected_hash,
+                    "expected_paths": expected_paths,
                     "failure_codes": [marker],
                     "materialized": True,
+                    "runtime_hash_before": expected_hash,
+                    "runtime_hash_after": expected_hash,
+                    "runtime_mutated": False,
                     "semantic_digest_before": "original-digest",
                     "semantic_digest_after": "unexpected-digest",
-                    "post_paths": None,
+                    "post_paths": expected_paths,
                     "frozen_hash_after": expected_hash,
                     "cleanup_status": "SUCCESS",
                 }
@@ -4411,17 +4450,25 @@ class TestGinSmokeBundle:
         run = runs[0]
         policy_path = experiment / f"policy_{run['run_id']}.json"
         policy = json.loads(policy_path.read_text(encoding="utf-8"))
-        violations = ["RUNTIME_POST_AUDIT_FAILED:ValueError", *policy["violations"]]
+        violations = ["RUNTIME_POST_AUDIT_FAILED:ValueError", "TRANSCRIPT_MISSING"]
         run["status"] = "INVALID"
+        run["answer"] = "retained backend answer"
+        run["transcript_path"] = ""
         run["blocker_reason"] = "POLICY_AUDIT:" + ",".join(violations)
         runs_path.write_text(
             "".join(json.dumps(item) + "\n" for item in runs),
             encoding="utf-8",
         )
-        policy["violations"] = violations
+        policy.update(
+            transcript_path="",
+            observed_mcp_servers=[],
+            observed_mcp_tools=[],
+            violations=violations,
+        )
         policy_path.write_text(json.dumps(policy) + "\n", encoding="utf-8")
         manifest = json.loads((plan / "experiment-manifest.json").read_text())
         expected_hash = dict(manifest["index_content_hashes"])[run["arm"]]
+        expected_paths = run["index_stats"]["indexed_paths"]
         (experiment / f"runtime_index_{run['run_id']}.json").write_text(
             json.dumps(
                 {
@@ -4434,8 +4481,12 @@ class TestGinSmokeBundle:
                     "arm": run["arm"],
                     "repeat": run["repeat"],
                     "expected_hash": expected_hash,
+                    "expected_paths": expected_paths,
                     "failure_codes": [violations[0]],
                     "materialized": True,
+                    "runtime_hash_before": expected_hash,
+                    "runtime_hash_after": expected_hash,
+                    "runtime_mutated": False,
                     "semantic_digest_before": "original-digest",
                     "semantic_digest_after": None,
                     "post_paths": None,

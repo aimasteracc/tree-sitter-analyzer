@@ -38,9 +38,7 @@ _RUNTIME_EVIDENCE_MARKER = re.compile(
 _EXECUTION_EVIDENCE_MARKER = re.compile(
     r"^(?:EXECUTION_EXCEPTION:[A-Za-z_][A-Za-z0-9_]*|INDEX_CONTENT_DRIFT)$"
 )
-_EVIDENCE_EXCEPTION_MARKER = re.compile(
-    r"^EVIDENCE_EXCEPTION:[A-Za-z_][A-Za-z0-9_]*$"
-)
+_EVIDENCE_EXCEPTION_MARKER = re.compile(r"^EVIDENCE_EXCEPTION:[A-Za-z_][A-Za-z0-9_]*$")
 _ARM_TOOL_SERVERS = {
     "tsa-warm": "tree-sitter-analyzer",
     "codegraph-warm": "codegraph",
@@ -67,17 +65,32 @@ def _valid_runtime_marker_sequence(markers: list[str]) -> bool:
         or markers[index].startswith("FROZEN_POSTCHECK_FAILED:")
     ):
         index += 1
-    if index < len(markers) and markers[index].startswith(
-        "RUNTIME_CLEANUP_FAILED:"
-    ):
+    if index < len(markers) and markers[index].startswith("RUNTIME_CLEANUP_FAILED:"):
         index += 1
     return index == len(markers)
 
 
+def _runtime_hashes_match(runtime: dict[str, Any]) -> bool:
+    if runtime.get("materialized") is True and runtime.get(
+        "runtime_hash_before"
+    ) != runtime.get("expected_hash"):
+        return False
+    runtime_hash_after = runtime.get("runtime_hash_after")
+    expected_mutated = (
+        runtime_hash_after != runtime.get("runtime_hash_before")
+        if isinstance(runtime_hash_after, str)
+        else None
+    )
+    return runtime.get("runtime_mutated") == expected_mutated
+
+
 def _runtime_measurements_match(runtime: dict[str, Any], markers: list[str]) -> bool:
-    if runtime.get("cleanup_status") in {"SUCCESS", "FAILED"} and runtime.get(
-        "materialized"
-    ) is not True:
+    if (
+        runtime.get("cleanup_status") in {"SUCCESS", "FAILED"}
+        and runtime.get("materialized") is not True
+    ):
+        return False
+    if not _runtime_hashes_match(runtime):
         return False
     for marker in markers:
         if marker.startswith("RUNTIME_POST_AUDIT_FAILED:") and (
@@ -97,13 +110,15 @@ def _runtime_measurements_match(runtime: dict[str, Any], markers: list[str]) -> 
             or runtime["expected_hash"] == runtime["frozen_hash_after"]
         ):
             return False
-        if marker.startswith("FROZEN_POSTCHECK_FAILED:") and runtime.get(
-            "frozen_hash_after"
-        ) is not None:
+        if (
+            marker.startswith("FROZEN_POSTCHECK_FAILED:")
+            and runtime.get("frozen_hash_after") is not None
+        ):
             return False
-        if marker.startswith("RUNTIME_CLEANUP_FAILED:") and runtime.get(
-            "cleanup_status"
-        ) != "FAILED":
+        if (
+            marker.startswith("RUNTIME_CLEANUP_FAILED:")
+            and runtime.get("cleanup_status") != "FAILED"
+        ):
             return False
     required = {
         "semantic_drift": isinstance(runtime.get("semantic_digest_before"), str)
@@ -126,6 +141,36 @@ def _runtime_measurements_match(runtime: dict[str, Any], markers: list[str]) -> 
         ),
     }
     return represented == required
+
+
+def _runtime_paths_match(runtime: dict[str, Any], run: RunRecordV1) -> bool:
+    expected_paths = list(run.index_stats.indexed_paths) if run.index_stats else []
+    return runtime.get("expected_paths") == expected_paths and (
+        not isinstance(runtime.get("semantic_digest_after"), str)
+        or runtime.get("post_paths") == expected_paths
+    )
+
+
+def _terminal_binding_matches(
+    run: RunRecordV1,
+    violations: list[Any],
+    marker_count: int,
+    evidence_fallback: bool,
+) -> bool:
+    expected_blocker = "POLICY_AUDIT:" + ",".join(violations)
+    blocker = run.blocker_reason or ""
+    product_prefix = expected_blocker + ";PRODUCT_FAILURE:"
+    blocker_matches = blocker == expected_blocker or (
+        blocker.startswith(product_prefix) and bool(blocker[len(product_prefix) :])
+    )
+    synthetic_exception = evidence_fallback or any(
+        isinstance(marker, str) and marker.startswith("EXECUTION_EXCEPTION:")
+        for marker in violations[:marker_count]
+    )
+    answer_matches = (
+        bool(run.transcript_path) or run.answer == "ERROR" or not synthetic_exception
+    )
+    return run.status.value == "INVALID" and blocker_matches and answer_matches
 
 
 def _validate_arm_tool_preflight(path: Path, *, require_executables: bool) -> None:
@@ -192,11 +237,14 @@ def _without_terminal_exception(
     if runtime_path.is_file():
         runtime = _json(runtime_path)
         failure_codes = runtime.get("failure_codes")
-        if not isinstance(failure_codes, list) or not all(
-            isinstance(marker, str)
-            and _RUNTIME_EVIDENCE_MARKER.fullmatch(marker)
-            for marker in failure_codes
-        ) or not _valid_runtime_marker_sequence(failure_codes):
+        if (
+            not isinstance(failure_codes, list)
+            or not all(
+                isinstance(marker, str) and _RUNTIME_EVIDENCE_MARKER.fullmatch(marker)
+                for marker in failure_codes
+            )
+            or not _valid_runtime_marker_sequence(failure_codes)
+        ):
             raise ValueError(f"runtime evidence marker mismatch: {run.run_id}")
         runtime_markers = failure_codes
         if run.arm not in manifest.indexed_arms:
@@ -215,6 +263,8 @@ def _without_terminal_exception(
         }
         if any(runtime.get(key) != value for key, value in expected_identity.items()):
             raise ValueError(f"runtime evidence binding mismatch: {run.run_id}")
+        if not _runtime_paths_match(runtime, run):
+            raise ValueError(f"runtime evidence path mismatch: {run.run_id}")
         if not _runtime_measurements_match(runtime, runtime_markers):
             raise ValueError(f"runtime evidence measurement mismatch: {run.run_id}")
         if not evidence_fallback:
@@ -236,17 +286,7 @@ def _without_terminal_exception(
             next_violation
         ):
             raise ValueError(f"terminal evidence ordering mismatch: {run.run_id}")
-    expected_blocker = "POLICY_AUDIT:" + ",".join(violations)
-    blocker = run.blocker_reason or ""
-    product_prefix = expected_blocker + ";PRODUCT_FAILURE:"
-    has_product_failure = blocker.startswith(product_prefix) and bool(
-        blocker[len(product_prefix) :]
-    )
-    if (
-        run.status.value != "INVALID"
-        or (blocker != expected_blocker and not has_product_failure)
-        or (not run.transcript_path and run.answer != "ERROR")
-    ):
+    if not _terminal_binding_matches(run, violations, marker_count, evidence_fallback):
         raise ValueError(f"terminal exception binding mismatch: {run.run_id}")
     comparable = dict(stored)
     comparable["violations"] = violations[marker_count:]
