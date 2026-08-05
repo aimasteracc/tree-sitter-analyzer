@@ -6897,7 +6897,7 @@ class TestCanaryLaunchPreflight:
 
     def test_builder_rejects_untrusted_tsa_interpreter(self, tmp_path: Path):
         module, checkout, tsa, codegraph, _contracts = self._fixture(tmp_path)
-        foreign = tmp_path / "foreign-python"
+        foreign = tmp_path / f"foreign-python{tsa.suffix}"
         shutil.copy2(tsa, foreign)
 
         with pytest.raises(ValueError, match="trusted repository interpreter"):
@@ -6926,12 +6926,8 @@ class TestCanaryLaunchPreflight:
 
         checkout = tmp_path / "checkout"
         checkout.mkdir()
-        tsa = tmp_path / "tsa"
-        tsa.write_text("#!/bin/sh\n", encoding="utf-8")
-        tsa.chmod(0o755)
-        codegraph = tmp_path / "codegraph"
-        codegraph.write_text("#!/bin/sh\n", encoding="utf-8")
-        codegraph.chmod(0o755)
+        tsa = Path(sys.executable)
+        codegraph = Path(sys.executable)
 
         contracts = canary_preflight.build_canary_launch_contracts(
             checkout,
