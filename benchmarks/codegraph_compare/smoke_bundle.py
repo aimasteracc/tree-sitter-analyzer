@@ -303,6 +303,10 @@ def _validate_policy_evidence(
     actual_policy_files = {path.name for path in evidence.glob("policy_*.json")}
     if actual_policy_files != expected_policy_files:
         raise ValueError("policy evidence inventory mismatch")
+    expected_runtime_files = {f"runtime_index_{run.run_id}.json" for run in runs}
+    actual_runtime_files = {path.name for path in evidence.glob("runtime_index_*.json")}
+    if not actual_runtime_files <= expected_runtime_files:
+        raise ValueError("runtime evidence inventory mismatch")
     for run in runs:
         stored = _json(evidence / f"policy_{run.run_id}.json")
         if stored.get("transcript_path") != run.transcript_path:

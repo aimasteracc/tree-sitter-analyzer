@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -2472,6 +2473,38 @@ class TestCodeGraphCompareSetupGate:
 
 class TestGinSmokeManifestExecution:
     @staticmethod
+    def _tsa_canary_item(call_id: str = "call-001") -> dict:
+        payload = {
+            "symbol": "Engine.ServeHTTP",
+            "definition": {
+                "definitions": [
+                    {
+                        "file": "gin.go",
+                        "name": "Engine.ServeHTTP",
+                        "kind": "method",
+                    }
+                ]
+            },
+        }
+        return {
+            "id": call_id,
+            "type": "mcp_tool_call",
+            "status": "completed",
+            "server": "tree-sitter-analyzer",
+            "tool": "nav",
+            "arguments": {
+                "action": "navigate",
+                "symbol": "Engine.ServeHTTP",
+                "file_path": "gin.go",
+                "output_format": "json",
+            },
+            "result": {
+                "content": [{"type": "text", "text": json.dumps(payload)}],
+                "structured_content": {"untrusted": "not receipt evidence"},
+            },
+        }
+
+    @staticmethod
     def _legacy_record(manifest, run_id: str, transcript_path: Path) -> dict:
         cell = next(cell for cell in manifest.expected_cells if cell.run_id == run_id)
         return {
@@ -2654,6 +2687,528 @@ class TestGinSmokeManifestExecution:
         audit = audit_codex_transcript(transcript, "tsa-warm")
 
         assert audit.violations == ("CROSS_ARM_MCP:1", "MISSING_INDEX_QUERY")
+
+    def test_canary_transcript_binds_exact_mcp_receipt(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        transcript = tmp_path / "canary.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": self._tsa_canary_item(),
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "tsa-warm",
+            expected_tool="nav",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == ()
+        assert audit.receipt is not None
+        assert audit.receipt.call_id == "call-001"
+        assert audit.receipt.repository_relative_path == "gin.go"
+        assert audit.receipt.symbol_identity == "Engine.ServeHTTP"
+        assert audit.receipt.symbol_kind == "method"
+
+    @pytest.mark.parametrize(
+        "arguments",
+        (
+            {
+                "action": "navigate",
+                "symbol": "Engine.ServeHTTP",
+                "file_path": "gin.go",
+            },
+            {
+                "action": "navigate",
+                "symbol": "Engine.ServeHTTP",
+                "file_path": "gin.go",
+                "output_format": "toon",
+            },
+            {
+                "action": "resolve",
+                "symbol": "Engine.ServeHTTP",
+                "file_path": "gin.go",
+                "output_format": "json",
+            },
+        ),
+    )
+    def test_canary_transcript_rejects_nonexact_tsa_arguments(
+        self, tmp_path: Path, arguments: dict
+    ):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        item = {**self._tsa_canary_item(), "arguments": arguments}
+        transcript = tmp_path / "wrong-tsa-arguments.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "item.completed", "item": item}) + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "tsa-warm",
+            expected_tool="nav",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == (
+            "CANARY_ARGUMENTS_MISMATCH:1",
+            "CANARY_RECEIPT_MISSING",
+        )
+        assert audit.receipt is None
+
+    @pytest.mark.parametrize(
+        ("mutation", "violation"),
+        (
+            ({"tool": "unknown"}, "CANARY_TOOL_MISMATCH:1"),
+            ({"id": ""}, "CANARY_RECEIPT_INVALID:1"),
+            ({"result": {}}, "CANARY_RECEIPT_INVALID:1"),
+            ({"status": "started"}, "CANARY_RECEIPT_INVALID:1"),
+            ({"status": None}, "CANARY_RECEIPT_INVALID:1"),
+        ),
+    )
+    def test_canary_transcript_rejects_ambiguous_mcp_success(
+        self, tmp_path: Path, mutation: dict, violation: str
+    ):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        item = {**self._tsa_canary_item(), **mutation}
+        transcript = tmp_path / "ambiguous-canary.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "item.completed", "item": item}) + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "tsa-warm",
+            expected_tool="nav",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == (violation, "CANARY_RECEIPT_MISSING")
+        assert audit.receipt is None
+
+    def test_canary_transcript_binds_codegraph_markdown_receipt(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        markdown = (
+            "**ServeHTTP** (method)\n"
+            "func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request)\n"
+            "gin.go:688"
+        )
+        transcript = tmp_path / "wrong-symbol.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {
+                        "id": "call-001",
+                        "type": "mcp_tool_call",
+                        "status": "completed",
+                        "server": "codegraph",
+                        "tool": "codegraph_search",
+                        "arguments": {
+                            "query": "Engine.ServeHTTP",
+                            "kind": "method",
+                            "limit": 10,
+                        },
+                        "result": {"content": [{"type": "text", "text": markdown}]},
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "codegraph-warm",
+            expected_tool="codegraph_search",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == ()
+        assert audit.receipt is not None
+        assert audit.receipt.server == "codegraph"
+        assert audit.receipt.repository_relative_path == "gin.go"
+
+    @pytest.mark.parametrize(
+        "markdown",
+        (
+            "**ServeHTTP** (method)\ngin.go:688",
+            "**ServeHTTP** (method)\nfunc ServeHTTP(w http.ResponseWriter)\ngin.go:688",
+            "**ServeHTTP** (method)\nfunc (server *Server) ServeHTTP(w http.ResponseWriter)\ngin.go:688",
+            "**ServeHTTP** (method)\nfunc (engine *Engine) ServeHTTP(w http.ResponseWriter)\ngin.go:688\n"
+            "**ServeHTTP** (method)\nfunc (server *Server) ServeHTTP(w http.ResponseWriter)\nother.go:42",
+        ),
+    )
+    def test_canary_transcript_rejects_codegraph_receiver_counterexamples(
+        self, tmp_path: Path, markdown: str
+    ):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        item = {
+            "id": "call-001",
+            "type": "mcp_tool_call",
+            "status": "completed",
+            "server": "codegraph",
+            "tool": "codegraph_search",
+            "arguments": {
+                "query": "Engine.ServeHTTP",
+                "kind": "method",
+                "limit": 10,
+            },
+            "result": {"content": [{"type": "text", "text": markdown}]},
+        }
+        transcript = tmp_path / "receiver-counterexample.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "item.completed", "item": item}) + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "codegraph-warm",
+            expected_tool="codegraph_search",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == (
+            "CANARY_RECEIPT_INVALID:1",
+            "CANARY_RECEIPT_MISSING",
+        )
+        assert audit.receipt is None
+
+    @pytest.mark.parametrize(
+        ("arguments", "markdown", "violation"),
+        (
+            (
+                {"query": "ServeHTTP", "kind": "method", "limit": 10},
+                "**ServeHTTP** (method)\ngin.go:42",
+                "CANARY_ARGUMENTS_MISMATCH:1",
+            ),
+            (
+                {"query": "Engine.ServeHTTP", "kind": "method", "limit": 10},
+                "**ServeHTTP** (method)\ngin.go:42\n**ServeHTTP** (method)\ngin.go:688",
+                "CANARY_RECEIPT_INVALID:1",
+            ),
+            (
+                {"query": "Engine.ServeHTTP", "kind": "method", "limit": 10},
+                "**ServeHTTP** (method)\ngin.go:0",
+                "CANARY_RECEIPT_INVALID:1",
+            ),
+        ),
+    )
+    def test_canary_transcript_rejects_codegraph_receipt_ambiguity(
+        self, tmp_path: Path, arguments: dict, markdown: str, violation: str
+    ):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        item = {
+            "id": "call-001",
+            "type": "mcp_tool_call",
+            "status": "completed",
+            "server": "codegraph",
+            "tool": "codegraph_search",
+            "arguments": arguments,
+            "result": {"content": [{"type": "text", "text": markdown}]},
+        }
+        transcript = tmp_path / "bad-codegraph-receipt.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "item.completed", "item": item}) + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "codegraph-warm",
+            expected_tool="codegraph_search",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == (
+            violation,
+            "CANARY_RECEIPT_MISSING",
+        )
+        assert audit.receipt is None
+
+    def test_canary_transcript_rejects_started_item_shape(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        item = {**self._tsa_canary_item(), "status": "in_progress"}
+        transcript = tmp_path / "started-canary.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "item.started", "item": item}) + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "tsa-warm",
+            expected_tool="nav",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == ("MISSING_INDEX_QUERY", "CANARY_RECEIPT_MISSING")
+        assert audit.receipt is None
+
+    def test_canary_transcript_rejects_failed_item_status(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        item = {**self._tsa_canary_item(), "status": "failed"}
+        transcript = tmp_path / "failed-canary.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "item.completed", "item": item}) + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "tsa-warm",
+            expected_tool="nav",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == (
+            "MCP_CALL_FAILED:1",
+            "MISSING_INDEX_QUERY",
+            "CANARY_RECEIPT_MISSING",
+        )
+        assert audit.receipt is None
+
+    def test_canary_transcript_rejects_wrong_tsa_definition(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        item = self._tsa_canary_item()
+        payload = json.loads(item["result"]["content"][0]["text"])
+        payload["definition"]["definitions"][0]["file"] = "tree.go"
+        item["result"]["content"][0]["text"] = json.dumps(payload)
+        transcript = tmp_path / "wrong-tsa-definition.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "item.completed", "item": item}) + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "tsa-warm",
+            expected_tool="nav",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == (
+            "CANARY_EVIDENCE_MISMATCH:1",
+            "CANARY_RECEIPT_MISSING",
+        )
+        assert audit.receipt is None
+
+    def test_canary_transcript_rejects_multiple_exact_receipts(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        def event(call_id: str) -> str:
+            return json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": self._tsa_canary_item(call_id),
+                }
+            )
+
+        transcript = tmp_path / "duplicate-receipts.jsonl"
+        transcript.write_text(
+            event("call-001") + "\n" + event("call-002") + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "tsa-warm",
+            expected_tool="nav",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == ("CANARY_RECEIPT_AMBIGUOUS",)
+        assert audit.receipt is None
+
+    @pytest.mark.parametrize("command", ("rg -n ServeHTTP .", "cat gin.go"))
+    def test_canary_transcript_keeps_source_locked_after_unknown_mcp(
+        self, tmp_path: Path, command: str
+    ):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        transcript = tmp_path / "unknown-before-source.jsonl"
+        transcript.write_text(
+            "\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "id": "call-unknown",
+                                "type": "mcp_tool_call",
+                                "status": "completed",
+                                "server": "tree-sitter-analyzer",
+                                "tool": "unknown",
+                                "result": {},
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "type": "command_execution",
+                                "command": command,
+                            },
+                        }
+                    ),
+                )
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "tsa-warm",
+            expected_tool="nav",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == (
+            "CANARY_TOOL_MISMATCH:1",
+            "CANARY_SOURCE_DISCOVERY_BEFORE_RECEIPT:2",
+            "CANARY_RECEIPT_MISSING",
+        )
+
+    @pytest.mark.parametrize(
+        "result_error",
+        ({"isError": True}, {"error": {"message": "query failed"}}),
+    )
+    def test_canary_transcript_rejects_nested_error_result_before_source(
+        self, tmp_path: Path, result_error: dict
+    ):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        result = {**self._tsa_canary_item()["result"], **result_error}
+        transcript = tmp_path / "failed-before-source.jsonl"
+        transcript.write_text(
+            "\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "id": "call-failed",
+                                "type": "mcp_tool_call",
+                                "status": "completed",
+                                "server": "tree-sitter-analyzer",
+                                "tool": "nav",
+                                "result": result,
+                            },
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "type": "command_execution",
+                                "command": "rg -n ServeHTTP .",
+                            },
+                        }
+                    ),
+                )
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "tsa-warm",
+            expected_tool="nav",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == (
+            "MCP_CALL_FAILED:1",
+            "SOURCE_DISCOVERY_BEFORE_INDEX:2",
+            "MISSING_INDEX_QUERY",
+            "CANARY_SOURCE_DISCOVERY_BEFORE_RECEIPT:2",
+            "CANARY_RECEIPT_MISSING",
+        )
+
+    def test_canary_transcript_unlocks_source_after_exact_receipt(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_policy import audit_canary_transcript
+
+        transcript = tmp_path / "receipt-before-source.jsonl"
+        transcript.write_text(
+            "\n".join(
+                (
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": self._tsa_canary_item(),
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "type": "item.completed",
+                            "item": {
+                                "type": "command_execution",
+                                "command": "cat gin.go",
+                            },
+                        }
+                    ),
+                )
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        audit = audit_canary_transcript(
+            transcript,
+            "tsa-warm",
+            expected_tool="nav",
+            expected_path="gin.go",
+            expected_symbol="Engine.ServeHTTP",
+            expected_kind="method",
+        )
+
+        assert audit.violations == ()
+        assert audit.receipt is not None
+        assert audit.receipt.call_id == "call-001"
 
     @pytest.mark.parametrize(
         ("item", "violation"),
@@ -4178,6 +4733,23 @@ class TestGinSmokeBundle:
         assert verdict["claim_level"] == "INVALID"
         assert verdict["dominance_allowed"] is False
         assert verdict["winner"] is None
+
+    def test_bundle_rejects_orphan_runtime_evidence(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
+
+        plan, experiment, registry = self._bundle_inputs(tmp_path)
+        (experiment / "runtime_index_unknown-run.json").write_text(
+            "{}\n", encoding="utf-8"
+        )
+
+        # Issue #1219: every retained runtime audit must bind to an exact run.
+        with pytest.raises(ValueError, match="runtime evidence inventory mismatch"):
+            create_smoke_bundle(
+                tmp_path / "bundle",
+                plan_dir=plan,
+                experiment_dir=experiment,
+                registry_path=registry,
+            )
 
     def test_bundle_accepts_bound_legacy_terminal_exception(self, tmp_path: Path):
         from benchmarks.codegraph_compare.smoke_bundle import create_smoke_bundle
@@ -6199,3 +6771,1334 @@ class TestSmokeModelPreflight:
                 expected_cli_fingerprint="bound",
                 max_age_seconds=900,
             )
+
+
+class TestCanaryLaunchPreflight:
+    @staticmethod
+    def _identity_probe(arm: str, executable: Path) -> dict[str, str]:
+        if arm == "tsa-warm":
+            return {
+                "trusted_repo": "fixture",
+                "entrypoint": "fixture",
+                "entrypoint_sha256": "1" * 64,
+                "source_root": "fixture",
+                "source_sha256": "2" * 64,
+                "dependency_lock": "fixture",
+                "dependency_lock_sha256": "3" * 64,
+            }
+        return {
+            "package": "@colbymchenry/codegraph@1.5.0",
+            "version": "1.5.0",
+        }
+
+    @staticmethod
+    def _fixture(tmp_path: Path):
+        from benchmarks.codegraph_compare import canary_preflight
+
+        checkout = tmp_path / "checkout"
+        checkout.mkdir()
+        tsa = Path(sys.executable)
+        codegraph = Path(sys.executable)
+        contracts = canary_preflight.build_canary_launch_contracts(
+            checkout,
+            tsa_executable=tsa,
+            codegraph_executable=codegraph,
+            identity_probe=TestCanaryLaunchPreflight._identity_probe,
+        )
+        return canary_preflight, checkout, tsa, codegraph, contracts
+
+    def test_builder_pins_exact_tsa_nav_launch(self, tmp_path: Path):
+        module, checkout, _tsa, _codegraph, contracts = self._fixture(tmp_path)
+
+        contract = contracts[module.TSA_ARM]
+
+        assert contract["args"] == [
+            "-m",
+            "tree_sitter_analyzer.mcp.server",
+            "--project-root",
+            str(checkout.resolve()),
+        ]
+        assert contract["enabled_tools"] == ["nav"]
+        assert contract["required"] is True
+        assert contract["network"] is False
+        assert contract["env"] == {
+            "PYTHONHASHSEED": "0",
+            "PYTHONNOUSERSITE": "1",
+            "TREE_SITTER_PROJECT_ROOT": str(checkout.resolve()),
+        }
+        assert contract["inherit_environment"] is False
+        assert set(contract["tsa_identity"]) == {
+            "trusted_repo",
+            "entrypoint",
+            "entrypoint_sha256",
+            "source_root",
+            "source_sha256",
+            "dependency_lock",
+            "dependency_lock_sha256",
+        }
+        assert contract["production_ready"] is False
+
+    def test_builder_pins_exact_codegraph_search_launch(self, tmp_path: Path):
+        module, checkout, _tsa, _codegraph, contracts = self._fixture(tmp_path)
+
+        contract = contracts[module.CODEGRAPH_ARM]
+
+        assert contract["package"] == "@colbymchenry/codegraph@1.5.0"
+        assert contract["args"] == [
+            "serve",
+            "--mcp",
+            "--no-watch",
+            "-p",
+            str(checkout.resolve()),
+        ]
+        assert contract["env"] == {
+            "CODEGRAPH_MCP_TOOLS": "search",
+            "CODEGRAPH_NO_DAEMON": "1",
+            "CODEGRAPH_NO_UPDATE_CHECK": "1",
+            "CODEGRAPH_TELEMETRY": "0",
+            "PATH": os.defpath,
+        }
+        assert contract["enabled_tools"] == ["codegraph_search"]
+        assert contract["required"] is True
+        assert contract["network"] is False
+        assert contract["inherit_environment"] is False
+        assert contract["codegraph_identity"] == {
+            "package": "@colbymchenry/codegraph@1.5.0",
+            "version": "1.5.0",
+        }
+        assert contract["production_ready"] is False
+
+    def test_builder_binds_absolute_executables_and_digests(self, tmp_path: Path):
+        module, _checkout, tsa, codegraph, contracts = self._fixture(tmp_path)
+
+        assert contracts[module.TSA_ARM]["command"] == str(tsa.resolve())
+        assert (
+            contracts[module.TSA_ARM]["executable_sha256"]
+            == hashlib.sha256(tsa.read_bytes()).hexdigest()
+        )
+        assert contracts[module.CODEGRAPH_ARM]["command"] == str(codegraph.resolve())
+        assert (
+            contracts[module.CODEGRAPH_ARM]["executable_sha256"]
+            == hashlib.sha256(codegraph.read_bytes()).hexdigest()
+        )
+
+    def test_builder_rejects_non_executable_server(self, tmp_path: Path):
+        module, checkout, tsa, _codegraph, _contracts = self._fixture(tmp_path)
+        codegraph = tmp_path / "codegraph"
+        codegraph.write_bytes(b"not executable")
+
+        with pytest.raises(ValueError, match="is not executable"):
+            module.build_canary_launch_contracts(
+                checkout,
+                tsa_executable=tsa,
+                codegraph_executable=codegraph,
+                identity_probe=self._identity_probe,
+            )
+
+    def test_builder_rejects_untrusted_tsa_interpreter(self, tmp_path: Path):
+        module, checkout, tsa, codegraph, _contracts = self._fixture(tmp_path)
+        foreign = tmp_path / f"foreign-python{tsa.suffix}"
+        shutil.copy2(tsa, foreign)
+
+        with pytest.raises(ValueError, match="trusted repository interpreter"):
+            module.build_canary_launch_contracts(
+                checkout, tsa_executable=foreign, codegraph_executable=codegraph
+            )
+
+    def test_builder_rejects_wrong_codegraph_version(self, tmp_path: Path):
+        module, checkout, tsa, codegraph, _contracts = self._fixture(tmp_path)
+
+        def wrong_version(arm: str, executable: Path) -> dict[str, str]:
+            if arm == module.CODEGRAPH_ARM:
+                raise ValueError("CodeGraph version identity mismatch: '1.4.9'")
+            return self._identity_probe(arm, executable)
+
+        with pytest.raises(ValueError, match="version identity mismatch"):
+            module.build_canary_launch_contracts(
+                checkout,
+                tsa_executable=tsa,
+                codegraph_executable=codegraph,
+                identity_probe=wrong_version,
+            )
+
+    def test_injected_identity_probe_marks_contract_as_scaffold(self, tmp_path: Path):
+        from benchmarks.codegraph_compare import canary_preflight
+
+        checkout = tmp_path / "checkout"
+        checkout.mkdir()
+        tsa = Path(sys.executable)
+        codegraph = Path(sys.executable)
+
+        contracts = canary_preflight.build_canary_launch_contracts(
+            checkout,
+            tsa_executable=tsa,
+            codegraph_executable=codegraph,
+            identity_probe=lambda arm, executable: {
+                "fixture_arm": arm,
+                "fixture_executable": str(executable),
+            },
+        )
+
+        assert contracts["tsa-warm"]["production_ready"] is False
+        assert contracts["codegraph-warm"]["production_ready"] is False
+
+    @pytest.mark.parametrize(
+        ("arm", "field", "value"),
+        [
+            ("tsa-warm", "args", ["--project-root", "/wrong"]),
+            ("tsa-warm", "enabled_tools", ["search"]),
+            ("tsa-warm", "required", False),
+            ("tsa-warm", "network", True),
+            ("tsa-warm", "executable_sha256", "0" * 64),
+            ("codegraph-warm", "args", ["serve", "--mcp"]),
+            ("codegraph-warm", "enabled_tools", ["search", "read"]),
+            ("codegraph-warm", "env", {"CODEGRAPH_MCP_TOOLS": "search"}),
+            ("codegraph-warm", "required", False),
+            ("codegraph-warm", "executable_sha256", "f" * 64),
+        ],
+    )
+    def test_validator_rejects_mutated_launch_surface(
+        self, tmp_path: Path, arm: str, field: str, value: object
+    ):
+        module, checkout, tsa, codegraph, contracts = self._fixture(tmp_path)
+        contracts[arm][field] = value
+
+        with pytest.raises(ValueError, match="launch config hash is invalid"):
+            module.validate_canary_launch_contracts(
+                contracts,
+                checkout,
+                tsa_executable=tsa,
+                codegraph_executable=codegraph,
+                identity_probe=self._identity_probe,
+            )
+
+    def test_validator_rejects_rehashed_foreign_tool(self, tmp_path: Path):
+        module, checkout, tsa, codegraph, contracts = self._fixture(tmp_path)
+        contract = contracts[module.CODEGRAPH_ARM]
+        contract["enabled_tools"] = ["read"]
+        unsigned = {
+            key: value for key, value in contract.items() if key != "launch_config_hash"
+        }
+        contract["launch_config_hash"] = module._sha256(unsigned)
+
+        with pytest.raises(ValueError, match="codegraph-warm.enabled_tools"):
+            module.validate_canary_launch_contracts(
+                contracts,
+                checkout,
+                tsa_executable=tsa,
+                codegraph_executable=codegraph,
+                identity_probe=self._identity_probe,
+            )
+
+    def test_validator_rejects_rehashed_ambient_environment_inheritance(
+        self, tmp_path: Path
+    ):
+        module, checkout, tsa, codegraph, contracts = self._fixture(tmp_path)
+        contract = contracts[module.TSA_ARM]
+        contract["inherit_environment"] = True
+        unsigned = {
+            key: value for key, value in contract.items() if key != "launch_config_hash"
+        }
+        contract["launch_config_hash"] = module._sha256(unsigned)
+
+        with pytest.raises(ValueError, match="tsa-warm.inherit_environment"):
+            module.validate_canary_launch_contracts(
+                contracts,
+                checkout,
+                tsa_executable=tsa,
+                codegraph_executable=codegraph,
+                identity_probe=self._identity_probe,
+            )
+
+    def test_validator_accepts_exact_contracts(self, tmp_path: Path):
+        module, checkout, tsa, codegraph, contracts = self._fixture(tmp_path)
+
+        validated = module.validate_canary_launch_contracts(
+            contracts,
+            checkout,
+            tsa_executable=tsa,
+            codegraph_executable=codegraph,
+            identity_probe=self._identity_probe,
+        )
+
+        assert validated == contracts
+
+
+class TestCanaryWorkspaceImmutability:
+    def _checkout(self, tmp_path: Path) -> Path:
+        checkout = tmp_path / "checkout"
+        checkout.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "canary@example.invalid"],
+            cwd=checkout,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Canary"], cwd=checkout, check=True
+        )
+        (checkout / "gin.go").write_text("package gin\n", encoding="utf-8")
+        (checkout / "README.md").write_text("fixture\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=checkout, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "fixture"], cwd=checkout, check=True
+        )
+        return checkout.resolve()
+
+    def test_audit_records_exact_source_and_runtime_inventories(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_workspace import (
+            audit_canary_checkout,
+            cleanup_and_verify_canary_checkout,
+            snapshot_canary_checkout,
+        )
+
+        checkout = self._checkout(tmp_path)
+        snapshot = snapshot_canary_checkout(checkout, "tsa-warm")
+        runtime = checkout / ".ast-cache"
+        runtime.mkdir()
+        (runtime / "index.db").write_bytes(b"index")
+
+        audit = audit_canary_checkout(snapshot)
+
+        assert audit.checkout_root == checkout
+        assert audit.head_commit == snapshot.head_commit
+        assert audit.tracked_paths == ("README.md", "gin.go")
+        assert audit.repository_fingerprint == snapshot.repository_fingerprint
+        assert audit.source_after == audit.source_before
+        assert audit.runtime_before == ()
+        assert audit.runtime_after == (
+            ("index.db", hashlib.sha256(b"index").hexdigest()),
+        )
+        cleanup_and_verify_canary_checkout(snapshot, audit)
+        assert os.path.lexists(runtime) is False
+
+    def test_runtime_inventory_includes_nested_git_metadata(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_workspace import (
+            audit_canary_checkout,
+            snapshot_canary_checkout,
+        )
+
+        checkout = self._checkout(tmp_path)
+        snapshot = snapshot_canary_checkout(checkout, "tsa-warm")
+        runtime_git = checkout / ".ast-cache" / ".git"
+        runtime_git.mkdir(parents=True)
+        (runtime_git / "config").write_bytes(b"runtime-metadata")
+
+        audit = audit_canary_checkout(snapshot)
+
+        assert audit.runtime_after == (
+            (
+                ".git/config",
+                hashlib.sha256(b"runtime-metadata").hexdigest(),
+            ),
+        )
+
+    @pytest.mark.parametrize(
+        ("mutation", "message"),
+        [
+            ("tracked", "tracked repository content changed"),
+            ("new", "non-runtime checkout inventory changed"),
+            ("delete", "tracked repository content changed"),
+            ("rename", "tracked repository content changed"),
+        ],
+    )
+    def test_audit_rejects_checkout_namespace_mutation(
+        self, tmp_path: Path, mutation: str, message: str
+    ):
+        from benchmarks.codegraph_compare.canary_workspace import (
+            audit_canary_checkout,
+            snapshot_canary_checkout,
+        )
+
+        checkout = self._checkout(tmp_path)
+        snapshot = snapshot_canary_checkout(checkout, "codegraph-warm")
+        (checkout / ".codegraph").mkdir()
+        if mutation == "tracked":
+            (checkout / "gin.go").write_text("mutated\n", encoding="utf-8")
+        elif mutation == "new":
+            (checkout / "unprovenanced.txt").write_text("new\n", encoding="utf-8")
+        elif mutation == "delete":
+            (checkout / "gin.go").unlink()
+        else:
+            (checkout / "gin.go").rename(checkout / "renamed.go")
+
+        with pytest.raises(ValueError, match=message):
+            audit_canary_checkout(snapshot)
+
+    def test_audit_rejects_symlinked_runtime_namespace(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_workspace import (
+            audit_canary_checkout,
+            snapshot_canary_checkout,
+        )
+
+        checkout = self._checkout(tmp_path)
+        snapshot = snapshot_canary_checkout(checkout, "tsa-warm")
+        target = tmp_path / "escaped"
+        target.mkdir()
+        (checkout / ".ast-cache").symlink_to(target, target_is_directory=True)
+
+        with pytest.raises(
+            ValueError, match="runtime namespace must be a real directory"
+        ):
+            audit_canary_checkout(snapshot)
+
+    def test_snapshot_rejects_cross_arm_namespace(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_workspace import (
+            snapshot_canary_checkout,
+        )
+
+        checkout = self._checkout(tmp_path)
+        (checkout / ".codegraph").mkdir()
+
+        with pytest.raises(ValueError, match="cross-arm runtime namespace"):
+            snapshot_canary_checkout(checkout, "tsa-warm")
+
+    def test_audit_rejects_hardlinked_runtime_file(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_workspace import (
+            audit_canary_checkout,
+            snapshot_canary_checkout,
+        )
+
+        checkout = self._checkout(tmp_path)
+        snapshot = snapshot_canary_checkout(checkout, "codegraph-warm")
+        runtime = checkout / ".codegraph"
+        runtime.mkdir()
+        source = tmp_path / "shared.db"
+        source.write_bytes(b"shared")
+        os.link(source, runtime / "codegraph.db")
+
+        with pytest.raises(ValueError, match="checkout inventory contains hardlink"):
+            audit_canary_checkout(snapshot)
+
+    def test_cleanup_restores_checkout_when_audit_failed(self, tmp_path: Path):
+        from benchmarks.codegraph_compare.canary_workspace import (
+            cleanup_and_verify_canary_checkout,
+            snapshot_canary_checkout,
+        )
+
+        checkout = self._checkout(tmp_path)
+        snapshot = snapshot_canary_checkout(checkout, "tsa-warm")
+        runtime = checkout / ".ast-cache"
+        runtime.mkdir()
+        (runtime / "partial.db").write_bytes(b"partial")
+
+        cleanup_and_verify_canary_checkout(snapshot, None)
+
+        assert os.path.lexists(runtime) is False
+
+
+class TestCanaryEvidence:
+    @staticmethod
+    def _manifest():
+        from benchmarks.codegraph_compare.canary_evidence import create_canary_manifest
+
+        return create_canary_manifest(
+            benchmark_git_sha="benchmark-sha",
+            benchmark_version="NO1-002C-E0-v1",
+            model="gpt-fixture",
+            agent_cli_fingerprint="codex-cli-fixture",
+            gin_commit="gin-commit",
+            gin_source_fingerprint="a" * 64,
+            canary_prompt_sha256="b" * 64,
+            launch_config_hashes={"tsa-warm": "c" * 64, "codegraph-warm": "d" * 64},
+            timeout_seconds=300,
+            seed=1195,
+        )
+
+    @staticmethod
+    def _evidence(manifest, tmp_path):
+        from benchmarks.codegraph_compare.canary_evidence import (
+            CanaryArtifactV1,
+            CanaryAttemptV1,
+            CanaryRegistryEventV1,
+        )
+
+        attempts = []
+        artifacts = []
+        for index, cell in enumerate(manifest.cells):
+            call_id = f"call-{index}"
+            if cell.arm == "tsa-warm":
+                item = TestGinSmokeManifestExecution._tsa_canary_item(call_id)
+            else:
+                item = {
+                    "id": call_id,
+                    "type": "mcp_tool_call",
+                    "status": "completed",
+                    "server": "codegraph",
+                    "tool": "codegraph_search",
+                    "arguments": {
+                        "query": "Engine.ServeHTTP",
+                        "kind": "method",
+                        "limit": 10,
+                    },
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "**ServeHTTP** (method)\n"
+                                "func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request)\n"
+                                "gin.go:42",
+                            }
+                        ]
+                    },
+                }
+            transcript_payload = (
+                json.dumps({"type": "item.completed", "item": item}) + "\n"
+            ).encode()
+            source_inventory = [["gin.go", "a" * 64]]
+            audit = {
+                "checkout_root": str((tmp_path / f"checkout-{index}").resolve()),
+                "head_commit": "e" * 40,
+                "tracked_paths": ["gin.go"],
+                "repository_fingerprint": "f" * 64,
+                "source_before": source_inventory,
+                "source_after": source_inventory,
+                "runtime_namespace": ".ast-cache"
+                if cell.arm == "tsa-warm"
+                else ".codegraph",
+                "runtime_before": [],
+                "runtime_after": [["index.db", "b" * 64]],
+            }
+            workspace = hashlib.sha256(
+                json.dumps(audit, separators=(",", ":"), sort_keys=True).encode()
+            ).hexdigest()
+            payloads = {
+                "receipt": json.dumps(
+                    {"call_id": call_id}, separators=(",", ":"), sort_keys=True
+                ).encode(),
+                "transcript": transcript_payload,
+                "workspace_audit": json.dumps(
+                    {
+                        "schema_version": 1,
+                        "manifest_hash": manifest.manifest_hash,
+                        "session_id": "session-001",
+                        "run_id": cell.cell_id,
+                        "cell_id": cell.cell_id,
+                        "arm": cell.arm,
+                        "audit_sha256": workspace,
+                        "audit": audit,
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode(),
+            }
+            runtime = hashlib.sha256(f"runtime-{index}".encode()).hexdigest()
+            payloads["runtime"] = runtime.encode()
+            transcript = hashlib.sha256(payloads["transcript"]).hexdigest()
+            attempt = CanaryAttemptV1(
+                1,
+                manifest.manifest_hash,
+                "session-001",
+                cell.cell_id,
+                cell.cell_id,
+                cell.arm,
+                1,
+                call_id,
+                transcript,
+                workspace,
+                runtime,
+                "SUCCESS",
+            )
+            attempts.append(attempt)
+            for kind, payload in payloads.items():
+                path = (tmp_path / f"{cell.cell_id}.{kind}").resolve()
+                path.write_bytes(payload)
+                artifacts.append(
+                    CanaryArtifactV1(
+                        1,
+                        manifest.manifest_hash,
+                        "session-001",
+                        cell.cell_id,
+                        cell.cell_id,
+                        cell.arm,
+                        kind,
+                        hashlib.sha256(payload).hexdigest(),
+                        str(path),
+                        call_id if kind == "receipt" else None,
+                    )
+                )
+        registry = (
+            CanaryRegistryEventV1(
+                1,
+                manifest.manifest_hash,
+                "session-001",
+                "COMPLETE",
+                "canary_accepted",
+                ("tsa-warm-canary", "codegraph-warm-canary"),
+            ),
+        )
+        return tuple(attempts), tuple(artifacts), registry
+
+    def test_manifest_freezes_exact_two_cell_e0_protocol(self):
+        from benchmarks.codegraph_compare.canary_evidence import (
+            canonical_sha256,
+            validate_canary_manifest,
+        )
+
+        manifest = self._manifest()
+        validate_canary_manifest(manifest)
+
+        assert tuple(
+            (
+                cell.cell_id,
+                cell.arm,
+                cell.attempt_count,
+                cell.schedule_order,
+                cell.phase,
+                cell.native_allowed,
+            )
+            for cell in manifest.cells
+        ) == (
+            ("tsa-warm-canary", "tsa-warm", 1, 0, "E0", False),
+            ("codegraph-warm-canary", "codegraph-warm", 1, 1, "E0", False),
+        )
+        assert manifest.oracle == ("gin.go", "Engine.ServeHTTP", "method")
+        assert manifest.oracle_hash == canonical_sha256(list(manifest.oracle))
+        assert manifest.budget_ceiling_usd == 3.0
+        assert (manifest.winner, manifest.dominance_allowed, manifest.publishable) == (
+            None,
+            False,
+            False,
+        )
+
+    def test_canonical_sha256_is_key_order_independent_and_exact(self):
+        from benchmarks.codegraph_compare.canary_evidence import canonical_sha256
+
+        left = canonical_sha256({"b": 2, "a": [1, "x"]})
+        right = canonical_sha256({"a": [1, "x"], "b": 2})
+
+        assert (
+            left == "8cbd548a32262b76a6536efe4e7ba86a0e811fcd0475d83a43e10acd0615aa37"
+        )
+        assert right == left
+
+    def test_complete_two_cell_evidence_requires_production_trust_anchor(
+        self, tmp_path
+    ):
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        manifest = self._manifest()
+        verdict = validate_canary_evidence(
+            manifest, *self._evidence(manifest, tmp_path)
+        )
+
+        assert verdict.status == "NOT_EVALUATED"
+        assert verdict.violations == ("PRODUCTION_TRUST_ANCHOR_UNAVAILABLE",)
+        assert (verdict.accepted_cells, verdict.required_cells) == (2, 2)
+        assert (verdict.winner, verdict.dominance_allowed, verdict.publishable) == (
+            None,
+            False,
+            False,
+        )
+
+    def test_absent_evidence_is_not_evaluated(self):
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        verdict = validate_canary_evidence(self._manifest(), (), (), ())
+
+        assert verdict.status == "NOT_EVALUATED"
+        assert verdict.violations == ()
+        assert (verdict.accepted_cells, verdict.required_cells) == (0, 2)
+        assert verdict.publishable is False
+
+    def test_tampered_protected_claim_flag_is_invalid_without_evidence(self):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        manifest = replace(self._manifest(), dominance_allowed=True)
+
+        verdict = validate_canary_evidence(manifest, (), (), ())
+
+        assert verdict.status == "INVALID"
+        assert verdict.violations == (
+            "MANIFEST_INVALID:protected claim flags must remain false/null",
+        )
+        assert (verdict.winner, verdict.dominance_allowed, verdict.publishable) == (
+            None,
+            False,
+            False,
+        )
+
+    def test_malformed_manifest_type_returns_invalid_instead_of_raising(self):
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        verdict = validate_canary_evidence({}, (), (), ())
+
+        assert verdict.status == "INVALID"
+        assert verdict.violations == (
+            "MANIFEST_INVALID:manifest must be CanaryManifestV1",
+        )
+        assert (verdict.accepted_cells, verdict.required_cells) == (0, 2)
+
+    @pytest.mark.parametrize("mutation", ("duplicate", "cross-arm"))
+    def test_artifact_nonbijection_fails_closed(self, tmp_path, mutation: str):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        manifest = self._manifest()
+        attempts, artifacts, registry = self._evidence(manifest, tmp_path)
+        mutated = list(artifacts)
+        if mutation == "duplicate":
+            mutated.append(artifacts[0])
+        else:
+            mutated[4] = replace(
+                mutated[4],
+                cell_id="tsa-warm-canary",
+                arm="tsa-warm",
+                run_id="tsa-warm-canary",
+            )
+
+        verdict = validate_canary_evidence(manifest, attempts, mutated, registry)
+
+        assert verdict.status == "INVALID"
+        assert "ARTIFACT_BIJECTION:tsa-warm-canary" in verdict.violations
+        assert verdict.publishable is False
+
+    def test_attempt_receipt_binding_mismatch_is_invalid(self, tmp_path):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        manifest = self._manifest()
+        attempts, artifacts, registry = self._evidence(manifest, tmp_path)
+        attempts = (replace(attempts[0], receipt_call_id="call-tampered"), attempts[1])
+
+        verdict = validate_canary_evidence(manifest, attempts, artifacts, registry)
+
+        assert verdict.status == "INVALID"
+        assert verdict.violations == ("ARTIFACT_BINDING:tsa-warm-canary",)
+        assert verdict.publishable is False
+
+    def test_artifact_digest_cannot_self_attest_tampered_bytes(self, tmp_path):
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        manifest = self._manifest()
+        attempts, artifacts, registry = self._evidence(manifest, tmp_path)
+        Path(artifacts[0].evidence_path).write_bytes(b"tampered")
+
+        verdict = validate_canary_evidence(manifest, attempts, artifacts, registry)
+
+        assert verdict.status == "INVALID"
+        assert verdict.violations == ("ARTIFACT_BINDING:tsa-warm-canary",)
+
+    @pytest.mark.parametrize("mutation", ("no-receipt", "wrong-receiver"))
+    def test_transcript_hash_cannot_replace_semantic_replay(
+        self, tmp_path, mutation: str
+    ):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        manifest = self._manifest()
+        attempts, artifacts, registry = self._evidence(manifest, tmp_path)
+        transcript = artifacts[1]
+        if mutation == "no-receipt":
+            payload = b'{"type":"turn.completed"}\n'
+        else:
+            item = TestGinSmokeManifestExecution._tsa_canary_item("call-0")
+            body = json.loads(item["result"]["content"][0]["text"])
+            body["symbol"] = "Other.ServeHTTP"
+            item["result"]["content"][0]["text"] = json.dumps(body)
+            payload = (
+                json.dumps({"type": "item.completed", "item": item}) + "\n"
+            ).encode()
+        Path(transcript.evidence_path).write_bytes(payload)
+        digest = hashlib.sha256(payload).hexdigest()
+        attempts = (replace(attempts[0], transcript_sha256=digest), attempts[1])
+        artifacts = tuple(
+            replace(artifact, sha256=digest) if artifact is transcript else artifact
+            for artifact in artifacts
+        )
+
+        verdict = validate_canary_evidence(manifest, attempts, artifacts, registry)
+
+        assert verdict.status == "INVALID"
+        assert verdict.violations == ("ARTIFACT_BINDING:tsa-warm-canary",)
+
+    def test_workspace_hash_cannot_replace_schema_binding(self, tmp_path):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        manifest = self._manifest()
+        attempts, artifacts, registry = self._evidence(manifest, tmp_path)
+        workspace = artifacts[2]
+        payload = b'{"audit_sha256":"arbitrary"}'
+        Path(workspace.evidence_path).write_bytes(payload)
+        digest = hashlib.sha256(payload).hexdigest()
+        artifacts = tuple(
+            replace(artifact, sha256=digest) if artifact is workspace else artifact
+            for artifact in artifacts
+        )
+
+        verdict = validate_canary_evidence(manifest, attempts, artifacts, registry)
+
+        assert verdict.status == "INVALID"
+        assert verdict.violations == ("ARTIFACT_BINDING:tsa-warm-canary",)
+
+    def test_workspace_arbitrary_self_hash_cannot_replace_raw_audit(self, tmp_path):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        manifest = self._manifest()
+        attempts, artifacts, registry = self._evidence(manifest, tmp_path)
+        workspace = artifacts[2]
+        envelope = json.loads(Path(workspace.evidence_path).read_text())
+        envelope["audit_sha256"] = "f" * 64
+        payload = json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode()
+        Path(workspace.evidence_path).write_bytes(payload)
+        digest = hashlib.sha256(payload).hexdigest()
+        attempts = (replace(attempts[0], workspace_audit_sha256="f" * 64), attempts[1])
+        artifacts = tuple(
+            replace(artifact, sha256=digest) if artifact is workspace else artifact
+            for artifact in artifacts
+        )
+
+        verdict = validate_canary_evidence(manifest, attempts, artifacts, registry)
+
+        assert verdict.status == "INVALID"
+        assert verdict.violations == ("ARTIFACT_BINDING:tsa-warm-canary",)
+
+    def test_synchronized_raw_audit_rehash_never_unlocks_accept(self, tmp_path):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        manifest = self._manifest()
+        attempts, artifacts, registry = self._evidence(manifest, tmp_path)
+        workspace = artifacts[2]
+        envelope = json.loads(Path(workspace.evidence_path).read_text())
+        envelope["audit"]["head_commit"] = "d" * 40
+        audit_hash = hashlib.sha256(
+            json.dumps(
+                envelope["audit"], separators=(",", ":"), sort_keys=True
+            ).encode()
+        ).hexdigest()
+        envelope["audit_sha256"] = audit_hash
+        payload = json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode()
+        Path(workspace.evidence_path).write_bytes(payload)
+        artifact_hash = hashlib.sha256(payload).hexdigest()
+        attempts = (
+            replace(attempts[0], workspace_audit_sha256=audit_hash),
+            attempts[1],
+        )
+        artifacts = tuple(
+            replace(artifact, sha256=artifact_hash)
+            if artifact is workspace
+            else artifact
+            for artifact in artifacts
+        )
+
+        verdict = validate_canary_evidence(manifest, attempts, artifacts, registry)
+
+        assert verdict.status == "NOT_EVALUATED"
+        assert verdict.violations == ("PRODUCTION_TRUST_ANCHOR_UNAVAILABLE",)
+        assert verdict.publishable is False
+
+    @pytest.mark.parametrize("launches", (None, [], "not-a-tuple"))
+    def test_malformed_manifest_launch_config_type_is_invalid(self, launches):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        verdict = validate_canary_evidence(
+            replace(self._manifest(), launch_config_hashes=launches), (), (), ()
+        )
+
+        assert verdict.status == "INVALID"
+        assert verdict.violations == (
+            "MANIFEST_INVALID:launch_config_hashes must be a tuple",
+        )
+
+    @pytest.mark.parametrize(
+        ("field", "value", "message"),
+        (
+            ("schema_version", True, "unsupported canary manifest schema"),
+            ("timeout_seconds", True, "timeout_seconds must be a positive integer"),
+            ("seed", False, "seed must be a non-negative integer"),
+            ("budget_ceiling_usd", 3, "budget ceiling mismatch"),
+            ("dominance_allowed", 0, "protected claim flags must remain false/null"),
+            ("publishable", 0, "protected claim flags must remain false/null"),
+        ),
+    )
+    def test_manifest_rejects_bool_integer_type_confusion(self, field, value, message):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        verdict = validate_canary_evidence(
+            replace(self._manifest(), **{field: value}), (), (), ()
+        )
+
+        assert verdict.status == "INVALID"
+        assert verdict.violations == (f"MANIFEST_INVALID:{message}",)
+
+    @pytest.mark.parametrize("invalid_artifact", (object(), {"kind": "receipt"}))
+    def test_invalid_artifact_schema_fails_closed(
+        self, tmp_path, invalid_artifact: object
+    ):
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        manifest = self._manifest()
+        attempts, artifacts, registry = self._evidence(manifest, tmp_path)
+
+        verdict = validate_canary_evidence(
+            manifest, attempts, (*artifacts, invalid_artifact), registry
+        )
+
+        assert verdict.status == "INVALID"
+        assert verdict.violations == ("ARTIFACT_SCHEMA_INVALID",)
+        assert verdict.publishable is False
+
+    def test_extra_registry_event_is_invalid(self, tmp_path):
+        from dataclasses import replace
+
+        from benchmarks.codegraph_compare.canary_evidence import (
+            validate_canary_evidence,
+        )
+
+        manifest = self._manifest()
+        attempts, artifacts, registry = self._evidence(manifest, tmp_path)
+        registry = (*registry, replace(registry[0], outcome="late_event"))
+
+        verdict = validate_canary_evidence(manifest, attempts, artifacts, registry)
+
+        assert verdict.status == "INVALID"
+        assert verdict.violations == ("REGISTRY_TERMINAL_INVALID",)
+        assert verdict.publishable is False
+
+
+class TestCanaryProtocol:
+    @staticmethod
+    def _manifest():
+        from benchmarks.codegraph_compare.canary_evidence import create_canary_manifest
+
+        return create_canary_manifest(
+            benchmark_git_sha="benchmark-sha",
+            benchmark_version="NO1-002C-E0-v1",
+            model="gpt-fixture",
+            agent_cli_fingerprint="codex-cli-fixture",
+            gin_commit="gin-commit",
+            gin_source_fingerprint="a" * 64,
+            canary_prompt_sha256="b" * 64,
+            launch_config_hashes={"tsa-warm": "c" * 64, "codegraph-warm": "d" * 64},
+            timeout_seconds=300,
+            seed=1195,
+        )
+
+    @staticmethod
+    def _runner(
+        tmp_path,
+        *,
+        costs=(1.0, 1.0),
+        policy_invalid=False,
+        drift=False,
+        run_raises=False,
+        transcript_missing=False,
+        cleanup_fails=False,
+        fixture_cost_plan=(1.5, 1.5),
+        execution_mode="fixture",
+        omit_execution_mode=False,
+    ):
+        from benchmarks.codegraph_compare.canary_policy import (
+            CanaryAudit,
+            CanaryReceipt,
+        )
+        from benchmarks.codegraph_compare.canary_protocol import (
+            CanaryProtocol,
+            CanaryProtocolCallbacks,
+            CanaryRunFailure,
+            CanaryRunResult,
+        )
+        from benchmarks.codegraph_compare.smoke_policy import PolicyAudit
+
+        state = {"runs": [], "setups": [], "cleanups": [], "ids": 0}
+
+        def new_id(label):
+            state["ids"] += 1
+            return f"{label}-{state['ids']}"
+
+        def setup(arm, checkout):
+            state["setups"].append((arm, checkout))
+
+        def run(
+            cell,
+            checkout,
+            session_id,
+            run_id,
+            contract,
+            remaining_usd,
+            fixture_cost_limit_usd,
+        ):
+            index = len(state["runs"])
+            transcript = tmp_path / f"{cell.cell_id}.jsonl"
+            call_id = f"call-{cell.arm}"
+            if cell.arm == "tsa-warm":
+                item = TestGinSmokeManifestExecution._tsa_canary_item(call_id)
+            else:
+                item = {
+                    "id": call_id,
+                    "type": "mcp_tool_call",
+                    "status": "completed",
+                    "server": "codegraph",
+                    "tool": "codegraph_search",
+                    "arguments": {
+                        "query": "Engine.ServeHTTP",
+                        "kind": "method",
+                        "limit": 10,
+                    },
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "**ServeHTTP** (method)\n"
+                                "func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request)\n"
+                                "gin.go:42",
+                            }
+                        ]
+                    },
+                }
+            transcript.write_text(
+                json.dumps({"type": "item.completed", "item": item}) + "\n",
+                encoding="utf-8",
+            )
+            state["runs"].append(
+                (
+                    cell.cell_id,
+                    session_id,
+                    run_id,
+                    contract["arm"],
+                    remaining_usd,
+                    fixture_cost_limit_usd,
+                )
+            )
+            if run_raises:
+                raise CanaryRunFailure(
+                    "run failed after transcript creation",
+                    CanaryRunResult(transcript, costs[index], 0),
+                )
+            if transcript_missing:
+                transcript.unlink()
+            return CanaryRunResult(transcript, costs[index], 1)
+
+        def policy(path, arm, **expected):
+            violations = ("FIXTURE_POLICY_INVALID",) if policy_invalid else ()
+            base = PolicyAudit(arm, str(path), (arm,), (expected["expected_tool"],), ())
+            receipt = CanaryReceipt(
+                f"call-{arm}",
+                arm,
+                expected["expected_tool"],
+                expected["expected_path"],
+                expected["expected_symbol"],
+                expected["expected_kind"],
+                1,
+            )
+            return CanaryAudit(base, receipt, violations)
+
+        def workspace(snapshot):
+            if drift:
+                raise ValueError("workspace drift")
+            source_inventory = [["gin.go", "a" * 64]]
+            return {
+                "checkout_root": str(Path(snapshot["checkout"]).resolve()),
+                "head_commit": "e" * 40,
+                "tracked_paths": ["gin.go"],
+                "repository_fingerprint": "f" * 64,
+                "source_before": source_inventory,
+                "source_after": source_inventory,
+                "runtime_namespace": ".ast-cache"
+                if snapshot["arm"] == "tsa-warm"
+                else ".codegraph",
+                "runtime_before": [],
+                "runtime_after": [["index.db", "b" * 64]],
+            }
+
+        def cleanup(snapshot, audit):
+            state["cleanups"].append((snapshot["arm"], audit))
+            if cleanup_fails:
+                raise ValueError("cleanup failed")
+
+        callbacks = CanaryProtocolCallbacks(
+            validate_launch=lambda contracts, checkouts: None,
+            snapshot=lambda checkout, arm: {"checkout": str(checkout), "arm": arm},
+            setup_index=setup,
+            run_cell=run,
+            audit_policy=policy,
+            audit_workspace=workspace,
+            cleanup_workspace=cleanup,
+            runtime_hash=lambda arm, checkout, audit: (
+                "1" * 64 if arm == "tsa-warm" else "2" * 64
+            ),
+            new_id=new_id,
+        )
+        contracts = {
+            "tsa-warm": {"arm": "tsa-warm"},
+            "codegraph-warm": {"arm": "codegraph-warm"},
+        }
+        checkouts = {
+            "tsa-warm": tmp_path / "tsa",
+            "codegraph-warm": tmp_path / "codegraph",
+        }
+        mode_arguments = (
+            {} if omit_execution_mode else {"execution_mode": execution_mode}
+        )
+        return (
+            CanaryProtocol(
+                TestCanaryProtocol._manifest(),
+                contracts,
+                checkouts,
+                callbacks,
+                tmp_path / "canary-journal.json",
+                {
+                    "tsa-warm-canary": fixture_cost_plan[0],
+                    "codegraph-warm-canary": fixture_cost_plan[1],
+                },
+                **mode_arguments,
+            ),
+            state,
+        )
+
+    def test_fixture_simulates_exact_seeded_two_cell_order(self, tmp_path):
+        runner, state = self._runner(tmp_path)
+
+        result = runner.execute()
+
+        assert result.status == "NOT_EVALUATED"
+        assert result.violations[0] == "FIXTURE_SIMULATION_NOT_QUALIFICATION"
+        assert result.cumulative_cost_usd == 2.0
+        assert tuple(item[0] for item in state["runs"]) == (
+            "tsa-warm-canary",
+            "codegraph-warm-canary",
+        )
+        assert tuple((item[4], item[5]) for item in state["runs"]) == (
+            (3.0, 1.5),
+            (2.0, 1.5),
+        )
+        assert len(result.attempts) == 2
+        assert len(result.artifacts) == 8
+        assert len(result.registry) == 1
+        assert result.registry[0].status == "INVALID"
+
+    def test_first_cell_failure_prevents_second_cell(self, tmp_path):
+        runner, state = self._runner(tmp_path, policy_invalid=True)
+
+        result = runner.execute()
+
+        assert result.status == "INVALID"
+        assert len(state["runs"]) == 1
+        assert len(result.attempts) == 1
+        assert result.attempts[0].status == "INVALID"
+        assert result.registry[0].status == "INVALID"
+
+    def test_policy_invalid_is_terminal(self, tmp_path):
+        runner, _ = self._runner(tmp_path, policy_invalid=True)
+
+        result = runner.execute()
+
+        assert result.violations[0] == (
+            "CELL_INVALID:tsa-warm-canary:primary=policy audit rejected transcript"
+        )
+
+    def test_workspace_drift_is_terminal(self, tmp_path):
+        runner, state = self._runner(tmp_path, drift=True)
+
+        result = runner.execute()
+
+        assert result.status == "INVALID"
+        assert len(state["runs"]) == 1
+        assert result.violations[0] == (
+            "CELL_INVALID:tsa-warm-canary:workspace=workspace drift"
+        )
+
+    def test_fixture_cost_plan_rejects_overage_before_simulation_callback(
+        self, tmp_path
+    ):
+        runner, state = self._runner(tmp_path, fixture_cost_plan=(3.01, 0.01))
+
+        result = runner.execute()
+
+        assert result.status == "INVALID"
+        assert state["runs"] == []
+        assert result.violations[0] == (
+            "PREFLIGHT_INVALID:fixture cost plan exceeds declared simulation budget"
+        )
+
+    @pytest.mark.parametrize("cost", (float("nan"), float("inf"), float("-inf")))
+    def test_nonfinite_cost_is_rejected_before_second_cell(self, tmp_path, cost):
+        runner, state = self._runner(tmp_path, costs=(cost, 0.0))
+
+        result = runner.execute()
+
+        assert result.status == "INVALID"
+        assert len(state["runs"]) == 1
+        assert result.violations[0] == (
+            "CELL_INVALID:tsa-warm-canary:primary="
+            "reported cost must be a finite non-negative number"
+        )
+
+    def test_protocol_object_cannot_attempt_callbacks_twice(self, tmp_path):
+        runner, state = self._runner(tmp_path)
+        first = runner.execute()
+
+        with pytest.raises(RuntimeError, match="one-shot; retry is forbidden"):
+            runner.execute()
+
+        assert first.status == "NOT_EVALUATED"
+        assert len(state["runs"]) == 2
+
+    @pytest.mark.parametrize("mode", (None, "production"))
+    def test_nonfixture_mode_rejects_before_every_callback(self, tmp_path, mode):
+        runner, state = self._runner(
+            tmp_path,
+            execution_mode=mode,
+            omit_execution_mode=mode is None,
+        )
+
+        result = runner.execute()
+
+        assert result.status == "NOT_EVALUATED"
+        assert result.violations == ("QUALIFICATION_SCAFFOLD_NOT_PRODUCTION_READY",)
+        assert state == {"runs": [], "setups": [], "cleanups": [], "ids": 0}
+        assert result.registry == ()
+
+    def test_terminal_journal_blocks_new_protocol_instance(self, tmp_path):
+        runner, state = self._runner(tmp_path)
+        first = runner.execute()
+        journal = tmp_path / "canary-journal.json"
+        terminal = json.loads(journal.read_text(encoding="utf-8"))
+        replacement, _ = self._runner(tmp_path)
+
+        with pytest.raises(RuntimeError, match="fixture.*retry is forbidden"):
+            replacement.execute()
+
+        assert first.status == "NOT_EVALUATED"
+        assert terminal["state"] == "TERMINAL"
+        assert terminal["status"] == "NOT_EVALUATED"
+        assert len(state["runs"]) == 2
+
+    def test_existing_reservation_blocks_first_simulation_callback(self, tmp_path):
+        runner, state = self._runner(tmp_path)
+        (tmp_path / "canary-journal.json").write_text(
+            '{"state":"RESERVED"}\n', encoding="utf-8"
+        )
+
+        with pytest.raises(RuntimeError, match="fixture.*retry is forbidden"):
+            runner.execute()
+
+        assert state["runs"] == []
+
+    def test_journal_inside_checkout_is_rejected_before_simulation_callback(
+        self, tmp_path
+    ):
+        runner, state = self._runner(tmp_path)
+        checkout = tmp_path / "tsa"
+        checkout.mkdir()
+        runner._journal_path = checkout / "journal.json"
+
+        with pytest.raises(ValueError, match="outside every checkout"):
+            runner.execute()
+
+        assert state["runs"] == []
+
+    def test_run_failure_after_setup_still_attempts_cleanup(self, tmp_path):
+        runner, state = self._runner(tmp_path, run_raises=True)
+
+        result = runner.execute()
+
+        assert result.status == "INVALID"
+        assert len(state["runs"]) == 1
+        assert len(state["cleanups"]) == 1
+        assert state["cleanups"][0][0] == "tsa-warm"
+        assert result.cumulative_cost_usd == 1.0
+        assert tuple(artifact.kind for artifact in result.artifacts) == (
+            "transcript",
+            "workspace_audit",
+            "runtime",
+        )
+        expected_transcript = (tmp_path / "tsa-warm-canary.jsonl").read_bytes()
+        assert (
+            result.attempts[0].transcript_sha256
+            == hashlib.sha256(expected_transcript).hexdigest()
+        )
+        transcript_artifact = next(
+            artifact for artifact in result.artifacts if artifact.kind == "transcript"
+        )
+        assert (
+            Path(transcript_artifact.evidence_path).read_bytes() == expected_transcript
+        )
+        assert tmp_path / "tsa" not in Path(transcript_artifact.evidence_path).parents
+        journal = json.loads((tmp_path / "canary-journal.json").read_text())
+        journal_transcript = next(
+            artifact
+            for artifact in journal["result"]["artifacts"]
+            if artifact["kind"] == "transcript"
+        )
+        assert journal_transcript["evidence_path"] == transcript_artifact.evidence_path
+
+    def test_cost_survives_transcript_hash_failure_in_terminal_journal(self, tmp_path):
+        runner, state = self._runner(tmp_path, transcript_missing=True)
+
+        result = runner.execute()
+        journal = json.loads((tmp_path / "canary-journal.json").read_text())
+
+        assert result.status == "INVALID"
+        assert result.cumulative_cost_usd == 1.0
+        assert len(state["runs"]) == 1
+        assert journal["state"] == "TERMINAL"
+        assert journal["result"]["cumulative_cost_usd"] == 1.0
+        assert journal["result"]["attempts"][0]["transcript_sha256"] == "0" * 64
+
+    def test_policy_failure_and_workspace_mutation_are_both_recorded(self, tmp_path):
+        runner, state = self._runner(tmp_path, policy_invalid=True, drift=True)
+
+        result = runner.execute()
+
+        assert result.violations[0] == (
+            "CELL_INVALID:tsa-warm-canary:primary=policy audit rejected transcript"
+            "|workspace=workspace drift"
+        )
+        assert len(state["cleanups"]) == 1
+        assert state["cleanups"][0][1] is None
+
+    def test_cleanup_failure_is_terminal_and_prevents_second_cell(self, tmp_path):
+        runner, state = self._runner(tmp_path, cleanup_fails=True)
+
+        result = runner.execute()
+
+        assert result.status == "INVALID"
+        assert len(state["runs"]) == 1
+        assert len(state["cleanups"]) == 1
+        assert result.violations[0] == (
+            "CELL_INVALID:tsa-warm-canary:cleanup=cleanup failed"
+        )
