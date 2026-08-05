@@ -9,6 +9,7 @@ independent services described by issue #1223.
 from __future__ import annotations
 
 import math
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,7 +52,22 @@ class ProductionRunSpecV1:
     @property
     def spec_hash(self) -> str:
         validate_production_run_spec(self)
-        return canonical_sha256({"schema_version": SCHEMA_VERSION, **self.__dict__})
+        return canonical_sha256(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "manifest_hash": self.manifest_hash,
+                "cell_id": self.cell_id,
+                "model": self.model,
+                "prompt_sha256": self.prompt_sha256,
+                "launch_identity_sha256": self.launch_identity_sha256,
+                "workspace_baseline_sha256": self.workspace_baseline_sha256,
+                "budget_ceiling_usd": self.budget_ceiling_usd,
+                "token_limit": self.token_limit,
+                "request_limit": self.request_limit,
+                "nonce": self.nonce,
+                "expires_at_unix": self.expires_at_unix,
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -78,7 +94,9 @@ class ProductionQualification:
     model_callbacks_allowed: bool
 
 
-def validate_production_run_spec(spec: ProductionRunSpecV1) -> None:
+def validate_production_run_spec(spec: object) -> None:
+    if type(spec) is not ProductionRunSpecV1:
+        raise ValueError("run spec must be an exact ProductionRunSpecV1")
     _digest(spec.manifest_hash, "manifest_hash")
     _nonempty(spec.cell_id, "cell_id")
     _nonempty(spec.model, "model")
@@ -86,7 +104,7 @@ def validate_production_run_spec(spec: ProductionRunSpecV1) -> None:
     _digest(spec.launch_identity_sha256, "launch_identity_sha256")
     _digest(spec.workspace_baseline_sha256, "workspace_baseline_sha256")
     if (
-        type(spec.budget_ceiling_usd) not in (int, float)
+        type(spec.budget_ceiling_usd) is not float
         or not math.isfinite(spec.budget_ceiling_usd)
         or spec.budget_ceiling_usd <= 0
     ):
@@ -101,7 +119,22 @@ def validate_production_run_spec(spec: ProductionRunSpecV1) -> None:
     _nonempty(spec.nonce, "nonce")
 
 
+def _absolute_lexical(path: Path) -> Path:
+    return Path(os.path.abspath(path))
+
+
+def _has_symlink_component(path: Path) -> bool:
+    absolute = _absolute_lexical(path)
+    return any(candidate.is_symlink() for candidate in (absolute, *absolute.parents))
+
+
 def _trusted_external_file(path: Path, bundle_root: Path, label: str) -> str | None:
+    lexical = _absolute_lexical(path)
+    bundle_lexical = _absolute_lexical(bundle_root)
+    if lexical == bundle_lexical or bundle_lexical in lexical.parents:
+        return f"{label.upper()}_BUNDLE_CONTROLLED"
+    if _has_symlink_component(path):
+        return f"{label.upper()}_SYMLINK"
     try:
         resolved = path.resolve(strict=True)
     except (OSError, RuntimeError):
@@ -111,13 +144,11 @@ def _trusted_external_file(path: Path, bundle_root: Path, label: str) -> str | N
         return f"{label.upper()}_NOT_FILE"
     if resolved == bundle or bundle in resolved.parents:
         return f"{label.upper()}_BUNDLE_CONTROLLED"
-    if path.is_symlink():
-        return f"{label.upper()}_SYMLINK"
     return None
 
 
 def qualify_production_trust(
-    spec: ProductionRunSpecV1,
+    spec: object,
     config: OperatorTrustConfigV1 | None,
     *,
     evidence_bundle_root: Path,
@@ -127,10 +158,11 @@ def qualify_production_trust(
 
     try:
         validate_production_run_spec(spec)
-    except ValueError as error:
+    except (AttributeError, TypeError, ValueError) as error:
         return ProductionQualification(
             "INVALID", (f"RUN_SPEC_INVALID:{error}",), None, False
         )
+    assert type(spec) is ProductionRunSpecV1
     spec_hash = spec.spec_hash
     if config is None:
         return ProductionQualification(
@@ -145,10 +177,12 @@ def qualify_production_trust(
         violation = _trusted_external_file(path, evidence_bundle_root, label)
         if violation is not None:
             violations.append(violation)
-    artifact_root = config.immutable_artifact_root.resolve(strict=False)
-    bundle = evidence_bundle_root.resolve(strict=False)
-    if artifact_root == bundle or bundle in artifact_root.parents:
+    artifact_lexical = _absolute_lexical(config.immutable_artifact_root)
+    bundle_lexical = _absolute_lexical(evidence_bundle_root)
+    if artifact_lexical == bundle_lexical or bundle_lexical in artifact_lexical.parents:
         violations.append("ARTIFACT_ROOT_BUNDLE_CONTROLLED")
+    elif _has_symlink_component(config.immutable_artifact_root):
+        violations.append("ARTIFACT_ROOT_SYMLINK")
     if config.immutable_artifact_root.exists():
         violations.append("ARTIFACT_ROOT_PREEXISTS")
     if config.trusted_roles != _REQUIRED_ROLES:

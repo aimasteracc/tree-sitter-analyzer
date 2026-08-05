@@ -81,6 +81,27 @@ def test_bundle_provided_trust_store_is_rejected(tmp_path: Path):
     assert result.model_callbacks_allowed is False
 
 
+def test_bundle_symlink_ancestor_cannot_escape_trust_store_control(tmp_path: Path):
+    # Issue #1223 / PR #1226: resolve-before-containment enabled ancestor escape.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    config = _config(tmp_path, bundle)
+    external = tmp_path / "external"
+    external.mkdir()
+    escaped_store = external / "trust-store.json"
+    escaped_store.write_text("{}\n", encoding="utf-8")
+    (bundle / "keys").symlink_to(external, target_is_directory=True)
+
+    result = qualify_production_trust(
+        _spec(),
+        replace(config, trust_store=bundle / "keys" / "trust-store.json"),
+        evidence_bundle_root=bundle,
+        now_unix=1_900_000_000,
+    )
+
+    assert result.violations == ("TRUST_STORE_BUNDLE_CONTROLLED",)
+
+
 def test_expired_spec_is_rejected_by_trusted_clock(tmp_path: Path):
     # Issue #1223: expired attestations must fail closed.
     bundle = tmp_path / "bundle"
@@ -108,6 +129,72 @@ def test_precreated_artifact_root_is_rejected(tmp_path: Path):
 
     assert result.violations == ("ARTIFACT_ROOT_PREEXISTS",)
     assert result.model_callbacks_allowed is False
+
+
+def test_bundle_symlink_ancestor_cannot_redirect_artifact_root(tmp_path: Path):
+    # Issue #1223 / PR #1226: a fresh final path can still have a symlink ancestor.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    config = _config(tmp_path, bundle)
+    external = tmp_path / "external-collector"
+    external.mkdir()
+    (bundle / "collector").symlink_to(external, target_is_directory=True)
+
+    result = qualify_production_trust(
+        _spec(),
+        replace(
+            config,
+            immutable_artifact_root=bundle / "collector" / "new-run",
+        ),
+        evidence_bundle_root=bundle,
+        now_unix=1_900_000_000,
+    )
+
+    assert result.violations == ("ARTIFACT_ROOT_BUNDLE_CONTROLLED",)
+
+
+def test_non_v1_run_spec_returns_invalid_instead_of_raising(tmp_path: Path):
+    # Issue #1223 / PR #1226: malformed boundary input must fail closed.
+    result = qualify_production_trust(
+        None, None, evidence_bundle_root=tmp_path, now_unix=1_900_000_000
+    )
+
+    assert result.status == "INVALID"
+    assert result.violations == (
+        "RUN_SPEC_INVALID:run spec must be an exact ProductionRunSpecV1",
+    )
+    assert result.model_callbacks_allowed is False
+
+
+def test_integer_budget_is_not_a_canonical_v1_run_spec(tmp_path: Path):
+    # Issue #1223 / PR #1226: JSON 3 and 3.0 must not hash as different specs.
+    result = qualify_production_trust(
+        replace(_spec(), budget_ceiling_usd=3),
+        None,
+        evidence_bundle_root=tmp_path,
+        now_unix=1_900_000_000,
+    )
+
+    assert result.status == "INVALID"
+    assert result.violations == (
+        "RUN_SPEC_INVALID:budget_ceiling_usd must be finite and positive",
+    )
+
+
+def test_subclass_cannot_extend_v1_attestation_hash(tmp_path: Path):
+    # Issue #1223 / PR #1226: V1 hashes must bind exactly the frozen field set.
+    class ExtendedSpec(ProductionRunSpecV1):
+        pass
+
+    result = qualify_production_trust(
+        ExtendedSpec(**_spec().__dict__),
+        None,
+        evidence_bundle_root=tmp_path,
+        now_unix=1_900_000_000,
+    )
+
+    assert result.status == "INVALID"
+    assert result.spec_hash is None
 
 
 def test_complete_external_configuration_still_requires_signed_judge_evidence(
