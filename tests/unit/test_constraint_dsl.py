@@ -590,8 +590,10 @@ class TestEvaluator:
         assert len(violations) == 1
         assert violations[0].rule_id == "wildcard-caller"
 
-    def test_select_query_falls_back_for_large_prefix_sets(self) -> None:
-        """Large rule sets avoid SQLite expression and parameter limits."""
+    def test_select_query_keeps_callee_filter_when_callers_exceed_limit(
+        self,
+    ) -> None:
+        """PR #1225: an oversized caller set must not discard the callee filter."""
         from tree_sitter_analyzer.constraints.evaluator import (
             _MAX_SQL_PREFIX_FILTERS,
             _build_select_query,
@@ -607,6 +609,78 @@ class TestEvaluator:
                 from_glob=f"package-{index}/**",
                 to_glob="forbidden/**",
                 reason="test SQL filter bound",
+            )
+            for index in range(_MAX_SQL_PREFIX_FILTERS + 1)
+        ]
+
+        conn = sqlite3.connect(":memory:")
+        try:
+            select_sql, params = _build_select_query(
+                conn,
+                compile_constraints(constraints),
+            )
+        finally:
+            conn.close()
+
+        assert select_sql.count("instr(file_path, ?) = 1") == 0
+        assert select_sql.count("callee_resolved_file") == 4
+        assert params == ("forbidden/",)
+
+    def test_select_query_keeps_caller_filter_when_callees_exceed_limit(
+        self,
+    ) -> None:
+        """PR #1225: an oversized callee set must not discard the caller filter."""
+        from tree_sitter_analyzer.constraints.evaluator import (
+            _MAX_SQL_PREFIX_FILTERS,
+            _build_select_query,
+        )
+        from tree_sitter_analyzer.constraints.parser import compile_constraints
+        from tree_sitter_analyzer.constraints.schema import Constraint
+
+        constraints = [
+            Constraint(
+                id=f"rule-{index}",
+                severity="error",
+                rule="forbid",
+                from_glob="tree_sitter_analyzer/mcp/**",
+                to_glob=f"forbidden-{index}/**",
+                reason="test independent SQL filter bound",
+            )
+            for index in range(_MAX_SQL_PREFIX_FILTERS + 1)
+        ]
+
+        conn = sqlite3.connect(":memory:")
+        try:
+            select_sql, params = _build_select_query(
+                conn,
+                compile_constraints(constraints),
+            )
+        finally:
+            conn.close()
+
+        assert select_sql.count("instr(file_path, ?) = 1") == 1
+        assert select_sql.count("callee_resolved_file") == 2
+        assert params == ("tree_sitter_analyzer/mcp/",)
+
+    def test_select_query_falls_back_when_both_prefix_sets_exceed_limit(
+        self,
+    ) -> None:
+        """PR #1225: two oversized prefix sets retain the unfiltered fallback."""
+        from tree_sitter_analyzer.constraints.evaluator import (
+            _MAX_SQL_PREFIX_FILTERS,
+            _build_select_query,
+        )
+        from tree_sitter_analyzer.constraints.parser import compile_constraints
+        from tree_sitter_analyzer.constraints.schema import Constraint
+
+        constraints = [
+            Constraint(
+                id=f"rule-{index}",
+                severity="error",
+                rule="forbid",
+                from_glob=f"package-{index}/**",
+                to_glob=f"forbidden-{index}/**",
+                reason="test SQL filter fallback",
             )
             for index in range(_MAX_SQL_PREFIX_FILTERS + 1)
         ]

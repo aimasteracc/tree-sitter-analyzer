@@ -264,23 +264,21 @@ def _build_select_query(
     )
     from_prefixes = tuple(dict.fromkeys(cc.from_prefix for cc in compiled))
     to_prefixes = tuple(dict.fromkeys(cc.to_prefix for cc in compiled))
-    if (
-        len(from_prefixes) > _MAX_SQL_PREFIX_FILTERS
-        or len(to_prefixes) > _MAX_SQL_PREFIX_FILTERS
-    ):
-        return select_sql, ()
-
     filters: list[str] = []
     params: list[str] = []
-    if from_prefixes and "" not in from_prefixes:
-        filters.append(
-            " OR ".join("instr(file_path, ?) = 1" for _ in from_prefixes)
-        )
+    if (
+        from_prefixes
+        and "" not in from_prefixes
+        and len(from_prefixes) <= _MAX_SQL_PREFIX_FILTERS
+    ):
+        filters.append(" OR ".join("instr(file_path, ?) = 1" for _ in from_prefixes))
         params.extend(from_prefixes)
-    if to_prefixes and "" not in to_prefixes:
-        filters.append(
-            " OR ".join(f"instr({callee_expr}, ?) = 1" for _ in to_prefixes)
-        )
+    if (
+        to_prefixes
+        and "" not in to_prefixes
+        and len(to_prefixes) <= _MAX_SQL_PREFIX_FILTERS
+    ):
+        filters.append(" OR ".join(f"instr({callee_expr}, ?) = 1" for _ in to_prefixes))
         params.extend(to_prefixes)
     if not filters:
         return select_sql, ()

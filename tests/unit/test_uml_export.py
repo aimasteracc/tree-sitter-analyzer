@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from tree_sitter_analyzer import uml_export
+from tree_sitter_analyzer._uml_export_builders import _prioritized_class_edges
 from tree_sitter_analyzer.uml_export import (
     UMLEdge,
     UMLExporter,
@@ -45,6 +46,26 @@ def test_render_flowchart_mermaid_supports_unlabeled_edges() -> None:
     mermaid = render_flowchart_mermaid(["cli", "core"], [UMLEdge("cli", "core")])
 
     assert "cli --> core" in mermaid
+
+
+def test_prioritized_class_edges_reserves_remaining_capacity_for_tests() -> None:
+    production = [UMLEdge("Base", "Production", "inherits")]
+    tests = [UMLEdge("Base", "TestProduction", "inherits")]
+
+    edges, truncated = _prioritized_class_edges(production, tests, max_edges=2)
+
+    assert edges == production + tests
+    assert truncated is False
+
+
+def test_prioritized_class_edges_drops_tests_when_production_fills_limit() -> None:
+    production = [UMLEdge("Base", "Production", "inherits")]
+    tests = [UMLEdge("Base", "TestProduction", "inherits")]
+
+    edges, truncated = _prioritized_class_edges(production, tests, max_edges=1)
+
+    assert edges == production
+    assert truncated is True
 
 
 def test_render_sequence_mermaid_uses_first_call_path() -> None:
