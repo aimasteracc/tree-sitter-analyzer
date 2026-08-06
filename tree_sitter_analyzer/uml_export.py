@@ -42,6 +42,26 @@ _TRUNCATION_NOTE = (
 _ACTIVITY_NOT_FOUND_MERMAID = 'flowchart TD\n  not_found["No activity flow found"]'
 
 
+def _make_activity_not_found_diagram(next_step: str) -> "UMLDiagram":
+    """Build a NOT_FOUND activity UMLDiagram with the given next_step message.
+
+    Extracted from _activity_error_diagram to eliminate the deep_nesting code
+    smell (L655: depth 5 inside for→if→UMLDiagram→metadata→key).
+    """
+    return UMLDiagram(
+        diagram_type="activity",
+        mermaid_type="flowchart",
+        mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
+        nodes=[],
+        edges=[],
+        metadata={
+            "diagram_type": "activity",
+            "verdict": "NOT_FOUND",
+            "next_step": next_step,
+        },
+    )
+
+
 @dataclass(frozen=True)
 class UMLEdge:
     source: str
@@ -570,72 +590,10 @@ class UMLExporter:
         cfg = build_activity_cfg(function_name, resolved_path, max_nodes)
 
         if cfg.error:
-            if "file_missing" in cfg.error:
-                return UMLDiagram(
-                    diagram_type="activity",
-                    mermaid_type="flowchart",
-                    # Bug #788: use non-degenerate mermaid so consumers see a
-                    # self-describing diagram, not a bare "flowchart TD\n".
-                    mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
-                    nodes=[],
-                    edges=[],
-                    metadata={
-                        "diagram_type": "activity",
-                        "verdict": "NOT_FOUND",
-                        "next_step": (
-                            f"activity diagram: source file '{resolved_path}' does "
-                            "not exist; the indexed symbol's source file may have "
-                            "been deleted or moved"
-                        ),
-                    },
-                )
-            if "function_missing" in cfg.error:
-                return UMLDiagram(
-                    diagram_type="activity",
-                    mermaid_type="flowchart",
-                    mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
-                    nodes=[],
-                    edges=[],
-                    metadata={
-                        "diagram_type": "activity",
-                        "verdict": "NOT_FOUND",
-                        "next_step": (
-                            f"activity diagram: function '{function_name}' not found "
-                            f"in '{resolved_path}'"
-                        ),
-                    },
-                )
-            if "empty_body" in cfg.error:
-                return UMLDiagram(
-                    diagram_type="activity",
-                    mermaid_type="flowchart",
-                    mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
-                    nodes=[],
-                    edges=[],
-                    metadata={
-                        "diagram_type": "activity",
-                        "verdict": "NOT_FOUND",
-                        "next_step": (
-                            f"activity diagram found no control-flow nodes in "
-                            f"'{function_name}'; the function may be a stub or use "
-                            "a pattern not yet supported"
-                        ),
-                    },
-                )
-            # PARSE_FAILED or unknown error
-            return UMLDiagram(
-                diagram_type="activity",
-                mermaid_type="flowchart",
-                mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
-                nodes=[],
-                edges=[],
-                metadata={
-                    "diagram_type": "activity",
-                    "verdict": "NOT_FOUND",
-                    "error": cfg.error,
-                    "next_step": "activity diagram: parse failed; check the file is valid Python",
-                },
-            )
+            # Bug #788: use non-degenerate mermaid so consumers see a
+            # self-describing diagram, not a bare "flowchart TD\n".
+            # Dispatch delegated to helper to reduce deep_nesting (depth 7 → 2).
+            return self._activity_error_diagram(cfg.error, function_name, resolved_path)
 
         # Build Mermaid from CFG
         uml_nodes = [n.node_id for n in cfg.nodes]
@@ -680,6 +638,52 @@ class UMLExporter:
                 # the current file from disk (AST bodies are not cache-resident),
                 # so the diagram reflects the current file content, not the index.
                 "note": "parsed from current file content; may differ from indexed symbols",
+            },
+        )
+
+    def _activity_error_diagram(
+        self,
+        error: str,
+        function_name: str,
+        resolved_path: str | None,
+    ) -> UMLDiagram:
+        """Return a NOT_FOUND activity UMLDiagram for a known build-cfg error.
+
+        Extracted from activity_diagram() to reduce deep_nesting (depth 7 -> 2).
+        Uses a dispatch-dict to avoid repeated nested if-in-str chains.
+        Public API of activity_diagram() is unchanged.
+        """
+        _ERROR_NEXT_STEPS: dict[str, str] = {
+            "file_missing": (
+                f"activity diagram: source file '{resolved_path}' does "
+                "not exist; the indexed symbol's source file may have "
+                "been deleted or moved"
+            ),
+            "function_missing": (
+                f"activity diagram: function '{function_name}' not found "
+                f"in '{resolved_path}'"
+            ),
+            "empty_body": (
+                f"activity diagram found no control-flow nodes in "
+                f"'{function_name}'; the function may be a stub or use "
+                "a pattern not yet supported"
+            ),
+        }
+        for key, next_step in _ERROR_NEXT_STEPS.items():
+            if key in error:
+                return _make_activity_not_found_diagram(next_step)
+        # PARSE_FAILED or unknown error
+        return UMLDiagram(
+            diagram_type="activity",
+            mermaid_type="flowchart",
+            mermaid=_ACTIVITY_NOT_FOUND_MERMAID,
+            nodes=[],
+            edges=[],
+            metadata={
+                "diagram_type": "activity",
+                "verdict": "NOT_FOUND",
+                "error": error,
+                "next_step": "activity diagram: parse failed; check the file is valid Python",
             },
         )
 
