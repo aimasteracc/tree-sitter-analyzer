@@ -276,7 +276,7 @@ def test_v2_returns_accept_with_valid_attestation_and_judge_record(
         budget_enforcement_mode="client-process-kill",
         now_unix=now,
     )
-    judge = submit_verdict("ACCEPT", evidence_digest, key, now_unix=now)
+    judge = submit_verdict("ACCEPT", evidence_digest, spec.spec_hash, key, now_unix=now)
 
     result = qualify_production_trust_v2(
         spec,
@@ -310,7 +310,7 @@ def test_v2_reject_verdict_blocks_model_callbacks(tmp_path: Path) -> None:
         budget_enforcement_mode="client-process-kill",
         now_unix=now,
     )
-    judge = submit_verdict("REJECT", evidence_digest, key, now_unix=now)
+    judge = submit_verdict("REJECT", evidence_digest, spec.spec_hash, key, now_unix=now)
 
     result = qualify_production_trust_v2(
         spec,
@@ -334,7 +334,7 @@ def test_v2_missing_attestation_blocks_model_callbacks(tmp_path: Path) -> None:
     config = _v2_config(tmp_path, bundle)
     key = _anchor_key()
     evidence_digest = "a" * 64
-    judge = submit_verdict("ACCEPT", evidence_digest, key, now_unix=1_900_000_000)
+    judge = submit_verdict("ACCEPT", evidence_digest, spec.spec_hash, key, now_unix=1_900_000_000)
 
     result = qualify_production_trust_v2(
         spec,
@@ -370,7 +370,7 @@ def test_v2_attestation_signed_with_wrong_key_blocks_model_callbacks(
         budget_enforcement_mode="client-process-kill",
         now_unix=now,
     )
-    judge = submit_verdict("ACCEPT", "a" * 64, wrong_key, now_unix=now)
+    judge = submit_verdict("ACCEPT", "a" * 64, spec.spec_hash, wrong_key, now_unix=now)
 
     result = qualify_production_trust_v2(
         spec,
@@ -384,6 +384,43 @@ def test_v2_attestation_signed_with_wrong_key_blocks_model_callbacks(
 
     assert result.model_callbacks_allowed is False
     assert any("ATTESTATION_INVALID" in v for v in result.violations)
+
+
+def test_v2_judge_spec_hash_mismatch_blocks_model_callbacks(tmp_path: Path) -> None:
+    # Replay attack: attacker reuses a valid ACCEPT from run A for run B.
+    # The judge record's spec_hash must match the current spec_hash.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    key = _anchor_key()
+    now = 1_900_000_000
+    evidence_digest = "a" * 64
+
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        key,
+        budget_enforcement_mode="client-process-kill",
+        now_unix=now,
+    )
+    # Judge is signed with a different spec_hash (run A's hash, replayed for run B)
+    different_spec_hash = "f" * 64
+    judge = submit_verdict("ACCEPT", evidence_digest, different_spec_hash, key, now_unix=now)
+
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest=evidence_digest,
+    )
+
+    assert result.model_callbacks_allowed is False
+    assert any("JUDGE_SPEC_HASH_MISMATCH" in v for v in result.violations)
 
 
 def test_v2_config_alone_still_requires_attestations(tmp_path: Path) -> None:

@@ -334,7 +334,7 @@ def qualify_production_trust_v2(
     # Budget enforcement: provider-side preferred; client-process-kill explicitly accepted.
     if config.budget_enforcement_mode not in ("provider", "client-process-kill"):
         violations.append(f"UNKNOWN_BUDGET_ENFORCEMENT_MODE:{config.budget_enforcement_mode!r}")
-    elif config.budget_enforcement_mode == "provider" and not config.provider_budget_enforced:
+    elif config.budget_enforcement_mode == "provider" and config.provider_budget_enforced is not True:
         violations.append("PROVIDER_BUDGET_GATEWAY_UNAVAILABLE")
     for enabled, violation in (
         (config.append_only_ledger, "APPEND_ONLY_LEDGER_UNAVAILABLE"),
@@ -385,6 +385,12 @@ def qualify_production_trust_v2(
                 "JUDGE_EVIDENCE_DIGEST_MISMATCH:"
                 f"expected={expected_evidence_digest[:16]}...:"
                 f"got={judge_record.evidence_digest[:16]}..."
+            )
+        elif judge_record.spec_hash != spec_hash:
+            attest_violations.append(
+                "JUDGE_SPEC_HASH_MISMATCH:"
+                f"expected={spec_hash[:16]}...:"
+                f"got={judge_record.spec_hash[:16]}..."
             )
     except Exception as error:
         attest_violations.append(f"JUDGE_RECORD_INVALID:{error}")

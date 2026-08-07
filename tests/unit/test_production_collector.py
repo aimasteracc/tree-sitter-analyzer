@@ -48,10 +48,25 @@ class TestEvidenceCollector:
         with pytest.raises(ValueError, match="run_id"):
             collector.collect("cell/bad", "transcript", b"data")
 
+    def test_collect_rejects_dotdot_run_id(self, tmp_path: Path) -> None:
+        collector = EvidenceCollector(tmp_path / "run")
+        with pytest.raises(ValueError, match="run_id"):
+            collector.collect("..", "transcript", b"data")
+
+    def test_collect_rejects_dot_run_id(self, tmp_path: Path) -> None:
+        collector = EvidenceCollector(tmp_path / "run")
+        with pytest.raises(ValueError, match="run_id"):
+            collector.collect(".", "transcript", b"data")
+
     def test_collect_rejects_kind_with_separator(self, tmp_path: Path) -> None:
         collector = EvidenceCollector(tmp_path / "run")
         with pytest.raises(ValueError, match="kind"):
             collector.collect("cell1", "bad/kind", b"data")
+
+    def test_collect_rejects_dotdot_kind(self, tmp_path: Path) -> None:
+        collector = EvidenceCollector(tmp_path / "run")
+        with pytest.raises(ValueError, match="kind"):
+            collector.collect("cell1", "..", b"data")
 
     def test_finalize_returns_collection_receipt(self, tmp_path: Path) -> None:
         collector = EvidenceCollector(tmp_path / "run")
@@ -116,6 +131,7 @@ class TestEvidenceCollector:
         assert Path(receipt.path).read_bytes() == payload
 
     def test_partial_write_cleanup_allows_retry(self, tmp_path: Path) -> None:
+        import hashlib
         import os
         import unittest.mock as mock
 
@@ -125,7 +141,7 @@ class TestEvidenceCollector:
                 collector.collect("cell1", "transcript", b"data")
         # File must have been cleaned up; retry must not raise FileExistsError.
         receipt = collector.collect("cell1", "transcript", b"data-retry")
-        assert receipt.sha256 is not None
+        assert receipt.sha256 == hashlib.sha256(b"data-retry").hexdigest()
 
     def test_finalize_detects_artifact_modification(self, tmp_path: Path) -> None:
         collector = EvidenceCollector(tmp_path / "run")
@@ -133,3 +149,12 @@ class TestEvidenceCollector:
         Path(artifact.path).write_bytes(b"tampered")
         with pytest.raises(RuntimeError, match="modified after collection"):
             collector.finalize()
+
+    def test_finalize_seals_artifacts_read_only(self, tmp_path: Path) -> None:
+        import stat
+
+        collector = EvidenceCollector(tmp_path / "run")
+        artifact = collector.collect("cell1", "transcript", b"sealed")
+        collector.finalize()
+        mode = stat.S_IMODE(Path(artifact.path).stat().st_mode)
+        assert mode & stat.S_IWRITE == 0, "artifact must not be owner-writable after finalize"

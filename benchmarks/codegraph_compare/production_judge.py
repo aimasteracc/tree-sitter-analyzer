@@ -34,13 +34,15 @@ VALID_VERDICTS = frozenset({"ACCEPT", "REJECT", "INVALID", "NOT_EVALUATED"})
 class JudgeRecord:
     """Tamper-evident verdict record signed by the Judge (Anchor Custodian key).
 
-    The HMAC binds verdict, evidence_digest, recorded_at_unix, and judge_note
-    so that any post-fact modification is detectable.
+    The HMAC binds verdict, evidence_digest, spec_hash, recorded_at_unix, and
+    judge_note so that any post-fact modification is detectable and the verdict
+    is tied to a specific run spec (preventing replay across different runs).
     """
 
     schema_version: int
     verdict: str
     evidence_digest: str
+    spec_hash: str
     recorded_at_unix: int
     judge_note: str
     hmac_sha256: str
@@ -50,6 +52,7 @@ class JudgeRecord:
             "schema_version": self.schema_version,
             "verdict": self.verdict,
             "evidence_digest": self.evidence_digest,
+            "spec_hash": self.spec_hash,
             "recorded_at_unix": self.recorded_at_unix,
             "judge_note": self.judge_note,
             "hmac_sha256": self.hmac_sha256,
@@ -59,6 +62,7 @@ class JudgeRecord:
 def _judge_payload(
     verdict: str,
     evidence_digest: str,
+    spec_hash: str,
     recorded_at_unix: int,
     judge_note: str,
 ) -> bytes:
@@ -67,6 +71,7 @@ def _judge_payload(
             "schema_version": _SCHEMA_VERSION,
             "verdict": verdict,
             "evidence_digest": evidence_digest,
+            "spec_hash": spec_hash,
             "recorded_at_unix": recorded_at_unix,
             "judge_note": judge_note,
         }
@@ -76,22 +81,27 @@ def _judge_payload(
 def submit_verdict(
     verdict: str,
     evidence_digest: str,
+    spec_hash: str,
     key: AnchorKey,
     *,
     judge_note: str = "",
     now_unix: int | None = None,
 ) -> JudgeRecord:
-    """Record a signed Judge verdict against a specific evidence bundle.
+    """Record a signed Judge verdict against a specific evidence bundle and run spec.
+
+    The HMAC payload includes spec_hash so that this verdict cannot be replayed
+    against a different run whose evidence happens to share the same ledger digest.
 
     Args:
         verdict: One of ACCEPT, REJECT, INVALID, NOT_EVALUATED.
-        evidence_digest: SHA-256 of the evidence bundle (e.g. CollectionReceipt.ledger_sha256).
+        evidence_digest: SHA-256 of the evidence bundle (CollectionReceipt.ledger_sha256).
+        spec_hash: SHA-256 of the ProductionRunSpecV1 this verdict is issued for.
         key: The Anchor Custodian key used for signing.
         judge_note: Optional human-readable rationale for the verdict.
         now_unix: Current Unix time (defaults to time.time()).
 
     Raises:
-        ValueError: If verdict is not one of the valid values, or evidence_digest is malformed.
+        ValueError: If verdict or digest arguments are invalid.
     """
     if verdict not in VALID_VERDICTS:
         raise ValueError(
@@ -105,13 +115,22 @@ def submit_verdict(
         raise ValueError(
             "evidence_digest must be a 64-character lowercase hex string"
         )
+    if (
+        not spec_hash
+        or len(spec_hash) != 64
+        or not all(c in "0123456789abcdef" for c in spec_hash)
+    ):
+        raise ValueError(
+            "spec_hash must be a 64-character lowercase hex string"
+        )
     recorded_at = int(time.time()) if now_unix is None else now_unix
-    payload = _judge_payload(verdict, evidence_digest, recorded_at, judge_note)
+    payload = _judge_payload(verdict, evidence_digest, spec_hash, recorded_at, judge_note)
     signature = key.sign(payload)
     return JudgeRecord(
         schema_version=_SCHEMA_VERSION,
         verdict=verdict,
         evidence_digest=evidence_digest,
+        spec_hash=spec_hash,
         recorded_at_unix=recorded_at,
         judge_note=judge_note,
         hmac_sha256=signature,
@@ -135,6 +154,7 @@ def verify_judge_record(record: JudgeRecord, key: AnchorKey) -> None:
     payload = _judge_payload(
         record.verdict,
         record.evidence_digest,
+        record.spec_hash,
         record.recorded_at_unix,
         record.judge_note,
     )

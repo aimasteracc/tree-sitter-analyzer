@@ -60,6 +60,11 @@ class AnchorKey:
             raise ValueError(
                 f"Anchor key in {_ENV_KEY} must be hex-encoded: {error}"
             ) from error
+        if len(raw) < 32:
+            raise ValueError(
+                f"Anchor key in {_ENV_KEY} decodes to only {len(raw)} bytes; "
+                "must be at least 32 (hex string may contain whitespace)"
+            )
         return cls(raw=raw)
 
     @classmethod
@@ -75,6 +80,11 @@ class AnchorKey:
             raise ValueError(
                 f"Anchor key file must be hex-encoded: {path}: {error}"
             ) from error
+        if len(raw) < 32:
+            raise ValueError(
+                f"Anchor key file decodes to only {len(raw)} bytes; "
+                f"must be at least 32 (hex string may contain whitespace): {path}"
+            )
         return cls(raw=raw)
 
     def sign(self, payload: bytes) -> str:

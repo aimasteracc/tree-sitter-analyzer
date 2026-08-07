@@ -60,6 +60,15 @@ class TestAnchorKey:
         with pytest.raises(ValueError, match="hex-encoded"):
             AnchorKey.from_env()
 
+    def test_from_env_rejects_whitespace_padded_key_with_too_few_bytes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # "aa" + 64 spaces + "bb" has 68 chars (>= 64 char check passes),
+        # but bytes.fromhex ignores whitespace and decodes to only 2 bytes.
+        monkeypatch.setenv("CANARY_ANCHOR_KEY", "aa" + " " * 64 + "bb")
+        with pytest.raises(ValueError, match="decodes to only"):
+            AnchorKey.from_env()
+
     def test_from_file_loads_key_and_hex_decodes(self, tmp_path) -> None:
         hex_key = "ef" * 32  # 64 hex chars
         key_file = tmp_path / "anchor.key"

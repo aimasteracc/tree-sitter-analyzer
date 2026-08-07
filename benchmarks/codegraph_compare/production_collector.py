@@ -105,9 +105,9 @@ class EvidenceCollector:
         """
         if self._finalized:
             raise RuntimeError("Collector is already finalised; no further artifacts accepted")
-        if not run_id or "/" in run_id or "\\" in run_id:
+        if not run_id or "/" in run_id or "\\" in run_id or run_id in (".", ".."):
             raise ValueError(f"run_id must not contain path separators: {run_id!r}")
-        if not kind or "/" in kind or "\\" in kind:
+        if not kind or "/" in kind or "\\" in kind or kind in (".", ".."):
             raise ValueError(f"kind must not contain path separators: {kind!r}")
         run_dir = self._root / run_id
         run_dir.mkdir(mode=0o700, exist_ok=True)
@@ -148,13 +148,16 @@ class EvidenceCollector:
             raise RuntimeError("Collector is already finalised")
         self._finalized = True
         # Rehash every artifact before binding the ledger.  Any file modified
-        # after its receipt was issued will be detected here.
+        # after its receipt was issued will be detected here.  After the check
+        # passes, seal each file read-only (0o400) so post-finalization tampering
+        # is prevented at the OS level.
         for artifact in self._artifacts:
             current_digest = hashlib.sha256(Path(artifact.path).read_bytes()).hexdigest()
             if current_digest != artifact.sha256:
                 raise RuntimeError(
                     f"Evidence artifact was modified after collection: {artifact.path}"
                 )
+            os.chmod(artifact.path, 0o400)
         sorted_artifacts = sorted(
             self._artifacts, key=lambda a: (a.run_id, a.kind)
         )
