@@ -42,7 +42,7 @@ _TRUNCATION_NOTE = (
 _ACTIVITY_NOT_FOUND_MERMAID = 'flowchart TD\n  not_found["No activity flow found"]'
 
 
-def _make_activity_not_found_diagram(next_step: str) -> "UMLDiagram":
+def _make_activity_not_found_diagram(next_step: str) -> UMLDiagram:
     """Build a NOT_FOUND activity UMLDiagram with the given next_step message.
 
     Extracted from _activity_error_diagram to eliminate the deep_nesting code
