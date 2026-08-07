@@ -9,10 +9,10 @@ import pytest
 from tree_sitter_analyzer import uml_export
 from tree_sitter_analyzer._uml_export_builders import _prioritized_class_edges
 from tree_sitter_analyzer.uml_export import (
+    _ACTIVITY_NOT_FOUND_MERMAID,
     UMLDiagram,
     UMLEdge,
     UMLExporter,
-    _ACTIVITY_NOT_FOUND_MERMAID,
     _clamp_edges,
     _component_name,
     _package_name,
