@@ -49,19 +49,33 @@ class AnchorKey:
 
     @classmethod
     def from_env(cls) -> AnchorKey:
-        raw = os.environ.get(_ENV_KEY, "")
-        if len(raw) < 32:
+        hex_key = os.environ.get(_ENV_KEY, "")
+        if len(hex_key) < 64:
             raise ValueError(
-                f"Anchor key in {_ENV_KEY} must be at least 32 characters"
+                f"Anchor key in {_ENV_KEY} must be at least 64 hex characters (32 bytes)"
             )
-        return cls(raw=raw.encode("utf-8"))
+        try:
+            raw = bytes.fromhex(hex_key)
+        except ValueError as error:
+            raise ValueError(
+                f"Anchor key in {_ENV_KEY} must be hex-encoded: {error}"
+            ) from error
+        return cls(raw=raw)
 
     @classmethod
     def from_file(cls, path: Path) -> AnchorKey:
-        content = path.read_text(encoding="utf-8").strip()
-        if len(content) < 32:
-            raise ValueError(f"Anchor key file content too short: {path}")
-        return cls(raw=content.encode("utf-8"))
+        hex_key = path.read_text(encoding="utf-8").strip()
+        if len(hex_key) < 64:
+            raise ValueError(
+                f"Anchor key file must contain at least 64 hex characters (32 bytes): {path}"
+            )
+        try:
+            raw = bytes.fromhex(hex_key)
+        except ValueError as error:
+            raise ValueError(
+                f"Anchor key file must be hex-encoded: {path}: {error}"
+            ) from error
+        return cls(raw=raw)
 
     def sign(self, payload: bytes) -> str:
         return hmac.new(self.raw, payload, hashlib.sha256).hexdigest()

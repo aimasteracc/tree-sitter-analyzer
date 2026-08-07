@@ -48,11 +48,6 @@ class TestEvidenceCollector:
         with pytest.raises(ValueError, match="run_id"):
             collector.collect("cell/bad", "transcript", b"data")
 
-    def test_collect_rejects_run_id_with_dot(self, tmp_path: Path) -> None:
-        collector = EvidenceCollector(tmp_path / "run")
-        with pytest.raises(ValueError, match="run_id"):
-            collector.collect("cell.bad", "transcript", b"data")
-
     def test_collect_rejects_kind_with_separator(self, tmp_path: Path) -> None:
         collector = EvidenceCollector(tmp_path / "run")
         with pytest.raises(ValueError, match="kind"):
@@ -119,3 +114,22 @@ class TestEvidenceCollector:
         receipt = collector.collect("run1", "runtime", payload)
         assert receipt.sha256 == hashlib.sha256(payload).hexdigest()
         assert Path(receipt.path).read_bytes() == payload
+
+    def test_partial_write_cleanup_allows_retry(self, tmp_path: Path) -> None:
+        import os
+        import unittest.mock as mock
+
+        collector = EvidenceCollector(tmp_path / "run")
+        with mock.patch.object(os, "fsync", side_effect=OSError("simulated failure")):
+            with pytest.raises(OSError, match="simulated failure"):
+                collector.collect("cell1", "transcript", b"data")
+        # File must have been cleaned up; retry must not raise FileExistsError.
+        receipt = collector.collect("cell1", "transcript", b"data-retry")
+        assert receipt.sha256 is not None
+
+    def test_finalize_detects_artifact_modification(self, tmp_path: Path) -> None:
+        collector = EvidenceCollector(tmp_path / "run")
+        artifact = collector.collect("cell1", "transcript", b"original")
+        Path(artifact.path).write_bytes(b"tampered")
+        with pytest.raises(RuntimeError, match="modified after collection"):
+            collector.finalize()

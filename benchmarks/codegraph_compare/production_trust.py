@@ -226,30 +226,35 @@ def qualify_production_trust_v2(
     *,
     evidence_bundle_root: Path,
     now_unix: int,
-    anchor_key: object,
+    expected_evidence_digest: str,
 ) -> ProductionQualification:
     """Extended qualification that enables model_callbacks_allowed when all trust
     gates are satisfied.
 
-    This extends qualify_production_trust() by accepting a signed SpendAttestation
-    (from the Anchor Custodian) and a signed JudgeRecord.  Only when both are
-    present, valid, and the judge verdict is ACCEPT does this function return
-    model_callbacks_allowed=True.
+    The anchor key is loaded exclusively from config.pinned_anchor (never accepted
+    as a caller argument) so that the trust gate cannot be bypassed by supplying a
+    self-generated key.
+
+    The judge record's evidence_digest is compared against expected_evidence_digest
+    so that an authentic ACCEPT from an earlier or unrelated run cannot be replayed.
+
+    The attestation's budget_enforcement_mode must match config.budget_enforcement_mode;
+    mismatches are rejected regardless of whether both values are individually valid.
 
     Budget enforcement note: when config.budget_enforcement_mode is
     "client-process-kill", provider-side spend reservation is unavailable
     (Codex CLI limitation — issue #1223).  Client-side process kill and
-    post-run usage verification are used instead.  This is documented and
-    accepted by the maintainer per the self-implement decision (2026-08-07).
+    post-run usage verification are the accepted alternative per the maintainer
+    decision recorded 2026-08-07.
 
     Args:
         spec: A ProductionRunSpecV1 instance.
-        config: An OperatorTrustConfigV1 instance (operator-controlled, out-of-band).
+        config: An OperatorTrustConfigV1 (operator-controlled, never bundle-provided).
         attestation: A SpendAttestation issued by the Anchor Custodian.
         judge_record: A JudgeRecord signed by the Judge.
         evidence_bundle_root: Path that must not contain the trust store or anchor.
         now_unix: Current Unix time for expiry checks.
-        anchor_key: AnchorKey for verifying attestation and judge record signatures.
+        expected_evidence_digest: SHA-256 that judge_record.evidence_digest must equal.
 
     Returns:
         ProductionQualification with model_callbacks_allowed=True only on full ACCEPT.
@@ -264,81 +269,129 @@ def qualify_production_trust_v2(
         verify_judge_record,
     )
 
-    # Allow client-side budget enforcement by temporarily setting
-    # provider_budget_enforced=True in the config before base qualification.
-    # The actual enforcement mode is recorded in the attestation.
-    effective_config = config
-    if (
-        config is not None
-        and not config.provider_budget_enforced
-        and config.budget_enforcement_mode == "client-process-kill"
-    ):
-        from dataclasses import replace as _replace
+    # Validate run spec.
+    try:
+        validate_production_run_spec(spec)
+    except (AttributeError, TypeError, ValueError) as error:
+        return ProductionQualification(
+            "INVALID", (f"RUN_SPEC_INVALID:{error}",), None, False
+        )
+    assert type(spec) is ProductionRunSpecV1
+    spec_hash = spec.spec_hash
 
-        effective_config = _replace(config, provider_budget_enforced=True)
+    if config is None:
+        return ProductionQualification(
+            "NOT_EVALUATED", ("OPERATOR_TRUST_CONFIG_UNAVAILABLE",), spec_hash, False
+        )
 
-    base = qualify_production_trust(
-        spec,
-        effective_config,
-        evidence_bundle_root=evidence_bundle_root,
-        now_unix=now_unix,
-    )
-
-    if base.violations != ("SIGNED_ATTESTATIONS_AND_JUDGE_VERDICT_REQUIRED",):
-        return base
+    # Load anchor key from config.pinned_anchor (out-of-band, never from bundle).
+    # Prevents self-signing: callers cannot supply an arbitrary key.
+    try:
+        anchor_key = AnchorKey.from_file(config.pinned_anchor)
+    except Exception as error:
+        return ProductionQualification(
+            "NOT_EVALUATED",
+            (f"ANCHOR_KEY_UNAVAILABLE:{error}",),
+            spec_hash,
+            False,
+        )
 
     if not isinstance(attestation, SpendAttestation):
         return ProductionQualification(
             "NOT_EVALUATED",
             ("ATTESTATION_MISSING_OR_WRONG_TYPE",),
-            base.spec_hash,
+            spec_hash,
             False,
         )
     if not isinstance(judge_record, JudgeRecord):
         return ProductionQualification(
             "NOT_EVALUATED",
             ("JUDGE_RECORD_MISSING_OR_WRONG_TYPE",),
-            base.spec_hash,
-            False,
-        )
-    if not isinstance(anchor_key, AnchorKey):
-        return ProductionQualification(
-            "NOT_EVALUATED",
-            ("ANCHOR_KEY_MISSING_OR_WRONG_TYPE",),
-            base.spec_hash,
+            spec_hash,
             False,
         )
 
-    assert type(spec) is ProductionRunSpecV1
+    # Re-implement trust config validation inline (without calling the base function)
+    # so that client-process-kill mode is handled explicitly rather than via flag mutation.
     violations: list[str] = []
+    for path, label in (
+        (config.trust_store, "trust_store"),
+        (config.pinned_anchor, "pinned_anchor"),
+    ):
+        violation = _trusted_external_file(path, evidence_bundle_root, label)
+        if violation is not None:
+            violations.append(violation)
+    artifact_lexical = _absolute_lexical(config.immutable_artifact_root)
+    bundle_lexical = _absolute_lexical(evidence_bundle_root)
+    if artifact_lexical == bundle_lexical or bundle_lexical in artifact_lexical.parents:
+        violations.append("ARTIFACT_ROOT_BUNDLE_CONTROLLED")
+    elif _has_symlink_component(config.immutable_artifact_root):
+        violations.append("ARTIFACT_ROOT_SYMLINK")
+    if config.immutable_artifact_root.exists():
+        violations.append("ARTIFACT_ROOT_PREEXISTS")
+    if config.trusted_roles != _REQUIRED_ROLES:
+        violations.append("TRUST_ROLES_INCOMPLETE")
+    # Budget enforcement: provider-side preferred; client-process-kill explicitly accepted.
+    if config.budget_enforcement_mode not in ("provider", "client-process-kill"):
+        violations.append(f"UNKNOWN_BUDGET_ENFORCEMENT_MODE:{config.budget_enforcement_mode!r}")
+    elif config.budget_enforcement_mode == "provider" and not config.provider_budget_enforced:
+        violations.append("PROVIDER_BUDGET_GATEWAY_UNAVAILABLE")
+    for enabled, violation in (
+        (config.append_only_ledger, "APPEND_ONLY_LEDGER_UNAVAILABLE"),
+        (config.immutable_collector, "IMMUTABLE_COLLECTOR_UNAVAILABLE"),
+        (config.isolated_execution, "ISOLATED_EXECUTION_UNAVAILABLE"),
+        (config.verification_to_use_closed, "VERIFICATION_TO_USE_OPEN"),
+        (config.independent_judge, "INDEPENDENT_JUDGE_UNAVAILABLE"),
+    ):
+        if enabled is not True:
+            violations.append(violation)
+    if type(now_unix) is not int or now_unix < 0:
+        violations.append("TRUSTED_CLOCK_INVALID")
+    elif spec.expires_at_unix <= now_unix:
+        violations.append("RUN_SPEC_EXPIRED")
 
+    if violations:
+        return ProductionQualification("NOT_EVALUATED", tuple(violations), spec_hash, False)
+
+    # Verify attestation HMAC and binding.
+    attest_violations: list[str] = []
     try:
         verify_attestation(
             attestation,
             anchor_key,
-            spec.spec_hash,
+            spec_hash,
             spec.nonce,
             spec.expires_at_unix,
             now_unix=now_unix,
         )
     except Exception as error:
-        violations.append(f"ATTESTATION_INVALID:{error}")
+        attest_violations.append(f"ATTESTATION_INVALID:{error}")
 
+    # Attestation budget mode must match config — prevents mode substitution.
+    if not attest_violations and attestation.budget_enforcement_mode != config.budget_enforcement_mode:
+        attest_violations.append(
+            f"BUDGET_MODE_MISMATCH:"
+            f"attestation={attestation.budget_enforcement_mode!r}:"
+            f"config={config.budget_enforcement_mode!r}"
+        )
+
+    # Verify judge record HMAC, verdict, and evidence binding.
     try:
         verify_judge_record(judge_record, anchor_key)
         if judge_record.verdict != "ACCEPT":
-            violations.append(f"JUDGE_VERDICT_NOT_ACCEPT:{judge_record.verdict}")
+            attest_violations.append(f"JUDGE_VERDICT_NOT_ACCEPT:{judge_record.verdict}")
+        elif judge_record.evidence_digest != expected_evidence_digest:
+            attest_violations.append(
+                "JUDGE_EVIDENCE_DIGEST_MISMATCH:"
+                f"expected={expected_evidence_digest[:16]}...:"
+                f"got={judge_record.evidence_digest[:16]}..."
+            )
     except Exception as error:
-        violations.append(f"JUDGE_RECORD_INVALID:{error}")
+        attest_violations.append(f"JUDGE_RECORD_INVALID:{error}")
 
-    if violations:
+    if attest_violations:
         return ProductionQualification(
-            "NOT_EVALUATED", tuple(violations), base.spec_hash, False
+            "NOT_EVALUATED", tuple(attest_violations), spec_hash, False
         )
 
-    return ProductionQualification(
-        "ACCEPT",
-        (),
-        base.spec_hash,
-        True,
-    )
+    return ProductionQualification("ACCEPT", (), spec_hash, True)

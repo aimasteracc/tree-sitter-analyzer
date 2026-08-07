@@ -94,6 +94,10 @@ class EvidenceCollector:
     def collect(self, run_id: str, kind: str, payload: bytes) -> ArtifactReceipt:
         """Write payload to a new exclusive file and return an immutable receipt.
 
+        Artifacts are stored under ``<root>/<run_id>/<kind>`` so that distinct
+        ``(run_id, kind)`` pairs can never collide regardless of underscores in
+        either identifier.
+
         Raises:
             RuntimeError: If the collector has already been finalised.
             ValueError: If run_id or kind contain path separators.
@@ -101,12 +105,13 @@ class EvidenceCollector:
         """
         if self._finalized:
             raise RuntimeError("Collector is already finalised; no further artifacts accepted")
-        if not run_id or "/" in run_id or "\\" in run_id or "." in run_id:
-            raise ValueError(f"run_id must be a plain identifier without separators: {run_id!r}")
-        if not kind or "/" in kind or "\\" in kind or "." in kind:
-            raise ValueError(f"kind must be a plain identifier without separators: {kind!r}")
-        filename = f"{run_id}_{kind}"
-        target = self._root / filename
+        if not run_id or "/" in run_id or "\\" in run_id:
+            raise ValueError(f"run_id must not contain path separators: {run_id!r}")
+        if not kind or "/" in kind or "\\" in kind:
+            raise ValueError(f"kind must not contain path separators: {kind!r}")
+        run_dir = self._root / run_id
+        run_dir.mkdir(mode=0o700, exist_ok=True)
+        target = run_dir / kind
         descriptor = os.open(
             target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
         )
@@ -116,6 +121,10 @@ class EvidenceCollector:
                 stream.flush()
                 os.fsync(stream.fileno())
         except Exception:
+            try:
+                target.unlink(missing_ok=True)
+            except OSError:
+                pass
             raise
         digest = hashlib.sha256(payload).hexdigest()
         receipt = ArtifactReceipt(
@@ -138,6 +147,14 @@ class EvidenceCollector:
         if self._finalized:
             raise RuntimeError("Collector is already finalised")
         self._finalized = True
+        # Rehash every artifact before binding the ledger.  Any file modified
+        # after its receipt was issued will be detected here.
+        for artifact in self._artifacts:
+            current_digest = hashlib.sha256(Path(artifact.path).read_bytes()).hexdigest()
+            if current_digest != artifact.sha256:
+                raise RuntimeError(
+                    f"Evidence artifact was modified after collection: {artifact.path}"
+                )
         sorted_artifacts = sorted(
             self._artifacts, key=lambda a: (a.run_id, a.kind)
         )

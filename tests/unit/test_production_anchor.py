@@ -11,7 +11,8 @@ from benchmarks.codegraph_compare.production_anchor import (
     verify_attestation,
 )
 
-_GOOD_KEY = "a" * 32
+# 64-char hex string encodes 32 bytes; all characters must be valid hex.
+_GOOD_KEY_HEX = "ab" * 32   # 64 hex chars = 32 bytes
 _SPEC_HASH = "b" * 64
 _NONCE = "judge-nonce-001"
 _EXPIRES = 2_000_000_000
@@ -19,7 +20,7 @@ _NOW = 1_900_000_000
 
 
 def _key() -> AnchorKey:
-    return AnchorKey(raw=_GOOD_KEY.encode("utf-8"))
+    return AnchorKey(raw=bytes.fromhex(_GOOD_KEY_HEX))
 
 
 def _attestation(
@@ -38,31 +39,38 @@ def _attestation(
 
 
 class TestAnchorKey:
-    def test_from_env_loads_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("CANARY_ANCHOR_KEY", "x" * 32)
+    def test_from_env_loads_key_and_hex_decodes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        hex_key = "cd" * 32  # 64 hex chars
+        monkeypatch.setenv("CANARY_ANCHOR_KEY", hex_key)
         key = AnchorKey.from_env()
-        assert key.raw == b"x" * 32
+        assert key.raw == bytes.fromhex(hex_key)
 
     def test_from_env_rejects_short_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("CANARY_ANCHOR_KEY", "short")
-        with pytest.raises(ValueError, match="at least 32 characters"):
+        monkeypatch.setenv("CANARY_ANCHOR_KEY", "ab" * 16)  # only 32 chars
+        with pytest.raises(ValueError, match="at least 64 hex characters"):
             AnchorKey.from_env()
 
     def test_from_env_rejects_missing_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("CANARY_ANCHOR_KEY", raising=False)
-        with pytest.raises(ValueError, match="at least 32 characters"):
+        with pytest.raises(ValueError, match="at least 64 hex characters"):
             AnchorKey.from_env()
 
-    def test_from_file_loads_key(self, tmp_path) -> None:
+    def test_from_env_rejects_non_hex(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CANARY_ANCHOR_KEY", "z" * 64)  # 'z' is not hex
+        with pytest.raises(ValueError, match="hex-encoded"):
+            AnchorKey.from_env()
+
+    def test_from_file_loads_key_and_hex_decodes(self, tmp_path) -> None:
+        hex_key = "ef" * 32  # 64 hex chars
         key_file = tmp_path / "anchor.key"
-        key_file.write_text("y" * 48, encoding="utf-8")
+        key_file.write_text(hex_key, encoding="utf-8")
         key = AnchorKey.from_file(key_file)
-        assert key.raw == b"y" * 48
+        assert key.raw == bytes.fromhex(hex_key)
 
     def test_from_file_rejects_short_content(self, tmp_path) -> None:
         key_file = tmp_path / "anchor.key"
-        key_file.write_text("short", encoding="utf-8")
-        with pytest.raises(ValueError, match="too short"):
+        key_file.write_text("ab" * 16, encoding="utf-8")  # 32 chars, not 64
+        with pytest.raises(ValueError, match="at least 64 hex characters"):
             AnchorKey.from_file(key_file)
 
     def test_sign_is_deterministic(self) -> None:
