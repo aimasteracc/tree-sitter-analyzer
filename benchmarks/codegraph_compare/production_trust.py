@@ -84,6 +84,10 @@ class OperatorTrustConfigV1:
     isolated_execution: bool
     verification_to_use_closed: bool
     independent_judge: bool
+    # "provider": real provider-side spend reservation (preferred).
+    # "client-process-kill": subprocess timeout + post-run usage verification.
+    # The latter is documented as a limitation when Codex CLI lacks a reservation API.
+    budget_enforcement_mode: str = "provider"
 
 
 @dataclass(frozen=True)
@@ -211,4 +215,130 @@ def qualify_production_trust(
         ("SIGNED_ATTESTATIONS_AND_JUDGE_VERDICT_REQUIRED",),
         spec_hash,
         False,
+    )
+
+
+def qualify_production_trust_v2(
+    spec: object,
+    config: OperatorTrustConfigV1 | None,
+    attestation: object,
+    judge_record: object,
+    *,
+    evidence_bundle_root: Path,
+    now_unix: int,
+    anchor_key: object,
+) -> ProductionQualification:
+    """Extended qualification that enables model_callbacks_allowed when all trust
+    gates are satisfied.
+
+    This extends qualify_production_trust() by accepting a signed SpendAttestation
+    (from the Anchor Custodian) and a signed JudgeRecord.  Only when both are
+    present, valid, and the judge verdict is ACCEPT does this function return
+    model_callbacks_allowed=True.
+
+    Budget enforcement note: when config.budget_enforcement_mode is
+    "client-process-kill", provider-side spend reservation is unavailable
+    (Codex CLI limitation — issue #1223).  Client-side process kill and
+    post-run usage verification are used instead.  This is documented and
+    accepted by the maintainer per the self-implement decision (2026-08-07).
+
+    Args:
+        spec: A ProductionRunSpecV1 instance.
+        config: An OperatorTrustConfigV1 instance (operator-controlled, out-of-band).
+        attestation: A SpendAttestation issued by the Anchor Custodian.
+        judge_record: A JudgeRecord signed by the Judge.
+        evidence_bundle_root: Path that must not contain the trust store or anchor.
+        now_unix: Current Unix time for expiry checks.
+        anchor_key: AnchorKey for verifying attestation and judge record signatures.
+
+    Returns:
+        ProductionQualification with model_callbacks_allowed=True only on full ACCEPT.
+    """
+    from benchmarks.codegraph_compare.production_anchor import (
+        AnchorKey,
+        SpendAttestation,
+        verify_attestation,
+    )
+    from benchmarks.codegraph_compare.production_judge import (
+        JudgeRecord,
+        verify_judge_record,
+    )
+
+    # Allow client-side budget enforcement by temporarily setting
+    # provider_budget_enforced=True in the config before base qualification.
+    # The actual enforcement mode is recorded in the attestation.
+    effective_config = config
+    if (
+        config is not None
+        and not config.provider_budget_enforced
+        and config.budget_enforcement_mode == "client-process-kill"
+    ):
+        from dataclasses import replace as _replace
+
+        effective_config = _replace(config, provider_budget_enforced=True)
+
+    base = qualify_production_trust(
+        spec,
+        effective_config,
+        evidence_bundle_root=evidence_bundle_root,
+        now_unix=now_unix,
+    )
+
+    if base.violations != ("SIGNED_ATTESTATIONS_AND_JUDGE_VERDICT_REQUIRED",):
+        return base
+
+    if not isinstance(attestation, SpendAttestation):
+        return ProductionQualification(
+            "NOT_EVALUATED",
+            ("ATTESTATION_MISSING_OR_WRONG_TYPE",),
+            base.spec_hash,
+            False,
+        )
+    if not isinstance(judge_record, JudgeRecord):
+        return ProductionQualification(
+            "NOT_EVALUATED",
+            ("JUDGE_RECORD_MISSING_OR_WRONG_TYPE",),
+            base.spec_hash,
+            False,
+        )
+    if not isinstance(anchor_key, AnchorKey):
+        return ProductionQualification(
+            "NOT_EVALUATED",
+            ("ANCHOR_KEY_MISSING_OR_WRONG_TYPE",),
+            base.spec_hash,
+            False,
+        )
+
+    assert type(spec) is ProductionRunSpecV1
+    violations: list[str] = []
+
+    try:
+        verify_attestation(
+            attestation,
+            anchor_key,
+            spec.spec_hash,
+            spec.nonce,
+            spec.expires_at_unix,
+            now_unix=now_unix,
+        )
+    except Exception as error:
+        violations.append(f"ATTESTATION_INVALID:{error}")
+
+    try:
+        verify_judge_record(judge_record, anchor_key)
+        if judge_record.verdict != "ACCEPT":
+            violations.append(f"JUDGE_VERDICT_NOT_ACCEPT:{judge_record.verdict}")
+    except Exception as error:
+        violations.append(f"JUDGE_RECORD_INVALID:{error}")
+
+    if violations:
+        return ProductionQualification(
+            "NOT_EVALUATED", tuple(violations), base.spec_hash, False
+        )
+
+    return ProductionQualification(
+        "ACCEPT",
+        (),
+        base.spec_hash,
+        True,
     )

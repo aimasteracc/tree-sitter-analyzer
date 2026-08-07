@@ -5,10 +5,16 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from benchmarks.codegraph_compare.production_anchor import (
+    AnchorKey,
+    prepare_attestation,
+)
+from benchmarks.codegraph_compare.production_judge import submit_verdict
 from benchmarks.codegraph_compare.production_trust import (
     OperatorTrustConfigV1,
     ProductionRunSpecV1,
     qualify_production_trust,
+    qualify_production_trust_v2,
 )
 
 
@@ -211,4 +217,154 @@ def test_complete_external_configuration_still_requires_signed_judge_evidence(
 
     assert result.status == "NOT_EVALUATED"
     assert result.violations == ("SIGNED_ATTESTATIONS_AND_JUDGE_VERDICT_REQUIRED",)
+    assert result.model_callbacks_allowed is False
+
+
+# ── qualify_production_trust_v2 (self-implemented trust roles) ────────────────
+
+
+def _anchor_key() -> AnchorKey:
+    return AnchorKey(raw=b"anchor-key-material-32bytes!!!!!")
+
+
+def _v2_config(tmp_path: Path, bundle: Path) -> OperatorTrustConfigV1:
+    base = _config(tmp_path, bundle)
+    return replace(
+        base,
+        provider_budget_enforced=False,
+        budget_enforcement_mode="client-process-kill",
+    )
+
+
+def test_v2_returns_accept_with_valid_attestation_and_judge_record(
+    tmp_path: Path,
+) -> None:
+    # Issue #1223: signed attestation + ACCEPT judge record enables model calls.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    key = _anchor_key()
+    now = 1_900_000_000
+
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        key,
+        budget_enforcement_mode="client-process-kill",
+        now_unix=now,
+    )
+    judge = submit_verdict("ACCEPT", "a" * 64, key, now_unix=now)
+
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        anchor_key=key,
+    )
+
+    assert result.status == "ACCEPT"
+    assert result.violations == ()
+    assert result.model_callbacks_allowed is True
+
+
+def test_v2_reject_verdict_blocks_model_callbacks(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    key = _anchor_key()
+    now = 1_900_000_000
+
+    attestation = prepare_attestation(
+        spec.spec_hash, spec.nonce, spec.expires_at_unix, key, now_unix=now
+    )
+    judge = submit_verdict("REJECT", "a" * 64, key, now_unix=now)
+
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        anchor_key=key,
+    )
+
+    assert result.status == "NOT_EVALUATED"
+    assert any("JUDGE_VERDICT_NOT_ACCEPT" in v for v in result.violations)
+    assert result.model_callbacks_allowed is False
+
+
+def test_v2_missing_attestation_blocks_model_callbacks(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    key = _anchor_key()
+    judge = submit_verdict("ACCEPT", "a" * 64, key, now_unix=1_900_000_000)
+
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        None,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=1_900_000_000,
+        anchor_key=key,
+    )
+
+    assert result.model_callbacks_allowed is False
+    assert "ATTESTATION_MISSING_OR_WRONG_TYPE" in result.violations
+
+
+def test_v2_wrong_anchor_key_blocks_model_callbacks(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    key = _anchor_key()
+    now = 1_900_000_000
+
+    attestation = prepare_attestation(
+        spec.spec_hash, spec.nonce, spec.expires_at_unix, key, now_unix=now
+    )
+    judge = submit_verdict("ACCEPT", "a" * 64, key, now_unix=now)
+    wrong_key = AnchorKey(raw=b"z" * 32)
+
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        anchor_key=wrong_key,
+    )
+
+    assert result.model_callbacks_allowed is False
+    assert any("ATTESTATION_INVALID" in v for v in result.violations)
+
+
+def test_v2_config_alone_still_requires_attestations(tmp_path: Path) -> None:
+    # Regression: v2 must not grant model_callbacks when attestation/judge absent.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _config(tmp_path, bundle)
+
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        None,
+        None,
+        evidence_bundle_root=bundle,
+        now_unix=1_900_000_000,
+        anchor_key=None,
+    )
+
     assert result.model_callbacks_allowed is False
