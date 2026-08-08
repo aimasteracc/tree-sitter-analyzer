@@ -704,6 +704,10 @@ class TestInstallScriptUvVersion:
         assert "📦 Updating uv automatically..." in result.stdout
         assert (tmp_path / "curl-log").exists() is True
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="tracked: install.sh is macOS/Linux-only; Windows uses PowerShell",
+    )
     def test_agent_config_symlink_target_is_updated_without_replacing_link(
         self, tmp_path: Path
     ) -> None:
