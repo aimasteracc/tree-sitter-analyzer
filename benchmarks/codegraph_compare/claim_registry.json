@@ -1,0 +1,32 @@
+{
+  "claims": [
+    {
+      "artifact": null,
+      "claim_id": "real-world-competitive-result",
+      "competitor": {
+        "name": "CodeGraph",
+        "version": null
+      },
+      "denominator": null,
+      "evidence_level": "E0",
+      "metric": "paired benchmark outcome",
+      "numerator": null,
+      "provenance": {
+        "benchmark_version": "RFC-0021-v1",
+        "corpus": {
+          "name": "RFC-0021 confirmatory corpus",
+          "revision": null
+        },
+        "measurement_date": null,
+        "repo_commit": "d381b7b8dff2a3a3d92cc2fac2d92e4b31d31609"
+      },
+      "status": "blocked",
+      "tsa": {
+        "name": "tree-sitter-analyzer",
+        "version": "1.29.0"
+      },
+      "unit": "ratio"
+    }
+  ],
+  "schema_version": 1
+}

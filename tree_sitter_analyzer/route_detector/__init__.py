@@ -17,6 +17,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from ..core.parser import Parser
@@ -71,6 +72,18 @@ _SOURCE_EXTENSIONS = {
     ".java",
     ".go",
 }
+
+# Single registry for file-language route dispatch and inventory evidence.
+# Values identify the detector branch; keys are the executable support surface.
+ROUTE_LANGUAGE_DISPATCH = MappingProxyType(
+    {
+        "python": "python",
+        "javascript": "javascript",
+        "typescript": "javascript",
+        "java": "java",
+        "go": "go",
+    }
+)
 
 _FRAMEWORK_FILES = {
     "python": {
@@ -280,13 +293,14 @@ class RouteDetector:
         if not lang:
             return []
 
-        if lang == "python":
+        dispatch = ROUTE_LANGUAGE_DISPATCH.get(lang)
+        if dispatch == "python":
             return self._detect_python_routes(file_path)
-        elif lang in ("javascript", "typescript"):
+        if dispatch == "javascript":
             return self._detect_js_routes(file_path, lang)
-        elif lang == "java":
+        if dispatch == "java":
             return self._detect_java_routes(file_path)
-        elif lang == "go":
+        if dispatch == "go":
             return self._detect_go_routes(file_path)
         return []
 

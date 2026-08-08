@@ -4,16 +4,14 @@
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/) [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) [![Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer) [![适配 Claude Code · Cursor · MCP](https://img.shields.io/badge/适配-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20MCP-6f42c1.svg)](#supported-agents)
 
-**AI agent 可以信赖的代码情报** — 跨 20+ 语言的正确结构分析，为 agent 原生设计（MCP + CLI）。
+**AI agent 可以信赖的代码情报** — 跨语言结构分析，为 agent 原生设计（MCP + CLI）。
 
-TSA 使用 tree-sitter 索引你的代码库，向 AI 编程 agent 提供正确的调用图、符号搜索与结构查询 — 完全本地，零遥测。专为 AI agent 而生的代码情报：预建索引、token 高效的 MCP 服务器 — **8 个 MCP 工具** + CLI，100% 本地运行。
+TSA 使用 tree-sitter 索引代码库，向 AI 编程 agent 提供调用图、符号搜索与结构查询 — **8 个 MCP 工具** + CLI，完全本地运行，零遥测。
 
 **为什么不同：**
-* **跨语言正确性是护城河。** 名称匹配式索引会把 Python `sorted()` 连到 Swift `func sorted`。TSA 不会。比同类工具少约 390× 的跨语言调用图错连（[可复现审计](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)）。
-* **为 agent 原生设计。** 8 个 MCP 工具，TOON 输出（bulk 响应比 JSON 小约 50-70%），verdict 信封，13 个精选 Skills — 专为 Claude Code、Cursor 和任何 MCP 客户端设计。
-* **广度与正确性兼备。** 13 种语言全量调用图索引（Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP），另有 8 种语言符号索引或 CLI 可达。
-
-> **数据证明：** 在 HuggingFace `tokenizers`（Rust+Python+JS+TS）上，名称匹配式解析器会错连 **1,259** 条调用边 — TSA：**0**。在你自己的仓库上运行：`uvx --from tree-sitter-analyzer miswire-audit .`
+* **跨语言正确性是护城河。** 语言族门控可阻止仅基于名称的跨语言绑定。
+* **为 agent 原生设计。** **8 个 MCP 工具**提供 TOON 输出与 verdict 信封，也可通过 CLI 和精选工作流使用。
+* **广度与正确性兼备。** 13 种语言为 `pipeline_registered`（管线注册态，非 E2E：Python · Go · Rust · Java · JS · TS · C · C++ · C# · Swift · Kotlin · Ruby · PHP）。这只是注册与接线证据，不代表跨文件调用解析已经验证。
 
 > 从 v1.x 升级？见 [docs/MIGRATION.md](docs/MIGRATION.md)。
 
@@ -41,7 +39,7 @@ claude mcp add tree-sitter-analyzer \
 
 重启 agent，对它说："用 `index` 工具调用 action=status。"
 
-> **PyPI / uvx 用户 — 安装 skills：** 13 个 `tsa-*` skills 已打包在 wheel 中。执行一次即可安装：
+> **PyPI / uvx 用户 — 安装 skills：** `tsa-*` skills 已打包在 wheel 中。执行一次即可安装：
 > ```bash
 > tree-sitter-analyzer --install-skills
 > ```
@@ -90,24 +88,24 @@ uv tool install "tree-sitter-analyzer[all,mcp]"
 
 重启 agent 后："用 `index` 工具调用 action=status。"
 
-**用一条命令在你自己的仓库上验证 correctness 优势**（无需安装、无需 CodeGraph，会先重建索引）：
+**在你自己的仓库上检查解析器行为**（无需安装，会先重建索引）：
 
 ```bash
 uvx --from tree-sitter-analyzer miswire-audit .
 ```
 
-它会显示一个 name-only 代码索引（多数工具的设计）会把多少调用跨语言错连（例如 Python 的 `sorted()` → Swift 的 func），对比 TSA 的数量。实测：[HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md) 上 name-only 为 **1,259 处**（含 JS `tokenize()` → Rust），TSA 为 **0**。ruff **7557×**、polars **9016×**。单语言仓库（gin/Go）两者均为 **0**，无误报。
+该命令报告可能的跨语言名称冲突，供你检查自己仓库中的解析器行为。结果是诊断信息，不是竞争性 benchmark 主张。
 
 ---
 
 ## 为什么选择 Tree-sitter Analyzer
 
-* **默认就省 token**。所有 MCP 工具响应使用 **TOON** — 一种表格式 JSON 变体，比原始 JSON 节省约 50-70% 字节（[可执行不变量](tests/unit/mcp/test_output_cost_invariants.py)；RFC-0012 实测比值 0.52×）。
-* **结论信封 (verdict envelope)**。每个响应都带 `verdict: SAFE | CAUTION | UNSAFE | INFO | WARN | ERROR | NOT_FOUND`，orchestrator 直接分支决策，无需二次提示。
-* **项目级 A-F 健康评级**。其他开源工具都没有 — 一次调用从体积、复杂度、覆盖率、重复度、依赖、结构、git-热点 7 个维度给整个项目打分。
-* **13 个精选工作流（Skills）**。预包装好的工具子集，对应 "查找符号"、"追踪调用链"、"评估健康"、"重构前安全检查"、"PR 评审" 等典型场景。
-* **5 层安全防护**。`edit action=safe` + `edit action=guard` + 架构约束 DSL + `edit action=impact` + verdict 信封 — 让 agent 在动手前 *知道* 风险。
-* **CodeGraph 的严格 CLI 超集、更快索引、一次调用查询 DSL** —— 诚实成本对比见[下文](#与-codegraph-的对比)。
+* **关注 token 的输出。** MCP 响应默认使用 **TOON**；载荷行为由 [output-cost invariants](tests/unit/mcp/test_output_cost_invariants.py) 保护，已知的 decision-tool 限制由 [RFC-0018](rfcs/0018-response-envelope-normalization-and-adaptive-toon.md) 跟踪。
+* **结论信封（verdict envelope）。** 每个响应都带 `verdict: SAFE | CAUTION | UNSAFE | INFO | REVIEW | WARN | ERROR | NOT_FOUND`，orchestrator 可直接按结果分支。
+* **项目级 A-F 健康评级。** 综合体积、复杂度、覆盖率、重复度、依赖、结构与 git 热点进行评估。
+* **精选工作流（Skills）。** 为“查找符号”“追踪调用链”“评估健康”“重构前安全检查”“PR 评审”等场景提供预包装的工具子集。
+* **分层安全防护。** `edit action=safe` + `edit action=guard` + 架构约束 DSL + `edit action=impact` + verdict 信封，帮助 agent 在编辑前判断风险。
+* **CLI/MCP 对等与统一查询 DSL。** agent 和 shell 用户可使用相同的分析原语。
 
 ---
 
@@ -118,7 +116,7 @@ uvx --from tree-sitter-analyzer miswire-audit .
 | 能力 | TSA 工具 | 状态 |
 |---|---|---|
 | 符号搜索（FTS5 + **BM25 排名**） | `search` action=symbol | **领先** — 结果按相关性分数排序 |
-| go-to-def / find-refs / 调用层级 一次调用 | `nav` action=navigate | PRIMARY 入口 |
+| go-to-def / find-refs / 调用层级组合请求 | `nav` action=navigate | PRIMARY 入口 |
 | 批量获取 N 个相关符号 + 关系图 | `structure` action=explore | 对位 |
 | 函数级 blast radius + 风险评分 | `nav` action=impact | 对位 + 风险评分 |
 | 谁调用 X / X 调用谁 | `nav` action=callers / action=callees | 对位 |
@@ -130,10 +128,10 @@ uvx --from tree-sitter-analyzer miswire-audit .
 
 | 能力 | TSA 工具 | 说明 |
 |---|---|---|
-| **BM25 排名搜索** | 所有搜索工具 | min-max 标准化 relevance_score（最佳=1.0/最弱=0.0）；DSL 支持 sort(by='confidence') |
-| **语义搜索（BM25 预过滤）** | `search` action=chain（`semantic()` DSL） | BM25 预过滤将 40k 符号收窄至 ~400 再做余弦重排 |
-| **项目 A-F 健康评级** | `health` action=project | 7 维度（体积/复杂度/依赖/覆盖率/重复/结构/git热点），竞品无对位 |
-| **TOON 输出** | 所有工具，默认 `output_format: "toon"` | 50-70% token 节省 |
+| **BM25 排名搜索** | 所有搜索工具 | 每项结果提供 min-max 标准化 relevance_score；DSL 支持 sort(by='confidence') |
+| **语义搜索（BM25 预过滤）** | `search` action=chain（`semantic()` DSL） | 在余弦重排前进行词法预过滤 |
+| **项目 A-F 健康评级** | `health` action=project | 综合体积、复杂度、依赖、覆盖率、重复、结构与 git 热点 |
+| **TOON 输出** | 所有工具，默认 `output_format: "toon"` | 紧凑的表格式编码；decision tool 由 RFC-0018 跟踪 |
 | **Verdict 信封** | 所有工具 | `SAFE/CAUTION/UNSAFE/INFO/WARN/ERROR/NOT_FOUND` |
 | **Safe-to-edit 闸门** | `edit` action=safe / action=guard | 高风险编辑前拒绝 |
 | **架构约束 DSL** | `edit` action=constraints | "模块 A 不能依赖 B" → 强制执行 |
@@ -149,12 +147,12 @@ uvx --from tree-sitter-analyzer miswire-audit .
 | **agent_summary** | 所有响应 | 下一步提示内嵌于信封 |
 | **Synapse 跨文件解析** | 内部 | import-aware，胜过正则猜测 |
 | **时间激活度** | `nav` action=lineage | 每个符号的 git 修改频率 |
-| **单次文件定向** | `project` action=smart | 健康度 + 导出符号 + 依赖 + 编辑风险一次调用（替代 3-4 次调用） |
+| **文件定向** | `project` action=smart | 在组合响应中返回健康度 + 导出符号 + 依赖 + 编辑风险 |
 | **架构决策日志** | `project` action=journal | 跨会话持久化推理 — 竞品均无此能力 |
 
-### Skills（13 个精选工作流）
+### Skills
 
-CodeGraph 没有 skill 系统。我们在 `.claude/skills/tsa-*/` 下提供 13 个：
+TSA 在 `.claude/skills/tsa-*/` 下提供精选工作流：
 
 `tsa-landing`、`tsa-find`、`tsa-graph`、`tsa-structure`、`tsa-deps`、`tsa-index`、`tsa-health-watch`、`tsa-edit-safety`、`tsa-edit-then-verify`、`tsa-constraints`、`tsa-pr-review`、`tsa-refactor-queue`、`tsa-temporal`。
 
@@ -182,100 +180,14 @@ tree-sitter-analyzer --safe-to-edit <file>        # 风险时拒绝
 
 ---
 
-## 与 CodeGraph 的对比
+## 定量主张治理
 
-### 调用图正确性 —— TSA 正确解析 CodeGraph 错连的调用
+公开的 benchmark、性能或竞争性数字只能由 [`benchmarks/codegraph_compare/claim_registry.json`](benchmarks/codegraph_compare/claim_registry.json) 中绑定来源的 registry 生成。E4 证据必须严格绑定工具名称与版本、测量值、语料、benchmark 日期/版本以及 artifact digest。低于 E4 的证据只保留在内部，不能生成公开文案。参见 [benchmark runbook](benchmarks/codegraph_compare/README.md)。
 
-token 成本只是一个维度；代码情报工具的**首要**职责是**正确的图**。
+<!-- BEGIN GENERATED QUANTITATIVE CLAIMS -->
+<!-- END GENERATED QUANTITATIVE CLAIMS -->
 
-**在本仓库上两个工具实时索引的正面对决**（统计调用方语言与被调用方语言不同的全部调用边 — 构造上即为跨语言错连；[可复现](benchmarks/codegraph_compare/REPORT-v1.21.0.md)）：
-
-| 工具 | 跨语言错连 | 总调用边 | 比率 |
-|---|---|---|---|
-| CodeGraph | **745** | 38,103 | 1.96 % |
-| **Tree-sitter Analyzer** | **6** | 114,160 | **0.005 %** |
-
-**跨语言正确性约 390× 更干净，同时解析出 3× 更多调用边。** CodeGraph 的错连跨越 19+ 语言对（python→swift **408**，python→typescript 195，python→ruby 81，……）；TSA 的 6 处全是单词 Java 方法名导致的 `java→python/php`。
-
-> **别轻信这张表 — 在你自己的仓库上跑（无需安装 CodeGraph）：**
-> ```bash
-> uvx --from tree-sitter-analyzer miswire-audit .
-> ```
-> 它会对你的代码建索引，并打印 name-only 解析器（多数索引的设计）会把多少调用边跨语言错连，对比 TSA 的数量 — 附有问题边列表（`Python sorted() → Swift func at file:line`）。添加 `--card` 可生成可分享的评分卡。
->
-> **真实运行：** 在 [HuggingFace `tokenizers`](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)（Rust+Python+JS+TS）上，name-only 解析器会错连 **1,259** 条调用边（含 JS `tokenize()` → Rust def）— TSA：**0**。单语言仓库（`gin`，Go）两者均为 **0** — 无误报。[更多示例 →](benchmarks/codegraph_compare/MISWIRE-AUDIT-EXAMPLES.md)
-
-具体来说：
-
-| 调用（Python `_resolve_entry_points` / `build_response`） | CodeGraph | TSA |
-|---|---|---|
-| `sorted()`（Python 内建） | ❌ callee = **`tests/golden/corpus_swift.swift` 里的 Swift `func sorted`**（这一个 Swift 定义被全仓 **299** 个函数当作 callee 连上） | ✅ `builtin` — 不产生跨语言边 |
-| `fts_search()` / `fts_search_ranked()` | ❌ 绑到**测试 mock**（`FallbackCache`）而非真实方法 | ✅ 解析到源码方法（`_ast_cache_query.py` / `ast_cache.py`） |
-
-TSA 的 per-language 解析器对 **13 种语言**（Python · Java · Go · JS · TS · C · C++ · Rust · C# · Kotlin · Ruby · PHP · Swift）的每个绑定按**语言族**设闸，并在所有解析路径上对非测试调用方**降权测试专用定义**。告诉 agent 一个 Python 函数*调用了 Swift 方法*，或者生产代码调用指向测试 mock，都是错误的结构数据。
-
-#### 正确且完整 — 96.3% 的调用边已分类
-
-未知边很多的正确图仍然是半个图。TSA 的解析级联现在分类了 **96.3%** 的调用边（从 83.9% 提升），**零**跨语言或测试影子错连 — 每次提升都以项目中不存在兼容语言的同名符号为门控，影子关系始终得到保留：
-
-| 解析器层 | 解析对象 | 来源 |
-|---|---|---|
-| binding cascade | local / self / import / unique-method / single-global | RFC-0002 |
-| stdlib **方法**名（`write_text`、`strip`、`items`） | `str` / `Path` / `dict` / `re` / `argparse` 方法 → `stdlib` | [RFC-0004](rfcs/0004-stdlib-method-resolution.md) |
-| external **库**方法（`raises`、`given`、`MagicMock`） | pytest / hypothesis / mock → `external` | [RFC-0005](rfcs/0005-external-method-resolution.md) |
-
-剩余 ~4% `unknown` 主要由真正无法静态解析的动态分发（`BaseTool.execute()`）、构造函数和同名项目方法的歧义主导 — 这是静态分析的误报底线，如实保留而非猜测。
-
-> **已支持多语言。** 跨语言安全解析不再仅限于 Python。per-language **解析器注册表**（[RFC-0010](rfcs/0010-resolver-language-registry.md)）为每种语言提供独立的分类级联，并通过语言族设闸确保绑定不会跨越不兼容的语言。新增一种语言只需一个新解析器文件（RFC-0010）加少量调用提取接线。
-
-### TSA 领先之处
-
-- **索引构建速度。** 移除 commit 后冗余的 edge-refresh pass，django 冷索引（约 2,950 文件）从 **181 秒 → 97 秒（−46%）**；仓库越大收益越大。未变更文件的重索引是 content-hash 查表。
-- **严格的 CLI 超集。** 每个 MCP 工具都有 CLI 等价物（CodeGraph 的 CLI 更薄）；*行为*默认值（排名、上限、截断）在两个界面保持同步。唯一刻意分歧的是输出格式 —— MCP 默认 TOON（对 agent 省 token），CLI 默认 JSON（人类/`jq` 友好）。
-- **一次调用的表达力。** jQuery 风格 chain DSL —— `search('X').callees(depth=2).explore(include_code=true).answer(compact=true)` —— 一次调用返回整条流程的子图 + 源码，支持 JS 风格 `true`/`false`，agent 可自然书写。
-- **结构化 + token 友好的输出。** MCP 默认 TOON（比 JSON 小 50–70%）、per-call 截断提示、全排序路径一致的测试文件降权。
-- **广度。** 健康评分、safe-to-edit / change-impact 门控、13 个 curated Skills、广泛语言支持。
-
-### 关于 token 成本 —— 我们更正的 benchmark
-
-> **更正（2026-06）。** 此前本节声称「中位数成本 −11% 胜过 CodeGraph」。那次 benchmark 有 harness bug：TSA arm 的 MCP server 启动时未指定项目根，分析的是 **tree-sitter-analyzer 自身的源码**而非目标仓库，数据无意义。该 bug 已修复（harness 现在传 `--project-root`），夸大的结论予以撤回，下面是诚实的对比。
-
-token 成本曾是 CodeGraph 唯一领先的维度。[RFC-0006](rfcs/0006-context-progressive-disclosure.md) 渐进式披露从源头弥合了大部分差距：`nav context` 现在返回**精简默认值** — 入口点 + 紧凑的 `related_symbols` 列表 + 代码块 — 并将扁平节点/边图移至可选 `include_graph=true` 之后。在本仓库上的实测（4 个代表性查询，TOON）：
-
-| 上下文载荷 | 字符数 |
-|---|---|
-| TSA 默认，RFC-0006 前 | ~13,900 |
-| **TSA 默认，之后（精简）** | **~6,600 (−53%)** |
-| TSA `include_graph=true`（完整，可选） | ~13,900 |
-| CodeGraph 基线 | ~4,400 |
-
-主导上下文调用从 **CodeGraph 载荷的 ~2.9× 降至 ~1.5×**。
-
-修复后的 harness 上（Claude Sonnet，gin + django，MCP arm，零错误），每任务**中位数成本**：
-
-| arm | 中位数成本（RFC-0006 前） | tool calls | file reads |
-|---|---|---|---|
-| CodeGraph MCP | **约 $0.27** | 7 | 2 |
-| Tree-sitter Analyzer MCP | 约 $0.44 | 7 | 1 |
-| 无 MCP（grep/read） | 约 $0.34 | 14 | 7 |
-
-### Reactive push + edge-kind 细分 — CodeGraph 没有的两项能力
-
-CodeGraph 及多数一次性索引器只响应轮询。TSA 提供两项填补这一缺口的能力：
-
-- **Reactive push / 订阅（[RFC-0001](rfcs/0001-reactive-push.md)，已实现）。** `search action=subscribe` 注册一个 Hyphae selector 并返回 `tsa://hyphae/{selector}` MCP 资源 URI。被观察的代码发生变化时，服务器发出 resource-updated 通知 — agent 重新读取资源而无需轮询。CodeGraph 没有推送或订阅通道。
-- **`index action=status` 中的 `edges_by_kind`。** status 返回 per-edge-kind 计数（calls / extends / implements / imports …），而非单一 `total_edges` — agent 可在深入查询前了解图的形态。CodeGraph 只提供扁平总数。
-
-在两个工具都已索引的任意仓库复现正确性修复：
-
-```bash
-# CodeGraph：返回跨语言 / test-shadow 的 callee
-#   （如 `sorted` → corpus_swift.swift，`fts_search` → 测试 mock）
-# 解析器修复后的 TSA：语言正确、优先源码
-tree-sitter-analyzer --callees _resolve_entry_points --format json
-```
-
-> 复现成本数值：`uv run python benchmarks/codegraph_compare/run.py phase full-warm --repos gin,django`。原始 envelope 与 harness 修复在该目录。
+没有生成条目表示当前没有获准公开的定量主张。上面的定性描述是有边界的产品能力，不是经过测量的优越性主张。
 
 ---
 
@@ -307,7 +219,7 @@ claude mcp add tree-sitter-analyzer \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-验证：`claude mcp list`。13 个 `tsa-*` skills 会从 `.claude/skills/` 自动发现。
+验证：`claude mcp list`。捆绑的 `tsa-*` skills 会从 `.claude/skills/` 自动发现。
 
 **PyPI / uvx 用户** — 安装一次内置 skills：
 ```bash
@@ -365,16 +277,17 @@ git clone 用户已有，无需操作。
 
 ## 支持的语言
 
-21 个语言插件；13 个完全接入索引器（符号 + 调用图）+ 2 个已接符号索引（调用图接线待完成）+ 5 个（data/markup）走 CLI 单文件路径 + 1 个脚手架（插件存在，索引接线待完成）。bash 与 scala 于 v1.22.0 毕业；2026-05-24 的补丁解锁了被静默跳过数月的 Swift / Kotlin / Ruby / PHP / C#。
+22 个语言插件；13 个为 `pipeline_registered`（管线注册态，非 E2E）+ 2 个为 `index_admitted`（索引准入态）+ Lua 是生产可用的 call-dispatch-only 插件 + 5 个 data/markup + 1 个脚手架。注册状态只是可机械验证的接线证据，不保证跨文件正向绑定。
 
 | 等级 | 语言 |
 |---|---|
-| **完整索引 + 符号 + 调用图** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
-| **完整索引 + 符号（调用图待接）** | Bash · Scala |
+| **`pipeline_registered`（管线注册态，非 E2E）** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
+| **`index_admitted`（索引准入态）** | Bash · Scala |
 | **单文件分析（CLI）** | HTML · CSS · Markdown · SQL · YAML |
+| **call-dispatch-only（生产插件）** | Lua |
 | **脚手架（插件已有，索引器待接）** | json |
 
-CodeGraph 支持相近的集合；两者都还未发布的主流代码语言只有 **Dart、Vue、Svelte、Lua**（下个 sprint backlog）。
+Lua 已作为生产插件发布，但目前仅为 call-dispatch-only，不代表已获索引准入或具备跨文件解析能力。
 
 ---
 
@@ -395,7 +308,7 @@ CodeGraph 支持相近的集合；两者都还未发布的主流代码语言只�
 |---|---|
 | 测试通过 | 全面的测试套件 ✅ |
 | 覆盖率 | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
-| 类型安全 | 100% mypy |
+| 类型安全 | mypy |
 | 平台 | macOS · Linux · Windows |
 | Pre-commit 闸门 | ruff · bandit · mypy · pyupgrade · detect-secrets · tsa-codemap-sync |
 

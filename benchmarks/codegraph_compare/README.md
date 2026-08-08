@@ -1,5 +1,149 @@
 # CodeGraph Comparison Benchmark
 
+
+## NO1-003B production-canary operator runbook
+
+> **Current decision: NO-GO for a real canary.** The repository can qualify the
+> NO1-002C/002D trust chain, but it intentionally contains no production model
+> dispatcher. `CanaryProtocol` rejects every non-fixture execution with
+> `QUALIFICATION_SCAFFOLD_NOT_PRODUCTION_READY`. Do not bypass that stop, replace
+> `execution_mode`, or call an agent adapter directly. A real run requires a
+> separately reviewed operator-controlled dispatcher and external approvals.
+
+### 1. Run the zero-cost offline rehearsal
+
+This is the only executable canary operation currently authorized. It imports no
+agent adapter, makes no network/provider request, uses an ephemeral
+rehearsal-only key and spec, and emits E0 evidence only. The work root must not
+exist, which makes accidental replay fail closed.
+
+```bash
+cd /path/to/tree-sitter-analyzer
+WORK_PARENT="$(mktemp -d)"
+WORK_ROOT="$WORK_PARENT/no1-003b-offline"
+uv run python -m benchmarks.codegraph_compare.production_rehearsal \
+  --work-root "$WORK_ROOT" | tee "$WORK_PARENT/receipt.json"
+jq -e '
+  .status == "PASS" and
+  .execution_mode == "offline-rehearsal" and
+  .artifact_count == 2 and
+  .attestation_verified == true and
+  .synthetic_judge_signature_verified == true and
+  .independent_judge_available == false and
+  .trust_qualification_status == "NOT_EVALUATED" and
+  .trust_violations == ["INDEPENDENT_JUDGE_UNAVAILABLE"] and
+  .trust_gate_would_allow_bound_fixture == false and
+  .production_dispatch_allowed == false and
+  .model_callbacks_invoked == 0 and
+  .provider_requests == 0 and
+  .input_tokens == 0 and .output_tokens == 0 and .cost_usd == 0 and
+  .evidence_level == "E0" and .winner == null and
+  .dominance_allowed == false and .publishable == false
+' "$WORK_PARENT/receipt.json"
+```
+
+`synthetic_judge_signature_verified=true` proves only that the same-process
+rehearsal record is canonically signed. It is deliberately not represented as an
+independent judgment. `trust_qualification_status=NOT_EVALUATED` with
+`INDEPENDENT_JUDGE_UNAVAILABLE` proves the production gate remains closed. The
+ephemeral key, `offline-rehearsal-only` cell, `offline-fixture-no-model` model
+identity, and `production_dispatch_allowed=false` prevent reuse as canary
+evidence. Preserve the receipt for review, then securely remove the temporary
+rehearsal key and artifacts according to local operator policy.
+
+### 2. Verify the fail-closed boundary
+
+```bash
+uv run pytest -q \
+  tests/unit/test_production_anchor.py \
+  tests/unit/test_production_collector.py \
+  tests/unit/test_production_trust.py \
+  tests/unit/test_benchmark_harness.py
+uv run python -m tree_sitter_analyzer --change-impact --format json
+```
+
+Stop immediately if either command fails, if the rehearsal reports any non-zero
+usage/cost, or if any claim flag is enabled. Never “fix” rehearsal failure by
+weakening attestation, budget, judge, immutability, transcript, matrix, or claim
+checks.
+
+### 3. Production readiness checklist (all items mandatory)
+
+The Anchor Custodian, Budget Gateway, Evidence Collector, independent Judge,
+and execution operator must record approval out of band. Before any future real
+call, all of the following must be true:
+
+1. The exact Gin commit, clean workspace fingerprint, prompt hash, MCP launch
+   identities, exact model ID, nonce, expiry, one-cell request limit, token limit,
+   and USD ceiling are frozen in `ProductionRunSpecV1`.
+2. The anchor and trust store are operator-controlled regular files outside the
+   checkout and evidence bundle, with no symlink component. No TOFU,
+   bundle-provided key, environment inheritance, or self-signed replacement is
+   allowed.
+3. `SpendAttestation` binds the exact spec hash, nonce, expiry, and budget mode.
+   Provider reservation is preferred. `client-process-kill` is only the recorded
+   Codex CLI limitation; it still requires timeout/kill and post-run usage
+   verification and never permits ceiling overrun.
+4. The collector root is fresh and external. Every write is exclusive and the
+   finalized ledger/artifacts are immutable. Checkout/runtime audits and cleanup
+   must pass for each arm.
+5. The Judge independently signs the exact evidence digest and spec hash. Any
+   missing, stale, mismatched, non-`ACCEPT`, or unverifiable record is terminal
+   `NOT_EVALUATED`/`INVALID`, never a retry opportunity or a TSA win.
+6. The exact two indexed cells, order, one attempt each, receipt/tool arguments,
+   oracle (`gin.go`, `Engine.ServeHTTP`, `method`), transcript policy, and
+   cumulative USD ceiling remain unchanged. A failure stops the phase; selective
+   retry is forbidden.
+7. Output remains E0/internal: `winner=null`, `dominance_allowed=false`, and
+   `publishable=false`. No No.1, dominance, production-readiness, E1+, or public
+   benchmark claim is permitted.
+8. A separately reviewed production dispatcher proves it consumes the qualified
+   spec exactly once and atomically records reservation, usage, termination, and
+   immutable evidence. **That dispatcher is not present today.**
+
+### 4. Abort and escalation
+
+Abort before spend on any missing approval, pre-existing artifact root, dirty or
+mutated checkout, wrong binary/model/hash, expired spec, budget-mode mismatch,
+open verification-to-use gap, judge/attestation failure, or unavailable arm.
+After a call starts, kill at the frozen timeout/limit, retain all partial evidence,
+terminalize the cell, and do not rerun it. Escalate the immutable receipt and
+violation list to the maintainers; never delete, overwrite, relabel, or exclude
+an unfavorable outcome.
+
+## Quantitative README claim release gate
+
+The checked-in `claim_registry.json` is the sole source for public benchmark,
+performance, and competitive numbers in the main README. Registry records do
+not accept author-written claim text. Only a verified E4 record with exact TSA
+and competitor names/versions, metric, unit, numerator, denominator,
+benchmark version, measurement date, corpus name/revision, repository commit,
+and a matching artifact SHA-256 can generate wording. The generated wording
+includes the repository commit directly. Its artifact digest binds the canonical
+evidence payload; artifact path/status are validation metadata, not public claim fields.
+
+Blocked, unverified, and E0–E3 records always produce
+`emittable_wording=[]`, regardless of phrases such as “superior”, “2x”,
+“dominates”, or “lower latency”; there is no victory-word denylist. The main
+README marker and the whole-document quantitative-marketing scan are enforced
+in `TestQuantitativeClaimRegistry`. Fenced command examples and Python/package versions are outside this claim
+contract. Language-support counts and registry-derived MCP/CLI surface counts
+are controlled by their independent generator/governance contracts and are
+also explicitly excluded. Current registry status is E0/blocked,
+so the generated main-README claim section is intentionally empty.
+
+Validate the registry and contracts with:
+
+```bash
+uv run python -m benchmarks.codegraph_compare.claim_registry \
+  benchmarks/codegraph_compare/claim_registry.json
+uv run pytest tests/unit/test_benchmark_harness.py \
+  -q -k QuantitativeClaimRegistry
+```
+
+The registry command exits non-zero while any record is blocked; that is the
+expected release posture until a real E4 artifact exists.
+
 ## NO1-001A Gin Smoke qualification
 
 The model-free qualification adapter proves that the fixed native,

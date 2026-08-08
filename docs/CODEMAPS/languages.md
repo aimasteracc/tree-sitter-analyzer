@@ -1,18 +1,43 @@
-<!-- Generated: 2026-05-24; doc-code re-sync: 2026-07-27 -->
+<!-- Generated: 2026-08-08; doc-code re-sync: 2026-08-08 -->
 # Languages Codemap
 
-22 language plugins under `tree_sitter_analyzer/languages/` (17 single-file + 5 subdir packages).
-Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/base.py`).
+Built-in language plugins are discovered dynamically under `tree_sitter_analyzer/languages/`.
+Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/base.py`); the generated inventory below is the canonical count and support-depth breakdown.
 
-## Wiring tiers (canonical breakdown — see README "Supported Languages")
+## Wiring tiers (canonical generated inventory)
 
-Not every registered plugin is wired into the indexer to the same depth:
+<!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->
+Generated from runtime registries and reviewed classifications by `scripts/generate_language_support_inventory.py`; do not edit counts or rows by hand.
 
-- **13 fully wired** (full symbol + call graph): Python, Java, JavaScript, TypeScript, Go, Rust, C, C++, C#, Swift, Kotlin, Ruby, PHP
-- **2 symbol-indexed** (call-graph wiring pending): Bash, Scala — both graduated in v1.22.0
-- **1 partial symbol-indexed**: Lua function symbols and same-file resolved calls; cross-file import-based resolution pending
-- **5 data/markup** (reachable via the single-file CLI path): HTML, CSS, Markdown, SQL, YAML
-- **1 scaffold** (plugin exists, indexer wiring pending): JSON
+**22 plugins**: 13 pipeline-registered, 2 index-admitted, 1 call-dispatch-only, 5 data/markup, 1 scaffold.
+
+`pipeline_registered` means index admission plus import/call dispatch and a resolver slot. It does **not** guarantee positive cross-file binding. `Cross-file call E2E` is `unknown` until a fixture proves a call resolves to a different project file.
+
+| Language | Tier | Plugin discovery | Extractor loadability | Index admission | Import dispatch | Call dispatch | Resolver slot | Framework dispatch | Cross-file call E2E | Data/markup | Scaffold |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Bash | `index_admitted` | yes | yes | yes | — | — | yes | — | not_applicable | — | — |
+| C | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| C++ | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| C# | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| CSS | `data_markup` | yes | yes | — | — | — | — | — | not_applicable | yes | — |
+| Go | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |
+| HTML | `data_markup` | yes | yes | — | — | — | — | — | not_applicable | yes | — |
+| Java | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |
+| JavaScript | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |
+| JSON | `scaffold` | yes | yes | — | — | — | — | — | not_applicable | — | yes |
+| Kotlin | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| Lua | `call_dispatch_only` | yes | yes | yes | — | yes | yes | — | not_applicable | — | — |
+| Markdown | `data_markup` | yes | yes | — | — | — | — | — | not_applicable | yes | — |
+| PHP | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| Python | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |
+| Ruby | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| Rust | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| Scala | `index_admitted` | yes | yes | yes | — | — | yes | — | not_applicable | — | — |
+| SQL | `data_markup` | yes | yes | — | — | — | — | — | not_applicable | yes | — |
+| Swift | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
+| TypeScript | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |
+| YAML | `data_markup` | yes | yes | — | — | — | — | — | not_applicable | yes | — |
+<!-- END GENERATED LANGUAGE SUPPORT INVENTORY -->
 
 ## Supported Languages
 
