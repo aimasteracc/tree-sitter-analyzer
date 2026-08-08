@@ -125,12 +125,15 @@ fills wire data.
 3. Compare every present owner field, without normalization, to the invoked
    adapter tuple `(facade,action,action_version)` and the invocation-selected
    generated-registry entry's `(producer_rule_id,producer_rule_version)`. Also
-   require `edge_kind` to belong to that entry's closed `allowed_edge_kinds`; an
-   out-of-scope kind adds `UNSUPPORTED_KIND`. Any owner disagreement adds the
-   single closed reason `OWNER_MISMATCH`. The versioned
-   registry and invocation context are comparison authorities only: they MUST NOT
-   supply a missing wire value. The executable fixtures pin both authorities; a
-   validator MUST NOT infer them from the golden wire values.
+   require `edge_kind` and the raw `state` to belong to that entry's closed
+   `allowed_edge_kinds` and `allowed_observation_states`. Before minting, require
+   the fixed §2 assertion to belong to its closed `allowed_assertions`; an
+   out-of-scope kind adds `UNSUPPORTED_KIND`, while an unauthorized state or
+   assertion adds `MALFORMED_RESULT`. Any owner disagreement adds the single
+   closed reason `OWNER_MISMATCH`. The versioned registry and invocation context
+   are comparison authorities only: they MUST NOT supply a missing wire value.
+   The executable fixtures pin both authorities; a validator MUST NOT infer them
+   from the golden wire values.
 4. Validate exactly one strict `rawObservation` state. A residual type, enum,
    path, range, pointer, cardinality, or state-shape failure not already captured
    by a precise reason adds `MALFORMED_RESULT`. In particular, validate a
@@ -147,8 +150,10 @@ fills wire data.
 6. Compare `freshness_signal` and the complete snapshot tuple to an independent
    authoritative `index.status` record. Executable contexts resolve the exact
    status by `authoritative_index_status_fixture` plus `authoritative_status_id`;
-   raw observations never supply this authority. The positive contexts pin
-   `edge-evidence-v1-index-status.json`. `stale` or `superseded` adds
+   `status_id` values in that authority MUST be pairwise unique before lookup.
+   Raw observations never supply this authority. Every positive base context
+   pins the schema-valid `edge-evidence-v1-index-status.json` fixture and its
+   exact status ID. `stale` or `superseded` adds
 `STALE_SNAPSHOT`; missing/partial
    completeness adds `SNAPSHOT_MISSING`/`PARTIAL_SNAPSHOT`; any snapshot or
    fingerprint disagreement adds `SNAPSHOT_MISMATCH`. A non-`not_truncated`
@@ -165,8 +170,12 @@ observed reason once in this order:
 ```
 
 `reasons` MUST be a non-empty priority-ordered subsequence without duplicates,
-and `freshness.reason` MUST equal `reasons[0]`. The schema provides the closed
-vocabulary; this equality and ordering are semantic checks.
+and `freshness.reason` MUST equal `reasons[0]`. Diagnostic `freshness.state` is
+`stale` exactly when the computed reasons contain `STALE_SNAPSHOT` or
+`SNAPSHOT_MISMATCH`; otherwise it is `missing` exactly when they contain one of
+`FRESHNESS_SIGNAL_MISSING`, `SNAPSHOT_MISSING`, `FINGERPRINT_MISSING`, or
+`PARTIAL_SNAPSHOT`; otherwise it is `unknown`. The schema provides the closed
+vocabulary; ordering, reason equality, and this cause mapping are semantic checks.
 
 State/freshness truth table (additional independent failures are appended in
 priority order):
@@ -216,7 +225,8 @@ evidence_id = "evidence:sha256:" + hex(sha256(canonical(
 All digest text is 64 lowercase hexadecimal characters. `request_sha256` hashes
 the exact normalized primitive request. A bundle's
 `normalized_request_preimages` contains exactly one canonical JSON string for
-each distinct referenced request hash, no missing or extra entry; its SHA-256
+each distinct referenced request hash, no missing or extra entry; therefore the
+array is empty exactly when no provenance request hash is referenced. Its SHA-256
 MUST equal `request_sha256`. `canonical_preimages` likewise contains exactly one
 entry for every collection, provenance, contradiction-group, and evidence ID.
 The golden stores both kinds, so request hashes, provenance IDs, and downstream
@@ -242,9 +252,12 @@ not mint or retain a subset.
 2. Require every evidence `collection_id` and `provenance_id` to resolve exactly
    once, and every collection item ref to resolve to evidence whose reverse
    collection link equals that collection. Every collection and each referenced
-   evidence MUST have identical `primitive` owners. Linked evidence and
-   provenance MUST have identical primitive, snapshot, and normalized result
-   digest. Provenance input evidence refs must resolve. No duplicate, dangling,
+   evidence MUST have identical `primitive` owners and `snapshot` tuples. The
+   collection `scope.source_node_id` MUST equal `evidence.edge_key.source_node_id`;
+   a `source_and_kind` scope's `edge_kind` MUST also equal
+   `evidence.edge_key.kind`. Linked evidence and provenance MUST have identical
+   primitive, snapshot, and normalized result digest. Provenance input evidence
+   refs must resolve. No duplicate, dangling,
    extra, missing, cross-owner, or swapped-provenance link is permitted.
 3. Require collection `item_refs` to be unique and ascending by Unicode code
    point, `returned_count == len(item_refs)`, exact totals to be non-null and
@@ -258,9 +271,17 @@ not mint or retain a subset.
 5. Parse each normalized request canonical string, recursively reject every
    floating-point JSON value before hashing, require that reserialization is
    byte-identical, recompute its hash, and require exactly one entry for every
-   distinct provenance `request_sha256`, with no extra entry.
+   distinct provenance `request_sha256`, with no extra entry. Resolve provenance
+   to its raw observation by `normalized_result_sha256`; the parsed request MUST
+   equal that raw observation invocation's independently pinned
+   `expected_normalized_request` exactly.
 6. Validate each already source-bound diagnostic reason list against §3 priority
-   and require `freshness.reason == reasons[0]`.
+   and require both `freshness.reason == reasons[0]` and the exact freshness-state
+   cause mapping in §3. A missing raw `proposed_edge_key` projects to diagnostic
+   `edge_key: null`; a present malformed or partial object projects exactly as
+   present, without invented members. The diagnostic schema deliberately allows
+   this null or genuinely partial projection so every classified input is
+   representable.
 
 A collection ID identifies only `(scope,snapshot,primitive owner)`. Primitive,
 collection, item, and RFC-0022 outcome truncation remain distinct. Collection
@@ -294,8 +315,10 @@ for every raw member, and the exact versioned generated-rule-registry authority.
 The registry authority is the independently executable
 `edge-evidence-v1-generated-rule-registry.json`; no validator may treat an
 unmutated golden owner value as authority. Each case also names sequential
-RFC-6901 mutation operations, the validation phase, the sole expected rejection
-reason, zero evidence IDs, and the violated invariant. A
+RFC-6901 mutation operations against the bundle and, when present, separately
+against the status authority or invocation context; the validation phase, sole
+expected rejection reason, zero evidence IDs, and violated invariant are pinned.
+A
 `source_observation_reason`, when present, records the unchanged raw diagnostic
 classification and is not the rejection reason. A future validator MUST apply
 every case independently and reject it. The dedicated
@@ -303,11 +326,13 @@ every case independently and reject it. The dedicated
 records owned by the same resolver primitive, with closed reverse links in that
 primitive's one collection, matching counts and recomputable preimages; its
 sort case reverses only `item_refs`, so stable ordering is the first failure. The
-32-case corpus pins invalid paths/ranges, endpoint and edge-kind mismatches, owner
+36-case corpus pins invalid paths/ranges, endpoint and edge-kind mismatches, owner
 and generated-rule kind authority, declaration-identity uniqueness, raw evidence
 and diagnostic projection binding, provenance/evidence matching, independent
-status mismatch, collection ownership/order/counts including exact-total lower
-bounds, float/preimage/result failures, and all state denials.
+status mismatch and status-ID uniqueness, collection owner/snapshot/scope/order/
+counts including exact-total lower bounds, registry state/assertion authority,
+invocation-normalized request authority, diagnostic freshness cause mapping,
+float/preimage/result failures, and all state denials.
 
 Future implementation acceptance MUST validate all six JSON artifacts with the
 complete schema-plus-semantic validator, recompute every request, result, and

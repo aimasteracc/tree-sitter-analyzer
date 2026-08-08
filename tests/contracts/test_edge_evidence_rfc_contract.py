@@ -40,7 +40,7 @@ EXPECTED_NEGATIVE_IDS = (
     "canonical-preimage-invalid",
     "request-preimage-mismatch",
     "provenance-result-mismatch",
-    "diagnostic-order-and-freshness-mismatch",
+    "diagnostic-freshness-state-mismatch",
     "proposed-edge-key-missing",
     "freshness-signal-missing",
     "stale-snapshot-deny",
@@ -56,6 +56,10 @@ EXPECTED_NEGATIVE_IDS = (
     "provenance-evidence-mismatch",
     "generated-rule-edge-kind-out-of-scope",
     "exact-total-less-than-returned",
+    "collection-snapshot-scope-mismatch",
+    "generated-rule-observation-state-out-of-scope",
+    "authoritative-status-id-duplicate",
+    "invocation-request-authority-mismatch",
 )
 
 
@@ -153,6 +157,66 @@ def test_positive_bundles_validate_against_schema(bundle_path: Path) -> None:
     Draft202012Validator(_load(SCHEMA_PATH)).validate(_load(bundle_path))
 
 
+def test_diagnostic_missing_edge_key_is_schema_representable() -> None:
+    diagnostic = copy.deepcopy(_load(GOLDEN_PATH)["records"][2])
+    diagnostic["edge_key"] = None
+    diagnostic["reasons"] = ["PROPOSED_EDGE_KEY_MISSING"]
+    diagnostic["freshness"] = {
+        "state": "unknown",
+        "reason": "PROPOSED_EDGE_KEY_MISSING",
+    }
+    Draft202012Validator(_load(SCHEMA_PATH)).validate(diagnostic)
+
+
+def test_diagnostic_only_bundle_has_exact_empty_request_closure() -> None:
+    golden = _load(GOLDEN_PATH)
+    bundle = {
+        "schema": golden["schema"],
+        "raw_observations": [golden["raw_observations"][2]],
+        "records": [golden["records"][2]],
+        "canonical_preimages": [],
+        "normalized_request_preimages": [],
+    }
+    Draft202012Validator(_load(SCHEMA_PATH)).validate(bundle)
+    referenced = {
+        record["request_sha256"] for record in _records(bundle, "edge-provenance/v1")
+    }
+    assert referenced == set()
+    assert bundle["normalized_request_preimages"] == []
+
+
+@pytest.mark.parametrize(
+    ("reasons", "expected_state"),
+    [
+        (["AMBIGUOUS_TARGET"], "unknown"),
+        (["FRESHNESS_SIGNAL_MISSING"], "missing"),
+        (["SNAPSHOT_MISSING"], "missing"),
+        (["FINGERPRINT_MISSING"], "missing"),
+        (["PARTIAL_SNAPSHOT"], "missing"),
+        (["STALE_SNAPSHOT"], "stale"),
+        (["SNAPSHOT_MISMATCH"], "stale"),
+    ],
+)
+def test_diagnostic_freshness_has_exact_cause_mapping(
+    reasons: list[str], expected_state: str
+) -> None:
+    stale_causes = {"STALE_SNAPSHOT", "SNAPSHOT_MISMATCH"}
+    missing_causes = {
+        "FRESHNESS_SIGNAL_MISSING",
+        "SNAPSHOT_MISSING",
+        "FINGERPRINT_MISSING",
+        "PARTIAL_SNAPSHOT",
+    }
+    actual_state = (
+        "stale"
+        if stale_causes.intersection(reasons)
+        else "missing"
+        if missing_causes.intersection(reasons)
+        else "unknown"
+    )
+    assert actual_state == expected_state
+
+
 @pytest.mark.parametrize("bundle_path", [GOLDEN_PATH, STABLE_PATH])
 def test_bundle_hash_preimages_recompute(bundle_path: Path) -> None:
     bundle = _load(bundle_path)
@@ -246,6 +310,13 @@ def test_bundle_references_are_closed_and_sorted(bundle_path: Path) -> None:
         linked_collection = collections[record["collection_id"]]
         linked_provenance = provenance[record["provenance_id"]]
         assert linked_collection["primitive"] == record["primitive"]
+        assert linked_collection["snapshot"] == record["snapshot"]
+        assert (
+            linked_collection["scope"]["source_node_id"]
+            == record["edge_key"]["source_node_id"]
+        )
+        if linked_collection["scope"]["mode"] == "source_and_kind":
+            assert linked_collection["scope"]["edge_kind"] == record["edge_key"]["kind"]
         assert linked_provenance["primitive"] == record["primitive"]
         assert linked_provenance["snapshot"] == record["snapshot"]
         assert (
@@ -303,10 +374,11 @@ def test_generated_rule_registry_is_independent_authority() -> None:
     corpus = _load(NEGATIVE_PATH)
     registry = _load(REGISTRY_PATH)
     entries = {entry["entry_id"]: entry for entry in registry["entries"]}
-    statuses = {
-        item["status_id"]: item["snapshot"] for item in _load(STATUS_PATH)["statuses"]
-    }
-    assert registry["registry_version"] == "2026-08-08.2"
+    status_items = _load(STATUS_PATH)["statuses"]
+    status_ids = [item["status_id"] for item in status_items]
+    assert len(status_ids) == len(set(status_ids))
+    statuses = {item["status_id"]: item["snapshot"] for item in status_items}
+    assert registry["registry_version"] == "2026-08-08.3"
     for context in corpus["base_contexts"].values():
         assert (
             context["generated_rule_registry_version"] == registry["registry_version"]
@@ -324,10 +396,32 @@ def test_generated_rule_registry_is_independent_authority() -> None:
             assert invocation["invoked_adapter"] == authority["adapter"]
             assert raw["primitive"] == expected
             assert raw["edge_kind"] in authority["allowed_edge_kinds"]
+            assert raw["state"] in authority["allowed_observation_states"]
+            if raw["state"] == "resolved_unique":
+                assert authority["allowed_assertions"] == ["supports"]
+            elif raw["state"] == "negative_rule":
+                assert authority["allowed_assertions"] == ["contradicts"]
             assert raw["snapshot"] == authoritative_snapshot
 
+        raw_by_digest = {_digest(raw): raw for raw in bundle["raw_observations"]}
+        invocation_by_digest = {
+            _digest(_pointer(bundle, invocation["raw_observation_pointer"])): invocation
+            for invocation in context["invocations"]
+        }
+        request_by_hash = {
+            item["request_sha256"]: json.loads(item["canonical_json"])
+            for item in bundle["normalized_request_preimages"]
+        }
+        for provenance in _records(bundle, "edge-provenance/v1"):
+            digest = provenance["normalized_result_sha256"]
+            assert digest in raw_by_digest
+            assert (
+                request_by_hash[provenance["request_sha256"]]
+                == invocation_by_digest[digest]["expected_normalized_request"]
+            )
 
-def test_negative_corpus_pins_all_32_declared_denials() -> None:
+
+def test_negative_corpus_pins_all_36_declared_denials() -> None:
     corpus = _load(NEGATIVE_PATH)
     assert corpus["mutation_semantics"] == "RFC6901_POINTER_SINGLE_DOCUMENT_SEQUENTIAL"
     assert tuple(case["id"] for case in corpus["cases"]) == EXPECTED_NEGATIVE_IDS
@@ -343,12 +437,62 @@ def test_negative_corpus_pins_all_32_declared_denials() -> None:
         "LINKED_PROVENANCE_MATCHES_EVIDENCE",
         "GENERATED_RULE_EDGE_KIND_SCOPE",
         "EXACT_TOTAL_AT_LEAST_RETURNED",
+        "COLLECTION_ITEM_SNAPSHOT_AND_SCOPE_EQUALITY",
+        "GENERATED_RULE_OBSERVATION_STATE_AND_ASSERTION_SCOPE",
+        "AUTHORITATIVE_STATUS_ID_UNIQUENESS",
+        "INVOCATION_NORMALIZED_REQUEST_AUTHORITY",
+        "DIAGNOSTIC_FRESHNESS_CAUSE_MAPPING",
     }.issubset(invariants)
     for case in corpus["cases"]:
         expected = case["expected"]
         assert expected["accepted"] is False
         assert expected["evidence_ids"] == []
-        base = _load(FIXTURE_ROOT / corpus["base_contexts"][case["base"]]["fixture"])
+        context = corpus["base_contexts"][case["base"]]
+        base = _load(FIXTURE_ROOT / context["fixture"])
         mutated = copy.deepcopy(base)
         _apply(mutated, case["mutations"])
-        assert mutated != base
+        authority = _load(FIXTURE_ROOT / context["authoritative_index_status_fixture"])
+        mutated_authority = copy.deepcopy(authority)
+        _apply(mutated_authority, case.get("authority_mutations", []))
+        mutated_context = copy.deepcopy(context)
+        _apply(mutated_context, case.get("context_mutations", []))
+        assert (mutated, mutated_authority, mutated_context) != (
+            base,
+            authority,
+            context,
+        )
+        invariant = expected["invariant"]
+        if invariant == "AUTHORITATIVE_STATUS_ID_UNIQUENESS":
+            status_ids = [item["status_id"] for item in mutated_authority["statuses"]]
+            assert len(status_ids) != len(set(status_ids))
+        elif invariant == "INVOCATION_NORMALIZED_REQUEST_AUTHORITY":
+            request = json.loads(
+                mutated["normalized_request_preimages"][0]["canonical_json"]
+            )
+            assert (
+                request
+                != mutated_context["invocations"][0]["expected_normalized_request"]
+            )
+        elif invariant == "GENERATED_RULE_OBSERVATION_STATE_AND_ASSERTION_SCOPE":
+            registry = _load(REGISTRY_PATH)
+            entries = {entry["entry_id"]: entry for entry in registry["entries"]}
+            invocation = context["invocations"][1]
+            raw = _pointer(mutated, invocation["raw_observation_pointer"])
+            assert (
+                raw["state"]
+                not in entries[invocation["generated_rule_entry"]][
+                    "allowed_observation_states"
+                ]
+            )
+        elif invariant == "COLLECTION_ITEM_SNAPSHOT_AND_SCOPE_EQUALITY":
+            collection = _records(mutated, "edge-collection/v1")[0]
+            evidence = _records(mutated, "edge-evidence/v1")[0]
+            assert collection["snapshot"] != evidence["snapshot"]
+            assert (
+                collection["scope"]["source_node_id"]
+                != evidence["edge_key"]["source_node_id"]
+            )
+        elif invariant == "DIAGNOSTIC_FRESHNESS_CAUSE_MAPPING":
+            diagnostic = _records(mutated, "edge-diagnostic/v1")[0]
+            assert diagnostic["reasons"] == ["AMBIGUOUS_TARGET"]
+            assert diagnostic["freshness"]["state"] != "unknown"
