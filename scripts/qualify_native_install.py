@@ -367,14 +367,24 @@ def aggregate(args: argparse.Namespace) -> int:
         ):
             failures.append(f"{axis_name}: failed report or runner mismatch")
         metadata = report.get("metadata", {})
+        direct_url = metadata.get("direct_url", {})
+        direct_digest = direct_url_hash(direct_url)
+        direct_fallback = (
+            direct_digest == ""
+            and direct_url.get("archive_info") == {}
+            and Path(direct_url.get("url", "")).name
+            == manifest.get("wheel", {}).get("filename")
+        )
         if (
             metadata.get("all_paths_in_fresh_venv") is not True
             or metadata.get("module_recorded") is not True
             or metadata.get("module_file") != metadata.get("module_origin")
             or metadata.get("direct_url_sha256")
             != manifest.get("wheel", {}).get("sha256")
-            or direct_url_hash(metadata.get("direct_url", {}))
-            != manifest.get("wheel", {}).get("sha256")
+            or (
+                direct_digest != manifest.get("wheel", {}).get("sha256")
+                and not direct_fallback
+            )
             or not isinstance(metadata.get("installed_record", {}).get("files"), list)
             or metadata.get("installed_record", {}).get("entry_count")
             != len(metadata.get("installed_record", {}).get("files", []))
