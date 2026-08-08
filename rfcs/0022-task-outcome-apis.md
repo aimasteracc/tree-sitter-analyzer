@@ -52,6 +52,15 @@ state certified by that index snapshot. Every graph-backed primitive echoes the
 `snapshot_id` it actually read. Only primitive owners compute these values; a
 task never scans or hashes the repository.
 
+`nav.context` and `edit.safe` must accept the certified `snapshot_id` and
+`source_generation` returned by `index.status`. Each revalidates both tokens
+before and after reading, echoes both tokens actually used, and either serves all
+graph and source bytes from that immutable snapshot or returns
+`SOURCE_GENERATION_MISMATCH` without a result. In particular, `nav.context` may
+not combine entry points from a cached graph with newer filesystem lines.
+Absence, disagreement, or a changed token stops the task route; no later
+`nav.context` or `edit.safe` call starts.
+
 `edit.impact` must obtain a `source_generation` from that same oracle atomically
 with diff capture and echo it. The task compares it byte-for-byte with the
 `index.status` token; absence or mismatch is `SOURCE_GENERATION_MISMATCH`, stops
@@ -59,7 +68,8 @@ diff routing, and cannot produce fresh evidence. This binds the captured diff to
 the certified source generation rather than merely comparing two internally
 consistent but unrelated IDs. If any oracle field is absent, disagrees, or
 completeness is not `complete`, freshness is `unknown` (or primitive-reported
-`stale`) and graph-dependent status is at most `partial`. Time, mtimes, and a
+`stale`) and graph-dependent status is at most `partial`; graph/source-consuming
+task rows do not start without the two certified tokens. Time, mtimes, and a
 task-computed hash are never freshness evidence.
 
 ### P0.2 Frozen workspace/staged diff snapshot
@@ -79,17 +89,27 @@ returned records in normalized path order.
 
 The frozen registry configuration is part of the primitive contract: at most 16
 live snapshots, 64 MiB total materialized bytes, and a 35-second hard lifetime.
-An entry is pinned against eviction while its route lease is open; capacity or
-size exhaustion fails `edit.impact` with `DIFF_SNAPSHOT_CAPACITY` rather than
-writing to disk. The orchestration host closes the primitive-issued lease in a
-`finally` block after outcome freeze/failure; close and hard expiry erase the
-entry. Access after either returns `DIFF_SNAPSHOT_EXPIRED`. Before every snapshot-
-consuming call (`constraints`, `ast_diff`, or `classify`), its primitive owner
-reacquires and compares the shared-oracle generation captured by `impact`; a changed source returns
-`DIFF_SNAPSHOT_SOURCE_CHANGED`, emits no derived result, and makes the task stop
-remaining diff fan-out. These stable errors are result data, not exceptions
-whose text is serialized. No snapshot directory, temp file, DB, WAL, or implicit
-persistent cache is permitted.
+An entry is pinned against ordinary eviction while its route lease is open;
+capacity or size exhaustion fails `edit.impact` with
+`DIFF_SNAPSHOT_CAPACITY` rather than writing to disk. Every snapshot-consuming
+primitive atomically acquires its own active-consumer pin before reading. Hard
+expiry marks the entry expired and forbids new pins, but cannot erase its bytes
+or release its slot/byte charge while a consumer is active. The final consumer
+release erases an expired entry; otherwise the orchestration host closes the
+primitive-issued route lease in a `finally` block after outcome freeze/failure,
+and erasure occurs once both lease and consumer counts reach zero. Thus an
+overrunning call keeps valid bytes without ever allowing actual retained memory
+or live-slot accounting to exceed the 16-entry/64 MiB budgets. Access after
+expiry or lease close returns `DIFF_SNAPSHOT_EXPIRED`.
+
+Before every snapshot-consuming call (`constraints`, `ast_diff`, or `classify`),
+its primitive owner acquires that pin, then reacquires and compares the shared-
+oracle generation captured by `impact`; a changed source returns
+`DIFF_SNAPSHOT_SOURCE_CHANGED`, emits no derived result, releases the pin, and
+makes the task stop remaining diff fan-out. Consumer release is also in a
+`finally` block. These stable errors are result data, not exceptions whose text
+is serialized. No snapshot directory, temp file, DB, WAL, or implicit persistent
+cache is permitted.
 
 Rename, add, delete, multi-file, binary, capacity, expiry, lease cleanup, and
 mid-route workspace mutation are primitive contract tests. Today these adapters
@@ -106,9 +126,10 @@ only violations whose location intersects that frozen scope; project-wide debt
 outside it MUST NOT contribute a verdict. The task passes the primitive-owned
 list exactly and never widens or derives it. The primitive owns config discovery
 and returns `state=not_applicable`, `reason=NO_CONFIG` when none exists. That row
-contributes no verdict. Only request rejection, impact failure, or deadline expiry
-can prevent the reserved call and produce `unknown`. P0.3 is a release prerequisite;
-there is no capability fallback or task-owned evaluator.
+contributes no verdict. Request rejection, impact failure, deadline expiry, or a
+missing/mismatched/changed generation or snapshot detected after impact can
+prevent the reserved call and produce `unknown`; no other condition can. P0.3 is
+a release prerequisite; there is no capability fallback or task-owned evaluator.
 
 ### P0.4 Read-only/open-existing mode for every routed adapter
 
@@ -123,10 +144,17 @@ returns `missing`/`unknown`; an old or incompatible schema returns
 `unknown:INCOMPATIBLE_SCHEMA`. Neither case triggers initialization or migration.
 
 Primitive acceptance fixtures cover (1) a clean repository with no cache, (2) a
-repository with an old schema, and (3) a read-only filesystem. For each adapter
-and composed route, tests pin the stable result and compare before/after project
-and cache trees plus hashes of every pre-existing DB and sidecar; all are exactly
-unchanged. The in-memory P0.2 registry is the only allowed ephemeral state.
+repository with an old schema, and (3) a read-only filesystem. Each adapter and
+composed route runs in a fresh subprocess with isolated empty `HOME`,
+`XDG_CACHE_HOME`, and `TMPDIR` directories. Immediately before the adapter
+call, a platform write monitor/sandbox begins observing the whole subprocess and
+fails on every filesystem write attempt, including write-then-delete attempts in
+those isolated roots or writes through an absolute path. Before/after tree and
+content-hash comparisons additionally require the project, cache, isolated
+home/cache/temp roots, and every pre-existing DB or sidecar to be exactly
+unchanged. This catches user-cache and system-temporary writes rather than merely
+relocating them. Interpreter bytecode caches are disabled. The in-memory P0.2
+registry is the only allowed ephemeral state.
 
 ### P0.5 Authoritative wire owner and versions
 
@@ -153,22 +181,46 @@ class Budget:
 @dataclass(frozen=True)
 class DiffInput:
     source: Literal["workspace", "staged"]
+    scope_paths: tuple[str, ...] = ()
+
+@dataclass(frozen=True)
+class UnderstandRequest:
+    task: str
+    budget: Budget = Budget()
+
+@dataclass(frozen=True)
+class PlanChangeRequest:
+    task: str | None = None
+    diff: DiffInput | None = None
+    budget: Budget = Budget()
+
+@dataclass(frozen=True)
+class AssessChangeRequest:
+    diff: DiffInput
+    budget: Budget = Budget()
 
 async def understand(request: UnderstandRequest) -> TaskOutcome: ...
 async def plan_change(request: PlanChangeRequest) -> TaskOutcome: ...
 async def assess_change(request: AssessChangeRequest) -> TaskOutcome: ...
 ```
 
-A plan request has exactly one non-empty `task` or one `diff`. Every request task
-must be valid Unicode, contain 1..16,384 UTF-8 bytes, and contain no NUL; size is checked
-before normalization or echoing. Task V1 does not accept `scope_paths` because
-`nav.context` has no such parameter. Diff `scope_paths` has at most 128 items;
-each is valid Unicode, relative, NUL-free, and at most 1,024 UTF-8 bytes, and the
-sum of encoded path bytes is at most 32,768. Counts include duplicates and raw
-bytes are measured before path normalization. An omitted/empty list means project
-scope. Excess or malformed input is `INVALID_REQUEST`, makes zero primitive calls,
-and is never echoed. Valid request scope is passed unchanged only to
-`edit.impact`; boundary validation always precedes primitive work.
+Decoded mappings reject unknown fields rather than ignoring them.
+`UnderstandRequest` accepts one non-empty `task` and rejects `diff` and
+`scope_paths`. `PlanChangeRequest` has an exact one-of: one non-empty `task` with
+`diff=null`, or `task=null` with one `DiffInput`; task mode has no scope.
+`AssessChangeRequest` requires exactly one `DiffInput` and rejects `task`.
+Consequently `understand(diff)` and `assess_change(task)` are invalid, while
+`plan_change(diff)` and `assess_change(diff)` are the two diff operations.
+
+Every accepted task must be valid Unicode, contain 1..16,384 UTF-8 bytes, and
+contain no NUL; size is checked before any normalization. Diff `scope_paths` has
+at most 128 items; each is valid Unicode, relative, NUL-free, and at most 1,024
+UTF-8 bytes, and the sum of encoded path bytes is at most 32,768. Counts include
+duplicates and raw bytes are measured before path normalization. An omitted or
+empty tuple means project scope. Excess, malformed, or forbidden fields produce
+`INVALID_REQUEST`, make zero primitive calls, and are never echoed. Valid
+`DiffInput.scope_paths` is passed unchanged only to `edit.impact`; boundary
+validation always precedes primitive work.
 
 Pinned profiles are:
 
@@ -205,18 +257,21 @@ not sent; primitive output format is JSON internally.
 3. Call rows in displayed order. Fan-out lists are de-duplicated and sorted by
    `(path, symbol)` before their pinned cap is applied.
 4. Never substitute a failed/unsupported action. Record `unknown`/`not_run`.
-5. Compare only primitive-issued tokens. Immediately after impact, compare its
+5. Compare only primitive-issued tokens. Task routes pass the certified index
+   `snapshot_id` and `source_generation` into every `nav.context`/`edit.safe`
+   call and compare both echoed tokens. Immediately after impact, compare its
    `source_generation` with the index oracle before constraints or fan-out.
-6. Stop on generation/snapshot disagreement, expiry, or source change; retain
-   earlier evidence as partial and make no further snapshot-dependent calls.
+6. Stop on an absent task-route token, generation/snapshot disagreement, expiry,
+   or source change; retain earlier evidence as partial and make no further
+   graph-, source-, or snapshot-dependent calls.
 
 | operation/input | condition | facade action and exact semantic parameters | stop/degrade rule |
 |---|---|---|---|
-| all | always | `index.status(access_mode="read_existing", output_format="json")` | missing oracle => freshness unknown; continue, at most partial if graph evidence is used |
-| `understand(task)` | valid task | `nav.context(task=task, max_nodes=12/30, max_code_blocks=3/5, include_graph=false, access_mode="read_existing", output_format="json")` | failure => unknown; success ends route |
-| `plan_change(task)` | valid task | same `nav.context` call | failure => unknown and stop |
-| `plan_change(task)` | each distinct existing path explicitly returned in `code_blocks`, max 2/5 | `edit.safe(file_path=path, edit_type="refactor", access_mode="read_existing", output_format="json")` | missing path is not inferred; per-call failure is partial |
-| diff operation | valid diff | `edit.impact(mode="diff"|"staged", scope_paths=scope_paths, include_tests=true, resource_profile="local_low_impact", access_mode="read_existing", output_format="json")` | missing ID/generation/scope or generation mismatch => unknown and stop |
+| all | always | `index.status(access_mode="read_existing", output_format="json")` | missing oracle => freshness unknown; task rows stop, while a diff may call impact but stops before constraints/fan-out |
+| `understand(task)` | valid task and certified index tokens | `nav.context(task=task, snapshot_id=index.snapshot_id, source_generation=index.source_generation, max_nodes=12/30, max_code_blocks=3/5, include_graph=false, access_mode="read_existing", output_format="json")` | missing/mismatched echoed token or failure => unknown and stop; success ends route |
+| `plan_change(task)` | valid task and certified index tokens | same `nav.context` call | missing/mismatched echoed token or failure => unknown and stop |
+| `plan_change(task)` | each distinct existing path explicitly returned in generation-matched `code_blocks`, max 2/5 | `edit.safe(file_path=path, edit_type="refactor", snapshot_id=index.snapshot_id, source_generation=index.source_generation, access_mode="read_existing", output_format="json")` | missing path is not inferred; token mismatch stops route; other per-call failure is partial |
+| diff operation | valid diff | `edit.impact(mode="diff"|"staged", scope_paths=diff.scope_paths, include_tests=true, resource_profile="local_low_impact", access_mode="read_existing", output_format="json")` | missing ID/generation/scope or generation mismatch => unknown and stop |
 | diff operation | successful, generation-matched impact; reserved before fan-out | `edit.constraints(diff_snapshot_id=id, scope_paths=impact.assessed_scope_paths, persist=false, access_mode="read_existing", output_format="json")` | only in-scope violations count; `not_applicable:NO_CONFIG` satisfies row |
 | diff operation | each non-binary changed record with old/new material available | `edit.ast_diff(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | unsupported add/delete/rename is explicit `not_run`, never locally reconstructed |
 | diff operation | same eligible records | `edit.classify(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | per-file failure => partial |
@@ -281,6 +336,19 @@ while `task-outcome/v1` is still an unimplemented draft: earlier draft fixtures
 must be regenerated, and no deployed V1 compatibility promise is affected. After
 V1 implementation, removing or retyping it requires a negotiated V2. Strict
 clients reject unknown enum values.
+
+Untrusted task text is input-only and is deterministically omitted, not
+best-effort scrubbed: `subject.task` is always `null`, the frozen model contains
+no raw or normalized task field, and experiment artifacts/logs store only an
+opaque corpus case ID. Task-mode provenance hashes the canonical request shape
+with the fixed scalar `"task":"TASK_TEXT_OMITTED"`, never the task bytes. Routed
+adapters must not echo their query; the task projection accepts only the pinned
+result fields in this RFC and drops diagnostic, request, query, stderr, body, and
+other unlisted fields before freeze. Primitive-owned bounded excerpt redaction
+remains mandatory. Canary contract tests put credentials, environment values,
+and absolute host paths in otherwise-valid tasks and prove none of their bytes
+appear in the model, JSON, TOON, logs, or experiment artifacts.
+
 Request/internal failures stay inside `task-outcome/v1`, use `success=false` and
 required verdict `ERROR`, and follow TSA envelope conventions with stable codes
 `INVALID_REQUEST`, `OUTSIDE_PROJECT`, `BUDGET_INVALID`,
@@ -337,7 +405,7 @@ Each required invocation produces exactly one contribution from this table;
 | succeeded | none | fresh | false | complete | primitive non-risk verdict (`SAFE`, `INFO`, or conclusive `NOT_FOUND`) |
 | succeeded | risk | fresh | false | complete | primitive risk verdict (`WARN`, `CAUTION`, `REVIEW`, or `UNSAFE`) |
 | succeeded structural | invalid | fresh | false | complete | primitive `REVIEW` or `UNSAFE` |
-| succeeded constraints | violation | fresh | false | complete | `UNSAFE` |
+| succeeded constraints | violation | fresh | false | complete | validated primitive verdict: error => `UNSAFE`, warning-only => `CAUTION`, informational-only => `SAFE` |
 | succeeded constraints | `NO_CONFIG` | not_applicable | false | complete | none |
 | succeeded | none/risk/invalid/violation | stale/missing/unknown | false | partial | `degrade(primitive verdict)` |
 | succeeded | none/risk/invalid/violation | any | true/unknown | partial | `degrade(primitive verdict)` |
@@ -352,21 +420,25 @@ untruncated impact with a risk finding is `complete` and contributes its risk
 verdict; the same success with no finding is `complete` and contributes its
 non-risk verdict. Structural invalidity and constraint violation explicitly
 permit `complete + REVIEW/UNSAFE`: completeness describes observation, not safety.
-Classification risk likewise does not make invocation failure. `degrade(v)`
-preserves `UNSAFE|REVIEW|CAUTION|WARN` and maps `SAFE|INFO|NOT_FOUND` to `WARN`;
-stale or truncated evidence therefore never contributes `SAFE`.
+Classification risk likewise does not make invocation failure. Constraint
+aggregation preserves `ConstraintCheckTool`'s authoritative primitive verdict;
+the task never turns every violation into `UNSAFE`. `degrade(v)` preserves
+`UNSAFE|WARN|REVIEW|CAUTION` and maps `SAFE|INFO|NOT_FOUND` to `WARN`; stale or
+truncated evidence therefore never contributes `SAFE`.
 
 Aggregate status is deterministic: remove ignored rows; `complete` requires all
 remaining contributions to be complete; `partial` requires at least one useful
 complete/partial contribution and at least one non-complete contribution;
 otherwise status is `unknown`. Runtime never enters this aggregation. A
 primitive-provided verification command is inert suggested text, never evidence.
-Verdicts aggregate as `UNSAFE > REVIEW > CAUTION > WARN > SAFE > INFO >
-NOT_FOUND`; no contribution is not a verdict, and incompleteness never upgrades
-risk. If there are no verdict contributions, the required top-level verdict is
-`INFO`. Conclusive `NOT_FOUND` requires known scope and fresh, untruncated success.
-As a final fail-closed rule, if status is `partial|unknown`, candidate
-`SAFE|NOT_FOUND` becomes `WARN`; incomplete evidence cannot assert either result.
+Verdicts use TSA's canonical severity order `UNSAFE > WARN > REVIEW > CAUTION >
+SAFE > INFO > NOT_FOUND`; no contribution is not a verdict, and incompleteness
+never downgrades an existing risk verdict. Zero verdict contributions resolve to
+`WARN`, including an outcome whose required rows all failed, were skipped, or
+were malformed. Conclusive `NOT_FOUND` requires known scope and fresh,
+untruncated success. As a final fail-closed rule, if status is `partial|unknown`,
+candidate `SAFE|NOT_FOUND` becomes `WARN`; incomplete evidence cannot assert
+either result.
 
 ### Budget and truncation
 
@@ -407,12 +479,18 @@ randomization, sample size, success rubric, and tool definitions before running.
 The paired live-agent A/B compares the existing menu with the candidate ninth
 facade. Registration requires all of:
 
-1. exact corpus completion and raw artifacts are published;
+1. exact corpus completion and raw, task-text-omitting artifacts are published;
 2. task-facade discovery rate and end-to-end task success show the manifest's
    predeclared measurable improvement, with no material primitive-discovery loss;
-4. exact serialized tool-definition bytes and tokenizer counts are pinned for
+3. exact serialized tool-definition bytes and tokenizer counts are pinned for
    both menus, and the candidate stays within the predeclared menu budget;
-5. median turns and input/output token cost are reported, not inferred from this RFC;
+4. before execution, the manifest pins numeric maximums for candidate median
+   turns, median execution input tokens, and median output tokens, plus a
+   relative non-regression threshold of `1.00` against each corresponding
+   existing-menu median; registration requires every candidate median to be at
+   or below both its absolute maximum and `baseline * 1.00`;
+5. the signed artifact reports those turn/token measurements and the executable
+   gate fails, rather than merely reporting, any threshold regression; and
 6. a rerunnable executable gate validates the signed result artifact.
 
 An RFC/self-test is E0 design evidence and cannot satisfy this gate. Failure or
@@ -459,14 +537,20 @@ V1. A future version requires explicit negotiation and overlap.
 
 ## RED-first acceptance plan
 
-1. Phase 0 tests prove authoritative snapshot/version propagation, bounded
-   snapshot ownership/cleanup/mutation errors, and all workspace/staged mappings.
+1. Phase 0 tests prove authoritative snapshot/version propagation, bind
+   `nav.context`/`edit.safe` to the certified generation, keep overrunning active
+   consumers pinned and charged, and cover cleanup/mutation and workspace/staged
+   mappings.
 2. Adapter and route fixtures prove exact zero writes on clean, old-schema, and
-   read-only filesystems, plus scoped `constraints(persist=false)` and `NO_CONFIG`.
-3. Route tests pin every row, parameter, fan-out order/cap, stop condition, and
-   prove no analyzer import, `tsa_explore` reuse, mutating action, or fallback.
+   read-only filesystems under isolated `HOME`/cache/`TMPDIR` plus a write monitor,
+   and cover scoped `constraints(persist=false)` and `NO_CONFIG`.
+3. Route tests pin all three request shapes, their one-of rejection cases, every
+   row, parameter, fan-out order/cap, generation stop (including zero constraints
+   calls), and prove no analyzer import, `tsa_explore` reuse, mutating action, or
+   fallback.
 4. Schema/evidence tests pin key sets, evidence identity inputs, dangling-link
-   rejection, same-locator non-dedup, and conservative aggregation.
+   rejection, same-locator non-dedup, canonical severity, constraint-severity
+   preservation, zero-contribution `WARN`, and conservative aggregation.
 5. Freshness tests prove absent oracle is unknown/partial and snapshot mismatch
    stops graph routing.
 6. Static truth-table tests cover every passed/failed/not-run/unknown cell and
@@ -474,7 +558,8 @@ V1. A future version requires explicit negotiation and overlap.
 7. Budget tests pin profile values, sequential routing, exact overrun, unknown
    totals, and decision-relevant truncation.
 8. Security tests prove fail-closed validation, zero calls after rejection,
-   error redaction, and zero project/cache writes for every outcome.
+   deterministic task omission with secret canaries, error redaction, and zero
+   monitored project/home/cache/temp writes for every outcome.
 9. Serializer tests use one frozen result for exact JSON/TOON equality and the
    executable cost invariants above.
 10. The pre-registration live menu experiment and artifact validator pass before
