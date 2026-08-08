@@ -262,7 +262,7 @@ jobs:
           sha = lambda path: sha256_bytes(path.read_bytes())
           hexdigest = lambda value: isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
           def normalized_sha(value):
-              raw = value.removeprefix("sha256=").removeprefix("sha256:")
+              raw = value.removeprefix("sha256=").removeprefix("sha256:").removeprefix("sha256-")
               if hexdigest(raw.lower()): return raw.lower()
               try: decoded = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
               except (ValueError, TypeError): return ""

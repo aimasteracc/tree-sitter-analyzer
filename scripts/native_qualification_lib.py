@@ -384,7 +384,7 @@ def run(
 
 
 def _normalize_sha256(value: str) -> str:
-    raw = value.removeprefix("sha256=").removeprefix("sha256:")
+    raw = value.removeprefix("sha256=").removeprefix("sha256:").removeprefix("sha256-")
     if len(raw) == 64 and set(raw.lower()) <= set("0123456789abcdef"):
         return raw.lower()
     try:
@@ -492,7 +492,10 @@ def validate_installed_provenance(
         raise ValueError("installed distribution metadata differs from wheel")
     digest = direct_url_hash(metadata["direct_url"])
     if digest != wheel["sha256"]:
-        raise ValueError("direct_url archive hash does not bind the exact wheel")
+        raise ValueError(
+            "direct_url archive hash does not bind the exact wheel: "
+            f"{metadata['direct_url']!r}"
+        )
     return {**metadata, "all_paths_in_fresh_venv": True, "direct_url_sha256": digest}
 
 
