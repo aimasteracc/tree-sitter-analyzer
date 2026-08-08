@@ -8,6 +8,7 @@ Public API — all symbols importable from ``tree_sitter_analyzer.import_extract
     # ... etc.
 """
 
+from types import MappingProxyType
 from typing import Any
 
 from ._cpp import (
@@ -58,6 +59,7 @@ from ._rust import (
 from ._shared import _node_text
 
 __all__ = [
+    "SUPPORTED_LANGUAGES",
     "walk_imports",
     "_node_text",
     # Python
@@ -101,37 +103,49 @@ __all__ = [
 ]
 
 
+# Canonical import dispatch. Inventory and execution derive from this single
+# registry, so support claims cannot drift from ``walk_imports`` behavior.
+IMPORT_DISPATCH = MappingProxyType(
+    {
+        "c": _extract_cpp_imports,
+        "cpp": _extract_cpp_imports,
+        "csharp": _extract_csharp_imports,
+        "go": _extract_go_imports,
+        "java": _extract_java_imports,
+        "javascript": _extract_js_imports,
+        "kotlin": _extract_kotlin_imports,
+        "php": _extract_php_imports,
+        "python": _extract_python_imports,
+        "ruby": _extract_ruby_imports,
+        "rust": _extract_rust_imports,
+        "swift": _extract_swift_imports,
+        "typescript": _extract_js_imports,
+    }
+)
+IMPORT_LANGUAGE_ALIASES = {"c_sharp": "csharp", "cs": "csharp"}
+SUPPORTED_LANGUAGES = frozenset(IMPORT_DISPATCH)
+
+
+def _extract_imports_for_language(
+    node: Any, source: str, language: str, imports: list[dict[str, Any]]
+) -> None:
+    """Dispatch one node through the canonical language extractor registry."""
+    extractor = IMPORT_DISPATCH.get(language)
+    if extractor is not None:
+        extractor(node, source, imports)
+
+
 def walk_imports(
     node: Any, source: str, language: str, imports: list[dict[str, Any]]
 ) -> None:
     """Walk the AST to collect import statements."""
+    canonical_language = IMPORT_LANGUAGE_ALIASES.get(language, language)
     try:
-        if language in ("python",):
-            _extract_python_imports(node, source, imports)
-        elif language in ("javascript", "typescript"):
-            _extract_js_imports(node, source, imports)
-        elif language == "go":
-            _extract_go_imports(node, source, imports)
-        elif language == "rust":
-            _extract_rust_imports(node, source, imports)
-        elif language in ("c", "cpp"):
-            _extract_cpp_imports(node, source, imports)
-        elif language == "java":
-            _extract_java_imports(node, source, imports)
-        elif language in ("csharp", "c_sharp", "cs"):
-            _extract_csharp_imports(node, source, imports)
-        elif language == "kotlin":
-            _extract_kotlin_imports(node, source, imports)
-        elif language == "swift":
-            _extract_swift_imports(node, source, imports)
-        elif language == "ruby":
-            _extract_ruby_imports(node, source, imports)
-        elif language == "php":
-            _extract_php_imports(node, source, imports)
+        _extract_imports_for_language(node, source, canonical_language, imports)
     except Exception:  # nosec B110
         pass
 
     children = getattr(node, "children", None)
     if isinstance(children, (list, tuple)):
         for child in children:
-            walk_imports(child, source, language, imports)
+            walk_imports(child, source, canonical_language, imports)

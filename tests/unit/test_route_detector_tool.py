@@ -10,6 +10,51 @@ import pytest
 from tree_sitter_analyzer.mcp.tools.route_detector_tool import RouteDetectorTool
 from tree_sitter_analyzer.route_detector import RouteDetector
 
+
+@pytest.mark.parametrize(
+    ("language", "method_name", "expected_args"),
+    (
+        ("python", "_detect_python_routes", ("fixture.ext",)),
+        ("javascript", "_detect_js_routes", ("fixture.ext", "javascript")),
+        ("typescript", "_detect_js_routes", ("fixture.ext", "typescript")),
+        ("java", "_detect_java_routes", ("fixture.ext",)),
+        ("go", "_detect_go_routes", ("fixture.ext",)),
+    ),
+)
+def test_route_language_registry_dispatches_to_detector_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    language: str,
+    method_name: str,
+    expected_args: tuple[str, ...],
+) -> None:
+    from tree_sitter_analyzer import route_detector as route_module
+
+    detector = RouteDetector(str(tmp_path), cache_enabled=False)
+    calls: list[tuple[str, ...]] = []
+    sentinel = [object()]
+    monkeypatch.setattr(route_module, "_language_from_ext", lambda _path: language)
+    monkeypatch.setattr(
+        detector,
+        method_name,
+        lambda *args: calls.append(args) or sentinel,
+    )
+
+    assert detector.detect_file("fixture.ext") is sentinel
+    assert calls == [expected_args]
+
+
+def test_route_dispatch_returns_empty_for_language_without_route_scanner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tree_sitter_analyzer import route_detector as route_module
+
+    detector = RouteDetector(str(tmp_path), cache_enabled=False)
+    monkeypatch.setattr(route_module, "_language_from_ext", lambda _path: "json")
+
+    assert detector.detect_file("fixture.json") == []
+
+
 # ---------------------------------------------------------------------------
 # MCP tool layer — schema validation
 # ---------------------------------------------------------------------------
