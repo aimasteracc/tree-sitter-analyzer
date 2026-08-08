@@ -20,6 +20,7 @@ from native_qualification_lib import (
     direct_url_hash,
     identity,
     installed_files_sidecar,
+    observe_uv_install_tool,
     run,
     sha256,
     stage_error,
@@ -168,10 +169,17 @@ def axis(args: argparse.Namespace) -> int:
                 "def answer():\n    return 42\n", "utf-8"
             )
             current_stage = STAGES[1]
-            venv.EnvBuilder(with_pip=True, clear=True, symlinks=os.name != "nt").create(
-                envroot
-            )
+            # fmt: off
+            qualification_uv, install_tool = os.environ.get("TSA_QUALIFICATION_UV"), None
+            if qualification_uv:
+                qualification_uv, install_tool = observe_uv_install_tool(qualification_uv, project)
+                rc, _, err, _ = run([qualification_uv, "venv", "--seed", str(envroot)], cwd=project, env={"PATH": os.environ.get("PATH", "")}, timeout=60)
+                if rc != 0:
+                    raise RuntimeError(f"uv venv failed: {err.decode('utf-8', 'replace')}")
+            else:
+                venv.EnvBuilder(with_pip=True, clear=True, symlinks=os.name != "nt").create(envroot)
             python, console = venv_paths(envroot)
+            # fmt: on
             clean_env = {
                 k: v
                 for k, v in os.environ.items()
@@ -186,17 +194,14 @@ def axis(args: argparse.Namespace) -> int:
                     "PATH": str(python.parent) + os.pathsep + clean_env.get("PATH", ""),
                 }
             )
+            # Resolve only the venv directory, not the interpreter symlink to the
+            # base Python; uv must target the fresh environment itself.
+            qualified_python = python.parent.resolve() / python.name
+            # fmt: off
+            install_command = ([qualification_uv, "pip", "install", "--python", str(qualified_python), "--no-cache", f"{wheel}[mcp]"] if qualification_uv else [str(python), "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--no-cache-dir", f"{wheel}[mcp]"])
+            # fmt: on
             rc, out, err, duration = run(
-                [
-                    str(python),
-                    "-m",
-                    "pip",
-                    "install",
-                    "--disable-pip-version-check",
-                    "--no-input",
-                    "--no-cache-dir",
-                    f"{wheel}[mcp]",
-                ],
+                install_command,
                 cwd=project,
                 env=clean_env,
                 timeout=args.install_timeout,
@@ -213,6 +218,8 @@ def axis(args: argparse.Namespace) -> int:
                 "fresh_venv": True,
                 "cwd_outside_checkout": True,
                 "pythonpath_cleared": True,
+                "tool": install_tool,
+                "argv": install_command,
             }
             if rc != 0:
                 raise RuntimeError(f"pip install failed with exit {rc}")

@@ -484,3 +484,14 @@ def test_missing_uv_fixture_path_is_hermetic(tmp_path: Path) -> None:
     path_entries = fixture["PATH"].split(os.pathsep)
     assert path_entries == [str(root / "mock-bin"), str(root / "tool-bin")]
     assert shutil.which("uv", path=fixture["PATH"]) is None
+
+
+def test_native_workflow_content_binds_manual_outdated_uv_recovery() -> None:
+    workflows = REPO / ".github/workflows"
+    workflow = (workflows / "reusable-outdated-uv-qualification.yml").read_text()
+    trusted = (workflows / "reusable-native-qualification-attestation.yml").read_text()
+    assert "setup-uv" not in workflow
+    assert "fetch --axis ${{ matrix.axis }} --version 0.10.9" in workflow
+    assert "actions/checkout" not in trusted
+    assert "NOT_APPLICABLE_NO_NATIVE_INSTALLER" in trusted
+    assert "automatic_mutable_bootstrap_qualified" in trusted

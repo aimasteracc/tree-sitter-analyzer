@@ -167,6 +167,17 @@ def report(
             "fresh_venv": True,
             "cwd_outside_checkout": True,
             "pythonpath_cleared": True,
+            "tool": None,
+            "argv": [
+                f"{prefix}/bin/python",
+                "-m",
+                "pip",
+                "install",
+                "--disable-pip-version-check",
+                "--no-input",
+                "--no-cache-dir",
+                "wheel.whl[mcp]",
+            ],
         },
         "metadata": {
             "name": "tree-sitter-analyzer",

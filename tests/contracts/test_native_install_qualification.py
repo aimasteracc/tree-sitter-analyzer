@@ -326,27 +326,26 @@ def test_timeout_runner_has_no_unbounded_communicate() -> None:
 
 
 def test_workflow_is_path_routed_and_write_permissions_are_isolated() -> None:
-    workflow = (ROOT / ".github/workflows/native-install-qualification.yml").read_text()
-    prefix, trusted = workflow.split("  trusted-attestation:", 1)
-    assert "paths:" in workflow
+    workflows = ROOT / ".github/workflows"
+    workflow = (workflows / "native-install-qualification.yml").read_text()
+    prefix, caller = workflow.split("  trusted-attestation:", 1)
+    trusted = (workflows / "reusable-native-qualification-attestation.yml").read_text()
     assert "id-token: write" not in prefix and "attestations: write" not in prefix
-    assert (
-        trusted.count("id-token: write") == 1
-        and trusted.count("attestations: write") == 1
-    )
+    assert caller.count("id-token: write") == 1
+    assert caller.count("attestations: write") == 1
     assert (
         "actions/checkout" not in trusted and "qualify_native_install.py" not in trusted
     )
     assert "Independently verify downloaded evidence identities" in trusted
     assert "exact(report," in trusted and 'identity(report, "native-axis")' in trusted
     assert "installed_record" in trusted and "RECORD self-entry" not in trusted
-    assert "independent-verification.ok') != ''" in trusted
+    assert "read-only-verification:" in trusted and "tiny-attestation:" in trusted
 
 
 def test_workflow_all_jobs_create_and_upload_strict_job_results() -> None:
     workflow = (ROOT / ".github/workflows/native-install-qualification.yml").read_text()
-    assert workflow.count("job-result.json") == 8
-    assert workflow.count("if-no-files-found: error") == 4
+    assert workflow.count("job-result.json") == 6
+    assert workflow.count("if-no-files-found: error") == 3
     assert "continue-on-error: true" in workflow
     assert "--wheel-manifest downloaded/build/wheel-manifest.json" in workflow
 
