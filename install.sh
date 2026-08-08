@@ -20,23 +20,98 @@ if [ -f /proc/version ] && grep -qi microsoft /proc/version 2>/dev/null; then
 fi
 
 # ─── uv check & auto-install ──────────────────────────────────────────────────
+MINIMUM_UV_VERSION="0.11.0"
+
+uv_version_is_supported() {
+  # Match doctor's contract: exactly one "uv X.Y.Z" line, with optional metadata.
+  UV_VERSION_TEXT=$1
+  UV_VERSION=$(printf '%s\n' "$UV_VERSION_TEXT" | awk '
+    NR == 1 && /^uv [0-9]+\.[0-9]+\.[0-9]+([[:blank:]].*)?$/ { version = $2 }
+    END { if (NR != 1 || version == "") exit 1; print version }
+  ') || return 1
+  UV_MAJOR=$(printf '%s\n' "$UV_VERSION" | awk -F. '{print $1}')
+  UV_MINOR=$(printf '%s\n' "$UV_VERSION" | awk -F. '{print $2}')
+  UV_PATCH=$(printf '%s\n' "$UV_VERSION" | awk -F. '{print $3}')
+  [ "$UV_MAJOR" -gt 0 ] || {
+    [ "$UV_MAJOR" -eq 0 ] && [ "$UV_MINOR" -gt 11 ]
+  } || {
+    [ "$UV_MAJOR" -eq 0 ] && [ "$UV_MINOR" -eq 11 ] && [ "$UV_PATCH" -ge 0 ]
+  }
+}
+
+uv_is_ready() {
+  command -v uv >/dev/null 2>&1 || return 1
+  UV_VERSION_OUTPUT=$(uv --version 2>/dev/null) || return 1
+  uv_version_is_supported "$UV_VERSION_OUTPUT"
+}
+
+UV_INSTALL_NEEDED=0
+UV_INSTALL_ACTION="install"
 if ! command -v uv >/dev/null 2>&1; then
-  echo "📦 uv not found. Installing automatically..."
-  curl -LsSf https://astral.sh/uv/install.sh | sh
+  echo "📦 uv not found. Automatic installation is required."
+  UV_INSTALL_NEEDED=1
+elif ! UV_VERSION_OUTPUT=$(uv --version 2>/dev/null); then
+  echo "❌ Existing uv at $(command -v uv) could not report its version."
+  echo "   Required: uv >= $MINIMUM_UV_VERSION"
+  exit 1
+elif ! uv_version_is_supported "$UV_VERSION_OUTPUT"; then
+  echo "📦 $UV_VERSION_OUTPUT does not satisfy required uv >= $MINIMUM_UV_VERSION. Automatic update is required."
+  UV_INSTALL_ACTION="update"
+  UV_INSTALL_NEEDED=1
+fi
+
+if [ "$UV_INSTALL_NEEDED" = "1" ]; then
+  if [ "${TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP:-0}" = "1" ]; then
+    echo "❌ Automatic uv bootstrap disabled by TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1."
+    echo "   Install uv >= $MINIMUM_UV_VERSION manually: https://docs.astral.sh/uv/"
+    echo "   Then re-run the original Tree-sitter Analyzer install command."
+    exit 1
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "❌ curl not found — cannot download the uv installer over TLS."
+    echo "   Install curl and re-run, or install uv >= $MINIMUM_UV_VERSION manually."
+    exit 1
+  fi
+  echo "⚠️  WARNING: the official uv bootstrap is UNVERIFIED and mutable (not content-bound)."
+  echo "   It will be downloaded over TLS to a temporary file and checked after execution."
+  if [ "$UV_INSTALL_ACTION" = "update" ]; then
+    echo "📦 Updating uv automatically..."
+  else
+    echo "📦 Installing uv automatically..."
+  fi
+  UV_INSTALLER_FILE=$(mktemp "${TMPDIR:-/tmp}/tsa-uv-installer.XXXXXX")
+  trap 'rm -f "$UV_INSTALLER_FILE"' EXIT HUP INT TERM
+  if ! curl --proto '=https' --tlsv1.2 -LsSf \
+    https://astral.sh/uv/install.sh -o "$UV_INSTALLER_FILE"; then
+    echo "❌ Automatic uv bootstrap failed."
+    echo "   Recovery: install uv >= $MINIMUM_UV_VERSION from https://docs.astral.sh/uv/"
+    echo "   Then re-run the original Tree-sitter Analyzer install command."
+    exit 1
+  fi
+  if ! sh "$UV_INSTALLER_FILE"; then
+    echo "❌ Automatic uv bootstrap failed."
+    echo "   Recovery: install uv >= $MINIMUM_UV_VERSION from https://docs.astral.sh/uv/"
+    echo "   Then re-run the original Tree-sitter Analyzer install command."
+    exit 1
+  fi
+  rm -f "$UV_INSTALLER_FILE"
+  trap - EXIT HUP INT TERM
   # Re-source common profile locations
   if [ -f "$HOME/.cargo/env" ]; then
     # shellcheck disable=SC1091
     . "$HOME/.cargo/env"
   fi
   export PATH="$HOME/.local/bin:$PATH"
-  if ! command -v uv >/dev/null 2>&1; then
-    echo "❌ uv installation failed. Please install it manually and re-run:"
-    echo "   https://docs.astral.sh/uv/getting-started/installation/"
+  hash -r
+  if ! uv_is_ready; then
+    echo "❌ uv installation did not provide required uv >= $MINIMUM_UV_VERSION."
+    echo "   Install uv manually: https://docs.astral.sh/uv/getting-started/installation/"
+    echo "   Then re-run the original Tree-sitter Analyzer install command."
     exit 1
   fi
-  echo "✅ uv installed: $(command -v uv)"
+  echo "✅ uv ready: $UV_VERSION_OUTPUT ($(command -v uv))"
 else
-  echo "✅ uv: $(command -v uv)"
+  echo "✅ $UV_VERSION_OUTPUT: $(command -v uv)"
 fi
 
 # ─── fd / ripgrep check (optional, warning only) ──────────────────────────────
@@ -94,6 +169,7 @@ fi
 # ─── Process each agent config ────────────────────────────────────────────────
 CONFIGURED_AGENTS=""
 SKIPPED_AGENTS=""
+CONFIGURATION_FAILURE=0
 
 echo ""
 echo "🔍 Scanning for agent config files..."
@@ -113,46 +189,91 @@ while IFS='|' read -r AGENT_LABEL CONFIG_PATH; do
 
   echo "   🔧 $AGENT_LABEL: configuring..."
 
-  # Merge MCP entry using python3
+  # Merge MCP entry using python3. Keep the assignment in an explicit
+  # failure list: under set -e a bare failing command substitution exits before
+  # its status can be classified below.
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "   ❌ $AGENT_LABEL: python3 not found — skipping ($CONFIG_PATH)"
+    SKIPPED_AGENTS="${SKIPPED_AGENTS}${AGENT_LABEL} (python3 not found)\n"
+    CONFIGURATION_FAILURE=1
+    continue
+  fi
+
+  MERGE_EXIT=0
   MERGE_RESULT=$(python3 - "$CONFIG_PATH" "$PROJECT_ROOT" <<'PYEOF'
-import sys, json, shutil, os
+import datetime
+import json
+import os
+import shutil
+import stat
+import sys
+import tempfile
 
 config_path = sys.argv[1]
 project_root = sys.argv[2]
 
-# Create backup with timestamp
-import datetime
-timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-backup_path = config_path + ".bak." + timestamp
-shutil.copy2(config_path, backup_path)
-
-# Parse existing JSON
 try:
     with open(config_path, encoding="utf-8") as f:
         data = json.load(f)
-except json.JSONDecodeError as e:
-    print(f"PARSE_ERROR:{e}", file=sys.stderr)
+except json.JSONDecodeError as exc:
+    print(f"PARSE_ERROR:{exc}", file=sys.stderr)
     sys.exit(2)
 
-# Ensure mcpServers key exists
-if "mcpServers" not in data:
-    data["mcpServers"] = {}
+if not isinstance(data, dict):
+    print("TYPE_ERROR:config root must be a JSON object", file=sys.stderr)
+    sys.exit(3)
 
-# Merge TSA entry (preserves existing entries)
-data["mcpServers"]["tree-sitter-analyzer"] = {
+mcp_servers = data.get("mcpServers")
+if mcp_servers is None:
+    mcp_servers = {}
+    data["mcpServers"] = mcp_servers
+elif not isinstance(mcp_servers, dict):
+    print("TYPE_ERROR:mcpServers must be a JSON object", file=sys.stderr)
+    sys.exit(3)
+
+existing_entry = mcp_servers.get("tree-sitter-analyzer")
+if existing_entry is not None and not isinstance(existing_entry, dict):
+    print("TYPE_ERROR:tree-sitter-analyzer entry must be a JSON object", file=sys.stderr)
+    sys.exit(3)
+if isinstance(existing_entry, dict):
+    existing_env = existing_entry.get("env")
+    if existing_env is not None and not isinstance(existing_env, dict):
+        print("TYPE_ERROR:tree-sitter-analyzer env must be a JSON object", file=sys.stderr)
+        sys.exit(3)
+
+config_dir = os.path.dirname(config_path) or "."
+if stat.S_IMODE(os.stat(config_dir).st_mode) & 0o222 == 0:
+    raise PermissionError(f"config directory is not writable: {config_dir}")
+
+mcp_servers["tree-sitter-analyzer"] = {
     "command": "uvx",
     "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"],
     "env": {"TREE_SITTER_PROJECT_ROOT": project_root},
 }
 
-with open(config_path, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2, ensure_ascii=False)
-    f.write("\n")
+timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+backup_path = config_path + ".bak." + timestamp
+shutil.copy2(config_path, backup_path)
+
+fd, temporary_path = tempfile.mkstemp(prefix=".tsa-mcp-", dir=config_dir, text=True)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(temporary_path, stat.S_IMODE(os.stat(config_path).st_mode))
+    os.replace(temporary_path, config_path)
+except BaseException:
+    try:
+        os.unlink(temporary_path)
+    except FileNotFoundError:
+        pass
+    raise
 
 print(f"OK:{backup_path}")
 PYEOF
-  )
-  MERGE_EXIT=$?
+  ) || MERGE_EXIT=$?
 
   if [ "$MERGE_EXIT" = "2" ]; then
     echo "   ❌ $AGENT_LABEL: JSON parse error — skipping ($CONFIG_PATH)"
@@ -164,6 +285,7 @@ PYEOF
   else
     echo "   ❌ $AGENT_LABEL: unexpected error (exit $MERGE_EXIT) — skipping"
     SKIPPED_AGENTS="${SKIPPED_AGENTS}${AGENT_LABEL} (error)\n"
+    CONFIGURATION_FAILURE=1
   fi
 
 done <<EOF
@@ -204,4 +326,9 @@ echo ""
 if [ "$WSL_ENV" = "1" ]; then
   echo "⚠️  WSL environment: if agent config is not picked up, check the"
   echo "   Windows-side config file manually."
+fi
+
+if [ "$CONFIGURATION_FAILURE" = "1" ]; then
+  echo "❌ One or more existing agent configs could not be updated."
+  exit 1
 fi

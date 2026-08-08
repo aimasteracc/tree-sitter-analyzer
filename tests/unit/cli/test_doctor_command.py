@@ -1,30 +1,67 @@
+# fmt: off
 """Tests for --doctor CLI command (installation diagnostics)."""
 
 from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
+SUPPORTED_UV_RESULT = subprocess.CompletedProcess([], 0, "uv 0.11.0\n", "")
+
+
+def _check_configs(paths: list[tuple[str, str]]):
+    from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
+
+    with patch("tree_sitter_analyzer.cli.commands.doctor._agent_config_paths", return_value=paths):
+        return _check_agent_configs()
+
 
 class TestCheckUv:
-    def test_pass_when_uv_found(self) -> None:
+    @pytest.mark.parametrize(
+        ("completed", "status", "message"),
+        (
+            (SUPPORTED_UV_RESULT, "PASS", "/usr/local/bin/uv (0.11.0)"),
+            (subprocess.CompletedProcess([], 0, "uv 0.10.9\n", ""), "FAIL", "0.10.9 at /usr/local/bin/uv is too old — required uv >= 0.11.0; rerun install.sh or update uv manually"),
+            (subprocess.CompletedProcess([], 0, "not-uv 0.11.0\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
+            (subprocess.CompletedProcess([], 0, " uv 0.11.0\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
+            (subprocess.CompletedProcess([], 0, "\nuv 0.11.0\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
+            (subprocess.CompletedProcess([], 0, "uv 0.11.0.1\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
+            (subprocess.CompletedProcess([], 0, b"uv 0.11.0\xff\n", b""), "FAIL", "undecodable version output from /usr/local/bin/uv --version"),
+        ),
+    )
+    def test_uv_version_boundary(self, completed, status, message) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _check_uv
 
-        with patch("shutil.which", return_value="/usr/local/bin/uv"):
+        with patch("shutil.which", return_value="/usr/local/bin/uv"), patch("subprocess.run", return_value=completed):
             result = _check_uv()
-        assert result.status == "PASS"
-        assert result.message == "/usr/local/bin/uv"
+        assert (result.status, result.message) == (status, message)
+
+    def test_fail_when_uv_version_check_times_out(self) -> None:
+        # NO1-006A (2026-08-08): doctor must not hang on a broken uv executable.
+        from tree_sitter_analyzer.cli.commands.doctor import _check_uv
+
+        with patch("shutil.which", return_value="/usr/local/bin/uv"), patch(
+            "subprocess.run", side_effect=subprocess.TimeoutExpired(["uv", "--version"], 5)
+        ):
+            result = _check_uv()
+        assert (result.status, result.message) == (
+            "FAIL", "timed out running /usr/local/bin/uv --version"
+        )
 
     def test_fail_when_uv_missing(self) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _check_uv
 
         with patch("shutil.which", return_value=None):
             result = _check_uv()
-        assert result.status == "FAIL"
-        assert "not found" in result.message
+        assert (result.status, result.message) == (
+            "FAIL", "not found — install from https://docs.astral.sh/uv/"
+        )
 
 
 class TestCheckUvx:
@@ -117,22 +154,16 @@ class TestCheckProjectRoot:
 
 class TestCheckAgentConfigs:
     def test_warn_when_no_config_files_exist(self, tmp_path: Path) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
 
         fake_paths = [
             ("Test Agent", str(tmp_path / "nonexistent.json")),
         ]
-        with patch(
-            "tree_sitter_analyzer.cli.commands.doctor._agent_config_paths",
-            return_value=fake_paths,
-        ):
-            results = _check_agent_configs()
+        results = _check_configs(fake_paths)
         assert len(results) == 1
         assert results[0].status == "WARN"
         assert "not found" in results[0].message
 
     def test_pass_when_tsa_entry_present_and_absolute(self, tmp_path: Path) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
 
         config = tmp_path / "mcp.json"
         config.write_text(
@@ -149,30 +180,20 @@ class TestCheckAgentConfigs:
             ),
             encoding="utf-8",
         )
-        with patch(
-            "tree_sitter_analyzer.cli.commands.doctor._agent_config_paths",
-            return_value=[("Test Agent", str(config))],
-        ):
-            results = _check_agent_configs()
+        results = _check_configs([("Test Agent", str(config))])
         assert len(results) == 1
         assert results[0].status == "PASS"
 
     def test_warn_when_tsa_entry_missing(self, tmp_path: Path) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
 
         config = tmp_path / "mcp.json"
         config.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
-        with patch(
-            "tree_sitter_analyzer.cli.commands.doctor._agent_config_paths",
-            return_value=[("Test Agent", str(config))],
-        ):
-            results = _check_agent_configs()
+        results = _check_configs([("Test Agent", str(config))])
         assert len(results) == 1
         assert results[0].status == "WARN"
         assert "not found" in results[0].message
 
     def test_warn_when_tsa_entry_has_relative_root(self, tmp_path: Path) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
 
         config = tmp_path / "mcp.json"
         config.write_text(
@@ -189,28 +210,59 @@ class TestCheckAgentConfigs:
             ),
             encoding="utf-8",
         )
-        with patch(
-            "tree_sitter_analyzer.cli.commands.doctor._agent_config_paths",
-            return_value=[("Test Agent", str(config))],
-        ):
-            results = _check_agent_configs()
+        results = _check_configs([("Test Agent", str(config))])
         assert len(results) == 1
         assert results[0].status == "WARN"
         assert "relative path" in results[0].message
 
-    def test_warn_when_json_parse_error(self, tmp_path: Path) -> None:
-        from tree_sitter_analyzer.cli.commands.doctor import _check_agent_configs
+    @pytest.mark.parametrize(
+        "content",
+        ("{ invalid json }", '{"mcpServers": ' + "1" * 5000 + "}", "[" * 100_000 + "]" * 100_000),
+        ids=("syntax", "integer-limit", "nesting-limit"),
+    )
+    def test_warn_when_json_decoder_rejects_content(
+        self, tmp_path: Path, content: str
+    ) -> None:
 
         config = tmp_path / "mcp.json"
-        config.write_text("{ invalid json }", encoding="utf-8")
-        with patch(
-            "tree_sitter_analyzer.cli.commands.doctor._agent_config_paths",
-            return_value=[("Test Agent", str(config))],
-        ):
-            results = _check_agent_configs()
+        config.write_text(content, encoding="utf-8")
+        results = _check_configs([("Test Agent", str(config))])
         assert len(results) == 1
         assert results[0].status == "WARN"
-        assert "cannot read" in results[0].message
+        assert results[0].message == f"cannot read {config}: invalid JSON content"
+
+    def test_warn_when_config_open_fails(self, tmp_path: Path) -> None:
+        config = tmp_path / "mcp.json"
+        config.touch()
+        with patch("builtins.open", side_effect=OSError("denied")):
+            results = _check_configs([("Test Agent", str(config))])
+        assert results[0].status == "WARN"
+        assert results[0].message == f"cannot read {config}: denied"
+
+    @pytest.mark.parametrize(
+        ("content", "message"),
+        (
+            ("[]", "config root must be a JSON object: {config}"),
+            ('{"mcpServers": []}', "mcpServers must be a JSON object: {config}"),
+            ('{"mcpServers": {"tree-sitter-analyzer": []}}', "MCP entry 'tree-sitter-analyzer' must be a JSON object: {config}"),
+            ('{"mcpServers": {"tree-sitter-analyzer": {"env": []}}}', "MCP entry 'tree-sitter-analyzer'.env must be a JSON object: {config}"),
+            ('{"mcpServers": {"tree-sitter-analyzer": {"env": {"TREE_SITTER_PROJECT_ROOT": []}}}}', "TREE_SITTER_PROJECT_ROOT must be a string in MCP entry 'tree-sitter-analyzer': {config}"),
+        ),
+    )
+    def test_warn_when_config_boundary_is_not_object_or_string(
+        self, tmp_path: Path, content: str, message: str
+    ) -> None:
+        from tree_sitter_analyzer.cli.commands.doctor import (
+            CheckResult,
+        )
+
+        config = tmp_path / "mcp.json"
+        config.write_text(content, encoding="utf-8")
+        results = _check_configs([("Test Agent", str(config))])
+        assert results == [
+            CheckResult("agent config: Test Agent", "WARN", message.format(config=config))
+        ]
+
 
 
 class TestRunDoctor:
@@ -219,6 +271,7 @@ class TestRunDoctor:
 
         with (
             patch("shutil.which", return_value="/usr/bin/tool"),
+            patch("subprocess.run", return_value=SUPPORTED_UV_RESULT),
             patch.dict(os.environ, {"TREE_SITTER_PROJECT_ROOT": str(tmp_path)}),
             patch(
                 "tree_sitter_analyzer.cli.commands.doctor._check_agent_configs",
@@ -402,6 +455,7 @@ class TestHandleDoctor:
 
         with (
             patch("shutil.which", return_value="/usr/bin/uv"),
+            patch("subprocess.run", return_value=SUPPORTED_UV_RESULT),
             patch.dict(os.environ, {"TREE_SITTER_PROJECT_ROOT": str(tmp_path)}),
             patch(
                 "tree_sitter_analyzer.cli.commands.doctor._check_agent_configs",

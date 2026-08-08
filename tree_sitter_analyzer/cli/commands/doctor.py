@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Literal
@@ -17,13 +19,57 @@ class CheckResult:
     message: str
 
 
+MINIMUM_UV_VERSION = (0, 11, 0)
+
+
 def _check_uv() -> CheckResult:
     path = shutil.which("uv")
-    if path:
-        return CheckResult("uv", "PASS", path)
-    return CheckResult(
-        "uv", "FAIL", "not found — install from https://docs.astral.sh/uv/"
-    )
+    if not path:
+        return CheckResult(
+            "uv", "FAIL", "not found — install from https://docs.astral.sh/uv/"
+        )
+
+    try:
+        completed = subprocess.run(  # noqa: S603 - resolved executable, fixed argument
+            [path, "--version"],
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        return CheckResult("uv", "FAIL", f"timed out running {path} --version")
+    except OSError as exc:
+        return CheckResult("uv", "FAIL", f"cannot run {path}: {exc}")
+
+    try:
+        stdout = (
+            completed.stdout.decode("utf-8", errors="strict")
+            if isinstance(completed.stdout, bytes)
+            else completed.stdout
+        )
+    except UnicodeDecodeError:
+        return CheckResult(
+            "uv", "FAIL", f"undecodable version output from {path} --version"
+        )
+
+    match = re.fullmatch(r"uv (\d+)\.(\d+)\.(\d+)(?:[ \t]+.*)?", stdout.rstrip("\n"))
+    if completed.returncode != 0 or match is None:
+        return CheckResult(
+            "uv",
+            "FAIL",
+            f"cannot determine version at {path} — required uv >= 0.11.0",
+        )
+
+    version = tuple(int(part) for part in match.groups())
+    if version < MINIMUM_UV_VERSION:
+        version_text = ".".join(str(part) for part in version)
+        return CheckResult(
+            "uv",
+            "FAIL",
+            f"{version_text} at {path} is too old — required uv >= 0.11.0; "
+            "rerun install.sh or update uv manually",
+        )
+    return CheckResult("uv", "PASS", f"{path} ({'.'.join(match.groups())})")
 
 
 def _check_uvx() -> CheckResult:
@@ -147,11 +193,28 @@ def _check_agent_configs() -> list[CheckResult]:
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
-        except (json.JSONDecodeError, OSError) as exc:
+        except (ValueError, RecursionError):
+            results.append(
+                CheckResult(name, "WARN", f"cannot read {path}: invalid JSON content")
+            )
+            continue
+        except OSError as exc:
             results.append(CheckResult(name, "WARN", f"cannot read {path}: {exc}"))
             continue
 
+        if not isinstance(data, dict):
+            results.append(
+                CheckResult(name, "WARN", f"config root must be a JSON object: {path}")
+            )
+            continue
+
         mcp_servers = data.get("mcpServers", {})
+        if not isinstance(mcp_servers, dict):
+            results.append(
+                CheckResult(name, "WARN", f"mcpServers must be a JSON object: {path}")
+            )
+            continue
+
         tsa_entry = mcp_servers.get("tree-sitter-analyzer")
         if tsa_entry is None:
             results.append(
@@ -162,9 +225,37 @@ def _check_agent_configs() -> list[CheckResult]:
                 )
             )
             continue
+        if not isinstance(tsa_entry, dict):
+            results.append(
+                CheckResult(
+                    name,
+                    "WARN",
+                    f"MCP entry 'tree-sitter-analyzer' must be a JSON object: {path}",
+                )
+            )
+            continue
 
         env = tsa_entry.get("env", {})
+        if not isinstance(env, dict):
+            results.append(
+                CheckResult(
+                    name,
+                    "WARN",
+                    f"MCP entry 'tree-sitter-analyzer'.env must be a JSON object: {path}",
+                )
+            )
+            continue
         root = env.get("TREE_SITTER_PROJECT_ROOT", "")
+        if not isinstance(root, str):
+            results.append(
+                CheckResult(
+                    name,
+                    "WARN",
+                    "TREE_SITTER_PROJECT_ROOT must be a string "
+                    f"in MCP entry 'tree-sitter-analyzer': {path}",
+                )
+            )
+            continue
         if root and not os.path.isabs(root):
             results.append(
                 CheckResult(

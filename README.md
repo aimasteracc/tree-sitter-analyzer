@@ -29,7 +29,7 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh | bash
 ```
 
-Auto-installs `uv` if missing, detects Claude Desktop / Claude Code / Cursor / VS Code, and writes the MCP entry. Run `tree-sitter-analyzer --doctor` to verify.
+Auto-installs `uv` if missing, detects Claude Desktop / Claude Code / Cursor / VS Code, and writes the MCP entry. Run `tree-sitter-analyzer --doctor` to verify. The official `uv` installer is mutable and **not content-bound**; TSA downloads it over TLS and verifies the installed version. To refuse that bootstrap, run `curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh | TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1 bash`.
 One-line install for **Claude Code**:
 
 ```bash

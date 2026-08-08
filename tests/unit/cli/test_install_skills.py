@@ -5,7 +5,12 @@ RED-first tests written before the implementation.
 
 from __future__ import annotations
 
+import os
+import re
+import subprocess
 from pathlib import Path
+
+import pytest
 
 # ---------------------------------------------------------------------------
 # D1a — bundled skills exist inside the package at install time
@@ -588,3 +593,125 @@ class TestSkillContentSync:
             "Replace with facade+action form (e.g. 'safe_to_edit(' → "
             "'edit action=safe'). Violations: " + str(violations)
         )
+
+
+class TestInstallScriptUvVersion:
+    def test_uv_minimum_matches_project_contract(self) -> None:
+        # NO1-006A (2026-08-08): installer and doctor must track tool.uv exactly.
+        repo = Path(__file__).parents[3]
+        pyproject_versions = re.findall(
+            r'^required-version = ">=([0-9]+\.[0-9]+\.[0-9]+)"$',
+            (repo / "pyproject.toml").read_text(encoding="utf-8"),
+            flags=re.MULTILINE,
+        )
+        installer_versions = re.findall(
+            r'^MINIMUM_UV_VERSION="([0-9]+\.[0-9]+\.[0-9]+)"$',
+            (repo / "install.sh").read_text(encoding="utf-8"),
+            flags=re.MULTILINE,
+        )
+        from tree_sitter_analyzer.cli.commands.doctor import MINIMUM_UV_VERSION
+
+        assert pyproject_versions == ["0.11.0"]
+        assert installer_versions == pyproject_versions
+        assert ".".join(str(part) for part in MINIMUM_UV_VERSION) == "0.11.0"
+
+    @staticmethod
+    def _run(
+        tmp_path: Path, output: str, *, disable_bootstrap: bool = False
+    ) -> subprocess.CompletedProcess[str]:
+        repo = Path(__file__).parents[3]
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        version_file = tmp_path / "uv-version"
+        version_file.write_text(output, encoding="utf-8")
+        (bin_dir / "uv").write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$(cat "$UV_VERSION_FILE")"\n',
+            encoding="utf-8",
+        )
+        (bin_dir / "curl").write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$*" > "$CURL_LOG"\n'
+            'while [ "$#" -gt 0 ]; do '
+            'if [ "$1" = "-o" ]; then out=$2; shift 2; else shift; fi; done\n'
+            "printf '%s\\n' '#!/bin/sh' "
+            '\'printf "uv 0.11.0" > "$UV_VERSION_FILE"\' > "$out"\n',
+            encoding="utf-8",
+        )
+        (bin_dir / "uv").chmod(0o755)
+        (bin_dir / "curl").chmod(0o755)
+        env = os.environ | {
+            "HOME": str(tmp_path / "home"),
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "UV_VERSION_FILE": str(version_file),
+            "CURL_LOG": str(tmp_path / "curl-log"),
+        }
+        if disable_bootstrap:
+            env["TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP"] = "1"
+        (tmp_path / "home").mkdir()
+        return subprocess.run(
+            ["/bin/bash", str(repo / "install.sh")],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_supported_uv_is_not_upgraded(self, tmp_path: Path) -> None:
+        result = self._run(tmp_path, "uv 0.11.0")
+        assert result.returncode == 0
+        assert (
+            result.stdout.splitlines()[0] == f"✅ uv 0.11.0: {tmp_path / 'bin' / 'uv'}"
+        )
+        assert (tmp_path / "curl-log").exists() is False
+
+    def test_old_uv_is_conditionally_updated(self, tmp_path: Path) -> None:
+        # NO1-006A (2026-08-08): only versions below the project floor are updated.
+        result = self._run(tmp_path, "uv 0.10.9")
+        assert result.returncode == 0
+        assert (
+            result.stdout.splitlines()[0]
+            == "📦 uv 0.10.9 does not satisfy required uv >= 0.11.0. Automatic update is required."
+        )
+        assert (tmp_path / "uv-version").read_text(encoding="utf-8") == "uv 0.11.0"
+        curl_log = (tmp_path / "curl-log").read_text(encoding="utf-8")
+        assert (
+            re.fullmatch(
+                r"--proto =https --tlsv1\.2 -LsSf https://astral\.sh/uv/install\.sh -o /[^\n ]+/tsa-uv-installer\.[A-Za-z0-9]+\n",
+                curl_log,
+            )
+            is not None
+        )
+
+    @pytest.mark.parametrize("output", ("not-uv 0.11.0", "uv 0.11.0.1"))
+    def test_malformed_uv_version_is_updated(self, tmp_path: Path, output: str) -> None:
+        result = self._run(tmp_path, output)
+        assert (result.returncode, result.stdout.splitlines()[0]) == (
+            0,
+            f"📦 {output} does not satisfy required uv >= 0.11.0. Automatic update is required.",
+        )
+        assert (tmp_path / "uv-version").read_text(encoding="utf-8") == "uv 0.11.0"
+
+    def test_default_bootstrap_warns_that_mutable_code_is_unverified(
+        self, tmp_path: Path
+    ) -> None:
+        result = self._run(tmp_path, "uv 0.10.9")
+        assert result.returncode == 0
+        assert (
+            "⚠️  WARNING: the official uv bootstrap is UNVERIFIED and mutable "
+            "(not content-bound)." in result.stdout
+        )
+        assert "📦 Updating uv automatically..." in result.stdout
+        assert (tmp_path / "curl-log").exists() is True
+
+    def test_secure_opt_out_blocks_bootstrap_with_actionable_recovery(
+        self, tmp_path: Path
+    ) -> None:
+        result = self._run(tmp_path, "uv 0.10.9", disable_bootstrap=True)
+        assert result.returncode == 1
+        assert (
+            "Automatic uv bootstrap disabled by "
+            "TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1." in result.stdout
+        )
+        assert "Install uv >= 0.11.0 manually" in result.stdout
+        assert "Updating uv automatically" not in result.stdout
+        assert (tmp_path / "curl-log").exists() is False
