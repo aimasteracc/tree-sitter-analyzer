@@ -6,6 +6,7 @@ import io
 import json
 import os
 import signal
+import sys
 import tarfile
 import time
 import zipfile
@@ -15,6 +16,9 @@ import jsonschema
 import pytest
 
 from scripts import qualify_outdated_uv as qualification
+
+sys.path.insert(0, str(Path(__file__).parent))
+from _native_trusted_verifier_helpers import outdated_causal_fixture  # noqa: E402
 
 ROOT = Path(__file__).parents[2]
 SCHEMA = json.loads(
@@ -397,86 +401,70 @@ def test_trusted_archive_member_digest_binds_reported_executable(
         helpers["verify_executable"](executable, observed, "0.11.0", "linux")
 
 
-@pytest.mark.parametrize("mutation", ["python", "tool", "stdout", "dependency"])
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "python",
+        "tool",
+        "stdout",
+        "dependency",
+        "alternate_wheel",
+        "exit_code",
+        "fresh_venv",
+        "cwd_outside_checkout",
+        "pythonpath_cleared",
+        "runtime_executable",
+        "runtime_prefix",
+        "metadata_location",
+        "module_file",
+        "direct_url_path",
+        "record_path",
+        "mcp_executable",
+    ),
+)
 def test_trusted_causal_binding_rejects_install_mutation(
     tmp_path: Path, mutation: str
 ) -> None:
-    # Incident 2026-07-16: every install cause and sidecar must be independently bound.
+    # Incident 2026-07-16: every install cause, venv path, and sidecar is trusted.
     helpers = trusted_helpers()
-    mcp = tmp_path / "mcp"
-    mcp.mkdir()
-    for name, data in {
-        "install.stdout": b"out",
-        "install.stderr": b"err",
-        "dependency-manifest.txt": b"deps",
-    }.items():
-        (mcp / name).write_bytes(data)
-
-    def digest(name: str) -> str:
-        return qualification.sha256(mcp / name)
-
-    runner = {
-        "declared_axis": "linux",
-        "observed_system": "Linux",
-        "release": "1",
-        "machine": "x86_64",
-        "image_os": "ubuntu",
-        "image_version": "1",
-    }
-    tool = {
-        "path": "/tmp/supported/bundle/uv",
-        "sha256": "a" * 64,
-        "size": 1,
-        "version": "0.11.0",
-        "version_stdout": "uv 0.11.0\n",
-    }
-    argv = [
-        tool["path"],
-        "pip",
-        "install",
-        "--python",
-        "/tmp/venv/bin/python",
-        "--no-cache",
-        "/tmp/tree_sitter_analyzer-1.0-py3-none-any.whl[mcp]",
-    ]
-    wheel = {"filename": "tree_sitter_analyzer-1.0-py3-none-any.whl"}
-    causal = {
-        "runner": runner,
-        "runtime": {"python": "3.10", "executable": argv[4], "prefix": "/tmp/venv"},
-        "install": {
-            "exit_code": 0,
-            "duration_seconds": 1,
-            "stdout_sha256": digest("install.stdout"),
-            "stderr_sha256": digest("install.stderr"),
-            "fresh_venv": True,
-            "cwd_outside_checkout": True,
-            "pythonpath_cleared": True,
-            "tool": tool,
-            "argv": argv,
-        },
-        "dependency_manifest_sha256": digest("dependency-manifest.txt"),
-        "passed": True,
-    }
-    bound = {
-        "sha256": "b" * 64,
-        "wheel": wheel,
-        "runner": runner,
-        "first_call": {},
-        "install_tool": tool,
-        "install_argv": argv,
-        "install_stdout_sha256": digest("install.stdout"),
-        "install_stderr_sha256": digest("install.stderr"),
-        "dependency_manifest_sha256": digest("dependency-manifest.txt"),
-    }
+    values = outdated_causal_fixture(tmp_path)
+    causal, bound = values["causal"], values["bound"]
+    tool, wheel, wheel_path = values["tool"], values["wheel"], values["wheel_path"]
+    runner, argv, install = values["runner"], values["argv"], values["install"]
+    metadata, record, mcp = values["metadata"], values["record"], values["mcp"]
     if mutation == "python":
-        causal["install"]["argv"] = [*argv[:4], "/tmp/other/python", *argv[5:]]
+        install["argv"] = [*argv[:4], "/tmp/other/python", *argv[5:]]
     elif mutation == "tool":
-        causal["install"]["tool"] = {**tool, "sha256": "0" * 64}
+        install["tool"] = {**tool, "sha256": "0" * 64}
     elif mutation == "stdout":
-        causal["install"]["stdout_sha256"] = "0" * 64
-    else:
+        install["stdout_sha256"] = "0" * 64
+    elif mutation == "dependency":
         causal["dependency_manifest_sha256"] = "0" * 64
+    elif mutation == "alternate_wheel":
+        alternate = f"/attacker/{wheel_path.name}[mcp]"
+        install["argv"] = bound["install_argv"] = [*argv[:6], alternate]
+    elif mutation in {
+        "exit_code",
+        "fresh_venv",
+        "cwd_outside_checkout",
+        "pythonpath_cleared",
+    }:
+        install[mutation] = 1 if mutation == "exit_code" else False
+    elif mutation == "runtime_executable":
+        other = "/tmp/other-venv/bin/python"
+        causal["runtime"]["executable"] = other
+        install["argv"] = bound["install_argv"] = [*argv[:4], other, *argv[5:]]
+    elif mutation == "runtime_prefix":
+        causal["runtime"]["prefix"] = "/tmp/other-venv"
+    elif mutation == "metadata_location":
+        metadata["location"] = "/tmp/other-venv/site-packages"
+    elif mutation == "record_path":
+        record["record_path"] = "/tmp/other-venv/RECORD"
+    elif mutation == "mcp_executable":
+        mcp["executable"] = "/tmp/other-venv/bin/tree-sitter-analyzer-mcp"
+    else:
+        metadata[mutation] = f"/tmp/other-venv/{mutation}"
     with pytest.raises(AssertionError):
         helpers["verify_causal_binding"](
-            "linux", tmp_path, causal, bound, tool, wheel, runner, "b" * 64
+            "linux", tmp_path, causal, bound, tool, wheel, wheel_path, runner, "b" * 64
         )

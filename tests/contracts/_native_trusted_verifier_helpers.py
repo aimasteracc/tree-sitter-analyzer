@@ -199,3 +199,125 @@ def trusted_verifier_result(tmp_path: Path, mutation: str) -> int:
         check=False,
     )
     return result.returncode
+
+
+def outdated_causal_fixture(tmp_path: Path) -> dict[str, object]:
+    """Build a valid trusted outdated-uv causal-binding input."""
+    mcp_dir = tmp_path / "mcp"
+    mcp_dir.mkdir()
+    for name, data in {
+        "install.stdout": b"out",
+        "install.stderr": b"err",
+        "dependency-manifest.txt": b"deps",
+    }.items():
+        (mcp_dir / name).write_bytes(data)
+    digest = lambda name: sha(mcp_dir / name)  # noqa: E731
+    runner = {
+        "declared_axis": "linux",
+        "observed_system": "Linux",
+        "release": "1",
+        "machine": "x86_64",
+        "image_os": "ubuntu",
+        "image_version": "1",
+    }
+    tool = {
+        "path": "/tmp/supported/bundle/uv",
+        "sha256": "a" * 64,
+        "size": 1,
+        "version": "0.11.0",
+        "version_stdout": "uv 0.11.0\n",
+    }
+    wheel_path = Path("/tmp/tree_sitter_analyzer-1.0-py3-none-any.whl")
+    prefix = Path("/tmp/tsa-native-qualification-case/venv")
+    executable = prefix / "bin/python"
+    location = prefix / "lib/python3.10/site-packages"
+    argv = [
+        tool["path"],
+        "pip",
+        "install",
+        "--python",
+        str(executable),
+        "--no-cache",
+        f"{wheel_path}[mcp]",
+    ]
+    wheel = {"filename": wheel_path.name}
+    record = {
+        "record_path": str(location / "tree_sitter_analyzer-1.0.dist-info/RECORD"),
+        "record_sha256": "c" * 64,
+        "entry_count": 1,
+        "files": [],
+    }
+    metadata = {
+        "name": "tree-sitter-analyzer",
+        "version": "1.0",
+        "location": str(location),
+        "module_file": str(location / "tree_sitter_analyzer/__init__.py"),
+        "module_origin": str(location / "tree_sitter_analyzer/__init__.py"),
+        "direct_url": {"url": "file:///tmp/wheel", "archive_info": {}},
+        "direct_url_path": str(
+            location / "tree_sitter_analyzer-1.0.dist-info/direct_url.json"
+        ),
+        "module_recorded": True,
+        "installed_record": record,
+        "all_paths_in_fresh_venv": True,
+        "direct_url_sha256": "d" * 64,
+    }
+    mcp = {
+        "executable": str(prefix / "bin/tree-sitter-analyzer-mcp"),
+        "protocol_version": "1",
+        "server_name": "tree-sitter-analyzer-mcp",
+        "server_version": "1.0",
+        "tools": [],
+        "first_call": {},
+        "duration_seconds": 1,
+        "transcript_sha256": "e" * 64,
+        "stderr_sha256": "f" * 64,
+    }
+    install = {
+        "exit_code": 0,
+        "duration_seconds": 1,
+        "stdout_sha256": digest("install.stdout"),
+        "stderr_sha256": digest("install.stderr"),
+        "fresh_venv": True,
+        "cwd_outside_checkout": True,
+        "pythonpath_cleared": True,
+        "tool": tool,
+        "argv": argv,
+    }
+    causal = {
+        "runner": runner,
+        "runtime": {
+            "python": "3.10",
+            "executable": str(executable),
+            "prefix": str(prefix),
+        },
+        "metadata": metadata,
+        "mcp": mcp,
+        "install": install,
+        "dependency_manifest_sha256": digest("dependency-manifest.txt"),
+        "passed": True,
+    }
+    bound = {
+        "sha256": "b" * 64,
+        "wheel": wheel,
+        "runner": runner,
+        "first_call": {},
+        "install_tool": tool,
+        "install_argv": argv,
+        "install_stdout_sha256": digest("install.stdout"),
+        "install_stderr_sha256": digest("install.stderr"),
+        "dependency_manifest_sha256": digest("dependency-manifest.txt"),
+    }
+    return {
+        "causal": causal,
+        "bound": bound,
+        "tool": tool,
+        "wheel": wheel,
+        "wheel_path": wheel_path,
+        "runner": runner,
+        "argv": argv,
+        "install": install,
+        "metadata": metadata,
+        "record": record,
+        "mcp": mcp,
+    }

@@ -281,19 +281,38 @@ jobs:
                       with source,out.open("xb") as sink: shutil.copyfileobj(source,sink)
               leaf="uv.exe" if actual=="zip" else "uv"; members=[p for p in destination.rglob(leaf) if p.is_file() and not p.is_symlink()]; assert len(members)==1
               member=members[0]; return {"member":member.relative_to(destination).as_posix(),"sha256":sha(member),"size":member.stat().st_size}
-          def absolute(value,axis): return pathlib.PureWindowsPath(value).is_absolute() if axis=="windows" else pathlib.PurePosixPath(value).is_absolute()
+          def pure(value,axis): return pathlib.PureWindowsPath(value) if axis=="windows" else pathlib.PurePosixPath(value)
+          def lexical(value,axis):
+            source=pure(value,axis); parts=[]; assert source.is_absolute()
+            for part in source.parts[1:]:
+              if part in ("","."): continue
+              if part=="..":
+                if not parts: raise ValueError("path escapes lexical root")
+                parts.pop()
+              else: parts.append(part)
+            return type(source)(source.anchor,*parts)
+          def beneath(child,parent,axis):
+            try: lexical(child,axis).relative_to(lexical(parent,axis)); return True
+            except (AssertionError,ValueError): return False
+          def absolute(value,axis): return pure(value,axis).is_absolute()
           def verify_executable(value,member,version,axis):
             exact(value,("version","path","sha256","size","version_stdout")); assert value["version"]==version and re.fullmatch(rf"uv {re.escape(version)}(?: [^\n]+)?\n?",value["version_stdout"])
-            pure=pathlib.PureWindowsPath(value["path"]) if axis=="windows" else pathlib.PurePosixPath(value["path"]); suffix=pathlib.PurePosixPath(member["member"]).parts
-            assert absolute(value["path"],axis) and tuple(part.lower() for part in pure.parts[-len(suffix):])==tuple(part.lower() for part in suffix) and (value["sha256"],value["size"])==(member["sha256"],member["size"])
-          def verify_causal_binding(axis,path,causal,bound,supported_exec,wheel,parent_runner,causal_digest):
+            executable=pure(value["path"],axis); suffix=pathlib.PurePosixPath(member["member"]).parts
+            assert absolute(value["path"],axis) and tuple(part.lower() for part in executable.parts[-len(suffix):])==tuple(part.lower() for part in suffix) and (value["sha256"],value["size"])==(member["sha256"],member["size"])
+          def verify_causal_binding(axis,path,causal,bound,supported_exec,wheel,wheel_path,parent_runner,causal_digest):
             verify_runner(causal["runner"],axis); assert causal["runner"]==parent_runner
-            install=causal["install"]; tool=install["tool"]; runtime=causal["runtime"]
+            install=causal["install"]; tool=install["tool"]; runtime=causal["runtime"]; meta=causal["metadata"]; mcp=causal["mcp"]; record=meta["installed_record"]
             exact(install,("exit_code","duration_seconds","stdout_sha256","stderr_sha256","fresh_venv","cwd_outside_checkout","pythonpath_cleared","tool","argv")); exact(runtime,("python","executable","prefix")); exact(tool,("path","sha256","size","version","version_stdout"))
+            exact(meta,("name","version","location","module_file","module_origin","direct_url","direct_url_path","module_recorded","installed_record","all_paths_in_fresh_venv","direct_url_sha256")); exact(record,("record_path","record_sha256","entry_count","files")); exact(mcp,("executable","protocol_version","server_name","server_version","tools","first_call","duration_seconds","transcript_sha256","stderr_sha256"))
             exact(bound,("sha256","wheel","runner","first_call","install_tool","install_argv","install_stdout_sha256","install_stderr_sha256","dependency_manifest_sha256"))
             assert tool=={k:supported_exec[k] for k in ("path","sha256","size","version","version_stdout")} and bound["install_tool"]==tool and bound["runner"]==causal["runner"]
-            wheel_arg=install["argv"][6].removesuffix("[mcp]") if len(install["argv"])==7 and install["argv"][6].endswith("[mcp]") else ""; expected_argv=[tool["path"],"pip","install","--python",runtime["executable"],"--no-cache",f"{wheel_arg}[mcp]"]
-            assert absolute(runtime["executable"],axis) and absolute(wheel_arg,axis) and (pathlib.PureWindowsPath(wheel_arg) if axis=="windows" else pathlib.PurePosixPath(wheel_arg)).name==wheel["filename"] and install["argv"]==bound["install_argv"]==expected_argv
+            expected_argv=[tool["path"],"pip","install","--python",runtime["executable"],"--no-cache",f"{wheel_path}[mcp]"]
+            assert absolute(str(wheel_path),axis) and install["argv"]==bound["install_argv"]==expected_argv
+            assert install["exit_code"]==0 and all(install[key] is True for key in ("fresh_venv","cwd_outside_checkout","pythonpath_cleared"))
+            prefix=lexical(runtime["prefix"],axis); location=lexical(meta["location"],axis)
+            assert prefix.name=="venv" and prefix.parent.name.startswith("tsa-native-qualification-") and beneath(str(location),str(prefix),axis)
+            assert all(beneath(value,str(prefix),axis) for value in (runtime["executable"],meta["module_file"],meta["module_origin"],meta["direct_url_path"],record["record_path"],mcp["executable"]))
+            assert beneath(meta["direct_url_path"],str(location),axis) and beneath(record["record_path"],str(location),axis)
             sidecars={"install_stdout_sha256":sha(path/"mcp/install.stdout"),"install_stderr_sha256":sha(path/"mcp/install.stderr"),"dependency_manifest_sha256":sha(path/"mcp/dependency-manifest.txt")}
             assert install["stdout_sha256"]==bound["install_stdout_sha256"]==sidecars["install_stdout_sha256"] and install["stderr_sha256"]==bound["install_stderr_sha256"]==sidecars["install_stderr_sha256"] and causal["dependency_manifest_sha256"]==bound["dependency_manifest_sha256"]==sidecars["dependency_manifest_sha256"]
             assert bound["sha256"]==causal_digest and bound["wheel"]==wheel and causal["passed"] is True
@@ -315,6 +334,12 @@ jobs:
           manifest=json.loads(manifest_path.read_text()); package_aggregate=json.loads(package_aggregate_path.read_text()); wheel=manifest["wheel"]
           assert manifest["kind"]=="build_manifest"; identity(manifest,"build-once"); identity(package_aggregate,"aggregate")
           assert wheel==package_aggregate["wheel"] and (wheel["filename"],wheel["size"],wheel["sha256"])==(wheel_path.name,wheel_path.stat().st_size,sha(wheel_path))
+          repository_name=os.environ["GITHUB_REPOSITORY"].rsplit("/",1)[1]
+          causal_wheel_paths={
+            "linux":pathlib.PurePosixPath("/home/runner/work")/repository_name/repository_name/"package/build"/wheel["filename"],
+            "macos":pathlib.PurePosixPath("/Users/runner/work")/repository_name/repository_name/"package/build"/wheel["filename"],
+          }
+          assert all(path.is_absolute() for path in causal_wheel_paths.values())
           assert package_aggregate["evidence_scope"]=="native_package_mcp_first_answer" and package_aggregate["native_axes_qualified"] is True and package_aggregate["qualified"] is False
           package_reports={}
           for axis,path in package_dirs.items():
@@ -361,7 +386,7 @@ jobs:
             causal_path=path/"mcp/report.json"; causal=json.loads(causal_path.read_text()); bound=report["mcp_causal_report"]
             exact(causal,("schema_version","kind","qualification_id","evidence_scope","axis","qualification_performed","passed","source","workflow","runner","wheel","stages","failure","build_manifest_sha256","install","metadata","runtime","mcp","dependency_manifest_sha256","installed_files_zip_sha256")); identity(causal,"outdated-axis")
             assert causal["axis"]==axis and causal["stages"]==[{"id":stage,"passed":True} for stage in ("verify_wheel","install","metadata_provenance","mcp_protocol")] and causal["failure"] is None
-            verify_causal_binding(axis,path,causal,bound,supported["executable"],wheel,report["runner"],sha(causal_path))
+            verify_causal_binding(axis,path,causal,bound,supported["executable"],wheel,causal_wheel_paths[axis],report["runner"],sha(causal_path))
             meta=causal["metadata"]; direct=meta["direct_url"]; archive_info=direct["archive_info"]
             raw_hashes=([archive_info["hash"]] if isinstance(archive_info.get("hash"),str) else [])+([archive_info.get("hashes",{}).get("sha256")] if isinstance(archive_info.get("hashes",{}).get("sha256"),str) else [])
             def digest(raw):
