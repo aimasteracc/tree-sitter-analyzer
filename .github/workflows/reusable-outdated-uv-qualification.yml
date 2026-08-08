@@ -70,6 +70,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
         with: {python-version: "3.10"}
+      - name: Install aggregate driver dependencies
+        run: python -m pip install --disable-pip-version-check "psutil>=5,<8"
       - name: Download all exact axes
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with: {pattern: "outdated-uv-*-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}", path: downloaded}
@@ -82,7 +84,7 @@ jobs:
           downloaded/outdated-uv-windows-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}/report.json
           --output outdated-aggregate/aggregate.json
       - if: always()
-        run: printf '{"job":"outdated-aggregate","status":"%s"}\n' '${{ job.status }}' > outdated-aggregate/job-result.json
+        run: mkdir -p outdated-aggregate && printf '{"job":"outdated-aggregate","status":"%s"}\n' '${{ job.status }}' > outdated-aggregate/job-result.json
       - if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
