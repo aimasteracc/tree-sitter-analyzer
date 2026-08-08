@@ -40,6 +40,7 @@ _SAFE_SPANS = (
     re.compile(r"\bv\d+(?:\.(?:\d+|x)){1,2}\b", re.IGNORECASE),
     re.compile(r"\bversion\s+v?\d+(?:\.\d+){1,2}\b", re.IGNORECASE),
     re.compile(r"\buv\s*[><=]+\s*\d+(?:\.\d+){1,2}\b", re.IGNORECASE),
+    re.compile(r"`python3 --version`", re.IGNORECASE),
 )
 _PYTHON_VERSION_SPAN = re.compile(
     r"\bPython(?:\s+version)?\s+v?\d+(?:\.\d+){1,2}(?:\+|\s*(?:or|and)\s+(?:newer|later))?",

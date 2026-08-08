@@ -283,7 +283,8 @@ FINAL_REVIEW_PROBES = (
 WORD_NUMBERS = tuple("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion trillion dozen score couple several many few half quarter third single double triple quadruple".split())
 CAMOUFLAGE = (
     "Python version 3.10; TSA is 390× faster than Rival.", "8 MCP tools and TSA is 390× faster than Rival.",
-    "323 CLI flags; TSA is 390× faster than Rival.", "version 1.2.3; TSA is 390× faster than Rival.",
+    "323 CLI flags; TSA is 390× faster than Rival.", "`python3 --version`; TSA is 390× faster than Rival.",
+    "version 1.2.3; TSA is 390× faster than Rival.",
     "2026-07-17; TSA is 390× faster than Rival.", "RFC-0018; TSA is 390× faster than Rival.",
     "issue #123; TSA is 390× faster than Rival.", "Step 2; TSA is 390× faster than Rival.",
     f"commit {'a' * 40}; TSA is 390× faster than Rival.", "[![x](badge)](url) TSA is 390× faster than Rival.",
