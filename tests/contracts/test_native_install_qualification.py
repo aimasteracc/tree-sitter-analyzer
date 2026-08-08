@@ -452,6 +452,94 @@ def test_successful_runner_cleans_detached_descendant(tmp_path: Path) -> None:
     assert_success_cleanup(tmp_path)
 
 
+def _assert_late_spawn_cleanup(tmp_path: Path, iterations: int) -> None:
+    import time
+
+    import psutil
+    from native_qualification_lib import run
+
+    observed: list[tuple[int, bool, bool]] = []
+    for iteration in range(iterations):
+        ready = tmp_path / f"late-child-{iteration}.ready"
+        child_pid_path = tmp_path / f"late-child-{iteration}.pid"
+        grandchild_pid_path = tmp_path / f"late-grandchild-{iteration}.pid"
+        grandchild = "import time;time.sleep(60)"
+        child = (
+            "import os,pathlib,signal,subprocess,sys,time;"
+            "signal.signal(signal.SIGTERM,signal.SIG_IGN);"
+            f"pathlib.Path({str(child_pid_path)!r}).write_text(str(os.getpid()));"
+            f"pathlib.Path({str(ready)!r}).write_text('ready');time.sleep(0.25);"
+            f"p=subprocess.Popen([sys.executable,'-c',{grandchild!r}],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True);"
+            f"pathlib.Path({str(grandchild_pid_path)!r}).write_text(str(p.pid));"
+            "time.sleep(60)"
+        )
+        parent = (
+            "import pathlib,subprocess,sys,time;"
+            f"subprocess.Popen([sys.executable,'-c',{child!r}],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True);"
+            f"p=pathlib.Path({str(ready)!r});deadline=time.monotonic()+2;"
+            "exec('while not p.exists() and time.monotonic()<deadline:\\n time.sleep(0.005)')"
+        )
+        rc, _, _, _ = run(
+            [sys.executable, "-c", parent],
+            cwd=tmp_path,
+            env=dict(os.environ),
+            timeout=5,
+        )
+        child_pid, grandchild_pid = (
+            int(child_pid_path.read_text()),
+            int(grandchild_pid_path.read_text()),
+        )
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and (
+            psutil.pid_exists(child_pid) or psutil.pid_exists(grandchild_pid)
+        ):
+            time.sleep(0.01)
+        observed.append(
+            (rc, psutil.pid_exists(child_pid), psutil.pid_exists(grandchild_pid))
+        )
+    assert observed == [(0, False, False)] * iterations
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Incident 2026-07-02 uses POSIX SIGTERM-ignore semantics",
+)
+def test_runner_cleans_grace_period_detached_grandchild(tmp_path: Path) -> None:
+    # Incident 2026-07-02: a one-shot token scan leaked this late grandchild.
+    _assert_late_spawn_cleanup(tmp_path, 1)
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Incident 2026-07-02 uses POSIX SIGTERM-ignore semantics",
+)
+def test_runner_late_detached_grandchild_cleanup_stress(tmp_path: Path) -> None:
+    # Incident 2026-07-02: repeated spawning exercises cleanup rescan stability.
+    _assert_late_spawn_cleanup(tmp_path, 10)
+
+
+def test_runner_reports_cleanup_nonquiescence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import native_qualification_lib
+
+    monkeypatch.setattr(
+        native_qualification_lib,
+        "_cleanup_token_processes",
+        lambda *args, **kwargs: False,
+    )
+    rc, _, err, _ = native_qualification_lib.run(
+        [sys.executable, "-c", "pass"],
+        cwd=tmp_path,
+        env=dict(os.environ),
+        timeout=5,
+    )
+    assert (rc, err) == (
+        125,
+        b"\nnative qualification process cleanup did not reach quiescence",
+    )
+
+
 @pytest.mark.parametrize("mutation", ["unrecorded", "duplicate", "digest", "pth"])
 def test_wheel_record_rejects_non_exact_or_injected_archive(
     tmp_path: Path, mutation: str

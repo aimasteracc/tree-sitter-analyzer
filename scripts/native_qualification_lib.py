@@ -225,6 +225,104 @@ def _token_processes(token: str, deadline: float) -> dict[int, psutil.Process]:
     return found
 
 
+def _live_processes(processes: dict[int, psutil.Process]) -> list[psutil.Process]:
+    """Return still-live identities without treating zombies as owned work."""
+    alive: list[psutil.Process] = []
+    for process in processes.values():
+        try:
+            if process.is_running() and process.status() != psutil.STATUS_ZOMBIE:
+                alive.append(process)
+        except psutil.NoSuchProcess:
+            continue
+        except psutil.AccessDenied:
+            alive.append(process)
+    return alive
+
+
+def _signal_group(proc: subprocess.Popen[bytes], *, force: bool) -> None:
+    """Best-effort signal of the original containment group."""
+    if os.name == "nt":
+        if not force:
+            return
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=0.2,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            pass
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGKILL if force else signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def _cleanup_token_processes(
+    proc: subprocess.Popen[bytes],
+    tracked: dict[int, psutil.Process],
+    token: str,
+    *,
+    grace: float = 0.75,
+    force: float = 1.0,
+) -> bool:
+    """Repeatedly discover and remove token-owned processes within hard deadlines.
+
+    Two empty scans are required so a detached descendant created during a signal
+    grace interval cannot hide behind a single process-table snapshot. After the
+    graceful deadline, every sweep uses SIGKILL and rescans until the same bounded
+    quiescence condition is met.
+    """
+    quiet_scans = 0
+    grace_deadline = time.monotonic() + grace
+    force_deadline = grace_deadline + force
+    while time.monotonic() < force_deadline:
+        now = time.monotonic()
+        forcing = now >= grace_deadline
+        deadline = force_deadline if forcing else grace_deadline
+        tracked.update(_token_processes(token, deadline))
+        alive = _live_processes(tracked)
+        if not alive:
+            quiet_scans += 1
+            if quiet_scans == 2:
+                return True
+            time.sleep(min(0.02, max(0.0, deadline - time.monotonic())))
+            continue
+
+        quiet_scans = 0
+        _signal_group(proc, force=forcing)
+        for process in alive:
+            try:
+                process.kill() if forcing else process.terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        psutil.wait_procs(
+            alive, timeout=min(0.05, max(0.0, deadline - time.monotonic()))
+        )
+
+    # A final bounded kill/rescan effort minimizes leakage even when quiescence
+    # cannot be proved before the cleanup budget expires.
+    final_deadline = time.monotonic() + 0.2
+    while time.monotonic() < final_deadline:
+        tracked.update(_token_processes(token, final_deadline))
+        alive = _live_processes(tracked)
+        if not alive:
+            return False
+        _signal_group(proc, force=True)
+        for process in alive:
+            try:
+                process.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        psutil.wait_procs(
+            alive, timeout=min(0.02, max(0.0, final_deadline - time.monotonic()))
+        )
+    return False
+
+
 def run(
     argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int
 ) -> tuple[int, bytes, bytes, float]:
@@ -254,6 +352,7 @@ def run(
     )
     watcher.start()
     timed_out = False
+    cleanup_ok = False
     try:
         out, err = proc.communicate(timeout=timeout)
         returncode = int(proc.returncode)
@@ -269,11 +368,19 @@ def run(
     finally:
         stop.set()
         watcher.join(timeout=0.5)
-        # The token scan catches descendants detached before the watcher sampled them.
-        tracked.update(_token_processes(token, time.monotonic() + 1.0))
         # Cleanup is an invariant on successful, failed, and timed-out commands.
-        terminate_tree(proc, tracked, 0.5)
-    return (124 if timed_out else returncode), out, err, time.monotonic() - started
+        # Discovery is deliberately repeated because a TERM-ignoring child may spawn
+        # a detached, token-inheriting grandchild during its termination grace.
+        cleanup_ok = _cleanup_token_processes(proc, tracked, token)
+    if not cleanup_ok:
+        err += b"\nnative qualification process cleanup did not reach quiescence"
+        returncode = 125
+    return (
+        125 if not cleanup_ok else (124 if timed_out else returncode),
+        out,
+        err,
+        time.monotonic() - started,
+    )
 
 
 def direct_url_hash(value: dict[str, Any]) -> str:
