@@ -371,7 +371,9 @@ jobs:
             identity(report,"outdated-uv-axis")
             old_side=path/"old.archive"; assert (old_side.stat().st_size,sha(old_side))==(size,digest); verify_executable(old["executable"],safe_uv_member(old_side,filename),"0.10.9",axis)
             if axis=="windows":
-              assert report["status"]=="NOT_APPLICABLE_NO_NATIVE_INSTALLER" and report["passed"] is False and report["qualification_performed"] is False and report["supported_uv"] is None and report["mcp_causal_report"] is None
+              assert report["status"]=="NOT_APPLICABLE_NO_NATIVE_INSTALLER" and report["passed"] is False and report["qualification_performed"] is False
+              assert report["failure"]=={"type":"NotApplicable","message":"Windows has no native install.ps1; real old uv.exe execution retained only as a platform fixture"}
+              assert report["supported_uv"] is None and report["installer"] is None and report["config"] is None and report["mcp_causal_report"] is None
               continue
             filename,size,digest,url=official[(fixture_axis,"0.11.0")]; supported=report["supported_uv"]
             assert supported["archive"]=={"filename":filename,"size":size,"sha256":digest,"url":url,"version":"0.11.0"}

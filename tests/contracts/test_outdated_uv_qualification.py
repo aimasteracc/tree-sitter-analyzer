@@ -13,6 +13,7 @@ import zipfile
 from pathlib import Path
 
 import jsonschema
+import psutil
 import pytest
 
 from scripts import qualify_outdated_uv as qualification
@@ -75,8 +76,10 @@ def test_installer_timeout_reaps_entire_process_group(tmp_path: Path) -> None:
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
+            child = psutil.Process(pid)
+            if not child.is_running() or child.status() == psutil.STATUS_ZOMBIE:
+                break
+        except psutil.NoSuchProcess:
             break
         time.sleep(0.05)
     else:
@@ -122,6 +125,30 @@ def test_windows_na_requires_evidence_and_allows_empty_sidecar() -> None:
         invalid[field] = {}
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(invalid, SCHEMA)
+
+
+def test_schema_accepts_driver_windows_failed_state() -> None:
+    # PR #1242: Windows exceptions retain qualification_performed=false.
+    report = qualification.base_report("windows")
+    report.update(
+        status="FAILED",
+        failure={"type": "ValueError", "message": "fixture rejected"},
+    )
+    report["runner"].update(declared_axis="windows", observed_system="Windows")
+    jsonschema.validate(report, SCHEMA)
+
+
+def test_schema_rejects_windows_failed_as_performed() -> None:
+    # PR #1242: Windows has no native installer qualification to perform.
+    report = qualification.base_report("windows")
+    report.update(
+        status="FAILED",
+        qualification_performed=True,
+        failure={"type": "ValueError", "message": "fixture rejected"},
+    )
+    report["runner"].update(declared_axis="windows", observed_system="Windows")
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(report, SCHEMA)
 
 
 def test_windows_dot_archive_dispatches_allowlisted_zip_content(tmp_path: Path) -> None:
@@ -188,6 +215,15 @@ def test_workflow_routes_fixture_manifest_and_all_attestation_schemas() -> None:
     workflow = (ROOT / ".github/workflows/native-install-qualification.yml").read_text()
     assert workflow.count('"config/no1_uv_fixtures.json"') == 2
     assert workflow.count('"rfcs/schemas/no1-006a-*-attestation-*.schema.json"') == 2
+
+
+def test_trusted_verifier_requires_complete_windows_na_state() -> None:
+    # PR #1242: trusted verification must not bless a schema-invalid N/A report.
+    trusted = (
+        ROOT / ".github/workflows/reusable-native-qualification-attestation.yml"
+    ).read_text()
+    assert 'report["failure"]=={"type":"NotApplicable"' in trusted
+    assert 'report["installer"] is None and report["config"] is None' in trusted
 
 
 def test_workflow_separates_read_only_verification_from_tiny_oidc_job() -> None:
@@ -319,6 +355,55 @@ def valid_passed_report() -> dict[str, object]:
         },
     )
     return report
+
+
+def test_successful_aggregate_requires_complete_package_binding() -> None:
+    # PR #1242: successful aggregate evidence must bind the wheel and manifest.
+    digest = "0" * 64
+    package = valid_passed_report()["package_qualification"]
+    aggregate = {
+        "schema_version": qualification.SCHEMA_VERSION,
+        "kind": "outdated_uv_aggregate",
+        "qualification_id": "NO1-006A",
+        "evidence_scope": "native_outdated_uv_actionable_recovery",
+        "qualification_performed": True,
+        "qualified": False,
+        "evidence_trust": "EXTERNAL_ATTESTATION_REQUIRED",
+        "source_commit": "0" * 40,
+        "package_qualification": package,
+        "required_axes": {
+            "package": ["linux", "macos", "windows"],
+            "outdated": ["linux", "macos"],
+            "not_applicable": {"windows": "NOT_APPLICABLE_NO_NATIVE_INSTALLER"},
+        },
+        "automatic_mutable_bootstrap_qualified": False,
+        "axes": [
+            {
+                "axis": "linux",
+                "report_sha256": digest,
+                "status": "PASSED",
+                "passed": True,
+            },
+            {
+                "axis": "macos",
+                "report_sha256": digest,
+                "status": "PASSED",
+                "passed": True,
+            },
+            {
+                "axis": "windows",
+                "report_sha256": digest,
+                "status": "NOT_APPLICABLE_NO_NATIVE_INSTALLER",
+                "passed": False,
+            },
+        ],
+        "failures": [],
+        "workflow": qualification.identity("outdated-uv-aggregate")[1],
+    }
+    jsonschema.validate(aggregate, SCHEMA)
+    aggregate["package_qualification"] = {}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(aggregate, SCHEMA)
 
 
 @pytest.mark.parametrize(

@@ -750,6 +750,32 @@
                 "axis": {
                   "const": "windows"
                 },
+                "failure": {
+                  "type": "object"
+                },
+                "passed": {
+                  "const": false
+                },
+                "qualification_performed": {
+                  "const": false
+                },
+                "status": {
+                  "const": "FAILED"
+                }
+              },
+              "required": [
+                "status",
+                "axis",
+                "qualification_performed",
+                "passed",
+                "failure"
+              ]
+            },
+            {
+              "properties": {
+                "axis": {
+                  "const": "windows"
+                },
                 "config": {
                   "type": "null"
                 },
@@ -1209,7 +1235,7 @@
                   "maxItems": 0
                 },
                 "package_qualification": {
-                  "type": "object"
+                  "$ref": "#/$defs/package_qualification"
                 },
                 "qualification_performed": {
                   "const": true

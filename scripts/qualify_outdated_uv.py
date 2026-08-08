@@ -5,8 +5,10 @@ from __future__ import annotations
 
 # ruff: noqa: B904, E401, E701, E702, I001
 # fmt: off
-import argparse, hashlib, json, os, platform, re, shutil, signal, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
+import argparse, hashlib, json, os, platform, re, shutil, signal, subprocess, sys, tarfile, tempfile, time, urllib.request, zipfile
 from pathlib import Path
+
+import psutil
 from typing import Any
 
 SCHEMA_VERSION = "no1-006a-outdated-uv-attestation-v2"
@@ -117,18 +119,47 @@ def clean_env(home: Path, temp: Path, path: str, disable: bool) -> dict[str,str]
     if disable: keep["TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP"]="1"
     return keep
 
+def _live_processes(processes:list[psutil.Process])->list[psutil.Process]:
+    result=[]
+    for child in processes:
+        try:
+            if child.is_running() and child.status()!=psutil.STATUS_ZOMBIE: result.append(child)
+        except psutil.NoSuchProcess: pass
+        except psutil.AccessDenied: result.append(child)
+    return result
+
+def _stop_descendants(process:subprocess.Popen[bytes],grace:float=.5)->None:
+    try: parent=psutil.Process(process.pid)
+    except psutil.NoSuchProcess: return
+    tracked:dict[int,psutil.Process]={}
+    for force in (False,True):
+        deadline=time.monotonic()+grace
+        while time.monotonic()<deadline and process.poll() is None:
+            try:
+                for child in parent.children(recursive=True): tracked.setdefault(child.pid,child)
+            except (psutil.NoSuchProcess,psutil.AccessDenied): break
+            alive=_live_processes(list(tracked.values()))
+            if not alive: break
+            for child in alive:
+                try: child.kill() if force else child.terminate()
+                except (psutil.NoSuchProcess,psutil.AccessDenied): pass
+            psutil.wait_procs(alive,timeout=min(.05,max(0.,deadline-time.monotonic())))
+
 def run_tree(argv:list[str],cwd:Path,env:dict[str,str],timeout:float)->subprocess.CompletedProcess[bytes]:
     process=subprocess.Popen(argv,cwd=cwd,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=os.name!="nt")
     try: out,err=process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        if os.name!="nt":
-            for sig,grace in ((signal.SIGTERM,.5),(signal.SIGKILL,.5)):
-                try: os.killpg(process.pid,sig)
-                except ProcessLookupError: pass
-                try: process.communicate(timeout=grace)
-                except subprocess.TimeoutExpired: pass
-        else:
-            subprocess.run(["taskkill","/PID",str(process.pid),"/T","/F"],capture_output=True,timeout=5,check=False)
+        _stop_descendants(process)
+        try: process.communicate(timeout=.5)
+        except subprocess.TimeoutExpired:
+            if os.name!="nt":
+                for sig,grace in ((signal.SIGTERM,.5),(signal.SIGKILL,.5)):
+                    try: os.killpg(process.pid,sig)
+                    except ProcessLookupError: pass
+                    try: process.communicate(timeout=grace)
+                    except subprocess.TimeoutExpired: pass
+            else:
+                subprocess.run(["taskkill","/PID",str(process.pid),"/T","/F"],capture_output=True,timeout=5,check=False)
         try: process.communicate(timeout=.5)
         except subprocess.TimeoutExpired:
             for stream in (process.stdout,process.stderr):
