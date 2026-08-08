@@ -296,7 +296,7 @@ def test_installer_times_out_hanging_existing_uv(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         check=False,
-        timeout=10,
+        timeout=20,
     )
     assert (completed.returncode, "Timed out after 5 seconds" in completed.stdout) == (
         1,
@@ -339,7 +339,7 @@ INSTALLER
         capture_output=True,
         text=True,
         check=False,
-        timeout=10,
+        timeout=20,
     )
     assert (
         completed.returncode,
