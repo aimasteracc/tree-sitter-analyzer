@@ -195,7 +195,7 @@ def axis(args: argparse.Namespace) -> int:
                 }
             )
             # fmt: off
-            install_command = ([qualification_uv, "pip", "install", "--python", str(python), "--no-cache", f"{wheel}[mcp]"] if qualification_uv else [str(python), "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--no-cache-dir", f"{wheel}[mcp]"])
+            install_command = ([qualification_uv, "pip", "install", "--python", str(python.resolve()), "--no-cache", f"{wheel}[mcp]"] if qualification_uv else [str(python.resolve()), "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--no-cache-dir", f"{wheel}[mcp]"])
             # fmt: on
             rc, out, err, duration = run(
                 install_command,
@@ -227,7 +227,7 @@ def axis(args: argparse.Namespace) -> int:
                 Path(__file__).with_name("native_mcp_probe.py").read_bytes()
             )
             rc, meta_out, meta_err, _ = run(
-                [str(python), str(helper), "--metadata-only"],
+                [str(python.resolve()), str(helper), "--metadata-only"],
                 cwd=project,
                 env=clean_env,
                 timeout=30,
@@ -247,7 +247,7 @@ def axis(args: argparse.Namespace) -> int:
                 metadata, snapshot
             )
             freeze_rc, freeze_out, freeze_err, _ = run(
-                [str(python), "-m", "pip", "freeze", "--all"],
+                [str(python.resolve()), "-m", "pip", "freeze", "--all"],
                 cwd=project,
                 env=clean_env,
                 timeout=60,
@@ -264,7 +264,13 @@ def axis(args: argparse.Namespace) -> int:
             current_stage = STAGES[3]
             transcript = side / "mcp-transcript.ndjson"
             rc, probe_out, probe_err, mcp_duration = run(
-                [str(python), str(helper), str(console), str(project), str(transcript)],
+                [
+                    str(python.resolve()),
+                    str(helper),
+                    str(console),
+                    str(project),
+                    str(transcript),
+                ],
                 cwd=project,
                 env=clean_env,
                 timeout=args.mcp_timeout,
