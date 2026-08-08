@@ -42,6 +42,20 @@ class TestCheckUv:
             result = _check_uv()
         assert (result.status, result.message) == (status, message)
 
+    def test_fail_when_uv_version_component_exceeds_integer_limit(self) -> None:
+        # PR #1233: adversarial numeric output must produce a diagnostic, not a traceback.
+        from tree_sitter_analyzer.cli.commands.doctor import _check_uv
+
+        completed = subprocess.CompletedProcess([], 0, f"uv {'1' * 5000}.11.0\n", "")
+        with patch("shutil.which", return_value="/usr/local/bin/uv"), patch(
+            "subprocess.run", return_value=completed
+        ):
+            result = _check_uv()
+        assert (result.status, result.message) == (
+            "FAIL",
+            "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0",
+        )
+
     def test_fail_when_uv_version_check_times_out(self) -> None:
         # NO1-006A (2026-08-08): doctor must not hang on a broken uv executable.
         from tree_sitter_analyzer.cli.commands.doctor import _check_uv

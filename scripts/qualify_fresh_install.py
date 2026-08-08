@@ -75,6 +75,7 @@ def _restricted_tools(root: Path) -> Path:
         "realpath",
         "rm",
         "sh",
+        "sleep",
         "uname",
     )
     for command in commands:
@@ -182,24 +183,40 @@ def _fixture_fingerprint(root: Path, fixture: dict[str, str]) -> str:
     return _fingerprint(manifest)
 
 
+def _remove_fixture(root: Path) -> None:
+    if not root.exists():
+        return
+    claude = root / ".claude"
+    if claude.exists():
+        claude.chmod(0o755)
+    shutil.rmtree(root)
+
+
 def _run(
     repo: Path, initial_uv: str | None, bootstrap_mode: str, **options: Any
 ) -> tuple[subprocess.CompletedProcess[str], Path, str]:
     root = Path(tempfile.mkdtemp(prefix="tsa-installer-contract-"))
-    disable = options.pop("disable_bootstrap", False)
-    fixture = _prepare_fixture(root, initial_uv, bootstrap_mode, **options)
-    if disable:
-        fixture["TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP"] = "1"
-    execution_fingerprint = _fixture_fingerprint(root, fixture)
-    completed = subprocess.run(
-        ["/bin/bash", str(repo / "install.sh")],
-        cwd=root,
-        env=os.environ | fixture,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=30,
-    )
+    try:
+        disable = options.pop("disable_bootstrap", False)
+        fixture = _prepare_fixture(root, initial_uv, bootstrap_mode, **options)
+        if disable:
+            fixture["TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP"] = "1"
+        execution_fingerprint = _fixture_fingerprint(root, fixture)
+        execution_env = os.environ.copy()
+        execution_env.pop("TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP", None)
+        execution_env.update(fixture)
+        completed = subprocess.run(
+            ["/bin/bash", str(repo / "install.sh")],
+            cwd=root,
+            env=execution_env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except BaseException:
+        _remove_fixture(root)
+        raise
     return completed, root, execution_fingerprint
 
 
@@ -328,10 +345,7 @@ def _scenario(repo: Path, scenario_id: str) -> dict[str, Any]:
         return {"id": scenario_id, "status": "failed", "error_type": type(exc).__name__}
     finally:
         if root is not None:
-            claude = root / ".claude"
-            if claude.exists():
-                claude.chmod(0o755)
-            shutil.rmtree(root)
+            _remove_fixture(root)
 
 
 def _git_provenance(repo: Path) -> dict[str, Any]:

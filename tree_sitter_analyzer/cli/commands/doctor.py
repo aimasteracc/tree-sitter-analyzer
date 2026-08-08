@@ -60,7 +60,14 @@ def _check_uv() -> CheckResult:
             f"cannot determine version at {path} — required uv >= 0.11.0",
         )
 
-    version = tuple(int(part) for part in match.groups())
+    try:
+        version = tuple(int(part) for part in match.groups())
+    except ValueError:
+        return CheckResult(
+            "uv",
+            "FAIL",
+            f"cannot determine version at {path} — required uv >= 0.11.0",
+        )
     if version < MINIMUM_UV_VERSION:
         version_text = ".".join(str(part) for part in version)
         return CheckResult(

@@ -39,9 +39,45 @@ uv_version_is_supported() {
   }
 }
 
+probe_uv_version() {
+  # Portable bounded probe: macOS has no coreutils `timeout`, and bash 3.x has
+  # no `wait -n`. Capture to a file so a killed shim cannot hold a command
+  # substitution pipe open through one of its children.
+  UV_VERSION_PROBE_ERROR="failed"
+  UV_VERSION_PROBE_OUTPUT=$(mktemp "${TMPDIR:-/tmp}/tsa-uv-version.XXXXXX") || return 1
+
+  uv --version >"$UV_VERSION_PROBE_OUTPUT" 2>/dev/null &
+  UV_VERSION_PROBE_PID=$!
+  UV_VERSION_WAIT_COUNT=0
+  while kill -0 "$UV_VERSION_PROBE_PID" 2>/dev/null; do
+    if [ "$UV_VERSION_WAIT_COUNT" -eq 50 ]; then
+      UV_VERSION_PROBE_ERROR="timeout"
+      kill -TERM "$UV_VERSION_PROBE_PID" 2>/dev/null || :
+      sleep 1
+      kill -KILL "$UV_VERSION_PROBE_PID" 2>/dev/null || :
+      break
+    fi
+    sleep 0.1
+    UV_VERSION_WAIT_COUNT=$((UV_VERSION_WAIT_COUNT + 1))
+  done
+
+  if wait "$UV_VERSION_PROBE_PID"; then
+    UV_VERSION_PROBE_STATUS=0
+  else
+    UV_VERSION_PROBE_STATUS=$?
+  fi
+  UV_VERSION_OUTPUT=$(cat "$UV_VERSION_PROBE_OUTPUT")
+  rm -f "$UV_VERSION_PROBE_OUTPUT"
+  if [ "$UV_VERSION_PROBE_ERROR" = "timeout" ]; then
+    return 1
+  fi
+  [ "$UV_VERSION_PROBE_STATUS" -eq 0 ]
+}
+
 uv_is_ready() {
+  UV_VERSION_PROBE_ERROR="missing"
   command -v uv >/dev/null 2>&1 || return 1
-  UV_VERSION_OUTPUT=$(uv --version 2>/dev/null) || return 1
+  probe_uv_version || return 1
   uv_version_is_supported "$UV_VERSION_OUTPUT"
 }
 
@@ -50,9 +86,14 @@ UV_INSTALL_ACTION="install"
 if ! command -v uv >/dev/null 2>&1; then
   echo "📦 uv not found. Automatic installation is required."
   UV_INSTALL_NEEDED=1
-elif ! UV_VERSION_OUTPUT=$(uv --version 2>/dev/null); then
-  echo "❌ Existing uv at $(command -v uv) could not report its version."
+elif ! probe_uv_version; then
+  if [ "$UV_VERSION_PROBE_ERROR" = "timeout" ]; then
+    echo "❌ Timed out after 5 seconds running $(command -v uv) --version."
+  else
+    echo "❌ Existing uv at $(command -v uv) could not report its version."
+  fi
   echo "   Required: uv >= $MINIMUM_UV_VERSION"
+  echo "   Replace or repair uv, then re-run the original Tree-sitter Analyzer install command."
   exit 1
 elif ! uv_version_is_supported "$UV_VERSION_OUTPUT"; then
   echo "📦 $UV_VERSION_OUTPUT does not satisfy required uv >= $MINIMUM_UV_VERSION. Automatic update is required."
@@ -107,6 +148,9 @@ if [ "$UV_INSTALL_NEEDED" = "1" ]; then
   export PATH="$HOME/.local/bin:$PATH"
   hash -r
   if ! uv_is_ready; then
+    if [ "$UV_VERSION_PROBE_ERROR" = "timeout" ]; then
+      echo "❌ Timed out after 5 seconds running $(command -v uv) --version after bootstrap."
+    fi
     echo "❌ uv installation did not provide required uv >= $MINIMUM_UV_VERSION."
     echo "   Install uv manually: https://docs.astral.sh/uv/getting-started/installation/"
     echo "   Then re-run the original Tree-sitter Analyzer install command."

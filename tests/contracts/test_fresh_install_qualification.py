@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
+
+from scripts import qualify_fresh_install as qualification
 
 REPO = Path(__file__).parents[2]
 
@@ -224,3 +228,112 @@ def test_harness_contains_no_mock_uvx_first_answer() -> None:
     source = (REPO / "scripts/qualify_fresh_install.py").read_text(encoding="utf-8")
     assert "uvx-template" not in source
     assert "FIRST_ANSWER" not in source
+
+
+def test_harness_clears_inherited_bootstrap_opt_out() -> None:
+    # PR #1233: hardened parent environments must not rewrite ordinary fixtures.
+    completed = subprocess.CompletedProcess([], 0, "", "")
+    with (
+        patch.dict(os.environ, {"TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP": "1"}),
+        patch.object(qualification.subprocess, "run", return_value=completed) as run,
+    ):
+        _, root, _ = qualification._run(REPO, None, "valid")
+    try:
+        assert "TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP" not in run.call_args.kwargs["env"]
+    finally:
+        qualification._remove_fixture(root)
+
+
+def test_harness_preserves_explicit_bootstrap_opt_out() -> None:
+    completed = subprocess.CompletedProcess([], 0, "", "")
+    with patch.object(qualification.subprocess, "run", return_value=completed) as run:
+        _, root, _ = qualification._run(REPO, None, "valid", disable_bootstrap=True)
+    try:
+        assert run.call_args.kwargs["env"]["TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP"] == "1"
+    finally:
+        qualification._remove_fixture(root)
+
+
+def test_run_removes_fixture_when_installer_times_out(tmp_path: Path) -> None:
+    # PR #1233: subprocess timeouts must not leak tsa-installer-contract fixtures.
+    fixture_root = tmp_path / "tsa-installer-contract-timeout"
+    fixture_root.mkdir()
+    with (
+        patch.object(qualification.tempfile, "mkdtemp", return_value=str(fixture_root)),
+        patch.object(
+            qualification.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(["/bin/bash", "install.sh"], 30),
+        ),
+    ):
+        try:
+            qualification._run(REPO, None, "valid")
+        except subprocess.TimeoutExpired:
+            pass
+        else:
+            raise AssertionError("expected installer timeout")
+    assert fixture_root.exists() is False
+
+
+def test_installer_times_out_hanging_existing_uv(tmp_path: Path) -> None:
+    # PR #1233: an existing uv shim must not block installation indefinitely.
+    root = tmp_path / "existing-uv-timeout"
+    root.mkdir()
+    fixture = qualification._prepare_fixture(root, "uv 0.11.0", "valid")
+    qualification._write_executable(
+        root / "mock-bin" / "uv", "#!/bin/sh\nwhile :; do :; done\n"
+    )
+    completed = subprocess.run(
+        ["/bin/bash", str(REPO / "install.sh")],
+        cwd=root,
+        env=os.environ | fixture,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert (completed.returncode, "Timed out after 5 seconds" in completed.stdout) == (
+        1,
+        True,
+    )
+    assert "Replace or repair uv" in completed.stdout
+
+
+def test_installer_times_out_hanging_post_bootstrap_uv(tmp_path: Path) -> None:
+    # PR #1233: bootstrap validation must fail closed when the installed uv hangs.
+    root = tmp_path / "bootstrap-uv-timeout"
+    root.mkdir()
+    fixture = qualification._prepare_fixture(root, None, "valid")
+    qualification._write_executable(
+        root / "mock-bin" / "curl",
+        r"""#!/bin/sh
+out=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = '-o' ]; then out=$2; shift 2; else shift; fi
+done
+cat > "$out" <<'INSTALLER'
+#!/bin/sh
+mkdir -p "$HOME/.local/bin"
+cat > "$HOME/.local/bin/uv" <<'UV'
+#!/bin/sh
+while :; do :; done
+UV
+chmod 755 "$HOME/.local/bin/uv"
+INSTALLER
+""",
+    )
+    completed = subprocess.run(
+        ["/bin/bash", str(REPO / "install.sh")],
+        cwd=root,
+        env=os.environ | fixture,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert (
+        completed.returncode,
+        "Timed out after 5 seconds" in completed.stdout,
+        "after bootstrap" in completed.stdout,
+    ) == (1, True, True)
+    assert "Install uv manually" in completed.stdout
