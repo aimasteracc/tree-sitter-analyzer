@@ -7,10 +7,11 @@
 - Trust evidence: conservative resolution, provenance, freshness, reproducible outcomes
 - Task UX: understand → plan_change → assess_change over existing primitives
 - Runtime reliability: low-friction install, fast index/query/refresh, multi-agent safety
-- Independent adoption: E2/E3/E4 evidence, integrations, external maintainers, real cases
+- Independent adoption: bounded E0 operations, separate E1 qualification, then E2/E3/E4 evidence, integrations, external maintainers, real cases
 
 North star: **Verified Change Success Rate (VCSR)**. Public leadership wording is
-bounded by the RFC-0021 evidence ladder. Active plan:
+bounded by the RFC-0021 evidence ladder: an operational E0 canary cannot unlock
+E2 or public wording, and E1 must be qualified separately. Active plan:
 [`rfcs/ROADMAP-no1-agent-trust.md`](rfcs/ROADMAP-no1-agent-trust.md).
 
 **Dogfood protocol:** TSA uses its own MCP tools and skills to audit and repair its own

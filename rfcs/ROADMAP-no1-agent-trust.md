@@ -1,10 +1,10 @@
 # Roadmap — Trusted Agent Change Intelligence No.1 Program
 
 - **Status:** active
-- **Branch:** `feature/no1-agent-program`
+- **Branch:** `docs/no1-roadmap-governance`
 - **Mission:** Become the most trusted local code-change intelligence layer for AI coding agents.
 - **North star:** Verified Change Success Rate (VCSR), not feature, language, tool, test, or edge count.
-- **Claim policy:** Until RFC-0021 reaches E4, public language is bounded to named tools, versions, repositories, models, dates, and evidence levels. TSA must never emit an unqualified "No.1" claim.
+- **Claim policy:** Public language is always bounded to named tools, versions, repositories, models, dates, and evidence levels. E0–E3 emit no quantitative competitive wording; E4 permits only the exact admitted bounded sentence, never an unqualified "No.1" claim.
 
 ## 1. Strategic position
 
@@ -24,12 +24,19 @@ Existing MCP/CLI primitives remain the implementation substrate and compatibilit
 
 ## 2. Baseline
 
-Baseline captured by dogfooding the current repository:
+Baseline captured by dogfooding the current repository. The values below were
+measured on 2026-08-08 with
+`uv run python -m tree_sitter_analyzer --project-health --format json`. The
+executable baseline is bound to `origin/develop` commit
+`c0b59748f7b2885b27e9fb810ff9822b9906426f`; this branch changes documentation
+only. Re-measure rather than carrying these values forward after that source
+commit changes.
+
 
 | Signal | Current state |
 |---|---|
-| Index | 2,006 files, 52,680 symbols, 167,107 edges |
-| Health | 1,209 A / 688 B / 72 C / 7 D / 0 F; verdict `REVIEW` |
+| Project-health scope | 1,985 analyzed files |
+| Health | 1,602 A / 347 B / 32 C / 4 D / 0 F; verdict `REVIEW`; weakest dimension `structure` |
 | Constraints | `SAFE` |
 | Resolver registry xref | `register_language`: 15 callers, 1 callee |
 | Main technical moat | conservative language-gated resolution and edit-safety loop |
@@ -91,18 +98,19 @@ Baseline captured by dogfooding the current repository:
 
 ## 5. Twelve-month roadmap
 
-### Wave 0 — Program control and E1 canary (days 0-30)
+### Wave 0 — Program control, bounded E0 canary, and E1 qualification (days 0-30)
 
-**Outcome:** one source of truth, a qualified production canary path, and measurable onboarding.
+**Outcome:** one source of truth, a bounded E0 production-canary path, and separately qualified measurable onboarding.
 
 - Land this roadmap, task ledger, ownership model, and claim policy.
-- Complete the NO1-002C/002D production-canary operator path without weakening trust gates.
+- Complete the NO1-002C/002D production-canary operator path without weakening trust gates; its real bounded run remains E0 operational evidence and cannot advance the RFC-0021 ladder.
+- Qualify a separate reproducible install/smoke result before assigning E1 or unlocking E2 setup.
 - Create a machine-readable claim registry bound to benchmark artifact digests.
 - Generate one canonical language support-depth matrix from code/contract evidence.
 - Add a clean-machine install qualification that covers an installed-but-outdated uv.
 - Freeze the three-task API and edge-evidence contracts as reviewed RFCs.
 
-**Exit gate:** E1 smoke is reproducible; claims have one source; install-to-first-answer is measured; no new unbounded claim is possible.
+**Exit gate:** the bounded E0 canary is replayable, a distinct E1 install/smoke qualification is reproducible, claims have one source, install-to-first-answer is measured, and no new unbounded claim is possible.
 
 ### Wave 1 — Complete internal evidence and minimum product path (days 31-90)
 
@@ -110,7 +118,7 @@ Baseline captured by dogfooding the current repository:
 
 - Finish manifest-bound setup validation for all seven pinned repositories and required arms.
 - Run the complete pre-registered warm matrix only after setup and budget gates pass.
-- Add one second current indexed competitor through the same adapter/conformance boundary; unavailability remains `NOT_EVALUATED`.
+- Qualify one second current indexed competitor at the install/conformance boundary; it is not an RFC-0021 v1 matrix arm. Any comparative inclusion requires a separately reviewed v2 experiment with a re-frozen manifest, matrix cardinality, fairness policy, and endpoints; unavailability remains `NOT_EVALUATED`.
 - Implement `understand`, `plan_change`, and `assess_change` as orchestration over existing primitives.
 - Attach freshness, evidence, resolution kind, and confidence policy to task-level conclusions.
 - Split optional heavyweight dependencies from the default install path.
@@ -163,9 +171,9 @@ The program uses role-based agents with isolated worktrees for implementation. P
 |---|---|---|
 | Program Orchestrator | critical path, dependency gates, final integration, GitFlow | parent agent |
 | Trust & Benchmark Lead | RFC-0021, NO1-002C/D, provenance, replay, claim ladder | `no1-canary-implementer` (NO1-003B) |
-| Product/API Lead | three-task contracts, compatibility, Agent UX | queued after NO1-003B/006A |
-| Runtime Lead | install, packaging, indexing SLO, concurrency | `no1-install-implementer` (NO1-006A) |
-| Evidence/Claims Lead | claim registry, support matrix, generated docs | queued implementation agent |
+| Product/API Lead | three-task contracts, compatibility, Agent UX | RFC-0022/0023 drafts complete; next NO1-010A through their stated gates |
+| Runtime Lead | install, packaging, indexing SLO, concurrency | offline NO1-006A slice merged; native qualification remains |
+| Evidence/Claims Lead | claim registry, support matrix, generated docs | NO1-004A/B and NO1-005A merged; future E4 admission remains external |
 | Independent Reviewer | oracle signatures, blind review, E3 reproduction | human/external agent; cannot be benchmark author |
 | Community/GTM Lead | integrations, design partners, case studies | human-led with research agents |
 
@@ -179,9 +187,20 @@ Agents may prepare artifacts and code, but these gates remain human-controlled: 
 |---|---|---|---|---|
 | NO1-003A | Program roadmap and task ledger | Program Orchestrator | none | roadmap reviewed; branch obeys GitFlow; `--change-impact` reports exact verification |
 | NO1-003B | Production canary operator runbook and offline rehearsal | Trust Lead | NO1-002D | fixture remains `NOT_EVALUATED`; production callbacks only after signed attestation + judge ACCEPT; focused production-trust tests |
-| NO1-003C | Execute one real bounded E1 Gin smoke | Human Operator + Trust Lead | NO1-003B | immutable complete bundle, budget ledger, policy audit, replay; no E2/No.1 wording |
+| NO1-003D | Implement and qualify the production dispatcher/admission boundary | Runtime + Trust Leads | NO1-003B | separately reviewed dispatcher consumes the qualified bound spec exactly once, preserves kill switch/budget/attestation/judge gates, and performs no model call during qualification |
+| NO1-003C | Execute one real bounded E0 Gin production canary | Human Operator + Trust Lead | NO1-003D, NO1-008A | immutable complete bundle, budget ledger, policy audit, and replay; callbacks remain forbidden until model-free setup, signed attestation, human budget, and judge gates pass; the admitted manifest remains E0 and cannot unlock E1/E2 or public/No.1 wording |
 | NO1-004A | Claim registry schema and validator (complete) | Evidence Lead | NO1-003A | every quantitative README marketing claim is registry-generated with names/versions, metric/unit/numerator/denominator, benchmark/date/corpus/repo commit, repository set, model/backend, evidence level, and an independently reproduced digest admitted by the code-owned trust root; stale/mixed/self-attested claims fail closed |
 | NO1-004B | Generated claim/support snippets (complete) | Evidence Lead | NO1-004A, NO1-005A | deterministic claim marker plus whole-README coverage rejects manual quantitative marketing; command/version data and the independent language inventory generator are excluded |
+| NO1-005A | Canonical language support-depth inventory | Product Lead | none | pipeline registration dimensions derived from executable registries; cross-file E2E remains tri-state and requires positive fixtures |
+| NO1-006A | Fresh-install qualification harness | Runtime Lead | none | exact macOS/Linux/Windows scenarios; outdated uv is detected and remediated/actionable |
+| NO1-006B | Default dependency split RFC and measured baseline | Runtime Lead | NO1-006A | wheel/download/startup/dependency counts measured before design; no big-bang rewrite |
+| NO1-007A | RFC: `understand/plan_change/assess_change` | Product/API Lead | NO1-003A | fixed schemas, compatibility map, evidence fields, no duplicate analysis engine |
+| NO1-007B | RFC: edge evidence/confidence/freshness | Product/API + Trust | NO1-007A | confidence semantics calibrated; `unknown` never promoted without evidence |
+
+Integration chronology: NO1-004A/B and NO1-007A/B were implemented against the
+program-policy draft and merged before this governance PR. That parallel merge
+history does not mark NO1-003A complete; NO1-003A closes only when PR #1238 itself
+lands on `develop`.
 
 NO1-004A/004B closure is deliberately a zero-public-claim state: the only
 checked-in record is blocked E0 and emits no wording. Unsupported historical
@@ -189,19 +208,13 @@ benchmark/performance numbers were removed from the main README. A future
 number can appear there only as the exact deterministic E4 sentence generated
 from a digest-verified artifact; E0–E3 and blocked records cannot emit text.
 
-| NO1-005A | Canonical language support-depth inventory | Product Lead | none | pipeline registration dimensions derived from executable registries; cross-file E2E remains tri-state and requires positive fixtures |
-| NO1-006A | Fresh-install qualification harness | Runtime Lead | none | exact macOS/Linux/Windows scenarios; outdated uv is detected and remediated/actionable |
-| NO1-006B | Default dependency split RFC and measured baseline | Runtime Lead | NO1-006A | wheel/download/startup/dependency counts measured before design; no big-bang rewrite |
-| NO1-007A | RFC: `understand/plan_change/assess_change` | Product/API Lead | NO1-003A | fixed schemas, compatibility map, evidence fields, no duplicate analysis engine |
-| NO1-007B | RFC: edge evidence/confidence/freshness | Product/API + Trust | NO1-007A | confidence semantics calibrated; `unknown` never promoted without evidence |
-
 ### P1 — after P0 gates
 
 | ID | Task | Owner role | Depends on | Acceptance and verification |
 |---|---|---|---|---|
-| NO1-008A | Seven-repository setup qualification | Benchmark Lead | NO1-003C | exact source partitions, zero unallowed parse errors, pinned tool/repo fingerprints |
+| NO1-008A | Seven-repository model-free setup qualification | Benchmark Lead | separately recorded RFC-0021 E1 qualification | exact source partitions, zero unallowed parse errors, pinned tool/repo fingerprints, and no model callbacks; any failure blocks NO1-003C and all model-backed phases |
 | NO1-008B | E2 warm confirmatory matrix | Benchmark Lead + Human Operator | NO1-008A | exact expected cells, five repeats, complete evaluations, failures retained |
-| NO1-009A | Select and qualify second indexed competitor | Trust Lead + Independent Reviewer | NO1-003A | frozen version/install path; unavailable arm is `NOT_EVALUATED`, never a TSA win |
+| NO1-009A | Select and qualify second indexed competitor | Trust Lead + Independent Reviewer | NO1-003A | frozen version/install/conformance path; unavailable arm is `NOT_EVALUATED`, never a TSA win; it is not added to the frozen RFC-0021 v1 matrix without a separately reviewed v2 experiment and recomputed cells |
 | NO1-010A | Three-task prototype | Product/API Lead | NO1-007A/B | MCP/CLI parity or explicit internal-only status; exact contract tests; real CLI smoke |
 | NO1-010B | Agent change-outcome benchmark RFC | Benchmark + Product | NO1-008B, NO1-010A | bugfix/refactor/migration/test-selection oracles; VCSR primary endpoint |
 | NO1-011A | Lightweight default install implementation | Runtime Lead | NO1-006B | compatibility preserved; fresh-install success and startup improve on all axes |
@@ -213,16 +226,19 @@ from a digest-verified artifact; E0–E3 and blocked records cannot emit text.
 ```text
 NO1-003A
   ├─ NO1-004A ─ NO1-004B
-  ├─ NO1-007A ─ NO1-007B ─ NO1-010A ─ NO1-010B
-  └─ NO1-005A ─ NO1-004B
+  ├─ NO1-007A ─ NO1-007B ─ NO1-010A
+  ├─ NO1-005A ─ NO1-004B
+  └─ NO1-009A
 
-NO1-002D ─ NO1-003B ─ NO1-003C ─ NO1-008A ─ NO1-008B
-                                       └─ NO1-009A
+NO1-002D ─ NO1-003B ─ NO1-003D (dispatcher; no model call)
+[separate RFC-0021 E1 qualification] ─ NO1-008A (model-free setup) ─ NO1-008B ─ NO1-010B
+NO1-003D + NO1-008A ─ NO1-003C (bounded E0 canary; both are required)
 
 NO1-006A ─ NO1-006B ─ NO1-011A
          └─ NO1-012A
 
-NO1-010A ─ NO1-013A
+NO1-010A ─ NO1-010B
+         └─ NO1-013A
 ```
 
 ## 9. Definition of done for every implementation task
@@ -240,10 +256,9 @@ NO1-010A ─ NO1-013A
 
 ## 10. Current execution order
 
-1. Land the generated language-inventory foundation before the dependent public-claim control plane.
-2. Land the claim registry and multilingual zero-claim cleanup only after their fail-closed reviews pass.
-3. Land installer/doctor hardening, offline rehearsal, and draft RFC slices as independently reversible PRs.
-4. Land roadmap/index/state coordination last so completion labels reflect merged code, not worktree state.
-5. Continue NO1-006A native package-to-MCP qualification; the offline contract does not complete it.
-6. Keep all model-backed work gated on explicit human budget and independent-judge readiness.
-7. Do not start E2 or public leadership claims until E1 evidence is complete and replayable.
+1. Continue NO1-006A with native macOS/Linux/Windows package-to-MCP-first-answer qualification; the merged offline contract does not complete it.
+2. Establish and record a distinct reproducible RFC-0021 E1 install/smoke qualification, then complete NO1-008A's model-free seven-repository setup; any setup failure blocks every model-backed phase.
+3. Implement and independently review NO1-003D's production dispatcher without invoking a model.
+4. Only after NO1-003D, NO1-008A, human budget, signed attestation, and judge gates pass, execute NO1-003C as a bounded E0 canary; retain failures and do not relabel it E1.
+5. Qualify NO1-009A only at the second competitor's install/conformance boundary; adding it to comparisons requires a separately reviewed RFC-0021 v2 experiment.
+6. Proceed with NO1-006B/010A/012A only through their ledger prerequisites and exact native/contract qualification gates; E0–E3 cannot emit public leadership wording.

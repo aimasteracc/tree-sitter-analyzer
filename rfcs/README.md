@@ -83,5 +83,5 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 
 ## Roadmap
 
-- [ROADMAP-no1-agent-trust.md](ROADMAP-no1-agent-trust.md) — active No.1 program: trusted Agent change intelligence, evidence gates, team topology, and 90-day task ledger.
+- [ROADMAP-no1-agent-trust.md](ROADMAP-no1-agent-trust.md) — active No.1 program: trusted Agent change intelligence, evidence gates, team topology, and 90-day task ledger. Its real production canary remains bounded E0; E1 is a separate qualification and E0–E3 emit no public claim.
 - [ROADMAP-beyond-codegraph.md](ROADMAP-beyond-codegraph.md) — historical strategy and completed correctness-moat work.
