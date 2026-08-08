@@ -107,7 +107,7 @@ def installed_provenance() -> dict[str, object]:
     if len(direct_urls) != 1:
         raise AssertionError("installed distribution must contain one direct_url.json")
     module_origin = pathlib.Path(module.__spec__.origin).resolve()
-    module_relative = str(module_origin.relative_to(location))
+    module_relative = module_origin.relative_to(location).as_posix()
     record = installed_record(dist, location)
     return {
         "metadata": {
