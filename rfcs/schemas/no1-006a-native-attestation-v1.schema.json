@@ -1,1 +1,987 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://github.com/aimasteracc/tree-sitter-analyzer/no1-006a-native-attestation-v1.schema.json","title":"NO1-006A native package MCP qualification evidence","oneOf":[{"type":"object","additionalProperties":false,"required":["schema_version","kind","source","workflow","wheel"],"properties":{"schema_version":{"const":"no1-006a-native-attestation-v1"},"source":{"type":"object","additionalProperties":false,"required":["repository","commit","ref","dirty"],"properties":{"repository":{"type":"string","minLength":1},"commit":{"type":"string","pattern":"^[0-9a-f]{40}$"},"ref":{"type":"string","minLength":1},"dirty":{"const":false}}},"workflow":{"type":"object","additionalProperties":false,"required":["event","run_id","run_attempt","job","workflow_ref","run_url"],"properties":{"event":{"type":"string","minLength":1},"run_id":{"type":"string","minLength":1},"run_attempt":{"type":"string","minLength":1},"job":{"type":"string","minLength":1},"workflow_ref":{"type":"string","minLength":1},"run_url":{"type":"string","minLength":1}}},"wheel":{"type":"object","additionalProperties":false,"required":["filename","sha256","size","name","version"],"properties":{"filename":{"type":"string","pattern":"\\.whl$"},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"size":{"type":"integer","minimum":1},"name":{"const":"tree-sitter-analyzer"},"version":{"type":"string","minLength":1}}},"kind":{"const":"build_manifest"}}},{"type":"object","additionalProperties":false,"required":["schema_version","kind","qualification_id","evidence_scope","axis","qualification_performed","passed","source","workflow","runner","wheel","stages","failure"],"properties":{"schema_version":{"const":"no1-006a-native-attestation-v1"},"source":{"type":"object","additionalProperties":false,"required":["repository","commit","ref","dirty"],"properties":{"repository":{"type":"string","minLength":1},"commit":{"type":"string","pattern":"^[0-9a-f]{40}$"},"ref":{"type":"string","minLength":1},"dirty":{"const":false}}},"workflow":{"type":"object","additionalProperties":false,"required":["event","run_id","run_attempt","job","workflow_ref","run_url"],"properties":{"event":{"type":"string","minLength":1},"run_id":{"type":"string","minLength":1},"run_attempt":{"type":"string","minLength":1},"job":{"type":"string","minLength":1},"workflow_ref":{"type":"string","minLength":1},"run_url":{"type":"string","minLength":1}}},"wheel":{"type":"object","additionalProperties":false,"required":["filename","sha256","size","name","version"],"properties":{"filename":{"type":"string","pattern":"\\.whl$"},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"size":{"type":"integer","minimum":1},"name":{"const":"tree-sitter-analyzer"},"version":{"type":"string","minLength":1}}},"kind":{"const":"axis"},"qualification_id":{"const":"NO1-006A"},"evidence_scope":{"const":"native_package_mcp_first_answer"},"axis":{"enum":["linux","macos","windows"]},"qualification_performed":{"const":true},"passed":{"type":"boolean"},"runner":{"type":"object","additionalProperties":false,"required":["declared_axis","observed_system","release","machine","image_os","image_version"],"properties":{"declared_axis":{"enum":["linux","macos","windows"]},"observed_system":{"type":"string"},"release":{"type":"string"},"machine":{"type":"string"},"image_os":{"type":"string"},"image_version":{"type":"string"}}},"stages":{"type":"array","maxItems":4,"uniqueItems":true,"items":{"type":"object","additionalProperties":false,"required":["id","passed"],"properties":{"id":{"enum":["verify_wheel","install","metadata_provenance","mcp_protocol"]},"passed":{"const":true}}}},"failure":{"oneOf":[{"type":"null"},{"type":"object","additionalProperties":false,"required":["stage","type","message"],"properties":{"stage":{"enum":["verify_wheel","install","metadata_provenance","mcp_protocol","finalize"]},"type":{"type":"string"},"message":{"type":"string"}}}]},"build_manifest_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"install":{"type":"object","additionalProperties":false,"required":["exit_code","duration_seconds","stdout_sha256","stderr_sha256","fresh_venv","cwd_outside_checkout","pythonpath_cleared"],"properties":{"exit_code":{"type":"integer"},"duration_seconds":{"type":"number","minimum":0},"stdout_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"stderr_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"fresh_venv":{"const":true},"cwd_outside_checkout":{"const":true},"pythonpath_cleared":{"const":true}}},"metadata":{"type":"object","additionalProperties":false,"required":["name","version","location","module_file","module_origin","direct_url","direct_url_path","module_recorded","all_paths_in_fresh_venv","direct_url_sha256"],"properties":{"name":{"type":"string"},"version":{"type":"string"},"location":{"type":"string"},"module_file":{"type":"string"},"module_origin":{"type":"string"},"direct_url":{"type":"object","additionalProperties":false,"required":["url","archive_info"],"properties":{"url":{"type":"string","minLength":1},"archive_info":{"type":"object","additionalProperties":true}}},"direct_url_path":{"type":"string"},"module_recorded":{"const":true},"all_paths_in_fresh_venv":{"const":true},"direct_url_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}},"runtime":{"type":"object","additionalProperties":false,"required":["python","executable","prefix"],"properties":{"python":{"type":"string","minLength":1},"executable":{"type":"string","minLength":1},"prefix":{"type":"string","minLength":1}}},"mcp":{"type":"object","additionalProperties":false,"required":["executable","protocol_version","server_name","server_version","tools","first_call","duration_seconds","transcript_sha256","stderr_sha256"],"properties":{"executable":{"type":"string"},"protocol_version":{"type":"string"},"server_name":{"const":"tree-sitter-analyzer-mcp"},"server_version":{"type":"string"},"tools":{"const":["search","nav","structure","health","edit","project","index","viz","set_project_path"]},"first_call":{"type":"object","additionalProperties":false,"required":["name","arguments","is_error","default_format","verdict","project_root","indexed","total_files","summary"],"properties":{"name":{"const":"index"},"arguments":{"const":{"action":"status"}},"is_error":{"const":false},"default_format":{"const":"toon"},"verdict":{"const":"WARN"},"project_root":{"type":"string","minLength":1},"indexed":{"const":false},"total_files":{"const":0},"summary":{"const":"codegraph_status: index missing or empty"}}},"duration_seconds":{"type":"number","minimum":0},"transcript_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"stderr_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}},"dependency_manifest_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}},"allOf":[{"if":{"properties":{"passed":{"const":true}},"required":["passed"]},"then":{"required":["build_manifest_sha256","install","metadata","runtime","mcp","dependency_manifest_sha256"],"properties":{"stages":{"prefixItems":[{"properties":{"id":{"const":"verify_wheel"}}},{"properties":{"id":{"const":"install"}}},{"properties":{"id":{"const":"metadata_provenance"}}},{"properties":{"id":{"const":"mcp_protocol"}}}],"minItems":4,"maxItems":4},"failure":{"type":"null"},"install":{"properties":{"exit_code":{"const":0}}}}},"else":{"properties":{"failure":{"type":"object"}}}}]},{"type":"object","additionalProperties":false,"required":["schema_version","kind","qualification_id","evidence_scope","qualification_performed","native_axes_qualified","qualified","evidence_trust","source_commit","wheel_sha256","build_manifest_sha256","wheel","axes","failures","workflow"],"properties":{"schema_version":{"const":"no1-006a-native-attestation-v1"},"kind":{"const":"aggregate"},"qualification_id":{"const":"NO1-006A"},"evidence_scope":{"const":"native_package_mcp_first_answer"},"qualification_performed":{"type":"boolean"},"native_axes_qualified":{"type":"boolean"},"qualified":{"const":false},"evidence_trust":{"enum":["UNTRUSTED_CANDIDATE","EXTERNAL_ATTESTATION_REQUIRED"]},"source_commit":{"oneOf":[{"type":"null"},{"type":"string","pattern":"^[0-9a-f]{40}$"}]},"wheel_sha256":{"oneOf":[{"type":"null"},{"type":"string","pattern":"^[0-9a-f]{64}$"}]},"build_manifest_sha256":{"oneOf":[{"type":"null"},{"type":"string","pattern":"^[0-9a-f]{64}$"}]},"wheel":{"oneOf":[{"type":"null"},{"type":"object","additionalProperties":false,"required":["filename","sha256","size","name","version"],"properties":{"filename":{"type":"string","pattern":"\\.whl$"},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"size":{"type":"integer","minimum":1},"name":{"const":"tree-sitter-analyzer"},"version":{"type":"string","minLength":1}}}]},"axes":{"type":"array","maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["axis","report_sha256","passed"],"properties":{"axis":{"enum":["linux","macos","windows"]},"report_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"passed":{"type":"boolean"}}}},"failures":{"type":"array","items":{"type":"string"}},"workflow":{"type":"object","additionalProperties":false,"required":["event","run_id","run_attempt","job","workflow_ref","run_url"],"properties":{"event":{"type":"string","minLength":1},"run_id":{"type":"string","minLength":1},"run_attempt":{"type":"string","minLength":1},"job":{"type":"string","minLength":1},"workflow_ref":{"type":"string","minLength":1},"run_url":{"type":"string","minLength":1}}}},"allOf":[{"if":{"properties":{"evidence_trust":{"const":"UNTRUSTED_CANDIDATE"}}},"then":{"properties":{"native_axes_qualified":{"const":false},"qualified":{"const":false}}}},{"if":{"properties":{"evidence_trust":{"const":"EXTERNAL_ATTESTATION_REQUIRED"}}},"then":{"properties":{"native_axes_qualified":{"const":true},"qualified":{"const":false},"axes":{"minItems":3,"maxItems":3},"failures":{"maxItems":0}}}}]}]}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/aimasteracc/tree-sitter-analyzer/no1-006a-native-attestation-v1.schema.json",
+  "title": "NO1-006A native package MCP qualification evidence",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "source",
+        "workflow",
+        "wheel"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "no1-006a-native-attestation-v1"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "commit",
+            "ref",
+            "dirty"
+          ],
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "commit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dirty": {
+              "const": false
+            }
+          }
+        },
+        "workflow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "event",
+            "run_id",
+            "run_attempt",
+            "job",
+            "workflow_ref",
+            "run_url"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run_attempt": {
+              "type": "string",
+              "minLength": 1
+            },
+            "job": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workflow_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run_url": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "wheel": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "filename",
+            "sha256",
+            "size",
+            "name",
+            "version"
+          ],
+          "properties": {
+            "filename": {
+              "type": "string",
+              "pattern": "\\.whl$"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "name": {
+              "const": "tree-sitter-analyzer"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "kind": {
+          "const": "build_manifest"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "qualification_id",
+        "evidence_scope",
+        "axis",
+        "qualification_performed",
+        "passed",
+        "source",
+        "workflow",
+        "runner",
+        "wheel",
+        "stages",
+        "failure"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "no1-006a-native-attestation-v1"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "commit",
+            "ref",
+            "dirty"
+          ],
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "commit": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dirty": {
+              "const": false
+            }
+          }
+        },
+        "workflow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "event",
+            "run_id",
+            "run_attempt",
+            "job",
+            "workflow_ref",
+            "run_url"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run_attempt": {
+              "type": "string",
+              "minLength": 1
+            },
+            "job": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workflow_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run_url": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "wheel": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "filename",
+            "sha256",
+            "size",
+            "name",
+            "version"
+          ],
+          "properties": {
+            "filename": {
+              "type": "string",
+              "pattern": "\\.whl$"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "name": {
+              "const": "tree-sitter-analyzer"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "kind": {
+          "const": "axis"
+        },
+        "qualification_id": {
+          "const": "NO1-006A"
+        },
+        "evidence_scope": {
+          "const": "native_package_mcp_first_answer"
+        },
+        "axis": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "qualification_performed": {
+          "const": true
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "runner": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "declared_axis",
+            "observed_system",
+            "release",
+            "machine",
+            "image_os",
+            "image_version"
+          ],
+          "properties": {
+            "declared_axis": {
+              "enum": [
+                "linux",
+                "macos",
+                "windows"
+              ]
+            },
+            "observed_system": {
+              "type": "string"
+            },
+            "release": {
+              "type": "string"
+            },
+            "machine": {
+              "type": "string"
+            },
+            "image_os": {
+              "type": "string"
+            },
+            "image_version": {
+              "type": "string"
+            }
+          }
+        },
+        "stages": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "passed"
+            ],
+            "properties": {
+              "id": {
+                "enum": [
+                  "verify_wheel",
+                  "install",
+                  "metadata_provenance",
+                  "mcp_protocol"
+                ]
+              },
+              "passed": {
+                "const": true
+              }
+            }
+          }
+        },
+        "failure": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "stage",
+                "type",
+                "message"
+              ],
+              "properties": {
+                "stage": {
+                  "enum": [
+                    "verify_wheel",
+                    "install",
+                    "metadata_provenance",
+                    "mcp_protocol",
+                    "finalize"
+                  ]
+                },
+                "type": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        },
+        "build_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "install": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "exit_code",
+            "duration_seconds",
+            "stdout_sha256",
+            "stderr_sha256",
+            "fresh_venv",
+            "cwd_outside_checkout",
+            "pythonpath_cleared"
+          ],
+          "properties": {
+            "exit_code": {
+              "type": "integer"
+            },
+            "duration_seconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "stdout_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "stderr_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "fresh_venv": {
+              "const": true
+            },
+            "cwd_outside_checkout": {
+              "const": true
+            },
+            "pythonpath_cleared": {
+              "const": true
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "version",
+            "location",
+            "module_file",
+            "module_origin",
+            "direct_url",
+            "direct_url_path",
+            "module_recorded",
+            "all_paths_in_fresh_venv",
+            "direct_url_sha256",
+            "installed_record"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "module_file": {
+              "type": "string"
+            },
+            "module_origin": {
+              "type": "string"
+            },
+            "direct_url": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "url",
+                "archive_info"
+              ],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "archive_info": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "hash": {
+                      "type": "string",
+                      "pattern": "^sha256=[0-9a-f]{64}$"
+                    },
+                    "hashes": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "sha256"
+                      ],
+                      "properties": {
+                        "sha256": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{64}$"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "direct_url_path": {
+              "type": "string"
+            },
+            "module_recorded": {
+              "const": true
+            },
+            "all_paths_in_fresh_venv": {
+              "const": true
+            },
+            "direct_url_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "installed_record": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "record_path",
+                "record_sha256",
+                "entry_count",
+                "files"
+              ],
+              "properties": {
+                "record_path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "record_sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "entry_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "files": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "path",
+                      "sha256",
+                      "size"
+                    ],
+                    "properties": {
+                      "path": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "size": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "python",
+            "executable",
+            "prefix"
+          ],
+          "properties": {
+            "python": {
+              "type": "string",
+              "minLength": 1
+            },
+            "executable": {
+              "type": "string",
+              "minLength": 1
+            },
+            "prefix": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "mcp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "executable",
+            "protocol_version",
+            "server_name",
+            "server_version",
+            "tools",
+            "first_call",
+            "duration_seconds",
+            "transcript_sha256",
+            "stderr_sha256"
+          ],
+          "properties": {
+            "executable": {
+              "type": "string"
+            },
+            "protocol_version": {
+              "type": "string"
+            },
+            "server_name": {
+              "const": "tree-sitter-analyzer-mcp"
+            },
+            "server_version": {
+              "type": "string"
+            },
+            "tools": {
+              "const": [
+                "search",
+                "nav",
+                "structure",
+                "health",
+                "edit",
+                "project",
+                "index",
+                "viz",
+                "set_project_path"
+              ]
+            },
+            "first_call": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "arguments",
+                "is_error",
+                "default_format",
+                "verdict",
+                "project_root",
+                "indexed",
+                "total_files",
+                "summary"
+              ],
+              "properties": {
+                "name": {
+                  "const": "index"
+                },
+                "arguments": {
+                  "const": {
+                    "action": "status"
+                  }
+                },
+                "is_error": {
+                  "const": false
+                },
+                "default_format": {
+                  "const": "toon"
+                },
+                "verdict": {
+                  "const": "WARN"
+                },
+                "project_root": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "indexed": {
+                  "const": false
+                },
+                "total_files": {
+                  "const": 0
+                },
+                "summary": {
+                  "const": "codegraph_status: index missing or empty"
+                }
+              }
+            },
+            "duration_seconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "transcript_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "stderr_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "dependency_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "passed": {
+                "const": true
+              }
+            },
+            "required": [
+              "passed"
+            ]
+          },
+          "then": {
+            "required": [
+              "build_manifest_sha256",
+              "install",
+              "metadata",
+              "runtime",
+              "mcp",
+              "dependency_manifest_sha256"
+            ],
+            "properties": {
+              "stages": {
+                "prefixItems": [
+                  {
+                    "properties": {
+                      "id": {
+                        "const": "verify_wheel"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "id": {
+                        "const": "install"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "id": {
+                        "const": "metadata_provenance"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "id": {
+                        "const": "mcp_protocol"
+                      }
+                    }
+                  }
+                ],
+                "minItems": 4,
+                "maxItems": 4
+              },
+              "failure": {
+                "type": "null"
+              },
+              "install": {
+                "properties": {
+                  "exit_code": {
+                    "const": 0
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "failure": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "qualification_id",
+        "evidence_scope",
+        "qualification_performed",
+        "native_axes_qualified",
+        "qualified",
+        "evidence_trust",
+        "source_commit",
+        "wheel_sha256",
+        "build_manifest_sha256",
+        "wheel",
+        "axes",
+        "failures",
+        "workflow"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "no1-006a-native-attestation-v1"
+        },
+        "kind": {
+          "const": "aggregate"
+        },
+        "qualification_id": {
+          "const": "NO1-006A"
+        },
+        "evidence_scope": {
+          "const": "native_package_mcp_first_answer"
+        },
+        "qualification_performed": {
+          "type": "boolean"
+        },
+        "native_axes_qualified": {
+          "type": "boolean"
+        },
+        "qualified": {
+          "const": false
+        },
+        "evidence_trust": {
+          "enum": [
+            "UNTRUSTED_CANDIDATE",
+            "EXTERNAL_ATTESTATION_REQUIRED"
+          ]
+        },
+        "source_commit": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            }
+          ]
+        },
+        "wheel_sha256": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          ]
+        },
+        "build_manifest_sha256": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          ]
+        },
+        "wheel": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "filename",
+                "sha256",
+                "size",
+                "name",
+                "version"
+              ],
+              "properties": {
+                "filename": {
+                  "type": "string",
+                  "pattern": "\\.whl$"
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "size": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "name": {
+                  "const": "tree-sitter-analyzer"
+                },
+                "version": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          ]
+        },
+        "axes": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "axis",
+              "report_sha256",
+              "passed"
+            ],
+            "properties": {
+              "axis": {
+                "enum": [
+                  "linux",
+                  "macos",
+                  "windows"
+                ]
+              },
+              "report_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "passed": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "workflow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "event",
+            "run_id",
+            "run_attempt",
+            "job",
+            "workflow_ref",
+            "run_url"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run_attempt": {
+              "type": "string",
+              "minLength": 1
+            },
+            "job": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workflow_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run_url": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "evidence_trust": {
+                "const": "UNTRUSTED_CANDIDATE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "native_axes_qualified": {
+                "const": false
+              },
+              "qualified": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "evidence_trust": {
+                "const": "EXTERNAL_ATTESTATION_REQUIRED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "native_axes_qualified": {
+                "const": true
+              },
+              "qualified": {
+                "const": false
+              },
+              "axes": {
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "failures": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

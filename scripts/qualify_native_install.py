@@ -17,6 +17,7 @@ from native_qualification_lib import (
     PROJECT,
     STAGES,
     atomic_write,
+    direct_url_hash,
     identity,
     run,
     sha256,
@@ -360,6 +361,20 @@ def aggregate(args: argparse.Namespace) -> int:
             or report.get("runner", {}).get("observed_system") != expected_system
         ):
             failures.append(f"{axis_name}: failed report or runner mismatch")
+        metadata = report.get("metadata", {})
+        if (
+            metadata.get("all_paths_in_fresh_venv") is not True
+            or metadata.get("module_recorded") is not True
+            or metadata.get("module_file") != metadata.get("module_origin")
+            or metadata.get("direct_url_sha256")
+            != manifest.get("wheel", {}).get("sha256")
+            or direct_url_hash(metadata.get("direct_url", {}))
+            != manifest.get("wheel", {}).get("sha256")
+            or not isinstance(metadata.get("installed_record", {}).get("files"), list)
+            or metadata.get("installed_record", {}).get("entry_count")
+            != len(metadata.get("installed_record", {}).get("files", []))
+        ):
+            failures.append(f"{axis_name}: installed provenance oracle mismatch")
         first = report.get("mcp", {}).get("first_call", {})
         if report.get("mcp", {}).get("tools") != TOOLS or first != {
             "name": "index",

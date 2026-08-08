@@ -6,7 +6,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import jsonschema
@@ -21,9 +20,13 @@ from _test_native_qualification_helpers import (  # noqa: E402
     SCHEMA,
     SCRIPT,
     aggregate,
+    assert_success_cleanup,
+    assert_timeout_cleanup,
     github_env,
     manifest,
+    mutate_wheel_record,
     report,
+    trusted_verifier_result,
 )
 
 
@@ -252,6 +255,12 @@ def test_provenance_validator_rejects_module_outside_fresh_venv(tmp_path: Path) 
         "module_origin": str(outside),
         "direct_url_path": str(direct),
         "module_recorded": True,
+        "installed_record": {
+            "record_path": str(direct),
+            "record_sha256": "0" * 64,
+            "entry_count": 0,
+            "files": [],
+        },
         "name": "tree-sitter-analyzer",
         "version": "1.0",
         "direct_url": {"archive_info": {"hash": "sha256=" + "a" * 64}},
@@ -303,7 +312,9 @@ def test_workflow_is_path_routed_and_write_permissions_are_isolated() -> None:
         "actions/checkout" not in trusted and "qualify_native_install.py" not in trusted
     )
     assert "Independently verify downloaded evidence identities" in trusted
-    assert "assert identity(report) == expected" in trusted
+    assert "exact(report," in trusted and 'identity(report, "native-axis")' in trusted
+    assert "installed_record" in trusted and "RECORD self-entry" not in trusted
+    assert "independent-verification.ok') != ''" in trusted
 
 
 def test_workflow_all_jobs_create_and_upload_strict_job_results() -> None:
@@ -322,6 +333,11 @@ class _RawMCP2Server:
         self, method: str, params_type: object, handler: object
     ) -> None:
         self.handlers[method] = handler
+
+
+def test_mcp2_adapter_delegates_unknown_attributes() -> None:
+    raw = _RawMCP2Server()
+    assert MCP2ServerAdapter(raw).handlers is raw.handlers
 
 
 def test_adapter_preserves_native_mcp1_server() -> None:
@@ -428,31 +444,44 @@ async def test_mcp2_read_resource_adapter_preserves_helper_contents() -> None:
     reason="POSIX process-group behavior only; Windows taskkill is separately bounded",
 )
 def test_timeout_runner_kills_sigterm_ignoring_descendant(tmp_path: Path) -> None:
-    from native_qualification_lib import run
+    assert_timeout_cleanup(tmp_path)
 
-    pid_file = tmp_path / "child.pid"
-    child = (
-        "import pathlib,signal,time;"
-        "signal.signal(signal.SIGTERM,signal.SIG_IGN);"
-        f"pathlib.Path({str(pid_file)!r}).write_text(str(__import__('os').getpid()));"
-        "time.sleep(60)"
+
+def test_successful_runner_cleans_detached_descendant(tmp_path: Path) -> None:
+    # Final review 2026-07-01: successful leaders must not leak background children.
+    assert_success_cleanup(tmp_path)
+
+
+@pytest.mark.parametrize("mutation", ["unrecorded", "duplicate", "digest", "pth"])
+def test_wheel_record_rejects_non_exact_or_injected_archive(
+    tmp_path: Path, mutation: str
+) -> None:
+    # Final review 2026-07-01: RECORD is an exact cryptographic archive inventory.
+    from native_qualification_lib import wheel_metadata
+
+    wheel, _, _ = manifest(tmp_path, "pull_request")
+    mutate_wheel_record(wheel, mutation)
+    with pytest.raises(ValueError, match="RECORD|injection"):
+        wheel_metadata(wheel)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "valid",
+        "stage_false",
+        "extra_field",
+        "mcp_oracle",
+        "venv_provenance",
+        "direct_hash",
+        "aggregate_extra",
+        "axis_digest",
+    ],
+)
+def test_trusted_inline_verifier_rejects_candidate_forgery(
+    tmp_path: Path, mutation: str
+) -> None:
+    # Final workflow review 2026-07-01: candidate JSON cannot weaken trusted semantics.
+    assert trusted_verifier_result(tmp_path, mutation) == (
+        0 if mutation == "valid" else 1
     )
-    parent = (
-        "import subprocess,sys,time;"
-        f"subprocess.Popen([sys.executable,'-c',{child!r}]);"
-        "time.sleep(60)"
-    )
-    rc, _, _, duration = run(
-        [sys.executable, "-c", parent], cwd=tmp_path, env=dict(os.environ), timeout=1
-    )
-    child_pid = int(pid_file.read_text())
-    deadline = time.monotonic() + 2
-    alive = True
-    while alive and time.monotonic() < deadline:
-        try:
-            os.kill(child_pid, 0)
-        except ProcessLookupError:
-            alive = False
-        time.sleep(0.05)
-    assert (rc, alive) == (124, False)
-    assert duration < 7

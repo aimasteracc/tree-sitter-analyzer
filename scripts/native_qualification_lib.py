@@ -10,12 +10,14 @@ import json
 import os
 import signal
 import subprocess
+import threading
 import time
 import zipfile
 from email.parser import BytesParser
 from pathlib import Path
 from typing import Any
 
+import psutil
 from packaging.utils import parse_wheel_filename
 
 PROJECT = "tree-sitter-analyzer"
@@ -62,23 +64,48 @@ def wheel_metadata(path: Path) -> dict[str, Any]:
         )
         members = archive.namelist()
         archived = set(members)
+        recorded = [row[0] for row in rows if len(row) == 3]
         if len(archived) != len(members) or archive.testzip() is not None:
             raise ValueError("wheel archive has duplicate or corrupt members")
-        if not rows or any(len(row) != 3 or row[0] not in archived for row in rows):
-            raise ValueError("wheel RECORD does not enumerate archive members")
+        if (
+            not rows
+            or any(len(row) != 3 for row in rows)
+            or len(recorded) != len(set(recorded))
+            or set(recorded) != archived
+        ):
+            raise ValueError("wheel RECORD must exactly enumerate archive members once")
         for filename, digest, size in rows:
+            lowered = Path(filename).name.lower()
+            if (
+                filename.startswith(("/", "\\"))
+                or ".." in Path(filename).parts
+                or lowered.endswith((".pth", ".egg-link"))
+                or lowered in {"sitecustomize.py", "usercustomize.py"}
+            ):
+                raise ValueError(
+                    "wheel contains an unsafe install-time injection member"
+                )
             data = archive.read(filename)
-            if size and int(size) != len(data):
-                raise ValueError("wheel RECORD size mismatch")
-            if digest:
+            is_record = filename == record_names[0]
+            if is_record:
+                if digest or size:
+                    raise ValueError(
+                        "wheel RECORD self-entry must have empty hash and size"
+                    )
+                continue
+            if not digest or not size or int(size) != len(data):
+                raise ValueError("wheel RECORD requires exact size for every member")
+            try:
                 algorithm, encoded = digest.split("=", 1)
                 actual = (
                     base64.urlsafe_b64encode(hashlib.new(algorithm, data).digest())
                     .rstrip(b"=")
                     .decode()
                 )
-                if actual != encoded:
-                    raise ValueError("wheel RECORD digest mismatch")
+            except (ValueError, TypeError) as exc:
+                raise ValueError("wheel RECORD digest is invalid") from exc
+            if algorithm != "sha256" or actual != encoded:
+                raise ValueError("wheel RECORD sha256 digest mismatch")
         filename_name, filename_version, _, _ = parse_wheel_filename(path.name)
         if canonical_name(filename_name) != PROJECT or str(filename_version) != version:
             raise ValueError("wheel filename Name/Version differs from METADATA")
@@ -99,8 +126,29 @@ def inside(child: Path, parent: Path) -> bool:
         return False
 
 
-def terminate_tree(proc: subprocess.Popen[bytes], grace: float = 2.0) -> None:
-    """Bounded best-effort termination of the complete process tree."""
+def _watch_descendants(
+    proc: subprocess.Popen[bytes],
+    tracked: dict[int, psutil.Process],
+    stop: threading.Event,
+) -> None:
+    """Retain descendant identities before an exited parent is reaped/reparented."""
+    parent = psutil.Process(proc.pid)
+    while not stop.is_set():
+        try:
+            for child in parent.children(recursive=True):
+                tracked.setdefault(child.pid, child)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return
+        stop.wait(0.005)
+
+
+def terminate_tree(
+    proc: subprocess.Popen[bytes],
+    tracked: dict[int, psutil.Process] | None = None,
+    grace: float = 2.0,
+) -> None:
+    """Boundedly terminate the owned group and every observed descendant."""
+    descendants = list((tracked or {}).values())
     if os.name == "nt":
         try:
             subprocess.run(
@@ -112,23 +160,28 @@ def terminate_tree(proc: subprocess.Popen[bytes], grace: float = 2.0) -> None:
             )
         except subprocess.TimeoutExpired:
             pass
-        return
-    # Kill the process group even if its leader already exited: descendants may remain.
-    try:
-        os.killpg(proc.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    deadline = time.monotonic() + grace
-    while time.monotonic() < deadline:
+    else:
         try:
-            os.killpg(proc.pid, 0)
+            os.killpg(proc.pid, signal.SIGTERM)
         except ProcessLookupError:
-            return
-        time.sleep(0.05)
-    try:
-        os.killpg(proc.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+            pass
+    for child in descendants:
+        try:
+            child.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    _, alive = psutil.wait_procs(descendants, timeout=grace)
+    if os.name != "nt":
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    for child in alive:
+        try:
+            child.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    psutil.wait_procs(alive, timeout=min(grace, 1.0))
 
 
 def run(
@@ -145,31 +198,88 @@ def run(
         creationflags=flags,
         start_new_session=os.name != "nt",
     )
+    tracked: dict[int, psutil.Process] = {}
+    stop = threading.Event()
+    watcher = threading.Thread(
+        target=_watch_descendants, args=(proc, tracked, stop), daemon=True
+    )
+    watcher.start()
+    timed_out = False
     try:
         out, err = proc.communicate(timeout=timeout)
-        return proc.returncode, out, err, time.monotonic() - started
+        returncode = int(proc.returncode)
     except subprocess.TimeoutExpired as exc:
-        terminate_tree(proc)
+        timed_out = True
+        out, err = exc.output or b"", exc.stderr or b""
+        terminate_tree(proc, tracked)
         try:
             tail_out, tail_err = proc.communicate(timeout=3)
+            out, err = out + tail_out, err + tail_err
         except subprocess.TimeoutExpired:
-            terminate_tree(proc, 0.2)
-            tail_out, tail_err = b"", b""
-        return (
-            124,
-            (exc.output or b"") + tail_out,
-            (exc.stderr or b"") + tail_err,
-            time.monotonic() - started,
-        )
+            terminate_tree(proc, tracked, 0.2)
+    finally:
+        stop.set()
+        watcher.join(timeout=0.5)
+        # Cleanup is an invariant on successful, failed, and timed-out commands.
+        terminate_tree(proc, tracked, 0.5)
+    return (124 if timed_out else returncode), out, err, time.monotonic() - started
 
 
 def direct_url_hash(value: dict[str, Any]) -> str:
-    archive = value.get("archive_info", {})
-    legacy = archive.get("hash", "")
-    if isinstance(legacy, str) and legacy.startswith("sha256="):
-        return legacy.removeprefix("sha256=")
-    hashes = archive.get("hashes", {})
-    return hashes.get("sha256", "") if isinstance(hashes, dict) else ""
+    if set(value) != {"url", "archive_info"} or not isinstance(value["url"], str):
+        return ""
+    archive = value["archive_info"]
+    if not isinstance(archive, dict) or not set(archive).issubset({"hash", "hashes"}):
+        return ""
+    observed: list[str] = []
+    legacy = archive.get("hash")
+    if legacy is not None:
+        if not isinstance(legacy, str) or not legacy.startswith("sha256="):
+            return ""
+        observed.append(legacy.removeprefix("sha256="))
+    hashes = archive.get("hashes")
+    if hashes is not None:
+        if not isinstance(hashes, dict) or set(hashes) != {"sha256"}:
+            return ""
+        observed.append(hashes["sha256"])
+    return observed[0] if observed and len(set(observed)) == 1 else ""
+
+
+def _validate_installed_record(metadata: dict[str, Any], envroot: Path) -> None:
+    record = metadata.get("installed_record")
+    if not isinstance(record, dict) or set(record) != {
+        "record_path",
+        "record_sha256",
+        "entry_count",
+        "files",
+    }:
+        raise ValueError("installed RECORD manifest is incomplete")
+    record_path = Path(record["record_path"])
+    files = record["files"]
+    if (
+        not inside(record_path, envroot)
+        or sha256(record_path) != record["record_sha256"]
+        or not isinstance(files, list)
+        or record["entry_count"] != len(files)
+        or len({item.get("path") for item in files if isinstance(item, dict)})
+        != len(files)
+    ):
+        raise ValueError("installed RECORD manifest identity mismatch")
+    location = Path(metadata["location"])
+    for item in files:
+        if not isinstance(item, dict) or set(item) != {"path", "sha256", "size"}:
+            raise ValueError("installed RECORD manifest entry is invalid")
+        lowered = Path(item["path"]).name.lower()
+        path = (location / item["path"]).resolve(strict=True)
+        if (
+            lowered.endswith((".pth", ".egg-link"))
+            or lowered in {"sitecustomize.py", "usercustomize.py"}
+            or not inside(path, envroot)
+            or path.is_symlink()
+            or path.stat().st_size != item["size"]
+            or sha256(path) != item["sha256"]
+        ):
+            raise ValueError("installed RECORD manifest file bytes mismatch")
 
 
 def validate_installed_provenance(
@@ -182,7 +292,9 @@ def validate_installed_provenance(
         metadata[key]
         for key in ("location", "module_file", "module_origin", "direct_url_path")
     ]
-    strict_paths.append(runtime["prefix"])
+    strict_paths.extend(
+        (runtime["prefix"], metadata["installed_record"]["record_path"])
+    )
     runtime_inside = (
         Path(runtime["executable"]).absolute().is_relative_to(envroot.absolute())
     )
@@ -193,6 +305,7 @@ def validate_installed_provenance(
         raise ValueError(
             "distribution/module/runtime/console provenance escaped fresh venv"
         )
+    _validate_installed_record(metadata, envroot)
     if (
         metadata["module_file"] != metadata["module_origin"]
         or metadata["module_recorded"] is not True

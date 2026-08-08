@@ -2,6 +2,9 @@
 """Official MCP SDK probe copied into and executed from a qualification venv."""
 
 import asyncio
+import base64
+import csv
+import hashlib
 import importlib.metadata
 import json
 import os
@@ -33,6 +36,67 @@ def canon(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def file_sha256(path: pathlib.Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def installed_record(
+    dist: importlib.metadata.Distribution, location: pathlib.Path
+) -> dict[str, object]:
+    record_paths = [
+        item for item in (dist.files or []) if pathlib.Path(str(item)).name == "RECORD"
+    ]
+    if len(record_paths) != 1:
+        raise AssertionError("installed distribution must contain exactly one RECORD")
+    record_path = pathlib.Path(dist.locate_file(record_paths[0])).resolve(strict=True)
+    rows = list(csv.reader(record_path.read_text("utf-8").splitlines()))
+    names = [row[0] for row in rows if len(row) == 3]
+    if not rows or len(names) != len(rows) or len(names) != len(set(names)):
+        raise AssertionError("installed RECORD rows must be unique triples")
+    files = []
+    for name, declared_hash, declared_size in rows:
+        lowered = pathlib.Path(name).name.lower()
+        if lowered.endswith((".pth", ".egg-link")) or lowered in {
+            "sitecustomize.py",
+            "usercustomize.py",
+        }:
+            raise AssertionError("installed RECORD contains an injection hook")
+        path = pathlib.Path(dist.locate_file(name)).resolve(strict=True)
+        if (
+            not path.is_file()
+            or path.is_symlink()
+            or not path.is_relative_to(pathlib.Path(sys.prefix).resolve())
+        ):
+            raise AssertionError("installed RECORD file escaped the fresh venv")
+        data = path.read_bytes()
+        actual = hashlib.sha256(data).digest()
+        is_record = path == record_path
+        generated_pyc = path.suffix.lower() == ".pyc"
+        if is_record or generated_pyc:
+            if declared_hash or declared_size:
+                raise AssertionError(
+                    "generated installed RECORD entry must be unhashed"
+                )
+        else:
+            if (
+                not declared_hash
+                or not declared_size
+                or int(declared_size) != len(data)
+            ):
+                raise AssertionError("installed RECORD file lacks exact size/hash")
+            algorithm, encoded = declared_hash.split("=", 1)
+            expected = base64.urlsafe_b64encode(actual).rstrip(b"=").decode()
+            if algorithm != "sha256" or encoded != expected:
+                raise AssertionError("installed RECORD file bytes mismatch")
+        files.append({"path": name, "sha256": actual.hex(), "size": len(data)})
+    return {
+        "record_path": str(record_path),
+        "record_sha256": file_sha256(record_path),
+        "entry_count": len(files),
+        "files": files,
+    }
+
+
 def installed_provenance() -> dict[str, object]:
     dist = importlib.metadata.distribution("tree-sitter-analyzer")
     module = __import__("tree_sitter_analyzer")
@@ -44,6 +108,7 @@ def installed_provenance() -> dict[str, object]:
         raise AssertionError("installed distribution must contain one direct_url.json")
     module_origin = pathlib.Path(module.__spec__.origin).resolve()
     module_relative = str(module_origin.relative_to(location))
+    record = installed_record(dist, location)
     return {
         "metadata": {
             "name": dist.metadata["Name"],
@@ -54,7 +119,8 @@ def installed_provenance() -> dict[str, object]:
             "direct_url": json.loads(direct_urls[0].read_text("utf-8")),
             "direct_url_path": str(direct_urls[0].resolve()),
             "module_recorded": module_relative
-            in {str(item) for item in (dist.files or [])},
+            in {item["path"] for item in record["files"]},
+            "installed_record": record,
         },
         "runtime": {
             "python": sys.version,
