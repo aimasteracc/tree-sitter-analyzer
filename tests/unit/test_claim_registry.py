@@ -427,12 +427,50 @@ def test_generated_markers_fail_closed(mutation, expected, blocked_verdict, read
 
 
 @pytest.mark.parametrize(("body", "expected"), (
-    ("```\nhidden 390× faster", ("README_FENCE_UNBALANCED",)),
+    ("```\nhidden 390× faster", ("README_FENCE_UNBALANCED", "README_UNREGISTERED_QUANTITATIVE_CLAIM:4")),
     ("```\nexample\n``` TSA is 390× faster", ("README_FENCE_UNBALANCED",)),
-    ("```\nexample 390× faster\n```", ()),
+    ("```\nexample 390× faster\n```", ("README_UNREGISTERED_QUANTITATIVE_CLAIM:4",)),
+    ("```bash\ntool --timeout-seconds 120 --limit 5\n```", ()),
+    ("```bash\ntool --limit 390 files processed\n```", ("README_UNREGISTERED_QUANTITATIVE_CLAIM:4",)),
 ))
 def test_fence_handling_fails_closed(body, expected, blocked_verdict, readme_fixture):
+    # PR #1237: rendered claim prose must not disappear inside Markdown fences.
     assert readme_claim_violations(readme_fixture(body), blocked_verdict) == expected
+
+
+@pytest.mark.parametrize("claim", (
+    "TSA has the fastest indexing.", "TSA has the slowest indexing.",
+    "TSA has the highest throughput.", "TSA has the lowest latency.",
+    "TSA uses the most efficient index.", "TSA has the least memory use.",
+    "TSA delivers the best performance.", "TSA has the worst latency.",
+))
+def test_quantitative_superlatives_are_fail_closed(claim, blocked_verdict, readme_fixture):
+    # PR #1237: numeral-free superiority claims still require governed evidence.
+    assert readme_claim_violations(readme_fixture(claim), blocked_verdict) == ("README_UNREGISTERED_QUANTITATIVE_CLAIM:3",)
+
+
+@pytest.mark.parametrize("prose", (
+    "Follow best practices.", "Most users should start here.",
+    "Choose the least surprising configuration.", "Use the highest-level API.",
+))
+def test_nonquantitative_superlative_context_remains_accepted(prose, blocked_verdict, readme_fixture):
+    assert readme_claim_violations(readme_fixture(prose), blocked_verdict) == ()
+
+
+@pytest.mark.parametrize("claim", (
+    "390. files processed", "390) requests handled", "## 390. files processed",
+    "100. repositories indexed", "## 100: requests handled",
+))
+def test_large_claim_bearing_markers_are_fail_closed(claim, blocked_verdict, readme_fixture):
+    # PR #1237: large quantities must not be mistaken for structural numbering.
+    assert readme_claim_violations(readme_fixture(claim), blocked_verdict) == ("README_UNREGISTERED_QUANTITATIVE_CLAIM:3",)
+
+
+@pytest.mark.parametrize("prose", (
+    "1. Install the package.", "99) Read the migration notes.", "## 12: Configuration",
+))
+def test_controlled_small_structural_markers_remain_accepted(prose, blocked_verdict, readme_fixture):
+    assert readme_claim_violations(readme_fixture(prose), blocked_verdict) == ()
 
 
 def test_language_region_requires_canonical_generator_output(blocked_verdict, readme_fixture):

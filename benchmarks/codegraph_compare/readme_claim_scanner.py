@@ -22,6 +22,7 @@ _MARKDOWN_ESCAPE = re.compile(r"\\([^\w\s])")
 # the paragraph is still scanned, so an allowed inventory/version token cannot
 # camouflage a rate, measurement, or comparative claim beside it.
 _SAFE_SENTINEL = " TSA_SAFE_SPAN "
+_FENCED_QUANTITY_SENTINEL = " TSAFENCEDQUANTITY "
 _SAFE_SPANS = (
     re.compile(r"\b8 MCP tools\b", re.IGNORECASE),
     re.compile(r"\btriage 8 tools\b", re.IGNORECASE),
@@ -41,9 +42,8 @@ _SAFE_SPANS = (
     re.compile(r"\bcommit\s+`?[0-9a-f]{7,40}`?\b", re.IGNORECASE),
     re.compile(r"\bStep\s+\d+\b", re.IGNORECASE),
     re.compile(r"\b\d{4}-\d{2}-\d{2}\b"),
-    # A heading/list exclusion consumes only its numbering, never following text.
-    re.compile(r"^\s*#{1,6}\s+\d+[.:]\s*"),
-    re.compile(r"^\s*\d+[.)]\s+"),
+    # Structural heading/list numbers are handled by
+    # ``_remove_controlled_structural_marker`` so large claim-bearing values survive.
     re.compile(r"\bv\d+(?:\.(?:\d+|x)){1,2}\b", re.IGNORECASE),
     re.compile(r"\bversion\s+v?\d+(?:\.\d+){1,2}\b", re.IGNORECASE),
     re.compile(r"\buv\s*[><=]+\s*\d+(?:\.\d+){1,2}\b", re.IGNORECASE),
@@ -81,6 +81,18 @@ _RATE_OR_MEASUREMENT = re.compile(
 )
 _COMPARATIVE = re.compile(
     r"\b(?:faster|slower|higher|lower|fewer|more|better|worse|speedups?)\b",
+    re.IGNORECASE,
+)
+_QUANTITATIVE_SUPERLATIVE = re.compile(
+    r"\b(?:"
+    r"fastest|slowest|"
+    r"(?:highest|lowest)\s+(?:(?:measured|observed|overall|average|mean|peak)\s+)?"
+    r"(?:throughput|latency|accuracy|performance|speed|rate|score|memory|time|cost|usage|use)|"
+    r"(?:most|least)\s+(?:efficient|performant|accurate|memory(?:[- ]efficient)?|"
+    r"resource(?:[- ]efficient)?|throughput|latency|performance|speed|usage|use)|"
+    r"(?:best|worst)\s+(?:measured\s+)?(?:throughput|latency|accuracy|performance|"
+    r"speed|rate|score|memory|time|cost|usage|use)"
+    r")\b",
     re.IGNORECASE,
 )
 
@@ -144,10 +156,34 @@ def _marker_regions(
     return exclusions, violations
 
 
-def _remove_exact_exclusions(line: str) -> str:
-    result = _PYTHON_VERSION_SPAN.sub(_SAFE_SENTINEL, line)
+_STRUCTURAL_MARKER = re.compile(
+    r"^(?P<prefix>\s*(?:#{1,6}\s+)?)"
+    r"(?P<number>\d{1,2})(?P<suffix>[.):]\s+)"
+)
+_FENCED_OPTION_VALUE = re.compile(
+    r"--[a-z][a-z0-9-]*(?:=|\s+)\d+(?:\.\d+)?\b",
+    re.IGNORECASE,
+)
+
+
+def _remove_controlled_structural_marker(line: str) -> str:
+    """Remove only conventional 1-99 Markdown structure numbering."""
+    match = _STRUCTURAL_MARKER.match(line)
+    if match is None:
+        return line
+    return _SAFE_SENTINEL + line[match.end() :]
+
+
+def _remove_exact_exclusions(line: str, *, fenced: bool = False) -> str:
+    result = _remove_controlled_structural_marker(line)
+    result = _PYTHON_VERSION_SPAN.sub(_SAFE_SENTINEL, result)
     for pattern in _SAFE_SPANS:
         result = pattern.sub(_SAFE_SENTINEL, result)
+    if fenced:
+        # Numeric CLI option values are configuration, not public benchmark claims.
+        # The distinct sentinel still counts as a quantity when claim prose remains
+        # on the same rendered line, preventing an option from camouflaging it.
+        result = _FENCED_OPTION_VALUE.sub(_FENCED_QUANTITY_SENTINEL, result)
     return result
 
 
@@ -193,8 +229,44 @@ def _is_quantitative_marketing(text: str) -> bool:
     return bool(
         _RATE_OR_MEASUREMENT.search(text)
         or _COMPARATIVE.search(text)
+        or _QUANTITATIVE_SUPERLATIVE.search(text)
         or re.search(r"\bsub[- ]second\b", text, re.IGNORECASE)
     )
+
+
+_FENCED_CLAIM_CONTEXT = re.compile(
+    r"\b(?:answers?|files?|requests?|repositories?|languages?|"
+    r"throughput|latency|accuracy|performance|speed|rate|score|memory|time|cost|"
+    r"usage|use|processed|processes?|handled|handles?|supports?|indexes?|indexed|"
+    r"analy[sz](?:e[sd]?|ing)|resolves?|delivers?|finishes?|TSA|tree-sitter-analyzer)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_fenced_quantitative_marketing(text: str) -> bool:
+    """Scan rendered fence prose without treating source/configuration as prose."""
+    has_quantity = bool(
+        _FENCED_QUANTITY_SENTINEL.strip() in text
+        or _has_unicode_numeric(text)
+        or _CJK_QUANTITY.search(text)
+        or _WORD_QUANTITY_CONTEXT.search(text)
+        or _ONE_SHOT.search(text)
+        or _NUMBER_FOLD.search(text)
+    )
+    has_claim_context = bool(_FENCED_CLAIM_CONTEXT.search(text))
+    if _QUANTITATIVE_SUPERLATIVE.search(text):
+        return True
+    if _COMPARATIVE.search(text):
+        numeric_comparison = re.search(
+            r"(?:\d|[×倍]|fold)\S*(?:\s+\S+){0,2}\s+"
+            r"(?:faster|slower|higher|lower|fewer|more|better|worse)",
+            text,
+            re.IGNORECASE,
+        )
+        return bool(has_claim_context or numeric_comparison)
+    if re.search(r"\bsub[- ]second\b", text, re.IGNORECASE):
+        return has_claim_context
+    return bool(has_quantity and has_claim_context)
 
 
 def scan_readme_claims(readme: str, expected_claims: str) -> tuple[str, ...]:
@@ -203,15 +275,17 @@ def scan_readme_claims(readme: str, expected_claims: str) -> tuple[str, ...]:
     lines = readme.splitlines(keepends=True)
     offset = 0
     fence: tuple[str, int] | None = None
-    paragraphs: list[tuple[int, list[str]]] = []
+    paragraphs: list[tuple[int, list[str], bool]] = []
     paragraph_start = 0
     paragraph_lines: list[str] = []
+    paragraph_fenced = False
 
     def flush() -> None:
-        nonlocal paragraph_start, paragraph_lines
+        nonlocal paragraph_start, paragraph_lines, paragraph_fenced
         if paragraph_lines:
-            paragraphs.append((paragraph_start, paragraph_lines))
+            paragraphs.append((paragraph_start, paragraph_lines, paragraph_fenced))
             paragraph_lines = []
+            paragraph_fenced = False
 
     for number, raw_line in enumerate(lines, 1):
         line = raw_line.rstrip("\r\n")
@@ -234,20 +308,28 @@ def scan_readme_claims(readme: str, expected_claims: str) -> tuple[str, ...]:
                 fence = None
             flush()
             continue
-        if fence is not None:
-            continue
-        cleaned = _remove_exact_exclusions(line)
+        cleaned = _remove_exact_exclusions(line, fenced=fence is not None)
         if not cleaned.strip():
             flush()
             continue
         if not paragraph_lines:
             paragraph_start = number
+            paragraph_fenced = fence is not None
         paragraph_lines.append(cleaned)
+        # Code examples are independent rendered lines.  Keeping them separate
+        # prevents unrelated command tokens from combining into a prose claim.
+        if fence is not None:
+            flush()
     flush()
     if fence is not None:
         violations.append("README_FENCE_UNBALANCED")
-    for number, paragraph in paragraphs:
+    for number, paragraph, fenced_paragraph in paragraphs:
         normalized = _normalize_markdown(" ".join(paragraph))
-        if _is_quantitative_marketing(normalized):
+        is_marketing = (
+            _is_fenced_quantitative_marketing(normalized)
+            if fenced_paragraph
+            else _is_quantitative_marketing(normalized)
+        )
+        if is_marketing:
             violations.append(f"README_UNREGISTERED_QUANTITATIVE_CLAIM:{number}")
     return tuple(dict.fromkeys(violations))
