@@ -60,7 +60,7 @@ jobs:
           uv build --wheel --out-dir qualification-build
           mapfile -t wheels < <(find qualification-build -maxdepth 1 -type f -name '*.whl')
           test "${#wheels[@]}" -eq 1
-          python scripts/qualify_native_install.py build-manifest \
+          uv run --no-project --with packaging --with psutil python scripts/qualify_native_install.py build-manifest \
             --wheel "${wheels[0]}" --commit "$GITHUB_SHA" \
             --output qualification-build/wheel-manifest.json
           echo "wheel_name=$(basename "${wheels[0]}")" >> "$GITHUB_OUTPUT"

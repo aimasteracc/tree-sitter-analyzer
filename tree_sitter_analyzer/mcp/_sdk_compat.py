@@ -65,6 +65,7 @@ class MCP2ServerAdapter:
         def decorate(handler: Any) -> Any:
             async def adapted(context: Any, params: Any) -> Any:
                 raw = await handler(params.uri)
+                contents: list[types.TextResourceContents | types.BlobResourceContents]
                 if isinstance(raw, (str, bytes)):
                     text = raw.decode() if isinstance(raw, bytes) else raw
                     contents = [types.TextResourceContents(uri=params.uri, text=text)]
