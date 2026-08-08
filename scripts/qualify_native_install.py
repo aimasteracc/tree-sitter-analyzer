@@ -1,26 +1,30 @@
 #!/usr/bin/env python3
-"""NO1-006A native wheel-to-MCP qualification driver.
-
-This is deliberately separate from qualify_fresh_install.py: that harness remains
-an offline installer contract and can never produce native qualification evidence.
-"""
+"""NO1-006A native wheel-to-MCP qualification driver."""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import platform
-import subprocess
 import sys
 import tempfile
-import time
 import venv
-import zipfile
-from email.parser import BytesParser
 from pathlib import Path
 from typing import Any
+
+from native_qualification_lib import (
+    PROJECT,
+    STAGES,
+    atomic_write,
+    identity,
+    run,
+    sha256,
+    stage_error,
+    validate_installed_provenance,
+    validate_stage_semantics,
+    wheel_metadata,
+)
 
 SCHEMA_VERSION = "no1-006a-native-attestation-v1"
 AXES = ("linux", "macos", "windows")
@@ -35,110 +39,85 @@ TOOLS = [
     "viz",
     "set_project_path",
 ]
-HEX64 = set("0123456789abcdef")
 
 
-def _sha(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _write(path: Path, value: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8"
-    )
-
-
-def _env(name: str, default: str = "") -> str:
+def env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
-def _source() -> dict[str, Any]:
-    return {"repository": _env("GITHUB_REPOSITORY", "local/unknown"), "commit": _env("GITHUB_SHA", "0" * 40), "ref": _env("GITHUB_REF", "local"), "dirty": False}  # fmt: skip  # pragma: allowlist secret
+def source() -> dict[str, Any]:
+    return {
+        "repository": env("GITHUB_REPOSITORY", "local/unknown"),
+        "commit": env("GITHUB_SHA", "0" * 40),
+        "ref": env("GITHUB_REF", "local"),
+        "dirty": False,
+    }
 
 
-def _workflow() -> dict[str, Any]:
-    server = _env("GITHUB_SERVER_URL", "https://github.com")
-    repo = _env("GITHUB_REPOSITORY", "local/unknown")
-    run_id = _env("GITHUB_RUN_ID", "0")
-    return {"event": _env("GITHUB_EVENT_NAME", "local"), "run_id": run_id, "run_attempt": _env("GITHUB_RUN_ATTEMPT", "0"), "job": _env("GITHUB_JOB", "local"), "workflow_ref": _env("GITHUB_WORKFLOW_REF", "local"), "run_url": f"{server}/{repo}/actions/runs/{run_id}"}  # fmt: skip  # pragma: allowlist secret
-
-
-def _wheel_metadata(wheel: Path) -> tuple[str, str]:
-    with zipfile.ZipFile(wheel) as archive:
-        names = [
-            name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
-        ]
-        if len(names) != 1:
-            raise ValueError("wheel must contain exactly one METADATA file")
-        metadata = BytesParser().parsebytes(archive.read(names[0]))
-    return str(metadata["Name"]), str(metadata["Version"])
+def workflow() -> dict[str, Any]:
+    server, repo, run_id = (
+        env("GITHUB_SERVER_URL", "https://github.com"),
+        env("GITHUB_REPOSITORY", "local/unknown"),
+        env("GITHUB_RUN_ID", "0"),
+    )
+    return {
+        "event": env("GITHUB_EVENT_NAME", "local"),
+        "run_id": run_id,
+        "run_attempt": env("GITHUB_RUN_ATTEMPT", "0"),
+        "job": env("GITHUB_JOB", "local"),
+        "workflow_ref": env("GITHUB_WORKFLOW_REF", "local"),
+        "run_url": f"{server}/{repo}/actions/runs/{run_id}",
+    }
 
 
 def build_manifest(args: argparse.Namespace) -> int:
     wheel = Path(args.wheel).resolve(strict=True)
-    if not wheel.is_file() or wheel.suffix != ".whl" or wheel.is_symlink():
-        raise ValueError("--wheel must be one regular, non-symlink wheel")
-    name, version = _wheel_metadata(wheel)
-    source = _source()
+    built_source = source()
     if args.commit:
-        source["commit"] = args.commit
-    manifest = {"schema_version": SCHEMA_VERSION, "kind": "build_manifest", "source": source, "workflow": _workflow(), "wheel": {"filename": wheel.name, "sha256": _sha(wheel), "size": wheel.stat().st_size, "name": name, "version": version}}  # fmt: skip  # pragma: allowlist secret
-    _write(Path(args.output), manifest)
+        built_source["commit"] = args.commit
+    value = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "build_manifest",
+        "source": built_source,
+        "workflow": workflow(),
+        "wheel": wheel_metadata(wheel),
+    }
+    atomic_write(Path(args.output), value)
     return 0
 
 
-def _kill(proc: subprocess.Popen[bytes]) -> None:
-    if proc.poll() is not None:
-        return
-    if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-    else:
-        import signal
-
-        try:
-            os.killpg(proc.pid, signal.SIGTERM)
-            proc.wait(timeout=3)
-        except (ProcessLookupError, subprocess.TimeoutExpired):
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-
-
-def _run(
-    argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int
-) -> tuple[int, bytes, bytes, float]:
-    flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
-    started = time.monotonic()
-    proc = subprocess.Popen(
-        argv,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        creationflags=flags,
-        start_new_session=os.name != "nt",
-    )
-    try:
-        out, err = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        _kill(proc)
-        out, err = proc.communicate()
-        return 124, out, err, time.monotonic() - started
-    return proc.returncode, out, err, time.monotonic() - started
+def empty_axis(axis_name: str) -> dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "axis",
+        "qualification_id": "NO1-006A",
+        "evidence_scope": "native_package_mcp_first_answer",
+        "axis": axis_name,
+        "qualification_performed": True,
+        "passed": False,
+        "source": source(),
+        "workflow": workflow(),
+        "runner": {
+            "declared_axis": axis_name,
+            "observed_system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+            "image_os": env("ImageOS", "unknown"),
+            "image_version": env("ImageVersion", "unknown"),
+        },
+        "wheel": {
+            "filename": "unknown.whl",
+            "sha256": "0" * 64,
+            "size": 1,
+            "name": PROJECT,
+            "version": "unknown",
+        },
+        "stages": [],
+        "failure": None,
+    }
 
 
-def _venv_paths(root: Path) -> tuple[Path, Path]:
+def venv_paths(root: Path) -> tuple[Path, Path]:
     scripts = root / ("Scripts" if os.name == "nt" else "bin")
     return scripts / ("python.exe" if os.name == "nt" else "python"), scripts / (
         "tree-sitter-analyzer-mcp.exe"
@@ -148,36 +127,18 @@ def _venv_paths(root: Path) -> tuple[Path, Path]:
 
 
 def axis(args: argparse.Namespace) -> int:
-    output = Path(args.output).resolve()
-    wheel = Path(args.wheel).resolve(strict=True)
-    manifest_path = Path(args.wheel_manifest).resolve(strict=True)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    report: dict[str, Any] = {
-        "schema_version": SCHEMA_VERSION,
-        "kind": "axis",
-        "qualification_id": "NO1-006A",
-        "evidence_scope": "native_package_mcp_first_answer",
-        "axis": args.axis,
-        "qualification_performed": True,
-        "passed": False,
-        "source": manifest.get("source", _source()),
-        "workflow": _workflow(),
-        "runner": {
-            "declared_axis": args.axis,
-            "observed_system": platform.system(),
-            "release": platform.release(),
-            "machine": platform.machine(),
-            "image_os": _env("ImageOS", "unknown"),
-            "image_version": _env("ImageVersion", "unknown"),
-        },
-        "wheel": manifest.get("wheel", {}),
-        "stages": [],
-        "failure": None,
-    }
-    side = output.parent
-    side.mkdir(parents=True, exist_ok=True)
-    current_stage = "preflight"
+    output, report = Path(args.output).resolve(), empty_axis(args.axis)
+    current_stage = STAGES[0]
     try:
+        wheel = Path(args.wheel).resolve(strict=True)
+        manifest_path = Path(args.wheel_manifest).resolve(strict=True)
+        manifest = json.loads(manifest_path.read_text("utf-8"))
+        if (
+            manifest.get("kind") != "build_manifest"
+            or manifest.get("schema_version") != SCHEMA_VERSION
+        ):
+            raise ValueError("invalid build manifest kind or schema version")
+        report["source"], report["wheel"] = manifest["source"], manifest["wheel"]
         expected_system = {"linux": "Linux", "macos": "Darwin", "windows": "Windows"}[
             args.axis
         ]
@@ -185,49 +146,45 @@ def axis(args: argparse.Namespace) -> int:
             raise ValueError(
                 f"declared axis {args.axis} does not match {platform.system()}"
             )
-        if (
-            manifest.get("source", {}).get("dirty") is not False
-            or manifest.get("source", {}).get("commit")
-            != _env("GITHUB_SHA", manifest.get("source", {}).get("commit", ""))
-            or manifest.get("source", {}).get("repository")
-            != _env(
-                "GITHUB_REPOSITORY", manifest.get("source", {}).get("repository", "")
+        current = {"source": source(), "workflow": workflow()}
+        if identity(manifest) != identity(current):
+            raise ValueError(
+                "build manifest is not bound to this event/ref/SHA/repository/run"
             )
-        ):
-            raise ValueError("build manifest source provenance does not match this run")
-        if (
-            _sha(wheel) != manifest["wheel"]["sha256"]
-            or wheel.name != manifest["wheel"]["filename"]
-        ):
-            raise ValueError("downloaded wheel does not match build manifest")
-        report["build_manifest_sha256"] = _sha(manifest_path)
-        report["stages"].append({"id": "verify_wheel", "passed": True})
+        observed_wheel = wheel_metadata(wheel)
+        if observed_wheel != manifest.get("wheel"):
+            raise ValueError(
+                "wheel bytes, size, filename, or archive metadata differ from manifest"
+            )
+        report["build_manifest_sha256"] = sha256(manifest_path)
+        report["stages"].append({"id": current_stage, "passed": True})
         with tempfile.TemporaryDirectory(prefix="tsa-native-qualification-") as tmp:
-            root = Path(tmp)
+            root, project = Path(tmp), Path(tmp) / "fixture"
             envroot = root / "venv"
-            project = root / "fixture"
             project.mkdir()
             (project / "sample.py").write_text(
-                "def answer():\n    return 42\n", encoding="utf-8"
+                "def answer():\n    return 42\n", "utf-8"
             )
-            current_stage = "install"
+            current_stage = STAGES[1]
             venv.EnvBuilder(with_pip=True, clear=True, symlinks=os.name != "nt").create(
                 envroot
             )
-            python, executable = _venv_paths(envroot)
+            python, console = venv_paths(envroot)
             clean_env = {
                 k: v
                 for k, v in os.environ.items()
-                if k not in {"PYTHONPATH", "VIRTUAL_ENV", "PYTHONHOME"}
+                if k
+                not in {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "PYTHONNOUSERSITE"}
             }
             clean_env.update(
                 {
                     "PYTHONPATH": "",
+                    "PYTHONNOUSERSITE": "1",
                     "VIRTUAL_ENV": str(envroot),
                     "PATH": str(python.parent) + os.pathsep + clean_env.get("PATH", ""),
                 }
             )
-            rc, install_out, install_err, duration = _run(
+            rc, out, err, duration = run(
                 [
                     str(python),
                     "-m",
@@ -242,37 +199,62 @@ def axis(args: argparse.Namespace) -> int:
                 env=clean_env,
                 timeout=args.install_timeout,
             )
-            (side / "install.stdout").write_bytes(install_out)
-            (side / "install.stderr").write_bytes(install_err)
-            if rc != 0:
-                raise RuntimeError(f"pip install failed with exit {rc}")
+            side = output.parent
+            side.mkdir(parents=True, exist_ok=True)
+            (side / "install.stdout").write_bytes(out)
+            (side / "install.stderr").write_bytes(err)
             report["install"] = {
                 "exit_code": rc,
                 "duration_seconds": round(duration, 3),
-                "stdout_sha256": _sha(side / "install.stdout"),
-                "stderr_sha256": _sha(side / "install.stderr"),
+                "stdout_sha256": sha256(side / "install.stdout"),
+                "stderr_sha256": sha256(side / "install.stderr"),
                 "fresh_venv": True,
                 "cwd_outside_checkout": True,
                 "pythonpath_cleared": True,
             }
-            report["stages"].append({"id": "install", "passed": True})
-            current_stage = "metadata_provenance"
-            if not executable.is_file() or not str(executable).startswith(str(envroot)):
-                raise ValueError("installed MCP executable provenance failed")
-            current_stage = "mcp_protocol"
+            if rc != 0:
+                raise RuntimeError(f"pip install failed with exit {rc}")
+            report["stages"].append({"id": current_stage, "passed": True})
+            current_stage = STAGES[2]
             helper = root / "official_mcp_probe.py"
             helper.write_bytes(
                 Path(__file__).with_name("native_mcp_probe.py").read_bytes()
             )
+            rc, meta_out, meta_err, _ = run(
+                [str(python), str(helper), "--metadata-only"],
+                cwd=project,
+                env=clean_env,
+                timeout=30,
+            )
+            if rc != 0:
+                raise RuntimeError(
+                    f"installed provenance probe failed with exit {rc}: {meta_err[-1000:].decode('utf-8', 'replace')}"
+                )
+            provenance = json.loads(meta_out.decode("utf-8"))
+            metadata, runtime = provenance["metadata"], provenance["runtime"]
+            report["metadata"] = validate_installed_provenance(
+                metadata, runtime, envroot, observed_wheel
+            )
+            report["runtime"] = runtime
+            freeze_rc, freeze_out, freeze_err, _ = run(
+                [str(python), "-m", "pip", "freeze", "--all"],
+                cwd=project,
+                env=clean_env,
+                timeout=60,
+            )
+            if freeze_rc != 0:
+                raise RuntimeError(
+                    f"pip freeze failed: {freeze_err.decode('utf-8', 'replace')}"
+                )
+            (side / "dependency-manifest.txt").write_bytes(freeze_out)
+            report["dependency_manifest_sha256"] = sha256(
+                side / "dependency-manifest.txt"
+            )
+            report["stages"].append({"id": current_stage, "passed": True})
+            current_stage = STAGES[3]
             transcript = side / "mcp-transcript.ndjson"
-            rc, probe_out, probe_err, duration = _run(
-                [
-                    str(python),
-                    str(helper),
-                    str(executable),
-                    str(project),
-                    str(transcript),
-                ],
+            rc, probe_out, probe_err, mcp_duration = run(
+                [str(python), str(helper), str(console), str(project), str(transcript)],
                 cwd=project,
                 env=clean_env,
                 timeout=args.mcp_timeout,
@@ -283,143 +265,143 @@ def axis(args: argparse.Namespace) -> int:
                     f"official MCP client probe failed with exit {rc}: {probe_err[-1000:].decode('utf-8', 'replace')}"
                 )
             observed = json.loads(probe_out.decode("utf-8"))
-            location = Path(observed["metadata"]["location"]).resolve()
-            module_file = Path(observed["metadata"]["module_file"]).resolve()
+            if observed["metadata"] != metadata or observed["runtime"] != runtime:
+                raise ValueError("MCP process provenance differs from metadata probe")
+            mcp = observed["mcp"]
             if (
-                observed["metadata"]["name"].lower().replace("_", "-")
-                != "tree-sitter-analyzer"
-                or observed["metadata"]["version"] != manifest["wheel"]["version"]
+                not Path(mcp["executable"])
+                .absolute()
+                .is_relative_to(envroot.absolute())
             ):
-                raise ValueError("installed metadata does not match wheel")
-            checkout = Path.cwd().resolve()
-            if checkout in location.parents or checkout in module_file.parents:
-                raise ValueError("installed package leaked from checkout")
-            freeze_rc, freeze_out, freeze_err, _ = _run(
-                [str(python), "-m", "pip", "freeze", "--all"],
-                cwd=project,
-                env=clean_env,
-                timeout=60,
-            )
-            if freeze_rc != 0:
-                message = freeze_err.decode("utf-8", "replace")
-                raise RuntimeError(f"pip freeze failed: {message}")
-            (side / "dependency-manifest.txt").write_bytes(freeze_out)
-            report.update(observed)
-            report["metadata"] = {
-                **observed["metadata"],
-                "distribution_outside_checkout": True,
-                "executable_in_fresh_venv": True,
+                raise ValueError(
+                    "distribution/module/runtime/console provenance escaped fresh venv"
+                )
+            report["mcp"] = {
+                **mcp,
+                "duration_seconds": round(mcp_duration, 3),
+                "transcript_sha256": sha256(transcript),
+                "stderr_sha256": sha256(side / "mcp.stderr"),
             }
-            report["mcp"].update(
-                {
-                    "duration_seconds": round(duration, 3),
-                    "transcript_sha256": _sha(transcript),
-                    "stderr_sha256": _sha(side / "mcp.stderr"),
-                }
-            )
-            report["dependency_manifest_sha256"] = _sha(
-                side / "dependency-manifest.txt"
-            )
-            report["stages"].append({"id": "metadata_provenance", "passed": True})
-            report["stages"].append({"id": "mcp_protocol", "passed": True})
-            report["passed"] = True
+            report["stages"].append({"id": current_stage, "passed": True})
+            report["passed"], report["failure"] = True, None
     except Exception as exc:
-        report["failure"] = {
-            "stage": current_stage,
-            "type": type(exc).__name__,
-            "message": str(exc)[:2000],
-        }
-    _write(output, report)
+        stage_error(report, current_stage, exc)
+    finally:
+        atomic_write(output, report)
     return 0 if report["passed"] else 1
 
 
-def _valid_sha(value: Any) -> bool:
-    return isinstance(value, str) and len(value) == 64 and set(value) <= HEX64
+def load_validator(schema_path: Path) -> Any:
+    import jsonschema
+
+    schema = json.loads(schema_path.resolve(strict=True).read_text("utf-8"))
+    validator = jsonschema.validators.validator_for(schema)(schema)
+    validator.check_schema(schema)
+    return validator
 
 
 def aggregate(args: argparse.Namespace) -> int:
     output = Path(args.output).resolve()
-    reports = []
-    failures = []
-    schema = json.loads(
-        Path(args.schema).resolve(strict=True).read_text(encoding="utf-8")
-    )
+    reports: list[dict[str, Any]] = []
+    failures: list[str] = []
     try:
-        import jsonschema
-
-        validator = jsonschema.validators.validator_for(schema)(schema)
-        validator.check_schema(schema)
+        validator = load_validator(Path(args.schema))
+        manifest_path, wheel_path = (
+            Path(args.wheel_manifest).resolve(strict=True),
+            Path(args.wheel).resolve(strict=True),
+        )
+        manifest = json.loads(manifest_path.read_text("utf-8"))
+        validator.validate(manifest)
+        if manifest.get("kind") != "build_manifest" or wheel_metadata(
+            wheel_path
+        ) != manifest.get("wheel"):
+            raise ValueError("aggregate wheel does not exactly match build manifest")
+        current = {"source": source(), "workflow": workflow()}
+        if identity(manifest) != identity(current):
+            raise ValueError("build manifest is not bound to current aggregate run")
+        manifest_digest = sha256(manifest_path)
     except Exception as exc:
-        print(f"schema unavailable or invalid: {exc}", file=sys.stderr)
-        return 2
-    for raw in args.reports:
-        path = Path(raw).resolve()
-        try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-            validator.validate(value)
-            value["_artifact_sha256"] = _sha(path)
-            reports.append(value)
-        except Exception as exc:
-            failures.append(f"{path.name}: {exc}")
-    axes = [r.get("axis") for r in reports]
+        failures.append(f"aggregate input: {type(exc).__name__}: {exc}")
+        manifest, manifest_digest = {}, ""
+    if "validator" in locals():
+        for raw in args.reports:
+            path = Path(raw).resolve()
+            try:
+                value = json.loads(path.read_text("utf-8"))
+                validator.validate(value)
+                value["_artifact_sha256"] = sha256(path)
+                reports.append(value)
+            except Exception as exc:
+                failures.append(f"{path.name}: {type(exc).__name__}: {exc}")
+    axes = [item.get("axis") for item in reports]
     if sorted(axes) != sorted(AXES):
         failures.append(f"expected exactly {list(AXES)}, got {axes}")
-    commits = {r.get("source", {}).get("commit") for r in reports}
-    wheels = {r.get("wheel", {}).get("sha256") for r in reports}
-    repositories = {r.get("source", {}).get("repository") for r in reports}
-    run_ids = {r.get("workflow", {}).get("run_id") for r in reports}
-    manifests = {r.get("build_manifest_sha256") for r in reports}
-    if len(commits) != 1:
-        failures.append("source commit mismatch")
-    if len(wheels) != 1 or not wheels or not _valid_sha(next(iter(wheels))):
-        failures.append("wheel digest mismatch or malformed")
-    if len(repositories) != 1 or len(run_ids) != 1:
-        failures.append("workflow provenance mismatch")
-    if len(manifests) != 1 or not manifests or not _valid_sha(next(iter(manifests))):
-        failures.append("build manifest digest mismatch or malformed")
+    current_identity = identity({"source": source(), "workflow": workflow()})
     for report in reports:
         axis_name = report.get("axis")
+        if identity(report) != current_identity:
+            failures.append(
+                f"{axis_name}: report event/ref/SHA/repository/run identity mismatch"
+            )
+        if report.get("build_manifest_sha256") != manifest_digest or report.get(
+            "wheel"
+        ) != manifest.get("wheel"):
+            failures.append(f"{axis_name}: manifest or wheel identity mismatch")
+        stage_failure = validate_stage_semantics(report)
+        if stage_failure:
+            failures.append(f"{axis_name}: {stage_failure}")
         expected_system = {
             "linux": "Linux",
             "macos": "Darwin",
             "windows": "Windows",
         }.get(axis_name)
         if (
-            report.get("schema_version") != SCHEMA_VERSION
-            or report.get("kind") != "axis"
-            or report.get("evidence_scope") != "native_package_mcp_first_answer"
-            or report.get("passed") is not True
-        ):
-            failures.append(f"{axis_name}: invalid or failed report")
-        if (
-            report.get("runner", {}).get("declared_axis") != axis_name
+            report.get("passed") is not True
             or report.get("runner", {}).get("observed_system") != expected_system
         ):
-            failures.append(f"{axis_name}: runner provenance mismatch")
-        if (
-            report.get("mcp", {}).get("tools") != TOOLS
-            or report.get("mcp", {}).get("first_call", {}).get("default_format")
-            != "toon"
-        ):
-            failures.append(f"{report.get('axis')}: MCP oracle mismatch")
-    trusted = (
+            failures.append(f"{axis_name}: failed report or runner mismatch")
+        first = report.get("mcp", {}).get("first_call", {})
+        if report.get("mcp", {}).get("tools") != TOOLS or first != {
+            "name": "index",
+            "arguments": {"action": "status"},
+            "is_error": False,
+            "default_format": "toon",
+            "verdict": "WARN",
+            "project_root": first.get("project_root"),
+            "indexed": False,
+            "total_files": 0,
+            "summary": "codegraph_status: index missing or empty",
+        }:
+            failures.append(f"{axis_name}: MCP fixture status oracle mismatch")
+    trusted_run = (
         args.trusted
-        and _env("GITHUB_EVENT_NAME") == "push"
-        and _env("GITHUB_REF") == "refs/heads/develop"
+        and env("GITHUB_EVENT_NAME") == "push"
+        and env("GITHUB_REF") == "refs/heads/develop"
     )
-    if args.trusted and not trusted:
+    if args.trusted and not trusted_run:
         failures.append("trusted aggregation is restricted to develop pushes")
-    aggregate_value = {
+    if trusted_run and any(
+        report.get("workflow", {}).get("event") != "push"
+        or report.get("source", {}).get("ref") != "refs/heads/develop"
+        for report in reports
+    ):
+        failures.append("trusted aggregation refuses candidate/PR reports")
+    axes_valid = not failures and trusted_run
+    value = {
         "schema_version": SCHEMA_VERSION,
         "kind": "aggregate",
         "qualification_id": "NO1-006A",
         "evidence_scope": "native_package_mcp_first_answer",
         "qualification_performed": len(reports) == 3,
-        "native_axes_qualified": not failures,
-        "qualified": not failures and trusted,
-        "evidence_trust": "ATTESTATION_ELIGIBLE" if trusted else "UNTRUSTED_CANDIDATE",
-        "source_commit": next(iter(commits)) if len(commits) == 1 else None,
-        "wheel_sha256": next(iter(wheels)) if len(wheels) == 1 else None,
+        "native_axes_qualified": axes_valid,
+        "qualified": False,
+        "evidence_trust": (
+            "EXTERNAL_ATTESTATION_REQUIRED" if axes_valid else "UNTRUSTED_CANDIDATE"
+        ),
+        "source_commit": manifest.get("source", {}).get("commit"),
+        "wheel_sha256": manifest.get("wheel", {}).get("sha256"),
+        "build_manifest_sha256": manifest_digest or None,
+        "wheel": manifest.get("wheel"),
         "axes": sorted(
             [
                 {
@@ -432,25 +414,30 @@ def aggregate(args: argparse.Namespace) -> int:
             key=lambda x: str(x["axis"]),
         ),
         "failures": failures,
-        "workflow": _workflow(),
+        "workflow": workflow(),
     }
     try:
-        validator.validate(aggregate_value)
+        validator.validate(value)
     except Exception as exc:
         failures.append(f"aggregate schema validation failed: {exc}")
-        aggregate_value["failures"] = failures
-        aggregate_value["native_axes_qualified"] = False
-        aggregate_value["qualified"] = False
-    _write(output, aggregate_value)
-    return 0 if not failures else 1
+        value.update(
+            {
+                "failures": failures,
+                "native_axes_qualified": False,
+                "qualified": False,
+                "evidence_trust": "UNTRUSTED_CANDIDATE",
+            }
+        )
+    atomic_write(output, value)
+    return 1 if failures else 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
     build = sub.add_parser("build-manifest")
-    for name in ("--wheel", "--output"):
-        build.add_argument(name, required=True)
+    build.add_argument("--wheel", required=True)
+    build.add_argument("--output", required=True)
     build.add_argument("--commit")
     build.set_defaults(func=build_manifest)
     native = sub.add_parser("axis")
@@ -461,7 +448,7 @@ def main() -> int:
     native.add_argument("--mcp-timeout", type=int, default=90)
     native.set_defaults(func=axis)
     combined = sub.add_parser("aggregate")
-    for name in ("--schema", "--output"):
+    for name in ("--schema", "--wheel", "--wheel-manifest", "--output"):
         combined.add_argument(name, required=True)
     combined.add_argument("--reports", nargs="+", required=True)
     combined.add_argument("--trusted", action="store_true")

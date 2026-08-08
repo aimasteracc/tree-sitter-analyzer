@@ -3,8 +3,24 @@ name: Native Install Qualification
 on:
   pull_request:
     branches: [develop]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "tree_sitter_analyzer/**"
+      - "scripts/native_*"
+      - "scripts/qualify_native_install.py"
+      - "rfcs/schemas/no1-006a-native-attestation-v1.schema.json"
+      - ".github/workflows/native-install-qualification.yml"
   push:
     branches: [develop]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "tree_sitter_analyzer/**"
+      - "scripts/native_*"
+      - "scripts/qualify_native_install.py"
+      - "rfcs/schemas/no1-006a-native-attestation-v1.schema.json"
+      - ".github/workflows/native-install-qualification.yml"
   workflow_dispatch:
 
 permissions:
@@ -17,12 +33,13 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      id-token: write
-      attestations: write
     outputs:
       wheel_name: ${{ steps.inventory.outputs.wheel_name }}
       wheel_sha256: ${{ steps.inventory.outputs.wheel_sha256 }}
     steps:
+      - name: Create build evidence placeholder
+        run: mkdir -p qualification-build && printf '{"status":"started"}\n' > qualification-build/job-result.json
+        shell: bash
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -40,33 +57,36 @@ jobs:
       - name: Build one wheel and manifest
         id: inventory
         run: |
-          mkdir qualification-build
           uv build --wheel --out-dir qualification-build
           mapfile -t wheels < <(find qualification-build -maxdepth 1 -type f -name '*.whl')
           test "${#wheels[@]}" -eq 1
-          python scripts/qualify_native_install.py build-manifest             --wheel "${wheels[0]}" --commit "$GITHUB_SHA"             --output qualification-build/wheel-manifest.json
+          python scripts/qualify_native_install.py build-manifest \
+            --wheel "${wheels[0]}" --commit "$GITHUB_SHA" \
+            --output qualification-build/wheel-manifest.json
           echo "wheel_name=$(basename "${wheels[0]}")" >> "$GITHUB_OUTPUT"
           echo "wheel_sha256=$(python -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${wheels[0]}")" >> "$GITHUB_OUTPUT"
         shell: bash
-      - name: Attest wheel on trusted develop push
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-        uses: actions/attest-build-provenance@v3
-        with:
-          subject-path: qualification-build/${{ steps.inventory.outputs.wheel_name }}
+      - name: Write build job result
+        if: always()
+        run: printf '{"job":"build-once","status":"%s"}\n' '${{ job.status }}' > qualification-build/job-result.json
+        shell: bash
       - name: Upload build evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: native-build-${{ github.sha }}
           path: qualification-build/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 90
 
   native-axis:
     name: Native ${{ matrix.axis }} Python 3.10
     needs: build-once
+    if: always()
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 12
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -78,11 +98,16 @@ jobs:
           - axis: windows
             runner: windows-2022
     steps:
+      - name: Create axis evidence placeholder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force qualification-artifacts | Out-Null
+          '{"status":"started"}' | Set-Content -Encoding ascii qualification-artifacts/job-result.json
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
-      - name: Install aggregate schema validator
+      - name: Install schema validator
         run: python -m pip install --disable-pip-version-check "jsonschema>=4,<5"
       - uses: actions/download-artifact@v7
         with:
@@ -95,13 +120,19 @@ jobs:
           --wheel qualification-input/${{ needs.build-once.outputs.wheel_name }}
           --wheel-manifest qualification-input/wheel-manifest.json
           --output qualification-artifacts/report.json
+      - name: Write axis job result
+        if: always()
+        shell: pwsh
+        run: |
+          $value = @{job='native-axis'; axis='${{ matrix.axis }}'; status='${{ job.status }}'} | ConvertTo-Json -Compress
+          $value | Set-Content -Encoding ascii qualification-artifacts/job-result.json
       - name: Upload native evidence even on failure
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: native-${{ matrix.axis }}-${{ github.sha }}
           path: qualification-artifacts/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 90
 
   aggregate:
@@ -112,47 +143,172 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      id-token: write
-      attestations: write
     steps:
+      - name: Create aggregate evidence placeholder
+        run: mkdir -p qualification-aggregate && printf '{"status":"started"}\n' > qualification-aggregate/job-result.json
+        shell: bash
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
       - name: Install strict schema validator
         run: python -m pip install --disable-pip-version-check "jsonschema>=4,<5"
-      - name: Download all retained axis evidence
+      - name: Download build manifest and wheel
+        uses: actions/download-artifact@v7
+        with:
+          name: native-build-${{ github.sha }}
+          path: downloaded/build
+      - name: Download Linux report
         continue-on-error: true
         uses: actions/download-artifact@v7
         with:
-          pattern: native-*-${{ github.sha }}
-          path: downloaded
+          name: native-linux-${{ github.sha }}
+          path: downloaded/linux
+      - name: Download macOS report
+        continue-on-error: true
+        uses: actions/download-artifact@v7
+        with:
+          name: native-macos-${{ github.sha }}
+          path: downloaded/macos
+      - name: Download Windows report
+        continue-on-error: true
+        uses: actions/download-artifact@v7
+        with:
+          name: native-windows-${{ github.sha }}
+          path: downloaded/windows
       - name: Aggregate candidate evidence
-        if: github.event_name != 'push' || github.ref != 'refs/heads/develop'
+        if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/develop')
         run: >-
           python scripts/qualify_native_install.py aggregate
           --schema rfcs/schemas/no1-006a-native-attestation-v1.schema.json
-          --reports downloaded/native-*/report.json
+          --wheel downloaded/build/${{ needs.build-once.outputs.wheel_name }}
+          --wheel-manifest downloaded/build/wheel-manifest.json
+          --reports downloaded/linux/report.json downloaded/macos/report.json downloaded/windows/report.json
           --output qualification-aggregate/aggregate.json
         shell: bash
       - name: Aggregate trusted develop evidence
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/develop'
         run: >-
           python scripts/qualify_native_install.py aggregate --trusted
           --schema rfcs/schemas/no1-006a-native-attestation-v1.schema.json
-          --reports downloaded/native-*/report.json
+          --wheel downloaded/build/${{ needs.build-once.outputs.wheel_name }}
+          --wheel-manifest downloaded/build/wheel-manifest.json
+          --reports downloaded/linux/report.json downloaded/macos/report.json downloaded/windows/report.json
           --output qualification-aggregate/aggregate.json
         shell: bash
-      - name: Attest aggregate on trusted develop push
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/develop'
-        uses: actions/attest-build-provenance@v3
-        with:
-          subject-path: qualification-aggregate/aggregate.json
+      - name: Write aggregate job result
+        if: always()
+        run: printf '{"job":"aggregate","status":"%s"}\n' '${{ job.status }}' > qualification-aggregate/job-result.json
+        shell: bash
       - name: Upload aggregate evidence even on failure
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: native-aggregate-${{ github.sha }}
           path: qualification-aggregate/
-          if-no-files-found: warn
+          if-no-files-found: error
+          retention-days: 90
+
+  trusted-attestation:
+    name: Externally attest trusted develop evidence
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [build-once, aggregate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Create trusted job placeholder
+        run: mkdir -p trusted-job && printf '{"status":"started"}\n' > trusted-job/job-result.json
+        shell: bash
+      - uses: actions/download-artifact@v7
+        with:
+          name: native-build-${{ github.sha }}
+          path: trusted-input/build
+      - uses: actions/download-artifact@v7
+        with:
+          name: native-aggregate-${{ github.sha }}
+          path: trusted-input/aggregate
+      - uses: actions/download-artifact@v7
+        with:
+          name: native-linux-${{ github.sha }}
+          path: trusted-input/linux
+      - uses: actions/download-artifact@v7
+        with:
+          name: native-macos-${{ github.sha }}
+          path: trusted-input/macos
+      - uses: actions/download-artifact@v7
+        with:
+          name: native-windows-${{ github.sha }}
+          path: trusted-input/windows
+      - name: Independently verify downloaded evidence identities
+        env:
+          WHEEL_NAME: ${{ needs.build-once.outputs.wheel_name }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import email.parser, hashlib, json, os, pathlib, zipfile
+          root = pathlib.Path("trusted-input")
+          wheel_path = root / "build" / os.environ["WHEEL_NAME"]
+          manifest_path = root / "build" / "wheel-manifest.json"
+          aggregate_path = root / "aggregate" / "aggregate.json"
+          sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+          manifest = json.loads(manifest_path.read_text())
+          aggregate = json.loads(aggregate_path.read_text())
+          reports = {axis: json.loads((root / axis / "report.json").read_text())
+                     for axis in ("linux", "macos", "windows")}
+          run_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          expected = (os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_SHA"], os.environ["GITHUB_REF"],
+                      os.environ["GITHUB_EVENT_NAME"], os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"],
+                      os.environ["GITHUB_WORKFLOW_REF"], run_url)
+          def identity(value):
+              source, workflow = value["source"], value["workflow"]
+              return (source["repository"], source["commit"], source["ref"], workflow["event"],
+                      workflow["run_id"], workflow["run_attempt"], workflow["workflow_ref"], workflow["run_url"])
+          assert expected[2:4] == ("refs/heads/develop", "push")
+          assert identity(manifest) == expected
+          wheel = manifest["wheel"]
+          assert (wheel_path.name, sha(wheel_path), wheel_path.stat().st_size) == (wheel["filename"], wheel["sha256"], wheel["size"])
+          with zipfile.ZipFile(wheel_path) as archive:
+              names = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
+              assert len(names) == 1 and archive.testzip() is None
+              metadata = email.parser.BytesParser().parsebytes(archive.read(names[0]))
+          assert metadata["Name"].lower().replace("_", "-") == wheel["name"] == "tree-sitter-analyzer"
+          assert metadata["Version"] == wheel["version"]
+          assert aggregate["native_axes_qualified"] is True and aggregate["qualified"] is False
+          assert aggregate["evidence_trust"] == "EXTERNAL_ATTESTATION_REQUIRED" and aggregate["failures"] == []
+          assert aggregate["wheel"] == wheel and aggregate["wheel_sha256"] == wheel["sha256"]
+          assert aggregate["build_manifest_sha256"] == sha(manifest_path)
+          axis_digests = {item["axis"]: item["report_sha256"] for item in aggregate["axes"]}
+          assert set(axis_digests) == set(reports)
+          for axis, report in reports.items():
+              assert identity(report) == expected and report["axis"] == axis and report["passed"] is True
+              assert report["wheel"] == wheel and report["build_manifest_sha256"] == sha(manifest_path)
+              assert [item["id"] for item in report["stages"]] == ["verify_wheel", "install", "metadata_provenance", "mcp_protocol"]
+              assert sha(root / axis / "report.json") == axis_digests[axis]
+          pathlib.Path("trusted-job/independent-verification.ok").write_text(sha(aggregate_path) + "\n")
+          PY
+      - name: Attest exact wheel bytes
+        if: needs.build-once.result == 'success' && needs.aggregate.result == 'success'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: trusted-input/build/${{ needs.build-once.outputs.wheel_name }}
+      - name: Attest exact aggregate evidence
+        if: needs.build-once.result == 'success' && needs.aggregate.result == 'success'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: trusted-input/aggregate/aggregate.json
+      - name: Write trusted job result
+        if: always()
+        run: printf '{"job":"trusted-attestation","status":"%s"}\n' '${{ job.status }}' > trusted-job/job-result.json
+        shell: bash
+      - name: Upload trusted job result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-trusted-job-${{ github.sha }}
+          path: trusted-job/
+          if-no-files-found: error
           retention-days: 90

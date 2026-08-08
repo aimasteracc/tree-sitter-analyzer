@@ -52,6 +52,7 @@ from ..project_detector import detect_project_root
 from ..security import SecurityValidator
 from ..utils import setup_logger
 from . import MCP_INFO
+from ._sdk_compat import adapt_server
 from ._server_helpers import (
     attach_tool_aliases,
     build_initialization_options,
@@ -282,7 +283,7 @@ class TreeSitterAnalyzerMCPServer:
         if not MCP_AVAILABLE:
             raise RuntimeError("MCP library not available. Please install mcp package.")
 
-        server: Server = Server(self.name)
+        server: Server = adapt_server(Server(self.name))
 
         # Register tools, resources, and prompts
         register_tools(server, self)
