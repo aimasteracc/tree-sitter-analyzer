@@ -1,0 +1,268 @@
+{
+  "$defs": {
+    "artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "claim": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        },
+        "claim_id": {
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "type": "string"
+        },
+        "competitor": {
+          "$ref": "#/$defs/tool"
+        },
+        "denominator": {
+          "exclusiveMinimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "evidence_level": {
+          "enum": [
+            "E0",
+            "E1",
+            "E2",
+            "E3",
+            "E4"
+          ]
+        },
+        "metric": {
+          "minLength": 1,
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(?![\\s\\S]*[\\r\\n])[a-z][a-z0-9]*(?: [a-z0-9]+){0,7}$"
+        },
+        "numerator": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "unverified",
+            "blocked"
+          ]
+        },
+        "tsa": {
+          "$ref": "#/$defs/tool"
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "bytes",
+            "files",
+            "milliseconds",
+            "operations",
+            "percent",
+            "ratio",
+            "requests",
+            "seconds"
+          ]
+        },
+        "repositories": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96,
+            "pattern": "^(?![\\s\\S]*[\\r\\n])[A-Za-z0-9]+(?:[._/-][A-Za-z0-9]+)*$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "model_backend": {
+          "$ref": "#/$defs/model_backend"
+        }
+      },
+      "required": [
+        "claim_id",
+        "status",
+        "metric",
+        "numerator",
+        "denominator",
+        "unit",
+        "tsa",
+        "competitor",
+        "provenance",
+        "evidence_level",
+        "artifact",
+        "repositories",
+        "model_backend"
+      ],
+      "type": "object"
+    },
+    "corpus": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "type": "string",
+          "maxLength": 96,
+          "pattern": "^(?![\\s\\S]*[\\r\\n])[A-Za-z0-9]+(?:[ -][A-Za-z0-9]+)*$"
+        },
+        "revision": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 64,
+          "pattern": "^(?![\\s\\S]*[\\r\\n])[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$"
+        }
+      },
+      "required": [
+        "name",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "benchmark_version": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 64,
+          "pattern": "^(?![\\s\\S]*[\\r\\n])[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$"
+        },
+        "corpus": {
+          "$ref": "#/$defs/corpus"
+        },
+        "measurement_date": {
+          "format": "date",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^(?![\\s\\S]*[\\r\\n])[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "repo_commit": {
+          "pattern": "^(?![\\s\\S]*[\\r\\n])[0-9a-f]{40,64}$",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 40,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "benchmark_version",
+        "repo_commit",
+        "corpus",
+        "measurement_date"
+      ],
+      "type": "object"
+    },
+    "tool": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(?![\\s\\S]*[\\r\\n])[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*$"
+        },
+        "version": {
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 32,
+          "pattern": "^(?![\\s\\S]*[\\r\\n])v?[0-9]+(?:\\.[0-9]+){0,3}(?:-[0-9A-Za-z]+(?:\\.[0-9A-Za-z]+)*)?$"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "type": "object"
+    },
+    "model_backend": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^(?![\\s\\S]*[\\r\\n])[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 96,
+          "pattern": "^(?![\\s\\S]*[\\r\\n])[A-Za-z0-9]+(?:[._:/-][A-Za-z0-9]+)*$"
+        }
+      },
+      "required": [
+        "backend",
+        "model"
+      ],
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  },
+  "$id": "https://github.com/aimasteracc/tree-sitter-analyzer/benchmarks/codegraph_compare/claim_registry.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "claims": {
+      "items": {
+        "$ref": "#/$defs/claim"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "claims"
+  ],
+  "title": "TSA quantitative claim registry",
+  "type": "object"
+}
