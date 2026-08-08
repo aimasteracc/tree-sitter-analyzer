@@ -1,0 +1,26 @@
+{
+  "schema": "edge-evidence-generated-rule-registry/v1",
+  "registry_version": "2026-08-08.1",
+  "entries": [
+    {
+      "entry_id": "policy.forbidden_call_target@1",
+      "adapter": {
+        "facade": "nav",
+        "action": "edges",
+        "action_version": "3"
+      },
+      "producer_rule_id": "policy.forbidden_call_target",
+      "producer_rule_version": "1"
+    },
+    {
+      "entry_id": "resolver.unique_call_target@2",
+      "adapter": {
+        "facade": "nav",
+        "action": "edges",
+        "action_version": "3"
+      },
+      "producer_rule_id": "resolver.unique_call_target",
+      "producer_rule_version": "2"
+    }
+  ]
+}
