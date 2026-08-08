@@ -429,7 +429,7 @@ jobs:
           assert outdated_aggregate["workflow"] == {
               "event": "push", "run_id": run, "run_attempt": attempt,
               "job": "outdated-uv-aggregate", "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
-              "run_url": f"{os.environ['GITHUB_SERVER_URL']}/{repo}/actions/runs/{run}",
+              "run_url": f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run}",
           }
           assert outdated_aggregate["source_commit"]==commit and outdated_aggregate["package_qualification"]=={**package_common,"axis_report_sha256":package_axis_sha256}
           assert outdated_aggregate["qualified"] is False and outdated_aggregate["evidence_trust"]=="EXTERNAL_ATTESTATION_REQUIRED" and outdated_aggregate["automatic_mutable_bootstrap_qualified"] is False and outdated_aggregate["failures"]==[]
