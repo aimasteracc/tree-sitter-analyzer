@@ -352,7 +352,7 @@ jobs:
           assert package_aggregate["axes"]==[{"axis":a,"report_sha256":sha(package_dirs[a]/"report.json"),"passed":True} for a in ("linux","macos","windows")]
           outdated_dirs={axis:root/f"outdated/outdated-uv-{axis}{suffix}" for axis in ("linux","macos","windows")}
           outdated_aggregate_path=root/f"outdated/outdated-uv-aggregate{suffix}/aggregate.json"; outdated_aggregate=json.loads(outdated_aggregate_path.read_text())
-          reports={}; package_common=None
+          reports={}; package_common=None; package_axis_sha256={}
           for axis,path in outdated_dirs.items():
             report_path=path/"report.json"; report=reports[axis]=json.loads(report_path.read_text()); artifacts=report["artifacts"]
             exact(report,("schema_version","kind","qualification_id","evidence_scope","axis","qualification_performed","passed","status","source","workflow","runner","remediation_mode","automatic_mutable_bootstrap_qualified","old_uv","supported_uv","installer","config","package_qualification","mcp_causal_report","artifacts","failure"))
@@ -368,6 +368,7 @@ jobs:
             assert old["archive"]=={"filename":filename,"size":size,"sha256":digest,"url":url,"version":"0.10.9"}
             binding=report["package_qualification"]; common={k:binding[k] for k in ("aggregate_sha256","build_manifest_sha256","wheel")}; package_common=package_common or common
             assert common==package_common=={"aggregate_sha256":sha(package_aggregate_path),"build_manifest_sha256":sha(manifest_path),"wheel":wheel} and binding["axis_report_sha256"]==sha(package_dirs[axis]/"report.json")
+            package_axis_sha256[axis]=binding["axis_report_sha256"]
             identity(report,"outdated-uv-axis")
             old_side=path/"old.archive"; assert (old_side.stat().st_size,sha(old_side))==(size,digest); verify_executable(old["executable"],safe_uv_member(old_side,filename),"0.10.9",axis)
             if axis=="windows":
@@ -418,7 +419,7 @@ jobs:
               assert observed_direct==[direct]
           exact(outdated_aggregate,("schema_version","kind","qualification_id","evidence_scope","qualification_performed","qualified","evidence_trust","source_commit","package_qualification","required_axes","automatic_mutable_bootstrap_qualified","axes","failures","workflow"))
           identity(outdated_aggregate,"outdated-uv-aggregate")
-          assert outdated_aggregate["source_commit"]==commit and outdated_aggregate["package_qualification"]==package_common
+          assert outdated_aggregate["source_commit"]==commit and outdated_aggregate["package_qualification"]=={**package_common,"axis_report_sha256":package_axis_sha256}
           assert outdated_aggregate["qualified"] is False and outdated_aggregate["evidence_trust"]=="EXTERNAL_ATTESTATION_REQUIRED" and outdated_aggregate["automatic_mutable_bootstrap_qualified"] is False and outdated_aggregate["failures"]==[]
           assert outdated_aggregate["required_axes"]=={"package":["linux","macos","windows"],"outdated":["linux","macos"],"not_applicable":{"windows":"NOT_APPLICABLE_NO_NATIVE_INSTALLER"}}
           assert outdated_aggregate["axes"]==[{"axis":a,"report_sha256":sha(outdated_dirs[a]/"report.json"),"status":reports[a]["status"],"passed":reports[a]["passed"]} for a in ("linux","macos","windows")]

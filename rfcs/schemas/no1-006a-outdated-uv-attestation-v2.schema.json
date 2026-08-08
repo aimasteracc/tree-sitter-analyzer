@@ -1,5 +1,51 @@
 {
   "$defs": {
+    "aggregate_package_qualification": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregate_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "axis_report_sha256": {
+          "additionalProperties": false,
+          "properties": {
+            "linux": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "macos": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "windows": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "linux",
+            "macos",
+            "windows"
+          ],
+          "type": "object"
+        },
+        "build_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "wheel": {
+          "$ref": "#/$defs/wheel"
+        }
+      },
+      "required": [
+        "aggregate_sha256",
+        "axis_report_sha256",
+        "build_manifest_sha256",
+        "wheel"
+      ],
+      "type": "object"
+    },
     "archive_0_10_9": {
       "additionalProperties": false,
       "properties": {
@@ -1235,7 +1281,7 @@
                   "maxItems": 0
                 },
                 "package_qualification": {
-                  "$ref": "#/$defs/package_qualification"
+                  "$ref": "#/$defs/aggregate_package_qualification"
                 },
                 "qualification_performed": {
                   "const": true

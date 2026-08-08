@@ -215,6 +215,7 @@ def test_workflow_routes_fixture_manifest_and_all_attestation_schemas() -> None:
     workflow = (ROOT / ".github/workflows/native-install-qualification.yml").read_text()
     assert workflow.count('"config/no1_uv_fixtures.json"') == 2
     assert workflow.count('"rfcs/schemas/no1-006a-*-attestation-*.schema.json"') == 2
+    assert workflow.count('"install.ps1"') == 2
 
 
 def test_trusted_verifier_requires_complete_windows_na_state() -> None:
@@ -360,7 +361,16 @@ def valid_passed_report() -> dict[str, object]:
 def test_successful_aggregate_requires_complete_package_binding() -> None:
     # PR #1242: successful aggregate evidence must bind the wheel and manifest.
     digest = "0" * 64
-    package = valid_passed_report()["package_qualification"]
+    axis_package = valid_passed_report()["package_qualification"]
+    package = {
+        **{
+            key: axis_package[key]
+            for key in ("aggregate_sha256", "build_manifest_sha256", "wheel")
+        },
+        "axis_report_sha256": dict.fromkeys(
+            qualification.AXES, axis_package["axis_report_sha256"]
+        ),
+    }
     aggregate = {
         "schema_version": qualification.SCHEMA_VERSION,
         "kind": "outdated_uv_aggregate",
@@ -404,6 +414,66 @@ def test_successful_aggregate_requires_complete_package_binding() -> None:
     aggregate["package_qualification"] = {}
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(aggregate, SCHEMA)
+
+
+def aggregate_reports(tmp_path: Path) -> tuple[list[dict[str, object]], list[Path]]:
+    linux = valid_passed_report()
+    macos = valid_passed_report()
+    macos["axis"] = "macos"
+    macos["runner"].update(declared_axis="macos", observed_system="Darwin")
+    macos["mcp_causal_report"]["runner"].update(
+        declared_axis="macos", observed_system="Darwin"
+    )
+    values = [linux, macos, valid_windows_report()]
+    paths = []
+    for axis_name, value in zip(qualification.AXES, values, strict=True):
+        path = tmp_path / f"{axis_name}.json"
+        path.write_text(json.dumps(value), "utf-8")
+        paths.append(path)
+    return values, paths
+
+
+def run_aggregate(tmp_path: Path, paths: list[Path]) -> tuple[int, dict[str, object]]:
+    from types import SimpleNamespace
+
+    output = tmp_path / "aggregate.json"
+    result = qualification.aggregate(
+        SimpleNamespace(
+            output=str(output),
+            reports=[str(path) for path in paths],
+            schema=str(
+                ROOT / "rfcs/schemas/no1-006a-outdated-uv-attestation-v2.schema.json"
+            ),
+            trusted=False,
+        )
+    )
+    return result, json.loads(output.read_text("utf-8"))
+
+
+def test_aggregate_preserves_all_package_axis_report_bindings(tmp_path: Path) -> None:
+    values, paths = aggregate_reports(tmp_path)
+    result, aggregate = run_aggregate(tmp_path, paths)
+    package = aggregate["package_qualification"]
+    assert result == 0
+    assert package == {
+        "aggregate_sha256": "a" * 64,
+        "axis_report_sha256": {
+            axis_name: value["package_qualification"]["axis_report_sha256"]
+            for axis_name, value in zip(qualification.AXES, values, strict=True)
+        },
+        "build_manifest_sha256": "a" * 64,
+        "wheel": values[0]["package_qualification"]["wheel"],
+    }
+    jsonschema.validate(aggregate, SCHEMA)
+
+
+def test_aggregate_rejects_schema_incomplete_axis_report(tmp_path: Path) -> None:
+    values, paths = aggregate_reports(tmp_path)
+    del values[0]["old_uv"]
+    paths[0].write_text(json.dumps(values[0]), "utf-8")
+    result, aggregate = run_aggregate(tmp_path, paths)
+    assert result == 1
+    assert aggregate["failures"][0].startswith("linux: ValidationError:")
 
 
 @pytest.mark.parametrize(

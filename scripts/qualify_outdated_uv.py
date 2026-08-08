@@ -243,24 +243,33 @@ def axis(args:argparse.Namespace)->int:
     return 0 if report["passed"] or report["status"]=="NOT_APPLICABLE_NO_NATIVE_INSTALLER" else 1
 
 def aggregate(args:argparse.Namespace)->int:
+    import jsonschema
     output=Path(args.output).resolve(); source,workflow=identity("outdated-uv-aggregate"); failures=[]; axes=[]; package=None
+    schema=json.loads(Path(args.schema).resolve(strict=True).read_text("utf-8")); validator=jsonschema.validators.validator_for(schema)(schema); validator.check_schema(schema)
     for expected,raw in zip(AXES,args.reports,strict=True):
         path=Path(raw).resolve()
         try:
-            value=json.loads(path.read_text()); ok=(expected in ("linux","macos") and value.get("passed") is True) or (expected=="windows" and value.get("status")=="NOT_APPLICABLE_NO_NATIVE_INSTALLER" and value.get("passed") is False and value.get("qualification_performed") is False)
+            value=json.loads(path.read_text("utf-8")); validator.validate(value)
+            ok=(expected in ("linux","macos") and value.get("passed") is True) or (expected=="windows" and value.get("status")=="NOT_APPLICABLE_NO_NATIVE_INSTALLER" and value.get("passed") is False and value.get("qualification_performed") is False)
             if value.get("axis")!=expected or not ok: failures.append(f"{expected}: invalid required outcome")
             expected_source,expected_workflow=identity("outdated-uv-axis")
             if value.get("source")!=expected_source or value.get("workflow")!=expected_workflow: failures.append(f"{expected}: report GITHUB identity mismatch")
             if value.get("automatic_mutable_bootstrap_qualified") is not False: failures.append(f"{expected}: mutable bootstrap claim")
             binding=value.get("package_qualification")
             common={k:binding.get(k) for k in ("aggregate_sha256","build_manifest_sha256","wheel")} if isinstance(binding,dict) else None
-            if package is None: package=common
-            if common!=package or not isinstance(binding,dict) or binding.get("axis_report_sha256") is None: failures.append(f"{expected}: package identity mismatch")
+            if package is None and common is not None: package={**common,"axis_report_sha256":{}}
+            aggregate_common={k:package.get(k) for k in ("aggregate_sha256","build_manifest_sha256","wheel")} if isinstance(package,dict) else None
+            if common!=aggregate_common: failures.append(f"{expected}: package identity mismatch")
+            elif not isinstance(binding,dict) or not isinstance(binding.get("axis_report_sha256"),str): failures.append(f"{expected}: package identity mismatch")
+            else: package["axis_report_sha256"][expected]=binding["axis_report_sha256"]
             axes.append({"axis":expected,"report_sha256":sha256(path),"status":value.get("status"),"passed":value.get("passed")})
         except Exception as exc: failures.append(f"{expected}: {type(exc).__name__}: {exc}")
     trusted=args.trusted and os.environ.get("GITHUB_EVENT_NAME")=="push" and os.environ.get("GITHUB_REF")=="refs/heads/develop"
     if args.trusted and not trusted: failures.append("trusted aggregate restricted to develop push")
     result={"schema_version":SCHEMA_VERSION,"kind":"outdated_uv_aggregate","qualification_id":"NO1-006A","evidence_scope":"native_outdated_uv_actionable_recovery","qualification_performed":len(axes)==3,"qualified":False,"evidence_trust":"EXTERNAL_ATTESTATION_REQUIRED" if trusted and not failures else "UNTRUSTED_CANDIDATE","source_commit":source["commit"],"package_qualification":package,"required_axes":{"package":["linux","macos","windows"],"outdated":["linux","macos"],"not_applicable":{"windows":"NOT_APPLICABLE_NO_NATIVE_INSTALLER"}},"automatic_mutable_bootstrap_qualified":False,"axes":axes,"failures":failures,"workflow":workflow}
+    try: validator.validate(result)
+    except Exception as exc:
+        failures.append(f"aggregate schema: {type(exc).__name__}: {exc}"); result["evidence_trust"]="UNTRUSTED_CANDIDATE"
     atomic_write(output,result); return 1 if failures else 0
 
 def main()->int:
@@ -269,6 +278,6 @@ def main()->int:
     a=sub.add_parser("axis"); a.add_argument("--axis",choices=AXES,required=True)
     for name in ("old-archive","installer","wheel","wheel-manifest","package-aggregate","package-report","output"): a.add_argument("--"+name,required=True)
     a.add_argument("--supported-archive"); a.add_argument("--timeout",type=float,default=180); a.set_defaults(func=axis)
-    g=sub.add_parser("aggregate"); g.add_argument("--reports",nargs=3,required=True); g.add_argument("--output",required=True); g.add_argument("--trusted",action="store_true"); g.set_defaults(func=aggregate)
+    g=sub.add_parser("aggregate"); g.add_argument("--reports",nargs=3,required=True); g.add_argument("--schema",default=str(PROJECT/"rfcs/schemas/no1-006a-outdated-uv-attestation-v2.schema.json")); g.add_argument("--output",required=True); g.add_argument("--trusted",action="store_true"); g.set_defaults(func=aggregate)
     args=parser.parse_args(); return int(args.func(args))
 if __name__=="__main__": raise SystemExit(main())
