@@ -46,7 +46,7 @@ class TestTerminateProcessTree:
         ):
             _terminate_process_tree(process)
         assert run.call_args.args[0] == [
-            r"C:\Windows/System32/taskkill.exe",
+            os.path.join(r"C:\Windows", "System32", "taskkill.exe"),
             "/PID",
             "123",
             "/T",
@@ -93,7 +93,7 @@ class TestTerminateProcessTree:
         ]
         with (
             patch("tree_sitter_analyzer.cli.commands.doctor.os.name", "posix"),
-            patch("tree_sitter_analyzer.cli.commands.doctor.os.killpg") as killpg,
+            patch("tree_sitter_analyzer.cli.commands.doctor.os.killpg", create=True) as killpg,
         ):
             _terminate_process_tree(process)
         assert killpg.call_args_list == [
@@ -116,6 +116,7 @@ class TestTerminateProcessTree:
             patch(
                 "tree_sitter_analyzer.cli.commands.doctor.os.killpg",
                 side_effect=ProcessLookupError,
+                create=True,
             ),
         ):
             _terminate_process_tree(process)
