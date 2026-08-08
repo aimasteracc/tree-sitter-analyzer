@@ -49,7 +49,7 @@ def validate_archive(path: Path, expected: dict[str,Any]) -> dict[str,Any]:
     return observed
 
 def fetch(args: argparse.Namespace) -> int:
-    expected=fixture(args.axis,args.version); output=Path(args.output)
+    expected=fixture(args.axis,args.version); output=Path(args.output); output.parent.mkdir(parents=True, exist_ok=True)
     request=urllib.request.Request(expected["url"],headers={"User-Agent":"tsa-no1-qualification/1"})
     with urllib.request.urlopen(request,timeout=60) as source, output.open("wb") as target: shutil.copyfileobj(source,target)
     validate_archive(output,expected); return 0

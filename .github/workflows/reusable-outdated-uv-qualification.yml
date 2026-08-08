@@ -47,7 +47,7 @@ jobs:
       - name: Write job result
         if: always()
         shell: pwsh
-        run: $value=@{job='outdated-axis';axis='${{ matrix.axis }}';status='${{ job.status }}'}|ConvertTo-Json -Compress; $value|Set-Content -Encoding ascii outdated-artifacts/job-result.json
+        run: New-Item -ItemType Directory -Force outdated-artifacts | Out-Null; $value=@{job='outdated-axis';axis='${{ matrix.axis }}';status='${{ job.status }}'}|ConvertTo-Json -Compress; $value|Set-Content -Encoding ascii outdated-artifacts/job-result.json
       - name: Upload exact evidence closure
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
