@@ -482,7 +482,8 @@ def validate_installed_provenance(
         )
     _validate_installed_record(metadata, envroot)
     if (
-        metadata["module_file"] != metadata["module_origin"]
+        os.path.normcase(str(Path(metadata["module_file"]).resolve()))
+        != os.path.normcase(str(Path(metadata["module_origin"]).resolve()))
         or metadata["module_recorded"] is not True
     ):
         raise ValueError("module origin is not the wheel RECORD module")

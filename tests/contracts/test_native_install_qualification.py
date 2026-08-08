@@ -287,7 +287,7 @@ def test_probe_requires_fresh_venv_direct_url_and_record_provenance() -> None:
     assert (
         "distribution/module/runtime/console provenance escaped fresh venv" in harness
     )
-    assert "direct_url archive hash does not bind the exact wheel" in harness
+    assert "direct_url does not identify the exact wheel" in harness
     assert "module origin is not the wheel RECORD module" in harness
 
 
