@@ -47,8 +47,15 @@ def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
             pass
         try:
             process.communicate(timeout=1)
-            return
         except subprocess.TimeoutExpired:
+            pass
+        # Reaping the direct shim does not prove that its descendants exited.
+        # Probe the isolated group, then escalate any surviving member.
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            pass
+        else:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:

@@ -98,6 +98,7 @@ class TestTerminateProcessTree:
             _terminate_process_tree(process)
         assert killpg.call_args_list == [
             ((123, 15),),
+            ((123, 0),),
             ((123, 9),),
         ]
 
@@ -217,7 +218,7 @@ class TestCheckUv:
         child_pid_file = tmp_path / "child.pid"
         uv = tmp_path / "uv"
         uv.write_text(
-            "#!/bin/sh\nsleep 60 &\necho $! > "
+            "#!/bin/sh\nsh -c 'trap \'\' TERM; sleep 60' &\necho $! > "
             f"{child_pid_file!s}\nwait\n",
             encoding="utf-8",
         )
