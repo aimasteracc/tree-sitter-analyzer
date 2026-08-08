@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from tree_sitter_analyzer.mcp._sdk_compat import MCP2ServerAdapter, adapt_server
 from tree_sitter_analyzer.mcp.server import (
     TreeSitterAnalyzerMCPServer,
 )
@@ -341,7 +342,9 @@ class TestTreeSitterAnalyzerMCPServerCreation:
             result = server.create_server()
 
             assert result == mock_server
-            mock_server_class.assert_called_once_with(server.name)
+            mock_server_class.assert_called_once_with(
+                server.name, version=server.version
+            )
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", False)
     def test_create_server_mcp_unavailable(self, temp_project_dir):
@@ -444,3 +447,33 @@ class TestTreeSitterAnalyzerMCPServerCreation:
             assert "code_file" in resource_names
             assert "project_stats" in resource_names
             assert "Hyphae selector result" in resource_names
+
+
+class _MCP2LikeServer:
+    def __init__(self):
+        self.handlers = {}
+
+    def add_request_handler(self, method, params_type, handler):
+        self.handlers[method] = handler
+
+
+def test_mcp2_server_receives_compatibility_adapter():
+    raw = _MCP2LikeServer()
+    assert isinstance(adapt_server(raw), MCP2ServerAdapter)
+
+
+@pytest.mark.asyncio
+async def test_mcp2_list_tools_adapter_returns_sdk_result():
+    from mcp.types import Tool
+
+    raw = _MCP2LikeServer()
+    adapter = MCP2ServerAdapter(raw)
+
+    @adapter.list_tools()
+    async def listed():
+        return [
+            Tool(name="sample", description="sample", inputSchema={"type": "object"})
+        ]
+
+    result = await raw.handlers["tools/list"](Mock(), Mock())
+    assert [tool.name for tool in result.tools] == ["sample"]

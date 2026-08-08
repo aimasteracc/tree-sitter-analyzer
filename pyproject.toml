@@ -83,6 +83,7 @@ dependencies = [
     "numpy>=2.2.6",
     "pyyaml>=6.0",
     "pathspec>=0.12.1",
+    "tomli>=2.0.1; python_version < '3.11'",
     "anthropic>=0.104.1",
     "tree-sitter-bash>=0.23.0",
     "tree-sitter-scala>=0.23.0",
