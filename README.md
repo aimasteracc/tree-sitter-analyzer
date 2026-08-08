@@ -37,6 +37,7 @@ Auto-installs `uv` if missing, detects Claude Desktop / Claude Code / Cursor / V
 
 Install command for **Claude Code**:
 
+
 ```bash
 claude mcp add tree-sitter-analyzer \
   --env TREE_SITTER_PROJECT_ROOT="$PWD" \
