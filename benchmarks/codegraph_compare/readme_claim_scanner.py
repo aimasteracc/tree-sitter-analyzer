@@ -95,6 +95,35 @@ _QUANTITATIVE_SUPERLATIVE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+_LOCALIZED_QUANTITATIVE_SUPERLATIVE = re.compile(
+    r"(?:最速(?:の)?(?:インデックス作成|処理|解析|分析|検索|応答|実行|速度)|"
+    r"最高(?:の)?(?:スループット|精度|性能|パフォーマンス|速度|スコア)|"
+    r"最低(?:の)?(?:レイテンシ|遅延|メモリ|実行時間|コスト|使用量)|"
+    r"(?:インデックス作成|処理|解析|分析|検索|応答|実行|速度)(?:が|は)?最速|"
+    r"(?:スループット|精度|性能|パフォーマンス|速度|スコア)(?:が|は)?最高|"
+    r"(?:レイテンシ|遅延|メモリ|実行時間|コスト|使用量)(?:が|は)?最低|"
+    r"最快(?:的)?(?:索引(?:速度)?|处理|分析|搜索|响应|执行|速度)|"
+    r"最高(?:的)?(?:吞吐量|准确率|性能|速度|得分)|"
+    r"最低(?:的)?(?:延迟|内存|耗时|时间|成本|资源使用量)|"
+    r"(?:索引(?:速度)?|处理|分析|搜索|响应|执行|速度)最快|"
+    r"(?:吞吐量|准确率|性能|速度|得分)最高|"
+    r"(?:延迟|内存|耗时|时间|成本|资源使用量)最低)"
+)
+_MARKETING_METRIC = (
+    r"(?:throughput|latency|accuracy|performance|speed|rate|memory|runtime|"
+    r"response time|indexing|processing|capacity|output)"
+)
+_MULTIPLIER_VERB = re.compile(
+    rf"(?:\b(?:doubl|tripl|quadrupl)(?:ed|es|ing)\b[^.!?\n]{{0,48}}\b{_MARKETING_METRIC}\b|"
+    rf"\b{_MARKETING_METRIC}\b[^.!?\n]{{0,48}}\b(?:doubl|tripl|quadrupl)(?:ed|es|ing)\b)",
+    re.IGNORECASE,
+)
+_TRAILING_FRACTIONAL_CHANGE = re.compile(
+    rf"\b(?:cut|cuts|cutting|reduc(?:e[ds]?|ing))\b[^.!?\n]{{0,48}}"
+    rf"\b{_MARKETING_METRIC}\b[^.!?\n]{{0,24}}\b(?:in|by|to)\s+(?:a\s+)?"
+    r"(?:half|quarter|third)\b",
+    re.IGNORECASE,
+)
 
 
 def _generated_language_sections() -> tuple[str, ...]:
@@ -230,6 +259,9 @@ def _is_quantitative_marketing(text: str) -> bool:
         _RATE_OR_MEASUREMENT.search(text)
         or _COMPARATIVE.search(text)
         or _QUANTITATIVE_SUPERLATIVE.search(text)
+        or _LOCALIZED_QUANTITATIVE_SUPERLATIVE.search(text)
+        or _MULTIPLIER_VERB.search(text)
+        or _TRAILING_FRACTIONAL_CHANGE.search(text)
         or re.search(r"\bsub[- ]second\b", text, re.IGNORECASE)
     )
 
@@ -254,7 +286,12 @@ def _is_fenced_quantitative_marketing(text: str) -> bool:
         or _NUMBER_FOLD.search(text)
     )
     has_claim_context = bool(_FENCED_CLAIM_CONTEXT.search(text))
-    if _QUANTITATIVE_SUPERLATIVE.search(text):
+    if (
+        _QUANTITATIVE_SUPERLATIVE.search(text)
+        or _LOCALIZED_QUANTITATIVE_SUPERLATIVE.search(text)
+        or _MULTIPLIER_VERB.search(text)
+        or _TRAILING_FRACTIONAL_CHANGE.search(text)
+    ):
         return True
     if _COMPARATIVE.search(text):
         numeric_comparison = re.search(

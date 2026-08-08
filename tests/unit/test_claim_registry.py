@@ -359,6 +359,8 @@ FINAL_REVIEW_PROBES = (
     "TSA は半秒でインデックスを完了します。", "TSA 可在半秒内完成索引。",
     "TSA handles five widgets per hour.", "TSA handles 8 MCP tools per second.",
     "TSA answers in Step 2 seconds.", "TSA is ³⁹⁰× faster.", "TSA is Ⅻ× faster.", "TSA is 三倍 faster.",
+    "TSA doubled throughput.", "TSA tripled indexing speed.", "Throughput is quadrupling.",
+    "TSA cut latency in half.", "TSA reduced memory use by a third.",
 )
 WORD_NUMBERS = tuple("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion trillion dozen score couple pair hundreds thousands millions billions trillions dozens scores couples pairs several many few half quarter third single double triple quadruple".split())
 CAMOUFLAGE = (
@@ -439,6 +441,10 @@ def test_fence_handling_fails_closed(body, expected, blocked_verdict, readme_fix
     "TSA has the highest throughput.", "TSA has the lowest latency.",
     "TSA uses the most efficient index.", "TSA has the least memory use.",
     "TSA delivers the best performance.", "TSA has the worst latency.",
+    "TSA は最速のインデックス作成を提供します。", "TSA は最高のスループットを実現します。",
+    "TSA は最低のレイテンシを提供します。", "TSA の応答速度は最速です。",
+    "TSA 提供最快的索引速度。", "TSA 拥有最高吞吐量。",
+    "TSA 提供最低延迟。", "TSA 的处理速度最快。",
 ))
 def test_quantitative_superlatives_are_fail_closed(claim, blocked_verdict, readme_fixture):
     # PR #1237: numeral-free superiority claims still require governed evidence.
@@ -447,6 +453,9 @@ def test_quantitative_superlatives_are_fail_closed(claim, blocked_verdict, readm
 @pytest.mark.parametrize("prose", (
     "Follow best practices.", "Most users should start here.",
     "Choose the least surprising configuration.", "Use the highest-level API.",
+    "Fold the paper in half.", "The parser doubled as a formatter.",
+    "最高レベルの API を選びます。", "最低要件を確認します。", "最速の入門ガイドです。",
+    "选择最高级 API。", "查看最低要求。", "这是最快的入门方法。",
 ))
 def test_nonquantitative_superlative_context_remains_accepted(prose, blocked_verdict, readme_fixture):
     assert readme_claim_violations(readme_fixture(prose), blocked_verdict) == ()
