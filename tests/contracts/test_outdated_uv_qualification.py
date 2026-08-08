@@ -82,6 +82,7 @@ def test_installer_timeout_reaps_entire_process_group(tmp_path: Path) -> None:
 
 def valid_windows_report() -> dict[str, object]:
     report = qualification.base_report("windows")
+    report["runner"]["observed_system"] = "Windows"
     report["old_uv"] = {"observed": True}
     report["package_qualification"] = {"observed": True}
     report["failure"] = {"type": "NotApplicable", "message": "manual remediation"}
@@ -187,3 +188,295 @@ def test_supported_uv_is_the_exact_wheel_install_tool() -> None:
     ).read_text()
     assert "setup-uv" not in workflow
     assert "--version 0.11.0" in workflow
+
+
+def valid_passed_report() -> dict[str, object]:
+    report = qualification.base_report("linux")
+    report["runner"]["observed_system"] = "Linux"
+    digest = "a" * 64
+    wheel = {
+        "filename": "tree_sitter_analyzer-1.0-py3-none-any.whl",
+        "sha256": digest,
+        "size": 1,
+        "name": "tree-sitter-analyzer",
+        "version": "1.0",
+    }
+
+    def executable(version: str, path: str) -> dict[str, object]:
+        return {
+            "version": version,
+            "path": path,
+            "sha256": digest,
+            "size": 1,
+            "version_stdout": f"uv {version}\n",
+        }
+
+    runner = dict(report["runner"])
+    report.update(
+        status="PASSED",
+        passed=True,
+        old_uv={
+            "archive": {
+                "filename": "uv-x86_64-unknown-linux-gnu.tar.gz",
+                "url": "https://github.com/astral-sh/uv/releases/download/0.10.9/uv.tar.gz",
+                "version": "0.10.9",
+                "size": 1,
+                "sha256": digest,
+            },
+            "executable": executable("0.10.9", "/tmp/old/bundle/uv"),
+        },
+        supported_uv={
+            "archive": {
+                "filename": "uv-x86_64-unknown-linux-gnu.tar.gz",
+                "url": "https://github.com/astral-sh/uv/releases/download/0.11.0/uv.tar.gz",
+                "version": "0.11.0",
+                "size": 1,
+                "sha256": digest,
+            },
+            "executable": executable("0.11.0", "/tmp/supported/bundle/uv"),
+        },
+        installer={
+            "path": "/checkout/install.sh",
+            "sha256": digest,
+            "first_exit": 1,
+            "second_exit": 0,
+            "curl_invocations": 0,
+            "first_path": "/tmp/old",
+            "second_path": "/tmp/supported",
+        },
+        config={
+            "before": [],
+            "after_first": [],
+            "after_second": [],
+            "expected_entry": {
+                "command": "uvx",
+                "args": [
+                    "--from",
+                    "tree-sitter-analyzer[mcp]",
+                    "tree-sitter-analyzer-mcp",
+                ],
+                "env": {"TREE_SITTER_PROJECT_ROOT": "/tmp/project"},
+            },
+            "backup_sha256": digest,
+        },
+        package_qualification={
+            "aggregate_sha256": digest,
+            "axis_report_sha256": digest,
+            "build_manifest_sha256": digest,
+            "wheel": wheel,
+        },
+        mcp_causal_report={
+            "sha256": digest,
+            "wheel": wheel,
+            "runner": runner,
+            "first_call": {
+                "name": "index",
+                "arguments": {"action": "status"},
+                "is_error": False,
+                "default_format": "toon",
+                "verdict": "WARN",
+                "project_root": "/tmp/project",
+                "indexed": False,
+                "total_files": 0,
+                "summary": "codegraph_status: index missing or empty",
+            },
+            "install_tool": executable("0.11.0", "/tmp/supported/bundle/uv"),
+            "install_argv": [
+                "/tmp/supported/bundle/uv",
+                "pip",
+                "install",
+                "--python",
+                "/tmp/venv/bin/python",
+                "--no-cache",
+                "/tmp/tree_sitter_analyzer-1.0-py3-none-any.whl[mcp]",
+            ],
+            "install_stdout_sha256": digest,
+            "install_stderr_sha256": digest,
+            "dependency_manifest_sha256": digest,
+        },
+    )
+    return report
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "old_uv",
+        "supported_uv",
+        "installer",
+        "config",
+        "package_qualification",
+        "mcp_causal_report",
+    ],
+)
+def test_passed_schema_rejects_empty_semantic_object(field: str) -> None:
+    # Incident 2026-07-16: v2 accepted impossible PASSED reports with empty evidence.
+    report = valid_passed_report()
+    jsonschema.validate(report, SCHEMA)
+    report[field] = {}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(report, SCHEMA)
+
+
+def test_passed_schema_rejects_supported_uv_below_floor() -> None:
+    # Incident 2026-07-16: v2 accepted supported uv 0.0.1 below the 0.11.0 floor.
+    report = valid_passed_report()
+    report["supported_uv"]["executable"]["version"] = "0.0.1"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(report, SCHEMA)
+
+
+@pytest.mark.parametrize("location", ["runner", "mcp_causal_report"])
+def test_passed_schema_rejects_cross_axis_runner(location: str) -> None:
+    # Incident 2026-07-16: Linux evidence could self-identify as a macOS runner.
+    report = valid_passed_report()
+    target = report[location]
+    if location == "mcp_causal_report":
+        target = target["runner"]
+    target.update(declared_axis="macos", observed_system="Darwin")
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(report, SCHEMA)
+
+
+def trusted_helpers() -> dict[str, object]:
+    import textwrap
+
+    workflow = (
+        ROOT / ".github/workflows/reusable-native-qualification-attestation.yml"
+    ).read_text()
+    code = workflow.split("          python - <<'PY'\n")[2].split(
+        "          official={", 1
+    )[0]
+    code = "\n".join(
+        line
+        for line in code.splitlines()
+        if not line.lstrip().startswith(("root=", "suffix="))
+    )
+    namespace: dict[str, object] = {}
+    exec(textwrap.dedent(code), namespace)
+    return namespace
+
+
+@pytest.mark.parametrize("mutation", ["traversal", "duplicate"])
+def test_trusted_archive_unpack_rejects_non_unique_or_unsafe_uv(
+    tmp_path: Path, mutation: str
+) -> None:
+    # Incident 2026-07-16: trusted verification must recompute one safe uv member.
+    archive = tmp_path / "uv.tar.gz"
+    with tarfile.open(archive, "w:gz") as value:
+        names = ["../uv"] if mutation == "traversal" else ["a/uv", "b/uv"]
+        for name in names:
+            member = tarfile.TarInfo(name)
+            member.size = 1
+            value.addfile(member, io.BytesIO(b"x"))
+    with pytest.raises((AssertionError, ValueError)):
+        trusted_helpers()["safe_uv_member"](
+            archive, "uv-x86_64-unknown-linux-gnu.tar.gz"
+        )
+
+
+def test_trusted_archive_member_digest_binds_reported_executable(
+    tmp_path: Path,
+) -> None:
+    # Incident 2026-07-16: candidate tool digest could previously be self-attested.
+    archive = tmp_path / "uv.tar.gz"
+    with tarfile.open(archive, "w:gz") as value:
+        member = tarfile.TarInfo("bundle/uv")
+        member.size = 1
+        value.addfile(member, io.BytesIO(b"x"))
+    helpers = trusted_helpers()
+    observed = helpers["safe_uv_member"](archive, "uv-x86_64-unknown-linux-gnu.tar.gz")
+    executable = {
+        "version": "0.11.0",
+        "path": "/tmp/supported/bundle/uv",
+        "sha256": "0" * 64,
+        "size": 1,
+        "version_stdout": "uv 0.11.0\n",
+    }
+    with pytest.raises(AssertionError):
+        helpers["verify_executable"](executable, observed, "0.11.0", "linux")
+
+
+@pytest.mark.parametrize("mutation", ["python", "tool", "stdout", "dependency"])
+def test_trusted_causal_binding_rejects_install_mutation(
+    tmp_path: Path, mutation: str
+) -> None:
+    # Incident 2026-07-16: every install cause and sidecar must be independently bound.
+    helpers = trusted_helpers()
+    mcp = tmp_path / "mcp"
+    mcp.mkdir()
+    for name, data in {
+        "install.stdout": b"out",
+        "install.stderr": b"err",
+        "dependency-manifest.txt": b"deps",
+    }.items():
+        (mcp / name).write_bytes(data)
+
+    def digest(name: str) -> str:
+        return qualification.sha256(mcp / name)
+
+    runner = {
+        "declared_axis": "linux",
+        "observed_system": "Linux",
+        "release": "1",
+        "machine": "x86_64",
+        "image_os": "ubuntu",
+        "image_version": "1",
+    }
+    tool = {
+        "path": "/tmp/supported/bundle/uv",
+        "sha256": "a" * 64,
+        "size": 1,
+        "version": "0.11.0",
+        "version_stdout": "uv 0.11.0\n",
+    }
+    argv = [
+        tool["path"],
+        "pip",
+        "install",
+        "--python",
+        "/tmp/venv/bin/python",
+        "--no-cache",
+        "/tmp/tree_sitter_analyzer-1.0-py3-none-any.whl[mcp]",
+    ]
+    wheel = {"filename": "tree_sitter_analyzer-1.0-py3-none-any.whl"}
+    causal = {
+        "runner": runner,
+        "runtime": {"python": "3.10", "executable": argv[4], "prefix": "/tmp/venv"},
+        "install": {
+            "exit_code": 0,
+            "duration_seconds": 1,
+            "stdout_sha256": digest("install.stdout"),
+            "stderr_sha256": digest("install.stderr"),
+            "fresh_venv": True,
+            "cwd_outside_checkout": True,
+            "pythonpath_cleared": True,
+            "tool": tool,
+            "argv": argv,
+        },
+        "dependency_manifest_sha256": digest("dependency-manifest.txt"),
+        "passed": True,
+    }
+    bound = {
+        "sha256": "b" * 64,
+        "wheel": wheel,
+        "runner": runner,
+        "first_call": {},
+        "install_tool": tool,
+        "install_argv": argv,
+        "install_stdout_sha256": digest("install.stdout"),
+        "install_stderr_sha256": digest("install.stderr"),
+        "dependency_manifest_sha256": digest("dependency-manifest.txt"),
+    }
+    if mutation == "python":
+        causal["install"]["argv"] = [*argv[:4], "/tmp/other/python", *argv[5:]]
+    elif mutation == "tool":
+        causal["install"]["tool"] = {**tool, "sha256": "0" * 64}
+    elif mutation == "stdout":
+        causal["install"]["stdout_sha256"] = "0" * 64
+    else:
+        causal["dependency_manifest_sha256"] = "0" * 64
+    with pytest.raises(AssertionError):
+        helpers["verify_causal_binding"](
+            "linux", tmp_path, causal, bound, tool, wheel, runner, "b" * 64
+        )

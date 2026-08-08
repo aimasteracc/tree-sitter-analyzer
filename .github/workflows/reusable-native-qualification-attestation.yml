@@ -244,11 +244,59 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import base64, csv, hashlib, json, os, pathlib, re, zipfile
+          import base64, csv, hashlib, json, os, pathlib, re, shutil, tarfile, tempfile, zipfile
           root=pathlib.Path("trusted"); run=os.environ["GITHUB_RUN_ID"]; attempt=os.environ["GITHUB_RUN_ATTEMPT"]; commit=os.environ["GITHUB_SHA"]
           suffix=f"-{run}-{attempt}-{commit}"
           sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
-          exact=lambda value,keys: (_ for _ in ()).throw(AssertionError(f"keys: {set(value)}")) if not isinstance(value,dict) or set(value)!=set(keys) else None
+          exact=lambda value,keys: (_ for _ in ()).throw(AssertionError(f"keys: {set(value) if isinstance(value,dict) else type(value)}")) if not isinstance(value,dict) or set(value)!=set(keys) else None
+          runner_keys=("declared_axis","observed_system","release","machine","image_os","image_version")
+          def verify_runner(value,axis):
+            exact(value,runner_keys); assert value["declared_axis"]==axis and value["observed_system"]=={"linux":"Linux","macos":"Darwin","windows":"Windows"}[axis]
+          def safe_uv_member(archive,filename):
+            expected="zip" if filename.endswith(".zip") else "tar" if filename.endswith(".tar.gz") else None
+            actual="zip" if zipfile.is_zipfile(archive) else "tar" if tarfile.is_tarfile(archive) else None
+            assert expected is not None and actual==expected
+            with tempfile.TemporaryDirectory(prefix="trusted-uv-") as raw:
+              destination=pathlib.Path(raw).resolve(); seen=set()
+              def target(name):
+                normalized=name.replace("\\","/"); pure=pathlib.PurePosixPath(normalized)
+                assert normalized and not pure.is_absolute() and ".." not in pure.parts and not re.match(r"^[A-Za-z]:",normalized) and normalized not in seen
+                seen.add(normalized); result=(destination/pathlib.Path(*pure.parts)).resolve(); result.relative_to(destination); return result
+              if actual=="zip":
+                with zipfile.ZipFile(archive) as z:
+                  for info in z.infolist():
+                    mode=(info.external_attr>>16)&0o170000; assert mode in (0,0o100000,0o040000)
+                    out=target(info.filename)
+                    if info.is_dir(): out.mkdir(parents=True,exist_ok=False)
+                    else:
+                      out.parent.mkdir(parents=True,exist_ok=True)
+                      with z.open(info) as source,out.open("xb") as sink: shutil.copyfileobj(source,sink)
+              else:
+                with tarfile.open(archive,"r:gz") as t:
+                  for info in t.getmembers():
+                    assert info.isfile() or info.isdir(); out=target(info.name)
+                    if info.isdir(): out.mkdir(parents=True,exist_ok=False)
+                    else:
+                      out.parent.mkdir(parents=True,exist_ok=True); source=t.extractfile(info); assert source is not None
+                      with source,out.open("xb") as sink: shutil.copyfileobj(source,sink)
+              leaf="uv.exe" if actual=="zip" else "uv"; members=[p for p in destination.rglob(leaf) if p.is_file() and not p.is_symlink()]; assert len(members)==1
+              member=members[0]; return {"member":member.relative_to(destination).as_posix(),"sha256":sha(member),"size":member.stat().st_size}
+          def absolute(value,axis): return pathlib.PureWindowsPath(value).is_absolute() if axis=="windows" else pathlib.PurePosixPath(value).is_absolute()
+          def verify_executable(value,member,version,axis):
+            exact(value,("version","path","sha256","size","version_stdout")); assert value["version"]==version and re.fullmatch(rf"uv {re.escape(version)}(?: [^\n]+)?\n?",value["version_stdout"])
+            pure=pathlib.PureWindowsPath(value["path"]) if axis=="windows" else pathlib.PurePosixPath(value["path"]); suffix=pathlib.PurePosixPath(member["member"]).parts
+            assert absolute(value["path"],axis) and tuple(part.lower() for part in pure.parts[-len(suffix):])==tuple(part.lower() for part in suffix) and (value["sha256"],value["size"])==(member["sha256"],member["size"])
+          def verify_causal_binding(axis,path,causal,bound,supported_exec,wheel,parent_runner,causal_digest):
+            verify_runner(causal["runner"],axis); assert causal["runner"]==parent_runner
+            install=causal["install"]; tool=install["tool"]; runtime=causal["runtime"]
+            exact(install,("exit_code","duration_seconds","stdout_sha256","stderr_sha256","fresh_venv","cwd_outside_checkout","pythonpath_cleared","tool","argv")); exact(runtime,("python","executable","prefix")); exact(tool,("path","sha256","size","version","version_stdout"))
+            exact(bound,("sha256","wheel","runner","first_call","install_tool","install_argv","install_stdout_sha256","install_stderr_sha256","dependency_manifest_sha256"))
+            assert tool=={k:supported_exec[k] for k in ("path","sha256","size","version","version_stdout")} and bound["install_tool"]==tool and bound["runner"]==causal["runner"]
+            wheel_arg=install["argv"][6].removesuffix("[mcp]") if len(install["argv"])==7 and install["argv"][6].endswith("[mcp]") else ""; expected_argv=[tool["path"],"pip","install","--python",runtime["executable"],"--no-cache",f"{wheel_arg}[mcp]"]
+            assert absolute(runtime["executable"],axis) and absolute(wheel_arg,axis) and (pathlib.PureWindowsPath(wheel_arg) if axis=="windows" else pathlib.PurePosixPath(wheel_arg)).name==wheel["filename"] and install["argv"]==bound["install_argv"]==expected_argv
+            sidecars={"install_stdout_sha256":sha(path/"mcp/install.stdout"),"install_stderr_sha256":sha(path/"mcp/install.stderr"),"dependency_manifest_sha256":sha(path/"mcp/dependency-manifest.txt")}
+            assert install["stdout_sha256"]==bound["install_stdout_sha256"]==sidecars["install_stdout_sha256"] and install["stderr_sha256"]==bound["install_stderr_sha256"]==sidecars["install_stderr_sha256"] and causal["dependency_manifest_sha256"]==bound["dependency_manifest_sha256"]==sidecars["dependency_manifest_sha256"]
+            assert bound["sha256"]==causal_digest and bound["wheel"]==wheel and causal["passed"] is True
           def identity(value,job):
             source=value["source"]; workflow=value["workflow"]; server=os.environ["GITHUB_SERVER_URL"]; repo=os.environ["GITHUB_REPOSITORY"]
             assert source=={"repository":repo,"commit":commit,"ref":"refs/heads/develop","dirty":False}
@@ -289,19 +337,20 @@ jobs:
               target=path/name; assert target.is_file() and not target.is_symlink() and meta=={"sha256":sha(target),"size":target.stat().st_size}
             assert report["schema_version"]=="no1-006a-outdated-uv-attestation-v2" and report["evidence_scope"]=="native_outdated_uv_actionable_recovery"
             assert report["axis"]==axis and report["remediation_mode"]=="manual_content_bound_remediation" and report["automatic_mutable_bootstrap_qualified"] is False
+            verify_runner(report["runner"],axis)
             fixture_axis=(f"macos-{'arm64' if report['runner']['machine'].lower() in ('arm64','aarch64') else 'x86_64'}" if axis=="macos" else axis)
             old=report["old_uv"]; filename,size,digest,url=official[(fixture_axis,"0.10.9")]
-            assert old["archive"]=={"filename":filename,"size":size,"sha256":digest,"url":url,"version":"0.10.9"} and old["executable"]["version"]=="0.10.9" and re.fullmatch(r"uv 0\.10\.9(?: [^\n]+)?\n?",old["executable"]["version_stdout"])
+            assert old["archive"]=={"filename":filename,"size":size,"sha256":digest,"url":url,"version":"0.10.9"}
             binding=report["package_qualification"]; common={k:binding[k] for k in ("aggregate_sha256","build_manifest_sha256","wheel")}; package_common=package_common or common
             assert common==package_common=={"aggregate_sha256":sha(package_aggregate_path),"build_manifest_sha256":sha(manifest_path),"wheel":wheel} and binding["axis_report_sha256"]==sha(package_dirs[axis]/"report.json")
             identity(report,"outdated-uv-axis")
-            old_side=path/"old.archive"; assert (old_side.stat().st_size,sha(old_side))==(size,digest)
+            old_side=path/"old.archive"; assert (old_side.stat().st_size,sha(old_side))==(size,digest); verify_executable(old["executable"],safe_uv_member(old_side,filename),"0.10.9",axis)
             if axis=="windows":
               assert report["status"]=="NOT_APPLICABLE_NO_NATIVE_INSTALLER" and report["passed"] is False and report["qualification_performed"] is False and report["supported_uv"] is None and report["mcp_causal_report"] is None
               continue
             filename,size,digest,url=official[(fixture_axis,"0.11.0")]; supported=report["supported_uv"]
-            assert supported["archive"]=={"filename":filename,"size":size,"sha256":digest,"url":url,"version":"0.11.0"} and re.fullmatch(r"uv 0\.11\.0(?: [^\n]+)?\n?",supported["executable"]["version_stdout"])
-            supported_side=path/"supported.archive"; assert (supported_side.stat().st_size,sha(supported_side))==(size,digest)
+            assert supported["archive"]=={"filename":filename,"size":size,"sha256":digest,"url":url,"version":"0.11.0"}
+            supported_side=path/"supported.archive"; assert (supported_side.stat().st_size,sha(supported_side))==(size,digest); verify_executable(supported["executable"],safe_uv_member(supported_side,filename),"0.11.0",axis)
             assert report["status"]=="PASSED" and report["passed"] is True and report["qualification_performed"] is True
             installer=report["installer"]; assert installer["sha256"]==sha(path/"installer.source")=="754799ff21807228b604b001b6a93bfd62b9748b3cfea45a33e59fefcbb717d5" and (installer["first_exit"],installer["second_exit"],installer["curl_invocations"])==(1,0,0)
             first=(path/"first.stdout").read_text(); second=(path/"second.stdout").read_text()
@@ -312,10 +361,7 @@ jobs:
             causal_path=path/"mcp/report.json"; causal=json.loads(causal_path.read_text()); bound=report["mcp_causal_report"]
             exact(causal,("schema_version","kind","qualification_id","evidence_scope","axis","qualification_performed","passed","source","workflow","runner","wheel","stages","failure","build_manifest_sha256","install","metadata","runtime","mcp","dependency_manifest_sha256","installed_files_zip_sha256")); identity(causal,"outdated-axis")
             assert causal["axis"]==axis and causal["stages"]==[{"id":stage,"passed":True} for stage in ("verify_wheel","install","metadata_provenance","mcp_protocol")] and causal["failure"] is None
-            install=causal["install"]; tool=install["tool"]
-            exact(bound,("sha256","wheel","first_call","install_tool","install_argv")); exact(tool,("path","sha256","size","version","version_stdout"))
-            supported_exec=supported["executable"]; assert tool=={k:supported_exec[k] for k in ("path","sha256","size","version","version_stdout")} and bound["install_tool"]==tool and bound["install_argv"]==install["argv"]
-            assert install["argv"][:4]==[tool["path"],"pip","install","--python"] and install["argv"][5:6]==["--no-cache"] and pathlib.Path(install["argv"][6].removesuffix("[mcp]")).name==wheel["filename"] and bound["sha256"]==sha(causal_path) and bound["wheel"]==wheel and causal["passed"] is True
+            verify_causal_binding(axis,path,causal,bound,supported["executable"],wheel,report["runner"],sha(causal_path))
             meta=causal["metadata"]; direct=meta["direct_url"]; archive_info=direct["archive_info"]
             raw_hashes=([archive_info["hash"]] if isinstance(archive_info.get("hash"),str) else [])+([archive_info.get("hashes",{}).get("sha256")] if isinstance(archive_info.get("hashes",{}).get("sha256"),str) else [])
             def digest(raw):

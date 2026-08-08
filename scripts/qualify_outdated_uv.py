@@ -199,9 +199,11 @@ def axis(args:argparse.Namespace)->int:
             if causal.returncode or not (mcp_dir/"report.json").exists(): raise RuntimeError("supported uv exact-wheel MCP qualification failed")
             causal_report=json.loads((mcp_dir/"report.json").read_text()); binding=report["package_qualification"]
             install=causal_report.get("install",{}); tool=install.get("tool",{}); expected_tool={k:supported[k] for k in ("path","sha256","size","version_stdout","version")}
-            expected_argv=[supported["path"],"pip","install","--python",install.get("argv",[None,None,None,None,None])[4] if len(install.get("argv",[]))>4 else None,"--no-cache",f"{Path(args.wheel).resolve()}[mcp]"]
-            if causal_report.get("passed") is not True or causal_report.get("wheel")!=binding["wheel"] or causal_report.get("build_manifest_sha256")!=binding["build_manifest_sha256"] or tool!=expected_tool or install.get("argv")!=expected_argv: raise ValueError("MCP causal report/install-tool identity mismatch")
-            report["mcp_causal_report"]={"sha256":sha256(mcp_dir/"report.json"),"wheel":causal_report["wheel"],"first_call":causal_report["mcp"]["first_call"],"install_tool":tool,"install_argv":install["argv"]}
+            runtime=causal_report.get("runtime",{}); causal_runner=causal_report.get("runner")
+            expected_argv=[supported["path"],"pip","install","--python",runtime.get("executable"),"--no-cache",f"{Path(args.wheel).resolve()}[mcp]"]
+            sidecar_hashes={"install_stdout_sha256":sha256(mcp_dir/"install.stdout"),"install_stderr_sha256":sha256(mcp_dir/"install.stderr"),"dependency_manifest_sha256":sha256(mcp_dir/"dependency-manifest.txt")}
+            if causal_report.get("passed") is not True or causal_report.get("wheel")!=binding["wheel"] or causal_report.get("build_manifest_sha256")!=binding["build_manifest_sha256"] or causal_runner!=report["runner"] or tool!=expected_tool or install.get("argv")!=expected_argv or install.get("stdout_sha256")!=sidecar_hashes["install_stdout_sha256"] or install.get("stderr_sha256")!=sidecar_hashes["install_stderr_sha256"] or causal_report.get("dependency_manifest_sha256")!=sidecar_hashes["dependency_manifest_sha256"]: raise ValueError("MCP causal report/install-tool/runtime/sidecar identity mismatch")
+            report["mcp_causal_report"]={"sha256":sha256(mcp_dir/"report.json"),"wheel":causal_report["wheel"],"runner":causal_runner,"first_call":causal_report["mcp"]["first_call"],"install_tool":tool,"install_argv":install["argv"],**sidecar_hashes}
             for p in sorted(mcp_dir.iterdir()): report["artifacts"][f"mcp/{p.name}"]={"sha256":sha256(p),"size":p.stat().st_size}
             report["passed"]=True; report["status"]="PASSED"
         finally: shutil.rmtree(root,ignore_errors=True)
