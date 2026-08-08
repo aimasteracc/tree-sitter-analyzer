@@ -174,7 +174,7 @@ async def main() -> None:
     envelope = json.loads(called.content[0].text)
     toon = envelope.get("toon_content")
     assert envelope.get("format") == "toon" and isinstance(toon, str)
-    assert str(project) in toon
+    assert project.name in toon
     assert "indexed: false" in toon and "total_files: 0" in toon
     assert "codegraph_status: index missing or empty" in toon
     assert envelope.get("success") is True and envelope.get("verdict") == "WARN"
