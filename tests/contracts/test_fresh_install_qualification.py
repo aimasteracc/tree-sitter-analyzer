@@ -484,3 +484,14 @@ def test_missing_uv_fixture_path_is_hermetic(tmp_path: Path) -> None:
     path_entries = fixture["PATH"].split(os.pathsep)
     assert path_entries == [str(root / "mock-bin"), str(root / "tool-bin")]
     assert shutil.which("uv", path=fixture["PATH"]) is None
+
+
+def test_native_workflow_uses_real_fixed_outdated_uv_without_windows_bash() -> None:
+    workflows = REPO / ".github/workflows"
+    workflow = (workflows / "reusable-outdated-uv-qualification.yml").read_text()
+    trusted = (workflows / "reusable-native-qualification-attestation.yml").read_text()
+    assert workflow.count('version: "0.10.9"') == 1
+    assert workflow.count("setup-uv@94527f2e458b27549849d47d273a16bec83a01e9") == 1
+    assert "actions/checkout" not in trusted
+    assert 'if axis == "windows":' in trusted
+    assert 'report["outcome"] == "actionable"' in trusted

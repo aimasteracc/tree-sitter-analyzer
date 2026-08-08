@@ -9,8 +9,12 @@ on:
       - "tree_sitter_analyzer/**"
       - "scripts/native_*"
       - "scripts/qualify_native_install.py"
-      - "rfcs/schemas/no1-006a-native-attestation-v1.schema.json"
+      - "scripts/qualify_outdated_uv.py"
+      - "install.sh"
+      - "rfcs/schemas/no1-006a-*-attestation-v1.schema.json"
       - ".github/workflows/native-install-qualification.yml"
+      - ".github/workflows/reusable-outdated-uv-qualification.yml"
+      - ".github/workflows/reusable-native-qualification-attestation.yml"
   push:
     branches: [develop]
     paths:
@@ -19,8 +23,12 @@ on:
       - "tree_sitter_analyzer/**"
       - "scripts/native_*"
       - "scripts/qualify_native_install.py"
-      - "rfcs/schemas/no1-006a-native-attestation-v1.schema.json"
+      - "scripts/qualify_outdated_uv.py"
+      - "install.sh"
+      - "rfcs/schemas/no1-006a-*-attestation-v1.schema.json"
       - ".github/workflows/native-install-qualification.yml"
+      - ".github/workflows/reusable-outdated-uv-qualification.yml"
+      - ".github/workflows/reusable-native-qualification-attestation.yml"
   workflow_dispatch:
 
 permissions:
@@ -210,259 +218,24 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  outdated-uv:
+    name: Qualify real outdated uv on native axes
+    if: always()
+    needs: [build-once, native-axis, aggregate]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-outdated-uv-qualification.yml
+    with:
+      wheel-name: ${{ needs.build-once.outputs.wheel_name }}
+
   trusted-attestation:
     name: Externally attest trusted develop evidence
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-    needs: [build-once, aggregate]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    needs: [build-once, aggregate, outdated-uv]
     permissions:
       contents: read
       id-token: write
       attestations: write
-    steps:
-      - name: Create trusted job placeholder
-        run: mkdir -p trusted-job && printf '{"status":"started"}\n' > trusted-job/job-result.json
-        shell: bash
-      - uses: actions/download-artifact@v7
-        with:
-          name: native-build-${{ github.sha }}
-          path: trusted-input/build
-      - uses: actions/download-artifact@v7
-        with:
-          name: native-aggregate-${{ github.sha }}
-          path: trusted-input/aggregate
-      - uses: actions/download-artifact@v7
-        with:
-          name: native-linux-${{ github.sha }}
-          path: trusted-input/linux
-      - uses: actions/download-artifact@v7
-        with:
-          name: native-macos-${{ github.sha }}
-          path: trusted-input/macos
-      - uses: actions/download-artifact@v7
-        with:
-          name: native-windows-${{ github.sha }}
-          path: trusted-input/windows
-      - name: Independently verify downloaded evidence identities
-        env:
-          WHEEL_NAME: ${{ needs.build-once.outputs.wheel_name }}
-        shell: bash
-        run: |
-          python - <<'PY'
-          import base64, configparser, csv, email.parser, hashlib, io, json, os, pathlib, re, urllib.parse, zipfile
-          root = pathlib.Path("trusted-input")
-          wheel_path = root / "build" / os.environ["WHEEL_NAME"]
-          manifest_path = root / "build" / "wheel-manifest.json"
-          aggregate_path = root / "aggregate" / "aggregate.json"
-          axes = ("linux", "macos", "windows")
-          stages = ["verify_wheel", "install", "metadata_provenance", "mcp_protocol"]
-          tools = ["search", "nav", "structure", "health", "edit", "project", "index", "viz", "set_project_path"]
-          sha256_bytes = lambda value: hashlib.sha256(value).hexdigest()
-          sha = lambda path: sha256_bytes(path.read_bytes())
-          hexdigest = lambda value: isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
-          def normalized_sha(value):
-              raw = value.removeprefix("sha256=").removeprefix("sha256:").removeprefix("sha256-")
-              if re.fullmatch(r"[0-9A-Fa-f]{64}", raw): return raw.lower()
-              if not re.fullmatch(r"[A-Za-z0-9_-]{43}", raw): return ""
-              try: decoded = base64.b64decode(raw + "=", altchars=b"-_", validate=True)
-              except (ValueError, TypeError): return ""
-              canonical = base64.urlsafe_b64encode(decoded).rstrip(b"=").decode()
-              return decoded.hex() if len(decoded) == 32 and canonical == raw else ""
-          def exact(value, keys):
-              assert isinstance(value, dict) and set(value) == set(keys)
-          def identity(value, job):
-              source, workflow = value["source"], value["workflow"]
-              exact(source, ("repository", "commit", "ref", "dirty"))
-              exact(workflow, ("event", "run_id", "run_attempt", "job", "workflow_ref", "run_url"))
-              run_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-              assert source == {"repository": os.environ["GITHUB_REPOSITORY"], "commit": os.environ["GITHUB_SHA"], "ref": "refs/heads/develop", "dirty": False}
-              assert workflow == {"event": "push", "run_id": os.environ["GITHUB_RUN_ID"], "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"], "job": job, "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"], "run_url": run_url}
-          manifest = json.loads(manifest_path.read_text())
-          aggregate = json.loads(aggregate_path.read_text())
-          reports = {axis: json.loads((root / axis / "report.json").read_text()) for axis in axes}
-          exact(manifest, ("schema_version", "kind", "source", "workflow", "wheel"))
-          assert manifest["schema_version"] == "no1-006a-native-attestation-v1" and manifest["kind"] == "build_manifest"
-          identity(manifest, "build-once")
-          wheel = manifest["wheel"]
-          exact(wheel, ("filename", "sha256", "size", "name", "version"))
-          assert wheel["filename"] == wheel_path.name and wheel["name"] == "tree-sitter-analyzer"
-          assert hexdigest(wheel["sha256"]) and wheel["sha256"] == sha(wheel_path)
-          assert type(wheel["size"]) is int and wheel["size"] == wheel_path.stat().st_size and wheel["size"] > 0
-          assert isinstance(wheel["version"], str) and wheel["version"]
-          filename_parts = wheel_path.name[:-4].split("-")
-          assert len(filename_parts) in (5, 6) and filename_parts[0].lower().replace("_", "-") == wheel["name"] and filename_parts[1] == wheel["version"]
-          with zipfile.ZipFile(wheel_path) as archive:
-              members = archive.namelist()
-              assert len(members) == len(set(members)) and archive.testzip() is None
-              metadata_names = [name for name in members if name.endswith(".dist-info/METADATA")]
-              record_names = [name for name in members if name.endswith(".dist-info/RECORD")]
-              assert len(metadata_names) == len(record_names) == 1
-              metadata = email.parser.BytesParser().parsebytes(archive.read(metadata_names[0]))
-              assert metadata["Name"].lower().replace("_", "-") == wheel["name"] and metadata["Version"] == wheel["version"]
-              rows = list(csv.reader(archive.read(record_names[0]).decode().splitlines()))
-              assert rows and all(len(row) == 3 for row in rows)
-              assert len({row[0] for row in rows}) == len(rows) and {row[0] for row in rows} == set(members)
-              for name, digest, size in rows:
-                  leaf = pathlib.PurePosixPath(name).name.lower()
-                  assert not name.startswith(("/", "\\")) and ".." not in pathlib.PurePosixPath(name).parts
-                  assert not leaf.endswith((".pth", ".egg-link")) and leaf not in {"sitecustomize.py", "usercustomize.py"}
-                  data = archive.read(name)
-                  if name == record_names[0]:
-                      assert digest == size == ""
-                  else:
-                      algorithm, encoded = digest.split("=", 1)
-                      actual = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
-                      assert algorithm == "sha256" and encoded == actual and int(size) == len(data)
-              wheel_rows = {row[0]: row[1:] for row in rows}
-              wheel_record = record_names[0]
-              wheel_bytes = {name: archive.read(name) for name in members}
-              entry_points = next((wheel_bytes[name] for name in members if name.endswith(".dist-info/entry_points.txt")), b"")
-              parser = configparser.ConfigParser(); parser.read_string(entry_points.decode() or "[console_scripts]\n")
-              console_scripts = set(parser["console_scripts"]) if parser.has_section("console_scripts") else set()
-          manifest_sha = sha(manifest_path)
-          digest_fields = ("stdout_sha256", "stderr_sha256")
-          for axis, report in reports.items():
-              exact(report, ("schema_version", "kind", "qualification_id", "evidence_scope", "axis", "qualification_performed", "passed", "source", "workflow", "runner", "wheel", "stages", "failure", "build_manifest_sha256", "install", "metadata", "runtime", "mcp", "dependency_manifest_sha256", "installed_files_zip_sha256"))
-              assert (report["schema_version"], report["kind"], report["qualification_id"], report["evidence_scope"]) == ("no1-006a-native-attestation-v1", "axis", "NO1-006A", "native_package_mcp_first_answer")
-              assert report["axis"] == axis and report["qualification_performed"] is report["passed"] is True and report["failure"] is None
-              identity(report, "native-axis")
-              assert report["wheel"] == wheel and report["build_manifest_sha256"] == manifest_sha and hexdigest(report["dependency_manifest_sha256"])
-              assert report["stages"] == [{"id": stage, "passed": True} for stage in stages]
-              runner = report["runner"]
-              exact(runner, ("declared_axis", "observed_system", "release", "machine", "image_os", "image_version"))
-              assert runner["declared_axis"] == axis and runner["observed_system"] == {"linux": "Linux", "macos": "Darwin", "windows": "Windows"}[axis]
-              assert all(isinstance(runner[key], str) for key in ("release", "machine", "image_os", "image_version"))
-              install = report["install"]
-              exact(install, ("exit_code", "duration_seconds", "stdout_sha256", "stderr_sha256", "fresh_venv", "cwd_outside_checkout", "pythonpath_cleared"))
-              assert install["exit_code"] == 0 and type(install["duration_seconds"]) in (int, float) and install["duration_seconds"] >= 0
-              assert all(install[key] is True for key in ("fresh_venv", "cwd_outside_checkout", "pythonpath_cleared")) and all(hexdigest(install[key]) for key in digest_fields)
-              meta = report["metadata"]
-              exact(meta, ("name", "version", "location", "module_file", "module_origin", "direct_url", "direct_url_path", "module_recorded", "installed_record", "all_paths_in_fresh_venv", "direct_url_sha256"))
-              assert meta["name"].lower().replace("_", "-") == wheel["name"] and meta["version"] == wheel["version"]
-              assert meta["module_file"] == meta["module_origin"] and meta["module_recorded"] is meta["all_paths_in_fresh_venv"] is True
-              direct = meta["direct_url"]
-              exact(direct, ("url", "archive_info")); assert isinstance(direct["url"], str) and direct["url"]
-              archive_info = direct["archive_info"]; assert isinstance(archive_info, dict) and set(archive_info) <= {"hash", "hashes"}
-              direct_hashes = ([normalized_sha(archive_info["hash"])] if "hash" in archive_info and isinstance(archive_info["hash"], str) else []) + ([normalized_sha(archive_info["hashes"]["sha256"])] if set(archive_info.get("hashes", {})) == {"sha256"} and isinstance(archive_info["hashes"]["sha256"], str) else [])
-              if not direct_hashes:
-                  assert archive_info == {} and pathlib.PurePosixPath(urllib.parse.unquote(urllib.parse.urlparse(direct["url"]).path)).name == wheel["filename"]
-                  direct_hashes = [wheel["sha256"]]
-              assert set(direct_hashes) == {wheel["sha256"]} and meta["direct_url_sha256"] == wheel["sha256"]
-              artifact_dir = root / axis
-              artifact_names = {"report.json", "job-result" + ".json", "install.stdout", "install.stderr", "dependency-manifest.txt", "mcp-transcript.ndjson", "mcp.stderr", "installed-files.zip"}
-              assert {path.name for path in artifact_dir.iterdir()} == artifact_names and all(path.is_file() and not path.is_symlink() for path in artifact_dir.iterdir())
-              side_hashes = {"install.stdout": install["stdout_sha256"], "install.stderr": install["stderr_sha256"], "dependency-manifest.txt": report["dependency_manifest_sha256"], "mcp-transcript.ndjson": report["mcp"]["transcript_sha256"], "mcp.stderr": report["mcp"]["stderr_sha256"], "installed-files.zip": report["installed_files_zip_sha256"]}
-              assert all(hexdigest(value) and sha(artifact_dir / name) == value for name, value in side_hashes.items())
-              transcript = [json.loads(line) for line in (artifact_dir / "mcp-transcript.ndjson").read_text("utf-8").splitlines()]
-              assert len(transcript) == 3
-              initialized, listed, called = transcript
-              exact(initialized, ("sequence", "method", "response")); assert (initialized["sequence"], initialized["method"]) == (1, "initialize")
-              exact(listed, ("sequence", "method", "response")); assert (listed["sequence"], listed["method"], listed["response"]) == (2, "tools/list", {"names": tools})
-              exact(called, ("sequence", "method", "request", "response")); assert (called["sequence"], called["method"], called["request"]) == (3, "tools/call", {"name": "index", "arguments": {"action": "status"}})
-              init_response = initialized["response"]; exact(init_response["serverInfo"], ("name", "title", "version", "websiteUrl", "icons", "description"))
-              assert (init_response["protocolVersion"], init_response["serverInfo"]["name"], init_response["serverInfo"]["version"]) == (report["mcp"]["protocol_version"], report["mcp"]["server_name"], report["mcp"]["server_version"])
-              call_response = called["response"]; exact(call_response, ("_meta", "content", "structuredContent", "isError", "resultType"))
-              assert call_response["isError"] is False and len(call_response["content"]) == 1
-              content = call_response["content"][0]; exact(content, ("type", "text", "annotations", "_meta")); assert content["type"] == "text"
-              envelope = json.loads(content["text"]); summary = envelope["agent_summary"]["summary_line"]
-              observed_first = {"name": called["request"]["name"], "arguments": called["request"]["arguments"], "is_error": call_response["isError"], "default_format": envelope["format"], "verdict": envelope["verdict"], "project_root": envelope["project_root"], "indexed": envelope["indexed"], "total_files": envelope["total_files"], "summary": summary}
-              assert observed_first == report["mcp"]["first_call"] and envelope["summary_line"] == summary
-              record = meta["installed_record"]
-              exact(record, ("record_path", "record_sha256", "entry_count", "files")); assert hexdigest(record["record_sha256"])
-              snapshot_path = artifact_dir / "installed-files.zip"
-              with zipfile.ZipFile(snapshot_path) as snapshot:
-                  infos, snapshot_names = snapshot.infolist(), snapshot.namelist()
-                  assert len(snapshot_names) == len(set(snapshot_names)) and snapshot.testzip() is None
-                  record_bytes = snapshot.read("installed-record.csv")
-                  installed_rows = list(csv.reader(record_bytes.decode().splitlines()))
-                  expected_snapshot = ["installed-record.csv", *(f"files/{index:06d}" for index in range(len(installed_rows)))]
-                  assert snapshot_names == expected_snapshot and all(not info.is_dir() and (info.external_attr >> 16) & 0o170000 != 0o120000 for info in infos)
-                  assert sha256_bytes(record_bytes) == record["record_sha256"] and all(len(row) == 3 for row in installed_rows)
-                  installed_names = [row[0] for row in installed_rows]
-                  direct_names = [name for name in installed_names if pathlib.PurePosixPath(name.replace("\\", "/")).name == "direct_url.json"]
-                  assert len(installed_names) == len(set(installed_names)) and record["entry_count"] == len(installed_rows) == len(record["files"]) and len(direct_names) == 1
-                  observed_direct = None
-                  for index, ((name, declared, declared_size), item) in enumerate(zip(installed_rows, record["files"])):
-                      exact(item, ("path", "sha256", "size")); data = snapshot.read(f"files/{index:06d}")
-                      assert item == {"path": name, "sha256": sha256_bytes(data), "size": len(data)}
-                      leaf, normalized = pathlib.PurePosixPath(name.replace("\\", "/")).name.lower(), name.replace("\\", "/")
-                      if leaf == "direct_url.json": observed_direct = json.loads(data.decode("utf-8"))
-                      assert not leaf.endswith((".pth", ".egg-link")) and leaf not in {"sitecustomize.py", "usercustomize.py"}
-                      generated_unhashed = name == wheel_record or leaf.endswith(".pyc")
-                      if generated_unhashed: assert declared == declared_size == ""
-                      else:
-                          algorithm, encoded = declared.split("=", 1)
-                          actual = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
-                          assert algorithm == "sha256" and encoded == actual and int(declared_size) == len(data)
-                      if name in wheel_rows and name != wheel_record:
-                          assert data == wheel_bytes[name] and [declared, declared_size] == wheel_rows[name]
-                      elif name != wheel_record:
-                          generated_dist = normalized in {str(pathlib.PurePosixPath(wheel_record).parent / generated) for generated in ("INSTALLER", "direct_url.json", "REQUESTED")}
-                          generated_script = any(
-                              normalized.lower() == f"../../scripts/{entry}.exe".lower()
-                              if axis == "windows"
-                              else normalized == f"../../../bin/{entry}"
-                              for entry in console_scripts
-                          )
-                          assert generated_dist or generated_script or (leaf.endswith(".pyc") and normalized.startswith("tree_sitter_analyzer/"))
-                  assert set(wheel_rows).issubset(installed_names) and observed_direct == direct
-              runtime = report["runtime"]; exact(runtime, ("python", "executable", "prefix")); assert all(isinstance(value, str) and value for value in runtime.values())
-              mcp = report["mcp"]
-              exact(mcp, ("executable", "protocol_version", "server_name", "server_version", "tools", "first_call", "duration_seconds", "transcript_sha256", "stderr_sha256"))
-              assert mcp["server_name"] == "tree-sitter-analyzer-mcp" and mcp["tools"] == tools and all(hexdigest(mcp[key]) for key in ("transcript_sha256", "stderr_sha256"))
-              assert type(mcp["duration_seconds"]) in (int, float) and mcp["duration_seconds"] >= 0 and all(isinstance(mcp[key], str) for key in ("executable", "protocol_version", "server_version"))
-              first = mcp["first_call"]
-              exact(first, ("name", "arguments", "is_error", "default_format", "verdict", "project_root", "indexed", "total_files", "summary"))
-              assert first == {"name": "index", "arguments": {"action": "status"}, "is_error": False, "default_format": "toon", "verdict": "WARN", "project_root": first["project_root"], "indexed": False, "total_files": 0, "summary": "codegraph_status: index missing or empty"} and isinstance(first["project_root"], str) and first["project_root"]
-              pure = lambda value: (pathlib.PureWindowsPath(value) if "\\" in value or re.match(r"^[A-Za-z]:", value) else pathlib.PurePosixPath(value))
-              def lexical(value):
-                  path = pure(value); parts = []
-                  assert path.is_absolute()
-                  for part in path.parts[1:]:
-                      if part in ("", "."): continue
-                      if part == "..":
-                          if not parts: raise ValueError("path escapes lexical root")
-                          parts.pop()
-                      else: parts.append(part)
-                  return type(path)(path.anchor, *parts)
-              prefix, location = lexical(runtime["prefix"]), lexical(meta["location"])
-              def beneath(child, parent):
-                  try: lexical(child).relative_to(lexical(str(parent))); return True
-                  except (AssertionError, ValueError): return False
-              assert prefix.name == "venv" and prefix.parent.name.startswith("tsa-native-qualification-")
-              assert beneath(str(location), prefix) and all(beneath(value, prefix) for value in (runtime["executable"], meta["module_file"], meta["module_origin"], meta["direct_url_path"], record["record_path"], mcp["executable"]))
-              assert beneath(meta["direct_url_path"], location) and beneath(record["record_path"], location)
-              assert pure(first["project_root"]) == prefix.parent / "fixture" and not beneath(first["project_root"], prefix)
-          exact(aggregate, ("schema_version", "kind", "qualification_id", "evidence_scope", "qualification_performed", "native_axes_qualified", "qualified", "evidence_trust", "source_commit", "wheel_sha256", "build_manifest_sha256", "wheel", "axes", "failures", "workflow"))
-          assert (aggregate["schema_version"], aggregate["kind"], aggregate["qualification_id"], aggregate["evidence_scope"]) == ("no1-006a-native-attestation-v1", "aggregate", "NO1-006A", "native_package_mcp_first_answer")
-          assert aggregate["qualification_performed"] is aggregate["native_axes_qualified"] is True and aggregate["qualified"] is False
-          assert aggregate["evidence_trust"] == "EXTERNAL_ATTESTATION_REQUIRED" and aggregate["failures"] == []
-          assert aggregate["source_commit"] == os.environ["GITHUB_SHA"] and aggregate["wheel_sha256"] == wheel["sha256"] and aggregate["build_manifest_sha256"] == manifest_sha and aggregate["wheel"] == wheel
-          exact(aggregate["workflow"], ("event", "run_id", "run_attempt", "job", "workflow_ref", "run_url"))
-          assert aggregate["workflow"] == manifest["workflow"] | {"job": "aggregate"}
-          assert aggregate["axes"] == [{"axis": axis, "report_sha256": sha(root / axis / "report.json"), "passed": True} for axis in axes]
-          pathlib.Path("trusted-job/independent-verification.ok").write_text(sha(aggregate_path) + "\n")
-          PY
-      - name: Attest exact wheel bytes
-        if: needs.build-once.result == 'success' && needs.aggregate.result == 'success' && hashFiles('trusted-job/independent-verification.ok') != ''
-        uses: actions/attest-build-provenance@v3
-        with:
-          subject-path: trusted-input/build/${{ needs.build-once.outputs.wheel_name }}
-      - name: Attest exact aggregate evidence
-        if: needs.build-once.result == 'success' && needs.aggregate.result == 'success' && hashFiles('trusted-job/independent-verification.ok') != ''
-        uses: actions/attest-build-provenance@v3
-        with:
-          subject-path: trusted-input/aggregate/aggregate.json
-      - name: Write trusted job result
-        if: always()
-        run: printf '{"job":"trusted-attestation","status":"%s"}\n' '${{ job.status }}' > trusted-job/job-result.json
-        shell: bash
-      - name: Upload trusted job result
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: native-trusted-job-${{ github.sha }}
-          path: trusted-job/
-          if-no-files-found: error
-          retention-days: 90
+    uses: ./.github/workflows/reusable-native-qualification-attestation.yml
+    with:
+      wheel-name: ${{ needs.build-once.outputs.wheel_name }}

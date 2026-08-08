@@ -184,7 +184,7 @@ def trusted_verifier_result(tmp_path: Path, mutation: str) -> int:
         aggregate_value["axes"][0]["report_sha256"] = "a" * 64
     (trusted / "aggregate" / "aggregate.json").write_text(json.dumps(aggregate_value))
     workflow_text = (
-        ROOT / ".github/workflows/native-install-qualification.yml"
+        ROOT / ".github/workflows/reusable-native-qualification-attestation.yml"
     ).read_text()
     code = workflow_text.split("          python - <<'PY'\n", 1)[1].split(
         "\n          PY", 1

@@ -1,0 +1,127 @@
+name: Reusable Native Outdated uv Qualification
+
+on:
+  workflow_call:
+    inputs:
+      wheel-name:
+        required: true
+        type: string
+
+jobs:
+  outdated-axis:
+    name: Outdated uv ${{ matrix.axis }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {axis: linux, runner: ubuntu-24.04}
+          - {axis: macos, runner: macos-14}
+          - {axis: windows, runner: windows-2022}
+    steps:
+      - name: Create failure-retained placeholder
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force outdated-artifacts | Out-Null; '{"status":"started"}' | Set-Content -Encoding ascii outdated-artifacts/job-result.json
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - name: Install real fixed outdated uv
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.10.9"
+          enable-cache: false
+      - id: uv
+        name: Resolve the native outdated executable
+        shell: pwsh
+        run: |
+          $uv = python -c "import shutil; print(shutil.which('uv') or '')"
+          if (-not $uv) { throw 'setup-uv did not install an executable' }
+          "path=$uv" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      - uses: actions/download-artifact@v7
+        with:
+          name: native-build-${{ github.sha }}
+          path: package/build
+      - uses: actions/download-artifact@v7
+        with:
+          name: native-aggregate-${{ github.sha }}
+          path: package/aggregate
+      - uses: actions/download-artifact@v7
+        with:
+          name: native-${{ matrix.axis }}-${{ github.sha }}
+          path: package/${{ matrix.axis }}
+      - name: Prove native detection and remediation or actionability
+        run: >-
+          python scripts/qualify_outdated_uv.py axis
+          --axis ${{ matrix.axis }}
+          --uv-executable "${{ steps.uv.outputs.path }}"
+          --installer install.sh
+          --wheel package/build/${{ inputs.wheel-name }}
+          --package-aggregate package/aggregate/aggregate.json
+          --package-report package/${{ matrix.axis }}/report.json
+          --output outdated-artifacts/report.json
+      - name: Write job result
+        if: always()
+        shell: pwsh
+        run: |
+          $value = @{job='outdated-axis'; axis='${{ matrix.axis }}'; status='${{ job.status }}'} | ConvertTo-Json -Compress
+          $value | Set-Content -Encoding ascii outdated-artifacts/job-result.json
+      - name: Upload evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: outdated-uv-${{ matrix.axis }}-${{ github.sha }}
+          path: outdated-artifacts/
+          if-no-files-found: error
+          retention-days: 90
+
+  outdated-aggregate:
+    name: Aggregate outdated uv axes
+    if: always()
+    needs: outdated-axis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Create failure-retained placeholder
+        run: mkdir -p outdated-aggregate && printf '{"status":"started"}\n' > outdated-aggregate/job-result.json
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - uses: actions/download-artifact@v7
+        with:
+          name: "outdated-uv-linux-${{ github.sha }}"
+          path: downloaded/linux
+        continue-on-error: true
+      - uses: actions/download-artifact@v7
+        with:
+          name: "outdated-uv-macos-${{ github.sha }}"
+          path: downloaded/macos
+        continue-on-error: true
+      - uses: actions/download-artifact@v7
+        with:
+          name: "outdated-uv-windows-${{ github.sha }}"
+          path: downloaded/windows
+        continue-on-error: true
+      - name: Aggregate candidate evidence
+        if: github.event_name != 'push' || github.ref != 'refs/heads/develop'
+        run: python scripts/qualify_outdated_uv.py aggregate --reports downloaded/linux/report.json downloaded/macos/report.json downloaded/windows/report.json --output outdated-aggregate/aggregate.json
+      - name: Aggregate trusted develop evidence
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        run: python scripts/qualify_outdated_uv.py aggregate --trusted --reports downloaded/linux/report.json downloaded/macos/report.json downloaded/windows/report.json --output outdated-aggregate/aggregate.json
+      - name: Write job result
+        if: always()
+        run: printf '{"job":"outdated-aggregate","status":"%s"}\n' '${{ job.status }}' > outdated-aggregate/job-result.json
+      - name: Upload aggregate even on failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: outdated-uv-aggregate-${{ github.sha }}
+          path: outdated-aggregate/
+          if-no-files-found: error
+          retention-days: 90
