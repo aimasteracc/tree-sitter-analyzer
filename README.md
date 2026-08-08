@@ -19,7 +19,7 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 ## Get Started
 
-> **Requires Python 3.10+** (check: `python --version`). Install from [python.org](https://www.python.org/downloads/) if needed.
+> **Requires Python 3.10+** (check: `python3 --version`). Install from [python.org](https://www.python.org/downloads/) if needed.
 
 ### Automated install (recommended)
 
