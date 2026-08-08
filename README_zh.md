@@ -278,11 +278,12 @@ git clone 用户已有，无需操作。
 ## 支持的语言
 
 <!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->
-由运行时 registry 生成。**22 个语言插件**；13 个为 `pipeline_registered`（非 E2E），3 个为 `index_admitted`，5 个 data/markup，1 个脚手架。注册状态不保证跨文件正向绑定。
+由运行时 registry 生成。**22 个语言插件**；13 个为 `pipeline_registered`（非 E2E），3 个为 `index_admitted`，0 个为 `call_dispatch_only`，5 个 data/markup，1 个脚手架。注册状态不保证跨文件正向绑定。
 | 等级 | 语言 |
 |---|---|
 | **`pipeline_registered`（管线注册态，非 E2E）** | C · C++ · C# · Go · Java · JavaScript · Kotlin · PHP · Python · Ruby · Rust · Swift · TypeScript |
 | **`index_admitted`（索引准入态）** | Bash · Lua · Scala |
+| **`call_dispatch_only`（仅 call dispatch）** |  |
 | **单文件分析（CLI）** | CSS · HTML · Markdown · SQL · YAML |
 | **脚手架（插件已有，索引器待接）** | JSON |
 

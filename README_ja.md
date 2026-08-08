@@ -278,11 +278,12 @@ git clone ユーザーはすでに含まれているため不要です。
 ## サポート言語
 
 <!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->
-ランタイムレジストリから生成。**22 言語プラグイン**; 13 は `pipeline_registered`（非 E2E）、3 は `index_admitted`、5 個は data/markup、1 個はスキャフォールド。登録は正のクロスファイル束縛を保証しない。
+ランタイムレジストリから生成。**22 言語プラグイン**; 13 は `pipeline_registered`（非 E2E）、3 は `index_admitted`、0 は `call_dispatch_only`、5 個は data/markup、1 個はスキャフォールド。登録は正のクロスファイル束縛を保証しない。
 | ティア | 言語 |
 |---|---|
 | **`pipeline_registered`（パイプライン登録済み、非 E2E）** | C · C++ · C# · Go · Java · JavaScript · Kotlin · PHP · Python · Ruby · Rust · Swift · TypeScript |
 | **`index_admitted`（インデックス受け入れ済み）** | Bash · Lua · Scala |
+| **`call_dispatch_only`（call dispatch のみ）** |  |
 | **単一ファイル解析 (CLI)** | CSS · HTML · Markdown · SQL · YAML |
 | **スキャフォールド (プラグイン有 / インデクサー結線待ち)** | JSON |
 

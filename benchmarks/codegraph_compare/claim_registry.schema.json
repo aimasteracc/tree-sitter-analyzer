@@ -89,6 +89,23 @@
             "requests",
             "seconds"
           ]
+        },
+        "repositories": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96,
+            "pattern": "^(?![\\s\\S]*[\\r\\n])[A-Za-z0-9]+(?:[._/-][A-Za-z0-9]+)*$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "model_backend": {
+          "$ref": "#/$defs/model_backend"
         }
       },
       "required": [
@@ -102,7 +119,9 @@
         "competitor",
         "provenance",
         "evidence_level",
-        "artifact"
+        "artifact",
+        "repositories",
+        "model_backend"
       ],
       "type": "object"
     },
@@ -198,6 +217,31 @@
         "version"
       ],
       "type": "object"
+    },
+    "model_backend": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^(?![\\s\\S]*[\\r\\n])[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 96,
+          "pattern": "^(?![\\s\\S]*[\\r\\n])[A-Za-z0-9]+(?:[._:/-][A-Za-z0-9]+)*$"
+        }
+      },
+      "required": [
+        "backend",
+        "model"
+      ],
+      "type": [
+        "object",
+        "null"
+      ]
     }
   },
   "$id": "https://github.com/aimasteracc/tree-sitter-analyzer/benchmarks/codegraph_compare/claim_registry.schema.json",

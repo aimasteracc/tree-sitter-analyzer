@@ -21,6 +21,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ..core.parser import Parser
+from ..languages.lang_extension_map import EXT_TO_LANG
 from ..project_graph import _language_from_ext
 from ..registry.route_cache import RouteCache
 from .go import scan_go_routes
@@ -63,16 +64,6 @@ _EXCLUDE_DIRS = {
     ".mvn",
 }
 
-_SOURCE_EXTENSIONS = {
-    ".py",
-    ".js",
-    ".jsx",
-    ".ts",
-    ".tsx",
-    ".java",
-    ".go",
-}
-
 # Single registry for file-language route dispatch and inventory evidence.
 # Values identify the detector branch; keys are the executable support surface.
 ROUTE_LANGUAGE_DISPATCH = MappingProxyType(
@@ -83,6 +74,12 @@ ROUTE_LANGUAGE_DISPATCH = MappingProxyType(
         "java": "java",
         "go": "go",
     }
+)
+
+_SOURCE_EXTENSIONS = frozenset(
+    extension
+    for extension, language in EXT_TO_LANG.items()
+    if language in ROUTE_LANGUAGE_DISPATCH
 )
 
 _FRAMEWORK_FILES = {

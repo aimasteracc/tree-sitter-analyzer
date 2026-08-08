@@ -54,6 +54,7 @@ def render_markdown(*, compact: bool = False, locale: str = "en") -> str:
         tier_languages: dict[str, list[str]] = {}
         for row in inventory["languages"]:
             tier_languages.setdefault(row["tier"], []).append(row["display_name"])
+        lua = next(row for row in inventory["languages"] if row["language"] == "lua")
         if locale == "en":
             intro = (
                 "Generated from runtime registries; see [`docs/CODEMAPS/languages.md`](docs/CODEMAPS/languages.md) for the full capability matrix. "
@@ -76,35 +77,63 @@ def render_markdown(*, compact: bool = False, locale: str = "en") -> str:
             intro = (
                 f"ランタイムレジストリから生成。**{counts['plugin_discovery']} 言語プラグイン**; "
                 f"{tiers['pipeline_registered']} は `pipeline_registered`（非 E2E）、"
-                f"{tiers['index_admitted']} は `index_admitted`、{tiers['data_markup']} 個は data/markup、"
+                f"{tiers['index_admitted']} は `index_admitted`、"
+                f"{tiers['call_dispatch_only']} は `call_dispatch_only`、{tiers['data_markup']} 個は data/markup、"
                 f"{tiers['scaffold']} 個はスキャフォールド。登録は正のクロスファイル束縛を保証しない。"
             )
             rows = [
                 "| ティア | 言語 |",
                 "|---|---|",
-                f"| **`pipeline_registered`（パイプライン登録済み、非 E2E）** | {' · '.join(tier_languages['pipeline_registered'])} |",
-                f"| **`index_admitted`（インデックス受け入れ済み）** | {' · '.join(tier_languages['index_admitted'])} |",
-                f"| **単一ファイル解析 (CLI)** | {' · '.join(tier_languages['data_markup'])} |",
-                f"| **スキャフォールド (プラグイン有 / インデクサー結線待ち)** | {' · '.join(tier_languages['scaffold'])} |",
-                "",
-                "Lua はインデックス受け入れ済みで call dispatch と resolver slot も持つが、import dispatch とクロスファイル E2E 証拠は未確認。",
+                f"| **`pipeline_registered`（パイプライン登録済み、非 E2E）** | {' · '.join(tier_languages.get('pipeline_registered', []))} |",
+                f"| **`index_admitted`（インデックス受け入れ済み）** | {' · '.join(tier_languages.get('index_admitted', []))} |",
+                f"| **`call_dispatch_only`（call dispatch のみ）** | {' · '.join(tier_languages.get('call_dispatch_only', []))} |",
+                f"| **単一ファイル解析 (CLI)** | {' · '.join(tier_languages.get('data_markup', []))} |",
+                f"| **スキャフォールド (プラグイン有 / インデクサー結線待ち)** | {' · '.join(tier_languages.get('scaffold', []))} |",
+                *(
+                    [
+                        "",
+                        "Lua はインデックス受け入れ済みで call dispatch と resolver slot も持つが、import dispatch とクロスファイル E2E 証拠は未確認。",
+                    ]
+                    if (
+                        lua["index_admission"]
+                        and lua["call_dispatch"]
+                        and lua["resolver_slot"]
+                        and not lua["import_dispatch"]
+                        and lua["cross_file_call"] != "verified"
+                    )
+                    else []
+                ),
             ]
         elif locale == "zh":
             intro = (
                 f"由运行时 registry 生成。**{counts['plugin_discovery']} 个语言插件**；"
                 f"{tiers['pipeline_registered']} 个为 `pipeline_registered`（非 E2E），"
-                f"{tiers['index_admitted']} 个为 `index_admitted`，{tiers['data_markup']} 个 data/markup，"
+                f"{tiers['index_admitted']} 个为 `index_admitted`，"
+                f"{tiers['call_dispatch_only']} 个为 `call_dispatch_only`，{tiers['data_markup']} 个 data/markup，"
                 f"{tiers['scaffold']} 个脚手架。注册状态不保证跨文件正向绑定。"
             )
             rows = [
                 "| 等级 | 语言 |",
                 "|---|---|",
-                f"| **`pipeline_registered`（管线注册态，非 E2E）** | {' · '.join(tier_languages['pipeline_registered'])} |",
-                f"| **`index_admitted`（索引准入态）** | {' · '.join(tier_languages['index_admitted'])} |",
-                f"| **单文件分析（CLI）** | {' · '.join(tier_languages['data_markup'])} |",
-                f"| **脚手架（插件已有，索引器待接）** | {' · '.join(tier_languages['scaffold'])} |",
-                "",
-                "Lua 已获索引准入，并具备 call dispatch 与 resolver slot，但 import dispatch 和跨文件 E2E 证据仍未确认。",
+                f"| **`pipeline_registered`（管线注册态，非 E2E）** | {' · '.join(tier_languages.get('pipeline_registered', []))} |",
+                f"| **`index_admitted`（索引准入态）** | {' · '.join(tier_languages.get('index_admitted', []))} |",
+                f"| **`call_dispatch_only`（仅 call dispatch）** | {' · '.join(tier_languages.get('call_dispatch_only', []))} |",
+                f"| **单文件分析（CLI）** | {' · '.join(tier_languages.get('data_markup', []))} |",
+                f"| **脚手架（插件已有，索引器待接）** | {' · '.join(tier_languages.get('scaffold', []))} |",
+                *(
+                    [
+                        "",
+                        "Lua 已获索引准入，并具备 call dispatch 与 resolver slot，但 import dispatch 和跨文件 E2E 证据仍未确认。",
+                    ]
+                    if (
+                        lua["index_admission"]
+                        and lua["call_dispatch"]
+                        and lua["resolver_slot"]
+                        and not lua["import_dispatch"]
+                        and lua["cross_file_call"] != "verified"
+                    )
+                    else []
+                ),
             ]
         else:
             raise ValueError(f"unsupported locale: {locale}")

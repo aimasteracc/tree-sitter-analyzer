@@ -8,7 +8,19 @@ from pathlib import Path
 
 import pytest
 
-from scripts.generate_language_support_inventory import BEGIN, END, _section_bounds
+from scripts import generate_language_support_inventory as inventory_generator
+from scripts.generate_language_support_inventory import (
+    BEGIN,
+    END,
+    _section_bounds,
+    render_markdown,
+)
+from tree_sitter_analyzer.function_extraction import (
+    _CALL_DISPATCH,
+    _CALL_NODE_TYPES,
+    _FUNC_DEF_TYPES,
+    _FUNC_NAME_DISPATCH,
+)
 from tree_sitter_analyzer.import_extractors import IMPORT_DISPATCH
 from tree_sitter_analyzer.language_inventory import (
     CAPABILITY_COLUMNS,
@@ -16,9 +28,13 @@ from tree_sitter_analyzer.language_inventory import (
     _tier,
     build_inventory,
 )
+from tree_sitter_analyzer.languages.lang_extension_map import EXT_TO_LANG
 from tree_sitter_analyzer.plugins import manager as manager_module
 from tree_sitter_analyzer.plugins.manager import PluginManager
-from tree_sitter_analyzer.route_detector import ROUTE_LANGUAGE_DISPATCH
+from tree_sitter_analyzer.route_detector import (
+    _SOURCE_EXTENSIONS,
+    ROUTE_LANGUAGE_DISPATCH,
+)
 
 
 def test_language_inventory_pins_capability_counts() -> None:
@@ -227,6 +243,31 @@ def test_framework_evidence_uses_executable_dispatch_registry() -> None:
     assert {row["language"] for row in rows if row["framework_dispatch"]} == set(
         ROUTE_LANGUAGE_DISPATCH
     )
+
+
+# fmt: off
+def test_call_dispatch_evidence_requires_nodes_and_executable_handlers() -> None:
+    expected = set(_FUNC_DEF_TYPES) & set(_CALL_NODE_TYPES) & set(_FUNC_NAME_DISPATCH) & set(_CALL_DISPATCH)
+    actual = {row["language"] for row in build_inventory()["languages"] if row["call_dispatch"]}
+    assert actual == expected
+
+def test_route_scan_extensions_derive_from_dispatch_and_canonical_map() -> None:
+    expected = frozenset(ext for ext, lang in EXT_TO_LANG.items() if lang in ROUTE_LANGUAGE_DISPATCH)
+    assert _SOURCE_EXTENSIONS == expected
+
+def test_localized_inventories_render_empty_call_dispatch_tier() -> None:
+    assert "| **`call_dispatch_only`（call dispatch のみ）** |  |" in render_markdown(compact=True, locale="ja")
+    assert "| **`call_dispatch_only`（仅 call dispatch）** |  |" in render_markdown(compact=True, locale="zh")
+
+
+def test_lua_note_disappears_when_capabilities_change(monkeypatch) -> None:
+    inventory = build_inventory()
+    lua = next(row for row in inventory["languages"] if row["language"] == "lua")
+    lua.update(import_dispatch=True, tier="pipeline_registered")
+    monkeypatch.setattr(inventory_generator, "build_inventory", lambda: inventory)
+    assert "Lua はインデックス受け入れ済み" not in render_markdown(compact=True, locale="ja")
+    assert "Lua 已获索引准入" not in render_markdown(compact=True, locale="zh")
+# fmt: on
 
 
 def test_inventory_rows_have_exact_capability_schema() -> None:

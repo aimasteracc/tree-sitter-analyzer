@@ -16,7 +16,7 @@
     "scaffold": 1
   },
   "evidence": {
-    "call_dispatch": "function_extraction definition/call dispatch-key intersection",
+    "call_dispatch": "function_extraction node tables plus executable definition/call handler registries",
     "cross_file_call": "tri-state: verified requires a positive end-to-end cross-file fixture; unknown means none is registered",
     "data_markup": "language_inventory.DATA_MARKUP_LANGUAGES",
     "extractor_loadability": "PluginManager.get_plugin plus create_extractor (fail closed)",

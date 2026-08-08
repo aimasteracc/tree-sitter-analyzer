@@ -10,7 +10,6 @@ import hashlib
 import json
 import math
 import re
-import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +18,11 @@ from typing import Any
 from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import SchemaError
 
-from benchmarks.codegraph_compare.e4_evidence import validate_e4_evidence
+from benchmarks.codegraph_compare.e4_evidence import (
+    generated_e4_wording,
+    unsafe_e4_fields,
+    validate_e4_evidence,
+)
 
 _LEVELS = {"E0": 0, "E1": 1, "E2": 2, "E3": 3, "E4": 4}
 # E4 trust roots are deliberately outside claim-controlled artifacts.  A future
@@ -30,77 +33,76 @@ _TRUSTED_E4_REPRODUCTIONS: Mapping[str, frozenset[str]] = {}
 _README_CLAIMS_BEGIN = "<!-- BEGIN GENERATED QUANTITATIVE CLAIMS -->"
 _README_CLAIMS_END = "<!-- END GENERATED QUANTITATIVE CLAIMS -->"
 
-# Public E4 wording is deliberately less expressive than arbitrary Markdown.
-# Keep these grammars synchronized with claim_registry.schema.json.
-_METRIC_RE = re.compile(r"[a-z][a-z0-9]*(?: [a-z0-9]+){0,7}")
-_UNIT_VALUES = frozenset(
+_CLAIM_ID_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+_CLAIM_FIELDS = frozenset(
     {
-        "bytes",
-        "files",
-        "milliseconds",
-        "operations",
-        "percent",
-        "ratio",
-        "requests",
-        "seconds",
+        "claim_id",
+        "status",
+        "metric",
+        "numerator",
+        "denominator",
+        "unit",
+        "tsa",
+        "competitor",
+        "provenance",
+        "repositories",
+        "model_backend",
+        "evidence_level",
+        "artifact",
     }
 )
-_TOOL_NAME_RE = re.compile(r"[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*")
-_VERSION_RE = re.compile(
-    r"v?[0-9]+(?:\.[0-9]+){0,3}(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?"
-)
-_BENCHMARK_RE = re.compile(r"[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*")
-_CORPUS_NAME_RE = re.compile(r"[A-Za-z0-9]+(?:[ -][A-Za-z0-9]+)*")
-_REVISION_RE = re.compile(r"[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*")
-_COMMIT_RE = re.compile(r"[0-9a-f]{40,64}")
-_DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-_SHA256_RE = re.compile(r"[0-9a-f]{64}")
-_NUMBER_PATTERN = r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:e[+-]?[0-9]+)?"
-_E4_WORDING_RE = re.compile(
-    rf"{_TOOL_NAME_RE.pattern} {_VERSION_RE.pattern}: "
-    rf"{_METRIC_RE.pattern} = {_NUMBER_PATTERN} (?:{'|'.join(sorted(_UNIT_VALUES))}); "
-    rf"{_TOOL_NAME_RE.pattern} {_VERSION_RE.pattern}: "
-    rf"{_METRIC_RE.pattern} = {_NUMBER_PATTERN} (?:{'|'.join(sorted(_UNIT_VALUES))}); "
-    rf"benchmark {_BENCHMARK_RE.pattern}; measured {_DATE_RE.pattern}; "
-    rf"repository commit {_COMMIT_RE.pattern}; "
-    rf"corpus {_CORPUS_NAME_RE.pattern}@{_REVISION_RE.pattern}; "
-    rf"artifact sha256:{_SHA256_RE.pattern}\."
-)
 
-_E4_STRING_FIELDS = (
-    ("metric", ("metric",), _METRIC_RE, 64),
-    ("unit", ("unit",), None, 16),
-    ("tsa.name", ("tsa", "name"), _TOOL_NAME_RE, 64),
-    ("tsa.version", ("tsa", "version"), _VERSION_RE, 32),
-    ("competitor.name", ("competitor", "name"), _TOOL_NAME_RE, 64),
-    ("competitor.version", ("competitor", "version"), _VERSION_RE, 32),
-    (
-        "provenance.benchmark_version",
-        ("provenance", "benchmark_version"),
-        _BENCHMARK_RE,
-        64,
-    ),
-    (
-        "provenance.measurement_date",
-        ("provenance", "measurement_date"),
-        _DATE_RE,
-        10,
-    ),
-    ("provenance.repo_commit", ("provenance", "repo_commit"), _COMMIT_RE, 64),
-    (
-        "provenance.corpus.name",
-        ("provenance", "corpus", "name"),
-        _CORPUS_NAME_RE,
-        96,
-    ),
-    (
-        "provenance.corpus.revision",
-        ("provenance", "corpus", "revision"),
-        _REVISION_RE,
-        64,
-    ),
-    ("artifact.sha256", ("artifact", "sha256"), _SHA256_RE, 64),
-)
+
+def _release_shape_violation(registry: Any) -> str | None:
+    """Protect release invariants even when a caller supplies a weak schema."""
+    if type(registry) is not dict or set(registry) != {"schema_version", "claims"}:
+        return "REGISTRY_RELEASE_SHAPE"
+    if registry.get("schema_version") != 1:
+        return "REGISTRY_RELEASE_SCHEMA_VERSION"
+    claims = registry.get("claims")
+    if type(claims) is not list or not claims:
+        return "REGISTRY_RELEASE_EMPTY"
+    for claim in claims:
+        if type(claim) is not dict or set(claim) != _CLAIM_FIELDS:
+            return "CLAIM_RELEASE_SHAPE"
+        if not isinstance(claim.get("claim_id"), str) or not _CLAIM_ID_RE.fullmatch(
+            claim["claim_id"]
+        ):
+            return "CLAIM_RELEASE_ID"
+        if claim.get("status") not in {"verified", "unverified", "blocked"}:
+            return "CLAIM_RELEASE_STATUS"
+        if claim.get("evidence_level") not in _LEVELS:
+            return "CLAIM_RELEASE_EVIDENCE_LEVEL"
+        for tool_name in ("tsa", "competitor"):
+            tool = claim.get(tool_name)
+            if type(tool) is not dict or set(tool) != {"name", "version"}:
+                return "CLAIM_RELEASE_TOOL_SHAPE"
+        model_backend = claim.get("model_backend")
+        if model_backend is not None and (
+            type(model_backend) is not dict
+            or set(model_backend) != {"model", "backend"}
+        ):
+            return "CLAIM_RELEASE_MODEL_BACKEND_SHAPE"
+        provenance = claim.get("provenance")
+        if type(provenance) is not dict or set(provenance) != {
+            "benchmark_version",
+            "repo_commit",
+            "corpus",
+            "measurement_date",
+        }:
+            return "CLAIM_RELEASE_PROVENANCE_SHAPE"
+        corpus = provenance.get("corpus")
+        if type(corpus) is not dict or set(corpus) != {"name", "revision"}:
+            return "CLAIM_RELEASE_CORPUS_SHAPE"
+        artifact = claim.get("artifact")
+        if artifact is not None and (
+            type(artifact) is not dict
+            or set(artifact) != {"path", "sha256"}
+            or not isinstance(artifact.get("path"), str)
+            or not isinstance(artifact.get("sha256"), str)
+        ):
+            return "CLAIM_RELEASE_ARTIFACT_SHAPE"
+    return None
 
 
 @dataclass(frozen=True)
@@ -179,6 +181,8 @@ def _evidence_payload(claim: dict[str, Any]) -> dict[str, Any]:
             "tsa",
             "competitor",
             "provenance",
+            "repositories",
+            "model_backend",
             "evidence_level",
         )
     }
@@ -204,69 +208,10 @@ def _missing_verified_provenance(claim: dict[str, Any]) -> tuple[str, ...]:
         "provenance.repo_commit": provenance["repo_commit"],
         "provenance.corpus.revision": provenance["corpus"]["revision"],
         "provenance.measurement_date": provenance["measurement_date"],
+        "repositories": claim["repositories"],
+        "model_backend": claim["model_backend"],
     }
     return tuple(name for name, value in fields.items() if value is None)
-
-
-def _format_measurement(value: int | float) -> str:
-    return json.dumps(value, allow_nan=False, separators=(",", ":"))
-
-
-def _nested_value(value: dict[str, Any], path: tuple[str, ...]) -> Any:
-    current: Any = value
-    for part in path:
-        if not isinstance(current, dict):
-            return None
-        current = current.get(part)
-    return current
-
-
-def _unsafe_e4_fields(claim: dict[str, Any]) -> tuple[str, ...]:
-    """Apply a second, code-owned grammar after the externally supplied schema."""
-    unsafe: list[str] = []
-    for field, path, grammar, maximum in _E4_STRING_FIELDS:
-        value = _nested_value(claim, path)
-        if not isinstance(value, str):
-            unsafe.append(field)
-            continue
-        has_control = any(
-            unicodedata.category(character).startswith("C") for character in value
-        )
-        lexical_match = (
-            value in _UNIT_VALUES
-            if field == "unit"
-            else bool(grammar and grammar.fullmatch(value))
-        )
-        if (
-            not value
-            or value != value.strip()
-            or len(value) > maximum
-            or has_control
-            or not lexical_match
-        ):
-            unsafe.append(field)
-    return tuple(unsafe)
-
-
-def _generated_e4_wording(claim: dict[str, Any]) -> str:
-    """Generate public wording from evidence fields bound to the artifact payload."""
-    provenance = claim["provenance"]
-    corpus = provenance["corpus"]
-    artifact = claim["artifact"]
-    wording = (
-        f"{claim['tsa']['name']} {claim['tsa']['version']}: "
-        f"{claim['metric']} = {_format_measurement(claim['numerator'])} {claim['unit']}; "
-        f"{claim['competitor']['name']} {claim['competitor']['version']}: "
-        f"{claim['metric']} = {_format_measurement(claim['denominator'])} {claim['unit']}; "
-        f"benchmark {provenance['benchmark_version']}; "
-        f"measured {provenance['measurement_date']}; "
-        f"repository commit {provenance['repo_commit']}; "
-        f"corpus {corpus['name']}@{corpus['revision']}; "
-        f"artifact sha256:{artifact['sha256']}."
-    )
-    if "\r" in wording or "\n" in wording or not _E4_WORDING_RE.fullmatch(wording):
-        raise ValueError("generated E4 wording violates the fixed public grammar")
-    return wording
 
 
 def render_readme_claims(verdict: ClaimRegistryVerdict) -> str:
@@ -363,6 +308,22 @@ def validate_registry(
             "INVALID", False, False, 0, 0, 0, schema_violations, ()
         )
 
+    release_violation = _release_shape_violation(registry)
+    if release_violation is not None:
+        claim_count = (
+            len(registry.get("claims", [])) if isinstance(registry, dict) else 0
+        )
+        return ClaimRegistryVerdict(
+            "INVALID",
+            True,
+            False,
+            claim_count,
+            0,
+            0,
+            (release_violation,),
+            (),
+        )
+
     claims = registry["claims"]
     authority_roots = _TRUSTED_E4_REPRODUCTIONS
     violations: list[str] = []
@@ -391,6 +352,9 @@ def validate_registry(
                             f"MEASUREMENT_NONFINITE:{claim_id}:{field}"
                         )
                         measurement_invalid = True
+                if not measurement_invalid and claim["denominator"] <= 0:
+                    claim_violations.append(f"DENOMINATOR_NONPOSITIVE:{claim_id}")
+                    measurement_invalid = True
             missing = _missing_verified_provenance(claim)
             if missing:
                 claim_violations.append(
@@ -400,7 +364,7 @@ def validate_registry(
                 claim_violations.append(f"QUANTITATIVE_EVIDENCE_TOO_LOW:{claim_id}")
             unsafe_fields: tuple[str, ...] = ()
             if claim["evidence_level"] == "E4":
-                unsafe_fields = _unsafe_e4_fields(claim)
+                unsafe_fields = unsafe_e4_fields(claim)
                 if unsafe_fields:
                     claim_violations.append(
                         f"E4_FIELD_UNSAFE:{claim_id}:" + ",".join(unsafe_fields)
@@ -423,7 +387,7 @@ def validate_registry(
             and status == "verified"
             and claim["evidence_level"] == "E4"
         ):
-            safe_wording.append((claim_id, (_generated_e4_wording(claim),)))
+            safe_wording.append((claim_id, (generated_e4_wording(claim),)))
 
     if violations:
         status = "INVALID"

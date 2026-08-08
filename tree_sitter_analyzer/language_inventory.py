@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from tree_sitter_analyzer.function_extraction import _CALL_NODE_TYPES, _FUNC_DEF_TYPES
+from tree_sitter_analyzer.function_extraction import (
+    _CALL_DISPATCH,
+    _CALL_NODE_TYPES,
+    _FUNC_DEF_TYPES,
+    _FUNC_NAME_DISPATCH,
+)
 from tree_sitter_analyzer.import_extractors import IMPORT_DISPATCH
 from tree_sitter_analyzer.languages.lang_extension_map import supported_languages
 from tree_sitter_analyzer.plugins.manager import PluginManager
@@ -65,7 +70,7 @@ EVIDENCE = {
     "extractor_loadability": "PluginManager.get_plugin plus create_extractor (fail closed)",
     "index_admission": "languages.lang_extension_map.supported_languages",
     "import_dispatch": "import_extractors.IMPORT_DISPATCH keys",
-    "call_dispatch": "function_extraction definition/call dispatch-key intersection",
+    "call_dispatch": "function_extraction node tables plus executable definition/call handler registries",
     "resolver_slot": "synapse_resolver registration plus documented Python fallback",
     "framework_dispatch": "route_detector.ROUTE_LANGUAGE_DISPATCH keys",
     "cross_file_call": "tri-state: verified requires a positive end-to-end cross-file fixture; unknown means none is registered",
@@ -115,7 +120,12 @@ def build_inventory() -> dict[str, Any]:
     plugins = frozenset(extractors)
     index_languages = frozenset(supported_languages())
     import_languages = frozenset(IMPORT_DISPATCH)
-    call_languages = frozenset(_FUNC_DEF_TYPES) & frozenset(_CALL_NODE_TYPES)
+    call_languages = (
+        frozenset(_FUNC_DEF_TYPES)
+        & frozenset(_CALL_NODE_TYPES)
+        & frozenset(_FUNC_NAME_DISPATCH)
+        & frozenset(_CALL_DISPATCH)
+    )
     resolver_languages = frozenset(registered_languages()) | {"python"}
     pipeline_registered = (
         index_languages & import_languages & call_languages & resolver_languages
