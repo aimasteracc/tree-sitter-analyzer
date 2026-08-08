@@ -261,6 +261,12 @@ jobs:
           sha256_bytes = lambda value: hashlib.sha256(value).hexdigest()
           sha = lambda path: sha256_bytes(path.read_bytes())
           hexdigest = lambda value: isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+          def normalized_sha(value):
+              raw = value.removeprefix("sha256=").removeprefix("sha256:")
+              if hexdigest(raw.lower()): return raw.lower()
+              try: decoded = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+              except (ValueError, TypeError): return ""
+              return decoded.hex() if len(decoded) == 32 else ""
           def exact(value, keys):
               assert isinstance(value, dict) and set(value) == set(keys)
           def identity(value, job):
@@ -336,7 +342,7 @@ jobs:
               direct = meta["direct_url"]
               exact(direct, ("url", "archive_info")); assert isinstance(direct["url"], str) and direct["url"]
               archive_info = direct["archive_info"]; assert isinstance(archive_info, dict) and archive_info and set(archive_info) <= {"hash", "hashes"}
-              direct_hashes = ([archive_info["hash"].removeprefix("sha256=")] if "hash" in archive_info and archive_info["hash"].startswith("sha256=") else []) + ([archive_info["hashes"]["sha256"].removeprefix("sha256=")] if set(archive_info.get("hashes", {})) == {"sha256"} and isinstance(archive_info["hashes"]["sha256"], str) else [])
+              direct_hashes = ([normalized_sha(archive_info["hash"])] if "hash" in archive_info and isinstance(archive_info["hash"], str) else []) + ([normalized_sha(archive_info["hashes"]["sha256"])] if set(archive_info.get("hashes", {})) == {"sha256"} and isinstance(archive_info["hashes"]["sha256"], str) else [])
               assert direct_hashes and set(direct_hashes) == {wheel["sha256"]} and meta["direct_url_sha256"] == wheel["sha256"]
               artifact_dir = root / axis
               artifact_names = {"report.json", "job-result" + ".json", "install.stdout", "install.stderr", "dependency-manifest.txt", "mcp-transcript.ndjson", "mcp.stderr", "installed-files.zip"}

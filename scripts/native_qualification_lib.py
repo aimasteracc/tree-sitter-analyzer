@@ -383,6 +383,17 @@ def run(
     )
 
 
+def _normalize_sha256(value: str) -> str:
+    raw = value.removeprefix("sha256=").removeprefix("sha256:")
+    if len(raw) == 64 and set(raw.lower()) <= set("0123456789abcdef"):
+        return raw.lower()
+    try:
+        decoded = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+    except (ValueError, TypeError):
+        return ""
+    return decoded.hex() if len(decoded) == 32 else ""
+
+
 def direct_url_hash(value: dict[str, Any]) -> str:
     if set(value) != {"url", "archive_info"} or not isinstance(value["url"], str):
         return ""
@@ -394,7 +405,7 @@ def direct_url_hash(value: dict[str, Any]) -> str:
     if legacy is not None:
         if not isinstance(legacy, str) or not legacy.startswith("sha256="):
             return ""
-        observed.append(legacy.removeprefix("sha256="))
+        observed.append(_normalize_sha256(legacy))
     hashes = archive.get("hashes")
     if hashes is not None:
         if not isinstance(hashes, dict) or set(hashes) != {"sha256"}:
@@ -402,7 +413,7 @@ def direct_url_hash(value: dict[str, Any]) -> str:
         value = hashes["sha256"]
         if not isinstance(value, str):
             return ""
-        observed.append(value.removeprefix("sha256="))
+        observed.append(_normalize_sha256(value))
     return observed[0] if observed and len(set(observed)) == 1 else ""
 
 
