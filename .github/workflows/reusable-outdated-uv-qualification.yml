@@ -23,6 +23,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
         with: {python-version: "3.10"}
+      - name: Install qualification driver dependencies
+        run: python -m pip install --disable-pip-version-check "psutil>=5,<8" "packaging>=23,<27"
       - name: Fetch exact allowlisted official old archive
         run: python scripts/qualify_outdated_uv.py fetch --axis ${{ matrix.axis }} --version 0.10.9 --output fixtures/old.archive
       - name: Fetch exact allowlisted official supported archive
