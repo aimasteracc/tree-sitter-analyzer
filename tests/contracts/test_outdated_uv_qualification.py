@@ -131,7 +131,7 @@ def test_windows_na_requires_evidence_and_allows_empty_sidecar() -> None:
 def test_passed_schema_requires_every_platform_artifact() -> None:
     # PR #1242: PASSED POSIX evidence must retain every causal sidecar.
     report = valid_passed_report()
-    del report["artifacts"]["mcp/report.json"]
+    del report["artifacts"]["installed-mcp-config.json"]
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(report, SCHEMA)
 
@@ -377,6 +377,7 @@ def valid_passed_report() -> dict[str, object]:
         "old.archive",
         "supported.archive",
         "installer.source",
+        "installed-mcp-config.json",
         "first.stdout",
         "first.stderr",
         "second.stdout",
@@ -644,17 +645,52 @@ def test_trusted_archive_member_digest_binds_reported_executable(
         helpers["verify_executable"](executable, observed, "0.11.0", "linux")
 
 
-def test_trusted_config_hash_is_recomputed_from_expected_entry() -> None:
-    # PR #1242: trusted config evidence is bound to canonical installer JSON bytes.
-    expected_entry = valid_passed_report()["config"]["expected_entry"]
-    observed = trusted_helpers()["expected_config_hash"](expected_entry)
-    expected = {"mcpServers": {"tree-sitter-analyzer": expected_entry}}
-    assert (
-        observed
-        == qualification.hashlib.sha256(
-            (json.dumps(expected, indent=2) + "\n").encode()
-        ).hexdigest()
+def test_trusted_config_sidecar_accepts_noncanonical_format(tmp_path: Path) -> None:
+    # Run 31284682751: formatting must not substitute for observed config bytes.
+    config = valid_passed_report()["config"]
+    value = {"mcpServers": {"tree-sitter-analyzer": config["expected_entry"]}}
+    data = json.dumps(value, separators=(",", ":")).encode()
+    (tmp_path / "installed-mcp-config.json").write_bytes(data)
+    after = {
+        ".claude/.mcp.json": {
+            "path": ".claude/.mcp.json",
+            "type": "file",
+            "sha256": qualification.hashlib.sha256(data).hexdigest(),
+        }
+    }
+    assert trusted_helpers()["verify_config_sidecar"](tmp_path, config, after) is None
+
+
+@pytest.mark.parametrize("mutation", ["duplicate", "extra", "entry", "snapshot"])
+def test_trusted_config_sidecar_rejects_forgery(tmp_path: Path, mutation: str) -> None:
+    # Run 31284682751: trusted verification parses and binds the actual sidecar.
+    config = valid_passed_report()["config"]
+    expected = {"mcpServers": {"tree-sitter-analyzer": config["expected_entry"]}}
+    if mutation == "duplicate":
+        body = json.dumps(expected["mcpServers"])
+        data = f'{{"mcpServers":{body},"mcpServers":{body}}}'.encode()
+    else:
+        forged = json.loads(json.dumps(expected))
+        if mutation == "extra":
+            forged["extra"] = True
+        elif mutation == "entry":
+            forged["mcpServers"]["tree-sitter-analyzer"]["command"] = "forged"
+        data = json.dumps(forged).encode()
+    digest = (
+        "0" * 64
+        if mutation == "snapshot"
+        else qualification.hashlib.sha256(data).hexdigest()
     )
+    (tmp_path / "installed-mcp-config.json").write_bytes(data)
+    after = {
+        ".claude/.mcp.json": {
+            "path": ".claude/.mcp.json",
+            "type": "file",
+            "sha256": digest,
+        }
+    }
+    with pytest.raises(AssertionError):
+        trusted_helpers()["verify_config_sidecar"](tmp_path, config, after)
 
 
 def test_trusted_installer_paths_reject_unverified_first_executable() -> None:

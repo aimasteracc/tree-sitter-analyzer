@@ -215,11 +215,12 @@ def axis(args:argparse.Namespace)->int:
             second=run_tree(["/bin/bash",str(installer)],project,clean_env(home,temp,supported_path,False),args.timeout)
             write_side(side,"second.stdout",second.stdout,report); write_side(side,"second.stderr",second.stderr,report); after_second=tree_snapshot(home)
             expected_entry={"command":"uvx","args":["--from","tree-sitter-analyzer[mcp]","tree-sitter-analyzer-mcp"],"env":{"TREE_SITTER_PROJECT_ROOT":str(project.resolve())}}
-            value=json.loads(config.read_text()); backups=list(config.parent.glob(".mcp.json.bak.*"))
+            config_bytes=config.read_bytes(); write_side(side,"installed-mcp-config.json",config_bytes,report)
+            value=json.loads(config_bytes); backups=list(config.parent.glob(".mcp.json.bak.*"))
             expected_value={"mcpServers":{"tree-sitter-analyzer":expected_entry}}
             if second.returncode!=0 or f"uv {SUPPORTED_VERSION}" not in second.stdout.decode("utf-8","replace") or value!=expected_value or len(backups)!=1 or backups[0].read_bytes()!=b'{}\n': raise ValueError("manual recovery config diff/backup oracle failed")
             expected_after=[item for item in before if item["path"] not in (".claude/.mcp.json",)]
-            expected_after.extend([{"path":".claude/.mcp.json","type":"file","sha256":hashlib.sha256((json.dumps(expected_value,indent=2)+"\n").encode()).hexdigest()},{"path":str(backups[0].relative_to(home)),"type":"file","sha256":hashlib.sha256(b'{}\n').hexdigest()}])
+            expected_after.extend([{"path":".claude/.mcp.json","type":"file","sha256":sha256(config)},{"path":str(backups[0].relative_to(home)),"type":"file","sha256":hashlib.sha256(b'{}\n').hexdigest()}])
             if sorted(after_second,key=lambda item:item["path"])!=sorted(expected_after,key=lambda item:item["path"]): raise ValueError("second install changed HOME beyond exact config replacement and one backup")
             report["installer"]={"path":str(installer),"sha256":sha256(installer),"first_exit":first.returncode,"second_exit":second.returncode,"curl_invocations":0,"first_path":old_path,"second_path":supported_path,"curated_tools":list(REQUIRED_COMMANDS)}
             report["config"]={"before":before,"after_first":after_first,"after_second":after_second,"expected_entry":expected_entry,"backup_sha256":sha256(backups[0])}

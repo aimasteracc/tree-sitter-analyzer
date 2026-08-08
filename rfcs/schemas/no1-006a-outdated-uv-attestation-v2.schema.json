@@ -752,6 +752,7 @@
                     "old.archive",
                     "supported.archive",
                     "installer.source",
+                    "installed-mcp-config.json",
                     "first.stdout",
                     "first.stderr",
                     "second.stdout",

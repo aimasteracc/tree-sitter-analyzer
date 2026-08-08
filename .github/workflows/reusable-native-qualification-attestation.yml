@@ -303,9 +303,16 @@ jobs:
             required=("awk","cat","grep","mktemp","python3","realpath","rm","sleep","uname")
             first=installer["first_path"].split(":"); second=installer["second_path"].split(":")
             assert len(first)==len(second)==2 and first[0]==str(pathlib.PurePosixPath(old["path"]).parent) and second[0]==str(pathlib.PurePosixPath(supported["path"]).parent) and first[1]==second[1] and pathlib.PurePosixPath(first[1]).name=="tools" and tuple(installer["curated_tools"])==required
-          def expected_config_hash(expected_entry):
-            value={"mcpServers":{"tree-sitter-analyzer":expected_entry}}
-            return hashlib.sha256((json.dumps(value,indent=2)+"\n").encode()).hexdigest()
+          def verify_config_sidecar(path,config,after):
+            data=(path/"installed-mcp-config.json").read_bytes()
+            def unique(pairs):
+              value={}
+              for key,item in pairs: assert key not in value; value[key]=item
+              return value
+            value=json.loads(data.decode("utf-8"),object_pairs_hook=unique)
+            exact(value,("mcpServers",)); servers=value["mcpServers"]; exact(servers,("tree-sitter-analyzer",))
+            entry=servers["tree-sitter-analyzer"]; exact(entry,("command","args","env")); exact(entry["env"],("TREE_SITTER_PROJECT_ROOT",))
+            assert entry==config["expected_entry"] and after[".claude/.mcp.json"]=={"path":".claude/.mcp.json","type":"file","sha256":hashlib.sha256(data).hexdigest()}
           def verify_causal_binding(axis,path,causal,bound,supported_exec,wheel,wheel_path,parent_runner,causal_digest):
             verify_runner(causal["runner"],axis); assert causal["runner"]==parent_runner
             install=causal["install"]; tool=install["tool"]; runtime=causal["runtime"]; meta=causal["metadata"]; mcp=causal["mcp"]; record=meta["installed_record"]
@@ -394,7 +401,8 @@ jobs:
             assert "TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1" in first and re.search(r"uv 0\.10\.9(?: [^\n]+)? does not satisfy required uv >= 0\.11\.0",first) and "installation complete" not in first and "uv 0.11.0" in second
             config=report["config"]; assert config["before"]==config["after_first"] and config["backup_sha256"]==hashlib.sha256(b"{}\n").hexdigest()
             before={item["path"]:item for item in config["before"]}; after={item["path"]:item for item in config["after_second"]}; added=set(after)-set(before)
-            assert set(before)-set(after)==set() and set(added)=={next(name for name in added if name.startswith(".claude/.mcp.json.bak."))} and after[next(iter(added))]["sha256"]==config["backup_sha256"] and after[".claude/.mcp.json"]=={"path":".claude/.mcp.json","type":"file","sha256":expected_config_hash(config["expected_entry"])} and before[".claude/.mcp.json"]!=after[".claude/.mcp.json"] and {k:v for k,v in before.items() if k!=".claude/.mcp.json"}=={k:v for k,v in after.items() if k not in added|{".claude/.mcp.json"}}
+            assert set(before)-set(after)==set() and set(added)=={next(name for name in added if name.startswith(".claude/.mcp.json.bak."))} and after[next(iter(added))]["sha256"]==config["backup_sha256"] and before[".claude/.mcp.json"]!=after[".claude/.mcp.json"] and {k:v for k,v in before.items() if k!=".claude/.mcp.json"}=={k:v for k,v in after.items() if k not in added|{".claude/.mcp.json"}}
+            verify_config_sidecar(path,config,after)
             causal_path=path/"mcp/report.json"; causal=json.loads(causal_path.read_text()); bound=report["mcp_causal_report"]
             exact(causal,("schema_version","kind","qualification_id","evidence_scope","axis","qualification_performed","passed","source","workflow","runner","wheel","stages","failure","build_manifest_sha256","install","metadata","runtime","mcp","dependency_manifest_sha256","installed_files_zip_sha256")); identity(causal,"outdated-axis")
             assert causal["axis"]==axis and causal["stages"]==[{"id":stage,"passed":True} for stage in ("verify_wheel","install","metadata_provenance","mcp_protocol")] and causal["failure"] is None
