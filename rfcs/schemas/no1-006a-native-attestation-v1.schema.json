@@ -661,6 +661,10 @@
         "dependency_manifest_sha256": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
+        },
+        "installed_files_zip_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       },
       "allOf": [
@@ -682,7 +686,8 @@
               "metadata",
               "runtime",
               "mcp",
-              "dependency_manifest_sha256"
+              "dependency_manifest_sha256",
+              "installed_files_zip_sha256"
             ],
             "properties": {
               "stages": {

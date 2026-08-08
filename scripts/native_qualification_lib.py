@@ -12,6 +12,7 @@ import signal
 import subprocess
 import threading
 import time
+import uuid
 import zipfile
 from email.parser import BytesParser
 from pathlib import Path
@@ -118,6 +119,32 @@ def wheel_metadata(path: Path) -> dict[str, Any]:
     }
 
 
+def installed_files_sidecar(metadata: dict[str, Any], output: Path) -> str:
+    """Snapshot every installed RECORD row under deterministic safe ZIP names."""
+    record, location = metadata["installed_record"], Path(metadata["location"])
+    rows = record["files"]
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "installed-record.csv", Path(record["record_path"]).read_bytes()
+        )
+        for index, item in enumerate(rows):
+            source = (location / item["path"]).resolve(strict=True)
+            if source.is_symlink() or not source.is_file():
+                raise ValueError("installed sidecar source is not a regular file")
+            archive.writestr(f"files/{index:06d}", source.read_bytes())
+    with zipfile.ZipFile(output) as archive:
+        expected = ["installed-record.csv"] + [
+            f"files/{index:06d}" for index in range(len(rows))
+        ]
+        unsafe = any(
+            item.is_dir() or (item.external_attr >> 16) & 0o170000 == 0o120000
+            for item in archive.infolist()
+        )
+        if archive.namelist() != expected or archive.testzip() is not None or unsafe:
+            raise ValueError("installed sidecar lacks exact safe regular members")
+    return sha256(output)
+
+
 def inside(child: Path, parent: Path) -> bool:
     try:
         child.resolve(strict=True).relative_to(parent.resolve(strict=True))
@@ -184,15 +211,37 @@ def terminate_tree(
     psutil.wait_procs(alive, timeout=min(grace, 1.0))
 
 
+def _token_processes(token: str, deadline: float) -> dict[int, psutil.Process]:
+    """Find cooperative descendants by their per-run inherited ownership token."""
+    found: dict[int, psutil.Process] = {}
+    for process in psutil.process_iter():
+        if time.monotonic() >= deadline:
+            break
+        try:
+            if process.environ().get("TSA_QUALIFICATION_PROCESS_TOKEN") == token:
+                found[process.pid] = process
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+            continue
+    return found
+
+
 def run(
     argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int
 ) -> tuple[int, bytes, bytes, float]:
+    """Run and boundedly clean cooperative descendants on every exit path.
+
+    Each run owns a unique inherited environment token, closing the watcher race for
+    an immediate-exit parent whose child creates a new session. A hostile child that
+    deliberately clears the token is outside this cooperative qualification invariant.
+    """
     started = time.monotonic()
+    token = uuid.uuid4().hex
+    child_env = {**env, "TSA_QUALIFICATION_PROCESS_TOKEN": token}
     flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     proc = subprocess.Popen(
         argv,
         cwd=cwd,
-        env=env,
+        env=child_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         creationflags=flags,
@@ -220,6 +269,8 @@ def run(
     finally:
         stop.set()
         watcher.join(timeout=0.5)
+        # The token scan catches descendants detached before the watcher sampled them.
+        tracked.update(_token_processes(token, time.monotonic() + 1.0))
         # Cleanup is an invariant on successful, failed, and timed-out commands.
         terminate_tree(proc, tracked, 0.5)
     return (124 if timed_out else returncode), out, err, time.monotonic() - started
@@ -296,7 +347,9 @@ def validate_installed_provenance(
         (runtime["prefix"], metadata["installed_record"]["record_path"])
     )
     runtime_inside = (
-        Path(runtime["executable"]).absolute().is_relative_to(envroot.absolute())
+        Path(runtime["executable"])
+        .absolute()
+        .is_relative_to(envroot.resolve(strict=True))
     )
     if (
         not all(inside(Path(item), envroot) for item in strict_paths)

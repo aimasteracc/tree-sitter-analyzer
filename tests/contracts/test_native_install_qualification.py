@@ -476,6 +476,15 @@ def test_wheel_record_rejects_non_exact_or_injected_archive(
         "direct_hash",
         "aggregate_extra",
         "axis_digest",
+        "installed_member_hash",
+        "installed_member_size",
+        "installed_record_digest",
+        "installed_inventory",
+        "side_artifact",
+        "path_containment",
+        "zip_extra",
+        "zip_symlink",
+        "filename_metadata",
     ],
 )
 def test_trusted_inline_verifier_rejects_candidate_forgery(

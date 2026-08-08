@@ -124,7 +124,10 @@ def installed_provenance() -> dict[str, object]:
         },
         "runtime": {
             "python": sys.version,
-            "executable": str(pathlib.Path(sys.executable).absolute()),
+            "executable": str(
+                pathlib.Path(sys.executable).absolute().parent.resolve()
+                / pathlib.Path(sys.executable).name
+            ),
             "prefix": str(pathlib.Path(sys.prefix).resolve()),
         },
     }
@@ -186,7 +189,10 @@ async def main() -> None:
     result = {
         **provenance,
         "mcp": {
-            "executable": str(pathlib.Path(executable).absolute()),
+            "executable": str(
+                pathlib.Path(executable).absolute().parent.resolve()
+                / pathlib.Path(executable).name
+            ),
             "protocol_version": protocol,
             "server_name": server_info.name,
             "server_version": server_info.version,

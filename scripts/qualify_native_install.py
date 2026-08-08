@@ -19,6 +19,7 @@ from native_qualification_lib import (
     atomic_write,
     direct_url_hash,
     identity,
+    installed_files_sidecar,
     run,
     sha256,
     stage_error,
@@ -237,6 +238,10 @@ def axis(args: argparse.Namespace) -> int:
                 metadata, runtime, envroot, observed_wheel
             )
             report["runtime"] = runtime
+            snapshot = side / "installed-files.zip"
+            report["installed_files_zip_sha256"] = installed_files_sidecar(
+                metadata, snapshot
+            )
             freeze_rc, freeze_out, freeze_err, _ = run(
                 [str(python), "-m", "pip", "freeze", "--all"],
                 cwd=project,
@@ -272,7 +277,7 @@ def axis(args: argparse.Namespace) -> int:
             if (
                 not Path(mcp["executable"])
                 .absolute()
-                .is_relative_to(envroot.absolute())
+                .is_relative_to(envroot.resolve(strict=True))
             ):
                 raise ValueError(
                     "distribution/module/runtime/console provenance escaped fresh venv"

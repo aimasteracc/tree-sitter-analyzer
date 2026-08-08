@@ -123,7 +123,9 @@ def report(
     axis: str, manifest_path: Path, manifest_value: dict[str, Any], event: str
 ) -> dict[str, Any]:
     system = {"linux": "Linux", "macos": "Darwin", "windows": "Windows"}[axis]
-    project = f"/venv/{axis}/fixture"
+    root = f"/tmp/tsa-native-qualification-test-{axis}"
+    project = f"{root}/fixture"
+    prefix = f"{root}/venv"
     return {
         "schema_version": "no1-006a-native-attestation-v1",
         "kind": "axis",
@@ -166,24 +168,24 @@ def report(
         "metadata": {
             "name": "tree-sitter-analyzer",
             "version": "1.0",
-            "location": "/venv/site-packages",
-            "module_file": "/venv/site-packages/tree_sitter_analyzer/__init__.py",
-            "module_origin": "/venv/site-packages/tree_sitter_analyzer/__init__.py",
+            "location": f"{prefix}/site-packages",
+            "module_file": f"{prefix}/site-packages/tree_sitter_analyzer/__init__.py",
+            "module_origin": f"{prefix}/site-packages/tree_sitter_analyzer/__init__.py",
             "direct_url": {
                 "url": "file:///wheel.whl",
                 "archive_info": {"hash": "sha256=" + manifest_value["wheel"]["sha256"]},
             },
-            "direct_url_path": "/venv/site-packages/x.dist-info/direct_url.json",
+            "direct_url_path": f"{prefix}/site-packages/tree_sitter_analyzer-1.0.dist-info/direct_url.json",
             "module_recorded": True,
             "installed_record": {
-                "record_path": "/venv/site-packages/x.dist-info/RECORD",
-                "record_sha256": "2" * 64,
+                "record_path": f"{prefix}/site-packages/tree_sitter_analyzer-1.0.dist-info/RECORD",
+                "record_sha256": hashlib.sha256(b"").hexdigest(),
                 "entry_count": 1,
                 "files": [
                     {
                         "path": "tree_sitter_analyzer/__init__.py",
-                        "sha256": "3" * 64,
-                        "size": 1,
+                        "sha256": hashlib.sha256(b"").hexdigest(),
+                        "size": 0,
                     }
                 ],
             },
@@ -192,11 +194,11 @@ def report(
         },
         "runtime": {
             "python": "3.10.0",
-            "executable": "/venv/bin/python",
-            "prefix": "/venv",
+            "executable": f"{prefix}/bin/python",
+            "prefix": prefix,
         },
         "mcp": {
-            "executable": "/venv/bin/tree-sitter-analyzer-mcp",
+            "executable": f"{prefix}/bin/tree-sitter-analyzer-mcp",
             "protocol_version": "2025",
             "server_name": "tree-sitter-analyzer-mcp",
             "server_version": "1",
@@ -217,6 +219,7 @@ def report(
             "stderr_sha256": "0" * 64,
         },
         "dependency_manifest_sha256": "1" * 64,
+        "installed_files_zip_sha256": "4" * 64,
     }
 
 
@@ -277,6 +280,52 @@ def mutate_wheel_record(path: Path, mutation: str) -> None:
             archive.writestr(name, data)
 
 
+def write_trusted_axis_artifacts(
+    directory: Path, value: dict[str, Any], wheel: Path
+) -> None:
+    """Create byte-real evidence for the no-candidate-exec verifier fixture."""
+    with zipfile.ZipFile(wheel) as archive:
+        record_name = next(n for n in archive.namelist() if n.endswith("/RECORD"))
+        record_bytes = archive.read(record_name)
+        rows = list(csv.reader(record_bytes.decode().splitlines()))
+        contents = [archive.read(row[0]) for row in rows]
+    files = []
+    for row, data in zip(rows, contents, strict=True):
+        files.append(
+            {
+                "path": row[0],
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "size": len(data),
+            }
+        )
+    installed = value["metadata"]["installed_record"]
+    installed.update(
+        record_sha256=hashlib.sha256(record_bytes).hexdigest(),
+        entry_count=len(files),
+        files=files,
+    )
+    side_bytes = {
+        "install.stdout": b"installed\n",
+        "install.stderr": b"",
+        "dependency-manifest.txt": b"tree-sitter-analyzer==1.0\n",
+        "mcp-transcript.ndjson": b'{"sequence":1}\n',
+        "mcp.stderr": b"",
+    }
+    for name, data in side_bytes.items():
+        (directory / name).write_bytes(data)
+    value["install"]["stdout_sha256"] = sha(directory / "install.stdout")
+    value["install"]["stderr_sha256"] = sha(directory / "install.stderr")
+    value["dependency_manifest_sha256"] = sha(directory / "dependency-manifest.txt")
+    value["mcp"]["transcript_sha256"] = sha(directory / "mcp-transcript.ndjson")
+    value["mcp"]["stderr_sha256"] = sha(directory / "mcp.stderr")
+    with zipfile.ZipFile(directory / "installed-files.zip", "w") as snapshot:
+        snapshot.writestr("installed-record.csv", record_bytes)
+        for index, data in enumerate(contents):
+            snapshot.writestr(f"files/{index:06d}", data)
+    value["installed_files_zip_sha256"] = sha(directory / "installed-files.zip")
+    (directory / "job-result.json").write_text('{"status":"success"}')
+
+
 def trusted_verifier_result(tmp_path: Path, mutation: str) -> int:
     import textwrap
 
@@ -295,6 +344,19 @@ def trusted_verifier_result(tmp_path: Path, mutation: str) -> int:
         axis: report(axis, manifest_path, manifest_value, "push")
         for axis in ("linux", "macos", "windows")
     }
+    for axis, value in report_values.items():
+        write_trusted_axis_artifacts(trusted / axis, value, wheel)
+    wheel_name = wheel.name
+    if mutation == "filename_metadata":
+        wheel_name = "other_project-1.0-py3-none-any.whl"
+        (trusted / "build" / wheel.name).rename(trusted / "build" / wheel_name)
+        copied_manifest = json.loads(
+            (trusted / "build" / "wheel-manifest.json").read_text()
+        )
+        copied_manifest["wheel"]["filename"] = wheel_name
+        (trusted / "build" / "wheel-manifest.json").write_text(
+            json.dumps(copied_manifest)
+        )
     if mutation == "stage_false":
         report_values["linux"]["stages"][0]["passed"] = False
     elif mutation == "extra_field":
@@ -305,6 +367,36 @@ def trusted_verifier_result(tmp_path: Path, mutation: str) -> int:
         report_values["linux"]["metadata"]["all_paths_in_fresh_venv"] = False
     elif mutation == "direct_hash":
         report_values["linux"]["metadata"]["direct_url_sha256"] = "a" * 64
+    elif mutation == "installed_member_hash":
+        report_values["linux"]["metadata"]["installed_record"]["files"][0]["sha256"] = (
+            "a" * 64
+        )
+    elif mutation == "installed_member_size":
+        report_values["linux"]["metadata"]["installed_record"]["files"][0]["size"] = 1
+    elif mutation == "installed_record_digest":
+        report_values["linux"]["metadata"]["installed_record"]["record_sha256"] = (
+            "a" * 64
+        )
+    elif mutation == "installed_inventory":
+        report_values["linux"]["metadata"]["installed_record"]["files"].pop()
+        report_values["linux"]["metadata"]["installed_record"]["entry_count"] -= 1
+    elif mutation == "side_artifact":
+        (trusted / "linux" / "install.stdout").write_bytes(b"forged")
+    elif mutation == "path_containment":
+        report_values["linux"]["metadata"]["module_file"] = (
+            "/checkout/tree_sitter_analyzer/__init__.py"
+        )
+        report_values["linux"]["metadata"]["module_origin"] = (
+            "/checkout/tree_sitter_analyzer/__init__.py"
+        )
+    elif mutation in {"zip_extra", "zip_symlink"}:
+        snapshot = trusted / "linux" / "installed-files.zip"
+        with zipfile.ZipFile(snapshot, "a") as archive:
+            info = zipfile.ZipInfo("../escape" if mutation == "zip_extra" else "link")
+            if mutation == "zip_symlink":
+                info.external_attr = 0o120777 << 16
+            archive.writestr(info, b"forged")
+        report_values["linux"]["installed_files_zip_sha256"] = sha(snapshot)
     for axis, value in report_values.items():
         (trusted / axis / "report.json").write_text(json.dumps(value))
     aggregate_value = {
@@ -342,7 +434,7 @@ def trusted_verifier_result(tmp_path: Path, mutation: str) -> int:
     code = workflow_text.split("          python - <<'PY'\n", 1)[1].split(
         "\n          PY", 1
     )[0]
-    environment = github_env("push") | {"WHEEL_NAME": wheel.name}
+    environment = github_env("push") | {"WHEEL_NAME": wheel_name}
     result = subprocess.run(
         [sys.executable, "-c", textwrap.dedent(code)],
         cwd=tmp_path,
@@ -387,11 +479,11 @@ def assert_success_cleanup(tmp_path: Path) -> None:
     from native_qualification_lib import run
 
     pid_file = tmp_path / "normal-child.pid"
-    child = f"import os,pathlib,time;pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid()));time.sleep(60)"
+    child = "import time;time.sleep(60)"
     parent = (
-        "import os,subprocess,sys,time;flags=getattr(subprocess,'CREATE_NEW_PROCESS_GROUP',0);"
-        + f"subprocess.Popen([sys.executable,'-c',{child!r}],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=os.name!='nt',creationflags=flags if os.name=='nt' else 0);"
-        + "time.sleep(.2)"
+        "import os,pathlib,subprocess,sys;flags=getattr(subprocess,'CREATE_NEW_PROCESS_GROUP',0);"
+        + f"p=subprocess.Popen([sys.executable,'-c',{child!r}],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=os.name!='nt',creationflags=flags if os.name=='nt' else 0);"
+        + f"pathlib.Path({str(pid_file)!r}).write_text(str(p.pid))"
     )
     rc, _, _, duration = run(
         [sys.executable, "-c", parent], cwd=tmp_path, env=dict(os.environ), timeout=5

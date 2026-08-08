@@ -249,7 +249,7 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import base64, csv, email.parser, hashlib, json, os, pathlib, re, zipfile
+          import base64, configparser, csv, email.parser, hashlib, io, json, os, pathlib, re, zipfile
           root = pathlib.Path("trusted-input")
           wheel_path = root / "build" / os.environ["WHEEL_NAME"]
           manifest_path = root / "build" / "wheel-manifest.json"
@@ -257,7 +257,8 @@ jobs:
           axes = ("linux", "macos", "windows")
           stages = ["verify_wheel", "install", "metadata_provenance", "mcp_protocol"]
           tools = ["search", "nav", "structure", "health", "edit", "project", "index", "viz", "set_project_path"]
-          sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+          sha256_bytes = lambda value: hashlib.sha256(value).hexdigest()
+          sha = lambda path: sha256_bytes(path.read_bytes())
           hexdigest = lambda value: isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
           def exact(value, keys):
               assert isinstance(value, dict) and set(value) == set(keys)
@@ -279,7 +280,9 @@ jobs:
           assert wheel["filename"] == wheel_path.name and wheel["name"] == "tree-sitter-analyzer"
           assert hexdigest(wheel["sha256"]) and wheel["sha256"] == sha(wheel_path)
           assert type(wheel["size"]) is int and wheel["size"] == wheel_path.stat().st_size and wheel["size"] > 0
-          assert isinstance(wheel["version"], str) and wheel["version"] and re.fullmatch(r"tree_sitter_analyzer-[^-]+-[^-]+-[^-]+-[^-]+\.whl", wheel_path.name)
+          assert isinstance(wheel["version"], str) and wheel["version"]
+          filename_parts = wheel_path.name[:-4].split("-")
+          assert len(filename_parts) in (5, 6) and filename_parts[0].lower().replace("_", "-") == wheel["name"] and filename_parts[1] == wheel["version"]
           with zipfile.ZipFile(wheel_path) as archive:
               members = archive.namelist()
               assert len(members) == len(set(members)) and archive.testzip() is None
@@ -302,10 +305,16 @@ jobs:
                       algorithm, encoded = digest.split("=", 1)
                       actual = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
                       assert algorithm == "sha256" and encoded == actual and int(size) == len(data)
+              wheel_rows = {row[0]: row[1:] for row in rows}
+              wheel_record = record_names[0]
+              wheel_bytes = {name: archive.read(name) for name in members}
+              entry_points = next((wheel_bytes[name] for name in members if name.endswith(".dist-info/entry_points.txt")), b"")
+              parser = configparser.ConfigParser(); parser.read_string(entry_points.decode() or "[console_scripts]\n")
+              console_scripts = set(parser["console_scripts"]) if parser.has_section("console_scripts") else set()
           manifest_sha = sha(manifest_path)
           digest_fields = ("stdout_sha256", "stderr_sha256")
           for axis, report in reports.items():
-              exact(report, ("schema_version", "kind", "qualification_id", "evidence_scope", "axis", "qualification_performed", "passed", "source", "workflow", "runner", "wheel", "stages", "failure", "build_manifest_sha256", "install", "metadata", "runtime", "mcp", "dependency_manifest_sha256"))
+              exact(report, ("schema_version", "kind", "qualification_id", "evidence_scope", "axis", "qualification_performed", "passed", "source", "workflow", "runner", "wheel", "stages", "failure", "build_manifest_sha256", "install", "metadata", "runtime", "mcp", "dependency_manifest_sha256", "installed_files_zip_sha256"))
               assert (report["schema_version"], report["kind"], report["qualification_id"], report["evidence_scope"]) == ("no1-006a-native-attestation-v1", "axis", "NO1-006A", "native_package_mcp_first_answer")
               assert report["axis"] == axis and report["qualification_performed"] is report["passed"] is True and report["failure"] is None
               identity(report, "native-axis")
@@ -328,16 +337,42 @@ jobs:
               archive_info = direct["archive_info"]; assert isinstance(archive_info, dict) and archive_info and set(archive_info) <= {"hash", "hashes"}
               direct_hashes = ([archive_info["hash"].removeprefix("sha256=")] if "hash" in archive_info and archive_info["hash"].startswith("sha256=") else []) + ([archive_info["hashes"]["sha256"]] if set(archive_info.get("hashes", {})) == {"sha256"} else [])
               assert direct_hashes and set(direct_hashes) == {wheel["sha256"]} and meta["direct_url_sha256"] == wheel["sha256"]
+              artifact_dir = root / axis
+              artifact_names = {"report.json", "job-result" + ".json", "install.stdout", "install.stderr", "dependency-manifest.txt", "mcp-transcript.ndjson", "mcp.stderr", "installed-files.zip"}
+              assert {path.name for path in artifact_dir.iterdir()} == artifact_names and all(path.is_file() and not path.is_symlink() for path in artifact_dir.iterdir())
+              side_hashes = {"install.stdout": install["stdout_sha256"], "install.stderr": install["stderr_sha256"], "dependency-manifest.txt": report["dependency_manifest_sha256"], "mcp-transcript.ndjson": report["mcp"]["transcript_sha256"], "mcp.stderr": report["mcp"]["stderr_sha256"], "installed-files.zip": report["installed_files_zip_sha256"]}
+              assert all(hexdigest(value) and sha(artifact_dir / name) == value for name, value in side_hashes.items())
               record = meta["installed_record"]
               exact(record, ("record_path", "record_sha256", "entry_count", "files")); assert hexdigest(record["record_sha256"])
-              assert type(record["entry_count"]) is int and record["entry_count"] == len(record["files"]) and record["entry_count"] > 0
-              record_names = []
-              for item in record["files"]:
-                  exact(item, ("path", "sha256", "size")); record_names.append(item["path"])
-                  leaf = pathlib.PurePath(item["path"]).name.lower()
-                  assert isinstance(item["path"], str) and item["path"] and hexdigest(item["sha256"]) and type(item["size"]) is int and item["size"] >= 0
-                  assert not leaf.endswith((".pth", ".egg-link")) and leaf not in {"sitecustomize.py", "usercustomize.py"}
-              assert len(record_names) == len(set(record_names)) and any(name.replace("\\", "/").endswith("tree_sitter_analyzer/__init__.py") for name in record_names)
+              snapshot_path = artifact_dir / "installed-files.zip"
+              with zipfile.ZipFile(snapshot_path) as snapshot:
+                  infos, snapshot_names = snapshot.infolist(), snapshot.namelist()
+                  assert len(snapshot_names) == len(set(snapshot_names)) and snapshot.testzip() is None
+                  record_bytes = snapshot.read("installed-record.csv")
+                  installed_rows = list(csv.reader(record_bytes.decode().splitlines()))
+                  expected_snapshot = ["installed-record.csv", *(f"files/{index:06d}" for index in range(len(installed_rows)))]
+                  assert snapshot_names == expected_snapshot and all(not info.is_dir() and (info.external_attr >> 16) & 0o170000 != 0o120000 for info in infos)
+                  assert sha256_bytes(record_bytes) == record["record_sha256"] and all(len(row) == 3 for row in installed_rows)
+                  installed_names = [row[0] for row in installed_rows]
+                  assert len(installed_names) == len(set(installed_names)) and record["entry_count"] == len(installed_rows) == len(record["files"])
+                  for index, ((name, declared, declared_size), item) in enumerate(zip(installed_rows, record["files"])):
+                      exact(item, ("path", "sha256", "size")); data = snapshot.read(f"files/{index:06d}")
+                      assert item == {"path": name, "sha256": sha256_bytes(data), "size": len(data)}
+                      leaf, normalized = pathlib.PurePosixPath(name.replace("\\", "/")).name.lower(), name.replace("\\", "/")
+                      assert not leaf.endswith((".pth", ".egg-link")) and leaf not in {"sitecustomize.py", "usercustomize.py"}
+                      generated_unhashed = name == wheel_record or leaf.endswith(".pyc")
+                      if generated_unhashed: assert declared == declared_size == ""
+                      else:
+                          algorithm, encoded = declared.split("=", 1)
+                          actual = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
+                          assert algorithm == "sha256" and encoded == actual and int(declared_size) == len(data)
+                      if name in wheel_rows and name != wheel_record:
+                          assert data == wheel_bytes[name] and [declared, declared_size] == wheel_rows[name]
+                      elif name != wheel_record:
+                          generated_dist = normalized in {str(pathlib.PurePosixPath(wheel_record).parent / generated) for generated in ("INSTALLER", "direct_url.json", "REQUESTED")}
+                          generated_script = normalized.startswith("../../../") and leaf.removesuffix(".exe") in console_scripts
+                          assert generated_dist or generated_script or (leaf.endswith(".pyc") and normalized.startswith("tree_sitter_analyzer/"))
+                  assert set(wheel_rows).issubset(installed_names)
               runtime = report["runtime"]; exact(runtime, ("python", "executable", "prefix")); assert all(isinstance(value, str) and value for value in runtime.values())
               mcp = report["mcp"]
               exact(mcp, ("executable", "protocol_version", "server_name", "server_version", "tools", "first_call", "duration_seconds", "transcript_sha256", "stderr_sha256"))
@@ -346,6 +381,15 @@ jobs:
               first = mcp["first_call"]
               exact(first, ("name", "arguments", "is_error", "default_format", "verdict", "project_root", "indexed", "total_files", "summary"))
               assert first == {"name": "index", "arguments": {"action": "status"}, "is_error": False, "default_format": "toon", "verdict": "WARN", "project_root": first["project_root"], "indexed": False, "total_files": 0, "summary": "codegraph_status: index missing or empty"} and isinstance(first["project_root"], str) and first["project_root"]
+              pure = lambda value: (pathlib.PureWindowsPath(value) if "\\" in value else pathlib.PurePosixPath(value))
+              prefix, location = pure(runtime["prefix"]), pure(meta["location"])
+              def beneath(child, parent):
+                  try: pure(child).relative_to(parent); return True
+                  except ValueError: return False
+              assert prefix.name == "venv" and prefix.parent.name.startswith("tsa-native-qualification-")
+              assert beneath(str(location), prefix) and all(beneath(value, prefix) for value in (runtime["executable"], meta["module_file"], meta["module_origin"], meta["direct_url_path"], record["record_path"], mcp["executable"]))
+              assert beneath(meta["direct_url_path"], location) and beneath(record["record_path"], location)
+              assert pure(first["project_root"]) == prefix.parent / "fixture" and not beneath(first["project_root"], prefix)
           exact(aggregate, ("schema_version", "kind", "qualification_id", "evidence_scope", "qualification_performed", "native_axes_qualified", "qualified", "evidence_trust", "source_commit", "wheel_sha256", "build_manifest_sha256", "wheel", "axes", "failures", "workflow"))
           assert (aggregate["schema_version"], aggregate["kind"], aggregate["qualification_id"], aggregate["evidence_scope"]) == ("no1-006a-native-attestation-v1", "aggregate", "NO1-006A", "native_package_mcp_first_answer")
           assert aggregate["qualification_performed"] is aggregate["native_axes_qualified"] is True and aggregate["qualified"] is False
