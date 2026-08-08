@@ -6,8 +6,10 @@ import hashlib
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +18,17 @@ import pytest
 from scripts import qualify_fresh_install as qualification
 
 REPO = Path(__file__).parents[2]
+
+
+def _wait_for_process_exit(pid: int) -> bool:
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.05)
+    return False
 
 
 def _run(*arguments: str) -> tuple[subprocess.CompletedProcess[str], dict[str, object]]:
@@ -286,13 +299,21 @@ def test_installer_times_out_hanging_existing_uv(tmp_path: Path) -> None:
     root = tmp_path / "existing-uv-timeout"
     root.mkdir()
     fixture = qualification._prepare_fixture(root, "uv 0.11.0", "valid")
+    child_pid_file = root / "uv-child.pid"
+    fixture["UV_CHILD_PID_FILE"] = str(child_pid_file)
     qualification._write_executable(
-        root / "mock-bin" / "uv", "#!/bin/sh\nwhile :; do :; done\n"
+        root / "mock-bin" / "uv",
+        '#!/bin/sh\nsleep 60 &\necho "$!" > "$UV_CHILD_PID_FILE"\nwait\n',
     )
+    execution_env = {
+        key: value
+        for key, value in os.environ.items()
+        if key != "TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP"
+    } | fixture
     completed = subprocess.run(
         ["/bin/bash", str(REPO / "install.sh")],
         cwd=root,
-        env=os.environ | fixture,
+        env=execution_env,
         capture_output=True,
         text=True,
         check=False,
@@ -303,6 +324,8 @@ def test_installer_times_out_hanging_existing_uv(tmp_path: Path) -> None:
         True,
     )
     assert "Replace or repair uv" in completed.stdout
+    child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+    assert _wait_for_process_exit(child_pid) is True
 
 
 @pytest.mark.skipif(
@@ -314,6 +337,8 @@ def test_installer_times_out_hanging_post_bootstrap_uv(tmp_path: Path) -> None:
     root = tmp_path / "bootstrap-uv-timeout"
     root.mkdir()
     fixture = qualification._prepare_fixture(root, None, "valid")
+    child_pid_file = root / "uv-child.pid"
+    fixture["UV_CHILD_PID_FILE"] = str(child_pid_file)
     qualification._write_executable(
         root / "mock-bin" / "curl",
         r"""#!/bin/sh
@@ -326,16 +351,23 @@ cat > "$out" <<'INSTALLER'
 mkdir -p "$HOME/.local/bin"
 cat > "$HOME/.local/bin/uv" <<'UV'
 #!/bin/sh
-while :; do :; done
+sleep 60 &
+echo "$!" > "$UV_CHILD_PID_FILE"
+wait
 UV
 chmod 755 "$HOME/.local/bin/uv"
 INSTALLER
 """,
     )
+    execution_env = {
+        key: value
+        for key, value in os.environ.items()
+        if key != "TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP"
+    } | fixture
     completed = subprocess.run(
         ["/bin/bash", str(REPO / "install.sh")],
         cwd=root,
-        env=os.environ | fixture,
+        env=execution_env,
         capture_output=True,
         text=True,
         check=False,
@@ -347,3 +379,44 @@ INSTALLER
         "after bootstrap" in completed.stdout,
     ) == (1, True, True)
     assert "Install uv manually" in completed.stdout
+    child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+    assert _wait_for_process_exit(child_pid) is True
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: install.sh version contract is for macOS/Linux shell installs",
+)
+def test_installer_accepts_huge_supported_uv_without_bootstrap(tmp_path: Path) -> None:
+    # PR #1233: semver comparison must not overflow native shell integers.
+    root = tmp_path / "huge-uv-version"
+    root.mkdir()
+    huge_version = f"uv {'9' * 200}.0.0"
+    fixture = qualification._prepare_fixture(root, huge_version, "valid")
+    fixture["TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP"] = "1"
+    completed = subprocess.run(
+        ["/bin/bash", str(REPO / "install.sh")],
+        cwd=root,
+        env=os.environ | fixture,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert completed.returncode == 0
+    assert f"✅ {huge_version}:" in completed.stdout
+    assert (root / "curl.log").exists() is False
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: install.sh fixture PATH is for macOS/Linux shell installs",
+)
+def test_missing_uv_fixture_path_is_hermetic(tmp_path: Path) -> None:
+    # PR #1233: a host /usr/bin/uv must not rewrite the missing-uv scenario.
+    root = tmp_path / "hermetic-path"
+    root.mkdir()
+    fixture = qualification._prepare_fixture(root, None, "valid")
+    path_entries = fixture["PATH"].split(os.pathsep)
+    assert path_entries == [str(root / "mock-bin"), str(root / "tool-bin")]
+    assert shutil.which("uv", path=fixture["PATH"]) is None

@@ -31,11 +31,19 @@ uv_version_is_supported() {
   ') || return 1
   UV_MAJOR=$(printf '%s\n' "$UV_VERSION" | awk -F. '{print $1}')
   UV_MINOR=$(printf '%s\n' "$UV_VERSION" | awk -F. '{print $2}')
-  UV_PATCH=$(printf '%s\n' "$UV_VERSION" | awk -F. '{print $3}')
-  [ "$UV_MAJOR" -gt 0 ] || {
-    [ "$UV_MAJOR" -eq 0 ] && [ "$UV_MINOR" -gt 11 ]
-  } || {
-    [ "$UV_MAJOR" -eq 0 ] && [ "$UV_MINOR" -eq 11 ] && [ "$UV_PATCH" -ge 0 ]
+
+  # Compare digit strings rather than shell integers.  Version output is an
+  # external boundary and components may exceed the native integer range.
+  while [ "${UV_MAJOR#0}" != "$UV_MAJOR" ]; do UV_MAJOR=${UV_MAJOR#0}; done
+  while [ "${UV_MINOR#0}" != "$UV_MINOR" ]; do UV_MINOR=${UV_MINOR#0}; done
+  [ -n "$UV_MAJOR" ] || UV_MAJOR=0
+  [ -n "$UV_MINOR" ] || UV_MINOR=0
+  if [ "${#UV_MAJOR}" -gt 1 ] || { [ "${#UV_MAJOR}" -eq 1 ] && [ "$UV_MAJOR" \> 0 ]; }; then
+    return 0
+  fi
+  [ "$UV_MAJOR" = 0 ] || return 1
+  [ "${#UV_MINOR}" -gt 2 ] || {
+    [ "${#UV_MINOR}" -eq 2 ] && { [ "$UV_MINOR" = 11 ] || [ "$UV_MINOR" \> 11 ]; }
   }
 }
 
@@ -46,15 +54,20 @@ probe_uv_version() {
   UV_VERSION_PROBE_ERROR="failed"
   UV_VERSION_PROBE_OUTPUT=$(mktemp "${TMPDIR:-/tmp}/tsa-uv-version.XXXXXX") || return 1
 
+  # Monitor mode gives the background probe its own process group on both
+  # bash 3 (macOS) and current bash (Linux), so timeout cleanup reaches shims'
+  # descendants instead of killing only the immediate uv process.
+  set -m
   uv --version >"$UV_VERSION_PROBE_OUTPUT" 2>/dev/null &
   UV_VERSION_PROBE_PID=$!
+  set +m
   UV_VERSION_WAIT_COUNT=0
   while kill -0 "$UV_VERSION_PROBE_PID" 2>/dev/null; do
     if [ "$UV_VERSION_WAIT_COUNT" -eq 50 ]; then
       UV_VERSION_PROBE_ERROR="timeout"
-      kill -TERM "$UV_VERSION_PROBE_PID" 2>/dev/null || :
+      kill -TERM -"$UV_VERSION_PROBE_PID" 2>/dev/null || :
       sleep 1
-      kill -KILL "$UV_VERSION_PROBE_PID" 2>/dev/null || :
+      kill -KILL -"$UV_VERSION_PROBE_PID" 2>/dev/null || :
       break
     fi
     sleep 0.1

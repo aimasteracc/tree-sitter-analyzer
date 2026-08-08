@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -22,6 +23,43 @@ class CheckResult:
 MINIMUM_UV_VERSION = (0, 11, 0)
 
 
+def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
+    """Terminate a timed-out probe and every descendant in its isolated group."""
+    if os.name == "nt":
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        taskkill = os.path.join(system_root, "System32", "taskkill.exe")
+        try:
+            terminated = subprocess.run(  # noqa: S603 - fixed executable/arguments
+                [taskkill, "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=5,
+            )
+            if terminated.returncode != 0:
+                process.kill()
+        except (OSError, subprocess.TimeoutExpired):
+            process.kill()
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.communicate(timeout=1)
+            return
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    try:
+        process.communicate(timeout=1)
+    except (OSError, subprocess.TimeoutExpired):
+        process.kill()
+        process.communicate()
+
+
 def _check_uv() -> CheckResult:
     path = shutil.which("uv")
     if not path:
@@ -30,29 +68,46 @@ def _check_uv() -> CheckResult:
         )
 
     try:
-        completed = subprocess.run(  # noqa: S603 - resolved executable, fixed argument
-            [path, "--version"],
-            capture_output=True,
-            check=False,
-            timeout=5,
+        if os.name == "nt":
+            process = subprocess.Popen(  # noqa: S603 - resolved executable
+                [path, "--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=0x00000200,  # CREATE_NEW_PROCESS_GROUP
+            )
+        else:
+            process = subprocess.Popen(  # noqa: S603 - resolved executable
+                [path, "--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+            )
+        try:
+            probe_stdout, probe_stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            _terminate_process_tree(process)
+            return CheckResult("uv", "FAIL", f"timed out running {path} --version")
+        completed = subprocess.CompletedProcess(
+            process.args, process.returncode, probe_stdout, probe_stderr
         )
-    except subprocess.TimeoutExpired:
-        return CheckResult("uv", "FAIL", f"timed out running {path} --version")
     except OSError as exc:
         return CheckResult("uv", "FAIL", f"cannot run {path}: {exc}")
 
     try:
-        stdout = (
-            completed.stdout.decode("utf-8", errors="strict")
-            if isinstance(completed.stdout, bytes)
-            else completed.stdout
+        raw_stdout = completed.stdout
+        decoded_stdout: str = (
+            raw_stdout.decode("utf-8", errors="strict")
+            if isinstance(raw_stdout, bytes)
+            else raw_stdout
         )
     except UnicodeDecodeError:
         return CheckResult(
             "uv", "FAIL", f"undecodable version output from {path} --version"
         )
 
-    match = re.fullmatch(r"uv (\d+)\.(\d+)\.(\d+)(?:[ \t]+.*)?", stdout.rstrip("\n"))
+    match = re.fullmatch(
+        r"uv (\d+)\.(\d+)\.(\d+)(?:[ \t]+.*)?", decoded_stdout.rstrip("\n")
+    )
     if completed.returncode != 0 or match is None:
         return CheckResult(
             "uv",

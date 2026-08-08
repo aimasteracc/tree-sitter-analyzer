@@ -62,7 +62,8 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(0o755)
 
 
-def _restricted_tools(root: Path) -> Path:
+def _restricted_tools(root: Path, *, include_python3: bool = True) -> Path:
+    """Build a hermetic PATH containing tools the installer contract requires."""
     tool_bin = root / "tool-bin"
     tool_bin.mkdir()
     commands = (
@@ -82,6 +83,8 @@ def _restricted_tools(root: Path) -> Path:
         resolved = shutil.which(command)
         if resolved:
             (tool_bin / command).symlink_to(resolved)
+    if include_python3:
+        (tool_bin / "python3").symlink_to(Path(sys.executable).resolve())
     return tool_bin
 
 
@@ -145,7 +148,9 @@ INSTALLER
     path = [str(mock_bin)]
     if initial_uv_location == "legacy-bin":
         path.append(str(initial_bin))
-    path += [str(_restricted_tools(root))] if restricted_path else ["/usr/bin", "/bin"]
+    # Never expose the host PATH: initial_uv=None must mean uv is genuinely
+    # absent even on machines that install it in /usr/bin or /bin.
+    path.append(str(_restricted_tools(root, include_python3=not restricted_path)))
     return {
         "HOME": str(home),
         "PATH": os.pathsep.join(path),
@@ -178,6 +183,7 @@ def _fixture_fingerprint(root: Path, fixture: dict[str, str]) -> str:
         "mock_uv": file_record(root / "mock-bin" / "uv"),
         "legacy_uv": file_record(root / "legacy-bin" / "uv"),
         "curl": file_record(root / "mock-bin" / "curl"),
+        "python3_present": (root / "tool-bin" / "python3").exists(),
         "config": file_record(root / ".claude" / ".mcp.json"),
     }
     return _fingerprint(manifest)
