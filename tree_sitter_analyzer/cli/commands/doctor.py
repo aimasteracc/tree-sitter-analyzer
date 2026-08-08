@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
+import signal
+import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Literal
@@ -17,13 +20,129 @@ class CheckResult:
     message: str
 
 
+MINIMUM_UV_VERSION = (0, 11, 0)
+
+
+def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
+    """Terminate a timed-out probe and every descendant in its isolated group."""
+    if os.name == "nt":
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
+        taskkill = os.path.join(system_root, "System32", "taskkill.exe")
+        try:
+            terminated = subprocess.run(  # noqa: S603 - fixed executable/arguments
+                [taskkill, "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=5,
+            )
+            if terminated.returncode != 0:
+                process.kill()
+        except (OSError, subprocess.TimeoutExpired):
+            process.kill()
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            pass
+        # Reaping the direct shim does not prove that its descendants exited.
+        # Probe the isolated group, then escalate any surviving member.
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            pass
+        else:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    try:
+        process.communicate(timeout=1)
+    except (OSError, subprocess.TimeoutExpired):
+        process.kill()
+        process.communicate()
+
+
 def _check_uv() -> CheckResult:
     path = shutil.which("uv")
-    if path:
-        return CheckResult("uv", "PASS", path)
-    return CheckResult(
-        "uv", "FAIL", "not found — install from https://docs.astral.sh/uv/"
+    if not path:
+        return CheckResult(
+            "uv", "FAIL", "not found — install from https://docs.astral.sh/uv/"
+        )
+
+    try:
+        if os.name == "nt":
+            process = subprocess.Popen(  # noqa: S603 - resolved executable
+                [path, "--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=0x00000200,  # CREATE_NEW_PROCESS_GROUP
+            )
+        else:
+            process = subprocess.Popen(  # noqa: S603 - resolved executable
+                [path, "--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+            )
+        try:
+            probe_stdout, probe_stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            _terminate_process_tree(process)
+            return CheckResult("uv", "FAIL", f"timed out running {path} --version")
+        except BaseException:
+            _terminate_process_tree(process)
+            raise
+        completed = subprocess.CompletedProcess(
+            process.args, process.returncode, probe_stdout, probe_stderr
+        )
+    except OSError as exc:
+        return CheckResult("uv", "FAIL", f"cannot run {path}: {exc}")
+
+    try:
+        raw_stdout = completed.stdout
+        decoded_stdout: str = (
+            raw_stdout.decode("utf-8", errors="strict")
+            if isinstance(raw_stdout, bytes)
+            else raw_stdout
+        )
+    except UnicodeDecodeError:
+        return CheckResult(
+            "uv", "FAIL", f"undecodable version output from {path} --version"
+        )
+
+    match = re.fullmatch(
+        r"uv ([0-9]+)\.([0-9]+)\.([0-9]+)(?:[ \t]+.*)?",
+        decoded_stdout.rstrip("\n"),
     )
+    if completed.returncode != 0 or match is None:
+        return CheckResult(
+            "uv",
+            "FAIL",
+            f"cannot determine version at {path} — required uv >= 0.11.0",
+        )
+
+    try:
+        version = tuple(int(part) for part in match.groups())
+    except ValueError:
+        return CheckResult(
+            "uv",
+            "FAIL",
+            f"cannot determine version at {path} — required uv >= 0.11.0",
+        )
+    if version < MINIMUM_UV_VERSION:
+        version_text = ".".join(str(part) for part in version)
+        return CheckResult(
+            "uv",
+            "FAIL",
+            f"{version_text} at {path} is too old — required uv >= 0.11.0; "
+            "rerun install.sh or update uv manually",
+        )
+    return CheckResult("uv", "PASS", f"{path} ({'.'.join(match.groups())})")
 
 
 def _check_uvx() -> CheckResult:
@@ -147,11 +266,28 @@ def _check_agent_configs() -> list[CheckResult]:
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
-        except (json.JSONDecodeError, OSError) as exc:
+        except (ValueError, RecursionError):
+            results.append(
+                CheckResult(name, "WARN", f"cannot read {path}: invalid JSON content")
+            )
+            continue
+        except OSError as exc:
             results.append(CheckResult(name, "WARN", f"cannot read {path}: {exc}"))
             continue
 
+        if not isinstance(data, dict):
+            results.append(
+                CheckResult(name, "WARN", f"config root must be a JSON object: {path}")
+            )
+            continue
+
         mcp_servers = data.get("mcpServers", {})
+        if not isinstance(mcp_servers, dict):
+            results.append(
+                CheckResult(name, "WARN", f"mcpServers must be a JSON object: {path}")
+            )
+            continue
+
         tsa_entry = mcp_servers.get("tree-sitter-analyzer")
         if tsa_entry is None:
             results.append(
@@ -162,9 +298,37 @@ def _check_agent_configs() -> list[CheckResult]:
                 )
             )
             continue
+        if not isinstance(tsa_entry, dict):
+            results.append(
+                CheckResult(
+                    name,
+                    "WARN",
+                    f"MCP entry 'tree-sitter-analyzer' must be a JSON object: {path}",
+                )
+            )
+            continue
 
         env = tsa_entry.get("env", {})
+        if not isinstance(env, dict):
+            results.append(
+                CheckResult(
+                    name,
+                    "WARN",
+                    f"MCP entry 'tree-sitter-analyzer'.env must be a JSON object: {path}",
+                )
+            )
+            continue
         root = env.get("TREE_SITTER_PROJECT_ROOT", "")
+        if not isinstance(root, str):
+            results.append(
+                CheckResult(
+                    name,
+                    "WARN",
+                    "TREE_SITTER_PROJECT_ROOT must be a string "
+                    f"in MCP entry 'tree-sitter-analyzer': {path}",
+                )
+            )
+            continue
         if root and not os.path.isabs(root):
             results.append(
                 CheckResult(

@@ -5,7 +5,13 @@ RED-first tests written before the implementation.
 
 from __future__ import annotations
 
+import json
+import os
+import re
+import subprocess
 from pathlib import Path
+
+import pytest
 
 # ---------------------------------------------------------------------------
 # D1a — bundled skills exist inside the package at install time
@@ -588,3 +594,218 @@ class TestSkillContentSync:
             "Replace with facade+action form (e.g. 'safe_to_edit(' → "
             "'edit action=safe'). Violations: " + str(violations)
         )
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: install.sh supports macOS/Linux; Windows uses PowerShell",
+)
+class TestInstallScriptUvVersion:
+    def test_uv_minimum_matches_project_contract(self) -> None:
+        # NO1-006A (2026-08-08): installer and doctor must track tool.uv exactly.
+        repo = Path(__file__).parents[3]
+        pyproject_versions = re.findall(
+            r'^required-version = ">=([0-9]+\.[0-9]+\.[0-9]+)"$',
+            (repo / "pyproject.toml").read_text(encoding="utf-8"),
+            flags=re.MULTILINE,
+        )
+        installer_versions = re.findall(
+            r'^MINIMUM_UV_VERSION="([0-9]+\.[0-9]+\.[0-9]+)"$',
+            (repo / "install.sh").read_text(encoding="utf-8"),
+            flags=re.MULTILINE,
+        )
+        from tree_sitter_analyzer.cli.commands.doctor import MINIMUM_UV_VERSION
+
+        assert pyproject_versions == ["0.11.0"]
+        assert installer_versions == pyproject_versions
+        assert ".".join(str(part) for part in MINIMUM_UV_VERSION) == "0.11.0"
+
+    @staticmethod
+    def _run(
+        tmp_path: Path, output: str, *, disable_bootstrap: bool = False
+    ) -> subprocess.CompletedProcess[str]:
+        repo = Path(__file__).parents[3]
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        version_file = tmp_path / "uv-version"
+        version_file.write_text(output, encoding="utf-8")
+        (bin_dir / "uv").write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$(cat "$UV_VERSION_FILE")"\n',
+            encoding="utf-8",
+        )
+        (bin_dir / "curl").write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$*" > "$CURL_LOG"\n'
+            'while [ "$#" -gt 0 ]; do '
+            'if [ "$1" = "-o" ]; then out=$2; shift 2; else shift; fi; done\n'
+            "printf '%s\\n' '#!/bin/sh' "
+            '\'printf "uv 0.11.0" > "$UV_VERSION_FILE"\' > "$out"\n',
+            encoding="utf-8",
+        )
+        (bin_dir / "uv").chmod(0o755)
+        (bin_dir / "curl").chmod(0o755)
+        env = os.environ | {
+            "HOME": str(tmp_path / "home"),
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "UV_VERSION_FILE": str(version_file),
+            "CURL_LOG": str(tmp_path / "curl-log"),
+        }
+        if disable_bootstrap:
+            env["TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP"] = "1"
+        (tmp_path / "home").mkdir(exist_ok=True)
+        return subprocess.run(
+            ["/bin/bash", str(repo / "install.sh")],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_supported_uv_is_not_upgraded(self, tmp_path: Path) -> None:
+        result = self._run(tmp_path, "uv 0.11.0")
+        assert result.returncode == 0
+        assert (
+            result.stdout.splitlines()[0] == f"✅ uv 0.11.0: {tmp_path / 'bin' / 'uv'}"
+        )
+        assert (tmp_path / "curl-log").exists() is False
+
+    def test_old_uv_is_conditionally_updated(self, tmp_path: Path) -> None:
+        # NO1-006A (2026-08-08): only versions below the project floor are updated.
+        result = self._run(tmp_path, "uv 0.10.9")
+        assert result.returncode == 0
+        assert (
+            result.stdout.splitlines()[0]
+            == "📦 uv 0.10.9 does not satisfy required uv >= 0.11.0. Automatic update is required."
+        )
+        assert (tmp_path / "uv-version").read_text(encoding="utf-8") == "uv 0.11.0"
+        curl_log = (tmp_path / "curl-log").read_text(encoding="utf-8")
+        assert (
+            re.fullmatch(
+                r"--proto =https --tlsv1\.2 -LsSf https://astral\.sh/uv/install\.sh -o /[^\n ]+/tsa-uv-installer\.[A-Za-z0-9]+\n",
+                curl_log,
+            )
+            is not None
+        )
+
+    @pytest.mark.parametrize("output", ("not-uv 0.11.0", "uv 0.11.0.1"))
+    def test_malformed_uv_version_is_updated(self, tmp_path: Path, output: str) -> None:
+        result = self._run(tmp_path, output)
+        assert (result.returncode, result.stdout.splitlines()[0]) == (
+            0,
+            f"📦 {output} does not satisfy required uv >= 0.11.0. Automatic update is required.",
+        )
+        assert (tmp_path / "uv-version").read_text(encoding="utf-8") == "uv 0.11.0"
+
+    def test_default_bootstrap_warns_that_mutable_code_is_unverified(
+        self, tmp_path: Path
+    ) -> None:
+        result = self._run(tmp_path, "uv 0.10.9")
+        assert result.returncode == 0
+        assert (
+            "⚠️  WARNING: the official uv bootstrap is UNVERIFIED and mutable "
+            "(not content-bound)." in result.stdout
+        )
+        assert "📦 Updating uv automatically..." in result.stdout
+        assert (tmp_path / "curl-log").exists() is True
+
+    def test_agent_config_missing_mcp_servers_is_created(self, tmp_path: Path) -> None:
+        # PR #1233: a missing key remains distinct from an explicit null value.
+        config = tmp_path / "home" / ".claude" / ".mcp.json"
+        config.parent.mkdir(parents=True)
+        config.write_text("{}", encoding="utf-8")
+        result = self._run(tmp_path, "uv 0.11.0")
+        data = json.loads(config.read_text(encoding="utf-8"))
+        assert (
+            result.returncode,
+            data["mcpServers"]["tree-sitter-analyzer"]["command"],
+        ) == (0, "uvx")
+
+    def test_agent_config_explicit_null_mcp_servers_fails_closed(
+        self, tmp_path: Path
+    ) -> None:
+        # PR #1233: explicit null is malformed input, not an absent key.
+        config = tmp_path / "home" / ".claude" / ".mcp.json"
+        config.parent.mkdir(parents=True)
+        original = '{"mcpServers": null}\n'
+        config.write_text(original, encoding="utf-8")
+        result = self._run(tmp_path, "uv 0.11.0")
+        assert (
+            result.returncode,
+            config.read_text(encoding="utf-8"),
+            list(config.parent.glob(".mcp.json.bak.*")),
+        ) == (1, original, [])
+
+    def test_read_only_agent_config_fails_closed(self, tmp_path: Path) -> None:
+        # PR #1233: atomic replacement must respect a target marked read-only.
+        config = tmp_path / "home" / ".claude" / ".mcp.json"
+        config.parent.mkdir(parents=True)
+        original = '{"mcpServers": {}}\n'
+        config.write_text(original, encoding="utf-8")
+        config.chmod(0o444)
+        result = self._run(tmp_path, "uv 0.11.0")
+        assert (
+            result.returncode,
+            config.read_text(encoding="utf-8"),
+            config.stat().st_mode & 0o777,
+        ) == (1, original, 0o444)
+
+    def test_read_only_symlink_target_fails_closed(self, tmp_path: Path) -> None:
+        # PR #1233: permission checks must inspect the resolved managed target.
+        config_dir = tmp_path / "home" / ".claude"
+        config_dir.mkdir(parents=True)
+        target = tmp_path / "managed-mcp.json"
+        original = '{"mcpServers": {}}\n'
+        target.write_text(original, encoding="utf-8")
+        target.chmod(0o444)
+        link = config_dir / ".mcp.json"
+        link.symlink_to(target)
+        result = self._run(tmp_path, "uv 0.11.0")
+        assert (
+            result.returncode,
+            link.is_symlink(),
+            target.read_text(encoding="utf-8"),
+            target.stat().st_mode & 0o777,
+        ) == (1, True, original, 0o444)
+
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="tracked: install.sh is macOS/Linux-only; Windows uses PowerShell",
+    )
+    def test_agent_config_symlink_target_is_updated_without_replacing_link(
+        self, tmp_path: Path
+    ) -> None:
+        home = tmp_path / "home"
+        (home / ".claude").mkdir(parents=True)
+        managed = tmp_path / "managed-mcp.json"
+        managed.write_text('{"mcpServers": {}}', encoding="utf-8")
+        link = home / ".claude" / ".mcp.json"
+        link.symlink_to(managed)
+        result = self._run(tmp_path, "uv 0.11.0")
+        assert result.returncode == 0
+        assert link.is_symlink()
+        data = json.loads(managed.read_text(encoding="utf-8"))
+        assert data["mcpServers"]["tree-sitter-analyzer"]["command"] == "uvx"
+
+    def test_bootstrap_signal_traps_terminate_after_exit_cleanup(self) -> None:
+        installer = (Path(__file__).parents[3] / "install.sh").read_text(
+            encoding="utf-8"
+        )
+        assert """trap 'rm -f "$UV_INSTALLER_FILE"' EXIT""" in installer
+        assert tuple(re.findall(r"trap 'exit (\d+)' (HUP|INT|TERM)", installer)) == (
+            ("129", "HUP"),
+            ("130", "INT"),
+            ("143", "TERM"),
+        )
+
+    def test_secure_opt_out_blocks_bootstrap_with_actionable_recovery(
+        self, tmp_path: Path
+    ) -> None:
+        result = self._run(tmp_path, "uv 0.10.9", disable_bootstrap=True)
+        assert result.returncode == 1
+        assert (
+            "Automatic uv bootstrap disabled by "
+            "TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1." in result.stdout
+        )
+        assert "Install uv >= 0.11.0 manually" in result.stdout
+        assert "Updating uv automatically" not in result.stdout
+        assert (tmp_path / "curl-log").exists() is False
