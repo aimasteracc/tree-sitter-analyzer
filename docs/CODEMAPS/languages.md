@@ -9,7 +9,7 @@ Each implements the `LanguagePlugin` interface (`tree_sitter_analyzer/plugins/ba
 <!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->
 Generated from runtime registries and reviewed classifications by `scripts/generate_language_support_inventory.py`; do not edit counts or rows by hand.
 
-**22 plugins**: 13 pipeline-registered, 2 index-admitted, 1 call-dispatch-only, 5 data/markup, 1 scaffold.
+**22 plugins**: 13 pipeline-registered, 3 index-admitted, 0 call-dispatch-only, 5 data/markup, 1 scaffold.
 
 `pipeline_registered` means index admission plus import/call dispatch and a resolver slot. It does **not** guarantee positive cross-file binding. `Cross-file call E2E` is `unknown` until a fixture proves a call resolves to a different project file.
 
@@ -26,7 +26,7 @@ Generated from runtime registries and reviewed classifications by `scripts/gener
 | JavaScript | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |
 | JSON | `scaffold` | yes | yes | — | — | — | — | — | not_applicable | — | yes |
 | Kotlin | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
-| Lua | `call_dispatch_only` | yes | yes | yes | — | yes | yes | — | not_applicable | — | — |
+| Lua | `index_admitted` | yes | yes | yes | — | yes | yes | — | not_applicable | — | — |
 | Markdown | `data_markup` | yes | yes | — | — | — | — | — | not_applicable | yes | — |
 | PHP | `pipeline_registered` | yes | yes | yes | yes | yes | yes | — | unknown | — | — |
 | Python | `pipeline_registered` | yes | yes | yes | yes | yes | yes | yes | unknown | — | — |

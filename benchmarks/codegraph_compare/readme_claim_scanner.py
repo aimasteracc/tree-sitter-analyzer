@@ -26,9 +26,16 @@ _SAFE_SPANS = (
     re.compile(r"\b8 MCP tools\b", re.IGNORECASE),
     re.compile(r"\btriage 8 tools\b", re.IGNORECASE),
     re.compile(r"\bAll 8 tools read\b", re.IGNORECASE),
+    re.compile(r"8 MCP ツール|8 個の(?:ツール|ファサード)"),
+    re.compile(r"8 个(?: MCP 工具|工具)"),
+    re.compile(r"13 言語は `?pipeline_registered|13 种语言为 `?pipeline_registered"),
+    re.compile(r"5 言語 gap|5 语言 gap"),
+    re.compile(r"1 ワークフロー|一个工作流"),
     re.compile(r"\b323 CLI flags\b", re.IGNORECASE),
+    re.compile(r"323 の CLI フラグ|323 个 CLI flag", re.IGNORECASE),
     re.compile(r"\b(?:FTS5|BM25)\b"),
     re.compile(r"\bE[0-4]\b"),
+    re.compile(r"\bE2E\b", re.IGNORECASE),
     re.compile(r"(?<![\w@])@o93\b", re.IGNORECASE),
     re.compile(r"\b(?:RFC|GH|issue)[- #]\d+\b", re.IGNORECASE),
     re.compile(r"\bcommit\s+`?[0-9a-f]{7,40}`?\b", re.IGNORECASE),
@@ -40,6 +47,7 @@ _SAFE_SPANS = (
     re.compile(r"\bv\d+(?:\.(?:\d+|x)){1,2}\b", re.IGNORECASE),
     re.compile(r"\bversion\s+v?\d+(?:\.\d+){1,2}\b", re.IGNORECASE),
     re.compile(r"\buv\s*[><=]+\s*\d+(?:\.\d+){1,2}\b", re.IGNORECASE),
+    re.compile(r"≥\s*\d+(?:\.(?:\d+|x)){1,2}\b", re.IGNORECASE),
     re.compile(r"`python3 --version`", re.IGNORECASE),
 )
 _PYTHON_VERSION_SPAN = re.compile(
@@ -50,7 +58,8 @@ _NUMBER_WORD = (
     r"(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
     r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
     r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|"
-    r"billion|trillion|dozen|score|couple|several|many|few|half|quarter|third|"
+    r"billion|trillion|dozen|score|couple|pair|hundreds|thousands|millions|"
+    r"billions|trillions|dozens|scores|couples|pairs|several|many|few|half|quarter|third|"
     r"single|double|triple|quadruple|twice)"
 )
 # A quantity next to any ordinary word is rejected rather than relying on a
@@ -76,13 +85,17 @@ _COMPARATIVE = re.compile(
 )
 
 
-def _generated_language_section() -> str | None:
-    """Return canonical language output only when its generator is installed."""
+def _generated_language_sections() -> tuple[str, ...]:
+    """Return canonical trilingual outputs; generator failures disable exclusions."""
     try:
         from scripts.generate_language_support_inventory import render_markdown
-    except Exception:  # Generator/load failures disable the exclusion.
-        return None
-    return render_markdown(compact=True).rstrip()
+
+        return tuple(
+            render_markdown(compact=True, locale=locale).rstrip()
+            for locale in ("en", "ja", "zh")
+        )
+    except Exception:
+        return ()
 
 
 def _marker_regions(
@@ -91,8 +104,8 @@ def _marker_regions(
     """Validate sole ordered, non-nested generated sections."""
     violations: list[str] = []
     exclusions: list[tuple[int, int]] = []
-    generated_language = _generated_language_section()
-    if generated_language is not None:
+    generated_languages = _generated_language_sections()
+    for generated_language in generated_languages:
         start = readme.find(generated_language)
         if start != -1 and readme.find(generated_language, start + 1) == -1:
             exclusions.append((start, start + len(generated_language)))
@@ -124,7 +137,7 @@ def _marker_regions(
         violations.append("README_CLAIM_SECTION_DRIFT")
 
     exclusions.append((claim_start, claim_end))
-    if generated_language is None or readme[lang_start:lang_end] != generated_language:
+    if readme[lang_start:lang_end] not in generated_languages:
         violations.append("README_LANGUAGE_SECTION_UNVERIFIED")
     else:
         exclusions.append((lang_start, lang_end))
@@ -153,21 +166,22 @@ def _normalize_markdown(text: str) -> str:
     return re.sub(r"\s+", " ", normalized).strip()
 
 
+_CJK_QUANTITY = re.compile(
+    r"[零〇一二两兩三四五六七八九十百千万萬亿億兆数數]+"
+    r"(?:倍|个|個|種|种|言語|语言|語言|ファイル|文件|秒|分|時間|小时|小時|件|冊|仓库|リポジトリ)"
+)
+
+
 def _has_unicode_numeric(text: str) -> bool:
-    """Recognize every Unicode character with a numeric value (Nd, No, Nl, etc.)."""
-    for character in text:
-        try:
-            unicodedata.numeric(character)
-        except (TypeError, ValueError):
-            continue
-        return True
-    return False
+    """Recognize Unicode numeric categories without treating ordinary CJK as numbers."""
+    return any(unicodedata.category(character).startswith("N") for character in text)
 
 
 def _is_quantitative_marketing(text: str) -> bool:
     """Apply the conservative policy gate; this is not a formal proof."""
     has_quantity = bool(
         _has_unicode_numeric(text)
+        or _CJK_QUANTITY.search(text)
         or _WORD_QUANTITY_CONTEXT.search(text)
         or _ONE_SHOT.search(text)
         or _NUMBER_FOLD.search(text)

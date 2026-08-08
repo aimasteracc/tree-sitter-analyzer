@@ -277,17 +277,17 @@ git clone ユーザーはすでに含まれているため不要です。
 
 ## サポート言語
 
-22 言語プラグイン; 13 は `pipeline_registered`（パイプライン登録済み、非 E2E）+ 2 は `index_admitted`（インデックス受け入れ済み）+ Lua は本番プラグインとして call-dispatch-only + 5 個は data/markup + 1 個はスキャフォールド。登録は機械的な配線証拠であり、正のクロスファイル束縛を保証しない。
-
+<!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->
+ランタイムレジストリから生成。**22 言語プラグイン**; 13 は `pipeline_registered`（非 E2E）、3 は `index_admitted`、5 個は data/markup、1 個はスキャフォールド。登録は正のクロスファイル束縛を保証しない。
 | ティア | 言語 |
 |---|---|
-| **`pipeline_registered`（パイプライン登録済み、非 E2E）** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
-| **`index_admitted`（インデックス受け入れ済み）** | Bash · Scala |
-| **単一ファイル解析 (CLI)** | HTML · CSS · Markdown · SQL · YAML |
-| **call-dispatch-only（本番プラグイン）** | Lua |
-| **スキャフォールド (プラグイン有 / インデクサー結線待ち)** | json |
+| **`pipeline_registered`（パイプライン登録済み、非 E2E）** | C · C++ · C# · Go · Java · JavaScript · Kotlin · PHP · Python · Ruby · Rust · Swift · TypeScript |
+| **`index_admitted`（インデックス受け入れ済み）** | Bash · Lua · Scala |
+| **単一ファイル解析 (CLI)** | CSS · HTML · Markdown · SQL · YAML |
+| **スキャフォールド (プラグイン有 / インデクサー結線待ち)** | JSON |
 
-Lua は公開済みの本番プラグインだが、現時点では call-dispatch-only であり、インデックス受け入れやクロスファイル解決を意味しない。
+Lua はインデックス受け入れ済みで call dispatch と resolver slot も持つが、import dispatch とクロスファイル E2E 証拠は未確認。
+<!-- END GENERATED LANGUAGE SUPPORT INVENTORY -->
 
 ---
 

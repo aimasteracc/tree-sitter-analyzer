@@ -187,8 +187,8 @@ def _tier(capabilities: dict[str, Any]) -> str:
         )
     ):
         return "pipeline_registered"
-    if capabilities["call_dispatch"]:
-        return "call_dispatch_only"
     if capabilities["index_admission"]:
         return "index_admitted"
+    if capabilities["call_dispatch"]:
+        return "call_dispatch_only"
     raise ValueError("plugin has no classified product tier")

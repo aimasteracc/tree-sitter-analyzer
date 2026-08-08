@@ -206,7 +206,7 @@
       "plugin_discovery": true,
       "resolver_slot": true,
       "scaffold": false,
-      "tier": "call_dispatch_only"
+      "tier": "index_admitted"
     },
     {
       "call_dispatch": false,
@@ -361,9 +361,9 @@
   ],
   "schema_version": 2,
   "tier_counts": {
-    "call_dispatch_only": 1,
+    "call_dispatch_only": 0,
     "data_markup": 5,
-    "index_admitted": 2,
+    "index_admitted": 3,
     "pipeline_registered": 13,
     "scaffold": 1
   }

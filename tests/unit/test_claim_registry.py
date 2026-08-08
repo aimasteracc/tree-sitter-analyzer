@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from benchmarks.codegraph_compare import claim_registry as claim_registry_module
 from benchmarks.codegraph_compare.claim_registry import (
     ClaimRegistryVerdict,
     canonical_json_bytes,
@@ -84,10 +85,49 @@ def synchronize_artifact(claim, root):
     }
 
 
-def validate(claims, schema, root):
-    return validate_registry(
-        {"schema_version": 1, "claims": claims}, schema=schema, artifacts_root=root
-    )
+def synchronize_e4_artifact(claim, root):
+    benchmark = {
+        "schema_version": 1,
+        "benchmark_version": claim["provenance"]["benchmark_version"],
+        "repo_commit": claim["provenance"]["repo_commit"],
+        "corpus_revision": claim["provenance"]["corpus"]["revision"],
+        "tsa": claim["tsa"], "competitor": claim["competitor"],
+        "public_artifact_url": "https://evidence.example/benchmark.json",
+    }
+    claim_payload = {key: claim[key] for key in (
+        "claim_id", "metric", "numerator", "denominator", "unit", "tsa",
+        "competitor", "provenance", "evidence_level",
+    )}
+    reproduction = {
+        "schema_version": 1, "authority_id": "independent-lab",
+        "relationship": "independent-third-party",
+        "benchmark_manifest_sha256": hashlib.sha256(canonical_json_bytes(benchmark)).hexdigest(),
+        "claim_sha256": hashlib.sha256(canonical_json_bytes(claim_payload)).hexdigest(),
+        "numerator": claim["numerator"], "denominator": claim["denominator"],
+        "unit": claim["unit"],
+        "public_reproduction_url": "https://independent.example/reproduction.json",
+    }
+    artifact = root / "evidence.json"
+    artifact.write_bytes(canonical_json_bytes({
+        "schema_version": 2, "claim": claim_payload,
+        "benchmark_manifest": benchmark, "reproduction_manifest": reproduction,
+    }))
+    claim["artifact"] = {
+        "path": "evidence.json", "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest()
+    }
+    digest = hashlib.sha256(canonical_json_bytes(reproduction)).hexdigest()
+    return {"independent-lab": frozenset({digest})}
+
+
+def validate(claims, schema, root, trusted_reproductions=None):
+    previous = claim_registry_module._TRUSTED_E4_REPRODUCTIONS
+    claim_registry_module._TRUSTED_E4_REPRODUCTIONS = trusted_reproductions or {}
+    try:
+        return validate_registry(
+            {"schema_version": 1, "claims": claims}, schema=schema, artifacts_root=root,
+        )
+    finally:
+        claim_registry_module._TRUSTED_E4_REPRODUCTIONS = previous
 
 
 def set_nested(mapping, field, value):
@@ -140,7 +180,8 @@ def test_arbitrary_wording_property_is_never_emittable(tmp_path, schema, claim_f
 
 def test_verified_e4_wording_is_exactly_generated_from_all_bound_fields(tmp_path, schema, claim_factory):
     claim = claim_factory("E4")
-    result = validate([claim], schema, tmp_path)
+    authority = synchronize_e4_artifact(claim, tmp_path)
+    result = validate([claim], schema, tmp_path, authority)
     digest = claim["artifact"]["sha256"]
     wording = (
         "tree-sitter-analyzer 1.29.0: warm answer latency = 8.0 seconds; "
@@ -150,6 +191,25 @@ def test_verified_e4_wording_is_exactly_generated_from_all_bound_fields(tmp_path
         f"artifact sha256:{digest}."
     )
     assert (result.emittable_wording, result.publishable) == ((("fixture-latency-ratio", (wording,)),), True)
+
+
+def test_registry_copy_cannot_self_attest_e4(tmp_path, schema, claim_factory):
+    # PR #1237: registry-controlled serialization is not independent E4 evidence.
+    claim = claim_factory("E4")
+    result = validate([claim], schema, tmp_path)
+    assert (result.violations, result.publishable, result.emittable_wording) == (
+        ("E4_EVIDENCE_MANIFEST_MISSING:fixture-latency-ratio",), False, (),
+    )
+
+
+def test_unadmitted_reproduction_cannot_upgrade_arbitrary_measurements(tmp_path, schema, claim_factory):
+    # PR #1237: only an authority-root-admitted reproduction digest can grant E4.
+    claim = claim_factory("E4")
+    synchronize_e4_artifact(claim, tmp_path)
+    result = validate([claim], schema, tmp_path)
+    assert (result.violations, result.publishable) == (
+        ("E4_AUTHORITY_UNTRUSTED:fixture-latency-ratio",), False,
+    )
 
 
 @pytest.mark.parametrize(("field", "payload", "semantic_field"), (
@@ -201,9 +261,21 @@ def test_nonfinite_measurement_fails_closed(tmp_path, schema, claim_factory, mea
     assert (result.violations, result.publishable) == (("MEASUREMENT_NONFINITE:fixture-latency-ratio:numerator",), False)
 
 
-def test_readme_claim_section_and_coverage_are_current():
+@pytest.mark.parametrize("readme", ("README.md", "README_ja.md", "README_zh.md"))
+def test_readme_claim_section_and_whole_document_coverage_are_current(readme):
     verdict = load_and_validate(ROOT / "benchmarks/codegraph_compare/claim_registry.json", schema_path=SCHEMA_PATH)
-    assert readme_claim_violations((ROOT / "README.md").read_text(), verdict) == ()
+    assert readme_claim_violations((ROOT / readme).read_text(), verdict) == ()
+
+
+@pytest.mark.parametrize(("readme", "probe"), (
+    ("README.md", "TSA processes hundreds of files."),
+    ("README_ja.md", "TSA は数百ファイルを処理します。"),
+    ("README_zh.md", "TSA 可处理数百个文件。"),
+))
+def test_each_public_readme_scan_rejects_localized_unregistered_claim(readme, probe):
+    verdict = load_and_validate(ROOT / "benchmarks/codegraph_compare/claim_registry.json", schema_path=SCHEMA_PATH)
+    text = probe + "\n" + (ROOT / readme).read_text()
+    assert readme_claim_violations(text, verdict) == ("README_UNREGISTERED_QUANTITATIVE_CLAIM:1",)
 
 
 def test_readme_generated_claim_drift_is_rejected(blocked_verdict, readme_fixture):
@@ -225,14 +297,16 @@ def test_readme_contract_excludes_commands_versions_and_language_inventory(block
 
 def test_mixed_e4_and_blocked_registry_emits_nothing(tmp_path, schema, claim_factory):
     verified = claim_factory("E4")
+    authority = synchronize_e4_artifact(verified, tmp_path)
     blocked = verified | {"claim_id": "blocked-fixture", "status": "blocked", "numerator": None, "denominator": None, "artifact": None}
-    result = validate([verified, blocked], schema, tmp_path)
+    result = validate([verified, blocked], schema, tmp_path, authority)
     assert (result.status, result.publishable, result.emittable_wording) == ("BLOCKED", False, ())
     assert render_readme_claims(result) == EMPTY_CLAIMS
 
 
 def test_mixed_e4_and_e3_registry_emits_nothing(tmp_path, schema, claim_factory):
     e4 = claim_factory("E4")
+    authority = synchronize_e4_artifact(e4, tmp_path)
     (tmp_path / "evidence.json").rename(tmp_path / "e4.json")
     e4["artifact"]["path"] = "e4.json"
     e3 = claim_factory("E3")
@@ -241,7 +315,7 @@ def test_mixed_e4_and_e3_registry_emits_nothing(tmp_path, schema, claim_factory)
     evidence["claim"]["claim_id"] = "fixture-e3"
     (tmp_path / "e3.json").write_bytes(canonical_json_bytes(evidence))
     e3["artifact"] = {"path": "e3.json", "sha256": hashlib.sha256((tmp_path / "e3.json").read_bytes()).hexdigest()}
-    result = validate([e4, e3], schema, tmp_path)
+    result = validate([e4, e3], schema, tmp_path, authority)
     assert (result.status, result.publishable, result.emittable_wording) == ("VALID", False, ())
 
 
@@ -250,13 +324,13 @@ def test_nonpublishable_verdict_cannot_be_rendered():
     assert render_readme_claims(verdict) == EMPTY_CLAIMS
 
 
-@pytest.mark.parametrize(("level", "code", "publishable"), (("E3", 2, False), ("E4", 0, True)))
-def test_cli_accepts_only_publishable_e4_registry(tmp_path, capsys, claim_factory, level, code, publishable):
+@pytest.mark.parametrize(("level", "status"), (("E3", "VALID"), ("E4", "INVALID")))
+def test_cli_requires_admitted_authority_for_e4_registry(tmp_path, capsys, claim_factory, level, status):
     registry = tmp_path / "registry.json"
     registry.write_text(json.dumps({"schema_version": 1, "claims": [claim_factory(level)]}))
     actual_code = main([str(registry), "--schema", str(SCHEMA_PATH), "--artifacts-root", str(tmp_path)])
     payload = json.loads(capsys.readouterr().out)
-    assert (actual_code, payload["status"], payload["publishable"], payload["emittable_wording"] if level == "E3" else None) == (code, "VALID", publishable, [] if level == "E3" else None)
+    assert (actual_code, payload["status"], payload["publishable"], payload["emittable_wording"]) == (2, status, False, [])
 
 
 NORMALIZATION_PROBES = (
@@ -280,7 +354,7 @@ FINAL_REVIEW_PROBES = (
     "TSA handles five widgets per hour.", "TSA handles 8 MCP tools per second.",
     "TSA answers in Step 2 seconds.", "TSA is ³⁹⁰× faster.", "TSA is Ⅻ× faster.", "TSA is 三倍 faster.",
 )
-WORD_NUMBERS = tuple("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion trillion dozen score couple several many few half quarter third single double triple quadruple".split())
+WORD_NUMBERS = tuple("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion trillion dozen score couple pair hundreds thousands millions billions trillions dozens scores couples pairs several many few half quarter third single double triple quadruple".split())
 CAMOUFLAGE = (
     "Python version 3.10; TSA is 390× faster than Rival.", "8 MCP tools and TSA is 390× faster than Rival.",
     "323 CLI flags; TSA is 390× faster than Rival.", "`python3 --version`; TSA is 390× faster than Rival.",
@@ -305,6 +379,14 @@ def test_final_review_fail_closed_probes_are_rejected(probe, blocked_verdict, re
 @pytest.mark.parametrize("word_number", WORD_NUMBERS)
 def test_spelled_out_number_vocabulary_is_fail_closed(word_number, blocked_verdict, readme_fixture):
     assert readme_claim_violations(readme_fixture(f"TSA answers in {word_number} seconds."), blocked_verdict) == ("README_UNREGISTERED_QUANTITATIVE_CLAIM:3",)
+
+
+@pytest.mark.parametrize("probe", (
+    "TSA processes hundreds of files.", "TSA indexes thousands of repositories.",
+    "TSA supports scores of languages.", "TSA analyzes a pair of repositories.",
+))
+def test_plural_and_pair_quantity_phrases_are_fail_closed(probe, blocked_verdict, readme_fixture):
+    assert readme_claim_violations(readme_fixture(probe), blocked_verdict) == ("README_UNREGISTERED_QUANTITATIVE_CLAIM:3",)
 
 
 @pytest.mark.parametrize("noun", ("seconds", "percent", "files", "languages"))

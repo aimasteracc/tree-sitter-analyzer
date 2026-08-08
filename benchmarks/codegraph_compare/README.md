@@ -118,15 +118,16 @@ performance, and competitive numbers in the main README. Registry records do
 not accept author-written claim text. Only a verified E4 record with exact TSA
 and competitor names/versions, metric, unit, numerator, denominator,
 benchmark version, measurement date, corpus name/revision, repository commit,
-and a matching artifact SHA-256 can generate wording. The generated wording
-includes the repository commit directly. Its artifact digest binds the canonical
-evidence payload; artifact path/status are validation metadata, not public claim fields.
+and a matching artifact SHA-256 can generate wording. E4 additionally requires a
+public benchmark manifest and an independent-third-party reproduction manifest
+whose exact digest is admitted by the code-owned authority trust root; copying
+registry values into an artifact cannot grant E4. The generated wording includes
+the repository commit directly; artifact path/status remain validation metadata.
 
 Blocked, unverified, and E0–E3 records always produce
 `emittable_wording=[]`, regardless of phrases such as “superior”, “2x”,
-“dominates”, or “lower latency”; there is no victory-word denylist. The main
-README marker and the whole-document quantitative-marketing scan are enforced
-in `TestQuantitativeClaimRegistry`. Fenced command examples and Python/package versions are outside this claim
+“dominates”, or “lower latency”; there is no victory-word denylist. All three public README markers and whole-document quantitative-marketing scans are enforced
+in `tests/unit/test_claim_registry.py`. Fenced command examples and Python/package versions are outside this claim
 contract. Language-support counts and registry-derived MCP/CLI surface counts
 are controlled by their independent generator/governance contracts and are
 also explicitly excluded. Current registry status is E0/blocked,
@@ -137,8 +138,7 @@ Validate the registry and contracts with:
 ```bash
 uv run python -m benchmarks.codegraph_compare.claim_registry \
   benchmarks/codegraph_compare/claim_registry.json
-uv run pytest tests/unit/test_benchmark_harness.py \
-  -q -k QuantitativeClaimRegistry
+uv run pytest tests/unit/test_claim_registry.py -q
 ```
 
 The registry command exits non-zero while any record is blocked; that is the

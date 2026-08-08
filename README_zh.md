@@ -277,17 +277,17 @@ git clone 用户已有，无需操作。
 
 ## 支持的语言
 
-22 个语言插件；13 个为 `pipeline_registered`（管线注册态，非 E2E）+ 2 个为 `index_admitted`（索引准入态）+ Lua 是生产可用的 call-dispatch-only 插件 + 5 个 data/markup + 1 个脚手架。注册状态只是可机械验证的接线证据，不保证跨文件正向绑定。
-
+<!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->
+由运行时 registry 生成。**22 个语言插件**；13 个为 `pipeline_registered`（非 E2E），3 个为 `index_admitted`，5 个 data/markup，1 个脚手架。注册状态不保证跨文件正向绑定。
 | 等级 | 语言 |
 |---|---|
-| **`pipeline_registered`（管线注册态，非 E2E）** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |
-| **`index_admitted`（索引准入态）** | Bash · Scala |
-| **单文件分析（CLI）** | HTML · CSS · Markdown · SQL · YAML |
-| **call-dispatch-only（生产插件）** | Lua |
-| **脚手架（插件已有，索引器待接）** | json |
+| **`pipeline_registered`（管线注册态，非 E2E）** | C · C++ · C# · Go · Java · JavaScript · Kotlin · PHP · Python · Ruby · Rust · Swift · TypeScript |
+| **`index_admitted`（索引准入态）** | Bash · Lua · Scala |
+| **单文件分析（CLI）** | CSS · HTML · Markdown · SQL · YAML |
+| **脚手架（插件已有，索引器待接）** | JSON |
 
-Lua 已作为生产插件发布，但目前仅为 call-dispatch-only，不代表已获索引准入或具备跨文件解析能力。
+Lua 已获索引准入，并具备 call dispatch 与 resolver slot，但 import dispatch 和跨文件 E2E 证据仍未确认。
+<!-- END GENERATED LANGUAGE SUPPORT INVENTORY -->
 
 ---
 

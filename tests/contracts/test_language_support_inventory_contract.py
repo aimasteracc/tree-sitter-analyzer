@@ -39,11 +39,28 @@ def test_language_inventory_pins_capability_counts() -> None:
 def test_language_inventory_pins_product_tiers() -> None:
     assert build_inventory()["tier_counts"] == {
         "pipeline_registered": 13,
-        "index_admitted": 2,
-        "call_dispatch_only": 1,
+        "index_admitted": 3,
+        "call_dispatch_only": 0,
         "data_markup": 5,
         "scaffold": 1,
     }
+
+
+def test_lua_tier_preserves_index_admission_over_partial_call_dispatch() -> None:
+    lua = next(
+        row for row in build_inventory()["languages"] if row["language"] == "lua"
+    )
+    assert (
+        lua["tier"],
+        lua["index_admission"],
+        lua["call_dispatch"],
+        lua["import_dispatch"],
+    ) == (
+        "index_admitted",
+        True,
+        True,
+        False,
+    )
 
 
 def test_cross_file_claims_remain_unknown_without_e2e_fixtures() -> None:
@@ -129,6 +146,18 @@ def test_inventory_rejects_plugin_returning_no_extractor(monkeypatch) -> None:
     monkeypatch.setattr(PluginManager, "get_plugin", empty_bash)
     with pytest.raises(RuntimeError, match="plugin returned no extractor: bash"):
         _load_builtin_plugins()
+
+
+def test_call_dispatch_without_index_admission_keeps_partial_tier() -> None:
+    capabilities = {
+        "scaffold": False,
+        "data_markup": False,
+        "index_admission": False,
+        "import_dispatch": False,
+        "call_dispatch": True,
+        "resolver_slot": False,
+    }
+    assert _tier(capabilities) == "call_dispatch_only"
 
 
 def test_inventory_rejects_unclassified_plugin_capabilities() -> None:
@@ -236,14 +265,14 @@ def test_generated_section_rejects_nested_markers() -> None:
         (
             "README_ja.md",
             "22 言語プラグイン",
-            "Lua は公開済みの本番プラグイン",
+            "Lua はインデックス受け入れ済み",
             "21 言語プラグイン",
             "未実装の主流コード言語は **Dart, Vue, Svelte, Lua**",
         ),
         (
             "README_zh.md",
             "22 个语言插件",
-            "Lua 已作为生产插件发布",
+            "Lua 已获索引准入",
             "21 个语言插件",
             "还未发布的主流代码语言只有 **Dart、Vue、Svelte、Lua**",
         ),
@@ -259,7 +288,7 @@ def test_translated_readmes_pin_plugin_count_and_lua_tier(
     text = Path(readme).read_text(encoding="utf-8")
     assert plugin_fact in text
     assert lua_fact in text
-    assert "call-dispatch-only" in text
+    assert "call-dispatch-only" not in text
     assert stale_count not in text
     assert stale_lua_claim not in text
 
@@ -316,18 +345,18 @@ def test_translated_readme_headlines_reject_full_call_graph_overclaim(
             "README_ja.md",
             "## サポート言語",
             "## 設定",
-            "| **`pipeline_registered`（パイプライン登録済み、非 E2E）** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |",
-            "| **`index_admitted`（インデックス受け入れ済み）** | Bash · Scala |",
-            "| **call-dispatch-only（本番プラグイン）** | Lua |",
+            "| **`pipeline_registered`（パイプライン登録済み、非 E2E）** | C · C++ · C# · Go · Java · JavaScript · Kotlin · PHP · Python · Ruby · Rust · Swift · TypeScript |",
+            "| **`index_admitted`（インデックス受け入れ済み）** | Bash · Lua · Scala |",
+            "Lua はインデックス受け入れ済みで call dispatch と resolver slot も持つ",
             ("完全インデックス", "フルコールグラフ", "フル コール グラフ"),
         ),
         (
             "README_zh.md",
             "## 支持的语言",
             "## 配置",
-            "| **`pipeline_registered`（管线注册态，非 E2E）** | Python · Java · JavaScript · TypeScript · Go · Rust · C · C++ · C# · Swift · Kotlin · Ruby · PHP |",
-            "| **`index_admitted`（索引准入态）** | Bash · Scala |",
-            "| **call-dispatch-only（生产插件）** | Lua |",
+            "| **`pipeline_registered`（管线注册态，非 E2E）** | C · C++ · C# · Go · Java · JavaScript · Kotlin · PHP · Python · Ruby · Rust · Swift · TypeScript |",
+            "| **`index_admitted`（索引准入态）** | Bash · Lua · Scala |",
+            "Lua 已获索引准入，并具备 call dispatch 与 resolver slot",
             ("完整索引", "全量调用图", "完整调用图"),
         ),
     ),
@@ -392,8 +421,8 @@ def test_translated_readmes_reject_unregistered_quantitative_marketing(
                 "### 323 の CLI フラグ",
                 "22 言語プラグイン",
                 "13 は `pipeline_registered`",
-                "2 は `index_admitted`",
-                "Lua は本番プラグインとして call-dispatch-only",
+                "3 は `index_admitted`",
+                "Lua はインデックス受け入れ済み",
             ),
         ),
         (
@@ -404,8 +433,8 @@ def test_translated_readmes_reject_unregistered_quantitative_marketing(
                 "### 323 个 CLI flag",
                 "22 个语言插件",
                 "13 个为 `pipeline_registered`",
-                "2 个为 `index_admitted`",
-                "Lua 是生产可用的 call-dispatch-only 插件",
+                "3 个为 `index_admitted`",
+                "Lua 已获索引准入",
             ),
         ),
     ),

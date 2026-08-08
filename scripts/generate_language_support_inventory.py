@@ -12,7 +12,12 @@ from tree_sitter_analyzer.language_inventory import CAPABILITY_COLUMNS, build_in
 
 ROOT = Path(__file__).resolve().parents[1]
 JSON_PATH = ROOT / "docs" / "language-support-inventory.json"
-README_PATH = ROOT / "README.md"
+README_PATHS = {
+    "en": ROOT / "README.md",
+    "ja": ROOT / "README_ja.md",
+    "zh": ROOT / "README_zh.md",
+}
+README_PATH = README_PATHS["en"]
 CODEMAP_PATH = ROOT / "docs" / "CODEMAPS" / "languages.md"
 BEGIN = "<!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->"
 END = "<!-- END GENERATED LANGUAGE SUPPORT INVENTORY -->"
@@ -34,7 +39,7 @@ def render_json() -> str:
     return json.dumps(build_inventory(), indent=2, sort_keys=True) + "\n"
 
 
-def render_markdown(*, compact: bool = False) -> str:
+def render_markdown(*, compact: bool = False, locale: str = "en") -> str:
     inventory = build_inventory()
     counts = inventory["counts"]
     tiers = inventory["tier_counts"]
@@ -49,14 +54,15 @@ def render_markdown(*, compact: bool = False) -> str:
         tier_languages: dict[str, list[str]] = {}
         for row in inventory["languages"]:
             tier_languages.setdefault(row["tier"], []).append(row["display_name"])
-        return "\n".join(
-            [
-                BEGIN,
+        if locale == "en":
+            intro = (
                 "Generated from runtime registries; see [`docs/CODEMAPS/languages.md`](docs/CODEMAPS/languages.md) for the full capability matrix. "
                 + summary
-                + " `pipeline_registered` is registration evidence, not positive cross-file binding proof.",
+                + " `pipeline_registered` is registration evidence, not positive cross-file binding proof."
+            )
+            rows = [
                 " | ".join(
-                    f"`{tier}`: {', '.join(tier_languages[tier])}"
+                    f"`{tier}`: {', '.join(tier_languages.get(tier, []))}"
                     for tier in (
                         "pipeline_registered",
                         "index_admitted",
@@ -64,11 +70,45 @@ def render_markdown(*, compact: bool = False) -> str:
                         "data_markup",
                         "scaffold",
                     )
-                ),
-                END,
-                "",
+                )
             ]
-        )
+        elif locale == "ja":
+            intro = (
+                f"ランタイムレジストリから生成。**{counts['plugin_discovery']} 言語プラグイン**; "
+                f"{tiers['pipeline_registered']} は `pipeline_registered`（非 E2E）、"
+                f"{tiers['index_admitted']} は `index_admitted`、{tiers['data_markup']} 個は data/markup、"
+                f"{tiers['scaffold']} 個はスキャフォールド。登録は正のクロスファイル束縛を保証しない。"
+            )
+            rows = [
+                "| ティア | 言語 |",
+                "|---|---|",
+                f"| **`pipeline_registered`（パイプライン登録済み、非 E2E）** | {' · '.join(tier_languages['pipeline_registered'])} |",
+                f"| **`index_admitted`（インデックス受け入れ済み）** | {' · '.join(tier_languages['index_admitted'])} |",
+                f"| **単一ファイル解析 (CLI)** | {' · '.join(tier_languages['data_markup'])} |",
+                f"| **スキャフォールド (プラグイン有 / インデクサー結線待ち)** | {' · '.join(tier_languages['scaffold'])} |",
+                "",
+                "Lua はインデックス受け入れ済みで call dispatch と resolver slot も持つが、import dispatch とクロスファイル E2E 証拠は未確認。",
+            ]
+        elif locale == "zh":
+            intro = (
+                f"由运行时 registry 生成。**{counts['plugin_discovery']} 个语言插件**；"
+                f"{tiers['pipeline_registered']} 个为 `pipeline_registered`（非 E2E），"
+                f"{tiers['index_admitted']} 个为 `index_admitted`，{tiers['data_markup']} 个 data/markup，"
+                f"{tiers['scaffold']} 个脚手架。注册状态不保证跨文件正向绑定。"
+            )
+            rows = [
+                "| 等级 | 语言 |",
+                "|---|---|",
+                f"| **`pipeline_registered`（管线注册态，非 E2E）** | {' · '.join(tier_languages['pipeline_registered'])} |",
+                f"| **`index_admitted`（索引准入态）** | {' · '.join(tier_languages['index_admitted'])} |",
+                f"| **单文件分析（CLI）** | {' · '.join(tier_languages['data_markup'])} |",
+                f"| **脚手架（插件已有，索引器待接）** | {' · '.join(tier_languages['scaffold'])} |",
+                "",
+                "Lua 已获索引准入，并具备 call dispatch 与 resolver slot，但 import dispatch 和跨文件 E2E 证据仍未确认。",
+            ]
+        else:
+            raise ValueError(f"unsupported locale: {locale}")
+        return "\n".join([BEGIN, intro, *rows, END, ""])
     lines = [
         BEGIN,
         "Generated from runtime registries and reviewed classifications by `scripts/generate_language_support_inventory.py`; do not edit counts or rows by hand.",
@@ -114,10 +154,10 @@ def _replace_section(text: str, section: str) -> str:
 
 def write_outputs() -> None:
     JSON_PATH.write_text(render_json(), encoding="utf-8")
-    sections = (
-        (README_PATH, render_markdown(compact=True)),
-        (CODEMAP_PATH, render_markdown()),
-    )
+    sections = tuple(
+        (path, render_markdown(compact=True, locale=locale))
+        for locale, path in README_PATHS.items()
+    ) + ((CODEMAP_PATH, render_markdown()),)
     for path, section in sections:
         path.write_text(
             _replace_section(path.read_text(encoding="utf-8"), section),
@@ -129,10 +169,10 @@ def check_outputs() -> int:
     failures: list[str] = []
     if not JSON_PATH.exists() or JSON_PATH.read_text(encoding="utf-8") != render_json():
         failures.append(str(JSON_PATH.relative_to(ROOT)))
-    sections = (
-        (README_PATH, render_markdown(compact=True)),
-        (CODEMAP_PATH, render_markdown()),
-    )
+    sections = tuple(
+        (path, render_markdown(compact=True, locale=locale))
+        for locale, path in README_PATHS.items()
+    ) + ((CODEMAP_PATH, render_markdown()),)
     for path, rendered in sections:
         section = rendered.rstrip()
         text = path.read_text(encoding="utf-8")

@@ -11,6 +11,7 @@ import json
 import math
 import re
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,14 @@ from typing import Any
 from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import SchemaError
 
+from benchmarks.codegraph_compare.e4_evidence import validate_e4_evidence
+
 _LEVELS = {"E0": 0, "E1": 1, "E2": 2, "E3": 3, "E4": 4}
+# E4 trust roots are deliberately outside claim-controlled artifacts.  A future
+# authority is admitted only by adding its independently supplied reproduction
+# manifest digest here through normal code review; registry edits cannot create
+# or expand this trust set.
+_TRUSTED_E4_REPRODUCTIONS: Mapping[str, frozenset[str]] = {}
 _README_CLAIMS_BEGIN = "<!-- BEGIN GENERATED QUANTITATIVE CLAIMS -->"
 _README_CLAIMS_END = "<!-- END GENERATED QUANTITATIVE CLAIMS -->"
 
@@ -281,7 +289,10 @@ def readme_claim_violations(
 
 
 def _validate_artifact(
-    claim: dict[str, Any], artifacts_root: Path, violations: list[str]
+    claim: dict[str, Any],
+    artifacts_root: Path,
+    violations: list[str],
+    trusted_reproductions: Mapping[str, frozenset[str]],
 ) -> None:
     claim_id = claim["claim_id"]
     artifact = claim["artifact"]
@@ -302,17 +313,23 @@ def _validate_artifact(
     except (UnicodeDecodeError, ValueError):
         violations.append(f"ARTIFACT_JSON_INVALID:{claim_id}")
         return
-    if (
-        type(evidence) is not dict
-        or set(evidence) != {"schema_version", "claim"}
+    if type(evidence) is not dict or evidence.get("claim") != _evidence_payload(claim):
+        violations.append(f"STALE_OR_MIXED_PROVENANCE:{claim_id}")
+        return
+    if claim["evidence_level"] == "E4":
+        validate_e4_evidence(claim, evidence, trusted_reproductions, violations)
+    elif (
+        set(evidence) != {"schema_version", "claim"}
         or evidence.get("schema_version") != 1
-        or evidence.get("claim") != _evidence_payload(claim)
     ):
         violations.append(f"STALE_OR_MIXED_PROVENANCE:{claim_id}")
 
 
 def validate_registry(
-    registry: Any, *, schema: dict[str, Any], artifacts_root: Path
+    registry: Any,
+    *,
+    schema: dict[str, Any],
+    artifacts_root: Path,
 ) -> ClaimRegistryVerdict:
     """Validate a registry and release wording only after every gate passes."""
     try:
@@ -347,6 +364,7 @@ def validate_registry(
         )
 
     claims = registry["claims"]
+    authority_roots = _TRUSTED_E4_REPRODUCTIONS
     violations: list[str] = []
     identifiers = [claim["claim_id"] for claim in claims]
     if len(identifiers) != len(set(identifiers)):
@@ -380,6 +398,7 @@ def validate_registry(
                 )
             if _LEVELS[claim["evidence_level"]] < 2:
                 claim_violations.append(f"QUANTITATIVE_EVIDENCE_TOO_LOW:{claim_id}")
+            unsafe_fields: tuple[str, ...] = ()
             if claim["evidence_level"] == "E4":
                 unsafe_fields = _unsafe_e4_fields(claim)
                 if unsafe_fields:
@@ -388,8 +407,10 @@ def validate_registry(
                     )
             if claim["artifact"] is None:
                 claim_violations.append(f"ARTIFACT_MISSING:{claim_id}")
-            elif not measurement_invalid:
-                _validate_artifact(claim, artifacts_root, claim_violations)
+            elif not measurement_invalid and not unsafe_fields:
+                _validate_artifact(
+                    claim, artifacts_root, claim_violations, authority_roots
+                )
         else:
             blocked += 1
             if claim["numerator"] is not None or claim["denominator"] is not None:

@@ -345,8 +345,8 @@ MCP client config (the project root inside the container is the mount point `/wo
 ## Supported Languages
 
 <!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->
-Generated from runtime registries; see [`docs/CODEMAPS/languages.md`](docs/CODEMAPS/languages.md) for the full capability matrix. **22 plugins**: 13 pipeline-registered, 2 index-admitted, 1 call-dispatch-only, 5 data/markup, 1 scaffold. `pipeline_registered` is registration evidence, not positive cross-file binding proof.
-`pipeline_registered`: C, C++, C#, Go, Java, JavaScript, Kotlin, PHP, Python, Ruby, Rust, Swift, TypeScript | `index_admitted`: Bash, Scala | `call_dispatch_only`: Lua | `data_markup`: CSS, HTML, Markdown, SQL, YAML | `scaffold`: JSON
+Generated from runtime registries; see [`docs/CODEMAPS/languages.md`](docs/CODEMAPS/languages.md) for the full capability matrix. **22 plugins**: 13 pipeline-registered, 3 index-admitted, 0 call-dispatch-only, 5 data/markup, 1 scaffold. `pipeline_registered` is registration evidence, not positive cross-file binding proof.
+`pipeline_registered`: C, C++, C#, Go, Java, JavaScript, Kotlin, PHP, Python, Ruby, Rust, Swift, TypeScript | `index_admitted`: Bash, Lua, Scala | `call_dispatch_only`:  | `data_markup`: CSS, HTML, Markdown, SQL, YAML | `scaffold`: JSON
 <!-- END GENERATED LANGUAGE SUPPORT INVENTORY -->
 
 ## Configuration
