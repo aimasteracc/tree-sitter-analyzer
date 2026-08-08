@@ -596,6 +596,10 @@ class TestSkillContentSync:
         )
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: install.sh supports macOS/Linux; Windows uses PowerShell",
+)
 class TestInstallScriptUvVersion:
     def test_uv_minimum_matches_project_contract(self) -> None:
         # NO1-006A (2026-08-08): installer and doctor must track tool.uv exactly.

@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from scripts import qualify_fresh_install as qualification
 
 REPO = Path(__file__).parents[2]
@@ -275,6 +277,10 @@ def test_run_removes_fixture_when_installer_times_out(tmp_path: Path) -> None:
     assert fixture_root.exists() is False
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: install.sh timeout contract is for macOS/Linux shell installs",
+)
 def test_installer_times_out_hanging_existing_uv(tmp_path: Path) -> None:
     # PR #1233: an existing uv shim must not block installation indefinitely.
     root = tmp_path / "existing-uv-timeout"
@@ -299,6 +305,10 @@ def test_installer_times_out_hanging_existing_uv(tmp_path: Path) -> None:
     assert "Replace or repair uv" in completed.stdout
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: install.sh timeout contract is for macOS/Linux shell installs",
+)
 def test_installer_times_out_hanging_post_bootstrap_uv(tmp_path: Path) -> None:
     # PR #1233: bootstrap validation must fail closed when the installed uv hangs.
     root = tmp_path / "bootstrap-uv-timeout"
