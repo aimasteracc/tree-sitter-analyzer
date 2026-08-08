@@ -5,7 +5,7 @@ from __future__ import annotations
 
 # ruff: noqa: B904, E401, E701, E702, I001
 # fmt: off
-import argparse, hashlib, json, os, platform, re, shutil, signal, subprocess, sys, tarfile, tempfile, time, urllib.request, zipfile
+import argparse, hashlib, json, os, platform, re, shutil, signal, subprocess, sys, tarfile, tempfile, urllib.request, zipfile
 from pathlib import Path
 from typing import Any
 
@@ -54,15 +54,40 @@ def fetch(args: argparse.Namespace) -> int:
     with urllib.request.urlopen(request,timeout=60) as source, output.open("wb") as target: shutil.copyfileobj(source,target)
     validate_archive(output,expected); return 0
 
-def safe_extract(archive: Path, destination: Path) -> Path:
-    destination.mkdir(parents=True); names=[]
-    if archive.suffix==".zip":
+def _safe_member(name: str, destination: Path) -> Path:
+    normalized=name.replace("\\","/")
+    pure=Path(normalized)
+    if not normalized or pure.is_absolute() or ".." in pure.parts or re.match(r"^[A-Za-z]:",normalized): raise ValueError(f"unsafe archive member path: {name}")
+    target=(destination/pure).resolve()
+    try: target.relative_to(destination.resolve())
+    except ValueError: raise ValueError(f"archive member escapes destination: {name}")
+    return target
+
+def safe_extract(archive: Path, destination: Path, expected_filename: str | None=None) -> Path:
+    destination.mkdir(parents=True); archive=archive.resolve(strict=True)
+    filename=expected_filename or archive.name
+    expected_format="zip" if filename.endswith(".zip") else "tar.gz" if filename.endswith(".tar.gz") else None
+    content_format="zip" if zipfile.is_zipfile(archive) else "tar.gz" if tarfile.is_tarfile(archive) else None
+    if expected_format is None or content_format != expected_format: raise ValueError("archive filename/content format differs from allowlist")
+    if content_format=="zip":
         with zipfile.ZipFile(archive) as z:
-            names=z.namelist(); assert all(not Path(n).is_absolute() and ".." not in Path(n).parts for n in names); z.extractall(destination)
+            for info in z.infolist():
+                mode=(info.external_attr >> 16) & 0o170000
+                if mode not in (0,0o100000,0o040000): raise ValueError(f"unsafe zip member type: {info.filename}")
+                target=_safe_member(info.filename,destination)
+                if info.is_dir(): target.mkdir(parents=True,exist_ok=True); continue
+                target.parent.mkdir(parents=True,exist_ok=True)
+                with z.open(info) as source, target.open("xb") as output: shutil.copyfileobj(source,output)
     else:
         with tarfile.open(archive,"r:gz") as t:
-            names=t.getnames(); assert all(not Path(n).is_absolute() and ".." not in Path(n).parts for n in names); t.extractall(destination)  # noqa: S202 - member paths were rejected above
-    executable="uv.exe" if os.name=="nt" else "uv"
+            for member in t.getmembers():
+                if member.issym() or member.islnk() or member.isdev() or not (member.isfile() or member.isdir()): raise ValueError(f"unsafe tar member type: {member.name}")
+                target=_safe_member(member.name,destination)
+                if member.isdir(): target.mkdir(parents=True,exist_ok=True); continue
+                target.parent.mkdir(parents=True,exist_ok=True); source=t.extractfile(member)
+                if source is None: raise ValueError(f"tar member has no content: {member.name}")
+                with source, target.open("xb") as output: shutil.copyfileobj(source,output)
+    executable="uv.exe" if content_format=="zip" else "uv"
     found=[p for p in destination.rglob(executable) if p.is_file()]
     if len(found)!=1: raise ValueError("archive must contain exactly one uv executable")
     found[0].chmod(found[0].stat().st_mode|0o700); return found[0]
@@ -97,10 +122,20 @@ def run_tree(argv:list[str],cwd:Path,env:dict[str,str],timeout:float)->subproces
     try: out,err=process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         if os.name!="nt":
-            os.killpg(process.pid,signal.SIGTERM); time.sleep(.2)
-            if process.poll() is None: os.killpg(process.pid,signal.SIGKILL)
-        else: process.kill()
-        out,err=process.communicate(); raise TimeoutError("installer process tree timed out and was reaped")
+            for sig,grace in ((signal.SIGTERM,.5),(signal.SIGKILL,.5)):
+                try: os.killpg(process.pid,sig)
+                except ProcessLookupError: pass
+                try: process.communicate(timeout=grace)
+                except subprocess.TimeoutExpired: pass
+        else:
+            subprocess.run(["taskkill","/PID",str(process.pid),"/T","/F"],capture_output=True,timeout=5,check=False)
+        try: process.communicate(timeout=.5)
+        except subprocess.TimeoutExpired:
+            for stream in (process.stdout,process.stderr):
+                if stream: stream.close()
+            try: process.wait(timeout=.5)
+            except subprocess.TimeoutExpired: process.kill(); process.wait(timeout=.5)
+        raise TimeoutError("installer process tree timed out and was reaped")
     return subprocess.CompletedProcess(argv,process.returncode,out,err)
 
 def package_binding(args: argparse.Namespace)->dict[str,Any]:
@@ -126,14 +161,14 @@ def axis(args:argparse.Namespace)->int:
         old_archive=Path(args.old_archive); old_meta=validate_archive(old_archive,fixture(args.axis,OLD_VERSION)); shutil.copyfile(old_archive,side/"old.archive"); report["artifacts"]["old.archive"]={"sha256":old_meta["sha256"],"size":old_meta["size"]}
         root=Path(tempfile.mkdtemp(prefix="tsa-outdated-native-"))
         try:
-            old=uv_details(safe_extract(old_archive,root/"old"),OLD_VERSION); report["old_uv"]={"archive":old_meta,"executable":old}
+            old=uv_details(safe_extract(old_archive,root/"old",old_meta["filename"]),OLD_VERSION); report["old_uv"]={"archive":old_meta,"executable":old}
             report["package_qualification"]=package_binding(args)
             if args.axis=="windows":
                 if Path(args.installer).with_name("install.ps1").exists(): raise ValueError("Windows native installer now exists; implement its qualification")
                 report["status"]="NOT_APPLICABLE_NO_NATIVE_INSTALLER"; report["failure"]={"type":"NotApplicable","message":"Windows has no native install.ps1; real old uv.exe execution retained only as a platform fixture"}
                 return 0
             supported_archive=Path(args.supported_archive); supported_meta=validate_archive(supported_archive,fixture(args.axis,SUPPORTED_VERSION)); shutil.copyfile(supported_archive,side/"supported.archive"); report["artifacts"]["supported.archive"]={"sha256":supported_meta["sha256"],"size":supported_meta["size"]}
-            supported=uv_details(safe_extract(supported_archive,root/"supported"),SUPPORTED_VERSION); report["supported_uv"]={"archive":supported_meta,"executable":supported}
+            supported=uv_details(safe_extract(supported_archive,root/"supported",supported_meta["filename"]),SUPPORTED_VERSION); report["supported_uv"]={"archive":supported_meta,"executable":supported}
             installer=Path(args.installer).resolve(strict=True); write_side(side,"installer.source",installer.read_bytes(),report)
             home=root/"home"; temp=root/"tmp"; project=root/"fixture"; tools=curated_tools(root/"tools")
             for p in (home,temp,project): p.mkdir()
@@ -150,7 +185,11 @@ def axis(args:argparse.Namespace)->int:
             write_side(side,"second.stdout",second.stdout,report); write_side(side,"second.stderr",second.stderr,report); after_second=tree_snapshot(home)
             expected_entry={"command":"uvx","args":["--from","tree-sitter-analyzer[mcp]","tree-sitter-analyzer-mcp"],"env":{"TREE_SITTER_PROJECT_ROOT":str(project.resolve())}}
             value=json.loads(config.read_text()); backups=list(config.parent.glob(".mcp.json.bak.*"))
-            if second.returncode!=0 or f"uv {SUPPORTED_VERSION}" not in second.stdout.decode("utf-8","replace") or value!={"mcpServers":{"tree-sitter-analyzer":expected_entry}} or len(backups)!=1 or backups[0].read_bytes()!=b'{}\n': raise ValueError("manual recovery config diff/backup oracle failed")
+            expected_value={"mcpServers":{"tree-sitter-analyzer":expected_entry}}
+            if second.returncode!=0 or f"uv {SUPPORTED_VERSION}" not in second.stdout.decode("utf-8","replace") or value!=expected_value or len(backups)!=1 or backups[0].read_bytes()!=b'{}\n': raise ValueError("manual recovery config diff/backup oracle failed")
+            expected_after=[item for item in before if item["path"] not in (".claude/.mcp.json",)]
+            expected_after.extend([{"path":".claude/.mcp.json","type":"file","sha256":hashlib.sha256((json.dumps(expected_value,indent=2)+"\n").encode()).hexdigest()},{"path":str(backups[0].relative_to(home)),"type":"file","sha256":hashlib.sha256(b'{}\n').hexdigest()}])
+            if sorted(after_second,key=lambda item:item["path"])!=sorted(expected_after,key=lambda item:item["path"]): raise ValueError("second install changed HOME beyond exact config replacement and one backup")
             report["installer"]={"path":str(installer),"sha256":sha256(installer),"first_exit":first.returncode,"second_exit":second.returncode,"curl_invocations":0,"first_path":old_path,"second_path":supported_path}
             report["config"]={"before":before,"after_first":after_first,"after_second":after_second,"expected_entry":expected_entry,"backup_sha256":sha256(backups[0])}
             mcp_dir=side/"mcp"; mcp_dir.mkdir(); env=os.environ.copy(); env["TSA_QUALIFICATION_UV"]=supported["path"]
@@ -159,8 +198,10 @@ def axis(args:argparse.Namespace)->int:
             write_side(side,"mcp-driver.stdout",causal.stdout,report); write_side(side,"mcp-driver.stderr",causal.stderr,report)
             if causal.returncode or not (mcp_dir/"report.json").exists(): raise RuntimeError("supported uv exact-wheel MCP qualification failed")
             causal_report=json.loads((mcp_dir/"report.json").read_text()); binding=report["package_qualification"]
-            if causal_report.get("passed") is not True or causal_report.get("wheel")!=binding["wheel"] or causal_report.get("build_manifest_sha256")!=binding["build_manifest_sha256"]: raise ValueError("MCP causal report identity mismatch")
-            report["mcp_causal_report"]={"sha256":sha256(mcp_dir/"report.json"),"wheel":causal_report["wheel"],"first_call":causal_report["mcp"]["first_call"],"install_tool":"uv","uv_version":SUPPORTED_VERSION}
+            install=causal_report.get("install",{}); tool=install.get("tool",{}); expected_tool={k:supported[k] for k in ("path","sha256","size","version_stdout","version")}
+            expected_argv=[supported["path"],"pip","install","--python",install.get("argv",[None,None,None,None,None])[4] if len(install.get("argv",[]))>4 else None,"--no-cache",f"{Path(args.wheel).resolve()}[mcp]"]
+            if causal_report.get("passed") is not True or causal_report.get("wheel")!=binding["wheel"] or causal_report.get("build_manifest_sha256")!=binding["build_manifest_sha256"] or tool!=expected_tool or install.get("argv")!=expected_argv: raise ValueError("MCP causal report/install-tool identity mismatch")
+            report["mcp_causal_report"]={"sha256":sha256(mcp_dir/"report.json"),"wheel":causal_report["wheel"],"first_call":causal_report["mcp"]["first_call"],"install_tool":tool,"install_argv":install["argv"]}
             for p in sorted(mcp_dir.iterdir()): report["artifacts"][f"mcp/{p.name}"]={"sha256":sha256(p),"size":p.stat().st_size}
             report["passed"]=True; report["status"]="PASSED"
         finally: shutil.rmtree(root,ignore_errors=True)
@@ -175,9 +216,13 @@ def aggregate(args:argparse.Namespace)->int:
         try:
             value=json.loads(path.read_text()); ok=(expected in ("linux","macos") and value.get("passed") is True) or (expected=="windows" and value.get("status")=="NOT_APPLICABLE_NO_NATIVE_INSTALLER" and value.get("passed") is False and value.get("qualification_performed") is False)
             if value.get("axis")!=expected or not ok: failures.append(f"{expected}: invalid required outcome")
+            expected_source,expected_workflow=identity("outdated-uv-axis")
+            if value.get("source")!=expected_source or value.get("workflow")!=expected_workflow: failures.append(f"{expected}: report GITHUB identity mismatch")
             if value.get("automatic_mutable_bootstrap_qualified") is not False: failures.append(f"{expected}: mutable bootstrap claim")
-            binding=value.get("package_qualification"); package=package or binding
-            if binding!=package: failures.append(f"{expected}: package identity mismatch")
+            binding=value.get("package_qualification")
+            common={k:binding.get(k) for k in ("aggregate_sha256","build_manifest_sha256","wheel")} if isinstance(binding,dict) else None
+            if package is None: package=common
+            if common!=package or not isinstance(binding,dict) or binding.get("axis_report_sha256") is None: failures.append(f"{expected}: package identity mismatch")
             axes.append({"axis":expected,"report_sha256":sha256(path),"status":value.get("status"),"passed":value.get("passed")})
         except Exception as exc: failures.append(f"{expected}: {type(exc).__name__}: {exc}")
     trusted=args.trusted and os.environ.get("GITHUB_EVENT_NAME")=="push" and os.environ.get("GITHUB_REF")=="refs/heads/develop"

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import signal
+import tarfile
 import time
+import zipfile
 from pathlib import Path
 
 import jsonschema
@@ -57,7 +60,11 @@ def test_clean_environment_drops_host_uv_python_xdg_and_shell_injection(
 )
 def test_installer_timeout_reaps_entire_process_group(tmp_path: Path) -> None:
     pid_file = tmp_path / "child.pid"
-    command = ["/bin/bash", "-c", f"sleep 60 & echo $! > {pid_file}; wait"]
+    command = [
+        "/bin/bash",
+        "-c",
+        f"(trap '' TERM; sleep 60) & echo $! > {pid_file}; wait",
+    ]
     with pytest.raises(TimeoutError, match="process tree timed out and was reaped"):
         qualification.run_tree(command, tmp_path, os.environ.copy(), 0.2)
     pid = int(pid_file.read_text())
@@ -73,16 +80,90 @@ def test_installer_timeout_reaps_entire_process_group(tmp_path: Path) -> None:
         raise AssertionError("installer descendant survived bounded cleanup")
 
 
-def test_schema_rejects_windows_pass_and_mutable_bootstrap_claim() -> None:
+def valid_windows_report() -> dict[str, object]:
     report = qualification.base_report("windows")
+    report["old_uv"] = {"observed": True}
+    report["package_qualification"] = {"observed": True}
+    report["failure"] = {"type": "NotApplicable", "message": "manual remediation"}
+    return report
+
+
+def test_schema_rejects_windows_pass_and_mutable_bootstrap_claim() -> None:
+    report = valid_windows_report()
     jsonschema.validate(report, SCHEMA)
     report["passed"] = True
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(report, SCHEMA)
-    report = qualification.base_report("windows")
+    report = valid_windows_report()
     report["automatic_mutable_bootstrap_qualified"] = True
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(report, SCHEMA)
+
+
+def test_windows_dot_archive_dispatches_allowlisted_zip_content(tmp_path: Path) -> None:
+    archive = tmp_path / "old.archive"
+    with zipfile.ZipFile(archive, "w") as value:
+        value.writestr("bundle/uv.exe", b"fixture")
+    executable = qualification.safe_extract(
+        archive, tmp_path / "output", "uv-x86_64-pc-windows-msvc.zip"
+    )
+    assert executable.read_bytes() == b"fixture"
+
+
+@pytest.mark.parametrize("kind", ["symlink", "hardlink", "device", "traversal"])
+def test_safe_extract_rejects_unsafe_tar_members(tmp_path: Path, kind: str) -> None:
+    # Incident 2026-07-15: archive extraction must fail closed without assert.
+    archive = tmp_path / "old.archive"
+    with tarfile.open(archive, "w:gz") as value:
+        member = tarfile.TarInfo("../escape" if kind == "traversal" else "bundle/bad")
+        if kind == "symlink":
+            member.type, member.linkname = tarfile.SYMTYPE, "/tmp/outside"
+        elif kind == "hardlink":
+            member.type, member.linkname = tarfile.LNKTYPE, "bundle/uv"
+        elif kind == "device":
+            member.type = tarfile.CHRTYPE
+        else:
+            member.size = 1
+        value.addfile(member, io.BytesIO(b"x") if member.isreg() else None)
+    with pytest.raises(ValueError, match="unsafe"):
+        qualification.safe_extract(
+            archive, tmp_path / "output", "uv-x86_64-unknown-linux-gnu.tar.gz"
+        )
+
+
+def test_schema_rejects_impossible_failed_axis_and_aggregate() -> None:
+    axis = qualification.base_report("linux")
+    axis.update({"status": "FAILED", "passed": True, "failure": None})
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(axis, SCHEMA)
+    aggregate = {
+        "schema_version": qualification.SCHEMA_VERSION,
+        "kind": "outdated_uv_aggregate",
+        "qualification_id": "NO1-006A",
+        "evidence_scope": "native_outdated_uv_actionable_recovery",
+        "qualification_performed": True,
+        "qualified": False,
+        "evidence_trust": "EXTERNAL_ATTESTATION_REQUIRED",
+        "source_commit": "0" * 40,
+        "package_qualification": {},
+        "required_axes": {
+            "package": ["linux", "macos", "windows"],
+            "outdated": ["linux", "macos"],
+            "not_applicable": {"windows": "NOT_APPLICABLE_NO_NATIVE_INSTALLER"},
+        },
+        "automatic_mutable_bootstrap_qualified": False,
+        "axes": [{}, {}, {}],
+        "failures": ["fatal"],
+        "workflow": qualification.identity("outdated-uv-aggregate")[1],
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(aggregate, SCHEMA)
+
+
+def test_workflow_routes_fixture_manifest_and_all_attestation_schemas() -> None:
+    workflow = (ROOT / ".github/workflows/native-install-qualification.yml").read_text()
+    assert workflow.count('"config/no1_uv_fixtures.json"') == 2
+    assert workflow.count('"rfcs/schemas/no1-006a-*-attestation-*.schema.json"') == 2
 
 
 def test_workflow_separates_read_only_verification_from_tiny_oidc_job() -> None:

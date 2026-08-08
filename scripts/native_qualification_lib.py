@@ -387,6 +387,27 @@ def run(
     )
 
 
+def observe_uv_install_tool(executable: str, cwd: Path) -> tuple[str, dict[str, Any]]:
+    """Bind an install command to the resolved executable bytes and version output."""
+    resolved = Path(executable).resolve(strict=True)
+    rc, stdout, stderr, _ = run(
+        [str(resolved), "--version"],
+        cwd=cwd,
+        env={"PATH": os.environ.get("PATH", "")},
+        timeout=10,
+    )
+    if rc != 0 or stderr or not stdout.startswith(b"uv "):
+        raise RuntimeError("qualification uv identity observation failed")
+    version_stdout = stdout.decode()
+    return str(resolved), {
+        "path": str(resolved),
+        "sha256": sha256(resolved),
+        "size": resolved.stat().st_size,
+        "version": version_stdout.split()[1],
+        "version_stdout": version_stdout,
+    }
+
+
 def stage_error(report: dict[str, Any], stage: str, exc: BaseException) -> None:
     report["passed"] = False
     report["failure"] = {

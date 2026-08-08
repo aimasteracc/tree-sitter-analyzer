@@ -20,6 +20,7 @@ from native_qualification_lib import (
     direct_url_hash,
     identity,
     installed_files_sidecar,
+    observe_uv_install_tool,
     run,
     sha256,
     stage_error,
@@ -169,8 +170,9 @@ def axis(args: argparse.Namespace) -> int:
             )
             current_stage = STAGES[1]
             # fmt: off
-            qualification_uv = os.environ.get("TSA_QUALIFICATION_UV")
+            qualification_uv, install_tool = os.environ.get("TSA_QUALIFICATION_UV"), None
             if qualification_uv:
+                qualification_uv, install_tool = observe_uv_install_tool(qualification_uv, project)
                 rc, _, err, _ = run([qualification_uv, "venv", "--seed", str(envroot)], cwd=project, env={"PATH": os.environ.get("PATH", "")}, timeout=60)
                 if rc != 0:
                     raise RuntimeError(f"uv venv failed: {err.decode('utf-8', 'replace')}")
@@ -213,6 +215,8 @@ def axis(args: argparse.Namespace) -> int:
                 "fresh_venv": True,
                 "cwd_outside_checkout": True,
                 "pythonpath_cleared": True,
+                "tool": install_tool,
+                "argv": install_command,
             }
             if rc != 0:
                 raise RuntimeError(f"pip install failed with exit {rc}")
