@@ -5,6 +5,7 @@ RED-first tests written before the implementation.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -646,7 +647,7 @@ class TestInstallScriptUvVersion:
         }
         if disable_bootstrap:
             env["TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP"] = "1"
-        (tmp_path / "home").mkdir()
+        (tmp_path / "home").mkdir(exist_ok=True)
         return subprocess.run(
             ["/bin/bash", str(repo / "install.sh")],
             cwd=tmp_path,
@@ -702,6 +703,32 @@ class TestInstallScriptUvVersion:
         )
         assert "📦 Updating uv automatically..." in result.stdout
         assert (tmp_path / "curl-log").exists() is True
+
+    def test_agent_config_symlink_target_is_updated_without_replacing_link(
+        self, tmp_path: Path
+    ) -> None:
+        home = tmp_path / "home"
+        (home / ".claude").mkdir(parents=True)
+        managed = tmp_path / "managed-mcp.json"
+        managed.write_text('{"mcpServers": {}}', encoding="utf-8")
+        link = home / ".claude" / ".mcp.json"
+        link.symlink_to(managed)
+        result = self._run(tmp_path, "uv 0.11.0")
+        assert result.returncode == 0
+        assert link.is_symlink()
+        data = json.loads(managed.read_text(encoding="utf-8"))
+        assert data["mcpServers"]["tree-sitter-analyzer"]["command"] == "uvx"
+
+    def test_bootstrap_signal_traps_terminate_after_exit_cleanup(self) -> None:
+        installer = (Path(__file__).parents[3] / "install.sh").read_text(
+            encoding="utf-8"
+        )
+        assert """trap 'rm -f "$UV_INSTALLER_FILE"' EXIT""" in installer
+        assert tuple(re.findall(r"trap 'exit (\d+)' (HUP|INT|TERM)", installer)) == (
+            ("129", "HUP"),
+            ("130", "INT"),
+            ("143", "TERM"),
+        )
 
     def test_secure_opt_out_blocks_bootstrap_with_actionable_recovery(
         self, tmp_path: Path

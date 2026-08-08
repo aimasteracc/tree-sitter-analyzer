@@ -80,7 +80,10 @@ if [ "$UV_INSTALL_NEEDED" = "1" ]; then
     echo "📦 Installing uv automatically..."
   fi
   UV_INSTALLER_FILE=$(mktemp "${TMPDIR:-/tmp}/tsa-uv-installer.XXXXXX")
-  trap 'rm -f "$UV_INSTALLER_FILE"' EXIT HUP INT TERM
+  trap 'rm -f "$UV_INSTALLER_FILE"' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   if ! curl --proto '=https' --tlsv1.2 -LsSf \
     https://astral.sh/uv/install.sh -o "$UV_INSTALLER_FILE"; then
     echo "❌ Automatic uv bootstrap failed."
@@ -241,7 +244,10 @@ if isinstance(existing_entry, dict):
         print("TYPE_ERROR:tree-sitter-analyzer env must be a JSON object", file=sys.stderr)
         sys.exit(3)
 
-config_dir = os.path.dirname(config_path) or "."
+# Preserve dotfile-managed symlinks: atomically replace the resolved target,
+# never the link path itself.
+write_path = os.path.realpath(config_path)
+config_dir = os.path.dirname(write_path) or "."
 if stat.S_IMODE(os.stat(config_dir).st_mode) & 0o222 == 0:
     raise PermissionError(f"config directory is not writable: {config_dir}")
 
@@ -262,8 +268,8 @@ try:
         f.write("\n")
         f.flush()
         os.fsync(f.fileno())
-    os.chmod(temporary_path, stat.S_IMODE(os.stat(config_path).st_mode))
-    os.replace(temporary_path, config_path)
+    os.chmod(temporary_path, stat.S_IMODE(os.stat(write_path).st_mode))
+    os.replace(temporary_path, write_path)
 except BaseException:
     try:
         os.unlink(temporary_path)
