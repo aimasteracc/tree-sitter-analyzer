@@ -85,11 +85,19 @@ def test_installer_timeout_reaps_entire_process_group(tmp_path: Path) -> None:
 
 
 def valid_windows_report() -> dict[str, object]:
-    report = qualification.base_report("windows")
-    report["runner"]["observed_system"] = "Windows"
-    report["old_uv"] = {"observed": True}
-    report["package_qualification"] = {"observed": True}
-    report["failure"] = {"type": "NotApplicable", "message": "manual remediation"}
+    report = valid_passed_report()
+    report.update(
+        axis="windows",
+        qualification_performed=False,
+        passed=False,
+        status="NOT_APPLICABLE_NO_NATIVE_INSTALLER",
+        supported_uv=None,
+        installer=None,
+        config=None,
+        mcp_causal_report=None,
+        failure={"type": "NotApplicable", "message": "manual remediation"},
+    )
+    report["runner"].update(declared_axis="windows", observed_system="Windows")
     return report
 
 
@@ -103,6 +111,17 @@ def test_schema_rejects_windows_pass_and_mutable_bootstrap_claim() -> None:
     report["automatic_mutable_bootstrap_qualified"] = True
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(report, SCHEMA)
+
+
+def test_windows_na_requires_evidence_and_allows_empty_sidecar() -> None:
+    report = valid_windows_report()
+    report["artifacts"] = {"empty.stderr": {"sha256": "0" * 64, "size": 0}}
+    jsonschema.validate(report, SCHEMA)
+    for field in ("old_uv", "package_qualification"):
+        invalid = valid_windows_report()
+        invalid[field] = {}
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(invalid, SCHEMA)
 
 
 def test_windows_dot_archive_dispatches_allowlisted_zip_content(tmp_path: Path) -> None:

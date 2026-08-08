@@ -1,1 +1,1379 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","oneOf":[{"additionalProperties":false,"allOf":[{"oneOf":[{"properties":{"axis":{"enum":["linux","macos"]},"config":{"type":"null"},"failure":{"type":"null"},"installer":{"type":"null"},"mcp_causal_report":{"type":"null"},"old_uv":{"type":"null"},"package_qualification":{"type":"null"},"passed":{"const":false},"qualification_performed":{"const":true},"status":{"const":"PENDING"},"supported_uv":{"type":"null"}},"required":["status","axis","qualification_performed","passed","failure","old_uv","supported_uv","installer","config","package_qualification","mcp_causal_report"]},{"properties":{"axis":{"enum":["linux","macos"]},"config":{"$ref":"#/$defs/config"},"failure":{"type":"null"},"installer":{"$ref":"#/$defs/installer"},"mcp_causal_report":{"$ref":"#/$defs/mcp_causal_report"},"old_uv":{"$ref":"#/$defs/old_uv"},"package_qualification":{"$ref":"#/$defs/package_qualification"},"passed":{"const":true},"qualification_performed":{"const":true},"status":{"const":"PASSED"},"supported_uv":{"$ref":"#/$defs/supported_uv"}},"required":["status","axis","qualification_performed","passed","failure","old_uv","supported_uv","installer","config","package_qualification","mcp_causal_report"]},{"properties":{"axis":{"enum":["linux","macos"]},"failure":{"type":"object"},"passed":{"const":false},"qualification_performed":{"const":true},"status":{"const":"FAILED"}},"required":["status","axis","qualification_performed","passed","failure"]},{"properties":{"axis":{"const":"windows"},"config":{"type":"null"},"failure":{"type":"object"},"installer":{"type":"null"},"mcp_causal_report":{"type":"null"},"old_uv":{"type":"object"},"package_qualification":{"type":"object"},"passed":{"const":false},"qualification_performed":{"const":false},"status":{"const":"NOT_APPLICABLE_NO_NATIVE_INSTALLER"},"supported_uv":{"type":"null"}},"required":["status","axis","qualification_performed","passed","failure","old_uv","package_qualification","supported_uv","installer","config","mcp_causal_report"]}]},{"if":{"properties":{"axis":{"const":"linux"}},"required":["axis"]},"then":{"properties":{"runner":{"properties":{"declared_axis":{"const":"linux"},"observed_system":{"const":"Linux"}}},"mcp_causal_report":{"properties":{"runner":{"properties":{"declared_axis":{"const":"linux"},"observed_system":{"const":"Linux"}}}}}}}},{"if":{"properties":{"axis":{"const":"macos"}},"required":["axis"]},"then":{"properties":{"runner":{"properties":{"declared_axis":{"const":"macos"},"observed_system":{"const":"Darwin"}}},"mcp_causal_report":{"properties":{"runner":{"properties":{"declared_axis":{"const":"macos"},"observed_system":{"const":"Darwin"}}}}}}}},{"if":{"properties":{"axis":{"const":"windows"}},"required":["axis"]},"then":{"properties":{"runner":{"properties":{"declared_axis":{"const":"windows"},"observed_system":{"const":"Windows"}}},"mcp_causal_report":{"properties":{"runner":{"properties":{"declared_axis":{"const":"windows"},"observed_system":{"const":"Windows"}}}}}}}}],"properties":{"artifacts":{"additionalProperties":{"additionalProperties":false,"properties":{"sha256":{"pattern":"^[0-9a-f]{64}$","type":"string"},"size":{"minimum":1,"type":"integer"}},"required":["sha256","size"],"type":"object"},"type":"object"},"automatic_mutable_bootstrap_qualified":{"const":false},"axis":{"enum":["linux","macos","windows"]},"config":{"type":["object","null"]},"evidence_scope":{"const":"native_outdated_uv_actionable_recovery"},"failure":{"type":["object","null"]},"installer":{"type":["object","null"]},"kind":{"const":"outdated_uv_axis"},"mcp_causal_report":{"type":["object","null"]},"old_uv":{"type":["object","null"]},"package_qualification":{"type":["object","null"]},"passed":{"type":"boolean"},"qualification_id":{"const":"NO1-006A"},"qualification_performed":{"type":"boolean"},"remediation_mode":{"const":"manual_content_bound_remediation"},"runner":{"$ref":"#/$defs/runner"},"schema_version":{"const":"no1-006a-outdated-uv-attestation-v2"},"source":{"additionalProperties":false,"properties":{"commit":{"pattern":"^[0-9a-f]{40}$","type":"string"},"dirty":{"const":false},"ref":{"minLength":1,"type":"string"},"repository":{"minLength":1,"type":"string"}},"required":["repository","commit","ref","dirty"],"type":"object"},"status":{"enum":["PENDING","PASSED","FAILED","NOT_APPLICABLE_NO_NATIVE_INSTALLER"]},"supported_uv":{"type":["object","null"]},"workflow":{"additionalProperties":false,"properties":{"event":{"minLength":1,"type":"string"},"job":{"minLength":1,"type":"string"},"run_attempt":{"minLength":1,"type":"string"},"run_id":{"minLength":1,"type":"string"},"run_url":{"minLength":1,"type":"string"},"workflow_ref":{"minLength":1,"type":"string"}},"required":["event","run_id","run_attempt","job","workflow_ref","run_url"],"type":"object"}},"required":["schema_version","kind","qualification_id","evidence_scope","axis","qualification_performed","passed","status","source","workflow","runner","remediation_mode","automatic_mutable_bootstrap_qualified","old_uv","supported_uv","installer","config","package_qualification","mcp_causal_report","artifacts","failure"],"type":"object"},{"additionalProperties":false,"allOf":[{"oneOf":[{"properties":{"axes":{"items":false,"maxItems":3,"minItems":3,"prefixItems":[{"additionalProperties":false,"properties":{"axis":{"const":"linux"},"passed":{"const":true},"report_sha256":{"pattern":"^[0-9a-f]{64}$","type":"string"},"status":{"const":"PASSED"}},"required":["axis","report_sha256","status","passed"],"type":"object"},{"additionalProperties":false,"properties":{"axis":{"const":"macos"},"passed":{"const":true},"report_sha256":{"pattern":"^[0-9a-f]{64}$","type":"string"},"status":{"const":"PASSED"}},"required":["axis","report_sha256","status","passed"],"type":"object"},{"additionalProperties":false,"properties":{"axis":{"const":"windows"},"passed":{"const":false},"report_sha256":{"pattern":"^[0-9a-f]{64}$","type":"string"},"status":{"const":"NOT_APPLICABLE_NO_NATIVE_INSTALLER"}},"required":["axis","report_sha256","status","passed"],"type":"object"}],"type":"array"},"failures":{"maxItems":0},"package_qualification":{"type":"object"},"qualification_performed":{"const":true}}},{"properties":{"axes":{"items":{"additionalProperties":false,"properties":{"axis":{},"passed":{"type":"boolean"},"report_sha256":{"pattern":"^[0-9a-f]{64}$","type":"string"},"status":{}},"required":["axis","report_sha256","status","passed"],"type":"object"},"maxItems":3,"type":"array"},"evidence_trust":{"const":"UNTRUSTED_CANDIDATE"},"failures":{"minItems":1}}}]}],"properties":{"automatic_mutable_bootstrap_qualified":{"const":false},"axes":{"type":"array"},"evidence_scope":{"const":"native_outdated_uv_actionable_recovery"},"evidence_trust":{"enum":["UNTRUSTED_CANDIDATE","EXTERNAL_ATTESTATION_REQUIRED"]},"failures":{"items":{"type":"string"},"type":"array"},"kind":{"const":"outdated_uv_aggregate"},"package_qualification":{"type":["object","null"]},"qualification_id":{"const":"NO1-006A"},"qualification_performed":{"type":"boolean"},"qualified":{"const":false},"required_axes":{"const":{"not_applicable":{"windows":"NOT_APPLICABLE_NO_NATIVE_INSTALLER"},"outdated":["linux","macos"],"package":["linux","macos","windows"]}},"schema_version":{"const":"no1-006a-outdated-uv-attestation-v2"},"source_commit":{"pattern":"^[0-9a-f]{40}$","type":"string"},"workflow":{"additionalProperties":false,"properties":{"event":{"minLength":1,"type":"string"},"job":{"minLength":1,"type":"string"},"run_attempt":{"minLength":1,"type":"string"},"run_id":{"minLength":1,"type":"string"},"run_url":{"minLength":1,"type":"string"},"workflow_ref":{"minLength":1,"type":"string"}},"required":["event","run_id","run_attempt","job","workflow_ref","run_url"],"type":"object"}},"required":["schema_version","kind","qualification_id","evidence_scope","qualification_performed","qualified","evidence_trust","source_commit","package_qualification","required_axes","automatic_mutable_bootstrap_qualified","axes","failures","workflow"],"type":"object"}],"title":"NO1-006A content-bound outdated uv evidence","$defs":{"runner":{"type":"object","additionalProperties":false,"properties":{"declared_axis":{"enum":["linux","macos","windows"]},"observed_system":{"enum":["Linux","Darwin","Windows"]},"release":{"type":"string"},"machine":{"type":"string","minLength":1},"image_os":{"type":"string"},"image_version":{"type":"string"}},"required":["declared_axis","observed_system","release","machine","image_os","image_version"]},"archive_0_10_9":{"type":"object","additionalProperties":false,"properties":{"filename":{"type":"string","minLength":1},"url":{"type":"string","pattern":"^https://github\\.com/astral-sh/uv/releases/download/0\\.10\\.9/"},"version":{"const":"0.10.9"},"size":{"type":"integer","minimum":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}},"required":["filename","url","version","size","sha256"]},"archive_0_11_0":{"type":"object","additionalProperties":false,"properties":{"filename":{"type":"string","minLength":1},"url":{"type":"string","pattern":"^https://github\\.com/astral-sh/uv/releases/download/0\\.11\\.0/"},"version":{"const":"0.11.0"},"size":{"type":"integer","minimum":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}},"required":["filename","url","version","size","sha256"]},"executable_0_10_9":{"type":"object","additionalProperties":false,"properties":{"version":{"const":"0.10.9"},"path":{"type":"string","minLength":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"size":{"type":"integer","minimum":1},"version_stdout":{"type":"string","pattern":"^uv 0\\.10\\.9([^\\n]*)\\n?$"}},"required":["version","path","sha256","size","version_stdout"]},"executable_0_11_0":{"type":"object","additionalProperties":false,"properties":{"version":{"const":"0.11.0"},"path":{"type":"string","minLength":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"size":{"type":"integer","minimum":1},"version_stdout":{"type":"string","pattern":"^uv 0\\.11\\.0([^\\n]*)\\n?$"}},"required":["version","path","sha256","size","version_stdout"]},"old_uv":{"type":"object","additionalProperties":false,"properties":{"archive":{"$ref":"#/$defs/archive_0_10_9"},"executable":{"$ref":"#/$defs/executable_0_10_9"}},"required":["archive","executable"]},"supported_uv":{"type":"object","additionalProperties":false,"properties":{"archive":{"$ref":"#/$defs/archive_0_11_0"},"executable":{"$ref":"#/$defs/executable_0_11_0"}},"required":["archive","executable"]},"wheel":{"type":"object","additionalProperties":false,"properties":{"filename":{"type":"string","pattern":"\\.whl$"},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"size":{"type":"integer","minimum":1},"name":{"const":"tree-sitter-analyzer"},"version":{"type":"string","minLength":1}},"required":["filename","sha256","size","name","version"]},"first_call":{"type":"object","additionalProperties":false,"properties":{"name":{"const":"index"},"arguments":{"const":{"action":"status"}},"is_error":{"const":false},"default_format":{"const":"toon"},"verdict":{"const":"WARN"},"project_root":{"type":"string","minLength":1},"indexed":{"const":false},"total_files":{"const":0},"summary":{"const":"codegraph_status: index missing or empty"}},"required":["name","arguments","is_error","default_format","verdict","project_root","indexed","total_files","summary"]},"tool":{"type":"object","additionalProperties":false,"properties":{"version":{"const":"0.11.0"},"path":{"type":"string","minLength":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"size":{"type":"integer","minimum":1},"version_stdout":{"type":"string","pattern":"^uv 0\\.11\\.0([^\\n]*)\\n?$"}},"required":["version","path","sha256","size","version_stdout"]},"installer":{"type":"object","additionalProperties":false,"properties":{"path":{"type":"string","minLength":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"first_exit":{"const":1},"second_exit":{"const":0},"curl_invocations":{"const":0},"first_path":{"type":"string","minLength":1},"second_path":{"type":"string","minLength":1}},"required":["path","sha256","first_exit","second_exit","curl_invocations","first_path","second_path"]},"config":{"type":"object","additionalProperties":false,"properties":{"before":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"path":{"type":"string"},"type":{"enum":["file","dir","symlink"]},"sha256":{"type":["string","null"],"pattern":"^[0-9a-f]{64}$"}},"required":["path","type","sha256"]}},"after_first":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"path":{"type":"string"},"type":{"enum":["file","dir","symlink"]},"sha256":{"type":["string","null"],"pattern":"^[0-9a-f]{64}$"}},"required":["path","type","sha256"]}},"after_second":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"path":{"type":"string"},"type":{"enum":["file","dir","symlink"]},"sha256":{"type":["string","null"],"pattern":"^[0-9a-f]{64}$"}},"required":["path","type","sha256"]}},"expected_entry":{"type":"object","additionalProperties":false,"properties":{"command":{"const":"uvx"},"args":{"const":["--from","tree-sitter-analyzer[mcp]","tree-sitter-analyzer-mcp"]},"env":{"type":"object","additionalProperties":false,"properties":{"TREE_SITTER_PROJECT_ROOT":{"type":"string","minLength":1}},"required":["TREE_SITTER_PROJECT_ROOT"]}},"required":["command","args","env"]},"backup_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}},"required":["before","after_first","after_second","expected_entry","backup_sha256"]},"package_qualification":{"type":"object","additionalProperties":false,"properties":{"aggregate_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"axis_report_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"build_manifest_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"wheel":{"$ref":"#/$defs/wheel"}},"required":["aggregate_sha256","axis_report_sha256","build_manifest_sha256","wheel"]},"mcp_causal_report":{"type":"object","additionalProperties":false,"properties":{"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"wheel":{"$ref":"#/$defs/wheel"},"runner":{"$ref":"#/$defs/runner"},"first_call":{"$ref":"#/$defs/first_call"},"install_tool":{"$ref":"#/$defs/tool"},"install_argv":{"type":"array","minItems":7,"maxItems":7,"items":{"type":"string"},"prefixItems":[{"type":"string","minLength":1},{"const":"pip"},{"const":"install"},{"const":"--python"},{"type":"string","minLength":1},{"const":"--no-cache"},{"type":"string","pattern":"^.+\\.whl\\[mcp\\]$"}]},"install_stdout_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"install_stderr_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"dependency_manifest_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}},"required":["sha256","wheel","runner","first_call","install_tool","install_argv","install_stdout_sha256","install_stderr_sha256","dependency_manifest_sha256"]}}}
+{
+  "$defs": {
+    "archive_0_10_9": {
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "url": {
+          "pattern": "^https://github\\.com/astral-sh/uv/releases/download/0\\.10\\.9/",
+          "type": "string"
+        },
+        "version": {
+          "const": "0.10.9"
+        }
+      },
+      "required": [
+        "filename",
+        "url",
+        "version",
+        "size",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "archive_0_11_0": {
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "url": {
+          "pattern": "^https://github\\.com/astral-sh/uv/releases/download/0\\.11\\.0/",
+          "type": "string"
+        },
+        "version": {
+          "const": "0.11.0"
+        }
+      },
+      "required": [
+        "filename",
+        "url",
+        "version",
+        "size",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "config": {
+      "additionalProperties": false,
+      "properties": {
+        "after_first": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "enum": [
+                  "file",
+                  "dir",
+                  "symlink"
+                ]
+              }
+            },
+            "required": [
+              "path",
+              "type",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "after_second": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "enum": [
+                  "file",
+                  "dir",
+                  "symlink"
+                ]
+              }
+            },
+            "required": [
+              "path",
+              "type",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "backup_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "before": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "enum": [
+                  "file",
+                  "dir",
+                  "symlink"
+                ]
+              }
+            },
+            "required": [
+              "path",
+              "type",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "expected_entry": {
+          "additionalProperties": false,
+          "properties": {
+            "args": {
+              "const": [
+                "--from",
+                "tree-sitter-analyzer[mcp]",
+                "tree-sitter-analyzer-mcp"
+              ]
+            },
+            "command": {
+              "const": "uvx"
+            },
+            "env": {
+              "additionalProperties": false,
+              "properties": {
+                "TREE_SITTER_PROJECT_ROOT": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "TREE_SITTER_PROJECT_ROOT"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "command",
+            "args",
+            "env"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "before",
+        "after_first",
+        "after_second",
+        "expected_entry",
+        "backup_sha256"
+      ],
+      "type": "object"
+    },
+    "executable_0_10_9": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "version": {
+          "const": "0.10.9"
+        },
+        "version_stdout": {
+          "pattern": "^uv 0\\.10\\.9([^\\n]*)\\n?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "path",
+        "sha256",
+        "size",
+        "version_stdout"
+      ],
+      "type": "object"
+    },
+    "executable_0_11_0": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "version": {
+          "const": "0.11.0"
+        },
+        "version_stdout": {
+          "pattern": "^uv 0\\.11\\.0([^\\n]*)\\n?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "path",
+        "sha256",
+        "size",
+        "version_stdout"
+      ],
+      "type": "object"
+    },
+    "first_call": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "const": {
+            "action": "status"
+          }
+        },
+        "default_format": {
+          "const": "toon"
+        },
+        "indexed": {
+          "const": false
+        },
+        "is_error": {
+          "const": false
+        },
+        "name": {
+          "const": "index"
+        },
+        "project_root": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "summary": {
+          "const": "codegraph_status: index missing or empty"
+        },
+        "total_files": {
+          "const": 0
+        },
+        "verdict": {
+          "const": "WARN"
+        }
+      },
+      "required": [
+        "name",
+        "arguments",
+        "is_error",
+        "default_format",
+        "verdict",
+        "project_root",
+        "indexed",
+        "total_files",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "installer": {
+      "additionalProperties": false,
+      "properties": {
+        "curl_invocations": {
+          "const": 0
+        },
+        "first_exit": {
+          "const": 1
+        },
+        "first_path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "second_exit": {
+          "const": 0
+        },
+        "second_path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "first_exit",
+        "second_exit",
+        "curl_invocations",
+        "first_path",
+        "second_path"
+      ],
+      "type": "object"
+    },
+    "mcp_causal_report": {
+      "additionalProperties": false,
+      "properties": {
+        "dependency_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "first_call": {
+          "$ref": "#/$defs/first_call"
+        },
+        "install_argv": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 7,
+          "minItems": 7,
+          "prefixItems": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "const": "pip"
+            },
+            {
+              "const": "install"
+            },
+            {
+              "const": "--python"
+            },
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "const": "--no-cache"
+            },
+            {
+              "pattern": "^.+\\.whl\\[mcp\\]$",
+              "type": "string"
+            }
+          ],
+          "type": "array"
+        },
+        "install_stderr_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "install_stdout_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "install_tool": {
+          "$ref": "#/$defs/tool"
+        },
+        "runner": {
+          "$ref": "#/$defs/runner"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "wheel": {
+          "$ref": "#/$defs/wheel"
+        }
+      },
+      "required": [
+        "sha256",
+        "wheel",
+        "runner",
+        "first_call",
+        "install_tool",
+        "install_argv",
+        "install_stdout_sha256",
+        "install_stderr_sha256",
+        "dependency_manifest_sha256"
+      ],
+      "type": "object"
+    },
+    "old_uv": {
+      "additionalProperties": false,
+      "properties": {
+        "archive": {
+          "$ref": "#/$defs/archive_0_10_9"
+        },
+        "executable": {
+          "$ref": "#/$defs/executable_0_10_9"
+        }
+      },
+      "required": [
+        "archive",
+        "executable"
+      ],
+      "type": "object"
+    },
+    "package_qualification": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregate_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "axis_report_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "build_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "wheel": {
+          "$ref": "#/$defs/wheel"
+        }
+      },
+      "required": [
+        "aggregate_sha256",
+        "axis_report_sha256",
+        "build_manifest_sha256",
+        "wheel"
+      ],
+      "type": "object"
+    },
+    "runner": {
+      "additionalProperties": false,
+      "properties": {
+        "declared_axis": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "image_os": {
+          "type": "string"
+        },
+        "image_version": {
+          "type": "string"
+        },
+        "machine": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "observed_system": {
+          "enum": [
+            "Linux",
+            "Darwin",
+            "Windows"
+          ]
+        },
+        "release": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "declared_axis",
+        "observed_system",
+        "release",
+        "machine",
+        "image_os",
+        "image_version"
+      ],
+      "type": "object"
+    },
+    "supported_uv": {
+      "additionalProperties": false,
+      "properties": {
+        "archive": {
+          "$ref": "#/$defs/archive_0_11_0"
+        },
+        "executable": {
+          "$ref": "#/$defs/executable_0_11_0"
+        }
+      },
+      "required": [
+        "archive",
+        "executable"
+      ],
+      "type": "object"
+    },
+    "tool": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "version": {
+          "const": "0.11.0"
+        },
+        "version_stdout": {
+          "pattern": "^uv 0\\.11\\.0([^\\n]*)\\n?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "path",
+        "sha256",
+        "size",
+        "version_stdout"
+      ],
+      "type": "object"
+    },
+    "wheel": {
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "pattern": "\\.whl$",
+          "type": "string"
+        },
+        "name": {
+          "const": "tree-sitter-analyzer"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "filename",
+        "sha256",
+        "size",
+        "name",
+        "version"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "axis": {
+                  "enum": [
+                    "linux",
+                    "macos"
+                  ]
+                },
+                "config": {
+                  "type": "null"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "installer": {
+                  "type": "null"
+                },
+                "mcp_causal_report": {
+                  "type": "null"
+                },
+                "old_uv": {
+                  "type": "null"
+                },
+                "package_qualification": {
+                  "type": "null"
+                },
+                "passed": {
+                  "const": false
+                },
+                "qualification_performed": {
+                  "const": true
+                },
+                "status": {
+                  "const": "PENDING"
+                },
+                "supported_uv": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "status",
+                "axis",
+                "qualification_performed",
+                "passed",
+                "failure",
+                "old_uv",
+                "supported_uv",
+                "installer",
+                "config",
+                "package_qualification",
+                "mcp_causal_report"
+              ]
+            },
+            {
+              "properties": {
+                "axis": {
+                  "enum": [
+                    "linux",
+                    "macos"
+                  ]
+                },
+                "config": {
+                  "$ref": "#/$defs/config"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "installer": {
+                  "$ref": "#/$defs/installer"
+                },
+                "mcp_causal_report": {
+                  "$ref": "#/$defs/mcp_causal_report"
+                },
+                "old_uv": {
+                  "$ref": "#/$defs/old_uv"
+                },
+                "package_qualification": {
+                  "$ref": "#/$defs/package_qualification"
+                },
+                "passed": {
+                  "const": true
+                },
+                "qualification_performed": {
+                  "const": true
+                },
+                "status": {
+                  "const": "PASSED"
+                },
+                "supported_uv": {
+                  "$ref": "#/$defs/supported_uv"
+                }
+              },
+              "required": [
+                "status",
+                "axis",
+                "qualification_performed",
+                "passed",
+                "failure",
+                "old_uv",
+                "supported_uv",
+                "installer",
+                "config",
+                "package_qualification",
+                "mcp_causal_report"
+              ]
+            },
+            {
+              "properties": {
+                "axis": {
+                  "enum": [
+                    "linux",
+                    "macos"
+                  ]
+                },
+                "failure": {
+                  "type": "object"
+                },
+                "passed": {
+                  "const": false
+                },
+                "qualification_performed": {
+                  "const": true
+                },
+                "status": {
+                  "const": "FAILED"
+                }
+              },
+              "required": [
+                "status",
+                "axis",
+                "qualification_performed",
+                "passed",
+                "failure"
+              ]
+            },
+            {
+              "properties": {
+                "axis": {
+                  "const": "windows"
+                },
+                "config": {
+                  "type": "null"
+                },
+                "failure": {
+                  "type": "object"
+                },
+                "installer": {
+                  "type": "null"
+                },
+                "mcp_causal_report": {
+                  "type": "null"
+                },
+                "old_uv": {
+                  "$ref": "#/$defs/old_uv"
+                },
+                "package_qualification": {
+                  "$ref": "#/$defs/package_qualification"
+                },
+                "passed": {
+                  "const": false
+                },
+                "qualification_performed": {
+                  "const": false
+                },
+                "status": {
+                  "const": "NOT_APPLICABLE_NO_NATIVE_INSTALLER"
+                },
+                "supported_uv": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "status",
+                "axis",
+                "qualification_performed",
+                "passed",
+                "failure",
+                "old_uv",
+                "package_qualification",
+                "supported_uv",
+                "installer",
+                "config",
+                "mcp_causal_report"
+              ]
+            }
+          ]
+        },
+        {
+          "if": {
+            "properties": {
+              "axis": {
+                "const": "linux"
+              }
+            },
+            "required": [
+              "axis"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mcp_causal_report": {
+                "properties": {
+                  "runner": {
+                    "properties": {
+                      "declared_axis": {
+                        "const": "linux"
+                      },
+                      "observed_system": {
+                        "const": "Linux"
+                      }
+                    }
+                  }
+                }
+              },
+              "runner": {
+                "properties": {
+                  "declared_axis": {
+                    "const": "linux"
+                  },
+                  "observed_system": {
+                    "const": "Linux"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "axis": {
+                "const": "macos"
+              }
+            },
+            "required": [
+              "axis"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mcp_causal_report": {
+                "properties": {
+                  "runner": {
+                    "properties": {
+                      "declared_axis": {
+                        "const": "macos"
+                      },
+                      "observed_system": {
+                        "const": "Darwin"
+                      }
+                    }
+                  }
+                }
+              },
+              "runner": {
+                "properties": {
+                  "declared_axis": {
+                    "const": "macos"
+                  },
+                  "observed_system": {
+                    "const": "Darwin"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "axis": {
+                "const": "windows"
+              }
+            },
+            "required": [
+              "axis"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mcp_causal_report": {
+                "properties": {
+                  "runner": {
+                    "properties": {
+                      "declared_axis": {
+                        "const": "windows"
+                      },
+                      "observed_system": {
+                        "const": "Windows"
+                      }
+                    }
+                  }
+                }
+              },
+              "runner": {
+                "properties": {
+                  "declared_axis": {
+                    "const": "windows"
+                  },
+                  "observed_system": {
+                    "const": "Windows"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "artifacts": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "size": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "sha256",
+              "size"
+            ],
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "automatic_mutable_bootstrap_qualified": {
+          "const": false
+        },
+        "axis": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "config": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "evidence_scope": {
+          "const": "native_outdated_uv_actionable_recovery"
+        },
+        "failure": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "installer": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "kind": {
+          "const": "outdated_uv_axis"
+        },
+        "mcp_causal_report": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "old_uv": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "package_qualification": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "qualification_id": {
+          "const": "NO1-006A"
+        },
+        "qualification_performed": {
+          "type": "boolean"
+        },
+        "remediation_mode": {
+          "const": "manual_content_bound_remediation"
+        },
+        "runner": {
+          "$ref": "#/$defs/runner"
+        },
+        "schema_version": {
+          "const": "no1-006a-outdated-uv-attestation-v2"
+        },
+        "source": {
+          "additionalProperties": false,
+          "properties": {
+            "commit": {
+              "pattern": "^[0-9a-f]{40}$",
+              "type": "string"
+            },
+            "dirty": {
+              "const": false
+            },
+            "ref": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "repository": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository",
+            "commit",
+            "ref",
+            "dirty"
+          ],
+          "type": "object"
+        },
+        "status": {
+          "enum": [
+            "PENDING",
+            "PASSED",
+            "FAILED",
+            "NOT_APPLICABLE_NO_NATIVE_INSTALLER"
+          ]
+        },
+        "supported_uv": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "workflow": {
+          "additionalProperties": false,
+          "properties": {
+            "event": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "job": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "run_attempt": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "run_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "run_url": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "workflow_ref": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "event",
+            "run_id",
+            "run_attempt",
+            "job",
+            "workflow_ref",
+            "run_url"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "qualification_id",
+        "evidence_scope",
+        "axis",
+        "qualification_performed",
+        "passed",
+        "status",
+        "source",
+        "workflow",
+        "runner",
+        "remediation_mode",
+        "automatic_mutable_bootstrap_qualified",
+        "old_uv",
+        "supported_uv",
+        "installer",
+        "config",
+        "package_qualification",
+        "mcp_causal_report",
+        "artifacts",
+        "failure"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "axes": {
+                  "items": false,
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "axis": {
+                          "const": "linux"
+                        },
+                        "passed": {
+                          "const": true
+                        },
+                        "report_sha256": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": "PASSED"
+                        }
+                      },
+                      "required": [
+                        "axis",
+                        "report_sha256",
+                        "status",
+                        "passed"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "axis": {
+                          "const": "macos"
+                        },
+                        "passed": {
+                          "const": true
+                        },
+                        "report_sha256": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": "PASSED"
+                        }
+                      },
+                      "required": [
+                        "axis",
+                        "report_sha256",
+                        "status",
+                        "passed"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "axis": {
+                          "const": "windows"
+                        },
+                        "passed": {
+                          "const": false
+                        },
+                        "report_sha256": {
+                          "pattern": "^[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": "NOT_APPLICABLE_NO_NATIVE_INSTALLER"
+                        }
+                      },
+                      "required": [
+                        "axis",
+                        "report_sha256",
+                        "status",
+                        "passed"
+                      ],
+                      "type": "object"
+                    }
+                  ],
+                  "type": "array"
+                },
+                "failures": {
+                  "maxItems": 0
+                },
+                "package_qualification": {
+                  "type": "object"
+                },
+                "qualification_performed": {
+                  "const": true
+                }
+              }
+            },
+            {
+              "properties": {
+                "axes": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "axis": {},
+                      "passed": {
+                        "type": "boolean"
+                      },
+                      "report_sha256": {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "status": {}
+                    },
+                    "required": [
+                      "axis",
+                      "report_sha256",
+                      "status",
+                      "passed"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 3,
+                  "type": "array"
+                },
+                "evidence_trust": {
+                  "const": "UNTRUSTED_CANDIDATE"
+                },
+                "failures": {
+                  "minItems": 1
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "properties": {
+        "automatic_mutable_bootstrap_qualified": {
+          "const": false
+        },
+        "axes": {
+          "type": "array"
+        },
+        "evidence_scope": {
+          "const": "native_outdated_uv_actionable_recovery"
+        },
+        "evidence_trust": {
+          "enum": [
+            "UNTRUSTED_CANDIDATE",
+            "EXTERNAL_ATTESTATION_REQUIRED"
+          ]
+        },
+        "failures": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "outdated_uv_aggregate"
+        },
+        "package_qualification": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "qualification_id": {
+          "const": "NO1-006A"
+        },
+        "qualification_performed": {
+          "type": "boolean"
+        },
+        "qualified": {
+          "const": false
+        },
+        "required_axes": {
+          "const": {
+            "not_applicable": {
+              "windows": "NOT_APPLICABLE_NO_NATIVE_INSTALLER"
+            },
+            "outdated": [
+              "linux",
+              "macos"
+            ],
+            "package": [
+              "linux",
+              "macos",
+              "windows"
+            ]
+          }
+        },
+        "schema_version": {
+          "const": "no1-006a-outdated-uv-attestation-v2"
+        },
+        "source_commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "workflow": {
+          "additionalProperties": false,
+          "properties": {
+            "event": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "job": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "run_attempt": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "run_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "run_url": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "workflow_ref": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "event",
+            "run_id",
+            "run_attempt",
+            "job",
+            "workflow_ref",
+            "run_url"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "qualification_id",
+        "evidence_scope",
+        "qualification_performed",
+        "qualified",
+        "evidence_trust",
+        "source_commit",
+        "package_qualification",
+        "required_axes",
+        "automatic_mutable_bootstrap_qualified",
+        "axes",
+        "failures",
+        "workflow"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "NO1-006A content-bound outdated uv evidence"
+}
