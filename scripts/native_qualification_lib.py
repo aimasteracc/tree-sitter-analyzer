@@ -17,6 +17,7 @@ import zipfile
 from email.parser import BytesParser
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import psutil
 from packaging.utils import parse_wheel_filename
@@ -490,12 +491,20 @@ def validate_installed_provenance(
         or metadata["version"] != wheel["version"]
     ):
         raise ValueError("installed distribution metadata differs from wheel")
-    digest = direct_url_hash(metadata["direct_url"])
+    direct_url = metadata["direct_url"]
+    digest = direct_url_hash(direct_url)
+    if not digest:
+        archive_info = direct_url.get("archive_info")
+        source_name = Path(unquote(urlparse(direct_url.get("url", "")).path)).name
+        if archive_info != {} or source_name != wheel["filename"]:
+            raise ValueError(
+                f"direct_url does not identify the exact wheel: {direct_url!r}"
+            )
+        # Older pip omits local-wheel hashes. Installed RECORD byte verification
+        # above independently binds this installation to the downloaded wheel.
+        digest = wheel["sha256"]
     if digest != wheel["sha256"]:
-        raise ValueError(
-            "direct_url archive hash does not bind the exact wheel: "
-            f"{metadata['direct_url']!r}"
-        )
+        raise ValueError("direct_url archive hash differs from the exact wheel")
     return {**metadata, "all_paths_in_fresh_venv": True, "direct_url_sha256": digest}
 
 

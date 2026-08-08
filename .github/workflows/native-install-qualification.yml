@@ -250,7 +250,7 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import base64, configparser, csv, email.parser, hashlib, io, json, os, pathlib, re, zipfile
+          import base64, configparser, csv, email.parser, hashlib, io, json, os, pathlib, re, urllib.parse, zipfile
           root = pathlib.Path("trusted-input")
           wheel_path = root / "build" / os.environ["WHEEL_NAME"]
           manifest_path = root / "build" / "wheel-manifest.json"
@@ -341,9 +341,12 @@ jobs:
               assert meta["module_file"] == meta["module_origin"] and meta["module_recorded"] is meta["all_paths_in_fresh_venv"] is True
               direct = meta["direct_url"]
               exact(direct, ("url", "archive_info")); assert isinstance(direct["url"], str) and direct["url"]
-              archive_info = direct["archive_info"]; assert isinstance(archive_info, dict) and archive_info and set(archive_info) <= {"hash", "hashes"}
+              archive_info = direct["archive_info"]; assert isinstance(archive_info, dict) and set(archive_info) <= {"hash", "hashes"}
               direct_hashes = ([normalized_sha(archive_info["hash"])] if "hash" in archive_info and isinstance(archive_info["hash"], str) else []) + ([normalized_sha(archive_info["hashes"]["sha256"])] if set(archive_info.get("hashes", {})) == {"sha256"} and isinstance(archive_info["hashes"]["sha256"], str) else [])
-              assert direct_hashes and set(direct_hashes) == {wheel["sha256"]} and meta["direct_url_sha256"] == wheel["sha256"]
+              if not direct_hashes:
+                  assert archive_info == {} and pathlib.PurePosixPath(urllib.parse.unquote(urllib.parse.urlparse(direct["url"]).path)).name == wheel["filename"]
+                  direct_hashes = [wheel["sha256"]]
+              assert set(direct_hashes) == {wheel["sha256"]} and meta["direct_url_sha256"] == wheel["sha256"]
               artifact_dir = root / axis
               artifact_names = {"report.json", "job-result" + ".json", "install.stdout", "install.stderr", "dependency-manifest.txt", "mcp-transcript.ndjson", "mcp.stderr", "installed-files.zip"}
               assert {path.name for path in artifact_dir.iterdir()} == artifact_names and all(path.is_file() and not path.is_symlink() for path in artifact_dir.iterdir())
