@@ -339,7 +339,8 @@ jobs:
           build=root/f"package/native-build{suffix}"; aggregate_dir=root/f"package/native-aggregate{suffix}"
           wheel_path=build/os.environ["WHEEL_NAME"]; manifest_path=build/"wheel-manifest.json"; package_aggregate_path=aggregate_dir/"aggregate.json"
           manifest=json.loads(manifest_path.read_text()); package_aggregate=json.loads(package_aggregate_path.read_text()); wheel=manifest["wheel"]
-          assert manifest["kind"]=="build_manifest"; identity(manifest,"build-once"); identity(package_aggregate,"aggregate")
+          assert manifest["kind"]=="build_manifest"; identity(manifest,"build-once")
+          assert package_aggregate["source_commit"]==commit and package_aggregate["workflow"]=={"event":"push","run_id":run,"run_attempt":attempt,"job":"aggregate","workflow_ref":os.environ["GITHUB_WORKFLOW_REF"],"run_url":f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run}"}
           assert wheel==package_aggregate["wheel"] and (wheel["filename"],wheel["size"],wheel["sha256"])==(wheel_path.name,wheel_path.stat().st_size,sha(wheel_path))
           repository_name=os.environ["GITHUB_REPOSITORY"].rsplit("/",1)[1]
           causal_wheel_paths={
