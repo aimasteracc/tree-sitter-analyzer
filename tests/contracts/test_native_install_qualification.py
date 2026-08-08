@@ -11,10 +11,9 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-from tree_sitter_analyzer.mcp._sdk_compat import MCP2ServerAdapter, adapt_server
-
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from _native_trusted_verifier_helpers import trusted_verifier_result  # noqa: E402
 from _test_native_qualification_helpers import (  # noqa: E402
     ROOT,
     SCHEMA,
@@ -25,8 +24,8 @@ from _test_native_qualification_helpers import (  # noqa: E402
     github_env,
     manifest,
     mutate_wheel_record,
+    pid_is_live,
     report,
-    trusted_verifier_result,
 )
 
 
@@ -283,12 +282,39 @@ def test_probe_requires_fresh_venv_direct_url_and_record_provenance() -> None:
     harness = (
         SCRIPT.read_text()
         + (ROOT / "scripts" / "native_qualification_lib.py").read_text()
+        + (ROOT / "scripts" / "native_provenance.py").read_text()
     )
     assert (
         "distribution/module/runtime/console provenance escaped fresh venv" in harness
     )
     assert "direct_url does not identify the exact wheel" in harness
     assert "module origin is not the wheel RECORD module" in harness
+
+
+@pytest.mark.parametrize("field", ["hash", "hashes"])
+def test_direct_url_rejects_noncanonical_base64(field: str) -> None:
+    # PR #1239: permissive decoders accepted invalid suffixes in provenance.
+    import base64
+
+    from native_qualification_lib import direct_url_hash
+
+    encoded = (
+        base64.urlsafe_b64encode(bytes.fromhex("ab" * 32)).rstrip(b"=").decode() + "!!"
+    )
+    archive = (
+        {"hash": "sha256=" + encoded}
+        if field == "hash"
+        else {"hashes": {"sha256": encoded}}
+    )
+    assert direct_url_hash({"url": "file:///wheel.whl", "archive_info": archive}) == ""
+
+
+def test_live_process_scan_keeps_running_identity() -> None:
+    import psutil
+    from native_qualification_lib import _live_processes
+
+    process = psutil.Process()
+    assert _live_processes({process.pid: process}) == [process]
 
 
 def test_timeout_runner_has_no_unbounded_communicate() -> None:
@@ -325,120 +351,6 @@ def test_workflow_all_jobs_create_and_upload_strict_job_results() -> None:
     assert "--wheel-manifest downloaded/build/wheel-manifest.json" in workflow
 
 
-class _RawMCP2Server:
-    def __init__(self) -> None:
-        self.handlers: dict[str, object] = {}
-
-    def add_request_handler(
-        self, method: str, params_type: object, handler: object
-    ) -> None:
-        self.handlers[method] = handler
-
-
-def test_mcp2_adapter_delegates_unknown_attributes() -> None:
-    raw = _RawMCP2Server()
-    assert MCP2ServerAdapter(raw).handlers is raw.handlers
-
-
-def test_adapter_preserves_native_mcp1_server() -> None:
-    class Native:
-        def list_tools(self):
-            return None
-
-    native = Native()
-    assert adapt_server(native) is native
-
-
-@pytest.mark.asyncio
-async def test_mcp2_call_tool_adapter_maps_snake_case_params() -> None:
-    from mcp.types import TextContent
-
-    raw = _RawMCP2Server()
-    adapter = MCP2ServerAdapter(raw)
-
-    @adapter.call_tool()
-    async def called(name, arguments):
-        return [TextContent(type="text", text=f"{name}:{arguments['value']}")]
-
-    params = type("Params", (), {"name": "sample", "arguments": {"value": 7}})()
-    result = await raw.handlers["tools/call"](object(), params)
-    assert result.content[0].text == "sample:7"
-
-
-@pytest.mark.asyncio
-async def test_mcp2_list_resources_adapter_wraps_sdk_result() -> None:
-    from mcp.types import Resource
-
-    raw = _RawMCP2Server()
-    adapter = MCP2ServerAdapter(raw)
-
-    @adapter.list_resources()
-    async def listed():
-        return [Resource(uri="test://one", name="one")]
-
-    result = await raw.handlers["resources/list"](object(), object())
-    assert [resource.name for resource in result.resources] == ["one"]
-
-
-@pytest.mark.asyncio
-async def test_mcp2_read_resource_adapter_wraps_plain_text() -> None:
-    raw = _RawMCP2Server()
-    adapter = MCP2ServerAdapter(raw)
-
-    @adapter.read_resource()
-    async def read(uri):
-        return "fixture-content"
-
-    params = type("Params", (), {"uri": "test://one"})()
-    result = await raw.handlers["resources/read"](object(), params)
-    assert result.contents[0].text == "fixture-content"
-
-
-@pytest.mark.asyncio
-async def test_mcp2_list_prompts_adapter_wraps_sdk_result() -> None:
-    from mcp.types import Prompt
-
-    raw = _RawMCP2Server()
-    adapter = MCP2ServerAdapter(raw)
-
-    @adapter.list_prompts()
-    async def listed():
-        return [Prompt(name="smart", description="fixture")]
-
-    result = await raw.handlers["prompts/list"](object(), object())
-    assert [prompt.name for prompt in result.prompts] == ["smart"]
-
-
-@pytest.mark.asyncio
-async def test_mcp2_get_prompt_adapter_forwards_arguments() -> None:
-    raw = _RawMCP2Server()
-    adapter = MCP2ServerAdapter(raw)
-
-    @adapter.get_prompt()
-    async def get(name, arguments):
-        return {"description": f"{name}:{arguments['value']}", "messages": []}
-
-    params = type("Params", (), {"name": "smart", "arguments": {"value": 7}})()
-    result = await raw.handlers["prompts/get"](object(), params)
-    assert result["description"] == "smart:7"
-
-
-@pytest.mark.asyncio
-async def test_mcp2_read_resource_adapter_preserves_helper_contents() -> None:
-    raw = _RawMCP2Server()
-    adapter = MCP2ServerAdapter(raw)
-    text_item = type("Item", (), {"content": "text", "mime_type": "text/plain"})()
-    bytes_item = type("Item", (), {"content": b"bytes", "mime_type": None})()
-
-    @adapter.read_resource()
-    async def read(uri):
-        return [text_item, bytes_item]
-
-    params = type("Params", (), {"uri": "test://one"})()
-    result = await raw.handlers["resources/read"](object(), params)
-    assert [item.text for item in result.contents] == ["text", "bytes"]
-
-
 @pytest.mark.skipif(
     os.name == "nt",
     reason="POSIX process-group behavior only; Windows taskkill is separately bounded",
@@ -455,7 +367,6 @@ def test_successful_runner_cleans_detached_descendant(tmp_path: Path) -> None:
 def _assert_late_spawn_cleanup(tmp_path: Path, iterations: int) -> None:
     import time
 
-    import psutil
     from native_qualification_lib import run
 
     observed: list[tuple[int, bool, bool]] = []
@@ -491,12 +402,10 @@ def _assert_late_spawn_cleanup(tmp_path: Path, iterations: int) -> None:
         )
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline and (
-            psutil.pid_exists(child_pid) or psutil.pid_exists(grandchild_pid)
+            pid_is_live(child_pid) or pid_is_live(grandchild_pid)
         ):
             time.sleep(0.01)
-        observed.append(
-            (rc, psutil.pid_exists(child_pid), psutil.pid_exists(grandchild_pid))
-        )
+        observed.append((rc, pid_is_live(child_pid), pid_is_live(grandchild_pid)))
     assert observed == [(0, False, False)] * iterations
 
 
@@ -562,6 +471,12 @@ def test_wheel_record_rejects_non_exact_or_injected_archive(
         "mcp_oracle",
         "venv_provenance",
         "direct_hash",
+        "direct_base64",
+        "snapshot_direct",
+        "transcript_error",
+        "transcript_missing",
+        "path_dotdot_posix",
+        "path_dotdot_windows",
         "aggregate_extra",
         "axis_digest",
         "installed_member_hash",

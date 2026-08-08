@@ -263,10 +263,12 @@ jobs:
           hexdigest = lambda value: isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
           def normalized_sha(value):
               raw = value.removeprefix("sha256=").removeprefix("sha256:").removeprefix("sha256-")
-              if hexdigest(raw.lower()): return raw.lower()
-              try: decoded = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+              if re.fullmatch(r"[0-9A-Fa-f]{64}", raw): return raw.lower()
+              if not re.fullmatch(r"[A-Za-z0-9_-]{43}", raw): return ""
+              try: decoded = base64.b64decode(raw + "=", altchars=b"-_", validate=True)
               except (ValueError, TypeError): return ""
-              return decoded.hex() if len(decoded) == 32 else ""
+              canonical = base64.urlsafe_b64encode(decoded).rstrip(b"=").decode()
+              return decoded.hex() if len(decoded) == 32 and canonical == raw else ""
           def exact(value, keys):
               assert isinstance(value, dict) and set(value) == set(keys)
           def identity(value, job):
@@ -352,6 +354,20 @@ jobs:
               assert {path.name for path in artifact_dir.iterdir()} == artifact_names and all(path.is_file() and not path.is_symlink() for path in artifact_dir.iterdir())
               side_hashes = {"install.stdout": install["stdout_sha256"], "install.stderr": install["stderr_sha256"], "dependency-manifest.txt": report["dependency_manifest_sha256"], "mcp-transcript.ndjson": report["mcp"]["transcript_sha256"], "mcp.stderr": report["mcp"]["stderr_sha256"], "installed-files.zip": report["installed_files_zip_sha256"]}
               assert all(hexdigest(value) and sha(artifact_dir / name) == value for name, value in side_hashes.items())
+              transcript = [json.loads(line) for line in (artifact_dir / "mcp-transcript.ndjson").read_text("utf-8").splitlines()]
+              assert len(transcript) == 3
+              initialized, listed, called = transcript
+              exact(initialized, ("sequence", "method", "response")); assert (initialized["sequence"], initialized["method"]) == (1, "initialize")
+              exact(listed, ("sequence", "method", "response")); assert (listed["sequence"], listed["method"], listed["response"]) == (2, "tools/list", {"names": tools})
+              exact(called, ("sequence", "method", "request", "response")); assert (called["sequence"], called["method"], called["request"]) == (3, "tools/call", {"name": "index", "arguments": {"action": "status"}})
+              init_response = initialized["response"]; exact(init_response["serverInfo"], ("name", "title", "version", "websiteUrl", "icons", "description"))
+              assert (init_response["protocolVersion"], init_response["serverInfo"]["name"], init_response["serverInfo"]["version"]) == (report["mcp"]["protocol_version"], report["mcp"]["server_name"], report["mcp"]["server_version"])
+              call_response = called["response"]; exact(call_response, ("_meta", "content", "structuredContent", "isError", "resultType"))
+              assert call_response["isError"] is False and len(call_response["content"]) == 1
+              content = call_response["content"][0]; exact(content, ("type", "text", "annotations", "_meta")); assert content["type"] == "text"
+              envelope = json.loads(content["text"]); summary = envelope["agent_summary"]["summary_line"]
+              observed_first = {"name": called["request"]["name"], "arguments": called["request"]["arguments"], "is_error": call_response["isError"], "default_format": envelope["format"], "verdict": envelope["verdict"], "project_root": envelope["project_root"], "indexed": envelope["indexed"], "total_files": envelope["total_files"], "summary": summary}
+              assert observed_first == report["mcp"]["first_call"] and envelope["summary_line"] == summary
               record = meta["installed_record"]
               exact(record, ("record_path", "record_sha256", "entry_count", "files")); assert hexdigest(record["record_sha256"])
               snapshot_path = artifact_dir / "installed-files.zip"
@@ -364,11 +380,14 @@ jobs:
                   assert snapshot_names == expected_snapshot and all(not info.is_dir() and (info.external_attr >> 16) & 0o170000 != 0o120000 for info in infos)
                   assert sha256_bytes(record_bytes) == record["record_sha256"] and all(len(row) == 3 for row in installed_rows)
                   installed_names = [row[0] for row in installed_rows]
-                  assert len(installed_names) == len(set(installed_names)) and record["entry_count"] == len(installed_rows) == len(record["files"])
+                  direct_names = [name for name in installed_names if pathlib.PurePosixPath(name.replace("\\", "/")).name == "direct_url.json"]
+                  assert len(installed_names) == len(set(installed_names)) and record["entry_count"] == len(installed_rows) == len(record["files"]) and len(direct_names) == 1
+                  observed_direct = None
                   for index, ((name, declared, declared_size), item) in enumerate(zip(installed_rows, record["files"])):
                       exact(item, ("path", "sha256", "size")); data = snapshot.read(f"files/{index:06d}")
                       assert item == {"path": name, "sha256": sha256_bytes(data), "size": len(data)}
                       leaf, normalized = pathlib.PurePosixPath(name.replace("\\", "/")).name.lower(), name.replace("\\", "/")
+                      if leaf == "direct_url.json": observed_direct = json.loads(data.decode("utf-8"))
                       assert not leaf.endswith((".pth", ".egg-link")) and leaf not in {"sitecustomize.py", "usercustomize.py"}
                       generated_unhashed = name == wheel_record or leaf.endswith(".pyc")
                       if generated_unhashed: assert declared == declared_size == ""
@@ -382,7 +401,7 @@ jobs:
                           generated_dist = normalized in {str(pathlib.PurePosixPath(wheel_record).parent / generated) for generated in ("INSTALLER", "direct_url.json", "REQUESTED")}
                           generated_script = normalized.startswith("../../../") and leaf.removesuffix(".exe") in console_scripts
                           assert generated_dist or generated_script or (leaf.endswith(".pyc") and normalized.startswith("tree_sitter_analyzer/"))
-                  assert set(wheel_rows).issubset(installed_names)
+                  assert set(wheel_rows).issubset(installed_names) and observed_direct == direct
               runtime = report["runtime"]; exact(runtime, ("python", "executable", "prefix")); assert all(isinstance(value, str) and value for value in runtime.values())
               mcp = report["mcp"]
               exact(mcp, ("executable", "protocol_version", "server_name", "server_version", "tools", "first_call", "duration_seconds", "transcript_sha256", "stderr_sha256"))
@@ -391,11 +410,21 @@ jobs:
               first = mcp["first_call"]
               exact(first, ("name", "arguments", "is_error", "default_format", "verdict", "project_root", "indexed", "total_files", "summary"))
               assert first == {"name": "index", "arguments": {"action": "status"}, "is_error": False, "default_format": "toon", "verdict": "WARN", "project_root": first["project_root"], "indexed": False, "total_files": 0, "summary": "codegraph_status: index missing or empty"} and isinstance(first["project_root"], str) and first["project_root"]
-              pure = lambda value: (pathlib.PureWindowsPath(value) if "\\" in value else pathlib.PurePosixPath(value))
-              prefix, location = pure(runtime["prefix"]), pure(meta["location"])
+              pure = lambda value: (pathlib.PureWindowsPath(value) if "\\" in value or re.match(r"^[A-Za-z]:", value) else pathlib.PurePosixPath(value))
+              def lexical(value):
+                  path = pure(value); parts = []
+                  assert path.is_absolute()
+                  for part in path.parts[1:]:
+                      if part in ("", "."): continue
+                      if part == "..":
+                          if not parts: raise ValueError("path escapes lexical root")
+                          parts.pop()
+                      else: parts.append(part)
+                  return type(path)(path.anchor, *parts)
+              prefix, location = lexical(runtime["prefix"]), lexical(meta["location"])
               def beneath(child, parent):
-                  try: pure(child).relative_to(parent); return True
-                  except ValueError: return False
+                  try: lexical(child).relative_to(lexical(str(parent))); return True
+                  except (AssertionError, ValueError): return False
               assert prefix.name == "venv" and prefix.parent.name.startswith("tsa-native-qualification-")
               assert beneath(str(location), prefix) and all(beneath(value, prefix) for value in (runtime["executable"], meta["module_file"], meta["module_origin"], meta["direct_url_path"], record["record_path"], mcp["executable"]))
               assert beneath(meta["direct_url_path"], location) and beneath(record["record_path"], location)

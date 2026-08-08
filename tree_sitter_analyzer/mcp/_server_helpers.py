@@ -9,6 +9,14 @@ from pathlib import Path
 from typing import Any
 
 
+def log_safely(log_fn: Any, msg: str, *args: Any) -> None:
+    """Invoke a logger while tolerating shutdown I/O failures."""
+    try:
+        log_fn(msg, *args)
+    except (ValueError, OSError):
+        pass
+
+
 def build_initialization_options(
     server_name: str,
     server_version: str,

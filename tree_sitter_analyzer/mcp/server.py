@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""
-MCP Server implementation for Tree-sitter Analyzer (Refactored)
-
-This module provides the main MCP server that exposes tree-sitter analyzer
-functionality through the Model Context Protocol.
-"""
+"""Model Context Protocol server for tree-sitter-analyzer."""
 
 import argparse
 import asyncio
@@ -60,6 +55,9 @@ from ._server_helpers import (
     init_universal_tool,
     resolve_project_root,
 )
+from ._server_helpers import (
+    log_safely as _log_safely,
+)
 from .resources import CodeFileResource, ProjectStatsResource
 from .server_utils.code_scale_handler import analyze_code_scale
 from .server_utils.prompt_registration import register_prompts
@@ -81,14 +79,6 @@ except ImportError:
 
 # Set up logging
 logger = setup_logger(__name__)
-
-
-def _log_safely(log_fn: Any, msg: str, *args: Any) -> None:
-    """Invoke log_fn, silencing I/O errors (e.g. during shutdown)."""
-    try:
-        log_fn(msg, *args)
-    except (ValueError, OSError):
-        pass
 
 
 # Module-level string constants — keep string literals out of deeply-nested class methods.
@@ -283,7 +273,7 @@ class TreeSitterAnalyzerMCPServer:
         if not MCP_AVAILABLE:
             raise RuntimeError("MCP library not available. Please install mcp package.")
 
-        server: Server = adapt_server(Server(self.name))
+        server: Server = adapt_server(Server(self.name, version=self.version))
 
         # Register tools, resources, and prompts
         register_tools(server, self)

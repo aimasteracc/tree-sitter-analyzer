@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import csv
 import hashlib
 import io
@@ -12,6 +13,8 @@ import sys
 import zipfile
 from pathlib import Path
 from typing import Any
+
+import psutil
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "qualify_native_install.py"
@@ -286,9 +289,21 @@ def write_trusted_axis_artifacts(
     """Create byte-real evidence for the no-candidate-exec verifier fixture."""
     with zipfile.ZipFile(wheel) as archive:
         record_name = next(n for n in archive.namelist() if n.endswith("/RECORD"))
-        record_bytes = archive.read(record_name)
-        rows = list(csv.reader(record_bytes.decode().splitlines()))
+        rows = list(csv.reader(archive.read(record_name).decode().splitlines()))
         contents = [archive.read(row[0]) for row in rows]
+    direct_name = str(Path(record_name).parent / "direct_url.json")
+    direct_data = json.dumps(value["metadata"]["direct_url"], sort_keys=True).encode()
+    direct_digest = (
+        base64.urlsafe_b64encode(hashlib.sha256(direct_data).digest())
+        .rstrip(b"=")
+        .decode()
+    )
+    rows.append([direct_name, "sha256=" + direct_digest, str(len(direct_data))])
+    contents.append(direct_data)
+    output = io.StringIO()
+    csv.writer(output, lineterminator="\n").writerows(rows)
+    record_bytes = output.getvalue().encode()
+    contents[[row[0] for row in rows].index(record_name)] = record_bytes
     files = []
     for row, data in zip(rows, contents, strict=True):
         files.append(
@@ -304,11 +319,60 @@ def write_trusted_axis_artifacts(
         entry_count=len(files),
         files=files,
     )
+    first = value["mcp"]["first_call"]
+    envelope = {
+        "format": first["default_format"],
+        "verdict": first["verdict"],
+        "project_root": first["project_root"],
+        "indexed": first["indexed"],
+        "total_files": first["total_files"],
+        "summary_line": first["summary"],
+        "agent_summary": {"summary_line": first["summary"]},
+    }
+    events = [
+        {
+            "sequence": 1,
+            "method": "initialize",
+            "response": {
+                "protocolVersion": value["mcp"]["protocol_version"],
+                "serverInfo": {
+                    "name": value["mcp"]["server_name"],
+                    "title": None,
+                    "version": value["mcp"]["server_version"],
+                    "websiteUrl": None,
+                    "icons": None,
+                    "description": None,
+                },
+            },
+        },
+        {"sequence": 2, "method": "tools/list", "response": {"names": TOOLS}},
+        {
+            "sequence": 3,
+            "method": "tools/call",
+            "request": {"name": "index", "arguments": {"action": "status"}},
+            "response": {
+                "_meta": None,
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(envelope),
+                        "annotations": None,
+                        "_meta": None,
+                    }
+                ],
+                "structuredContent": None,
+                "isError": False,
+                "resultType": "complete",
+            },
+        },
+    ]
     side_bytes = {
         "install.stdout": b"installed\n",
         "install.stderr": b"",
         "dependency-manifest.txt": b"tree-sitter-analyzer==1.0\n",
-        "mcp-transcript.ndjson": b'{"sequence":1}\n',
+        "mcp-transcript.ndjson": b"".join(
+            (json.dumps(event) + "\n").encode() for event in events
+        ),
         "mcp.stderr": b"",
     }
     for name, data in side_bytes.items():
@@ -326,124 +390,49 @@ def write_trusted_axis_artifacts(
     (directory / "job-result.json").write_text('{"status":"success"}')
 
 
-def trusted_verifier_result(tmp_path: Path, mutation: str) -> int:
-    import textwrap
-
-    wheel, manifest_path, manifest_value = manifest(tmp_path, "push")
-    trusted = tmp_path / "trusted-input"
-    (tmp_path / "trusted-job").mkdir()
-    for directory in (
-        trusted / "build",
-        trusted / "aggregate",
-        *(trusted / axis for axis in ("linux", "macos", "windows")),
-    ):
-        directory.mkdir(parents=True, exist_ok=True)
-    (trusted / "build" / wheel.name).write_bytes(wheel.read_bytes())
-    (trusted / "build" / "wheel-manifest.json").write_bytes(manifest_path.read_bytes())
-    report_values = {
-        axis: report(axis, manifest_path, manifest_value, "push")
-        for axis in ("linux", "macos", "windows")
-    }
-    for axis, value in report_values.items():
-        write_trusted_axis_artifacts(trusted / axis, value, wheel)
-    wheel_name = wheel.name
-    if mutation == "filename_metadata":
-        wheel_name = "other_project-1.0-py3-none-any.whl"
-        (trusted / "build" / wheel.name).rename(trusted / "build" / wheel_name)
-        copied_manifest = json.loads(
-            (trusted / "build" / "wheel-manifest.json").read_text()
+def _rewrite_snapshot_direct(
+    directory: Path, value: dict[str, Any], direct: dict[str, Any]
+) -> None:
+    snapshot = directory / "installed-files.zip"
+    with zipfile.ZipFile(snapshot) as archive:
+        names, blobs = (
+            archive.namelist(),
+            {name: archive.read(name) for name in archive.namelist()},
         )
-        copied_manifest["wheel"]["filename"] = wheel_name
-        (trusted / "build" / "wheel-manifest.json").write_text(
-            json.dumps(copied_manifest)
-        )
-    if mutation == "stage_false":
-        report_values["linux"]["stages"][0]["passed"] = False
-    elif mutation == "extra_field":
-        report_values["linux"]["forged"] = True
-    elif mutation == "mcp_oracle":
-        report_values["linux"]["mcp"]["first_call"]["indexed"] = True
-    elif mutation == "venv_provenance":
-        report_values["linux"]["metadata"]["all_paths_in_fresh_venv"] = False
-    elif mutation == "direct_hash":
-        report_values["linux"]["metadata"]["direct_url_sha256"] = "a" * 64
-    elif mutation == "installed_member_hash":
-        report_values["linux"]["metadata"]["installed_record"]["files"][0]["sha256"] = (
-            "a" * 64
-        )
-    elif mutation == "installed_member_size":
-        report_values["linux"]["metadata"]["installed_record"]["files"][0]["size"] = 1
-    elif mutation == "installed_record_digest":
-        report_values["linux"]["metadata"]["installed_record"]["record_sha256"] = (
-            "a" * 64
-        )
-    elif mutation == "installed_inventory":
-        report_values["linux"]["metadata"]["installed_record"]["files"].pop()
-        report_values["linux"]["metadata"]["installed_record"]["entry_count"] -= 1
-    elif mutation == "side_artifact":
-        (trusted / "linux" / "install.stdout").write_bytes(b"forged")
-    elif mutation == "path_containment":
-        report_values["linux"]["metadata"]["module_file"] = (
-            "/checkout/tree_sitter_analyzer/__init__.py"
-        )
-        report_values["linux"]["metadata"]["module_origin"] = (
-            "/checkout/tree_sitter_analyzer/__init__.py"
-        )
-    elif mutation in {"zip_extra", "zip_symlink"}:
-        snapshot = trusted / "linux" / "installed-files.zip"
-        with zipfile.ZipFile(snapshot, "a") as archive:
-            info = zipfile.ZipInfo("../escape" if mutation == "zip_extra" else "link")
-            if mutation == "zip_symlink":
-                info.external_attr = 0o120777 << 16
-            archive.writestr(info, b"forged")
-        report_values["linux"]["installed_files_zip_sha256"] = sha(snapshot)
-    for axis, value in report_values.items():
-        (trusted / axis / "report.json").write_text(json.dumps(value))
-    aggregate_value = {
-        "schema_version": "no1-006a-native-attestation-v1",
-        "kind": "aggregate",
-        "qualification_id": "NO1-006A",
-        "evidence_scope": "native_package_mcp_first_answer",
-        "qualification_performed": True,
-        "native_axes_qualified": True,
-        "qualified": False,
-        "evidence_trust": "EXTERNAL_ATTESTATION_REQUIRED",
-        "source_commit": "b" * 40,
-        "wheel_sha256": manifest_value["wheel"]["sha256"],
-        "build_manifest_sha256": sha(manifest_path),
-        "wheel": manifest_value["wheel"],
-        "failures": [],
-        "workflow": workflow("push", "aggregate"),
-        "axes": [
-            {
-                "axis": axis,
-                "report_sha256": sha(trusted / axis / "report.json"),
-                "passed": True,
-            }
-            for axis in ("linux", "macos", "windows")
-        ],
-    }
-    if mutation == "aggregate_extra":
-        aggregate_value["forged"] = True
-    elif mutation == "axis_digest":
-        aggregate_value["axes"][0]["report_sha256"] = "a" * 64
-    (trusted / "aggregate" / "aggregate.json").write_text(json.dumps(aggregate_value))
-    workflow_text = (
-        ROOT / ".github/workflows/native-install-qualification.yml"
-    ).read_text()
-    code = workflow_text.split("          python - <<'PY'\n", 1)[1].split(
-        "\n          PY", 1
-    )[0]
-    environment = github_env("push") | {"WHEEL_NAME": wheel_name}
-    result = subprocess.run(
-        [sys.executable, "-c", textwrap.dedent(code)],
-        cwd=tmp_path,
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
+    rows = list(csv.reader(blobs["installed-record.csv"].decode().splitlines()))
+    index = next(
+        i for i, row in enumerate(rows) if Path(row[0]).name == "direct_url.json"
     )
-    return result.returncode
+    data = json.dumps(direct, sort_keys=True).encode()
+    encoded = (
+        base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
+    )
+    rows[index][1:] = ["sha256=" + encoded, str(len(data))]
+    output = io.StringIO()
+    csv.writer(output, lineterminator="\n").writerows(rows)
+    blobs["installed-record.csv"], blobs[f"files/{index:06d}"] = (
+        output.getvalue().encode(),
+        data,
+    )
+    with zipfile.ZipFile(snapshot, "w") as archive:
+        for name in names:
+            archive.writestr(name, blobs[name])
+    record = value["metadata"]["installed_record"]
+    record["record_sha256"] = hashlib.sha256(blobs["installed-record.csv"]).hexdigest()
+    record["files"][index].update(
+        sha256=hashlib.sha256(data).hexdigest(), size=len(data)
+    )
+    value["installed_files_zip_sha256"] = sha(snapshot)
+
+
+def pid_is_live(pid: int) -> bool:
+    try:
+        process = psutil.Process(pid)
+        return process.is_running() and process.status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return False
+    except psutil.AccessDenied:
+        return True
 
 
 def assert_timeout_cleanup(tmp_path: Path) -> None:
@@ -467,9 +456,9 @@ def assert_timeout_cleanup(tmp_path: Path) -> None:
     )
     child_pid = int(pid_file.read_text())
     deadline = time.monotonic() + 2
-    while time.monotonic() < deadline and __import__("psutil").pid_exists(child_pid):
+    while time.monotonic() < deadline and pid_is_live(child_pid):
         time.sleep(0.05)
-    assert (rc, __import__("psutil").pid_exists(child_pid)) == (124, False)
+    assert (rc, pid_is_live(child_pid)) == (124, False)
     assert duration < 7
 
 
@@ -490,7 +479,7 @@ def assert_success_cleanup(tmp_path: Path) -> None:
     )
     child_pid = int(pid_file.read_text())
     deadline = time.monotonic() + 2
-    while time.monotonic() < deadline and __import__("psutil").pid_exists(child_pid):
+    while time.monotonic() < deadline and pid_is_live(child_pid):
         time.sleep(0.05)
-    assert (rc, __import__("psutil").pid_exists(child_pid)) == (0, False)
+    assert (rc, pid_is_live(child_pid)) == (0, False)
     assert duration < 5

@@ -88,7 +88,9 @@ class TestMCPServerWithMCP:
 
         assert result == mock_server
         assert server.server == mock_server
-        mock_server_class.assert_called_once_with("tree-sitter-analyzer-mcp")
+        mock_server_class.assert_called_once_with(
+            "tree-sitter-analyzer-mcp", version=server.version
+        )
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @patch("tree_sitter_analyzer.mcp.server.stdio_server")

@@ -342,7 +342,9 @@ class TestTreeSitterAnalyzerMCPServerCreation:
             result = server.create_server()
 
             assert result == mock_server
-            mock_server_class.assert_called_once_with(server.name)
+            mock_server_class.assert_called_once_with(
+                server.name, version=server.version
+            )
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", False)
     def test_create_server_mcp_unavailable(self, temp_project_dir):
