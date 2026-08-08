@@ -47,6 +47,19 @@ uv_version_is_supported() {
   }
 }
 
+terminate_uv_version_probe_on_signal() {
+  UV_VERSION_PROBE_SIGNAL_STATUS=$1
+  # Ignore a second termination request while the isolated probe group is
+  # being torn down; otherwise it could interrupt cleanup and leak the temp.
+  trap '' HUP INT TERM
+  kill -TERM -"$UV_VERSION_PROBE_PID" 2>/dev/null || :
+  sleep 1
+  kill -KILL -"$UV_VERSION_PROBE_PID" 2>/dev/null || :
+  wait "$UV_VERSION_PROBE_PID" 2>/dev/null || :
+  rm -f "$UV_VERSION_PROBE_OUTPUT"
+  exit "$UV_VERSION_PROBE_SIGNAL_STATUS"
+}
+
 probe_uv_version() {
   # Portable bounded probe: macOS has no coreutils `timeout`, and bash 3.x has
   # no `wait -n`. Capture to a file so a killed shim cannot hold a command
@@ -61,6 +74,9 @@ probe_uv_version() {
   uv --version >"$UV_VERSION_PROBE_OUTPUT" 2>/dev/null &
   UV_VERSION_PROBE_PID=$!
   set +m
+  trap 'terminate_uv_version_probe_on_signal 129' HUP
+  trap 'terminate_uv_version_probe_on_signal 130' INT
+  trap 'terminate_uv_version_probe_on_signal 143' TERM
   UV_VERSION_WAIT_COUNT=0
   while kill -0 "$UV_VERSION_PROBE_PID" 2>/dev/null; do
     if [ "$UV_VERSION_WAIT_COUNT" -eq 50 ]; then
@@ -81,6 +97,7 @@ probe_uv_version() {
   fi
   UV_VERSION_OUTPUT=$(cat "$UV_VERSION_PROBE_OUTPUT")
   rm -f "$UV_VERSION_PROBE_OUTPUT"
+  trap - HUP INT TERM
   if [ "$UV_VERSION_PROBE_ERROR" = "timeout" ]; then
     return 1
   fi
@@ -283,11 +300,12 @@ if not isinstance(data, dict):
     print("TYPE_ERROR:config root must be a JSON object", file=sys.stderr)
     sys.exit(3)
 
-mcp_servers = data.get("mcpServers")
-if mcp_servers is None:
+if "mcpServers" not in data:
     mcp_servers = {}
     data["mcpServers"] = mcp_servers
-elif not isinstance(mcp_servers, dict):
+else:
+    mcp_servers = data["mcpServers"]
+if not isinstance(mcp_servers, dict):
     print("TYPE_ERROR:mcpServers must be a JSON object", file=sys.stderr)
     sys.exit(3)
 
@@ -305,6 +323,9 @@ if isinstance(existing_entry, dict):
 # never the link path itself.
 write_path = os.path.realpath(config_path)
 config_dir = os.path.dirname(write_path) or "."
+target_mode = stat.S_IMODE(os.stat(write_path).st_mode)
+if target_mode & 0o222 == 0:
+    raise PermissionError(f"config file is not writable: {write_path}")
 if stat.S_IMODE(os.stat(config_dir).st_mode) & 0o222 == 0:
     raise PermissionError(f"config directory is not writable: {config_dir}")
 
@@ -325,7 +346,7 @@ try:
         f.write("\n")
         f.flush()
         os.fsync(f.fileno())
-    os.chmod(temporary_path, stat.S_IMODE(os.stat(write_path).st_mode))
+    os.chmod(temporary_path, target_mode)
     os.replace(temporary_path, write_path)
 except BaseException:
     try:

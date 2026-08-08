@@ -102,6 +102,25 @@ class TestTerminateProcessTree:
             ((123, 9),),
         ]
 
+    def test_posix_tolerates_group_exiting_before_sigkill(self) -> None:
+        from tree_sitter_analyzer.cli.commands.doctor import _terminate_process_tree
+
+        process = MagicMock(pid=123)
+        with (
+            patch("tree_sitter_analyzer.cli.commands.doctor.os.name", "posix"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor.os.killpg",
+                side_effect=(None, None, ProcessLookupError),
+                create=True,
+            ) as killpg,
+        ):
+            _terminate_process_tree(process)
+        assert killpg.call_args_list == [
+            ((123, 15),),
+            ((123, 0),),
+            ((123, 9),),
+        ]
+
     def test_posix_reaps_after_group_is_already_gone(self) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _terminate_process_tree
 
@@ -133,6 +152,7 @@ class TestCheckUv:
             (subprocess.CompletedProcess([], 0, " uv 0.11.0\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
             (subprocess.CompletedProcess([], 0, "\nuv 0.11.0\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
             (subprocess.CompletedProcess([], 0, "uv 0.11.0.1\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
+            (subprocess.CompletedProcess([], 0, "uv ٠.١١.٠\n", ""), "FAIL", "cannot determine version at /usr/local/bin/uv — required uv >= 0.11.0"),
             (subprocess.CompletedProcess([], 0, b"uv 0.11.0\xff\n", b""), "FAIL", "undecodable version output from /usr/local/bin/uv --version"),
         ),
     )
@@ -197,6 +217,29 @@ class TestCheckUv:
         assert (result.status, result.message) == (
             "FAIL", "timed out running /usr/local/bin/uv --version"
         )
+
+    @pytest.mark.parametrize("interruption", (KeyboardInterrupt(), BaseException("stop")))
+    def test_interruption_terminates_probe_tree_and_is_reraised(
+        self, interruption: BaseException
+    ) -> None:
+        # PR #1233: an interrupted doctor probe must not orphan its process group.
+        from tree_sitter_analyzer.cli.commands.doctor import _check_uv
+
+        process = MagicMock()
+        process.communicate.side_effect = interruption
+        with (
+            patch("shutil.which", return_value="/usr/local/bin/uv"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor.subprocess.Popen",
+                return_value=process,
+            ),
+            patch(
+                "tree_sitter_analyzer.cli.commands.doctor._terminate_process_tree"
+            ) as terminate,
+            pytest.raises(type(interruption), match="stop" if str(interruption) else None),
+        ):
+            _check_uv()
+        terminate.assert_called_once_with(process)
 
     def test_fail_when_uv_missing(self) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _check_uv

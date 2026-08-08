@@ -94,6 +94,9 @@ def _check_uv() -> CheckResult:
         except subprocess.TimeoutExpired:
             _terminate_process_tree(process)
             return CheckResult("uv", "FAIL", f"timed out running {path} --version")
+        except BaseException:
+            _terminate_process_tree(process)
+            raise
         completed = subprocess.CompletedProcess(
             process.args, process.returncode, probe_stdout, probe_stderr
         )
@@ -113,7 +116,8 @@ def _check_uv() -> CheckResult:
         )
 
     match = re.fullmatch(
-        r"uv (\d+)\.(\d+)\.(\d+)(?:[ \t]+.*)?", decoded_stdout.rstrip("\n")
+        r"uv ([0-9]+)\.([0-9]+)\.([0-9]+)(?:[ \t]+.*)?",
+        decoded_stdout.rstrip("\n"),
     )
     if completed.returncode != 0 or match is None:
         return CheckResult(

@@ -7,6 +7,7 @@ import json
 import os
 import platform
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -288,6 +289,65 @@ def test_run_removes_fixture_when_installer_times_out(tmp_path: Path) -> None:
         else:
             raise AssertionError("expected installer timeout")
     assert fixture_root.exists() is False
+
+
+@pytest.mark.parametrize(
+    ("probe_signal", "expected_status"),
+    ((signal.SIGHUP, 129), (signal.SIGINT, 130), (signal.SIGTERM, 143)),
+)
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: install.sh signal contract is for macOS/Linux shell installs",
+)
+def test_installer_signal_terminates_probe_group_and_removes_temp(
+    tmp_path: Path, probe_signal: signal.Signals, expected_status: int
+) -> None:
+    # PR #1233: installer-only signals must clean the isolated uv probe group.
+    root = tmp_path / f"probe-signal-{probe_signal.name.lower()}"
+    root.mkdir()
+    fixture = qualification._prepare_fixture(root, "uv 0.11.0", "valid")
+    child_pid_file = root / "uv-child.pid"
+    probe_tmp = root / "probe-tmp"
+    probe_tmp.mkdir()
+    fixture |= {
+        "UV_CHILD_PID_FILE": str(child_pid_file),
+        "TMPDIR": str(probe_tmp),
+    }
+    qualification._write_executable(
+        root / "mock-bin" / "uv",
+        "#!/bin/sh\ntrap '' HUP INT TERM\nsleep 60 &\n"
+        'echo "$!" > "$UV_CHILD_PID_FILE"\nwait\n',
+    )
+    process = subprocess.Popen(
+        ["/bin/bash", str(REPO / "install.sh")],
+        cwd=root,
+        env=os.environ | fixture,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if child_pid_file.exists() and list(probe_tmp.glob("tsa-uv-version.*")):
+                break
+            time.sleep(0.05)
+        assert (
+            child_pid_file.exists(),
+            len(list(probe_tmp.glob("tsa-uv-version.*"))),
+        ) == (True, 1)
+        child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+        os.kill(process.pid, probe_signal)
+        process.communicate(timeout=10)
+        assert (
+            process.returncode,
+            _wait_for_process_exit(child_pid),
+            list(probe_tmp.glob("tsa-uv-version.*")),
+        ) == (expected_status, True, [])
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate()
 
 
 @pytest.mark.skipif(

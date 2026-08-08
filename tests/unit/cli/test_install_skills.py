@@ -708,6 +708,65 @@ class TestInstallScriptUvVersion:
         assert "📦 Updating uv automatically..." in result.stdout
         assert (tmp_path / "curl-log").exists() is True
 
+    def test_agent_config_missing_mcp_servers_is_created(self, tmp_path: Path) -> None:
+        # PR #1233: a missing key remains distinct from an explicit null value.
+        config = tmp_path / "home" / ".claude" / ".mcp.json"
+        config.parent.mkdir(parents=True)
+        config.write_text("{}", encoding="utf-8")
+        result = self._run(tmp_path, "uv 0.11.0")
+        data = json.loads(config.read_text(encoding="utf-8"))
+        assert (
+            result.returncode,
+            data["mcpServers"]["tree-sitter-analyzer"]["command"],
+        ) == (0, "uvx")
+
+    def test_agent_config_explicit_null_mcp_servers_fails_closed(
+        self, tmp_path: Path
+    ) -> None:
+        # PR #1233: explicit null is malformed input, not an absent key.
+        config = tmp_path / "home" / ".claude" / ".mcp.json"
+        config.parent.mkdir(parents=True)
+        original = '{"mcpServers": null}\n'
+        config.write_text(original, encoding="utf-8")
+        result = self._run(tmp_path, "uv 0.11.0")
+        assert (
+            result.returncode,
+            config.read_text(encoding="utf-8"),
+            list(config.parent.glob(".mcp.json.bak.*")),
+        ) == (1, original, [])
+
+    def test_read_only_agent_config_fails_closed(self, tmp_path: Path) -> None:
+        # PR #1233: atomic replacement must respect a target marked read-only.
+        config = tmp_path / "home" / ".claude" / ".mcp.json"
+        config.parent.mkdir(parents=True)
+        original = '{"mcpServers": {}}\n'
+        config.write_text(original, encoding="utf-8")
+        config.chmod(0o444)
+        result = self._run(tmp_path, "uv 0.11.0")
+        assert (
+            result.returncode,
+            config.read_text(encoding="utf-8"),
+            config.stat().st_mode & 0o777,
+        ) == (1, original, 0o444)
+
+    def test_read_only_symlink_target_fails_closed(self, tmp_path: Path) -> None:
+        # PR #1233: permission checks must inspect the resolved managed target.
+        config_dir = tmp_path / "home" / ".claude"
+        config_dir.mkdir(parents=True)
+        target = tmp_path / "managed-mcp.json"
+        original = '{"mcpServers": {}}\n'
+        target.write_text(original, encoding="utf-8")
+        target.chmod(0o444)
+        link = config_dir / ".mcp.json"
+        link.symlink_to(target)
+        result = self._run(tmp_path, "uv 0.11.0")
+        assert (
+            result.returncode,
+            link.is_symlink(),
+            target.read_text(encoding="utf-8"),
+            target.stat().st_mode & 0o777,
+        ) == (1, True, original, 0o444)
+
     @pytest.mark.skipif(
         os.name == "nt",
         reason="tracked: install.sh is macOS/Linux-only; Windows uses PowerShell",
