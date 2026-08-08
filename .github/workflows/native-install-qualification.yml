@@ -107,8 +107,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
-      - name: Install schema validator
-        run: python -m pip install --disable-pip-version-check "jsonschema>=4,<5"
+      - name: Install qualification runtime dependencies
+        run: python -m pip install --disable-pip-version-check "jsonschema>=4,<5" packaging psutil
       - uses: actions/download-artifact@v7
         with:
           name: native-build-${{ github.sha }}
@@ -124,6 +124,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force qualification-artifacts | Out-Null
           $value = @{job='native-axis'; axis='${{ matrix.axis }}'; status='${{ job.status }}'} | ConvertTo-Json -Compress
           $value | Set-Content -Encoding ascii qualification-artifacts/job-result.json
       - name: Upload native evidence even on failure
