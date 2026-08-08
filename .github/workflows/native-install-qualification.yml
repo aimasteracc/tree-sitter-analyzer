@@ -1,0 +1,158 @@
+name: Native Install Qualification
+
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-once:
+    name: Build candidate wheel once
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    outputs:
+      wheel_name: ${{ steps.inventory.outputs.wheel_name }}
+      wheel_sha256: ${{ steps.inventory.outputs.wheel_sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.3"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - name: Verify exact clean source
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+        shell: bash
+      - name: Build one wheel and manifest
+        id: inventory
+        run: |
+          mkdir qualification-build
+          uv build --wheel --out-dir qualification-build
+          mapfile -t wheels < <(find qualification-build -maxdepth 1 -type f -name '*.whl')
+          test "${#wheels[@]}" -eq 1
+          python scripts/qualify_native_install.py build-manifest             --wheel "${wheels[0]}" --commit "$GITHUB_SHA"             --output qualification-build/wheel-manifest.json
+          echo "wheel_name=$(basename "${wheels[0]}")" >> "$GITHUB_OUTPUT"
+          echo "wheel_sha256=$(python -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${wheels[0]}")" >> "$GITHUB_OUTPUT"
+        shell: bash
+      - name: Attest wheel on trusted develop push
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: qualification-build/${{ steps.inventory.outputs.wheel_name }}
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-build-${{ github.sha }}
+          path: qualification-build/
+          if-no-files-found: warn
+          retention-days: 90
+
+  native-axis:
+    name: Native ${{ matrix.axis }} Python 3.10
+    needs: build-once
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - axis: linux
+            runner: ubuntu-24.04
+          - axis: macos
+            runner: macos-14
+          - axis: windows
+            runner: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - name: Install aggregate schema validator
+        run: python -m pip install --disable-pip-version-check "jsonschema>=4,<5"
+      - uses: actions/download-artifact@v7
+        with:
+          name: native-build-${{ github.sha }}
+          path: qualification-input
+      - name: Qualify installed wheel through official MCP client
+        run: >-
+          python scripts/qualify_native_install.py axis
+          --axis ${{ matrix.axis }}
+          --wheel qualification-input/${{ needs.build-once.outputs.wheel_name }}
+          --wheel-manifest qualification-input/wheel-manifest.json
+          --output qualification-artifacts/report.json
+      - name: Upload native evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-${{ matrix.axis }}-${{ github.sha }}
+          path: qualification-artifacts/
+          if-no-files-found: warn
+          retention-days: 90
+
+  aggregate:
+    name: Aggregate exact native axes
+    if: always()
+    needs: [build-once, native-axis]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - name: Install strict schema validator
+        run: python -m pip install --disable-pip-version-check "jsonschema>=4,<5"
+      - name: Download all retained axis evidence
+        continue-on-error: true
+        uses: actions/download-artifact@v7
+        with:
+          pattern: native-*-${{ github.sha }}
+          path: downloaded
+      - name: Aggregate candidate evidence
+        if: github.event_name != 'push' || github.ref != 'refs/heads/develop'
+        run: >-
+          python scripts/qualify_native_install.py aggregate
+          --schema rfcs/schemas/no1-006a-native-attestation-v1.schema.json
+          --reports downloaded/native-*/report.json
+          --output qualification-aggregate/aggregate.json
+        shell: bash
+      - name: Aggregate trusted develop evidence
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        run: >-
+          python scripts/qualify_native_install.py aggregate --trusted
+          --schema rfcs/schemas/no1-006a-native-attestation-v1.schema.json
+          --reports downloaded/native-*/report.json
+          --output qualification-aggregate/aggregate.json
+        shell: bash
+      - name: Attest aggregate on trusted develop push
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: qualification-aggregate/aggregate.json
+      - name: Upload aggregate evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-aggregate-${{ github.sha }}
+          path: qualification-aggregate/
+          if-no-files-found: warn
+          retention-days: 90
