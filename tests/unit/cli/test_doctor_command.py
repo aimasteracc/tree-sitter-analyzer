@@ -83,6 +83,10 @@ class TestTerminateProcessTree:
             _terminate_process_tree(process)
         process.kill.assert_called_once_with()
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="tracked: POSIX process-group cleanup is covered on macOS/Linux",
+    )
     def test_posix_escalates_process_group_to_sigkill(self) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _terminate_process_tree
 
@@ -102,6 +106,10 @@ class TestTerminateProcessTree:
             ((123, 9),),
         ]
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="tracked: POSIX process-group cleanup is covered on macOS/Linux",
+    )
     def test_posix_tolerates_group_exiting_before_sigkill(self) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _terminate_process_tree
 
@@ -121,6 +129,10 @@ class TestTerminateProcessTree:
             ((123, 9),),
         ]
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="tracked: POSIX process-group cleanup is covered on macOS/Linux",
+    )
     def test_posix_reaps_after_group_is_already_gone(self) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _terminate_process_tree
 

@@ -293,7 +293,11 @@ def test_run_removes_fixture_when_installer_times_out(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     ("probe_signal", "expected_status"),
-    ((signal.SIGHUP, 129), (signal.SIGINT, 130), (signal.SIGTERM, 143)),
+    (
+        (getattr(signal, "SIGHUP", signal.SIGTERM), 129),
+        (signal.SIGINT, 130),
+        (signal.SIGTERM, 143),
+    ),
 )
 @pytest.mark.skipif(
     os.name == "nt",
