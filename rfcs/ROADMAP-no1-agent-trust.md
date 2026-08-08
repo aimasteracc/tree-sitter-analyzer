@@ -172,7 +172,7 @@ The program uses role-based agents with isolated worktrees for implementation. P
 | Program Orchestrator | critical path, dependency gates, final integration, GitFlow | parent agent |
 | Trust & Benchmark Lead | RFC-0021, NO1-002C/D, provenance, replay, claim ladder | `no1-canary-implementer` (NO1-003B) |
 | Product/API Lead | three-task contracts, compatibility, Agent UX | RFC-0022/0023 drafts complete; next NO1-010A through their stated gates |
-| Runtime Lead | install, packaging, indexing SLO, concurrency | offline NO1-006A slice merged; native qualification remains |
+| Runtime Lead | install, packaging, indexing SLO, concurrency | NO1-006A native package/MCP slice qualified at run `31272226364`; outdated-uv native gate remains |
 | Evidence/Claims Lead | claim registry, support matrix, generated docs | NO1-004A/B and NO1-005A merged; future E4 admission remains external |
 | Independent Reviewer | oracle signatures, blind review, E3 reproduction | human/external agent; cannot be benchmark author |
 | Community/GTM Lead | integrations, design partners, case studies | human-led with research agents |
@@ -192,7 +192,7 @@ Agents may prepare artifacts and code, but these gates remain human-controlled: 
 | NO1-004A | Claim registry schema and validator (complete) | Evidence Lead | NO1-003A | every quantitative README marketing claim is registry-generated with names/versions, metric/unit/numerator/denominator, benchmark/date/corpus/repo commit, repository set, model/backend, evidence level, and an independently reproduced digest admitted by the code-owned trust root; stale/mixed/self-attested claims fail closed |
 | NO1-004B | Generated claim/support snippets (complete) | Evidence Lead | NO1-004A, NO1-005A | deterministic claim marker plus whole-README coverage rejects manual quantitative marketing; command/version data and the independent language inventory generator are excluded |
 | NO1-005A | Canonical language support-depth inventory | Product Lead | none | pipeline registration dimensions derived from executable registries; cross-file E2E remains tri-state and requires positive fixtures |
-| NO1-006A | Fresh-install qualification harness | Runtime Lead | none | exact macOS/Linux/Windows scenarios; outdated uv is detected and remediated/actionable |
+| NO1-006A | Fresh-install qualification harness | Runtime Lead | none | one exact wheel passes native macOS/Linux/Windows package-to-MCP-first-answer qualification and independent attestation; outdated uv is natively detected and remediated/actionable |
 | NO1-006B | Default dependency split RFC and measured baseline | Runtime Lead | NO1-006A | wheel/download/startup/dependency counts measured before design; no big-bang rewrite |
 | NO1-007A | RFC: `understand/plan_change/assess_change` | Product/API Lead | NO1-003A | fixed schemas, compatibility map, evidence fields, no duplicate analysis engine |
 | NO1-007B | RFC: edge evidence/confidence/freshness | Product/API + Trust | NO1-007A | confidence semantics calibrated; `unknown` never promoted without evidence |
@@ -256,7 +256,9 @@ NO1-010A ─ NO1-010B
 
 ## 10. Current execution order
 
-1. Continue NO1-006A with native macOS/Linux/Windows package-to-MCP-first-answer qualification; the merged offline contract does not complete it.
+The native package-to-MCP slice of NO1-006A qualified at `refs/heads/develop` commit `58bd2b982f48abd4059a646657e7421da658a776` in [workflow run `31272226364`, attempt `1`](https://github.com/aimasteracc/tree-sitter-analyzer/actions/runs/31272226364/attempts/1). One wheel (`sha256:c1cb3520542fd14dad60ddec55dfac6afbdaa424e7a4a39d875be1801d98f9e8`) passed native Linux, macOS, and Windows package-to-MCP-first-answer axes. The no-checkout trusted job independently verified the byte-bound aggregate (`sha256:7ecae9be0e0bbc6bd54f319aff2eee97e34774888fb0820abd759eee4f5551e2`) and then issued GitHub attestations for the wheel and aggregate. A post-run verification pinned the signer workflow, source digest, and `refs/heads/develop`; every consumed sidecar and both verification results are preserved in [`rfcs/evidence/no1-006a/58bd2b982f48abd4059a646657e7421da658a776-attempt-1/`](evidence/no1-006a/58bd2b982f48abd4059a646657e7421da658a776-attempt-1/). This evidence proves the attested source ref, not a branch-protection snapshot. NO1-006A remains open until an outdated-uv scenario is natively qualified as detected and remediated/actionable; neither this milestone nor eventual task closure upgrades canary, benchmark, comparison, or public-claim evidence.
+
+1. Complete the remaining native outdated-uv detection/remediation qualification for NO1-006A; until then NO1-006B and NO1-012A remain blocked.
 2. Establish and record a distinct reproducible RFC-0021 E1 install/smoke qualification, then complete NO1-008A's model-free seven-repository setup; any setup failure blocks every model-backed phase.
 3. Implement and independently review NO1-003D's production dispatcher without invoking a model.
 4. Only after NO1-003D, NO1-008A, human budget, signed attestation, and judge gates pass, execute NO1-003C as a bounded E0 canary; retain failures and do not relabel it E1.
