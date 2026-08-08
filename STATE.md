@@ -1,16 +1,41 @@
 # Loop State — tree-sitter-analyzer
 
-Last run: 2026-07-15 (codegraph #1 mission — full auto)
+Last run: 2026-08-08 (trusted Agent change intelligence No.1 program)
 
 ## Mission
 
-**Become the #1 project in the codegraph industry.**
+**Become the most trusted local code-change intelligence layer for AI coding agents.**
+
+North star: **Verified Change Success Rate (VCSR)**. Feature, language, tool,
+test, edge, download, and star counts are supporting signals, not the objective.
+Public leadership claims remain bounded by the RFC-0021 evidence ladder. E0–E3
+emit no public claim, and an operational E0 canary cannot be promoted to E1.
 
 Key pillars:
-1. **Indexing performance** — fast initial index, low latency incremental
-2. **Graph database excellence** — centrality metrics, auto-build, agent-readable
-3. **Visualization** — force-directed layout, DOT/GraphML/HTML export (competitor-parity)
-4. **Agent neural interface** — 16-language moat, Synapse resolver, MCP tool suite
+1. **Trust evidence** — conservative resolution, provenance, freshness, reproducible Agent-change outcomes
+2. **Task UX** — understand → plan_change → assess_change over the existing primitives
+3. **Runtime reliability** — low-friction install, fast index/query/refresh, multi-agent safety
+4. **Independent adoption** — E2/E3/E4 evidence, integrations, external maintainers, real cases
+
+Active roadmap: [`rfcs/ROADMAP-no1-agent-trust.md`](rfcs/ROADMAP-no1-agent-trust.md).
+
+## Active No.1 Sprint
+
+- **NO1-003A (integration condition):** roadmap, team topology, evidence policy, and 90-day ledger are implemented in PR #1238; completion is established only when that PR merges to `develop`
+- [x] **NO1-003B:** production-canary operator runbook and offline rehearsal (E0; real canary remains NO-GO)
+- [ ] **NO1-003D:** implement and independently qualify the production dispatcher/admission boundary without a model call
+- [ ] **NO1-003C:** execute one real bounded E0 Gin production canary only after NO1-003D, model-free NO1-008A setup, signed attestation, human budget, and judge gates pass; it cannot unlock E1/E2 or public wording
+- [ ] **NO1-006A:** strict uv/bootstrap and offline installer-contract slices complete; real package-to-MCP-first-answer plus native macOS/Linux/Windows attested qualification remain pending
+- [ ] **NO1-008A:** after a separate reproducible RFC-0021 E1 qualification, complete the seven-repository model-free setup; any failure blocks NO1-003C and every model-backed phase
+- [x] **NO1-004A:** claim registry is the fail-closed control plane; arbitrary wording is schema-invalid, E0–E3 emit nothing, and E4 requires a context-bound benchmark plus independent reproduction whose exact digest is admitted by the code-owned trust root (empty by default) before fixed public wording can be emitted
+- [x] **NO1-004B:** the English README has a deterministic claim marker and conservative whole-document policy gate; unsupported quantitative marketing was removed from all three public READMEs, and the blocked E0 seed honestly generates no claim
+- [x] **NO1-005A:** generated 10-dimension language pipeline inventory; cross-file E2E remains `verified=0`, with 13 `unknown`
+- [x] **NO1-007A:** draft RFC for understand / plan_change / assess_change completed; Phase A internal implementation is gated by read-only snapshot Phase 0, while only public ninth-facade registration is gated by the menu experiment
+- [x] **NO1-007B:** RFC-0023 edge evidence/confidence/freshness draft with strict schema, closed golden fixtures, and an E0 denial corpus for a future semantic validator
+- [ ] **NO1-009A:** qualify a second indexed competitor at install/conformance only after NO1-003A; keep an unavailable arm `NOT_EVALUATED`, and require a separately frozen RFC-0021 v2 experiment before comparative inclusion
+
+Execution policy: at most two L2 agents concurrently; implementation agents use
+isolated GitFlow worktrees; model spend and independent-judge gates remain human-controlled.
 
 ---
 
@@ -80,17 +105,13 @@ Key pillars:
 
 ---
 
-## Competitive Benchmarks
+## Historical Comparison Quarantine
 
-| Feature | TSA | Sourcegraph | CodeGraph |
-|---------|-----|-------------|-----------|
-| Force-directed layout | NEW | yes | yes |
-| DOT/Graphviz export | NEW | no | no |
-| GraphML export | NEW | no | partial |
-| Degree centrality metadata | NEW | no | no |
-| Auto-built graph after index | NEW | manual | manual |
-| 16-language moat | yes | yes | 8 |
-| MCP agent interface | yes | no | no |
+The former competitive feature table is removed from active state. Its tool versions,
+repository set, date, model/backend, and RFC-0021 evidence level were not recorded, so
+its `yes`/`no`/`partial`, language-count, and leadership implications are not admitted
+evidence and must not support public wording. Any replacement must be generated from
+an artifact admitted by the claim registry under the active roadmap policy.
 
 ---
 Run log: 2026-07-15 codegraph mission — indexing perf + centrality + auto-KG + force-viz + DOT + GraphML

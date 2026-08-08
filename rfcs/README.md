@@ -78,7 +78,10 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0019](0019-complexity-single-source-of-truth.md) | Cyclomatic complexity — one source of truth | implemented (#1099, #1101, #1102) |
 | [0020](0020-sqlite-canonical-knowledge-graph.md) | SQLite-canonical knowledge graph | draft |
 | [0021](0021-real-world-competitive-benchmark.md) | Real-world competitive benchmark | draft |
+| [0022](0022-task-outcome-apis.md) | Static task outcomes by primitive orchestration | draft |
+| [0023](0023-edge-evidence-confidence-freshness.md) | Edge evidence, confidence, and freshness | draft |
 
 ## Roadmap
 
-See [ROADMAP-beyond-codegraph.md](ROADMAP-beyond-codegraph.md) for planned future directions beyond the current correctness-moat work.
+- [ROADMAP-no1-agent-trust.md](ROADMAP-no1-agent-trust.md) — active No.1 program: trusted Agent change intelligence, evidence gates, team topology, and 90-day task ledger. Its real production canary remains bounded E0; E1 is a separate qualification and E0–E3 emit no public claim.
+- [ROADMAP-beyond-codegraph.md](ROADMAP-beyond-codegraph.md) — historical strategy and completed correctness-moat work.
