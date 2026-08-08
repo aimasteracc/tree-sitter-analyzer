@@ -45,15 +45,22 @@ all capabilities below. This is a prerequisite, not task-layer implementation.
 ### P0.1 Authoritative index snapshot oracle
 
 `index.status` must return an opaque `snapshot_id`, an authoritative
-`source_fingerprint`, `index_fingerprint`, and `completeness` (`complete`,
-`partial`, or `unknown`). Every graph-backed primitive used here must echo the
-same `snapshot_id` it actually read. Only the primitive/index owner computes
-these values. A task never scans or hashes the repository.
+`source_fingerprint`, `index_fingerprint`, `source_generation`, and
+`completeness` (`complete`, `partial`, or `unknown`). `source_generation` is an
+opaque token issued by the primitive-owned source oracle for the exact source
+state certified by that index snapshot. Every graph-backed primitive echoes the
+`snapshot_id` it actually read. Only primitive owners compute these values; a
+task never scans or hashes the repository.
 
-If any field is absent, disagrees across calls, or completeness is not
-`complete`, freshness is `unknown` (or `stale` when the primitive says so) and
-a graph-dependent outcome is at most `partial`. `lag_seconds`, mtimes, elapsed
-time, and a task-computed hash are never evidence of freshness.
+`edit.impact` must obtain a `source_generation` from that same oracle atomically
+with diff capture and echo it. The task compares it byte-for-byte with the
+`index.status` token; absence or mismatch is `SOURCE_GENERATION_MISMATCH`, stops
+diff routing, and cannot produce fresh evidence. This binds the captured diff to
+the certified source generation rather than merely comparing two internally
+consistent but unrelated IDs. If any oracle field is absent, disagrees, or
+completeness is not `complete`, freshness is `unknown` (or primitive-reported
+`stale`) and graph-dependent status is at most `partial`. Time, mtimes, and a
+task-computed hash are never freshness evidence.
 
 ### P0.2 Frozen workspace/staged diff snapshot
 
@@ -63,10 +70,12 @@ V1 accepts only `workspace` and `staged`. They map respectively to
 Before Phase A, the edit-adapter runtime must own a process-local, non-persistent
 snapshot registry. `edit.impact` atomically materializes the normalized patch and
 all available old/new bytes into an immutable registry entry, then returns its
-opaque `diff_snapshot_id` and changed-file records (`path`, `status`, old/new
-availability, binary flag). `edit.ast_diff` and `edit.classify` accept only that
-ID plus `file_path`; they never reread a file to reconstruct the captured input.
-The task only fans out the returned records in normalized path order.
+opaque `diff_snapshot_id`, `source_generation`, changed-file records (`path`,
+`status`, old/new availability, binary flag), and `assessed_scope_paths`: the
+primitive-normalized union of changed paths and impact-produced affected/blast-
+radius paths. `edit.ast_diff` and `edit.classify` accept only that ID plus
+`file_path`; they never reconstruct the captured input. The task only fans out
+returned records in normalized path order.
 
 The frozen registry configuration is part of the primitive contract: at most 16
 live snapshots, 64 MiB total materialized bytes, and a 35-second hard lifetime.
@@ -74,9 +83,9 @@ An entry is pinned against eviction while its route lease is open; capacity or
 size exhaustion fails `edit.impact` with `DIFF_SNAPSHOT_CAPACITY` rather than
 writing to disk. The orchestration host closes the primitive-issued lease in a
 `finally` block after outcome freeze/failure; close and hard expiry erase the
-entry. Access after either returns `DIFF_SNAPSHOT_EXPIRED`. Before every fan-out
-call, the primitive owner compares its source-generation token with the one
-captured atomically by `impact`; a changed workspace/staged source returns
+entry. Access after either returns `DIFF_SNAPSHOT_EXPIRED`. Before every snapshot-
+consuming call (`constraints`, `ast_diff`, or `classify`), its primitive owner
+reacquires and compares the shared-oracle generation captured by `impact`; a changed source returns
 `DIFF_SNAPSHOT_SOURCE_CHANGED`, emits no derived result, and makes the task stop
 remaining diff fan-out. These stable errors are result data, not exceptions
 whose text is serialized. No snapshot directory, temp file, DB, WAL, or implicit
@@ -90,15 +99,16 @@ do not share such an artifact, so no diff outcome may ship until P0.2 lands.
 ### P0.3 Read-only constraint evaluation
 
 Before Phase A, `edit.constraints` must support `persist=false`, perform no
-DB/file write, and have a corrected MCP side-effect annotation. Every diff route
-reserves a call and, after successful `edit.impact`, invokes it with
-`persist=false` before per-file fan-out; the primitive owns config discovery
-and returns `state=not_applicable`, `reason=NO_CONFIG` when none exists.
-That result satisfies the constraint row and contributes no verdict. Only request
-rejection, impact failure, or an expired routing deadline can prevent the reserved
-call, producing the truth-table `unknown` contribution. The task never preflights
-files or capability. P0.3 is a release prerequisite, so there is no runtime
-`READ_ONLY_CAPABILITY_UNAVAILABLE` branch and no fallback evaluator.
+DB/file write, and have a corrected MCP side-effect annotation. After successful
+impact, every diff route invokes it with `diff_snapshot_id=id` and
+`scope_paths=impact.assessed_scope_paths` before fan-out. It evaluates and returns
+only violations whose location intersects that frozen scope; project-wide debt
+outside it MUST NOT contribute a verdict. The task passes the primitive-owned
+list exactly and never widens or derives it. The primitive owns config discovery
+and returns `state=not_applicable`, `reason=NO_CONFIG` when none exists. That row
+contributes no verdict. Only request rejection, impact failure, or deadline expiry
+can prevent the reserved call and produce `unknown`. P0.3 is a release prerequisite;
+there is no capability fallback or task-owned evaluator.
 
 ### P0.4 Read-only/open-existing mode for every routed adapter
 
@@ -149,11 +159,16 @@ async def plan_change(request: PlanChangeRequest) -> TaskOutcome: ...
 async def assess_change(request: AssessChangeRequest) -> TaskOutcome: ...
 ```
 
-A plan request has exactly one non-empty `task` or one `diff`. Task V1 does not
-accept `scope_paths`: `nav.context` currently has no such parameter, and local
-post-filtering would falsely imply a scoped search. Diff requests may carry
-`scope_paths`, passed unchanged only to `edit.impact`. Boundary validation
-precedes every primitive call.
+A plan request has exactly one non-empty `task` or one `diff`. Every request task
+must be valid Unicode, contain 1..16,384 UTF-8 bytes, and contain no NUL; size is checked
+before normalization or echoing. Task V1 does not accept `scope_paths` because
+`nav.context` has no such parameter. Diff `scope_paths` has at most 128 items;
+each is valid Unicode, relative, NUL-free, and at most 1,024 UTF-8 bytes, and the
+sum of encoded path bytes is at most 32,768. Counts include duplicates and raw
+bytes are measured before path normalization. An omitted/empty list means project
+scope. Excess or malformed input is `INVALID_REQUEST`, makes zero primitive calls,
+and is never echoed. Valid request scope is passed unchanged only to
+`edit.impact`; boundary validation always precedes primitive work.
 
 Pinned profiles are:
 
@@ -190,10 +205,10 @@ not sent; primitive output format is JSON internally.
 3. Call rows in displayed order. Fan-out lists are de-duplicated and sorted by
    `(path, symbol)` before their pinned cap is applied.
 4. Never substitute a failed/unsupported action. Record `unknown`/`not_run`.
-5. After graph calls, compare only primitive-issued snapshot tokens.
-6. Stop immediately on snapshot disagreement, expiry, or
-   `DIFF_SNAPSHOT_SOURCE_CHANGED`; retain earlier evidence as partial and make no
-   further snapshot-dependent calls.
+5. Compare only primitive-issued tokens. Immediately after impact, compare its
+   `source_generation` with the index oracle before constraints or fan-out.
+6. Stop on generation/snapshot disagreement, expiry, or source change; retain
+   earlier evidence as partial and make no further snapshot-dependent calls.
 
 | operation/input | condition | facade action and exact semantic parameters | stop/degrade rule |
 |---|---|---|---|
@@ -201,16 +216,32 @@ not sent; primitive output format is JSON internally.
 | `understand(task)` | valid task | `nav.context(task=task, max_nodes=12/30, max_code_blocks=3/5, include_graph=false, access_mode="read_existing", output_format="json")` | failure => unknown; success ends route |
 | `plan_change(task)` | valid task | same `nav.context` call | failure => unknown and stop |
 | `plan_change(task)` | each distinct existing path explicitly returned in `code_blocks`, max 2/5 | `edit.safe(file_path=path, edit_type="refactor", access_mode="read_existing", output_format="json")` | missing path is not inferred; per-call failure is partial |
-| diff operation | valid diff | `edit.impact(mode="diff"|"staged", scope_paths=scope_paths, include_tests=true, resource_profile="local_low_impact", access_mode="read_existing", output_format="json")` | missing/failing `diff_snapshot_id` => unknown and stop |
-| diff operation | successful impact; reserved before fan-out | `edit.constraints(persist=false, access_mode="read_existing", output_format="json")` | `not_applicable:NO_CONFIG` satisfies the row; invocation failure degrades per the truth table |
+| diff operation | valid diff | `edit.impact(mode="diff"|"staged", scope_paths=scope_paths, include_tests=true, resource_profile="local_low_impact", access_mode="read_existing", output_format="json")` | missing ID/generation/scope or generation mismatch => unknown and stop |
+| diff operation | successful, generation-matched impact; reserved before fan-out | `edit.constraints(diff_snapshot_id=id, scope_paths=impact.assessed_scope_paths, persist=false, access_mode="read_existing", output_format="json")` | only in-scope violations count; `not_applicable:NO_CONFIG` satisfies row |
 | diff operation | each non-binary changed record with old/new material available | `edit.ast_diff(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | unsupported add/delete/rename is explicit `not_run`, never locally reconstructed |
 | diff operation | same eligible records | `edit.classify(diff_snapshot_id=id, file_path=path, access_mode="read_existing", output_format="json")` | per-file failure => partial |
 
 The compact/standard values in a cell are selected only by `Budget.profile`.
-The task-plan `edit.safe` fan-out uses only paths emitted by `nav.context`; it
-does not guess a modification kind or symbol. Diff `plan_change` and
-`assess_change` share the identical primitive route and differ only in their
-artifact projection: an ordered plan versus a static assessment.
+`plan_steps` are read-only preparation/review steps, not edit instructions or
+implementation authorization. Each has exactly `{ordinal, kind, path, symbol,
+evidence_ids}`. The table-driven projection emits one step per successful exact
+primitive fragment in this group order, then sorts within a group by
+`(path|nulls-first, symbol|nulls-first, locator)` and assigns 1-based ordinals:
+
+| route/source fragment | fixed `kind` | copied fields |
+|---|---|---|
+| task `nav.context.code_blocks[]` | `inspect_context` | emitted path/symbol or null |
+| task `edit.safe` result | `check_file_safety` | requested emitted path; symbol null |
+| diff `impact.changed_files[]` | `review_changed_file` | emitted path; symbol null |
+| diff in-scope constraint violation | `check_constraint` | emitted path/symbol or null |
+| diff `ast_diff` result | `review_structure` | requested changed path; emitted symbol or null |
+| diff `classify` result | `review_classification` | requested changed path; emitted symbol or null |
+
+Fields are copied, never inferred; `evidence_ids` contains only that fragment's
+ID. Failed, malformed, `NO_CONFIG`, and omitted fragments emit no step and are
+represented by `unknowns`/status. Thus identical wires yield identical ordered
+steps without choosing a modification kind. `assess_change` uses the same route
+but leaves `plan_steps=[]`; neither operation performs or authorizes an edit.
 
 Required static questions are: context for task-understanding; context plus all
 selected file-safety checks for task-planning; and impact, every eligible
@@ -236,7 +267,7 @@ The fixed model keeps these required top-level keys:
   "success": true,
   "operation": "understand|plan_change|assess_change",
   "status": "complete|partial|unknown",
-  "verdict": "SAFE|CAUTION|REVIEW|UNSAFE|INFO|WARN|NOT_FOUND",
+  "verdict": "SAFE|CAUTION|REVIEW|UNSAFE|INFO|WARN|NOT_FOUND|ERROR",
   "subject": {"task": null, "diff": {"source": "workspace|staged", "snapshot_id": "opaque", "changed_paths": []}},
   "claims": [], "artifacts": {"relevant_symbols": [], "relevant_paths": [], "plan_steps": [], "verification": [], "edge_collections": []},
   "evidence": [], "provenance": [], "freshness": [], "unknowns": [], "errors": [],
@@ -250,10 +281,12 @@ while `task-outcome/v1` is still an unimplemented draft: earlier draft fixtures
 must be regenerated, and no deployed V1 compatibility promise is affected. After
 V1 implementation, removing or retyping it requires a negotiated V2. Strict
 clients reject unknown enum values.
-Request failures use `success=false` and existing TSA envelope conventions with
-stable codes `INVALID_REQUEST`, `OUTSIDE_PROJECT`, `BUDGET_INVALID`,
-`UNSUPPORTED_DIFF_SOURCE`, and `INTERNAL_ERROR`. Absolute host paths, bodies,
-secrets, environment values, stderr, and traces are not serialized.
+Request/internal failures stay inside `task-outcome/v1`, use `success=false` and
+required verdict `ERROR`, and follow TSA envelope conventions with stable codes
+`INVALID_REQUEST`, `OUTSIDE_PROJECT`, `BUDGET_INVALID`,
+`UNSUPPORTED_DIFF_SOURCE`, and `INTERNAL_ERROR`. `ERROR` is forbidden when
+`success=true`. Absolute host paths, bodies, secrets, environment values, stderr,
+and traces are not serialized.
 
 ### Evidence and provenance identity
 
@@ -306,8 +339,8 @@ Each required invocation produces exactly one contribution from this table;
 | succeeded structural | invalid | fresh | false | complete | primitive `REVIEW` or `UNSAFE` |
 | succeeded constraints | violation | fresh | false | complete | `UNSAFE` |
 | succeeded constraints | `NO_CONFIG` | not_applicable | false | complete | none |
-| succeeded | none/risk/invalid/violation | stale/missing/unknown | false | partial | same primitive verdict, marked non-fresh |
-| succeeded | none/risk/invalid/violation | any | true/unknown | partial | same primitive verdict, marked truncated |
+| succeeded | none/risk/invalid/violation | stale/missing/unknown | false | partial | `degrade(primitive verdict)` |
+| succeeded | none/risk/invalid/violation | any | true/unknown | partial | `degrade(primitive verdict)` |
 
 The table is ordered: the first matching row wins, so truncation overrides a
 fresh success and malformed finding overrides freshness. `any` is a wildcard;
@@ -319,7 +352,9 @@ untruncated impact with a risk finding is `complete` and contributes its risk
 verdict; the same success with no finding is `complete` and contributes its
 non-risk verdict. Structural invalidity and constraint violation explicitly
 permit `complete + REVIEW/UNSAFE`: completeness describes observation, not safety.
-Classification risk likewise does not make invocation failure.
+Classification risk likewise does not make invocation failure. `degrade(v)`
+preserves `UNSAFE|REVIEW|CAUTION|WARN` and maps `SAFE|INFO|NOT_FOUND` to `WARN`;
+stale or truncated evidence therefore never contributes `SAFE`.
 
 Aggregate status is deterministic: remove ignored rows; `complete` requires all
 remaining contributions to be complete; `partial` requires at least one useful
@@ -330,6 +365,8 @@ Verdicts aggregate as `UNSAFE > REVIEW > CAUTION > WARN > SAFE > INFO >
 NOT_FOUND`; no contribution is not a verdict, and incompleteness never upgrades
 risk. If there are no verdict contributions, the required top-level verdict is
 `INFO`. Conclusive `NOT_FOUND` requires known scope and fresh, untruncated success.
+As a final fail-closed rule, if status is `partial|unknown`, candidate
+`SAFE|NOT_FOUND` becomes `WARN`; incomplete evidence cannot assert either result.
 
 ### Budget and truncation
 
@@ -422,13 +459,10 @@ V1. A future version requires explicit negotiation and overlap.
 
 ## RED-first acceptance plan
 
-1. Phase 0 tests prove authoritative snapshot/version propagation; bounded
-   in-memory snapshot ownership, expiry, cleanup, and mutation errors; and
-   workspace/staged mapping including add/delete/rename/binary.
-2. For every routed adapter and composed route, Phase 0 tests prove exact zero
-   writes by before/after tree and DB/sidecar hashes on clean, old-schema, and
-   read-only-filesystem fixtures; they also pin `NO_CONFIG` from the unconditional
-   `constraints(persist=false)` call.
+1. Phase 0 tests prove authoritative snapshot/version propagation, bounded
+   snapshot ownership/cleanup/mutation errors, and all workspace/staged mappings.
+2. Adapter and route fixtures prove exact zero writes on clean, old-schema, and
+   read-only filesystems, plus scoped `constraints(persist=false)` and `NO_CONFIG`.
 3. Route tests pin every row, parameter, fan-out order/cap, stop condition, and
    prove no analyzer import, `tsa_explore` reuse, mutating action, or fallback.
 4. Schema/evidence tests pin key sets, evidence identity inputs, dangling-link
@@ -456,16 +490,10 @@ change-impact and patch-coverage gates. This RFC branch is docs-only.
 
 - Inline/stdin/branch/PR diffs, runtime execution, cancellation, sessions,
   persistence, LLM planning, and cursors are deferred.
-- A task-owned patch parser, repository fingerprint, classifier, graph, keyword
-  router, or constraint evaluator is rejected.
-- Registering `tsa_explore`, copying its inference, or registering a ninth facade
-  before the menu gate is rejected.
-- Calling `edit.constraints` without `persist=false` is rejected.
-- Calling static assessment `verify_change` is rejected.
+- Task-owned parsing/fingerprinting/classification/graph/routing/constraints are rejected.
+- `tsa_explore` reuse or ninth-facade registration before the gate is rejected.
+- Constraints without `persist=false` and static `verify_change` are rejected.
 
 ## Open questions
-
-1. Should runtime verification be a separate sandboxed API rather than a future
-   version of `assess_change`?
-2. If the ninth-facade experiment fails, should a later experiment test an
-   existing-facade action, or should task outcomes remain Python-only?
+1. Should runtime verification be a separate sandboxed API?
+2. After a failed gate, should task outcomes remain Python-only or test an existing facade?
