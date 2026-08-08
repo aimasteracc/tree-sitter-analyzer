@@ -221,7 +221,7 @@ def axis(args:argparse.Namespace)->int:
             expected_after=[item for item in before if item["path"] not in (".claude/.mcp.json",)]
             expected_after.extend([{"path":".claude/.mcp.json","type":"file","sha256":hashlib.sha256((json.dumps(expected_value,indent=2)+"\n").encode()).hexdigest()},{"path":str(backups[0].relative_to(home)),"type":"file","sha256":hashlib.sha256(b'{}\n').hexdigest()}])
             if sorted(after_second,key=lambda item:item["path"])!=sorted(expected_after,key=lambda item:item["path"]): raise ValueError("second install changed HOME beyond exact config replacement and one backup")
-            report["installer"]={"path":str(installer),"sha256":sha256(installer),"first_exit":first.returncode,"second_exit":second.returncode,"curl_invocations":0,"first_path":old_path,"second_path":supported_path}
+            report["installer"]={"path":str(installer),"sha256":sha256(installer),"first_exit":first.returncode,"second_exit":second.returncode,"curl_invocations":0,"first_path":old_path,"second_path":supported_path,"curated_tools":list(REQUIRED_COMMANDS)}
             report["config"]={"before":before,"after_first":after_first,"after_second":after_second,"expected_entry":expected_entry,"backup_sha256":sha256(backups[0])}
             mcp_dir=side/"mcp"; mcp_dir.mkdir(); env=os.environ.copy(); env["TSA_QUALIFICATION_UV"]=supported["path"]
             command=[sys.executable,str(PROJECT/"scripts/qualify_native_install.py"),"axis","--axis",args.axis,"--wheel",str(Path(args.wheel).resolve()),"--wheel-manifest",str(Path(args.wheel_manifest).resolve()),"--output",str(mcp_dir/"report.json")]
@@ -245,7 +245,12 @@ def axis(args:argparse.Namespace)->int:
 def aggregate(args:argparse.Namespace)->int:
     import jsonschema
     output=Path(args.output).resolve(); source,workflow=identity("outdated-uv-aggregate"); failures=[]; axes=[]; package=None
-    schema=json.loads(Path(args.schema).resolve(strict=True).read_text("utf-8")); validator=jsonschema.validators.validator_for(schema)(schema); validator.check_schema(schema)
+    try:
+        schema=json.loads(Path(args.schema).resolve(strict=True).read_text("utf-8")); validator=jsonschema.validators.validator_for(schema)(schema); validator.check_schema(schema)
+    except Exception as exc:
+        failures.append(f"schema: {type(exc).__name__}: {exc}")
+        result={"schema_version":SCHEMA_VERSION,"kind":"outdated_uv_aggregate","qualification_id":"NO1-006A","evidence_scope":"native_outdated_uv_actionable_recovery","qualification_performed":False,"qualified":False,"evidence_trust":"UNTRUSTED_CANDIDATE","source_commit":source["commit"],"package_qualification":None,"required_axes":{"package":["linux","macos","windows"],"outdated":["linux","macos"],"not_applicable":{"windows":"NOT_APPLICABLE_NO_NATIVE_INSTALLER"}},"automatic_mutable_bootstrap_qualified":False,"axes":[],"failures":failures,"workflow":workflow}
+        atomic_write(output,result); return 1
     for expected,raw in zip(AXES,args.reports,strict=True):
         path=Path(raw).resolve()
         try:

@@ -299,6 +299,13 @@ jobs:
             exact(value,("version","path","sha256","size","version_stdout")); assert value["version"]==version and re.fullmatch(rf"uv {re.escape(version)}(?: [^\n]+)?\n?",value["version_stdout"])
             executable=pure(value["path"],axis); suffix=pathlib.PurePosixPath(member["member"]).parts
             assert absolute(value["path"],axis) and tuple(part.lower() for part in executable.parts[-len(suffix):])==tuple(part.lower() for part in suffix) and (value["sha256"],value["size"])==(member["sha256"],member["size"])
+          def verify_installer_paths(installer,old,supported):
+            required=("awk","cat","grep","mktemp","python3","realpath","rm","sleep","uname")
+            first=installer["first_path"].split(":"); second=installer["second_path"].split(":")
+            assert len(first)==len(second)==2 and first[0]==str(pathlib.PurePosixPath(old["path"]).parent) and second[0]==str(pathlib.PurePosixPath(supported["path"]).parent) and first[1]==second[1] and pathlib.PurePosixPath(first[1]).name=="tools" and tuple(installer["curated_tools"])==required
+          def expected_config_hash(expected_entry):
+            value={"mcpServers":{"tree-sitter-analyzer":expected_entry}}
+            return hashlib.sha256((json.dumps(value,indent=2)+"\n").encode()).hexdigest()
           def verify_causal_binding(axis,path,causal,bound,supported_exec,wheel,wheel_path,parent_runner,causal_digest):
             verify_runner(causal["runner"],axis); assert causal["runner"]==parent_runner
             install=causal["install"]; tool=install["tool"]; runtime=causal["runtime"]; meta=causal["metadata"]; mcp=causal["mcp"]; record=meta["installed_record"]
@@ -380,12 +387,13 @@ jobs:
             assert supported["archive"]=={"filename":filename,"size":size,"sha256":digest,"url":url,"version":"0.11.0"}
             supported_side=path/"supported.archive"; assert (supported_side.stat().st_size,sha(supported_side))==(size,digest); verify_executable(supported["executable"],safe_uv_member(supported_side,filename),"0.11.0",axis)
             assert report["status"]=="PASSED" and report["passed"] is True and report["qualification_performed"] is True
-            installer=report["installer"]; assert installer["sha256"]==sha(path/"installer.source")=="754799ff21807228b604b001b6a93bfd62b9748b3cfea45a33e59fefcbb717d5" and (installer["first_exit"],installer["second_exit"],installer["curl_invocations"])==(1,0,0)
+            installer=report["installer"]; exact(installer,("path","sha256","first_exit","second_exit","curl_invocations","first_path","second_path","curated_tools")); assert installer["sha256"]==sha(path/"installer.source")=="754799ff21807228b604b001b6a93bfd62b9748b3cfea45a33e59fefcbb717d5" and (installer["first_exit"],installer["second_exit"],installer["curl_invocations"])==(1,0,0)
+            verify_installer_paths(installer,old["executable"],supported["executable"])
             first=(path/"first.stdout").read_text(); second=(path/"second.stdout").read_text()
             assert "TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1" in first and re.search(r"uv 0\.10\.9(?: [^\n]+)? does not satisfy required uv >= 0\.11\.0",first) and "installation complete" not in first and "uv 0.11.0" in second
             config=report["config"]; assert config["before"]==config["after_first"] and config["backup_sha256"]==hashlib.sha256(b"{}\n").hexdigest()
             before={item["path"]:item for item in config["before"]}; after={item["path"]:item for item in config["after_second"]}; added=set(after)-set(before)
-            assert set(before)-set(after)==set() and set(added)=={next(name for name in added if name.startswith(".claude/.mcp.json.bak."))} and after[next(iter(added))]["sha256"]==config["backup_sha256"] and before[".claude/.mcp.json"]!=after[".claude/.mcp.json"] and {k:v for k,v in before.items() if k!=".claude/.mcp.json"}=={k:v for k,v in after.items() if k not in added|{".claude/.mcp.json"}}
+            assert set(before)-set(after)==set() and set(added)=={next(name for name in added if name.startswith(".claude/.mcp.json.bak."))} and after[next(iter(added))]["sha256"]==config["backup_sha256"] and after[".claude/.mcp.json"]=={"path":".claude/.mcp.json","type":"file","sha256":expected_config_hash(config["expected_entry"])} and before[".claude/.mcp.json"]!=after[".claude/.mcp.json"] and {k:v for k,v in before.items() if k!=".claude/.mcp.json"}=={k:v for k,v in after.items() if k not in added|{".claude/.mcp.json"}}
             causal_path=path/"mcp/report.json"; causal=json.loads(causal_path.read_text()); bound=report["mcp_causal_report"]
             exact(causal,("schema_version","kind","qualification_id","evidence_scope","axis","qualification_performed","passed","source","workflow","runner","wheel","stages","failure","build_manifest_sha256","install","metadata","runtime","mcp","dependency_manifest_sha256","installed_files_zip_sha256")); identity(causal,"outdated-axis")
             assert causal["axis"]==axis and causal["stages"]==[{"id":stage,"passed":True} for stage in ("verify_wheel","install","metadata_provenance","mcp_protocol")] and causal["failure"] is None

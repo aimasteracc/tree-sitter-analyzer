@@ -101,6 +101,7 @@ def valid_windows_report() -> dict[str, object]:
         failure={"type": "NotApplicable", "message": "manual remediation"},
     )
     report["runner"].update(declared_axis="windows", observed_system="Windows")
+    report["artifacts"] = {"old.archive": {"sha256": "a" * 64, "size": 0}}
     return report
 
 
@@ -118,13 +119,29 @@ def test_schema_rejects_windows_pass_and_mutable_bootstrap_claim() -> None:
 
 def test_windows_na_requires_evidence_and_allows_empty_sidecar() -> None:
     report = valid_windows_report()
-    report["artifacts"] = {"empty.stderr": {"sha256": "0" * 64, "size": 0}}
+    report["artifacts"]["empty.stderr"] = {"sha256": "0" * 64, "size": 0}
     jsonschema.validate(report, SCHEMA)
     for field in ("old_uv", "package_qualification"):
         invalid = valid_windows_report()
         invalid[field] = {}
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(invalid, SCHEMA)
+
+
+def test_passed_schema_requires_every_platform_artifact() -> None:
+    # PR #1242: PASSED POSIX evidence must retain every causal sidecar.
+    report = valid_passed_report()
+    del report["artifacts"]["mcp/report.json"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(report, SCHEMA)
+
+
+def test_windows_na_schema_requires_old_archive_artifact() -> None:
+    # PR #1242: Windows N/A still executes and retains the old uv fixture.
+    report = valid_windows_report()
+    report["artifacts"] = {}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(report, SCHEMA)
 
 
 def test_schema_accepts_driver_windows_failed_state() -> None:
@@ -301,8 +318,9 @@ def valid_passed_report() -> dict[str, object]:
             "first_exit": 1,
             "second_exit": 0,
             "curl_invocations": 0,
-            "first_path": "/tmp/old",
-            "second_path": "/tmp/supported",
+            "first_path": "/tmp/old:/tmp/tools",
+            "second_path": "/tmp/supported:/tmp/tools",
+            "curated_tools": list(qualification.REQUIRED_COMMANDS),
         },
         config={
             "before": [],
@@ -355,6 +373,27 @@ def valid_passed_report() -> dict[str, object]:
             "dependency_manifest_sha256": digest,
         },
     )
+    artifact_names = (
+        "old.archive",
+        "supported.archive",
+        "installer.source",
+        "first.stdout",
+        "first.stderr",
+        "second.stdout",
+        "second.stderr",
+        "mcp-driver.stdout",
+        "mcp-driver.stderr",
+        "mcp/report.json",
+        "mcp/install.stdout",
+        "mcp/install.stderr",
+        "mcp/dependency-manifest.txt",
+        "mcp/mcp-transcript.ndjson",
+        "mcp/mcp.stderr",
+        "mcp/installed-files.zip",
+    )
+    report["artifacts"] = {
+        name: {"sha256": digest, "size": 0} for name in artifact_names
+    }
     return report
 
 
@@ -448,6 +487,36 @@ def run_aggregate(tmp_path: Path, paths: list[Path]) -> tuple[int, dict[str, obj
         )
     )
     return result, json.loads(output.read_text("utf-8"))
+
+
+@pytest.mark.parametrize("schema_state", ["missing", "malformed", "invalid"])
+def test_aggregate_retains_untrusted_report_when_schema_cannot_load(
+    tmp_path: Path, schema_state: str
+) -> None:
+    # PR #1242: schema boundary failures must remain as atomic aggregate evidence.
+    from types import SimpleNamespace
+
+    schema_path = tmp_path / "schema.json"
+    if schema_state == "malformed":
+        schema_path.write_text("{", "utf-8")
+    elif schema_state == "invalid":
+        schema_path.write_text(json.dumps({"type": 7}), "utf-8")
+    output = tmp_path / "aggregate.json"
+    result = qualification.aggregate(
+        SimpleNamespace(
+            output=str(output),
+            reports=["unused"] * 3,
+            schema=str(schema_path),
+            trusted=True,
+        )
+    )
+    aggregate = json.loads(output.read_text("utf-8"))
+    assert result == 1
+    assert aggregate["evidence_trust"] == "UNTRUSTED_CANDIDATE"
+    assert aggregate["qualification_performed"] is False
+    assert len(aggregate["failures"]) == 1
+    assert aggregate["failures"][0].startswith("schema: ")
+    assert not output.with_suffix(".json.tmp").exists()
 
 
 def test_aggregate_preserves_all_package_axis_report_bindings(tmp_path: Path) -> None:
@@ -573,6 +642,43 @@ def test_trusted_archive_member_digest_binds_reported_executable(
     }
     with pytest.raises(AssertionError):
         helpers["verify_executable"](executable, observed, "0.11.0", "linux")
+
+
+def test_trusted_config_hash_is_recomputed_from_expected_entry() -> None:
+    # PR #1242: trusted config evidence is bound to canonical installer JSON bytes.
+    expected_entry = valid_passed_report()["config"]["expected_entry"]
+    observed = trusted_helpers()["expected_config_hash"](expected_entry)
+    expected = {"mcpServers": {"tree-sitter-analyzer": expected_entry}}
+    assert (
+        observed
+        == qualification.hashlib.sha256(
+            (json.dumps(expected, indent=2) + "\n").encode()
+        ).hexdigest()
+    )
+
+
+def test_trusted_installer_paths_reject_unverified_first_executable() -> None:
+    # PR #1242: each installer run must begin with its verified uv directory.
+    report = valid_passed_report()
+    report["installer"]["first_path"] = "/tmp/system:/tmp/tools"
+    with pytest.raises(AssertionError):
+        trusted_helpers()["verify_installer_paths"](
+            report["installer"],
+            report["old_uv"]["executable"],
+            report["supported_uv"]["executable"],
+        )
+
+
+def test_trusted_installer_paths_reject_non_curated_path_tail() -> None:
+    # PR #1242: PATH contains exactly the shared curated command directory.
+    report = valid_passed_report()
+    report["installer"]["second_path"] += ":/usr/bin"
+    with pytest.raises(AssertionError):
+        trusted_helpers()["verify_installer_paths"](
+            report["installer"],
+            report["old_uv"]["executable"],
+            report["supported_uv"]["executable"],
+        )
 
 
 @pytest.mark.parametrize(

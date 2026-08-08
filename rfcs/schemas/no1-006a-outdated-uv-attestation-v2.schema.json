@@ -368,6 +368,41 @@
     "installer": {
       "additionalProperties": false,
       "properties": {
+        "curated_tools": {
+          "items": false,
+          "maxItems": 9,
+          "minItems": 9,
+          "prefixItems": [
+            {
+              "const": "awk"
+            },
+            {
+              "const": "cat"
+            },
+            {
+              "const": "grep"
+            },
+            {
+              "const": "mktemp"
+            },
+            {
+              "const": "python3"
+            },
+            {
+              "const": "realpath"
+            },
+            {
+              "const": "rm"
+            },
+            {
+              "const": "sleep"
+            },
+            {
+              "const": "uname"
+            }
+          ],
+          "type": "array"
+        },
         "curl_invocations": {
           "const": 0
         },
@@ -401,7 +436,8 @@
         "second_exit",
         "curl_invocations",
         "first_path",
-        "second_path"
+        "second_path",
+        "curated_tools"
       ],
       "type": "object"
     },
@@ -711,6 +747,26 @@
             },
             {
               "properties": {
+                "artifacts": {
+                  "required": [
+                    "old.archive",
+                    "supported.archive",
+                    "installer.source",
+                    "first.stdout",
+                    "first.stderr",
+                    "second.stdout",
+                    "second.stderr",
+                    "mcp-driver.stdout",
+                    "mcp-driver.stderr",
+                    "mcp/report.json",
+                    "mcp/install.stdout",
+                    "mcp/install.stderr",
+                    "mcp/dependency-manifest.txt",
+                    "mcp/mcp-transcript.ndjson",
+                    "mcp/mcp.stderr",
+                    "mcp/installed-files.zip"
+                  ]
+                },
                 "axis": {
                   "enum": [
                     "linux",
@@ -759,7 +815,8 @@
                 "installer",
                 "config",
                 "package_qualification",
-                "mcp_causal_report"
+                "mcp_causal_report",
+                "artifacts"
               ]
             },
             {
@@ -819,6 +876,11 @@
             },
             {
               "properties": {
+                "artifacts": {
+                  "required": [
+                    "old.archive"
+                  ]
+                },
                 "axis": {
                   "const": "windows"
                 },
@@ -864,7 +926,8 @@
                 "supported_uv",
                 "installer",
                 "config",
-                "mcp_causal_report"
+                "mcp_causal_report",
+                "artifacts"
               ]
             }
           ]
