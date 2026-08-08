@@ -399,7 +399,12 @@ jobs:
                           assert data == wheel_bytes[name] and [declared, declared_size] == wheel_rows[name]
                       elif name != wheel_record:
                           generated_dist = normalized in {str(pathlib.PurePosixPath(wheel_record).parent / generated) for generated in ("INSTALLER", "direct_url.json", "REQUESTED")}
-                          generated_script = normalized.startswith("../../../") and leaf.removesuffix(".exe") in console_scripts
+                          generated_script = any(
+                              normalized.lower() == f"../../scripts/{entry}.exe".lower()
+                              if axis == "windows"
+                              else normalized == f"../../../bin/{entry}"
+                              for entry in console_scripts
+                          )
                           assert generated_dist or generated_script or (leaf.endswith(".pyc") and normalized.startswith("tree_sitter_analyzer/"))
                   assert set(wheel_rows).issubset(installed_names) and observed_direct == direct
               runtime = report["runtime"]; exact(runtime, ("python", "executable", "prefix")); assert all(isinstance(value, str) and value for value in runtime.values())
