@@ -1,5 +1,9 @@
 # Strategic Roadmap — beyond CodeGraph (2026-06-06)
 
+> **Historical strategy.** The active No.1 program is now
+> [`ROADMAP-no1-agent-trust.md`](ROADMAP-no1-agent-trust.md). This document remains
+> the record of the correctness-moat work and its original priorities.
+
 PM strategy note. Where TSA stands vs CodeGraph (CG) after the v1.21.0 work, and
 the prioritized path to becoming the default agent code-intelligence layer.
 

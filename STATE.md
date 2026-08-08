@@ -1,16 +1,36 @@
 # Loop State — tree-sitter-analyzer
 
-Last run: 2026-07-15 (codegraph #1 mission — full auto)
+Last run: 2026-08-08 (trusted Agent change intelligence No.1 program)
 
 ## Mission
 
-**Become the #1 project in the codegraph industry.**
+**Become the most trusted local code-change intelligence layer for AI coding agents.**
+
+North star: **Verified Change Success Rate (VCSR)**. Feature, language, tool,
+test, edge, download, and star counts are supporting signals, not the objective.
+Public leadership claims remain bounded by the RFC-0021 evidence ladder.
 
 Key pillars:
-1. **Indexing performance** — fast initial index, low latency incremental
-2. **Graph database excellence** — centrality metrics, auto-build, agent-readable
-3. **Visualization** — force-directed layout, DOT/GraphML/HTML export (competitor-parity)
-4. **Agent neural interface** — 16-language moat, Synapse resolver, MCP tool suite
+1. **Trust evidence** — conservative resolution, provenance, freshness, reproducible Agent-change outcomes
+2. **Task UX** — understand → plan_change → assess_change over the existing primitives
+3. **Runtime reliability** — low-friction install, fast index/query/refresh, multi-agent safety
+4. **Independent adoption** — E2/E3/E4 evidence, integrations, external maintainers, real cases
+
+Active roadmap: [`rfcs/ROADMAP-no1-agent-trust.md`](rfcs/ROADMAP-no1-agent-trust.md).
+
+## Active No.1 Sprint
+
+- [x] **NO1-003A:** roadmap, team topology, evidence policy, and 90-day task ledger
+- [x] **NO1-003B:** production-canary operator runbook and offline rehearsal (E0; real canary remains NO-GO)
+- [ ] **NO1-006A:** strict uv/bootstrap and offline installer-contract slices complete; real package-to-MCP-first-answer plus native macOS/Linux/Windows attested qualification remain pending
+- [x] **NO1-004A:** claim registry is the fail-closed control plane; arbitrary wording is schema-invalid, E0–E3 emit nothing, and E4 wording directly includes claim evidence (including repo commit), while the artifact digest binds the canonical evidence payload
+- [x] **NO1-004B:** the English README has a deterministic claim marker and conservative whole-document policy gate; unsupported quantitative marketing was removed from all three public READMEs, and the blocked E0 seed honestly generates no claim
+- [x] **NO1-005A:** generated 10-dimension language pipeline inventory; cross-file E2E remains `verified=0`, with 13 `unknown`
+- [x] **NO1-007A:** draft RFC for understand / plan_change / assess_change completed; acceptance and implementation remain gated by read-only snapshot Phase 0 and a ninth-facade menu experiment
+- [x] **NO1-007B:** RFC-0023 edge evidence/confidence/freshness draft with strict schema, closed golden fixtures, and an E0 denial corpus for a future semantic validator
+
+Execution policy: at most two L2 agents concurrently; implementation agents use
+isolated GitFlow worktrees; model spend and independent-judge gates remain human-controlled.
 
 ---
 

@@ -1,13 +1,17 @@
-# Loop Configuration — Codegraph #1 (Claude Code)
+# Loop Configuration — Trusted Agent Change Intelligence No.1
 
 ## Mission
 
-**Become the #1 project in the codegraph industry.**
+**Become the most trusted local code-change intelligence layer for AI coding agents.**
 
-- High-performance initial indexing (parallel pool, SQLite WAL + mmap tuning)
-- Graph database with centrality metrics and auto-build after every index
-- Visualization on par with Sourcegraph and CodeGraph (force-directed layout, DOT, GraphML)
-- Agent neural interface: 16-language moat, Synapse resolver, full MCP tool suite
+- Trust evidence: conservative resolution, provenance, freshness, reproducible outcomes
+- Task UX: understand → plan_change → assess_change over existing primitives
+- Runtime reliability: low-friction install, fast index/query/refresh, multi-agent safety
+- Independent adoption: E2/E3/E4 evidence, integrations, external maintainers, real cases
+
+North star: **Verified Change Success Rate (VCSR)**. Public leadership wording is
+bounded by the RFC-0021 evidence ladder. Active plan:
+[`rfcs/ROADMAP-no1-agent-trust.md`](rfcs/ROADMAP-no1-agent-trust.md).
 
 **Dogfood protocol:** TSA uses its own MCP tools and skills to audit and repair its own
 codebase before writing a single line of code. Fixing TSA makes TSA a more trustworthy
@@ -42,7 +46,8 @@ can answer the question.
 ## Worktrees
 
 - Use `isolation: worktree` for all architecture changes (L2+)
-- One worktree per fix; run `pytest tests/ -x --timeout=60` before proposing PR
+- One worktree per fix; rerun TSA change-impact and follow its exact verification command
+- For broad verification, use the AGENTS.md quick/comprehensive xdist commands; never invent a serial suite
 - Discard worktree after verifier REJECT or after 3 failed attempts
 
 ## Budget
