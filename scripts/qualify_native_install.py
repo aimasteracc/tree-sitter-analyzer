@@ -194,8 +194,11 @@ def axis(args: argparse.Namespace) -> int:
                     "PATH": str(python.parent) + os.pathsep + clean_env.get("PATH", ""),
                 }
             )
+            # Resolve only the venv directory, not the interpreter symlink to the
+            # base Python; uv must target the fresh environment itself.
+            qualified_python = python.parent.resolve() / python.name
             # fmt: off
-            install_command = ([qualification_uv, "pip", "install", "--python", str(python.resolve()), "--no-cache", f"{wheel}[mcp]"] if qualification_uv else [str(python), "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--no-cache-dir", f"{wheel}[mcp]"])
+            install_command = ([qualification_uv, "pip", "install", "--python", str(qualified_python), "--no-cache", f"{wheel}[mcp]"] if qualification_uv else [str(python), "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--no-cache-dir", f"{wheel}[mcp]"])
             # fmt: on
             rc, out, err, duration = run(
                 install_command,
