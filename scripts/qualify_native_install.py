@@ -168,10 +168,16 @@ def axis(args: argparse.Namespace) -> int:
                 "def answer():\n    return 42\n", "utf-8"
             )
             current_stage = STAGES[1]
-            venv.EnvBuilder(with_pip=True, clear=True, symlinks=os.name != "nt").create(
-                envroot
-            )
+            # fmt: off
+            qualification_uv = os.environ.get("TSA_QUALIFICATION_UV")
+            if qualification_uv:
+                rc, _, err, _ = run([qualification_uv, "venv", "--seed", str(envroot)], cwd=project, env={"PATH": os.environ.get("PATH", "")}, timeout=60)
+                if rc != 0:
+                    raise RuntimeError(f"uv venv failed: {err.decode('utf-8', 'replace')}")
+            else:
+                venv.EnvBuilder(with_pip=True, clear=True, symlinks=os.name != "nt").create(envroot)
             python, console = venv_paths(envroot)
+            # fmt: on
             clean_env = {
                 k: v
                 for k, v in os.environ.items()
@@ -186,17 +192,11 @@ def axis(args: argparse.Namespace) -> int:
                     "PATH": str(python.parent) + os.pathsep + clean_env.get("PATH", ""),
                 }
             )
+            # fmt: off
+            install_command = ([qualification_uv, "pip", "install", "--python", str(python), "--no-cache", f"{wheel}[mcp]"] if qualification_uv else [str(python), "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--no-cache-dir", f"{wheel}[mcp]"])
+            # fmt: on
             rc, out, err, duration = run(
-                [
-                    str(python),
-                    "-m",
-                    "pip",
-                    "install",
-                    "--disable-pip-version-check",
-                    "--no-input",
-                    "--no-cache-dir",
-                    f"{wheel}[mcp]",
-                ],
+                install_command,
                 cwd=project,
                 env=clean_env,
                 timeout=args.install_timeout,

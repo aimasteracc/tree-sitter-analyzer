@@ -1,0 +1,301 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NO1-006A content-bound outdated uv evidence",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "qualification_id",
+        "evidence_scope",
+        "axis",
+        "qualification_performed",
+        "passed",
+        "status",
+        "source",
+        "workflow",
+        "runner",
+        "remediation_mode",
+        "automatic_mutable_bootstrap_qualified",
+        "old_uv",
+        "supported_uv",
+        "installer",
+        "config",
+        "package_qualification",
+        "mcp_causal_report",
+        "artifacts",
+        "failure"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "no1-006a-outdated-uv-attestation-v2"
+        },
+        "kind": {
+          "const": "outdated_uv_axis"
+        },
+        "qualification_id": {
+          "const": "NO1-006A"
+        },
+        "evidence_scope": {
+          "const": "native_outdated_uv_actionable_recovery"
+        },
+        "axis": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "qualification_performed": {
+          "type": "boolean"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "PENDING",
+            "PASSED",
+            "FAILED",
+            "NOT_APPLICABLE_NO_NATIVE_INSTALLER"
+          ]
+        },
+        "source": {
+          "type": "object"
+        },
+        "workflow": {
+          "type": "object"
+        },
+        "runner": {
+          "type": "object"
+        },
+        "remediation_mode": {
+          "const": "manual_content_bound_remediation"
+        },
+        "automatic_mutable_bootstrap_qualified": {
+          "const": false
+        },
+        "old_uv": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "supported_uv": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "installer": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "config": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "package_qualification": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "mcp_causal_report": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "artifacts": {
+          "type": "object"
+        },
+        "failure": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "axis": {
+                "const": "windows"
+              }
+            },
+            "required": [
+              "axis"
+            ]
+          },
+          "then": {
+            "properties": {
+              "qualification_performed": {
+                "const": false
+              },
+              "passed": {
+                "const": false
+              },
+              "status": {
+                "const": "NOT_APPLICABLE_NO_NATIVE_INSTALLER"
+              },
+              "supported_uv": {
+                "type": "null"
+              },
+              "installer": {
+                "type": "null"
+              },
+              "config": {
+                "type": "null"
+              },
+              "mcp_causal_report": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "PASSED"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "axis": {
+                "enum": [
+                  "linux",
+                  "macos"
+                ]
+              },
+              "qualification_performed": {
+                "const": true
+              },
+              "passed": {
+                "const": true
+              },
+              "old_uv": {
+                "type": "object"
+              },
+              "supported_uv": {
+                "type": "object"
+              },
+              "installer": {
+                "type": "object"
+              },
+              "config": {
+                "type": "object"
+              },
+              "package_qualification": {
+                "type": "object"
+              },
+              "mcp_causal_report": {
+                "type": "object"
+              },
+              "failure": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "qualification_id",
+        "evidence_scope",
+        "qualification_performed",
+        "qualified",
+        "evidence_trust",
+        "source_commit",
+        "package_qualification",
+        "required_axes",
+        "automatic_mutable_bootstrap_qualified",
+        "axes",
+        "failures",
+        "workflow"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "no1-006a-outdated-uv-attestation-v2"
+        },
+        "kind": {
+          "const": "outdated_uv_aggregate"
+        },
+        "qualification_id": {
+          "const": "NO1-006A"
+        },
+        "evidence_scope": {
+          "const": "native_outdated_uv_actionable_recovery"
+        },
+        "qualification_performed": {
+          "type": "boolean"
+        },
+        "qualified": {
+          "const": false
+        },
+        "evidence_trust": {
+          "enum": [
+            "UNTRUSTED_CANDIDATE",
+            "EXTERNAL_ATTESTATION_REQUIRED"
+          ]
+        },
+        "source_commit": {
+          "type": "string"
+        },
+        "package_qualification": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "required_axes": {
+          "const": {
+            "package": [
+              "linux",
+              "macos",
+              "windows"
+            ],
+            "outdated": [
+              "linux",
+              "macos"
+            ],
+            "not_applicable": {
+              "windows": "NOT_APPLICABLE_NO_NATIVE_INSTALLER"
+            }
+          }
+        },
+        "automatic_mutable_bootstrap_qualified": {
+          "const": false
+        },
+        "axes": {
+          "type": "array",
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "failures": {
+          "type": "array"
+        },
+        "workflow": {
+          "type": "object"
+        }
+      }
+    }
+  ]
+}

@@ -486,12 +486,12 @@ def test_missing_uv_fixture_path_is_hermetic(tmp_path: Path) -> None:
     assert shutil.which("uv", path=fixture["PATH"]) is None
 
 
-def test_native_workflow_uses_real_fixed_outdated_uv_without_windows_bash() -> None:
+def test_native_workflow_content_binds_manual_outdated_uv_recovery() -> None:
     workflows = REPO / ".github/workflows"
     workflow = (workflows / "reusable-outdated-uv-qualification.yml").read_text()
     trusted = (workflows / "reusable-native-qualification-attestation.yml").read_text()
-    assert workflow.count('version: "0.10.9"') == 1
-    assert workflow.count("setup-uv@94527f2e458b27549849d47d273a16bec83a01e9") == 1
+    assert "setup-uv" not in workflow
+    assert "fetch --axis ${{ matrix.axis }} --version 0.10.9" in workflow
     assert "actions/checkout" not in trusted
-    assert 'if axis == "windows":' in trusted
-    assert 'report["outcome"] == "actionable"' in trusted
+    assert "NOT_APPLICABLE_NO_NATIVE_INSTALLER" in trusted
+    assert "automatic_mutable_bootstrap_qualified" in trusted

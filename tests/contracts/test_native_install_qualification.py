@@ -339,7 +339,7 @@ def test_workflow_is_path_routed_and_write_permissions_are_isolated() -> None:
     assert "Independently verify downloaded evidence identities" in trusted
     assert "exact(report," in trusted and 'identity(report, "native-axis")' in trusted
     assert "installed_record" in trusted and "RECORD self-entry" not in trusted
-    assert "independent-verification.ok') != ''" in trusted
+    assert "read-only-verification:" in trusted and "tiny-attestation:" in trusted
 
 
 def test_workflow_all_jobs_create_and_upload_strict_job_results() -> None:

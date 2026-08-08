@@ -1,0 +1,70 @@
+{
+  "fixtures": {
+    "linux-0.10.9": {
+      "axis": "linux",
+      "filename": "uv-x86_64-unknown-linux-gnu.tar.gz",
+      "sha256": "20d79708222611fa540b5c9ed84f352bcd3937740e51aacc0f8b15b271c57594",
+      "size": 22790272,
+      "url": "https://github.com/astral-sh/uv/releases/download/0.10.9/uv-x86_64-unknown-linux-gnu.tar.gz",
+      "version": "0.10.9"
+    },
+    "linux-0.11.0": {
+      "axis": "linux",
+      "filename": "uv-x86_64-unknown-linux-gnu.tar.gz",
+      "sha256": "cc0fbb42b3642125f600a55b0b095bea65cddaadb94c6ea2b6ba5d79c5825089",
+      "size": 23836646,
+      "url": "https://github.com/astral-sh/uv/releases/download/0.11.0/uv-x86_64-unknown-linux-gnu.tar.gz",
+      "version": "0.11.0"
+    },
+    "macos-arm64-0.10.9": {
+      "axis": "macos",
+      "filename": "uv-aarch64-apple-darwin.tar.gz",
+      "sha256": "a92f61e9ac9b0f29668c15f56152e4a60143fca148ff5bfadb86718472c3f376",
+      "size": 19495305,
+      "url": "https://github.com/astral-sh/uv/releases/download/0.10.9/uv-aarch64-apple-darwin.tar.gz",
+      "version": "0.10.9"
+    },
+    "macos-arm64-0.11.0": {
+      "axis": "macos",
+      "filename": "uv-aarch64-apple-darwin.tar.gz",
+      "sha256": "0c0f32c6a3473c5928aff96c3233715edfc79290e892f255cac93710cde7b91a",
+      "size": 20435792,
+      "url": "https://github.com/astral-sh/uv/releases/download/0.11.0/uv-aarch64-apple-darwin.tar.gz",
+      "version": "0.11.0"
+    },
+    "macos-x86_64-0.10.9": {
+      "axis": "macos",
+      "filename": "uv-x86_64-apple-darwin.tar.gz",
+      "sha256": "9cc2de7d195fa157f98b306a8a1cb151ded93f488939b93363cebc8b9d598c28",
+      "size": 21143711,
+      "url": "https://github.com/astral-sh/uv/releases/download/0.10.9/uv-x86_64-apple-darwin.tar.gz",
+      "version": "0.10.9"
+    },
+    "macos-x86_64-0.11.0": {
+      "axis": "macos",
+      "filename": "uv-x86_64-apple-darwin.tar.gz",
+      "sha256": "31aaec764166af8885cf99321fd6ed24fef80225a6f26ed1ae8ce04111688a7e",
+      "size": 22154061,
+      "url": "https://github.com/astral-sh/uv/releases/download/0.11.0/uv-x86_64-apple-darwin.tar.gz",
+      "version": "0.11.0"
+    },
+    "windows-0.10.9": {
+      "axis": "windows",
+      "filename": "uv-x86_64-pc-windows-msvc.zip",
+      "sha256": "f58dc40896000229db7c52b8bdd931394040ef2ad59abd1eda841f6d70b13d7a",
+      "size": 22310473,
+      "url": "https://github.com/astral-sh/uv/releases/download/0.10.9/uv-x86_64-pc-windows-msvc.zip",
+      "version": "0.10.9"
+    },
+    "windows-0.11.0": {
+      "axis": "windows",
+      "filename": "uv-x86_64-pc-windows-msvc.zip",
+      "sha256": "e21d00b172df83531564a95e75a2bdc0c59b471dbb3515f0c1b4d6ef657dc451",
+      "size": 23021117,
+      "url": "https://github.com/astral-sh/uv/releases/download/0.11.0/uv-x86_64-pc-windows-msvc.zip",
+      "version": "0.11.0"
+    }
+  },
+  "schema_version": "no1-006a-uv-fixtures-v1",
+  "supported_version": "0.11.0"
+}
