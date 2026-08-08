@@ -336,7 +336,7 @@ jobs:
               direct = meta["direct_url"]
               exact(direct, ("url", "archive_info")); assert isinstance(direct["url"], str) and direct["url"]
               archive_info = direct["archive_info"]; assert isinstance(archive_info, dict) and archive_info and set(archive_info) <= {"hash", "hashes"}
-              direct_hashes = ([archive_info["hash"].removeprefix("sha256=")] if "hash" in archive_info and archive_info["hash"].startswith("sha256=") else []) + ([archive_info["hashes"]["sha256"]] if set(archive_info.get("hashes", {})) == {"sha256"} else [])
+              direct_hashes = ([archive_info["hash"].removeprefix("sha256=")] if "hash" in archive_info and archive_info["hash"].startswith("sha256=") else []) + ([archive_info["hashes"]["sha256"].removeprefix("sha256=")] if set(archive_info.get("hashes", {})) == {"sha256"} and isinstance(archive_info["hashes"]["sha256"], str) else [])
               assert direct_hashes and set(direct_hashes) == {wheel["sha256"]} and meta["direct_url_sha256"] == wheel["sha256"]
               artifact_dir = root / axis
               artifact_names = {"report.json", "job-result" + ".json", "install.stdout", "install.stderr", "dependency-manifest.txt", "mcp-transcript.ndjson", "mcp.stderr", "installed-files.zip"}

@@ -399,7 +399,10 @@ def direct_url_hash(value: dict[str, Any]) -> str:
     if hashes is not None:
         if not isinstance(hashes, dict) or set(hashes) != {"sha256"}:
             return ""
-        observed.append(hashes["sha256"])
+        value = hashes["sha256"]
+        if not isinstance(value, str):
+            return ""
+        observed.append(value.removeprefix("sha256="))
     return observed[0] if observed and len(set(observed)) == 1 else ""
 
 
