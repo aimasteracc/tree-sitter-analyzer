@@ -23,7 +23,7 @@ Active roadmap: [`rfcs/ROADMAP-no1-agent-trust.md`](rfcs/ROADMAP-no1-agent-trust
 - [x] **NO1-003A:** roadmap, team topology, evidence policy, and 90-day task ledger
 - [x] **NO1-003B:** production-canary operator runbook and offline rehearsal (E0; real canary remains NO-GO)
 - [ ] **NO1-006A:** strict uv/bootstrap and offline installer-contract slices complete; real package-to-MCP-first-answer plus native macOS/Linux/Windows attested qualification remain pending
-- [x] **NO1-004A:** claim registry is the fail-closed control plane; arbitrary wording is schema-invalid, E0–E3 emit nothing, and E4 wording directly includes claim evidence (including repo commit), while the artifact digest binds the canonical evidence payload
+- [x] **NO1-004A:** claim registry is the fail-closed control plane; arbitrary wording is schema-invalid, E0–E3 emit nothing, and E4 requires a context-bound benchmark plus independent reproduction whose exact digest is admitted by the code-owned trust root (empty by default) before fixed public wording can be emitted
 - [x] **NO1-004B:** the English README has a deterministic claim marker and conservative whole-document policy gate; unsupported quantitative marketing was removed from all three public READMEs, and the blocked E0 seed honestly generates no claim
 - [x] **NO1-005A:** generated 10-dimension language pipeline inventory; cross-file E2E remains `verified=0`, with 13 `unknown`
 - [x] **NO1-007A:** draft RFC for understand / plan_change / assess_change completed; acceptance and implementation remain gated by read-only snapshot Phase 0 and a ninth-facade menu experiment

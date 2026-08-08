@@ -180,7 +180,7 @@ Agents may prepare artifacts and code, but these gates remain human-controlled: 
 | NO1-003A | Program roadmap and task ledger | Program Orchestrator | none | roadmap reviewed; branch obeys GitFlow; `--change-impact` reports exact verification |
 | NO1-003B | Production canary operator runbook and offline rehearsal | Trust Lead | NO1-002D | fixture remains `NOT_EVALUATED`; production callbacks only after signed attestation + judge ACCEPT; focused production-trust tests |
 | NO1-003C | Execute one real bounded E1 Gin smoke | Human Operator + Trust Lead | NO1-003B | immutable complete bundle, budget ledger, policy audit, replay; no E2/No.1 wording |
-| NO1-004A | Claim registry schema and validator (complete) | Evidence Lead | NO1-003A | every quantitative README marketing claim is registry-generated with names/versions, metric/unit/numerator/denominator, benchmark/date/corpus/repo commit, and artifact digest; stale/mixed claims fail closed |
+| NO1-004A | Claim registry schema and validator (complete) | Evidence Lead | NO1-003A | every quantitative README marketing claim is registry-generated with names/versions, metric/unit/numerator/denominator, benchmark/date/corpus/repo commit, repository set, model/backend, evidence level, and an independently reproduced digest admitted by the code-owned trust root; stale/mixed/self-attested claims fail closed |
 | NO1-004B | Generated claim/support snippets (complete) | Evidence Lead | NO1-004A, NO1-005A | deterministic claim marker plus whole-README coverage rejects manual quantitative marketing; command/version data and the independent language inventory generator are excluded |
 
 NO1-004A/004B closure is deliberately a zero-public-claim state: the only
