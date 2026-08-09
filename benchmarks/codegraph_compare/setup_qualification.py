@@ -1,20 +1,27 @@
-"""Model-free producer and fail-closed validator for NO1-008A setup evidence.
+"""Fail-closed evidence contracts for the NO1-008A E0 scaffold.
 
-It never invokes a model and is not evidence that the seven-repository run passed.
+This module deliberately contains no sandbox executor.  Consequently it can
+validate evidence shapes, but it cannot produce qualification evidence.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
 import subprocess
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
-from pathlib import Path
-from typing import Any, Protocol, cast
+from pathlib import Path, PurePosixPath
+from typing import Any
 
 from benchmarks.codegraph_compare.integrity import _sha256
-from benchmarks.codegraph_compare.schemas import IndexStatsV1
+from benchmarks.codegraph_compare.setup_qualification_paths import (
+    _hash_tree,
+    _lstat_regular_beneath,
+    canonical_relative_path,
+)
 
 REPOSITORIES = ("vscode", "excalidraw", "django", "tokio", "okhttp", "gin", "alamofire")
 INDEXED_ARMS = ("tsa-warm", "codegraph-warm")
@@ -28,6 +35,7 @@ ZERO_COUNTERS = {
     "api_cost_usd": 0,
 }
 _REGULAR_MODES = {"100644", "100755"}
+_GIT_TIMEOUT_SECONDS = 30
 
 
 def _bytes_hash(payload: bytes) -> str:
@@ -36,15 +44,22 @@ def _bytes_hash(payload: bytes) -> str:
 
 def _write_exclusive(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("x", encoding="utf-8") as stream:
-        json.dump(payload, stream, indent=2, sort_keys=True)
-        stream.write("\n")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", closefd=False) as stream:
+            json.dump(payload, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+    finally:
+        os.close(descriptor)
 
 
 @dataclass(frozen=True)
 class SourceRulesV1:
-    """Frozen common-source rules, hashed independently of a checkout."""
-
     extensions_by_repo: tuple[tuple[str, tuple[str, ...]], ...]
     excluded_components: tuple[str, ...] = (
         ".git",
@@ -63,18 +78,13 @@ class SourceRulesV1:
     minified_suffixes: tuple[str, ...] = (".min.js", ".min.css")
 
     def __post_init__(self) -> None:
-        repos = tuple(repo for repo, _ in self.extensions_by_repo)
-        if repos != REPOSITORIES:
-            raise ValueError(
-                "SourceRulesV1 must list the seven repositories in canonical order"
-            )
+        if tuple(repo for repo, _ in self.extensions_by_repo) != REPOSITORIES:
+            raise ValueError("Source rules must list the canonical seven repositories")
         for _, extensions in self.extensions_by_repo:
-            if tuple(sorted(set(extensions))) != extensions or any(
+            if extensions != tuple(sorted(set(extensions))) or any(
                 not item.startswith(".") for item in extensions
             ):
-                raise ValueError(
-                    "Source extensions must be sorted, unique dotted suffixes"
-                )
+                raise ValueError("Extensions must be sorted, unique dotted suffixes")
 
     @property
     def digest(self) -> str:
@@ -121,9 +131,9 @@ class OracleSpecV1:
 
     def __post_init__(self) -> None:
         if self.kind not in {"symbol", "call"} or not self.oracle_id:
-            raise ValueError("Each oracle must be a named symbol or call query")
-        if not self.query or tuple(sorted(self.query)) != self.query:
-            raise ValueError("Oracle query parameters must be non-empty and sorted")
+            raise ValueError("Oracle must be a named symbol or call query")
+        if not self.query or self.query != tuple(sorted(set(self.query))):
+            raise ValueError("Oracle parameters must be sorted and unique")
 
     @property
     def digest(self) -> str:
@@ -131,93 +141,132 @@ class OracleSpecV1:
 
 
 @dataclass(frozen=True)
-class BuildResultV1:
-    indexed_paths: tuple[str, ...]
-    explicitly_excluded_paths: tuple[str, ...]
-    parse_error_paths: tuple[str, ...]
-    build_seconds: float
-    tool_fingerprint: str
-    config_fingerprint: str
-    raw_receipt: Mapping[str, Any]
-    counters: Mapping[str, int | float]
+class ResourcePlanV1:
+    wall_timeout_seconds: int
+    max_cpu_seconds: int
+    max_index_bytes: int
+    max_disk_write_bytes: int
+    min_free_disk_bytes: int
+    max_rss_bytes: int
+    max_processes: int
+    max_open_files: int
+    max_concurrency: int = 1
+
+    def __post_init__(self) -> None:
+        if (
+            any(value <= 0 for value in asdict(self).values())
+            or self.max_concurrency != 1
+        ):
+            raise ValueError(
+                "Every resource ceiling must be positive; concurrency is exactly one"
+            )
+
+    @property
+    def digest(self) -> str:
+        return _sha256(asdict(self))
 
 
-class StrictCollector(Protocol):
-    def build(
-        self,
-        checkout: Path,
-        index_dir: Path,
-        eligible_paths: tuple[str, ...],
-        *,
-        cold: bool,
-        offline: bool,
-    ) -> BuildResultV1: ...
-    def query(self, index_dir: Path, spec: OracleSpecV1, *, offline: bool) -> Any: ...
+@dataclass(frozen=True)
+class HarnessArtifactV1:
+    path: str
+    size_bytes: int
+    sha256: str
+
+    @classmethod
+    def read(cls, path: Path) -> HarnessArtifactV1:
+        if stat.S_ISLNK(os.lstat(path).st_mode):
+            raise ValueError("Harness artifact path must not be a symlink")
+        resolved = path.resolve(strict=True)
+        if stat.S_ISLNK(os.lstat(resolved).st_mode) or not resolved.is_file():
+            raise ValueError("Harness artifact must be a non-symlink regular file")
+        payload = resolved.read_bytes()
+        return cls(str(resolved), len(payload), _bytes_hash(payload))
+
+
+@dataclass(frozen=True)
+class CellPlanV1:
+    repo_id: str
+    arm_id: str
+    attempt: int
+    artifact_path: str
+    eligibility: EligibilityV1
+    tool: HarnessArtifactV1
+    config: HarnessArtifactV1
+    oracle_specs: tuple[OracleSpecV1, ...]
+    resources: ResourcePlanV1
+
+    def __post_init__(self) -> None:
+        if (self.repo_id, self.arm_id) not in EXPECTED_CELLS or self.attempt != 1:
+            raise ValueError("Plan identity must be a canonical cell at attempt 1")
+        canonical_relative_path(self.artifact_path)
+        if self.eligibility.repo_id != self.repo_id:
+            raise ValueError("Eligibility is not bound to the planned repository")
+        if {spec.kind for spec in self.oracle_specs} != {"symbol", "call"}:
+            raise ValueError("Each plan requires symbol and call human oracles")
+
+    @property
+    def digest(self) -> str:
+        return _sha256(asdict(self))
+
+
+def _git(repo: Path, *arguments: str) -> bytes:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+        timeout=_GIT_TIMEOUT_SECONDS,
+    ).stdout
 
 
 def _tracked_stage(repo: Path) -> tuple[tuple[str, str, str], ...]:
-    result = subprocess.run(
-        ["git", "ls-files", "-z", "--stage"], cwd=repo, capture_output=True, check=True
-    )
     records = []
-    for raw in result.stdout.split(b"\0"):
+    for raw in _git(repo, "ls-files", "-z", "--stage").split(b"\0"):
         if not raw:
             continue
         try:
-            metadata, encoded_path = raw.split(b"\t", 1)
+            metadata, encoded = raw.split(b"\t", 1)
             mode, object_id, stage = metadata.decode("ascii").split(" ")
-            path = encoded_path.decode("utf-8")
+            relative = canonical_relative_path(encoded.decode("utf-8"))
         except (UnicodeDecodeError, ValueError) as exc:
-            raise ValueError("Malformed or non-UTF-8 tracked path inventory") from exc
-        if stage != "0" or not path or path.startswith("/") or ".." in Path(path).parts:
-            raise ValueError(f"Ambiguous tracked path: {path!r}")
-        records.append((path.replace("\\", "/"), mode, object_id))
+            raise ValueError(
+                "Malformed, non-UTF-8, or non-canonical tracked path"
+            ) from exc
+        if stage != "0":
+            raise ValueError("Only stage-zero tracked paths are allowed")
+        records.append((relative, mode, object_id))
     records.sort()
-    if len({record[0] for record in records}) != len(records):
+    if len({item[0] for item in records}) != len(records):
         raise ValueError("Duplicate tracked paths")
     return tuple(records)
 
 
 def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> EligibilityV1:
-    """Classify tracked regular files before either arm observes the input set."""
-
+    """Compute the complete plan-bound source partition from Git and worktree bytes."""
     records = _tracked_stage(repo)
-    commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-    dirty = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=no"],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    if dirty:
+    commit = _git(repo, "rev-parse", "HEAD").decode("ascii").strip()
+    if _git(repo, "status", "--porcelain", "--untracked-files=no"):
         raise ValueError("Tracked qualification checkout is dirty")
-    regular, eligible, excluded, file_hashes = [], [], [], []
+    regular: list[str] = []
+    eligible: list[str] = []
+    excluded: list[tuple[str, str]] = []
+    file_hashes: list[tuple[str, str, str, str]] = []
     extensions = rules.extensions(repo_id)
     for relative, mode, object_id in records:
-        if mode == "160000":
-            excluded.append((relative, "gitlink"))
-            continue
-        if mode == "120000":
-            excluded.append((relative, "symlink"))
+        if mode in {"160000", "120000"}:
+            excluded.append((relative, "gitlink" if mode == "160000" else "symlink"))
             continue
         if mode not in _REGULAR_MODES:
-            raise ValueError(f"Unsupported tracked node mode {mode}: {relative}")
-        regular.append(relative)
-        path = repo / relative
+            raise ValueError(f"Unsupported tracked mode {mode}: {relative}")
+        path = _lstat_regular_beneath(repo, relative)
         payload = path.read_bytes()
+        regular.append(relative)
         file_hashes.append((relative, mode, object_id, _bytes_hash(payload)))
-        parts = Path(relative).parts
+        components = relative.split("/")
         reason = None
-        if Path(relative).suffix not in extensions:
+        if PurePosixPath(relative).suffix not in extensions:
             reason = "extension"
-        elif any(part in rules.excluded_components for part in parts[:-1]):
+        elif any(part in rules.excluded_components for part in components[:-1]):
             reason = "excluded-component"
         elif any(relative.endswith(suffix) for suffix in rules.minified_suffixes):
             reason = "minified"
@@ -227,273 +276,195 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
             eligible.append(relative)
         else:
             excluded.append((relative, reason))
-    tracked = tuple(regular)
     eligible_paths = tuple(eligible)
-    exclusions = tuple(sorted(excluded))
     return EligibilityV1(
-        repo_id=repo_id,
-        source_rules_hash=rules.digest,
-        commit=commit,
-        tracked_regular_paths=tracked,
-        eligible_paths=eligible_paths,
-        prefilter_exclusions=exclusions,
-        tracked_inventory_hash=_sha256([(p, m, oid) for p, m, oid in records]),
-        eligible_paths_hash=_sha256(list(eligible_paths)),
-        repo_fingerprint=_sha256({"commit": commit, "files": file_hashes}),
+        repo_id,
+        rules.digest,
+        commit,
+        tuple(regular),
+        eligible_paths,
+        tuple(sorted(excluded)),
+        _sha256([(p, m, oid) for p, m, oid in records]),
+        _sha256(list(eligible_paths)),
+        _sha256(
+            {
+                "commit": commit,
+                "inventory": [(p, m, oid) for p, m, oid in records],
+                "files": file_hashes,
+            }
+        ),
     )
 
 
 def _sorted_paths(paths: Sequence[str], name: str) -> tuple[str, ...]:
-    value = tuple(paths)
-    if value != tuple(sorted(set(value))) or any(
-        not path or path.startswith("/") for path in value
-    ):
-        raise ValueError(
-            f"{name} paths must be sorted, unique, repository-relative paths"
-        )
+    value = tuple(canonical_relative_path(path) for path in paths)
+    if value != tuple(sorted(set(value))):
+        raise ValueError(f"{name} paths must be sorted and unique")
     return value
 
 
-def produce_strict_cell(
-    *,
-    repo_id: str,
-    arm_id: str,
-    source_checkout: Path,
-    workspace: Path,
-    rules: SourceRulesV1,
-    oracle_specs: Sequence[OracleSpecV1],
-    collector: StrictCollector,
-    expected_commit: str,
-    expected_tool_fingerprint: str,
-    expected_config_fingerprint: str,
-    checkout_factory: Callable[[Path, Path], None] | None = None,
-) -> dict[str, Any]:
-    """Create one fresh isolated cold/offline receipt with raw oracle evidence."""
-
-    if (repo_id, arm_id) not in EXPECTED_CELLS:
-        raise ValueError("Unexpected qualification cell")
-    workspace.mkdir(parents=True, exist_ok=False)
-    checkout, index_dir = workspace / "checkout", workspace / "index"
-    if checkout_factory is None:
-        subprocess.run(
-            [
-                "git",
-                "clone",
-                "-q",
-                "--no-hardlinks",
-                str(source_checkout),
-                str(checkout),
-            ],
-            check=True,
-        )
-    else:
-        checkout_factory(source_checkout, checkout)
-    if index_dir.exists():
-        raise ValueError("Fresh index namespace already exists")
-    before = inventory_sources(repo_id, checkout, rules)
-    if before.commit != expected_commit:
-        raise ValueError("Checkout does not match pinned commit")
-    result = collector.build(
-        checkout, index_dir, before.eligible_paths, cold=True, offline=True
+def produce_strict_cell(**_: Any) -> dict[str, Any]:
+    """Refuse producer self-attestation until a harness sandbox executor exists."""
+    raise RuntimeError(
+        "NOT_EVALUATED: harness-owned sandbox executor is not implemented"
     )
-    indexed = _sorted_paths(result.indexed_paths, "indexed")
-    excluded = _sorted_paths(result.explicitly_excluded_paths, "excluded")
-    errors = _sorted_paths(result.parse_error_paths, "parse error")
-    after = inventory_sources(repo_id, checkout, rules)
-    if after != before:
-        raise ValueError("Collector mutated the frozen checkout")
-    if result.tool_fingerprint != expected_tool_fingerprint:
-        raise ValueError("Collector tool fingerprint mismatch")
-    if result.config_fingerprint != expected_config_fingerprint:
-        raise ValueError("Collector configuration fingerprint mismatch")
-    if result.counters != ZERO_COUNTERS:
-        raise ValueError(
-            "Collector reported a forbidden model/provider/network counter"
-        )
-    sets = tuple(map(set, (indexed, excluded, errors)))
-    if (
-        sets[0] & sets[1]
-        or sets[0] & sets[2]
-        or sets[1] & sets[2]
-        or set().union(*sets) != set(before.eligible_paths)
-    ):
-        raise ValueError("Collector paths do not exactly partition eligible sources")
-    if not index_dir.is_dir():
-        raise ValueError("Collector did not create the isolated index namespace")
-    oracle_receipts = []
-    for spec in oracle_specs:
-        raw_result = collector.query(index_dir, spec, offline=True)
-        receipt = {
-            "oracle_id": spec.oracle_id,
-            "kind": spec.kind,
-            "spec_hash": spec.digest,
-            "query": dict(spec.query),
-            "raw_result": raw_result,
-            "normalized_result_hash": _sha256(raw_result),
-            "expected_result_hash": _sha256(spec.expected_result),
-        }
-        if raw_result != spec.expected_result:
-            raise ValueError(f"Exact oracle mismatch: {spec.oracle_id}")
-        receipt["receipt_hash"] = _sha256(receipt)
-        oracle_receipts.append(receipt)
-    if {spec.kind for spec in oracle_specs} != {"symbol", "call"}:
-        raise ValueError("Each cell requires both symbol and call oracles")
-    build_receipt = dict(result.raw_receipt)
-    build_receipt_hash = _sha256(build_receipt)
-    stats = cast(Any, IndexStatsV1)(
-        eligible_source_files=len(before.eligible_paths),
-        indexed_source_files=len(indexed),
-        excluded_source_files=len(excluded),
-        parse_error_files=len(errors),
-        eligible_paths_hash=before.eligible_paths_hash,
-        indexed_paths_hash=_sha256(list(indexed)),
-        excluded_paths_hash=_sha256(list(excluded)),
-        parse_error_paths_hash=_sha256(list(errors)),
-        indexed_paths=indexed,
-        excluded_paths=excluded,
-        parse_error_paths=errors,
-        build_seconds=result.build_seconds,
-        index_size_bytes=sum(
-            path.stat().st_size for path in index_dir.rglob("*") if path.is_file()
-        ),
-        repo_fingerprint=before.repo_fingerprint,
-        tool_fingerprint=result.tool_fingerprint,
-        readiness_oracles=tuple(spec.oracle_id for spec in oracle_specs),
-    )
-    receipt = {
-        "schema_version": 1,
-        "repo_id": repo_id,
-        "arm_id": arm_id,
-        "source_rules_hash": rules.digest,
-        "eligibility": asdict(before),
-        "config_fingerprint": result.config_fingerprint,
-        "oracle_specs_hash": _sha256([asdict(spec) for spec in oracle_specs]),
-        "build_receipt": build_receipt,
-        "build_receipt_hash": build_receipt_hash,
-        "oracle_receipts": oracle_receipts,
-        "index_stats": asdict(stats),
-        "index_content_hash": _hash_index(index_dir),
-        "fresh": True,
-        "cold": True,
-        "offline": True,
-        "counters": dict(result.counters),
-    }
-    receipt["receipt_hash"] = _sha256(receipt)
-    _write_exclusive(workspace / "cell-receipt.json", receipt)
-    return receipt
-
-
-def _hash_index(index_dir: Path) -> str:
-    digest = hashlib.sha256()
-    for path in sorted(item for item in index_dir.rglob("*") if item.is_file()):
-        if path.is_symlink():
-            raise ValueError("Index namespace contains a symlink")
-        relative, payload = (
-            path.relative_to(index_dir).as_posix().encode(),
-            path.read_bytes(),
-        )
-        digest.update(len(relative).to_bytes(8, "big") + relative)
-        digest.update(len(payload).to_bytes(8, "big") + payload)
-    return digest.hexdigest()
 
 
 def validate_cell_receipt(
-    receipt: Mapping[str, Any],
-    *,
-    rules: SourceRulesV1,
-    oracle_specs: Sequence[OracleSpecV1],
-    expected_repo_fingerprint: str,
-    expected_tool_fingerprint: str,
-    expected_config_fingerprint: str,
-    parse_error_allowlist: Sequence[str] = (),
+    receipt: Mapping[str, Any], *, plan: CellPlanV1, cell_root: Path
 ) -> tuple[str, ...]:
-    """Recompute receipt bindings; never trust asserted readiness identifiers."""
-
-    failures = []
+    """Strictly validate one planned cell without granting qualification."""
+    failures: list[str] = []
+    try:
+        if stat.S_ISLNK(os.lstat(cell_root).st_mode) or not cell_root.is_dir():
+            failures.append("CELL_ROOT_ISOLATION_MISMATCH")
+    except OSError:
+        failures.append("CELL_ROOT_ISOLATION_MISMATCH")
     unsigned = dict(receipt)
     claimed_hash = unsigned.pop("receipt_hash", None)
     if claimed_hash != _sha256(unsigned):
         failures.append("RECEIPT_HASH_MISMATCH")
-    if receipt.get("source_rules_hash") != rules.digest:
-        failures.append("SOURCE_RULES_MISMATCH")
-    if any(receipt.get(flag) is not True for flag in ("fresh", "cold", "offline")):
-        failures.append("ISOLATION_POLICY_MISMATCH")
+    if (receipt.get("repo_id"), receipt.get("arm_id"), receipt.get("attempt")) != (
+        plan.repo_id,
+        plan.arm_id,
+        1,
+    ):
+        failures.append("CELL_IDENTITY_MISMATCH")
+    if (
+        receipt.get("plan_hash") != plan.digest
+        or receipt.get("artifact_path") != plan.artifact_path
+    ):
+        failures.append("PLAN_BINDING_MISMATCH")
+    if _sha256(receipt.get("eligibility")) != _sha256(asdict(plan.eligibility)):
+        failures.append("SOURCE_ELIGIBILITY_MISMATCH")
+    try:
+        harness_bytes_valid = (
+            HarnessArtifactV1.read(Path(plan.tool.path)) == plan.tool
+            and HarnessArtifactV1.read(Path(plan.config.path)) == plan.config
+        )
+    except (OSError, ValueError):
+        harness_bytes_valid = False
+    if (
+        receipt.get("tool") != asdict(plan.tool)
+        or receipt.get("config") != asdict(plan.config)
+        or not harness_bytes_valid
+    ):
+        failures.append("HARNESS_BYTES_MISMATCH")
     if receipt.get("counters") != ZERO_COUNTERS:
-        failures.append("NONZERO_FORBIDDEN_COUNTER")
-    if receipt.get("build_receipt_hash") != _sha256(receipt.get("build_receipt")):
-        failures.append("BUILD_RECEIPT_HASH_MISMATCH")
-    eligibility = receipt.get("eligibility", {})
-    stats = receipt.get("index_stats", {})
-    indexed, excluded, errors = (
-        tuple(stats.get(key, ()))
-        for key in ("indexed_paths", "excluded_paths", "parse_error_paths")
-    )
-    eligible = tuple(eligibility.get("eligible_paths", ()))
-    path_sets = tuple(map(set, (indexed, excluded, errors)))
-    ordered = all(
-        paths == tuple(sorted(set(paths)))
-        for paths in (eligible, indexed, excluded, errors)
-    )
-    exact = (
-        ordered
-        and not (
-            path_sets[0] & path_sets[1]
-            or path_sets[0] & path_sets[2]
-            or path_sets[1] & path_sets[2]
-        )
-        and set().union(*path_sets) == set(eligible)
-    )
-    hashes = (
-        stats.get("eligible_paths_hash") == _sha256(list(eligible))
-        and stats.get("indexed_paths_hash") == _sha256(list(indexed))
-        and stats.get("excluded_paths_hash") == _sha256(list(excluded))
-        and stats.get("parse_error_paths_hash") == _sha256(list(errors))
-    )
-    counts = tuple(
-        stats.get(key)
-        for key in (
-            "eligible_source_files",
-            "indexed_source_files",
-            "excluded_source_files",
-            "parse_error_files",
-        )
-    ) == tuple(map(len, (eligible, indexed, excluded, errors)))
+        failures.append("FORBIDDEN_COUNTER_MISMATCH")
+    observation = receipt.get("resource_observation")
     if (
-        not exact
-        or not hashes
-        or not counts
-        or tuple(errors) != tuple(parse_error_allowlist)
+        not isinstance(observation, Mapping)
+        or receipt.get("resource_plan_hash") != plan.resources.digest
     ):
-        failures.append("INDEX_PARTITION_MISMATCH")
-    if (
-        stats.get("repo_fingerprint") != expected_repo_fingerprint
-        or stats.get("tool_fingerprint") != expected_tool_fingerprint
-    ):
-        failures.append("MIXED_INDEX_PROVENANCE")
-    if receipt.get("config_fingerprint") != expected_config_fingerprint:
-        failures.append("CONFIG_FINGERPRINT_MISMATCH")
-    if receipt.get("oracle_specs_hash") != _sha256(
-        [asdict(spec) for spec in oracle_specs]
-    ):
-        failures.append("ORACLE_SPEC_MISMATCH")
-    raw_oracles = receipt.get("oracle_receipts", ())
-    if not isinstance(raw_oracles, list) or len(raw_oracles) != len(oracle_specs):
-        failures.append("ORACLE_RECEIPT_SET_MISMATCH")
+        failures.append("RESOURCE_EVIDENCE_MISSING")
     else:
-        for raw, spec in zip(raw_oracles, oracle_specs, strict=False):
-            unsigned_oracle = dict(raw)
-            oracle_hash = unsigned_oracle.pop("receipt_hash", None)
-            valid = (
-                raw.get("oracle_id") == spec.oracle_id
-                and raw.get("kind") == spec.kind
-                and raw.get("spec_hash") == spec.digest
-                and raw.get("query") == dict(spec.query)
-                and raw.get("normalized_result_hash") == _sha256(raw.get("raw_result"))
-                and raw.get("expected_result_hash") == _sha256(spec.expected_result)
-                and raw.get("raw_result") == spec.expected_result
-                and oracle_hash == _sha256(unsigned_oracle)
+        maxima = (
+            ("wall_seconds", plan.resources.wall_timeout_seconds),
+            ("cpu_seconds", plan.resources.max_cpu_seconds),
+            ("index_bytes", plan.resources.max_index_bytes),
+            ("disk_written_bytes", plan.resources.max_disk_write_bytes),
+            ("peak_rss_bytes", plan.resources.max_rss_bytes),
+            ("peak_processes", plan.resources.max_processes),
+            ("peak_open_files", plan.resources.max_open_files),
+            ("peak_concurrency", 1),
+        )
+        if observation.get(
+            "free_disk_bytes_before", -1
+        ) < plan.resources.min_free_disk_bytes or any(
+            not isinstance(observation.get(key), (int, float))
+            or observation[key] < 0
+            or observation[key] > ceiling
+            for key, ceiling in maxima
+        ):
+            failures.append("RESOURCE_LIMIT_VIOLATION")
+    index_relative = receipt.get("index_path")
+    try:
+        if not isinstance(index_relative, str):
+            raise ValueError("Index path must be a string")
+        index_path = cell_root / canonical_relative_path(index_relative)
+        actual_index_bytes = sum(
+            os.lstat(path).st_size
+            for path in index_path.rglob("*")
+            if stat.S_ISREG(os.lstat(path).st_mode)
+        )
+        if (
+            _hash_tree(index_path) != receipt.get("index_content_hash")
+            or not isinstance(observation, Mapping)
+            or observation.get("index_bytes") != actual_index_bytes
+        ):
+            failures.append("INDEX_BYTES_MISMATCH")
+    except (TypeError, ValueError, FileNotFoundError):
+        failures.append("INDEX_BYTES_MISMATCH")
+
+    def valid_blob(raw: object) -> bool:
+        if not isinstance(raw, Mapping):
+            return False
+        try:
+            relative = raw.get("path")
+            if not isinstance(relative, str):
+                return False
+            path = _lstat_regular_beneath(cell_root, relative)
+            payload = path.read_bytes()
+        except (OSError, TypeError, ValueError):
+            return False
+        return raw.get("size_bytes") == len(payload) and raw.get(
+            "sha256"
+        ) == _bytes_hash(payload)
+
+    executions = receipt.get("raw_executions")
+    expected_ids = ("build", *(spec.oracle_id for spec in plan.oracle_specs))
+    raw_paths: list[str] = []
+    if (
+        not isinstance(executions, list)
+        or tuple(item.get("id") for item in executions if isinstance(item, Mapping))
+        != expected_ids
+    ):
+        failures.append("RAW_EXECUTION_EVIDENCE_MISSING")
+    else:
+        for item in executions:
+            blobs = tuple(
+                item.get(key)
+                for key in (
+                    "stdout_bytes",
+                    "stderr_bytes",
+                    "query_bytes",
+                    "index_bytes",
+                )
             )
-            if not valid:
-                failures.append("ORACLE_RECEIPT_MISMATCH")
+            raw_paths.extend(
+                blob.get("path", "") for blob in blobs if isinstance(blob, Mapping)
+            )
+            if (
+                item.get("exit_code") != 0
+                or not isinstance(item.get("argv"), list)
+                or not item.get("argv")
+                or not all(isinstance(arg, str) and arg for arg in item.get("argv", ()))
+                or not all(valid_blob(blob) for blob in blobs)
+            ):
+                failures.append("RAW_EXECUTION_EVIDENCE_MISSING")
                 break
+        if len(raw_paths) != len(set(raw_paths)):
+            failures.append("RAW_EXECUTION_EVIDENCE_MISSING")
+    audit = receipt.get("os_audit")
+    required_audit = {
+        "network_denied": True,
+        "credentials_stripped": True,
+        "descendants_observed": True,
+        "process_audited": True,
+    }
+    if (
+        not isinstance(audit, Mapping)
+        or any(audit.get(k) != v for k, v in required_audit.items())
+        or not valid_blob(audit.get("audit_bytes"))
+    ):
+        failures.append("OS_AUDIT_MISSING")
+    approval = receipt.get("human_oracle_approval")
+    if (
+        not isinstance(approval, Mapping)
+        or approval.get("approved") is not True
+        or not approval.get("authority")
+        or not valid_blob(approval.get("approval_bytes"))
+    ):
+        failures.append("HUMAN_ORACLE_APPROVAL_MISSING")
     return tuple(dict.fromkeys(failures))

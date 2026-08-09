@@ -8169,37 +8169,6 @@ def _qualification_oracles():
     )
 
 
-class _QualificationCollector:
-    def build(self, checkout, index_dir, eligible_paths, *, cold, offline):
-        from benchmarks.codegraph_compare.setup_qualification import BuildResultV1
-
-        assert cold is True
-        assert offline is True
-        index_dir.mkdir()
-        (index_dir / "index.bin").write_bytes(b"frozen")
-        return BuildResultV1(
-            indexed_paths=eligible_paths,
-            explicitly_excluded_paths=(),
-            parse_error_paths=(),
-            build_seconds=1.0,
-            tool_fingerprint="tool-sha",
-            config_fingerprint="config-sha",
-            raw_receipt={"exit_code": 0, "cold": cold, "offline": offline},
-            counters={
-                "model_calls": 0,
-                "provider_requests": 0,
-                "network_requests": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "api_cost_usd": 0,
-            },
-        )
-
-    def query(self, index_dir, spec, *, offline):
-        assert offline is True
-        return spec.expected_result
-
-
 def test_source_rules_classify_tracked_gitlink_symlink_and_generated(tmp_path: Path):
     from benchmarks.codegraph_compare.integrity import _sha256
     from benchmarks.codegraph_compare.setup_qualification import (
@@ -8222,129 +8191,497 @@ def test_source_rules_classify_tracked_gitlink_symlink_and_generated(tmp_path: P
     assert inventory.eligible_paths_hash == _sha256(["main.ts"])
 
 
-def test_strict_cell_receipt_binds_raw_symbol_and_call_oracles(tmp_path: Path):
+def _qualification_plans(tmp_path: Path):
+    from dataclasses import replace
+
     from benchmarks.codegraph_compare.setup_qualification import (
         DEFAULT_SOURCE_RULES,
-        inventory_sources,
-        produce_strict_cell,
-        validate_cell_receipt,
+        EXPECTED_CELLS,
+        CellPlanV1,
+        EligibilityV1,
+        HarnessArtifactV1,
+        ResourcePlanV1,
     )
 
-    source = tmp_path / "source"
-    commit = _qualification_git_repo(source)
-    fingerprint = inventory_sources(
-        "vscode", source, DEFAULT_SOURCE_RULES
-    ).repo_fingerprint
-    specs = _qualification_oracles()
-    receipt = produce_strict_cell(
-        repo_id="vscode",
-        arm_id="tsa-warm",
-        source_checkout=source,
-        workspace=tmp_path / "cell",
-        rules=DEFAULT_SOURCE_RULES,
-        oracle_specs=specs,
-        collector=_QualificationCollector(),
-        expected_commit=commit,
-        expected_tool_fingerprint="tool-sha",
-        expected_config_fingerprint="config-sha",
+    tool_path = tmp_path / "tool.bin"
+    config_path = tmp_path / "config.json"
+    tool_path.write_bytes(b"pinned executable")
+    config_path.write_bytes(b'{"offline":true}')
+    tool = HarnessArtifactV1.read(tool_path)
+    config = HarnessArtifactV1.read(config_path)
+    base = EligibilityV1(
+        "vscode",
+        DEFAULT_SOURCE_RULES.digest,
+        "a" * 40,
+        ("main.ts",),
+        ("main.ts",),
+        (),
+        "b" * 64,
+        "c" * 64,
+        "d" * 64,
     )
-
-    assert (
-        validate_cell_receipt(
-            receipt,
-            rules=DEFAULT_SOURCE_RULES,
-            oracle_specs=specs,
-            expected_repo_fingerprint=fingerprint,
-            expected_tool_fingerprint="tool-sha",
-            expected_config_fingerprint="config-sha",
+    resources = ResourcePlanV1(30, 20, 1024, 4096, 1, 1024, 2, 8, 1)
+    return tuple(
+        CellPlanV1(
+            repo,
+            arm,
+            1,
+            f"cells/{repo}--{arm}/cell-receipt.json",
+            replace(base, repo_id=repo),
+            tool,
+            config,
+            _qualification_oracles(),
+            resources,
         )
-        == ()
-    )
-    assert tuple(item["kind"] for item in receipt["oracle_receipts"]) == (
-        "symbol",
-        "call",
+        for repo, arm in EXPECTED_CELLS
     )
 
 
-def test_strict_validator_rejects_forged_oracle_receipt(tmp_path: Path):
+def _write_valid_qualification_receipt(cell_root: Path, plan):
+    import json
+    from dataclasses import asdict
+
+    from benchmarks.codegraph_compare.integrity import _sha256
     from benchmarks.codegraph_compare.setup_qualification import (
-        DEFAULT_SOURCE_RULES,
-        inventory_sources,
-        produce_strict_cell,
-        validate_cell_receipt,
+        ZERO_COUNTERS,
+        _bytes_hash,
+        _hash_tree,
     )
 
-    source = tmp_path / "source"
-    commit = _qualification_git_repo(source)
-    fingerprint = inventory_sources(
-        "vscode", source, DEFAULT_SOURCE_RULES
-    ).repo_fingerprint
-    specs = _qualification_oracles()
-    receipt = produce_strict_cell(
-        repo_id="vscode",
-        arm_id="tsa-warm",
-        source_checkout=source,
-        workspace=tmp_path / "cell",
-        rules=DEFAULT_SOURCE_RULES,
-        oracle_specs=specs,
-        collector=_QualificationCollector(),
-        expected_commit=commit,
-        expected_tool_fingerprint="tool-sha",
-        expected_config_fingerprint="config-sha",
+    cell_root.mkdir(parents=True, exist_ok=False)
+    index = cell_root / "index"
+    index.mkdir()
+    (index / "index.bin").write_bytes(b"frozen index")
+
+    def blob(relative: str, payload: bytes):
+        path = cell_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        return {
+            "path": relative,
+            "size_bytes": len(payload),
+            "sha256": _bytes_hash(payload),
+        }
+
+    executions = []
+    for number, identifier in enumerate(
+        ("build", *(spec.oracle_id for spec in plan.oracle_specs))
+    ):
+        executions.append(
+            {
+                "id": identifier,
+                "argv": ["pinned-tool", identifier],
+                "exit_code": 0,
+                "stdout_bytes": blob(f"raw/{number}-stdout", b"stdout"),
+                "stderr_bytes": blob(f"raw/{number}-stderr", b""),
+                "query_bytes": blob(f"raw/{number}-query", identifier.encode()),
+                "index_bytes": blob(f"raw/{number}-index", b"frozen index"),
+            }
+        )
+    receipt = {
+        "schema_version": 2,
+        "repo_id": plan.repo_id,
+        "arm_id": plan.arm_id,
+        "attempt": 1,
+        "plan_hash": plan.digest,
+        "artifact_path": plan.artifact_path,
+        "eligibility": asdict(plan.eligibility),
+        "tool": asdict(plan.tool),
+        "config": asdict(plan.config),
+        "counters": dict(ZERO_COUNTERS),
+        "resource_plan_hash": plan.resources.digest,
+        "resource_observation": {
+            "wall_seconds": 1,
+            "cpu_seconds": 1,
+            "index_bytes": 12,
+            "disk_written_bytes": 128,
+            "free_disk_bytes_before": 2,
+            "peak_rss_bytes": 512,
+            "peak_processes": 1,
+            "peak_open_files": 4,
+            "peak_concurrency": 1,
+        },
+        "index_path": "index",
+        "index_content_hash": _hash_tree(index),
+        "raw_executions": executions,
+        "os_audit": {
+            "network_denied": True,
+            "credentials_stripped": True,
+            "descendants_observed": True,
+            "process_audited": True,
+            "audit_bytes": blob("raw/os-audit", b"deny sockets; process tree audited"),
+        },
+        "human_oracle_approval": {
+            "approved": True,
+            "authority": "independent-human",
+            "approval_bytes": blob("raw/human-approval", b"approved oracle set"),
+        },
+    }
+    receipt["receipt_hash"] = _sha256(receipt)
+    artifact = cell_root / "cell-receipt.json"
+    artifact.write_text(json.dumps(receipt, sort_keys=True), encoding="utf-8")
+    return receipt
+
+
+def _resign_qualification_receipt(receipt):
+    from benchmarks.codegraph_compare.integrity import _sha256
+
+    receipt.pop("receipt_hash", None)
+    receipt["receipt_hash"] = _sha256(receipt)
+    return receipt
+
+
+def test_canonical_path_rejects_alias_and_escape_mutations():
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification import canonical_relative_path
+
+    rejected = (
+        "../outside.ts",
+        "dir/../outside.ts",
+        "dir\\outside.ts",
+        "./main.ts",
+        "main.ts\x00x",
     )
-    receipt["oracle_receipts"][0]["raw_result"] = {"path": "forged.ts", "line": 1}
+    errors = []
+    for value in rejected:
+        with pytest.raises(ValueError) as caught:
+            canonical_relative_path(value)
+        errors.append(str(caught.value).split(":", 1)[0])
 
-    assert validate_cell_receipt(
-        receipt,
-        rules=DEFAULT_SOURCE_RULES,
-        oracle_specs=specs,
-        expected_repo_fingerprint=fingerprint,
-        expected_tool_fingerprint="tool-sha",
-        expected_config_fingerprint="config-sha",
-    ) == ("RECEIPT_HASH_MISMATCH", "ORACLE_RECEIPT_MISMATCH")
+    assert tuple(errors) == ("Non-canonical POSIX path",) * 5
 
 
-def test_qualification_orchestrator_runs_exact_cells_and_blocks_all(tmp_path: Path):
+def test_producer_refuses_self_reported_collector_evidence():
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification import produce_strict_cell
+
+    with pytest.raises(RuntimeError, match="NOT_EVALUATED"):
+        produce_strict_cell(collector=object())
+
+
+def test_strict_validator_accepts_complete_plan_bound_e0_receipt(tmp_path: Path):
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+
+    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == ()
+
+
+def test_strict_validator_rejects_source_eligibility_mutation(tmp_path: Path):
+    import copy
+
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    mutated = copy.deepcopy(receipt)
+    mutated["eligibility"]["eligible_paths"] = []
+    _resign_qualification_receipt(mutated)
+
+    assert validate_cell_receipt(mutated, plan=plan, cell_root=cell_root) == (
+        "SOURCE_ELIGIBILITY_MISMATCH",
+    )
+
+
+def test_strict_validator_rejects_resource_observation_mutation(tmp_path: Path):
+    import copy
+
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    mutated = copy.deepcopy(receipt)
+    mutated["resource_observation"]["peak_processes"] = 3
+    _resign_qualification_receipt(mutated)
+
+    assert validate_cell_receipt(mutated, plan=plan, cell_root=cell_root) == (
+        "RESOURCE_LIMIT_VIOLATION",
+    )
+
+
+def test_strict_validator_rejects_raw_stdout_mutation(tmp_path: Path):
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    (cell_root / "raw/0-stdout").write_bytes(b"mutated")
+
+    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+        "RAW_EXECUTION_EVIDENCE_MISSING",
+    )
+
+
+def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "index.bin").write_bytes(b"frozen index")
+    for child in (cell_root / "index").iterdir():
+        child.unlink()
+    (cell_root / "index").rmdir()
+    (cell_root / "index").symlink_to(outside, target_is_directory=True)
+
+    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+        "INDEX_BYTES_MISMATCH",
+    )
+
+
+def test_orchestrator_calls_exact_cells_once_and_never_qualifies(tmp_path: Path):
     from benchmarks.codegraph_compare.setup_qualification import EXPECTED_CELLS
     from benchmarks.codegraph_compare.setup_qualification_orchestration import (
         orchestrate_qualification,
     )
 
+    plans = _qualification_plans(tmp_path)
     observed = []
 
-    def producer(repo_id, arm_id, cell_root):
-        observed.append((repo_id, arm_id))
-        if repo_id == "django" and arm_id == "tsa-warm":
-            raise RuntimeError("synthetic build failure")
-        cell_root.mkdir(parents=True)
-        return {"repo_id": repo_id, "arm_id": arm_id}
+    def producer(repo_id, arm_id, cell_root, attempt):
+        observed.append((repo_id, arm_id, attempt))
+        return _write_valid_qualification_receipt(cell_root, plans[len(observed) - 1])
 
     verdict = orchestrate_qualification(
-        experiment_root=tmp_path / "experiment", producer=producer
+        experiment_root=tmp_path / "experiment", plans=plans, producer=producer
     )
 
-    assert tuple(observed) == EXPECTED_CELLS
-    assert verdict == {
-        "schema_version": 1,
-        "status": "BLOCKED",
-        "publishable": False,
-        "winner": None,
-        "dominance_allowed": False,
-        "expected_cells": 14,
-        "observed_receipts": 13,
-        "failures": [
-            {
-                "repo_id": "django",
-                "arm_id": "tsa-warm",
-                "error": "RuntimeError: synthetic build failure",
-            }
-        ],
-        "counters": {
-            "model_calls": 0,
-            "provider_requests": 0,
-            "network_requests": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "api_cost_usd": 0,
-        },
+    assert tuple(observed) == tuple((*cell, 1) for cell in EXPECTED_CELLS)
+    assert verdict["status"] == "NOT_EVALUATED"
+    assert verdict["evaluation_stage"] == "E0"
+    assert verdict["observed_receipts"] == 14
+    assert verdict["failures"] == []
+    assert verdict["counters"] is None
+
+
+def test_orchestrator_rejects_empty_receipts_fail_all(tmp_path: Path):
+    import json
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        orchestrate_qualification,
+    )
+
+    plans = _qualification_plans(tmp_path)
+
+    def producer(repo_id, arm_id, cell_root, attempt):
+        cell_root.mkdir(parents=True)
+        (cell_root / "cell-receipt.json").write_text("{}", encoding="utf-8")
+        return {}
+
+    verdict = orchestrate_qualification(
+        experiment_root=tmp_path / "experiment", plans=plans, producer=producer
+    )
+
+    assert verdict["status"] == "NOT_EVALUATED"
+    assert verdict["observed_receipts"] == 0
+    assert len(verdict["failures"]) == 14
+    assert tuple(item["attempt"] for item in verdict["failures"]) == (1,) * 14
+    assert (
+        json.loads((tmp_path / "experiment/verdict.json").read_text())["unlock_allowed"]
+        is False
+    )
+
+
+def test_strict_validator_rejects_harness_config_byte_mutation(tmp_path: Path):
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    Path(plan.config.path).write_bytes(b"mutated config")
+
+    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+        "HARNESS_BYTES_MISMATCH",
+    )
+
+
+def test_strict_validator_rejects_network_audit_mutation(tmp_path: Path):
+    import copy
+
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    mutated = copy.deepcopy(receipt)
+    mutated["os_audit"]["network_denied"] = False
+    _resign_qualification_receipt(mutated)
+
+    assert validate_cell_receipt(mutated, plan=plan, cell_root=cell_root) == (
+        "OS_AUDIT_MISSING",
+    )
+
+
+def test_orchestrator_rejects_duplicate_artifact_plan_before_attempt(tmp_path: Path):
+    from dataclasses import replace
+
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        orchestrate_qualification,
+    )
+
+    plans = list(_qualification_plans(tmp_path))
+    plans[1] = replace(plans[1], artifact_path=plans[0].artifact_path)
+    attempts = []
+
+    def producer(repo_id, arm_id, cell_root, attempt):
+        attempts.append((repo_id, arm_id, attempt))
+        return {}
+
+    with pytest.raises(ValueError, match="unique immutable artifact path"):
+        orchestrate_qualification(
+            experiment_root=tmp_path / "experiment", plans=plans, producer=producer
+        )
+
+    assert attempts == []
+
+
+def test_strict_validator_rejects_each_receipt_boundary_mutation(tmp_path: Path):
+    import copy
+
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    mutations = (
+        (("repo_id",), "django", "CELL_IDENTITY_MISMATCH"),
+        (("attempt",), 2, "CELL_IDENTITY_MISMATCH"),
+        (("plan_hash",), "0" * 64, "PLAN_BINDING_MISMATCH"),
+        (
+            ("artifact_path",),
+            "cells/foreign/cell-receipt.json",
+            "PLAN_BINDING_MISMATCH",
+        ),
+        (("counters", "model_calls"), 1, "FORBIDDEN_COUNTER_MISMATCH"),
+        (("resource_plan_hash",), "0" * 64, "RESOURCE_EVIDENCE_MISSING"),
+        (("resource_observation", "cpu_seconds"), 21, "RESOURCE_LIMIT_VIOLATION"),
+        (("raw_executions", 0, "id"), "foreign", "RAW_EXECUTION_EVIDENCE_MISSING"),
+        (("raw_executions", 0, "exit_code"), 1, "RAW_EXECUTION_EVIDENCE_MISSING"),
+        (("raw_executions", 0, "argv"), [], "RAW_EXECUTION_EVIDENCE_MISSING"),
+        (("os_audit", "credentials_stripped"), False, "OS_AUDIT_MISSING"),
+        (("os_audit", "descendants_observed"), False, "OS_AUDIT_MISSING"),
+        (("human_oracle_approval", "approved"), False, "HUMAN_ORACLE_APPROVAL_MISSING"),
+        (("human_oracle_approval", "authority"), "", "HUMAN_ORACLE_APPROVAL_MISSING"),
+        (("index_content_hash",), "0" * 64, "INDEX_BYTES_MISMATCH"),
+    )
+    observed = []
+    for path, value, _expected in mutations:
+        mutated = copy.deepcopy(receipt)
+        target = mutated
+        for component in path[:-1]:
+            target = target[component]
+        target[path[-1]] = value
+        _resign_qualification_receipt(mutated)
+        observed.append(validate_cell_receipt(mutated, plan=plan, cell_root=cell_root))
+
+    assert tuple(observed) == tuple((expected,) for _, _, expected in mutations)
+
+
+def test_source_inventory_is_exactly_bound_to_git_modes_objects_and_bytes(
+    tmp_path: Path,
+):
+    import hashlib
+    import subprocess
+    from dataclasses import asdict
+
+    from benchmarks.codegraph_compare.integrity import _sha256
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+    )
+
+    repo = tmp_path / "repo"
+    commit = _qualification_git_repo(repo)
+    raw_records = subprocess.run(
+        ["git", "ls-files", "-z", "--stage"],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+    ).stdout
+    records = []
+    for raw in raw_records.split(b"\0"):
+        if raw:
+            metadata, encoded = raw.split(b"\t", 1)
+            mode, object_id, _stage = metadata.decode("ascii").split(" ")
+            records.append((encoded.decode(), mode, object_id))
+    records.sort()
+    regular = tuple(item for item in records if item[1] in {"100644", "100755"})
+    file_hashes = [
+        (path, mode, object_id, hashlib.sha256((repo / path).read_bytes()).hexdigest())
+        for path, mode, object_id in regular
+    ]
+
+    assert asdict(inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)) == {
+        "repo_id": "vscode",
+        "source_rules_hash": DEFAULT_SOURCE_RULES.digest,
+        "commit": commit,
+        "tracked_regular_paths": ("generated.ts", "main.ts", "notes.md"),
+        "eligible_paths": ("main.ts",),
+        "prefilter_exclusions": (
+            ("deps/submodule", "gitlink"),
+            ("generated.ts", "generated"),
+            ("linked.ts", "symlink"),
+            ("notes.md", "extension"),
+        ),
+        "tracked_inventory_hash": _sha256(records),
+        "eligible_paths_hash": _sha256(["main.ts"]),
+        "repo_fingerprint": _sha256(
+            {"commit": commit, "inventory": records, "files": file_hashes}
+        ),
     }
+
+
+def test_index_tree_hash_binds_exact_paths_and_bytes(tmp_path: Path):
+    import hashlib
+
+    from benchmarks.codegraph_compare.setup_qualification import _hash_tree
+
+    index = tmp_path / "index"
+    (index / "nested").mkdir(parents=True)
+    (index / "a.bin").write_bytes(b"a")
+    (index / "nested/b.bin").write_bytes(b"bb")
+    digest = hashlib.sha256()
+    for relative, payload in ((b"a.bin", b"a"), (b"nested/b.bin", b"bb")):
+        digest.update(len(relative).to_bytes(8, "big") + relative)
+        digest.update(len(payload).to_bytes(8, "big") + payload)
+
+    assert _hash_tree(index) == digest.hexdigest()
+
+
+def test_resource_plan_rejects_each_missing_ceiling():
+    from dataclasses import fields
+
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification import ResourcePlanV1
+
+    valid = {
+        "wall_timeout_seconds": 30,
+        "max_cpu_seconds": 20,
+        "max_index_bytes": 1024,
+        "max_disk_write_bytes": 4096,
+        "min_free_disk_bytes": 1,
+        "max_rss_bytes": 1024,
+        "max_processes": 2,
+        "max_open_files": 8,
+        "max_concurrency": 1,
+    }
+    rejected = []
+    for field in fields(ResourcePlanV1):
+        values = dict(valid)
+        values[field.name] = 0 if field.name != "max_concurrency" else 2
+        with pytest.raises(ValueError, match="resource ceiling"):
+            ResourcePlanV1(**values)
+        rejected.append(field.name)
+
+    assert tuple(rejected) == tuple(valid)

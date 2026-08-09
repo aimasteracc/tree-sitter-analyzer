@@ -113,22 +113,24 @@ an unfavorable outcome.
 
 ## NO1-008A seven-repository setup qualification (implementation only)
 
-`setup_qualification.py` is the model-free RFC-0021 producer/validator core for
-the seven pinned repositories and the two required indexed arms. It freezes
-`SourceRulesV1` before either arm builds, uses a fresh arm-isolated checkout and
-index namespace, requires cold/offline collectors, exact source partitions, and
-hash-bound raw symbol plus call oracle receipts. The orchestrator always plans
-exactly 14 cells and records every cell failure before issuing one fail-all
-verdict. Model/provider/network/token/USD counters must all remain zero.
+`setup_qualification.py` is a model-free RFC-0021 **E0 evidence contract**
+for the seven pinned repositories and two indexed arms. It validates canonical
+POSIX paths, complete plan-bound source eligibility, harness-read tool/config
+bytes, raw argv/stdout/stderr/query/index artifacts, OS network/process audit,
+human oracle approval, and observed resource ceilings. It deliberately has no
+collector adapter: `produce_strict_cell` fails `NOT_EVALUATED` until a
+harness-owned sandbox executor exists. The orchestrator invokes the exact
+ordered 14-cell plan once per cell, validates every on-disk receipt, records all
+failures, seals a checksum manifest, and can emit only `E0/NOT_EVALUATED`.
+There is no reachable `QUALIFIED`, publish, winner, dominance, or unlock state.
 
-This is **not an operator command to run qualification yet**. NO1-003C and the
-independent seven-repository oracle review remain human gates. Do not run the
-real seven-repository matrix, mark NO1-008A complete, start 008B, or describe
-these setup artifacts as E2/No.1/winner evidence. A future authorized run must
-supply pinned strict collectors and reviewed `OracleSpecV1` configurations; a
-failed run is immutable and is followed by a new experiment directory, never an
-overwrite or selective retry. Acquisition/cache preparation is separate from
-the offline qualification phase.
+This is **not an operator command to run qualification yet**. NO1-003C, an
+independently reviewed oracle set, a real OS-level network/process sandbox, and
+an executor capable of independently capturing raw bytes remain gates. Do not
+run the real matrix, mark NO1-008A complete, start 008B, or describe these setup
+artifacts as E2/No.1/winner evidence. A failed attempt is followed by a new
+experiment directory, never overwrite or selective retry. Acquisition/cache
+preparation remains separate from the offline qualification phase.
 
 ## Quantitative README claim release gate
 
