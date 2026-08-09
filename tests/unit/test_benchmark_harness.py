@@ -8105,7 +8105,13 @@ class TestCanaryProtocol:
         )
 
 
+def _require_posix_qualification_sandbox() -> None:
+    if os.name == "nt":
+        pytest.skip("tracked NO1-008A POSIX sandbox issue: requires openat/O_NOFOLLOW")
+
+
 def _qualification_git_repo(path: Path) -> str:
+    _require_posix_qualification_sandbox()
     import subprocess
 
     path.mkdir()
@@ -8192,6 +8198,7 @@ def test_source_rules_classify_tracked_gitlink_symlink_and_generated(tmp_path: P
 
 
 def _qualification_plans(tmp_path: Path):
+    _require_posix_qualification_sandbox()
     from dataclasses import replace
 
     from benchmarks.codegraph_compare.setup_qualification import (
@@ -8790,6 +8797,7 @@ def test_source_inventory_is_exactly_bound_to_git_modes_objects_and_bytes(
 
 
 def test_index_tree_hash_binds_exact_paths_and_bytes(tmp_path: Path):
+    _require_posix_qualification_sandbox()
     import hashlib
 
     from benchmarks.codegraph_compare.setup_qualification import _hash_tree
