@@ -52,10 +52,12 @@ class ProductionRunSpecV1:
     ledger_root_inode: int
     ledger_root_uid: int
     ledger_root_mode: int
+    ledger_root_ctime_ns: int
     ledger_parent_device: int
     ledger_parent_inode: int
     ledger_parent_uid: int
     ledger_parent_mode: int
+    ledger_parent_ctime_ns: int
 
     def to_wire_dict(self) -> dict[str, object]:
         return {"schema_version": SCHEMA_VERSION, **self.__dict__}
@@ -89,10 +91,12 @@ class ProductionRunSpecV1:
                 "ledger_root_inode": self.ledger_root_inode,
                 "ledger_root_uid": self.ledger_root_uid,
                 "ledger_root_mode": self.ledger_root_mode,
+                "ledger_root_ctime_ns": self.ledger_root_ctime_ns,
                 "ledger_parent_device": self.ledger_parent_device,
                 "ledger_parent_inode": self.ledger_parent_inode,
                 "ledger_parent_uid": self.ledger_parent_uid,
                 "ledger_parent_mode": self.ledger_parent_mode,
+                "ledger_parent_ctime_ns": self.ledger_parent_ctime_ns,
             }
         )
 
@@ -174,16 +178,20 @@ def validate_production_run_spec(spec: object) -> None:
         "ledger_root_inode",
         "ledger_root_uid",
         "ledger_root_mode",
+        "ledger_root_ctime_ns",
         "ledger_parent_device",
         "ledger_parent_inode",
         "ledger_parent_uid",
         "ledger_parent_mode",
+        "ledger_parent_ctime_ns",
     ):
         value = getattr(spec, label)
         if type(value) is not int or value < 0:
             raise ValueError(f"{label} must be a non-negative exact integer")
     if spec.ledger_root_inode == 0 or spec.ledger_parent_inode == 0:
         raise ValueError("ledger inode identities must be non-zero")
+    if spec.ledger_root_ctime_ns == 0 or spec.ledger_parent_ctime_ns == 0:
+        raise ValueError("ledger change-time identities must be non-zero")
     if not stat.S_ISDIR(spec.ledger_root_mode) or not stat.S_ISDIR(
         spec.ledger_parent_mode
     ):
@@ -203,8 +211,10 @@ def capture_ledger_identity(root: Path) -> dict[str, int]:
         "ledger_root_inode": root_stat.st_ino,
         "ledger_root_uid": root_stat.st_uid,
         "ledger_root_mode": root_stat.st_mode,
+        "ledger_root_ctime_ns": root_stat.st_ctime_ns,
         "ledger_parent_device": parent_stat.st_dev,
         "ledger_parent_inode": parent_stat.st_ino,
         "ledger_parent_uid": parent_stat.st_uid,
         "ledger_parent_mode": parent_stat.st_mode,
+        "ledger_parent_ctime_ns": parent_stat.st_ctime_ns,
     }

@@ -44,10 +44,12 @@ def _spec() -> ProductionRunSpecV1:
         ledger_root_inode=2,
         ledger_root_uid=0,
         ledger_root_mode=stat.S_IFDIR | 0o700,
+        ledger_root_ctime_ns=4,
         ledger_parent_device=1,
         ledger_parent_inode=3,
         ledger_parent_uid=0,
         ledger_parent_mode=stat.S_IFDIR | 0o700,
+        ledger_parent_ctime_ns=5,
     )
 
 
@@ -532,6 +534,13 @@ def test_spec_hash_binds_all_operator_roots():
         ).spec_hash
         != spec.spec_hash
     )
+
+
+def test_spec_hash_binds_ledger_change_times():
+    # PR #1248: reused device/inode identities must not preserve the signed hash.
+    spec = _spec()
+    assert replace(spec, ledger_root_ctime_ns=6).spec_hash != spec.spec_hash
+    assert replace(spec, ledger_parent_ctime_ns=7).spec_hash != spec.spec_hash
 
 
 def test_run_spec_wire_rejects_duplicate_and_extra_fields():

@@ -71,10 +71,12 @@ def ledger_identity_sha256(spec: ProductionRunSpecV1) -> str:
                 "ledger_root_inode",
                 "ledger_root_uid",
                 "ledger_root_mode",
+                "ledger_root_ctime_ns",
                 "ledger_parent_device",
                 "ledger_parent_inode",
                 "ledger_parent_uid",
                 "ledger_parent_mode",
+                "ledger_parent_ctime_ns",
             )
         },
     }

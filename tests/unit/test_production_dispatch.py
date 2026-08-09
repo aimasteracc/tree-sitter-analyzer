@@ -265,6 +265,7 @@ def _inputs(tmp_path):
         paths["transport"],
         "transport-v1",
     )
+    spec = replace(spec, **capture_ledger_identity(ledger))
     request = ProductionDispatchRequestV1(
         manifest, spec, 0, 30, DIGEST, journal, evidence
     )
@@ -342,19 +343,33 @@ def test_started_claim_failure_gets_durable_invalid_terminal(tmp_path):
     assert receipt.model_callbacks_invoked == 0
 
 
-def test_signed_ledger_inode_is_revalidated_after_claim(tmp_path):
+def test_signed_ledger_inode_is_revalidated_after_claim(tmp_path, monkeypatch):
+    # PR #1248: inode reuse must not hide replacement of the signed ledger root.
     request, config, attestation, judge, a = _inputs(tmp_path)
     kwargs = _kwargs(request, a)
     original = a.claim_once
+    real_capture = capture_ledger_identity
 
     def substitute(req, challenge, now):
         claim = original(req, challenge, now)
-        req.spec.global_nonce_ledger_root and shutil.rmtree(
-            req.spec.global_nonce_ledger_root
-        )
-        Path(req.spec.global_nonce_ledger_root).mkdir()
+        root = Path(req.spec.global_nonce_ledger_root)
+        for _ in range(32):
+            shutil.rmtree(root)
+            root.mkdir()
         return claim
 
+    def capture_with_reused_inodes(root):
+        live = real_capture(root)
+        live["ledger_root_device"] = request.spec.ledger_root_device
+        live["ledger_root_inode"] = request.spec.ledger_root_inode
+        live["ledger_parent_device"] = request.spec.ledger_parent_device
+        live["ledger_parent_inode"] = request.spec.ledger_parent_inode
+        return live
+
+    monkeypatch.setattr(
+        "benchmarks.codegraph_compare.production_dispatch_validation.capture_ledger_identity",
+        capture_with_reused_inodes,
+    )
     kwargs["claim_authority"] = substitute
     receipt = dispatch_once(request, config, attestation, judge, **kwargs)
     assert receipt.status == "INVALID"
