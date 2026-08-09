@@ -10,7 +10,7 @@ import sys
 import tarfile
 import time
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import jsonschema
 import psutil
@@ -682,7 +682,7 @@ def test_trusted_config_sidecar_accepts_noncanonical_format(tmp_path: Path) -> N
             after,
             "linux",
             "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
-            Path("/tmp/tsa-outdated-native-test"),
+            PurePosixPath("/tmp/tsa-outdated-native-test"),
         )
         is None
     )
@@ -723,7 +723,7 @@ def test_trusted_config_sidecar_rejects_forgery(tmp_path: Path, mutation: str) -
             after,
             "linux",
             "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
-            Path("/tmp/tsa-outdated-native-test"),
+            PurePosixPath("/tmp/tsa-outdated-native-test"),
         )
 
 
@@ -748,7 +748,7 @@ def test_trusted_config_rejects_coordinated_command_forgery(tmp_path: Path) -> N
             after,
             "linux",
             "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
-            Path("/tmp/tsa-outdated-native-test"),
+            PurePosixPath("/tmp/tsa-outdated-native-test"),
         )
 
 
@@ -800,7 +800,7 @@ def test_trusted_installer_paths_reject_unverified_first_executable() -> None:
             report["installer"],
             report["old_uv"]["executable"],
             report["supported_uv"]["executable"],
-            Path("/tmp/tsa-outdated-native-test"),
+            PurePosixPath("/tmp/tsa-outdated-native-test"),
         )
 
 
@@ -813,7 +813,7 @@ def test_trusted_installer_paths_reject_non_curated_path_tail() -> None:
             report["installer"],
             report["old_uv"]["executable"],
             report["supported_uv"]["executable"],
-            Path("/tmp/tsa-outdated-native-test"),
+            PurePosixPath("/tmp/tsa-outdated-native-test"),
         )
 
 
@@ -938,7 +938,7 @@ def test_trusted_project_root_rejects_coordinated_candidate_value() -> None:
         trusted_helpers()["project_root_from_stdout"](
             "📁 Project root: /tmp/tsa-outdated-native-forged/fixture\n",
             "linux",
-            Path("/tmp/tsa-outdated-native-test"),
+            PurePosixPath("/tmp/tsa-outdated-native-test"),
         )
 
 
