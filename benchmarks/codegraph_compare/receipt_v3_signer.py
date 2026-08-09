@@ -51,10 +51,10 @@ def _read_private_key(raw: str) -> bytes:
             not stat.S_ISREG(metadata.st_mode)
             or metadata.st_size != 32
             or stat.S_IMODE(metadata.st_mode) != 0o400
-            or metadata.st_uid != 0
+            or metadata.st_uid != os.geteuid()
         ):
             raise ValueError(
-                "private key must be one root-owned 0400 32-byte regular file"
+                "private key must be one service-owned 0400 32-byte regular file"
             )
         payload = os.read(descriptor, 33)
         if len(payload) != 32:

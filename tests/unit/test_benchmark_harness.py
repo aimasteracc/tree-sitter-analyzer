@@ -11382,6 +11382,9 @@ def _qualification_v3_public_config():
             .public_key()
             .public_bytes_raw()
             .hex(),
+            "protocol": "no1-008a-executor-service-v1",
+            "peer_uid": 901 if "executor" == "executor" else 902,
+            "service_measurement": "a" * 64,
         },
         "approver": {
             "key_id": "approver",
@@ -11389,6 +11392,9 @@ def _qualification_v3_public_config():
             .public_key()
             .public_bytes_raw()
             .hex(),
+            "protocol": "no1-008a-approver-service-v1",
+            "peer_uid": 901 if "approver" == "executor" else 902,
+            "service_measurement": "b" * 64,
         },
         "auditor": {
             "key_id": "auditor",
@@ -11404,6 +11410,19 @@ def _qualification_v3_public_config():
             "plan_set_hash": "3" * 64,
             "plan_hashes": {
                 f"{repo}/{arm}": "2" * 64
+                for repo in (
+                    "vscode",
+                    "excalidraw",
+                    "django",
+                    "tokio",
+                    "okhttp",
+                    "gin",
+                    "alamofire",
+                )
+                for arm in ("tsa-warm", "codegraph-warm")
+            },
+            "plan_document_sha256": {
+                f"{repo}/{arm}": "1" * 64
                 for repo in (
                     "vscode",
                     "excalidraw",
@@ -11458,8 +11477,8 @@ def _qualification_v3_public_config():
             },
             "auditor_runtime": {
                 "image_digest": "sha256:" + "a" * 64,
-                "interpreter_sha256": "b" * 64,
-                "module_sha256": "c" * 64,
+                "image_id": "sha256:" + "d" * 64,
+                "closure_manifest_sha256": "d" * 64,
             },
         },
     }
@@ -11657,6 +11676,12 @@ def test_qualification_v3_aggregate_requires_public_config_and_full_verification
         f"{cell['repo_id']}/{cell['arm_id']}": digest
         for cell, digest in zip(manifest["cells"], plan_hashes, strict=True)
     }
+    config["trusted"]["plan_document_sha256"] = {
+        f"{cell['repo_id']}/{cell['arm_id']}": hashlib.sha256(
+            canonical_json_bytes(cell["plan"])
+        ).hexdigest()
+        for cell in manifest["cells"]
+    }
     _sign_qualification_v3_config(config)
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -11750,7 +11775,7 @@ def test_qualification_executor_rejects_nonempty_output(tmp_path: Path):
         produce_cell({}, output)
 
 
-def test_qualification_operator_contract_is_exact_e0_without_docker():
+def test_qualification_operator_contract_is_exact_closed_service_pipeline():
     completed = subprocess.run(
         ["bash", "scripts/no1_008a_operator.sh", "contract"],
         check=True,
@@ -11758,17 +11783,20 @@ def test_qualification_operator_contract_is_exact_e0_without_docker():
         text=True,
     )
     result = json.loads(completed.stdout)
-    assert (
-        result["cells"],
-        result["attempts_per_cell"],
-        result["max_concurrency"],
-        result["evaluation_stage"],
-        result["status"],
-        result["publishable"],
-        result["winner"],
-        result["dominance_allowed"],
-        result["unlock_allowed"],
-    ) == (14, 1, 1, "E0", "NOT_EVALUATED", False, None, False, False)
+    assert result == {
+        "schema_version": 1,
+        "cells": 14,
+        "attempts_per_cell": 1,
+        "max_concurrency": 1,
+        "roles": [
+            "producer",
+            "authority-service",
+            "executor-service",
+            "approver-service",
+            "fresh-verifier",
+        ],
+        "qualification": "production-root-exact-14-only",
+    }
 
 
 def test_qualification_operator_dry_run_emits_each_cell_once():
@@ -11779,7 +11807,7 @@ def test_qualification_operator_dry_run_emits_each_cell_once():
         text=True,
     )
     rows = [json.loads(line) for line in completed.stdout.splitlines()]
-    identities = [(row["repo_id"], row["arm_id"], row["attempt"]) for row in rows[:-1]]
+    identities = [(row["repo_id"], row["arm_id"], row["attempt"]) for row in rows]
     from benchmarks.codegraph_compare.setup_qualification import EXPECTED_CELLS
 
     assert identities == [(repo, arm, 1) for repo, arm in EXPECTED_CELLS]
@@ -11951,10 +11979,14 @@ def test_qualification_v3_runtime_requires_exact_five_execution_order():
 
 def test_qualification_v3_operator_delegates_privileged_run_cell_authority():
     operator = Path("scripts/no1_008a_operator.sh").read_text(encoding="utf-8")
+    pipeline = Path("benchmarks/codegraph_compare/qualification_operator.py").read_text(
+        encoding="utf-8"
+    )
     assert (
         "from benchmarks.codegraph_compare.audit_authority_client import run_cell"
-        in operator
+        in pipeline
     )
+    assert "request_receipt" in pipeline
     assert "docker " not in operator
     assert "mkfs.ext4" not in operator
     assert "/var/run/docker.sock" not in operator
@@ -11962,10 +11994,8 @@ def test_qualification_v3_operator_delegates_privileged_run_cell_authority():
 
 def test_qualification_v3_operator_preflight_requires_contracts_and_authority():
     operator = Path("scripts/no1_008a_operator.sh").read_text(encoding="utf-8")
-    assert (
-        'for path in "$CONTRACTS_DIR" "$PUBLIC_CONFIG" "$AUDIT_AUTHORITY_SOCKET"'
-        in operator
-    )
+    assert '"$AUTHORITY_SOCKET" "$EXECUTOR_SOCKET" "$APPROVER_SOCKET"' in operator
+    assert '"$ARTIFACT_ROOT" "$STAGED_ROOT"' in operator
 
 
 def test_qualification_v3_runtime_schema_acceptance_parity():

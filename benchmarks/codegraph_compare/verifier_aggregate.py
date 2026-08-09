@@ -105,10 +105,10 @@ def aggregate_verdict(
             "run_nonce": exact["verifier_nonce"],
         }:
             raise ValueError("run correlation contract mismatch")
-        from benchmarks.codegraph_compare.verifier_evidence import _canonical_plan_hash
+        from benchmarks.codegraph_compare.receipt_v3 import canonical_plan_hash
 
         plan_hashes = [
-            _canonical_plan_hash(_mapping(cell["plan"], "plan"))
+            canonical_plan_hash(_mapping(cell["plan"], "plan"))
             for cell in exact["cells"]
         ]
 
@@ -186,6 +186,46 @@ def aggregate_verdict(
             for index, reasons in enumerate(violations)
         ],
     }
+
+
+def _validate_verdict_schema(value: Mapping[str, Any]) -> None:
+    expected = {
+        "schema_version",
+        "evaluation_stage",
+        "publishable",
+        "winner",
+        "dominance_allowed",
+        "unlock_allowed",
+        "status",
+        "authorization",
+        "top_level_reasons",
+        "expected_cells",
+        "observed_receipts",
+        "attempts_per_cell",
+        "counters",
+        "cell_diagnostics",
+    }
+    if type(value) is not dict or set(value) != expected:
+        raise ValueError("aggregate verdict does not match the published closed schema")
+    if value["authorization"] not in {"PRODUCTION_ROOT", "DIAGNOSTIC_ONLY"}:
+        raise ValueError("aggregate authorization invalid")
+    if type(value["top_level_reasons"]) is not list or any(
+        type(reason) is not str for reason in value["top_level_reasons"]
+    ):
+        raise ValueError("aggregate top-level reasons invalid")
+    diagnostics = value["cell_diagnostics"]
+    if type(diagnostics) is not list or len(diagnostics) > 14:
+        raise ValueError("aggregate cell diagnostics invalid")
+    for item in diagnostics:
+        if (
+            type(item) is not dict
+            or set(item) != {"repo_id", "arm_id", "reasons"}
+            or type(item["repo_id"]) is not str
+            or type(item["arm_id"]) is not str
+            or type(item["reasons"]) is not list
+            or any(type(reason) is not str for reason in item["reasons"])
+        ):
+            raise ValueError("aggregate cell diagnostic invalid")
 
 
 _PINNED_FDS: list[int] = []
@@ -339,6 +379,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.diagnostic_mode
             else "PRODUCTION",
         }
+    if args.command == "aggregate":
+        _validate_verdict_schema(result)
     output = Path(args.output)
     if output.exists() or output.parent.resolve(strict=True) != output.parent:
         raise ValueError("output must be fresh beneath canonical parent")

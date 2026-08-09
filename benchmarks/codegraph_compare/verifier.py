@@ -47,6 +47,7 @@ TRUSTED_KEYS = frozenset(
     {
         "plan_set_hash",
         "plan_hashes",
+        "plan_document_sha256",
         "inventory_sha256",
         "source_snapshot_sha256",
         "tool_sha256",
@@ -58,7 +59,9 @@ TRUSTED_KEYS = frozenset(
     }
 )
 IMAGE_ROLES = ("producer", "executor", "approver", "auditor", "verifier")
-PUBLIC_ROLE_KEYS = frozenset({"key_id", "public_key_hex"})
+PUBLIC_ROLE_KEYS = frozenset(
+    {"key_id", "public_key_hex", "protocol", "peer_uid", "service_measurement"}
+)
 AUDITOR_AUTHORITY_KEYS = frozenset(
     {"key_id", "public_key_hex", "protocol", "peer_uid", "service_measurement"}
 )
@@ -163,13 +166,16 @@ def parse_public_config(
             raise ValueError("public key must contain 32 lowercase hexadecimal bytes")
         keys.append(bytes.fromhex(encoded))
         ids.append(item["key_id"])
-        if role == "auditor" and (
-            item["protocol"] != "no1-008a-audit-v1"
+        expected_protocol = (
+            "no1-008a-audit-v1" if role == "auditor" else f"no1-008a-{role}-service-v1"
+        )
+        if (
+            item["protocol"] != expected_protocol
             or type(item["peer_uid"]) is not int
             or item["peer_uid"] < 0
             or _HEX64.fullmatch(item["service_measurement"]) is None
         ):
-            raise ValueError("external audit authority contract is invalid")
+            raise ValueError(f"external {role} service contract is invalid")
     if len(set(ids)) != 3 or len(set(keys)) != 3:
         raise ValueError("public signer identities must differ")
     trusted = _exact(config["trusted"], TRUSTED_KEYS, "trusted config")
@@ -185,6 +191,7 @@ def parse_public_config(
     }
     if (
         set(trusted["plan_hashes"]) != expected_plan_keys
+        or set(trusted["plan_document_sha256"]) != expected_plan_keys
         or set(trusted["inventory_sha256"])
         != {key.split("/")[0] for key in expected_plan_keys}
         or set(trusted["source_snapshot_sha256"])
@@ -195,6 +202,7 @@ def parse_public_config(
         _HEX64.fullmatch(value) is None
         for table in (
             trusted["plan_hashes"],
+            trusted["plan_document_sha256"],
             trusted["inventory_sha256"],
             trusted["source_snapshot_sha256"],
         )
@@ -214,12 +222,15 @@ def parse_public_config(
         raise ValueError("top-level Docker image IDs must be root-authorized")
     runtime = _exact(
         trusted["auditor_runtime"],
-        frozenset({"image_digest", "interpreter_sha256", "module_sha256"}),
+        frozenset({"image_digest", "image_id", "closure_manifest_sha256"}),
         "auditor runtime",
     )
-    if runtime["image_digest"] != images["auditor"] or any(
-        _HEX64.fullmatch(runtime[name]) is None
-        for name in ("interpreter_sha256", "module_sha256")
+    if (
+        runtime["image_digest"] != images["auditor"]
+        or runtime["image_id"] != image_ids["auditor"]
+        or _HEX64.fullmatch(runtime["closure_manifest_sha256"]) is None
+        or runtime["closure_manifest_sha256"]
+        != config["auditor"]["service_measurement"]
     ):
         raise ValueError("auditor runtime authority is invalid")
     return dict(config)

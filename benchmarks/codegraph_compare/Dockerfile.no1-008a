@@ -20,19 +20,23 @@ USER 65532:65532
 FROM runtime AS producer
 ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.setup_qualification_executor"]
 
-FROM runtime AS executor-signer
-LABEL org.tree-sitter-analyzer.no1-008a.role="executor"
-ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.receipt_v3_signer"]
+FROM runtime AS executor-service
+USER 901:901
+LABEL org.tree-sitter-analyzer.no1-008a.role="executor-service"
+ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.receipt_v3_service", "executor"]
 
-FROM runtime AS approver-signer
-LABEL org.tree-sitter-analyzer.no1-008a.role="approver"
-ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.receipt_v3_signer"]
+FROM runtime AS approver-service
+USER 902:902
+LABEL org.tree-sitter-analyzer.no1-008a.role="approver-service"
+ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.receipt_v3_service", "approver"]
 
-FROM runtime AS host-auditor
+FROM runtime AS authority-service
+ARG NO1_008A_AUTHORITY_CLOSURE_SHA256
+LABEL org.tree-sitter-analyzer.no1-008a.closure-sha256=$NO1_008A_AUTHORITY_CLOSURE_SHA256
 USER 0:0
 RUN apt-get update && apt-get install -y --no-install-recommends docker.io && rm -rf /var/lib/apt/lists/*
-LABEL org.tree-sitter-analyzer.no1-008a.role="host-auditor"
-ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.host_auditor"]
+LABEL org.tree-sitter-analyzer.no1-008a.role="authority-service"
+ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.audit_authority_service"]
 
 FROM runtime AS verifier
 LABEL org.tree-sitter-analyzer.no1-008a.role="verifier"

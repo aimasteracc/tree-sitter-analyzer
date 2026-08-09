@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import socket
 import struct
 from pathlib import Path
@@ -82,13 +83,16 @@ def exchange(
 def run_cell(
     contract: dict[str, Any], socket_path: Path, authority: dict[str, Any]
 ) -> dict[str, Any]:
-    """Submit only a root-signed run-cell contract; never submit audit facts."""
+    """Submit a root-signed job and verify its exact signed response."""
     request = {"operation": "run-cell", "contract": contract}
     wire = canonical_json_bytes(request)
     if len(wire) > MAX_MESSAGE:
         raise ValueError("run-cell request exceeds protocol bound")
+    timeout = authority.get("wall_timeout_seconds", 120)
+    if type(timeout) is not int or timeout < 1:
+        raise ValueError("authority timeout contract invalid")
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(120)
+    client.settimeout(timeout + 60)
     try:
         client.connect(str(socket_path))
         _pid, uid, _gid = _peer_credentials(client)
@@ -114,19 +118,105 @@ def run_cell(
     if type(envelope) is dict and frozenset(envelope) == {"error", "reason"}:
         raise ValueError(f"authority rejected request: {envelope['reason']}")
     if type(envelope) is not dict or frozenset(envelope) != {
-        "audit",
-        "artifacts",
+        "response",
         "key_id",
         "algorithm",
         "signature",
     }:
         raise ValueError("run-cell authority envelope invalid")
-    if envelope["key_id"] != authority["key_id"] or envelope["algorithm"] != "Ed25519":
-        raise ValueError("run-cell authority identity mismatch")
+    response = envelope["response"]
+    expected_response_keys = {
+        "contract_digest",
+        "job_id",
+        "cell",
+        "nonce",
+        "audit",
+        "artifacts",
+    }
+    if type(response) is not dict or set(response) != expected_response_keys:
+        raise ValueError("run-cell authority response is not closed")
+    if (
+        response["contract_digest"]
+        != hashlib.sha256(canonical_json_bytes(contract)).hexdigest()
+        or response["job_id"] != contract["job_id"]
+        or response["cell"] != contract["cell"]
+        or response["nonce"] != contract["nonce"]
+        or envelope["key_id"] != authority["key_id"]
+        or envelope["algorithm"] != "Ed25519"
+    ):
+        raise ValueError("run-cell authority response binding mismatch")
+    audit_envelope = response["audit"]
+    if type(audit_envelope) is not dict or set(audit_envelope) != {
+        "audit",
+        "key_id",
+        "algorithm",
+        "signature",
+    }:
+        raise ValueError("run-cell terminal audit envelope invalid")
+    if (
+        audit_envelope["key_id"] != authority["key_id"]
+        or audit_envelope["algorithm"] != "Ed25519"
+    ):
+        raise ValueError("run-cell terminal audit identity mismatch")
     Ed25519PublicKey.from_public_bytes(
         bytes.fromhex(authority["public_key_hex"])
     ).verify(
-        bytes.fromhex(envelope["signature"]),
-        b"NO1-008A-HOST-AUDIT-V1\0" + canonical_json_bytes(envelope["audit"]),
+        bytes.fromhex(audit_envelope["signature"]),
+        b"NO1-008A-HOST-AUDIT-V1\0" + canonical_json_bytes(audit_envelope["audit"]),
     )
+    artifacts = response["artifacts"]
+    expected_names = {
+        "core",
+        "data.img",
+        "hash.img",
+        "launch-audit.json",
+        "verity-format.txt",
+    }
+    if (
+        type(artifacts) is not list
+        or {item.get("name") for item in artifacts if type(item) is dict}
+        != expected_names
+    ):
+        raise ValueError("run-cell artifact set is not exact")
+    for item in artifacts:
+        if type(item) is not dict or set(item) != {
+            "name",
+            "id",
+            "sha256",
+            "size",
+            "path",
+        }:
+            raise ValueError("run-cell artifact descriptor is not closed")
+        name = item["name"]
+        expected_path = f"{contract['job_id']}/" + (
+            "producer-output/core" if name == "core" else name
+        )
+        identity = hashlib.sha256(
+            canonical_json_bytes(
+                {
+                    "name": name,
+                    "sha256": item["sha256"],
+                    "size": item["size"],
+                    "path": item["path"],
+                }
+            )
+        ).hexdigest()
+        if (
+            item["path"] != expected_path
+            or item["id"] != identity
+            or type(item["size"]) is not int
+            or item["size"] < 0
+            or type(item["sha256"]) is not str
+            or len(item["sha256"]) != 64
+        ):
+            raise ValueError("run-cell artifact descriptor binding mismatch")
+    try:
+        Ed25519PublicKey.from_public_bytes(
+            bytes.fromhex(authority["public_key_hex"])
+        ).verify(
+            bytes.fromhex(envelope["signature"]),
+            b"NO1-008A-RUN-CELL-RESPONSE-V1\0" + canonical_json_bytes(response),
+        )
+    except (InvalidSignature, ValueError) as exc:
+        raise ValueError("run-cell authority signature mismatch") from exc
     return envelope

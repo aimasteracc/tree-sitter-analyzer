@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
+    canonical_plan_hash,
     strict_json_loads,
 )
 from benchmarks.codegraph_compare.setup_qualification_paths import (
@@ -79,15 +80,6 @@ def _sha_file(path: Path) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
-def _canonical_plan_hash(plan: Mapping[str, Any]) -> str:
-    unsigned = {
-        key: value
-        for key, value in plan.items()
-        if key not in {"plan_hash", "plan_set_hash"}
-    }
-    return hashlib.sha256(canonical_json_bytes(unsigned)).hexdigest()
-
-
 def _recompute_git_root(records: list[list[str]]) -> str:
     """Rebuild nested Git tree objects from the closed leaf inventory."""
     if not records:
@@ -149,10 +141,10 @@ def _verify_trusted_inputs(
     trusted = config["trusted"]
     identity = f"{body['cell']['repo_id']}/{body['cell']['arm_id']}"
     repo = body["cell"]["repo_id"]
-    canonical_plan_hash = _canonical_plan_hash(plan)
+    logical_plan_hash = canonical_plan_hash(plan)
     if (
-        plan.get("plan_hash") != canonical_plan_hash
-        or canonical_plan_hash != trusted["plan_hashes"][identity]
+        plan.get("plan_hash") != logical_plan_hash
+        or logical_plan_hash != trusted["plan_hashes"][identity]
     ):
         raise ValueError("canonical plan hash mismatch")
     if (

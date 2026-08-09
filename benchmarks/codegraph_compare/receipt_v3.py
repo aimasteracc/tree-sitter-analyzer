@@ -48,6 +48,18 @@ SIGNATURE_KEYS = frozenset({"key_id", "algorithm", "signature"})
 ELIGIBILITY_KEYS = frozenset({"repo_id", "source_rules_hash", "commit", "tracked_regular_paths", "tracked_entries", "root_tree_id", "tracked_files", "eligible_paths", "prefilter_exclusions", "tracked_inventory_hash", "eligible_paths_hash", "repo_fingerprint"})
 
 
+def canonical_plan_hash(plan: Mapping[str, Any]) -> str:
+    """Hash the logical plan, excluding its self-referential hash fields."""
+    if type(plan) is not dict:
+        raise ValueError("plan must be an object")
+    unsigned = {
+        key: value
+        for key, value in plan.items()
+        if key not in {"plan_hash", "plan_set_hash"}
+    }
+    return hashlib.sha256(canonical_json_bytes(unsigned)).hexdigest()
+
+
 def _reject_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON number rejected: {value}")
 

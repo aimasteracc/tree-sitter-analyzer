@@ -14,7 +14,10 @@
     "publishable",
     "winner",
     "dominance_allowed",
-    "unlock_allowed"
+    "unlock_allowed",
+    "authorization",
+    "top_level_reasons",
+    "cell_diagnostics"
   ],
   "properties": {
     "schema_version": {
@@ -92,6 +95,46 @@
     },
     "unlock_allowed": {
       "const": false
+    },
+    "authorization": {
+      "enum": [
+        "PRODUCTION_ROOT",
+        "DIAGNOSTIC_ONLY"
+      ]
+    },
+    "top_level_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cell_diagnostics": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 14,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repo_id",
+          "arm_id",
+          "reasons"
+        ],
+        "properties": {
+          "repo_id": {
+            "type": "string"
+          },
+          "arm_id": {
+            "type": "string"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
     }
   },
   "allOf": [

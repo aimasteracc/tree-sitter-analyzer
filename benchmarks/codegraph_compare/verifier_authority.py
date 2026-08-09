@@ -62,7 +62,12 @@ def verify_authority_provenance(
     cell_key = f"{body['cell']['repo_id']}/{body['cell']['arm_id']}"
     if audit["cell"] != body["cell"]:
         raise ValueError("authority audit cell is not receipt-bound")
-    if audit["plan"].get("sha256") != config["trusted"]["plan_hashes"][cell_key]:
+    if (
+        audit["plan"].get("sha256")
+        != config["trusted"]["plan_document_sha256"][cell_key]
+        or audit["plan"].get("canonical_sha256")
+        != config["trusted"]["plan_hashes"][cell_key]
+    ):
         raise ValueError("authority audit plan is not root-plan-bound")
     if (
         audit["source_snapshot_sha256"]

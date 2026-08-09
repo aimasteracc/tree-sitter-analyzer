@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
+import shutil
 import stat
 import subprocess
-import sys
+import tarfile
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -23,9 +25,13 @@ from benchmarks.codegraph_compare.host_auditor import (
 )
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
+    canonical_plan_hash,
     strict_json_loads,
 )
-from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
+from benchmarks.codegraph_compare.setup_qualification_paths import (
+    _hash_tree,
+    canonical_relative_path,
+)
 from benchmarks.codegraph_compare.verifier import parse_public_config
 
 
@@ -73,6 +79,86 @@ def _secure_directory(path: Path, *, fresh: bool = False) -> None:
         or stat.S_IMODE(metadata.st_mode) & 0o022
     ):
         raise ValueError("authority directory is not root-controlled")
+
+
+def _materialize_source(snapshot: Path, destination: Path) -> None:
+    destination.mkdir(mode=0o500)
+    payload = _read(snapshot)
+    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:") as archive:
+        members = archive.getmembers()
+        if not members or any(not member.isfile() for member in members):
+            raise ValueError("source snapshot must contain regular files only")
+        for member in members:
+            relative = canonical_relative_path(member.name)
+            if member.uid != 0 or member.gid != 0 or member.mode & 0o022:
+                raise ValueError("source snapshot metadata is not root-controlled")
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True, mode=0o500)
+            stream = archive.extractfile(member)
+            if stream is None:
+                raise ValueError("source snapshot member absent")
+            descriptor = os.open(
+                target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400
+            )
+            try:
+                while chunk := stream.read(1024 * 1024):
+                    os.write(descriptor, chunk)
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+    for current, directories, _files in os.walk(
+        destination, topdown=False, followlinks=False
+    ):
+        for name in directories:
+            os.chmod(Path(current) / name, 0o500, follow_symlinks=False)
+    os.chmod(destination, 0o500)
+
+
+def _validate_producer_output(output: Path) -> Path:
+    entries = list(os.scandir(output))
+    if (
+        len(entries) != 1
+        or entries[0].name != "core"
+        or not entries[0].is_dir(follow_symlinks=False)
+    ):
+        raise ValueError("producer output must contain exactly one real core directory")
+    core = output / "core"
+    seen: set[tuple[int, int]] = set()
+    for current, directories, files in os.walk(core, followlinks=False):
+        for name in directories + files:
+            path = Path(current) / name
+            metadata = os.lstat(path)
+            if stat.S_ISLNK(metadata.st_mode) or not (
+                stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)
+            ):
+                raise ValueError("producer core contains symlink or special entry")
+            identity = (metadata.st_dev, metadata.st_ino)
+            if identity in seen or (
+                stat.S_ISREG(metadata.st_mode) and metadata.st_nlink != 1
+            ):
+                raise ValueError("producer core contains hard-linked entry")
+            seen.add(identity)
+    return core
+
+
+def _seal_tree(root: Path) -> None:
+    for _current, directories, files, directory_fd in os.fwalk(
+        root, topdown=False, follow_symlinks=False
+    ):
+        for name in files:
+            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("sealed core leaf changed type")
+            os.chown(name, 0, 0, dir_fd=directory_fd, follow_symlinks=False)
+            os.chmod(name, 0o444, dir_fd=directory_fd, follow_symlinks=False)
+        for name in directories:
+            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if not stat.S_ISDIR(metadata.st_mode):
+                raise ValueError("sealed core directory changed type")
+            os.chown(name, 0, 0, dir_fd=directory_fd, follow_symlinks=False)
+            os.chmod(name, 0o555, dir_fd=directory_fd, follow_symlinks=False)  # nosec B103
+    os.chown(root, 0, 0, follow_symlinks=False)
+    os.chmod(root, 0o555, follow_symlinks=False)  # nosec B103
 
 
 def _cgroup_empty(root: Path) -> list[str]:
@@ -129,33 +215,33 @@ class AuthorityRunner:
             raise ValueError("staged job does not match root contract")
         config = parse_public_config(_read(job / "public-config.json"))
         runtime = config["trusted"]["auditor_runtime"]
-        own_module = hashlib.sha256(_read(Path(__file__))).hexdigest()
-        interpreter = hashlib.sha256(
-            _read(Path(os.path.realpath(sys.executable)))
-        ).hexdigest()
-        if (
-            own_module != runtime["module_sha256"]
-            or interpreter != runtime["interpreter_sha256"]
-            or own_module != config["auditor"]["service_measurement"]
-        ):
-            raise ValueError("authority executable measurement is not root-authorized")
         hostname = os.environ.get("HOSTNAME", "")
         inspected = json.loads(_run("docker", "inspect", hostname))
+        own = inspected[0] if type(inspected) is list and len(inspected) == 1 else {}
+        mounts = own.get("Mounts", [])
         if (
-            type(inspected) is not list
-            or len(inspected) != 1
-            or inspected[0].get("Image") != config["trusted"]["image_ids"]["auditor"]
-            or inspected[0].get("Config", {}).get("Image", "").split("@")[-1]
+            own.get("Image") != runtime["image_id"]
+            or own.get("Image") != config["trusted"]["image_ids"]["auditor"]
+            or own.get("Config", {}).get("Image", "").split("@")[-1]
             != runtime["image_digest"]
-        ):
-            raise ValueError(
-                "authority service image measurement is not root-authorized"
+            or own.get("Config", {})
+            .get("Labels", {})
+            .get("org.tree-sitter-analyzer.no1-008a.closure-sha256")
+            != runtime["closure_manifest_sha256"]
+            or own.get("HostConfig", {}).get("ReadonlyRootfs") is not True
+            or any(
+                mount.get("Destination", "").startswith(
+                    ("/opt/tsa", "/usr/local/lib/python")
+                )
+                for mount in mounts
             )
+        ):
+            raise ValueError("authority immutable image closure is not root-authorized")
         return job, declared, config
 
     def _verify_staged(
         self, job: Path, contract: Mapping[str, Any], config: Mapping[str, Any]
-    ) -> None:
+    ) -> int:
         cell = contract["cell"]
         identity = f"{cell['repo_id']}/{cell['arm_id']}"
         plan = strict_json_loads(_read(job / "plan.json"))
@@ -164,8 +250,14 @@ class AuthorityRunner:
             plan_cell.get(name) != cell[name] for name in cell
         ):
             raise ValueError("staged plan cell mismatch")
+        logical_hash = canonical_plan_hash(plan)
+        if (
+            plan.get("plan_hash") != logical_hash
+            or logical_hash != config["trusted"]["plan_hashes"][identity]
+        ):
+            raise ValueError("root-authorized canonical plan hash mismatch")
         checks = {
-            "plan.json": config["trusted"]["plan_hashes"][identity],
+            "plan.json": config["trusted"]["plan_document_sha256"][identity],
             "inventory.json": config["trusted"]["inventory_sha256"][cell["repo_id"]],
             "source-snapshot.tar": config["trusted"]["source_snapshot_sha256"][
                 cell["repo_id"]
@@ -175,28 +267,58 @@ class AuthorityRunner:
             "seccomp": config["trusted"]["seccomp_sha256"],
         }
         for name, expected in checks.items():
-            if _sha(job / name) != expected:
+            staged = job / name
+            metadata = os.lstat(staged)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != 0
+                or stat.S_IMODE(metadata.st_mode) & 0o022
+                or metadata.st_nlink != 1
+            ):
+                raise ValueError(
+                    f"staged input is not immutable root-owned regular: {name}"
+                )
+            if _sha(staged) != expected:
                 raise ValueError(f"root-authorized staged hash mismatch: {name}")
+        wall_timeout = plan.get("wall_timeout_seconds")
+        if type(wall_timeout) is not int or wall_timeout < 1 or wall_timeout > 86400:
+            raise ValueError("staged plan timeout invalid")
         # The seccomp statement is intentionally an authority-code attestation of
         # the exact staged bytes passed to Docker, not a daemon-returned digest.
+        return wall_timeout
 
-    def __call__(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
+    def _execute(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
         job, declared, config = self._inputs(contract)
-        self._verify_staged(job, contract, config)
+        wall_timeout = self._verify_staged(job, contract, config)
         image = declared["producer_image"]
         if image.split("@")[-1] != config["trusted"]["images"]["producer"]:
             raise ValueError("producer launch reference is not root-authorized")
         destination = self._artifacts / contract["job_id"]
         _secure_directory(destination, fresh=True)
+        source = destination / "source"
+        _materialize_source(job / "source-snapshot.tar", source)
         output = destination / "producer-output"
         output.mkdir(mode=0o700)
         os.chown(output, 65532, 65532)
-        cgroup = Path("/sys/fs/cgroup") / f"no1-008a-{contract['job_id']}"
+        cgroup_name = f"no1-008a-{contract['job_id']}"
+        docker_info = json.loads(_run("docker", "info", "--format", "{{json .}}"))
+        if (
+            docker_info.get("CgroupVersion") != "2"
+            or docker_info.get("CgroupDriver") != "cgroupfs"
+        ):
+            raise ValueError(
+                "authority supports only preflighted cgroup-v2 cgroupfs Docker"
+            )
+        cgroup_root = Path("/sys/fs/cgroup")
+        controllers = set(_read(cgroup_root / "cgroup.controllers").decode().split())
+        if not {"cpu", "memory", "pids", "io"}.issubset(controllers):
+            raise ValueError("required cgroup-v2 controllers are unavailable")
+        cgroup = cgroup_root / cgroup_name
         cgroup.mkdir(mode=0o755)
         name = f"no1-008a-{contract['job_id'][:24]}"
         since = str(int(time.time()))
         mounts = [
-            (job / "source", "/source", True),
+            (source, "/source", True),
             (job / "plan.json", "/plan/cell-plan.json", True),
             (job / "inventory.json", "/plan/inventory.json", True),
             (output, "/out", False),
@@ -207,7 +329,7 @@ class AuthorityRunner:
             "--name",
             name,
             "--cgroup-parent",
-            str(cgroup),
+            f"/{cgroup_name}",
             "--network",
             "none",
             "--read-only",
@@ -261,16 +383,24 @@ class AuthorityRunner:
             }
             launch_path = destination / "launch-audit.json"
             launch_path.write_bytes(canonical_json_bytes(launch_envelope))
-            exit_code = _run("docker", "wait", container).decode().strip()
+            exit_code = (
+                _run("docker", "wait", container, timeout=wall_timeout + 60)
+                .decode()
+                .strip()
+            )
             if exit_code != "0":
                 raise ValueError("producer did not exit zero")
             os.chown(output, 0, 0)
             os.chmod(output, 0o500)
             _cgroup_empty(Path(launched["cgroup_id"]))
+            core = _validate_producer_output(output)
+            _seal_tree(core)
+            os.chown(output, 0, 0, follow_symlinks=False)
+            os.chmod(output, 0o555, follow_symlinks=False)  # nosec B103
             data = destination / "data.img"
             hashes = destination / "hash.img"
             _run("truncate", "-s", "1G", str(data))
-            _run("mkfs.ext4", "-q", "-d", str(output / "core"), str(data))
+            _run("mkfs.ext4", "-q", "-d", str(core), str(data))
             _run("truncate", "-s", "256M", str(hashes))
             format_output = _run(
                 "veritysetup", "format", str(data), str(hashes), "--hash", "sha256"
@@ -283,6 +413,9 @@ class AuthorityRunner:
                 hashes,
                 config,
             )
+            process["plan"]["canonical_sha256"] = canonical_plan_hash(
+                strict_json_loads(_read(job / "plan.json"))
+            )
             process.update(
                 launch_pid=pid,
                 launch_starttime=starttime,
@@ -290,18 +423,20 @@ class AuthorityRunner:
                 cgroup_populated=0,
                 cgroup_subtree_populated=[],
                 launch_token=launch_envelope,
-                core_tree_sha256=_hash_tree(output / "core"),
+                core_tree_sha256=_hash_tree(core),
                 source_snapshot_sha256=_sha(job / "source-snapshot.tar"),
                 tool_sha256=_sha(job / "tool"),
                 config_sha256=_sha(job / "config"),
             )
             audit = _request("terminal", process, config["auditor"])
             (destination / "verity-format.txt").write_bytes(format_output)
-            for path in destination.rglob("*"):
-                if path.is_file():
-                    os.chown(path, 0, 0)
-                    os.chmod(path, 0o444)
-            os.chmod(destination, 0o500)
+            for path in (data, hashes, launch_path, destination / "verity-format.txt"):
+                metadata = os.lstat(path)
+                if not stat.S_ISREG(metadata.st_mode):
+                    raise ValueError("authority artifact changed type before sealing")
+                os.chown(path, 0, 0, follow_symlinks=False)
+                os.chmod(path, 0o444, follow_symlinks=False)
+            os.chmod(destination, 0o555)  # nosec B103
             refs = {
                 name: str(destination / name)
                 for name in (
@@ -317,3 +452,38 @@ class AuthorityRunner:
             if pidfd_descriptor >= 0:
                 os.close(pidfd_descriptor)
             subprocess.run(["docker", "rm", "-f", container], capture_output=True)
+            try:
+                cgroup.rmdir()
+            except OSError:
+                pass
+
+    def __call__(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
+        job_id = contract.get("job_id")
+        if type(job_id) is not str or len(job_id) != 64:
+            raise ValueError("job id invalid before one-shot reservation")
+        state = self._artifacts / f"{job_id}.state"
+        descriptor = os.open(
+            state, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400
+        )
+        try:
+            os.write(descriptor, b"RUNNING\n")
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        try:
+            result = self._execute(contract)
+        except Exception as error:
+            destination = self._artifacts / job_id
+            if destination.exists():
+                shutil.rmtree(destination)
+            terminal_state = f"FAILED:{type(error).__name__}\n".encode("ascii")
+            temporary = self._artifacts / f".{job_id}.state.tmp"
+            temporary.write_bytes(terminal_state)
+            os.chmod(temporary, 0o400)
+            os.replace(temporary, state)
+            raise
+        temporary = self._artifacts / f".{job_id}.state.tmp"
+        temporary.write_bytes(b"SUCCESS\n")
+        os.chmod(temporary, 0o400)
+        os.replace(temporary, state)
+        return result

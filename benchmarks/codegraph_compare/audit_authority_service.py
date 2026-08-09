@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import platform
 import socket
@@ -26,6 +27,10 @@ from benchmarks.codegraph_compare.trust_anchor import baked_root_public_key
 MAX_MESSAGE = 4 * 1024 * 1024
 CONTRACT_DOMAIN = b"NO1-008A-RUN-CELL-CONTRACT-V1\0"
 AUDIT_DOMAIN = b"NO1-008A-HOST-AUDIT-V1\0"
+RESPONSE_DOMAIN = b"NO1-008A-RUN-CELL-RESPONSE-V1\0"
+ARTIFACT_NAMES = frozenset(
+    {"data.img", "hash.img", "launch-audit.json", "verity-format.txt", "core"}
+)
 _HEX = frozenset("0123456789abcdef")
 
 
@@ -116,46 +121,131 @@ def _load_key(path: Path) -> Ed25519PrivateKey:
     return Ed25519PrivateKey.from_private_bytes(raw)
 
 
+def _artifact_descriptor(
+    name: str, raw_path: Any, contract: Mapping[str, Any], artifact_root: Path | None
+) -> dict[str, Any]:
+    if name not in ARTIFACT_NAMES or type(raw_path) is not str:
+        raise ValueError("runner artifact set is not closed")
+    path = Path(raw_path)
+    job_id = contract["job_id"]
+    expected_tail = (
+        (job_id, "producer-output", "core") if name == "core" else (job_id, name)
+    )
+    if (
+        not path.is_absolute()
+        or tuple(path.parts[-len(expected_tail) :]) != expected_tail
+        or path.resolve(strict=True) != path
+        or (
+            artifact_root is not None
+            and (
+                artifact_root not in path.parents
+                or path.relative_to(artifact_root).parts[:1] != (job_id,)
+            )
+        )
+    ):
+        raise ValueError("artifact path is not authority-owned and canonical")
+    metadata = os.lstat(path)
+    if stat.S_ISLNK(metadata.st_mode):
+        raise ValueError("artifact must not be a symbolic link")
+    if name == "core":
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError("core artifact must be a directory")
+        from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
+
+        digest = _hash_tree(path)
+        size = sum(
+            os.lstat(child).st_size
+            for child in path.rglob("*")
+            if stat.S_ISREG(os.lstat(child).st_mode)
+        )
+    else:
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("artifact must be a regular file")
+        descriptor = os.open(
+            path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+        )
+        try:
+            sha = hashlib.sha256()
+            size = 0
+            while chunk := os.read(descriptor, 1024 * 1024):
+                sha.update(chunk)
+                size += len(chunk)
+            digest = sha.hexdigest()
+        finally:
+            os.close(descriptor)
+    relative = f"{job_id}/" + "/".join(path.parts[path.parts.index(job_id) + 1 :])
+    identity = hashlib.sha256(
+        canonical_json_bytes(
+            {"name": name, "sha256": digest, "size": size, "path": relative}
+        )
+    ).hexdigest()
+    return {
+        "name": name,
+        "id": identity,
+        "sha256": digest,
+        "size": size,
+        "path": relative,
+    }
+
+
 def serve_once(
     listener: socket.socket,
     *,
     key: Ed25519PrivateKey,
     key_id: str,
     runner: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+    artifact_root: Path | None = None,
 ) -> None:
     connection, _ = listener.accept()
+    reply: Mapping[str, Any] | None = None
     try:
         contract = verify_contract(_read_frame(connection))
-        result = runner(contract)
-        result = _exact(result, frozenset({"audit", "artifacts"}), "runner result")
+        result = _exact(
+            runner(contract), frozenset({"audit", "artifacts"}), "runner result"
+        )
         audit = _exact(
             result["audit"],
             frozenset({"protocol", "phase", "service_measurement", "audit"}),
             "canonical terminal audit",
         )
-        signed = {
+        artifacts = result["artifacts"]
+        if type(artifacts) is not dict or frozenset(artifacts) != ARTIFACT_NAMES:
+            raise ValueError("runner artifact set is not closed")
+        descriptors = [
+            _artifact_descriptor(name, artifacts[name], contract, artifact_root)
+            for name in sorted(ARTIFACT_NAMES)
+        ]
+        audit_envelope = {
             "audit": audit,
             "key_id": key_id,
             "algorithm": "Ed25519",
             "signature": key.sign(AUDIT_DOMAIN + canonical_json_bytes(audit)).hex(),
         }
-        artifacts = dict(result["artifacts"])
-        artifact_parent = Path(next(iter(artifacts.values()))).parent
-        os.chmod(artifact_parent, 0o700)
-        audit_path = artifact_parent / "process-audit.json"
-        descriptor = os.open(
-            audit_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o444
-        )
-        try:
-            os.write(descriptor, canonical_json_bytes(signed))
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-        artifacts["process_audit"] = str(audit_path)
-        os.chmod(artifact_parent, 0o500)
-        _write_frame(connection, {**signed, "artifacts": artifacts})
+        response = {
+            "contract_digest": hashlib.sha256(
+                canonical_json_bytes(contract)
+            ).hexdigest(),
+            "job_id": contract["job_id"],
+            "cell": contract["cell"],
+            "nonce": contract["nonce"],
+            "audit": audit_envelope,
+            "artifacts": descriptors,
+        }
+        reply = {
+            "response": response,
+            "key_id": key_id,
+            "algorithm": "Ed25519",
+            "signature": key.sign(
+                RESPONSE_DOMAIN + canonical_json_bytes(response)
+            ).hex(),
+        }
     except Exception as error:
-        _write_frame(connection, {"error": type(error).__name__, "reason": str(error)})
+        reply = {"error": type(error).__name__, "reason": str(error)}
+    try:
+        _write_frame(connection, reply)
+    except (TimeoutError, BrokenPipeError, ConnectionError):
+        # A client disconnect never terminates the long-lived authority service.
+        pass
     finally:
         connection.close()
 
@@ -180,7 +270,13 @@ def main(argv: list[str] | None = None) -> int:
     os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP)
     listener.listen(16)
     while True:
-        serve_once(listener, key=key, key_id=args.key_id, runner=runner)
+        serve_once(
+            listener,
+            key=key,
+            key_id=args.key_id,
+            runner=runner,
+            artifact_root=Path(args.artifact_root).resolve(strict=True),
+        )
 
 
 if __name__ == "__main__":
