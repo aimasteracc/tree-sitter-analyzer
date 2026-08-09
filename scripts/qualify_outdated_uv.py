@@ -11,7 +11,7 @@ from pathlib import Path
 import psutil
 from typing import Any
 
-SCHEMA_VERSION = "no1-006a-outdated-uv-attestation-v2"
+SCHEMA_VERSION = "no1-006a-outdated-uv-attestation-v3"
 OLD_VERSION, SUPPORTED_VERSION = "0.10.9", "0.11.0"
 AXES = ("linux", "macos", "windows")
 PROJECT = Path(__file__).resolve().parents[1]
@@ -284,6 +284,6 @@ def main()->int:
     a=sub.add_parser("axis"); a.add_argument("--axis",choices=AXES,required=True)
     for name in ("old-archive","installer","wheel","wheel-manifest","package-aggregate","package-report","output"): a.add_argument("--"+name,required=True)
     a.add_argument("--supported-archive"); a.add_argument("--timeout",type=float,default=180); a.set_defaults(func=axis)
-    g=sub.add_parser("aggregate"); g.add_argument("--reports",nargs=3,required=True); g.add_argument("--schema",default=str(PROJECT/"rfcs/schemas/no1-006a-outdated-uv-attestation-v2.schema.json")); g.add_argument("--output",required=True); g.add_argument("--trusted",action="store_true"); g.set_defaults(func=aggregate)
+    g=sub.add_parser("aggregate"); g.add_argument("--reports",nargs=3,required=True); g.add_argument("--schema",default=str(PROJECT/"rfcs/schemas/no1-006a-outdated-uv-attestation-v3.schema.json")); g.add_argument("--output",required=True); g.add_argument("--trusted",action="store_true"); g.set_defaults(func=aggregate)
     args=parser.parse_args(); return int(args.func(args))
 if __name__=="__main__": raise SystemExit(main())

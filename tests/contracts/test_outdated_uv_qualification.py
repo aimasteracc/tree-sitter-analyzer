@@ -23,7 +23,7 @@ from _native_trusted_verifier_helpers import outdated_causal_fixture  # noqa: E4
 
 ROOT = Path(__file__).parents[2]
 SCHEMA = json.loads(
-    (ROOT / "rfcs/schemas/no1-006a-outdated-uv-attestation-v2.schema.json").read_text()
+    (ROOT / "rfcs/schemas/no1-006a-outdated-uv-attestation-v3.schema.json").read_text()
 )
 
 
@@ -117,10 +117,11 @@ def test_schema_rejects_windows_pass_and_mutable_bootstrap_claim() -> None:
         jsonschema.validate(report, SCHEMA)
 
 
-def test_windows_na_requires_evidence_and_allows_empty_sidecar() -> None:
+def test_windows_na_requires_exact_old_archive_artifact() -> None:
     report = valid_windows_report()
     report["artifacts"]["empty.stderr"] = {"sha256": "0" * 64, "size": 0}
-    jsonschema.validate(report, SCHEMA)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(report, SCHEMA)
     for field in ("old_uv", "package_qualification"):
         invalid = valid_windows_report()
         invalid[field] = {}
@@ -132,6 +133,14 @@ def test_passed_schema_requires_every_platform_artifact() -> None:
     # PR #1242: PASSED POSIX evidence must retain every causal sidecar.
     report = valid_passed_report()
     del report["artifacts"]["installed-mcp-config.json"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(report, SCHEMA)
+
+
+def test_passed_schema_rejects_artifacts_outside_exact_allowlist() -> None:
+    # Final gate 2026-07-17: POSIX evidence is exactly the 17 protocol files.
+    report = valid_passed_report()
+    report["artifacts"]["extra.bin"] = {"sha256": "a" * 64, "size": 0}
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(report, SCHEMA)
 
@@ -333,7 +342,9 @@ def valid_passed_report() -> dict[str, object]:
                     "tree-sitter-analyzer[mcp]",
                     "tree-sitter-analyzer-mcp",
                 ],
-                "env": {"TREE_SITTER_PROJECT_ROOT": "/tmp/project"},
+                "env": {
+                    "TREE_SITTER_PROJECT_ROOT": "/tmp/tsa-outdated-native-test/fixture"
+                },
             },
             "backup_sha256": digest,
         },
@@ -482,7 +493,7 @@ def run_aggregate(tmp_path: Path, paths: list[Path]) -> tuple[int, dict[str, obj
             output=str(output),
             reports=[str(path) for path in paths],
             schema=str(
-                ROOT / "rfcs/schemas/no1-006a-outdated-uv-attestation-v2.schema.json"
+                ROOT / "rfcs/schemas/no1-006a-outdated-uv-attestation-v3.schema.json"
             ),
             trusted=False,
         )
@@ -658,7 +669,16 @@ def test_trusted_config_sidecar_accepts_noncanonical_format(tmp_path: Path) -> N
             "sha256": qualification.hashlib.sha256(data).hexdigest(),
         }
     }
-    assert trusted_helpers()["verify_config_sidecar"](tmp_path, config, after) is None
+    assert (
+        trusted_helpers()["verify_config_sidecar"](
+            tmp_path,
+            config,
+            after,
+            "linux",
+            "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize("mutation", ["duplicate", "extra", "entry", "snapshot"])
@@ -690,7 +710,74 @@ def test_trusted_config_sidecar_rejects_forgery(tmp_path: Path, mutation: str) -
         }
     }
     with pytest.raises(AssertionError):
-        trusted_helpers()["verify_config_sidecar"](tmp_path, config, after)
+        trusted_helpers()["verify_config_sidecar"](
+            tmp_path,
+            config,
+            after,
+            "linux",
+            "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
+        )
+
+
+def test_trusted_config_rejects_coordinated_command_forgery(tmp_path: Path) -> None:
+    # Final gate 2026-07-17: candidate config and sidecar cannot define the oracle.
+    config = json.loads(json.dumps(valid_passed_report()["config"]))
+    config["expected_entry"]["command"] = "evil"
+    value = {"mcpServers": {"tree-sitter-analyzer": config["expected_entry"]}}
+    data = json.dumps(value).encode()
+    (tmp_path / "installed-mcp-config.json").write_bytes(data)
+    after = {
+        ".claude/.mcp.json": {
+            "path": ".claude/.mcp.json",
+            "type": "file",
+            "sha256": qualification.hashlib.sha256(data).hexdigest(),
+        }
+    }
+    with pytest.raises(AssertionError):
+        trusted_helpers()["verify_config_sidecar"](
+            tmp_path,
+            config,
+            after,
+            "linux",
+            "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
+        )
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        "📁 Project root: /tmp/tsa-outdated-native-a/fixture\n"
+        "📁 Project root: /tmp/tsa-outdated-native-b/fixture\n",
+        "📁 Project root: /tmp/other/fixture\n",
+        "📁 Project root: /tmp/tsa-outdated-native-a/fixture/../fixture\n",
+        "📁 Project root: relative/tsa-outdated-native-a/fixture\n",
+    ],
+)
+def test_trusted_stdout_rejects_ambiguous_or_unstructured_root(stdout: str) -> None:
+    # Final gate 2026-07-17: the hash-bound stdout uniquely defines the root.
+    with pytest.raises(AssertionError):
+        trusted_helpers()["project_root_from_stdout"](stdout, "linux")
+
+
+@pytest.mark.parametrize(
+    "items",
+    [
+        [
+            {"path": "a", "type": "file", "sha256": "a" * 64},
+            {"path": "a", "type": "file", "sha256": "b" * 64},
+        ],
+        [{"path": "a", "type": "dir", "sha256": "a" * 64}],
+        [{"path": "a", "type": "file", "sha256": None}],
+        [{"path": "../a", "type": "file", "sha256": "a" * 64}],
+        [{"path": "a", "type": "file", "sha256": "a" * 64, "extra": True}],
+    ],
+)
+def test_trusted_snapshots_reject_ambiguous_entries(
+    items: list[dict[str, object]],
+) -> None:
+    # Final gate 2026-07-17: snapshot dictionaries must not erase ambiguity.
+    with pytest.raises(AssertionError):
+        trusted_helpers()["snapshots"](items)
 
 
 def test_trusted_installer_paths_reject_unverified_first_executable() -> None:

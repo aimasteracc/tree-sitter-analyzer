@@ -303,7 +303,28 @@ jobs:
             required=("awk","cat","grep","mktemp","python3","realpath","rm","sleep","uname")
             first=installer["first_path"].split(":"); second=installer["second_path"].split(":")
             assert len(first)==len(second)==2 and first[0]==str(pathlib.PurePosixPath(old["path"]).parent) and second[0]==str(pathlib.PurePosixPath(supported["path"]).parent) and first[1]==second[1] and pathlib.PurePosixPath(first[1]).name=="tools" and tuple(installer["curated_tools"])==required
-          def verify_config_sidecar(path,config,after):
+          def canonical_relative(value):
+            assert isinstance(value,str) and value and "\\" not in value and "\0" not in value and "\n" not in value and "\r" not in value
+            result=pathlib.PurePosixPath(value)
+            assert not result.is_absolute() and result.as_posix()==value and all(part not in ("",".","..") for part in result.parts)
+            return result
+          def snapshots(items):
+            assert isinstance(items,list); result={}
+            for item in items:
+              exact(item,("path","type","sha256")); name=item["path"]; canonical_relative(name); assert name not in result
+              kind=item["type"]; digest=item["sha256"]
+              assert kind in ("file","dir","symlink") and ((kind=="file" and isinstance(digest,str) and re.fullmatch(r"[0-9a-f]{64}",digest)) or (kind in ("dir","symlink") and digest is None))
+              result[name]=item
+            return result
+          def project_root_from_stdout(second,axis):
+            assert axis in ("linux","macos")
+            matches=re.findall(r"(?m)^📁 Project root: ([^\r\n]+)$",second)
+            assert len(matches)==1; value=matches[0]
+            assert "\0" not in value and str(lexical(value,axis))==value
+            root_path=pure(value,axis); assert root_path.name=="fixture" and re.fullmatch(r"tsa-outdated-native-[^/]+",root_path.parent.name)
+            return value
+          def verify_config_sidecar(path,config,after,axis,second):
+            exact(config,("before","after_first","after_second","expected_entry","backup_sha256"))
             data=(path/"installed-mcp-config.json").read_bytes()
             def unique(pairs):
               value={}
@@ -312,7 +333,8 @@ jobs:
             value=json.loads(data.decode("utf-8"),object_pairs_hook=unique)
             exact(value,("mcpServers",)); servers=value["mcpServers"]; exact(servers,("tree-sitter-analyzer",))
             entry=servers["tree-sitter-analyzer"]; exact(entry,("command","args","env")); exact(entry["env"],("TREE_SITTER_PROJECT_ROOT",))
-            assert entry==config["expected_entry"] and after[".claude/.mcp.json"]=={"path":".claude/.mcp.json","type":"file","sha256":hashlib.sha256(data).hexdigest()}
+            expected={"command":"uvx","args":["--from","tree-sitter-analyzer[mcp]","tree-sitter-analyzer-mcp"],"env":{"TREE_SITTER_PROJECT_ROOT":project_root_from_stdout(second,axis)}}
+            assert entry==config["expected_entry"]==expected and after[".claude/.mcp.json"]=={"path":".claude/.mcp.json","type":"file","sha256":hashlib.sha256(data).hexdigest()}
           def verify_causal_binding(axis,path,causal,bound,supported_exec,wheel,wheel_path,parent_runner,causal_digest):
             verify_runner(causal["runner"],axis); assert causal["runner"]==parent_runner
             install=causal["install"]; tool=install["tool"]; runtime=causal["runtime"]; meta=causal["metadata"]; mcp=causal["mcp"]; record=meta["installed_record"]
@@ -368,14 +390,24 @@ jobs:
           outdated_dirs={axis:root/f"outdated/outdated-uv-{axis}{suffix}" for axis in ("linux","macos","windows")}
           outdated_aggregate_path=root/f"outdated/outdated-uv-aggregate{suffix}/aggregate.json"; outdated_aggregate=json.loads(outdated_aggregate_path.read_text())
           reports={}; package_common=None; package_axis_sha256={}
+          posix_artifacts={"old.archive","supported.archive","installer.source","installed-mcp-config.json","first.stdout","first.stderr","second.stdout","second.stderr","mcp-driver.stdout","mcp-driver.stderr","mcp/report.json","mcp/install.stdout","mcp/install.stderr","mcp/dependency-manifest.txt","mcp/mcp-transcript.ndjson","mcp/mcp.stderr","mcp/installed-files.zip"}
           for axis,path in outdated_dirs.items():
             report_path=path/"report.json"; report=reports[axis]=json.loads(report_path.read_text()); artifacts=report["artifacts"]
             exact(report,("schema_version","kind","qualification_id","evidence_scope","axis","qualification_performed","passed","status","source","workflow","runner","remediation_mode","automatic_mutable_bootstrap_qualified","old_uv","supported_uv","installer","config","package_qualification","mcp_causal_report","artifacts","failure"))
-            actual={str(p.relative_to(path)) for p in path.rglob("*") if p.is_file()}
-            assert actual=={"report.json","job-result.json",*artifacts}
-            for name,meta in artifacts.items():
-              target=path/name; assert target.is_file() and not target.is_symlink() and meta=={"sha256":sha(target),"size":target.stat().st_size}
-            assert report["schema_version"]=="no1-006a-outdated-uv-attestation-v2" and report["evidence_scope"]=="native_outdated_uv_actionable_recovery"
+            expected_artifacts={"old.archive"} if axis=="windows" else posix_artifacts
+            assert set(artifacts)==expected_artifacts
+            expected_files={"report.json","job-result.json",*expected_artifacts}; expected_entries=expected_files|({"mcp"} if axis!="windows" else set())
+            actual_entries={p.relative_to(path).as_posix() for p in path.rglob("*")}
+            assert actual_entries==expected_entries and len(expected_files)==(3 if axis=="windows" else 19)
+            base=path.resolve(strict=True)
+            for name in expected_files:
+              relative=canonical_relative(name); target=path/pathlib.Path(*relative.parts); current=path
+              for part in relative.parts:
+                current=current/part; assert not current.is_symlink()
+              assert target.is_file() and target.resolve(strict=True).relative_to(base)
+              if name in artifacts:
+                meta=artifacts[name]; exact(meta,("sha256","size")); assert meta=={"sha256":sha(target),"size":target.stat().st_size}
+            assert report["schema_version"]=="no1-006a-outdated-uv-attestation-v3" and report["evidence_scope"]=="native_outdated_uv_actionable_recovery"
             assert report["axis"]==axis and report["remediation_mode"]=="manual_content_bound_remediation" and report["automatic_mutable_bootstrap_qualified"] is False
             verify_runner(report["runner"],axis)
             fixture_axis=(f"macos-{'arm64' if report['runner']['machine'].lower() in ('arm64','aarch64') else 'x86_64'}" if axis=="macos" else axis)
@@ -399,10 +431,11 @@ jobs:
             verify_installer_paths(installer,old["executable"],supported["executable"])
             first=(path/"first.stdout").read_text(); second=(path/"second.stdout").read_text()
             assert "TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1" in first and re.search(r"uv 0\.10\.9(?: [^\n]+)? does not satisfy required uv >= 0\.11\.0",first) and "installation complete" not in first and "uv 0.11.0" in second
-            config=report["config"]; assert config["before"]==config["after_first"] and config["backup_sha256"]==hashlib.sha256(b"{}\n").hexdigest()
-            before={item["path"]:item for item in config["before"]}; after={item["path"]:item for item in config["after_second"]}; added=set(after)-set(before)
-            assert set(before)-set(after)==set() and set(added)=={next(name for name in added if name.startswith(".claude/.mcp.json.bak."))} and after[next(iter(added))]["sha256"]==config["backup_sha256"] and before[".claude/.mcp.json"]!=after[".claude/.mcp.json"] and {k:v for k,v in before.items() if k!=".claude/.mcp.json"}=={k:v for k,v in after.items() if k not in added|{".claude/.mcp.json"}}
-            verify_config_sidecar(path,config,after)
+            config=report["config"]; exact(config,("before","after_first","after_second","expected_entry","backup_sha256")); assert config["before"]==config["after_first"] and re.fullmatch(r"[0-9a-f]{64}",config["backup_sha256"]) and config["backup_sha256"]==hashlib.sha256(b"{}\n").hexdigest()
+            before=snapshots(config["before"]); snapshots(config["after_first"]); after=snapshots(config["after_second"]); added=set(after)-set(before)
+            backups={name for name in added if re.fullmatch(r"\.claude/\.mcp\.json\.bak\.\d{8}-\d{6}",name)}
+            assert set(before)-set(after)==set() and added==backups and len(backups)==1 and after[next(iter(backups))]["sha256"]==config["backup_sha256"] and before[".claude/.mcp.json"]!=after[".claude/.mcp.json"] and {k:v for k,v in before.items() if k!=".claude/.mcp.json"}=={k:v for k,v in after.items() if k not in added|{".claude/.mcp.json"}}
+            verify_config_sidecar(path,config,after,axis,second)
             causal_path=path/"mcp/report.json"; causal=json.loads(causal_path.read_text()); bound=report["mcp_causal_report"]
             exact(causal,("schema_version","kind","qualification_id","evidence_scope","axis","qualification_performed","passed","source","workflow","runner","wheel","stages","failure","build_manifest_sha256","install","metadata","runtime","mcp","dependency_manifest_sha256","installed_files_zip_sha256")); identity(causal,"outdated-axis")
             assert causal["axis"]==axis and causal["stages"]==[{"id":stage,"passed":True} for stage in ("verify_wheel","install","metadata_provenance","mcp_protocol")] and causal["failure"] is None
@@ -435,6 +468,7 @@ jobs:
                 if pathlib.PurePosixPath(row[0].replace("\\","/")).name=="direct_url.json": observed_direct.append(json.loads(data))
               assert observed_direct==[direct]
           exact(outdated_aggregate,("schema_version","kind","qualification_id","evidence_scope","qualification_performed","qualified","evidence_trust","source_commit","package_qualification","required_axes","automatic_mutable_bootstrap_qualified","axes","failures","workflow"))
+          assert (outdated_aggregate["schema_version"],outdated_aggregate["kind"],outdated_aggregate["qualification_id"],outdated_aggregate["evidence_scope"])==("no1-006a-outdated-uv-attestation-v3","outdated_uv_aggregate","NO1-006A","native_outdated_uv_actionable_recovery")
           assert outdated_aggregate["workflow"] == {
               "event": "push", "run_id": run, "run_attempt": attempt,
               "job": "outdated-uv-aggregate", "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
