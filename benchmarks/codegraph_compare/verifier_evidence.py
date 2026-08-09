@@ -384,7 +384,18 @@ def _verify_external_audit(
     envelope = strict_json_loads(payload)
     if frozenset(envelope) != frozenset({"audit", "key_id", "algorithm", "signature"}):
         raise ValueError("host audit envelope is not closed")
-    audit = envelope["audit"]
+    request = envelope["audit"]
+    auditor = config["auditor"]
+    if (
+        type(request) is not dict
+        or frozenset(request) != {"protocol", "phase", "service_measurement", "audit"}
+        or request["protocol"] != auditor["protocol"]
+        or request["phase"] != "terminal"
+        or request["service_measurement"] != auditor["service_measurement"]
+        or type(request["audit"]) is not dict
+    ):
+        raise ValueError("external audit authority request is not closed")
+    audit = request["audit"]
     required = frozenset(
         {
             "producer_container_id",
@@ -407,11 +418,18 @@ def _verify_external_audit(
             "pid1_exit",
             "run_nonce",
             "resource_observations",
+            "cell",
+            "plan",
+            "source",
+            "output",
+            "terminal",
+            "data_image",
+            "hash_image",
+            "seccomp_sha256",
         }
     )
-    if type(audit) is not dict or frozenset(audit) != required:
+    if frozenset(audit) != required:
         raise ValueError("host audit ledger is not closed")
-    auditor = config["auditor"]
     if envelope["key_id"] != auditor["key_id"] or envelope["algorithm"] != "Ed25519":
         raise ValueError("host audit authority mismatch")
     try:
@@ -419,7 +437,7 @@ def _verify_external_audit(
             bytes.fromhex(auditor["public_key_hex"])
         ).verify(
             bytes.fromhex(envelope["signature"]),
-            b"NO1-008A-HOST-AUDIT-V1\0" + canonical_json_bytes(audit),
+            b"NO1-008A-HOST-AUDIT-V1\0" + canonical_json_bytes(request),
         )
     except (InvalidSignature, ValueError) as error:
         raise ValueError("host audit signature mismatch") from error
@@ -460,9 +478,19 @@ def _verify_external_audit(
         for key, value in body["process_audit"].items()
         if key != "audit_bytes"
     }
-    # Receipt carries only facts that the independently signed audit measures.
-    if expected != audit:
+    # Receipt carries the stable subset; the signed request additionally binds
+    # host path identities, terminal state, and both immutable image files.
+    if any(audit.get(key) != value for key, value in expected.items()):
         raise ValueError("receipt host audit facts mismatch")
+    if audit["actual_image_id"] != config["trusted"]["image_ids"]["producer"]:
+        raise ValueError("host audit top-level Docker Image ID mismatch")
+    if (
+        audit["data_image"]["sha256"] != body["snapshot"]["data_image_sha256"]
+        or audit["data_image"]["size"] != body["snapshot"]["data_image_size"]
+        or audit["hash_image"]["sha256"] != body["snapshot"]["hash_image_sha256"]
+        or audit["hash_image"]["size"] != body["snapshot"]["hash_image_size"]
+    ):
+        raise ValueError("authority-signed dm-verity image identity mismatch")
     blob = body["process_audit"]["audit_bytes"]
     if (
         len(payload) != blob["size_bytes"]

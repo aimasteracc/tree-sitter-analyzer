@@ -20,6 +20,12 @@ finally: os.close(fd)
 PY
 }
 fresh_directory(){ reject_mount_path "$1"; local parent base; parent=$(dirname -- "$1"); base=$(basename -- "$1"); canonical_existing "$parent"; [[ $(stat -c '%u:%a' "$parent") =~ ^0:[0-7]*[0145][0145]$ ]] || { echo "fresh parent must be root-owned and not group/world writable" >&2; return 1; }; mkdir -m 0700 -- "$parent/$base"; }
+canonical_socket(){ reject_mount_path "$1"; [[ $(realpath -e -- "$1") == "$1" ]]; canonical_existing "$(dirname -- "$1")"; python3 - "$1" <<'PY'
+import os,stat,sys
+metadata=os.lstat(sys.argv[1])
+if not stat.S_ISSOCK(metadata.st_mode): raise SystemExit("external audit authority socket required")
+PY
+}
 require_digest_image(){ [[ $1 =~ @sha256:[0-9a-f]{64}$ ]] || { echo "image must use exact immutable digest" >&2; return 1; }; docker image inspect "$1" >/dev/null; }
 validate_role_key(){ canonical_existing "$1"; python3 - "$1" <<'PY'
 import os,stat,sys
@@ -63,13 +69,15 @@ PY
  chown root:root "$stage"/*.ed25519; [[ $(sha256sum "$stage"/*.ed25519|cut -d' ' -f1|sort -u|wc -l) -eq 2 ]]; }
 
 run_auditor(){
+ local extra=()
+ if [[ $1 == terminal ]]; then extra+=(--mount "type=bind,src=$cell/data.img,dst=/evidence/data.img,readonly" --mount "type=bind,src=$cell/hash.img,dst=/evidence/hash.img,readonly"); fi
  docker run --rm --pid host --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 0:0 \
   --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
   --mount type=bind,src=/sys/fs/cgroup,dst=/sys/fs/cgroup,readonly \
   --mount "type=bind,src=$EXPERIMENT_ROOT/trust/seccomp,dst=/evidence/seccomp,readonly" \
   --mount "type=bind,src=$PUBLIC_CONFIG,dst=/public/config.json,readonly" \
-  --mount "type=bind,src=$KEY_STAGE/auditor.ed25519,dst=/run/secrets/auditor.ed25519,readonly" \
-  "$AUDITOR_IMAGE" "$@" --private-key /run/secrets/auditor.ed25519 --public-config /public/config.json
+  --mount "type=bind,src=$AUDIT_AUTHORITY_SOCKET,dst=/run/audit-authority.sock" "${extra[@]}" \
+  "$AUDITOR_IMAGE" "$@" --authority-socket /run/audit-authority.sock --public-config /public/config.json
 }
 leak_scan(){ python3 - "$1" "$2" "$3" <<'PY'
 import os,sys
@@ -87,11 +95,11 @@ cleanup(){ set +e; [[ -n ${mountpoint:-} ]] && mountpoint -q "$mountpoint" && um
 trap cleanup EXIT INT TERM
 COMMAND=${1:-}; [[ $# -gt 0 ]] || usage; shift
 if [[ $COMMAND == contract ]]; then [[ $# -eq 0 ]] || usage; contract; exit 0; fi
-declare PLAN_DIR='' INVENTORY_DIR='' SOURCES='' EXECUTOR_KEY='' APPROVER_KEY='' AUDITOR_KEY='' PUBLIC_CONFIG='' SECCOMP='' TOOL='' CONFIG='' EXPERIMENT_ROOT='' OUTPUT_ROOT=''
+declare PLAN_DIR='' INVENTORY_DIR='' SOURCES='' EXECUTOR_KEY='' APPROVER_KEY='' AUDIT_AUTHORITY_SOCKET='' PUBLIC_CONFIG='' SECCOMP='' TOOL='' CONFIG='' EXPERIMENT_ROOT='' OUTPUT_ROOT=''
 declare PRODUCER_IMAGE='' EXECUTOR_IMAGE='' APPROVER_IMAGE='' AUDITOR_IMAGE='' VERIFIER_IMAGE=''
 while [[ $# -gt 0 ]]; do case $1 in
  --plan-dir) PLAN_DIR=${2:?}; shift 2;; --inventory-dir) INVENTORY_DIR=${2:?}; shift 2;; --sources) SOURCES=${2:?}; shift 2;;
- --executor-key) EXECUTOR_KEY=${2:?}; shift 2;; --approver-key) APPROVER_KEY=${2:?}; shift 2;; --auditor-key) AUDITOR_KEY=${2:?}; shift 2;; --tool) TOOL=${2:?}; shift 2;; --config) CONFIG=${2:?}; shift 2;; --public-config) PUBLIC_CONFIG=${2:?}; shift 2;;
+ --executor-key) EXECUTOR_KEY=${2:?}; shift 2;; --approver-key) APPROVER_KEY=${2:?}; shift 2;; --audit-authority-socket) AUDIT_AUTHORITY_SOCKET=${2:?}; shift 2;; --tool) TOOL=${2:?}; shift 2;; --config) CONFIG=${2:?}; shift 2;; --public-config) PUBLIC_CONFIG=${2:?}; shift 2;;
  --seccomp) SECCOMP=${2:?}; shift 2;; --experiment-root) EXPERIMENT_ROOT=${2:?}; shift 2;; --output-root) OUTPUT_ROOT=${2:?}; shift 2;;
  --producer-image) PRODUCER_IMAGE=${2:?}; shift 2;; --executor-signer-image) EXECUTOR_IMAGE=${2:?}; shift 2;;
  --approver-signer-image) APPROVER_IMAGE=${2:?}; shift 2;; --auditor-image) AUDITOR_IMAGE=${2:?}; shift 2;; --verifier-image) VERIFIER_IMAGE=${2:?}; shift 2;; *) usage;; esac; done
@@ -106,7 +114,8 @@ else
  for path in "$PUBLIC_CONFIG" "$SECCOMP" "$TOOL" "$CONFIG"; do canonical_existing "$path"; [[ -f $path && -s $path ]]; done
  for image in "$PRODUCER_IMAGE" "$EXECUTOR_IMAGE" "$APPROVER_IMAGE" "$AUDITOR_IMAGE" "$VERIFIER_IMAGE"; do [[ -n $image ]]; require_digest_image "$image"; done
  canonical_existing "$PLAN_DIR"; canonical_existing "$INVENTORY_DIR"; canonical_existing "$SOURCES"
- validate_role_key "$EXECUTOR_KEY"; validate_role_key "$APPROVER_KEY"; validate_role_key "$AUDITOR_KEY"
+ validate_role_key "$EXECUTOR_KEY"; validate_role_key "$APPROVER_KEY"
+ canonical_socket "$AUDIT_AUTHORITY_SOCKET"
  mapfile -t ROLE_IDS < <(python3 - "$PUBLIC_CONFIG" "$EXECUTOR_KEY" "$APPROVER_KEY" <<'PY'
 import json,sys
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -120,9 +129,11 @@ PY
  [[ ${#ROLE_IDS[@]} -eq 2 && ${ROLE_IDS[0]} != "${ROLE_IDS[1]}" ]]
  for repo in "${REPOS[@]}"; do canonical_existing "$INVENTORY_DIR/$repo.json"; canonical_existing "$SOURCES/$repo"; for arm in "${ARMS[@]}"; do canonical_existing "$PLAN_DIR/$repo/$arm.json"; done; done
  python3 - "$PUBLIC_CONFIG" "$PRODUCER_IMAGE" "$EXECUTOR_IMAGE" "$APPROVER_IMAGE" "$AUDITOR_IMAGE" "$VERIFIER_IMAGE" <<'PY'
-import json,sys
-c=json.load(open(sys.argv[1])); supplied=[x.split('@')[-1] for x in sys.argv[2:]]; expected=[c['trusted']['images'][r] for r in ('producer','executor','approver','auditor','verifier')]
+import json,subprocess,sys
+c=json.load(open(sys.argv[1])); roles=('producer','executor','approver','auditor','verifier'); supplied=[x.split('@')[-1] for x in sys.argv[2:]]; expected=[c['trusted']['images'][r] for r in roles]
+actual=[json.loads(subprocess.check_output(['docker','image','inspect',image]))[0]['Id'] for image in sys.argv[2:]]
 if supplied != expected or len(set(expected)) != 5: raise SystemExit('role image authorization mismatch')
+if actual != [c['trusted']['image_ids'][r] for r in roles]: raise SystemExit('top-level Docker Image ID authorization mismatch')
 PY
 fi
 COMMON=(--network none --read-only --cap-drop ALL --security-opt no-new-privileges --security-opt "seccomp=$SECCOMP" --user 65532:65532 --pids-limit 64 --memory 4g --cpus 1 --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m --env HOME=/nonexistent --env LANG=C.UTF-8 --env LC_ALL=C.UTF-8)
@@ -156,14 +167,6 @@ python3 -m benchmarks.codegraph_compare.stage_inputs file "$SECCOMP" "$EXPERIMEN
 python3 -m benchmarks.codegraph_compare.stage_inputs file "$TOOL" "$EXPERIMENT_ROOT/trust/tool"
 python3 -m benchmarks.codegraph_compare.stage_inputs file "$CONFIG" "$EXPERIMENT_ROOT/trust/config"
 KEY_STAGE="$EXPERIMENT_ROOT/.role-keys"; mapfile -t STAGED_IDS < <(stage_keys "$KEY_STAGE")
-# Auditor key is staged by the same descriptor-only copier and checked against its separate authority.
-python3 -m benchmarks.codegraph_compare.stage_inputs file "$AUDITOR_KEY" "$KEY_STAGE/auditor.ed25519"; chmod 0400 "$KEY_STAGE/auditor.ed25519"
-python3 - "$KEY_STAGE/auditor.ed25519" "$PUBLIC_CONFIG" <<'PY'
-import json,sys
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-raw=open(sys.argv[1],'rb').read(); config=json.load(open(sys.argv[2]))
-if Ed25519PrivateKey.from_private_bytes(raw).public_key().public_bytes_raw().hex()!=config['auditor']['public_key_hex']: raise SystemExit('auditor private/public mismatch')
-PY
 [[ ${STAGED_IDS[*]} == "${ROLE_IDS[*]}" ]] || { echo "staged role identity changed" >&2; exit 65; }
 PUBLIC_CONFIG="$EXPERIMENT_ROOT/public-config.json"
 failures=0; ordinal=0
@@ -176,13 +179,12 @@ for repo in "${REPOS[@]}"; do for arm in "${ARMS[@]}"; do
  plan="$cell/plan.json"; inventory="$cell/inventory.json"; container="no1-008a-p-${ordinal}-$$"
  cgroup_parent="/sys/fs/cgroup/no1-008a-${nonce}-${ordinal}"; mkdir -m 0755 -- "$cgroup_parent"
  started=$(date +%s%N); container_id=$(docker run -d --name "$container" --cgroup-parent "$cgroup_parent" "${COMMON[@]}" --mount "type=bind,src=$cell/source,dst=/source,readonly,bind-propagation=rprivate" --mount "type=bind,src=$plan,dst=/plan/cell-plan.json,readonly" --mount "type=bind,src=$inventory,dst=/plan/inventory.json,readonly" --mount "type=bind,src=$out,dst=/out" "$PRODUCER_IMAGE" --plan /plan/cell-plan.json --out /out) || { rmdir -- "$cgroup_parent"; cgroup_parent=''; failures=$((failures+1)); continue; }
- auditor_key_id=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["auditor"]["key_id"])' "$PUBLIC_CONFIG")
- run_auditor launch --container "$container_id" --seccomp-host-path "$EXPERIMENT_ROOT/trust/seccomp" --source "$cell/source" --plan "$plan" --inventory "$inventory" --output "$out" --seccomp /evidence/seccomp --expected-image "$PRODUCER_IMAGE" --since "$((started/1000000000))" --run-nonce "$nonce" --key-id "$auditor_key_id" >"$cell/launch-audit.json"
+ run_auditor launch --container "$container_id" --seccomp /evidence/seccomp --expected-image "$PRODUCER_IMAGE" --since "$((started/1000000000))" --run-nonce "$nonce" >"$cell/launch-audit.json"
  exit_code=$(docker wait "$container_id" 2>/dev/null || printf 125); [[ $exit_code == 0 ]] || failures=$((failures+1))
- run_auditor terminal --launch-token "$cell/launch-audit.json" --seccomp /evidence/seccomp --expected-image "$PRODUCER_IMAGE" --key-id "$auditor_key_id" >"$cell/process-audit.json"
- docker rm "$container_id" >/dev/null; container=''; rmdir -- "$cgroup_parent"; cgroup_parent=''
  truncate -s 1G "$cell/data.img"; mkfs.ext4 -q -d "$out/core" "$cell/data.img"; truncate -s 256M "$cell/hash.img"; salt=$(openssl rand -hex 32)
  format=$(veritysetup format "$cell/data.img" "$cell/hash.img" --hash sha256 --salt "$salt"); root_hash=$(awk '/Root hash:/{print $3}' <<<"$format")
+ run_auditor terminal --launch-token "$cell/launch-audit.json" --seccomp /evidence/seccomp --expected-image "$PRODUCER_IMAGE" --data-image /evidence/data.img --hash-image /evidence/hash.img >"$cell/process-audit.json"
+ docker rm "$container_id" >/dev/null; container=''; rmdir -- "$cgroup_parent"; cgroup_parent=''
  mapping="no1-008a-${ordinal}-$$"; mountpoint="$cell/verity"; veritysetup open "$cell/data.img" "$mapping" "$cell/hash.img" "$root_hash" --salt "$salt"; mkdir "$mountpoint"; mount -o ro,nosuid,nodev,noexec "/dev/mapper/$mapping" "$mountpoint"
  # Executor image independently builds/signs one body and writes only stdout.
  # Contract fragments: sign-executor --plan /evidence/plan.json; sign-approver --attestation /handoff/executor.json

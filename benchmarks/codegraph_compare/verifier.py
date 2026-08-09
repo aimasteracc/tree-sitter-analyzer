@@ -54,10 +54,14 @@ TRUSTED_KEYS = frozenset(
         "seccomp_sha256",
         "images",
         "auditor_runtime",
+        "image_ids",
     }
 )
 IMAGE_ROLES = ("producer", "executor", "approver", "auditor", "verifier")
 PUBLIC_ROLE_KEYS = frozenset({"key_id", "public_key_hex"})
+AUDITOR_AUTHORITY_KEYS = frozenset(
+    {"key_id", "public_key_hex", "protocol", "peer_uid", "service_measurement"}
+)
 MANIFEST_KEYS = frozenset(
     {
         "schema_version",
@@ -143,7 +147,11 @@ def parse_public_config(
     keys: list[bytes] = []
     ids: list[str] = []
     for role in ("executor", "approver", "auditor"):
-        item = _exact(config[role], PUBLIC_ROLE_KEYS, role)
+        item = _exact(
+            config[role],
+            AUDITOR_AUTHORITY_KEYS if role == "auditor" else PUBLIC_ROLE_KEYS,
+            role,
+        )
         if (
             type(item["key_id"]) is not str
             or not item["key_id"]
@@ -155,6 +163,13 @@ def parse_public_config(
             raise ValueError("public key must contain 32 lowercase hexadecimal bytes")
         keys.append(bytes.fromhex(encoded))
         ids.append(item["key_id"])
+        if role == "auditor" and (
+            item["protocol"] != "no1-008a-audit-v1"
+            or type(item["peer_uid"]) is not int
+            or item["peer_uid"] < 0
+            or _HEX64.fullmatch(item["service_measurement"]) is None
+        ):
+            raise ValueError("external audit authority contract is invalid")
     if len(set(ids)) != 3 or len(set(keys)) != 3:
         raise ValueError("public signer identities must differ")
     trusted = _exact(config["trusted"], TRUSTED_KEYS, "trusted config")
@@ -192,6 +207,11 @@ def parse_public_config(
         or len(set(images.values())) != 5
     ):
         raise ValueError("role images must be exact, authorized, and distinct")
+    image_ids = _exact(
+        trusted["image_ids"], frozenset(IMAGE_ROLES), "trusted image IDs"
+    )
+    if any(_IMAGE.fullmatch(image_ids[role]) is None for role in IMAGE_ROLES):
+        raise ValueError("top-level Docker image IDs must be root-authorized")
     runtime = _exact(
         trusted["auditor_runtime"],
         frozenset({"image_digest", "interpreter_sha256", "module_sha256"}),

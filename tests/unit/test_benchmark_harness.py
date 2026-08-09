@@ -11396,6 +11396,9 @@ def _qualification_v3_public_config():
             .public_key()
             .public_bytes_raw()
             .hex(),
+            "protocol": "no1-008a-audit-v1",
+            "peer_uid": 900,
+            "service_measurement": "d" * 64,
         },
         "trusted": {
             "plan_set_hash": "3" * 64,
@@ -11445,6 +11448,13 @@ def _qualification_v3_public_config():
                 "approver": "sha256:" + "8" * 64,
                 "auditor": "sha256:" + "a" * 64,
                 "verifier": "sha256:" + "9" * 64,
+            },
+            "image_ids": {
+                "producer": "sha256:" + "a" * 64,
+                "executor": "sha256:" + "b" * 64,
+                "approver": "sha256:" + "c" * 64,
+                "auditor": "sha256:" + "d" * 64,
+                "verifier": "sha256:" + "e" * 64,
             },
             "auditor_runtime": {
                 "image_digest": "sha256:" + "a" * 64,
@@ -12065,6 +12075,179 @@ def test_qualification_v3_verify_requires_external_config_anchor():
         "production CLIs authenticate"
         in Path("benchmarks/codegraph_compare/README.md").read_text()
     )
+
+
+def _diagnostic_authority_server(socket_path: Path, key: bytes):
+    import socket
+    import struct
+    import threading
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare.host_auditor import DOMAIN
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        canonical_json_bytes,
+        strict_json_loads,
+    )
+
+    ready = threading.Event()
+
+    def serve():
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        listener.bind(str(socket_path))
+        listener.listen(1)
+        ready.set()
+        connection, _ = listener.accept()
+        header = connection.recv(4)
+        size = struct.unpack("!I", header)[0]
+        wire = bytearray()
+        while len(wire) < size:
+            wire.extend(connection.recv(size - len(wire)))
+        request = strict_json_loads(bytes(wire))
+        envelope = {
+            "audit": request,
+            "key_id": "auditor",
+            "algorithm": "Ed25519",
+            "signature": Ed25519PrivateKey.from_private_bytes(key)
+            .sign(DOMAIN + canonical_json_bytes(request))
+            .hex(),
+        }
+        response = canonical_json_bytes(envelope)
+        connection.sendall(struct.pack("!I", len(response)) + response)
+        connection.close()
+        listener.close()
+        socket_path.unlink(missing_ok=True)
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    ready.wait(timeout=5)
+    return thread
+
+
+def test_qualification_external_audit_protocol_verifies_exact_signed_request(
+    tmp_path: Path, monkeypatch
+):
+    # Mutation 5 (2026-08-10): only the external Unix authority may authorize an audit.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import audit_authority_client
+    from benchmarks.codegraph_compare.host_auditor import DOMAIN, _authority
+
+    monkeypatch.setattr(
+        audit_authority_client,
+        "_peer_credentials",
+        lambda client: (1, os.getuid(), os.getgid()),
+    )
+    key = b"\x33" * 32
+    socket_path = Path("/tmp") / f"tsa-audit-{os.getpid()}-{tmp_path.name[-6:]}.sock"
+    thread = _diagnostic_authority_server(socket_path, key)
+    authority = {
+        "key_id": "auditor",
+        "public_key_hex": Ed25519PrivateKey.from_private_bytes(key)
+        .public_key()
+        .public_bytes_raw()
+        .hex(),
+        "peer_uid": os.getuid(),
+    }
+    request = {
+        "protocol": "no1-008a-audit-v1",
+        "phase": "terminal",
+        "service_measurement": "d" * 64,
+        "audit": {"producer_container_id": "immutable-id"},
+    }
+    envelope = _authority(request, socket_path, authority, DOMAIN)
+    thread.join(timeout=5)
+    assert envelope["audit"] == request
+
+
+def test_qualification_external_audit_protocol_rejects_forged_reply(
+    tmp_path: Path, monkeypatch
+):
+    # Mutation 5 (2026-08-10): a socket endpoint without the pinned key is non-authorizing.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import audit_authority_client
+    from benchmarks.codegraph_compare.host_auditor import DOMAIN, _authority
+
+    monkeypatch.setattr(
+        audit_authority_client,
+        "_peer_credentials",
+        lambda client: (1, os.getuid(), os.getgid()),
+    )
+    socket_path = Path("/tmp") / f"tsa-forge-{os.getpid()}-{tmp_path.name[-6:]}.sock"
+    thread = _diagnostic_authority_server(socket_path, b"\x55" * 32)
+    authority = {
+        "key_id": "auditor",
+        "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x33" * 32)
+        .public_key()
+        .public_bytes_raw()
+        .hex(),
+        "peer_uid": os.getuid(),
+    }
+    request = {
+        "protocol": "no1-008a-audit-v1",
+        "phase": "terminal",
+        "service_measurement": "d" * 64,
+        "audit": {},
+    }
+    with pytest.raises(ValueError, match="signature mismatch"):
+        _authority(request, socket_path, authority, DOMAIN)
+    thread.join(timeout=5)
+
+
+def test_qualification_host_auditor_rejects_local_private_key_cli():
+    # Mutation 5 (2026-08-10): production has no local auditor-key compatibility path.
+    from benchmarks.codegraph_compare.host_auditor import main
+
+    with pytest.raises(SystemExit) as error:
+        main(
+            [
+                "launch",
+                "--container",
+                "container",
+                "--seccomp",
+                "/seccomp",
+                "--expected-image",
+                "image@sha256:" + "1" * 64,
+                "--authority-socket",
+                "/authority.sock",
+                "--public-config",
+                "/config.json",
+                "--since",
+                "1",
+                "--run-nonce",
+                "2" * 64,
+                "--private-key",
+                "/local/auditor.key",
+            ]
+        )
+    assert error.value.code == 2
+
+
+def test_qualification_host_auditor_checks_root_pinned_top_level_image_id():
+    # Mutation 5 (2026-08-10): Config.Image alone cannot authorize a container.
+    from benchmarks.codegraph_compare.host_auditor import _docker_facts
+
+    inspected = {
+        "Image": "sha256:" + "9" * 64,
+        "Config": {"Image": "producer@sha256:" + "1" * 64, "User": "65532:65532"},
+        "HostConfig": {
+            "ReadonlyRootfs": True,
+            "CapDrop": ["ALL"],
+            "NetworkMode": "none",
+            "SecurityOpt": ["no-new-privileges", "seccomp=/trusted/seccomp"],
+            "PidsLimit": 64,
+            "Memory": 4294967296,
+            "NanoCpus": 1000000000,
+            "Tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=64m"},
+        },
+    }
+    with pytest.raises(ValueError, match="top-level Image ID"):
+        _docker_facts(
+            inspected,
+            "producer@sha256:" + "1" * 64,
+            "sha256:" + "8" * 64,
+        )
 
 
 _mark_posix_qualification_section_tests()

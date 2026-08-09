@@ -321,13 +321,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             diagnostic_mode=args.diagnostic_mode,
             diagnostic_root_public_key=diagnostic_root,
         )
+        diagnostic_reasons = ("DIAGNOSTIC_ONLY",) if args.diagnostic_mode else ()
         result = {
             "schema_version": 1,
             **CLAIMS,
-            "status": "PASS" if not failures else "NOT_EVALUATED",
-            "violations": list(failures),
+            "status": "NOT_EVALUATED" if args.diagnostic_mode or failures else "PASS",
+            "violations": list(failures + diagnostic_reasons),
             "verifier_nonce": args.verifier_nonce,
             "verifier_image_digest": args.verifier_image_digest,
+            "authorization": "DIAGNOSTIC_ONLY"
+            if args.diagnostic_mode
+            else "PRODUCTION",
         }
     output = Path(args.output)
     if output.exists() or output.parent.resolve(strict=True) != output.parent:

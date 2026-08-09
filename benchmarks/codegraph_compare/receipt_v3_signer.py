@@ -73,7 +73,15 @@ def _build_body(args: argparse.Namespace) -> dict[str, object]:
     audit_path = _safe_path(args.process_audit)
     audit_payload = audit_path.read_bytes()
     audit_envelope = strict_json_loads(audit_payload)
-    audit = audit_envelope["audit"]
+    audit_request = audit_envelope["audit"]
+    if (
+        type(audit_request) is not dict
+        or audit_request.get("protocol") != "no1-008a-audit-v1"
+        or audit_request.get("phase") != "terminal"
+        or type(audit_request.get("audit")) is not dict
+    ):
+        raise ValueError("external audit authority request invalid")
+    audit = audit_request["audit"]
     data = _safe_path(args.data_image)
     hashes = _safe_path(args.hash_image)
     data_size, data_sha = _sha_file(data)
@@ -174,7 +182,34 @@ def _build_body(args: argparse.Namespace) -> dict[str, object]:
             "tree_hash": _hash_tree(core),
             "index_content_hash": _hash_tree(index),
         },
-        "process_audit": {**audit, "audit_bytes": audit_blob},
+        "process_audit": {
+            **{
+                key: audit[key]
+                for key in (
+                    "producer_container_id",
+                    "actual_image_id",
+                    "launch_token_sha256",
+                    "container_user",
+                    "readonly_rootfs",
+                    "cap_drop",
+                    "mounts",
+                    "resource_limits",
+                    "tmpfs",
+                    "image_digest",
+                    "cgroup_id",
+                    "network_mode",
+                    "security_opt",
+                    "restart_count",
+                    "terminal_pid",
+                    "launch_count",
+                    "cgroup_processes_after_stop",
+                    "pid1_exit",
+                    "run_nonce",
+                    "resource_observations",
+                )
+            },
+            "audit_bytes": audit_blob,
+        },
         "oracle_approval": {
             "approved": True,
             "statement": plan["oracle_statement"],

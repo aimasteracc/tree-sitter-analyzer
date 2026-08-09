@@ -20,6 +20,37 @@
       ],
       "type": "object"
     },
+    "authority": {
+      "additionalProperties": false,
+      "properties": {
+        "key_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "peer_uid": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "protocol": {
+          "const": "no1-008a-audit-v1"
+        },
+        "public_key_hex": {
+          "$ref": "#/$defs/hash"
+        },
+        "service_measurement": {
+          "$ref": "#/$defs/hash"
+        }
+      },
+      "required": [
+        "key_id",
+        "public_key_hex",
+        "protocol",
+        "peer_uid",
+        "service_measurement"
+      ],
+      "type": "object"
+    },
     "hash": {
       "pattern": "^[0-9a-f]{64}$",
       "type": "string"
@@ -54,6 +85,34 @@
         },
         "config_sha256": {
           "$ref": "#/$defs/hash"
+        },
+        "image_ids": {
+          "additionalProperties": false,
+          "properties": {
+            "approver": {
+              "$ref": "#/$defs/image"
+            },
+            "auditor": {
+              "$ref": "#/$defs/image"
+            },
+            "executor": {
+              "$ref": "#/$defs/image"
+            },
+            "producer": {
+              "$ref": "#/$defs/image"
+            },
+            "verifier": {
+              "$ref": "#/$defs/image"
+            }
+          },
+          "required": [
+            "producer",
+            "executor",
+            "approver",
+            "auditor",
+            "verifier"
+          ],
+          "type": "object"
         },
         "images": {
           "additionalProperties": false,
@@ -120,6 +179,7 @@
         "config_sha256",
         "seccomp_sha256",
         "images",
+        "image_ids",
         "auditor_runtime"
       ],
       "type": "object"
@@ -133,7 +193,7 @@
       "$ref": "#/$defs/role"
     },
     "auditor": {
-      "$ref": "#/$defs/role"
+      "$ref": "#/$defs/authority"
     },
     "executor": {
       "$ref": "#/$defs/role"

@@ -1,5 +1,3 @@
-"""Independent two-phase signed host auditor for NO1-008A."""
-
 from __future__ import annotations
 
 import argparse
@@ -13,8 +11,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from benchmarks.codegraph_compare.audit_authority_client import exchange as _authority
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
@@ -22,7 +21,9 @@ from benchmarks.codegraph_compare.receipt_v3 import (
 
 DOMAIN = b"NO1-008A-HOST-AUDIT-V1\0"
 LAUNCH_DOMAIN = b"NO1-008A-HOST-LAUNCH-V1\0"
+PROTOCOL = "no1-008a-audit-v1"
 TMPFS_TARGET = Path("/").joinpath("tmp").as_posix()
+MAX_MESSAGE = 4 * 1024 * 1024
 
 
 def _run(*args: str) -> bytes:
@@ -38,9 +39,7 @@ def _inspect(container: str) -> dict[str, Any]:
     rows = json.loads(_run("docker", "inspect", container))
     if type(rows) is not list or len(rows) != 1 or type(rows[0]) is not dict:
         raise ValueError("docker inspect identity mismatch")
-    inspected: dict[str, Any] = rows[0]
-    # Names are permitted at launch; returned immutable ID becomes authority.
-    return inspected
+    return rows[0]
 
 
 def _read(path: Path) -> bytes:
@@ -51,7 +50,40 @@ def _read(path: Path) -> bytes:
         out = bytearray()
         while chunk := os.read(fd, 1024 * 1024):
             out.extend(chunk)
+            if len(out) > MAX_MESSAGE:
+                raise ValueError("host fact exceeds audit bound")
         return bytes(out)
+    finally:
+        os.close(fd)
+
+
+def _identity(path: Path, *, digest: bool = False) -> dict[str, Any]:
+    resolved = path.resolve(strict=True)
+    if resolved != path:
+        raise ValueError("host identity path is not canonical")
+    fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        metadata = os.fstat(fd)
+        result: dict[str, Any] = {
+            "path": str(path),
+            "device": metadata.st_dev,
+            "inode": metadata.st_ino,
+            "mode": stat.S_IMODE(metadata.st_mode),
+            "uid": metadata.st_uid,
+            "gid": metadata.st_gid,
+        }
+        if digest:
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("hashed identity is not regular")
+            hasher = hashlib.sha256()
+            size = 0
+            while chunk := os.read(fd, 1024 * 1024):
+                hasher.update(chunk)
+                size += len(chunk)
+            result.update(size=size, sha256=hasher.hexdigest())
+        elif not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError("directory identity is not a directory")
+        return result
     finally:
         os.close(fd)
 
@@ -62,8 +94,7 @@ def _cgroup(pid: int) -> tuple[Path, str]:
     matches = [row[2] for row in rows if row[:2] == ["0", ""]]
     if len(matches) != 1 or not matches[0].startswith("/"):
         raise ValueError("container unified cgroup missing")
-    relative = matches[0]
-    root = Path("/sys/fs/cgroup") / relative.lstrip("/")
+    root = Path("/sys/fs/cgroup") / matches[0].lstrip("/")
     if root.resolve(strict=True) != root:
         raise ValueError("container cgroup is not canonical")
     parent = root.parent
@@ -72,195 +103,212 @@ def _cgroup(pid: int) -> tuple[Path, str]:
     return parent, "/" + parent.relative_to("/sys/fs/cgroup").as_posix()
 
 
-def _key(path: Path) -> bytes:
-    payload = _read(path)
-    if len(payload) != 32:
-        raise ValueError("auditor key size invalid")
-    return payload
+def _mounts(inspected: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    mounts = inspected.get("Mounts")
+    if type(mounts) is not list:
+        raise ValueError("Docker mounts absent")
+    by_target: dict[str, dict[str, Any]] = {}
+    for item in mounts:
+        if type(item) is dict and type(item.get("Destination")) is str:
+            by_target[item["Destination"]] = item
+    if set(by_target) != {
+        "/source",
+        "/plan/cell-plan.json",
+        "/plan/inventory.json",
+        "/out",
+    }:
+        raise ValueError("producer mount target set mismatch")
+    if any(
+        by_target[name].get("RW") is not rw
+        for name, rw in {
+            "/source": False,
+            "/plan/cell-plan.json": False,
+            "/plan/inventory.json": False,
+            "/out": True,
+        }.items()
+    ):
+        raise ValueError("producer mount access mismatch")
+    return by_target
 
 
-def _sign(
-    payload: dict[str, Any], key: bytes, key_id: str, domain: bytes = DOMAIN
+def _docker_facts(
+    inspected: dict[str, Any], expected_image: str, expected_id: str
+) -> dict[str, Any]:
+    host = inspected["HostConfig"]
+    if inspected.get("Image") != expected_id:
+        raise ValueError("Docker top-level Image ID is not root-authorized")
+    if inspected["Config"].get("Image") != expected_image:
+        raise ValueError("Docker Config.Image is not the authorized launch reference")
+    security = {
+        "config_image": inspected["Config"]["Image"],
+        "image_id": inspected["Image"],
+        "user": inspected["Config"].get("User"),
+        "readonly_rootfs": host.get("ReadonlyRootfs"),
+        "cap_drop": host.get("CapDrop"),
+        "network_mode": host.get("NetworkMode"),
+        "security_opt": host.get("SecurityOpt"),
+        "pids_limit": host.get("PidsLimit"),
+        "memory": host.get("Memory"),
+        "nano_cpus": host.get("NanoCpus"),
+        "tmpfs": host.get("Tmpfs"),
+    }
+    if (
+        security["user"] != "65532:65532"
+        or security["readonly_rootfs"] is not True
+        or security["cap_drop"] != ["ALL"]
+        or security["network_mode"] != "none"
+        or security["pids_limit"] != 64
+        or security["memory"] != 4294967296
+        or security["nano_cpus"] != 1000000000
+        or security["tmpfs"] != {TMPFS_TARGET: "rw,noexec,nosuid,nodev,size=64m"}
+    ):
+        raise ValueError("producer Docker security facts mismatch")
+    return security
+
+
+def _verify_launch(payload: bytes, authority: dict[str, Any]) -> dict[str, Any]:
+    envelope = strict_json_loads(payload)
+    if type(envelope) is not dict or frozenset(envelope) != {
+        "audit",
+        "key_id",
+        "algorithm",
+        "signature",
+    }:
+        raise ValueError("launch token envelope invalid")
+    request = envelope["audit"]
+    if type(request) is not dict:
+        raise ValueError("launch token request invalid")
+    Ed25519PublicKey.from_public_bytes(
+        bytes.fromhex(authority["public_key_hex"])
+    ).verify(
+        bytes.fromhex(envelope["signature"]),
+        LAUNCH_DOMAIN + canonical_json_bytes(request),
+    )
+    if request.get("protocol") != PROTOCOL or request.get("phase") != "launch":
+        raise ValueError("launch protocol mismatch")
+    return request
+
+
+def _request(
+    phase: str, audit: dict[str, Any], authority: dict[str, Any]
 ) -> dict[str, Any]:
     return {
-        "audit": payload,
-        "key_id": key_id,
-        "algorithm": "Ed25519",
-        "signature": Ed25519PrivateKey.from_private_bytes(key)
-        .sign(domain + canonical_json_bytes(payload))
-        .hex(),
+        "protocol": PROTOCOL,
+        "phase": phase,
+        "service_measurement": authority["service_measurement"],
+        "audit": audit,
     }
-
-
-def _verify_launch(envelope: dict[str, Any], key: bytes) -> dict[str, Any]:
-    if frozenset(envelope) != {"audit", "key_id", "algorithm", "signature"}:
-        raise ValueError("launch token envelope invalid")
-    Ed25519PrivateKey.from_private_bytes(key).public_key().verify(
-        bytes.fromhex(envelope["signature"]),
-        LAUNCH_DOMAIN + canonical_json_bytes(envelope["audit"]),
-    )
-    audit = envelope["audit"]
-    if type(audit) is not dict:
-        raise ValueError("launch token payload invalid")
-    return audit
 
 
 def launch(
     container: str,
     expected_image: str,
     seccomp: Path,
-    seccomp_host_path: str,
-    source: Path,
-    plan: Path,
-    inventory: Path,
-    output: Path,
     since: str,
     run_nonce: str,
+    config: dict[str, Any],
 ) -> dict[str, Any]:
     inspected = _inspect(container)
     state = inspected["State"]
-    host = inspected["HostConfig"]
-    cid = inspected["Id"]
-    pid = state["Pid"]
-    if not state["Running"] or type(pid) is not int or pid <= 0:
+    if (
+        state.get("Running") is not True
+        or type(state.get("Pid")) is not int
+        or state["Pid"] <= 0
+    ):
         raise ValueError("producer is not running at launch audit")
-    cgroup_root, cgroup_rel = _cgroup(pid)
-    actual_image = json.loads(_run("docker", "image", "inspect", expected_image))[0][
-        "Id"
-    ]
-    if (
-        inspected["Config"]["Image"] != expected_image
-        or inspected["Image"] != actual_image
-    ):
-        raise ValueError("actual producer image identity mismatch")
-    expected_mounts = {
-        (str(source), "/source", True),
-        (str(plan), "/plan/cell-plan.json", True),
-        (str(inventory), "/plan/inventory.json", True),
-        (str(output), "/out", False),
-    }
-    actual_mounts = {
-        (m["Source"], m["Destination"], not m["RW"]) for m in inspected["Mounts"]
-    }
-    if actual_mounts != expected_mounts:
-        raise ValueError("producer bind mounts/source paths/RO flags mismatch")
-    seccomp_path = str(seccomp)
-    expected_security = ["no-new-privileges", f"seccomp={seccomp_host_path}"]
-    if host["SecurityOpt"] != expected_security:
-        raise ValueError("actual Docker security options mismatch")
-    if (
-        inspected["Config"]["User"] != "65532:65532"
-        or host["ReadonlyRootfs"] is not True
-        or host["CapDrop"] != ["ALL"]
-        or host["NetworkMode"] != "none"
-    ):
-        raise ValueError("producer isolation flags mismatch")
-    limits = {
-        "pids_limit": host["PidsLimit"],
-        "memory": host["Memory"],
-        "nano_cpus": host["NanoCpus"],
-    }
-    if limits != {"pids_limit": 64, "memory": 4294967296, "nano_cpus": 1000000000}:
-        raise ValueError("producer resource limits mismatch")
-    tmpfs = host["Tmpfs"]
-    if tmpfs != {TMPFS_TARGET: "rw,noexec,nosuid,nodev,size=64m"}:
-        raise ValueError("producer tmpfs flags mismatch")
+    cgroup_root, cgroup_relative = _cgroup(state["Pid"])
+    mounts = _mounts(inspected)
+    plan_path = Path(mounts["/plan/cell-plan.json"]["Source"])
+    plan = strict_json_loads(_read(plan_path))
+    security = _docker_facts(
+        inspected, expected_image, config["trusted"]["image_ids"]["producer"]
+    )
     return {
-        "producer_container_id": cid,
-        "launch_pid": pid,
-        "cgroup_relative": cgroup_rel,
-        "cgroup_id": str(cgroup_root),
-        "image_digest": expected_image.split("@")[-1],
-        "actual_image_id": actual_image,
+        "producer_container_id": inspected["Id"],
         "run_nonce": run_nonce,
         "since": since,
-        "seccomp_path": seccomp_path,
+        "cell": plan["cell"],
+        "plan": _identity(plan_path, digest=True),
+        "source": _identity(Path(mounts["/source"]["Source"])),
+        "output": _identity(Path(mounts["/out"]["Source"])),
+        "inventory": _identity(
+            Path(mounts["/plan/inventory.json"]["Source"]), digest=True
+        ),
+        "mounts": [
+            [m["Source"], target, not m["RW"]] for target, m in sorted(mounts.items())
+        ],
+        "launch_pid": state["Pid"],
+        "cgroup_id": str(cgroup_root),
+        "cgroup_relative": cgroup_relative,
+        "image_digest": expected_image.split("@")[-1],
+        "actual_image_id": inspected["Image"],
+        "security": security,
         "seccomp_sha256": hashlib.sha256(_read(seccomp)).hexdigest(),
-        "security_opt": expected_security,
-        "mounts": [list(x) for x in sorted(expected_mounts)],
-        "resource_limits": limits,
-        "tmpfs": tmpfs,
-        "container_user": "65532:65532",
-        "readonly_rootfs": True,
-        "cap_drop": ["ALL"],
     }
 
 
 def terminal(
-    token_payload: bytes, seccomp: Path, expected_image: str, key: bytes
+    launch_payload: bytes,
+    seccomp: Path,
+    expected_image: str,
+    data_image: Path,
+    hash_image: Path,
+    config: dict[str, Any],
 ) -> dict[str, Any]:
-    envelope = strict_json_loads(token_payload)
-    launched = _verify_launch(envelope, key)
-    cid = launched["producer_container_id"]
-    inspected = _inspect(cid)
+    launched = _verify_launch(launch_payload, config["auditor"])
+    prior = launched["audit"]
+    inspected = _inspect(prior["producer_container_id"])
     state = inspected["State"]
     if (
-        state["Running"]
-        or state["Pid"] != 0
-        or inspected["RestartCount"] != 0
-        or state["ExitCode"] != 0
+        state.get("Running")
+        or state.get("Pid") != 0
+        or inspected.get("RestartCount") != 0
+        or state.get("ExitCode") != 0
     ):
         raise ValueError("producer terminal state invalid")
-    if (
-        inspected["Config"]["Image"] != expected_image
-        or inspected["Image"] != launched["actual_image_id"]
-    ):
-        raise ValueError("terminal image identity changed")
-    host = inspected["HostConfig"]
-    actual_mounts = sorted(
-        [[m["Source"], m["Destination"], not m["RW"]] for m in inspected["Mounts"]]
+    security = _docker_facts(
+        inspected, expected_image, config["trusted"]["image_ids"]["producer"]
     )
-    actual_limits = {
-        "pids_limit": host["PidsLimit"],
-        "memory": host["Memory"],
-        "nano_cpus": host["NanoCpus"],
+    mounts = _mounts(inspected)
+    actual_mounts = [
+        [item["Source"], target, not item["RW"]]
+        for target, item in sorted(mounts.items())
+    ]
+    identities = {
+        "plan": _identity(Path(mounts["/plan/cell-plan.json"]["Source"]), digest=True),
+        "source": _identity(Path(mounts["/source"]["Source"])),
+        "output": _identity(Path(mounts["/out"]["Source"])),
     }
     if (
-        inspected["Config"]["User"] != launched["container_user"]
-        or host["ReadonlyRootfs"] is not launched["readonly_rootfs"]
-        or host["CapDrop"] != launched["cap_drop"]
-        or host["NetworkMode"] != "none"
-        or host["SecurityOpt"] != launched["security_opt"]
-        or actual_mounts != launched["mounts"]
-        or actual_limits != launched["resource_limits"]
-        or host["Tmpfs"] != launched["tmpfs"]
+        security != prior["security"]
+        or actual_mounts != prior["mounts"]
+        or any(identities[name] != prior[name] for name in identities)
     ):
-        raise ValueError(
-            "terminal Docker security facts differ from staged launch audit"
-        )
-    if (
-        launched["seccomp_path"] != str(seccomp)
-        or hashlib.sha256(_read(seccomp)).hexdigest() != launched["seccomp_sha256"]
-    ):
-        raise ValueError("staged seccomp identity changed")
+        raise ValueError("terminal Docker facts or mount identities changed")
     launches = sum(
         1
         for line in _run(
             "docker",
             "events",
             "--since",
-            launched["since"],
+            prior["since"],
             "--until",
             str(int(time.time()) + 1),
             "--filter",
-            f"container={cid}",
+            f"container={inspected['Id']}",
             "--filter",
             "event=start",
             "--format",
             "{{.ID}}",
         ).splitlines()
-        if line.strip() == cid.encode()
+        if line.strip() == inspected["Id"].encode()
     )
-    root = Path(launched["cgroup_id"])
+    root = Path(prior["cgroup_id"])
     processes = [
         int(line) for line in _read(root / "cgroup.procs").splitlines() if line
     ]
     if launches != 1 or processes:
         raise ValueError("launch count or terminal cgroup invalid")
-
-    def scalar(name: str) -> int:
-        return int(_read(root / name).strip())
-
     cpu = dict(line.split() for line in _read(root / "cpu.stat").decode().splitlines())
     io_bytes = sum(
         int(field.split("=")[1])
@@ -280,30 +328,44 @@ def terminal(
         ),
         "cpu_usec": int(cpu["usage_usec"]),
         "io_bytes": io_bytes,
-        "memory_peak_bytes": scalar("memory.peak"),
-        "pids_peak": scalar("pids.peak"),
+        "memory_peak_bytes": int(_read(root / "memory.peak").strip()),
+        "pids_peak": int(_read(root / "pids.peak").strip()),
     }
     return {
-        "producer_container_id": cid,
-        "image_digest": launched["image_digest"],
-        "actual_image_id": launched["actual_image_id"],
-        "cgroup_id": launched["cgroup_id"],
+        "producer_container_id": inspected["Id"],
+        "image_digest": prior["image_digest"],
+        "actual_image_id": inspected["Image"],
+        "cgroup_id": prior["cgroup_id"],
         "network_mode": "none",
-        "security_opt": ["no-new-privileges", f"seccomp={launched['seccomp_sha256']}"],
+        "security_opt": ["no-new-privileges", "seccomp=" + prior["seccomp_sha256"]],
         "restart_count": 0,
         "terminal_pid": 0,
         "launch_count": 1,
         "cgroup_processes_after_stop": [],
         "pid1_exit": 0,
-        "run_nonce": launched["run_nonce"],
-        "launch_token_sha256": hashlib.sha256(token_payload).hexdigest(),
-        "container_user": launched["container_user"],
-        "readonly_rootfs": launched["readonly_rootfs"],
-        "cap_drop": launched["cap_drop"],
-        "mounts": launched["mounts"],
-        "resource_limits": launched["resource_limits"],
-        "tmpfs": launched["tmpfs"],
+        "run_nonce": prior["run_nonce"],
+        "launch_token_sha256": hashlib.sha256(launch_payload).hexdigest(),
+        "container_user": security["user"],
+        "readonly_rootfs": security["readonly_rootfs"],
+        "cap_drop": security["cap_drop"],
+        "mounts": prior["mounts"],
+        "resource_limits": {
+            k: security[k] for k in ("pids_limit", "memory", "nano_cpus")
+        },
+        "tmpfs": security["tmpfs"],
         "resource_observations": resources,
+        "cell": prior["cell"],
+        "plan": prior["plan"],
+        "source": prior["source"],
+        "output": prior["output"],
+        "terminal": {
+            "finished_at": state["FinishedAt"],
+            "started_at": state["StartedAt"],
+            "exit_code": state["ExitCode"],
+        },
+        "data_image": _identity(data_image, digest=True),
+        "hash_image": _identity(hash_image, digest=True),
+        "seccomp_sha256": hashlib.sha256(_read(seccomp)).hexdigest(),
     }
 
 
@@ -318,7 +380,8 @@ def _authorize_runtime(public_config: Path) -> dict[str, Any]:
     ).hexdigest()
     module = hashlib.sha256(_read(Path(__file__))).hexdigest()
     if (
-        own["Config"]["Image"].split("@")[-1] != expected["image_digest"]
+        own["Image"] != config["trusted"]["image_ids"]["auditor"]
+        or own["Config"]["Image"].split("@")[-1] != expected["image_digest"]
         or interpreter != expected["interpreter_sha256"]
         or module != expected["module_sha256"]
     ):
@@ -327,65 +390,57 @@ def _authorize_runtime(public_config: Path) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser()
-    sub = p.add_subparsers(dest="phase", required=True)
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="phase", required=True)
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--seccomp", required=True)
     common.add_argument("--expected-image", required=True)
-    common.add_argument("--private-key", required=True)
-    common.add_argument("--key-id", required=True)
+    common.add_argument("--authority-socket", required=True)
     common.add_argument("--public-config", required=True)
-    launch_p = sub.add_parser("launch", parents=[common])
-    launch_p.add_argument("--container", required=True)
-    launch_p.add_argument("--seccomp-host-path", required=True)
-    launch_p.add_argument("--source", required=True)
-    launch_p.add_argument("--plan", required=True)
-    launch_p.add_argument("--inventory", required=True)
-    launch_p.add_argument("--output", required=True)
-    launch_p.add_argument("--since", required=True)
-    launch_p.add_argument("--run-nonce", required=True)
-    term = sub.add_parser("terminal", parents=[common])
-    term.add_argument("--launch-token", required=True)
-    a = p.parse_args(argv)
-    config = _authorize_runtime(Path(a.public_config))
-    if a.key_id != config["auditor"]["key_id"]:
-        raise ValueError("auditor key ID is not root-authorized")
-    if a.expected_image.split("@")[-1] != config["trusted"]["images"]["producer"]:
+    launch_parser = sub.add_parser("launch", parents=[common])
+    launch_parser.add_argument("--container", required=True)
+    launch_parser.add_argument("--since", required=True)
+    launch_parser.add_argument("--run-nonce", required=True)
+    terminal_parser = sub.add_parser("terminal", parents=[common])
+    terminal_parser.add_argument("--launch-token", required=True)
+    terminal_parser.add_argument("--data-image", required=True)
+    terminal_parser.add_argument("--hash-image", required=True)
+    args = parser.parse_args(argv)
+    config = _authorize_runtime(Path(args.public_config))
+    if args.expected_image.split("@")[-1] != config["trusted"]["images"]["producer"]:
         raise ValueError("producer image is not root-authorized")
-    key = _key(Path(a.private_key))
-    if (
-        Ed25519PrivateKey.from_private_bytes(key).public_key().public_bytes_raw().hex()
-        != config["auditor"]["public_key_hex"]
-    ):
-        raise ValueError("auditor private key is not root-authorized")
-    if a.phase == "launch":
-        result = _sign(
-            launch(
-                a.container,
-                a.expected_image,
-                Path(a.seccomp),
-                a.seccomp_host_path,
-                Path(a.source),
-                Path(a.plan),
-                Path(a.inventory),
-                Path(a.output),
-                a.since,
-                a.run_nonce,
-            ),
-            key,
-            a.key_id,
+    authority = config["auditor"]
+    if authority["protocol"] != PROTOCOL:
+        raise ValueError("audit authority protocol mismatch")
+    if args.phase == "launch":
+        audit = launch(
+            args.container,
+            args.expected_image,
+            Path(args.seccomp),
+            args.since,
+            args.run_nonce,
+            config,
+        )
+        result = _authority(
+            _request("launch", audit, authority),
+            Path(args.authority_socket),
+            authority,
             LAUNCH_DOMAIN,
         )
     else:
-        result = _sign(
-            terminal(
-                _read(Path(a.launch_token)),
-                Path(a.seccomp),
-                a.expected_image,
-                key,
-            ),
-            key,
-            a.key_id,
+        audit = terminal(
+            _read(Path(args.launch_token)),
+            Path(args.seccomp),
+            args.expected_image,
+            Path(args.data_image),
+            Path(args.hash_image),
+            config,
+        )
+        result = _authority(
+            _request("terminal", audit, authority),
+            Path(args.authority_socket),
+            authority,
+            DOMAIN,
         )
     sys.stdout.buffer.write(canonical_json_bytes(result) + b"\n")
     return 0

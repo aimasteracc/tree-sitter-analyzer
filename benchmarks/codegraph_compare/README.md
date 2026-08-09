@@ -439,14 +439,21 @@ A result is considered **dominant** if it scores higher on `med_overall` AND low
 ## NO1-008A detached receipt v3 operator (E0 only)
 
 Receipt v2 remains a non-upgradable E0 compatibility boundary. The v3 path uses
-five isolated roles: a keyless producer, executor and approver signers, a dedicated
-host-auditor image, and a fresh keyless verifier. Executor, approver, and auditor
-private keys are distinct and are mounted only into their pinned role; the offline
-root private key is never supplied to an operator run. Verifier and auditor images
-must be built with `NO1_008A_ROOT_PUBLIC_KEY_HEX`; production CLIs authenticate the
-root-signed canonical public config only with that read-only baked resource. The
-immutable core is a dm-verity snapshot and both receipt signatures cover the same
-domain-separated canonical body bytes.
+five isolated roles: a keyless producer, executor and approver signers, a keyless
+host-auditor client, and a fresh keyless verifier. The production operator and host
+root never possess or mount the auditor private key. Audit authorization is supplied
+only by an external authority over a Unix socket; root-signed config pins its public
+key, protocol, peer UID, service measurement, and every Docker top-level Image ID.
+The host auditor independently inspects Docker, cgroup v2, mount identities, terminal
+state, and dm-verity data/hash images, sends those facts as one canonical request,
+and accepts only the matching authority signature. A missing socket, peer mismatch,
+forged reply, or local key path fails closed. Any fake authority is test diagnostic
+infrastructure only and can never produce `SETUP_QUALIFIED`. The offline root private
+key is never supplied to an operator run. Verifier and auditor images must be built
+with `NO1_008A_ROOT_PUBLIC_KEY_HEX`; production CLIs authenticate the root-signed
+canonical public config only with that read-only baked resource. The immutable core
+is a dm-verity snapshot and both receipt signatures cover the same domain-separated
+canonical body bytes.
 
 A verifier without the baked root may run only with explicit `--diagnostic-mode`
 (and, for signed fixtures, `--diagnostic-root-public-key-hex`). Diagnostic results
@@ -462,7 +469,7 @@ bash -n scripts/no1_008a_operator.sh
 ```
 
 A real `run` is Linux/root-only, requires digest-pinned preloaded images and
-root-owned mode-0400 raw key files, and applies `--network none`, a network-deny
+root-owned mode-0400 executor/approver key files plus the external audit-authority socket, and applies `--network none`, a network-deny
 seccomp profile, a read-only root filesystem, all-capability drop, and isolated
 mounts. It is intentionally not run in ordinary CI. No evidence in this change
 marks NO1-008A complete: all claims remain `E0` / `NOT_EVALUATED`, non-publishable,
