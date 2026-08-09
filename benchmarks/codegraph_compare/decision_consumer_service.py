@@ -32,6 +32,9 @@ from benchmarks.codegraph_compare.service_runtime import (
     verify_service_launch_attestation,
     wait_for_launch_release,
 )
+from benchmarks.codegraph_compare.sqlite_ledger_validation import (
+    validate_decision_ledger,
+)
 from benchmarks.codegraph_compare.trust_anchor import baked_root_public_key
 from benchmarks.codegraph_compare.verifier import parse_public_config
 from benchmarks.codegraph_compare.verifier_service import LEDGER_DOMAIN, VERDICT_DOMAIN
@@ -227,6 +230,7 @@ class DecisionLedger:
         finally:
             db.close()
         os.chmod(path, 0o600)
+        validate_decision_ledger(self)
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=30, isolation_level=None)
@@ -351,6 +355,8 @@ def _verify_decision_receipt(
         or body.get("decision_contract_sha256") != digest
         or body.get("manifest_sha256") != envelope["manifest_sha256"]
         or body.get("verdict_status") != "SETUP_QUALIFIED"
+        or body.get("service_identity")
+        != config["trusted"]["decision_consumer_runtime"]["measurement"]
     ):
         raise ValueError(
             "decision receipt is not bound to requested decision and manifest"

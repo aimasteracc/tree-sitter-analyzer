@@ -15,6 +15,9 @@ from types import TracebackType
 from typing import Any, cast
 
 from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+from benchmarks.codegraph_compare.sqlite_ledger_validation import (
+    validate_challenge_ledger,
+)
 
 GENESIS = "0" * 64
 EVENTS = frozenset({"CHALLENGED", "VERIFYING", "CONSUMED", "FAILED"})
@@ -76,6 +79,7 @@ class ChallengeLedger:
             finally:
                 db.close()
             os.chmod(path, 0o600)
+            validate_challenge_ledger(self)
             info = os.stat(path, follow_symlinks=False)
             if (
                 not stat.S_ISREG(info.st_mode)

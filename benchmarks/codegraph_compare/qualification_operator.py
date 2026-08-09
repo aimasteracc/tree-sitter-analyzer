@@ -22,6 +22,9 @@ from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 from benchmarks.codegraph_compare.verifier import parse_public_config
 from benchmarks.codegraph_compare.verifier_service import request_verdict
 
+_SERIAL_SERVICE_PHASES = 5  # authority, executor, approver, verifier, decision
+_CONTRACT_EXPIRY_MARGIN_SECONDS = 30
+
 
 def _fsync_directory(path: Path) -> None:
     descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
@@ -84,12 +87,12 @@ def _run_impl(args: argparse.Namespace) -> int:
         raise ValueError(
             "all fourteen run contracts must bind the common offline decision"
         )
-    if any(
-        type(contract.get("expires_at_ns")) is not int
-        or contract["expires_at_ns"] <= time.time_ns()
-        for contract in contracts.values()
-    ):
-        raise ValueError("root-signed run contract is expired")
+    expiries = {contract.get("expires_at_ns") for contract in contracts.values()}
+    if len(expiries) != 1 or any(type(value) is not int for value in expiries):
+        raise ValueError("all fourteen run contracts must have one exact expiry")
+    common_expiry = expiries.pop()
+    if common_expiry != decision_contract["expires_at_ns"]:
+        raise ValueError("run contracts and offline decision must share one expiry")
     correlation_nonce = nonces.pop()
     if type(correlation_nonce) is not str or len(correlation_nonce) != 64:
         raise ValueError("root-signed correlation nonce invalid")
@@ -114,7 +117,17 @@ def _run_impl(args: argparse.Namespace) -> int:
             raise ValueError("staged plan does not match offline decision cell hash")
     if decision_contract["plan_set_hash"] != config["trusted"]["plan_set_hash"]:
         raise ValueError("offline decision plan set is not root-config authorized")
-    deadline = time.monotonic() + sum(value * 4 for value in plan_timeouts.values())
+    phase_budget_seconds = sum(plan_timeouts.values())
+    serial_budget_seconds = phase_budget_seconds * _SERIAL_SERVICE_PHASES
+    required_lifetime_ns = (
+        serial_budget_seconds + _CONTRACT_EXPIRY_MARGIN_SECONDS
+    ) * 1_000_000_000
+    if common_expiry - time.time_ns() < required_lifetime_ns:
+        raise TimeoutError(
+            "common exact-14 contract lifetime is below closed serial budget"
+        )
+    # Stop service work before the separately reserved expiry safety margin.
+    deadline = time.monotonic() + serial_budget_seconds
     for identity in EXPECTED_CELLS:
         contract = contracts[identity]
         if contract["expires_at_ns"] <= time.time_ns():

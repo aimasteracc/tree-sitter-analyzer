@@ -12036,7 +12036,9 @@ def test_qualification_v3_decision_commit_disconnect_queries_original_receipt(
         "manifest_sha256": envelope["manifest_sha256"],
         "verdict_status": "SETUP_QUALIFIED",
         "consumed_at_ns": 1,
-        "service_identity": {},
+        "service_identity": config["trusted"]["decision_consumer_runtime"][
+            "measurement"
+        ],
     }
     receipt = {
         "receipt": body,
@@ -12799,6 +12801,7 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
         (job / "plan.json").write_bytes(canonical_json_bytes(plan))
     decision = {
         "decision_id": "b" * 64,
+        "expires_at_ns": 10**30,
         "plan_set_hash": "c" * 64,
         "cells": [
             {
@@ -12856,7 +12859,7 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
     with pytest.raises(RuntimeError, match="observed authority timeout"):
         qualification_operator._run_impl(args)
 
-    assert observed == [559.0]
+    assert observed == [699.0]
     assert plans[0]["wall_timeout_seconds"] == 10
 
 
@@ -14255,6 +14258,206 @@ def test_ext4_image_sizing_uses_sealed_core_usage(tmp_path: Path):
     (core / "index" / "data").write_bytes(b"x")
 
     assert _ext4_image_size(core, 128 * 1024 * 1024) == 68 * 1024 * 1024
+
+
+@pytest.mark.parametrize(
+    ("statement", "message"),
+    (
+        ("UPDATE events SET counter=3 WHERE counter=2", "counter discontinuity"),
+        (
+            "UPDATE events SET prev_hash=printf('%064d',9) WHERE counter=2",
+            "previous hash mismatch",
+        ),
+        (
+            "UPDATE events SET record_hash=printf('%064d',8) WHERE counter=2",
+            "record hash mismatch",
+        ),
+        ("UPDATE meta SET head_hash=printf('%064d',7)", "meta head mismatch"),
+        ("UPDATE challenges SET state='CONSUMED'", "materialized state mismatch"),
+    ),
+)
+def test_verifier_ledger_startup_rejects_persisted_chain_corruption(
+    tmp_path: Path, monkeypatch, statement: str, message: str
+):
+    # PR #1249 review 3744588266: no lease may extend a corrupted durable chain.
+    import sqlite3
+
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    leases = []
+    monkeypatch.setattr(
+        ChallengeLedger, "_acquire_lease", lambda _self: leases.append("lease")
+    )
+    path = tmp_path / "verifier.sqlite"
+    ledger = ChallengeLedger(path)
+    challenge = ledger.begin("a" * 64)["challenge"]
+    ledger.start_verifying("a" * 64, challenge)
+    db = sqlite3.connect(path)
+    try:
+        db.execute(statement)
+        db.commit()
+    finally:
+        db.close()
+    leases.clear()
+
+    with pytest.raises(ValueError, match=message):
+        ChallengeLedger(path)
+
+    assert leases == []
+
+
+def test_decision_receipt_rejects_stale_configured_service_identity():
+    # PR #1249 review 3744588264: a retained key cannot authorize an old runtime.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    config = _qualification_v3_public_config()
+    contract = {"decision_id": "d" * 64}
+    envelope = {"manifest_sha256": "e" * 64}
+    body = {
+        "schema_version": 1,
+        "decision_id": contract["decision_id"],
+        "decision_contract_sha256": hashlib.sha256(
+            canonical_json_bytes(contract)
+        ).hexdigest(),
+        "manifest_sha256": envelope["manifest_sha256"],
+        "verdict_status": "SETUP_QUALIFIED",
+        "consumed_at_ns": 1,
+        "service_identity": {"stale": True},
+    }
+    reply = {
+        "receipt": body,
+        "key_id": config["decision_consumer"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": Ed25519PrivateKey.from_private_bytes(b"\x66" * 32)
+        .sign(consumer.RECEIPT_DOMAIN + canonical_json_bytes(body))
+        .hex(),
+    }
+
+    with pytest.raises(ValueError, match="not bound"):
+        consumer._verify_decision_receipt(reply, contract, envelope, config)
+
+
+def test_operator_rejects_short_common_lifetime_before_first_cell(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744588269: closed serial budget failure consumes no job.
+    from benchmarks.codegraph_compare import qualification_operator as operator
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        canonical_json_bytes,
+        canonical_plan_hash,
+    )
+    from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
+
+    now = 1_000_000_000_000
+    expiry = now + 729 * 1_000_000_000 - 1
+    contracts_dir = tmp_path / "contracts"
+    staged_root = tmp_path / "staged"
+    contracts_dir.mkdir()
+    staged_root.mkdir()
+    plans = []
+    contracts = []
+    for ordinal, (repo, arm) in enumerate(EXPECTED_CELLS):
+        plan = {
+            "cell": {"repo_id": repo, "arm_id": arm, "attempt": 1},
+            "wall_timeout_seconds": 10,
+        }
+        plans.append(plan)
+        job_id = f"{ordinal + 1:064x}"
+        contract = {
+            "job_id": job_id,
+            "cell": plan["cell"],
+            "nonce": "a" * 64,
+            "decision_id": "b" * 64,
+            "expires_at_ns": expiry,
+        }
+        contracts.append(contract)
+        job = staged_root / job_id
+        job.mkdir()
+        (job / "plan.json").write_bytes(canonical_json_bytes(plan))
+    decision = {
+        "decision_id": "b" * 64,
+        "expires_at_ns": expiry,
+        "plan_set_hash": "c" * 64,
+        "cells": [
+            {
+                "repo_id": repo,
+                "arm_id": arm,
+                "plan_sha256": canonical_plan_hash(plan),
+            }
+            for (repo, arm), plan in zip(EXPECTED_CELLS, plans, strict=True)
+        ],
+    }
+    decision_path = tmp_path / "decision.json"
+    decision_path.write_bytes(canonical_json_bytes(decision))
+    digest = hashlib.sha256(canonical_json_bytes(decision)).hexdigest()
+    for ordinal, contract in enumerate(contracts):
+        contract["decision_contract_sha256"] = digest
+        (contracts_dir / f"{ordinal}.json").write_bytes(canonical_json_bytes(contract))
+    config_path = tmp_path / "public.json"
+    config_path.write_bytes(b"{}")
+    monkeypatch.setattr(
+        operator,
+        "parse_public_config",
+        lambda _raw: {
+            "auditor": {"peer_uid": 0},
+            "trusted": {"plan_set_hash": "c" * 64},
+        },
+    )
+    monkeypatch.setattr(operator, "verify_decision_contract", lambda value: value)
+    monkeypatch.setattr(operator.time, "time_ns", lambda: now)
+    callbacks = []
+    monkeypatch.setattr(operator, "run_cell", lambda *_args: callbacks.append("cell"))
+    args = SimpleNamespace(
+        public_config=str(config_path),
+        contracts_dir=str(contracts_dir),
+        decision_contract=str(decision_path),
+        staged_root=str(staged_root),
+        authority_socket=str(tmp_path / "authority.sock"),
+    )
+
+    with pytest.raises(TimeoutError, match="closed serial budget"):
+        operator._run_impl(args)
+
+    assert callbacks == []
+
+
+def test_decision_ledger_startup_rejects_corrupt_persisted_receipt(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744588266: decision SQLite is validated before listening.
+    import sqlite3
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    parent = tmp_path / "decision-ledger"
+    parent.mkdir(mode=0o700)
+    real_stat = consumer.os.stat
+
+    def service_stat(path, *args, **kwargs):
+        metadata = real_stat(path, *args, **kwargs)
+        if Path(path) == parent:
+            return SimpleNamespace(st_uid=904, st_mode=stat.S_IFDIR | 0o700)
+        return metadata
+
+    monkeypatch.setattr(consumer.os, "stat", service_stat)
+    monkeypatch.setattr(consumer.os, "access", lambda *_args: True)
+    path = parent / "decisions.sqlite"
+    consumer.DecisionLedger(path)
+    db = sqlite3.connect(path)
+    try:
+        db.execute(
+            "INSERT INTO consumed VALUES(?,?,?,?,?)",
+            ("a" * 64, "b" * 64, "c" * 64, 1, b"{}\n"),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    with pytest.raises(ValueError, match="receipt is not canonical"):
+        consumer.DecisionLedger(path)
 
 
 _mark_posix_qualification_section_tests()
