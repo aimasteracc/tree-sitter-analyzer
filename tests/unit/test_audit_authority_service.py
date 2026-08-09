@@ -110,7 +110,7 @@ def test_aggregate_retains_production_top_level_failure_reason():
     from benchmarks.codegraph_compare.verifier_aggregate import aggregate_verdict
 
     result = aggregate_verdict({}, public_config={})
-    assert result["authorization"] == "PRODUCTION_ROOT"
+    assert result["authorization"] == "PRODUCTION_VERIFIER"
     assert result["top_level_reasons"] == [
         "TOP_LEVEL_INVALID:ValueError:manifest has unknown or missing fields"
     ]

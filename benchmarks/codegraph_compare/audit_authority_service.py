@@ -10,6 +10,7 @@ import socket
 import stat
 import struct
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
-    strict_json_loads,
+)
+from benchmarks.codegraph_compare.service_runtime import (
+    peer_allowed,
+    read_frame,
+    secure_key,
 )
 from benchmarks.codegraph_compare.trust_anchor import baked_root_public_key
 
@@ -83,42 +88,24 @@ def verify_contract(request: Any) -> Mapping[str, Any]:
 
 
 def _read_frame(connection: socket.socket) -> Any:
-    header = connection.recv(4)
-    if len(header) != 4:
-        raise ValueError("authority request header absent")
-    size = struct.unpack("!I", header)[0]
-    if size < 2 or size > MAX_MESSAGE:
-        raise ValueError("authority request size invalid")
-    payload = bytearray()
-    while len(payload) < size:
-        chunk = connection.recv(size - len(payload))
-        if not chunk:
-            raise ValueError("authority request truncated")
-        payload.extend(chunk)
-    return strict_json_loads(bytes(payload))
+    return read_frame(
+        connection, MAX_MESSAGE, READ_DEADLINE_SECONDS, "authority request"
+    )
 
 
 def _write_frame(connection: socket.socket, value: Mapping[str, Any]) -> None:
     payload = canonical_json_bytes(value)
+    if len(payload) > MAX_MESSAGE:
+        raise ValueError("authority response exceeds protocol bound")
     connection.sendall(struct.pack("!I", len(payload)) + payload)
 
 
+_KEY_FDS: list[int] = []
+
+
 def _load_key(path: Path) -> Ed25519PrivateKey:
-    descriptor = os.open(
-        path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
-    )
-    try:
-        metadata = os.fstat(descriptor)
-        raw = os.read(descriptor, 33)
-    finally:
-        os.close(descriptor)
-    if (
-        not stat.S_ISREG(metadata.st_mode)
-        or metadata.st_uid != 0
-        or stat.S_IMODE(metadata.st_mode) != 0o400
-        or len(raw) != 32
-    ):
-        raise ValueError("authority key must be root-owned 0400 raw Ed25519")
+    descriptor, raw = secure_key(path, 0)
+    _KEY_FDS.append(descriptor)
     return Ed25519PrivateKey.from_private_bytes(raw)
 
 
@@ -166,6 +153,12 @@ def _artifact_descriptor(
             path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
         )
         try:
+            opened = os.fstat(descriptor)
+            if (opened.st_dev, opened.st_ino) != (
+                metadata.st_dev,
+                metadata.st_ino,
+            ) or not stat.S_ISREG(opened.st_mode):
+                raise ValueError("artifact identity changed while opening")
             sha = hashlib.sha256()
             size = 0
             while chunk := os.read(descriptor, 1024 * 1024):
@@ -196,11 +189,13 @@ def serve_once(
     key_id: str,
     runner: Callable[[Mapping[str, Any]], Mapping[str, Any]],
     artifact_root: Path | None = None,
+    allowed_client_uid: int | None = None,
 ) -> None:
     connection, _ = listener.accept()
-    connection.settimeout(READ_DEADLINE_SECONDS)
     reply: Mapping[str, Any] | None = None
     try:
+        if allowed_client_uid is not None:
+            peer_allowed(connection, allowed_client_uid)
         contract = verify_contract(_read_frame(connection))
         result = _exact(
             runner(contract), frozenset({"audit", "artifacts"}), "runner result"
@@ -259,6 +254,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--key-id", required=True)
     parser.add_argument("--staged-root", required=True)
     parser.add_argument("--artifact-root", required=True)
+    parser.add_argument("--allowed-client-uid", required=True, type=int)
+    parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args(argv)
     if os.geteuid() != 0 or platform.system() != "Linux":
         raise SystemExit("authority service requires Linux root")
@@ -270,15 +267,27 @@ def main(argv: list[str] | None = None) -> int:
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(str(path))
     os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP)
-    listener.listen(16)
-    while True:
-        serve_once(
-            listener,
-            key=key,
-            key_id=args.key_id,
-            runner=runner,
-            artifact_root=Path(args.artifact_root).resolve(strict=True),
-        )
+    listener.listen(args.workers)
+
+    def worker() -> None:
+        while True:
+            serve_once(
+                listener,
+                key=key,
+                key_id=args.key_id,
+                runner=runner,
+                artifact_root=Path(args.artifact_root).resolve(strict=True),
+                allowed_client_uid=args.allowed_client_uid,
+            )
+
+    with ThreadPoolExecutor(
+        max_workers=args.workers, thread_name_prefix="authority"
+    ) as pool:
+        futures = [pool.submit(worker) for _ in range(args.workers)]
+        for future in futures:
+            future.result()
+
+    return 0
 
 
 if __name__ == "__main__":

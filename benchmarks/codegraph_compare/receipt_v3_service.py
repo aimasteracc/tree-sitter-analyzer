@@ -16,6 +16,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,12 @@ from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
 )
+from benchmarks.codegraph_compare.service_runtime import (
+    measure_runtime,
+    peer_allowed,
+    read_frame,
+    secure_key,
+)
 from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
 from benchmarks.codegraph_compare.verifier import parse_public_config
 
@@ -37,24 +44,19 @@ SERVICE_RESPONSE_DOMAIN = b"NO1-008A-RECEIPT-SERVICE-RESPONSE-V1\0"
 READ_DEADLINE_SECONDS = 10
 
 
-def _frame(connection: socket.socket) -> dict[str, Any]:
-    header = connection.recv(4)
-    if len(header) != 4:
-        raise ValueError("service request header absent")
-    size = struct.unpack("!I", header)[0]
-    if size < 2 or size > MAX_MESSAGE:
-        raise ValueError("service request size invalid")
-    payload = bytearray()
-    while len(payload) < size:
-        chunk = connection.recv(size - len(payload))
-        if not chunk:
-            raise ValueError("service request truncated")
-        payload.extend(chunk)
-    return strict_json_loads(bytes(payload))
+def _frame(
+    connection: socket.socket, seconds: float = READ_DEADLINE_SECONDS
+) -> dict[str, Any]:
+    value = read_frame(connection, MAX_MESSAGE, seconds, "receipt service request")
+    if type(value) is not dict:
+        raise ValueError("receipt service frame must be an object")
+    return value
 
 
 def _send(connection: socket.socket, value: dict[str, Any]) -> None:
     payload = canonical_json_bytes(value)
+    if len(payload) > MAX_MESSAGE:
+        raise ValueError("receipt service response exceeds protocol bound")
     connection.sendall(struct.pack("!I", len(payload)) + payload)
 
 
@@ -115,9 +117,37 @@ def _regular(root: Path, relative: str) -> Path:
     return path
 
 
+class PinnedPaths(dict[str, Path]):
+    """Paths represented only by retained descriptors after identity validation."""
+
+    def __init__(self, values: dict[str, Path]):
+        super().__init__()
+        self.fds: list[int] = []
+        try:
+            for name, path in values.items():
+                flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+                if name == "core":
+                    flags |= getattr(os, "O_DIRECTORY", 0)
+                fd = os.open(path, flags)
+                metadata = os.fstat(fd)
+                if name == "core" and not stat.S_ISDIR(metadata.st_mode):
+                    raise ValueError("pinned core changed identity")
+                if name != "core" and not stat.S_ISREG(metadata.st_mode):
+                    raise ValueError("pinned artifact changed identity")
+                self.fds.append(fd)
+                self[name] = Path(f"/proc/self/fd/{fd}")
+        except Exception:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        while self.fds:
+            os.close(self.fds.pop())
+
+
 def _paths(
     response: dict[str, Any], artifact_root: Path, staged_root: Path
-) -> dict[str, Path]:
+) -> PinnedPaths:
     job_id = response["job_id"]
     result: dict[str, Path] = {}
     for item in response["artifacts"]:
@@ -169,7 +199,7 @@ def _paths(
         "public-config.json",
     ):
         result[name] = _regular(staged_root, f"{job_id}/{name}")
-    return result
+    return PinnedPaths(result)
 
 
 def _verity(path: Path) -> dict[str, str]:
@@ -273,22 +303,37 @@ def _sign(
         )
         if type(plan_timeout) is not int or plan_timeout < 1:
             raise ValueError("service plan timeout invalid")
-        completed = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "benchmarks.codegraph_compare.receipt_v3_signer",
-                *command,
-            ],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=plan_timeout + 120,
-        )
-        if completed.returncode:
-            raise ValueError(
-                f"{role} independent verification failed: {completed.stderr[:200]!r}"
+        try:
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "benchmarks.codegraph_compare.receipt_v3_signer",
+                    *command,
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+                pass_fds=tuple(paths.fds)
+                + ((int(key.name),) if str(key).startswith("/proc/self/fd/") else ()),
             )
-        return response["job_id"], strict_json_loads(completed.stdout)
+            try:
+                stdout, stderr = process.communicate(timeout=plan_timeout)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, 9)
+                process.communicate()
+                raise TimeoutError(
+                    f"{role} verification cancelled at plan deadline"
+                ) from None
+            if process.returncode:
+                raise ValueError(
+                    f"{role} independent verification failed: {stderr[:200]!r}"
+                )
+            result = strict_json_loads(stdout)
+            return response["job_id"], result
+        finally:
+            paths.close()
 
 
 def serve_once(
@@ -299,30 +344,29 @@ def serve_once(
     artifact_root: Path,
     staged_root: Path,
     key: Path,
+    signer: Ed25519PrivateKey,
+    measurement: dict[str, Any],
+    allowed_client_uid: int,
 ) -> None:
     connection, _ = listener.accept()
-    connection.settimeout(READ_DEADLINE_SECONDS)
     try:
+        peer_allowed(connection, allowed_client_uid)
         job_id, result = _sign(
             role, _frame(connection), config, artifact_root, staged_root, key
         )
-        service_identity = {
-            "image_digest": config["trusted"]["images"][role],
-            "closure_manifest_sha256": config[role]["service_measurement"],
-        }
+        service_identity = measurement
         response = {
             "job_id": job_id,
             "receipt": result,
             "service_identity": service_identity,
         }
-        raw_key = key.read_bytes()
         reply = {
             "response": response,
             "key_id": config[role]["key_id"],
             "algorithm": "Ed25519",
-            "signature": Ed25519PrivateKey.from_private_bytes(raw_key)
-            .sign(SERVICE_RESPONSE_DOMAIN + canonical_json_bytes(response))
-            .hex(),
+            "signature": signer.sign(
+                SERVICE_RESPONSE_DOMAIN + canonical_json_bytes(response)
+            ).hex(),
         }
     except Exception as error:
         reply = {"error": type(error).__name__, "reason": str(error)}
@@ -341,7 +385,7 @@ def request_receipt(
     authority_response: dict[str, Any],
     config: dict[str, Any],
     draft: dict[str, Any] | None = None,
-    timeout: int = 360,
+    timeout: float = 360,
 ) -> dict[str, Any]:
     service = config[role]
     request: dict[str, Any] = {
@@ -367,9 +411,11 @@ def request_receipt(
         if uid != service["peer_uid"]:
             raise ValueError(f"{role} service peer UID mismatch")
         payload = canonical_json_bytes(request)
+        if len(payload) > MAX_MESSAGE:
+            raise ValueError("receipt service request exceeds protocol bound")
         client.sendall(struct.pack("!I", len(payload)) + payload)
         client.shutdown(socket.SHUT_WR)
-        reply = _frame(client)
+        reply = _frame(client, timeout)
     finally:
         client.close()
     if set(reply) == {"error", "reason"}:
@@ -383,10 +429,7 @@ def request_receipt(
     }:
         raise ValueError(f"{role} service response binding mismatch")
     response = reply["response"]
-    expected_identity = {
-        "image_digest": config["trusted"]["images"][role],
-        "closure_manifest_sha256": service["service_measurement"],
-    }
+    expected_identity = config["trusted"][f"{role}_runtime"]["measurement"]
     if (
         type(response) is not dict
         or set(response) != {"job_id", "receipt", "service_identity"}
@@ -414,23 +457,45 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--public-config", required=True)
     parser.add_argument("--artifact-root", required=True)
     parser.add_argument("--staged-root", required=True)
+    parser.add_argument("--allowed-client-uid", required=True, type=int)
+    parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args(argv)
     config = parse_public_config(Path(args.public_config).read_bytes())
     if os.geteuid() != config[args.role]["peer_uid"]:
         raise SystemExit("receipt service UID does not match root-signed identity")
+    key_fd, key_raw = secure_key(Path(args.private_key), os.geteuid())
+    key_path = Path(f"/proc/self/fd/{key_fd}")
+    signer = Ed25519PrivateKey.from_private_bytes(key_raw)
+    measurement = measure_runtime(
+        config["trusted"][f"{args.role}_runtime"]["measurement"]
+    )
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(args.socket)
     os.chmod(args.socket, 0o660)  # nosec B103
-    listener.listen(16)
-    while True:
-        serve_once(
-            listener,
-            role=args.role,
-            config=config,
-            artifact_root=Path(args.artifact_root).resolve(strict=True),
-            staged_root=Path(args.staged_root).resolve(strict=True),
-            key=Path(args.private_key).resolve(strict=True),
-        )
+    listener.listen(args.workers)
+
+    def worker() -> None:
+        while True:
+            serve_once(
+                listener,
+                role=args.role,
+                config=config,
+                artifact_root=Path(args.artifact_root).resolve(strict=True),
+                staged_root=Path(args.staged_root).resolve(strict=True),
+                key=key_path,
+                signer=signer,
+                measurement=measurement,
+                allowed_client_uid=args.allowed_client_uid,
+            )
+
+    with ThreadPoolExecutor(
+        max_workers=args.workers, thread_name_prefix=args.role
+    ) as pool:
+        futures = [pool.submit(worker) for _ in range(args.workers)]
+        for future in futures:
+            future.result()
+
+    return 0
 
 
 if __name__ == "__main__":

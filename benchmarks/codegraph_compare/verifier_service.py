@@ -9,6 +9,8 @@ import socket
 import stat
 import struct
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -23,16 +25,24 @@ from benchmarks.codegraph_compare.receipt_v3 import (
     strict_json_loads,
 )
 from benchmarks.codegraph_compare.receipt_v3_service import _paths, _verify_authority
+from benchmarks.codegraph_compare.service_runtime import (
+    measure_runtime,
+    peer_allowed,
+    read_frame,
+    secure_key,
+)
 from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 from benchmarks.codegraph_compare.verifier import parse_public_config
 from benchmarks.codegraph_compare.verifier_aggregate import (
     _validate_verdict_schema,
     aggregate_verdict,
 )
+from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
 
 MAX_FRAME = 64 * 1024 * 1024
 READ_DEADLINE_SECONDS = 10
-VERDICT_DOMAIN = b"NO1-008A-EXTERNAL-VERIFIER-VERDICT-V1\0"
+VERDICT_DOMAIN = b"NO1-008A-EXTERNAL-VERIFIER-VERDICT-V2\0"
+CHALLENGE_DOMAIN = b"NO1-008A-EXTERNAL-VERIFIER-CHALLENGE-V1\0"
 _HEX = frozenset("0123456789abcdef")
 
 
@@ -42,20 +52,13 @@ def _hex64(value: Any, label: str) -> str:
     return value
 
 
-def _frame(connection: socket.socket) -> dict[str, Any]:
-    header = connection.recv(4)
-    if len(header) != 4:
-        raise ValueError("verifier request header absent")
-    size = struct.unpack("!I", header)[0]
-    if size < 2 or size > MAX_FRAME:
-        raise ValueError("verifier request size invalid")
-    payload = bytearray()
-    while len(payload) < size:
-        chunk = connection.recv(min(size - len(payload), 1024 * 1024))
-        if not chunk:
-            raise ValueError("verifier request truncated")
-        payload.extend(chunk)
-    return strict_json_loads(bytes(payload))
+def _frame(
+    connection: socket.socket, seconds: float = READ_DEADLINE_SECONDS
+) -> dict[str, Any]:
+    value = read_frame(connection, MAX_FRAME, seconds, "verifier request")
+    if type(value) is not dict:
+        raise ValueError("verifier frame must be an object")
+    return value
 
 
 def _send(connection: socket.socket, value: dict[str, Any]) -> None:
@@ -137,21 +140,36 @@ def _load_manifest(
         audit = temporary / f"audit-{ordinal:02d}.json"
         audit.write_bytes(canonical_json_bytes(response["audit"]))
         os.chmod(audit, 0o400)
+        plan = strict_json_loads(paths["plan.json"].read_bytes())
+        inventory = strict_json_loads(paths["inventory.json"].read_bytes())
+        evidence_names = (
+            "data.img",
+            "hash.img",
+            "source-snapshot.tar",
+            "tool",
+            "config",
+            "seccomp",
+        )
+        evidence = {
+            name: f"/proc/self/fd/{os.dup(int(paths[name].name))}"
+            for name in evidence_names
+        }
+        paths.close()
         loaded_cells.append(
             {
                 "repo_id": identity[0],
                 "arm_id": identity[1],
                 "attempt": 1,
-                "plan": strict_json_loads(paths["plan.json"].read_bytes()),
-                "inventory": strict_json_loads(paths["inventory.json"].read_bytes()),
+                "plan": plan,
+                "inventory": inventory,
                 "receipt": item["receipt"],
-                "data_image": str(paths["data.img"]),
-                "hash_image": str(paths["hash.img"]),
+                "data_image": evidence["data.img"],
+                "hash_image": evidence["hash.img"],
                 "process_audit": str(audit),
-                "source_snapshot": str(paths["source-snapshot.tar"]),
-                "tool": str(paths["tool"]),
-                "config": str(paths["config"]),
-                "seccomp": str(paths["seccomp"]),
+                "source_snapshot": evidence["source-snapshot.tar"],
+                "tool": evidence["tool"],
+                "config": evidence["config"],
+                "seccomp": evidence["seccomp"],
             }
         )
     loaded = {
@@ -173,23 +191,43 @@ def _verify(
     artifact_root: Path,
     staged_root: Path,
     key: Ed25519PrivateKey,
+    ledger: ChallengeLedger,
+    measurement: dict[str, Any],
 ) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="no1-008a-verifier-") as directory:
         manifest, digest, challenge = _load_manifest(
             request, config, artifact_root, staged_root, Path(directory)
         )
-        verdict = aggregate_verdict(manifest, public_config=config)
+        history = ledger.consume(digest, challenge)
+        pinned = {
+            int(Path(cell[name]).name)
+            for cell in manifest["cells"]
+            for name in (
+                "plan",
+                "inventory",
+                "data_image",
+                "hash_image",
+                "source_snapshot",
+                "tool",
+                "config",
+                "seccomp",
+            )
+            if str(cell[name]).startswith("/proc/self/fd/")
+        }
+        try:
+            verdict = aggregate_verdict(manifest, public_config=config)
+        finally:
+            for descriptor in pinned:
+                os.close(descriptor)
     _validate_verdict_schema(verdict)
-    identity = {
-        "image_digest": config["trusted"]["images"]["verifier"],
-        "image_id": config["trusted"]["image_ids"]["verifier"],
-        "closure_manifest_sha256": config["verifier"]["service_measurement"],
-    }
     signed = {
         "manifest_sha256": digest,
         "challenge": challenge,
+        "ledger_counter": history["counter"],
+        "ledger_prev_hash": history["prev_hash"],
+        "issued_at_ns": history["issued_at_ns"],
         "verdict": verdict,
-        "service_identity": identity,
+        "service_identity": measurement,
     }
     return {
         **signed,
@@ -206,11 +244,40 @@ def serve_once(
     artifact_root: Path,
     staged_root: Path,
     key: Ed25519PrivateKey,
+    ledger: ChallengeLedger,
+    measurement: dict[str, Any],
+    allowed_client_uid: int,
 ) -> None:
     connection, _ = listener.accept()
-    connection.settimeout(READ_DEADLINE_SECONDS)
     try:
-        reply = _verify(_frame(connection), config, artifact_root, staged_root, key)
+        peer_allowed(connection, allowed_client_uid)
+        request = _frame(connection)
+        if (
+            set(request) == {"operation", "manifest_sha256"}
+            and request["operation"] == "begin-exact-14"
+        ):
+            digest = _hex64(request["manifest_sha256"], "manifest hash")
+            record = ledger.begin(digest)
+            signed = {
+                "manifest_sha256": digest,
+                "challenge": record["challenge"],
+                "ledger_counter": record["counter"],
+                "ledger_prev_hash": record["prev_hash"],
+                "issued_at_ns": record["issued_at_ns"],
+                "service_identity": measurement,
+            }
+            reply = {
+                **signed,
+                "key_id": config["verifier"]["key_id"],
+                "algorithm": "Ed25519",
+                "signature": key.sign(
+                    CHALLENGE_DOMAIN + canonical_json_bytes(signed)
+                ).hex(),
+            }
+        else:
+            reply = _verify(
+                request, config, artifact_root, staged_root, key, ledger, measurement
+            )
     except Exception as error:
         reply = {"error": type(error).__name__, "reason": str(error)}
     try:
@@ -221,69 +288,117 @@ def serve_once(
         connection.close()
 
 
-def request_verdict(
-    *,
-    socket_path: Path,
-    manifest: dict[str, Any],
-    challenge: str,
-    config: dict[str, Any],
-    timeout: int,
+def _round_trip(
+    socket_path: Path, request: dict[str, Any], config: dict[str, Any], timeout: float
 ) -> dict[str, Any]:
-    raw = canonical_json_bytes(manifest)
-    digest = hashlib.sha256(raw).hexdigest()
-    request = {
-        "operation": "verify-exact-14",
-        "challenge": challenge,
-        "manifest_bytes": raw.decode("utf-8"),
-        "manifest_sha256": digest,
-    }
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(timeout)
+    deadline = time.monotonic() + timeout
     try:
+        client.settimeout(max(0.001, deadline - time.monotonic()))
         client.connect(str(socket_path))
         option = getattr(socket, "SO_PEERCRED", None)
         if option is None:
             raise ValueError("Unix peer credentials unavailable")
-        _pid, uid, _gid = struct.unpack(
+        pid, uid, _gid = struct.unpack(
             "3i", client.getsockopt(socket.SOL_SOCKET, option, 12)
         )
-        if uid != config["verifier"]["peer_uid"]:
+        if pid <= 0 or uid != config["verifier"]["peer_uid"]:
             raise ValueError("external verifier peer UID mismatch")
         _send(client, request)
         client.shutdown(socket.SHUT_WR)
-        envelope = _frame(client)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("verifier overall deadline expired")
+        client.settimeout(remaining)
+        return _frame(client, remaining)
     finally:
         client.close()
-    if set(envelope) == {"error", "reason"}:
+
+
+def request_verdict(
+    *,
+    socket_path: Path,
+    manifest: dict[str, Any],
+    config: dict[str, Any],
+    timeout: float,
+) -> dict[str, Any]:
+    """Obtain a service-issued challenge then consume it once for this manifest."""
+    raw = canonical_json_bytes(manifest)
+    digest = hashlib.sha256(raw).hexdigest()
+    deadline = time.monotonic() + timeout
+    begin = _round_trip(
+        socket_path,
+        {"operation": "begin-exact-14", "manifest_sha256": digest},
+        config,
+        deadline - time.monotonic(),
+    )
+    begin_keys = {
+        "manifest_sha256",
+        "challenge",
+        "ledger_counter",
+        "ledger_prev_hash",
+        "issued_at_ns",
+        "service_identity",
+        "key_id",
+        "algorithm",
+        "signature",
+    }
+    if (
+        type(begin) is not dict
+        or set(begin) != begin_keys
+        or begin["manifest_sha256"] != digest
+        or begin["service_identity"]
+        != config["trusted"]["verifier_runtime"]["measurement"]
+    ):
+        raise ValueError("verifier challenge envelope invalid")
+    begin_signed = {
+        key: begin[key] for key in begin_keys - {"key_id", "algorithm", "signature"}
+    }
+    Ed25519PublicKey.from_public_bytes(
+        bytes.fromhex(config["verifier"]["public_key_hex"])
+    ).verify(
+        bytes.fromhex(begin["signature"]),
+        CHALLENGE_DOMAIN + canonical_json_bytes(begin_signed),
+    )
+    request = {
+        "operation": "verify-exact-14",
+        "challenge": begin["challenge"],
+        "manifest_bytes": raw.decode("utf-8"),
+        "manifest_sha256": digest,
+    }
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("verifier overall deadline expired")
+    envelope = _round_trip(socket_path, request, config, remaining)
+    if type(envelope) is dict and set(envelope) == {"error", "reason"}:
         raise ValueError(f"external verifier rejected manifest: {envelope['reason']}")
     expected = {
         "manifest_sha256",
         "challenge",
+        "ledger_counter",
+        "ledger_prev_hash",
+        "issued_at_ns",
         "verdict",
         "service_identity",
         "key_id",
         "algorithm",
         "signature",
     }
-    runtime = config["trusted"]["verifier_runtime"]
-    identity = {
-        "image_digest": runtime["image_digest"],
-        "image_id": runtime["image_id"],
-        "closure_manifest_sha256": runtime["closure_manifest_sha256"],
-    }
     if (
         type(envelope) is not dict
         or set(envelope) != expected
         or envelope["manifest_sha256"] != digest
-        or envelope["challenge"] != challenge
-        or envelope["service_identity"] != identity
+        or envelope["challenge"] != begin["challenge"]
+        or envelope["issued_at_ns"] != begin["issued_at_ns"]
         or envelope["key_id"] != config["verifier"]["key_id"]
         or envelope["algorithm"] != "Ed25519"
+        or envelope["service_identity"] != begin["service_identity"]
+        or envelope["ledger_counter"] != begin["ledger_counter"]
+        or envelope["ledger_prev_hash"] != begin["ledger_prev_hash"]
     ):
         raise ValueError("external verifier verdict binding mismatch")
     signed = {
-        key: envelope[key]
-        for key in ("manifest_sha256", "challenge", "verdict", "service_identity")
+        key: envelope[key] for key in expected - {"key_id", "algorithm", "signature"}
     }
     Ed25519PublicKey.from_public_bytes(
         bytes.fromhex(config["verifier"]["public_key_hex"])
@@ -295,20 +410,12 @@ def request_verdict(
     return envelope
 
 
+_KEY_FDS: list[int] = []
+
+
 def _load_key(path: Path) -> Ed25519PrivateKey:
-    fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0))
-    try:
-        metadata = os.fstat(fd)
-        raw = os.read(fd, 33)
-    finally:
-        os.close(fd)
-    if (
-        not stat.S_ISREG(metadata.st_mode)
-        or metadata.st_uid != os.geteuid()
-        or stat.S_IMODE(metadata.st_mode) != 0o400
-        or len(raw) != 32
-    ):
-        raise ValueError("verifier key must be service-owned 0400 raw Ed25519")
+    fd, raw = secure_key(path, os.geteuid())
+    _KEY_FDS.append(fd)
     return Ed25519PrivateKey.from_private_bytes(raw)
 
 
@@ -319,22 +426,43 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--public-config", required=True)
     parser.add_argument("--artifact-root", required=True)
     parser.add_argument("--staged-root", required=True)
+    parser.add_argument("--ledger", required=True)
+    parser.add_argument("--allowed-client-uid", required=True, type=int)
+    parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args(argv)
     config = parse_public_config(Path(args.public_config).read_bytes())
     if os.geteuid() != config["verifier"]["peer_uid"]:
         raise SystemExit("verifier service UID does not match root-signed identity")
+    key = _load_key(Path(args.private_key))
+    runtime = config["trusted"]["verifier_runtime"]["measurement"]
+    measurement = measure_runtime(runtime)
+    ledger = ChallengeLedger(Path(args.ledger))
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(args.socket)
     os.chmod(args.socket, 0o660)  # nosec B103
-    listener.listen(16)
-    while True:
-        serve_once(
-            listener,
-            config=config,
-            artifact_root=Path(args.artifact_root).resolve(strict=True),
-            staged_root=Path(args.staged_root).resolve(strict=True),
-            key=_load_key(Path(args.private_key).resolve(strict=True)),
-        )
+    listener.listen(args.workers)
+
+    def worker() -> None:
+        while True:
+            serve_once(
+                listener,
+                config=config,
+                artifact_root=Path(args.artifact_root).resolve(strict=True),
+                staged_root=Path(args.staged_root).resolve(strict=True),
+                key=key,
+                ledger=ledger,
+                measurement=measurement,
+                allowed_client_uid=args.allowed_client_uid,
+            )
+
+    with ThreadPoolExecutor(
+        max_workers=args.workers, thread_name_prefix="verifier"
+    ) as pool:
+        futures = [pool.submit(worker) for _ in range(args.workers)]
+        for future in futures:
+            future.result()
+
+    return 0
 
 
 if __name__ == "__main__":

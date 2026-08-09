@@ -126,7 +126,7 @@ def parse_public_config(
     else:
         config = _exact(raw, PUBLIC_CONFIG_KEYS, "public config")
     if type(config["schema_version"]) is not int or config["schema_version"] not in (
-        {2, 3, 4} if diagnostic_mode else {4}
+        {2, 3, 4, 5} if diagnostic_mode else {4, 5}
     ):
         raise ValueError("public config schema is not authorized")
     if "root_signature" in config:
@@ -187,7 +187,12 @@ def parse_public_config(
             raise ValueError(f"external {role} service contract is invalid")
     if len(set(ids)) != 4 or len(set(keys)) != 4:
         raise ValueError("public signer identities must differ")
-    trusted = _exact(config["trusted"], TRUSTED_KEYS, "trusted config")
+    trusted_keys = TRUSTED_KEYS | (
+        {"executor_runtime", "approver_runtime"}
+        if config["schema_version"] == 5
+        else set()
+    )
+    trusted = _exact(config["trusted"], frozenset(trusted_keys), "trusted config")
     for name in ("plan_set_hash", "tool_sha256", "config_sha256", "seccomp_sha256"):
         if _HEX64.fullmatch(trusted[name]) is None:
             raise ValueError(f"trusted {name} invalid")
@@ -229,11 +234,17 @@ def parse_public_config(
     )
     if any(_IMAGE.fullmatch(image_ids[role]) is None for role in IMAGE_ROLES):
         raise ValueError("top-level Docker image IDs must be root-authorized")
-    for role in ("auditor", "verifier"):
+    runtime_roles = (
+        ("executor", "approver", "auditor", "verifier")
+        if config["schema_version"] == 5
+        else ("auditor", "verifier")
+    )
+    for role in runtime_roles:
+        runtime_keys = {"image_digest", "image_id", "closure_manifest_sha256"}
+        if config["schema_version"] == 5:
+            runtime_keys.add("measurement")
         runtime = _exact(
-            trusted[f"{role}_runtime"],
-            frozenset({"image_digest", "image_id", "closure_manifest_sha256"}),
-            f"{role} runtime",
+            trusted[f"{role}_runtime"], frozenset(runtime_keys), f"{role} runtime"
         )
         if (
             runtime["image_digest"] != images[role]
@@ -242,6 +253,43 @@ def parse_public_config(
             or runtime["closure_manifest_sha256"] != config[role]["service_measurement"]
         ):
             raise ValueError(f"{role} runtime authority is invalid")
+        if config["schema_version"] == 5:
+            measurement = _exact(
+                runtime["measurement"],
+                frozenset(
+                    {
+                        "interpreter_sha256",
+                        "closure_manifest",
+                        "closure_manifest_sha256",
+                        "uid",
+                        "gid",
+                        "rootfs_readonly",
+                        "allowed_writable_mounts",
+                    }
+                ),
+                f"{role} runtime measurement",
+            )
+            if (
+                measurement["closure_manifest_sha256"]
+                != runtime["closure_manifest_sha256"]
+                or measurement["closure_manifest_sha256"]
+                != config[role]["service_measurement"]
+                or _HEX64.fullmatch(measurement["interpreter_sha256"]) is None
+                or type(measurement["uid"]) is not int
+                or type(measurement["gid"]) is not int
+                or type(measurement["rootfs_readonly"]) is not bool
+                or type(measurement["allowed_writable_mounts"]) is not list
+                or any(
+                    type(path) is not str
+                    for path in measurement["allowed_writable_mounts"]
+                )
+                or type(measurement["closure_manifest"]) is not dict
+                or any(
+                    type(path) is not str or _HEX64.fullmatch(digest) is None
+                    for path, digest in measurement["closure_manifest"].items()
+                )
+            ):
+                raise ValueError(f"{role} runtime measurement authority is invalid")
     return dict(config)
 
 

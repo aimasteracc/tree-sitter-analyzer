@@ -463,19 +463,30 @@ the path fails closed rather than substituting mocks.
 
 This does not defend against a malicious authority-host root. Such root is explicitly
 trusted and can control the service, kernel, Docker daemon, cgroups, and storage.
-Executor, approver, and verifier are separate Unix services with distinct private
-keys, authorized peer UIDs, immutable images, and closure measurements in the
-root-signed public config. All root-signed cell contracts share one receipt
-correlation nonce; the operator creates a separate one-use verifier challenge. It
-submits only canonical manifest bytes plus their hash. The verifier resolves signed
-authority artifact descriptors beneath its read-only stores, recomputes all fourteen
-receipts, and returns a domain-separated signed verdict envelope binding the manifest
-hash, challenge, verdict, and verifier runtime identity. The operator persists only
-that authenticated envelope.
+Executor, approver, and verifier are separate bounded-worker Unix services with
+distinct private keys retained as validated file descriptors and server-side
+`SO_PEERCRED` UID policy. At startup each service measures the actual interpreter,
+complete loaded-project-module closure, UID/GID, read-only root filesystem, and the
+exact writable-mount set, then compares it with the root-signed runtime contract.
+Responses carry that actual measurement rather than a copied expected value.
+
+All root-signed cell contracts share one correlation nonce. The operator cannot
+choose a verifier challenge: it first submits the canonical manifest hash, and the
+verifier issues a random challenge bound to that hash and a monotonic counter in a
+durable root-owned append-only hash-chain ledger. Verification atomically consumes
+the challenge, so duplicate use and replay after service restart are rejected. The
+signed retained envelope includes the ledger counter, previous-record hash, and
+issue time as historical evidence; those fields are not claimed to prove live or
+real-time freshness. The verifier recomputes all fourteen receipts. Only a closed,
+reason-free verdict authorized as `PRODUCTION_VERIFIER` may say `SETUP_QUALIFIED`.
+The operator derives one total monotonic deadline from the fourteen signed plans;
+timeout cancels signer process groups and leaves a durable `CANCELLED` terminal
+state, while other failures leave `FAILED` and success records exact completion.
 
 Diagnostic verification always remains `E0/NOT_EVALUATED`; retained aggregate
 results include top-level authorization and failure reasons. `SETUP_QUALIFIED` is
-setup evidence only, never E2, a winner, or a publishable comparison.
+setup evidence only, never E2, a winner, a real-time freshness claim, or a
+publishable comparison.
 
 Inspect the unprivileged contract surface without Docker or keys:
 

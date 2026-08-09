@@ -169,7 +169,9 @@ def aggregate_verdict(
         "schema_version": 1,
         **CLAIMS,
         "status": "SETUP_QUALIFIED" if qualified else "NOT_EVALUATED",
-        "authorization": "DIAGNOSTIC_ONLY" if diagnostic_mode else "PRODUCTION_ROOT",
+        "authorization": "DIAGNOSTIC_ONLY"
+        if diagnostic_mode
+        else "PRODUCTION_VERIFIER",
         "top_level_reasons": top_level_reasons,
         "expected_cells": 14,
         "observed_receipts": observed_receipts,
@@ -207,12 +209,41 @@ def _validate_verdict_schema(value: Mapping[str, Any]) -> None:
     }
     if type(value) is not dict or set(value) != expected:
         raise ValueError("aggregate verdict does not match the published closed schema")
-    if value["authorization"] not in {"PRODUCTION_ROOT", "DIAGNOSTIC_ONLY"}:
+    if (
+        value["schema_version"] != 1
+        or any(value[name] != expected_value for name, expected_value in CLAIMS.items())
+        or value["status"] not in {"SETUP_QUALIFIED", "NOT_EVALUATED"}
+        or value["expected_cells"] != 14
+        or type(value["observed_receipts"]) is not int
+        or value["observed_receipts"] not in range(15)
+        or not (
+            value["attempts_per_cell"] is None
+            or type(value["attempts_per_cell"]) is int
+            and value["attempts_per_cell"] == 1
+        )
+        or type(value["counters"]) is not dict
+        or set(value["counters"]) != set(ZERO_COUNTERS)
+        or any(
+            type(counter) not in {int, float} or counter != 0
+            for counter in value["counters"].values()
+        )
+    ):
+        raise ValueError("aggregate verdict constants or counters are invalid")
+    if value["authorization"] not in {"PRODUCTION_VERIFIER", "DIAGNOSTIC_ONLY"}:
         raise ValueError("aggregate authorization invalid")
     if value["status"] == "SETUP_QUALIFIED" and (
-        value["authorization"] != "PRODUCTION_ROOT" or value["top_level_reasons"]
+        value["authorization"] != "PRODUCTION_VERIFIER"
+        or value["top_level_reasons"]
+        or value["observed_receipts"] != 14
+        or value["attempts_per_cell"] != 1
+        or len(value["cell_diagnostics"]) != 14
+        or any(
+            item.get("reasons") != []
+            for item in value["cell_diagnostics"]
+            if type(item) is dict
+        )
     ):
-        raise ValueError("only reason-free production authorization can qualify")
+        raise ValueError("only a reason-free production verifier can qualify")
     if type(value["top_level_reasons"]) is not list or any(
         type(reason) is not str for reason in value["top_level_reasons"]
     ):
@@ -225,6 +256,13 @@ def _validate_verdict_schema(value: Mapping[str, Any]) -> None:
     diagnostics = value["cell_diagnostics"]
     if type(diagnostics) is not list or len(diagnostics) > 14:
         raise ValueError("aggregate cell diagnostics invalid")
+    if len(diagnostics) == 14 and [
+        (item.get("repo_id"), item.get("arm_id"))
+        if type(item) is dict
+        else (None, None)
+        for item in diagnostics
+    ] != list(EXPECTED_CELLS):
+        raise ValueError("aggregate cell diagnostic order invalid")
     for item in diagnostics:
         if (
             type(item) is not dict

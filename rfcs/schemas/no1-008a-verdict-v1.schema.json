@@ -98,7 +98,7 @@
     },
     "authorization": {
       "enum": [
-        "PRODUCTION_ROOT",
+        "PRODUCTION_VERIFIER",
         "DIAGNOSTIC_ONLY"
       ]
     },
@@ -158,10 +158,21 @@
             "const": 1
           },
           "authorization": {
-            "const": "PRODUCTION_ROOT"
+            "const": "PRODUCTION_VERIFIER"
           },
           "top_level_reasons": {
             "maxItems": 0
+          },
+          "cell_diagnostics": {
+            "minItems": 14,
+            "maxItems": 14,
+            "items": {
+              "properties": {
+                "reasons": {
+                  "maxItems": 0
+                }
+              }
+            }
           }
         }
       }

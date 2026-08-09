@@ -44,7 +44,11 @@ def _safe_path(raw: str) -> Path:
 def _read_private_key(raw: str) -> bytes:
     path = _safe_path(raw)
     flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags)
+    descriptor = (
+        os.dup(int(path.name))
+        if str(path).startswith("/proc/self/fd/")
+        else os.open(path, flags)
+    )
     try:
         metadata = os.fstat(descriptor)
         if (

@@ -13,8 +13,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
-    strict_json_loads,
 )
+from benchmarks.codegraph_compare.service_runtime import read_frame
 
 MAX_MESSAGE = 4 * 1024 * 1024
 
@@ -41,21 +41,11 @@ def exchange(
             raise ValueError("external audit authority peer UID mismatch")
         client.sendall(struct.pack("!I", len(wire)) + wire)
         client.shutdown(socket.SHUT_WR)
-        header = client.recv(4)
-        if len(header) != 4:
-            raise ValueError("external audit authority response absent")
-        size = struct.unpack("!I", header)[0]
-        if size < 2 or size > MAX_MESSAGE:
-            raise ValueError("external audit authority response size invalid")
-        chunks = bytearray()
-        while len(chunks) < size:
-            chunk = client.recv(size - len(chunks))
-            if not chunk:
-                raise ValueError("external audit authority response truncated")
-            chunks.extend(chunk)
+        envelope = read_frame(
+            client, MAX_MESSAGE, 10, "external audit authority response"
+        )
     finally:
         client.close()
-    envelope = strict_json_loads(bytes(chunks))
     if type(envelope) is not dict or frozenset(envelope) != {
         "audit",
         "key_id",
@@ -89,10 +79,10 @@ def run_cell(
     if len(wire) > MAX_MESSAGE:
         raise ValueError("run-cell request exceeds protocol bound")
     timeout = authority.get("wall_timeout_seconds", 120)
-    if type(timeout) is not int or timeout < 1:
+    if type(timeout) not in {int, float} or timeout <= 0:
         raise ValueError("authority timeout contract invalid")
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(timeout + 60)
+    client.settimeout(timeout)
     try:
         client.connect(str(socket_path))
         _pid, uid, _gid = _peer_credentials(client)
@@ -100,21 +90,11 @@ def run_cell(
             raise ValueError("external audit authority peer UID mismatch")
         client.sendall(struct.pack("!I", len(wire)) + wire)
         client.shutdown(socket.SHUT_WR)
-        header = client.recv(4)
-        if len(header) != 4:
-            raise ValueError("external authority response absent")
-        size = struct.unpack("!I", header)[0]
-        if size < 2 or size > MAX_MESSAGE:
-            raise ValueError("external authority response size invalid")
-        chunks = bytearray()
-        while len(chunks) < size:
-            chunk = client.recv(size - len(chunks))
-            if not chunk:
-                raise ValueError("external authority response truncated")
-            chunks.extend(chunk)
+        envelope = read_frame(
+            client, MAX_MESSAGE, timeout, "external authority response"
+        )
     finally:
         client.close()
-    envelope = strict_json_loads(bytes(chunks))
     if type(envelope) is dict and frozenset(envelope) == {"error", "reason"}:
         raise ValueError(f"authority rejected request: {envelope['reason']}")
     if type(envelope) is not dict or frozenset(envelope) != {

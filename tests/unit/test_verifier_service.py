@@ -12,7 +12,9 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 from benchmarks.codegraph_compare.verifier_service import (
+    CHALLENGE_DOMAIN,
     VERDICT_DOMAIN,
     _frame,
     _send,
@@ -29,7 +31,7 @@ def _verdict() -> dict[str, object]:
         "dominance_allowed": False,
         "unlock_allowed": False,
         "status": "SETUP_QUALIFIED",
-        "authorization": "PRODUCTION_ROOT",
+        "authorization": "PRODUCTION_VERIFIER",
         "top_level_reasons": [],
         "expected_cells": 14,
         "observed_receipts": 14,
@@ -42,7 +44,22 @@ def _verdict() -> dict[str, object]:
             "output_tokens": 0,
             "provider_requests": 0,
         },
-        "cell_diagnostics": [],
+        "cell_diagnostics": [
+            {"repo_id": repo, "arm_id": arm, "reasons": []}
+            for repo, arm in EXPECTED_CELLS
+        ],
+    }
+
+
+def _measurement() -> dict[str, object]:
+    return {
+        "interpreter_sha256": "6" * 64,
+        "closure_manifest": {},
+        "closure_manifest_sha256": "3" * 64,
+        "uid": 1000,
+        "gid": 1000,
+        "rootfs_readonly": True,
+        "allowed_writable_mounts": ["/tmp"],
     }
 
 
@@ -58,6 +75,7 @@ def _config(key: Ed25519PrivateKey) -> dict[str, object]:
                 "image_digest": "sha256:" + "1" * 64,
                 "image_id": "sha256:" + "2" * 64,
                 "closure_manifest_sha256": "3" * 64,
+                "measurement": _measurement(),
             }
         },
     }
@@ -69,19 +87,40 @@ def _server(path: Path, key: Ed25519PrivateKey, *, forge: bool) -> threading.Thr
     def run() -> None:
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         listener.bind(str(path))
-        listener.listen(1)
+        listener.listen(2)
         ready.set()
+        first, _ = listener.accept()
+        begin_request = _frame(first)
+        challenge_signed = {
+            "manifest_sha256": begin_request["manifest_sha256"],
+            "challenge": "5" * 64,
+            "ledger_counter": 1,
+            "ledger_prev_hash": "0" * 64,
+            "issued_at_ns": 123,
+            "service_identity": _measurement(),
+        }
+        _send(
+            first,
+            {
+                **challenge_signed,
+                "key_id": "verifier",
+                "algorithm": "Ed25519",
+                "signature": key.sign(
+                    CHALLENGE_DOMAIN + canonical_json_bytes(challenge_signed)
+                ).hex(),
+            },
+        )
+        first.close()
         connection, _ = listener.accept()
         request = _frame(connection)
         signed = {
             "manifest_sha256": request["manifest_sha256"],
             "challenge": request["challenge"],
+            "ledger_counter": 1,
+            "ledger_prev_hash": "0" * 64,
+            "issued_at_ns": 123,
             "verdict": _verdict(),
-            "service_identity": {
-                "image_digest": "sha256:" + "1" * 64,
-                "image_id": "sha256:" + "2" * 64,
-                "closure_manifest_sha256": "3" * 64,
-            },
+            "service_identity": _measurement(),
         }
         signer = Ed25519PrivateKey.generate() if forge else key
         _send(
@@ -116,7 +155,6 @@ def test_external_verifier_client_accepts_signed_runtime_bound_envelope(tmp_path
     envelope = request_verdict(
         socket_path=path,
         manifest={"schema_version": 2, "correlation_nonce": "4" * 64, "cells": []},
-        challenge="5" * 64,
         config=_config(key),
         timeout=2,
     )
@@ -136,7 +174,6 @@ def test_external_verifier_client_rejects_forged_verdict_signature(tmp_path: Pat
         request_verdict(
             socket_path=path,
             manifest={"schema_version": 2, "correlation_nonce": "4" * 64, "cells": []},
-            challenge="5" * 64,
             config=_config(key),
             timeout=2,
         )

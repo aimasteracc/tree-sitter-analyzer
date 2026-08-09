@@ -11810,7 +11810,7 @@ def test_qualification_operator_contract_is_exact_closed_service_pipeline():
             "approver-service",
             "verifier-service",
         ],
-        "qualification": "production-root-exact-14-only",
+        "qualification": "production-verifier-exact-14-only",
     }
 
 

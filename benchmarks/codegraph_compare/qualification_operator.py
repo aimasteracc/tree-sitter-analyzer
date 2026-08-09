@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
-import secrets
+import time
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,7 @@ def _write(path: Path, value: Any) -> None:
         os.close(descriptor)
 
 
-def run(args: argparse.Namespace) -> int:
+def _run_impl(args: argparse.Namespace) -> int:
     config_path = Path(args.public_config).resolve(strict=True)
     config = parse_public_config(config_path.read_bytes())
     contracts: dict[tuple[str, str], dict[str, Any]] = {}
@@ -50,27 +50,39 @@ def run(args: argparse.Namespace) -> int:
     if type(correlation_nonce) is not str or len(correlation_nonce) != 64:
         raise ValueError("root-signed correlation nonce invalid")
     cells = []
-    maximum_plan_timeout = 0
     staged_root = Path(args.staged_root).resolve(strict=True)
+    plan_timeouts: dict[tuple[str, str], int] = {}
+    for identity in EXPECTED_CELLS:
+        plan = strict_json_loads(
+            (staged_root / contracts[identity]["job_id"] / "plan.json").read_bytes()
+        )
+        value = plan.get("wall_timeout_seconds")
+        if type(value) is not int or value < 1:
+            raise ValueError("operator plan timeout invalid")
+        plan_timeouts[identity] = value
+    deadline = time.monotonic() + sum(plan_timeouts.values())
     for identity in EXPECTED_CELLS:
         contract = contracts[identity]
         staged = staged_root / contract["job_id"]
         plan = strict_json_loads((staged / "plan.json").read_bytes())
-        wall_timeout = plan.get("wall_timeout_seconds")
-        if type(wall_timeout) is not int or wall_timeout < 1:
-            raise ValueError("operator plan timeout invalid")
-        maximum_plan_timeout = max(maximum_plan_timeout, wall_timeout)
+        wall_timeout = plan_timeouts[identity]
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("exact-14 overall plan deadline expired")
         authority = run_cell(
             contract,
             Path(args.authority_socket),
-            {**config["auditor"], "wall_timeout_seconds": wall_timeout},
+            {
+                **config["auditor"],
+                "wall_timeout_seconds": min(wall_timeout, remaining),
+            },
         )
         draft = request_receipt(
             role="executor",
             socket_path=Path(args.executor_socket),
             authority_response=authority,
             config=config,
-            timeout=wall_timeout + 180,
+            timeout=deadline - time.monotonic(),
         )
         receipt = request_receipt(
             role="approver",
@@ -78,20 +90,13 @@ def run(args: argparse.Namespace) -> int:
             authority_response=authority,
             config=config,
             draft=draft,
-            timeout=wall_timeout + 180,
+            timeout=deadline - time.monotonic(),
         )
         cells.append(
             {"contract": contract, "authority_response": authority, "receipt": receipt}
         )
-    challenge = secrets.token_hex(32)
-    while challenge == correlation_nonce:
-        challenge = secrets.token_hex(32)
-    plan_margin = maximum_plan_timeout + 180
-    verifier_timeout = args.verifier_timeout or plan_margin
-    if type(verifier_timeout) is not int or verifier_timeout < plan_margin:
-        raise ValueError(
-            "verifier timeout must include the maximum plan verification margin"
-        )
+    if deadline - time.monotonic() <= 0:
+        raise TimeoutError("exact-14 overall plan deadline expired")
     manifest = {
         "schema_version": 2,
         "correlation_nonce": correlation_nonce,
@@ -100,23 +105,46 @@ def run(args: argparse.Namespace) -> int:
     envelope = request_verdict(
         socket_path=Path(args.verifier_socket),
         manifest=manifest,
-        challenge=challenge,
         config=config,
-        timeout=verifier_timeout,
+        timeout=deadline - time.monotonic(),
     )
     verdict = envelope["verdict"]
     if (
         verdict.get("status") != "SETUP_QUALIFIED"
-        or verdict.get("authorization") != "PRODUCTION_ROOT"
+        or verdict.get("authorization") != "PRODUCTION_VERIFIER"
         or verdict.get("observed_receipts") != 14
     ):
         raise ValueError(
             "external fresh verifier did not produce exact-14 qualification"
         )
     output = Path(args.experiment_root)
-    output.mkdir(mode=0o700)
+    output.mkdir(mode=0o700, exist_ok=True)
     _write(output / "verdict-envelope.json", envelope)
     return 0
+
+
+def run(args: argparse.Namespace) -> int:
+    """Run with a durable terminal state; a failed exact-14 run is never resumed."""
+    output = Path(args.experiment_root)
+    output.mkdir(mode=0o700)
+    state = output / "operator-state.json"
+    _write(state, {"state": "RUNNING", "completed_cells": 0})
+    try:
+        result = _run_impl(args)
+    except BaseException as error:
+        temporary = output / ".operator-state.tmp"
+        terminal = (
+            "CANCELLED"
+            if isinstance(error, (TimeoutError, KeyboardInterrupt))
+            else "FAILED"
+        )
+        _write(temporary, {"state": terminal, "error": type(error).__name__})
+        os.replace(temporary, state)
+        raise
+    temporary = output / ".operator-state.tmp"
+    _write(temporary, {"state": "SUCCESS", "completed_cells": 14})
+    os.replace(temporary, state)
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -132,7 +160,6 @@ def main(argv: list[str] | None = None) -> int:
         "experiment-root",
     ):
         parser.add_argument(f"--{name}", required=True)
-    parser.add_argument("--verifier-timeout", type=int)
     return run(parser.parse_args(argv))
 
 
