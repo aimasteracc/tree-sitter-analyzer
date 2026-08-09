@@ -10,7 +10,7 @@ import sys
 import tarfile
 import time
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import jsonschema
 import psutil
@@ -23,7 +23,7 @@ from _native_trusted_verifier_helpers import outdated_causal_fixture  # noqa: E4
 
 ROOT = Path(__file__).parents[2]
 SCHEMA = json.loads(
-    (ROOT / "rfcs/schemas/no1-006a-outdated-uv-attestation-v2.schema.json").read_text()
+    (ROOT / "rfcs/schemas/no1-006a-outdated-uv-attestation-v3.schema.json").read_text()
 )
 
 
@@ -58,6 +58,38 @@ def test_clean_environment_drops_host_uv_python_xdg_and_shell_injection(
     assert not (
         {"BASH_ENV", "UV_PROJECT_ENVIRONMENT", "VIRTUAL_ENV"} & environment.keys()
     )
+
+
+def test_local_identity_uses_deterministic_absolute_posix_sandbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1245: local identity 0 remains directly testable without random prefixes.
+    monkeypatch.setenv("GITHUB_RUN_ID", "0")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "0")
+    monkeypatch.setitem(qualification.POSIX_SANDBOX_BASES, "linux", tmp_path)
+    root = qualification.sandbox_root("linux")
+    try:
+        assert root == tmp_path / "tsa-outdated-native-0-0-linux"
+        assert root.is_absolute()
+        if os.name != "nt":
+            assert root.stat().st_mode & 0o777 == 0o700
+    finally:
+        qualification.shutil.rmtree(root)
+
+
+def test_deterministic_sandbox_refuses_identity_collision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1245: a concurrent/replayed identity cannot reuse an existing root.
+    monkeypatch.setenv("GITHUB_RUN_ID", "0")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "0")
+    monkeypatch.setitem(qualification.POSIX_SANDBOX_BASES, "linux", tmp_path)
+    root = qualification.sandbox_root("linux")
+    try:
+        with pytest.raises(FileExistsError):
+            qualification.sandbox_root("linux")
+    finally:
+        qualification.shutil.rmtree(root)
 
 
 @pytest.mark.skipif(
@@ -117,10 +149,11 @@ def test_schema_rejects_windows_pass_and_mutable_bootstrap_claim() -> None:
         jsonschema.validate(report, SCHEMA)
 
 
-def test_windows_na_requires_evidence_and_allows_empty_sidecar() -> None:
+def test_windows_na_requires_exact_old_archive_artifact() -> None:
     report = valid_windows_report()
     report["artifacts"]["empty.stderr"] = {"sha256": "0" * 64, "size": 0}
-    jsonschema.validate(report, SCHEMA)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(report, SCHEMA)
     for field in ("old_uv", "package_qualification"):
         invalid = valid_windows_report()
         invalid[field] = {}
@@ -131,7 +164,15 @@ def test_windows_na_requires_evidence_and_allows_empty_sidecar() -> None:
 def test_passed_schema_requires_every_platform_artifact() -> None:
     # PR #1242: PASSED POSIX evidence must retain every causal sidecar.
     report = valid_passed_report()
-    del report["artifacts"]["mcp/report.json"]
+    del report["artifacts"]["installed-mcp-config.json"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(report, SCHEMA)
+
+
+def test_passed_schema_rejects_artifacts_outside_exact_allowlist() -> None:
+    # Final gate 2026-07-17: POSIX evidence is exactly the 17 protocol files.
+    report = valid_passed_report()
+    report["artifacts"]["extra.bin"] = {"sha256": "a" * 64, "size": 0}
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(report, SCHEMA)
 
@@ -300,7 +341,9 @@ def valid_passed_report() -> dict[str, object]:
                 "size": 1,
                 "sha256": digest,
             },
-            "executable": executable("0.10.9", "/tmp/old/bundle/uv"),
+            "executable": executable(
+                "0.10.9", "/tmp/tsa-outdated-native-0-0-linux/old/bundle/uv"
+            ),
         },
         supported_uv={
             "archive": {
@@ -310,7 +353,9 @@ def valid_passed_report() -> dict[str, object]:
                 "size": 1,
                 "sha256": digest,
             },
-            "executable": executable("0.11.0", "/tmp/supported/bundle/uv"),
+            "executable": executable(
+                "0.11.0", "/tmp/tsa-outdated-native-0-0-linux/supported/bundle/uv"
+            ),
         },
         installer={
             "path": "/checkout/install.sh",
@@ -318,8 +363,8 @@ def valid_passed_report() -> dict[str, object]:
             "first_exit": 1,
             "second_exit": 0,
             "curl_invocations": 0,
-            "first_path": "/tmp/old:/tmp/tools",
-            "second_path": "/tmp/supported:/tmp/tools",
+            "first_path": "/tmp/tsa-outdated-native-0-0-linux/old/bundle:/tmp/tsa-outdated-native-0-0-linux/tools",
+            "second_path": "/tmp/tsa-outdated-native-0-0-linux/supported/bundle:/tmp/tsa-outdated-native-0-0-linux/tools",
             "curated_tools": list(qualification.REQUIRED_COMMANDS),
         },
         config={
@@ -333,7 +378,9 @@ def valid_passed_report() -> dict[str, object]:
                     "tree-sitter-analyzer[mcp]",
                     "tree-sitter-analyzer-mcp",
                 ],
-                "env": {"TREE_SITTER_PROJECT_ROOT": "/tmp/project"},
+                "env": {
+                    "TREE_SITTER_PROJECT_ROOT": "/tmp/tsa-outdated-native-0-0-linux/fixture"
+                },
             },
             "backup_sha256": digest,
         },
@@ -358,7 +405,9 @@ def valid_passed_report() -> dict[str, object]:
                 "total_files": 0,
                 "summary": "codegraph_status: index missing or empty",
             },
-            "install_tool": executable("0.11.0", "/tmp/supported/bundle/uv"),
+            "install_tool": executable(
+                "0.11.0", "/tmp/tsa-outdated-native-0-0-linux/supported/bundle/uv"
+            ),
             "install_argv": [
                 "/tmp/supported/bundle/uv",
                 "pip",
@@ -377,6 +426,7 @@ def valid_passed_report() -> dict[str, object]:
         "old.archive",
         "supported.archive",
         "installer.source",
+        "installed-mcp-config.json",
         "first.stdout",
         "first.stderr",
         "second.stdout",
@@ -481,7 +531,7 @@ def run_aggregate(tmp_path: Path, paths: list[Path]) -> tuple[int, dict[str, obj
             output=str(output),
             reports=[str(path) for path in paths],
             schema=str(
-                ROOT / "rfcs/schemas/no1-006a-outdated-uv-attestation-v2.schema.json"
+                ROOT / "rfcs/schemas/no1-006a-outdated-uv-attestation-v3.schema.json"
             ),
             trusted=False,
         )
@@ -597,9 +647,9 @@ def trusted_helpers() -> dict[str, object]:
     code = "\n".join(
         line
         for line in code.splitlines()
-        if not line.lstrip().startswith(("root=", "suffix="))
+        if not line.lstrip().startswith(("root=", "run=", "suffix="))
     )
-    namespace: dict[str, object] = {}
+    namespace: dict[str, object] = {"run": "0", "attempt": "0"}
     exec(textwrap.dedent(code), namespace)
     return namespace
 
@@ -644,17 +694,133 @@ def test_trusted_archive_member_digest_binds_reported_executable(
         helpers["verify_executable"](executable, observed, "0.11.0", "linux")
 
 
-def test_trusted_config_hash_is_recomputed_from_expected_entry() -> None:
-    # PR #1242: trusted config evidence is bound to canonical installer JSON bytes.
-    expected_entry = valid_passed_report()["config"]["expected_entry"]
-    observed = trusted_helpers()["expected_config_hash"](expected_entry)
-    expected = {"mcpServers": {"tree-sitter-analyzer": expected_entry}}
+def test_trusted_config_sidecar_accepts_noncanonical_format(tmp_path: Path) -> None:
+    # Run 31284682751: formatting must not substitute for observed config bytes.
+    config = valid_passed_report()["config"]
+    value = {"mcpServers": {"tree-sitter-analyzer": config["expected_entry"]}}
+    data = json.dumps(value, separators=(",", ":")).encode()
+    (tmp_path / "installed-mcp-config.json").write_bytes(data)
+    after = {
+        ".claude/.mcp.json": {
+            "path": ".claude/.mcp.json",
+            "type": "file",
+            "sha256": qualification.hashlib.sha256(data).hexdigest(),
+        }
+    }
     assert (
-        observed
-        == qualification.hashlib.sha256(
-            (json.dumps(expected, indent=2) + "\n").encode()
-        ).hexdigest()
+        trusted_helpers()["verify_config_sidecar"](
+            tmp_path,
+            config,
+            after,
+            "linux",
+            "📁 Project root: /tmp/tsa-outdated-native-0-0-linux/fixture\n",
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
+        )
+        is None
     )
+
+
+@pytest.mark.parametrize("mutation", ["duplicate", "extra", "entry", "snapshot"])
+def test_trusted_config_sidecar_rejects_forgery(tmp_path: Path, mutation: str) -> None:
+    # Run 31284682751: trusted verification parses and binds the actual sidecar.
+    config = valid_passed_report()["config"]
+    expected = {"mcpServers": {"tree-sitter-analyzer": config["expected_entry"]}}
+    if mutation == "duplicate":
+        body = json.dumps(expected["mcpServers"])
+        data = f'{{"mcpServers":{body},"mcpServers":{body}}}'.encode()
+    else:
+        forged = json.loads(json.dumps(expected))
+        if mutation == "extra":
+            forged["extra"] = True
+        elif mutation == "entry":
+            forged["mcpServers"]["tree-sitter-analyzer"]["command"] = "forged"
+        data = json.dumps(forged).encode()
+    digest = (
+        "0" * 64
+        if mutation == "snapshot"
+        else qualification.hashlib.sha256(data).hexdigest()
+    )
+    (tmp_path / "installed-mcp-config.json").write_bytes(data)
+    after = {
+        ".claude/.mcp.json": {
+            "path": ".claude/.mcp.json",
+            "type": "file",
+            "sha256": digest,
+        }
+    }
+    with pytest.raises(AssertionError):
+        trusted_helpers()["verify_config_sidecar"](
+            tmp_path,
+            config,
+            after,
+            "linux",
+            "📁 Project root: /tmp/tsa-outdated-native-0-0-linux/fixture\n",
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
+        )
+
+
+def test_trusted_config_rejects_coordinated_command_forgery(tmp_path: Path) -> None:
+    # Final gate 2026-07-17: candidate config and sidecar cannot define the oracle.
+    config = json.loads(json.dumps(valid_passed_report()["config"]))
+    config["expected_entry"]["command"] = "evil"
+    value = {"mcpServers": {"tree-sitter-analyzer": config["expected_entry"]}}
+    data = json.dumps(value).encode()
+    (tmp_path / "installed-mcp-config.json").write_bytes(data)
+    after = {
+        ".claude/.mcp.json": {
+            "path": ".claude/.mcp.json",
+            "type": "file",
+            "sha256": qualification.hashlib.sha256(data).hexdigest(),
+        }
+    }
+    with pytest.raises(AssertionError):
+        trusted_helpers()["verify_config_sidecar"](
+            tmp_path,
+            config,
+            after,
+            "linux",
+            "📁 Project root: /tmp/tsa-outdated-native-0-0-linux/fixture\n",
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
+        )
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        "📁 Project root: /tmp/tsa-outdated-native-a/fixture\n"
+        "📁 Project root: /tmp/tsa-outdated-native-b/fixture\n",
+        "📁 Project root: /tmp/other/fixture\n",
+        "📁 Project root: /tmp/tsa-outdated-native-a/fixture/../fixture\n",
+        "📁 Project root: relative/tsa-outdated-native-a/fixture\n",
+    ],
+)
+def test_trusted_stdout_rejects_ambiguous_or_unstructured_root(stdout: str) -> None:
+    # Final gate 2026-07-17: the hash-bound stdout uniquely defines the root.
+    with pytest.raises(AssertionError):
+        trusted_helpers()["project_root_from_stdout"](
+            stdout, "linux", Path("/tmp/tsa-outdated-native-a")
+        )
+
+
+@pytest.mark.parametrize(
+    "items",
+    [
+        [
+            {"path": "a", "type": "file", "sha256": "a" * 64},
+            {"path": "a", "type": "file", "sha256": "b" * 64},
+        ],
+        [{"path": "a", "type": "dir", "sha256": "a" * 64}],
+        [{"path": "a", "type": "file", "sha256": None}],
+        [{"path": "../a", "type": "file", "sha256": "a" * 64}],
+        [{"path": "a", "type": "file", "sha256": "a" * 64, "extra": True}],
+    ],
+)
+def test_trusted_snapshots_reject_ambiguous_entries(
+    items: list[dict[str, object]],
+) -> None:
+    # Final gate 2026-07-17: snapshot dictionaries must not erase ambiguity.
+    with pytest.raises(AssertionError):
+        trusted_helpers()["snapshots"](items)
 
 
 def test_trusted_installer_paths_reject_unverified_first_executable() -> None:
@@ -666,6 +832,7 @@ def test_trusted_installer_paths_reject_unverified_first_executable() -> None:
             report["installer"],
             report["old_uv"]["executable"],
             report["supported_uv"]["executable"],
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
         )
 
 
@@ -678,6 +845,7 @@ def test_trusted_installer_paths_reject_non_curated_path_tail() -> None:
             report["installer"],
             report["old_uv"]["executable"],
             report["supported_uv"]["executable"],
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
         )
 
 
@@ -748,3 +916,121 @@ def test_trusted_causal_binding_rejects_install_mutation(
         helpers["verify_causal_binding"](
             "linux", tmp_path, causal, bound, tool, wheel, wheel_path, runner, "b" * 64
         )
+
+
+@pytest.mark.parametrize(
+    ("axis", "expected"),
+    [
+        ("linux", PurePosixPath("/tmp/tsa-outdated-native-0-0-linux")),
+        ("macos", PurePosixPath("/private/tmp/tsa-outdated-native-0-0-macos")),
+    ],
+)
+def test_trusted_sandbox_root_is_independent_platform_oracle(
+    axis: str, expected: PurePosixPath
+) -> None:
+    # PR #1245: trusted roots come only from run/attempt/axis and platform base.
+    assert trusted_helpers()["trusted_sandbox_root"](axis) == expected
+
+
+def test_trusted_sandbox_root_is_not_applied_to_windows_na() -> None:
+    # PR #1245: Windows retains its N/A fixture without a POSIX root assumption.
+    with pytest.raises(AssertionError):
+        trusted_helpers()["trusted_sandbox_root"]("windows")
+
+
+def test_trusted_executable_rejects_coordinated_forged_prefixes() -> None:
+    # Codex 3742146107: matching old/supported producer prefixes are not an oracle.
+    helpers = trusted_helpers()
+    report = valid_passed_report()
+    member = {"member": "bundle/uv", "sha256": "a" * 64, "size": 1}
+    sandbox = helpers["trusted_sandbox_root"]("linux")
+    for label in ("old", "supported"):
+        report[f"{label}_uv"]["executable"]["path"] = (
+            f"/tmp/tsa-outdated-native-forged/{label}/bundle/uv"
+        )
+        with pytest.raises(AssertionError):
+            helpers["verify_executable_sandbox"](
+                report[f"{label}_uv"]["executable"], member, label, "linux", sandbox
+            )
+
+
+def test_trusted_installer_paths_reject_forged_tools_root() -> None:
+    # PR #1245: curated tools must be under the independently expected sandbox.
+    helpers = trusted_helpers()
+    report = valid_passed_report()
+    report["installer"]["first_path"] = (
+        "/tmp/tsa-outdated-native-0-0-linux/old/bundle:/tmp/attacker/tools"
+    )
+    report["installer"]["second_path"] = (
+        "/tmp/tsa-outdated-native-0-0-linux/supported/bundle:/tmp/attacker/tools"
+    )
+    with pytest.raises(AssertionError):
+        helpers["verify_installer_paths"](
+            report["installer"],
+            report["old_uv"]["executable"],
+            report["supported_uv"]["executable"],
+            helpers["trusted_sandbox_root"]("linux"),
+        )
+
+
+def test_trusted_project_root_rejects_coordinated_candidate_value() -> None:
+    # PR #1245: a matching stdout/config claim cannot override the executable root.
+    with pytest.raises(AssertionError):
+        trusted_helpers()["project_root_from_stdout"](
+            "📁 Project root: /tmp/tsa-outdated-native-forged/fixture\n",
+            "linux",
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
+        )
+
+
+@pytest.mark.parametrize("mutation", ["backup", "before-digest", "extra-entry"])
+def test_trusted_initial_snapshot_rejects_mutation(mutation: str) -> None:
+    # PR #1245: backup identity is the exact complete pre-install HOME snapshot.
+    digest = qualification.hashlib.sha256(b"{}\n").hexdigest()
+    config = valid_passed_report()["config"]
+    initial = [
+        {"path": ".claude", "type": "dir", "sha256": None},
+        {"path": ".claude/.mcp.json", "type": "file", "sha256": digest},
+    ]
+    config["before"] = json.loads(json.dumps(initial))
+    config["after_first"] = json.loads(json.dumps(initial))
+    config["backup_sha256"] = digest
+    if mutation == "backup":
+        config["backup_sha256"] = "0" * 64
+    elif mutation == "before-digest":
+        config["before"][1]["sha256"] = "0" * 64
+    else:
+        config["before"].append({"path": "extra", "type": "dir", "sha256": None})
+        config["after_first"].append({"path": "extra", "type": "dir", "sha256": None})
+    with pytest.raises(AssertionError):
+        trusted_helpers()["verify_initial_config"](config)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b'{"job":"outdated-axis","axis":"linux","status":"failed"}',
+        b'{"job":"outdated-axis","axis":"linux","status":"success","extra":1}',
+        b'{"job":"outdated-axis","axis":"linux","axis":"linux","status":"success"}',
+        b'{"job":"outdated-axis","axis":"linux","status":"success"}\xff',
+    ],
+)
+def test_trusted_job_result_rejects_semantic_or_encoding_mutation(
+    tmp_path: Path, data: bytes
+) -> None:
+    # PR #1245: retained job status is strict UTF-8 JSON with one exact identity.
+    result = tmp_path / "job-result.json"
+    result.write_bytes(data)
+    with pytest.raises((AssertionError, UnicodeDecodeError, json.JSONDecodeError)):
+        trusted_helpers()["verify_job_result"](result, "linux")
+
+
+def test_trusted_job_result_digest_is_content_bound(tmp_path: Path) -> None:
+    # PR #1245: the receipt closure consumes the verified job-result digest.
+    result = tmp_path / "job-result.json"
+    data = b'{"job":"outdated-axis","axis":"windows","status":"success"}\n'
+    result.write_bytes(data)
+    assert (
+        trusted_helpers()["verify_job_result"](result, "windows")
+        == qualification.hashlib.sha256(data).hexdigest()
+    )

@@ -5,18 +5,19 @@ from __future__ import annotations
 
 # ruff: noqa: B904, E401, E701, E702, I001
 # fmt: off
-import argparse, hashlib, json, os, platform, re, shutil, signal, subprocess, sys, tarfile, tempfile, time, urllib.request, zipfile
+import argparse, hashlib, json, os, platform, re, shutil, signal, stat, subprocess, sys, tarfile, tempfile, time, urllib.request, zipfile
 from pathlib import Path
 
 import psutil
 from typing import Any
 
-SCHEMA_VERSION = "no1-006a-outdated-uv-attestation-v2"
+SCHEMA_VERSION = "no1-006a-outdated-uv-attestation-v3"
 OLD_VERSION, SUPPORTED_VERSION = "0.10.9", "0.11.0"
 AXES = ("linux", "macos", "windows")
 PROJECT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT / "config/no1_uv_fixtures.json"
 REQUIRED_COMMANDS = ("awk", "cat", "grep", "mktemp", "python3", "realpath", "rm", "sleep", "uname")
+POSIX_SANDBOX_BASES = {"linux": Path("/tmp"), "macos": Path("/private/tmp")}
 
 def sha256(path: Path) -> str:
     h=hashlib.sha256()
@@ -177,6 +178,20 @@ def package_binding(args: argparse.Namespace)->dict[str,Any]:
     if r.get("wheel")!=meta or expected not in a.get("axes",[]) or a.get("wheel")!=meta: raise ValueError("package axis/wheel binding mismatch")
     return {"aggregate_sha256":sha256(aggregate),"axis_report_sha256":sha256(report),"build_manifest_sha256":sha256(manifest),"wheel":meta}
 
+def sandbox_root(axis:str)->Path:
+    if axis not in POSIX_SANDBOX_BASES: raise ValueError("deterministic sandbox is POSIX-only")
+    run=os.environ.get("GITHUB_RUN_ID","0"); attempt=os.environ.get("GITHUB_RUN_ATTEMPT","0")
+    if re.fullmatch(r"(?:0|[1-9]\d*)",run) is None or re.fullmatch(r"(?:0|[1-9]\d*)",attempt) is None: raise ValueError("invalid GitHub run identity for sandbox")
+    base=POSIX_SANDBOX_BASES[axis]; root=base/f"tsa-outdated-native-{run}-{attempt}-{axis}"
+    if not base.is_absolute() or root.parent!=base: raise ValueError("unsafe qualification sandbox base")
+    root.mkdir(mode=0o700,exist_ok=False)
+    observed=root.lstat()
+    owner_matches = not hasattr(os, "getuid") or observed.st_uid == os.getuid()
+    if not stat.S_ISDIR(observed.st_mode) or root.is_symlink() or not owner_matches:
+        shutil.rmtree(root,ignore_errors=True); raise ValueError("unsafe qualification sandbox root")
+    root.chmod(0o700)
+    return root
+
 def base_report(axis:str)->dict[str,Any]:
     source,workflow=identity("outdated-uv-axis")
     return {"schema_version":SCHEMA_VERSION,"kind":"outdated_uv_axis","qualification_id":"NO1-006A","evidence_scope":"native_outdated_uv_actionable_recovery","axis":axis,"qualification_performed":axis!="windows","passed":False,"status":"NOT_APPLICABLE_NO_NATIVE_INSTALLER" if axis=="windows" else "PENDING","source":source,"workflow":workflow,"runner":{"declared_axis":axis,"observed_system":platform.system(),"release":platform.release(),"machine":platform.machine(),"image_os":os.environ.get("ImageOS","unknown"),"image_version":os.environ.get("ImageVersion","unknown")},"remediation_mode":"manual_content_bound_remediation","automatic_mutable_bootstrap_qualified":False,"old_uv":None,"supported_uv":None,"installer":None,"config":None,"package_qualification":None,"mcp_causal_report":None,"artifacts":{},"failure":None}
@@ -190,7 +205,7 @@ def axis(args:argparse.Namespace)->int:
         expected_system={"linux":"Linux","macos":"Darwin","windows":"Windows"}[args.axis]
         if platform.system()!=expected_system: raise ValueError("declared axis and native runner differ")
         old_archive=Path(args.old_archive); old_meta=validate_archive(old_archive,fixture(args.axis,OLD_VERSION)); shutil.copyfile(old_archive,side/"old.archive"); report["artifacts"]["old.archive"]={"sha256":old_meta["sha256"],"size":old_meta["size"]}
-        root=Path(tempfile.mkdtemp(prefix="tsa-outdated-native-"))
+        root=sandbox_root(args.axis) if args.axis!="windows" else Path(tempfile.mkdtemp(prefix="tsa-outdated-native-windows-"))
         try:
             old=uv_details(safe_extract(old_archive,root/"old",old_meta["filename"]),OLD_VERSION); report["old_uv"]={"archive":old_meta,"executable":old}
             report["package_qualification"]=package_binding(args)
@@ -215,11 +230,12 @@ def axis(args:argparse.Namespace)->int:
             second=run_tree(["/bin/bash",str(installer)],project,clean_env(home,temp,supported_path,False),args.timeout)
             write_side(side,"second.stdout",second.stdout,report); write_side(side,"second.stderr",second.stderr,report); after_second=tree_snapshot(home)
             expected_entry={"command":"uvx","args":["--from","tree-sitter-analyzer[mcp]","tree-sitter-analyzer-mcp"],"env":{"TREE_SITTER_PROJECT_ROOT":str(project.resolve())}}
-            value=json.loads(config.read_text()); backups=list(config.parent.glob(".mcp.json.bak.*"))
+            config_bytes=config.read_bytes(); write_side(side,"installed-mcp-config.json",config_bytes,report)
+            value=json.loads(config_bytes); backups=list(config.parent.glob(".mcp.json.bak.*"))
             expected_value={"mcpServers":{"tree-sitter-analyzer":expected_entry}}
             if second.returncode!=0 or f"uv {SUPPORTED_VERSION}" not in second.stdout.decode("utf-8","replace") or value!=expected_value or len(backups)!=1 or backups[0].read_bytes()!=b'{}\n': raise ValueError("manual recovery config diff/backup oracle failed")
             expected_after=[item for item in before if item["path"] not in (".claude/.mcp.json",)]
-            expected_after.extend([{"path":".claude/.mcp.json","type":"file","sha256":hashlib.sha256((json.dumps(expected_value,indent=2)+"\n").encode()).hexdigest()},{"path":str(backups[0].relative_to(home)),"type":"file","sha256":hashlib.sha256(b'{}\n').hexdigest()}])
+            expected_after.extend([{"path":".claude/.mcp.json","type":"file","sha256":sha256(config)},{"path":str(backups[0].relative_to(home)),"type":"file","sha256":hashlib.sha256(b'{}\n').hexdigest()}])
             if sorted(after_second,key=lambda item:item["path"])!=sorted(expected_after,key=lambda item:item["path"]): raise ValueError("second install changed HOME beyond exact config replacement and one backup")
             report["installer"]={"path":str(installer),"sha256":sha256(installer),"first_exit":first.returncode,"second_exit":second.returncode,"curl_invocations":0,"first_path":old_path,"second_path":supported_path,"curated_tools":list(REQUIRED_COMMANDS)}
             report["config"]={"before":before,"after_first":after_first,"after_second":after_second,"expected_entry":expected_entry,"backup_sha256":sha256(backups[0])}
@@ -283,6 +299,6 @@ def main()->int:
     a=sub.add_parser("axis"); a.add_argument("--axis",choices=AXES,required=True)
     for name in ("old-archive","installer","wheel","wheel-manifest","package-aggregate","package-report","output"): a.add_argument("--"+name,required=True)
     a.add_argument("--supported-archive"); a.add_argument("--timeout",type=float,default=180); a.set_defaults(func=axis)
-    g=sub.add_parser("aggregate"); g.add_argument("--reports",nargs=3,required=True); g.add_argument("--schema",default=str(PROJECT/"rfcs/schemas/no1-006a-outdated-uv-attestation-v2.schema.json")); g.add_argument("--output",required=True); g.add_argument("--trusted",action="store_true"); g.set_defaults(func=aggregate)
+    g=sub.add_parser("aggregate"); g.add_argument("--reports",nargs=3,required=True); g.add_argument("--schema",default=str(PROJECT/"rfcs/schemas/no1-006a-outdated-uv-attestation-v3.schema.json")); g.add_argument("--output",required=True); g.add_argument("--trusted",action="store_true"); g.set_defaults(func=aggregate)
     args=parser.parse_args(); return int(args.func(args))
 if __name__=="__main__": raise SystemExit(main())

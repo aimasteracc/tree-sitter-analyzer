@@ -116,8 +116,53 @@
         "after_first": {
           "items": {
             "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "file"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "sha256": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "dir",
+                        "symlink"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "sha256": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            ],
             "properties": {
               "path": {
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)[^\\x00\\r\\n]+$",
                 "type": "string"
               },
               "sha256": {
@@ -147,8 +192,53 @@
         "after_second": {
           "items": {
             "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "file"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "sha256": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "dir",
+                        "symlink"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "sha256": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            ],
             "properties": {
               "path": {
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)[^\\x00\\r\\n]+$",
                 "type": "string"
               },
               "sha256": {
@@ -182,8 +272,53 @@
         "before": {
           "items": {
             "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "file"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "sha256": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "dir",
+                        "symlink"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "sha256": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            ],
             "properties": {
               "path": {
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)[^\\x00\\r\\n]+$",
                 "type": "string"
               },
               "sha256": {
@@ -748,10 +883,34 @@
             {
               "properties": {
                 "artifacts": {
+                  "maxProperties": 17,
+                  "minProperties": 17,
+                  "propertyNames": {
+                    "enum": [
+                      "old.archive",
+                      "supported.archive",
+                      "installer.source",
+                      "installed-mcp-config.json",
+                      "first.stdout",
+                      "first.stderr",
+                      "second.stdout",
+                      "second.stderr",
+                      "mcp-driver.stdout",
+                      "mcp-driver.stderr",
+                      "mcp/report.json",
+                      "mcp/install.stdout",
+                      "mcp/install.stderr",
+                      "mcp/dependency-manifest.txt",
+                      "mcp/mcp-transcript.ndjson",
+                      "mcp/mcp.stderr",
+                      "mcp/installed-files.zip"
+                    ]
+                  },
                   "required": [
                     "old.archive",
                     "supported.archive",
                     "installer.source",
+                    "installed-mcp-config.json",
                     "first.stdout",
                     "first.stderr",
                     "second.stdout",
@@ -877,6 +1036,13 @@
             {
               "properties": {
                 "artifacts": {
+                  "maxProperties": 1,
+                  "minProperties": 1,
+                  "propertyNames": {
+                    "enum": [
+                      "old.archive"
+                    ]
+                  },
                   "required": [
                     "old.archive"
                   ]
@@ -1143,7 +1309,7 @@
           "$ref": "#/$defs/runner"
         },
         "schema_version": {
-          "const": "no1-006a-outdated-uv-attestation-v2"
+          "const": "no1-006a-outdated-uv-attestation-v3"
         },
         "source": {
           "additionalProperties": false,
@@ -1446,7 +1612,7 @@
           }
         },
         "schema_version": {
-          "const": "no1-006a-outdated-uv-attestation-v2"
+          "const": "no1-006a-outdated-uv-attestation-v3"
         },
         "source_commit": {
           "pattern": "^[0-9a-f]{40}$",
