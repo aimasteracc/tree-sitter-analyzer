@@ -13,6 +13,8 @@ from benchmarks.codegraph_compare.receipt_v3 import (
 
 GENESIS = "0" * 64
 DECISION_RECEIPT_DOMAIN = b"NO1-008A-DECISION-RECEIPT-V1\0"
+VERDICT_DOMAIN = b"NO1-008A-EXTERNAL-VERIFIER-VERDICT-V2\0"
+LEDGER_DOMAIN = b"NO1-008A-EXTERNAL-VERIFIER-LEDGER-V1\0"
 EVENTS = frozenset({"CHALLENGED", "VERIFYING", "CONSUMED", "FAILED"})
 _HEX = frozenset("0123456789abcdef")
 
@@ -21,6 +23,105 @@ def _hex64(value: Any, label: str) -> str:
     if type(value) is not str or len(value) != 64 or any(c not in _HEX for c in value):
         raise ValueError(f"{label} invalid")
     return value
+
+
+def _validate_verifier_envelope(
+    envelope: Any,
+    *,
+    challenge: str,
+    manifest: str,
+    histories: dict[str, list[tuple[str, str, int, int]]],
+    db: Any,
+    config: Any,
+    service_identity: Any,
+    public: Ed25519PublicKey,
+) -> None:
+    """Authenticate every persisted exact-14 verdict binding at startup."""
+    required = {
+        "manifest_sha256",
+        "decision_id",
+        "decision_contract_sha256",
+        "challenge",
+        "ledger_counter",
+        "ledger_prev_hash",
+        "issued_at_ns",
+        "verdict",
+        "service_identity",
+        "consumption_record",
+        "ledger_head",
+        "key_id",
+        "algorithm",
+        "signature",
+    }
+    role = config["verifier"]
+    if (
+        type(envelope) is not dict
+        or set(envelope) != required
+        or envelope["manifest_sha256"] != manifest
+        or envelope["challenge"] != challenge
+        or envelope["key_id"] != role["key_id"]
+        or envelope["algorithm"] != "Ed25519"
+        or envelope["service_identity"] != service_identity
+    ):
+        raise ValueError("persisted verifier envelope binding invalid")
+    _hex64(envelope["decision_id"], "persisted decision id")
+    _hex64(envelope["decision_contract_sha256"], "persisted decision contract digest")
+    _hex64(envelope["ledger_prev_hash"], "persisted ledger previous hash")
+    signed = {
+        key: envelope[key] for key in required - {"key_id", "algorithm", "signature"}
+    }
+    public.verify(
+        bytes.fromhex(envelope["signature"]),
+        VERDICT_DOMAIN + canonical_json_bytes(signed),
+    )
+    consumption = envelope["consumption_record"]
+    head = envelope["ledger_head"]
+    for retained in (consumption, head):
+        if (
+            type(retained) is not dict
+            or set(retained) != {"record", "key_id", "algorithm", "signature"}
+            or retained["key_id"] != role["key_id"]
+            or retained["algorithm"] != "Ed25519"
+        ):
+            raise ValueError("persisted signed ledger proof invalid")
+        public.verify(
+            bytes.fromhex(retained["signature"]),
+            LEDGER_DOMAIN + canonical_json_bytes(retained["record"]),
+        )
+    record = consumption["record"]
+    row = db.execute(
+        "SELECT counter,event,challenge,manifest_sha256,issued_at_ns,event_at_ns,"
+        "prev_hash,record_hash FROM events WHERE challenge=? AND event='CONSUMED'",
+        (challenge,),
+    ).fetchone()
+    row_keys = (
+        "counter",
+        "event",
+        "challenge",
+        "manifest_sha256",
+        "issued_at_ns",
+        "event_at_ns",
+        "prev_hash",
+        "record_hash",
+    )
+    durable_record = dict(zip(row_keys, row, strict=True)) if row is not None else None
+    if durable_record is None:
+        raise ValueError("persisted verifier consumed event missing")
+    durable_head = {
+        "counter": durable_record["counter"],
+        "record_hash": durable_record["record_hash"],
+    }
+    if (
+        record != durable_record
+        or head["record"] != durable_head
+        or envelope["ledger_counter"] != durable_record["counter"]
+        or envelope["ledger_prev_hash"] != durable_record["prev_hash"]
+        or envelope["issued_at_ns"] != histories[challenge][0][2]
+    ):
+        raise ValueError("persisted verifier ledger binding invalid")
+    from benchmarks.codegraph_compare.verifier_aggregate import _validate_verdict_schema
+
+    _validate_verdict_schema(envelope["verdict"])
 
 
 def validate_challenge_ledger(owner: Any) -> None:
@@ -126,6 +227,24 @@ def validate_challenge_ledger(owner: Any) -> None:
             "SELECT challenge,manifest_sha256,envelope FROM verdicts"
         ).fetchall()
         verdict_challenges = set()
+        verification = getattr(owner, "verification_config", None)
+        service_identity = getattr(owner, "service_identity", None)
+        public = None
+        if verification is not None:
+            try:
+                role = verification["verifier"]
+                configured_identity = verification["trusted"]["verifier_runtime"][
+                    "measurement"
+                ]
+                if service_identity != configured_identity:
+                    raise ValueError("verifier ledger runtime configuration mismatch")
+                public = Ed25519PublicKey.from_public_bytes(
+                    bytes.fromhex(role["public_key_hex"])
+                )
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(
+                    "verifier ledger verification config invalid"
+                ) from error
         for challenge, manifest, envelope in verdicts:
             if (
                 challenge in verdict_challenges
@@ -133,6 +252,25 @@ def validate_challenge_ledger(owner: Any) -> None:
                 or type(envelope) is not bytes
             ):
                 raise ValueError("challenge ledger verdict state mismatch")
+            if public is not None:
+                try:
+                    parsed = strict_json_loads(envelope)
+                    if canonical_json_bytes(parsed) != envelope:
+                        raise ValueError("persisted verifier envelope is not canonical")
+                    _validate_verifier_envelope(
+                        parsed,
+                        challenge=challenge,
+                        manifest=manifest,
+                        histories=histories,
+                        db=db,
+                        config=verification,
+                        service_identity=service_identity,
+                        public=public,
+                    )
+                except Exception as error:
+                    raise ValueError(
+                        "persisted verifier envelope authentication failed"
+                    ) from error
             verdict_challenges.add(challenge)
         consumed = {
             challenge

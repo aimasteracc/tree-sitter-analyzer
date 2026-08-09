@@ -12836,6 +12836,11 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
     monkeypatch.setattr(
         qualification_operator, "verify_decision_contract", lambda value: value
     )
+    monkeypatch.setattr(
+        qualification_operator,
+        "verify_contract",
+        lambda request: request["contract"],
+    )
     ticks = iter((100.0, 101.0))
     monkeypatch.setattr(
         qualification_operator,
@@ -14464,6 +14469,9 @@ def test_operator_rejects_short_common_lifetime_before_first_cell(
         },
     )
     monkeypatch.setattr(operator, "verify_decision_contract", lambda value: value)
+    monkeypatch.setattr(
+        operator, "verify_contract", lambda request: request["contract"]
+    )
     monkeypatch.setattr(operator.time, "time_ns", lambda: now)
     callbacks = []
     monkeypatch.setattr(operator, "run_cell", lambda *_args: callbacks.append("cell"))
@@ -15104,6 +15112,49 @@ def test_producer_plan_rejects_noncanonical_environment_digest_before_execution(
 
     with pytest.raises(ValueError, match="environment digest is not canonical"):
         validate_producer_plan(plan)
+
+
+def test_exact14_manifest_preflight_rejects_node_budget_before_wire(monkeypatch):
+    # PR #1249 review 3744822109: byte-fit manifests still need exact node accounting.
+    from benchmarks.codegraph_compare import verifier_service
+
+    cells = [({"p": 1}, {"i": 1}, {"c": 1}) for _ in range(14)]
+    monkeypatch.setattr(verifier_service, "MANIFEST_MAX_NODES", 1_400_101)
+
+    with pytest.raises(ValueError, match="complexity exceeds protocol ceiling"):
+        verifier_service.preflight_exact14_manifest(cells)
+
+
+def test_verifier_server_frame_deadline_scales_to_maximum_payload(monkeypatch):
+    # PR #1249 review 3744822112: 512 MiB reads must not retain a fixed 10s budget.
+    import struct
+
+    from benchmarks.codegraph_compare import verifier_service
+
+    deadlines = []
+
+    def receive(_connection, size, deadline):
+        deadlines.append(deadline)
+        return struct.pack("!I", verifier_service.MAX_FRAME) if size == 4 else b"{}"
+
+    monkeypatch.setattr(verifier_service, "recv_exact", receive)
+    monkeypatch.setattr(verifier_service.time, "monotonic", lambda: 100.0)
+
+    assert verifier_service._frame(object()) == {}
+    assert deadlines == [110.0, 164.0]
+
+
+def test_receipt_frame_preflight_rejects_approver_draft_ceiling(monkeypatch):
+    # PR #1249 review 3744822118: all receipt frames must fit before authority use.
+    from benchmarks.codegraph_compare import qualification_operator as operator
+
+    plan = {"plan": "x"}
+    inventory = {"eligibility": {"paths": ["a"]}}
+    bounds = operator.preflight_receipt_service_frames(plan, inventory)
+    monkeypatch.setattr(operator, "RECEIPT_MAX_MESSAGE", bounds["approver_request"] - 1)
+
+    with pytest.raises(ValueError, match="receipt frame upper bound"):
+        operator.preflight_receipt_service_frames(plan, inventory)
 
 
 _mark_posix_qualification_section_tests()

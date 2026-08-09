@@ -9,6 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from benchmarks.codegraph_compare.audit_authority_client import run_cell
+from benchmarks.codegraph_compare.audit_authority_service import (
+    MAX_MESSAGE as AUTHORITY_MAX_MESSAGE,
+)
+from benchmarks.codegraph_compare.audit_authority_service import (
+    verify_contract,
+)
 from benchmarks.codegraph_compare.decision_consumer_service import (
     request_decision,
     verify_decision_contract,
@@ -22,13 +28,54 @@ from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
 )
-from benchmarks.codegraph_compare.receipt_v3_service import request_receipt
+from benchmarks.codegraph_compare.receipt_v3_service import (
+    MAX_MESSAGE as RECEIPT_MAX_MESSAGE,
+)
+from benchmarks.codegraph_compare.receipt_v3_service import (
+    request_receipt,
+)
 from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 from benchmarks.codegraph_compare.verifier import parse_public_config
 from benchmarks.codegraph_compare.verifier_service import (
     preflight_exact14_manifest,
     request_verdict,
 )
+
+RECEIPT_CANONICAL_SCHEMA_OVERHEAD = 2 * 1024 * 1024
+RECEIPT_FRAME_WRAPPER_OVERHEAD = 4096
+
+
+def preflight_receipt_service_frames(
+    plan: dict[str, Any], inventory: dict[str, Any]
+) -> dict[str, int]:
+    """Bound every per-cell receipt frame before authority is consumed.
+
+    The authority envelope is charged at its complete protocol ceiling.  The
+    receipt body retains the inventory eligibility tree and selected plan/audit
+    trees, so canonical escaping and a closed schema allowance are charged too.
+    """
+    canonical = canonical_json_bytes(plan) + canonical_json_bytes(inventory)
+    staged = len(canonical) + canonical.count(b'"') + canonical.count(b"\\")
+    executor_request = AUTHORITY_MAX_MESSAGE + RECEIPT_FRAME_WRAPPER_OVERHEAD
+    executor_response = (
+        AUTHORITY_MAX_MESSAGE
+        + staged
+        + RECEIPT_CANONICAL_SCHEMA_OVERHEAD
+        + RECEIPT_FRAME_WRAPPER_OVERHEAD
+    )
+    approver_request = (
+        AUTHORITY_MAX_MESSAGE + executor_response + RECEIPT_FRAME_WRAPPER_OVERHEAD
+    )
+    approver_response = executor_response + RECEIPT_FRAME_WRAPPER_OVERHEAD
+    bounds = {
+        "executor_request": executor_request,
+        "executor_response": executor_response,
+        "approver_request": approver_request,
+        "approver_response": approver_response,
+    }
+    if any(size > RECEIPT_MAX_MESSAGE for size in bounds.values()):
+        raise ValueError("per-cell receipt frame upper bound exceeds protocol ceiling")
+    return bounds
 
 
 def _fsync_directory(path: Path) -> None:
@@ -61,8 +108,11 @@ def _run_impl(args: argparse.Namespace) -> int:
     config = parse_public_config(config_path.read_bytes())
     contracts: dict[tuple[str, str], dict[str, Any]] = {}
     for path in Path(args.contracts_dir).resolve(strict=True).glob("*.json"):
-        contract = strict_json_loads(path.read_bytes())
-        cell = contract.get("cell", {})
+        raw_contract = strict_json_loads(path.read_bytes())
+        contract = dict(
+            verify_contract({"operation": "run-cell", "contract": raw_contract})
+        )
+        cell = contract["cell"]
         identity = (cell.get("repo_id"), cell.get("arm_id"))
         if identity in contracts:
             raise ValueError("duplicate run-cell contract")
@@ -117,6 +167,7 @@ def _run_impl(args: argparse.Namespace) -> int:
         if type(inventory) is not dict:
             raise ValueError("operator inventory must be an object")
         inventories[identity] = inventory
+        preflight_receipt_service_frames(plan, inventory)
         value = plan.get("wall_timeout_seconds")
         if type(value) is not int or value < 1:
             raise ValueError("operator plan timeout invalid")

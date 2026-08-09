@@ -31,6 +31,7 @@ from benchmarks.codegraph_compare.service_runtime import (
     measure_runtime,
     peer_allowed,
     read_frame,
+    recv_exact,
     secure_key,
     verify_service_launch_attestation,
     wait_for_launch_release,
@@ -55,6 +56,34 @@ MANIFEST_MAX_NODES = 4_000_000
 # and the two receipt-service envelopes per cell. Variable root-authorized plan and
 # inventory bytes are accounted separately below, including outer JSON escaping.
 MANIFEST_CELL_SCHEMA_OVERHEAD = 2 * 1024 * 1024
+# Closed generated authority/receipt/manifest structure above the staged values.
+# This is deliberately a node bound (not a byte proxy): receipts retain the
+# inventory eligibility tree and selected plan trees without adding unbounded
+# generated collections.
+MANIFEST_CELL_SCHEMA_NODES = 100_000
+MANIFEST_INPUT_DEPTH_OVERHEAD = 8
+FRAME_MIN_THROUGHPUT_BYTES_PER_SECOND = 8 * 1024 * 1024
+FRAME_HEADER_DEADLINE_SECONDS = 10
+
+
+def _json_complexity(value: Any, *, initial_depth: int = 0) -> tuple[int, int]:
+    """Count JSON nodes/depth with the parser's exact iterative semantics."""
+    nodes = 0
+    deepest = initial_depth
+    stack: list[tuple[Any, int]] = [(value, initial_depth)]
+    while stack:
+        item, depth = stack.pop()
+        nodes += 1
+        deepest = max(deepest, depth)
+        if nodes > MANIFEST_MAX_NODES or depth > MANIFEST_MAX_DEPTH:
+            raise ValueError("manifest JSON complexity limit exceeded")
+        if type(item) is list:
+            stack.extend((child, depth + 1) for child in item)
+        elif type(item) is dict:
+            stack.extend((child, depth + 1) for child in item.values())
+        elif type(item) not in (str, bool, int, float, type(None)):
+            raise ValueError("manifest JSON value type invalid")
+    return nodes, deepest
 
 
 def exact14_manifest_preflight_bound(
@@ -83,6 +112,19 @@ def preflight_exact14_manifest(
     bound = exact14_manifest_preflight_bound(cells)
     if bound > MAX_FRAME:
         raise ValueError("exact-14 manifest upper bound exceeds protocol ceiling")
+    # Apply the same iterative node/depth definition used by the wire parser.
+    # Generated receipt/authority structures are closed and charged explicitly;
+    # staged values are charged exactly before the first authority reservation.
+    nodes = 4 + len(cells)  # manifest object/scalars plus the cells list/items
+    for plan, inventory, contract in cells:
+        for value in (plan, inventory, contract):
+            value_nodes, _ = _json_complexity(
+                value, initial_depth=MANIFEST_INPUT_DEPTH_OVERHEAD
+            )
+            nodes += value_nodes
+        nodes += MANIFEST_CELL_SCHEMA_NODES
+        if nodes > MANIFEST_MAX_NODES:
+            raise ValueError("exact-14 manifest complexity exceeds protocol ceiling")
     return bound
 
 
@@ -116,22 +158,7 @@ def _manifest_json_loads(payload: bytes) -> dict[str, Any]:
         raise ValueError("invalid manifest JSON") from error
     if type(value) is not dict:
         raise ValueError("manifest frame must be a JSON object")
-    nodes = 0
-    stack: list[tuple[Any, int]] = [(value, 0)]
-    while stack:
-        item, depth = stack.pop()
-        nodes += 1
-        if nodes > MANIFEST_MAX_NODES or depth > MANIFEST_MAX_DEPTH:
-            raise ValueError("manifest JSON complexity limit exceeded")
-        if type(item) is str:
-            if len(item.encode("utf-8")) > MAX_FRAME:
-                raise ValueError("manifest JSON string limit exceeded")
-        elif type(item) is list:
-            stack.extend((child, depth + 1) for child in item)
-        elif type(item) is dict:
-            stack.extend((child, depth + 1) for child in item.values())
-        elif type(item) not in (bool, int, float, type(None)):
-            raise ValueError("manifest JSON value type invalid")
+    _json_complexity(value)
     return value
 
 
@@ -141,16 +168,28 @@ def _hex64(value: Any, label: str) -> str:
     return value
 
 
-def _frame(
-    connection: socket.socket, seconds: float = READ_DEADLINE_SECONDS
-) -> dict[str, Any]:
-    value = read_frame(
-        connection,
-        MAX_FRAME,
-        seconds,
-        "verifier request",
-        parser=_manifest_json_loads,
-    )
+def _frame(connection: socket.socket, seconds: float | None = None) -> dict[str, Any]:
+    """Read a frame under either caller deadline or a size-derived server budget."""
+    if seconds is not None:
+        value = read_frame(
+            connection,
+            MAX_FRAME,
+            seconds,
+            "verifier request",
+            parser=_manifest_json_loads,
+        )
+    else:
+        header_deadline = time.monotonic() + FRAME_HEADER_DEADLINE_SECONDS
+        header = recv_exact(connection, 4, header_deadline)
+        size = struct.unpack("!I", header)[0]
+        if size < 2 or size > MAX_FRAME:
+            raise ValueError("verifier request size invalid")
+        transfer_seconds = max(
+            FRAME_HEADER_DEADLINE_SECONDS,
+            size / FRAME_MIN_THROUGHPUT_BYTES_PER_SECOND,
+        )
+        payload = recv_exact(connection, size, time.monotonic() + transfer_seconds)
+        value = _manifest_json_loads(payload)
     if type(value) is not dict:
         raise ValueError("verifier frame must be an object")
     return value
@@ -808,7 +847,11 @@ def main(argv: list[str] | None = None) -> int:
         != config["verifier"]["public_key_hex"]
     ):
         raise SystemExit("verifier private key does not match public config")
-    ledger = ChallengeLedger(Path(args.ledger))
+    ledger = ChallengeLedger(
+        Path(args.ledger),
+        verification_config=config,
+        service_identity=measurement,
+    )
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(args.socket)
     # Filesystem access must not preempt the exact SO_PEERCRED UID authorization.

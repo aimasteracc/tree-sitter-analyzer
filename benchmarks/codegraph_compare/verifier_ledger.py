@@ -37,8 +37,14 @@ class ChallengeLedger:
         challenge_quota: int = 1024,
         total_quota: int = 1_000_000,
         challenge_ttl_seconds: int = 900,
+        verification_config: dict[str, Any] | None = None,
+        service_identity: dict[str, Any] | None = None,
     ):
         self.path = path
+        self.verification_config = verification_config
+        self.service_identity = service_identity
+        if (verification_config is None) != (service_identity is None):
+            raise ValueError("verifier ledger startup verification context incomplete")
         self.challenge_quota = challenge_quota
         self.total_quota = total_quota
         self.challenge_ttl_ns = challenge_ttl_seconds * 1_000_000_000
