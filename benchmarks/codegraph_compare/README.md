@@ -452,8 +452,8 @@ service image/interpreter/module digests; `service_measurement` is checked again
 the running service module. The service creates its own output and cgroup, launches
 the exact producer, captures PID/starttime/pidfd availability/cgroup, requires exit
 zero and `cgroup.events populated=0` throughout the subtree, and immediately seals
-ext4 plus dm-verity in a service-owned non-writable directory. Its signed canonical
-audit retains the launch token and hashes the core, images, and all staged inputs.
+ext4 plus dm-verity in a service-owned non-writable directory. Its signed canonical audit retains the launch token and hashes the sealed data/hash
+images and all staged inputs. Mutable core directories never cross a service response.
 
 The seccomp claim is deliberately narrow: it attests that trusted supervisor code
 passed the exact root-authorized staged bytes to Docker. Docker does not return the
@@ -471,9 +471,9 @@ User, ReadonlyRootfs, mounts, network mode, SecurityOpt, container ID, PID,
 starttime, and cgroup itself; the service binds those facts to `/proc/self` and the
 root config's pinned image ID and command. It then measures the actual interpreter,
 all loaded non-stdlib project/package modules plus installed RECORD files, UID/GID,
-read-only root filesystem, and exact writable-mount set. The isolated signer child
-must verify the parent's actual measurement. Responses retain that actual
-measurement rather than a copied expected value.
+read-only root filesystem, and exact writable-mount set. Each measured service performs semantic verification and Ed25519 signing directly;
+private-key descriptors are retained by that service and are never inherited by a
+child. Responses retain the actual measurement rather than a copied expected value.
 
 All root-signed cell contracts share one correlation nonce. The operator cannot
 choose a verifier challenge: it first submits the canonical manifest hash, and the
@@ -482,14 +482,16 @@ durable root-owned append-only hash-chain ledger. The length-prefixed, fsynced l
 `CHALLENGED -> VERIFYING -> CONSUMED/FAILED`; partial records, bad hashes, duplicate
 use, and replay after restart are rejected, and a crash-stranded VERIFYING record
 is failed on restart. The response contains separately signed consumption and
-ledger-head proofs. Those are retained historical evidence only: after accepting a
-verdict, the production operator performs an authenticated live head query and
-requires the exact counter/hash before writing a decision wrapper. An old envelope
-or stale head cannot authorize a new decision. The verifier recomputes all fourteen receipts. Only a closed,
+ledger-head proofs. The signed `CONSUMED` proof is the acceptance fact; the consumer does not query a
+mutable live head, avoiding a TOCTOU race. An offline root-signed decision contract
+binds one ID/nonce, the common plan set, and all fourteen cell plan hashes before
+execution; it deliberately contains no post-run head. The consumer atomically
+records its use in root-controlled SQLite and returns the original signed receipt on
+an idempotent query after a commit-time disconnect. The authority host is trusted;
+this protocol does not claim resistance to rollback by a malicious database host. The verifier recomputes all fourteen receipts. Only a closed,
 reason-free verdict authorized as `PRODUCTION_VERIFIER` may say `SETUP_QUALIFIED`.
 The operator derives one total monotonic budget for the serial authority, executor,
-approver, and verifier phases from the fourteen signed plans; non-positive remaining
-time is a terminal timeout, signer timeouts cancel their process groups and leaves a durable `CANCELLED` terminal
+approver, and verifier phases from the fourteen signed plans; non-positive remaining time is a terminal timeout and leaves a durable `CANCELLED`
 state, while other failures leave `FAILED` and success records exact completion.
 
 Diagnostic verification always remains `E0/NOT_EVALUATED`; retained aggregate

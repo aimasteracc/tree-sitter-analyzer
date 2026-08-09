@@ -3,6 +3,32 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "cells": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "arm_id": {
+            "type": "string"
+          },
+          "plan_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "repo_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo_id",
+          "arm_id",
+          "plan_sha256"
+        ],
+        "type": "object"
+      },
+      "maxItems": 14,
+      "minItems": 14,
+      "type": "array"
+    },
     "decision_id": {
       "pattern": "^[0-9a-f]{64}$",
       "type": "string"
@@ -11,27 +37,13 @@
       "pattern": "^[0-9a-f]{64}$",
       "type": "string"
     },
-    "expires_at": {
+    "expires_at_ns": {
       "type": "integer"
     },
-    "ledger_head": {
-      "additionalProperties": false,
-      "properties": {
-        "counter": {
-          "type": "integer"
-        },
-        "record_hash": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
-        }
-      },
-      "required": [
-        "counter",
-        "record_hash"
-      ],
-      "type": "object"
+    "issued_at_ns": {
+      "type": "integer"
     },
-    "manifest_sha256": {
+    "plan_set_hash": {
       "pattern": "^[0-9a-f]{64}$",
       "type": "string"
     },
@@ -47,9 +59,10 @@
     "schema_version",
     "decision_id",
     "decision_nonce",
-    "expires_at",
-    "manifest_sha256",
-    "ledger_head",
+    "issued_at_ns",
+    "expires_at_ns",
+    "plan_set_hash",
+    "cells",
     "root_signature"
   ],
   "type": "object"

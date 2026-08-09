@@ -455,7 +455,6 @@ class AuthorityRunner:
                     "verity-format.txt",
                 )
             }
-            refs["core"] = str(output / "core")
             return {"audit": audit, "artifacts": refs}
         finally:
             if pidfd_descriptor >= 0:

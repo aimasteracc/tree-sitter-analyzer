@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import Any, cast
 
 from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
 
@@ -38,19 +38,15 @@ class ChallengeLedger:
         self.challenge_quota = challenge_quota
         self.total_quota = total_quota
         self.challenge_ttl_ns = challenge_ttl_seconds * 1_000_000_000
-        self._lock = threading.RLock()
+        self._local = threading.local()
         parent = path.parent.resolve(strict=True)
         metadata = os.stat(parent)
         if metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) & 0o022:
             raise ValueError("challenge ledger directory must be root-controlled")
-        self.db = sqlite3.connect(
-            path, timeout=30, isolation_level=None, check_same_thread=False
-        )
         try:
-            self.db.execute("PRAGMA journal_mode=WAL")
-            self.db.execute("PRAGMA synchronous=FULL")
-            self.db.execute("PRAGMA foreign_keys=ON")
-            self.db.executescript("""
+            db = self._connection()
+            try:
+                db.executescript("""
                 CREATE TABLE IF NOT EXISTS meta (
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1),
                     counter INTEGER NOT NULL, head_hash TEXT NOT NULL,
@@ -67,7 +63,9 @@ class ChallengeLedger:
                     challenge TEXT NOT NULL, manifest_sha256 TEXT NOT NULL,
                     issued_at_ns INTEGER NOT NULL, event_at_ns INTEGER NOT NULL,
                     prev_hash TEXT NOT NULL, record_hash TEXT NOT NULL UNIQUE);
-            """)
+                """)
+            finally:
+                db.close()
             os.chmod(path, 0o600)
             info = os.stat(path, follow_symlinks=False)
             if (
@@ -87,16 +85,32 @@ class ChallengeLedger:
                 for challenge, manifest in rows:
                     self._transition_locked(manifest, challenge, "FAILED")
         except BaseException:
-            self.db.close()
             raise
+
+    def _connection(self) -> sqlite3.Connection:
+        db = sqlite3.connect(self.path, timeout=30, isolation_level=None)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=FULL")
+        db.execute("PRAGMA foreign_keys=ON")
+        return db
+
+    @property
+    def db(self) -> sqlite3.Connection:
+        db = getattr(self._local, "db", None)
+        if db is None:
+            raise RuntimeError("ledger database access requires a transaction")
+        return cast(sqlite3.Connection, db)
 
     class _Transaction:
         def __init__(self, owner: ChallengeLedger):
             self.owner = owner
 
         def __enter__(self) -> ChallengeLedger._Transaction:
-            self.owner._lock.acquire()
-            self.owner.db.execute("BEGIN IMMEDIATE")
+            if getattr(self.owner._local, "db", None) is not None:
+                raise RuntimeError("nested ledger transaction")
+            db = self.owner._connection()
+            self.owner._local.db = db
+            db.execute("BEGIN IMMEDIATE")
             return self
 
         def __exit__(
@@ -105,10 +119,12 @@ class ChallengeLedger:
             value: BaseException | None,
             tb: TracebackType | None,
         ) -> None:
+            db = self.owner.db
             try:
-                self.owner.db.execute("ROLLBACK" if typ else "COMMIT")
+                db.execute("ROLLBACK" if typ else "COMMIT")
             finally:
-                self.owner._lock.release()
+                del self.owner._local.db
+                db.close()
 
     def _transaction(self) -> ChallengeLedger._Transaction:
         return self._Transaction(self)
@@ -139,17 +155,12 @@ class ChallengeLedger:
             )
 
     def close(self) -> None:
-        with self._lock:
-            try:
-                start = Path("/proc/self/stat").read_text(encoding="ascii").split()[21]
-                self.db.execute("BEGIN IMMEDIATE")
-                self.db.execute(
-                    "UPDATE meta SET lease_pid=NULL,lease_start=NULL WHERE singleton=1 AND lease_pid=? AND lease_start=?",
-                    (os.getpid(), start),
-                )
-                self.db.execute("COMMIT")
-            finally:
-                self.db.close()
+        with self._transaction():
+            start = Path("/proc/self/stat").read_text(encoding="ascii").split()[21]
+            self.db.execute(
+                "UPDATE meta SET lease_pid=NULL,lease_start=NULL WHERE singleton=1 AND lease_pid=? AND lease_start=?",
+                (os.getpid(), start),
+            )
 
     @staticmethod
     def _record(
@@ -307,7 +318,7 @@ class ChallengeLedger:
             }
 
     def head(self) -> dict[str, Any]:
-        with self._lock:
+        with self._transaction():
             row = self.db.execute(
                 "SELECT counter,head_hash FROM meta WHERE singleton=1"
             ).fetchone()

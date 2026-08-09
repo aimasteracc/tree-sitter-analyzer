@@ -143,6 +143,7 @@
       "const": 6
     },
     "trusted": {
+      "additionalProperties": false,
       "type": "object"
     },
     "verifier": {

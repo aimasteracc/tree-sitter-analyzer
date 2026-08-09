@@ -39,6 +39,7 @@
           "const": "none"
         },
         "process": {
+          "additionalProperties": false,
           "type": "object"
         },
         "readonly_rootfs": {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import socket
 import struct
 import tempfile
@@ -80,13 +81,13 @@ def test_authority_server_rejects_unsigned_run_cell_before_runner(
     listener.bind(str(socket_path))
     listener.listen(1)
     contract = {
-        "schema_version": 2,
+        "schema_version": 3,
         "job_id": "1" * 64,
         "cell": {"repo_id": "gin", "arm_id": "tsa-warm", "attempt": 1},
         "nonce": "2" * 64,
         "decision_id": "3" * 64,
-        "decision_nonce": "4" * 64,
-        "expires_at": time.time_ns() + 60_000_000_000,
+        "decision_contract_sha256": "4" * 64,
+        "expires_at_ns": time.time_ns() + 60_000_000_000,
         "root_signature": "0" * 128,
     }
     try:
@@ -124,13 +125,13 @@ def _signed_contract(root: Ed25519PrivateKey) -> dict[str, object]:
     from benchmarks.codegraph_compare.audit_authority_service import CONTRACT_DOMAIN
 
     unsigned = {
-        "schema_version": 2,
+        "schema_version": 3,
         "job_id": "1" * 64,
         "cell": {"repo_id": "gin", "arm_id": "tsa-warm", "attempt": 1},
         "nonce": "2" * 64,
         "decision_id": "3" * 64,
-        "decision_nonce": "4" * 64,
-        "expires_at": time.time_ns() + 60_000_000_000,
+        "decision_contract_sha256": "4" * 64,
+        "expires_at_ns": time.time_ns() + 60_000_000_000,
     }
     return {
         **unsigned,
@@ -161,9 +162,8 @@ def test_authority_response_signs_exact_closed_artifact_descriptors(
         "audit": {},
     }
     artifacts = {
-        name: str(core if name == "core" else job / name)
+        name: str(job / name)
         for name in (
-            "core",
             "data.img",
             "hash.img",
             "launch-audit.json",
@@ -185,7 +185,6 @@ def test_authority_response_signs_exact_closed_artifact_descriptors(
         listener.close()
     assert set(response) == {"response", "key_id", "algorithm", "signature"}
     assert [item["name"] for item in response["response"]["artifacts"]] == [
-        "core",
         "data.img",
         "hash.img",
         "launch-audit.json",
@@ -208,9 +207,8 @@ def test_authority_response_rejects_symlink_artifact(tmp_path: Path, monkeypatch
     for name in ("data.img", "hash.img", "launch-audit.json", "verity-format.txt"):
         (job / name).symlink_to(target)
     artifacts = {
-        name: str(core if name == "core" else job / name)
+        name: str(job / name)
         for name in (
-            "core",
             "data.img",
             "hash.img",
             "launch-audit.json",
@@ -277,3 +275,31 @@ def test_plan_document_digest_is_distinct_from_shared_canonical_plan_hash():
     document_sha256 = hashlib.sha256(canonical_json_bytes(document)).hexdigest()
     assert canonical_plan_hash(document) == logical
     assert document_sha256 != logical
+
+
+def test_offline_issuer_binds_fourteen_contracts_to_one_decision(tmp_path: Path):
+    # Incident 2026-07-01 audit12: per-cell decision identities broke atomic approval.
+    from benchmarks.codegraph_compare.decision_contract_issuer import issue
+    from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
+
+    plans = tmp_path / "plans"
+    plans.mkdir()
+    for ordinal, (repo, arm) in enumerate(EXPECTED_CELLS):
+        (plans / f"{ordinal}.json").write_bytes(
+            canonical_json_bytes({"cell": {"repo_id": repo, "arm_id": arm}})
+        )
+    decision, contracts = issue(plans, Ed25519PrivateKey.from_private_bytes(b"R" * 32))
+    digest = hashlib.sha256(canonical_json_bytes(decision)).hexdigest()
+    assert [contract["decision_id"] for contract in contracts] == [
+        decision["decision_id"]
+    ] * 14
+    assert [contract["decision_contract_sha256"] for contract in contracts] == [
+        digest
+    ] * 14
+
+
+def test_receipt_service_has_no_signer_child_handoff():
+    # Incident 2026-07-01 audit12: a signer subprocess inherited the key descriptor.
+    source = Path("benchmarks/codegraph_compare/receipt_v3_service.py").read_text()
+    assert "subprocess.Popen" not in source
+    assert "pass_fds" not in source

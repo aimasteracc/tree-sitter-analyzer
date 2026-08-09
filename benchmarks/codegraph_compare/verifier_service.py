@@ -86,7 +86,7 @@ def _load_manifest(
     artifact_root: Path,
     staged_root: Path,
     temporary: Path,
-) -> tuple[dict[str, Any], str, str]:
+) -> tuple[dict[str, Any], str, str, str, str]:
     if set(request) != {"operation", "challenge", "manifest_bytes", "manifest_sha256"}:
         raise ValueError("verifier request is not closed")
     if request["operation"] != "verify-exact-14":
@@ -141,9 +141,15 @@ def _load_manifest(
             raise ValueError("authority response does not bind root contract")
         validated.append((identity, item, response))
     decision_ids = {item[1]["contract"]["decision_id"] for item in validated}
-    decision_nonces = {item[1]["contract"]["decision_nonce"] for item in validated}
-    if len(decision_ids) != 14 or len(decision_nonces) != 14:
-        raise ValueError("exact-14 decision identities/nonces must be unique")
+    decision_digests = {
+        item[1]["contract"]["decision_contract_sha256"] for item in validated
+    }
+    if len(decision_ids) != 1 or len(decision_digests) != 1:
+        raise ValueError(
+            "exact-14 contracts must share one offline decision identity/digest"
+        )
+    decision_id = decision_ids.pop()
+    decision_digest = decision_digests.pop()
 
     loaded_cells: list[dict[str, Any]] = []
     retained_fds: list[int] = []
@@ -201,7 +207,7 @@ def _load_manifest(
         },
         "cells": loaded_cells,
     }
-    return loaded, digest, challenge
+    return loaded, digest, challenge, decision_id, decision_digest
 
 
 def _signed_ledger(
@@ -229,8 +235,10 @@ def _verify(
     ledger.start_verifying(digest, challenge)
     try:
         with tempfile.TemporaryDirectory(prefix="no1-008a-verifier-") as directory:
-            manifest, loaded_digest, loaded_challenge = _load_manifest(
-                request, config, artifact_root, staged_root, Path(directory)
+            manifest, loaded_digest, loaded_challenge, decision_id, decision_digest = (
+                _load_manifest(
+                    request, config, artifact_root, staged_root, Path(directory)
+                )
             )
             if (loaded_digest, loaded_challenge) != (digest, challenge):
                 raise ValueError("verified manifest identity changed")
@@ -259,7 +267,8 @@ def _verify(
     consumption, head = ledger.finish_with_head(digest, challenge, success=True)
     signed = {
         "manifest_sha256": digest,
-        "decision_nonce": manifest["verifier_nonce"],
+        "decision_id": decision_id,
+        "decision_contract_sha256": decision_digest,
         "challenge": challenge,
         "ledger_counter": consumption["counter"],
         "ledger_prev_hash": consumption["prev_hash"],
@@ -447,7 +456,8 @@ def request_verdict(
         raise ValueError(f"external verifier rejected manifest: {envelope['reason']}")
     expected = {
         "manifest_sha256",
-        "decision_nonce",
+        "decision_id",
+        "decision_contract_sha256",
         "challenge",
         "ledger_counter",
         "ledger_prev_hash",
@@ -464,7 +474,9 @@ def request_verdict(
         type(envelope) is not dict
         or set(envelope) != expected
         or envelope["manifest_sha256"] != digest
-        or envelope["decision_nonce"] != manifest["correlation_nonce"]
+        or envelope["decision_id"] != manifest["cells"][0]["contract"]["decision_id"]
+        or envelope["decision_contract_sha256"]
+        != manifest["cells"][0]["contract"]["decision_contract_sha256"]
         or envelope["challenge"] != begin["challenge"]
         or envelope["issued_at_ns"] != begin["issued_at_ns"]
         or envelope["key_id"] != config["verifier"]["key_id"]

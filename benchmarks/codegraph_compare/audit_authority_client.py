@@ -146,7 +146,6 @@ def run_cell(
     )
     artifacts = response["artifacts"]
     expected_names = {
-        "core",
         "data.img",
         "hash.img",
         "launch-audit.json",
@@ -168,9 +167,7 @@ def run_cell(
         }:
             raise ValueError("run-cell artifact descriptor is not closed")
         name = item["name"]
-        expected_path = f"{contract['job_id']}/" + (
-            "producer-output/core" if name == "core" else name
-        )
+        expected_path = f"{contract['job_id']}/{name}"
         identity = hashlib.sha256(
             canonical_json_bytes(
                 {

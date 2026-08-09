@@ -304,6 +304,10 @@ def create_service_launch_attestation(
     key_id: str,
 ) -> dict[str, Any]:
     """Authority-side Docker observation; no service self-report is trusted."""
+    if role not in {"executor", "approver", "auditor", "verifier", "decision_consumer"}:
+        raise ValueError("service launch role is not authorized")
+    if key_id != config["auditor"]["key_id"]:
+        raise ValueError("service launch attestor key identity mismatch")
     result = subprocess.run(
         ["docker", "inspect", container],
         stdin=subprocess.DEVNULL,
@@ -399,6 +403,7 @@ def verify_service_launch_attestation(
         or any(
             process.get(name) != actual.get(name)
             for name in (
+                "host_pid",
                 "container_pid",
                 "starttime",
                 "cgroup",
@@ -432,7 +437,7 @@ def main(argv: list[str] | None = None) -> int:
         "--container",
         action="append",
         required=True,
-        help="ROLE=CONTAINER (exact executor,approver,auditor,verifier)",
+        help="ROLE=CONTAINER (exact executor,approver,auditor,verifier,decision_consumer)",
     )
     args = parser.parse_args(argv)
     from benchmarks.codegraph_compare.verifier import parse_public_config
@@ -444,9 +449,9 @@ def main(argv: list[str] | None = None) -> int:
         if not separator or role in pairs:
             raise ValueError("container mapping invalid or duplicate")
         pairs[role] = container
-    required = {"executor", "approver", "auditor", "verifier"}
+    required = {"executor", "approver", "auditor", "verifier", "decision_consumer"}
     if set(pairs) != required:
-        raise ValueError("launcher requires the exact four signing/verifying roles")
+        raise ValueError("launcher requires the exact five service roles")
     fd, raw_key = secure_key(Path(args.private_key), os.geteuid())
     try:
         key = Ed25519PrivateKey.from_private_bytes(raw_key)

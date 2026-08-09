@@ -1,1 +1,355 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"no1-008a-verdict-envelope-v2","type":"object","properties":{"manifest_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"challenge":{"type":"string","pattern":"^[0-9a-f]{64}$"},"verdict":{"type":"object","properties":{"cells":{"type":"array","minItems":14,"maxItems":14,"prefixItems":[{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"vscode"},"arm_id":{"const":"tsa-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"vscode"},"arm_id":{"const":"codegraph-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"excalidraw"},"arm_id":{"const":"tsa-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"excalidraw"},"arm_id":{"const":"codegraph-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"django"},"arm_id":{"const":"tsa-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"django"},"arm_id":{"const":"codegraph-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"tokio"},"arm_id":{"const":"tsa-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"tokio"},"arm_id":{"const":"codegraph-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"okhttp"},"arm_id":{"const":"tsa-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"okhttp"},"arm_id":{"const":"codegraph-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"gin"},"arm_id":{"const":"tsa-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"gin"},"arm_id":{"const":"codegraph-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"alamofire"},"arm_id":{"const":"tsa-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}},{"type":"object","additionalProperties":false,"required":["contract","authority_response","receipt"],"properties":{"contract":{"type":"object","properties":{"cell":{"type":"object","properties":{"repo_id":{"const":"alamofire"},"arm_id":{"const":"codegraph-warm"}},"required":["repo_id","arm_id"]}}},"authority_response":{"type":"object"},"receipt":{"type":"object"}}}],"items":false}}},"key_id":{"type":"string"},"algorithm":{"const":"Ed25519"},"signature":{"type":"string","pattern":"^[0-9a-f]{128}$"}},"required":["manifest_sha256","challenge","verdict","key_id","algorithm","signature"]}
+{
+  "$id": "no1-008a-verdict-envelope-v2",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "algorithm": {
+      "const": "Ed25519"
+    },
+    "challenge": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "consumption_record": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "Ed25519"
+        },
+        "key_id": {
+          "type": "string"
+        },
+        "record": {
+          "additionalProperties": false,
+          "properties": {
+            "challenge": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "counter": {
+              "type": "integer"
+            },
+            "event": {
+              "enum": [
+                "CHALLENGED",
+                "VERIFYING",
+                "CONSUMED",
+                "FAILED"
+              ]
+            },
+            "event_at_ns": {
+              "type": "integer"
+            },
+            "issued_at_ns": {
+              "type": "integer"
+            },
+            "manifest_sha256": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "prev_hash": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "record_hash": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "counter",
+            "event",
+            "challenge",
+            "manifest_sha256",
+            "issued_at_ns",
+            "event_at_ns",
+            "prev_hash",
+            "record_hash"
+          ],
+          "type": "object"
+        },
+        "signature": {
+          "pattern": "^[0-9a-f]{128}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "record",
+        "key_id",
+        "algorithm",
+        "signature"
+      ],
+      "type": "object"
+    },
+    "decision_contract_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "decision_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "issued_at_ns": {
+      "type": "integer"
+    },
+    "key_id": {
+      "type": "string"
+    },
+    "ledger_counter": {
+      "type": "integer"
+    },
+    "ledger_head": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "Ed25519"
+        },
+        "key_id": {
+          "type": "string"
+        },
+        "record": {
+          "additionalProperties": false,
+          "properties": {
+            "counter": {
+              "type": "integer"
+            },
+            "record_hash": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "counter",
+            "record_hash"
+          ],
+          "type": "object"
+        },
+        "signature": {
+          "pattern": "^[0-9a-f]{128}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "record",
+        "key_id",
+        "algorithm",
+        "signature"
+      ],
+      "type": "object"
+    },
+    "ledger_prev_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "service_identity": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_writable_mounts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "closure_manifest": {
+          "additionalProperties": false,
+          "patternProperties": {
+            "^.+$": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "closure_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "gid": {
+          "type": "integer"
+        },
+        "interpreter_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "rootfs_readonly": {
+          "type": "boolean"
+        },
+        "uid": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "interpreter_sha256",
+        "closure_manifest",
+        "closure_manifest_sha256",
+        "uid",
+        "gid",
+        "rootfs_readonly",
+        "allowed_writable_mounts"
+      ],
+      "type": "object"
+    },
+    "signature": {
+      "pattern": "^[0-9a-f]{128}$",
+      "type": "string"
+    },
+    "verdict": {
+      "additionalProperties": false,
+      "properties": {
+        "attempts_per_cell": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "authorization": {
+          "enum": [
+            "PRODUCTION_VERIFIER",
+            "DIAGNOSTIC_ONLY"
+          ]
+        },
+        "cell_diagnostics": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "arm_id": {
+                "type": "string"
+              },
+              "reasons": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "repo_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "repo_id",
+              "arm_id",
+              "reasons"
+            ],
+            "type": "object"
+          },
+          "maxItems": 14,
+          "type": "array"
+        },
+        "counters": {
+          "additionalProperties": false,
+          "properties": {
+            "api_cost_usd": {
+              "const": 0,
+              "type": "number"
+            },
+            "input_tokens": {
+              "const": 0,
+              "type": "number"
+            },
+            "model_calls": {
+              "const": 0,
+              "type": "number"
+            },
+            "network_requests": {
+              "const": 0,
+              "type": "number"
+            },
+            "output_tokens": {
+              "const": 0,
+              "type": "number"
+            },
+            "provider_requests": {
+              "const": 0,
+              "type": "number"
+            }
+          },
+          "required": [
+            "model_calls",
+            "provider_requests",
+            "network_requests",
+            "input_tokens",
+            "output_tokens",
+            "api_cost_usd"
+          ],
+          "type": "object"
+        },
+        "dominance_allowed": {
+          "const": false
+        },
+        "evaluation_stage": {
+          "const": "E0"
+        },
+        "expected_cells": {
+          "const": 14
+        },
+        "observed_receipts": {
+          "maximum": 14,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "publishable": {
+          "const": false
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "status": {
+          "enum": [
+            "SETUP_QUALIFIED",
+            "NOT_EVALUATED"
+          ]
+        },
+        "top_level_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "unlock_allowed": {
+          "const": false
+        },
+        "winner": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "schema_version",
+        "evaluation_stage",
+        "publishable",
+        "winner",
+        "dominance_allowed",
+        "unlock_allowed",
+        "status",
+        "authorization",
+        "top_level_reasons",
+        "expected_cells",
+        "observed_receipts",
+        "attempts_per_cell",
+        "counters",
+        "cell_diagnostics"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "manifest_sha256",
+    "decision_id",
+    "decision_contract_sha256",
+    "challenge",
+    "ledger_counter",
+    "ledger_prev_hash",
+    "issued_at_ns",
+    "verdict",
+    "service_identity",
+    "consumption_record",
+    "ledger_head",
+    "key_id",
+    "algorithm",
+    "signature"
+  ],
+  "type": "object"
+}

@@ -52,25 +52,38 @@ def verify_decision_contract(value: Any) -> dict[str, Any]:
         "schema_version",
         "decision_id",
         "decision_nonce",
-        "expires_at",
-        "manifest_sha256",
-        "ledger_head",
+        "issued_at_ns",
+        "expires_at_ns",
+        "plan_set_hash",
+        "cells",
         "root_signature",
     }
     if type(value) is not dict or set(value) != keys or value["schema_version"] != 1:
         raise ValueError("decision contract is not closed")
-    for name in ("decision_id", "decision_nonce", "manifest_sha256"):
+    for name in ("decision_id", "decision_nonce", "plan_set_hash"):
         _hex64(value[name], name)
-    if type(value["expires_at"]) is not int or value["expires_at"] <= time.time_ns():
-        raise TimeoutError("decision contract expired")
-    head = value["ledger_head"]
+    now = time.time_ns()
     if (
-        type(head) is not dict
-        or set(head) != {"counter", "record_hash"}
-        or type(head["counter"]) is not int
+        type(value["issued_at_ns"]) is not int
+        or type(value["expires_at_ns"]) is not int
+        or value["issued_at_ns"] > now
+        or value["expires_at_ns"] <= now
+        or value["expires_at_ns"] <= value["issued_at_ns"]
     ):
-        raise ValueError("expected ledger head invalid")
-    _hex64(head["record_hash"], "ledger head")
+        raise TimeoutError("decision contract lifetime invalid")
+    from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
+
+    cells = value["cells"]
+    if type(cells) is not list or len(cells) != 14:
+        raise ValueError("decision contract requires exact fourteen cells")
+    identities = []
+    for cell in cells:
+        if type(cell) is not dict or set(cell) != {"repo_id", "arm_id", "plan_sha256"}:
+            raise ValueError("decision cell is not closed")
+        identities.append((cell["repo_id"], cell["arm_id"]))
+        _hex64(cell["plan_sha256"], "decision plan hash")
+    if identities != list(EXPECTED_CELLS):
+        raise ValueError("decision cells are not exact or ordered")
     unsigned = {k: v for k, v in value.items() if k != "root_signature"}
     signature = value["root_signature"]
     if type(signature) is not str or len(signature) != 128:
@@ -84,14 +97,33 @@ def verify_decision_contract(value: Any) -> dict[str, Any]:
 def verify_verdict_envelope(
     envelope: Any, contract: dict[str, Any], config: dict[str, Any]
 ) -> None:
+    contract_digest = hashlib.sha256(canonical_json_bytes(contract)).hexdigest()
+    required = {
+        "manifest_sha256",
+        "decision_id",
+        "decision_contract_sha256",
+        "challenge",
+        "ledger_counter",
+        "ledger_prev_hash",
+        "issued_at_ns",
+        "verdict",
+        "service_identity",
+        "consumption_record",
+        "ledger_head",
+        "key_id",
+        "algorithm",
+        "signature",
+    }
+    if type(envelope) is not dict or set(envelope) != required:
+        raise ValueError("verdict envelope is not closed")
     if (
-        type(envelope) is not dict
-        or envelope.get("manifest_sha256") != contract["manifest_sha256"]
+        envelope["decision_id"] != contract["decision_id"]
+        or envelope["decision_contract_sha256"] != contract_digest
     ):
-        raise ValueError("verdict manifest does not match decision")
+        raise ValueError("verdict does not bind offline decision contract")
     if (
-        envelope.get("key_id") != config["verifier"]["key_id"]
-        or envelope.get("algorithm") != "Ed25519"
+        envelope["key_id"] != config["verifier"]["key_id"]
+        or envelope["algorithm"] != "Ed25519"
     ):
         raise ValueError("verifier identity mismatch")
     signed = {
@@ -99,73 +131,125 @@ def verify_verdict_envelope(
         for k, v in envelope.items()
         if k not in {"key_id", "algorithm", "signature"}
     }
-    Ed25519PublicKey.from_public_bytes(
+    public = Ed25519PublicKey.from_public_bytes(
         bytes.fromhex(config["verifier"]["public_key_hex"])
-    ).verify(
+    )
+    public.verify(
         bytes.fromhex(envelope["signature"]),
         VERDICT_DOMAIN + canonical_json_bytes(signed),
     )
-    retained = envelope.get("ledger_head")
+    verdict = envelope["verdict"]
     if (
-        type(retained) is not dict
-        or retained.get("record") != contract["ledger_head"]
-        or retained.get("key_id") != config["verifier"]["key_id"]
+        type(verdict) is not dict
+        or verdict.get("status") != "SETUP_QUALIFIED"
+        or verdict.get("authorization") != "PRODUCTION_VERIFIER"
+        or verdict.get("expected_cells") != 14
+        or verdict.get("observed_receipts") != 14
+        or verdict.get("attempts_per_cell") != 1
+        or verdict.get("top_level_reasons") != []
+        or type(verdict.get("cell_diagnostics")) is not list
+        or len(verdict["cell_diagnostics"]) != 14
+        or any(
+            type(item) is not dict or item.get("reasons") != []
+            for item in verdict["cell_diagnostics"]
+        )
     ):
-        raise ValueError("verdict ledger head does not match expected root head")
-    Ed25519PublicKey.from_public_bytes(
-        bytes.fromhex(config["verifier"]["public_key_hex"])
-    ).verify(
-        bytes.fromhex(retained["signature"]),
-        LEDGER_DOMAIN + canonical_json_bytes(retained["record"]),
+        raise ValueError(
+            "decision requires a reason-free exact-14 production qualification"
+        )
+    consumption = envelope["consumption_record"]
+    if (
+        type(consumption) is not dict
+        or set(consumption) != {"record", "key_id", "algorithm", "signature"}
+        or consumption["key_id"] != config["verifier"]["key_id"]
+        or consumption["algorithm"] != "Ed25519"
+    ):
+        raise ValueError("verifier consumption proof envelope invalid")
+    public.verify(
+        bytes.fromhex(consumption["signature"]),
+        LEDGER_DOMAIN + canonical_json_bytes(consumption["record"]),
     )
-    nonce = envelope.get("decision_nonce")
-    if nonce != contract["decision_nonce"]:
-        raise ValueError("verdict decision nonce mismatch")
+    record = consumption["record"]
+    if (
+        type(record) is not dict
+        or record.get("event") != "CONSUMED"
+        or record.get("manifest_sha256") != envelope["manifest_sha256"]
+        or record.get("challenge") != envelope["challenge"]
+        or record.get("counter") != envelope["ledger_counter"]
+    ):
+        raise ValueError("verifier consumption proof is not terminal or bound")
 
 
 class DecisionLedger:
+    """Host-authoritative one-use ledger using a fresh connection per transaction."""
+
     def __init__(self, path: Path):
         parent = path.parent.resolve(strict=True)
         meta = os.stat(parent)
         if meta.st_uid != 0 or stat.S_IMODE(meta.st_mode) & 0o022:
             raise ValueError("decision ledger directory must be root-controlled")
-        self.db = sqlite3.connect(
-            path, timeout=30, isolation_level=None, check_same_thread=False
-        )
-        self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.execute("PRAGMA synchronous=FULL")
-        self.db.execute(
-            "CREATE TABLE IF NOT EXISTS consumed(decision_id TEXT PRIMARY KEY,decision_nonce TEXT UNIQUE NOT NULL,manifest_sha256 TEXT NOT NULL,consumed_at_ns INTEGER NOT NULL,receipt_sha256 TEXT NOT NULL)"
-        )
+        self.path = path
+        db = self._connect()
+        try:
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS consumed(decision_id TEXT PRIMARY KEY,decision_nonce TEXT UNIQUE NOT NULL,manifest_sha256 TEXT NOT NULL,consumed_at_ns INTEGER NOT NULL,receipt_json BLOB NOT NULL)"
+            )
+        finally:
+            db.close()
         os.chmod(path, 0o600)
 
-    def consume(
-        self, contract: dict[str, Any], build: Callable[[], dict[str, Any]]
-    ) -> dict[str, Any]:
-        self.db.execute("BEGIN IMMEDIATE")
+    def _connect(self) -> sqlite3.Connection:
+        db = sqlite3.connect(self.path, timeout=30, isolation_level=None)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=FULL")
+        return db
+
+    def query(self, decision_id: str) -> dict[str, Any]:
+        _hex64(decision_id, "decision id")
+        db = self._connect()
         try:
-            if self.db.execute(
+            row = db.execute(
+                "SELECT receipt_json FROM consumed WHERE decision_id=?", (decision_id,)
+            ).fetchone()
+        finally:
+            db.close()
+        if row is None:
+            raise ValueError("decision receipt not found")
+        return dict(strict_json_loads(bytes(row[0])))
+
+    def consume(
+        self,
+        contract: dict[str, Any],
+        manifest: str,
+        build: Callable[[], dict[str, Any]],
+    ) -> dict[str, Any]:
+        db = self._connect()
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute(
                 "SELECT 1 FROM consumed WHERE decision_id=? OR decision_nonce=?",
                 (contract["decision_id"], contract["decision_nonce"]),
             ).fetchone():
                 raise ValueError("decision already consumed")
             receipt = build()
-            digest = hashlib.sha256(canonical_json_bytes(receipt)).hexdigest()
-            self.db.execute(
+            db.execute(
                 "INSERT INTO consumed VALUES(?,?,?,?,?)",
                 (
                     contract["decision_id"],
                     contract["decision_nonce"],
-                    contract["manifest_sha256"],
+                    manifest,
                     time.time_ns(),
-                    digest,
+                    canonical_json_bytes(receipt),
                 ),
             )
-            self.db.execute("COMMIT")
+            db.execute("COMMIT")
             return receipt
         except BaseException:
-            self.db.execute("ROLLBACK")
+            if db.in_transaction:
+                db.execute("ROLLBACK")
             raise
+        finally:
+            db.close()
 
 
 def consume_request(
@@ -175,22 +259,31 @@ def consume_request(
     key: Ed25519PrivateKey,
     identity: dict[str, Any],
 ) -> dict[str, Any]:
+    if type(request) is not dict:
+        raise ValueError("decision request is not an object")
     if (
-        type(request) is not dict
-        or set(request) != {"operation", "decision_contract", "verdict_envelope"}
+        set(request) == {"operation", "decision_id"}
+        and request["operation"] == "query-decision"
+    ):
+        return ledger.query(request["decision_id"])
+    if (
+        set(request) != {"operation", "decision_contract", "verdict_envelope"}
         or request["operation"] != "consume-decision"
     ):
         raise ValueError("legacy/wrapper decision request rejected")
     contract = verify_decision_contract(request["decision_contract"])
-    verify_verdict_envelope(request["verdict_envelope"], contract, config)
+    envelope = request["verdict_envelope"]
+    verify_verdict_envelope(envelope, contract, config)
 
     def build() -> dict[str, Any]:
         body = {
             "schema_version": 1,
             "decision_id": contract["decision_id"],
-            "decision_nonce": contract["decision_nonce"],
-            "manifest_sha256": contract["manifest_sha256"],
-            "ledger_head": contract["ledger_head"],
+            "decision_contract_sha256": hashlib.sha256(
+                canonical_json_bytes(contract)
+            ).hexdigest(),
+            "manifest_sha256": envelope["manifest_sha256"],
+            "verdict_status": "SETUP_QUALIFIED",
             "consumed_at_ns": time.time_ns(),
             "service_identity": identity,
         }
@@ -201,7 +294,42 @@ def consume_request(
             "signature": key.sign(RECEIPT_DOMAIN + canonical_json_bytes(body)).hex(),
         }
 
-    return ledger.consume(contract, build)
+    return ledger.consume(contract, envelope["manifest_sha256"], build)
+
+
+def _verify_decision_receipt(
+    reply: Any,
+    contract: dict[str, Any],
+    envelope: dict[str, Any],
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    if type(reply) is not dict or set(reply) != {
+        "receipt",
+        "key_id",
+        "algorithm",
+        "signature",
+    }:
+        raise ValueError("decision receipt envelope invalid")
+    body = reply["receipt"]
+    digest = hashlib.sha256(canonical_json_bytes(contract)).hexdigest()
+    if (
+        reply["key_id"] != config["decision_consumer"]["key_id"]
+        or reply["algorithm"] != "Ed25519"
+        or type(body) is not dict
+        or body.get("decision_id") != contract["decision_id"]
+        or body.get("decision_contract_sha256") != digest
+        or body.get("manifest_sha256") != envelope["manifest_sha256"]
+        or body.get("verdict_status") != "SETUP_QUALIFIED"
+    ):
+        raise ValueError(
+            "decision receipt is not bound to requested decision and manifest"
+        )
+    Ed25519PublicKey.from_public_bytes(
+        bytes.fromhex(config["decision_consumer"]["public_key_hex"])
+    ).verify(
+        bytes.fromhex(reply["signature"]), RECEIPT_DOMAIN + canonical_json_bytes(body)
+    )
+    return dict(reply)
 
 
 def request_decision(
@@ -212,36 +340,53 @@ def request_decision(
     config: dict[str, Any],
     timeout: float,
 ) -> dict[str, Any]:
-    if timeout <= 0:
-        raise TimeoutError("decision deadline expired")
-    request = {
-        "operation": "consume-decision",
-        "decision_contract": contract,
-        "verdict_envelope": envelope,
-    }
-    payload = canonical_json_bytes(request)
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(timeout)
+    deadline = time.monotonic() + timeout
+
+    def exchange(request: dict[str, Any]) -> Any:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("decision deadline expired")
+        payload = canonical_json_bytes(request)
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            client.settimeout(remaining)
+            client.connect(str(socket_path))
+            option = getattr(socket, "SO_PEERCRED", None)
+            if option is None:
+                raise ValueError("Unix peer credentials unavailable")
+            pid, uid, _gid = struct.unpack(
+                "3i", client.getsockopt(socket.SOL_SOCKET, option, 12)
+            )
+            if pid <= 0 or uid != config["decision_consumer"]["peer_uid"]:
+                raise ValueError("decision consumer peer UID mismatch")
+            client.sendall(struct.pack("!I", len(payload)) + payload)
+            client.shutdown(socket.SHUT_WR)
+            return read_frame(
+                client,
+                MAX_FRAME,
+                max(0.001, deadline - time.monotonic()),
+                "decision receipt",
+            )
+        finally:
+            client.close()
+
     try:
-        client.connect(str(socket_path))
-        peer_allowed_server = getattr(socket, "SO_PEERCRED", None)
-        if peer_allowed_server is None:
-            raise ValueError("Unix peer credentials unavailable")
-        _pid, uid, _gid = struct.unpack(
-            "3i", client.getsockopt(socket.SOL_SOCKET, peer_allowed_server, 12)
+        reply = exchange(
+            {
+                "operation": "consume-decision",
+                "decision_contract": contract,
+                "verdict_envelope": envelope,
+            }
         )
-        if uid != config["decision_consumer"]["peer_uid"]:
-            raise ValueError("decision consumer peer UID mismatch")
-        client.sendall(struct.pack("!I", len(payload)) + payload)
-        client.shutdown(socket.SHUT_WR)
-        reply = read_frame(client, MAX_FRAME, timeout, "decision receipt")
-    finally:
-        client.close()
+    except (TimeoutError, ConnectionError, OSError):
+        # The commit may have succeeded before the connection broke. Querying the
+        # durable signed receipt makes retry idempotent without consuming twice.
+        reply = exchange(
+            {"operation": "query-decision", "decision_id": contract["decision_id"]}
+        )
     if type(reply) is dict and set(reply) == {"error", "reason"}:
         raise ValueError(f"decision consumer rejected decision: {reply['reason']}")
-    if type(reply) is not dict:
-        raise ValueError("decision receipt is not an object")
-    return dict(reply)
+    return _verify_decision_receipt(reply, contract, envelope, config)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

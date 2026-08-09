@@ -10,6 +10,7 @@ import sys
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from benchmarks.codegraph_compare.receipt_v3 import (
     approve_executor_attestation,
@@ -271,6 +272,40 @@ def _full_semantic_verify(
     finally:
         for descriptor in image_fds:
             os.close(descriptor)
+
+
+def sign_verified_receipt(
+    *,
+    role: str,
+    args: argparse.Namespace,
+    config: dict[str, Any],
+    key: bytes,
+    key_id: str,
+    draft: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Pure in-process semantic verification/signing for the measured service."""
+    if role not in {"executor", "approver"} or key_id != config[role]["key_id"]:
+        raise ValueError("receipt signer role/key identity mismatch")
+    # The mutable authority core is never accepted. Build only from an ext4 image,
+    # then _full_semantic_verify authenticates dm-verity and extracts it again.
+    with tempfile.TemporaryDirectory(prefix=f"no1-008a-{role}-sealed-") as temporary:
+        extracted = Path(temporary)
+        _extract_ext4(_safe_path(args.data_image), extracted)
+        body = _build_body(args, core_override=extracted)
+        body = _full_semantic_verify(args, body, config)
+    if role == "executor":
+        return create_executor_attestation(body, key_id, key)
+    if type(draft) is not dict or canonical_json_bytes(body) != canonical_json_bytes(
+        draft.get("body")
+    ):
+        raise ValueError("approver full evidence/oracle verification mismatch")
+    return approve_executor_attestation(
+        draft,
+        config["executor"]["key_id"],
+        bytes.fromhex(config["executor"]["public_key_hex"]),
+        key_id,
+        key,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

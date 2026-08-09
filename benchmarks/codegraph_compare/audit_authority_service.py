@@ -40,7 +40,7 @@ CONTRACT_DOMAIN = b"NO1-008A-RUN-CELL-CONTRACT-V1\0"
 AUDIT_DOMAIN = b"NO1-008A-HOST-AUDIT-V1\0"
 RESPONSE_DOMAIN = b"NO1-008A-RUN-CELL-RESPONSE-V1\0"
 ARTIFACT_NAMES = frozenset(
-    {"data.img", "hash.img", "launch-audit.json", "verity-format.txt", "core"}
+    {"data.img", "hash.img", "launch-audit.json", "verity-format.txt"}
 )
 _HEX = frozenset("0123456789abcdef")
 
@@ -70,8 +70,8 @@ def verify_contract(request: Any) -> Mapping[str, Any]:
                 "cell",
                 "nonce",
                 "decision_id",
-                "decision_nonce",
-                "expires_at",
+                "decision_contract_sha256",
+                "expires_at_ns",
                 "root_signature",
             }
         ),
@@ -81,11 +81,11 @@ def verify_contract(request: Any) -> Mapping[str, Any]:
         contract["cell"], frozenset({"repo_id", "arm_id", "attempt"}), "contract cell"
     )
     if (
-        contract["schema_version"] != 2
+        contract["schema_version"] != 3
         or type(cell["attempt"]) is not int
         or cell["attempt"] != 1
-        or type(contract["expires_at"]) is not int
-        or contract["expires_at"] <= time.time_ns()
+        or type(contract["expires_at_ns"]) is not int
+        or contract["expires_at_ns"] <= time.time_ns()
     ):
         raise ValueError(
             "run-cell decision contract version, attempt, or expiry invalid"
@@ -96,7 +96,7 @@ def verify_contract(request: Any) -> Mapping[str, Any]:
     _hex64(contract["job_id"], "job id")
     _hex64(contract["nonce"], "nonce")
     _hex64(contract["decision_id"], "decision id")
-    _hex64(contract["decision_nonce"], "decision nonce")
+    _hex64(contract["decision_contract_sha256"], "decision contract digest")
     unsigned = {
         key: value for key, value in contract.items() if key != "root_signature"
     }
@@ -212,7 +212,7 @@ def attest_service_launch(
     key_id: str,
 ) -> dict[str, Any]:
     """Authority-supervisor launch attestation entrypoint."""
-    if role not in {"executor", "approver", "auditor", "verifier"}:
+    if role not in {"executor", "approver", "auditor", "verifier", "decision_consumer"}:
         raise ValueError("service launch role is not authorized")
     return create_service_launch_attestation(container, role, config, key, key_id)
 

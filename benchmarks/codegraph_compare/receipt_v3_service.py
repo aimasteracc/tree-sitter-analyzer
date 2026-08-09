@@ -13,8 +13,6 @@ import re
 import socket
 import stat
 import struct
-import subprocess
-import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -94,7 +92,6 @@ def _verify_authority(envelope: Any, config: dict[str, Any]) -> dict[str, Any]:
     if not re.fullmatch(r"[0-9a-f]{64}", response["job_id"]):
         raise ValueError("authority job id invalid")
     expected = {
-        "core",
         "data.img",
         "hash.img",
         "launch-audit.json",
@@ -272,7 +269,7 @@ def _sign(
     config: dict[str, Any],
     artifact_root: Path,
     staged_root: Path,
-    key: Path,
+    signer: Ed25519PrivateKey,
     measurement: dict[str, Any],
     launch_attestation: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
@@ -289,42 +286,24 @@ def _sign(
             audit = Path(temporary) / "process-audit.json"
             audit.write_bytes(canonical_json_bytes(response["audit"]))
             os.chmod(audit, 0o400)
-            parent_measurement = Path(temporary) / "parent-measurement.json"
-            parent_measurement.write_bytes(canonical_json_bytes(measurement))
-            os.chmod(parent_measurement, 0o400)
-            launch_path = Path(temporary) / "launch-attestation.json"
-            launch_path.write_bytes(canonical_json_bytes(launch_attestation))
-            os.chmod(launch_path, 0o400)
-            common = [
-                "--launch-attestation",
-                str(launch_path),
-                "--parent-measurement",
-                str(parent_measurement),
-                "--run-nonce",
-                response["nonce"],
-                "--plan",
-                str(paths["plan.json"]),
-                "--inventory",
-                str(paths["inventory.json"]),
-                "--core-root",
-                str(paths["core"]),
-                "--data-image",
-                str(paths["data.img"]),
-                "--hash-image",
-                str(paths["hash.img"]),
-                "--process-audit",
-                str(audit),
-                "--root-hash",
-                verity["root_hash"],
-                "--salt",
-                verity["salt"],
-                "--data-block-size",
-                verity["data_block_size"],
-                "--hash-block-size",
-                verity["hash_block_size"],
-                "--data-blocks",
-                verity["data_blocks"],
-            ]
+            values: dict[str, Any] = {
+                "run_nonce": response["nonce"],
+                "plan": str(paths["plan.json"]),
+                "inventory": str(paths["inventory.json"]),
+                "data_image": str(paths["data.img"]),
+                "hash_image": str(paths["hash.img"]),
+                "process_audit": str(audit),
+                "root_hash": verity["root_hash"],
+                "salt": verity["salt"],
+                "data_block_size": int(verity["data_block_size"]),
+                "hash_block_size": int(verity["hash_block_size"]),
+                "data_blocks": int(verity["data_blocks"]),
+                "public_config": str(paths["public-config.json"]),
+                "source_snapshot": str(paths["source-snapshot.tar"]),
+                "tool": str(paths["tool"]),
+                "config": str(paths["config"]),
+                "seccomp": str(paths["seccomp"]),
+            }
             for image_role in (
                 "producer",
                 "executor",
@@ -332,76 +311,22 @@ def _sign(
                 "auditor",
                 "verifier",
             ):
-                common += [
-                    f"--{image_role}-image-digest",
-                    config["trusted"]["images"][image_role],
+                values[f"{image_role}_image_digest"] = config["trusted"]["images"][
+                    image_role
                 ]
-            independent = [
-                "--public-config",
-                str(paths["public-config.json"]),
-                "--source-snapshot",
-                str(paths["source-snapshot.tar"]),
-                "--tool",
-                str(paths["tool"]),
-                "--config",
-                str(paths["config"]),
-                "--seccomp",
-                str(paths["seccomp"]),
-            ]
-            if role == "executor":
-                command = ["sign-executor", *independent, *common]
-            else:
-                draft = Path(temporary) / "draft.json"
-                draft.write_bytes(canonical_json_bytes(request["draft"]))
-                os.chmod(draft, 0o400)
-                command = [
-                    "sign-approver",
-                    "--attestation",
-                    str(draft),
-                    *independent,
-                    *common,
-                ]
-            command += ["--private-key", str(key), "--key-id", config[role]["key_id"]]
-            plan_timeout = strict_json_loads(paths["plan.json"].read_bytes()).get(
-                "wall_timeout_seconds"
+            from benchmarks.codegraph_compare.receipt_v3_signer import (
+                sign_verified_receipt,
             )
-            if type(plan_timeout) is not int or plan_timeout < 1:
-                raise ValueError("service plan timeout invalid")
-            try:
-                process = subprocess.Popen(
-                    [
-                        sys.executable,
-                        "-m",
-                        "benchmarks.codegraph_compare.receipt_v3_signer",
-                        *command,
-                    ],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    start_new_session=True,
-                    pass_fds=tuple(paths.fds)
-                    + (
-                        (int(key.name),)
-                        if str(key).startswith("/proc/self/fd/")
-                        else ()
-                    ),
-                )
-                try:
-                    stdout, stderr = process.communicate(timeout=plan_timeout)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, 9)
-                    process.communicate()
-                    raise TimeoutError(
-                        f"{role} verification cancelled at plan deadline"
-                    ) from None
-                if process.returncode:
-                    raise ValueError(
-                        f"{role} independent verification failed: {stderr[:200]!r}"
-                    )
-                result = strict_json_loads(stdout)
-                return response["job_id"], result
-            finally:
-                paths.close()
+
+            result = sign_verified_receipt(
+                role=role,
+                args=argparse.Namespace(**values),
+                config=config,
+                key=signer.private_bytes_raw(),
+                key_id=config[role]["key_id"],
+                draft=request.get("draft"),
+            )
+            return response["job_id"], result
     finally:
         paths.close()
 
@@ -413,7 +338,6 @@ def serve_once(
     config: dict[str, Any],
     artifact_root: Path,
     staged_root: Path,
-    key: Path,
     signer: Ed25519PrivateKey,
     measurement: dict[str, Any],
     launch_attestation: dict[str, Any],
@@ -428,7 +352,7 @@ def serve_once(
             config,
             artifact_root,
             staged_root,
-            key,
+            signer,
             measurement,
             launch_attestation,
         )
@@ -557,7 +481,6 @@ def main(argv: list[str] | None = None) -> int:
         config,
     )
     key_fd, key_raw = secure_key(Path(args.private_key), os.geteuid())
-    key_path = Path(f"/proc/self/fd/{key_fd}")
     signer = Ed25519PrivateKey.from_private_bytes(key_raw)
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(args.socket)
@@ -572,7 +495,6 @@ def main(argv: list[str] | None = None) -> int:
                 config=config,
                 artifact_root=Path(args.artifact_root).resolve(strict=True),
                 staged_root=Path(args.staged_root).resolve(strict=True),
-                key=key_path,
                 signer=signer,
                 measurement=measurement,
                 launch_attestation=launch_attestation,
