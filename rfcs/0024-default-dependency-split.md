@@ -100,3 +100,58 @@ This is macOS arm64 CPython 3.14.3 only. Linux and Windows remain `unknown` and
 cannot pass admission. “Cold” does not claim an OS page-cache flush. The larger,
 more honest startup values include real CLI analysis and MCP registry readiness;
 they are not comparable to the superseded advertising/initialize-only probes.
+
+## Candidate design (not implemented)
+
+Only after the independently committed receipt, NO1-011A may prototype:
+
+* a default/core candidate retaining CLI/MCP protocol, shared models/security,
+  formatters, tree-sitter runtime, and one documented minimal language;
+* optional language groups (`popular`, `web`, `systems`, `all-languages`);
+* an advanced-analysis group for graph/numeric and secret-scanning capabilities;
+* a `full` compatibility extra reproducing today's default capabilities.
+
+Membership remains a candidate, not a decision. Import tracing and native-axis
+measurements decide startup requirements. Missing optional capabilities must
+return deterministic installation hints, never tracebacks, silent loss, or a
+false supported result. Console entry points and the locked CLI JSON/MCP TOON
+defaults remain unchanged.
+
+## Compatibility, admission, and rollback gates
+
+One exact candidate wheel must pass NO1-006A fresh-install qualification on
+native macOS, Linux, and Windows, current CLI/MCP contracts, every advertised
+language with `full`, and exact diagnostics for default-unavailable features.
+Each native axis supplies schema-v2 pre/post receipts on identical
+hardware/tool/Python/probes and cache protocol; `unknown` cannot pass.
+
+Installed bytes, dependency distributions excluding root, direct/transitive
+counts, CLI cold/median warm, and MCP protocol-ready cold/median warm must be no
+worse per axis. Installed bytes and dependency distributions excluding root
+must improve. Root wheel artifact bytes are reported but are not a required
+split improvement: metadata-only dependency movement need not shrink the root
+artifact. Network transfer is unknown and cannot be compared or gated. Raw
+samples, not only medians, remain in each receipt.
+
+Rollback is metadata-only: restore the prior defaults and republish; users may
+select `full` during rollout. Do not couple the split to package moves, engine
+rewrites, schema migrations, or entry-point changes. Any default regression,
+ambiguous optional-import error, NO1-006A failure, or worse qualified axis blocks
+release and triggers rollback.
+
+## Alternatives, acceptance, and deferred work
+
+A big-bang modular rewrite and dynamic auto-download are rejected because they
+make rollback unsafe and violate offline auditability. Keeping all defaults is
+compatible but preserves the measured footprint. A split increases support
+combinations, so the `full` path and explicit diagnostics are mandatory.
+
+- [x] Measurement protocol committed before candidate recommendations.
+- [x] Exact lock-derived offline closure and raw macOS E0 receipt committed.
+- [x] Subject and collector commits/hashes are distinct and bound.
+- [x] Linux/Windows remain honestly unknown.
+- [ ] NO1-011A gathers native pre/post receipts and passes admission gates.
+
+Dependency metadata changes, lazy imports, feature diagnostics, and native
+Linux/Windows evidence are deferred to NO1-011A. This E0 receipt supports no
+marketing or cross-platform “faster/lighter” claim.
