@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 
 import pytest
+from jsonschema.exceptions import ValidationError
 
 from scripts import collect_no1_006b_baseline as collector
 
@@ -100,17 +101,17 @@ def test_schema_supports_each_native_axis_without_fabricating_measurements() -> 
 
 def test_schema_rejects_cli_startup_definition_mutation() -> None:
     report=mutated(("measurements","cli_startup","definition"),"X"*20)
-    with pytest.raises(ValueError): collector.validate_receipt(report,schema())
+    with pytest.raises(ValidationError): collector.validate_receipt(report,schema())
 
 
 def test_schema_rejects_mcp_startup_definition_mutation() -> None:
     report=mutated(("measurements","mcp_startup","definition"),"Y"*20)
-    with pytest.raises(ValueError): collector.validate_receipt(report,schema())
+    with pytest.raises(ValidationError): collector.validate_receipt(report,schema())
 
 
 def test_schema_rejects_measured_axis_contradiction() -> None:
     report=mutated(("platform_axes","macos"),"unknown")
-    with pytest.raises(ValueError): collector.validate_receipt(report,schema())
+    with pytest.raises(ValidationError): collector.validate_receipt(report,schema())
 
 
 def test_schema_definitions_equal_collector_constants() -> None:

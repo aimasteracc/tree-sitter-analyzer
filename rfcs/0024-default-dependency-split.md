@@ -91,8 +91,8 @@ git worktree remove /tmp/no1-006b-subject
 
 The post-hoc hardened collector produced
 [`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
-from collector commit `86209ee4b9139a92e4d408d2e9bc9d8ad27b65cb` and the distinct pinned subject.
-Its canonical payload SHA-256 is `d49dd24904e93bd4518853ec7d04d1433299b7fc6a4d54970906a78620aaf2d8`.
+from collector commit `e33410de6a65a06a404c034c2b7ff50104834d56` and the distinct pinned subject.
+Its canonical payload SHA-256 is `90209af9025d18022ac9163fca6efd176c4d0db3befd029955ebef89b2bb683a`.
 
 | Axis | Measured value |
 |---|---:|
@@ -101,8 +101,8 @@ Its canonical payload SHA-256 is `d49dd24904e93bd4518853ec7d04d1433299b7fc6a4d54
 | installed distribution files | 89,982,491 bytes across 4,743 unique regular files |
 | dependencies excluding root (direct + transitive) | 64 (33 + 31) |
 | installed distributions including root | 65 |
-| CLI bytecode-cold; warm samples (ms) | 2162.972; 565.616, 564.229, 564.922, 567.182, 567.764 |
-| MCP protocol-ready cold; warm samples (ms) | 2031.752; 750.991, 747.313, 746.929, 745.964, 746.964 |
+| CLI bytecode-cold; warm samples (ms) | 1760.056; 673.438, 569.999, 567.154, 569.75, 571.197 |
+| MCP protocol-ready cold; warm samples (ms) | 2035.01; 758.606, 752.5, 749.836, 751.183, 753.742 |
 
 This is macOS arm64 CPython 3.14.3 only. Linux and Windows remain `unknown` and
 cannot pass admission. “Cold” does not claim an OS page-cache flush. The larger,

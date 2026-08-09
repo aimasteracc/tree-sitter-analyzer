@@ -1,11 +1,11 @@
 {
-  "canonical_payload_sha256": "d49dd24904e93bd4518853ec7d04d1433299b7fc6a4d54970906a78620aaf2d8",
-  "collection_finished_at_utc": "2026-08-09T21:40:30.661467+00:00",
-  "collection_started_at_utc": "2026-08-09T21:40:17.987779+00:00",
+  "canonical_payload_sha256": "90209af9025d18022ac9163fca6efd176c4d0db3befd029955ebef89b2bb683a",
+  "collection_finished_at_utc": "2026-08-09T21:56:58.889691+00:00",
+  "collection_started_at_utc": "2026-08-09T21:56:46.708324+00:00",
   "collector": {
-    "commit": "86209ee4b9139a92e4d408d2e9bc9d8ad27b65cb",
-    "schema_sha256": "4eec7965f56522c3f33efb99c672c9510d8fefec70578d09bc8b419b55c39afc",
-    "script_sha256": "2bc861024e1c3b2176e789755f988686ca9acc7912a2c7dddcb59ca885097ff7"
+    "commit": "e33410de6a65a06a404c034c2b7ff50104834d56",
+    "schema_sha256": "acc1bb3c2fc14471e313866a2b7ae5705f60ec528be323f6f16406f702a91c3e",
+    "script_sha256": "67cb4bfd56487ef6bcaca9296511b8897ceb451fc6bdc612b47585d4e58f423f"
   },
   "commands": {
     "build": [
@@ -395,6 +395,14 @@
   "environment": {
     "bytecode_policy": "PYTHONDONTWRITEBYTECODE=1",
     "cache_protocol": "two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm",
+    "host_fingerprint": {
+      "cpu": "arm",
+      "filesystem": "unknown; not controlled",
+      "logical_cpu_count": 10,
+      "power": "unknown; not controlled",
+      "ram_bytes": 25769803776,
+      "virtualization": "unknown; not detected"
+    },
     "machine": "arm64",
     "network_policy": "UV_OFFLINE=1; uv --offline; no network transfer measurement",
     "os": "macOS-26.4.1-arm64-arm-64bit-Mach-O",
@@ -402,6 +410,7 @@
       "implementation": "CPython",
       "version": "3.14.3"
     },
+    "sample_order": "all CLI samples, then all MCP samples",
     "system": "macos",
     "uv": "uv 0.12.3 (507230998 2026-08-07 aarch64-apple-darwin)"
   },
@@ -409,14 +418,14 @@
   "measured_axis": "macos",
   "measurements": {
     "cli_startup": {
-      "cold_ms": 2162.972,
+      "cold_ms": 1760.056,
       "definition": "clock before Popen through exact successful JSON analysis of fixture.py",
       "warm_ms": [
-        565.616,
-        564.229,
-        564.922,
-        567.182,
-        567.764
+        673.438,
+        569.999,
+        567.154,
+        569.75,
+        571.197
       ]
     },
     "dependency_distribution_count_excluding_root": 64,
@@ -426,7 +435,7 @@
     "installed_size_bytes": 89982491,
     "installed_size_scope": "unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded",
     "mcp_startup": {
-      "cold_ms": 2031.752,
+      "cold_ms": 2035.01,
       "definition": "clock before Popen through successful initialize, initialized notification, and exact tools/list readiness",
       "tool_names": [
         "edit",
@@ -440,11 +449,11 @@
         "viz"
       ],
       "warm_ms": [
-        750.991,
-        747.313,
-        746.929,
-        745.964,
-        746.964
+        758.606,
+        752.5,
+        749.836,
+        751.183,
+        753.742
       ]
     },
     "network_transfer_bytes": {
