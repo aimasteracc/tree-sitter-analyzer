@@ -73,9 +73,30 @@ git worktree add --detach /tmp/no1-006b-subject 7e0e8f6e03270fcbf4025d717415ef69
 UV_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 NO1_006B_PYTHON=3.14 \
   .venv/bin/python scripts/collect_no1_006b_baseline.py \
   --repo /tmp/no1-006b-subject --repeats 5 \
-  --output /tmp/no1-006b-macos-e0.json
+  --output /private/tmp/no1-006b-macos-e0.json
 git worktree remove /tmp/no1-006b-subject
 ```
 
-The receipt, measured values, candidate design, gates, and rollback policy are
-added only after this protocol commit.
+The candidate design, gates, and rollback policy are added only after the receipt commit.
+
+## Measured macOS E0 receipt
+
+The preregistered protocol produced
+[`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
+from collector commit `e0ec6867104a15bf8cdbfa219a24d58b9bc5f58f` and the distinct pinned subject.
+Its canonical payload SHA-256 is `fccbe0919373c8d903f2b471151f5d1d22d04370058c998ec452e1688853f20e`.
+
+| Axis | Measured value |
+|---|---:|
+| root wheel artifact SHA-256 / bytes | `c1cb3520542fd14dad60ddec55dfac6afbdaa424e7a4a39d875be1801d98f9e8` / 2,209,032 |
+| network transfer | unknown (offline measurement) |
+| installed distribution files | 89,982,491 bytes across 4,743 unique regular files |
+| dependencies excluding root (direct + transitive) | 64 (33 + 31) |
+| installed distributions including root | 65 |
+| CLI bytecode-cold; warm samples (ms) | 1582.848; 562.629, 561.92, 564.073, 561.683, 563.603 |
+| MCP protocol-ready cold; warm samples (ms) | 2215.958; 749.27, 745.801, 747.073, 749.599, 748.017 |
+
+This is macOS arm64 CPython 3.14.3 only. Linux and Windows remain `unknown` and
+cannot pass admission. “Cold” does not claim an OS page-cache flush. The larger,
+more honest startup values include real CLI analysis and MCP registry readiness;
+they are not comparable to the superseded advertising/initialize-only probes.

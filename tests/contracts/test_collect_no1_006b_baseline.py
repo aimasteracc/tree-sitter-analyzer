@@ -8,7 +8,6 @@ import copy
 import json
 from pathlib import Path
 
-import jsonschema
 import pytest
 
 from scripts import collect_no1_006b_baseline as collector
@@ -50,7 +49,7 @@ def test_receipt_binds_exact_collector_and_schema_bytes() -> None:
 
 def test_schema_rejects_invalid_rfc3339_timestamp() -> None:
     report=mutated(("collection_started_at_utc",),"not-a-date")
-    with pytest.raises(jsonschema.ValidationError): collector.validate_receipt(report,schema())
+    with pytest.raises(ValueError, match="Invalid isoformat"): collector.validate_receipt(report,schema())
 
 
 def test_validator_rejects_reverse_timestamp_order() -> None:
