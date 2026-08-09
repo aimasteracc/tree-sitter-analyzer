@@ -14,6 +14,7 @@ import socket
 import stat
 import struct
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,10 @@ MAX_MESSAGE = 16 * 1024 * 1024
 RESPONSE_DOMAIN = b"NO1-008A-RUN-CELL-RESPONSE-V1\0"
 SERVICE_RESPONSE_DOMAIN = b"NO1-008A-RECEIPT-SERVICE-RESPONSE-V1\0"
 READ_DEADLINE_SECONDS = 10
+
+
+class _PostSendTransportError(ConnectionError):
+    """The immutable signing request was sent but its response was lost."""
 
 
 def _frame(
@@ -403,26 +408,53 @@ def request_receipt(
         request["draft"] = draft
     elif draft is not None:
         raise ValueError("executor does not accept a draft")
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(timeout)
+    payload = canonical_json_bytes(request)
+    if len(payload) > MAX_MESSAGE:
+        raise ValueError("receipt service request exceeds protocol bound")
+    framed = struct.pack("!I", len(payload)) + payload
+    deadline = time.monotonic() + timeout
+
+    def round_trip() -> dict[str, Any]:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"{role} overall deadline expired")
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(remaining)
+        try:
+            client.connect(str(socket_path))
+            option = getattr(socket, "SO_PEERCRED", None)
+            if option is None:
+                raise ValueError("Unix peer credentials unavailable")
+            _pid, uid, _gid = struct.unpack(
+                "3i", client.getsockopt(socket.SOL_SOCKET, option, 12)
+            )
+            if uid != service["peer_uid"]:
+                raise ValueError(f"{role} service peer UID mismatch")
+            client.sendall(framed)
+            try:
+                client.shutdown(socket.SHUT_WR)
+                return _frame(client, deadline - time.monotonic())
+            except ValueError as error:
+                if str(error) != "frame truncated":
+                    raise
+                raise _PostSendTransportError(
+                    f"{role} response frame truncated"
+                ) from error
+            except (TimeoutError, BrokenPipeError, ConnectionError, OSError) as error:
+                raise _PostSendTransportError(
+                    f"{role} response transport failed"
+                ) from error
+        finally:
+            client.close()
+
     try:
-        client.connect(str(socket_path))
-        option = getattr(socket, "SO_PEERCRED", None)
-        if option is None:
-            raise ValueError("Unix peer credentials unavailable")
-        _pid, uid, _gid = struct.unpack(
-            "3i", client.getsockopt(socket.SOL_SOCKET, option, 12)
-        )
-        if uid != service["peer_uid"]:
-            raise ValueError(f"{role} service peer UID mismatch")
-        payload = canonical_json_bytes(request)
-        if len(payload) > MAX_MESSAGE:
-            raise ValueError("receipt service request exceeds protocol bound")
-        client.sendall(struct.pack("!I", len(payload)) + payload)
-        client.shutdown(socket.SHUT_WR)
-        reply = _frame(client, timeout)
-    finally:
-        client.close()
+        reply = round_trip()
+    except _PostSendTransportError:
+        if deadline - time.monotonic() <= 0:
+            raise
+        # Signing immutable authority evidence is stateless and idempotent. One
+        # retry recovers a response lost after the first request was delivered.
+        reply = round_trip()
     if set(reply) == {"error", "reason"}:
         raise ValueError(f"{role} service rejected job: {reply['reason']}")
     expected_job = authority_response["response"]["job_id"]

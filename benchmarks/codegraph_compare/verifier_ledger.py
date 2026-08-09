@@ -248,6 +248,31 @@ class ChallengeLedger:
         now = time.time_ns()
         with self._transaction():
             self._expire_locked(now)
+            retained = self.db.execute(
+                "SELECT e.counter,e.event,e.challenge,e.manifest_sha256,"
+                "e.issued_at_ns,e.event_at_ns,e.prev_hash,e.record_hash "
+                "FROM challenges AS c JOIN events AS e ON e.counter=c.last_counter "
+                "WHERE c.manifest_sha256=? AND c.state='CHALLENGED' "
+                "ORDER BY e.counter DESC LIMIT 1",
+                (manifest_sha256,),
+            ).fetchone()
+            if retained is not None:
+                return dict(
+                    zip(
+                        (
+                            "counter",
+                            "event",
+                            "challenge",
+                            "manifest_sha256",
+                            "issued_at_ns",
+                            "event_at_ns",
+                            "prev_hash",
+                            "record_hash",
+                        ),
+                        retained,
+                        strict=True,
+                    )
+                )
             total = self.db.execute("SELECT COUNT(*) FROM challenges").fetchone()[0]
             active = self.db.execute(
                 "SELECT COUNT(*) FROM challenges WHERE state='CHALLENGED'"

@@ -129,9 +129,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     output = Path(args.output_dir)
     output.mkdir(mode=0o700)
     _exclusive(output / "decision-contract.json", decision)
+    run_contracts = output / "run_contracts"
+    run_contracts.mkdir(mode=0o700)
     for contract in contracts:
         cell = contract["cell"]
-        _exclusive(output / f"{cell['repo_id']}--{cell['arm_id']}.json", contract)
+        _exclusive(
+            run_contracts / f"{cell['repo_id']}--{cell['arm_id']}.json", contract
+        )
     return 0
 
 

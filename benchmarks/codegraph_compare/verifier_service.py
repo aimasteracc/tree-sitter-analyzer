@@ -577,12 +577,18 @@ def request_verdict(
     raw = canonical_json_bytes(manifest)
     digest = hashlib.sha256(raw).hexdigest()
     deadline = time.monotonic() + timeout
-    begin = _round_trip(
-        socket_path,
-        {"operation": "begin-exact-14", "manifest_sha256": digest},
-        config,
-        deadline - time.monotonic(),
-    )
+    begin_request = {"operation": "begin-exact-14", "manifest_sha256": digest}
+    try:
+        begin = _round_trip(
+            socket_path, begin_request, config, deadline - time.monotonic()
+        )
+    except _PostSendTransportError:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise
+        # begin() is manifest-idempotent while its challenge is active, so a
+        # single response-loss retry returns the committed signed challenge.
+        begin = _round_trip(socket_path, begin_request, config, remaining)
     begin_keys = {
         "manifest_sha256",
         "challenge",

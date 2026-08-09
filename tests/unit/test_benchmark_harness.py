@@ -15,6 +15,7 @@ import os
 import shutil
 import sqlite3
 import stat
+import struct
 import subprocess
 import sys
 import textwrap
@@ -13783,6 +13784,364 @@ def test_verifier_request_does_not_recover_semantic_value_error(monkeypatch):
             config=config,
             timeout=10,
         )
+
+
+def test_verifier_begin_retries_one_lost_response(monkeypatch):
+    # PR #1249 review 3744516421: BEGIN response loss recovers the manifest challenge.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import verifier_service
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    key = Ed25519PrivateKey.from_private_bytes(b"\x55" * 32)
+    config = _qualification_v3_public_config()
+    manifest = {"cells": [{"contract": {}}]}
+    digest = hashlib.sha256(canonical_json_bytes(manifest)).hexdigest()
+    signed = {
+        "manifest_sha256": digest,
+        "challenge": "c" * 64,
+        "ledger_counter": 1,
+        "ledger_prev_hash": "0" * 64,
+        "issued_at_ns": 7,
+        "service_identity": config["trusted"]["verifier_runtime"]["measurement"],
+    }
+    begin = {
+        **signed,
+        "key_id": config["verifier"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": key.sign(
+            verifier_service.CHALLENGE_DOMAIN + canonical_json_bytes(signed)
+        ).hex(),
+    }
+    replies = iter(
+        (
+            verifier_service._PostSendTransportError("response lost"),
+            begin,
+            ValueError("semantic stop"),
+        )
+    )
+    requests = []
+
+    def round_trip(_path, request, _config, _timeout):
+        requests.append(request["operation"])
+        value = next(replies)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(verifier_service, "_round_trip", round_trip)
+
+    with pytest.raises(ValueError, match="semantic stop"):
+        verifier_service.request_verdict(
+            socket_path=Path("verifier.sock"),
+            manifest=manifest,
+            config=config,
+            timeout=10,
+        )
+
+    assert requests == ["begin-exact-14", "begin-exact-14", "verify-exact-14"]
+
+
+def test_verifier_ledger_begin_is_manifest_idempotent(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744516421: a retry returns the already committed challenge.
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    monkeypatch.setattr(ChallengeLedger, "_acquire_lease", lambda _self: None)
+    ledger = ChallengeLedger(tmp_path / "verifier.sqlite")
+
+    first = ledger.begin("a" * 64)
+    second = ledger.begin("a" * 64)
+
+    assert second == first
+    assert ledger.head()["counter"] == 1
+
+
+def test_receipt_client_retries_one_lost_response(monkeypatch):
+    # PR #1249 review 3744516423: immutable stateless signing survives response loss.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import receipt_v3_service as service
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    config = _qualification_v3_public_config()
+    key = Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
+    response = {
+        "job_id": "7" * 64,
+        "receipt": {"signed": True},
+        "service_identity": config["trusted"]["executor_runtime"]["measurement"],
+    }
+    reply = {
+        "response": response,
+        "key_id": config["executor"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": key.sign(
+            service.SERVICE_RESPONSE_DOMAIN + canonical_json_bytes(response)
+        ).hex(),
+    }
+    frames = iter((ValueError("frame truncated"), reply))
+    sockets = []
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["executor"]["peer_uid"], 123)
+
+        def sendall(self, _payload):
+            pass
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def socket_factory(*_args):
+        item = FakeSocket()
+        sockets.append(item)
+        return item
+
+    def frame(*_args):
+        value = next(frames)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(service.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(service.socket, "socket", socket_factory)
+    monkeypatch.setattr(service, "_frame", frame)
+
+    receipt = service.request_receipt(
+        role="executor",
+        socket_path=Path("executor.sock"),
+        authority_response={"response": {"job_id": "7" * 64}},
+        config=config,
+        timeout=10,
+    )
+
+    assert receipt == {"signed": True}
+    assert len(sockets) == 2
+
+
+def test_receipt_client_does_not_retry_semantic_rejection(monkeypatch):
+    # PR #1249 review 3744516423: service semantic errors remain terminal.
+    from benchmarks.codegraph_compare import receipt_v3_service as service
+
+    config = _qualification_v3_public_config()
+    sockets = []
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["executor"]["peer_uid"], 123)
+
+        def sendall(self, _payload):
+            pass
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def socket_factory(*_args):
+        sockets.append(FakeSocket())
+        return sockets[-1]
+
+    monkeypatch.setattr(service.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(service.socket, "socket", socket_factory)
+    monkeypatch.setattr(
+        service, "_frame", lambda *_args: {"error": "ValueError", "reason": "bad job"}
+    )
+
+    with pytest.raises(ValueError, match="service rejected job: bad job"):
+        service.request_receipt(
+            role="executor",
+            socket_path=Path("executor.sock"),
+            authority_response={"response": {"job_id": "7" * 64}},
+            config=config,
+            timeout=10,
+        )
+
+    assert len(sockets) == 1
+
+
+def test_receipt_client_bounds_response_loss_retry(monkeypatch):
+    # PR #1249 review 3744516423: persistent response loss gets only one retry.
+    from benchmarks.codegraph_compare import receipt_v3_service as service
+
+    config = _qualification_v3_public_config()
+    sockets = []
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["executor"]["peer_uid"], 123)
+
+        def sendall(self, _payload):
+            pass
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def socket_factory(*_args):
+        sockets.append(FakeSocket())
+        return sockets[-1]
+
+    monkeypatch.setattr(service.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(service.socket, "socket", socket_factory)
+    monkeypatch.setattr(
+        service,
+        "_frame",
+        lambda *_args: (_ for _ in ()).throw(ValueError("frame truncated")),
+    )
+
+    with pytest.raises(service._PostSendTransportError):
+        service.request_receipt(
+            role="executor",
+            socket_path=Path("executor.sock"),
+            authority_response={"response": {"job_id": "7" * 64}},
+            config=config,
+            timeout=10,
+        )
+
+    assert len(sockets) == 2
+
+
+def test_decision_issuer_separates_run_contract_directory(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744516427: operator input contains exactly run contracts.
+    from benchmarks.codegraph_compare import decision_contract_issuer as issuer
+    from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
+
+    descriptor = os.open(os.devnull, os.O_RDONLY)
+    monkeypatch.setattr(issuer, "secure_key", lambda *_args: (descriptor, b"\x44" * 32))
+    monkeypatch.setattr(
+        issuer,
+        "issue",
+        lambda *_args, **_kwargs: (
+            {"decision_id": "d" * 64},
+            [
+                {"cell": {"repo_id": repo, "arm_id": arm}}
+                for repo, arm in EXPECTED_CELLS
+            ],
+        ),
+    )
+    output = tmp_path / "issued"
+
+    result = issuer.main(
+        [
+            "--plans-dir",
+            str(tmp_path),
+            "--private-key",
+            str(tmp_path / "unused.key"),
+            "--output-dir",
+            str(output),
+        ]
+    )
+
+    assert result == 0
+    assert sorted(path.name for path in output.glob("*.json")) == [
+        "decision-contract.json"
+    ]
+    assert len(list((output / "run_contracts").glob("*.json"))) == 14
+
+
+def test_decision_consumer_rejects_stale_verifier_runtime_identity():
+    # PR #1249 review 3744516428: verdict runtime must match root-signed config.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    config = _qualification_v3_public_config()
+    contract = {"decision_id": "d" * 64}
+    envelope = {
+        "manifest_sha256": "a" * 64,
+        "decision_id": "d" * 64,
+        "decision_contract_sha256": hashlib.sha256(
+            consumer.canonical_json_bytes(contract)
+        ).hexdigest(),
+        "challenge": "b" * 64,
+        "ledger_counter": 1,
+        "ledger_prev_hash": "0" * 64,
+        "issued_at_ns": 1,
+        "verdict": {},
+        "service_identity": {"stale": True},
+        "consumption_record": {},
+        "ledger_head": {},
+        "key_id": config["verifier"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": "0" * 128,
+    }
+
+    with pytest.raises(ValueError, match="verifier identity mismatch"):
+        consumer.verify_verdict_envelope(envelope, contract, config)
+
+
+def test_service_launch_schema_matches_process_identity_shape():
+    # PR #1249 review 3744516431: published process fields match _proc_identity().
+    from jsonschema import Draft202012Validator
+
+    schema = json.loads(
+        Path(
+            "benchmarks/codegraph_compare/published_schemas/service-launch-v1.schema.json"
+        ).read_bytes()
+    )
+    process = {
+        "host_pid": 123,
+        "container_pid": 1,
+        "starttime": "456",
+        "cgroup": "0::/container",
+        "executable": "/usr/bin/python3",
+        "executable_sha256": "a" * 64,
+        "cmdline": ["python", "-m", "service"],
+        "namespaces": {
+            name: f"{name}:[1]"
+            for name in ("mnt", "pid", "net", "user", "uts", "ipc", "cgroup")
+        },
+        "capabilities": dict.fromkeys(
+            ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"),
+            "0000000000000000",
+        ),
+        "no_new_privs": "1",
+        "seccomp": "2",
+        "seccomp_filters": "1",
+    }
+    attestation = {
+        "container_id": "b" * 64,
+        "role": "verifier",
+        "image_id": "sha256:" + "c" * 64,
+        "cmd": ["python"],
+        "entrypoint": None,
+        "user": "903",
+        "readonly_rootfs": True,
+        "mounts": [],
+        "network_mode": "none",
+        "security_opt": [],
+        "process": process,
+    }
+    envelope = {
+        "attestation": attestation,
+        "key_id": "auditor",
+        "algorithm": "Ed25519",
+        "signature": "d" * 128,
+    }
+
+    assert list(Draft202012Validator(schema).iter_errors(envelope)) == []
 
 
 _mark_posix_qualification_section_tests()

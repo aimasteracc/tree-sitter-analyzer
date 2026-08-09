@@ -145,6 +145,8 @@ def verify_verdict_envelope(
     if (
         envelope["key_id"] != config["verifier"]["key_id"]
         or envelope["algorithm"] != "Ed25519"
+        or envelope["service_identity"]
+        != config["trusted"]["verifier_runtime"]["measurement"]
     ):
         raise ValueError("verifier identity mismatch")
     signed = {
