@@ -187,10 +187,14 @@ def parse_public_config(
             raise ValueError(f"external {role} service contract is invalid")
     if len(set(ids)) != 4 or len(set(keys)) != 4:
         raise ValueError("public signer identities must differ")
-    trusted_keys = TRUSTED_KEYS | (
-        {"executor_runtime", "approver_runtime"}
-        if config["schema_version"] == 5
-        else set()
+    trusted_keys = (
+        TRUSTED_KEYS
+        | (
+            {"executor_runtime", "approver_runtime"}
+            if config["schema_version"] >= 5
+            else set()
+        )
+        | ({"service_launch"} if config["schema_version"] >= 6 else set())
     )
     trusted = _exact(config["trusted"], frozenset(trusted_keys), "trusted config")
     for name in ("plan_set_hash", "tool_sha256", "config_sha256", "seccomp_sha256"):
@@ -236,12 +240,12 @@ def parse_public_config(
         raise ValueError("top-level Docker image IDs must be root-authorized")
     runtime_roles = (
         ("executor", "approver", "auditor", "verifier")
-        if config["schema_version"] == 5
+        if config["schema_version"] >= 5
         else ("auditor", "verifier")
     )
     for role in runtime_roles:
         runtime_keys = {"image_digest", "image_id", "closure_manifest_sha256"}
-        if config["schema_version"] == 5:
+        if config["schema_version"] >= 5:
             runtime_keys.add("measurement")
         runtime = _exact(
             trusted[f"{role}_runtime"], frozenset(runtime_keys), f"{role} runtime"
@@ -253,7 +257,7 @@ def parse_public_config(
             or runtime["closure_manifest_sha256"] != config[role]["service_measurement"]
         ):
             raise ValueError(f"{role} runtime authority is invalid")
-        if config["schema_version"] == 5:
+        if config["schema_version"] >= 5:
             measurement = _exact(
                 runtime["measurement"],
                 frozenset(
@@ -290,6 +294,37 @@ def parse_public_config(
                 )
             ):
                 raise ValueError(f"{role} runtime measurement authority is invalid")
+    if config["schema_version"] >= 6:
+        launches = _exact(
+            config["trusted"]["service_launch"],
+            frozenset({"executor", "approver", "auditor", "verifier"}),
+            "service launch config",
+        )
+        launch_keys = frozenset(
+            {
+                "image_id",
+                "cmd",
+                "entrypoint",
+                "user",
+                "readonly_rootfs",
+                "mounts",
+                "network_mode",
+                "security_opt",
+            }
+        )
+        for role, launch in launches.items():
+            item = _exact(launch, launch_keys, f"{role} service launch")
+            if (
+                item["image_id"] != image_ids[role]
+                or type(item["cmd"]) is not list
+                or type(item["entrypoint"]) not in {list, type(None)}
+                or type(item["user"]) is not str
+                or item["readonly_rootfs"] is not True
+                or type(item["mounts"]) is not list
+                or item["network_mode"] != "none"
+                or type(item["security_opt"]) is not list
+            ):
+                raise ValueError(f"{role} service launch authority is invalid")
     return dict(config)
 
 

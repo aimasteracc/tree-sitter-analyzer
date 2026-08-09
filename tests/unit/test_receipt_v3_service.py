@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 
 import pytest
@@ -101,3 +102,18 @@ def test_receipt_service_recomputes_artifact_descriptor_identity(tmp_path: Path)
         (staged / name).write_bytes(b"{}")
     with pytest.raises(ValueError, match="changed after signing"):
         _paths(response, tmp_path, tmp_path / "staged")
+
+
+def test_secure_key_read_does_not_share_descriptor_offset(tmp_path: Path):
+    from benchmarks.codegraph_compare.service_runtime import secure_key
+
+    key = tmp_path / "service.key"
+    key.write_bytes(b"K" * 32)
+    key.chmod(0o400)
+    descriptor, first = secure_key(key, os.geteuid())
+    try:
+        os.lseek(descriptor, 31, os.SEEK_SET)
+        assert os.pread(descriptor, 32, 0) == first == b"K" * 32
+        assert os.lseek(descriptor, 0, os.SEEK_CUR) == 31
+    finally:
+        os.close(descriptor)

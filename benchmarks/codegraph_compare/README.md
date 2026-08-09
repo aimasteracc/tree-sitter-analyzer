@@ -465,22 +465,31 @@ This does not defend against a malicious authority-host root. Such root is expli
 trusted and can control the service, kernel, Docker daemon, cgroups, and storage.
 Executor, approver, and verifier are separate bounded-worker Unix services with
 distinct private keys retained as validated file descriptors and server-side
-`SO_PEERCRED` UID policy. At startup each service measures the actual interpreter,
-complete loaded-project-module closure, UID/GID, read-only root filesystem, and the
-exact writable-mount set, then compares it with the root-signed runtime contract.
-Responses carry that actual measurement rather than a copied expected value.
+`SO_PEERCRED` UID policy. Before binding a socket, each service requires an authority-signed service-launch
+attestation. The authority obtains Docker's top-level image ID, Cmd, Entrypoint,
+User, ReadonlyRootfs, mounts, network mode, SecurityOpt, container ID, PID,
+starttime, and cgroup itself; the service binds those facts to `/proc/self` and the
+root config's pinned image ID and command. It then measures the actual interpreter,
+all loaded non-stdlib project/package modules plus installed RECORD files, UID/GID,
+read-only root filesystem, and exact writable-mount set. The isolated signer child
+must verify the parent's actual measurement. Responses retain that actual
+measurement rather than a copied expected value.
 
 All root-signed cell contracts share one correlation nonce. The operator cannot
 choose a verifier challenge: it first submits the canonical manifest hash, and the
 verifier issues a random challenge bound to that hash and a monotonic counter in a
-durable root-owned append-only hash-chain ledger. Verification atomically consumes
-the challenge, so duplicate use and replay after service restart are rejected. The
-signed retained envelope includes the ledger counter, previous-record hash, and
-issue time as historical evidence; those fields are not claimed to prove live or
-real-time freshness. The verifier recomputes all fourteen receipts. Only a closed,
+durable root-owned append-only hash-chain ledger. The length-prefixed, fsynced ledger applies the locked state machine
+`CHALLENGED -> VERIFYING -> CONSUMED/FAILED`; partial records, bad hashes, duplicate
+use, and replay after restart are rejected, and a crash-stranded VERIFYING record
+is failed on restart. The response contains separately signed consumption and
+ledger-head proofs. Those are retained historical evidence only: after accepting a
+verdict, the production operator performs an authenticated live head query and
+requires the exact counter/hash before writing a decision wrapper. An old envelope
+or stale head cannot authorize a new decision. The verifier recomputes all fourteen receipts. Only a closed,
 reason-free verdict authorized as `PRODUCTION_VERIFIER` may say `SETUP_QUALIFIED`.
-The operator derives one total monotonic deadline from the fourteen signed plans;
-timeout cancels signer process groups and leaves a durable `CANCELLED` terminal
+The operator derives one total monotonic budget for the serial authority, executor,
+approver, and verifier phases from the fourteen signed plans; non-positive remaining
+time is a terminal timeout, signer timeouts cancel their process groups and leaves a durable `CANCELLED` terminal
 state, while other failures leave `FAILED` and success records exact completion.
 
 Diagnostic verification always remains `E0/NOT_EVALUATED`; retained aggregate

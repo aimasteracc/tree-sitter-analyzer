@@ -34,6 +34,7 @@ from benchmarks.codegraph_compare.service_runtime import (
     peer_allowed,
     read_frame,
     secure_key,
+    verify_service_launch_attestation,
 )
 from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
 from benchmarks.codegraph_compare.verifier import parse_public_config
@@ -228,6 +229,7 @@ def _sign(
     artifact_root: Path,
     staged_root: Path,
     key: Path,
+    measurement: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
     expected = {"operation", "authority_response"} | (
         {"draft"} if role == "approver" else set()
@@ -241,7 +243,12 @@ def _sign(
         audit = Path(temporary) / "process-audit.json"
         audit.write_bytes(canonical_json_bytes(response["audit"]))
         os.chmod(audit, 0o400)
+        parent_measurement = Path(temporary) / "parent-measurement.json"
+        parent_measurement.write_bytes(canonical_json_bytes(measurement))
+        os.chmod(parent_measurement, 0o400)
         common = [
+            "--parent-measurement",
+            str(parent_measurement),
             "--run-nonce",
             response["nonce"],
             "--plan",
@@ -352,7 +359,13 @@ def serve_once(
     try:
         peer_allowed(connection, allowed_client_uid)
         job_id, result = _sign(
-            role, _frame(connection), config, artifact_root, staged_root, key
+            role,
+            _frame(connection),
+            config,
+            artifact_root,
+            staged_root,
+            key,
+            measurement,
         )
         service_identity = measurement
         response = {
@@ -387,6 +400,8 @@ def request_receipt(
     draft: dict[str, Any] | None = None,
     timeout: float = 360,
 ) -> dict[str, Any]:
+    if timeout <= 0:
+        raise TimeoutError(f"{role} overall deadline expired")
     service = config[role]
     request: dict[str, Any] = {
         "operation": f"{role}-sign",
@@ -459,6 +474,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--staged-root", required=True)
     parser.add_argument("--allowed-client-uid", required=True, type=int)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--launch-attestation")
     args = parser.parse_args(argv)
     config = parse_public_config(Path(args.public_config).read_bytes())
     if os.geteuid() != config[args.role]["peer_uid"]:
@@ -469,6 +485,14 @@ def main(argv: list[str] | None = None) -> int:
     measurement = measure_runtime(
         config["trusted"][f"{args.role}_runtime"]["measurement"]
     )
+    if config["schema_version"] >= 6:
+        if not args.launch_attestation:
+            raise SystemExit("root-signed service launch attestation is required")
+        verify_service_launch_attestation(
+            strict_json_loads(Path(args.launch_attestation).read_bytes()),
+            args.role,
+            config,
+        )
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(args.socket)
     os.chmod(args.socket, 0o660)  # nosec B103

@@ -16,7 +16,10 @@ from benchmarks.codegraph_compare.receipt_v3 import (
 from benchmarks.codegraph_compare.receipt_v3_service import request_receipt
 from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 from benchmarks.codegraph_compare.verifier import parse_public_config
-from benchmarks.codegraph_compare.verifier_service import request_verdict
+from benchmarks.codegraph_compare.verifier_service import (
+    query_ledger_head,
+    request_verdict,
+)
 
 
 def _write(path: Path, value: Any) -> None:
@@ -60,7 +63,7 @@ def _run_impl(args: argparse.Namespace) -> int:
         if type(value) is not int or value < 1:
             raise ValueError("operator plan timeout invalid")
         plan_timeouts[identity] = value
-    deadline = time.monotonic() + sum(plan_timeouts.values())
+    deadline = time.monotonic() + sum(value * 4 for value in plan_timeouts.values())
     for identity in EXPECTED_CELLS:
         contract = contracts[identity]
         staged = staged_root / contract["job_id"]
@@ -117,9 +120,27 @@ def _run_impl(args: argparse.Namespace) -> int:
         raise ValueError(
             "external fresh verifier did not produce exact-14 qualification"
         )
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("exact-14 overall plan deadline expired")
+    live_head = query_ledger_head(
+        socket_path=Path(args.verifier_socket), config=config, timeout=remaining
+    )
+    retained = envelope["ledger_head"]["record"]
+    if live_head["record"] != retained:
+        raise ValueError(
+            "verifier live ledger head no longer matches fresh verdict; retry a new decision"
+        )
     output = Path(args.experiment_root)
     output.mkdir(mode=0o700, exist_ok=True)
-    _write(output / "verdict-envelope.json", envelope)
+    _write(
+        output / "verdict-envelope.json",
+        {
+            "envelope": envelope,
+            "live_ledger_head": live_head,
+            "proof_status": "HISTORICAL_AFTER_ACCEPTANCE",
+        },
+    )
     return 0
 
 

@@ -15,6 +15,7 @@ from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
 from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 from benchmarks.codegraph_compare.verifier_service import (
     CHALLENGE_DOMAIN,
+    LEDGER_DOMAIN,
     VERDICT_DOMAIN,
     _frame,
     _send,
@@ -113,14 +114,38 @@ def _server(path: Path, key: Ed25519PrivateKey, *, forge: bool) -> threading.Thr
         first.close()
         connection, _ = listener.accept()
         request = _frame(connection)
+        consumed = {
+            "counter": 3,
+            "event": "CONSUMED",
+            "challenge": request["challenge"],
+            "manifest_sha256": request["manifest_sha256"],
+            "issued_at_ns": 123,
+            "event_at_ns": 125,
+            "prev_hash": "8" * 64,
+            "record_hash": "9" * 64,
+        }
+        head = {"counter": 3, "record_hash": "9" * 64}
+
+        def ledger_proof(record: dict[str, object]) -> dict[str, object]:
+            return {
+                "record": record,
+                "key_id": "verifier",
+                "algorithm": "Ed25519",
+                "signature": key.sign(
+                    LEDGER_DOMAIN + canonical_json_bytes(record)
+                ).hex(),
+            }
+
         signed = {
             "manifest_sha256": request["manifest_sha256"],
             "challenge": request["challenge"],
-            "ledger_counter": 1,
-            "ledger_prev_hash": "0" * 64,
+            "ledger_counter": 3,
+            "ledger_prev_hash": "8" * 64,
             "issued_at_ns": 123,
             "verdict": _verdict(),
             "service_identity": _measurement(),
+            "consumption_record": ledger_proof(consumed),
+            "ledger_head": ledger_proof(head),
         }
         signer = Ed25519PrivateKey.generate() if forge else key
         _send(

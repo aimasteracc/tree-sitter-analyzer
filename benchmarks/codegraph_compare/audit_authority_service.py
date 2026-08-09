@@ -21,11 +21,15 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
+    strict_json_loads,
 )
 from benchmarks.codegraph_compare.service_runtime import (
+    create_service_launch_attestation,
+    measure_runtime,
     peer_allowed,
     read_frame,
     secure_key,
+    verify_service_launch_attestation,
 )
 from benchmarks.codegraph_compare.trust_anchor import baked_root_public_key
 
@@ -182,6 +186,19 @@ def _artifact_descriptor(
     }
 
 
+def attest_service_launch(
+    container: str,
+    role: str,
+    config: dict[str, Any],
+    key: Ed25519PrivateKey,
+    key_id: str,
+) -> dict[str, Any]:
+    """Authority-supervisor launch attestation entrypoint."""
+    if role not in {"executor", "approver", "auditor", "verifier"}:
+        raise ValueError("service launch role is not authorized")
+    return create_service_launch_attestation(container, role, config, key, key_id)
+
+
 def serve_once(
     listener: socket.socket,
     *,
@@ -256,12 +273,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifact-root", required=True)
     parser.add_argument("--allowed-client-uid", required=True, type=int)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--public-config", required=True)
+    parser.add_argument("--launch-attestation", required=True)
     args = parser.parse_args(argv)
     if os.geteuid() != 0 or platform.system() != "Linux":
         raise SystemExit("authority service requires Linux root")
     from benchmarks.codegraph_compare.audit_authority_runner import AuthorityRunner
 
     key = _load_key(Path(args.private_key))
+    from benchmarks.codegraph_compare.verifier import parse_public_config
+
+    config = parse_public_config(Path(args.public_config).read_bytes())
+    measure_runtime(config["trusted"]["auditor_runtime"]["measurement"])
+    verify_service_launch_attestation(
+        strict_json_loads(Path(args.launch_attestation).read_bytes()), "auditor", config
+    )
     runner = AuthorityRunner(Path(args.staged_root), Path(args.artifact_root), key)
     path = Path(args.socket)
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

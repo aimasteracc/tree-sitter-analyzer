@@ -60,7 +60,7 @@ def _read_private_key(raw: str) -> bytes:
             raise ValueError(
                 "private key must be one service-owned 0400 32-byte regular file"
             )
-        payload = os.read(descriptor, 33)
+        payload = os.pread(descriptor, 32, 0)
         if len(payload) != 32:
             raise ValueError("private key must contain exactly 32 raw bytes")
         return payload
@@ -284,6 +284,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         executor.add_argument(f"--{option}", required=True)
     executor.add_argument("--private-key", required=True)
     executor.add_argument("--key-id", required=True)
+    executor.add_argument("--parent-measurement", required=True)
     approver = subparsers.add_parser("sign-approver")
     approver.add_argument("--attestation", required=True)
     approver.add_argument("--run-nonce", required=True)
@@ -310,80 +311,95 @@ def main(argv: Sequence[str] | None = None) -> int:
     approver.add_argument("--data-blocks", type=int, required=True)
     approver.add_argument("--private-key", required=True)
     approver.add_argument("--key-id", required=True)
+    approver.add_argument("--parent-measurement", required=True)
     args = parser.parse_args(argv)
-    # Pin every non-image document/source/audit/config input before hash/parse/use.
     pinned: list[int] = []
-    for name in (
-        "body",
-        "attestation",
-        "public_config",
-        "plan",
-        "inventory",
-        "process_audit",
-        "source_snapshot",
-        "tool",
-        "config",
-        "seccomp",
-    ):
-        raw = getattr(args, name, None)
-        if raw:
-            descriptor = os.open(
-                _safe_path(raw),
-                os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
-            )
-            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-                os.close(descriptor)
-                raise ValueError(f"{name} must be regular")
-            pinned.append(descriptor)
-            setattr(args, name, f"/proc/self/fd/{descriptor}")
-    key = _read_private_key(args.private_key)
-    if args.command == "sign-executor":
-        evidence_args = (
-            args.plan,
-            args.inventory,
-            args.core_root,
-            args.data_image,
-            args.hash_image,
-            args.process_audit,
-            args.root_hash,
-            args.salt,
-            args.data_blocks,
-        )
-        if bool(args.body) == all(value is not None for value in evidence_args):
-            raise ValueError("provide either one body or the complete evidence set")
-        if args.body:
-            raise ValueError(
-                "executor signing requires complete independent raw evidence"
-            )
-        body = _build_body(args)
-        config = parse_public_config(_safe_path(args.public_config).read_bytes())
-        if args.key_id != config["executor"]["key_id"]:
-            raise ValueError("executor key ID does not match public config")
-        _full_semantic_verify(args, body, config)
-        result = create_executor_attestation(body, args.key_id, key)
-    else:
-        attestation = strict_json_loads(_safe_path(args.attestation).read_bytes())
-        config = parse_public_config(_safe_path(args.public_config).read_bytes())
-        if args.key_id != config["approver"]["key_id"]:
-            raise ValueError("approver key ID does not match public config")
-        # Independent semantic approval: consume every raw oracle/snapshot/audit input,
-        # rebuild the complete body, and reject before signing unless byte-identical.
-        recomputed = _build_body(args)
-        if canonical_json_bytes(recomputed) != canonical_json_bytes(
-            attestation.get("body")
+    try:
+        # Pin every non-image document/source/audit/config input before hash/parse/use.
+        for name in (
+            "body",
+            "attestation",
+            "public_config",
+            "parent_measurement",
+            "plan",
+            "inventory",
+            "process_audit",
+            "source_snapshot",
+            "tool",
+            "config",
+            "seccomp",
         ):
-            raise ValueError("approver full evidence/oracle verification mismatch")
-        _full_semantic_verify(args, recomputed, config)
-        result = approve_executor_attestation(
-            attestation,
-            config["executor"]["key_id"],
-            bytes.fromhex(config["executor"]["public_key_hex"]),
-            args.key_id,
-            key,
+            raw = getattr(args, name, None)
+            if raw:
+                descriptor = os.open(
+                    _safe_path(raw),
+                    os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+                )
+                if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                    os.close(descriptor)
+                    raise ValueError(f"{name} must be regular")
+                pinned.append(descriptor)
+                setattr(args, name, f"/proc/self/fd/{descriptor}")
+        key = _read_private_key(args.private_key)
+        config = parse_public_config(_safe_path(args.public_config).read_bytes())
+        parent_measurement = strict_json_loads(
+            _safe_path(args.parent_measurement).read_bytes()
         )
-    # The only handoff is one canonical document on stdout; never write a directory.
-    sys.stdout.buffer.write(canonical_json_bytes(result) + b"\n")
-    return 0
+        if (
+            parent_measurement
+            != config["trusted"][f"{args.command.removeprefix('sign-')}_runtime"][
+                "measurement"
+            ]
+        ):
+            raise ValueError("signer subprocess parent runtime measurement mismatch")
+        if args.command == "sign-executor":
+            evidence_args = (
+                args.plan,
+                args.inventory,
+                args.core_root,
+                args.data_image,
+                args.hash_image,
+                args.process_audit,
+                args.root_hash,
+                args.salt,
+                args.data_blocks,
+            )
+            if bool(args.body) == all(value is not None for value in evidence_args):
+                raise ValueError("provide either one body or the complete evidence set")
+            if args.body:
+                raise ValueError(
+                    "executor signing requires complete independent raw evidence"
+                )
+            body = _build_body(args)
+            if args.key_id != config["executor"]["key_id"]:
+                raise ValueError("executor key ID does not match public config")
+            _full_semantic_verify(args, body, config)
+            result = create_executor_attestation(body, args.key_id, key)
+        else:
+            attestation = strict_json_loads(_safe_path(args.attestation).read_bytes())
+            if args.key_id != config["approver"]["key_id"]:
+                raise ValueError("approver key ID does not match public config")
+            # Independent semantic approval: consume every raw oracle/snapshot/audit input,
+            # rebuild the complete body, and reject before signing unless byte-identical.
+            recomputed = _build_body(args)
+            if canonical_json_bytes(recomputed) != canonical_json_bytes(
+                attestation.get("body")
+            ):
+                raise ValueError("approver full evidence/oracle verification mismatch")
+            _full_semantic_verify(args, recomputed, config)
+            result = approve_executor_attestation(
+                attestation,
+                config["executor"]["key_id"],
+                bytes.fromhex(config["executor"]["public_key_hex"]),
+                args.key_id,
+                key,
+            )
+        # The only handoff is one canonical document on stdout; never write a directory.
+        sys.stdout.buffer.write(canonical_json_bytes(result) + b"\n")
+        return 0
+    finally:
+        while pinned:
+            os.close(pinned.pop())
 
 
 if __name__ == "__main__":
