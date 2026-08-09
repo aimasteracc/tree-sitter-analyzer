@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import heapq
 import os
 import stat
 import time
@@ -109,21 +110,49 @@ def _visit_tree(
     max_depth: int = _DEFAULT_TREE_MAX_DEPTH,
     max_entries: int = _DEFAULT_TREE_MAX_ENTRIES,
     max_directories: int = _DEFAULT_TREE_MAX_DIRECTORIES,
+    deadline_monotonic: float | None = None,
 ) -> None:
     """Visit a trusted-bounded tree without Python recursion or path re-resolution."""
     if min(max_depth, max_entries, max_directories) < 0:
         raise ValueError("Artifact tree traversal ceilings must be non-negative")
 
+    def check_deadline() -> None:
+        if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+            raise TimeoutError("Artifact tree traversal deadline expired")
+
     def bounded_names(descriptor: int, remaining: int) -> list[str]:
-        names: list[str] = []
+        # Sorting a producer-controlled million-name directory in one C call would
+        # make the deadline unobservable.  Enumerate and sort bounded chunks, then
+        # merge them with checks between every small unit of work.
+        chunks: list[list[str]] = []
+        chunk: list[str] = []
+        count = 0
+        check_deadline()
         with os.scandir(descriptor) as entries:
             for entry in entries:
-                names.append(entry.name)
-                if len(names) > remaining:
+                chunk.append(entry.name)
+                count += 1
+                if count > remaining:
                     raise ValueError(
                         "Artifact tree exceeds trusted entry count ceiling"
                     )
-        names.sort()
+                if len(chunk) == 256:
+                    check_deadline()
+                    chunk.sort()
+                    check_deadline()
+                    chunks.append(chunk)
+                    chunk = []
+        if chunk:
+            check_deadline()
+            chunk.sort()
+            check_deadline()
+            chunks.append(chunk)
+        names: list[str] = []
+        for name in heapq.merge(*chunks):
+            names.append(name)
+            if len(names) % 256 == 0:
+                check_deadline()
+        check_deadline()
         return names
 
     # Each frame owns its descriptor except the root frame supplied by the caller.
@@ -352,7 +381,12 @@ def _snapshot_tree_descriptor(
         _update_typed_path(digest, b"D", item)
         directory_count += 1
 
-    _visit_tree(directory_fd, collect_file, collect_directory)
+    _visit_tree(
+        directory_fd,
+        collect_file,
+        collect_directory,
+        deadline_monotonic=deadline_monotonic,
+    )
     digest.update(
         b"C" + file_count.to_bytes(8, "big") + directory_count.to_bytes(8, "big")
     )

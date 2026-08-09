@@ -192,7 +192,10 @@ def _mounts(inspected: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _docker_facts(
-    inspected: dict[str, Any], expected_image: str, expected_id: str
+    inspected: dict[str, Any],
+    expected_image: str,
+    expected_id: str,
+    expected_seccomp: Path,
 ) -> dict[str, Any]:
     host = inspected["HostConfig"]
     if inspected.get("Image") != expected_id:
@@ -219,6 +222,8 @@ def _docker_facts(
         or security["readonly_rootfs"] is not True
         or security["cap_drop"] != ["ALL"]
         or security["network_mode"] != "none"
+        or security["security_opt"]
+        != ["no-new-privileges", f"seccomp={expected_seccomp}"]
         or security["pids_limit"] != 64
         or security["memory"] != 4294967296
         or security["nano_cpus"] != 1000000000
@@ -299,7 +304,10 @@ def launch(
     plan_path = Path(mounts["/plan/cell-plan.json"]["Source"])
     plan = strict_json_loads(_read(plan_path))
     security = _docker_facts(
-        inspected, expected_image, config["trusted"]["image_ids"]["producer"]
+        inspected,
+        expected_image,
+        config["trusted"]["image_ids"]["producer"],
+        seccomp,
     )
     return {
         "producer_container_id": inspected["Id"],
@@ -345,7 +353,10 @@ def terminal(
     ):
         raise ValueError("producer terminal state invalid")
     security = _docker_facts(
-        inspected, expected_image, config["trusted"]["image_ids"]["producer"]
+        inspected,
+        expected_image,
+        config["trusted"]["image_ids"]["producer"],
+        seccomp,
     )
     mounts = _mounts(inspected)
     actual_mounts = [
@@ -418,7 +429,7 @@ def terminal(
         "actual_image_id": inspected["Image"],
         "cgroup_id": prior["cgroup_id"],
         "network_mode": "none",
-        "security_opt": ["no-new-privileges", "seccomp=" + prior["seccomp_sha256"]],
+        "security_opt": security["security_opt"],
         "restart_count": 0,
         "terminal_pid": 0,
         "launch_count": 1,

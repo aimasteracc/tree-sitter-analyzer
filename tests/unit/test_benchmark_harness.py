@@ -19,6 +19,7 @@ import struct
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -10031,6 +10032,31 @@ def test_index_tree_breadth_is_rejected_before_unbounded_sort(tmp_path: Path):
         os.close(root_fd)
 
 
+def test_index_tree_enumeration_checks_deadline_before_chunk_sort(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745026816: wide directories cannot hide an expired deadline.
+    from benchmarks.codegraph_compare import setup_qualification_paths as paths
+
+    index = tmp_path / "index"
+    index.mkdir()
+    for number in range(256):
+        (index / f"{number:03d}").write_bytes(b"")
+    root_fd = paths._open_root(index)
+    monkeypatch.setattr(
+        paths, "time", SimpleNamespace(monotonic=iter((0.0, 1.0)).__next__)
+    )
+    try:
+        with pytest.raises(TimeoutError, match="traversal deadline"):
+            paths._visit_tree(
+                root_fd,
+                lambda _fd, _path: None,
+                deadline_monotonic=0.5,
+            )
+    finally:
+        os.close(root_fd)
+
+
 def test_index_tree_rejects_directory_topology_race(tmp_path: Path):
     # PR #1247: directory pre/post metadata must bind one topology snapshot.
     import pytest
@@ -12003,6 +12029,95 @@ def test_qualification_executor_rejects_nonempty_output(tmp_path: Path):
         produce_cell({}, output)
 
 
+def test_qualification_index_observation_streams_canonical_bounded_records(
+    tmp_path: Path,
+):
+    # PR #1249 review 3745026823: observations are bounded before producer success.
+    from benchmarks.codegraph_compare.setup_qualification_executor import (
+        _write_final_index_observation,
+    )
+
+    index = tmp_path / "index"
+    raw = tmp_path / "raw"
+    index.mkdir()
+    raw.mkdir()
+    (index / "b").write_bytes(b"bb")
+    (index / "a").write_bytes(b"a")
+    descriptor = _write_final_index_observation(
+        index, raw, "observation", deadline_monotonic=time.monotonic() + 10
+    )
+
+    assert descriptor == {
+        "path": "raw/observation",
+        "size_bytes": (raw / "observation").stat().st_size,
+        "sha256": hashlib.sha256((raw / "observation").read_bytes()).hexdigest(),
+    }
+    assert json.loads((raw / "observation").read_bytes()) == [
+        {
+            "path": "a",
+            "sha256": hashlib.sha256(b"a").hexdigest(),
+            "size_bytes": 1,
+        },
+        {
+            "path": "b",
+            "sha256": hashlib.sha256(b"bb").hexdigest(),
+            "size_bytes": 2,
+        },
+    ]
+
+
+def test_qualification_index_observation_rejects_receipt_node_overflow(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745026823: node complexity fails before successful sealing.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    index = tmp_path / "index"
+    raw = tmp_path / "raw"
+    index.mkdir()
+    raw.mkdir()
+    (index / "only").write_bytes(b"x")
+    monkeypatch.setattr(executor, "MAX_NODES", 3)
+
+    with pytest.raises(ValueError, match="receipt node bound"):
+        executor._write_final_index_observation(
+            index, raw, "observation", deadline_monotonic=time.monotonic() + 10
+        )
+
+
+def test_qualification_index_observation_rejects_receipt_byte_overflow(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745026823: byte complexity fails before successful sealing.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    index = tmp_path / "index"
+    raw = tmp_path / "raw"
+    index.mkdir()
+    raw.mkdir()
+    monkeypatch.setattr(executor, "MAX_JSON_BYTES", len(b'{"records":}'))
+
+    with pytest.raises(ValueError, match="receipt JSON bound"):
+        executor._write_final_index_observation(
+            index, raw, "observation", deadline_monotonic=time.monotonic() + 10
+        )
+
+
+def test_sealed_read_budget_uses_named_actual_passes():
+    # PR #1249 review 3745026813: budget counts signer x2 and verifier readers.
+    from benchmarks.codegraph_compare.execution_budget import sealed_read_passes
+
+    assert sealed_read_passes("executor") == sealed_read_passes("approver")
+    assert {
+        role: {kind: len(names) for kind, names in sealed_read_passes(role).items()}
+        for role in ("executor", "approver", "verifier")
+    } == {
+        "executor": {"images": 4, "output": 9},
+        "approver": {"images": 4, "output": 9},
+        "verifier": {"images": 2, "output": 5},
+    }
+
+
 def test_qualification_operator_contract_is_exact_closed_service_pipeline():
     completed = subprocess.run(
         ["bash", "scripts/no1_008a_operator.sh", "contract"],
@@ -12689,6 +12804,102 @@ def test_qualification_host_auditor_checks_root_pinned_top_level_image_id():
             inspected,
             "producer@sha256:" + "1" * 64,
             "sha256:" + "8" * 64,
+            Path("/trusted/seccomp"),
+        )
+
+
+def test_qualification_host_auditor_preserves_exact_observed_security_options():
+    # PR #1249 review 3745026819: terminal evidence is observed, not synthesized.
+    from benchmarks.codegraph_compare.host_auditor import (
+        PRODUCER_GATE_TARGET,
+        PRODUCER_GATE_WRAPPER,
+        _docker_facts,
+    )
+
+    image = "producer@sha256:" + "1" * 64
+    image_id = "sha256:" + "8" * 64
+    inspected = {
+        "Image": image_id,
+        "Config": {
+            "Image": image,
+            "User": "65532:65532",
+            "Entrypoint": ["/bin/sh"],
+            "Cmd": [
+                "-c",
+                PRODUCER_GATE_WRAPPER,
+                "no1-008a-gate",
+                PRODUCER_GATE_TARGET,
+                "--plan",
+                "/plan/cell-plan.json",
+                "--out",
+                "/out",
+            ],
+        },
+        "HostConfig": {
+            "ReadonlyRootfs": True,
+            "CapDrop": ["ALL"],
+            "NetworkMode": "none",
+            "SecurityOpt": ["no-new-privileges", "seccomp=/trusted/seccomp"],
+            "PidsLimit": 64,
+            "Memory": 4294967296,
+            "NanoCpus": 1000000000,
+            "Tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=64m"},
+        },
+    }
+
+    assert _docker_facts(inspected, image, image_id, Path("/trusted/seccomp"))[
+        "security_opt"
+    ] == ["no-new-privileges", "seccomp=/trusted/seccomp"]
+
+
+def test_qualification_host_auditor_rejects_extra_security_option():
+    # PR #1249 review 3745026819: unrequested Docker isolation options fail closed.
+    from benchmarks.codegraph_compare.host_auditor import (
+        PRODUCER_GATE_TARGET,
+        PRODUCER_GATE_WRAPPER,
+        _docker_facts,
+    )
+
+    image = "producer@sha256:" + "1" * 64
+    inspected = {
+        "Image": "sha256:" + "8" * 64,
+        "Config": {
+            "Image": image,
+            "User": "65532:65532",
+            "Entrypoint": ["/bin/sh"],
+            "Cmd": [
+                "-c",
+                PRODUCER_GATE_WRAPPER,
+                "no1-008a-gate",
+                PRODUCER_GATE_TARGET,
+                "--plan",
+                "/plan/cell-plan.json",
+                "--out",
+                "/out",
+            ],
+        },
+        "HostConfig": {
+            "ReadonlyRootfs": True,
+            "CapDrop": ["ALL"],
+            "NetworkMode": "none",
+            "SecurityOpt": [
+                "no-new-privileges",
+                "seccomp=/trusted/seccomp",
+                "label=disable",
+            ],
+            "PidsLimit": 64,
+            "Memory": 4294967296,
+            "NanoCpus": 1000000000,
+            "Tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=64m"},
+        },
+    }
+
+    with pytest.raises(ValueError, match="security facts mismatch"):
+        _docker_facts(
+            inspected,
+            image,
+            "sha256:" + "8" * 64,
+            Path("/trusted/seccomp"),
         )
 
 
@@ -15254,7 +15465,7 @@ def test_exact14_budget_uses_sealed_image_extractions_not_producer_wall():
         }
     }
 
-    assert exact14_execution_budget_seconds(plans) == 3117
+    assert exact14_execution_budget_seconds(plans) == 3120
 
 
 def test_live_output_size_ignores_disappearing_entry(tmp_path: Path, monkeypatch):

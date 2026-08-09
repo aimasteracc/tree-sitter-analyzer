@@ -21,8 +21,15 @@ from pathlib import Path
 from typing import Any
 
 from benchmarks.codegraph_compare.receipt_v3 import (
+    MAX_JSON_BYTES,
+    MAX_NODES,
     canonical_json_bytes,
     strict_json_loads,
+)
+from benchmarks.codegraph_compare.setup_qualification_paths import (
+    _hash_regular_descriptor,
+    _open_root,
+    _visit_tree,
 )
 
 PLAN_KEYS = frozenset(
@@ -257,27 +264,71 @@ def _blob(raw: Path, name: str, payload: bytes) -> dict[str, Any]:
     return _describe_blob(raw, name)
 
 
-def _final_index_observation(index: Path) -> bytes:
-    records = []
-    if index.exists():
-        for path in sorted(index.rglob("*")):
-            if path.is_symlink() or (not path.is_dir() and not path.is_file()):
-                raise ValueError("index contains an unsupported file")
-            if path.is_file():
-                digest = hashlib.sha256()
-                size = 0
-                with path.open("rb") as stream:
-                    while chunk := stream.read(1024 * 1024):
-                        digest.update(chunk)
-                        size += len(chunk)
-                records.append(
-                    {
-                        "path": path.relative_to(index).as_posix(),
-                        "size_bytes": size,
-                        "sha256": digest.hexdigest(),
-                    }
+def _write_final_index_observation(
+    index: Path, raw: Path, name: str, *, deadline_monotonic: float
+) -> dict[str, Any]:
+    """Stream one receipt-parser-bounded canonical index observation to disk."""
+    destination = raw / name
+    payload_digest = hashlib.sha256()
+    payload_size = 0
+    record_count = 0
+    # strict_json_loads sees {"records": <payload>}; account for its wrapper too.
+    wrapper_bytes = len(b'{"records":}')
+    max_records = (MAX_NODES - 3) // 7
+
+    with destination.open("xb") as output:
+
+        def emit(chunk: bytes) -> None:
+            nonlocal payload_size
+            if payload_size + len(chunk) + wrapper_bytes > MAX_JSON_BYTES:
+                raise ValueError("final index observation exceeds receipt JSON bound")
+            if time.monotonic() >= deadline_monotonic:
+                raise TimeoutError("final index observation deadline expired")
+            output.write(chunk)
+            payload_digest.update(chunk)
+            payload_size += len(chunk)
+
+        emit(b"[")
+        if index.exists():
+            root_fd = _open_root(index)
+            try:
+
+                def record(descriptor: int, relative: str) -> None:
+                    nonlocal record_count
+                    record_count += 1
+                    if record_count > max_records:
+                        raise ValueError(
+                            "final index observation exceeds receipt node bound"
+                        )
+                    metadata = os.fstat(descriptor)
+                    digest = _hash_regular_descriptor(
+                        descriptor,
+                        expected_size=metadata.st_size,
+                        max_bytes=metadata.st_size,
+                        deadline_monotonic=deadline_monotonic,
+                    )
+                    encoded = canonical_json_bytes(
+                        {
+                            "path": relative,
+                            "sha256": digest,
+                            "size_bytes": metadata.st_size,
+                        }
+                    )
+                    emit((b"," if record_count > 1 else b"") + encoded)
+
+                _visit_tree(
+                    root_fd,
+                    record,
+                    deadline_monotonic=deadline_monotonic,
                 )
-    return canonical_json_bytes(records)
+            finally:
+                os.close(root_fd)
+        emit(b"]")
+    return {
+        "path": f"raw/{name}",
+        "size_bytes": payload_size,
+        "sha256": payload_digest.hexdigest(),
+    }
 
 
 def _clean_host_environment(frozen: Mapping[str, str]) -> dict[str, str]:
@@ -411,7 +462,9 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
         after = resource.getrusage(resource.RUSAGE_CHILDREN)
         _remaining(deadline)
         query = canonical_json_bytes(execution["query"])
-        index_snapshot = _final_index_observation(index)
+        index_observation = _write_final_index_observation(
+            index, raw, prefix + "-index", deadline_monotonic=deadline
+        )
         _remaining(deadline)
         if _output_size(core) > output_ceiling:
             raise ValueError("producer output exceeds signed I/O ceiling")
@@ -425,9 +478,7 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
                 "stdout_bytes": _describe_blob(raw, stdout_name),
                 "stderr_bytes": _describe_blob(raw, stderr_name),
                 "query_bytes": _blob(raw, prefix + "-query", query),
-                "final_index_observation": _blob(
-                    raw, prefix + "-index", index_snapshot
-                ),
+                "final_index_observation": index_observation,
                 "cpu_seconds": (after.ru_utime + after.ru_stime)
                 - (before.ru_utime + before.ru_stime),
             }

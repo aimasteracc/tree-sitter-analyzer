@@ -47,13 +47,48 @@ AUTHORITY_HASH_SIGN_MARGIN_SECONDS = 120
 RECEIPT_ROLE_EXTRACTIONS_PER_CELL = 2
 VERIFIER_EXTRACTIONS_PER_CELL = 1
 VERITY_VERIFY_OPERATIONS_PER_CELL = 3
-# Complete sealed-evidence read passes.  Each receipt role pins/hashes the images,
-# builds the body twice, verifies verity, and recomputes the core/index.  The fresh
-# verifier pins/hashes and verifies the images once and recomputes core/index once.
-RECEIPT_ROLE_IMAGE_HASH_PASSES_PER_CELL = 4
-RECEIPT_ROLE_OUTPUT_HASH_PASSES_PER_CELL = 8
-VERIFIER_IMAGE_HASH_PASSES_PER_CELL = 2
-VERIFIER_OUTPUT_HASH_PASSES_PER_CELL = 4
+# Instrumented stage names are the shared accounting contract for every complete
+# sealed-evidence read.  Counts are derived from the actual readers rather than
+# duplicated numeric guesses.  Recompute streams each raw blob once and caches
+# bounded index digests, so five observations do not cause five index-tree reads.
+_ARTIFACT_PIN_OUTPUT_PASSES = ("artifact-pin-core-tree",)
+_BODY_OUTPUT_PASSES = ("body-core-tree", "body-index-tree")
+_RECOMPUTE_OUTPUT_PASSES = (
+    "recompute-core-blobs",
+    "recompute-index-records",
+    "recompute-core-tree",
+    "recompute-index-tree",
+)
+_ARTIFACT_PIN_IMAGE_PASSES = ("artifact-pin-images",)
+_BODY_IMAGE_PASSES = ("body-image-digests",)
+_VERITY_IMAGE_PASSES = ("verity-image-digests",)
+
+
+def sealed_read_passes(role: str) -> dict[str, tuple[str, ...]]:
+    """Return named worst-case passes exercised by one post-authority role."""
+    if role in {"executor", "approver"}:
+        return {
+            "images": (
+                _ARTIFACT_PIN_IMAGE_PASSES
+                + _BODY_IMAGE_PASSES
+                + _VERITY_IMAGE_PASSES
+                + tuple(f"sealed-{name}" for name in _BODY_IMAGE_PASSES)
+            ),
+            "output": (
+                _ARTIFACT_PIN_OUTPUT_PASSES
+                + _BODY_OUTPUT_PASSES
+                + tuple(f"sealed-{name}" for name in _BODY_OUTPUT_PASSES)
+                + _RECOMPUTE_OUTPUT_PASSES
+            ),
+        }
+    if role == "verifier":
+        return {
+            "images": _ARTIFACT_PIN_IMAGE_PASSES + _VERITY_IMAGE_PASSES,
+            "output": _ARTIFACT_PIN_OUTPUT_PASSES + _RECOMPUTE_OUTPUT_PASSES,
+        }
+    raise ValueError("post-authority hashing role is invalid")
+
+
 EXECUTOR_HASH_SIGN_MARGIN_SECONDS = 120
 APPROVER_HASH_SIGN_MARGIN_SECONDS = 120
 VERIFIER_HASH_SIGN_MARGIN_SECONDS = 120
@@ -152,17 +187,8 @@ def _sealed_hashing_bytes(plan: Mapping[str, Any], *, role: str) -> int:
         raise ValueError("post-authority budget input is invalid")
     data = sealed_image_upper_bound_bytes(output)
     images = data + verity_hash_image_upper_bound_bytes(data)
-    if role in {"executor", "approver"}:
-        return (
-            RECEIPT_ROLE_IMAGE_HASH_PASSES_PER_CELL * images
-            + RECEIPT_ROLE_OUTPUT_HASH_PASSES_PER_CELL * output
-        )
-    if role == "verifier":
-        return (
-            VERIFIER_IMAGE_HASH_PASSES_PER_CELL * images
-            + VERIFIER_OUTPUT_HASH_PASSES_PER_CELL * output
-        )
-    raise ValueError("post-authority hashing role is invalid")
+    passes = sealed_read_passes(role)
+    return len(passes["images"]) * images + len(passes["output"]) * output
 
 
 def post_authority_cell_budget_seconds(plan: Mapping[str, Any]) -> int:

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from benchmarks.codegraph_compare.receipt_v3 import (
+    MAX_JSON_BYTES,
     canonical_json_bytes,
     strict_json_loads,
 )
@@ -123,6 +124,67 @@ def _hash_core(
             if size != expected_size:
                 raise ValueError("core blob changed")
             return digest.hexdigest()
+        finally:
+            os.close(descriptor)
+    finally:
+        os.close(root_fd)
+
+
+def _verify_core_blob(
+    root: Path,
+    blob: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    *,
+    deadline_monotonic: float | None = None,
+    expected_payload: bytes | None = None,
+    allow_trailing_newlines: bool = False,
+    capture_limit: int | None = None,
+) -> bytes | None:
+    """Hash and optionally compare/capture a blob in one bounded read pass."""
+    relative = canonical_relative_path(blob["path"])
+    expected_size = _core_blob_size(plan, blob["size_bytes"])
+    if expected_payload is not None and (
+        len(expected_payload) > MAX_EXPECTED_RESULT_BYTES
+        or expected_size < len(expected_payload)
+    ):
+        raise ValueError("expected result bytes mismatch")
+    if capture_limit is not None and expected_size > capture_limit:
+        raise ValueError("captured core blob exceeds receipt JSON bound")
+    root_fd = _open_root(root)
+    try:
+        descriptor = _open_beneath(root_fd, relative)
+        try:
+            if os.fstat(descriptor).st_size != expected_size:
+                raise ValueError("core blob size mismatch")
+            digest = hashlib.sha256()
+            captured = bytearray() if capture_limit is not None else None
+            offset = 0
+            while offset < expected_size:
+                if (
+                    deadline_monotonic is not None
+                    and time.monotonic() >= deadline_monotonic
+                ):
+                    raise TimeoutError("sealed core read deadline expired")
+                chunk = os.read(descriptor, min(1024 * 1024, expected_size - offset))
+                if not chunk:
+                    raise ValueError("core blob changed")
+                digest.update(chunk)
+                if captured is not None:
+                    captured.extend(chunk)
+                if expected_payload is not None:
+                    overlap = min(len(chunk), max(0, len(expected_payload) - offset))
+                    if chunk[:overlap] != expected_payload[offset : offset + overlap]:
+                        raise ValueError("expected result bytes mismatch")
+                    if len(chunk) > overlap and (
+                        not allow_trailing_newlines or chunk[overlap:].strip(b"\n")
+                    ):
+                        raise ValueError("expected result bytes mismatch")
+                offset += len(chunk)
+            if os.read(descriptor, 1):
+                raise ValueError("core blob changed")
+            if digest.hexdigest() != blob["sha256"]:
+                raise ValueError("raw bytes mismatch")
+            return bytes(captured) if captured is not None else None
         finally:
             os.close(descriptor)
     finally:
@@ -287,54 +349,44 @@ def _verify_recomputed(
         ZERO_COUNTERS
     ):
         raise ValueError("producer result mismatch")
+    index_digest_cache: dict[tuple[str, int], str] = {}
     for ordinal, (item, spec) in enumerate(zip(observed, expected_exec, strict=True)):
         if item["id"] != spec.get("id") or item["argv"] != spec.get("argv"):
             raise ValueError(f"authorized producer command order mismatch at {ordinal}")
-        for field in (
-            "stdout_bytes",
-            "stderr_bytes",
-            "query_bytes",
-            "final_index_observation",
-        ):
-            blob = item[field]
-            if (
-                _hash_core(
-                    core,
-                    blob["path"],
-                    blob["size_bytes"],
-                    plan,
-                    deadline_monotonic=deadline_monotonic,
-                )
-                != blob["sha256"]
-            ):
-                raise ValueError("raw bytes mismatch")
-        query = spec.get("query")
-        if query is not None and _read_core(
-            core,
-            item["query_bytes"]["path"],
-            item["query_bytes"]["size_bytes"],
-            plan,
-            deadline_monotonic=deadline_monotonic,
-        ) != canonical_json_bytes(query):
-            raise ValueError("oracle query bytes mismatch")
+        query = canonical_json_bytes(spec.get("query"))
         expected_result = spec.get("expected_result")
-        stdout_blob = item["stdout_bytes"]
-        if expected_result is None or not _stdout_matches_expected(
+        if expected_result is None:
+            raise ValueError("expected result bytes mismatch")
+        _verify_core_blob(
             core,
-            stdout_blob["path"],
-            stdout_blob["size_bytes"],
-            expected_result,
+            item["stdout_bytes"],
             plan,
             deadline_monotonic=deadline_monotonic,
-        ):
-            raise ValueError("expected result bytes mismatch")
-        index_payload = _read_core(
+            expected_payload=canonical_json_bytes(expected_result),
+            allow_trailing_newlines=True,
+        )
+        _verify_core_blob(
             core,
-            item["final_index_observation"]["path"],
-            item["final_index_observation"]["size_bytes"],
+            item["stderr_bytes"],
             plan,
             deadline_monotonic=deadline_monotonic,
         )
+        _verify_core_blob(
+            core,
+            item["query_bytes"],
+            plan,
+            deadline_monotonic=deadline_monotonic,
+            expected_payload=query,
+        )
+        index_payload = _verify_core_blob(
+            core,
+            item["final_index_observation"],
+            plan,
+            deadline_monotonic=deadline_monotonic,
+            capture_limit=MAX_JSON_BYTES - len(b'{"records":}'),
+        )
+        if index_payload is None:
+            raise ValueError("final index observation is absent")
         index_records = strict_json_loads(b'{"records":' + index_payload + b"}")[
             "records"
         ]
@@ -345,16 +397,18 @@ def _verify_recomputed(
         ):
             raise ValueError("final index observation records invalid")
         for record in index_records:
-            if (
-                _hash_core(
+            key = (record["path"], record["size_bytes"])
+            digest = index_digest_cache.get(key)
+            if digest is None:
+                digest = _hash_core(
                     core / "index",
                     record["path"],
                     record["size_bytes"],
                     plan,
                     deadline_monotonic=deadline_monotonic,
                 )
-                != record["sha256"]
-            ):
+                index_digest_cache[key] = digest
+            if digest != record["sha256"]:
                 raise ValueError("final index observation content mismatch")
     partition = body["index_partition"]
     names = ("indexed_paths", "excluded_paths", "parse_error_paths")

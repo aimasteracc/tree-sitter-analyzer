@@ -499,11 +499,14 @@ def _verify_external_audit(
         raise ValueError(
             "host audit does not prove terminal isolated one-launch execution"
         )
-    expected_security = [
-        "no-new-privileges",
-        f"seccomp={config['trusted']['seccomp_sha256']}",
-    ]
-    if audit["security_opt"] != expected_security:
+    observed_security = audit["security_opt"]
+    if (
+        type(observed_security) is not list
+        or len(observed_security) != 2
+        or observed_security[0] != "no-new-privileges"
+        or type(observed_security[1]) is not str
+        or not observed_security[1].startswith("seccomp=/")
+    ):
         raise ValueError("host audit security options mismatch")
     if (
         audit["container_user"] != "65532:65532"
