@@ -186,7 +186,8 @@ def sandbox_root(axis:str)->Path:
     if not base.is_absolute() or root.parent!=base: raise ValueError("unsafe qualification sandbox base")
     root.mkdir(mode=0o700,exist_ok=False)
     observed=root.lstat()
-    if not stat.S_ISDIR(observed.st_mode) or root.is_symlink() or root.stat().st_uid!=os.getuid():
+    owner_matches = not hasattr(os, "getuid") or observed.st_uid == os.getuid()
+    if not stat.S_ISDIR(observed.st_mode) or root.is_symlink() or not owner_matches:
         shutil.rmtree(root,ignore_errors=True); raise ValueError("unsafe qualification sandbox root")
     root.chmod(0o700)
     return root
