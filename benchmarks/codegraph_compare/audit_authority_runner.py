@@ -2,21 +2,29 @@
 
 from __future__ import annotations
 
-import hashlib
-import io
+import fcntl
 import json
 import os
 import shutil
 import stat
 import subprocess
-import tarfile
+import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from benchmarks.codegraph_compare.audit_authority_storage import (
+    _fsync_directory,
+    _materialize_source,
+    _producer_mount_targets,
+    _read,
+    _secure_directory,
+    _sha,
+)
 from benchmarks.codegraph_compare.host_auditor import (
     LAUNCH_DOMAIN,
     _request,
@@ -28,10 +36,7 @@ from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_plan_hash,
     strict_json_loads,
 )
-from benchmarks.codegraph_compare.setup_qualification_paths import (
-    _hash_tree,
-    canonical_relative_path,
-)
+from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
 from benchmarks.codegraph_compare.verifier import parse_public_config
 
 
@@ -53,74 +58,6 @@ def _run(*args: str, timeout: int = 120) -> bytes:
     if process.returncode:
         raise ValueError(f"authority command failed: {args[0]}: {stderr[:200]!r}")
     return stdout
-
-
-def _read(path: Path, limit: int = 16 * 1024 * 1024) -> bytes:
-    descriptor = os.open(
-        path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
-    )
-    try:
-        metadata = os.fstat(descriptor)
-        if not stat.S_ISREG(metadata.st_mode):
-            raise ValueError("staged input is not regular")
-        payload = bytearray()
-        while chunk := os.read(descriptor, 1024 * 1024):
-            payload.extend(chunk)
-            if len(payload) > limit:
-                raise ValueError("staged input exceeds bound")
-        return bytes(payload)
-    finally:
-        os.close(descriptor)
-
-
-def _sha(path: Path) -> str:
-    return hashlib.sha256(_read(path)).hexdigest()
-
-
-def _secure_directory(path: Path, *, fresh: bool = False) -> None:
-    if fresh:
-        path.mkdir(mode=0o700)
-    resolved = path.resolve(strict=True)
-    metadata = os.stat(resolved)
-    if (
-        resolved != path
-        or metadata.st_uid != 0
-        or stat.S_IMODE(metadata.st_mode) & 0o022
-    ):
-        raise ValueError("authority directory is not root-controlled")
-
-
-def _materialize_source(snapshot: Path, destination: Path) -> None:
-    destination.mkdir(mode=0o500)
-    payload = _read(snapshot)
-    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:") as archive:
-        members = archive.getmembers()
-        if not members or any(not member.isfile() for member in members):
-            raise ValueError("source snapshot must contain regular files only")
-        for member in members:
-            relative = canonical_relative_path(member.name)
-            if member.uid != 0 or member.gid != 0 or member.mode & 0o022:
-                raise ValueError("source snapshot metadata is not root-controlled")
-            target = destination / relative
-            target.parent.mkdir(parents=True, exist_ok=True, mode=0o500)
-            stream = archive.extractfile(member)
-            if stream is None:
-                raise ValueError("source snapshot member absent")
-            descriptor = os.open(
-                target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400
-            )
-            try:
-                while chunk := stream.read(1024 * 1024):
-                    os.write(descriptor, chunk)
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
-    for current, directories, _files in os.walk(
-        destination, topdown=False, followlinks=False
-    ):
-        for name in directories:
-            os.chmod(Path(current) / name, 0o500, follow_symlinks=False)
-    os.chmod(destination, 0o500)
 
 
 def _validate_producer_output(output: Path) -> Path:
@@ -208,6 +145,39 @@ class AuthorityRunner:
         _secure_directory(self._staged)
         _secure_directory(self._artifacts)
         self._key = key
+        self._semaphore = threading.BoundedSemaphore(1)
+        self._lock_path = self._artifacts / ".authority.lock"
+        descriptor = os.open(
+            self._lock_path,
+            os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW,
+            0o600,
+        )
+        try:
+            metadata = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != 0
+                or stat.S_IMODE(metadata.st_mode) != 0o600
+                or metadata.st_nlink != 1
+            ):
+                raise ValueError("authority global lock is not protected")
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        _fsync_directory(self._artifacts)
+
+    @contextmanager
+    def _exclusive_execution(self) -> Iterator[None]:
+        with self._semaphore:
+            descriptor = os.open(
+                self._lock_path, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW
+            )
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
+                yield
+            finally:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+                os.close(descriptor)
 
     def _inputs(
         self, contract: Mapping[str, Any]
@@ -299,6 +269,8 @@ class AuthorityRunner:
     def _execute(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
         job, declared, config = self._inputs(contract)
         wall_timeout = self._verify_staged(job, contract, config)
+        plan = strict_json_loads(_read(job / "plan.json"))
+        source_target, tool_target, config_target = _producer_mount_targets(plan)
         image = declared["producer_image"]
         if image.split("@")[-1] != config["trusted"]["images"]["producer"]:
             raise ValueError("producer launch reference is not root-authorized")
@@ -327,7 +299,10 @@ class AuthorityRunner:
         name = f"no1-008a-{contract['job_id'][:24]}"
         since = str(int(time.time()))
         mounts = [
-            (source, "/source", True),
+            (source, source_target, True),
+            (job / "tool", tool_target, True),
+            (job / "config", config_target, True),
+            (job / "seccomp", "/plan/seccomp.json", True),
             (job / "plan.json", "/plan/cell-plan.json", True),
             (job / "inventory.json", "/plan/inventory.json", True),
             (output, "/out", False),
@@ -466,32 +441,44 @@ class AuthorityRunner:
                 pass
 
     def __call__(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
-        job_id = contract.get("job_id")
-        if type(job_id) is not str or len(job_id) != 64:
-            raise ValueError("job id invalid before one-shot reservation")
-        state = self._artifacts / f"{job_id}.state"
+        with self._exclusive_execution():
+            job_id = contract.get("job_id")
+            if type(job_id) is not str or len(job_id) != 64:
+                raise ValueError("job id invalid before one-shot reservation")
+            state = self._artifacts / f"{job_id}.state"
+            descriptor = os.open(
+                state, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400
+            )
+            try:
+                os.write(descriptor, b"RUNNING\n")
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            _fsync_directory(self._artifacts)
+            try:
+                result = self._execute(contract)
+            except Exception as error:
+                destination = self._artifacts / job_id
+                if destination.exists():
+                    shutil.rmtree(destination)
+                self._terminal_state(
+                    job_id, state, f"FAILED:{type(error).__name__}\n".encode("ascii")
+                )
+                raise
+            self._terminal_state(job_id, state, b"SUCCESS\n")
+            return result
+
+    def _terminal_state(self, job_id: str, state: Path, payload: bytes) -> None:
+        temporary = self._artifacts / f".{job_id}.state.tmp"
         descriptor = os.open(
-            state, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o400,
         )
         try:
-            os.write(descriptor, b"RUNNING\n")
+            os.write(descriptor, payload)
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
-        try:
-            result = self._execute(contract)
-        except Exception as error:
-            destination = self._artifacts / job_id
-            if destination.exists():
-                shutil.rmtree(destination)
-            terminal_state = f"FAILED:{type(error).__name__}\n".encode("ascii")
-            temporary = self._artifacts / f".{job_id}.state.tmp"
-            temporary.write_bytes(terminal_state)
-            os.chmod(temporary, 0o400)
-            os.replace(temporary, state)
-            raise
-        temporary = self._artifacts / f".{job_id}.state.tmp"
-        temporary.write_bytes(b"SUCCESS\n")
-        os.chmod(temporary, 0o400)
         os.replace(temporary, state)
-        return result
+        _fsync_directory(self._artifacts)

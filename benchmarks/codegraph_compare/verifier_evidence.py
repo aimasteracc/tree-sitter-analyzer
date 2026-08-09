@@ -30,6 +30,13 @@ from benchmarks.codegraph_compare.verifier_authority import (
 Runner = Callable[[Sequence[str]], Any]
 TMPFS_TARGET = Path("/").joinpath("tmp").as_posix()
 
+RECEIPT_IMAGE_ROLES = ("producer", "executor", "approver", "auditor", "verifier")
+
+
+def _receipt_images(trusted: Mapping[str, Any]) -> dict[str, Any]:
+    images = trusted["images"]
+    return {role: images[role] for role in RECEIPT_IMAGE_ROLES}
+
 
 def _safe_path(raw: Any, label: str) -> Path:
     if (
@@ -297,7 +304,7 @@ def _verify_trusted_inputs(
         or body["plan"]["seccomp_sha256"] != trusted["seccomp_sha256"]
     ):
         raise ValueError("receipt trust-root digest mismatch")
-    images = trusted["images"]
+    images = _receipt_images(trusted)
     if body["role_images"] != images:
         raise ValueError("signed role image provenance mismatch")
     if body["environment"]["image_digest"] != images["producer"]:

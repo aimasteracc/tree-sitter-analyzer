@@ -39,10 +39,13 @@ class ChallengeLedger:
         self.total_quota = total_quota
         self.challenge_ttl_ns = challenge_ttl_seconds * 1_000_000_000
         self._local = threading.local()
+        service_uid = os.geteuid()
         parent = path.parent.resolve(strict=True)
         metadata = os.stat(parent)
-        if metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) & 0o022:
-            raise ValueError("challenge ledger directory must be root-controlled")
+        if metadata.st_uid != service_uid or stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise ValueError(
+                "challenge ledger directory must be service-owned and private"
+            )
         try:
             db = self._connection()
             try:
@@ -70,12 +73,12 @@ class ChallengeLedger:
             info = os.stat(path, follow_symlinks=False)
             if (
                 not stat.S_ISREG(info.st_mode)
-                or info.st_uid != 0
+                or info.st_uid != service_uid
                 or stat.S_IMODE(info.st_mode) != 0o600
                 or info.st_nlink != 1
             ):
                 raise ValueError(
-                    "challenge ledger must be root-owned 0600 regular file"
+                    "challenge ledger must be service-owned 0600 regular file"
                 )
             self._acquire_lease()
             with self._transaction():

@@ -105,9 +105,6 @@ def _run_impl(args: argparse.Namespace) -> int:
         contract = contracts[identity]
         if contract["expires_at_ns"] <= time.time_ns():
             raise TimeoutError("root-signed decision contract expired before execution")
-        staged = staged_root / contract["job_id"]
-        plan = strict_json_loads((staged / "plan.json").read_bytes())
-        wall_timeout = plan_timeouts[identity]
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("exact-14 overall plan deadline expired")
@@ -116,7 +113,7 @@ def _run_impl(args: argparse.Namespace) -> int:
             Path(args.authority_socket),
             {
                 **config["auditor"],
-                "wall_timeout_seconds": min(wall_timeout, remaining),
+                "wall_timeout_seconds": remaining,
             },
         )
         draft = request_receipt(

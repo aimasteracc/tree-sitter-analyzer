@@ -48,3 +48,10 @@ LABEL org.tree-sitter-analyzer.no1-008a.role="verifier-service" \
  org.tree-sitter-analyzer.no1-008a.closure-sha256=$NO1_008A_VERIFIER_CLOSURE_SHA256
 USER 903:903
 ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.verifier_service"]
+
+FROM runtime AS decision-consumer
+ARG NO1_008A_DECISION_CONSUMER_CLOSURE_SHA256
+LABEL org.tree-sitter-analyzer.no1-008a.role="decision-consumer" \
+ org.tree-sitter-analyzer.no1-008a.closure-sha256=$NO1_008A_DECISION_CONSUMER_CLOSURE_SHA256
+USER 904:904
+ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.decision_consumer_service"]

@@ -11,18 +11,20 @@ COMMAND=${1:-}; [[ $# -gt 0 ]] || usage; shift
 [[ $COMMAND != contract ]] || { [[ $# -eq 0 ]] || usage; contract; exit 0; }
 [[ $COMMAND != dry-run ]] || { [[ $# -eq 0 ]] || usage; emit_cells; exit 0; }
 [[ $COMMAND == preflight || $COMMAND == run ]] || usage
-declare CONTRACTS_DIR='' AUTHORITY_SOCKET='' EXECUTOR_SOCKET='' APPROVER_SOCKET='' VERIFIER_SOCKET='' PUBLIC_CONFIG='' STAGED_ROOT='' EXPERIMENT_ROOT=''
+declare CONTRACTS_DIR='' AUTHORITY_SOCKET='' EXECUTOR_SOCKET='' APPROVER_SOCKET='' VERIFIER_SOCKET='' DECISION_CONSUMER_SOCKET='' DECISION_CONTRACT='' PUBLIC_CONFIG='' STAGED_ROOT='' EXPERIMENT_ROOT=''
 while [[ $# -gt 0 ]]; do case $1 in
  --contracts-dir) CONTRACTS_DIR=${2:?}; shift 2;;
  --authority-socket|--audit-authority-socket) AUTHORITY_SOCKET=${2:?}; shift 2;;
  --executor-socket) EXECUTOR_SOCKET=${2:?}; shift 2;;
  --approver-socket) APPROVER_SOCKET=${2:?}; shift 2;;
  --verifier-socket) VERIFIER_SOCKET=${2:?}; shift 2;;
+ --decision-consumer-socket) DECISION_CONSUMER_SOCKET=${2:?}; shift 2;;
+ --decision-contract) DECISION_CONTRACT=${2:?}; shift 2;;
  --public-config) PUBLIC_CONFIG=${2:?}; shift 2;;
  --staged-root) STAGED_ROOT=${2:?}; shift 2;;
  --experiment-root) EXPERIMENT_ROOT=${2:?}; shift 2;;
  *) usage;; esac; done
-for value in "$CONTRACTS_DIR" "$AUTHORITY_SOCKET" "$EXECUTOR_SOCKET" "$APPROVER_SOCKET" "$VERIFIER_SOCKET" "$PUBLIC_CONFIG" "$STAGED_ROOT"; do
+for value in "$CONTRACTS_DIR" "$AUTHORITY_SOCKET" "$EXECUTOR_SOCKET" "$APPROVER_SOCKET" "$VERIFIER_SOCKET" "$DECISION_CONSUMER_SOCKET" "$DECISION_CONTRACT" "$PUBLIC_CONFIG" "$STAGED_ROOT"; do
  [[ -n $value && $value != *,* && $(realpath -e -- "$value") == "$value" ]] || { echo "canonical existing pipeline path required" >&2; exit 65; }
 done
 python3 - "$PUBLIC_CONFIG" "$CONTRACTS_DIR" <<'PY'
@@ -45,4 +47,6 @@ exec python3 -m benchmarks.codegraph_compare.qualification_operator \
  --contracts-dir "$CONTRACTS_DIR" --authority-socket "$AUTHORITY_SOCKET" \
  --executor-socket "$EXECUTOR_SOCKET" --approver-socket "$APPROVER_SOCKET" \
  --verifier-socket "$VERIFIER_SOCKET" \
+ --decision-consumer-socket "$DECISION_CONSUMER_SOCKET" \
+ --decision-contract "$DECISION_CONTRACT" \
  --public-config "$PUBLIC_CONFIG" --staged-root "$STAGED_ROOT" --experiment-root "$EXPERIMENT_ROOT"

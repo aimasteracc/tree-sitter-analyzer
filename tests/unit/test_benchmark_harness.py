@@ -12354,4 +12354,359 @@ def test_qualification_host_auditor_checks_root_pinned_top_level_image_id():
         )
 
 
+def test_no1_008a_wrapper_forwards_decision_service_inputs(tmp_path: Path):
+    # PR #1249 review 3744178808: the documented wrapper dropped required inputs.
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    capture = tmp_path / "argv"
+    python = fake_bin / "python3"
+    python.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = - ]; then cat >/dev/null; exit 0; fi\n'
+        'printf \'%s\\n\' "$@" > "$CAPTURE"\n'
+    )
+    python.chmod(0o755)
+    realpath = fake_bin / "realpath"
+    realpath.write_text(
+        "#!/bin/sh\n"
+        '[ "$1" = -e ] && shift\n'
+        '[ "$1" = -- ] && shift\n'
+        "printf '%s\\n' \"$1\"\n"
+    )
+    realpath.chmod(0o755)
+    paths = {}
+    for name in ("contracts", "staged"):
+        paths[name] = tmp_path / name
+        paths[name].mkdir()
+    for name in (
+        "authority.sock",
+        "executor.sock",
+        "approver.sock",
+        "verifier.sock",
+        "decision.sock",
+        "decision.json",
+        "config.json",
+    ):
+        paths[name] = tmp_path / name
+        paths[name].write_bytes(b"{}")
+    command = [
+        "bash",
+        "scripts/no1_008a_operator.sh",
+        "run",
+        "--contracts-dir",
+        str(paths["contracts"]),
+        "--authority-socket",
+        str(paths["authority.sock"]),
+        "--executor-socket",
+        str(paths["executor.sock"]),
+        "--approver-socket",
+        str(paths["approver.sock"]),
+        "--verifier-socket",
+        str(paths["verifier.sock"]),
+        "--decision-consumer-socket",
+        str(paths["decision.sock"]),
+        "--decision-contract",
+        str(paths["decision.json"]),
+        "--public-config",
+        str(paths["config.json"]),
+        "--staged-root",
+        str(paths["staged"]),
+        "--experiment-root",
+        str(tmp_path / "experiment"),
+    ]
+    environment = {**os.environ, "CAPTURE": str(capture)}
+    environment["PATH"] = f"{fake_bin}:{environment['PATH']}"
+
+    result = subprocess.run(command, env=environment, capture_output=True, text=True)
+
+    assert result.returncode == 0
+    argv = capture.read_text().splitlines()
+    assert argv[argv.index("--decision-consumer-socket") + 1] == str(
+        paths["decision.sock"]
+    )
+    assert argv[argv.index("--decision-contract") + 1] == str(paths["decision.json"])
+
+
+def test_authority_materialized_source_is_immutable_and_producer_readable(
+    tmp_path: Path,
+):
+    # PR #1249 review 3744178810: UID 65532 could not traverse root-only snapshots.
+    import io
+    import stat
+    import tarfile
+
+    from benchmarks.codegraph_compare.audit_authority_storage import (
+        _materialize_source,
+    )
+
+    snapshot = tmp_path / "source.tar"
+    with tarfile.open(snapshot, "w") as archive:
+        info = tarfile.TarInfo("pkg/main.py")
+        payload = b"print('ok')\n"
+        info.size = len(payload)
+        info.uid = info.gid = 0
+        info.mode = 0o644
+        archive.addfile(info, io.BytesIO(payload))
+    destination = tmp_path / "source"
+
+    _materialize_source(snapshot, destination)
+
+    assert stat.S_IMODE((destination / "pkg" / "main.py").stat().st_mode) == 0o444
+    assert stat.S_IMODE((destination / "pkg").stat().st_mode) == 0o555
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o555
+
+
+def test_verifier_ledger_is_private_and_owned_by_service_uid(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744178813: verifier USER 903 must own its writable ledger.
+    import stat
+
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    monkeypatch.setattr(ChallengeLedger, "_acquire_lease", lambda _self: None)
+    ChallengeLedger(tmp_path / "ledger.sqlite")
+    metadata = (tmp_path / "ledger.sqlite").stat()
+    assert metadata.st_uid == os.geteuid()
+    assert stat.S_IMODE(metadata.st_mode) == 0o600
+
+
+def test_no1_008a_dockerfile_has_independent_decision_consumer_target():
+    # PR #1249 review 3744178814: the final decision service was not buildable.
+    dockerfile = Path("benchmarks/codegraph_compare/Dockerfile.no1-008a").read_text()
+    target = dockerfile.split("FROM runtime AS decision-consumer\n", 1)[1]
+    assert 'org.tree-sitter-analyzer.no1-008a.role="decision-consumer"' in target
+    assert "USER 904:904" in target
+    assert (
+        'ENTRYPOINT ["python", "-m", '
+        '"benchmarks.codegraph_compare.decision_consumer_service"]'
+    ) in target
+
+
+def _authority_runner_for_test(tmp_path: Path):
+    import threading
+
+    from benchmarks.codegraph_compare.audit_authority_runner import AuthorityRunner
+
+    runner = AuthorityRunner.__new__(AuthorityRunner)
+    runner._artifacts = tmp_path
+    runner._semaphore = threading.BoundedSemaphore(1)
+    runner._lock_path = tmp_path / ".authority.lock"
+    runner._lock_path.write_bytes(b"")
+    return runner
+
+
+def test_authority_serializes_distinct_signed_jobs(tmp_path: Path):
+    # PR #1249 review 3744178818: direct clients bypassed max_concurrency=1.
+    import threading
+    import time
+
+    runner = _authority_runner_for_test(tmp_path)
+    guard = threading.Lock()
+    active = 0
+    maximum = 0
+
+    def execute(_contract):
+        nonlocal active, maximum
+        with guard:
+            active += 1
+            maximum = max(maximum, active)
+        time.sleep(0.05)
+        with guard:
+            active -= 1
+        return {"ok": True}
+
+    runner._execute = execute
+    threads = [
+        threading.Thread(target=runner, args=({"job_id": digit * 64},))
+        for digit in ("1", "2")
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert maximum == 1
+    assert [
+        (tmp_path / f"{digit * 64}.state").read_bytes() for digit in ("1", "2")
+    ] == [b"SUCCESS\n", b"SUCCESS\n"]
+
+
+def test_authority_fsyncs_parent_after_reservation_and_terminal_replace(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744178821: file fsync alone did not persist directory entries.
+    from benchmarks.codegraph_compare import audit_authority_runner
+
+    runner = _authority_runner_for_test(tmp_path)
+    runner._execute = lambda _contract: {"ok": True}
+    synced = []
+    monkeypatch.setattr(
+        audit_authority_runner, "_fsync_directory", lambda path: synced.append(path)
+    )
+
+    runner({"job_id": "3" * 64})
+
+    assert synced == [tmp_path, tmp_path]
+
+
+def test_operator_gives_authority_aggregate_remaining_timeout(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744178822: sealing time must not consume producer wall budget.
+    from benchmarks.codegraph_compare import qualification_operator
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        canonical_json_bytes,
+        canonical_plan_hash,
+    )
+    from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
+
+    contracts_dir = tmp_path / "contracts"
+    staged_root = tmp_path / "staged"
+    contracts_dir.mkdir()
+    staged_root.mkdir()
+    plans = []
+    contracts = []
+    for ordinal, (repo, arm) in enumerate(EXPECTED_CELLS):
+        plan = {
+            "cell": {"repo_id": repo, "arm_id": arm, "attempt": 1},
+            "wall_timeout_seconds": 10,
+        }
+        plans.append(plan)
+        job_id = f"{ordinal + 1:064x}"
+        contract = {
+            "job_id": job_id,
+            "cell": plan["cell"],
+            "nonce": "a" * 64,
+            "decision_id": "b" * 64,
+            "expires_at_ns": 10**30,
+        }
+        contracts.append(contract)
+        (contracts_dir / f"{ordinal}.json").write_bytes(canonical_json_bytes(contract))
+        job = staged_root / job_id
+        job.mkdir()
+        (job / "plan.json").write_bytes(canonical_json_bytes(plan))
+    decision = {
+        "decision_id": "b" * 64,
+        "plan_set_hash": "c" * 64,
+        "cells": [
+            {
+                "repo_id": repo,
+                "arm_id": arm,
+                "plan_sha256": canonical_plan_hash(plan),
+            }
+            for (repo, arm), plan in zip(EXPECTED_CELLS, plans, strict=True)
+        ],
+    }
+    decision_path = tmp_path / "decision.json"
+    decision_path.write_bytes(canonical_json_bytes(decision))
+    digest = hashlib.sha256(canonical_json_bytes(decision)).hexdigest()
+    for contract in contracts:
+        contract["decision_contract_sha256"] = digest
+    # Rewrite after adding the common decision digest.
+    for ordinal, contract in enumerate(contracts):
+        (contracts_dir / f"{ordinal}.json").write_bytes(canonical_json_bytes(contract))
+    public_config = tmp_path / "public.json"
+    public_config.write_bytes(b"{}")
+    monkeypatch.setattr(
+        qualification_operator,
+        "parse_public_config",
+        lambda _raw: {
+            "auditor": {"peer_uid": 0},
+            "trusted": {"plan_set_hash": "c" * 64},
+        },
+    )
+    monkeypatch.setattr(
+        qualification_operator, "verify_decision_contract", lambda value: value
+    )
+    ticks = iter((100.0, 101.0))
+    monkeypatch.setattr(
+        qualification_operator,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: next(ticks), time_ns=__import__("time").time_ns
+        ),
+    )
+    observed = []
+
+    def stop_after_authority(_contract, _socket, authority):
+        observed.append(authority["wall_timeout_seconds"])
+        raise RuntimeError("observed authority timeout")
+
+    monkeypatch.setattr(qualification_operator, "run_cell", stop_after_authority)
+    args = SimpleNamespace(
+        public_config=str(public_config),
+        contracts_dir=str(contracts_dir),
+        decision_contract=str(decision_path),
+        staged_root=str(staged_root),
+        authority_socket=str(tmp_path / "authority.sock"),
+    )
+
+    with pytest.raises(RuntimeError, match="observed authority timeout"):
+        qualification_operator._run_impl(args)
+
+    assert observed == [559.0]
+    assert plans[0]["wall_timeout_seconds"] == 10
+
+
+def test_receipt_image_provenance_excludes_post_decision_consumer():
+    # PR #1249 review 3744178824: receipt-v3 signs exactly five pre-decision roles.
+    from benchmarks.codegraph_compare.verifier_evidence import _receipt_images
+
+    images = {
+        role: f"sha256:{number:064x}"
+        for number, role in enumerate(
+            (
+                "producer",
+                "executor",
+                "approver",
+                "auditor",
+                "verifier",
+                "decision_consumer",
+            ),
+            start=1,
+        )
+    }
+
+    assert _receipt_images({"images": images}) == {
+        role: images[role]
+        for role in ("producer", "executor", "approver", "auditor", "verifier")
+    }
+
+
+def test_authority_mounts_authenticated_plan_inputs_at_exact_read_only_targets():
+    # PR #1249 review 3744178826: staged tool/config bytes must reach plan argv paths.
+    from benchmarks.codegraph_compare.audit_authority_storage import (
+        _producer_mount_targets,
+    )
+
+    plan = {
+        "executions": [
+            {
+                "id": execution_id,
+                "argv": [
+                    "/tool/bin",
+                    execution_id,
+                    "--config",
+                    "/config/pinned.json",
+                    *(["--source", "/source"] if execution_id == "build" else []),
+                ],
+            }
+            for execution_id in ("delete", "build", "health", "symbol", "call")
+        ]
+    }
+    runner_source = Path(
+        "benchmarks/codegraph_compare/audit_authority_runner.py"
+    ).read_text()
+
+    assert _producer_mount_targets(plan) == (
+        "/source",
+        "/tool/bin",
+        "/config/pinned.json",
+    )
+    assert '(job / "tool", tool_target, True)' in runner_source
+    assert '(job / "config", config_target, True)' in runner_source
+    assert '(job / "seccomp", "/plan/seccomp.json", True)' in runner_source
+
+
 _mark_posix_qualification_section_tests()
