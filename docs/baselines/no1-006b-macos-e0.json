@@ -1,0 +1,126 @@
+{
+  "collected_at_utc": "2026-08-09T21:18:52.985303+00:00",
+  "commands": {
+    "build": [
+      "uv",
+      "build",
+      "--wheel",
+      "--offline",
+      "--out-dir",
+      "<temp>/dist"
+    ],
+    "cli_probe": [
+      "tree-sitter-analyzer",
+      "--show-supported-languages"
+    ],
+    "install": [
+      "uv",
+      "pip",
+      "install",
+      "--python",
+      "<temp>/venv/bin/python",
+      "--offline",
+      "<built-wheel>"
+    ],
+    "mcp_probe": [
+      "tree-sitter-analyzer-mcp",
+      "--project-root",
+      "/private/tmp/tsa-no1-006b",
+      "<initialize JSON-RPC>"
+    ]
+  },
+  "environment": {
+    "machine": "arm64",
+    "network_policy": "uv --offline; no network measurement",
+    "os": "macOS-26.4.1-arm64-arm-64bit-Mach-O",
+    "python": {
+      "executable": "<temp>/venv/bin/python",
+      "implementation": "CPython",
+      "version": "3.14.3"
+    },
+    "system": "macos",
+    "uv": "uv 0.12.3 (507230998 2026-08-07 aarch64-apple-darwin)"
+  },
+  "evidence_level": "E0",
+  "measurements": {
+    "cli_startup": {
+      "cold_ms": 1437.014,
+      "definition": "process start to successful --show-supported-languages exit",
+      "warm_ms": [
+        146.212,
+        149.725,
+        149.838,
+        141.008,
+        149.877
+      ]
+    },
+    "direct_dependency_count": 33,
+    "direct_dependency_names": [
+      "anthropic",
+      "cachetools",
+      "chardet",
+      "deepdiff",
+      "detect-secrets",
+      "jsonschema",
+      "mcp",
+      "networkx",
+      "numpy",
+      "pathspec",
+      "psutil",
+      "pyyaml",
+      "tree-sitter",
+      "tree-sitter-bash",
+      "tree-sitter-c",
+      "tree-sitter-c-sharp",
+      "tree-sitter-cpp",
+      "tree-sitter-css",
+      "tree-sitter-go",
+      "tree-sitter-html",
+      "tree-sitter-java",
+      "tree-sitter-javascript",
+      "tree-sitter-json",
+      "tree-sitter-kotlin",
+      "tree-sitter-markdown",
+      "tree-sitter-php",
+      "tree-sitter-python",
+      "tree-sitter-ruby",
+      "tree-sitter-rust",
+      "tree-sitter-scala",
+      "tree-sitter-sql",
+      "tree-sitter-typescript",
+      "tree-sitter-yaml"
+    ],
+    "download_scope": "root wheel artifact only; dependency transfer is unknown offline",
+    "download_size_bytes": 2209032,
+    "installed_distribution_count": 72,
+    "installed_size_bytes": 106916217,
+    "installed_size_scope": "unique non-pyc, non-direct_url regular files listed by installed distribution metadata; interpreter excluded",
+    "mcp_startup": {
+      "cold_ms": 1612.283,
+      "definition": "process start to successful initialize JSON-RPC response",
+      "warm_ms": [
+        289.217,
+        289.244,
+        292.211,
+        292.481,
+        293.373
+      ]
+    },
+    "transitive_dependency_count": 38
+  },
+  "platform_axes": {
+    "linux": "unknown",
+    "macos": "measured_e0",
+    "windows": "unknown"
+  },
+  "repeats": 5,
+  "report_sha256": "894cad430c847a5f0a653fb3c32d4c8796723a374b5d9342ff0edc6ee6d46a06",
+  "roadmap_id": "NO1-006B",
+  "schema_version": 1,
+  "source": {
+    "commit": "7e0e8f6e03270fcbf4025d717415ef69c9354145",
+    "wheel_filename": "tree_sitter_analyzer-1.29.0-py3-none-any.whl",
+    "wheel_sha256": "c1cb3520542fd14dad60ddec55dfac6afbdaa424e7a4a39d875be1801d98f9e8",
+    "wheel_size_bytes": 2209032
+  }
+}

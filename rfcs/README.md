@@ -80,6 +80,7 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0021](0021-real-world-competitive-benchmark.md) | Real-world competitive benchmark | draft |
 | [0022](0022-task-outcome-apis.md) | Static task outcomes by primitive orchestration | draft |
 | [0023](0023-edge-evidence-confidence-freshness.md) | Edge evidence, confidence, and freshness | draft |
+| [0024](0024-default-dependency-split.md) | Default dependency split, measured before design | draft |
 
 ## Roadmap
 

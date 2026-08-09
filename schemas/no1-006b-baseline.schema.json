@@ -1,0 +1,266 @@
+{
+  "$defs": {
+    "startup": {
+      "additionalProperties": false,
+      "properties": {
+        "cold_ms": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "definition": {
+          "type": "string"
+        },
+        "warm_ms": {
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "maxItems": 20,
+          "minItems": 3,
+          "type": "array"
+        }
+      },
+      "required": [
+        "definition",
+        "cold_ms",
+        "warm_ms"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://tree-sitter-analyzer.dev/schemas/no1-006b-baseline.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "collected_at_utc": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "commands": {
+      "additionalProperties": false,
+      "properties": {
+        "build": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "type": "array"
+        },
+        "cli_probe": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "type": "array"
+        },
+        "install": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "type": "array"
+        },
+        "mcp_probe": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "build",
+        "install",
+        "cli_probe",
+        "mcp_probe"
+      ],
+      "type": "object"
+    },
+    "environment": {
+      "additionalProperties": false,
+      "properties": {
+        "machine": {
+          "type": "string"
+        },
+        "network_policy": {
+          "const": "uv --offline; no network measurement"
+        },
+        "os": {
+          "type": "string"
+        },
+        "python": {
+          "additionalProperties": false,
+          "properties": {
+            "executable": {
+              "type": "string"
+            },
+            "implementation": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "version",
+            "implementation",
+            "executable"
+          ],
+          "type": "object"
+        },
+        "system": {
+          "const": "macos"
+        },
+        "uv": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "os",
+        "system",
+        "machine",
+        "python",
+        "uv",
+        "network_policy"
+      ],
+      "type": "object"
+    },
+    "evidence_level": {
+      "const": "E0"
+    },
+    "measurements": {
+      "additionalProperties": false,
+      "properties": {
+        "cli_startup": {
+          "$ref": "#/$defs/startup"
+        },
+        "direct_dependency_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "direct_dependency_names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "download_scope": {
+          "type": "string"
+        },
+        "download_size_bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installed_distribution_count": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installed_size_bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installed_size_scope": {
+          "type": "string"
+        },
+        "mcp_startup": {
+          "$ref": "#/$defs/startup"
+        },
+        "transitive_dependency_count": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "download_size_bytes",
+        "download_scope",
+        "installed_size_bytes",
+        "installed_size_scope",
+        "direct_dependency_count",
+        "transitive_dependency_count",
+        "installed_distribution_count",
+        "direct_dependency_names",
+        "cli_startup",
+        "mcp_startup"
+      ],
+      "type": "object"
+    },
+    "platform_axes": {
+      "additionalProperties": false,
+      "properties": {
+        "linux": {
+          "const": "unknown"
+        },
+        "macos": {
+          "const": "measured_e0"
+        },
+        "windows": {
+          "const": "unknown"
+        }
+      },
+      "required": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "type": "object"
+    },
+    "repeats": {
+      "maximum": 20,
+      "minimum": 3,
+      "type": "integer"
+    },
+    "report_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "roadmap_id": {
+      "const": "NO1-006B"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "source": {
+      "additionalProperties": false,
+      "properties": {
+        "commit": {
+          "const": "7e0e8f6e03270fcbf4025d717415ef69c9354145"
+        },
+        "wheel_filename": {
+          "pattern": "\\.whl$",
+          "type": "string"
+        },
+        "wheel_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "wheel_size_bytes": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "commit",
+        "wheel_filename",
+        "wheel_sha256",
+        "wheel_size_bytes"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "roadmap_id",
+    "evidence_level",
+    "source",
+    "environment",
+    "commands",
+    "measurements",
+    "repeats",
+    "platform_axes",
+    "report_sha256",
+    "collected_at_utc"
+  ],
+  "title": "NO1-006B measured baseline",
+  "type": "object"
+}
