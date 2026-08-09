@@ -357,8 +357,8 @@ def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dic
           "measurements":{"root_wheel_artifact_size_bytes":wheel.stat().st_size,"network_transfer_bytes":{"status":"unknown","reason":"offline cache artifacts do not measure network transfer"},"installed_size_bytes":inv["installed_size_bytes"],"installed_regular_file_count":inv["regular_file_count"],"installed_size_scope":"unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded","direct_dependency_count":roles.count("direct"),"transitive_dependency_count":roles.count("transitive"),"dependency_distribution_count_excluding_root":len(rows)-1,"installed_distribution_count_including_root":len(rows),"cli_startup":{"definition":CLI_STARTUP_DEFINITION,"cold_ms":samples["cli"][0],"warm_ms":samples["cli"][1:]},"mcp_startup":{"definition":MCP_STARTUP_DEFINITION,"cold_ms":samples["mcp"][0],"warm_ms":samples["mcp"][1:],"tool_names":tool_names}},
           "commands":{"export":["uv","export","--frozen","--offline","--no-dev","--no-emit-project","--format","requirements-txt"],"build":["uv","build","--wheel","--offline","--out-dir","<temp>/dist"],"closure_install":["uv","pip","install","--offline","--no-deps","--require-hashes","-r","<locked-requirements>"],"root_install":["uv","pip","install","--offline","--no-deps","<root-wheel>"],"cli_probe":["tree-sitter-analyzer","fixture.py","--summary","--format","json"],"mcp_probe":["tree-sitter-analyzer-mcp","--project-root","<fixture>","initialize","notifications/initialized","tools/list"]},
           "repeats":repeats,"measured_axis":"macos","platform_axes":{"macos":"measured_e0","linux":"unknown","windows":"unknown"}}
-        report["canonical_payload_sha256"]=canonical_hash(report); validate_receipt(report)
-        safe_write(output, (json.dumps(report,indent=2,sort_keys=True)+"\n").encode(), repo); return report
+        report["canonical_payload_sha256"]=canonical_hash(report)
+        finalize_receipt(report,output,repo); return report
 
 
 def main() -> int:

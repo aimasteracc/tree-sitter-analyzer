@@ -118,6 +118,11 @@ def test_schema_definitions_equal_collector_constants() -> None:
     assert [properties["cli_startup"]["properties"]["definition"]["const"],properties["mcp_startup"]["properties"]["definition"]["const"]] == [collector.CLI_STARTUP_DEFINITION,collector.MCP_STARTUP_DEFINITION]
 
 
+def test_collect_routes_receipt_through_schema_finalizer() -> None:
+    source=Path(collector.__file__).read_text()
+    assert "finalize_receipt(report,output,repo); return report" in source
+
+
 def test_finalize_receipt_loads_bound_schema_before_write(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     observed=[]
     monkeypatch.setattr(collector,"validate_receipt",lambda report,bound_schema: observed.append(bound_schema))
