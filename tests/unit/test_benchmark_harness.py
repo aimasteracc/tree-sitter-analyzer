@@ -8107,13 +8107,14 @@ class TestCanaryProtocol:
         )
 
 
-def _require_posix_qualification_sandbox() -> None:
-    if os.name == "nt":
-        pytest.skip("tracked: NO1-008A POSIX sandbox issue: requires openat/O_NOFOLLOW")
+POSIX_QUALIFICATION_TEST = pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: NO1-008A qualification requires openat/O_NOFOLLOW",
+)
+_POSIX_QUALIFICATION_SECTION_START = sys._getframe().f_lineno
 
 
 def _qualification_git_repo(path: Path) -> str:
-    _require_posix_qualification_sandbox()
     import subprocess
 
     path.mkdir()
@@ -8597,7 +8598,6 @@ def test_harness_artifact_rejects_huge_sparse_file(tmp_path: Path):
 
 
 def _qualification_plans(tmp_path: Path):
-    _require_posix_qualification_sandbox()
     from dataclasses import replace
 
     from benchmarks.codegraph_compare.setup_qualification import (
@@ -9475,7 +9475,6 @@ def test_source_inventory_is_exactly_bound_to_git_modes_objects_and_bytes(
 
 
 def test_index_tree_hash_binds_exact_paths_and_bytes(tmp_path: Path):
-    _require_posix_qualification_sandbox()
     import hashlib
 
     from benchmarks.codegraph_compare.setup_qualification import _hash_tree
@@ -10185,7 +10184,6 @@ def test_receipt_parser_rejects_duplicate_members_at_nested_depth():
 
 
 def test_index_hash_rejects_fifo_without_waiting_for_writer(tmp_path: Path):
-    _require_posix_qualification_sandbox()
     import pytest
 
     from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
@@ -10473,7 +10471,6 @@ def test_index_hash_fails_closed_without_openat_support(tmp_path: Path):
 
 
 def test_index_hash_enforces_trusted_total_size_ceiling(tmp_path: Path):
-    _require_posix_qualification_sandbox()
     import pytest
 
     from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
@@ -10484,7 +10481,6 @@ def test_index_hash_enforces_trusted_total_size_ceiling(tmp_path: Path):
 
 
 def test_index_hash_rejects_sparse_files(tmp_path: Path):
-    _require_posix_qualification_sandbox()
     import pytest
 
     from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
@@ -10525,3 +10521,20 @@ def test_oracle_comparison_distinguishes_boolean_from_number(tmp_path: Path):
         "OS_AUDIT_MISSING",
         "HUMAN_ORACLE_APPROVAL_MISSING",
     )
+
+
+def _mark_posix_qualification_section_tests() -> None:
+    """Apply the platform contract to every test defined in this final section."""
+    namespace = globals()
+    for name, candidate in tuple(namespace.items()):
+        code = getattr(candidate, "__code__", None)
+        if (
+            name.startswith("test_")
+            and code is not None
+            and code.co_firstlineno > _POSIX_QUALIFICATION_SECTION_START
+        ):
+            namespace[name] = POSIX_QUALIFICATION_TEST(candidate)
+
+
+# Keep this invocation at EOF so tests appended to the qualification section inherit it.
+_mark_posix_qualification_section_tests()
