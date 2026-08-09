@@ -361,12 +361,19 @@ def request_decision(
                 raise ValueError("decision consumer peer UID mismatch")
             client.sendall(struct.pack("!I", len(payload)) + payload)
             client.shutdown(socket.SHUT_WR)
-            return read_frame(
-                client,
-                MAX_FRAME,
-                max(0.001, deadline - time.monotonic()),
-                "decision receipt",
-            )
+            try:
+                return read_frame(
+                    client,
+                    MAX_FRAME,
+                    max(0.001, deadline - time.monotonic()),
+                    "decision receipt",
+                )
+            except (EOFError, ValueError, ConnectionError) as exc:
+                # The complete request is already on the wire.  A response-side
+                # framing failure can therefore follow a durable ledger commit.
+                raise ConnectionError(
+                    "decision response unavailable after send"
+                ) from exc
         finally:
             client.close()
 

@@ -11374,47 +11374,41 @@ def _qualification_v3_receipt(repo_id="vscode", arm_id="tsa-warm"):
 def _qualification_v3_public_config():
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+    role_specs = {
+        "executor": (b"\x11" * 32, 901, "a"),
+        "approver": (b"\x22" * 32, 902, "b"),
+        "auditor": (b"\x33" * 32, 900, "d"),
+        "verifier": (b"\x55" * 32, 903, "e"),
+        "decision_consumer": (b"\x66" * 32, 904, "f"),
+    }
+    image_suffixes = {
+        "producer": "6",
+        "executor": "7",
+        "approver": "8",
+        "auditor": "a",
+        "verifier": "9",
+        "decision_consumer": "f",
+    }
+    image_id_suffixes = dict(zip(image_suffixes, "abcdef", strict=True))
+
     config = {
-        "schema_version": 4,
-        "executor": {
-            "key_id": "executor",
-            "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
-            .public_key()
-            .public_bytes_raw()
-            .hex(),
-            "protocol": "no1-008a-executor-service-v1",
-            "peer_uid": 901 if "executor" == "executor" else 902,
-            "service_measurement": "a" * 64,
-        },
-        "approver": {
-            "key_id": "approver",
-            "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x22" * 32)
-            .public_key()
-            .public_bytes_raw()
-            .hex(),
-            "protocol": "no1-008a-approver-service-v1",
-            "peer_uid": 901 if "approver" == "executor" else 902,
-            "service_measurement": "b" * 64,
-        },
-        "verifier": {
-            "key_id": "verifier-service",
-            "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x55" * 32)
-            .public_key()
-            .public_bytes_raw()
-            .hex(),
-            "protocol": "no1-008a-verifier-service-v1",
-            "peer_uid": 903,
-            "service_measurement": "e" * 64,
-        },
-        "auditor": {
-            "key_id": "auditor",
-            "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x33" * 32)
-            .public_key()
-            .public_bytes_raw()
-            .hex(),
-            "protocol": "no1-008a-audit-v1",
-            "peer_uid": 900,
-            "service_measurement": "d" * 64,
+        "schema_version": 6,
+        **{
+            role: {
+                "key_id": "verifier-service" if role == "verifier" else role,
+                "public_key_hex": Ed25519PrivateKey.from_private_bytes(private)
+                .public_key()
+                .public_bytes_raw()
+                .hex(),
+                "protocol": (
+                    "no1-008a-audit-v1"
+                    if role == "auditor"
+                    else f"no1-008a-{role.replace('_', '-')}-service-v1"
+                ),
+                "peer_uid": uid,
+                "service_measurement": measurement * 64,
+            }
+            for role, (private, uid, measurement) in role_specs.items()
         },
         "trusted": {
             "plan_set_hash": "3" * 64,
@@ -11472,30 +11466,42 @@ def _qualification_v3_public_config():
             "config_sha256": "5" * 64,
             "seccomp_sha256": "7" * 64,
             "images": {
-                "producer": "sha256:" + "6" * 64,
-                "executor": "sha256:" + "7" * 64,
-                "approver": "sha256:" + "8" * 64,
-                "auditor": "sha256:" + "a" * 64,
-                "verifier": "sha256:" + "9" * 64,
+                role: "sha256:" + suffix * 64 for role, suffix in image_suffixes.items()
             },
             "image_ids": {
-                "producer": "sha256:" + "a" * 64,
-                "executor": "sha256:" + "b" * 64,
-                "approver": "sha256:" + "c" * 64,
-                "auditor": "sha256:" + "d" * 64,
-                "verifier": "sha256:" + "e" * 64,
-            },
-            "auditor_runtime": {
-                "image_digest": "sha256:" + "a" * 64,
-                "image_id": "sha256:" + "d" * 64,
-                "closure_manifest_sha256": "d" * 64,
-            },
-            "verifier_runtime": {
-                "image_digest": "sha256:" + "9" * 64,
-                "image_id": "sha256:" + "e" * 64,
-                "closure_manifest_sha256": "e" * 64,
+                role: "sha256:" + suffix * 64
+                for role, suffix in image_id_suffixes.items()
             },
         },
+    }
+    trusted = config["trusted"]
+    for role, (_private, uid, measurement) in role_specs.items():
+        trusted[f"{role}_runtime"] = {
+            "image_digest": trusted["images"][role],
+            "image_id": trusted["image_ids"][role],
+            "closure_manifest_sha256": measurement * 64,
+            "measurement": {
+                "interpreter_sha256": "1" * 64,
+                "closure_manifest": {},
+                "closure_manifest_sha256": measurement * 64,
+                "uid": uid,
+                "gid": uid,
+                "rootfs_readonly": True,
+                "allowed_writable_mounts": [],
+            },
+        }
+    trusted["service_launch"] = {
+        role: {
+            "image_id": trusted["image_ids"][role],
+            "cmd": ["python", "-m", f"benchmarks.codegraph_compare.{role}_service"],
+            "entrypoint": None,
+            "user": str(uid),
+            "readonly_rootfs": True,
+            "mounts": [],
+            "network_mode": "none",
+            "security_opt": ["no-new-privileges:true"],
+        }
+        for role, (_private, uid, _measurement) in role_specs.items()
     }
     return _sign_qualification_v3_config(config)
 
@@ -11990,6 +11996,90 @@ def test_qualification_v3_runtime_requires_exact_five_execution_order():
     body["executions"].pop()
     with pytest.raises(ValueError, match="exact delete"):
         validate_body(body)
+
+
+def test_qualification_v3_decision_commit_disconnect_queries_original_receipt(
+    monkeypatch,
+):
+    # Audit 2026-08-09 B2: an EOF after commit must use the idempotent query path.
+    import json
+    import struct
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    config = _qualification_v3_public_config()
+    contract = {"decision_id": "d" * 64}
+    envelope = {"manifest_sha256": "e" * 64}
+    body = {
+        "schema_version": 1,
+        "decision_id": contract["decision_id"],
+        "decision_contract_sha256": hashlib.sha256(
+            canonical_json_bytes(contract)
+        ).hexdigest(),
+        "manifest_sha256": envelope["manifest_sha256"],
+        "verdict_status": "SETUP_QUALIFIED",
+        "consumed_at_ns": 1,
+        "service_identity": {},
+    }
+    receipt = {
+        "receipt": body,
+        "key_id": config["decision_consumer"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": Ed25519PrivateKey.from_private_bytes(b"\x66" * 32)
+        .sign(consumer.RECEIPT_DOMAIN + canonical_json_bytes(body))
+        .hex(),
+    }
+    requests = []
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["decision_consumer"]["peer_uid"], 123)
+
+        def sendall(self, framed):
+            requests.append(json.loads(framed[4:]))
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    replies = iter((ValueError("frame truncated"), receipt))
+
+    def read_reply(*_args):
+        reply = next(replies)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(consumer.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(consumer.socket, "socket", lambda *_args: FakeSocket())
+    monkeypatch.setattr(consumer, "read_frame", read_reply)
+
+    assert (
+        consumer.request_decision(
+            socket_path=Path("/unused"),
+            contract=contract,
+            envelope=envelope,
+            config=config,
+            timeout=1,
+        )
+        == receipt
+    )
+    assert [request["operation"] for request in requests] == [
+        "consume-decision",
+        "query-decision",
+    ]
+    assert requests[1]["decision_id"] == contract["decision_id"]
 
 
 def test_qualification_v3_operator_delegates_privileged_run_cell_authority():
