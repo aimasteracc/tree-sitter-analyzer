@@ -15,8 +15,8 @@ from benchmarks.codegraph_compare.decision_consumer_service import (
 )
 from benchmarks.codegraph_compare.execution_budget import (
     CONTRACT_EXPIRY_MARGIN_SECONDS,
-    POST_AUTHORITY_SERVICE_PHASES,
     authority_cell_budget_seconds,
+    exact14_execution_budget_seconds,
 )
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
@@ -105,7 +105,6 @@ def _run_impl(args: argparse.Namespace) -> int:
     staged_root = Path(args.staged_root).resolve(strict=True)
     plans: dict[tuple[str, str], dict[str, Any]] = {}
     inventories: dict[tuple[str, str], dict[str, Any]] = {}
-    plan_timeouts: dict[tuple[str, str], int] = {}
     for identity in EXPECTED_CELLS:
         plan = strict_json_loads(
             (staged_root / contracts[identity]["job_id"] / "plan.json").read_bytes()
@@ -123,7 +122,6 @@ def _run_impl(args: argparse.Namespace) -> int:
             raise ValueError("operator plan timeout invalid")
         authority_cell_budget_seconds(plan)
         plans[identity] = plan
-        plan_timeouts[identity] = value
         ordinal = list(EXPECTED_CELLS).index(identity)
         from benchmarks.codegraph_compare.receipt_v3 import canonical_plan_hash
 
@@ -142,13 +140,7 @@ def _run_impl(args: argparse.Namespace) -> int:
             for identity in EXPECTED_CELLS
         ]
     )
-    phase_budget_seconds = sum(plan_timeouts.values())
-    authority_budget_seconds = sum(
-        authority_cell_budget_seconds(plans[identity]) for identity in EXPECTED_CELLS
-    )
-    serial_budget_seconds = (
-        authority_budget_seconds + phase_budget_seconds * POST_AUTHORITY_SERVICE_PHASES
-    )
+    serial_budget_seconds = exact14_execution_budget_seconds(plans)
     required_lifetime_ns = (
         serial_budget_seconds + CONTRACT_EXPIRY_MARGIN_SECONDS
     ) * 1_000_000_000

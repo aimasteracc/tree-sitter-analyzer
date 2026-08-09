@@ -12025,7 +12025,7 @@ def test_qualification_v3_decision_commit_disconnect_queries_original_receipt(
     from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
 
     config = _qualification_v3_public_config()
-    contract = {"decision_id": "d" * 64}
+    contract = {"decision_id": "d" * 64, "issued_at_ns": 0, "expires_at_ns": 2}
     envelope = {"manifest_sha256": "e" * 64}
     body = {
         "schema_version": 1,
@@ -12060,8 +12060,9 @@ def test_qualification_v3_decision_commit_disconnect_queries_original_receipt(
         def getsockopt(self, _level, _option, _size):
             return struct.pack("3i", 123, config["decision_consumer"]["peer_uid"], 123)
 
-        def sendall(self, framed):
+        def send(self, framed):
             requests.append(json.loads(framed[4:]))
+            return len(framed)
 
         def shutdown(self, _how):
             pass
@@ -14823,6 +14824,286 @@ def test_decision_ledger_startup_verifies_persisted_receipt_signature(
 
     with pytest.raises(ValueError, match="signature invalid"):
         consumer.DecisionLedger(path, config)
+
+
+def test_exact14_budget_uses_sealed_image_extractions_not_producer_wall():
+    # PR #1249 review 3744776113: post-authority service work uses image bounds.
+    from benchmarks.codegraph_compare.execution_budget import (
+        exact14_execution_budget_seconds,
+    )
+
+    plans = {
+        ("repo", "arm"): {
+            "wall_timeout_seconds": 1,
+            "resource_ceilings": {"io_bytes": 16 * 1024 * 1024},
+        }
+    }
+
+    assert exact14_execution_budget_seconds(plans) == 1172
+
+
+def test_live_output_size_ignores_disappearing_entry(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744776119: mutable producer trees race live accounting.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "index.db").write_bytes(b"abc")
+    real_lstat = executor.os.lstat
+
+    def vanished(path):
+        if Path(path).name == "index.db":
+            raise FileNotFoundError(path)
+        return real_lstat(path)
+
+    monkeypatch.setattr(executor.os, "lstat", vanished)
+
+    assert executor._output_size(output, strict=False) == 0
+
+
+def test_terminal_output_size_rejects_disappearing_entry(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744776119: only the stable terminal snapshot is strict.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "index.db").write_bytes(b"abc")
+    real_lstat = executor.os.lstat
+
+    def vanished(path):
+        if Path(path).name == "index.db":
+            raise FileNotFoundError(path)
+        return real_lstat(path)
+
+    monkeypatch.setattr(executor.os, "lstat", vanished)
+
+    with pytest.raises(FileNotFoundError):
+        executor._output_size(output)
+
+
+def test_decision_ledger_rechecks_expiry_inside_transaction(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744776126: lock wait cannot permit post-expiry consumption.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    ledger = object.__new__(consumer.DecisionLedger)
+    ledger.path = tmp_path / "decision.sqlite"
+    captured = []
+    monkeypatch.setattr(consumer.time, "time_ns", lambda: 100)
+
+    with pytest.raises(TimeoutError, match="expired before consumption"):
+        ledger.consume(
+            {"decision_id": "a" * 64, "decision_nonce": "b" * 64, "expires_at_ns": 100},
+            "c" * 64,
+            lambda consumed_at: captured.append(consumed_at) or {},
+        )
+
+    assert captured == []
+
+
+def test_decision_ledger_binds_receipt_and_row_to_transaction_timestamp(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744776126: one in-transaction timestamp binds durable facts.
+    import sqlite3
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    ledger = object.__new__(consumer.DecisionLedger)
+    ledger.path = tmp_path / "decision.sqlite"
+    database = sqlite3.connect(ledger.path)
+    database.execute(
+        "CREATE TABLE consumed(decision_id TEXT PRIMARY KEY,decision_nonce TEXT UNIQUE NOT NULL,manifest_sha256 TEXT NOT NULL,consumed_at_ns INTEGER NOT NULL,receipt_json BLOB NOT NULL)"
+    )
+    database.close()
+    monkeypatch.setattr(consumer.time, "time_ns", lambda: 101)
+
+    receipt = ledger.consume(
+        {"decision_id": "a" * 64, "decision_nonce": "b" * 64, "expires_at_ns": 102},
+        "c" * 64,
+        lambda consumed_at: {"consumed_at_ns": consumed_at},
+    )
+    database = sqlite3.connect(ledger.path)
+    try:
+        row_time = database.execute(
+            "SELECT consumed_at_ns FROM consumed WHERE decision_id=?", ("a" * 64,)
+        ).fetchone()[0]
+    finally:
+        database.close()
+
+    assert receipt["consumed_at_ns"] == 101
+    assert row_time == 101
+
+
+def test_decision_client_retries_one_presend_failure(monkeypatch):
+    # PR #1249 review 3744776122: a zero-byte failure cannot imply consumption.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    config = _qualification_v3_public_config()
+    attempts = []
+    reply = {"durable": True}
+
+    class FakeSocket:
+        def __init__(self):
+            self.number = len(attempts)
+            attempts.append(self.number)
+
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            if self.number == 0:
+                raise ConnectionRefusedError("not listening")
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 1, config["decision_consumer"]["peer_uid"], 1)
+
+        def send(self, payload):
+            return len(payload)
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(consumer.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(consumer.socket, "socket", lambda *_args: FakeSocket())
+    monkeypatch.setattr(consumer, "read_frame", lambda *_args: reply)
+    monkeypatch.setattr(
+        consumer, "_verify_decision_receipt", lambda value, *_args: value
+    )
+
+    result = consumer.request_decision(
+        socket_path=Path("/unused"),
+        contract={"decision_id": "a" * 64},
+        envelope={},
+        config=config,
+        timeout=1,
+    )
+
+    assert result == reply
+    assert attempts == [0, 1]
+
+
+def test_decision_client_queries_ambiguous_send_before_retrying_consume(monkeypatch):
+    # PR #1249 review 3744776122: not-found recovery permits one bounded retry.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    config = _qualification_v3_public_config()
+    operations = []
+    replies = iter(
+        (
+            EOFError("lost consume response"),
+            {"error": "ValueError", "reason": "decision receipt not found"},
+            {"durable": True},
+        )
+    )
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 1, config["decision_consumer"]["peer_uid"], 1)
+
+        def send(self, framed):
+            operations.append(json.loads(framed[4:])["operation"])
+            return len(framed)
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def read_reply(*_args):
+        value = next(replies)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(consumer.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(consumer.socket, "socket", lambda *_args: FakeSocket())
+    monkeypatch.setattr(consumer, "read_frame", read_reply)
+    monkeypatch.setattr(
+        consumer, "_verify_decision_receipt", lambda value, *_args: value
+    )
+
+    result = consumer.request_decision(
+        socket_path=Path("/unused"),
+        contract={"decision_id": "a" * 64},
+        envelope={},
+        config=config,
+        timeout=1,
+    )
+
+    assert result == {"durable": True}
+    assert operations == ["consume-decision", "query-decision", "consume-decision"]
+
+
+def test_producer_plan_rejects_noncanonical_environment_digest_before_execution():
+    # PR #1249 review 3744776130: stale execution digests fail producer preflight.
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.setup_qualification_executor import (
+        validate_producer_plan,
+    )
+
+    environment = {
+        "HOME": "/nonexistent",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": "/usr/bin",
+    }
+    ceilings = {
+        "wall_ns": 1,
+        "cpu_usec": 1,
+        "io_bytes": 1,
+        "memory_peak_bytes": 1,
+        "pids_peak": 1,
+    }
+    resource_digest = hashlib.sha256(
+        canonical_json_bytes({"wall_timeout_seconds": 1, "resource_ceilings": ceilings})
+    ).hexdigest()
+    plan = {
+        "schema_version": 1,
+        "cell": {"repo_id": "repo", "arm_id": "arm", "attempt": 1},
+        "executions": [
+            {
+                "id": execution_id,
+                "argv": ["/bin/tool"],
+                "cwd": "/source",
+                "environment_digest": "0" * 64,
+                "query": {},
+                "expected_result": {},
+            }
+            for execution_id in ("delete", "build", "health", "symbol", "call")
+        ],
+        "wall_timeout_seconds": 1,
+        "environment": environment,
+        "artifact_path": "artifact",
+        "plan_hash": "a" * 64,
+        "plan_set_hash": "b" * 64,
+        "tool_sha256": "c" * 64,
+        "config_sha256": "d" * 64,
+        "image_digest": "sha256:" + "e" * 64,
+        "seccomp_sha256": "f" * 64,
+        "resource_plan_digest": resource_digest,
+        "resource_ceilings": ceilings,
+        "index_partition": {
+            "indexed_paths": [],
+            "excluded_paths": [],
+            "parse_error_paths": [],
+        },
+        "oracle_statement": "exact",
+    }
+
+    with pytest.raises(ValueError, match="environment digest is not canonical"):
+        validate_producer_plan(plan)
 
 
 _mark_posix_qualification_section_tests()

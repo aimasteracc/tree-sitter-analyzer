@@ -270,24 +270,27 @@ class DecisionLedger:
         self,
         contract: dict[str, Any],
         manifest: str,
-        build: Callable[[], dict[str, Any]],
+        build: Callable[[int], dict[str, Any]],
     ) -> dict[str, Any]:
         db = self._connect()
         try:
             db.execute("BEGIN IMMEDIATE")
+            consumed_at_ns = time.time_ns()
+            if consumed_at_ns >= contract["expires_at_ns"]:
+                raise TimeoutError("decision contract expired before consumption")
             if db.execute(
                 "SELECT 1 FROM consumed WHERE decision_id=? OR decision_nonce=?",
                 (contract["decision_id"], contract["decision_nonce"]),
             ).fetchone():
                 raise ValueError("decision already consumed")
-            receipt = build()
+            receipt = build(consumed_at_ns)
             db.execute(
                 "INSERT INTO consumed VALUES(?,?,?,?,?)",
                 (
                     contract["decision_id"],
                     contract["decision_nonce"],
                     manifest,
-                    time.time_ns(),
+                    consumed_at_ns,
                     canonical_json_bytes(receipt),
                 ),
             )
@@ -325,7 +328,7 @@ def consume_request(
     envelope = request["verdict_envelope"]
     verify_verdict_envelope(envelope, contract, config)
 
-    def build() -> dict[str, Any]:
+    def build(consumed_at_ns: int) -> dict[str, Any]:
         body = {
             "schema_version": 1,
             "decision_id": contract["decision_id"],
@@ -334,7 +337,7 @@ def consume_request(
             ).hexdigest(),
             "manifest_sha256": envelope["manifest_sha256"],
             "verdict_status": "SETUP_QUALIFIED",
-            "consumed_at_ns": time.time_ns(),
+            "consumed_at_ns": consumed_at_ns,
             "service_identity": identity,
         }
         return {
@@ -370,6 +373,10 @@ def _verify_decision_receipt(
         or body.get("decision_contract_sha256") != digest
         or body.get("manifest_sha256") != envelope["manifest_sha256"]
         or body.get("verdict_status") != "SETUP_QUALIFIED"
+        or type(body.get("consumed_at_ns")) is not int
+        or not contract.get("issued_at_ns", 0)
+        <= body["consumed_at_ns"]
+        < contract.get("expires_at_ns", 0)
         or body.get("service_identity")
         != config["trusted"]["decision_consumer_runtime"]["measurement"]
     ):
@@ -394,25 +401,40 @@ def request_decision(
 ) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
 
+    class TransportFailure(ConnectionError):
+        def __init__(self, sent_bytes: int, frame_bytes: int):
+            super().__init__("decision transport failed")
+            self.sent_bytes = sent_bytes
+            self.frame_bytes = frame_bytes
+
     def exchange(request: dict[str, Any]) -> Any:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("decision deadline expired")
         payload = canonical_json_bytes(request)
+        frame = struct.pack("!I", len(payload)) + payload
+        sent = 0
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             client.settimeout(remaining)
-            client.connect(str(socket_path))
-            option = getattr(socket, "SO_PEERCRED", None)
-            if option is None:
-                raise ValueError("Unix peer credentials unavailable")
-            pid, uid, _gid = struct.unpack(
-                "3i", client.getsockopt(socket.SOL_SOCKET, option, 12)
-            )
-            if pid <= 0 or uid != config["decision_consumer"]["peer_uid"]:
-                raise ValueError("decision consumer peer UID mismatch")
-            client.sendall(struct.pack("!I", len(payload)) + payload)
-            client.shutdown(socket.SHUT_WR)
+            try:
+                client.connect(str(socket_path))
+                option = getattr(socket, "SO_PEERCRED", None)
+                if option is None:
+                    raise ValueError("Unix peer credentials unavailable")
+                pid, uid, _gid = struct.unpack(
+                    "3i", client.getsockopt(socket.SOL_SOCKET, option, 12)
+                )
+                if pid <= 0 or uid != config["decision_consumer"]["peer_uid"]:
+                    raise ValueError("decision consumer peer UID mismatch")
+                while sent < len(frame):
+                    written = client.send(frame[sent:])
+                    if written == 0:
+                        raise ConnectionError("decision request send made no progress")
+                    sent += written
+                client.shutdown(socket.SHUT_WR)
+            except (TimeoutError, ConnectionError, OSError) as exc:
+                raise TransportFailure(sent, len(frame)) from exc
             try:
                 return read_frame(
                     client,
@@ -420,29 +442,51 @@ def request_decision(
                     max(0.001, deadline - time.monotonic()),
                     "decision receipt",
                 )
-            except (EOFError, ValueError, ConnectionError) as exc:
-                # The complete request is already on the wire.  A response-side
-                # framing failure can therefore follow a durable ledger commit.
-                raise ConnectionError(
-                    "decision response unavailable after send"
-                ) from exc
+            except (
+                EOFError,
+                ValueError,
+                TimeoutError,
+                ConnectionError,
+                OSError,
+            ) as exc:
+                # A fully delivered request may already be durably committed.
+                raise TransportFailure(sent, len(frame)) from exc
         finally:
             client.close()
 
-    try:
-        reply = exchange(
-            {
-                "operation": "consume-decision",
-                "decision_contract": contract,
-                "verdict_envelope": envelope,
-            }
-        )
-    except (TimeoutError, ConnectionError, OSError):
-        # The commit may have succeeded before the connection broke. Querying the
-        # durable signed receipt makes retry idempotent without consuming twice.
-        reply = exchange(
-            {"operation": "query-decision", "decision_id": contract["decision_id"]}
-        )
+    consume = {
+        "operation": "consume-decision",
+        "decision_contract": contract,
+        "verdict_envelope": envelope,
+    }
+    query = {"operation": "query-decision", "decision_id": contract["decision_id"]}
+    consume_attempts = 0
+    reply: Any
+    while True:
+        consume_attempts += 1
+        try:
+            reply = exchange(consume)
+            break
+        except TransportFailure as failure:
+            if failure.sent_bytes == 0 and consume_attempts < 2:
+                # Definitely pre-send: one bounded consume retry is safe.
+                continue
+            if failure.sent_bytes == 0:
+                raise
+            # Partial and full sends are ambiguous. Query durable state first.
+            reply = exchange(query)
+            if not (
+                type(reply) is dict
+                and set(reply) == {"error", "reason"}
+                and reply.get("reason") == "decision receipt not found"
+            ):
+                break
+            if consume_attempts >= 2 or deadline - time.monotonic() <= 0:
+                raise TimeoutError(
+                    "decision receipt absent after bounded recovery"
+                ) from failure
+            # The durable query proved that the ambiguous request did not commit.
+            continue
     if type(reply) is dict and set(reply) == {"error", "reason"}:
         raise ValueError(f"decision consumer rejected decision: {reply['reason']}")
     return _verify_decision_receipt(reply, contract, envelope, config)

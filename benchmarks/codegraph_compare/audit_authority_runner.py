@@ -31,6 +31,7 @@ from benchmarks.codegraph_compare.audit_authority_storage import (
 from benchmarks.codegraph_compare.execution_budget import (
     AUTHORITY_COMMAND_TIMEOUT_SECONDS,
     debugfs_payload_timeout_seconds,
+    sealed_image_upper_bound_bytes,
 )
 from benchmarks.codegraph_compare.host_auditor import (
     LAUNCH_DOMAIN,
@@ -206,9 +207,8 @@ def _ext4_layout(core: Path, authorized_output_bytes: int) -> tuple[int, int, in
         raise ValueError("producer core inode accounting is not exact")
 
     required = _EXT4_METADATA_MIN_BYTES + (charged_bytes * 5 + 3) // 4
-    maximum = _EXT4_METADATA_MIN_BYTES + (authorized_output_bytes * 5 + 3) // 4
     image_size = _round_up(required, _EXT4_ROUND_BYTES)
-    if image_size > _round_up(maximum, _EXT4_ROUND_BYTES):
+    if image_size > sealed_image_upper_bound_bytes(authorized_output_bytes):
         raise ValueError("ext4 image exceeds authorized plan-derived ceiling")
 
     # Include the filesystem root and mkfs-created lost+found, then retain ten

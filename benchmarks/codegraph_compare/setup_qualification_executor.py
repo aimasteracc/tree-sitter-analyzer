@@ -154,6 +154,9 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
         raise ValueError("producer environment is not frozen")
     if type(environment["PATH"]) is not str or not environment["PATH"]:
         raise ValueError("producer PATH is absent")
+    expected_environment_digest = hashlib.sha256(
+        canonical_json_bytes(environment)
+    ).hexdigest()
     executions = plan["executions"]
     if type(executions) is not list or len(executions) != 5:
         raise ValueError(
@@ -178,9 +181,10 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
             raise ValueError("execution argv[0] and cwd must be absolute")
         if (
             type(item["environment_digest"]) is not str
-            or len(item["environment_digest"]) != 64
+            or re.fullmatch(r"[0-9a-f]{64}", item["environment_digest"]) is None
+            or item["environment_digest"] != expected_environment_digest
         ):
-            raise ValueError("execution environment digest is invalid")
+            raise ValueError("execution environment digest is not canonical")
         if type(item["query"]) is not dict or type(item["expected_result"]) is not dict:
             raise ValueError("execution query and expected result must be objects")
         if (
@@ -274,11 +278,17 @@ def _remaining(deadline: float) -> float:
     return remaining
 
 
-def _output_size(root: Path) -> int:
+def _output_size(root: Path, *, strict: bool = True) -> int:
+    """Measure output; live scans tolerate names concurrently replaced or removed."""
     total = 0
     for current, directories, files in os.walk(root, followlinks=False):
         for name in directories + files:
-            metadata = os.lstat(Path(current) / name)
+            try:
+                metadata = os.lstat(Path(current) / name)
+            except (FileNotFoundError, NotADirectoryError):
+                if strict:
+                    raise
+                continue
             if stat.S_ISLNK(metadata.st_mode):
                 raise ValueError("producer output contains a symlink")
             if stat.S_ISREG(metadata.st_mode):
@@ -304,7 +314,7 @@ def _wait_bounded(
         try:
             return process.wait(timeout=min(1.0, remaining))
         except subprocess.TimeoutExpired:
-            if _output_size(output) > ceiling:
+            if _output_size(output, strict=False) > ceiling:
                 os.killpg(process.pid, 9)
                 process.wait()
                 raise ValueError("producer output exceeds signed I/O ceiling") from None
