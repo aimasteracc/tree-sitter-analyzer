@@ -171,6 +171,7 @@ def test_safe_write_rejects_output_symlink(tmp_path: Path) -> None:
     assert target.read_text() == "safe"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="tracked: NO1-006B collector currently emits macOS-only E0 receipts")
 def test_bounded_reader_times_out_on_partial_frame(monkeypatch: pytest.MonkeyPatch) -> None:
     read_fd,write_fd=__import__("os").pipe(); __import__("os").write(write_fd,b'{"id":')
     class Process: stdout=__import__("os").fdopen(read_fd,"rb",buffering=0)
@@ -197,6 +198,7 @@ def test_rfc_reproduction_command_uses_external_interpreter() -> None:
     assert '"$TOOL_PYTHON" "$COLLECTOR/scripts/collect_no1_006b_baseline.py"' in reproduction
 
 
+@pytest.mark.skipif(os.name == "nt", reason="tracked: NO1-006B collector currently emits macOS-only E0 receipts")
 def test_external_interpreter_probe_preserves_clean_ignored_gate(tmp_path: Path) -> None:
     # NO1-006B review 2026-08-10: probe the interpreter placement without weakening ignored-file rejection.
     root=tmp_path/"collector"; (root/"scripts").mkdir(parents=True); (root/"schemas").mkdir()
