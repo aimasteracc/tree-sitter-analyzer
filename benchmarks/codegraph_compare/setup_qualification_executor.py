@@ -20,6 +20,10 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+from benchmarks.codegraph_compare.execution_budget import (
+    MAX_OUTPUT_ENTRIES,
+    OUTPUT_ENTRY_METADATA_CHARGE_BYTES,
+)
 from benchmarks.codegraph_compare.receipt_v3 import (
     MAX_JSON_BYTES,
     MAX_NODES,
@@ -358,10 +362,24 @@ def _remaining(deadline: float) -> float:
     return remaining
 
 
-def _output_size(root: Path, *, strict: bool = True) -> int:
-    """Measure output; live scans tolerate names concurrently replaced or removed."""
+_MAX_OUTPUT_ENTRIES = MAX_OUTPUT_ENTRIES
+
+
+def _output_size(root: Path, *, strict: bool = True, ceiling: int | None = None) -> int:
+    """Charge allocated blocks and bounded metadata for one producer-tree scan."""
+    if ceiling is not None and (type(ceiling) is not int or ceiling < 0):
+        raise ValueError("producer output ceiling is invalid")
     total = 0
-    for current, directories, files in os.walk(root, followlinks=False):
+    entries = 0
+
+    def walk_error(error: OSError) -> None:
+        if not strict and isinstance(error, (FileNotFoundError, NotADirectoryError)):
+            return
+        raise error
+
+    for current, directories, files in os.walk(
+        root, followlinks=False, onerror=walk_error
+    ):
         for name in directories + files:
             try:
                 metadata = os.lstat(Path(current) / name)
@@ -369,10 +387,21 @@ def _output_size(root: Path, *, strict: bool = True) -> int:
                 if strict:
                     raise
                 continue
+            entries += 1
+            if entries > _MAX_OUTPUT_ENTRIES:
+                raise ValueError(
+                    "producer output entry count exceeds authority maximum"
+                )
             if stat.S_ISLNK(metadata.st_mode):
                 raise ValueError("producer output contains a symlink")
-            if stat.S_ISREG(metadata.st_mode):
-                total += metadata.st_size
+            if not (stat.S_ISREG(metadata.st_mode) or stat.S_ISDIR(metadata.st_mode)):
+                raise ValueError("producer output contains unsupported entry")
+            allocated = getattr(metadata, "st_blocks", 0) * 512
+            if allocated < 0:
+                raise ValueError("producer output allocated block count is invalid")
+            total += allocated + OUTPUT_ENTRY_METADATA_CHARGE_BYTES
+            if ceiling is not None and total > ceiling:
+                raise ValueError("producer output exceeds signed I/O ceiling")
     return total
 
 
@@ -394,7 +423,7 @@ def _wait_bounded(
         try:
             return process.wait(timeout=min(1.0, remaining))
         except subprocess.TimeoutExpired:
-            if _output_size(output, strict=False) > ceiling:
+            if _output_size(output, strict=False, ceiling=ceiling) > ceiling:
                 os.killpg(process.pid, 9)
                 process.wait()
                 raise ValueError("producer output exceeds signed I/O ceiling") from None
@@ -436,7 +465,9 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
             stdout_stream.close()
             raise
         try:
-            remaining_ceiling = output_ceiling - _output_size(core)
+            remaining_ceiling = output_ceiling - _output_size(
+                core, ceiling=output_ceiling
+            )
             if remaining_ceiling <= 0:
                 raise ValueError("producer output exceeds signed I/O ceiling")
             process = subprocess.Popen(
@@ -466,7 +497,7 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
             index, raw, prefix + "-index", deadline_monotonic=deadline
         )
         _remaining(deadline)
-        if _output_size(core) > output_ceiling:
+        if _output_size(core, ceiling=output_ceiling) > output_ceiling:
             raise ValueError("producer output exceeds signed I/O ceiling")
         records.append(
             {
@@ -483,7 +514,7 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
                 - (before.ru_utime + before.ru_stime),
             }
         )
-        if _output_size(core) > output_ceiling:
+        if _output_size(core, ceiling=output_ceiling) > output_ceiling:
             raise ValueError("producer output exceeds signed I/O ceiling")
         _remaining(deadline)
         terminal_failure = exit_code != 0
@@ -512,7 +543,7 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
     payload = canonical_json_bytes(result) + b"\n"
     _remaining(deadline)
     (core / "producer-result.json").write_bytes(payload)
-    if _output_size(core) > output_ceiling:
+    if _output_size(core, ceiling=output_ceiling) > output_ceiling:
         raise ValueError("producer output exceeds signed I/O ceiling")
     _remaining(deadline)
     return result

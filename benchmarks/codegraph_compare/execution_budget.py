@@ -96,6 +96,11 @@ DECISION_SERVICE_MARGIN_SECONDS = 120
 CONTRACT_EXPIRY_MARGIN_SECONDS = 30
 _EXT4_METADATA_MIN_BYTES = 64 * 1024 * 1024
 _EXT4_ROUND_BYTES = 4 * 1024 * 1024
+# Live producer scans and the eventual ext4 image use one conservative charge
+# for every directory entry.  Bounding the entry count also bounds the metadata
+# arithmetic and the work performed by each scan.
+OUTPUT_ENTRY_METADATA_CHARGE_BYTES = 4096
+MAX_OUTPUT_ENTRIES = 1_000_000
 
 
 def debugfs_payload_timeout_seconds(payload_bytes: int) -> int:

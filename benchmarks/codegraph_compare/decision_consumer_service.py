@@ -10,6 +10,7 @@ import socket
 import sqlite3
 import stat
 import struct
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -320,6 +321,8 @@ class DecisionLedger:
                 "decision ledger directory must be UID 904 private 0700 and writable"
             )
         self.path = path
+        self._active_lock = threading.Lock()
+        self._active_decisions: set[str] = set()
         db = self._connect()
         try:
             db.execute(
@@ -336,18 +339,39 @@ class DecisionLedger:
         db.execute("PRAGMA synchronous=FULL")
         return db
 
-    def query(self, decision_id: str) -> dict[str, Any]:
+    def begin_consume(self, decision_id: str) -> bool:
+        """Publish verification/commit activity before doing expensive validation."""
         _hex64(decision_id, "decision id")
-        db = self._connect()
-        try:
-            row = db.execute(
-                "SELECT receipt_json FROM consumed WHERE decision_id=?", (decision_id,)
-            ).fetchone()
-        finally:
-            db.close()
-        if row is None:
-            raise ValueError("decision receipt not found")
-        return dict(strict_json_loads(bytes(row[0])))
+        with self._active_lock:
+            if decision_id in self._active_decisions:
+                return False
+            self._active_decisions.add(decision_id)
+            return True
+
+    def end_consume(self, decision_id: str) -> None:
+        with self._active_lock:
+            self._active_decisions.discard(decision_id)
+
+    def query(self, decision_id: str) -> dict[str, Any]:
+        """Return an explicit durable/in-flight status under the activity lock."""
+        _hex64(decision_id, "decision id")
+        with self._active_lock:
+            db = self._connect()
+            try:
+                row = db.execute(
+                    "SELECT receipt_json FROM consumed WHERE decision_id=?",
+                    (decision_id,),
+                ).fetchone()
+            finally:
+                db.close()
+            if row is not None:
+                return {
+                    "status": "consumed",
+                    "receipt": dict(strict_json_loads(bytes(row[0]))),
+                }
+            if decision_id in self._active_decisions:
+                return {"status": "in-progress"}
+            return {"status": "not-found"}
 
     def consume(
         self,
@@ -406,31 +430,43 @@ def consume_request(
         or request["operation"] != "consume-decision"
     ):
         raise ValueError("legacy/wrapper decision request rejected")
-    contract = verify_decision_contract(request["decision_contract"])
-    verify_configured_plan_set(contract, config)
-    envelope = request["verdict_envelope"]
-    verify_verdict_envelope(envelope, contract, config)
+    raw_contract = request["decision_contract"]
+    candidate_id = (
+        raw_contract.get("decision_id") if type(raw_contract) is dict else None
+    )
+    decision_id = _hex64(candidate_id, "decision id")
+    if not ledger.begin_consume(decision_id):
+        raise ValueError("decision consume in progress")
+    try:
+        contract = verify_decision_contract(raw_contract)
+        verify_configured_plan_set(contract, config)
+        envelope = request["verdict_envelope"]
+        verify_verdict_envelope(envelope, contract, config)
 
-    def build(consumed_at_ns: int) -> dict[str, Any]:
-        body = {
-            "schema_version": 1,
-            "decision_id": contract["decision_id"],
-            "decision_contract_sha256": hashlib.sha256(
-                canonical_json_bytes(contract)
-            ).hexdigest(),
-            "manifest_sha256": envelope["manifest_sha256"],
-            "verdict_status": "SETUP_QUALIFIED",
-            "consumed_at_ns": consumed_at_ns,
-            "service_identity": identity,
-        }
-        return {
-            "receipt": body,
-            "key_id": config["decision_consumer"]["key_id"],
-            "algorithm": "Ed25519",
-            "signature": key.sign(RECEIPT_DOMAIN + canonical_json_bytes(body)).hex(),
-        }
+        def build(consumed_at_ns: int) -> dict[str, Any]:
+            body = {
+                "schema_version": 1,
+                "decision_id": contract["decision_id"],
+                "decision_contract_sha256": hashlib.sha256(
+                    canonical_json_bytes(contract)
+                ).hexdigest(),
+                "manifest_sha256": envelope["manifest_sha256"],
+                "verdict_status": "SETUP_QUALIFIED",
+                "consumed_at_ns": consumed_at_ns,
+                "service_identity": identity,
+            }
+            return {
+                "receipt": body,
+                "key_id": config["decision_consumer"]["key_id"],
+                "algorithm": "Ed25519",
+                "signature": key.sign(
+                    RECEIPT_DOMAIN + canonical_json_bytes(body)
+                ).hex(),
+            }
 
-    return ledger.consume(contract, envelope["manifest_sha256"], build)
+        return ledger.consume(contract, envelope["manifest_sha256"], build)
+    finally:
+        ledger.end_consume(decision_id)
 
 
 def _verify_decision_receipt(
@@ -546,35 +582,63 @@ def request_decision(
         "verdict_envelope": envelope,
     }
     query = {"operation": "query-decision", "decision_id": contract["decision_id"]}
+
+    def recover(*, permit_retry: bool) -> Any | None:
+        """Poll explicit query status without extending the original deadline."""
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("decision receipt absent after bounded recovery")
+            try:
+                status = exchange(query)
+            except TransportFailure:
+                time.sleep(min(0.01, max(0.0, deadline - time.monotonic())))
+                continue
+            if type(status) is not dict:
+                raise ValueError("decision query status invalid")
+            if set(status) == {"status", "receipt"} and status["status"] == "consumed":
+                return status["receipt"]
+            if set(status) == {"status"} and status["status"] == "not-found":
+                if permit_retry:
+                    return None
+            elif not (set(status) == {"status"} and status["status"] == "in-progress"):
+                raise ValueError("decision query status invalid")
+            time.sleep(min(0.01, max(0.0, deadline - time.monotonic())))
+
     consume_attempts = 0
     reply: Any
     while True:
         consume_attempts += 1
         try:
             reply = exchange(consume)
-            break
         except TransportFailure as failure:
             if failure.sent_bytes == 0 and consume_attempts < 2:
                 # Definitely pre-send: one bounded consume retry is safe.
                 continue
             if failure.sent_bytes == 0:
                 raise
-            # Partial and full sends are ambiguous. Query durable state first.
-            reply = exchange(query)
-            if not (
-                type(reply) is dict
-                and set(reply) == {"error", "reason"}
-                and reply.get("reason") == "decision receipt not found"
-            ):
-                break
-            if consume_attempts >= 2 or deadline - time.monotonic() <= 0:
-                raise TimeoutError(
-                    "decision receipt absent after bounded recovery"
-                ) from failure
-            # The durable query proved that the ambiguous request did not commit.
-            continue
-    if type(reply) is dict and set(reply) == {"error", "reason"}:
-        raise ValueError(f"decision consumer rejected decision: {reply['reason']}")
+            # A delivered request may still be verifying.  Only explicit
+            # not-found status authorizes the single consume retry.
+            recovered = recover(permit_retry=consume_attempts < 2)
+            if recovered is None:
+                continue
+            reply = recovered
+        if type(reply) is dict and set(reply) == {"error", "reason"}:
+            if reply.get("reason") in {
+                "decision already consumed",
+                "decision consume in progress",
+            }:
+                # The prior request owns (or has completed) consumption.  Never
+                # terminate without polling its durable receipt back.
+                recovered = recover(permit_retry=False)
+                if recovered is None:  # pragma: no cover - contract of recover
+                    raise AssertionError("receipt recovery returned no receipt")
+                reply = recovered
+            else:
+                raise ValueError(
+                    f"decision consumer rejected decision: {reply['reason']}"
+                )
+        break
     return _verify_decision_receipt(reply, contract, envelope, config)
 
 

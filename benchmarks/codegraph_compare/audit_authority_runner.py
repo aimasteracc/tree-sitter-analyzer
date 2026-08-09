@@ -30,6 +30,8 @@ from benchmarks.codegraph_compare.audit_authority_storage import (
 )
 from benchmarks.codegraph_compare.execution_budget import (
     AUTHORITY_COMMAND_TIMEOUT_SECONDS,
+    MAX_OUTPUT_ENTRIES,
+    OUTPUT_ENTRY_METADATA_CHARGE_BYTES,
     debugfs_payload_timeout_seconds,
     sealed_image_upper_bound_bytes,
 )
@@ -247,7 +249,7 @@ def _docker_wall_deadline(started_at: str, wall_timeout: int) -> float:
 _EXT4_METADATA_MIN_BYTES = 64 * 1024 * 1024
 _EXT4_ROUND_BYTES = 4 * 1024 * 1024
 _MAX_AUTHORIZED_OUTPUT_BYTES = 16 * 1024 * 1024 * 1024
-_MAX_SEALED_CORE_ENTRIES = 1_000_000
+_MAX_SEALED_CORE_ENTRIES = MAX_OUTPUT_ENTRIES
 _EXT4_INODE_RESERVE_NUMERATOR = 11
 _EXT4_INODE_RESERVE_DENOMINATOR = 10
 
@@ -273,7 +275,7 @@ def _ext4_layout(core: Path, authorized_output_bytes: int) -> tuple[int, int, in
         or authorized_output_bytes > _MAX_AUTHORIZED_OUTPUT_BYTES
     ):
         raise ValueError("authorized output ceiling is invalid")
-    charged_bytes = 4096  # filesystem root inode/directory metadata
+    charged_bytes = OUTPUT_ENTRY_METADATA_CHARGE_BYTES
     core_entries = 1  # the sealed core root becomes the filesystem root
     directories = 1
     regular_files = 0
@@ -284,7 +286,7 @@ def _ext4_layout(core: Path, authorized_output_bytes: int) -> tuple[int, int, in
             core_entries += 1
             if core_entries > _MAX_SEALED_CORE_ENTRIES:
                 raise ValueError("producer core entry count exceeds authority maximum")
-            charged_bytes += 4096  # conservative inode/directory-entry metadata
+            charged_bytes += OUTPUT_ENTRY_METADATA_CHARGE_BYTES
             if stat.S_ISREG(metadata.st_mode):
                 regular_files += 1
                 allocated = getattr(metadata, "st_blocks", 0) * 512

@@ -12379,7 +12379,9 @@ def test_qualification_v3_decision_commit_disconnect_queries_original_receipt(
         def close(self):
             pass
 
-    replies = iter((ValueError("frame truncated"), receipt))
+    replies = iter(
+        (ValueError("frame truncated"), {"status": "consumed", "receipt": receipt})
+    )
 
     def read_reply(*_args):
         reply = next(replies)
@@ -15487,6 +15489,72 @@ def test_live_output_size_ignores_disappearing_entry(tmp_path: Path, monkeypatch
     assert executor._output_size(output, strict=False) == 0
 
 
+def test_live_output_size_charges_allocated_blocks_and_shared_metadata(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745125491: empty and sparse output consumes live budget.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+    from benchmarks.codegraph_compare.execution_budget import (
+        OUTPUT_ENTRY_METADATA_CHARGE_BYTES,
+    )
+
+    output = tmp_path / "output"
+    output.mkdir()
+    item = output / "item"
+    item.touch()
+    real_lstat = executor.os.lstat
+
+    def allocated(path):
+        metadata = real_lstat(path)
+        if Path(path) == item:
+            return SimpleNamespace(st_mode=metadata.st_mode, st_blocks=2)
+        return metadata
+
+    monkeypatch.setattr(executor.os, "lstat", allocated)
+
+    assert executor._output_size(output) == 1024 + OUTPUT_ENTRY_METADATA_CHARGE_BYTES
+
+
+def test_live_output_size_rejects_entry_count_above_shared_bound(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745125491: every mutable-tree scan has bounded work.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "one").touch()
+    (output / "two").touch()
+    monkeypatch.setattr(executor, "_MAX_OUTPUT_ENTRIES", 1)
+
+    with pytest.raises(ValueError, match="entry count exceeds authority maximum"):
+        executor._output_size(output, ceiling=1024 * 1024)
+
+
+def test_live_output_size_enforces_signed_ceiling_during_scan(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745125491: allocated output cannot grow past signed bytes.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    output = tmp_path / "output"
+    output.mkdir()
+    item = output / "item"
+    item.touch()
+    real_lstat = executor.os.lstat
+
+    def allocated(path):
+        metadata = real_lstat(path)
+        if Path(path) == item:
+            return SimpleNamespace(st_mode=metadata.st_mode, st_blocks=2)
+        return metadata
+
+    monkeypatch.setattr(executor.os, "lstat", allocated)
+
+    with pytest.raises(ValueError, match="exceeds signed I/O ceiling"):
+        executor._output_size(output, ceiling=5119)
+
+
 def test_terminal_output_size_rejects_disappearing_entry(tmp_path: Path, monkeypatch):
     # PR #1249 review 3744776119: only the stable terminal snapshot is strict.
     from benchmarks.codegraph_compare import setup_qualification_executor as executor
@@ -15622,7 +15690,7 @@ def test_decision_client_queries_ambiguous_send_before_retrying_consume(monkeypa
     replies = iter(
         (
             EOFError("lost consume response"),
-            {"error": "ValueError", "reason": "decision receipt not found"},
+            {"status": "not-found"},
             {"durable": True},
         )
     )
@@ -15670,6 +15738,134 @@ def test_decision_client_queries_ambiguous_send_before_retrying_consume(monkeypa
 
     assert result == {"durable": True}
     assert operations == ["consume-decision", "query-decision", "consume-decision"]
+
+
+def test_decision_client_polls_in_progress_ambiguous_consume(monkeypatch):
+    # PR #1249 review 3745125493: a delivered consume may still be verifying.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    config = _qualification_v3_public_config()
+    operations = []
+    replies = iter(
+        (
+            EOFError("lost consume response"),
+            {"status": "in-progress"},
+            {"status": "consumed", "receipt": {"durable": True}},
+        )
+    )
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 1, config["decision_consumer"]["peer_uid"], 1)
+
+        def send(self, framed):
+            operations.append(json.loads(framed[4:])["operation"])
+            return len(framed)
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def read_reply(*_args):
+        value = next(replies)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(consumer.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(consumer.socket, "socket", lambda *_args: FakeSocket())
+    monkeypatch.setattr(consumer, "read_frame", read_reply)
+    monkeypatch.setattr(consumer.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        consumer, "_verify_decision_receipt", lambda value, *_args: value
+    )
+
+    result = consumer.request_decision(
+        socket_path=Path("/unused"),
+        contract={"decision_id": "a" * 64},
+        envelope={},
+        config=config,
+        timeout=1,
+    )
+
+    assert result == {"durable": True}
+    assert operations == ["consume-decision", "query-decision", "query-decision"]
+
+
+def test_decision_client_recovers_receipt_after_retry_reports_consumed(monkeypatch):
+    # PR #1249 review 3745125493: replay races must never lose a durable receipt.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    config = _qualification_v3_public_config()
+    operations = []
+    replies = iter(
+        (
+            EOFError("lost consume response"),
+            {"status": "not-found"},
+            {"error": "ValueError", "reason": "decision already consumed"},
+            {"status": "in-progress"},
+            {"status": "consumed", "receipt": {"durable": True}},
+        )
+    )
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 1, config["decision_consumer"]["peer_uid"], 1)
+
+        def send(self, framed):
+            operations.append(json.loads(framed[4:])["operation"])
+            return len(framed)
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def read_reply(*_args):
+        value = next(replies)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(consumer.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(consumer.socket, "socket", lambda *_args: FakeSocket())
+    monkeypatch.setattr(consumer, "read_frame", read_reply)
+    monkeypatch.setattr(consumer.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        consumer, "_verify_decision_receipt", lambda value, *_args: value
+    )
+
+    result = consumer.request_decision(
+        socket_path=Path("/unused"),
+        contract={"decision_id": "a" * 64},
+        envelope={},
+        config=config,
+        timeout=1,
+    )
+
+    assert result == {"durable": True}
+    assert operations == [
+        "consume-decision",
+        "query-decision",
+        "consume-decision",
+        "query-decision",
+        "query-decision",
+    ]
 
 
 def test_producer_plan_rejects_noncanonical_environment_digest_before_execution():
