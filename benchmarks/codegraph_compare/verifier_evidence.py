@@ -21,6 +21,10 @@ from benchmarks.codegraph_compare.setup_qualification_paths import (
     canonical_relative_path,
 )
 from benchmarks.codegraph_compare.setup_qualification_plan import DEFAULT_SOURCE_RULES
+from benchmarks.codegraph_compare.verifier_authority import (
+    AUTHORITY_AUDIT_KEYS,
+    verify_authority_provenance,
+)
 
 Runner = Callable[[Sequence[str]], Any]
 TMPFS_TARGET = Path("/").joinpath("tmp").as_posix()
@@ -396,38 +400,7 @@ def _verify_external_audit(
     ):
         raise ValueError("external audit authority request is not closed")
     audit = request["audit"]
-    required = frozenset(
-        {
-            "producer_container_id",
-            "actual_image_id",
-            "launch_token_sha256",
-            "container_user",
-            "readonly_rootfs",
-            "cap_drop",
-            "mounts",
-            "resource_limits",
-            "tmpfs",
-            "image_digest",
-            "cgroup_id",
-            "network_mode",
-            "security_opt",
-            "restart_count",
-            "terminal_pid",
-            "launch_count",
-            "cgroup_processes_after_stop",
-            "pid1_exit",
-            "run_nonce",
-            "resource_observations",
-            "cell",
-            "plan",
-            "source",
-            "output",
-            "terminal",
-            "data_image",
-            "hash_image",
-            "seccomp_sha256",
-        }
-    )
+    required = AUTHORITY_AUDIT_KEYS
     if frozenset(audit) != required:
         raise ValueError("host audit ledger is not closed")
     if envelope["key_id"] != auditor["key_id"] or envelope["algorithm"] != "Ed25519":
@@ -484,6 +457,7 @@ def _verify_external_audit(
         raise ValueError("receipt host audit facts mismatch")
     if audit["actual_image_id"] != config["trusted"]["image_ids"]["producer"]:
         raise ValueError("host audit top-level Docker Image ID mismatch")
+    verify_authority_provenance(audit, body, config)
     if (
         audit["data_image"]["sha256"] != body["snapshot"]["data_image_sha256"]
         or audit["data_image"]["size"] != body["snapshot"]["data_image_size"]

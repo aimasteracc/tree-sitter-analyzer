@@ -176,8 +176,12 @@ def _verify_launch(payload: bytes, authority: dict[str, Any]) -> dict[str, Any]:
     }:
         raise ValueError("launch token envelope invalid")
     request = envelope["audit"]
-    if type(request) is not dict:
-        raise ValueError("launch token request invalid")
+    if (
+        type(request) is not dict
+        or envelope["key_id"] != authority["key_id"]
+        or envelope["algorithm"] != "Ed25519"
+    ):
+        raise ValueError("launch token request or authority invalid")
     Ed25519PublicKey.from_public_bytes(
         bytes.fromhex(authority["public_key_hex"])
     ).verify(

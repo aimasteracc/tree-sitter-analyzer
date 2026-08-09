@@ -89,6 +89,9 @@ def aggregate_verdict(
     violations: list[tuple[str, ...]] = []
     observed_receipts = 0
     observed_attempts: list[int] = []
+    top_level_reasons: list[str] = []
+    if diagnostic_mode:
+        top_level_reasons.append("DIAGNOSTIC_ONLY")
     try:
         exact = validate_manifest(manifest)
         config = parse_public_config(
@@ -159,12 +162,15 @@ def aggregate_verdict(
             and len(violations) == 14
             and all(item == () for item in violations)
         )
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError) as error:
         qualified = False
+        top_level_reasons.append(f"TOP_LEVEL_INVALID:{type(error).__name__}:{error}")
     return {
         "schema_version": 1,
         **CLAIMS,
         "status": "SETUP_QUALIFIED" if qualified else "NOT_EVALUATED",
+        "authorization": "DIAGNOSTIC_ONLY" if diagnostic_mode else "PRODUCTION_ROOT",
+        "top_level_reasons": top_level_reasons,
         "expected_cells": 14,
         "observed_receipts": observed_receipts,
         "attempts_per_cell": 1

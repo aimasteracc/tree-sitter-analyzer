@@ -438,41 +438,39 @@ A result is considered **dominant** if it scores higher on `med_overall` AND low
 
 ## NO1-008A detached receipt v3 operator (E0 only)
 
-Receipt v2 remains a non-upgradable E0 compatibility boundary. The v3 path uses
-five isolated roles: a keyless producer, executor and approver signers, a keyless
-host-auditor client, and a fresh keyless verifier. The production operator and host
-root never possess or mount the auditor private key. Audit authorization is supplied
-only by an external authority over a Unix socket; root-signed config pins its public
-key, protocol, peer UID, service measurement, and every Docker top-level Image ID.
-The host auditor independently inspects Docker, cgroup v2, mount identities, terminal
-state, and dm-verity data/hash images, sends those facts as one canonical request,
-and accepts only the matching authority signature. A missing socket, peer mismatch,
-forged reply, or local key path fails closed. Any fake authority is test diagnostic
-infrastructure only and can never produce `SETUP_QUALIFIED`. The offline root private
-key is never supplied to an operator run. Verifier and auditor images must be built
-with `NO1_008A_ROOT_PUBLIC_KEY_HEX`; production CLIs authenticate the root-signed
-canonical public config only with that read-only baked resource. The immutable core
-is a dm-verity snapshot and both receipt signatures cover the same domain-separated
-canonical body bytes.
+The authority host and its root service are the trusted boundary. The operator is
+untrusted and unprivileged: it has no Docker socket, root capability, cgroup/mkfs
+access, auditor key, or writable producer output. It submits only an offline-root-
+signed `run-cell` contract containing `job_id`, cell identity, and nonce. The Unix
+server has no arbitrary-sign operation and rejects every operation except
+`run-cell` before invoking privileged code.
 
-A verifier without the baked root may run only with explicit `--diagnostic-mode`
-(and, for signed fixtures, `--diagnostic-root-public-key-hex`). Diagnostic results
-always remain E0 `NOT_EVALUATED` and can never emit `SETUP_QUALIFIED`; runtime root
-selection is rejected outside that test/diagnostic path.
+The service independently reads authority-controlled staged public config, plan,
+inventory, source snapshot, source tree, tool, config, seccomp, and immutable image
+identities. Root-signed config pins the service Ed25519 public key and the authorized
+service image/interpreter/module digests; `service_measurement` is checked against
+the running service module. The service creates its own output and cgroup, launches
+the exact producer, captures PID/starttime/pidfd availability/cgroup, requires exit
+zero and `cgroup.events populated=0` throughout the subtree, and immediately seals
+ext4 plus dm-verity in a service-owned non-writable directory. Its signed canonical
+audit retains the launch token and hashes the core, images, and all staged inputs.
 
-Inspect the exact 14-cell contract without Docker or keys:
+The seccomp claim is deliberately narrow: it attests that trusted supervisor code
+passed the exact root-authorized staged bytes to Docker. Docker does not return the
+loaded profile digest, so no such daemon-observation claim is made. Qualification
+also requires a Linux root + Docker/cgroup-v2/ext4/dm-verity E2E; where unavailable,
+the path fails closed rather than substituting mocks.
+
+This does not defend against a malicious authority-host root. Such root is explicitly
+trusted and can control the service, kernel, Docker daemon, cgroups, and storage.
+Diagnostic verification always remains `E0/NOT_EVALUATED`; retained aggregate
+results include top-level authorization and failure reasons. `SETUP_QUALIFIED` is
+setup evidence only, never E2, a winner, or a publishable comparison.
+
+Inspect the unprivileged contract surface without Docker or keys:
 
 ```bash
 scripts/no1_008a_operator.sh contract
 scripts/no1_008a_operator.sh dry-run
 bash -n scripts/no1_008a_operator.sh
 ```
-
-A real `run` is Linux/root-only, requires digest-pinned preloaded images and
-root-owned mode-0400 executor/approver key files plus the external audit-authority socket, and applies `--network none`, a network-deny
-seccomp profile, a read-only root filesystem, all-capability drop, and isolated
-mounts. It is intentionally not run in ordinary CI. No evidence in this change
-marks NO1-008A complete: all claims remain `E0` / `NOT_EVALUATED`, non-publishable,
-with `winner=null` and dominance/unlock disabled. `SETUP_QUALIFIED`, if later
-issued by a fresh exact-14 verifier, is setup evidence only and is not E2 or a
-product comparison.

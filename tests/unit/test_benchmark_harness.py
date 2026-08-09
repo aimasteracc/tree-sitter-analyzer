@@ -11949,49 +11949,22 @@ def test_qualification_v3_runtime_requires_exact_five_execution_order():
         validate_body(body)
 
 
-def test_qualification_v3_operator_wires_independent_cell_inputs_and_roles():
-    # Audit 2026-08-09 B1/P1.2: exact CLIs use per-cell inputs and stdout handoff.
+def test_qualification_v3_operator_delegates_privileged_run_cell_authority():
     operator = Path("scripts/no1_008a_operator.sh").read_text(encoding="utf-8")
     assert (
-        'plan="$cell/plan.json"',
-        'inventory="$cell/inventory.json"',
-        "sign-executor --plan /evidence/plan.json",
-        "sign-approver --attestation /handoff/executor.json",
-        "aggregate --manifest /evidence/manifest.json",
-        '>"$cell/executor-attestation.json"',
-    ) == tuple(
-        fragment
-        for fragment in (
-            'plan="$cell/plan.json"',
-            'inventory="$cell/inventory.json"',
-            "sign-executor --plan /evidence/plan.json",
-            "sign-approver --attestation /handoff/executor.json",
-            "aggregate --manifest /evidence/manifest.json",
-            '>"$cell/executor-attestation.json"',
-        )
-        if fragment in operator
+        "from benchmarks.codegraph_compare.audit_authority_client import run_cell"
+        in operator
     )
+    assert "docker " not in operator
+    assert "mkfs.ext4" not in operator
+    assert "/var/run/docker.sock" not in operator
 
 
-def test_qualification_v3_operator_preflight_requires_all_images_and_seccomp():
-    # Audit 2026-08-09 B1: preflight has no empty-image or empty-seccomp bypass.
+def test_qualification_v3_operator_preflight_requires_contracts_and_authority():
     operator = Path("scripts/no1_008a_operator.sh").read_text(encoding="utf-8")
     assert (
-        'for path in "$PUBLIC_CONFIG" "$SECCOMP"',
-        "[[ -n $image ]]",
-        'require_digest_image "$image"',
-        'canonical_existing "$PLAN_DIR"',
-        'canonical_existing "$INVENTORY_DIR"',
-    ) == tuple(
-        fragment
-        for fragment in (
-            'for path in "$PUBLIC_CONFIG" "$SECCOMP"',
-            "[[ -n $image ]]",
-            'require_digest_image "$image"',
-            'canonical_existing "$PLAN_DIR"',
-            'canonical_existing "$INVENTORY_DIR"',
-        )
-        if fragment in operator
+        'for path in "$CONTRACTS_DIR" "$PUBLIC_CONFIG" "$AUDIT_AUTHORITY_SOCKET"'
+        in operator
     )
 
 
@@ -12060,20 +12033,13 @@ def test_qualification_v3_schema_fragments_stay_below_file_cap():
     }
 
 
-def test_qualification_v3_verify_requires_external_config_anchor():
-    # Audit 2026-08-09 B2: verification cannot authorize evidence-local config.
+def test_qualification_v3_operator_uses_only_root_authenticated_public_config():
     operator = Path("scripts/no1_008a_operator.sh").read_text()
-    verify_branch = operator[
-        operator.index("if [[ $COMMAND == verify ]]") : operator.index(
-            "else", operator.index("if [[ $COMMAND == verify ]]")
-        )
-    ]
-    assert "--trusted-public-config" not in operator
-    assert "--trusted-public-config-sha256" not in operator
-    assert 'PUBLIC_CONFIG="$EXPERIMENT_ROOT/public-config.json"' in verify_branch
+    assert "parse_public_config" in operator
+    assert "--diagnostic-mode" not in operator
     assert (
         "production CLIs authenticate"
-        in Path("benchmarks/codegraph_compare/README.md").read_text()
+        not in Path("benchmarks/codegraph_compare/README.md").read_text()
     )
 
 
