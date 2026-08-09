@@ -30,6 +30,7 @@ MAX_JSON_BYTES = 16 * 1024 * 1024
 MAX_DEPTH = 32
 MAX_NODES = 200_000
 MAX_STRING_BYTES = 4 * 1024 * 1024
+TMPFS_TARGET = Path("/").joinpath("tmp").as_posix()
 
 BODY_KEYS = frozenset({
     "cell", "plan", "source", "environment", "counters", "resources",
@@ -44,7 +45,7 @@ TOP_KEYS = frozenset({
     "approver_signature", "receipt_hash",
 })
 SIGNATURE_KEYS = frozenset({"key_id", "algorithm", "signature"})
-ELIGIBILITY_KEYS = frozenset({"repo_id", "source_rules_hash", "commit", "tracked_regular_paths", "eligible_paths", "prefilter_exclusions", "tracked_inventory_hash", "eligible_paths_hash", "repo_fingerprint"})
+ELIGIBILITY_KEYS = frozenset({"repo_id", "source_rules_hash", "commit", "tracked_regular_paths", "tracked_entries", "tracked_files", "eligible_paths", "prefilter_exclusions", "tracked_inventory_hash", "eligible_paths_hash", "repo_fingerprint"})
 
 
 def _reject_constant(value: str) -> None:
@@ -216,7 +217,7 @@ def validate_body(body: Any) -> None:
 
     if type(body["executions"]) is not list or len(body["executions"]) != 5:
         raise ValueError("executions must contain exact delete/build/health/symbol/call order")
-    execution_keys = frozenset({"id", "argv", "cwd", "environment_digest", "exit_code", "stdout_bytes", "stderr_bytes", "query_bytes", "index_bytes"})
+    execution_keys = frozenset({"id", "argv", "cwd", "environment_digest", "exit_code", "stdout_bytes", "stderr_bytes", "query_bytes", "final_index_observation"})
     execution_ids = [item.get("id") if type(item) is dict else None for item in body["executions"]]
     if execution_ids != ["delete", "build", "health", "symbol", "call"]:
         raise ValueError("executions must contain exact unique plan order")
@@ -229,7 +230,7 @@ def validate_body(body: Any) -> None:
         _hex(item["environment_digest"], "execution.environment_digest")
         if type(item["exit_code"]) is not int:
             raise ValueError("execution exit code must be an exact integer")
-        for name in ("stdout_bytes", "stderr_bytes", "query_bytes", "index_bytes"):
+        for name in ("stdout_bytes", "stderr_bytes", "query_bytes", "final_index_observation"):
             _blob(item[name], f"execution.{name}")
 
     partition = _exact(body["index_partition"], frozenset({"indexed_paths", "excluded_paths", "parse_error_paths", "indexed_paths_hash", "excluded_paths_hash", "parse_error_paths_hash"}), "index_partition")
@@ -254,14 +255,23 @@ def validate_body(body: Any) -> None:
     for name in ("data_image_size", "hash_image_size", "data_block_size", "hash_block_size", "data_blocks"):
         _integer(snapshot[name], f"snapshot.{name}", minimum=1)
 
-    audit_keys = frozenset({"producer_container_id", "image_digest", "cgroup_id", "network_mode", "security_opt", "restart_count", "terminal_pid", "launch_count", "cgroup_processes_after_stop", "pid1_exit", "run_nonce", "resource_observations", "audit_bytes"})
+    audit_keys = frozenset({"producer_container_id", "actual_image_id", "launch_token_sha256", "container_user", "readonly_rootfs", "cap_drop", "mounts", "resource_limits", "tmpfs", "image_digest", "cgroup_id", "network_mode", "security_opt", "restart_count", "terminal_pid", "launch_count", "cgroup_processes_after_stop", "pid1_exit", "run_nonce", "resource_observations", "audit_bytes"})
     audit = _exact(body["process_audit"], audit_keys, "process_audit")
     _hex(audit["run_nonce"], "process_audit.run_nonce")
+    _hex(audit["launch_token_sha256"], "process_audit.launch_token_sha256")
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", _text(audit["actual_image_id"], "process_audit.actual_image_id")) is None:
+        raise ValueError("host audit actual image ID must be exact")
+    if audit["container_user"] != "65532:65532" or audit["readonly_rootfs"] is not True or audit["cap_drop"] != ["ALL"]:
+        raise ValueError("host audit container isolation facts invalid")
+    if audit["resource_limits"] != {"pids_limit": 64, "memory": 4294967296, "nano_cpus": 1000000000} or audit["tmpfs"] != {TMPFS_TARGET: "rw,noexec,nosuid,nodev,size=64m"}:
+        raise ValueError("host audit limits/tmpfs invalid")
+    if type(audit["mounts"]) is not list or len(audit["mounts"]) != 4:
+        raise ValueError("host audit mount facts invalid")
     for name in ("producer_container_id", "cgroup_id"):
         _text(audit[name], f"process_audit.{name}")
     if re.fullmatch(r"sha256:[0-9a-f]{64}", _text(audit["image_digest"], "process_audit.image_digest")) is None:
         raise ValueError("host audit image digest must be exact")
-    if audit["network_mode"] != "none" or audit["restart_count"] != 0 or audit["terminal_pid"] != 0 or audit["launch_count"] != 1 or audit["cgroup_processes_after_stop"] != [] or type(audit["pid1_exit"]) is not int:
+    if audit["network_mode"] != "none" or audit["restart_count"] != 0 or audit["terminal_pid"] != 0 or audit["launch_count"] != 1 or audit["cgroup_processes_after_stop"] != [] or audit["pid1_exit"] != 0:
         raise ValueError("signed host audit is not terminal, isolated, and one-launch")
     if audit["resource_observations"] != {key: value for key, value in resources.items() if key != "plan_digest"}:
         raise ValueError("resources are not exact signed host observations")
@@ -345,17 +355,31 @@ def assemble_receipt(body: Mapping[str, Any], executor: Mapping[str, Any], appro
 
 
 @lru_cache(maxsize=1)
-def _published_schema() -> Mapping[str, Any]:
+def _published_schema() -> tuple[Mapping[str, Any], Any]:
     from jsonschema import Draft202012Validator
-    path = Path(__file__).parents[2] / "rfcs/schemas/no1-008a-cell-receipt-v3.schema.json"
-    schema = strict_json_loads(path.read_bytes())
-    Draft202012Validator.check_schema(schema)
-    return schema
+    from referencing import Registry, Resource
+
+    directory = Path(__file__).parents[2] / "rfcs/schemas"
+    names = (
+        "no1-008a-cell-receipt-v3.schema.json",
+        "no1-008a-cell-receipt-v3-body.schema.json",
+        "no1-008a-cell-receipt-v3-common.schema.json",
+        "no1-008a-cell-receipt-v3-fields-a.schema.json",
+        "no1-008a-cell-receipt-v3-fields-b.schema.json",
+    )
+    documents = [strict_json_loads((directory / name).read_bytes()) for name in names]
+    for document in documents:
+        Draft202012Validator.check_schema(document)
+    registry = Registry().with_resources(
+        (document["$id"], Resource.from_contents(document)) for document in documents
+    )
+    return documents[0], registry
 
 
 def validate_published_schema(receipt: Any) -> None:
     from jsonschema import Draft202012Validator
-    errors = sorted(Draft202012Validator(_published_schema()).iter_errors(receipt), key=lambda error: list(error.path))
+    schema, registry = _published_schema()
+    errors = sorted(Draft202012Validator(schema, registry=registry).iter_errors(receipt), key=lambda error: list(error.path))
     if errors:
         raise ValueError(f"published receipt schema mismatch: {errors[0].message}")
 

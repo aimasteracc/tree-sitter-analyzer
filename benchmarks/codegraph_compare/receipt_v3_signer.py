@@ -33,6 +33,9 @@ def _safe_path(raw: str) -> Path:
     if not raw or "," in raw or any(ord(char) < 32 or ord(char) == 127 for char in raw):
         raise ValueError("path contains comma or control character")
     path = Path(raw)
+    if str(path).startswith("/proc/self/fd/"):
+        os.fstat(int(path.name))
+        return path
     if not path.is_absolute() or path.resolve(strict=True) != path:
         raise ValueError("path must be an existing canonical absolute path")
     return path
@@ -91,7 +94,7 @@ def _build_body(args: argparse.Namespace) -> dict[str, object]:
                     "stdout_bytes",
                     "stderr_bytes",
                     "query_bytes",
-                    "index_bytes",
+                    "final_index_observation",
                 )
             }
         )
@@ -230,6 +233,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     approver.add_argument("--private-key", required=True)
     approver.add_argument("--key-id", required=True)
     args = parser.parse_args(argv)
+    # Pin every non-image document/source/audit/config input before hash/parse/use.
+    pinned: list[int] = []
+    for name in (
+        "body",
+        "attestation",
+        "public_config",
+        "plan",
+        "inventory",
+        "process_audit",
+        "source_snapshot",
+        "tool",
+        "config",
+        "seccomp",
+    ):
+        raw = getattr(args, name, None)
+        if raw:
+            descriptor = os.open(
+                _safe_path(raw),
+                os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+            )
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                os.close(descriptor)
+                raise ValueError(f"{name} must be regular")
+            pinned.append(descriptor)
+            setattr(args, name, f"/proc/self/fd/{descriptor}")
     key = _read_private_key(args.private_key)
     if args.command == "sign-executor":
         evidence_args = (

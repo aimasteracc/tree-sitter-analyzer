@@ -220,6 +220,8 @@ class EligibilityV1:
     source_rules_hash: str
     commit: str
     tracked_regular_paths: tuple[str, ...]
+    tracked_entries: tuple[tuple[str, str, str], ...]
+    tracked_files: tuple[tuple[str, str, str, int, str], ...]
     eligible_paths: tuple[str, ...]
     prefilter_exclusions: tuple[tuple[str, str], ...]
     tracked_inventory_hash: str
@@ -239,6 +241,24 @@ class EligibilityV1:
             raise ValueError("Eligibility scalar fields must be non-empty strings")
         if (
             type(self.tracked_regular_paths) is not tuple
+            or type(self.tracked_entries) is not tuple
+            or any(
+                type(item) is not tuple
+                or len(item) != 3
+                or any(type(part) is not str for part in item)
+                for item in self.tracked_entries
+            )
+            or type(self.tracked_files) is not tuple
+            or any(
+                type(item) is not tuple
+                or len(item) != 5
+                or type(item[0]) is not str
+                or type(item[1]) is not str
+                or type(item[2]) is not str
+                or type(item[3]) is not int
+                or type(item[4]) is not str
+                for item in self.tracked_files
+            )
             or type(self.eligible_paths) is not tuple
             or any(
                 type(path) is not str

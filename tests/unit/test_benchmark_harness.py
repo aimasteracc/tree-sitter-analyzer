@@ -8681,6 +8681,8 @@ def _qualification_plans(tmp_path: Path):
         DEFAULT_SOURCE_RULES.digest,
         commits["vscode"],
         ("main.ts",),
+        (("main.ts", "100644", "a" * 40),),
+        (("main.ts", "100644", "a" * 40, 1, "e" * 64),),
         ("main.ts",),
         (),
         "b" * 64,
@@ -9755,6 +9757,11 @@ def test_source_inventory_is_exactly_bound_to_git_modes_objects_and_bytes(
         "source_rules_hash": DEFAULT_SOURCE_RULES.digest,
         "commit": commit,
         "tracked_regular_paths": ("generated.ts", "main.ts", "notes.md"),
+        "tracked_entries": tuple(records),
+        "tracked_files": tuple(
+            (path, mode, object_id, (repo / path).stat().st_size, content_hash)
+            for path, mode, object_id, content_hash in file_hashes
+        ),
         "eligible_paths": ("main.ts",),
         "prefilter_exclusions": (
             ("deps/submodule", "gitlink"),
@@ -11194,7 +11201,7 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
                 "stdout_bytes": dict(blob),
                 "stderr_bytes": dict(blob),
                 "query_bytes": dict(blob),
-                "index_bytes": dict(blob),
+                "final_index_observation": dict(blob),
             }
         )
     return {
@@ -11226,6 +11233,8 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
                 "source_rules_hash": "4" * 64,
                 "commit": "8" * 40,
                 "tracked_regular_paths": ["main.ts"],
+                "tracked_entries": [["main.ts", "100644", "a" * 40]],
+                "tracked_files": [["main.ts", "100644", "a" * 40, 1, "b" * 64]],
                 "eligible_paths": ["main.ts"],
                 "prefilter_exclusions": [],
                 "tracked_inventory_hash": "5" * 64,
@@ -11291,6 +11300,23 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
         },
         "process_audit": {
             "producer_container_id": "producer-1",
+            "actual_image_id": "sha256:" + "a" * 64,
+            "launch_token_sha256": "b" * 64,
+            "container_user": "65532:65532",
+            "readonly_rootfs": True,
+            "cap_drop": ["ALL"],
+            "mounts": [
+                ["/host/source", "/source", True],
+                ["/host/plan", "/plan/cell-plan.json", True],
+                ["/host/inventory", "/plan/inventory.json", True],
+                ["/host/out", "/out", False],
+            ],
+            "resource_limits": {
+                "pids_limit": 64,
+                "memory": 4294967296,
+                "nano_cpus": 1000000000,
+            },
+            "tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=64m"},
             "image_digest": "sha256:" + "6" * 64,
             "cgroup_id": "cg-1",
             "network_mode": "none",
@@ -11814,7 +11840,7 @@ def test_qualification_v3_verity_rejects_mutated_hash_image(tmp_path: Path):
         )
 
 
-def test_qualification_v3_freshness_uses_image_and_process_identity():
+def test_qualification_v3_run_correlation_requires_process_isolation():
     # Audit 2026-08-09 P1.3: exit codes are never accepted as process identity.
     from benchmarks.codegraph_compare.verifier import verify_cell
 
@@ -11830,7 +11856,9 @@ def test_qualification_v3_freshness_uses_image_and_process_identity():
         verifier_image_digest=body["process_audit"]["image_digest"],
         process_identity="fresh-process",
     )
-    assert failures == ("CELL_EVIDENCE_INVALID",)
+    assert failures == (
+        "CELL_EVIDENCE_INVALID:verifier process is not isolated from producer",
+    )
 
 
 def test_qualification_v3_runtime_requires_exact_five_execution_order():
@@ -11891,29 +11919,25 @@ def test_qualification_v3_operator_preflight_requires_all_images_and_seccomp():
 
 def test_qualification_v3_runtime_schema_acceptance_parity():
     # Audit 2026-08-09 P2.1: published schema and runtime accept the same emitted receipt.
-    import jsonschema
-
     from benchmarks.codegraph_compare.receipt_v3 import validate_receipt_shape
 
     receipt = _qualification_v3_receipt()
-    schema = json.loads(
-        Path("rfcs/schemas/no1-008a-cell-receipt-v3.schema.json").read_text()
-    )
     validate_receipt_shape(receipt)
-    jsonschema.Draft202012Validator(schema).validate(receipt)
 
 
 def test_qualification_v3_runtime_schema_mutation_contract():
     # Audit 2026-08-09 P2.1: representative shape mutations have exact parser parity.
     import copy
 
-    import jsonschema
+    from jsonschema import Draft202012Validator
 
-    from benchmarks.codegraph_compare.receipt_v3 import validate_receipt_shape
-
-    schema = json.loads(
-        Path("rfcs/schemas/no1-008a-cell-receipt-v3.schema.json").read_text()
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        _published_schema,
+        validate_receipt_shape,
     )
+
+    schema, registry = _published_schema()
+    validator = Draft202012Validator(schema, registry=registry)
     mutations = []
     missing = copy.deepcopy(_qualification_v3_receipt())
     del missing["body"]["run_nonce"]
@@ -11934,11 +11958,42 @@ def test_qualification_v3_runtime_schema_mutation_contract():
             runtime = True
         except ValueError:
             runtime = False
-        schema_valid = not tuple(
-            jsonschema.Draft202012Validator(schema).iter_errors(receipt)
-        )
+        schema_valid = not tuple(validator.iter_errors(receipt))
         outcomes.append((runtime, schema_valid))
     assert outcomes == [(False, False), (False, False), (False, False), (False, False)]
+
+
+def test_qualification_v3_schema_fragments_stay_below_file_cap():
+    # Audit 2026-08-09 P2.2: externally referenced schema fragments remain reviewable.
+    schemas = sorted(Path("rfcs/schemas").glob("no1-008a-cell-receipt-v3*.schema.json"))
+    assert [path.name for path in schemas] == [
+        "no1-008a-cell-receipt-v3-body.schema.json",
+        "no1-008a-cell-receipt-v3-common.schema.json",
+        "no1-008a-cell-receipt-v3-fields-a.schema.json",
+        "no1-008a-cell-receipt-v3-fields-b.schema.json",
+        "no1-008a-cell-receipt-v3.schema.json",
+    ]
+    assert {path.name: len(path.read_text().splitlines()) for path in schemas} == {
+        "no1-008a-cell-receipt-v3-body.schema.json": 62,
+        "no1-008a-cell-receipt-v3-common.schema.json": 256,
+        "no1-008a-cell-receipt-v3-fields-a.schema.json": 211,
+        "no1-008a-cell-receipt-v3-fields-b.schema.json": 406,
+        "no1-008a-cell-receipt-v3.schema.json": 35,
+    }
+
+
+def test_qualification_v3_verify_requires_external_config_anchor():
+    # Audit 2026-08-09 B2: verification cannot authorize evidence-local config.
+    operator = Path("scripts/no1_008a_operator.sh").read_text()
+    verify_branch = operator[
+        operator.index("if [[ $COMMAND == verify ]]") : operator.index(
+            "else", operator.index("if [[ $COMMAND == verify ]]")
+        )
+    ]
+    assert "--trusted-public-config" in operator
+    assert "--trusted-public-config-sha256" in operator
+    assert 'PUBLIC_CONFIG="$EXPERIMENT_ROOT/public-config.json"' in verify_branch
+    assert "stage_inputs compare" in verify_branch
 
 
 _mark_posix_qualification_section_tests()

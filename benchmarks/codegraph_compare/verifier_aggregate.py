@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import secrets
 from collections.abc import Callable, Mapping, Sequence
@@ -94,7 +95,7 @@ def aggregate_verdict(
             "plan_set_hash": config["trusted"]["plan_set_hash"],
             "run_nonce": exact["verifier_nonce"],
         }:
-            raise ValueError("fresh run contract mismatch")
+            raise ValueError("run correlation contract mismatch")
         from benchmarks.codegraph_compare.verifier_evidence import _canonical_plan_hash
 
         plan_hashes = [
@@ -159,25 +160,66 @@ def aggregate_verdict(
         if observed_receipts == 14 and observed_attempts == [1] * 14
         else None,
         "counters": dict(ZERO_COUNTERS),
+        "cell_diagnostics": [
+            {
+                "repo_id": EXPECTED_CELLS[index][0],
+                "arm_id": EXPECTED_CELLS[index][1],
+                "reasons": list(reasons),
+            }
+            for index, reasons in enumerate(violations)
+        ],
     }
 
 
+_PINNED_FDS: list[int] = []
+
+
+def _pin_regular(path: Path, label: str) -> str:
+    descriptor = os.open(
+        path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+    )
+    if not __import__("stat").S_ISREG(os.fstat(descriptor).st_mode):
+        os.close(descriptor)
+        raise ValueError(f"{label} is not regular")
+    _PINNED_FDS.append(descriptor)
+    return f"/proc/self/fd/{descriptor}"
+
+
+def _read_regular(path: Path, label: str) -> bytes:
+    descriptor = os.open(
+        path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        if not __import__("stat").S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError(f"{label} is not regular")
+        chunks = bytearray()
+        while chunk := os.read(descriptor, 1024 * 1024):
+            chunks.extend(chunk)
+            if len(chunks) > 16 * 1024 * 1024:
+                raise ValueError(f"{label} exceeds size limit")
+        return bytes(chunks)
+    finally:
+        os.close(descriptor)
+
+
 def _load_manifest(path: Path) -> dict[str, Any]:
-    raw = strict_json_loads(path.read_bytes())
+    raw = strict_json_loads(_read_regular(path, "manifest"))
     root = path.parent.resolve(strict=True)
     validate_manifest(raw)
     contract_relative = canonical_relative_path(raw["run_contract"])
     contract_target = _safe_path(str(root / contract_relative), "run contract")
     if root not in contract_target.parents:
         raise ValueError("run contract escaped controlled root")
-    raw["run_contract"] = strict_json_loads(contract_target.read_bytes())
+    raw["run_contract"] = strict_json_loads(
+        _read_regular(contract_target, "run contract")
+    )
     for cell in raw["cells"]:
         for name in ("plan", "inventory", "receipt"):
             relative = canonical_relative_path(cell[name])
             target = _safe_path(str(root / relative), "manifest document")
             if root not in target.parents:
                 raise ValueError("manifest document escaped controlled root")
-            cell[name] = strict_json_loads(target.read_bytes())
+            cell[name] = strict_json_loads(_read_regular(target, "manifest document"))
         for name in (
             "data_image",
             "hash_image",
@@ -191,7 +233,7 @@ def _load_manifest(path: Path) -> dict[str, Any]:
             target = _safe_path(str(root / relative), "manifest evidence")
             if root not in target.parents:
                 raise ValueError("manifest evidence escaped controlled root")
-            cell[name] = str(target)
+            cell[name] = _pin_regular(target, "manifest evidence")
     return raw
 
 
@@ -202,16 +244,33 @@ def main(argv: Sequence[str] | None = None) -> int:
     aggregate = sub.add_parser("aggregate")
     for command in (cell, aggregate):
         command.add_argument("--manifest", required=True)
-        command.add_argument("--public-config", required=True)
+        command.add_argument("--trusted-public-config", required=True)
+        command.add_argument("--trusted-public-config-sha256", required=True)
+        command.add_argument("--evidence-public-config", required=True)
         command.add_argument("--output", required=True)
         command.add_argument("--verifier-image-digest", required=True)
         command.add_argument("--verifier-nonce", required=True)
     cell.add_argument("--ordinal", required=True, type=int)
     args = parser.parse_args(argv)
     manifest = _load_manifest(_safe_path(args.manifest, "manifest"))
-    config = parse_public_config(
-        _safe_path(args.public_config, "public config").read_bytes()
+    trusted_payload = _read_regular(
+        _safe_path(args.trusted_public_config, "trusted public config"),
+        "trusted public config",
     )
+    evidence_payload = _read_regular(
+        _safe_path(args.evidence_public_config, "evidence public config"),
+        "evidence public config",
+    )
+    if (
+        len(args.trusted_public_config_sha256) != 64
+        or hashlib.sha256(trusted_payload).hexdigest()
+        != args.trusted_public_config_sha256
+        or hashlib.sha256(evidence_payload).hexdigest()
+        != args.trusted_public_config_sha256
+        or trusted_payload != evidence_payload
+    ):
+        raise ValueError("public config does not match external trust anchor")
+    config = parse_public_config(trusted_payload)
     if (
         args.verifier_nonce != manifest["verifier_nonce"]
         or args.verifier_image_digest != manifest["verifier_image_digest"]

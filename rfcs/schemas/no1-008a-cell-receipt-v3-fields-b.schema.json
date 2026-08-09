@@ -1,0 +1,406 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://tree-sitter-analyzer.invalid/schemas/no1-008a-cell-receipt-v3-fields-b.schema.json",
+ "$defs": {
+  "executions": {
+   "type": "array",
+   "minItems": 5,
+   "maxItems": 5,
+   "prefixItems": [
+    {
+     "allOf": [
+      {
+       "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/execution"
+      },
+      {
+       "properties": {
+        "id": {
+         "const": "delete"
+        }
+       },
+       "required": [
+        "id"
+       ]
+      }
+     ]
+    },
+    {
+     "allOf": [
+      {
+       "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/execution"
+      },
+      {
+       "properties": {
+        "id": {
+         "const": "build"
+        }
+       },
+       "required": [
+        "id"
+       ]
+      }
+     ]
+    },
+    {
+     "allOf": [
+      {
+       "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/execution"
+      },
+      {
+       "properties": {
+        "id": {
+         "const": "health"
+        }
+       },
+       "required": [
+        "id"
+       ]
+      }
+     ]
+    },
+    {
+     "allOf": [
+      {
+       "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/execution"
+      },
+      {
+       "properties": {
+        "id": {
+         "const": "symbol"
+        }
+       },
+       "required": [
+        "id"
+       ]
+      }
+     ]
+    },
+    {
+     "allOf": [
+      {
+       "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/execution"
+      },
+      {
+       "properties": {
+        "id": {
+         "const": "call"
+        }
+       },
+       "required": [
+        "id"
+       ]
+      }
+     ]
+    }
+   ],
+   "items": false
+  },
+  "index_partition": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "indexed_paths",
+    "excluded_paths",
+    "parse_error_paths",
+    "indexed_paths_hash",
+    "excluded_paths_hash",
+    "parse_error_paths_hash"
+   ],
+   "properties": {
+    "indexed_paths": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {
+      "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/relativePath"
+     }
+    },
+    "excluded_paths": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {
+      "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/relativePath"
+     }
+    },
+    "parse_error_paths": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {
+      "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/relativePath"
+     }
+    },
+    "indexed_paths_hash": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "excluded_paths_hash": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "parse_error_paths_hash": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    }
+   }
+  },
+  "snapshot": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "format",
+    "data_image_sha256",
+    "data_image_size",
+    "hash_image_sha256",
+    "hash_image_size",
+    "root_hash",
+    "salt",
+    "data_block_size",
+    "hash_block_size",
+    "data_blocks",
+    "tree_hash",
+    "index_content_hash"
+   ],
+   "properties": {
+    "format": {
+     "const": "dm-verity-v1"
+    },
+    "data_image_sha256": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "hash_image_sha256": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "root_hash": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "salt": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "tree_hash": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "index_content_hash": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "data_image_size": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/positive"
+    },
+    "hash_image_size": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/positive"
+    },
+    "data_block_size": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/positive"
+    },
+    "hash_block_size": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/positive"
+    },
+    "data_blocks": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/positive"
+    }
+   }
+  },
+  "process_audit": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "producer_container_id",
+    "actual_image_id",
+    "launch_token_sha256",
+    "container_user",
+    "readonly_rootfs",
+    "cap_drop",
+    "mounts",
+    "resource_limits",
+    "tmpfs",
+    "image_digest",
+    "cgroup_id",
+    "network_mode",
+    "security_opt",
+    "restart_count",
+    "terminal_pid",
+    "launch_count",
+    "cgroup_processes_after_stop",
+    "pid1_exit",
+    "run_nonce",
+    "resource_observations",
+    "audit_bytes"
+   ],
+   "properties": {
+    "producer_container_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4096
+    },
+    "image_digest": {
+     "type": "string",
+     "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "cgroup_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4096
+    },
+    "network_mode": {
+     "const": "none"
+    },
+    "security_opt": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "restart_count": {
+     "const": 0
+    },
+    "terminal_pid": {
+     "const": 0
+    },
+    "launch_count": {
+     "const": 1
+    },
+    "cgroup_processes_after_stop": {
+     "const": []
+    },
+    "pid1_exit": {
+     "const": 0
+    },
+    "run_nonce": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "resource_observations": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "wall_ns",
+      "cpu_usec",
+      "io_bytes",
+      "memory_peak_bytes",
+      "pids_peak"
+     ],
+     "properties": {
+      "wall_ns": {
+       "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/nonnegative"
+      },
+      "cpu_usec": {
+       "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/nonnegative"
+      },
+      "io_bytes": {
+       "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/nonnegative"
+      },
+      "memory_peak_bytes": {
+       "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/nonnegative"
+      },
+      "pids_peak": {
+       "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/nonnegative"
+      }
+     }
+    },
+    "audit_bytes": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/blob"
+    },
+    "actual_image_id": {
+     "type": "string",
+     "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "launch_token_sha256": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    },
+    "container_user": {
+     "const": "65532:65532"
+    },
+    "readonly_rootfs": {
+     "const": true
+    },
+    "cap_drop": {
+     "const": [
+      "ALL"
+     ]
+    },
+    "mounts": {
+     "type": "array",
+     "minItems": 4,
+     "maxItems": 4,
+     "items": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3
+     }
+    },
+    "resource_limits": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "pids_limit",
+      "memory",
+      "nano_cpus"
+     ],
+     "properties": {
+      "pids_limit": {
+       "const": 64
+      },
+      "memory": {
+       "const": 4294967296
+      },
+      "nano_cpus": {
+       "const": 1000000000
+      }
+     }
+    },
+    "tmpfs": {
+     "const": {
+      "/tmp": "rw,noexec,nosuid,nodev,size=64m"
+     }
+    }
+   }
+  },
+  "oracle_approval": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "approved",
+    "statement",
+    "oracle_results_hash"
+   ],
+   "properties": {
+    "approved": {
+     "const": true
+    },
+    "statement": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 4096
+    },
+    "oracle_results_hash": {
+     "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+    }
+   }
+  },
+  "run_nonce": {
+   "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+  },
+  "role_images": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "producer",
+    "executor",
+    "approver",
+    "verifier"
+   ],
+   "properties": {
+    "producer": {
+     "type": "string",
+     "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "executor": {
+     "type": "string",
+     "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "approver": {
+     "type": "string",
+     "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "verifier": {
+     "type": "string",
+     "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+   }
+  }
+ }
+}

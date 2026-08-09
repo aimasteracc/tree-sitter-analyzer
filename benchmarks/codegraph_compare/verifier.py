@@ -295,7 +295,7 @@ def verify_cell(
             or _IMAGE.fullmatch(verifier_image_digest) is None
             or not process_identity
         ):
-            raise ValueError("fresh verifier binding invalid")
+            raise ValueError("run correlation/verifier binding invalid")
         verify_receipt(
             receipt,
             config["executor"]["key_id"],
@@ -305,7 +305,7 @@ def verify_cell(
         )
         body = receipt["body"]
         if body["run_nonce"] != verifier_nonce:
-            raise ValueError("fresh run nonce mismatch")
+            raise ValueError("run correlation nonce mismatch")
         if (
             process_identity
             in {
@@ -314,7 +314,7 @@ def verify_cell(
             }
             or verifier_image_digest == body["process_audit"]["image_digest"]
         ):
-            raise ValueError("verifier is not fresh")
+            raise ValueError("verifier process is not isolated from producer")
         _verify_trusted_inputs(body, plan, inventory, evidence, config)
         if verifier_image_digest != config["trusted"]["images"]["verifier"]:
             raise ValueError("unauthorized verifier image")
@@ -331,8 +331,15 @@ def verify_cell(
             for descriptor in image_fds:
                 os.close(descriptor)
         return ()
-    except (KeyError, OSError, subprocess.SubprocessError, TypeError, ValueError):
-        return ("CELL_EVIDENCE_INVALID",)
+    except (
+        KeyError,
+        OSError,
+        subprocess.SubprocessError,
+        TypeError,
+        ValueError,
+    ) as error:
+        reason = str(error).strip().replace("\n", " ")[:512] or type(error).__name__
+        return (f"CELL_EVIDENCE_INVALID:{reason}",)
 
 
 # Lazy compatibility wrappers keep one public API without an import cycle.

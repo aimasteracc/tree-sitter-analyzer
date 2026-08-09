@@ -206,7 +206,7 @@ def _blob(raw: Path, name: str, payload: bytes) -> dict[str, Any]:
     }
 
 
-def _index_bytes(index: Path) -> bytes:
+def _final_index_observation(index: Path) -> bytes:
     records = []
     if index.exists():
         for path in sorted(index.rglob("*")):
@@ -280,7 +280,7 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
             stderr = (error.stderr or b"") + (tail_stderr or b"")
         after = resource.getrusage(resource.RUSAGE_CHILDREN)
         query = canonical_json_bytes(execution["query"])
-        index_snapshot = _index_bytes(index)
+        index_snapshot = _final_index_observation(index)
         prefix = f"{number:02d}-{execution['id']}"
         records.append(
             {
@@ -292,7 +292,9 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
                 "stdout_bytes": _blob(raw, prefix + "-stdout", stdout),
                 "stderr_bytes": _blob(raw, prefix + "-stderr", stderr),
                 "query_bytes": _blob(raw, prefix + "-query", query),
-                "index_bytes": _blob(raw, prefix + "-index", index_snapshot),
+                "final_index_observation": _blob(
+                    raw, prefix + "-index", index_snapshot
+                ),
                 "cpu_seconds": (after.ru_utime + after.ru_stime)
                 - (before.ru_utime + before.ru_stime),
             }

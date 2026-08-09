@@ -7,7 +7,7 @@ import os
 import stat
 import tarfile
 from collections.abc import Callable, Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from cryptography.exceptions import InvalidSignature
@@ -17,8 +17,13 @@ from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
 )
+from benchmarks.codegraph_compare.setup_qualification_paths import (
+    canonical_relative_path,
+)
+from benchmarks.codegraph_compare.setup_qualification_plan import DEFAULT_SOURCE_RULES
 
 Runner = Callable[[Sequence[str]], Any]
+TMPFS_TARGET = Path("/").joinpath("tmp").as_posix()
 
 
 def _safe_path(raw: Any, label: str) -> Path:
@@ -30,6 +35,10 @@ def _safe_path(raw: Any, label: str) -> Path:
     ):
         raise ValueError(f"{label} contains a comma or control character")
     path = Path(raw)
+    if str(path).startswith("/proc/self/fd/"):
+        descriptor = int(path.name)
+        os.fstat(descriptor)
+        return path
     if not path.is_absolute() or path.resolve(strict=True) != path:
         raise ValueError(f"{label} must be canonical, absolute, and existing")
     current = Path(path.anchor)
@@ -40,10 +49,16 @@ def _safe_path(raw: Any, label: str) -> Path:
     return path
 
 
+def _open_evidence(path: Path) -> int:
+    if str(path).startswith("/proc/self/fd/"):
+        descriptor = os.dup(int(path.name))
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        return descriptor
+    return os.open(path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0))
+
+
 def _sha_file(path: Path) -> tuple[int, str]:
-    descriptor = os.open(
-        path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
-    )
+    descriptor = _open_evidence(path)
     digest = hashlib.sha256()
     size = 0
     try:
@@ -99,26 +114,123 @@ def _verify_trusted_inputs(
         != trusted["inventory_sha256"][repo]
     ):
         raise ValueError("canonical inventory hash mismatch")
-    if (
-        _sha_evidence(evidence["source_snapshot"], "source snapshot")
-        != trusted["source_snapshot_sha256"][repo]
-    ):
-        raise ValueError("immutable source snapshot hash mismatch")
-    with tarfile.open(
-        _safe_path(evidence["source_snapshot"], "source snapshot"), "r:"
-    ) as archive:
-        members = archive.getmembers()
-        if any(
-            member.issym() or member.islnk() or not (member.isfile() or member.isdir())
-            for member in members
+    source_path = _safe_path(evidence["source_snapshot"], "source snapshot")
+    source_fd = _open_evidence(source_path)
+    try:
+        source_digest = hashlib.sha256()
+        while chunk := os.read(source_fd, 1024 * 1024):
+            source_digest.update(chunk)
+        if source_digest.hexdigest() != trusted["source_snapshot_sha256"][repo]:
+            raise ValueError("immutable source snapshot hash mismatch")
+        os.lseek(source_fd, 0, os.SEEK_SET)
+        with (
+            os.fdopen(os.dup(source_fd), "rb") as stream,
+            tarfile.open(fileobj=stream, mode="r:") as archive,
         ):
-            raise ValueError("source snapshot contains unsafe member")
-        regular = {member.name for member in members if member.isfile()}
-    eligibility = inventory.get("eligibility", inventory)
-    if eligibility.get("repo_id") != repo or not set(
-        eligibility.get("tracked_regular_paths", ())
-    ).issubset(regular):
-        raise ValueError("source snapshot does not contain trusted inventory")
+            members = archive.getmembers()
+            for member in members:
+                canonical_relative_path(member.name)
+            if any(
+                member.issym()
+                or member.islnk()
+                or not (member.isfile() or member.isdir())
+                for member in members
+            ):
+                raise ValueError("source snapshot contains unsafe member")
+            regular_members = {
+                member.name: member for member in members if member.isfile()
+            }
+            if len(regular_members) != sum(member.isfile() for member in members):
+                raise ValueError("source snapshot contains duplicate regular paths")
+            eligibility = inventory.get("eligibility", inventory)
+            tracked = eligibility.get("tracked_files")
+            if type(tracked) is not list:
+                raise ValueError("source inventory lacks tracked file records")
+            tracked_paths = [item[0] for item in tracked]
+            if tracked_paths != eligibility.get("tracked_regular_paths"):
+                raise ValueError("tracked source paths mismatch")
+            if set(tracked_paths) != set(regular_members):
+                raise ValueError("source snapshot regular inventory mismatch")
+            files: list[tuple[str, str, str, str]] = []
+            contents: dict[str, bytes] = {}
+            for path, mode, object_id, expected_size, content_hash in tracked:
+                extracted = archive.extractfile(regular_members[path])
+                if extracted is None:
+                    raise ValueError("tracked source is not extractable")
+                payload = extracted.read(expected_size + 1)
+                if len(payload) != expected_size:
+                    raise ValueError("tracked source size mismatch")
+                digest = hashlib.sha256(payload).hexdigest()
+                algorithm = hashlib.sha1 if len(object_id) == 40 else hashlib.sha256
+                git_oid = algorithm(
+                    f"blob {len(payload)}\0".encode("ascii") + payload
+                ).hexdigest()
+                if digest != content_hash or git_oid != object_id:
+                    raise ValueError("tracked source blob identity mismatch")
+                contents[path] = payload
+                files.append((path, mode, object_id, digest))
+    finally:
+        os.close(source_fd)
+    rules = DEFAULT_SOURCE_RULES
+    if (
+        eligibility.get("repo_id") != repo
+        or eligibility.get("source_rules_hash") != rules.digest
+    ):
+        raise ValueError("source rules authority mismatch")
+    records = eligibility.get("tracked_entries")
+    if type(records) is not list or any(
+        type(item) is not list or len(item) != 3 for item in records
+    ):
+        raise ValueError("tracked Git entries missing")
+    regular_records = [[item[0], item[1], item[2]] for item in tracked]
+    if [item for item in records if item[1] in {"100644", "100755"}] != regular_records:
+        raise ValueError("tracked regular Git entries mismatch")
+    expected_eligible: list[str] = []
+    expected_excluded: list[list[str]] = [
+        [path, "gitlink" if mode == "160000" else "symlink"]
+        for path, mode, _oid in records
+        if mode in {"160000", "120000"}
+    ]
+    if any(
+        mode not in {"100644", "100755", "160000", "120000"} for _, mode, _ in records
+    ):
+        raise ValueError("unsupported tracked Git mode")
+    extensions = rules.extensions(repo)
+    for path in tracked_paths:
+        components = path.split("/")
+        reason = None
+        if PurePosixPath(path).suffix not in extensions:
+            reason = "extension"
+        elif any(part in rules.excluded_components for part in components[:-1]):
+            reason = "excluded-component"
+        elif any(path.endswith(suffix) for suffix in rules.minified_suffixes):
+            reason = "minified"
+        elif any(marker in contents[path] for marker in rules.generated_markers):
+            reason = "generated"
+        if reason is None:
+            expected_eligible.append(path)
+        else:
+            expected_excluded.append([path, reason])
+    expected_excluded.sort()
+
+    def sha_json(value: Any) -> str:
+        return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+    if (
+        eligibility.get("tracked_inventory_hash") != sha_json(records)
+        or eligibility.get("eligible_paths") != expected_eligible
+        or eligibility.get("eligible_paths_hash") != sha_json(expected_eligible)
+        or eligibility.get("prefilter_exclusions") != expected_excluded
+        or eligibility.get("repo_fingerprint")
+        != sha_json(
+            {
+                "commit": eligibility.get("commit"),
+                "inventory": records,
+                "files": files,
+            }
+        )
+    ):
+        raise ValueError("source inventory semantic recomputation mismatch")
     for name in ("tool", "config", "seccomp"):
         if _sha_evidence(evidence[name], name) != trusted[f"{name}_sha256"]:
             raise ValueError(f"trusted {name} bytes mismatch")
@@ -143,10 +255,7 @@ def _verify_verity(
         _safe_path(evidence["data_image"], "data image"),
         _safe_path(evidence["hash_image"], "hash image"),
     )
-    descriptors = tuple(
-        os.open(path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0))
-        for path in paths
-    )
+    descriptors = tuple(_open_evidence(path) for path in paths)
     try:
         observed: list[int | str] = []
         for descriptor in descriptors:
@@ -201,13 +310,31 @@ def _verify_external_audit(
     body: Mapping[str, Any], evidence: Mapping[str, Any], config: Mapping[str, Any]
 ) -> Mapping[str, Any]:
     audit_path = _safe_path(evidence["process_audit"], "signed host audit")
-    envelope = strict_json_loads(audit_path.read_bytes())
+    audit_fd = _open_evidence(audit_path)
+    try:
+        if not stat.S_ISREG(os.fstat(audit_fd).st_mode):
+            raise ValueError("signed host audit is not regular")
+        chunks = bytearray()
+        while chunk := os.read(audit_fd, 1024 * 1024):
+            chunks.extend(chunk)
+        payload = bytes(chunks)
+    finally:
+        os.close(audit_fd)
+    envelope = strict_json_loads(payload)
     if frozenset(envelope) != frozenset({"audit", "key_id", "algorithm", "signature"}):
         raise ValueError("host audit envelope is not closed")
     audit = envelope["audit"]
     required = frozenset(
         {
             "producer_container_id",
+            "actual_image_id",
+            "launch_token_sha256",
+            "container_user",
+            "readonly_rootfs",
+            "cap_drop",
+            "mounts",
+            "resource_limits",
+            "tmpfs",
             "image_digest",
             "cgroup_id",
             "network_mode",
@@ -241,6 +368,7 @@ def _verify_external_audit(
         or audit["terminal_pid"] != 0
         or audit["launch_count"] != 1
         or audit["cgroup_processes_after_stop"] != []
+        or audit["pid1_exit"] != 0
     ):
         raise ValueError(
             "host audit does not prove terminal isolated one-launch execution"
@@ -251,6 +379,15 @@ def _verify_external_audit(
     ]
     if audit["security_opt"] != expected_security:
         raise ValueError("host audit security options mismatch")
+    if (
+        audit["container_user"] != "65532:65532"
+        or audit["readonly_rootfs"] is not True
+        or audit["cap_drop"] != ["ALL"]
+        or audit["resource_limits"]
+        != {"pids_limit": 64, "memory": 4294967296, "nano_cpus": 1000000000}
+        or audit["tmpfs"] != {TMPFS_TARGET: "rw,noexec,nosuid,nodev,size=64m"}
+    ):
+        raise ValueError("host audit isolation facts mismatch")
     if audit["run_nonce"] != body["run_nonce"]:
         raise ValueError("signed host audit nonce mismatch")
     if audit["resource_observations"] != {
@@ -266,7 +403,6 @@ def _verify_external_audit(
     if expected != audit:
         raise ValueError("receipt host audit facts mismatch")
     blob = body["process_audit"]["audit_bytes"]
-    payload = audit_path.read_bytes()
     if (
         len(payload) != blob["size_bytes"]
         or hashlib.sha256(payload).hexdigest() != blob["sha256"]

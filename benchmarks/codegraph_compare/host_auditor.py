@@ -1,20 +1,28 @@
-"""Independent signed host launch auditor for NO1-008A."""
+"""Independent two-phase signed host auditor for NO1-008A."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
+from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+from benchmarks.codegraph_compare.receipt_v3 import (
+    canonical_json_bytes,
+    strict_json_loads,
+)
 
 DOMAIN = b"NO1-008A-HOST-AUDIT-V1\0"
+LAUNCH_DOMAIN = b"NO1-008A-HOST-LAUNCH-V1\0"
+TMPFS_TARGET = Path("/").joinpath("tmp").as_posix()
 
 
 def _run(*args: str) -> bytes:
@@ -26,56 +34,216 @@ def _run(*args: str) -> bytes:
     return result.stdout
 
 
-def audit(
+def _inspect(container: str) -> dict[str, Any]:
+    rows = json.loads(_run("docker", "inspect", container))
+    if type(rows) is not list or len(rows) != 1 or type(rows[0]) is not dict:
+        raise ValueError("docker inspect identity mismatch")
+    inspected: dict[str, Any] = rows[0]
+    # Names are permitted at launch; returned immutable ID becomes authority.
+    return inspected
+
+
+def _read(path: Path) -> bytes:
+    fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError("host fact is not regular")
+        out = bytearray()
+        while chunk := os.read(fd, 1024 * 1024):
+            out.extend(chunk)
+        return bytes(out)
+    finally:
+        os.close(fd)
+
+
+def _cgroup(pid: int) -> tuple[Path, str]:
+    raw = _read(Path(f"/proc/{pid}/cgroup")).decode("ascii")
+    rows = [line.split(":", 2) for line in raw.splitlines()]
+    matches = [row[2] for row in rows if row[:2] == ["0", ""]]
+    if len(matches) != 1 or not matches[0].startswith("/"):
+        raise ValueError("container unified cgroup missing")
+    relative = matches[0]
+    root = Path("/sys/fs/cgroup") / relative.lstrip("/")
+    if root.resolve(strict=True) != root:
+        raise ValueError("container cgroup is not canonical")
+    return root, relative
+
+
+def _key(path: Path) -> bytes:
+    payload = _read(path)
+    if len(payload) != 32:
+        raise ValueError("auditor key size invalid")
+    return payload
+
+
+def _sign(
+    payload: dict[str, Any], key: bytes, key_id: str, domain: bytes = DOMAIN
+) -> dict[str, Any]:
+    return {
+        "audit": payload,
+        "key_id": key_id,
+        "algorithm": "Ed25519",
+        "signature": Ed25519PrivateKey.from_private_bytes(key)
+        .sign(domain + canonical_json_bytes(payload))
+        .hex(),
+    }
+
+
+def _verify_launch(envelope: dict[str, Any], key: bytes) -> dict[str, Any]:
+    if frozenset(envelope) != {"audit", "key_id", "algorithm", "signature"}:
+        raise ValueError("launch token envelope invalid")
+    Ed25519PrivateKey.from_private_bytes(key).public_key().verify(
+        bytes.fromhex(envelope["signature"]),
+        LAUNCH_DOMAIN + canonical_json_bytes(envelope["audit"]),
+    )
+    audit = envelope["audit"]
+    if type(audit) is not dict:
+        raise ValueError("launch token payload invalid")
+    return audit
+
+
+def launch(
     container: str,
-    cgroup_procs: Path,
-    seccomp: Path,
     expected_image: str,
+    seccomp: Path,
+    source: Path,
+    plan: Path,
+    inventory: Path,
+    output: Path,
     since: str,
     run_nonce: str,
-) -> dict[str, object]:
-    inspected = json.loads(_run("docker", "inspect", container))[0]
+) -> dict[str, Any]:
+    inspected = _inspect(container)
     state = inspected["State"]
     host = inspected["HostConfig"]
-    configured_image = inspected["Config"]["Image"]
-    if configured_image != expected_image:
-        raise ValueError("docker inspect configured producer image differs")
-    actual = expected_image.split("@")[-1].removeprefix("sha256:")
-    security = []
-    for value in host["SecurityOpt"]:
-        security.append(
-            "seccomp=" + hashlib.sha256(seccomp.read_bytes()).hexdigest()
-            if value.startswith("seccomp=")
-            else value
-        )
+    cid = inspected["Id"]
+    pid = state["Pid"]
+    if not state["Running"] or type(pid) is not int or pid <= 0:
+        raise ValueError("producer is not running at launch audit")
+    cgroup_root, cgroup_rel = _cgroup(pid)
+    actual_image = json.loads(_run("docker", "image", "inspect", expected_image))[0][
+        "Id"
+    ]
+    if (
+        inspected["Config"]["Image"] != expected_image
+        or inspected["Image"] != actual_image
+    ):
+        raise ValueError("actual producer image identity mismatch")
+    expected_mounts = {
+        (str(source), "/source", True),
+        (str(plan), "/plan/cell-plan.json", True),
+        (str(inventory), "/plan/inventory.json", True),
+        (str(output), "/out", False),
+    }
+    actual_mounts = {
+        (m["Source"], m["Destination"], not m["RW"]) for m in inspected["Mounts"]
+    }
+    if actual_mounts != expected_mounts:
+        raise ValueError("producer bind mounts/source paths/RO flags mismatch")
+    seccomp_path = str(seccomp)
+    expected_security = ["no-new-privileges", f"seccomp={seccomp_path}"]
+    if host["SecurityOpt"] != expected_security:
+        raise ValueError("actual Docker security options mismatch")
+    if (
+        inspected["Config"]["User"] != "65532:65532"
+        or host["ReadonlyRootfs"] is not True
+        or host["CapDrop"] != ["ALL"]
+        or host["NetworkMode"] != "none"
+    ):
+        raise ValueError("producer isolation flags mismatch")
+    limits = {
+        "pids_limit": host["PidsLimit"],
+        "memory": host["Memory"],
+        "nano_cpus": host["NanoCpus"],
+    }
+    if limits != {"pids_limit": 64, "memory": 4294967296, "nano_cpus": 1000000000}:
+        raise ValueError("producer resource limits mismatch")
+    tmpfs = host["Tmpfs"]
+    if tmpfs != {TMPFS_TARGET: "rw,noexec,nosuid,nodev,size=64m"}:
+        raise ValueError("producer tmpfs flags mismatch")
+    return {
+        "producer_container_id": cid,
+        "launch_pid": pid,
+        "cgroup_relative": cgroup_rel,
+        "cgroup_id": str(cgroup_root),
+        "image_digest": expected_image.split("@")[-1],
+        "actual_image_id": actual_image,
+        "run_nonce": run_nonce,
+        "since": since,
+        "seccomp_path": seccomp_path,
+        "seccomp_sha256": hashlib.sha256(_read(seccomp)).hexdigest(),
+        "security_opt": expected_security,
+        "mounts": [list(x) for x in sorted(expected_mounts)],
+        "resource_limits": limits,
+        "tmpfs": tmpfs,
+        "container_user": "65532:65532",
+        "readonly_rootfs": True,
+        "cap_drop": ["ALL"],
+    }
+
+
+def terminal(
+    container: str, token_payload: bytes, seccomp: Path, expected_image: str, key: bytes
+) -> dict[str, Any]:
+    envelope = strict_json_loads(token_payload)
+    launched = _verify_launch(envelope, key)
+    cid = launched["producer_container_id"]
+    inspected = _inspect(cid)
+    if (
+        container not in {cid, inspected.get("Name", "").lstrip("/")}
+        and _inspect(container)["Id"] != cid
+    ):
+        raise ValueError("terminal container differs from launch")
+    state = inspected["State"]
+    if (
+        state["Running"]
+        or state["Pid"] != 0
+        or inspected["RestartCount"] != 0
+        or state["ExitCode"] != 0
+    ):
+        raise ValueError("producer terminal state invalid")
+    if (
+        inspected["Config"]["Image"] != expected_image
+        or inspected["Image"] != launched["actual_image_id"]
+    ):
+        raise ValueError("terminal image identity changed")
+    if (
+        launched["seccomp_path"] != str(seccomp)
+        or hashlib.sha256(_read(seccomp)).hexdigest() != launched["seccomp_sha256"]
+    ):
+        raise ValueError("staged seccomp identity changed")
     launches = sum(
         1
         for line in _run(
             "docker",
             "events",
             "--since",
-            since,
+            launched["since"],
             "--until",
-            str(int(__import__("time").time()) + 1),
+            str(int(time.time()) + 1),
             "--filter",
-            f"container={container}",
+            f"container={cid}",
             "--filter",
             "event=start",
             "--format",
             "{{.ID}}",
         ).splitlines()
-        if line.strip()
+        if line.strip() == cid.encode()
     )
-    processes = [int(line) for line in cgroup_procs.read_text().splitlines() if line]
-    root = cgroup_procs.parent
+    root = Path(launched["cgroup_id"])
+    processes = [
+        int(line) for line in _read(root / "cgroup.procs").splitlines() if line
+    ]
+    if launches != 1 or processes:
+        raise ValueError("launch count or terminal cgroup invalid")
 
     def scalar(name: str) -> int:
-        return int((root / name).read_text().strip())
+        return int(_read(root / name).strip())
 
-    cpu = dict(line.split() for line in (root / "cpu.stat").read_text().splitlines())
+    cpu = dict(line.split() for line in _read(root / "cpu.stat").decode().splitlines())
     io_bytes = sum(
         int(field.split("=")[1])
-        for line in (root / "io.stat").read_text().splitlines()
+        for line in _read(root / "io.stat").decode().splitlines()
         for field in line.split()[1:]
         if field.startswith(("rbytes=", "wbytes="))
     )
@@ -84,79 +252,90 @@ def audit(
     def parse(value: str) -> datetime:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
-    wall_ns = int(
-        (parse(state["FinishedAt"]) - parse(state["StartedAt"])).total_seconds()
-        * 1_000_000_000
-    )
     resources = {
-        "wall_ns": wall_ns,
+        "wall_ns": int(
+            (parse(state["FinishedAt"]) - parse(state["StartedAt"])).total_seconds()
+            * 1_000_000_000
+        ),
         "cpu_usec": int(cpu["usage_usec"]),
         "io_bytes": io_bytes,
         "memory_peak_bytes": scalar("memory.peak"),
         "pids_peak": scalar("pids.peak"),
     }
     return {
-        "producer_container_id": inspected["Id"],
-        "image_digest": "sha256:" + actual,
-        "cgroup_id": str(cgroup_procs.parent),
-        "network_mode": host["NetworkMode"],
-        "security_opt": security,
-        "restart_count": state["RestartCount"],
-        "terminal_pid": state["Pid"],
-        "launch_count": launches,
-        "cgroup_processes_after_stop": processes,
-        "pid1_exit": state["ExitCode"],
-        "run_nonce": run_nonce,
+        "producer_container_id": cid,
+        "image_digest": launched["image_digest"],
+        "actual_image_id": launched["actual_image_id"],
+        "cgroup_id": launched["cgroup_id"],
+        "network_mode": "none",
+        "security_opt": ["no-new-privileges", f"seccomp={launched['seccomp_sha256']}"],
+        "restart_count": 0,
+        "terminal_pid": 0,
+        "launch_count": 1,
+        "cgroup_processes_after_stop": [],
+        "pid1_exit": 0,
+        "run_nonce": launched["run_nonce"],
+        "launch_token_sha256": hashlib.sha256(token_payload).hexdigest(),
+        "container_user": launched["container_user"],
+        "readonly_rootfs": launched["readonly_rootfs"],
+        "cap_drop": launched["cap_drop"],
+        "mounts": launched["mounts"],
+        "resource_limits": launched["resource_limits"],
+        "tmpfs": launched["tmpfs"],
         "resource_observations": resources,
     }
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--container", required=True)
-    p.add_argument("--cgroup-procs", required=True)
-    p.add_argument("--seccomp", required=True)
-    p.add_argument("--expected-image", required=True)
-    p.add_argument("--since", required=True)
-    p.add_argument("--run-nonce", required=True)
-    p.add_argument("--private-key", required=True)
-    p.add_argument("--key-id", required=True)
+    sub = p.add_subparsers(dest="phase", required=True)
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--container", required=True)
+    common.add_argument("--seccomp", required=True)
+    common.add_argument("--expected-image", required=True)
+    common.add_argument("--private-key", required=True)
+    common.add_argument("--key-id", required=True)
+    launch_p = sub.add_parser("launch", parents=[common])
+    launch_p.add_argument("--source", required=True)
+    launch_p.add_argument("--plan", required=True)
+    launch_p.add_argument("--inventory", required=True)
+    launch_p.add_argument("--output", required=True)
+    launch_p.add_argument("--since", required=True)
+    launch_p.add_argument("--run-nonce", required=True)
+    term = sub.add_parser("terminal", parents=[common])
+    term.add_argument("--launch-token", required=True)
     a = p.parse_args(argv)
-    key = Path(a.private_key)
-    st = key.stat()
-    if (
-        not stat.S_ISREG(st.st_mode)
-        or stat.S_IMODE(st.st_mode) != 0o400
-        or st.st_uid != 0
-    ):
-        raise ValueError("auditor key permissions invalid")
-    raw = key.read_bytes()
-    if len(raw) != 32:
-        raise ValueError("auditor key length invalid")
-    facts = audit(
-        a.container,
-        Path(a.cgroup_procs),
-        Path(a.seccomp),
-        a.expected_image,
-        a.since,
-        a.run_nonce,
-    )
-    signature = (
-        Ed25519PrivateKey.from_private_bytes(raw)
-        .sign(DOMAIN + canonical_json_bytes(facts))
-        .hex()
-    )
-    sys.stdout.buffer.write(
-        canonical_json_bytes(
-            {
-                "audit": facts,
-                "key_id": a.key_id,
-                "algorithm": "Ed25519",
-                "signature": signature,
-            }
+    key = _key(Path(a.private_key))
+    if a.phase == "launch":
+        result = _sign(
+            launch(
+                a.container,
+                a.expected_image,
+                Path(a.seccomp),
+                Path(a.source),
+                Path(a.plan),
+                Path(a.inventory),
+                Path(a.output),
+                a.since,
+                a.run_nonce,
+            ),
+            key,
+            a.key_id,
+            LAUNCH_DOMAIN,
         )
-        + b"\n"
-    )
+    else:
+        result = _sign(
+            terminal(
+                a.container,
+                _read(Path(a.launch_token)),
+                Path(a.seccomp),
+                a.expected_image,
+                key,
+            ),
+            key,
+            a.key_id,
+        )
+    sys.stdout.buffer.write(canonical_json_bytes(result) + b"\n")
     return 0
 
 

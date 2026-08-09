@@ -196,9 +196,9 @@ def _terminate(process: subprocess.Popen[bytes]) -> None:
 def _batch_blob_metadata(
     repo: Path,
     requests: tuple[tuple[str, str], ...],
-    on_blob: Callable[[str, str, bool], None] | None = None,
+    on_blob: Callable[[str, str, bool, int], None] | None = None,
     generated_markers: tuple[bytes, ...] = (),
-) -> tuple[tuple[str, str, bool], ...]:
+) -> tuple[tuple[str, str, bool, int], ...]:
     """Stream pinned blobs once, retaining hashes and marker classifications."""
     if not requests:
         return ()
@@ -213,8 +213,8 @@ def _batch_blob_metadata(
         assert process.stdin is not None and process.stdout is not None
         stdin = process.stdin
         stdout = process.stdout
-        responses: queue.Queue[tuple[str, str, bool] | BaseException] = queue.Queue(
-            maxsize=1
+        responses: queue.Queue[tuple[str, str, bool, int] | BaseException] = (
+            queue.Queue(maxsize=1)
         )
 
         def read_responses() -> None:
@@ -225,13 +225,13 @@ def _batch_blob_metadata(
                         stdout, relative, expected_id, total, generated_markers
                     )
                     total += size
-                    responses.put((relative, digest, generated))
+                    responses.put((relative, digest, generated, size))
             except BaseException as exc:
                 responses.put(exc)
 
         reader = threading.Thread(target=read_responses, daemon=True)
         reader.start()
-        results: list[tuple[str, str, bool]] = []
+        results: list[tuple[str, str, bool, int]] = []
         try:
             for relative, object_id in requests:
                 stdin.write(object_id.encode("ascii") + b"\0")
@@ -286,6 +286,7 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
     eligible: list[str] = []
     excluded: list[tuple[str, str]] = []
     file_hashes: list[tuple[str, str, str, str]] = []
+    tracked_files: list[tuple[str, str, str, int, str]] = []
     extensions = rules.extensions(repo_id)
     regular_records: list[tuple[str, str, str]] = []
     preclassified: dict[str, str | None] = {}
@@ -317,10 +318,13 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
     root_fd = _open_root(repo)
     worktree_bytes_consumed = 0
 
-    def consume_blob(relative: str, content_hash: str, generated: bool) -> None:
+    def consume_blob(
+        relative: str, content_hash: str, generated: bool, size: int
+    ) -> None:
         nonlocal worktree_bytes_consumed
         mode, object_id = record_by_path[relative]
         file_hashes.append((relative, mode, object_id, content_hash))
+        tracked_files.append((relative, mode, object_id, size, content_hash))
         reason = preclassified[relative]
         if reason is None and generated:
             reason = "generated"
@@ -375,6 +379,8 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
         rules.digest,
         commit,
         tuple(regular),
+        records,
+        tuple(tracked_files),
         eligible_paths,
         tuple(sorted(excluded)),
         _sha256([(p, m, oid) for p, m, oid in records]),

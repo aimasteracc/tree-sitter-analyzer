@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import stat
 import tarfile
@@ -64,6 +65,28 @@ def copy_tree(source: Path, destination: Path) -> None:
         os.close(root)
 
 
+def digest_file(path: Path) -> str:
+    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError("trusted input is not regular")
+        digest = hashlib.sha256()
+        while chunk := os.read(descriptor, 1024 * 1024):
+            digest.update(chunk)
+        return digest.hexdigest()
+    finally:
+        os.close(descriptor)
+
+
+def compare_files(trusted: Path, evidence: Path, expected: str) -> None:
+    if len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected):
+        raise ValueError("trusted digest must be lowercase SHA-256")
+    trusted_digest = digest_file(trusted)
+    evidence_digest = digest_file(evidence)
+    if trusted_digest != expected or evidence_digest != expected:
+        raise ValueError("evidence public config is not the externally trusted config")
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="command", required=True)
@@ -74,9 +97,19 @@ def main(argv: list[str] | None = None) -> None:
     t.add_argument("source")
     t.add_argument("destination")
     t.add_argument("archive")
+    d = sub.add_parser("digest")
+    d.add_argument("source")
+    c = sub.add_parser("compare")
+    c.add_argument("trusted")
+    c.add_argument("evidence")
+    c.add_argument("sha256")
     a = p.parse_args(argv)
     if a.command == "file":
         copy_file(Path(a.source), Path(a.destination))
+    elif a.command == "digest":
+        print(digest_file(Path(a.source)))
+    elif a.command == "compare":
+        compare_files(Path(a.trusted), Path(a.evidence), a.sha256)
     else:
         copy_tree(Path(a.source), Path(a.destination))
         with tarfile.open(a.archive, "w", format=tarfile.PAX_FORMAT) as archive:

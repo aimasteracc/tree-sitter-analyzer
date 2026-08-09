@@ -159,7 +159,7 @@ def _verify_recomputed(
                 "stdout_bytes",
                 "stderr_bytes",
                 "query_bytes",
-                "index_bytes",
+                "final_index_observation",
             )
         }
         for item in producer_result.get("executions", [])
@@ -169,8 +169,15 @@ def _verify_recomputed(
         ZERO_COUNTERS
     ):
         raise ValueError("producer result mismatch")
-    for item, spec in zip(observed, expected_exec, strict=True):
-        for field in ("stdout_bytes", "stderr_bytes", "query_bytes", "index_bytes"):
+    for ordinal, (item, spec) in enumerate(zip(observed, expected_exec, strict=True)):
+        if item["id"] != spec.get("id") or item["argv"] != spec.get("argv"):
+            raise ValueError(f"authorized producer command order mismatch at {ordinal}")
+        for field in (
+            "stdout_bytes",
+            "stderr_bytes",
+            "query_bytes",
+            "final_index_observation",
+        ):
             blob = item[field]
             payload = _read_core(core, blob["path"], blob["size_bytes"])
             if hashlib.sha256(payload).hexdigest() != blob["sha256"]:
@@ -189,7 +196,9 @@ def _verify_recomputed(
         ):
             raise ValueError("expected result bytes mismatch")
         index_payload = _read_core(
-            core, item["index_bytes"]["path"], item["index_bytes"]["size_bytes"]
+            core,
+            item["final_index_observation"]["path"],
+            item["final_index_observation"]["size_bytes"],
         )
         index_records = strict_json_loads(b'{"records":' + index_payload + b"}")[
             "records"
@@ -199,11 +208,11 @@ def _verify_recomputed(
             or frozenset(record) != frozenset({"path", "size_bytes", "sha256"})
             for record in index_records
         ):
-            raise ValueError("historic index snapshot records invalid")
+            raise ValueError("final index observation records invalid")
         for record in index_records:
             payload = _read_core(core / "index", record["path"], record["size_bytes"])
             if hashlib.sha256(payload).hexdigest() != record["sha256"]:
-                raise ValueError("historic index snapshot content mismatch")
+                raise ValueError("final index observation content mismatch")
     partition = body["index_partition"]
     names = ("indexed_paths", "excluded_paths", "parse_error_paths")
     for name in names:
