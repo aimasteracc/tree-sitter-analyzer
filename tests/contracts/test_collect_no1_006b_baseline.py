@@ -151,9 +151,16 @@ def test_validator_rejects_stale_canonical_hash() -> None:
     with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,schema())
 
 
-def test_schema_supports_each_native_axis_without_fabricating_measurements() -> None:
-    report=copy.deepcopy(baseline()); report["measured_axis"]="linux"; report["environment"]["system"]="linux"; report["platform_axes"]={"macos":"unknown","linux":"measured_e0","windows":"unknown"}; report["canonical_payload_sha256"]=collector.canonical_hash(report)
+@pytest.mark.parametrize(("axis","os_label"),[("macos","macOS-26.4.1-arm64"),("linux","Linux-6.8.0-x86_64"),("windows","Windows-11-10.0.26100")])
+def test_schema_supports_each_native_axis_without_fabricating_measurements(axis: str, os_label: str) -> None:
+    report=copy.deepcopy(baseline()); report["measured_axis"]=axis; report["environment"]["system"]=axis; report["environment"]["os"]=os_label
+    report["platform_axes"]={name:("measured_e0" if name==axis else "unknown") for name in ("macos","linux","windows")}; report["canonical_payload_sha256"]=collector.canonical_hash(report)
     collector.validate_receipt(report,schema())
+
+
+def test_validator_rejects_environment_os_system_contradiction() -> None:
+    report=mutated(("environment","os"),"Windows-11-10.0.26100")
+    with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,schema())
 
 
 
@@ -334,7 +341,6 @@ def test_uv_export_ignores_hostile_config_file(monkeypatch: pytest.MonkeyPatch, 
     assert b"packaging==25.0" in result.stdout
 
 
-@pytest.mark.skipif(os.name == "nt", reason="tracked: NO1-006B collector currently emits macOS-only E0 receipts")
 def test_bound_blob_hash_is_independent_of_crlf_checkout(tmp_path: Path) -> None:
     repo=tmp_path/"repo"; repo.mkdir(); tracked=repo/"uv.lock"; tracked.write_bytes(b"version = 1\n")
     for command in (["git","init","-q"],["git","config","user.email","contract@example.invalid"],["git","config","user.name","Contract"],["git","add","uv.lock"],["git","commit","-qm","blob"]): subprocess.run(command,cwd=repo,check=True)
@@ -366,5 +372,18 @@ def test_external_interpreter_probe_preserves_clean_ignored_gate(tmp_path: Path)
     status=subprocess.run(["git","status","--porcelain=v1","--untracked-files=all","--ignored"],cwd=root,check=True,capture_output=True,text=True).stdout
     assert json.loads(result.stdout) == expected
     assert status == ""
+
+
+def test_verified_uv_resolves_and_attests_configured_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NO1_006B_UV",str(Path(shutil.which("uv") or "missing")))
+    path,version,digest=collector.verified_uv()
+    assert [path,version,digest] == [Path(shutil.which("uv") or "missing").resolve(),collector.EXPECTED_UV_VERSION,collector.EXPECTED_UV_SHA256]
+
+
+def test_verified_uv_rejects_digest_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake=tmp_path/("uv.exe" if os.name=="nt" else "uv"); fake.write_bytes(b"not uv")
+    monkeypatch.setenv("NO1_006B_UV",str(fake))
+    monkeypatch.setattr(collector,"run",lambda *args,**kwargs: subprocess.CompletedProcess([],0,(collector.EXPECTED_UV_VERSION+"\n").encode(),b""))
+    with pytest.raises(RuntimeError,match="identity mismatch"): collector.verified_uv()
 
 # fmt: on

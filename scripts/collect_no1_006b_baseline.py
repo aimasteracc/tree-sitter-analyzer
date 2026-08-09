@@ -11,6 +11,7 @@ import os
 import platform
 import re
 import selectors
+import shutil
 import signal
 import stat
 import subprocess
@@ -25,6 +26,8 @@ EXPECTED_SUBJECT_COMMIT = "7e0e8f6e03270fcbf4025d717415ef69c9354145"
 ROOT_NAME = "tree-sitter-analyzer"
 TOOL_GROUP = "no1-006b-collector-tool"
 HATCHLING_VERSION = "1.31.0"
+EXPECTED_UV_VERSION = "uv 0.12.3 (507230998 2026-08-07 aarch64-apple-darwin)"
+EXPECTED_UV_SHA256 = "2b4ccdac26598ca8c300e5c36d24297fa1471c350c46d2f34c835bf06be303ab"
 SCHEMA = Path(__file__).parents[1] / "schemas/no1-006b-baseline.schema.json"
 EXPECTED_MCP_TOOLS = sorted(["edit", "health", "index", "nav", "project", "search", "set_project_path", "structure", "viz"])
 MAX_CAPTURE_BYTES = 8 * 1024 * 1024
@@ -98,10 +101,50 @@ def git(repo: Path, *args: str) -> bytes:
     return run(["git", *args], cwd=repo, timeout=60).stdout
 
 
+def bounded_git(repo: Path, *args: str, timeout: int = 60) -> bytes:
+    # Git provenance reads must work on Windows, whose default selector cannot
+    # monitor anonymous subprocess pipes. Regular temporary files also let us
+    # enforce the byte ceiling while git is still running.
+    with tempfile.TemporaryDirectory(prefix="no1-006b-git-") as raw:
+        stdout_path=Path(raw)/"stdout"; stderr_path=Path(raw)/"stderr"
+        with stdout_path.open("w+b") as stdout, stderr_path.open("w+b") as stderr:
+            process=subprocess.Popen(["git",*args],cwd=repo,env=clean_env(),stdout=stdout,stderr=stderr,start_new_session=True)
+            deadline=time.monotonic()+timeout
+            while process.poll() is None:
+                if time.monotonic() >= deadline or stdout_path.stat().st_size+stderr_path.stat().st_size > MAX_CAPTURE_BYTES:
+                    process.kill(); process.wait(timeout=3)
+                    if time.monotonic() >= deadline: raise TimeoutError(f"git command exceeded {timeout} seconds")
+                    raise RuntimeError(f"git output exceeded {MAX_CAPTURE_BYTES} bytes")
+                time.sleep(0.01)
+            stdout.flush(); stderr.flush()
+            if stdout_path.stat().st_size+stderr_path.stat().st_size > MAX_CAPTURE_BYTES:
+                raise RuntimeError(f"git output exceeded {MAX_CAPTURE_BYTES} bytes")
+            stdout.seek(0); stderr.seek(0); output=stdout.read(); detail=stderr.read()
+        if process.returncode:
+            raise RuntimeError(f"git command failed ({process.returncode}): {args!r}: {detail[-4096:].decode(errors='replace')}")
+        return output
+
+
 def bound_blob(repo: Path, commit: str, relative: str) -> bytes:
-    tracked=git(repo,"ls-files","--error-unmatch",relative).decode().strip()
+    tracked=bounded_git(repo,"ls-files","--error-unmatch","--",relative).decode().strip()
     if tracked != relative: raise RuntimeError(f"collector provenance path is not tracked: {relative}")
-    return git(repo,"show",f"{commit}:{relative}")
+    return bounded_git(repo,"show",f"{commit}:{relative}")
+
+
+def verified_uv() -> tuple[Path,str,str]:
+    configured=os.environ.get("NO1_006B_UV")
+    discovered=configured or shutil.which("uv")
+    if not discovered: raise RuntimeError("trusted uv binary was not found; set NO1_006B_UV")
+    candidate=Path(discovered)
+    try: resolved=candidate.expanduser().resolve(strict=True)
+    except (OSError,RuntimeError) as error: raise RuntimeError("trusted uv binary cannot be resolved") from error
+    if not resolved.is_absolute() or not stat.S_ISREG(resolved.stat().st_mode):
+        raise RuntimeError("trusted uv binary must resolve to a regular file")
+    digest=sha256(resolved)
+    version=run([str(resolved),"--no-config","--version"],cwd=Path(__file__).resolve().parents[1]).stdout.decode().strip()
+    if version != EXPECTED_UV_VERSION or digest != EXPECTED_UV_SHA256:
+        raise RuntimeError(f"trusted uv identity mismatch: version={version!r}, sha256={digest}")
+    return resolved,version,digest
 
 
 def require_clean_subject(repo: Path, expected_commit: str) -> dict[str, str]:
@@ -183,8 +226,8 @@ print(json.dumps({'executable':sys.executable,'python':platform.python_version()
     return rows,canonical_inventory_rows(rows)
 
 
-def collector_tool_export(root: Path, destination: Path) -> tuple[str,list[dict[str,str]],str]:
-    result=run(["uv","export","--no-config","--frozen","--offline","--only-group",TOOL_GROUP,
+def collector_tool_export(root: Path, destination: Path, uv: Path) -> tuple[str,list[dict[str,str]],str]:
+    result=run([str(uv),"export","--no-config","--frozen","--offline","--only-group",TOOL_GROUP,
                 "--no-emit-project","--format","requirements-txt"],cwd=root)
     text=result.stdout
     if b"--hash=sha256:" not in text or any(name not in text for name in (b"hatchling==",b"jsonschema==",b"packaging==")):
@@ -205,8 +248,18 @@ def source_archive_sha(repo: Path, destination: Path) -> str:
     return sha256(destination)
 
 
-def export_closure(repo: Path, destination: Path) -> str:
-    result = run(["uv", "export", "--no-config", "--frozen", "--offline", "--no-dev", "--no-emit-project",
+def assert_subject_unchanged(repo: Path, expected_commit: str, initial: dict[str,str], phase: str) -> None:
+    current=require_clean_subject(repo,expected_commit)
+    expected={key:initial[key] for key in ("commit","git_tree","lock_sha256")}
+    if current != expected: raise RuntimeError(f"subject identity mutated during {phase}: expected={expected}, found={current}")
+    with tempfile.TemporaryDirectory(prefix="no1-006b-recheck-") as raw:
+        archive_sha=source_archive_sha(repo,Path(raw)/"source.tar")
+    if archive_sha != initial["source_archive_sha256"]:
+        raise RuntimeError(f"subject archive mutated during {phase}: expected={initial['source_archive_sha256']}, found={archive_sha}")
+
+
+def export_closure(repo: Path, destination: Path, uv: Path) -> str:
+    result = run([str(uv), "export", "--no-config", "--frozen", "--offline", "--no-dev", "--no-emit-project",
                   "--format", "requirements-txt"], cwd=repo)
     text = result.stdout
     if b"--hash=sha256:" not in text or b"==" not in text:
@@ -224,13 +277,13 @@ def executable(venv: Path, name: str) -> Path:
     return venv / ("Scripts" if os.name == "nt" else "bin") / f"{name}{suffix}"
 
 
-def install_environment(repo: Path, venv: Path, requirements: Path, wheel: Path) -> Path:
+def install_environment(repo: Path, venv: Path, requirements: Path, wheel: Path, uv: Path) -> Path:
     python_spec = os.environ.get("NO1_006B_PYTHON", "3.14")
-    run(["uv", "venv", "--no-config", str(venv), "--python", python_spec, "--offline"], cwd=repo)
+    run([str(uv), "venv", "--no-config", str(venv), "--python", python_spec, "--offline"], cwd=repo)
     python = python_path(venv)
-    run(["uv", "pip", "install", "--no-config", "--python", str(python), "--offline", "--no-deps",
+    run([str(uv), "pip", "install", "--no-config", "--python", str(python), "--offline", "--no-deps",
          "--require-hashes", "-r", str(requirements)], cwd=repo)
-    run(["uv", "pip", "install", "--no-config", "--python", str(python), "--offline", "--no-deps", str(wheel)], cwd=repo)
+    run([str(uv), "pip", "install", "--no-config", "--python", str(python), "--offline", "--no-deps", str(wheel)], cwd=repo)
     return python
 
 
@@ -398,6 +451,8 @@ def validate_receipt(report: dict[str, Any], schema: dict[str, Any]) -> None:
     roles=[row["role"] for row in distributions]; names=[row["name"] for row in distributions]
     started=parse_rfc3339(report["collection_started_at_utc"])
     finished=parse_rfc3339(report["collection_finished_at_utc"])
+    system=report["environment"]["system"]; os_label=report["environment"]["os"]
+    os_consistent={"macos":os_label.startswith("macOS-"),"linux":os_label.startswith("Linux-"),"windows":os_label.startswith("Windows-")}[system]
     checks=[len(m["cli_startup"]["warm_ms"])==report["repeats"], len(m["mcp_startup"]["warm_ms"])==report["repeats"],
             m["direct_dependency_count"]==roles.count("direct"), m["transitive_dependency_count"]==roles.count("transitive"),
             m["installed_distribution_count_including_root"]==len(distributions), roles.count("root")==1,
@@ -405,7 +460,8 @@ def validate_receipt(report: dict[str, Any], schema: dict[str, Any]) -> None:
             m["dependency_distribution_count_excluding_root"]==roles.count("direct")+roles.count("transitive"),
             report["source"]["root_wheel_artifact_size_bytes"]==m["root_wheel_artifact_size_bytes"],
             closure["lock_sha256"]==report["source"]["lock_sha256"], len(names)==len(set(names)), names==sorted(names),
-            report["environment"]["system"]==report["measured_axis"],
+            report["environment"]["system"]==report["measured_axis"], os_consistent,
+            report["environment"]["uv"]=={"version":EXPECTED_UV_VERSION,"sha256":EXPECTED_UV_SHA256},
             report["environment"]["build_python"]==report["environment"]["python"],
             report["environment"]["build_backend"]=={"name":"hatchling","version":HATCHLING_VERSION},
             report["collector"]["tool_export_sha256"]!=closure["export_sha256"],
@@ -449,24 +505,30 @@ def safe_write(output: Path, data: bytes, subject: Path) -> None:
 def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dict[str, Any]:
     if platform.system() != "Darwin": raise RuntimeError("this collector currently emits only macOS measured_e0")
     if repeats not in range(3,21): raise ValueError("repeats must be between 3 and 20")
+    uv,uv_version,uv_sha256=verified_uv()
     repo=repo.resolve(); started=datetime.now(timezone.utc).isoformat(); subject=require_clean_subject(repo,expected_commit)
     with tempfile.TemporaryDirectory(prefix="no1-006b-") as raw:
         temp=Path(raw); dist=temp/"dist"; dist.mkdir(); requirements=temp/"locked-requirements.txt"
+        subject["source_archive_sha256"]=source_archive_sha(repo,temp/"source.tar")
+        assert_subject_unchanged(repo,expected_commit,subject,"initial archive")
         collector_root=Path(__file__).resolve().parents[1]
-        tool_export_sha,tool_rows,tool_inventory_sha=collector_tool_export(collector_root,temp/"collector-tool-requirements.txt")
+        tool_export_sha,tool_rows,tool_inventory_sha=collector_tool_export(collector_root,temp/"collector-tool-requirements.txt",uv)
         collector=collector_identity(tool_export_sha)
         collector["tool_inventory"]=tool_rows; collector["tool_inventory_sha256"]=tool_inventory_sha
         build_env=build_environment()
-        subject["source_archive_sha256"]=source_archive_sha(repo,temp/"source.tar")
-        export_sha=export_closure(repo,requirements)
-        run(["uv","build","--no-config","--wheel","--offline","--no-build-isolation","--python",sys.executable,"--out-dir",str(dist)],cwd=repo)
+        export_sha=export_closure(repo,requirements,uv)
+        assert_subject_unchanged(repo,expected_commit,subject,"before build")
+        run([str(uv),"build","--no-config","--wheel","--offline","--no-build-isolation","--python",sys.executable,"--out-dir",str(dist)],cwd=repo)
+        assert_subject_unchanged(repo,expected_commit,subject,"after build")
         wheels=list(dist.glob("*.whl"))
         if len(wheels)!=1: raise RuntimeError(f"expected exactly one root wheel, found {len(wheels)}")
         wheel=wheels[0]; require_file_budget(wheel,MAX_ROOT_WHEEL_BYTES,"root wheel artifact")
         fixture=temp/"fixture"; fixture.mkdir(); (fixture/"fixture.py").write_text("def add(a: int, b: int) -> int:\n    return a + b\n")
         samples={}; inventories=[]; tool_names=None; py_info=None
         for kind in ("cli","mcp"):
-            python=install_environment(repo,temp/f"{kind}-venv",requirements,wheel)
+            assert_subject_unchanged(repo,expected_commit,subject,f"before {kind} install")
+            python=install_environment(repo,temp/f"{kind}-venv",requirements,wheel,uv)
+            assert_subject_unchanged(repo,expected_commit,subject,f"after {kind} install")
             inventories.append(inventory(python,repo))
             if py_info is None:
                 py_info=json.loads(run([str(python),"-c","import json,platform;print(json.dumps({'version':platform.python_version(),'implementation':platform.python_implementation()}))"],cwd=repo).stdout)
@@ -480,11 +542,12 @@ def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dic
           "collection_started_at_utc":started,"collection_finished_at_utc":finished,"collector":collector,
           "source":{**subject,"root_wheel_filename":wheel.name,"root_wheel_sha256":sha256(wheel),"root_wheel_artifact_size_bytes":wheel.stat().st_size},
           "dependency_closure":{"derivation":"uv.lock frozen export; hashed exact requirements; project wheel installed separately with --no-deps","export_sha256":export_sha,"lock_sha256":subject["lock_sha256"],"distributions":rows},
-          "environment":{"os":platform.platform(),"system":"macos","machine":platform.machine(),"python":py_info,"build_python":build_env["python"],"build_backend":{"name":"hatchling","version":build_env["hatchling_version"]},"uv":run(["uv","--no-config","--version"],cwd=repo).stdout.decode().strip(),"network_policy":"UV_OFFLINE=1; uv --offline; no network transfer measurement","bytecode_policy":"PYTHONDONTWRITEBYTECODE=1","cache_protocol":"two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm","sample_order":SAMPLE_ORDER,"host_fingerprint":{"cpu":platform.processor() or platform.machine() or "unknown","logical_cpu_count":os.cpu_count() or 1,"ram_bytes":os.sysconf("SC_PAGE_SIZE")*os.sysconf("SC_PHYS_PAGES"),"filesystem":"unknown; not controlled","virtualization":"unknown; not detected","power":"unknown; not controlled"}},
+          "environment":{"os":platform.platform(),"system":"macos","machine":platform.machine(),"python":py_info,"build_python":build_env["python"],"build_backend":{"name":"hatchling","version":build_env["hatchling_version"]},"uv":{"version":uv_version,"sha256":uv_sha256},"network_policy":"UV_OFFLINE=1; uv --offline; no network transfer measurement","bytecode_policy":"PYTHONDONTWRITEBYTECODE=1","cache_protocol":"two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm","sample_order":SAMPLE_ORDER,"host_fingerprint":{"cpu":platform.processor() or platform.machine() or "unknown","logical_cpu_count":os.cpu_count() or 1,"ram_bytes":os.sysconf("SC_PAGE_SIZE")*os.sysconf("SC_PHYS_PAGES"),"filesystem":"unknown; not controlled","virtualization":"unknown; not detected","power":"unknown; not controlled"}},
           "measurements":{"root_wheel_artifact_size_bytes":wheel.stat().st_size,"network_transfer_bytes":{"status":"unknown","reason":"offline cache artifacts do not measure network transfer"},"installed_size_bytes":inv["installed_size_bytes"],"installed_regular_file_count":inv["regular_file_count"],"installed_size_scope":"unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded","direct_dependency_count":roles.count("direct"),"transitive_dependency_count":roles.count("transitive"),"dependency_distribution_count_excluding_root":len(rows)-1,"installed_distribution_count_including_root":len(rows),"cli_startup":{"definition":CLI_STARTUP_DEFINITION,"cold_ms":samples["cli"][0],"warm_ms":samples["cli"][1:]},"mcp_startup":{"definition":MCP_STARTUP_DEFINITION,"cold_ms":samples["mcp"][0],"warm_ms":samples["mcp"][1:],"tool_names":tool_names}},
           "commands":{"collector_tool_export":["uv","export","--no-config","--frozen","--offline","--only-group",TOOL_GROUP,"--no-emit-project","--format","requirements-txt"],"export":["uv","export","--no-config","--frozen","--offline","--no-dev","--no-emit-project","--format","requirements-txt"],"build":["uv","build","--no-config","--wheel","--offline","--no-build-isolation","--python","<collector-sys-executable>","--out-dir","<temp>/dist"],"closure_install":["uv","pip","install","--no-config","--offline","--no-deps","--require-hashes","-r","<locked-requirements>"],"root_install":["uv","pip","install","--no-config","--offline","--no-deps","<root-wheel>"],"cli_probe":["tree-sitter-analyzer","fixture.py","--summary","--format","json"],"mcp_probe":["tree-sitter-analyzer-mcp","--project-root","<fixture>","initialize","notifications/initialized","tools/list"]},
           "repeats":repeats,"measured_axis":"macos","platform_axes":{"macos":"measured_e0","linux":"unknown","windows":"unknown"}}
         report["canonical_payload_sha256"]=canonical_hash(report)
+        assert_subject_unchanged(repo,expected_commit,subject,"final publication")
         finalize_receipt(report,output,repo); return report
 
 

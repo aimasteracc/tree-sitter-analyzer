@@ -112,7 +112,7 @@
           "required": ["name","version"],
           "properties": {"name":{"const":"hatchling"},"version":{"const":"1.31.0"}}
         },
-        "uv": {"type":"string","minLength":1,"maxLength":100},
+        "uv": {"type":"object","additionalProperties":false,"required":["version","sha256"],"properties":{"version":{"const":"uv 0.12.3 (507230998 2026-08-07 aarch64-apple-darwin)"},"sha256":{"const":"2b4ccdac26598ca8c300e5c36d24297fa1471c350c46d2f34c835bf06be303ab"}}},
         "network_policy": {"const":"UV_OFFLINE=1; uv --offline; no network transfer measurement"},
         "bytecode_policy": {"const":"PYTHONDONTWRITEBYTECODE=1"},
         "cache_protocol": {

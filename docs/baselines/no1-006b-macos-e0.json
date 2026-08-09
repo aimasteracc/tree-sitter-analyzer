@@ -1,5 +1,5 @@
 {
-  "canonical_payload_sha256": "563fc3e80265fdb595182c7b2c1deb64e1626f15c1605cbf39496004b14ee06f",
+  "canonical_payload_sha256": "f1ff36c9ccd75a29a106227b6b448947c42b12e8c45c10910fb558b35f362973",
   "collection_finished_at_utc": "2026-08-09T23:10:04.379071+00:00",
   "collection_started_at_utc": "2026-08-09T23:09:51.800365+00:00",
   "collector": {
@@ -484,7 +484,10 @@
     },
     "sample_order": "all CLI samples, then all MCP samples",
     "system": "macos",
-    "uv": "uv 0.12.3 (507230998 2026-08-07 aarch64-apple-darwin)"
+    "uv": {
+      "sha256": "2b4ccdac26598ca8c300e5c36d24297fa1471c350c46d2f34c835bf06be303ab",
+      "version": "uv 0.12.3 (507230998 2026-08-07 aarch64-apple-darwin)"
+    }
   },
   "evidence_level": "E0",
   "measured_axis": "macos",

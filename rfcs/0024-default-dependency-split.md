@@ -98,14 +98,21 @@ and rebase merges are prohibited because they make the bound collector commit
 unreachable in a fresh clone. The merge orchestrator must use `gh pr merge 1250
 --merge` (not `--squash` or `--rebase`).
 
-Run this from any checkout of the repository, with CPython 3.14 and all locked
-artifacts already available in the offline uv cache. It creates separate clean,
+Run this from any checkout of the repository, with CPython 3.14, all locked
+artifacts already available in the offline uv cache, and the operator-provided
+trusted uv binary identified below. This RFC does not distribute that binary;
+the operator must obtain and supply it independently. It creates separate clean,
 detached collector and subject worktrees. The collector's separately locked,
 exact hashed tooling closure, its virtual environment, the receipt, and every other generated file
 live under an external temporary directory:
 
 ```bash
 set -eu
+: "${NO1_006B_UV:?set NO1_006B_UV to the operator-provided trusted uv binary}"
+TRUSTED_UV=$(cd "$(dirname "$NO1_006B_UV")" && pwd -P)/$(basename "$NO1_006B_UV")
+test -f "$TRUSTED_UV" && test ! -L "$TRUSTED_UV"
+test "$("$TRUSTED_UV" --no-config --version)" = 'uv 0.12.3 (507230998 2026-08-07 aarch64-apple-darwin)'
+test "$(shasum -a 256 "$TRUSTED_UV" | awk '{print $1}')" = '2b4ccdac26598ca8c300e5c36d24297fa1471c350c46d2f34c835bf06be303ab'
 UV_CACHE_DIR_SAVED=${UV_CACHE_DIR-}
 for name in $(env | sed -n 's/^\(UV_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name"; done
 export UV_NO_CONFIG=1 UV_OFFLINE=1
@@ -133,16 +140,16 @@ test -z "$(git -C "$COLLECTOR" status --porcelain=v1 --untracked-files=all --ign
 test -z "$(git -C "$SUBJECT" status --porcelain=v1 --untracked-files=all --ignored)"
 (
   cd "$COLLECTOR"
-  uv export --no-config --frozen --offline \
+  "$TRUSTED_UV" export --no-config --frozen --offline \
     --only-group no1-006b-collector-tool --no-emit-project \
     --format requirements-txt >"$TOOL_REQUIREMENTS"
 )
-uv venv --no-config --offline --python 3.14 "$TOOL_VENV"
-uv pip install --no-config --offline --python "$TOOL_PYTHON" --no-deps \
+"$TRUSTED_UV" venv --no-config --offline --python 3.14 "$TOOL_VENV"
+"$TRUSTED_UV" pip install --no-config --offline --python "$TOOL_PYTHON" --no-deps \
   --require-hashes -r "$TOOL_REQUIREMENTS"
 test -z "$(git -C "$COLLECTOR" status --porcelain=v1 --untracked-files=all --ignored)"
 
-PYTHONDONTWRITEBYTECODE=1 NO1_006B_PYTHON=3.14 \
+PYTHONDONTWRITEBYTECODE=1 NO1_006B_PYTHON=3.14 NO1_006B_UV="$TRUSTED_UV" \
   "$TOOL_PYTHON" "$COLLECTOR/scripts/collect_no1_006b_baseline.py" \
   --repo "$SUBJECT" --repeats 5 --output "$RECEIPT"
 test -z "$(git -C "$COLLECTOR" status --porcelain=v1 --untracked-files=all --ignored)"
@@ -157,7 +164,7 @@ The post-hoc hardened collector produced
 [`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
 from collector commit `712dfaabda2e8f3845c94c19545902b334875828` and the distinct pinned subject.
 <!-- BEGIN GENERATED RECEIPT SUMMARY -->
-Its canonical payload SHA-256 is `563fc3e80265fdb595182c7b2c1deb64e1626f15c1605cbf39496004b14ee06f`.
+Its canonical payload SHA-256 is `f1ff36c9ccd75a29a106227b6b448947c42b12e8c45c10910fb558b35f362973`.
 
 | Axis | Measured value |
 |---|---:|
