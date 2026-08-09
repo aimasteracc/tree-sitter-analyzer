@@ -60,6 +60,37 @@ def test_clean_environment_drops_host_uv_python_xdg_and_shell_injection(
     )
 
 
+def test_local_identity_uses_deterministic_absolute_posix_sandbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1245: local identity 0 remains directly testable without random prefixes.
+    monkeypatch.setenv("GITHUB_RUN_ID", "0")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "0")
+    monkeypatch.setitem(qualification.POSIX_SANDBOX_BASES, "linux", tmp_path)
+    root = qualification.sandbox_root("linux")
+    try:
+        assert root == tmp_path / "tsa-outdated-native-0-0-linux"
+        assert root.is_absolute()
+        assert root.stat().st_mode & 0o777 == 0o700
+    finally:
+        qualification.shutil.rmtree(root)
+
+
+def test_deterministic_sandbox_refuses_identity_collision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #1245: a concurrent/replayed identity cannot reuse an existing root.
+    monkeypatch.setenv("GITHUB_RUN_ID", "0")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "0")
+    monkeypatch.setitem(qualification.POSIX_SANDBOX_BASES, "linux", tmp_path)
+    root = qualification.sandbox_root("linux")
+    try:
+        with pytest.raises(FileExistsError):
+            qualification.sandbox_root("linux")
+    finally:
+        qualification.shutil.rmtree(root)
+
+
 @pytest.mark.skipif(
     os.name == "nt", reason="tracked: POSIX installer process-group cleanup"
 )
@@ -310,7 +341,7 @@ def valid_passed_report() -> dict[str, object]:
                 "sha256": digest,
             },
             "executable": executable(
-                "0.10.9", "/tmp/tsa-outdated-native-test/old/bundle/uv"
+                "0.10.9", "/tmp/tsa-outdated-native-0-0-linux/old/bundle/uv"
             ),
         },
         supported_uv={
@@ -322,7 +353,7 @@ def valid_passed_report() -> dict[str, object]:
                 "sha256": digest,
             },
             "executable": executable(
-                "0.11.0", "/tmp/tsa-outdated-native-test/supported/bundle/uv"
+                "0.11.0", "/tmp/tsa-outdated-native-0-0-linux/supported/bundle/uv"
             ),
         },
         installer={
@@ -331,8 +362,8 @@ def valid_passed_report() -> dict[str, object]:
             "first_exit": 1,
             "second_exit": 0,
             "curl_invocations": 0,
-            "first_path": "/tmp/tsa-outdated-native-test/old/bundle:/tmp/tsa-outdated-native-test/tools",
-            "second_path": "/tmp/tsa-outdated-native-test/supported/bundle:/tmp/tsa-outdated-native-test/tools",
+            "first_path": "/tmp/tsa-outdated-native-0-0-linux/old/bundle:/tmp/tsa-outdated-native-0-0-linux/tools",
+            "second_path": "/tmp/tsa-outdated-native-0-0-linux/supported/bundle:/tmp/tsa-outdated-native-0-0-linux/tools",
             "curated_tools": list(qualification.REQUIRED_COMMANDS),
         },
         config={
@@ -347,7 +378,7 @@ def valid_passed_report() -> dict[str, object]:
                     "tree-sitter-analyzer-mcp",
                 ],
                 "env": {
-                    "TREE_SITTER_PROJECT_ROOT": "/tmp/tsa-outdated-native-test/fixture"
+                    "TREE_SITTER_PROJECT_ROOT": "/tmp/tsa-outdated-native-0-0-linux/fixture"
                 },
             },
             "backup_sha256": digest,
@@ -374,7 +405,7 @@ def valid_passed_report() -> dict[str, object]:
                 "summary": "codegraph_status: index missing or empty",
             },
             "install_tool": executable(
-                "0.11.0", "/tmp/tsa-outdated-native-test/supported/bundle/uv"
+                "0.11.0", "/tmp/tsa-outdated-native-0-0-linux/supported/bundle/uv"
             ),
             "install_argv": [
                 "/tmp/supported/bundle/uv",
@@ -615,9 +646,9 @@ def trusted_helpers() -> dict[str, object]:
     code = "\n".join(
         line
         for line in code.splitlines()
-        if not line.lstrip().startswith(("root=", "suffix="))
+        if not line.lstrip().startswith(("root=", "run=", "suffix="))
     )
-    namespace: dict[str, object] = {}
+    namespace: dict[str, object] = {"run": "0", "attempt": "0"}
     exec(textwrap.dedent(code), namespace)
     return namespace
 
@@ -681,8 +712,8 @@ def test_trusted_config_sidecar_accepts_noncanonical_format(tmp_path: Path) -> N
             config,
             after,
             "linux",
-            "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
-            PurePosixPath("/tmp/tsa-outdated-native-test"),
+            "📁 Project root: /tmp/tsa-outdated-native-0-0-linux/fixture\n",
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
         )
         is None
     )
@@ -722,8 +753,8 @@ def test_trusted_config_sidecar_rejects_forgery(tmp_path: Path, mutation: str) -
             config,
             after,
             "linux",
-            "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
-            PurePosixPath("/tmp/tsa-outdated-native-test"),
+            "📁 Project root: /tmp/tsa-outdated-native-0-0-linux/fixture\n",
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
         )
 
 
@@ -747,8 +778,8 @@ def test_trusted_config_rejects_coordinated_command_forgery(tmp_path: Path) -> N
             config,
             after,
             "linux",
-            "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
-            PurePosixPath("/tmp/tsa-outdated-native-test"),
+            "📁 Project root: /tmp/tsa-outdated-native-0-0-linux/fixture\n",
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
         )
 
 
@@ -800,7 +831,7 @@ def test_trusted_installer_paths_reject_unverified_first_executable() -> None:
             report["installer"],
             report["old_uv"]["executable"],
             report["supported_uv"]["executable"],
-            PurePosixPath("/tmp/tsa-outdated-native-test"),
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
         )
 
 
@@ -813,7 +844,7 @@ def test_trusted_installer_paths_reject_non_curated_path_tail() -> None:
             report["installer"],
             report["old_uv"]["executable"],
             report["supported_uv"]["executable"],
-            PurePosixPath("/tmp/tsa-outdated-native-test"),
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
         )
 
 
@@ -886,49 +917,58 @@ def test_trusted_causal_binding_rejects_install_mutation(
         )
 
 
-@pytest.mark.parametrize("mutation", ["old-label", "different-root", "tools"])
-def test_trusted_sandbox_root_rejects_candidate_coordination(mutation: str) -> None:
-    # PR #1245: executable archive layouts, not cooperating sidecars, anchor the root.
+@pytest.mark.parametrize(
+    ("axis", "expected"),
+    [
+        ("linux", PurePosixPath("/tmp/tsa-outdated-native-0-0-linux")),
+        ("macos", PurePosixPath("/private/tmp/tsa-outdated-native-0-0-macos")),
+    ],
+)
+def test_trusted_sandbox_root_is_independent_platform_oracle(
+    axis: str, expected: PurePosixPath
+) -> None:
+    # PR #1245: trusted roots come only from run/attempt/axis and platform base.
+    assert trusted_helpers()["trusted_sandbox_root"](axis) == expected
+
+
+def test_trusted_sandbox_root_is_not_applied_to_windows_na() -> None:
+    # PR #1245: Windows retains its N/A fixture without a POSIX root assumption.
+    with pytest.raises(AssertionError):
+        trusted_helpers()["trusted_sandbox_root"]("windows")
+
+
+def test_trusted_executable_rejects_coordinated_forged_prefixes() -> None:
+    # Codex 3742146107: matching old/supported producer prefixes are not an oracle.
     helpers = trusted_helpers()
     report = valid_passed_report()
     member = {"member": "bundle/uv", "sha256": "a" * 64, "size": 1}
-    if mutation == "old-label":
-        report["old_uv"]["executable"]["path"] = (
-            "/tmp/tsa-outdated-native-test/evil/bundle/uv"
+    sandbox = helpers["trusted_sandbox_root"]("linux")
+    for label in ("old", "supported"):
+        report[f"{label}_uv"]["executable"]["path"] = (
+            f"/tmp/tsa-outdated-native-forged/{label}/bundle/uv"
         )
         with pytest.raises(AssertionError):
-            helpers["executable_sandbox_root"](
-                report["old_uv"]["executable"], member, "old", "linux"
+            helpers["verify_executable_sandbox"](
+                report[f"{label}_uv"]["executable"], member, label, "linux", sandbox
             )
-        return
-    old_root = helpers["executable_sandbox_root"](
-        report["old_uv"]["executable"], member, "old", "linux"
-    )
-    if mutation == "different-root":
-        report["supported_uv"]["executable"]["path"] = (
-            "/tmp/tsa-outdated-native-forged/supported/bundle/uv"
-        )
-        with pytest.raises(AssertionError):
-            helpers["trusted_sandbox_root"](
-                report["old_uv"]["executable"],
-                member,
-                "linux",
-                report["supported_uv"]["executable"],
-                member,
-            )
-        return
+
+
+def test_trusted_installer_paths_reject_forged_tools_root() -> None:
+    # PR #1245: curated tools must be under the independently expected sandbox.
+    helpers = trusted_helpers()
+    report = valid_passed_report()
     report["installer"]["first_path"] = (
-        "/tmp/tsa-outdated-native-test/old/bundle:/tmp/attacker/tools"
+        "/tmp/tsa-outdated-native-0-0-linux/old/bundle:/tmp/attacker/tools"
     )
     report["installer"]["second_path"] = (
-        "/tmp/tsa-outdated-native-test/supported/bundle:/tmp/attacker/tools"
+        "/tmp/tsa-outdated-native-0-0-linux/supported/bundle:/tmp/attacker/tools"
     )
     with pytest.raises(AssertionError):
         helpers["verify_installer_paths"](
             report["installer"],
             report["old_uv"]["executable"],
             report["supported_uv"]["executable"],
-            old_root,
+            helpers["trusted_sandbox_root"]("linux"),
         )
 
 
@@ -938,7 +978,7 @@ def test_trusted_project_root_rejects_coordinated_candidate_value() -> None:
         trusted_helpers()["project_root_from_stdout"](
             "📁 Project root: /tmp/tsa-outdated-native-forged/fixture\n",
             "linux",
-            PurePosixPath("/tmp/tsa-outdated-native-test"),
+            PurePosixPath("/tmp/tsa-outdated-native-0-0-linux"),
         )
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 # ruff: noqa: B904, E401, E701, E702, I001
 # fmt: off
-import argparse, hashlib, json, os, platform, re, shutil, signal, subprocess, sys, tarfile, tempfile, time, urllib.request, zipfile
+import argparse, hashlib, json, os, platform, re, shutil, signal, stat, subprocess, sys, tarfile, tempfile, time, urllib.request, zipfile
 from pathlib import Path
 
 import psutil
@@ -17,6 +17,7 @@ AXES = ("linux", "macos", "windows")
 PROJECT = Path(__file__).resolve().parents[1]
 ALLOWLIST_PATH = PROJECT / "config/no1_uv_fixtures.json"
 REQUIRED_COMMANDS = ("awk", "cat", "grep", "mktemp", "python3", "realpath", "rm", "sleep", "uname")
+POSIX_SANDBOX_BASES = {"linux": Path("/tmp"), "macos": Path("/private/tmp")}
 
 def sha256(path: Path) -> str:
     h=hashlib.sha256()
@@ -177,6 +178,19 @@ def package_binding(args: argparse.Namespace)->dict[str,Any]:
     if r.get("wheel")!=meta or expected not in a.get("axes",[]) or a.get("wheel")!=meta: raise ValueError("package axis/wheel binding mismatch")
     return {"aggregate_sha256":sha256(aggregate),"axis_report_sha256":sha256(report),"build_manifest_sha256":sha256(manifest),"wheel":meta}
 
+def sandbox_root(axis:str)->Path:
+    if axis not in POSIX_SANDBOX_BASES: raise ValueError("deterministic sandbox is POSIX-only")
+    run=os.environ.get("GITHUB_RUN_ID","0"); attempt=os.environ.get("GITHUB_RUN_ATTEMPT","0")
+    if re.fullmatch(r"(?:0|[1-9]\d*)",run) is None or re.fullmatch(r"(?:0|[1-9]\d*)",attempt) is None: raise ValueError("invalid GitHub run identity for sandbox")
+    base=POSIX_SANDBOX_BASES[axis]; root=base/f"tsa-outdated-native-{run}-{attempt}-{axis}"
+    if not base.is_absolute() or root.parent!=base: raise ValueError("unsafe qualification sandbox base")
+    root.mkdir(mode=0o700,exist_ok=False)
+    observed=root.lstat()
+    if not stat.S_ISDIR(observed.st_mode) or root.is_symlink() or root.stat().st_uid!=os.getuid():
+        shutil.rmtree(root,ignore_errors=True); raise ValueError("unsafe qualification sandbox root")
+    root.chmod(0o700)
+    return root
+
 def base_report(axis:str)->dict[str,Any]:
     source,workflow=identity("outdated-uv-axis")
     return {"schema_version":SCHEMA_VERSION,"kind":"outdated_uv_axis","qualification_id":"NO1-006A","evidence_scope":"native_outdated_uv_actionable_recovery","axis":axis,"qualification_performed":axis!="windows","passed":False,"status":"NOT_APPLICABLE_NO_NATIVE_INSTALLER" if axis=="windows" else "PENDING","source":source,"workflow":workflow,"runner":{"declared_axis":axis,"observed_system":platform.system(),"release":platform.release(),"machine":platform.machine(),"image_os":os.environ.get("ImageOS","unknown"),"image_version":os.environ.get("ImageVersion","unknown")},"remediation_mode":"manual_content_bound_remediation","automatic_mutable_bootstrap_qualified":False,"old_uv":None,"supported_uv":None,"installer":None,"config":None,"package_qualification":None,"mcp_causal_report":None,"artifacts":{},"failure":None}
@@ -190,7 +204,7 @@ def axis(args:argparse.Namespace)->int:
         expected_system={"linux":"Linux","macos":"Darwin","windows":"Windows"}[args.axis]
         if platform.system()!=expected_system: raise ValueError("declared axis and native runner differ")
         old_archive=Path(args.old_archive); old_meta=validate_archive(old_archive,fixture(args.axis,OLD_VERSION)); shutil.copyfile(old_archive,side/"old.archive"); report["artifacts"]["old.archive"]={"sha256":old_meta["sha256"],"size":old_meta["size"]}
-        root=Path(tempfile.mkdtemp(prefix="tsa-outdated-native-"))
+        root=sandbox_root(args.axis) if args.axis!="windows" else Path(tempfile.mkdtemp(prefix="tsa-outdated-native-windows-"))
         try:
             old=uv_details(safe_extract(old_archive,root/"old",old_meta["filename"]),OLD_VERSION); report["old_uv"]={"archive":old_meta,"executable":old}
             report["package_qualification"]=package_binding(args)

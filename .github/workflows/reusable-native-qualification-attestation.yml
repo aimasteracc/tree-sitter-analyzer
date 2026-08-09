@@ -245,7 +245,8 @@ jobs:
         run: |
           python - <<'PY'
           import base64, csv, hashlib, json, os, pathlib, re, shutil, tarfile, tempfile, zipfile
-          root=pathlib.Path("trusted"); run=os.environ["GITHUB_RUN_ID"]; attempt=os.environ["GITHUB_RUN_ATTEMPT"]; commit=os.environ["GITHUB_SHA"]
+          root=pathlib.Path("trusted")
+          run=os.environ["GITHUB_RUN_ID"]; attempt=os.environ["GITHUB_RUN_ATTEMPT"]; commit=os.environ["GITHUB_SHA"]
           suffix=f"-{run}-{attempt}-{commit}"
           sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
           exact=lambda value,keys: (_ for _ in ()).throw(AssertionError(f"keys: {set(value) if isinstance(value,dict) else type(value)}")) if not isinstance(value,dict) or set(value)!=set(keys) else None
@@ -299,21 +300,17 @@ jobs:
             exact(value,("version","path","sha256","size","version_stdout")); assert value["version"]==version and re.fullmatch(rf"uv {re.escape(version)}(?: [^\n]+)?\n?",value["version_stdout"])
             executable=pure(value["path"],axis); suffix=pathlib.PurePosixPath(member["member"]).parts
             assert absolute(value["path"],axis) and tuple(part.lower() for part in executable.parts[-len(suffix):])==tuple(part.lower() for part in suffix) and (value["sha256"],value["size"])==(member["sha256"],member["size"])
-          def executable_sandbox_root(value,member,label,axis):
+          def trusted_sandbox_root(axis):
+            assert axis in ("linux","macos") and re.fullmatch(r"(?:0|[1-9]\d*)",run) and re.fullmatch(r"(?:0|[1-9]\d*)",attempt)
+            base={"linux":pathlib.PurePosixPath("/tmp"),"macos":pathlib.PurePosixPath("/private/tmp")}[axis]
+            return base/f"tsa-outdated-native-{run}-{attempt}-{axis}"
+          def verify_executable_sandbox(value,member,label,axis,sandbox):
+            assert axis in ("linux","macos")
             executable=lexical(value["path"],axis); suffix=pathlib.PurePosixPath(member["member"]).parts
             assert len(executable.parts)>len(suffix) and tuple(part.lower() for part in executable.parts[-len(suffix):])==tuple(part.lower() for part in suffix)
             extracted=executable
             for _ in suffix: extracted=extracted.parent
-            assert extracted.name.lower()==label
-            return extracted.parent
-          def trusted_sandbox_root(old,old_member,axis,supported=None,supported_member=None):
-            sandbox=executable_sandbox_root(old,old_member,"old",axis)
-            assert re.fullmatch(r"tsa-outdated-native-[^/\\]+",sandbox.name)
-            if axis=="windows": assert supported is supported_member is None
-            else:
-              assert axis in ("linux","macos") and supported is not None and supported_member is not None
-              assert executable_sandbox_root(supported,supported_member,"supported",axis)==sandbox
-            return sandbox
+            assert extracted==sandbox/label
           def verify_installer_paths(installer,old,supported,sandbox_root):
             required=("awk","cat","grep","mktemp","python3","realpath","rm","sleep","uname")
             first=installer["first_path"].split(":"); second=installer["second_path"].split(":"); tools=str(sandbox_root/"tools")
@@ -444,7 +441,6 @@ jobs:
             identity(report,"outdated-uv-axis")
             old_side=path/"old.archive"; assert (old_side.stat().st_size,sha(old_side))==(size,digest); old_member=safe_uv_member(old_side,filename); verify_executable(old["executable"],old_member,"0.10.9",axis)
             if axis=="windows":
-              sandbox_root=trusted_sandbox_root(old["executable"],old_member,axis)
               assert report["status"]=="NOT_APPLICABLE_NO_NATIVE_INSTALLER" and report["passed"] is False and report["qualification_performed"] is False
               assert report["failure"]=={"type":"NotApplicable","message":"Windows has no native install.ps1; real old uv.exe execution retained only as a platform fixture"}
               assert report["supported_uv"] is None and report["installer"] is None and report["config"] is None and report["mcp_causal_report"] is None
@@ -452,7 +448,8 @@ jobs:
             filename,size,digest,url=official[(fixture_axis,"0.11.0")]; supported=report["supported_uv"]
             assert supported["archive"]=={"filename":filename,"size":size,"sha256":digest,"url":url,"version":"0.11.0"}
             supported_side=path/"supported.archive"; assert (supported_side.stat().st_size,sha(supported_side))==(size,digest); supported_member=safe_uv_member(supported_side,filename); verify_executable(supported["executable"],supported_member,"0.11.0",axis)
-            sandbox_root=trusted_sandbox_root(old["executable"],old_member,axis,supported["executable"],supported_member)
+            sandbox_root=trusted_sandbox_root(axis)
+            verify_executable_sandbox(old["executable"],old_member,"old",axis,sandbox_root); verify_executable_sandbox(supported["executable"],supported_member,"supported",axis,sandbox_root)
             assert report["status"]=="PASSED" and report["passed"] is True and report["qualification_performed"] is True
             installer=report["installer"]; exact(installer,("path","sha256","first_exit","second_exit","curl_invocations","first_path","second_path","curated_tools")); assert installer["sha256"]==sha(path/"installer.source")=="754799ff21807228b604b001b6a93bfd62b9748b3cfea45a33e59fefcbb717d5" and (installer["first_exit"],installer["second_exit"],installer["curl_invocations"])==(1,0,0)
             verify_installer_paths(installer,old["executable"],supported["executable"],sandbox_root)
