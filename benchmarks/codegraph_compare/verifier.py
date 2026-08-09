@@ -12,6 +12,9 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
@@ -37,8 +40,9 @@ CLAIMS = {
     "unlock_allowed": False,
 }
 PUBLIC_CONFIG_KEYS = frozenset(
-    {"schema_version", "executor", "approver", "auditor", "trusted"}
+    {"schema_version", "executor", "approver", "auditor", "trusted", "root_signature"}
 )
+ROOT_SIGNATURE_DOMAIN = b"NO1-008A-PUBLIC-CONFIG-ROOT-V1\0"
 TRUSTED_KEYS = frozenset(
     {
         "plan_set_hash",
@@ -49,9 +53,10 @@ TRUSTED_KEYS = frozenset(
         "config_sha256",
         "seccomp_sha256",
         "images",
+        "auditor_runtime",
     }
 )
-IMAGE_ROLES = ("producer", "executor", "approver", "verifier")
+IMAGE_ROLES = ("producer", "executor", "approver", "auditor", "verifier")
 PUBLIC_ROLE_KEYS = frozenset({"key_id", "public_key_hex"})
 MANIFEST_KEYS = frozenset(
     {
@@ -91,10 +96,50 @@ def _exact(value: Any, keys: frozenset[str], label: str) -> Mapping[str, Any]:
     return value
 
 
-def parse_public_config(payload: bytes) -> dict[str, Any]:
-    config = _exact(strict_json_loads(payload), PUBLIC_CONFIG_KEYS, "public config")
-    if type(config["schema_version"]) is not int or config["schema_version"] != 2:
-        raise ValueError("public config schema must be exact integer 2")
+def parse_public_config(
+    payload: bytes,
+    *,
+    diagnostic_mode: bool = False,
+    diagnostic_root_public_key: bytes | None = None,
+) -> dict[str, Any]:
+    """Authenticate the closed config with the image-baked root in production."""
+    raw = strict_json_loads(payload)
+    config: Mapping[str, Any]
+    if diagnostic_mode and frozenset(raw) == PUBLIC_CONFIG_KEYS - {"root_signature"}:
+        config = raw
+    else:
+        config = _exact(raw, PUBLIC_CONFIG_KEYS, "public config")
+    if type(config["schema_version"]) is not int or config["schema_version"] not in (
+        {2, 3} if diagnostic_mode else {3}
+    ):
+        raise ValueError("public config schema is not authorized")
+    if "root_signature" in config:
+        signature = config["root_signature"]
+        if (
+            type(signature) is not str
+            or re.fullmatch(r"[0-9a-f]{128}", signature) is None
+        ):
+            raise ValueError("root signature must be 64 lowercase hexadecimal bytes")
+        unsigned = {
+            key: value for key, value in config.items() if key != "root_signature"
+        }
+        if diagnostic_mode:
+            root = diagnostic_root_public_key
+            if root is None:
+                raise ValueError("diagnostic root key is required for a signed config")
+        else:
+            from benchmarks.codegraph_compare.trust_anchor import baked_root_public_key
+
+            root = baked_root_public_key()
+        if type(root) is not bytes or len(root) != 32:
+            raise ValueError("root public key must be exactly 32 bytes")
+        try:
+            Ed25519PublicKey.from_public_bytes(root).verify(
+                bytes.fromhex(signature),
+                ROOT_SIGNATURE_DOMAIN + canonical_json_bytes(unsigned),
+            )
+        except (InvalidSignature, ValueError) as exc:
+            raise ValueError("public config root signature mismatch") from exc
     keys: list[bytes] = []
     ids: list[str] = []
     for role in ("executor", "approver", "auditor"):
@@ -144,9 +189,19 @@ def parse_public_config(payload: bytes) -> dict[str, Any]:
     images = _exact(trusted["images"], frozenset(IMAGE_ROLES), "trusted images")
     if (
         any(_IMAGE.fullmatch(images[role]) is None for role in IMAGE_ROLES)
-        or len(set(images.values())) != 4
+        or len(set(images.values())) != 5
     ):
         raise ValueError("role images must be exact, authorized, and distinct")
+    runtime = _exact(
+        trusted["auditor_runtime"],
+        frozenset({"image_digest", "interpreter_sha256", "module_sha256"}),
+        "auditor runtime",
+    )
+    if runtime["image_digest"] != images["auditor"] or any(
+        _HEX64.fullmatch(runtime[name]) is None
+        for name in ("interpreter_sha256", "module_sha256")
+    ):
+        raise ValueError("auditor runtime authority is invalid")
     return dict(config)
 
 
@@ -286,10 +341,16 @@ def verify_cell(
     verifier_nonce: str,
     verifier_image_digest: str,
     process_identity: str,
+    diagnostic_mode: bool = False,
+    diagnostic_root_public_key: bytes | None = None,
 ) -> tuple[str, ...]:
     """Verify every mandatory trust root and recompute evidence; never trust body facts."""
     try:
-        config = parse_public_config(canonical_json_bytes(public_config))
+        config = parse_public_config(
+            canonical_json_bytes(public_config),
+            diagnostic_mode=diagnostic_mode,
+            diagnostic_root_public_key=diagnostic_root_public_key,
+        )
         if (
             _HEX64.fullmatch(verifier_nonce) is None
             or _IMAGE.fullmatch(verifier_image_digest) is None

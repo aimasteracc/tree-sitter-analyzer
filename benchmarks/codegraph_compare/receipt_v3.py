@@ -45,7 +45,7 @@ TOP_KEYS = frozenset({
     "approver_signature", "receipt_hash",
 })
 SIGNATURE_KEYS = frozenset({"key_id", "algorithm", "signature"})
-ELIGIBILITY_KEYS = frozenset({"repo_id", "source_rules_hash", "commit", "tracked_regular_paths", "tracked_entries", "tracked_files", "eligible_paths", "prefilter_exclusions", "tracked_inventory_hash", "eligible_paths_hash", "repo_fingerprint"})
+ELIGIBILITY_KEYS = frozenset({"repo_id", "source_rules_hash", "commit", "tracked_regular_paths", "tracked_entries", "root_tree_id", "tracked_files", "eligible_paths", "prefilter_exclusions", "tracked_inventory_hash", "eligible_paths_hash", "repo_fingerprint"})
 
 
 def _reject_constant(value: str) -> None:
@@ -158,8 +158,8 @@ def _blob(value: Any, label: str) -> None:
 def validate_body(body: Any) -> None:
     body = _exact(body, BODY_KEYS, "body")
     _hex(body["run_nonce"], "run_nonce")
-    images = _exact(body["role_images"], frozenset({"producer", "executor", "approver", "verifier"}), "role_images")
-    if any(re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None for value in images.values()) or len(set(images.values())) != 4:
+    images = _exact(body["role_images"], frozenset({"producer", "executor", "approver", "auditor", "verifier"}), "role_images")
+    if any(re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None for value in images.values()) or len(set(images.values())) != 5:
         raise ValueError("role image digests must be exact and distinct")
     cell = _exact(body["cell"], frozenset({"repo_id", "arm_id", "attempt", "artifact_path"}), "cell")
     _text(cell["repo_id"], "cell.repo_id", 64)
@@ -184,6 +184,9 @@ def validate_body(body: Any) -> None:
     eligibility = _exact(source["eligibility"], ELIGIBILITY_KEYS, "source.eligibility")
     _text(eligibility["repo_id"], "eligibility.repo_id", 64)
     _text(eligibility["commit"], "eligibility.commit", 128)
+    root_tree_id = _text(eligibility["root_tree_id"], "eligibility.root_tree_id", 64)
+    if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", root_tree_id) is None:
+        raise ValueError("eligibility.root_tree_id must be a Git object ID")
     for name in ("source_rules_hash", "tracked_inventory_hash", "eligible_paths_hash", "repo_fingerprint"):
         _hex(eligibility[name], f"eligibility.{name}")
     for name in ("tracked_regular_paths", "eligible_paths"):

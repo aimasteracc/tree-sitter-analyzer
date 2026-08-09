@@ -66,7 +66,10 @@ def _cgroup(pid: int) -> tuple[Path, str]:
     root = Path("/sys/fs/cgroup") / relative.lstrip("/")
     if root.resolve(strict=True) != root:
         raise ValueError("container cgroup is not canonical")
-    return root, relative
+    parent = root.parent
+    if parent == Path("/sys/fs/cgroup") or not (parent / "cgroup.procs").is_file():
+        raise ValueError("producer lacks a dedicated cgroup v2 parent")
+    return parent, "/" + parent.relative_to("/sys/fs/cgroup").as_posix()
 
 
 def _key(path: Path) -> bytes:
@@ -106,6 +109,7 @@ def launch(
     container: str,
     expected_image: str,
     seccomp: Path,
+    seccomp_host_path: str,
     source: Path,
     plan: Path,
     inventory: Path,
@@ -141,7 +145,7 @@ def launch(
     if actual_mounts != expected_mounts:
         raise ValueError("producer bind mounts/source paths/RO flags mismatch")
     seccomp_path = str(seccomp)
-    expected_security = ["no-new-privileges", f"seccomp={seccomp_path}"]
+    expected_security = ["no-new-privileges", f"seccomp={seccomp_host_path}"]
     if host["SecurityOpt"] != expected_security:
         raise ValueError("actual Docker security options mismatch")
     if (
@@ -183,17 +187,12 @@ def launch(
 
 
 def terminal(
-    container: str, token_payload: bytes, seccomp: Path, expected_image: str, key: bytes
+    token_payload: bytes, seccomp: Path, expected_image: str, key: bytes
 ) -> dict[str, Any]:
     envelope = strict_json_loads(token_payload)
     launched = _verify_launch(envelope, key)
     cid = launched["producer_container_id"]
     inspected = _inspect(cid)
-    if (
-        container not in {cid, inspected.get("Name", "").lstrip("/")}
-        and _inspect(container)["Id"] != cid
-    ):
-        raise ValueError("terminal container differs from launch")
     state = inspected["State"]
     if (
         state["Running"]
@@ -207,6 +206,28 @@ def terminal(
         or inspected["Image"] != launched["actual_image_id"]
     ):
         raise ValueError("terminal image identity changed")
+    host = inspected["HostConfig"]
+    actual_mounts = sorted(
+        [[m["Source"], m["Destination"], not m["RW"]] for m in inspected["Mounts"]]
+    )
+    actual_limits = {
+        "pids_limit": host["PidsLimit"],
+        "memory": host["Memory"],
+        "nano_cpus": host["NanoCpus"],
+    }
+    if (
+        inspected["Config"]["User"] != launched["container_user"]
+        or host["ReadonlyRootfs"] is not launched["readonly_rootfs"]
+        or host["CapDrop"] != launched["cap_drop"]
+        or host["NetworkMode"] != "none"
+        or host["SecurityOpt"] != launched["security_opt"]
+        or actual_mounts != launched["mounts"]
+        or actual_limits != launched["resource_limits"]
+        or host["Tmpfs"] != launched["tmpfs"]
+    ):
+        raise ValueError(
+            "terminal Docker security facts differ from staged launch audit"
+        )
     if (
         launched["seccomp_path"] != str(seccomp)
         or hashlib.sha256(_read(seccomp)).hexdigest() != launched["seccomp_sha256"]
@@ -286,16 +307,37 @@ def terminal(
     }
 
 
+def _authorize_runtime(public_config: Path) -> dict[str, Any]:
+    from benchmarks.codegraph_compare.verifier import parse_public_config
+
+    config = parse_public_config(_read(public_config))
+    expected = config["trusted"]["auditor_runtime"]
+    own = _inspect(os.environ.get("HOSTNAME", ""))
+    interpreter = hashlib.sha256(
+        _read(Path(sys.executable).resolve(strict=True))
+    ).hexdigest()
+    module = hashlib.sha256(_read(Path(__file__))).hexdigest()
+    if (
+        own["Config"]["Image"].split("@")[-1] != expected["image_digest"]
+        or interpreter != expected["interpreter_sha256"]
+        or module != expected["module_sha256"]
+    ):
+        raise ValueError("unauthorized host-auditor image or executable bytes")
+    return config
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="phase", required=True)
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--container", required=True)
     common.add_argument("--seccomp", required=True)
     common.add_argument("--expected-image", required=True)
     common.add_argument("--private-key", required=True)
     common.add_argument("--key-id", required=True)
+    common.add_argument("--public-config", required=True)
     launch_p = sub.add_parser("launch", parents=[common])
+    launch_p.add_argument("--container", required=True)
+    launch_p.add_argument("--seccomp-host-path", required=True)
     launch_p.add_argument("--source", required=True)
     launch_p.add_argument("--plan", required=True)
     launch_p.add_argument("--inventory", required=True)
@@ -305,13 +347,24 @@ def main(argv: list[str] | None = None) -> int:
     term = sub.add_parser("terminal", parents=[common])
     term.add_argument("--launch-token", required=True)
     a = p.parse_args(argv)
+    config = _authorize_runtime(Path(a.public_config))
+    if a.key_id != config["auditor"]["key_id"]:
+        raise ValueError("auditor key ID is not root-authorized")
+    if a.expected_image.split("@")[-1] != config["trusted"]["images"]["producer"]:
+        raise ValueError("producer image is not root-authorized")
     key = _key(Path(a.private_key))
+    if (
+        Ed25519PrivateKey.from_private_bytes(key).public_key().public_bytes_raw().hex()
+        != config["auditor"]["public_key_hex"]
+    ):
+        raise ValueError("auditor private key is not root-authorized")
     if a.phase == "launch":
         result = _sign(
             launch(
                 a.container,
                 a.expected_image,
                 Path(a.seccomp),
+                a.seccomp_host_path,
                 Path(a.source),
                 Path(a.plan),
                 Path(a.inventory),
@@ -326,7 +379,6 @@ def main(argv: list[str] | None = None) -> int:
     else:
         result = _sign(
             terminal(
-                a.container,
                 _read(Path(a.launch_token)),
                 Path(a.seccomp),
                 a.expected_image,

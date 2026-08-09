@@ -62,6 +62,15 @@ for source,name,role in zip(sys.argv[1:3],('executor.ed25519','approver.ed25519'
 PY
  chown root:root "$stage"/*.ed25519; [[ $(sha256sum "$stage"/*.ed25519|cut -d' ' -f1|sort -u|wc -l) -eq 2 ]]; }
 
+run_auditor(){
+ docker run --rm --pid host --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 0:0 \
+  --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
+  --mount type=bind,src=/sys/fs/cgroup,dst=/sys/fs/cgroup,readonly \
+  --mount "type=bind,src=$EXPERIMENT_ROOT/trust/seccomp,dst=/evidence/seccomp,readonly" \
+  --mount "type=bind,src=$PUBLIC_CONFIG,dst=/public/config.json,readonly" \
+  --mount "type=bind,src=$KEY_STAGE/auditor.ed25519,dst=/run/secrets/auditor.ed25519,readonly" \
+  "$AUDITOR_IMAGE" "$@" --private-key /run/secrets/auditor.ed25519 --public-config /public/config.json
+}
 leak_scan(){ python3 - "$1" "$2" "$3" <<'PY'
 import os,sys
 needles=[open(p,'rb').read() for p in sys.argv[2:]]
@@ -74,31 +83,28 @@ for root,dirs,files in os.walk(sys.argv[1],followlinks=False):
 PY
 }
 emit_cells(){ local command=$1 count=0 repo arm; for repo in "${REPOS[@]}"; do for arm in "${ARMS[@]}"; do count=$((count+1)); printf '{"ordinal":%d,"repo_id":"%s","arm_id":"%s","attempt":1,"command":"%s","evaluation_stage":"E0","status":"NOT_EVALUATED"}\n' "$count" "$repo" "$arm" "$command"; done; done; [[ $count -eq 14 ]]; }
-cleanup(){ set +e; [[ -n ${mountpoint:-} ]] && mountpoint -q "$mountpoint" && umount "$mountpoint"; [[ -n ${mapping:-} ]] && veritysetup status "$mapping" >/dev/null 2>&1 && veritysetup close "$mapping"; [[ -n ${container:-} ]] && docker rm -f "$container" >/dev/null 2>&1; [[ -n ${KEY_STAGE:-} ]] && rm -rf -- "$KEY_STAGE"; }
+cleanup(){ set +e; [[ -n ${mountpoint:-} ]] && mountpoint -q "$mountpoint" && umount "$mountpoint"; [[ -n ${mapping:-} ]] && veritysetup status "$mapping" >/dev/null 2>&1 && veritysetup close "$mapping"; [[ -n ${container:-} ]] && docker rm -f "$container" >/dev/null 2>&1; [[ -n ${cgroup_parent:-} && -d ${cgroup_parent:-} ]] && rmdir -- "$cgroup_parent" 2>/dev/null; [[ -n ${KEY_STAGE:-} ]] && rm -rf -- "$KEY_STAGE"; }
 trap cleanup EXIT INT TERM
 COMMAND=${1:-}; [[ $# -gt 0 ]] || usage; shift
 if [[ $COMMAND == contract ]]; then [[ $# -eq 0 ]] || usage; contract; exit 0; fi
-declare PLAN_DIR='' INVENTORY_DIR='' SOURCES='' EXECUTOR_KEY='' APPROVER_KEY='' AUDITOR_KEY='' PUBLIC_CONFIG='' TRUSTED_PUBLIC_CONFIG='' TRUSTED_PUBLIC_CONFIG_SHA256='' SECCOMP='' TOOL='' CONFIG='' EXPERIMENT_ROOT='' OUTPUT_ROOT=''
-declare PRODUCER_IMAGE='' EXECUTOR_IMAGE='' APPROVER_IMAGE='' VERIFIER_IMAGE=''
+declare PLAN_DIR='' INVENTORY_DIR='' SOURCES='' EXECUTOR_KEY='' APPROVER_KEY='' AUDITOR_KEY='' PUBLIC_CONFIG='' SECCOMP='' TOOL='' CONFIG='' EXPERIMENT_ROOT='' OUTPUT_ROOT=''
+declare PRODUCER_IMAGE='' EXECUTOR_IMAGE='' APPROVER_IMAGE='' AUDITOR_IMAGE='' VERIFIER_IMAGE=''
 while [[ $# -gt 0 ]]; do case $1 in
  --plan-dir) PLAN_DIR=${2:?}; shift 2;; --inventory-dir) INVENTORY_DIR=${2:?}; shift 2;; --sources) SOURCES=${2:?}; shift 2;;
- --executor-key) EXECUTOR_KEY=${2:?}; shift 2;; --approver-key) APPROVER_KEY=${2:?}; shift 2;; --auditor-key) AUDITOR_KEY=${2:?}; shift 2;; --tool) TOOL=${2:?}; shift 2;; --config) CONFIG=${2:?}; shift 2;; --public-config) PUBLIC_CONFIG=${2:?}; shift 2;; --trusted-public-config) TRUSTED_PUBLIC_CONFIG=${2:?}; shift 2;; --trusted-public-config-sha256) TRUSTED_PUBLIC_CONFIG_SHA256=${2:?}; shift 2;;
+ --executor-key) EXECUTOR_KEY=${2:?}; shift 2;; --approver-key) APPROVER_KEY=${2:?}; shift 2;; --auditor-key) AUDITOR_KEY=${2:?}; shift 2;; --tool) TOOL=${2:?}; shift 2;; --config) CONFIG=${2:?}; shift 2;; --public-config) PUBLIC_CONFIG=${2:?}; shift 2;;
  --seccomp) SECCOMP=${2:?}; shift 2;; --experiment-root) EXPERIMENT_ROOT=${2:?}; shift 2;; --output-root) OUTPUT_ROOT=${2:?}; shift 2;;
  --producer-image) PRODUCER_IMAGE=${2:?}; shift 2;; --executor-signer-image) EXECUTOR_IMAGE=${2:?}; shift 2;;
- --approver-signer-image) APPROVER_IMAGE=${2:?}; shift 2;; --verifier-image) VERIFIER_IMAGE=${2:?}; shift 2;; *) usage;; esac; done
+ --approver-signer-image) APPROVER_IMAGE=${2:?}; shift 2;; --auditor-image) AUDITOR_IMAGE=${2:?}; shift 2;; --verifier-image) VERIFIER_IMAGE=${2:?}; shift 2;; *) usage;; esac; done
 if [[ $COMMAND == dry-run ]]; then emit_cells dry-run; printf '%s\n' "$CLAIM"; exit 0; fi
 [[ $COMMAND == preflight || $COMMAND == run || $COMMAND == verify ]] || usage
 linux_root; command -v docker >/dev/null; command -v veritysetup >/dev/null
 if [[ $COMMAND == verify ]]; then
  canonical_existing "$EXPERIMENT_ROOT"; require_digest_image "$VERIFIER_IMAGE"
- [[ $TRUSTED_PUBLIC_CONFIG_SHA256 =~ ^[0-9a-f]{64}$ ]] || { echo "trusted public config digest required" >&2; exit 64; }
- canonical_existing "$TRUSTED_PUBLIC_CONFIG"; SECCOMP="$EXPERIMENT_ROOT/trust/seccomp"
- PUBLIC_CONFIG="$EXPERIMENT_ROOT/public-config.json"
+ SECCOMP="$EXPERIMENT_ROOT/trust/seccomp"; PUBLIC_CONFIG="$EXPERIMENT_ROOT/public-config.json"
  canonical_existing "$PUBLIC_CONFIG"; canonical_existing "$SECCOMP"
- python3 -m benchmarks.codegraph_compare.stage_inputs compare "$TRUSTED_PUBLIC_CONFIG" "$PUBLIC_CONFIG" "$TRUSTED_PUBLIC_CONFIG_SHA256"
 else
  for path in "$PUBLIC_CONFIG" "$SECCOMP" "$TOOL" "$CONFIG"; do canonical_existing "$path"; [[ -f $path && -s $path ]]; done
- for image in "$PRODUCER_IMAGE" "$EXECUTOR_IMAGE" "$APPROVER_IMAGE" "$VERIFIER_IMAGE"; do [[ -n $image ]]; require_digest_image "$image"; done
+ for image in "$PRODUCER_IMAGE" "$EXECUTOR_IMAGE" "$APPROVER_IMAGE" "$AUDITOR_IMAGE" "$VERIFIER_IMAGE"; do [[ -n $image ]]; require_digest_image "$image"; done
  canonical_existing "$PLAN_DIR"; canonical_existing "$INVENTORY_DIR"; canonical_existing "$SOURCES"
  validate_role_key "$EXECUTOR_KEY"; validate_role_key "$APPROVER_KEY"; validate_role_key "$AUDITOR_KEY"
  mapfile -t ROLE_IDS < <(python3 - "$PUBLIC_CONFIG" "$EXECUTOR_KEY" "$APPROVER_KEY" <<'PY'
@@ -113,10 +119,10 @@ PY
  )
  [[ ${#ROLE_IDS[@]} -eq 2 && ${ROLE_IDS[0]} != "${ROLE_IDS[1]}" ]]
  for repo in "${REPOS[@]}"; do canonical_existing "$INVENTORY_DIR/$repo.json"; canonical_existing "$SOURCES/$repo"; for arm in "${ARMS[@]}"; do canonical_existing "$PLAN_DIR/$repo/$arm.json"; done; done
- python3 - "$PUBLIC_CONFIG" "$PRODUCER_IMAGE" "$EXECUTOR_IMAGE" "$APPROVER_IMAGE" "$VERIFIER_IMAGE" <<'PY'
+ python3 - "$PUBLIC_CONFIG" "$PRODUCER_IMAGE" "$EXECUTOR_IMAGE" "$APPROVER_IMAGE" "$AUDITOR_IMAGE" "$VERIFIER_IMAGE" <<'PY'
 import json,sys
-c=json.load(open(sys.argv[1])); supplied=[x.split('@')[-1] for x in sys.argv[2:]]; expected=[c['trusted']['images'][r] for r in ('producer','executor','approver','verifier')]
-if supplied != expected or len(set(expected)) != 4: raise SystemExit('role image authorization mismatch')
+c=json.load(open(sys.argv[1])); supplied=[x.split('@')[-1] for x in sys.argv[2:]]; expected=[c['trusted']['images'][r] for r in ('producer','executor','approver','auditor','verifier')]
+if supplied != expected or len(set(expected)) != 5: raise SystemExit('role image authorization mismatch')
 PY
 fi
 COMMON=(--network none --read-only --cap-drop ALL --security-opt no-new-privileges --security-opt "seccomp=$SECCOMP" --user 65532:65532 --pids-limit 64 --memory 4g --cpus 1 --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m --env HOME=/nonexistent --env LANG=C.UTF-8 --env LC_ALL=C.UTF-8)
@@ -130,11 +136,9 @@ m=json.load(open(sys.argv[1],encoding='utf-8')); print(m['verifier_nonce'],m['ve
 PY
  )
  [[ $manifest_image == "${VERIFIER_IMAGE##*@}" ]] || { echo "verifier image digest mismatch" >&2; exit 65; }
- docker run --rm "${COMMON[@]}" --mount "type=bind,src=$EXPERIMENT_ROOT,dst=/evidence,readonly" --mount "type=bind,src=$TRUSTED_PUBLIC_CONFIG,dst=/trusted/public-config.json,readonly" --mount "type=bind,src=$OUTPUT_ROOT,dst=/verdict-out" "$VERIFIER_IMAGE" aggregate --manifest /evidence/manifest.json --trusted-public-config /trusted/public-config.json --trusted-public-config-sha256 "$TRUSTED_PUBLIC_CONFIG_SHA256" --evidence-public-config /evidence/public-config.json --output /verdict-out/verdict.json --verifier-image-digest "${VERIFIER_IMAGE##*@}" --verifier-nonce "$nonce"
+ docker run --rm "${COMMON[@]}" --mount "type=bind,src=$EXPERIMENT_ROOT,dst=/evidence,readonly" --mount "type=bind,src=$OUTPUT_ROOT,dst=/verdict-out" "$VERIFIER_IMAGE" aggregate --manifest /evidence/manifest.json --public-config /evidence/public-config.json --output /verdict-out/verdict.json --verifier-image-digest "${VERIFIER_IMAGE##*@}" --verifier-nonce "$nonce"
  exit $?
 fi
-TRUSTED_PUBLIC_CONFIG="$PUBLIC_CONFIG"
-TRUSTED_PUBLIC_CONFIG_SHA256=$(python3 -m benchmarks.codegraph_compare.stage_inputs digest "$TRUSTED_PUBLIC_CONFIG")
 fresh_directory "$EXPERIMENT_ROOT"; chmod 0711 "$EXPERIMENT_ROOT"; mkdir -m 0711 "$EXPERIMENT_ROOT/cells" "$EXPERIMENT_ROOT/trust"
 nonce=$(openssl rand -hex 32); python3 - "$PUBLIC_CONFIG" "$EXPERIMENT_ROOT/plan-set-contract.json" "$nonce" <<'PY'
 import json,os,stat,sys
@@ -167,23 +171,24 @@ for repo in "${REPOS[@]}"; do for arm in "${ARMS[@]}"; do
  ordinal=$((ordinal+1)); cell="$EXPERIMENT_ROOT/cells/$repo/$arm"; mkdir -p -m 0711 "$cell"; out="$cell/producer-out"; mkdir -m 0700 "$out"
  python3 -m benchmarks.codegraph_compare.stage_inputs file "$PLAN_DIR/$repo/$arm.json" "$cell/plan.json"
  python3 -m benchmarks.codegraph_compare.stage_inputs file "$INVENTORY_DIR/$repo.json" "$cell/inventory.json"
- python3 -m benchmarks.codegraph_compare.stage_inputs tree "$SOURCES/$repo" "$cell/source" "$cell/source-snapshot.tar"
+ python3 -m benchmarks.codegraph_compare.stage_inputs tree "$SOURCES/$repo" "$cell/source" "$cell/source-snapshot.tar" "$cell/inventory.json"
  chown -R 65532:65532 "$out" "$cell/source"; chown 65532:65532 "$cell/plan.json" "$cell/inventory.json"; chmod 0711 "$EXPERIMENT_ROOT/cells/$repo" "$cell"
  plan="$cell/plan.json"; inventory="$cell/inventory.json"; container="no1-008a-p-${ordinal}-$$"
- started=$(date +%s%N); container_id=$(docker run -d --name "$container" "${COMMON[@]}" --mount "type=bind,src=$cell/source,dst=/source,readonly,bind-propagation=rprivate" --mount "type=bind,src=$plan,dst=/plan/cell-plan.json,readonly" --mount "type=bind,src=$inventory,dst=/plan/inventory.json,readonly" --mount "type=bind,src=$out,dst=/out" "$PRODUCER_IMAGE" --plan /plan/cell-plan.json --out /out) || { failures=$((failures+1)); continue; }
+ cgroup_parent="/sys/fs/cgroup/no1-008a-${nonce}-${ordinal}"; mkdir -m 0755 -- "$cgroup_parent"
+ started=$(date +%s%N); container_id=$(docker run -d --name "$container" --cgroup-parent "$cgroup_parent" "${COMMON[@]}" --mount "type=bind,src=$cell/source,dst=/source,readonly,bind-propagation=rprivate" --mount "type=bind,src=$plan,dst=/plan/cell-plan.json,readonly" --mount "type=bind,src=$inventory,dst=/plan/inventory.json,readonly" --mount "type=bind,src=$out,dst=/out" "$PRODUCER_IMAGE" --plan /plan/cell-plan.json --out /out) || { rmdir -- "$cgroup_parent"; cgroup_parent=''; failures=$((failures+1)); continue; }
  auditor_key_id=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["auditor"]["key_id"])' "$PUBLIC_CONFIG")
- python3 -m benchmarks.codegraph_compare.host_auditor launch --container "$container_id" --source "$cell/source" --plan "$plan" --inventory "$inventory" --output "$out" --seccomp "$EXPERIMENT_ROOT/trust/seccomp" --expected-image "$PRODUCER_IMAGE" --since "$((started/1000000000))" --run-nonce "$nonce" --private-key "$KEY_STAGE/auditor.ed25519" --key-id "$auditor_key_id" >"$cell/launch-audit.json"
+ run_auditor launch --container "$container_id" --seccomp-host-path "$EXPERIMENT_ROOT/trust/seccomp" --source "$cell/source" --plan "$plan" --inventory "$inventory" --output "$out" --seccomp /evidence/seccomp --expected-image "$PRODUCER_IMAGE" --since "$((started/1000000000))" --run-nonce "$nonce" --key-id "$auditor_key_id" >"$cell/launch-audit.json"
  exit_code=$(docker wait "$container_id" 2>/dev/null || printf 125); [[ $exit_code == 0 ]] || failures=$((failures+1))
- python3 -m benchmarks.codegraph_compare.host_auditor terminal --container "$container_id" --launch-token "$cell/launch-audit.json" --seccomp "$EXPERIMENT_ROOT/trust/seccomp" --expected-image "$PRODUCER_IMAGE" --private-key "$KEY_STAGE/auditor.ed25519" --key-id "$auditor_key_id" >"$cell/process-audit.json"
- docker rm "$container_id" >/dev/null; container=''
+ run_auditor terminal --launch-token "$cell/launch-audit.json" --seccomp /evidence/seccomp --expected-image "$PRODUCER_IMAGE" --key-id "$auditor_key_id" >"$cell/process-audit.json"
+ docker rm "$container_id" >/dev/null; container=''; rmdir -- "$cgroup_parent"; cgroup_parent=''
  truncate -s 1G "$cell/data.img"; mkfs.ext4 -q -d "$out/core" "$cell/data.img"; truncate -s 256M "$cell/hash.img"; salt=$(openssl rand -hex 32)
  format=$(veritysetup format "$cell/data.img" "$cell/hash.img" --hash sha256 --salt "$salt"); root_hash=$(awk '/Root hash:/{print $3}' <<<"$format")
  mapping="no1-008a-${ordinal}-$$"; mountpoint="$cell/verity"; veritysetup open "$cell/data.img" "$mapping" "$cell/hash.img" "$root_hash" --salt "$salt"; mkdir "$mountpoint"; mount -o ro,nosuid,nodev,noexec "/dev/mapper/$mapping" "$mountpoint"
  # Executor image independently builds/signs one body and writes only stdout.
  # Contract fragments: sign-executor --plan /evidence/plan.json; sign-approver --attestation /handoff/executor.json
  data_blocks=$(awk '/Data blocks:/{print $3}' <<<"$format"); data_block_size=$(awk '/Data block size:/{print $4}' <<<"$format"); hash_block_size=$(awk '/Hash block size:/{print $4}' <<<"$format")
- docker run --rm "${COMMON[@]}" --user 0:0 --mount "type=bind,src=$mountpoint,dst=/snapshot,readonly" --mount "type=bind,src=$plan,dst=/evidence/plan.json,readonly" --mount "type=bind,src=$inventory,dst=/evidence/inventory.json,readonly" --mount "type=bind,src=$cell/process-audit.json,dst=/evidence/process-audit.json,readonly" --mount "type=bind,src=$cell/data.img,dst=/evidence/data.img,readonly" --mount "type=bind,src=$cell/hash.img,dst=/evidence/hash.img,readonly" --mount "type=bind,src=$KEY_STAGE/executor.ed25519,dst=/run/secrets/private.ed25519,readonly" "$EXECUTOR_IMAGE" sign-executor --run-nonce "$nonce" --producer-image-digest "${PRODUCER_IMAGE##*@}" --executor-image-digest "${EXECUTOR_IMAGE##*@}" --approver-image-digest "${APPROVER_IMAGE##*@}" --verifier-image-digest "${VERIFIER_IMAGE##*@}" --plan /evidence/plan.json --inventory /evidence/inventory.json --core-root /snapshot --data-image /evidence/data.img --hash-image /evidence/hash.img --process-audit /evidence/process-audit.json --root-hash "$root_hash" --salt "$salt" --data-block-size "$data_block_size" --hash-block-size "$hash_block_size" --data-blocks "$data_blocks" --private-key /run/secrets/private.ed25519 --key-id "${ROLE_IDS[0]}" >"$cell/executor-attestation.json" || failures=$((failures+1))
- docker run --rm "${COMMON[@]}" --user 0:0 --mount "type=bind,src=$cell/executor-attestation.json,dst=/handoff/executor.json,readonly" --mount "type=bind,src=$PUBLIC_CONFIG,dst=/public/config.json,readonly" --mount "type=bind,src=$KEY_STAGE/approver.ed25519,dst=/run/secrets/private.ed25519,readonly" --mount "type=bind,src=$mountpoint,dst=/snapshot,readonly" --mount "type=bind,src=$plan,dst=/evidence/plan.json,readonly" --mount "type=bind,src=$inventory,dst=/evidence/inventory.json,readonly" --mount "type=bind,src=$cell/process-audit.json,dst=/evidence/process-audit.json,readonly" --mount "type=bind,src=$cell/data.img,dst=/evidence/data.img,readonly" --mount "type=bind,src=$cell/hash.img,dst=/evidence/hash.img,readonly" --mount "type=bind,src=$cell/source-snapshot.tar,dst=/evidence/source-snapshot.tar,readonly" --mount "type=bind,src=$EXPERIMENT_ROOT/trust/tool,dst=/evidence/tool,readonly" --mount "type=bind,src=$EXPERIMENT_ROOT/trust/config,dst=/evidence/config,readonly" --mount "type=bind,src=$EXPERIMENT_ROOT/trust/seccomp,dst=/evidence/seccomp,readonly" "$APPROVER_IMAGE" sign-approver --run-nonce "$nonce" --producer-image-digest "${PRODUCER_IMAGE##*@}" --executor-image-digest "${EXECUTOR_IMAGE##*@}" --approver-image-digest "${APPROVER_IMAGE##*@}" --verifier-image-digest "${VERIFIER_IMAGE##*@}" --attestation /handoff/executor.json --public-config /public/config.json --plan /evidence/plan.json --inventory /evidence/inventory.json --core-root /snapshot --data-image /evidence/data.img --hash-image /evidence/hash.img --process-audit /evidence/process-audit.json --source-snapshot /evidence/source-snapshot.tar --tool /evidence/tool --config /evidence/config --seccomp /evidence/seccomp --root-hash "$root_hash" --salt "$salt" --data-block-size "$data_block_size" --hash-block-size "$hash_block_size" --data-blocks "$data_blocks" --private-key /run/secrets/private.ed25519 --key-id "${ROLE_IDS[1]}" >"$cell/cell-receipt.json" || failures=$((failures+1))
+ docker run --rm "${COMMON[@]}" --user 0:0 --mount "type=bind,src=$mountpoint,dst=/snapshot,readonly" --mount "type=bind,src=$plan,dst=/evidence/plan.json,readonly" --mount "type=bind,src=$inventory,dst=/evidence/inventory.json,readonly" --mount "type=bind,src=$cell/process-audit.json,dst=/evidence/process-audit.json,readonly" --mount "type=bind,src=$cell/data.img,dst=/evidence/data.img,readonly" --mount "type=bind,src=$cell/hash.img,dst=/evidence/hash.img,readonly" --mount "type=bind,src=$KEY_STAGE/executor.ed25519,dst=/run/secrets/private.ed25519,readonly" "$EXECUTOR_IMAGE" sign-executor --run-nonce "$nonce" --producer-image-digest "${PRODUCER_IMAGE##*@}" --executor-image-digest "${EXECUTOR_IMAGE##*@}" --approver-image-digest "${APPROVER_IMAGE##*@}" --auditor-image-digest "${AUDITOR_IMAGE##*@}" --verifier-image-digest "${VERIFIER_IMAGE##*@}" --plan /evidence/plan.json --inventory /evidence/inventory.json --core-root /snapshot --data-image /evidence/data.img --hash-image /evidence/hash.img --process-audit /evidence/process-audit.json --root-hash "$root_hash" --salt "$salt" --data-block-size "$data_block_size" --hash-block-size "$hash_block_size" --data-blocks "$data_blocks" --private-key /run/secrets/private.ed25519 --key-id "${ROLE_IDS[0]}" >"$cell/executor-attestation.json" || failures=$((failures+1))
+ docker run --rm "${COMMON[@]}" --user 0:0 --mount "type=bind,src=$cell/executor-attestation.json,dst=/handoff/executor.json,readonly" --mount "type=bind,src=$PUBLIC_CONFIG,dst=/public/config.json,readonly" --mount "type=bind,src=$KEY_STAGE/approver.ed25519,dst=/run/secrets/private.ed25519,readonly" --mount "type=bind,src=$mountpoint,dst=/snapshot,readonly" --mount "type=bind,src=$plan,dst=/evidence/plan.json,readonly" --mount "type=bind,src=$inventory,dst=/evidence/inventory.json,readonly" --mount "type=bind,src=$cell/process-audit.json,dst=/evidence/process-audit.json,readonly" --mount "type=bind,src=$cell/data.img,dst=/evidence/data.img,readonly" --mount "type=bind,src=$cell/hash.img,dst=/evidence/hash.img,readonly" --mount "type=bind,src=$cell/source-snapshot.tar,dst=/evidence/source-snapshot.tar,readonly" --mount "type=bind,src=$EXPERIMENT_ROOT/trust/tool,dst=/evidence/tool,readonly" --mount "type=bind,src=$EXPERIMENT_ROOT/trust/config,dst=/evidence/config,readonly" --mount "type=bind,src=$EXPERIMENT_ROOT/trust/seccomp,dst=/evidence/seccomp,readonly" "$APPROVER_IMAGE" sign-approver --run-nonce "$nonce" --producer-image-digest "${PRODUCER_IMAGE##*@}" --executor-image-digest "${EXECUTOR_IMAGE##*@}" --approver-image-digest "${APPROVER_IMAGE##*@}" --auditor-image-digest "${AUDITOR_IMAGE##*@}" --verifier-image-digest "${VERIFIER_IMAGE##*@}" --attestation /handoff/executor.json --public-config /public/config.json --plan /evidence/plan.json --inventory /evidence/inventory.json --core-root /snapshot --data-image /evidence/data.img --hash-image /evidence/hash.img --process-audit /evidence/process-audit.json --source-snapshot /evidence/source-snapshot.tar --tool /evidence/tool --config /evidence/config --seccomp /evidence/seccomp --root-hash "$root_hash" --salt "$salt" --data-block-size "$data_block_size" --hash-block-size "$hash_block_size" --data-blocks "$data_blocks" --private-key /run/secrets/private.ed25519 --key-id "${ROLE_IDS[1]}" >"$cell/cell-receipt.json" || failures=$((failures+1))
  leak_scan "$cell" "$KEY_STAGE/executor.ed25519" "$KEY_STAGE/approver.ed25519"; umount "$mountpoint"; mountpoint=''; veritysetup close "$mapping"; mapping=''; rmdir "$cell/verity"; find "$cell" -type d -exec chmod 0555 {} +; find "$cell" -type f -exec chown 65532:65532 {} + -exec chmod 0444 {} +
 done; done
 [[ $ordinal -eq 14 ]]; rm -rf "$KEY_STAGE"; KEY_STAGE=''; (( failures == 0 )) || { printf '%s\n' "$CLAIM" >"$EXPERIMENT_ROOT/verdict.json"; exit 1; }
@@ -200,7 +205,7 @@ fd=os.open(sys.argv[1],os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o444); os
 PY
 chown 65532:65532 "$EXPERIMENT_ROOT/manifest.json" "$EXPERIMENT_ROOT/plan-set-contract.json" "$PUBLIC_CONFIG" "$EXPERIMENT_ROOT/trust/"*; chmod 0444 "$EXPERIMENT_ROOT/manifest.json" "$EXPERIMENT_ROOT/plan-set-contract.json" "$PUBLIC_CONFIG" "$EXPERIMENT_ROOT/trust/"*
 mkdir -m 0700 "$EXPERIMENT_ROOT/verifications"; chown 65532:65532 "$EXPERIMENT_ROOT/verifications"; ordinal=0
-for repo in "${REPOS[@]}"; do for arm in "${ARMS[@]}"; do ordinal=$((ordinal+1)); docker run --rm "${COMMON[@]}" --mount "type=bind,src=$EXPERIMENT_ROOT,dst=/evidence,readonly" --mount "type=bind,src=$TRUSTED_PUBLIC_CONFIG,dst=/trusted/public-config.json,readonly" --mount "type=bind,src=$EXPERIMENT_ROOT/verifications,dst=/verdict-out" "$VERIFIER_IMAGE" cell --manifest /evidence/manifest.json --trusted-public-config /trusted/public-config.json --trusted-public-config-sha256 "$TRUSTED_PUBLIC_CONFIG_SHA256" --evidence-public-config /evidence/public-config.json --ordinal "$((ordinal-1))" --output "/verdict-out/cell-${ordinal}.json" --verifier-image-digest "${VERIFIER_IMAGE##*@}" --verifier-nonce "$nonce"; done; done
-docker run --rm "${COMMON[@]}" --mount "type=bind,src=$EXPERIMENT_ROOT,dst=/evidence,readonly" --mount "type=bind,src=$TRUSTED_PUBLIC_CONFIG,dst=/trusted/public-config.json,readonly" --mount "type=bind,src=$EXPERIMENT_ROOT/verifications,dst=/verdict-out" "$VERIFIER_IMAGE" aggregate --manifest /evidence/manifest.json --trusted-public-config /trusted/public-config.json --trusted-public-config-sha256 "$TRUSTED_PUBLIC_CONFIG_SHA256" --evidence-public-config /evidence/public-config.json --output /verdict-out/verdict.json --verifier-image-digest "${VERIFIER_IMAGE##*@}" --verifier-nonce "$nonce"
+for repo in "${REPOS[@]}"; do for arm in "${ARMS[@]}"; do ordinal=$((ordinal+1)); docker run --rm "${COMMON[@]}" --mount "type=bind,src=$EXPERIMENT_ROOT,dst=/evidence,readonly" --mount "type=bind,src=$EXPERIMENT_ROOT/verifications,dst=/verdict-out" "$VERIFIER_IMAGE" cell --manifest /evidence/manifest.json --public-config /evidence/public-config.json --ordinal "$((ordinal-1))" --output "/verdict-out/cell-${ordinal}.json" --verifier-image-digest "${VERIFIER_IMAGE##*@}" --verifier-nonce "$nonce"; done; done
+docker run --rm "${COMMON[@]}" --mount "type=bind,src=$EXPERIMENT_ROOT,dst=/evidence,readonly" --mount "type=bind,src=$EXPERIMENT_ROOT/verifications,dst=/verdict-out" "$VERIFIER_IMAGE" aggregate --manifest /evidence/manifest.json --public-config /evidence/public-config.json --output /verdict-out/verdict.json --verifier-image-digest "${VERIFIER_IMAGE##*@}" --verifier-nonce "$nonce"
 install -m 0600 "$EXPERIMENT_ROOT/verifications/verdict.json" "$EXPERIMENT_ROOT/verdict.json"
 exit 0

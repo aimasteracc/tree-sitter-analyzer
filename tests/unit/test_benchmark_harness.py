@@ -8605,7 +8605,7 @@ def test_large_source_inventory_uses_constant_subprocess_count(tmp_path: Path):
         result = inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
 
     assert len(result.tracked_regular_paths) == 256
-    assert len(starts) == 10
+    assert len(starts) == 12
     assert [command[:3] for command in starts].count(
         ("git", "cat-file", "--batch")
     ) == 1
@@ -9752,12 +9752,20 @@ def test_source_inventory_is_exactly_bound_to_git_modes_objects_and_bytes(
         for path, mode, object_id in regular
     ]
 
+    root_tree_id = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
     assert asdict(inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)) == {
         "repo_id": "vscode",
         "source_rules_hash": DEFAULT_SOURCE_RULES.digest,
         "commit": commit,
         "tracked_regular_paths": ("generated.ts", "main.ts", "notes.md"),
         "tracked_entries": tuple(records),
+        "root_tree_id": root_tree_id,
         "tracked_files": tuple(
             (path, mode, object_id, (repo / path).stat().st_size, content_hash)
             for path, mode, object_id, content_hash in file_hashes
@@ -11210,6 +11218,7 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
             "producer": "sha256:" + "6" * 64,
             "executor": "sha256:" + "7" * 64,
             "approver": "sha256:" + "8" * 64,
+            "auditor": "sha256:" + "a" * 64,
             "verifier": "sha256:" + "9" * 64,
         },
         "cell": {
@@ -11234,6 +11243,7 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
                 "commit": "8" * 40,
                 "tracked_regular_paths": ["main.ts"],
                 "tracked_entries": [["main.ts", "100644", "a" * 40]],
+                "root_tree_id": "c" * 40,
                 "tracked_files": [["main.ts", "100644", "a" * 40, 1, "b" * 64]],
                 "eligible_paths": ["main.ts"],
                 "prefilter_exclusions": [],
@@ -11364,8 +11374,8 @@ def _qualification_v3_receipt(repo_id="vscode", arm_id="tsa-warm"):
 def _qualification_v3_public_config():
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-    return {
-        "schema_version": 2,
+    config = {
+        "schema_version": 3,
         "executor": {
             "key_id": "executor",
             "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
@@ -11433,10 +11443,32 @@ def _qualification_v3_public_config():
                 "producer": "sha256:" + "6" * 64,
                 "executor": "sha256:" + "7" * 64,
                 "approver": "sha256:" + "8" * 64,
+                "auditor": "sha256:" + "a" * 64,
                 "verifier": "sha256:" + "9" * 64,
+            },
+            "auditor_runtime": {
+                "image_digest": "sha256:" + "a" * 64,
+                "interpreter_sha256": "b" * 64,
+                "module_sha256": "c" * 64,
             },
         },
     }
+    return _sign_qualification_v3_config(config)
+
+
+def _sign_qualification_v3_config(config):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.verifier import ROOT_SIGNATURE_DOMAIN
+
+    unsigned = {key: value for key, value in config.items() if key != "root_signature"}
+    config["root_signature"] = (
+        Ed25519PrivateKey.from_private_bytes(b"\x44" * 32)
+        .sign(ROOT_SIGNATURE_DOMAIN + canonical_json_bytes(unsigned))
+        .hex()
+    )
+    return config
 
 
 def test_qualification_v3_signatures_cover_byte_identical_canonical_body():
@@ -11615,7 +11647,35 @@ def test_qualification_v3_aggregate_requires_public_config_and_full_verification
         f"{cell['repo_id']}/{cell['arm_id']}": digest
         for cell, digest in zip(manifest["cells"], plan_hashes, strict=True)
     }
+    _sign_qualification_v3_config(config)
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import trust_anchor
+
+    monkeypatch.setattr(
+        trust_anchor,
+        "baked_root_public_key",
+        lambda: (
+            Ed25519PrivateKey.from_private_bytes(b"\x44" * 32)
+            .public_key()
+            .public_bytes_raw()
+        ),
+    )
     monkeypatch.setattr(verifier, "verify_cell", lambda *args, **kwargs: ())
+    diagnostic_root = (
+        Ed25519PrivateKey.from_private_bytes(b"\x44" * 32)
+        .public_key()
+        .public_bytes_raw()
+    )
+    assert (
+        verifier.aggregate_verdict(
+            manifest,
+            public_config=config,
+            diagnostic_mode=True,
+            diagnostic_root_public_key=diagnostic_root,
+        )["status"]
+        == "NOT_EVALUATED"
+    )
     assert (
         verifier.aggregate_verdict(manifest, public_config=config)["status"]
         == "SETUP_QUALIFIED"
@@ -11855,6 +11915,14 @@ def test_qualification_v3_run_correlation_requires_process_isolation():
         verifier_nonce="a" * 64,
         verifier_image_digest=body["process_audit"]["image_digest"],
         process_identity="fresh-process",
+        diagnostic_mode=True,
+        diagnostic_root_public_key=__import__(
+            "cryptography.hazmat.primitives.asymmetric.ed25519",
+            fromlist=["Ed25519PrivateKey"],
+        )
+        .Ed25519PrivateKey.from_private_bytes(b"\x44" * 32)
+        .public_key()
+        .public_bytes_raw(),
     )
     assert failures == (
         "CELL_EVIDENCE_INVALID:verifier process is not isolated from producer",
@@ -11975,9 +12043,9 @@ def test_qualification_v3_schema_fragments_stay_below_file_cap():
     ]
     assert {path.name: len(path.read_text().splitlines()) for path in schemas} == {
         "no1-008a-cell-receipt-v3-body.schema.json": 62,
-        "no1-008a-cell-receipt-v3-common.schema.json": 256,
+        "no1-008a-cell-receipt-v3-common.schema.json": 261,
         "no1-008a-cell-receipt-v3-fields-a.schema.json": 211,
-        "no1-008a-cell-receipt-v3-fields-b.schema.json": 406,
+        "no1-008a-cell-receipt-v3-fields-b.schema.json": 411,
         "no1-008a-cell-receipt-v3.schema.json": 35,
     }
 
@@ -11990,10 +12058,13 @@ def test_qualification_v3_verify_requires_external_config_anchor():
             "else", operator.index("if [[ $COMMAND == verify ]]")
         )
     ]
-    assert "--trusted-public-config" in operator
-    assert "--trusted-public-config-sha256" in operator
+    assert "--trusted-public-config" not in operator
+    assert "--trusted-public-config-sha256" not in operator
     assert 'PUBLIC_CONFIG="$EXPERIMENT_ROOT/public-config.json"' in verify_branch
-    assert "stage_inputs compare" in verify_branch
+    assert (
+        "production CLIs authenticate"
+        in Path("benchmarks/codegraph_compare/README.md").read_text()
+    )
 
 
 _mark_posix_qualification_section_tests()

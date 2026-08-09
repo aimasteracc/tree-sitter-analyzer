@@ -1,12 +1,16 @@
 # BASE_IMAGE must be supplied as an immutable repository@sha256 reference.
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE} AS runtime
+ARG NO1_008A_ROOT_PUBLIC_KEY_HEX
 WORKDIR /opt/tsa
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/opt/tsa
 COPY pyproject.toml README.md ./
 COPY tree_sitter_analyzer ./tree_sitter_analyzer
 COPY benchmarks/codegraph_compare ./benchmarks/codegraph_compare
 COPY rfcs/schemas ./rfcs/schemas
+RUN python -c 'import pathlib,re,sys; value=sys.argv[1]; assert re.fullmatch(r"[0-9a-f]{64}",value); pathlib.Path(sys.argv[2]).write_text(value+"\n",encoding="ascii")' \
+ "$NO1_008A_ROOT_PUBLIC_KEY_HEX" benchmarks/codegraph_compare/no1_008a_root_public_key.hex \
+ && chmod 0444 benchmarks/codegraph_compare/no1_008a_root_public_key.hex
 RUN apt-get update \
  && apt-get install -y --no-install-recommends cryptsetup-bin e2fsprogs \
  && rm -rf /var/lib/apt/lists/* \
@@ -24,5 +28,12 @@ FROM runtime AS approver-signer
 LABEL org.tree-sitter-analyzer.no1-008a.role="approver"
 ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.receipt_v3_signer"]
 
+FROM runtime AS host-auditor
+USER 0:0
+RUN apt-get update && apt-get install -y --no-install-recommends docker.io && rm -rf /var/lib/apt/lists/*
+LABEL org.tree-sitter-analyzer.no1-008a.role="host-auditor"
+ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.host_auditor"]
+
 FROM runtime AS verifier
+LABEL org.tree-sitter-analyzer.no1-008a.role="verifier"
 ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.verifier"]

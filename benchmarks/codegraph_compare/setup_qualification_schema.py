@@ -347,6 +347,7 @@ def validate_receipt_schema_v2(receipt: object) -> None:
                 "commit",
                 "tracked_regular_paths",
                 "tracked_entries",
+                "root_tree_id",
                 "tracked_files",
                 "eligible_paths",
                 "prefilter_exclusions",
@@ -365,6 +366,10 @@ def validate_receipt_schema_v2(receipt: object) -> None:
     for name in _HASH_FIELDS:
         _require_hash(eligibility[name], f"eligibility.{name}")
     _require_hash(eligibility["commit"], "eligibility.commit", length=40)
+    if type(eligibility["root_tree_id"]) is not str or (
+        eligibility["root_tree_id"] and len(eligibility["root_tree_id"]) not in (40, 64)
+    ):
+        raise ValueError("eligibility.root_tree_id must be an optional Git object ID")
     for name in ("tracked_regular_paths", "eligible_paths"):
         _require_string_array(eligibility[name], f"eligibility.{name}", paths=True)
     tracked_entries = eligibility["tracked_entries"]

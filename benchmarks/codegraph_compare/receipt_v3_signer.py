@@ -119,7 +119,7 @@ def _build_body(args: argparse.Namespace) -> dict[str, object]:
         "run_nonce": args.run_nonce,
         "role_images": {
             role: getattr(args, f"{role}_image_digest")
-            for role in ("producer", "executor", "approver", "verifier")
+            for role in ("producer", "executor", "approver", "auditor", "verifier")
         },
         "cell": {**plan["cell"], "artifact_path": plan["artifact_path"]},
         "plan": {
@@ -191,7 +191,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     executor = subparsers.add_parser("sign-executor")
     executor.add_argument("--body")
     executor.add_argument("--run-nonce")
-    for role in ("producer", "executor", "approver", "verifier"):
+    for role in ("producer", "executor", "approver", "auditor", "verifier"):
         executor.add_argument(f"--{role}-image-digest")
     executor.add_argument("--plan")
     executor.add_argument("--inventory")
@@ -209,7 +209,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     approver = subparsers.add_parser("sign-approver")
     approver.add_argument("--attestation", required=True)
     approver.add_argument("--run-nonce", required=True)
-    for role in ("producer", "executor", "approver", "verifier"):
+    for role in ("producer", "executor", "approver", "auditor", "verifier"):
         approver.add_argument(f"--{role}-image-digest", required=True)
     approver.add_argument("--public-config", required=True)
     for option in (

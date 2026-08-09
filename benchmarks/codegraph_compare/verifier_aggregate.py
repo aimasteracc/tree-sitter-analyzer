@@ -83,13 +83,19 @@ def aggregate_verdict(
     runner: Runner = _run_verity,
     extractor: Extractor = _extract_ext4,
     process_identity_factory: Callable[[int], str] | None = None,
+    diagnostic_mode: bool = False,
+    diagnostic_root_public_key: bytes | None = None,
 ) -> dict[str, Any]:
     violations: list[tuple[str, ...]] = []
     observed_receipts = 0
     observed_attempts: list[int] = []
     try:
         exact = validate_manifest(manifest)
-        config = parse_public_config(canonical_json_bytes(public_config))
+        config = parse_public_config(
+            canonical_json_bytes(public_config),
+            diagnostic_mode=diagnostic_mode,
+            diagnostic_root_public_key=diagnostic_root_public_key,
+        )
         contract = _mapping(exact["run_contract"], "run contract")
         if contract != {
             "plan_set_hash": config["trusted"]["plan_set_hash"],
@@ -102,7 +108,6 @@ def aggregate_verdict(
             _canonical_plan_hash(_mapping(cell["plan"], "plan"))
             for cell in exact["cells"]
         ]
-        import hashlib
 
         recomputed_plan_set = hashlib.sha256(
             canonical_json_bytes(plan_hashes)
@@ -142,12 +147,18 @@ def aggregate_verdict(
                 verifier_nonce=exact["verifier_nonce"],
                 verifier_image_digest=exact["verifier_image_digest"],
                 process_identity=factory(number),
+                diagnostic_mode=diagnostic_mode,
+                diagnostic_root_public_key=diagnostic_root_public_key,
             )
             violations.append(cell_violations)
             if not cell_violations:
                 observed_receipts += 1
                 observed_attempts.append(cell["attempt"])
-        qualified = len(violations) == 14 and all(item == () for item in violations)
+        qualified = (
+            not diagnostic_mode
+            and len(violations) == 14
+            and all(item == () for item in violations)
+        )
     except (KeyError, TypeError, ValueError):
         qualified = False
     return {
@@ -244,40 +255,44 @@ def main(argv: Sequence[str] | None = None) -> int:
     aggregate = sub.add_parser("aggregate")
     for command in (cell, aggregate):
         command.add_argument("--manifest", required=True)
-        command.add_argument("--trusted-public-config", required=True)
-        command.add_argument("--trusted-public-config-sha256", required=True)
-        command.add_argument("--evidence-public-config", required=True)
+        command.add_argument("--public-config", required=True)
+        command.add_argument("--diagnostic-mode", action="store_true")
+        command.add_argument("--diagnostic-root-public-key-hex")
         command.add_argument("--output", required=True)
         command.add_argument("--verifier-image-digest", required=True)
         command.add_argument("--verifier-nonce", required=True)
     cell.add_argument("--ordinal", required=True, type=int)
     args = parser.parse_args(argv)
     manifest = _load_manifest(_safe_path(args.manifest, "manifest"))
-    trusted_payload = _read_regular(
-        _safe_path(args.trusted_public_config, "trusted public config"),
-        "trusted public config",
+    config_payload = _read_regular(
+        _safe_path(args.public_config, "root-signed public config"),
+        "root-signed public config",
     )
-    evidence_payload = _read_regular(
-        _safe_path(args.evidence_public_config, "evidence public config"),
-        "evidence public config",
+    diagnostic_root = None
+    if args.diagnostic_root_public_key_hex is not None:
+        if not args.diagnostic_mode:
+            raise ValueError("runtime root selection is diagnostic-only")
+        try:
+            diagnostic_root = bytes.fromhex(args.diagnostic_root_public_key_hex)
+        except ValueError as exc:
+            raise ValueError("diagnostic root key is malformed") from exc
+    config = parse_public_config(
+        config_payload,
+        diagnostic_mode=args.diagnostic_mode,
+        diagnostic_root_public_key=diagnostic_root,
     )
-    if (
-        len(args.trusted_public_config_sha256) != 64
-        or hashlib.sha256(trusted_payload).hexdigest()
-        != args.trusted_public_config_sha256
-        or hashlib.sha256(evidence_payload).hexdigest()
-        != args.trusted_public_config_sha256
-        or trusted_payload != evidence_payload
-    ):
-        raise ValueError("public config does not match external trust anchor")
-    config = parse_public_config(trusted_payload)
     if (
         args.verifier_nonce != manifest["verifier_nonce"]
         or args.verifier_image_digest != manifest["verifier_image_digest"]
     ):
         raise ValueError("verifier binding mismatch")
     if args.command == "aggregate":
-        result = aggregate_verdict(manifest, public_config=config)
+        result = aggregate_verdict(
+            manifest,
+            public_config=config,
+            diagnostic_mode=args.diagnostic_mode,
+            diagnostic_root_public_key=diagnostic_root,
+        )
     else:
         if args.ordinal not in range(14):
             raise ValueError("ordinal must identify one cell")
@@ -303,6 +318,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             verifier_nonce=args.verifier_nonce,
             verifier_image_digest=args.verifier_image_digest,
             process_identity=f"verifier-{os.getpid()}-{secrets.token_hex(16)}",
+            diagnostic_mode=args.diagnostic_mode,
+            diagnostic_root_public_key=diagnostic_root,
         )
         result = {
             "schema_version": 1,

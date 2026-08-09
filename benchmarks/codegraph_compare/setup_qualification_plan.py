@@ -227,6 +227,7 @@ class EligibilityV1:
     tracked_inventory_hash: str
     eligible_paths_hash: str
     repo_fingerprint: str
+    root_tree_id: str = ""
 
     def __post_init__(self) -> None:
         scalars = (
@@ -239,6 +240,8 @@ class EligibilityV1:
         )
         if any(type(value) is not str or not value for value in scalars):
             raise ValueError("Eligibility scalar fields must be non-empty strings")
+        if type(self.root_tree_id) is not str:
+            raise ValueError("Eligibility root tree ID must be a string")
         if (
             type(self.tracked_regular_paths) is not tuple
             or type(self.tracked_entries) is not tuple

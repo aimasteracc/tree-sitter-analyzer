@@ -84,6 +84,53 @@ def _canonical_plan_hash(plan: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical_json_bytes(unsigned)).hexdigest()
 
 
+def _recompute_git_root(records: list[list[str]]) -> str:
+    """Rebuild nested Git tree objects from the closed leaf inventory."""
+    if not records:
+        raise ValueError("empty Git inventory")
+    oid_bytes = len(bytes.fromhex(records[0][2]))
+    algorithm = (
+        hashlib.sha1 if oid_bytes == 20 else hashlib.sha256 if oid_bytes == 32 else None
+    )
+    if algorithm is None or any(
+        len(bytes.fromhex(item[2])) != oid_bytes for item in records
+    ):
+        raise ValueError("mixed or unsupported Git object format")
+    root: dict[str, Any] = {}
+    for path, mode, oid in records:
+        node = root
+        parts = path.split("/")
+        for component in parts[:-1]:
+            existing = node.setdefault(component, {})
+            if type(existing) is not dict:
+                raise ValueError("Git inventory file/directory collision")
+            node = existing
+        if parts[-1] in node:
+            raise ValueError("duplicate Git inventory path")
+        node[parts[-1]] = (mode, oid)
+
+    def tree_oid(node: dict[str, Any]) -> str:
+        encoded: list[tuple[bytes, bytes]] = []
+        for name, value in node.items():
+            raw_name = name.encode("utf-8")
+            if type(value) is dict:
+                mode, oid = "40000", tree_oid(value)
+            else:
+                mode, oid = value
+            encoded.append(
+                (
+                    raw_name + (b"/" if mode == "40000" else b""),
+                    mode.encode() + b" " + raw_name + b"\0" + bytes.fromhex(oid),
+                )
+            )
+        body = b"".join(
+            value for _key, value in sorted(encoded, key=lambda item: item[0])
+        )
+        return algorithm(f"tree {len(body)}\0".encode("ascii") + body).hexdigest()
+
+    return tree_oid(root)
+
+
 def _sha_evidence(path: Any, label: str) -> str:
     return _sha_file(_safe_path(path, label))[1]
 
@@ -130,13 +177,19 @@ def _verify_trusted_inputs(
             members = archive.getmembers()
             for member in members:
                 canonical_relative_path(member.name)
+            if any(not member.isfile() for member in members):
+                raise ValueError(
+                    "source snapshot must contain only tracked regular files"
+                )
             if any(
-                member.issym()
-                or member.islnk()
-                or not (member.isfile() or member.isdir())
+                member.uid != 0
+                or member.gid != 0
+                or member.uname
+                or member.gname
+                or member.mtime != 0
                 for member in members
             ):
-                raise ValueError("source snapshot contains unsafe member")
+                raise ValueError("source snapshot metadata is not deterministic")
             regular_members = {
                 member.name: member for member in members if member.isfile()
             }
@@ -151,6 +204,13 @@ def _verify_trusted_inputs(
                 raise ValueError("tracked source paths mismatch")
             if set(tracked_paths) != set(regular_members):
                 raise ValueError("source snapshot regular inventory mismatch")
+            if [member.name for member in members] != tracked_paths:
+                raise ValueError("source snapshot order is not canonical")
+            if any(
+                regular_members[path].mode != (0o755 if item[1] == "100755" else 0o644)
+                for path, item in zip(tracked_paths, tracked, strict=True)
+            ):
+                raise ValueError("source snapshot executable modes mismatch")
             files: list[tuple[str, str, str, str]] = []
             contents: dict[str, bytes] = {}
             for path, mode, object_id, expected_size, content_hash in tracked:
@@ -218,6 +278,7 @@ def _verify_trusted_inputs(
 
     if (
         eligibility.get("tracked_inventory_hash") != sha_json(records)
+        or eligibility.get("root_tree_id") != _recompute_git_root(records)
         or eligibility.get("eligible_paths") != expected_eligible
         or eligibility.get("eligible_paths_hash") != sha_json(expected_eligible)
         or eligibility.get("prefilter_exclusions") != expected_excluded

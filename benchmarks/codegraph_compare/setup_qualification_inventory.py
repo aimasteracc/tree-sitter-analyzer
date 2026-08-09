@@ -278,6 +278,9 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
     if tuple(path for path, _ in flags) != tuple(path for path, _, _ in records):
         raise ValueError("Tracked index flags do not match the pinned inventory")
     commit = _git(repo, "rev-parse", "HEAD").decode("ascii").strip()
+    root_tree_id = _git(repo, "write-tree").decode("ascii").strip()
+    if root_tree_id != _git(repo, "rev-parse", "HEAD^{tree}").decode("ascii").strip():
+        raise ValueError("tracked index root tree differs from committed root tree")
     if _git(
         repo, "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching"
     ):
@@ -392,4 +395,5 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
                 "files": file_hashes,
             }
         ),
+        root_tree_id=root_tree_id,
     )

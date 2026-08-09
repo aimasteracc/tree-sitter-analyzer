@@ -439,10 +439,19 @@ A result is considered **dominant** if it scores higher on `med_overall` AND low
 ## NO1-008A detached receipt v3 operator (E0 only)
 
 Receipt v2 remains a non-upgradable E0 compatibility boundary. The v3 path uses
-four isolated roles: a keyless producer, an executor signer, an approver signer,
-and a fresh verifier that receives only two distinct public keys. The immutable
-core is a dm-verity snapshot; `cell-receipt.json` is detached and both signatures
-cover the same domain-separated canonical body bytes.
+five isolated roles: a keyless producer, executor and approver signers, a dedicated
+host-auditor image, and a fresh keyless verifier. Executor, approver, and auditor
+private keys are distinct and are mounted only into their pinned role; the offline
+root private key is never supplied to an operator run. Verifier and auditor images
+must be built with `NO1_008A_ROOT_PUBLIC_KEY_HEX`; production CLIs authenticate the
+root-signed canonical public config only with that read-only baked resource. The
+immutable core is a dm-verity snapshot and both receipt signatures cover the same
+domain-separated canonical body bytes.
+
+A verifier without the baked root may run only with explicit `--diagnostic-mode`
+(and, for signed fixtures, `--diagnostic-root-public-key-hex`). Diagnostic results
+always remain E0 `NOT_EVALUATED` and can never emit `SETUP_QUALIFIED`; runtime root
+selection is rejected outside that test/diagnostic path.
 
 Inspect the exact 14-cell contract without Docker or keys:
 

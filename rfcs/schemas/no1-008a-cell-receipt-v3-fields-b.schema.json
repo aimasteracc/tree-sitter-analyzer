@@ -381,6 +381,7 @@
     "producer",
     "executor",
     "approver",
+    "auditor",
     "verifier"
    ],
    "properties": {
@@ -393,6 +394,10 @@
      "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "approver": {
+     "type": "string",
+     "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "auditor": {
      "type": "string",
      "pattern": "^sha256:[0-9a-f]{64}$"
     },

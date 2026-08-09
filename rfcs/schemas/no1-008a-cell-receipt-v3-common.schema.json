@@ -118,6 +118,7 @@
     "commit",
     "tracked_regular_paths",
     "tracked_entries",
+    "root_tree_id",
     "tracked_files",
     "eligible_paths",
     "prefilter_exclusions",
@@ -138,6 +139,10 @@
      "type": "string",
      "minLength": 1,
      "maxLength": 128
+    },
+    "root_tree_id": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
     },
     "tracked_regular_paths": {
      "type": "array",
