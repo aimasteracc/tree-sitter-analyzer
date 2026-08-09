@@ -127,21 +127,12 @@ def install_environment(repo: Path, venv: Path, requirements: Path, wheel: Path)
 
 INVENTORY_CODE = r"""import importlib.metadata as m, json, os, stat
 from pathlib import Path
-from packaging.markers import default_environment
-from packaging.requirements import Requirement
-from packaging.utils import canonicalize_name
-root_name="tree-sitter-analyzer"; root=m.distribution(root_name); env=default_environment(); env["extra"]=""
-direct=set()
-for raw in root.requires or []:
- req=Requirement(raw)
- if req.marker is None or req.marker.evaluate(env): direct.add(canonicalize_name(req.name))
-dists={}
+root_name="tree-sitter-analyzer"; root=m.distribution(root_name); dists={}
 for dist in m.distributions():
- name=canonicalize_name(dist.metadata.get("Name") or "")
+ name=dist.metadata.get("Name") or ""
  if not name or name in dists: raise RuntimeError(f"missing or duplicate distribution: {name!r}")
  dists[name] = dist.version
 if len(dists)>256: raise RuntimeError("distribution limit exceeded")
-if root_name not in dists or not direct.issubset(dists): raise RuntimeError("declared direct distribution missing")
 venv=Path(os.environ["VIRTUAL_ENV"]).resolve(); seen_paths=set(); seen_inodes=set(); total=0; files=0
 for dist in m.distributions():
  for item in dist.files or []:
@@ -153,17 +144,27 @@ for dist in m.distributions():
   if not stat.S_ISREG(st.st_mode): continue
   files += 1
   if files>100000: raise RuntimeError("distribution file limit exceeded")
-  path_key=str(resolved)
-  inode=(st.st_dev,st.st_ino)
+  path_key=str(resolved); inode=(st.st_dev,st.st_ino)
   if path_key in seen_paths or inode in seen_inodes: continue
   seen_paths.add(path_key); seen_inodes.add(inode); total += st.st_size
-rows=[{"name":n,"version":dists[n],"role":("root" if n==root_name else "direct" if n in direct else "transitive")} for n in sorted(dists)]
-print(json.dumps({"distributions":rows,"installed_size_bytes":total,"regular_file_count":len(seen_paths)}))"""
+print(json.dumps({"versions":dists,"requires":root.requires or [],"installed_size_bytes":total,"regular_file_count":len(seen_paths)}))"""
 
 
 def inventory(python: Path, cwd: Path) -> dict[str, Any]:
-    result = run([str(python), "-c", INVENTORY_CODE], cwd=cwd)
-    return json.loads(result.stdout)
+    from packaging.markers import default_environment
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+    raw=json.loads(run([str(python), "-c", INVENTORY_CODE], cwd=cwd).stdout)
+    env=default_environment(); env["extra"]=""; direct=set()
+    for value in raw.pop("requires"):
+        requirement=Requirement(value)
+        if requirement.marker is None or requirement.marker.evaluate(env):
+            direct.add(canonicalize_name(requirement.name))
+    versions={canonicalize_name(name):version for name,version in raw.pop("versions").items()}
+    if len(versions) != len(set(versions)) or ROOT_NAME not in versions or not direct.issubset(versions):
+        raise RuntimeError("canonical distribution inventory is inconsistent")
+    raw["distributions"]=[{"name":name,"version":versions[name],"role":("root" if name==ROOT_NAME else "direct" if name in direct else "transitive")} for name in sorted(versions)]
+    return raw
 
 
 def cli_sample(program: Path, fixture_dir: Path) -> float:
