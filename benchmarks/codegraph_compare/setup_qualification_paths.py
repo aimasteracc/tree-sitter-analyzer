@@ -7,6 +7,7 @@ import os
 import stat
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 
 def canonical_relative_path(value: str) -> str:
@@ -134,53 +135,43 @@ def _tree_size(root: Path) -> int:
         os.close(root_fd)
 
 
-def _seal_tree_at(root_fd: int, mode: int) -> None:
-    """Seal files first, then directories bottom-up, including the pinned root."""
-    _visit_tree(
-        root_fd,
-        lambda descriptor, _relative: os.fchmod(descriptor, mode),
-        lambda descriptor, _relative: os.fchmod(descriptor, 0o500),
-    )
-    os.fchmod(root_fd, 0o500)
+_HASH_CHUNK_BYTES = 1024 * 1024
+_DEFAULT_TREE_CEILING_BYTES = 1024 * 1024 * 1024
 
 
-def _chmod_regular_tree(root: Path, mode: int) -> None:
-    root_fd = _open_root(root)
-    try:
-        _seal_tree_at(root_fd, mode)
-    finally:
-        os.close(root_fd)
+def _stream_file(descriptor: int, digest: Any, *, remaining: int) -> int:
+    metadata = os.fstat(descriptor)
+    if metadata.st_size > remaining:
+        raise ValueError("Artifact tree exceeds trusted size ceiling")
+    allocated = getattr(metadata, "st_blocks", 0) * 512
+    if metadata.st_size > _HASH_CHUNK_BYTES and allocated < metadata.st_size:
+        raise ValueError("Sparse artifact files are forbidden")
+    digest.update(metadata.st_size.to_bytes(8, "big"))
+    read_total = 0
+    with os.fdopen(os.dup(descriptor), "rb") as stream:
+        while True:
+            chunk = stream.read(_HASH_CHUNK_BYTES)
+            if not chunk:
+                break
+            read_total += len(chunk)
+            digest.update(chunk)
+    if read_total != metadata.st_size:
+        raise ValueError("Artifact file changed while hashing")
+    return read_total
 
 
-def _manifest_tree_at(root_fd: int) -> dict[str, str]:
-    result: dict[str, str] = {}
-
-    def collect(descriptor: int, relative: str) -> None:
-        with os.fdopen(os.dup(descriptor), "rb") as stream:
-            result[relative] = hashlib.sha256(stream.read()).hexdigest()
-
-    _visit_tree(root_fd, collect)
-    return result
-
-
-def _manifest_tree(root: Path) -> dict[str, str]:
-    root_fd = _open_root(root)
-    try:
-        return _manifest_tree_at(root_fd)
-    finally:
-        os.close(root_fd)
-
-
-def _hash_tree_at(root_fd: int, relative: str) -> str:
+def _hash_tree_at(
+    root_fd: int, relative: str, *, max_bytes: int = _DEFAULT_TREE_CEILING_BYTES
+) -> str:
     directory_fd = _open_beneath(root_fd, relative, directory=True)
     digest = hashlib.sha256()
+    consumed = 0
 
     def collect(descriptor: int, item: str) -> None:
-        with os.fdopen(os.dup(descriptor), "rb") as stream:
-            payload = stream.read()
+        nonlocal consumed
         encoded = item.encode()
         digest.update(len(encoded).to_bytes(8, "big") + encoded)
-        digest.update(len(payload).to_bytes(8, "big") + payload)
+        consumed += _stream_file(descriptor, digest, remaining=max_bytes - consumed)
 
     try:
         _visit_tree(directory_fd, collect)
@@ -189,18 +180,18 @@ def _hash_tree_at(root_fd: int, relative: str) -> str:
         os.close(directory_fd)
 
 
-def _hash_tree(root: Path) -> str:
+def _hash_tree(root: Path, *, max_bytes: int = _DEFAULT_TREE_CEILING_BYTES) -> str:
     root_fd = _open_root(root)
+    digest = hashlib.sha256()
+    consumed = 0
+
+    def collect(descriptor: int, relative: str) -> None:
+        nonlocal consumed
+        encoded = relative.encode()
+        digest.update(len(encoded).to_bytes(8, "big") + encoded)
+        consumed += _stream_file(descriptor, digest, remaining=max_bytes - consumed)
+
     try:
-        digest = hashlib.sha256()
-
-        def collect(descriptor: int, relative: str) -> None:
-            with os.fdopen(os.dup(descriptor), "rb") as stream:
-                payload = stream.read()
-            encoded = relative.encode()
-            digest.update(len(encoded).to_bytes(8, "big") + encoded)
-            digest.update(len(payload).to_bytes(8, "big") + payload)
-
         _visit_tree(root_fd, collect)
         return digest.hexdigest()
     finally:

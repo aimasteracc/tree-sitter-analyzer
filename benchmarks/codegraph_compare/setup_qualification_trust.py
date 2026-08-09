@@ -1,22 +1,35 @@
-"""Pinned external trust roots for NO1-008A qualification evidence."""
+"""Pure signature verification for externally supplied NO1-008A trust roots."""
 
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-# Public verification keys are pinned here; private keys belong only to the external
-# approver and independent harness executor and are never supplied to a producer.
-TRUSTED_APPROVER_KEY_ID = "no1-008a-approver-v1"
-TRUSTED_APPROVER_PUBLIC_KEY = bytes.fromhex(
-    "a33cb8e2b153f77bf55c362653dbaba3868f0788946e60eca4d43ed4be12146a"  # pragma: allowlist secret
-)
-TRUSTED_EXECUTOR_KEY_ID = "no1-008a-executor-v1"
-TRUSTED_EXECUTOR_PUBLIC_KEY = bytes.fromhex(
-    "fe4578b0f66e41092a3e14a09b14b651ce2b9b04d92a952d5de2d4fe742d155c"  # pragma: allowlist secret
-)
+
+@dataclass(frozen=True)
+class VerifierConfigV1:
+    """Immutable trust roots supplied to a fresh, trusted verifier process."""
+
+    executor_key_id: str
+    executor_public_key: bytes
+    approver_key_id: str
+    approver_public_key: bytes
+
+    def __post_init__(self) -> None:
+        if (
+            not self.executor_key_id
+            or not self.approver_key_id
+            or self.executor_key_id == self.approver_key_id
+            or type(self.executor_public_key) is not bytes
+            or type(self.approver_public_key) is not bytes
+            or len(self.executor_public_key) != 32
+            or len(self.approver_public_key) != 32
+            or self.executor_public_key == self.approver_public_key
+        ):
+            raise ValueError("Verifier trust roots must be distinct Ed25519 identities")
 
 
 def _verify_signature(

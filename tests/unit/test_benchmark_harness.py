@@ -8197,6 +8197,27 @@ def test_source_rules_classify_tracked_gitlink_symlink_and_generated(tmp_path: P
     assert inventory.eligible_paths_hash == _sha256(["main.ts"])
 
 
+def _qualification_verifier_config():
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare.setup_qualification_trust import VerifierConfigV1
+
+    return VerifierConfigV1(
+        executor_key_id="test-executor",
+        executor_public_key=Ed25519PrivateKey.from_private_bytes(b"\x02" * 32)
+        .public_key()
+        .public_bytes_raw(),
+        approver_key_id="test-approver",
+        approver_public_key=Ed25519PrivateKey.from_private_bytes(b"\x01" * 32)
+        .public_key()
+        .public_bytes_raw(),
+    )
+
+
+def _qualification_inventories(plans):
+    return {plan.repo_id: plan.eligibility for plan in plans}
+
+
 def _qualification_plans(tmp_path: Path):
     _require_posix_qualification_sandbox()
     from dataclasses import replace
@@ -8206,6 +8227,7 @@ def _qualification_plans(tmp_path: Path):
         EXPECTED_CELLS,
         CellPlanV1,
         EligibilityV1,
+        ExecutionSpecV1,
         HarnessArtifactV1,
         ResourcePlanV1,
     )
@@ -8247,6 +8269,18 @@ def _qualification_plans(tmp_path: Path):
             config,
             _qualification_oracles(),
             resources,
+            (
+                ExecutionSpecV1("delete", ("rm-index", repo, arm)),
+                ExecutionSpecV1("build", (str(tool_path), "build", repo, arm)),
+                ExecutionSpecV1("health", (str(tool_path), "health", repo, arm)),
+                *(
+                    ExecutionSpecV1(
+                        spec.oracle_id,
+                        (str(tool_path), spec.kind, *sum(spec.query, ())),
+                    )
+                    for spec in _qualification_oracles()
+                ),
+            ),
         )
         for repo, arm in EXPECTED_CELLS
     )
@@ -8261,23 +8295,12 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
     import benchmarks.codegraph_compare.setup_qualification as qualification
     from benchmarks.codegraph_compare.integrity import _sha256
     from benchmarks.codegraph_compare.setup_qualification import (
-        TRUSTED_APPROVER_KEY_ID,
-        TRUSTED_EXECUTOR_KEY_ID,
         ZERO_COUNTERS,
         _bytes_hash,
         _hash_tree,
     )
 
-    qualification.TRUSTED_APPROVER_PUBLIC_KEY = (
-        Ed25519PrivateKey.from_private_bytes(b"\x01" * 32)
-        .public_key()
-        .public_bytes_raw()
-    )
-    qualification.TRUSTED_EXECUTOR_PUBLIC_KEY = (
-        Ed25519PrivateKey.from_private_bytes(b"\x02" * 32)
-        .public_key()
-        .public_bytes_raw()
-    )
+    verifier_config = _qualification_verifier_config()
 
     def sign(seed: bytes, payload):
         encoded = json.dumps(
@@ -8302,7 +8325,8 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
 
     executions = []
     specs = {spec.oracle_id: spec for spec in plan.oracle_specs}
-    for number, identifier in enumerate(("build", *specs)):
+    for number, execution in enumerate(plan.executions):
+        identifier = execution.execution_id
         spec = specs.get(identifier)
         stdout = (
             b"{}"
@@ -8320,7 +8344,7 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
         )
         item = {
             "id": identifier,
-            "argv": ["pinned-tool", identifier],
+            "argv": list(execution.argv),
             "exit_code": 0,
             "stdout_bytes": blob(f"raw/{number}-stdout", stdout),
             "stderr_bytes": blob(f"raw/{number}-stderr", b""),
@@ -8391,13 +8415,13 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
     }
     receipt["index_provenance"] = {
         "payload": executor_payload,
-        "key_id": TRUSTED_EXECUTOR_KEY_ID,
+        "key_id": verifier_config.executor_key_id,
         "signature": sign(b"\x02", executor_payload),
     }
     receipt["os_audit"].update(
         {
             "payload": executor_payload,
-            "key_id": TRUSTED_EXECUTOR_KEY_ID,
+            "key_id": verifier_config.executor_key_id,
             "signature": sign(b"\x02", executor_payload),
         }
     )
@@ -8411,7 +8435,7 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
     receipt["human_oracle_approval"].update(
         {
             "payload": approval_payload,
-            "key_id": TRUSTED_APPROVER_KEY_ID,
+            "key_id": verifier_config.approver_key_id,
             "signature": sign(b"\x01", approval_payload),
         }
     )
@@ -8467,7 +8491,15 @@ def test_strict_validator_accepts_complete_plan_bound_e0_receipt(tmp_path: Path)
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
 
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == ()
+    assert (
+        validate_cell_receipt(
+            receipt,
+            plan=plan,
+            cell_root=cell_root,
+            verifier_config=_qualification_verifier_config(),
+        )
+        == ()
+    )
 
 
 def test_strict_validator_rejects_source_eligibility_mutation(tmp_path: Path):
@@ -8482,7 +8514,12 @@ def test_strict_validator_rejects_source_eligibility_mutation(tmp_path: Path):
     mutated["eligibility"]["eligible_paths"] = []
     _resign_qualification_receipt(mutated)
 
-    assert validate_cell_receipt(mutated, plan=plan, cell_root=cell_root) == (
+    assert validate_cell_receipt(
+        mutated,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
         "SOURCE_ELIGIBILITY_MISMATCH",
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
@@ -8502,7 +8539,12 @@ def test_strict_validator_rejects_resource_observation_mutation(tmp_path: Path):
     mutated["resource_observation"]["peak_processes"] = 3
     _resign_qualification_receipt(mutated)
 
-    assert validate_cell_receipt(mutated, plan=plan, cell_root=cell_root) == (
+    assert validate_cell_receipt(
+        mutated,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
         "RESOURCE_LIMIT_VIOLATION",
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
@@ -8518,9 +8560,12 @@ def test_strict_validator_rejects_raw_stdout_mutation(tmp_path: Path):
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     (cell_root / "raw/0-stdout").write_bytes(b"mutated")
 
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
-        "RAW_EXECUTION_EVIDENCE_MISSING",
-    )
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == ("RAW_EXECUTION_EVIDENCE_MISSING",)
 
 
 def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
@@ -8537,64 +8582,16 @@ def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
     (cell_root / "index").rmdir()
     (cell_root / "index").symlink_to(outside, target_is_directory=True)
 
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
         "INDEX_BYTES_MISMATCH",
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
         "HUMAN_ORACLE_APPROVAL_MISSING",
-    )
-
-
-def test_orchestrator_calls_exact_cells_once_and_never_qualifies(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification import EXPECTED_CELLS
-    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
-        orchestrate_qualification,
-    )
-
-    plans = _qualification_plans(tmp_path)
-    observed = []
-
-    def producer(repo_id, arm_id, cell_root, attempt):
-        observed.append((repo_id, arm_id, attempt))
-        return _write_valid_qualification_receipt(cell_root, plans[len(observed) - 1])
-
-    verdict = orchestrate_qualification(
-        experiment_root=tmp_path / "experiment", plans=plans, producer=producer
-    )
-
-    assert tuple(observed) == tuple((*cell, 1) for cell in EXPECTED_CELLS)
-    assert verdict["status"] == "NOT_EVALUATED"
-    assert verdict["evaluation_stage"] == "E0"
-    assert verdict["observed_receipts"] == 14
-    assert verdict["failures"] == []
-    assert verdict["counters"] is None
-
-
-def test_orchestrator_rejects_empty_receipts_fail_all(tmp_path: Path):
-    import json
-
-    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
-        orchestrate_qualification,
-    )
-
-    plans = _qualification_plans(tmp_path)
-
-    def producer(repo_id, arm_id, cell_root, attempt):
-        cell_root.mkdir(parents=True)
-        (cell_root / "cell-receipt.json").write_text("{}", encoding="utf-8")
-        return {}
-
-    verdict = orchestrate_qualification(
-        experiment_root=tmp_path / "experiment", plans=plans, producer=producer
-    )
-
-    assert verdict["status"] == "NOT_EVALUATED"
-    assert verdict["observed_receipts"] == 0
-    assert len(verdict["failures"]) == 14
-    assert tuple(item["attempt"] for item in verdict["failures"]) == (1,) * 14
-    assert (
-        json.loads((tmp_path / "experiment/verdict.json").read_text())["unlock_allowed"]
-        is False
     )
 
 
@@ -8606,9 +8603,12 @@ def test_strict_validator_rejects_harness_config_byte_mutation(tmp_path: Path):
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     Path(plan.config.path).write_bytes(b"mutated config")
 
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
-        "HARNESS_BYTES_MISMATCH",
-    )
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == ("HARNESS_BYTES_MISMATCH",)
 
 
 def test_strict_validator_rejects_network_audit_mutation(tmp_path: Path):
@@ -8623,36 +8623,16 @@ def test_strict_validator_rejects_network_audit_mutation(tmp_path: Path):
     mutated["os_audit"]["network_denied"] = False
     _resign_qualification_receipt(mutated)
 
-    assert validate_cell_receipt(mutated, plan=plan, cell_root=cell_root) == (
+    assert validate_cell_receipt(
+        mutated,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
         "HUMAN_ORACLE_APPROVAL_MISSING",
     )
-
-
-def test_orchestrator_rejects_duplicate_artifact_plan_before_attempt(tmp_path: Path):
-    from dataclasses import replace
-
-    import pytest
-
-    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
-        orchestrate_qualification,
-    )
-
-    plans = list(_qualification_plans(tmp_path))
-    plans[1] = replace(plans[1], artifact_path=plans[0].artifact_path)
-    attempts = []
-
-    def producer(repo_id, arm_id, cell_root, attempt):
-        attempts.append((repo_id, arm_id, attempt))
-        return {}
-
-    with pytest.raises(ValueError, match="unique immutable artifact path"):
-        orchestrate_qualification(
-            experiment_root=tmp_path / "experiment", plans=plans, producer=producer
-        )
-
-    assert attempts == []
 
 
 @pytest.mark.parametrize(
@@ -8798,7 +8778,15 @@ def test_strict_validator_rejects_one_receipt_boundary_mutation(
     _resign_qualification_receipt(mutated)
 
     wanted = expected if isinstance(expected, tuple) else (expected,)
-    assert validate_cell_receipt(mutated, plan=plan, cell_root=cell_root) == wanted
+    assert (
+        validate_cell_receipt(
+            mutated,
+            plan=plan,
+            cell_root=cell_root,
+            verifier_config=_qualification_verifier_config(),
+        )
+        == wanted
+    )
 
 
 def test_source_inventory_is_exactly_bound_to_git_modes_objects_and_bytes(
@@ -8915,7 +8903,12 @@ def test_strict_validator_rejects_nonfinite_or_boolean_resource_value(
     receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
     receipt["resource_observation"]["wall_seconds"] = value
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
         "RESOURCE_LIMIT_VIOLATION",
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
@@ -8931,9 +8924,12 @@ def test_strict_validator_rejects_unknown_schema_version(tmp_path: Path):
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     receipt["schema_version"] = 1
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
-        "RECEIPT_SCHEMA_MISMATCH",
-    )
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == ("RECEIPT_SCHEMA_MISMATCH",)
 
 
 def test_strict_validator_rejects_incomplete_index_partition(tmp_path: Path):
@@ -8947,7 +8943,12 @@ def test_strict_validator_rejects_incomplete_index_partition(tmp_path: Path):
 
     receipt["index_partition"]["indexed_paths_hash"] = _sha256([])
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
         "INDEX_PARTITION_MISMATCH",
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
@@ -8963,9 +8964,12 @@ def test_strict_validator_rejects_forged_executor_signature(tmp_path: Path):
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     receipt["index_provenance"]["signature"] = "00" * 64
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
-        "INDEX_PROVENANCE_MISSING",
-    )
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == ("INDEX_PROVENANCE_MISSING",)
 
 
 def test_strict_validator_rejects_forged_audit_signature(tmp_path: Path):
@@ -8976,9 +8980,12 @@ def test_strict_validator_rejects_forged_audit_signature(tmp_path: Path):
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     receipt["os_audit"]["signature"] = "00" * 64
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
-        "OS_AUDIT_MISSING",
-    )
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == ("OS_AUDIT_MISSING",)
 
 
 def test_strict_validator_rejects_forged_approver_signature(tmp_path: Path):
@@ -8989,66 +8996,12 @@ def test_strict_validator_rejects_forged_approver_signature(tmp_path: Path):
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     receipt["human_oracle_approval"]["signature"] = "00" * 64
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
-        "HUMAN_ORACLE_APPROVAL_MISSING",
-    )
-
-
-def test_orchestrator_revalidates_earlier_receipt_at_final_seal(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
-        orchestrate_qualification,
-    )
-
-    plans = _qualification_plans(tmp_path)
-    roots = []
-
-    def producer(repo_id, arm_id, cell_root, attempt):
-        roots.append(cell_root)
-        receipt = _write_valid_qualification_receipt(cell_root, plans[len(roots) - 1])
-        if len(roots) == 2:
-            (roots[0] / "cell-receipt.json").write_text("{}", encoding="utf-8")
-        return receipt
-
-    verdict = orchestrate_qualification(
-        experiment_root=tmp_path / "experiment", plans=plans, producer=producer
-    )
-    assert verdict["observed_receipts"] == 13
-    assert tuple(item["repo_id"] for item in verdict["failures"]) == ("vscode",)
-    assert verdict["status"] == "NOT_EVALUATED"
-
-
-def test_orchestrator_rejects_plan_commit_not_pinned_by_repos_yaml(tmp_path: Path):
-    from dataclasses import replace
-
-    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
-        orchestrate_qualification,
-    )
-
-    plans = list(_qualification_plans(tmp_path))
-    plans[0] = replace(
-        plans[0], eligibility=replace(plans[0].eligibility, commit="0" * 40)
-    )
-    with pytest.raises(ValueError, match="trusted repos.yaml"):
-        orchestrate_qualification(
-            experiment_root=tmp_path / "experiment", plans=plans, producer=lambda *_: {}
-        )
-
-
-def test_orchestrator_rejects_different_eligibility_between_arms(tmp_path: Path):
-    from dataclasses import replace
-
-    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
-        orchestrate_qualification,
-    )
-
-    plans = list(_qualification_plans(tmp_path))
-    plans[1] = replace(
-        plans[1], eligibility=replace(plans[1].eligibility, repo_fingerprint="0" * 64)
-    )
-    with pytest.raises(ValueError, match="identical source eligibility"):
-        orchestrate_qualification(
-            experiment_root=tmp_path / "experiment", plans=plans, producer=lambda *_: {}
-        )
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == ("HUMAN_ORACLE_APPROVAL_MISSING",)
 
 
 @pytest.mark.parametrize(
@@ -9069,12 +9022,17 @@ def test_strict_validator_rejects_wrong_normalized_oracle_evidence(
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
-    blob = receipt["raw_executions"][1][blob_name]
+    blob = receipt["raw_executions"][3][blob_name]
     (cell_root / blob["path"]).write_bytes(payload)
     blob["size_bytes"] = len(payload)
     blob["sha256"] = _bytes_hash(payload)
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
         "RAW_EXECUTION_EVIDENCE_MISSING",
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
@@ -9096,7 +9054,12 @@ def test_strict_validator_rejects_unplanned_parse_error_allowlist(tmp_path: Path
     partition["parse_error_allowlist"] = ["main.ts"]
     partition["parse_error_paths_hash"] = _sha256(["main.ts"])
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
         "INDEX_PARTITION_MISMATCH",
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
@@ -9146,7 +9109,12 @@ def test_strict_validator_rejects_arbitrarily_large_integer_observation(tmp_path
     receipt["resource_observation"]["wall_seconds"] = 10**400
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
         "RESOURCE_LIMIT_VIOLATION",
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
@@ -9189,9 +9157,12 @@ def test_strict_validator_rejects_receipt_extension_even_with_matching_hash(
     receipt["extension"] = "unsigned"
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
-        "RECEIPT_SCHEMA_MISMATCH",
-    )
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == ("RECEIPT_SCHEMA_MISMATCH",)
 
 
 @pytest.mark.parametrize(
@@ -9295,15 +9266,15 @@ def test_receipt_parser_rejects_duplicate_members_at_nested_depth():
         _parse_receipt(b'{"run":{"exit_code":1,"exit_code":0}}')
 
 
-def test_manifest_rejects_fifo_without_waiting_for_writer(tmp_path: Path):
+def test_index_hash_rejects_fifo_without_waiting_for_writer(tmp_path: Path):
     _require_posix_qualification_sandbox()
     import pytest
 
-    from benchmarks.codegraph_compare.setup_qualification_paths import _manifest_tree
+    from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
 
     os.mkfifo(tmp_path / "producer.fifo")
     with pytest.raises(ValueError, match="special file"):
-        _manifest_tree(tmp_path)
+        _hash_tree(tmp_path)
 
 
 def test_validator_uses_pinned_experiment_descriptor_after_path_replacement(
@@ -9328,6 +9299,7 @@ def test_validator_uses_pinned_experiment_descriptor_after_path_replacement(
                 receipt,
                 plan=plan,
                 cell_root=cell,
+                verifier_config=_qualification_verifier_config(),
                 trusted_root_fd=root_fd,
                 cell_relative="cells/vscode--tsa-warm",
             )
@@ -9337,7 +9309,43 @@ def test_validator_uses_pinned_experiment_descriptor_after_path_replacement(
         os.close(root_fd)
 
 
-def test_orchestrator_rejects_plan_bytes_replaced_by_producer(tmp_path: Path):
+def test_e0_orchestrator_never_invokes_producer_or_creates_receipts(tmp_path: Path):
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        orchestrate_qualification,
+    )
+
+    plans = _qualification_plans(tmp_path)
+    experiment = tmp_path / "experiment"
+    verdict = orchestrate_qualification(
+        experiment_root=experiment,
+        plans=plans,
+        trusted_inventories=_qualification_inventories(plans),
+    )
+
+    assert verdict == {
+        "schema_version": 2,
+        "evaluation_stage": "E0",
+        "status": "NOT_EVALUATED",
+        "reason": "ISOLATED_EXTERNAL_PRODUCER_AND_FRESH_TRUSTED_VERIFIER_ARTIFACT_REQUIRED",
+        "publishable": False,
+        "winner": None,
+        "dominance_allowed": False,
+        "unlock_allowed": False,
+        "expected_cells": 14,
+        "observed_receipts": 0,
+        "attempts_per_cell": 0,
+        "failures": [],
+        "counters": None,
+    }
+    assert tuple(sorted(path.name for path in experiment.iterdir())) == (
+        "plan.json",
+        "verdict.json",
+    )
+
+
+def test_e0_orchestrator_rejects_untrusted_complete_inventory(tmp_path: Path):
+    from dataclasses import replace
+
     import pytest
 
     from benchmarks.codegraph_compare.setup_qualification_orchestration import (
@@ -9345,47 +9353,93 @@ def test_orchestrator_rejects_plan_bytes_replaced_by_producer(tmp_path: Path):
     )
 
     plans = _qualification_plans(tmp_path)
-    experiment = tmp_path / "experiment"
-    attempts = 0
-
-    def producer(repo_id, arm_id, cell_root, attempt):
-        nonlocal attempts
-        receipt = _write_valid_qualification_receipt(cell_root, plans[attempts])
-        attempts += 1
-        if attempts == 1:
-            (experiment / "plan.json").write_bytes(b"{}")
-        return receipt
-
-    with pytest.raises(ValueError, match="Original plan bytes changed before sealing"):
+    inventories = _qualification_inventories(plans)
+    inventories["vscode"] = replace(
+        inventories["vscode"], eligible_paths=(), eligible_paths_hash="0" * 64
+    )
+    with pytest.raises(ValueError, match="complete trusted inventory"):
         orchestrate_qualification(
-            experiment_root=experiment, plans=plans, producer=producer
+            experiment_root=tmp_path / "experiment",
+            plans=plans,
+            trusted_inventories=inventories,
         )
-    assert attempts == 14
 
 
-def test_orchestrator_seals_files_then_all_directories(tmp_path: Path):
-    import stat
+def test_strict_validator_requires_exact_ordered_frozen_commands(tmp_path: Path):
+    import copy
 
-    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
-        orchestrate_qualification,
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
+    receipt["raw_executions"][0]["argv"] = ["true"]
+    _resign_qualification_receipt(receipt)
+
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
+        "RAW_EXECUTION_EVIDENCE_MISSING",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
     )
 
-    plans = _qualification_plans(tmp_path)
-    experiment = tmp_path / "experiment"
-    attempts = 0
 
-    def producer(repo_id, arm_id, cell_root, attempt):
-        nonlocal attempts
-        receipt = _write_valid_qualification_receipt(cell_root, plans[attempts])
-        attempts += 1
-        return receipt
+def test_verifier_trust_roots_are_immutable_config():
+    from dataclasses import FrozenInstanceError
 
-    orchestrate_qualification(
-        experiment_root=experiment, plans=plans, producer=producer
-    )
-    assert stat.S_IMODE(experiment.stat().st_mode) == 0o500
-    assert stat.S_IMODE((experiment / "cells").stat().st_mode) == 0o500
-    assert stat.S_IMODE((experiment / plans[0].artifact_path).stat().st_mode) == 0o400
+    import pytest
+
+    config = _qualification_verifier_config()
+    with pytest.raises(FrozenInstanceError):
+        config.executor_public_key = b"\x00" * 32
+
+
+def test_validator_exports_no_mutable_trust_key_globals():
+    import benchmarks.codegraph_compare.setup_qualification as qualification
+
+    assert (
+        hasattr(qualification, "TRUSTED_EXECUTOR_PUBLIC_KEY"),
+        hasattr(qualification, "TRUSTED_APPROVER_PUBLIC_KEY"),
+    ) == (False, False)
+
+
+def test_cell_plan_requires_delete_build_health_and_all_oracles(tmp_path: Path):
+    from dataclasses import replace
+
+    import pytest
+
+    plan = _qualification_plans(tmp_path)[0]
+    with pytest.raises(ValueError, match="ordered delete/build/health"):
+        replace(plan, executions=plan.executions[1:])
+
+
+def test_index_hash_enforces_trusted_total_size_ceiling(tmp_path: Path):
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
+
+    (tmp_path / "large.bin").write_bytes(b"x" * 32)
+    with pytest.raises(ValueError, match="trusted size ceiling"):
+        _hash_tree(tmp_path, max_bytes=31)
+
+
+def test_index_hash_rejects_sparse_files(tmp_path: Path):
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
+
+    sparse = tmp_path / "sparse.bin"
+    with sparse.open("wb") as stream:
+        stream.truncate(2 * 1024 * 1024)
+    if sparse.stat().st_blocks * 512 >= sparse.stat().st_size:
+        pytest.skip("tracked: filesystem does not represent sparse allocation")
+    with pytest.raises(ValueError, match="Sparse artifact files"):
+        _hash_tree(tmp_path)
 
 
 def test_oracle_comparison_distinguishes_boolean_from_number(tmp_path: Path):
@@ -9397,14 +9451,19 @@ def test_oracle_comparison_distinguishes_boolean_from_number(tmp_path: Path):
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
-    blob = receipt["raw_executions"][1]["stdout_bytes"]
+    blob = receipt["raw_executions"][3]["stdout_bytes"]
     payload = b'{"line":true,"path":"main.ts"}'
     (cell_root / blob["path"]).write_bytes(payload)
     blob["size_bytes"] = len(payload)
     blob["sha256"] = _bytes_hash(payload)
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
         "RAW_EXECUTION_EVIDENCE_MISSING",
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",

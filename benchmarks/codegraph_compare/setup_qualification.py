@@ -29,10 +29,7 @@ from benchmarks.codegraph_compare.setup_qualification_paths import (
     canonical_relative_path,
 )
 from benchmarks.codegraph_compare.setup_qualification_trust import (
-    TRUSTED_APPROVER_KEY_ID,
-    TRUSTED_APPROVER_PUBLIC_KEY,
-    TRUSTED_EXECUTOR_KEY_ID,
-    TRUSTED_EXECUTOR_PUBLIC_KEY,
+    VerifierConfigV1,
     _verify_signature,
 )
 
@@ -205,6 +202,23 @@ class HarnessArtifactV1:
 
 
 @dataclass(frozen=True)
+class ExecutionSpecV1:
+    """One exact external command frozen by the trusted plan."""
+
+    execution_id: str
+    argv: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.execution_id, str)
+            or not self.execution_id
+            or not self.argv
+            or any(not isinstance(arg, str) or not arg for arg in self.argv)
+        ):
+            raise ValueError("Execution IDs and argv entries must be non-empty")
+
+
+@dataclass(frozen=True)
 class CellPlanV1:
     repo_id: str
     arm_id: str
@@ -215,6 +229,7 @@ class CellPlanV1:
     config: HarnessArtifactV1
     oracle_specs: tuple[OracleSpecV1, ...]
     resources: ResourcePlanV1
+    executions: tuple[ExecutionSpecV1, ...]
     parse_error_allowlist: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -228,6 +243,11 @@ class CellPlanV1:
             oracle_ids
         ) != len(set(oracle_ids)):
             raise ValueError("Each plan requires unique symbol and call oracle IDs")
+        execution_ids = tuple(spec.execution_id for spec in self.executions)
+        if execution_ids != ("delete", "build", "health", *oracle_ids):
+            raise ValueError(
+                "Plan must freeze ordered delete/build/health/symbol/call executions"
+            )
         allowlist = _sorted_paths(self.parse_error_allowlist, "parse-error allowlist")
         if not set(allowlist).issubset(self.eligibility.eligible_paths):
             raise ValueError(
@@ -582,6 +602,7 @@ def validate_cell_receipt(
     *,
     plan: CellPlanV1,
     cell_root: Path,
+    verifier_config: VerifierConfigV1,
     trusted_root_fd: int | None = None,
     cell_relative: str | None = None,
 ) -> tuple[str, ...]:
@@ -717,7 +738,9 @@ def validate_cell_receipt(
         if not isinstance(index_relative, str) or cell_fd is None:
             raise ValueError
         canonical_relative_path(index_relative)
-        actual_index_hash = _hash_tree_at(cell_fd, index_relative)
+        actual_index_hash = _hash_tree_at(
+            cell_fd, index_relative, max_bytes=plan.resources.max_index_bytes
+        )
         actual_index_bytes = _tree_size_at(cell_fd, index_relative)
         if (
             actual_index_hash != receipt.get("index_content_hash")
@@ -747,7 +770,8 @@ def validate_cell_receipt(
         return payload
 
     executions = receipt.get("raw_executions")
-    expected_ids = ("build", *(spec.oracle_id for spec in plan.oracle_specs))
+    expected_executions = plan.executions
+    expected_ids = tuple(spec.execution_id for spec in expected_executions)
     raw_paths: list[str] = []
     execution_valid = (
         isinstance(executions, list)
@@ -756,6 +780,9 @@ def validate_cell_receipt(
     )
     if isinstance(executions, list) and execution_valid:
         specs = {spec.oracle_id: spec for spec in plan.oracle_specs}
+        frozen_argv = {
+            spec.execution_id: list(spec.argv) for spec in expected_executions
+        }
         for item in executions:
             blob_keys = ("stdout_bytes", "stderr_bytes", "query_bytes", "index_bytes")
             blobs = tuple(item.get(key) for key in blob_keys)
@@ -766,14 +793,12 @@ def validate_cell_receipt(
             if (
                 item.get("exit_code") != 0
                 or isinstance(item.get("exit_code"), bool)
-                or not isinstance(item.get("argv"), list)
-                or not item.get("argv")
-                or not all(isinstance(arg, str) and arg for arg in item.get("argv", ()))
+                or item.get("argv") != frozen_argv.get(item.get("id"))
                 or any(payload is None for payload in authenticated)
             ):
                 execution_valid = False
                 break
-            if item["id"] != "build":
+            if item["id"] in specs:
                 spec = specs[item["id"]]
                 query_payload = authenticated[2]
                 result_payload = authenticated[0]
@@ -832,8 +857,8 @@ def validate_cell_receipt(
             key_id=provenance.get("key_id"),
             signature=provenance.get("signature"),
             payload=executor_payload,
-            expected_key_id=TRUSTED_EXECUTOR_KEY_ID,
-            public_key=TRUSTED_EXECUTOR_PUBLIC_KEY,
+            expected_key_id=verifier_config.executor_key_id,
+            public_key=verifier_config.executor_public_key,
         )
     ):
         failures.append("INDEX_PROVENANCE_MISSING")
@@ -846,8 +871,8 @@ def validate_cell_receipt(
             key_id=audit.get("key_id"),
             signature=audit.get("signature"),
             payload=executor_payload,
-            expected_key_id=TRUSTED_EXECUTOR_KEY_ID,
-            public_key=TRUSTED_EXECUTOR_PUBLIC_KEY,
+            expected_key_id=verifier_config.executor_key_id,
+            public_key=verifier_config.executor_public_key,
         )
     ):
         failures.append("OS_AUDIT_MISSING")
@@ -872,13 +897,13 @@ def validate_cell_receipt(
         or approval.get("approved") is not True
         or approval_blob is None
         or approval.get("payload") != approval_payload
-        or approval.get("key_id") == TRUSTED_EXECUTOR_KEY_ID
+        or approval.get("key_id") == verifier_config.executor_key_id
         or not _verify_signature(
             key_id=approval.get("key_id"),
             signature=approval.get("signature"),
             payload=approval_payload,
-            expected_key_id=TRUSTED_APPROVER_KEY_ID,
-            public_key=TRUSTED_APPROVER_PUBLIC_KEY,
+            expected_key_id=verifier_config.approver_key_id,
+            public_key=verifier_config.approver_public_key,
         )
     ):
         failures.append("HUMAN_ORACLE_APPROVAL_MISSING")

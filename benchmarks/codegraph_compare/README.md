@@ -113,21 +113,23 @@ an unfavorable outcome.
 
 ## NO1-008A seven-repository setup qualification (implementation only)
 
-`setup_qualification.py` is a model-free RFC-0021 **E0 evidence contract**
-for the seven pinned repositories and two indexed arms. It validates canonical
-POSIX paths using `openat`/`O_NOFOLLOW`, schema-v2 receipts, exact finite
-resource observations, exact indexed/excluded/parse-error partitions, and full
-oracle-spec/query/normalized-result bindings. Index and execution provenance
-plus OS audit evidence require the pinned independent executor signature;
-plan/evidence approval requires a different pinned human-approver signature.
-Neither private key is available to a producer. It deliberately has no collector
-adapter: `produce_strict_cell` fails `NOT_EVALUATED` until a harness-owned sandbox
-executor exists. Plans must match the commits in `repos.yaml`, and both arms use
-identical eligibility. The orchestrator invokes the exact ordered 14-cell plan
-once per cell, then re-reads and strictly revalidates every immutable receipt and
-digest immediately before sealing. It records all failures and can emit only
-`E0/NOT_EVALUATED`.
-There is no reachable `QUALIFIED`, publish, winner, dominance, or unlock state.
+`setup_qualification.py` is a model-free RFC-0021 **E0 contract scaffold**
+for the seven pinned repositories and two indexed arms. The current orchestrator
+is intentionally non-executing: it accepts no producer callback, invokes no
+producer, observes zero receipts, creates no checksum manifest, and seals no
+evidence. It always records `E0/NOT_EVALUATED` with the hard requirement for a
+future isolated external producer and a fresh trusted verifier artifact.
+
+Plans must match every field of an explicit trusted inventory map derived from
+the pinned repository checkouts, not merely the commit label. Each plan freezes
+the exact ordered deletion, build, health, symbol-query, and call-query argv;
+the receipt validator requires that complete ordered set and exit code zero.
+Signature trust roots are an explicit immutable `VerifierConfigV1` argument to
+the pure validator. No mutable module trust-key global can be monkeypatched into
+an authorization decision. The retained validator and strict parser are only
+building blocks for the future fresh verifier process; they are not called by
+the E0 orchestrator. There is no reachable `QUALIFIED`, receipt sealing, publish,
+winner, dominance, or unlock state.
 
 This is **not an operator command to run qualification yet**. NO1-003C, an
 independently reviewed oracle set, a real OS-level network/process sandbox, and
