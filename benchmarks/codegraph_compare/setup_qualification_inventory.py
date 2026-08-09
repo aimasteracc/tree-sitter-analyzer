@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 from pathlib import Path, PurePosixPath
 
@@ -52,8 +53,100 @@ def _tracked_stage(repo: Path) -> tuple[tuple[str, str, str], ...]:
     return tuple(records)
 
 
+def _git_object_id(payload: bytes, expected: str) -> str:
+    """Recompute a loose-object identity without spawning another Git process."""
+    algorithms = {40: "sha1", 64: "sha256"}
+    try:
+        algorithm = algorithms[len(expected)]
+    except KeyError as exc:
+        raise ValueError("Unsupported Git object ID length") from exc
+    digest = hashlib.new(algorithm)
+    digest.update(f"blob {len(payload)}\0".encode("ascii"))
+    digest.update(payload)
+    return digest.hexdigest()
+
+
+def _parse_batch_blobs(
+    output: bytes, requests: tuple[tuple[str, str], ...]
+) -> tuple[tuple[str, bytes], ...]:
+    """Parse ``git cat-file --batch -Z`` output without delimiter ambiguity."""
+    offset = 0
+    results: list[tuple[str, bytes]] = []
+    for relative, expected_id in requests:
+        header_end = output.find(b"\0", offset)
+        if header_end < 0:
+            raise ValueError(f"Missing Git batch header terminator: {relative}")
+        try:
+            fields = output[offset:header_end].decode("ascii").split(" ")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"Non-ASCII Git batch header: {relative}") from exc
+        if len(fields) != 3:
+            raise ValueError(f"Malformed Git batch header: {relative}")
+        returned_id, object_type, encoded_size = fields
+        if (
+            returned_id != expected_id
+            or object_type != "blob"
+            or not encoded_size.isdigit()
+            or (len(encoded_size) > 1 and encoded_size.startswith("0"))
+        ):
+            raise ValueError(f"Unexpected Git batch header: {relative}")
+        size = int(encoded_size)
+        payload_start = header_end + 1
+        payload_end = payload_start + size
+        if payload_end >= len(output) or output[payload_end : payload_end + 1] != b"\0":
+            raise ValueError(
+                f"Git batch payload size or terminator mismatch: {relative}"
+            )
+        payload = output[payload_start:payload_end]
+        if _git_object_id(payload, expected_id) != expected_id:
+            raise ValueError(f"Pinned Git object mismatch: {relative}")
+        results.append((relative, payload))
+        offset = payload_end + 1
+    if offset != len(output):
+        raise ValueError("Unexpected trailing Git batch output")
+    return tuple(results)
+
+
+def _batch_blobs(
+    repo: Path, requests: tuple[tuple[str, str], ...]
+) -> tuple[tuple[str, bytes], ...]:
+    """Read every requested pinned blob through one bounded Git process."""
+    if not requests:
+        return ()
+    process = subprocess.Popen(
+        ["git", "cat-file", "--batch", "-Z"],
+        cwd=repo,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    request_bytes = b"".join(
+        object_id.encode("ascii") + b"\0" for _, object_id in requests
+    )
+    try:
+        output, stderr = process.communicate(
+            input=request_bytes, timeout=_GIT_TIMEOUT_SECONDS
+        )
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
+        raise
+    except BaseException:
+        process.kill()
+        process.communicate()
+        raise
+    if process.returncode:
+        raise subprocess.CalledProcessError(
+            process.returncode,
+            process.args,
+            output=output,
+            stderr=stderr,
+        )
+    return _parse_batch_blobs(output, requests)
+
+
 def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> EligibilityV1:
-    """Compute the complete plan-bound source partition from Git and worktree bytes."""
+    """Compute the complete plan-bound source partition from pinned Git blobs."""
     records = _tracked_stage(repo)
     commit = _git(repo, "rev-parse", "HEAD").decode("ascii").strip()
     if _git(repo, "status", "--porcelain", "--untracked-files=no"):
@@ -63,22 +156,16 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
     excluded: list[tuple[str, str]] = []
     file_hashes: list[tuple[str, str, str, str]] = []
     extensions = rules.extensions(repo_id)
+    regular_records: list[tuple[str, str, str]] = []
+    preclassified: dict[str, str | None] = {}
     for relative, mode, object_id in records:
         if mode in {"160000", "120000"}:
             excluded.append((relative, "gitlink" if mode == "160000" else "symlink"))
             continue
         if mode not in _REGULAR_MODES:
             raise ValueError(f"Unsupported tracked mode {mode}: {relative}")
-        # Qualification reads the immutable stage-zero object, never mutable
-        # worktree bytes. Verify Git still identifies those exact bytes.
-        payload = _git(repo, "cat-file", "blob", object_id)
-        verified_object_id = (
-            _git(repo, "hash-object", "--stdin", input=payload).decode("ascii").strip()
-        )
-        if verified_object_id != object_id:
-            raise ValueError(f"Pinned Git object mismatch: {relative}")
         regular.append(relative)
-        file_hashes.append((relative, mode, object_id, _bytes_hash(payload)))
+        regular_records.append((relative, mode, object_id))
         components = relative.split("/")
         reason = None
         if PurePosixPath(relative).suffix not in extensions:
@@ -87,7 +174,21 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
             reason = "excluded-component"
         elif any(relative.endswith(suffix) for suffix in rules.minified_suffixes):
             reason = "minified"
-        elif any(marker in payload[:4096] for marker in rules.generated_markers):
+        preclassified[relative] = reason
+
+    # Every regular blob binds the repository fingerprint, but only paths that
+    # survive metadata rules need content inspection for generated markers.
+    requests = tuple(
+        (relative, object_id) for relative, _, object_id in regular_records
+    )
+    payloads = dict(_batch_blobs(repo, requests))
+    for relative, mode, object_id in regular_records:
+        payload = payloads[relative]
+        file_hashes.append((relative, mode, object_id, _bytes_hash(payload)))
+        reason = preclassified[relative]
+        if reason is None and any(
+            marker in payload[:4096] for marker in rules.generated_markers
+        ):
             reason = "generated"
         if reason is None:
             eligible.append(relative)

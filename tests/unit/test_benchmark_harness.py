@@ -19,7 +19,7 @@ import sys
 import textwrap
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -8195,6 +8195,146 @@ def test_source_rules_classify_tracked_gitlink_symlink_and_generated(tmp_path: P
         ("notes.md", "extension"),
     )
     assert inventory.eligible_paths_hash == _sha256(["main.ts"])
+
+
+@pytest.mark.parametrize("reserved_id", ("delete", "build", "health"))
+def test_cell_plan_rejects_reserved_oracle_execution_ids(
+    tmp_path: Path, reserved_id: str
+):
+    # PR #1247: an oracle must not replace a built-in execution in frozen argv.
+    from dataclasses import replace
+
+    from benchmarks.codegraph_compare.setup_qualification import ExecutionSpecV1
+
+    plan = _qualification_plans(tmp_path)[0]
+    oracles = (
+        replace(plan.oracle_specs[0], oracle_id=reserved_id),
+        plan.oracle_specs[1],
+    )
+    executions = (*plan.executions[:3],) + tuple(
+        ExecutionSpecV1(spec.oracle_id, ("oracle", spec.oracle_id)) for spec in oracles
+    )
+
+    with pytest.raises(ValueError, match="reserved execution IDs"):
+        replace(plan, oracle_specs=oracles, executions=executions)
+
+
+def test_cell_plan_allows_oracle_id_that_only_contains_reserved_word(tmp_path: Path):
+    from dataclasses import replace
+
+    from benchmarks.codegraph_compare.setup_qualification import ExecutionSpecV1
+
+    plan = _qualification_plans(tmp_path)[0]
+    oracles = (
+        replace(plan.oracle_specs[0], oracle_id="delete.oracle"),
+        plan.oracle_specs[1],
+    )
+    executions = (*plan.executions[:3],) + tuple(
+        ExecutionSpecV1(spec.oracle_id, ("oracle", spec.oracle_id)) for spec in oracles
+    )
+
+    replaced = replace(plan, oracle_specs=oracles, executions=executions)
+
+    assert tuple(item.execution_id for item in replaced.executions) == (
+        "delete",
+        "build",
+        "health",
+        "delete.oracle",
+        "main.call",
+    )
+
+
+def test_git_batch_parser_uses_size_framing_for_embedded_nul():
+    import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
+
+    payload = b"before\0after"
+    digest = hashlib.sha1(f"blob {len(payload)}\0".encode() + payload).hexdigest()
+    output = f"{digest} blob {len(payload)}".encode() + b"\0" + payload + b"\0"
+
+    assert inventory_module._parse_batch_blobs(output, (("source.ts", digest),)) == (
+        ("source.ts", payload),
+    )
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    (
+        lambda header, payload: header.replace(b" blob ", b" tree ") + payload + b"\0",
+        lambda header, payload: (
+            header.replace(str(len(payload)).encode(), str(len(payload) + 1).encode())
+            + payload
+            + b"\0"
+        ),
+        lambda header, payload: header + payload + b"X",
+    ),
+)
+def test_git_batch_parser_rejects_malformed_type_size_or_terminator(mutate):
+    # PR #1247: batch framing must fail closed rather than shift into the next blob.
+    import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
+
+    payload = b"content"
+    digest = hashlib.sha1(f"blob {len(payload)}\0".encode() + payload).hexdigest()
+    header = f"{digest} blob {len(payload)}".encode() + b"\0"
+
+    with pytest.raises(ValueError, match="Git batch"):
+        inventory_module._parse_batch_blobs(
+            mutate(header, payload), (("source.ts", digest),)
+        )
+
+
+def test_git_batch_timeout_kills_and_reaps_process(tmp_path: Path):
+    import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
+
+    process = Mock(args=["git", "cat-file", "--batch", "-Z"])
+    process.communicate.side_effect = [
+        subprocess.TimeoutExpired(process.args, 30),
+        (b"", b""),
+    ]
+    with patch.object(inventory_module.subprocess, "Popen", return_value=process):
+        with pytest.raises(subprocess.TimeoutExpired):
+            inventory_module._batch_blobs(tmp_path, (("source.ts", "a" * 40),))
+
+    process.kill.assert_called_once_with()
+    assert process.communicate.call_count == 2
+
+
+def test_large_source_inventory_uses_constant_subprocess_count(tmp_path: Path):
+    # PR #1247: process count must not scale with tracked regular blobs.
+    import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+    )
+
+    repo = tmp_path / "large-repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    for number in range(256):
+        (repo / f"source-{number:03}.ts").write_text(
+            f"export const value{number} = {number};\n", encoding="utf-8"
+        )
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
+    real_popen = subprocess.Popen
+    starts: list[tuple[str, ...]] = []
+
+    def counted_popen(*args, **kwargs):
+        starts.append(tuple(args[0]))
+        return real_popen(*args, **kwargs)
+
+    with patch.object(inventory_module.subprocess, "Popen", side_effect=counted_popen):
+        result = inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
+
+    assert len(result.tracked_regular_paths) == 256
+    assert len(starts) == 7
+    assert [command[:3] for command in starts].count(
+        ("git", "cat-file", "--batch")
+    ) == 1
+    assert all("hash-object" not in command for command in starts)
 
 
 def _qualification_verifier_config():

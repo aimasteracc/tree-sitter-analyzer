@@ -223,10 +223,16 @@ class CellPlanV1:
         if self.eligibility.repo_id != self.repo_id:
             raise ValueError("Eligibility is not bound to the planned repository")
         oracle_ids = tuple(spec.oracle_id for spec in self.oracle_specs)
-        if {spec.kind for spec in self.oracle_specs} != {"symbol", "call"} or len(
-            oracle_ids
-        ) != len(set(oracle_ids)):
-            raise ValueError("Each plan requires unique symbol and call oracle IDs")
+        reserved_execution_ids = {"delete", "build", "health"}
+        if (
+            {spec.kind for spec in self.oracle_specs} != {"symbol", "call"}
+            or len(oracle_ids) != len(set(oracle_ids))
+            or not reserved_execution_ids.isdisjoint(oracle_ids)
+        ):
+            raise ValueError(
+                "Each plan requires unique symbol and call oracle IDs that are not "
+                "reserved execution IDs"
+            )
         execution_ids = tuple(spec.execution_id for spec in self.executions)
         if execution_ids != ("delete", "build", "health", *oracle_ids):
             raise ValueError(
