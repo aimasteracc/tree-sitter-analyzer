@@ -17,6 +17,7 @@ from benchmarks.codegraph_compare.audit_authority_service import (
 )
 from benchmarks.codegraph_compare.decision_consumer_service import (
     request_decision,
+    verify_configured_plan_set,
     verify_decision_contract,
 )
 from benchmarks.codegraph_compare.execution_budget import (
@@ -187,8 +188,7 @@ def _run_impl(args: argparse.Namespace) -> int:
             or logical_hash != decision_contract["cells"][ordinal]["plan_sha256"]
         ):
             raise ValueError("staged plan does not match offline decision cell hash")
-    if decision_contract["plan_set_hash"] != config["trusted"]["plan_set_hash"]:
-        raise ValueError("offline decision plan set is not root-config authorized")
+    verify_configured_plan_set(decision_contract, config)
     # This bound uses only root-staged inputs and runs before the first authority
     # reservation, so an oversized exact-14 frame consumes no cell.
     preflight_exact14_manifest(

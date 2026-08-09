@@ -128,8 +128,12 @@ def preflight_exact14_manifest(
     return bound
 
 
-class _PostSendTransportError(Exception):
-    """A request was fully sent but its response transport did not complete."""
+class _PreSendTransportError(ConnectionError):
+    """The verifier connection failed before any request bytes were sent."""
+
+
+class _PostSendTransportError(ConnectionError):
+    """A request may have been sent but its response transport did not complete."""
 
 
 def _manifest_json_loads(payload: bytes) -> dict[str, Any]:
@@ -439,6 +443,11 @@ def _verify(
         }
         return canonical_json_bytes(envelope)
 
+    if time.monotonic_ns() >= deadline_ns:
+        # Semantic work may consume the remaining request budget. Terminalize
+        # the durable challenge as FAILED without creating any verdict signature.
+        ledger.finish(digest, challenge, success=False)
+        raise TimeoutError("verifier service contract deadline expired")
     try:
         _consumption, _head, envelope_bytes = ledger.finish_with_envelope(
             digest, challenge, build
@@ -525,7 +534,12 @@ def _round_trip(
     deadline = time.monotonic() + timeout
     try:
         client.settimeout(max(0.001, deadline - time.monotonic()))
-        client.connect(str(socket_path))
+        try:
+            client.connect(str(socket_path))
+        except (TimeoutError, BrokenPipeError, ConnectionError, OSError) as error:
+            raise _PreSendTransportError(
+                "verifier connection failed before request transmission"
+            ) from error
         option = getattr(socket, "SO_PEERCRED", None)
         if option is None:
             raise ValueError("Unix peer credentials unavailable")
@@ -534,7 +548,13 @@ def _round_trip(
         )
         if pid <= 0 or uid != config["verifier"]["peer_uid"]:
             raise ValueError("external verifier peer UID mismatch")
-        _send(client, request)
+        try:
+            _send(client, request)
+        except (TimeoutError, BrokenPipeError, ConnectionError, OSError) as error:
+            # A failed send may have delivered a prefix or a complete frame.
+            raise _PostSendTransportError(
+                "verifier request transmission failed"
+            ) from error
         try:
             client.shutdown(socket.SHUT_WR)
             remaining = deadline - time.monotonic()
@@ -683,12 +703,13 @@ def request_verdict(
         begin = _round_trip(
             socket_path, begin_request, config, deadline - time.monotonic()
         )
-    except _PostSendTransportError:
+    except (_PreSendTransportError, _PostSendTransportError):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise
-        # begin() is manifest-idempotent while its challenge is active, so a
-        # single response-loss retry returns the committed signed challenge.
+        # begin() is manifest-idempotent while its challenge is active, so one
+        # bounded retry safely covers both a definite pre-send failure and an
+        # ambiguous send/response loss under the original monotonic deadline.
         begin = _round_trip(socket_path, begin_request, config, remaining)
     begin_keys = {
         "manifest_sha256",

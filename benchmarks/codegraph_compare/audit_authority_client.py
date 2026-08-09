@@ -20,7 +20,15 @@ from benchmarks.codegraph_compare.service_runtime import read_frame
 MAX_MESSAGE = 4 * 1024 * 1024
 
 
-class _PostSendTransportError(Exception):
+class _PreSendTransportError(ConnectionError):
+    """The authority connection failed before any request bytes were sent."""
+
+
+class _SendTransportError(ConnectionError):
+    """Request transmission failed and may have delivered a partial frame."""
+
+
+class _PostSendTransportError(ConnectionError):
     """The complete request was sent but no complete response was received."""
 
 
@@ -37,11 +45,22 @@ def _request_response(
     deadline = time.monotonic() + timeout
     client.settimeout(timeout)
     try:
-        client.connect(str(socket_path))
+        try:
+            client.connect(str(socket_path))
+        except (TimeoutError, BrokenPipeError, ConnectionError, OSError) as error:
+            raise _PreSendTransportError(
+                "authority connection failed before request transmission"
+            ) from error
         _pid, uid, _gid = _peer_credentials(client)
         if uid != authority["peer_uid"]:
             raise ValueError("external audit authority peer UID mismatch")
-        client.sendall(struct.pack("!I", len(wire)) + wire)
+        try:
+            client.sendall(struct.pack("!I", len(wire)) + wire)
+        except (TimeoutError, BrokenPipeError, ConnectionError, OSError) as error:
+            # sendall cannot report whether a prefix reached the one-shot service.
+            raise _SendTransportError(
+                "authority request transmission failed"
+            ) from error
         try:
             client.shutdown(socket.SHUT_WR)
             remaining = deadline - time.monotonic()
@@ -139,18 +158,25 @@ def run_cell(
             raise TimeoutError("authority request deadline expired")
         return value
 
+    def request_with_pre_send_retry(payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return _request_response(payload, socket_path, authority, remaining())
+        except _PreSendTransportError:
+            # A refused/unavailable connection delivered no bytes. Retry once,
+            # bounded by the original per-cell monotonic deadline.
+            return _request_response(payload, socket_path, authority, remaining())
+
     try:
-        envelope = _request_response(request, socket_path, authority, remaining())
-    except _PostSendTransportError:
-        envelope = _request_response(
+        envelope = request_with_pre_send_retry(request)
+    except (_SendTransportError, _PostSendTransportError):
+        # A failed send may have delivered a prefix or the whole run request.
+        # Never replay the one-shot operation; recover its durable response.
+        envelope = request_with_pre_send_retry(
             {
                 "operation": "query-job-response",
                 "contract": contract,
                 "job_id": contract["job_id"],
-            },
-            socket_path,
-            authority,
-            remaining(),
+            }
         )
     if type(envelope) is dict and frozenset(envelope) == {"error", "reason"}:
         raise ValueError(f"authority rejected request: {envelope['reason']}")

@@ -8,6 +8,7 @@ import os
 import stat
 import sys
 import tempfile
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -309,11 +310,15 @@ def sign_verified_receipt(
             args, body, config, deadline_monotonic=deadline_monotonic
         )
     if role == "executor":
+        if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+            raise TimeoutError("executor receipt signing deadline expired")
         return create_executor_attestation(body, key_id, key)
     if type(draft) is not dict or canonical_json_bytes(body) != canonical_json_bytes(
         draft.get("body")
     ):
         raise ValueError("approver full evidence/oracle verification mismatch")
+    if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+        raise TimeoutError("approver receipt signing deadline expired")
     return approve_executor_attestation(
         draft,
         config["executor"]["key_id"],

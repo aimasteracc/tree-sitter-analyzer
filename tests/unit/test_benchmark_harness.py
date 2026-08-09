@@ -12838,6 +12838,9 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
         qualification_operator, "verify_decision_contract", lambda value: value
     )
     monkeypatch.setattr(
+        qualification_operator, "verify_configured_plan_set", lambda *_args: None
+    )
+    monkeypatch.setattr(
         qualification_operator, "validate_producer_plan", lambda value: value
     )
     monkeypatch.setattr(
@@ -14576,6 +14579,7 @@ def test_operator_rejects_short_common_lifetime_before_first_cell(
         },
     )
     monkeypatch.setattr(operator, "verify_decision_contract", lambda value: value)
+    monkeypatch.setattr(operator, "verify_configured_plan_set", lambda *_args: None)
     monkeypatch.setattr(operator, "validate_producer_plan", lambda value: value)
     monkeypatch.setattr(operator, "validate_receipt_inventory", lambda value: value)
     monkeypatch.setattr(
@@ -15378,6 +15382,168 @@ def test_receipt_server_frame_deadline_scales_to_maximum_payload(monkeypatch):
 
     assert receipt_v3_service._frame(object()) == {}
     assert deadlines == [110.0, 116.0]
+
+
+@pytest.mark.parametrize("failure", ["connect", "send"])
+def test_authority_retries_transport_failure_under_original_deadline(
+    monkeypatch, failure: str
+):
+    # PR #1249 reviews 3744915224: no authority retry may renew the cell budget.
+    from benchmarks.codegraph_compare import audit_authority_client as client
+
+    observed: list[tuple[str, float]] = []
+    ticks = iter((100.0, 101.0, 105.0))
+    monkeypatch.setattr(client, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+
+    def request(payload, _socket, _authority, timeout):
+        observed.append((payload["operation"], timeout))
+        if len(observed) == 1:
+            error = (
+                client._PreSendTransportError("not connected")
+                if failure == "connect"
+                else client._SendTransportError("ambiguous send")
+            )
+            raise error
+        raise RuntimeError("bounded retry observed")
+
+    monkeypatch.setattr(client, "_request_response", request)
+
+    with pytest.raises(RuntimeError, match="bounded retry observed"):
+        client.run_cell(
+            {"job_id": "a" * 64},
+            Path("/authority.sock"),
+            {"wall_timeout_seconds": 10},
+        )
+
+    expected_operation = "run-cell" if failure == "connect" else "query-job-response"
+    assert observed == [("run-cell", 9.0), (expected_operation, 5.0)]
+
+
+def test_verifier_begin_retries_pre_send_failure_under_original_deadline(monkeypatch):
+    # PR #1249 review 3744915230: BEGIN connect failure is safe to retry once.
+    from benchmarks.codegraph_compare import verifier_service
+
+    requests: list[tuple[str, float]] = []
+    ticks = iter((100.0, 101.0, 105.0))
+    monkeypatch.setattr(
+        verifier_service, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+    )
+
+    def round_trip(_path, request, _config, timeout):
+        requests.append((request["operation"], timeout))
+        if len(requests) == 1:
+            raise verifier_service._PreSendTransportError("not connected")
+        raise RuntimeError("bounded retry observed")
+
+    monkeypatch.setattr(verifier_service, "_round_trip", round_trip)
+
+    with pytest.raises(RuntimeError, match="bounded retry observed"):
+        verifier_service.request_verdict(
+            socket_path=Path("/verifier.sock"),
+            manifest={"cells": []},
+            config={},
+            timeout=10,
+        )
+
+    assert requests == [("begin-exact-14", 9.0), ("begin-exact-14", 5.0)]
+
+
+@pytest.mark.parametrize("role", ["executor", "approver"])
+def test_receipt_signer_rechecks_expired_deadline_before_signature(monkeypatch, role):
+    # PR #1249 review 3744915233: completed semantic work cannot sign after expiry.
+    from benchmarks.codegraph_compare import receipt_v3_signer as signer
+
+    body = {"sealed": True}
+    monkeypatch.setattr(signer, "_safe_path", lambda _path: Path("/sealed.img"))
+    monkeypatch.setattr(signer, "_extract_ext4", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(signer, "_build_body", lambda *_args, **_kwargs: body)
+    monkeypatch.setattr(signer, "_full_semantic_verify", lambda *_args, **_kwargs: body)
+    monkeypatch.setattr(signer.time, "monotonic", lambda: 5.0)
+    monkeypatch.setattr(
+        signer,
+        "create_executor_attestation",
+        lambda *_args: pytest.fail("expired executor receipt was signed"),
+    )
+    monkeypatch.setattr(
+        signer,
+        "approve_executor_attestation",
+        lambda *_args: pytest.fail("expired approver receipt was signed"),
+    )
+    args = SimpleNamespace(data_image="/sealed.img")
+    config = {role: {"key_id": role}}
+    draft = {"body": body} if role == "approver" else None
+
+    with pytest.raises(TimeoutError, match=f"{role} receipt signing deadline expired"):
+        signer.sign_verified_receipt(
+            role=role,
+            args=args,
+            config=config,
+            key=b"key",
+            key_id=role,
+            draft=draft,
+            deadline_monotonic=5.0,
+        )
+
+
+def test_verifier_expired_after_semantics_transitions_failed_without_envelope(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744915235: expiry immediately before commit is FAILED.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import verifier_service
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    monkeypatch.setattr(ChallengeLedger, "_acquire_lease", lambda _self: None)
+    ledger = ChallengeLedger(tmp_path / "deadline.sqlite")
+    digest = "a" * 64
+    challenge = ledger.begin(digest)["challenge"]
+    ticks = iter((9, 10))
+    monkeypatch.setattr(verifier_service.time, "monotonic_ns", lambda: next(ticks))
+    monkeypatch.setattr(
+        verifier_service,
+        "_load_manifest",
+        lambda *_args: ({"cells": []}, digest, challenge, "b" * 64, "c" * 64),
+    )
+    monkeypatch.setattr(verifier_service, "aggregate_verdict", lambda *_a, **_k: {})
+    monkeypatch.setattr(verifier_service, "_validate_verdict_schema", lambda _v: None)
+
+    with pytest.raises(TimeoutError, match="service contract deadline expired"):
+        verifier_service._verify(
+            {
+                "manifest_sha256": digest,
+                "challenge": challenge,
+                "deadline_monotonic_ns": 10,
+            },
+            {},
+            tmp_path,
+            tmp_path,
+            Ed25519PrivateKey.generate(),
+            ledger,
+            {},
+        )
+    database = sqlite3.connect(ledger.path)
+    try:
+        state = database.execute(
+            "SELECT state FROM challenges WHERE challenge=?", (challenge,)
+        ).fetchone()[0]
+        verdict_count = database.execute("SELECT COUNT(*) FROM verdicts").fetchone()[0]
+    finally:
+        database.close()
+
+    assert (state, verdict_count) == ("FAILED", 0)
+
+
+def test_operator_recomputes_configured_plan_set_before_authority_calls():
+    # PR #1249 review 3744915238: stale aggregate hashes fail before cell consumption.
+    source = Path("benchmarks/codegraph_compare/qualification_operator.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert source.count("verify_configured_plan_set(decision_contract, config)") == 1
+    assert source.index(
+        "verify_configured_plan_set(decision_contract, config)"
+    ) < source.index("authority = run_cell(")
 
 
 _mark_posix_qualification_section_tests()
