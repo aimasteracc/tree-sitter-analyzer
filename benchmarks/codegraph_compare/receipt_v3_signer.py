@@ -17,6 +17,10 @@ from benchmarks.codegraph_compare.receipt_v3 import (
     create_executor_attestation,
     strict_json_loads,
 )
+from benchmarks.codegraph_compare.service_runtime import (
+    measure_runtime,
+    verify_service_launch_attestation,
+)
 from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
 from benchmarks.codegraph_compare.verifier import (
     _extract_ext4,
@@ -68,10 +72,12 @@ def _read_private_key(raw: str) -> bytes:
         os.close(descriptor)
 
 
-def _build_body(args: argparse.Namespace) -> dict[str, object]:
+def _build_body(
+    args: argparse.Namespace, *, core_override: Path | None = None
+) -> dict[str, object]:
     plan = strict_json_loads(_safe_path(args.plan).read_bytes())
     inventory = strict_json_loads(_safe_path(args.inventory).read_bytes())
-    core = _safe_path(args.core_root)
+    core = _safe_path(args.core_root) if core_override is None else core_override
     result_path = core / "producer-result.json"
     result = strict_json_loads(result_path.read_bytes())
     audit_path = _safe_path(args.process_audit)
@@ -226,7 +232,7 @@ def _build_body(args: argparse.Namespace) -> dict[str, object]:
 
 def _full_semantic_verify(
     args: argparse.Namespace, body: dict[str, object], config: dict[str, object]
-) -> None:
+) -> dict[str, object]:
     """Recompute all raw evidence semantics before either service signs."""
     plan = strict_json_loads(_safe_path(args.plan).read_bytes())
     inventory = strict_json_loads(_safe_path(args.inventory).read_bytes())
@@ -255,7 +261,13 @@ def _full_semantic_verify(
         with tempfile.TemporaryDirectory(prefix="no1-008a-semantic-") as temporary:
             extracted = Path(temporary)
             _extract_ext4(Path(f"/proc/self/fd/{image_fds[0]}"), extracted)
-            _verify_recomputed(body, plan, inventory, extracted)
+            sealed_body = _build_body(args, core_override=extracted)
+            if canonical_json_bytes(sealed_body) != canonical_json_bytes(body):
+                raise ValueError(
+                    "unsealed core differs from verified dm-verity extraction"
+                )
+            _verify_recomputed(sealed_body, plan, inventory, extracted)
+            return sealed_body
     finally:
         for descriptor in image_fds:
             os.close(descriptor)
@@ -285,6 +297,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     executor.add_argument("--private-key", required=True)
     executor.add_argument("--key-id", required=True)
     executor.add_argument("--parent-measurement", required=True)
+    executor.add_argument("--launch-attestation", required=True)
     approver = subparsers.add_parser("sign-approver")
     approver.add_argument("--attestation", required=True)
     approver.add_argument("--run-nonce", required=True)
@@ -312,6 +325,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     approver.add_argument("--private-key", required=True)
     approver.add_argument("--key-id", required=True)
     approver.add_argument("--parent-measurement", required=True)
+    approver.add_argument("--launch-attestation", required=True)
     args = parser.parse_args(argv)
     pinned: list[int] = []
     try:
@@ -321,6 +335,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "attestation",
             "public_config",
             "parent_measurement",
+            "launch_attestation",
             "plan",
             "inventory",
             "process_audit",
@@ -340,18 +355,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                     raise ValueError(f"{name} must be regular")
                 pinned.append(descriptor)
                 setattr(args, name, f"/proc/self/fd/{descriptor}")
-        key = _read_private_key(args.private_key)
         config = parse_public_config(_safe_path(args.public_config).read_bytes())
+        role = args.command.removeprefix("sign-")
+        expected_runtime = config["trusted"][f"{role}_runtime"]["measurement"]
+        # The child independently measures itself.  The parent's JSON is only an
+        # additional equality constraint and can never substitute for this gate.
+        actual_runtime = measure_runtime(expected_runtime)
         parent_measurement = strict_json_loads(
             _safe_path(args.parent_measurement).read_bytes()
         )
         if (
-            parent_measurement
-            != config["trusted"][f"{args.command.removeprefix('sign-')}_runtime"][
-                "measurement"
-            ]
+            parent_measurement != expected_runtime
+            or parent_measurement != actual_runtime
         ):
-            raise ValueError("signer subprocess parent runtime measurement mismatch")
+            raise ValueError("signer child/parent/root runtime measurement mismatch")
+        verify_service_launch_attestation(
+            strict_json_loads(_safe_path(args.launch_attestation).read_bytes()),
+            role,
+            config,
+        )
+        key = _read_private_key(args.private_key)
         if args.command == "sign-executor":
             evidence_args = (
                 args.plan,
@@ -373,7 +396,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             body = _build_body(args)
             if args.key_id != config["executor"]["key_id"]:
                 raise ValueError("executor key ID does not match public config")
-            _full_semantic_verify(args, body, config)
+            body = _full_semantic_verify(args, body, config)
             result = create_executor_attestation(body, args.key_id, key)
         else:
             attestation = strict_json_loads(_safe_path(args.attestation).read_bytes())
@@ -386,7 +409,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 attestation.get("body")
             ):
                 raise ValueError("approver full evidence/oracle verification mismatch")
-            _full_semantic_verify(args, recomputed, config)
+            recomputed = _full_semantic_verify(args, recomputed, config)
             result = approve_executor_attestation(
                 attestation,
                 config["executor"]["key_id"],

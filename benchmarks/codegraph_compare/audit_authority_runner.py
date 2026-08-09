@@ -36,14 +36,23 @@ from benchmarks.codegraph_compare.verifier import parse_public_config
 
 
 def _run(*args: str, timeout: int = 120) -> bytes:
-    result = subprocess.run(
-        args, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout
+    """Run every unit of authority work in a killable process group."""
+    process = subprocess.Popen(
+        args,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
     )
-    if result.returncode:
-        raise ValueError(
-            f"authority command failed: {args[0]}: {result.stderr[:200]!r}"
-        )
-    return result.stdout
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        os.killpg(process.pid, 9)
+        process.communicate()
+        raise TimeoutError(f"authority command deadline expired: {args[0]}") from None
+    if process.returncode:
+        raise ValueError(f"authority command failed: {args[0]}: {stderr[:200]!r}")
+    return stdout
 
 
 def _read(path: Path, limit: int = 16 * 1024 * 1024) -> bytes:

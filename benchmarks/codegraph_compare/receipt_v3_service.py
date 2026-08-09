@@ -36,7 +36,10 @@ from benchmarks.codegraph_compare.service_runtime import (
     secure_key,
     verify_service_launch_attestation,
 )
-from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
+from benchmarks.codegraph_compare.setup_qualification_paths import (
+    _hash_tree_descriptor,
+    canonical_relative_path,
+)
 from benchmarks.codegraph_compare.verifier import parse_public_config
 
 MAX_MESSAGE = 16 * 1024 * 1024
@@ -146,12 +149,41 @@ class PinnedPaths(dict[str, Path]):
             os.close(self.fds.pop())
 
 
+def _directory_size(fd: int) -> int:
+    total = 0
+    for name in os.listdir(fd):
+        metadata = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ValueError("core evidence contains a symlink")
+        if stat.S_ISREG(metadata.st_mode):
+            total += metadata.st_size
+        elif stat.S_ISDIR(metadata.st_mode):
+            child = os.open(
+                name,
+                os.O_RDONLY
+                | os.O_CLOEXEC
+                | os.O_DIRECTORY
+                | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=fd,
+            )
+            try:
+                total += _directory_size(child)
+            finally:
+                os.close(child)
+        else:
+            raise ValueError("core evidence contains a special file")
+    return total
+
+
 def _paths(
     response: dict[str, Any], artifact_root: Path, staged_root: Path
 ) -> PinnedPaths:
+    """Open every evidence object first, then hash and use only retained FDs."""
     job_id = response["job_id"]
+    descriptors = response["artifacts"]
     result: dict[str, Path] = {}
-    for item in response["artifacts"]:
+    expected: dict[str, dict[str, Any]] = {}
+    for item in descriptors:
         if type(item) is not dict or set(item) != {
             "name",
             "id",
@@ -160,36 +192,11 @@ def _paths(
             "path",
         }:
             raise ValueError("authority artifact descriptor is not closed")
-        path = artifact_root / item["path"]
-        if path.resolve(strict=True) != path or artifact_root not in path.parents:
+        relative = Path(item["path"])
+        if relative.is_absolute() or ".." in relative.parts:
             raise ValueError("authority artifact escapes fixed store")
-        if item["name"] == "core":
-            if not stat.S_ISDIR(os.lstat(path).st_mode):
-                raise ValueError("authority core is not a directory")
-            digest = _hash_tree(path)
-            size = sum(
-                os.lstat(child).st_size
-                for child in path.rglob("*")
-                if stat.S_ISREG(os.lstat(child).st_mode)
-            )
-        else:
-            path = _regular(artifact_root, item["path"])
-            payload = path.read_bytes()
-            size = len(payload)
-            digest = hashlib.sha256(payload).hexdigest()
-        identity = hashlib.sha256(
-            canonical_json_bytes(
-                {
-                    "name": item["name"],
-                    "sha256": item["sha256"],
-                    "size": item["size"],
-                    "path": item["path"],
-                }
-            )
-        ).hexdigest()
-        if size != item["size"] or digest != item["sha256"] or identity != item["id"]:
-            raise ValueError("authority artifact changed after signing")
-        result[item["name"]] = path
+        result[item["name"]] = artifact_root / relative
+        expected[item["name"]] = item
     for name in (
         "plan.json",
         "inventory.json",
@@ -199,8 +206,45 @@ def _paths(
         "seccomp",
         "public-config.json",
     ):
-        result[name] = _regular(staged_root, f"{job_id}/{name}")
-    return PinnedPaths(result)
+        staged_relative = canonical_relative_path(f"{job_id}/{name}")
+        result[name] = staged_root / staged_relative
+    pinned = PinnedPaths(result)
+    try:
+        for name, item in expected.items():
+            path = pinned[name]
+            fd = int(path.name)
+            if name == "core":
+                digest = _hash_tree_descriptor(fd, max_bytes=64 * 1024 * 1024 * 1024)
+                size = _directory_size(fd)
+            else:
+                digest_object = hashlib.sha256()
+                size = 0
+                offset = 0
+                while chunk := os.pread(fd, 1024 * 1024, offset):
+                    digest_object.update(chunk)
+                    size += len(chunk)
+                    offset += len(chunk)
+                digest = digest_object.hexdigest()
+            identity = hashlib.sha256(
+                canonical_json_bytes(
+                    {
+                        "name": name,
+                        "sha256": item["sha256"],
+                        "size": item["size"],
+                        "path": item["path"],
+                    }
+                )
+            ).hexdigest()
+            if (
+                size != item["size"]
+                or digest != item["sha256"]
+                or identity != item["id"]
+            ):
+                raise ValueError("authority artifact changed after signing")
+        return pinned
+    except BaseException:
+        pinned.close()
+        raise
 
 
 def _verity(path: Path) -> dict[str, str]:
@@ -230,6 +274,7 @@ def _sign(
     staged_root: Path,
     key: Path,
     measurement: dict[str, Any],
+    launch_attestation: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
     expected = {"operation", "authority_response"} | (
         {"draft"} if role == "approver" else set()
@@ -238,109 +283,127 @@ def _sign(
         raise ValueError("receipt service request is not closed")
     response = _verify_authority(request["authority_response"], config)
     paths = _paths(response, artifact_root, staged_root)
-    verity = _verity(paths["verity-format.txt"])
-    with tempfile.TemporaryDirectory(prefix=f"no1-008a-{role}-") as temporary:
-        audit = Path(temporary) / "process-audit.json"
-        audit.write_bytes(canonical_json_bytes(response["audit"]))
-        os.chmod(audit, 0o400)
-        parent_measurement = Path(temporary) / "parent-measurement.json"
-        parent_measurement.write_bytes(canonical_json_bytes(measurement))
-        os.chmod(parent_measurement, 0o400)
-        common = [
-            "--parent-measurement",
-            str(parent_measurement),
-            "--run-nonce",
-            response["nonce"],
-            "--plan",
-            str(paths["plan.json"]),
-            "--inventory",
-            str(paths["inventory.json"]),
-            "--core-root",
-            str(paths["core"]),
-            "--data-image",
-            str(paths["data.img"]),
-            "--hash-image",
-            str(paths["hash.img"]),
-            "--process-audit",
-            str(audit),
-            "--root-hash",
-            verity["root_hash"],
-            "--salt",
-            verity["salt"],
-            "--data-block-size",
-            verity["data_block_size"],
-            "--hash-block-size",
-            verity["hash_block_size"],
-            "--data-blocks",
-            verity["data_blocks"],
-        ]
-        for image_role in ("producer", "executor", "approver", "auditor", "verifier"):
-            common += [
-                f"--{image_role}-image-digest",
-                config["trusted"]["images"][image_role],
+    try:
+        verity = _verity(paths["verity-format.txt"])
+        with tempfile.TemporaryDirectory(prefix=f"no1-008a-{role}-") as temporary:
+            audit = Path(temporary) / "process-audit.json"
+            audit.write_bytes(canonical_json_bytes(response["audit"]))
+            os.chmod(audit, 0o400)
+            parent_measurement = Path(temporary) / "parent-measurement.json"
+            parent_measurement.write_bytes(canonical_json_bytes(measurement))
+            os.chmod(parent_measurement, 0o400)
+            launch_path = Path(temporary) / "launch-attestation.json"
+            launch_path.write_bytes(canonical_json_bytes(launch_attestation))
+            os.chmod(launch_path, 0o400)
+            common = [
+                "--launch-attestation",
+                str(launch_path),
+                "--parent-measurement",
+                str(parent_measurement),
+                "--run-nonce",
+                response["nonce"],
+                "--plan",
+                str(paths["plan.json"]),
+                "--inventory",
+                str(paths["inventory.json"]),
+                "--core-root",
+                str(paths["core"]),
+                "--data-image",
+                str(paths["data.img"]),
+                "--hash-image",
+                str(paths["hash.img"]),
+                "--process-audit",
+                str(audit),
+                "--root-hash",
+                verity["root_hash"],
+                "--salt",
+                verity["salt"],
+                "--data-block-size",
+                verity["data_block_size"],
+                "--hash-block-size",
+                verity["hash_block_size"],
+                "--data-blocks",
+                verity["data_blocks"],
             ]
-        independent = [
-            "--public-config",
-            str(paths["public-config.json"]),
-            "--source-snapshot",
-            str(paths["source-snapshot.tar"]),
-            "--tool",
-            str(paths["tool"]),
-            "--config",
-            str(paths["config"]),
-            "--seccomp",
-            str(paths["seccomp"]),
-        ]
-        if role == "executor":
-            command = ["sign-executor", *independent, *common]
-        else:
-            draft = Path(temporary) / "draft.json"
-            draft.write_bytes(canonical_json_bytes(request["draft"]))
-            os.chmod(draft, 0o400)
-            command = [
-                "sign-approver",
-                "--attestation",
-                str(draft),
-                *independent,
-                *common,
+            for image_role in (
+                "producer",
+                "executor",
+                "approver",
+                "auditor",
+                "verifier",
+            ):
+                common += [
+                    f"--{image_role}-image-digest",
+                    config["trusted"]["images"][image_role],
+                ]
+            independent = [
+                "--public-config",
+                str(paths["public-config.json"]),
+                "--source-snapshot",
+                str(paths["source-snapshot.tar"]),
+                "--tool",
+                str(paths["tool"]),
+                "--config",
+                str(paths["config"]),
+                "--seccomp",
+                str(paths["seccomp"]),
             ]
-        command += ["--private-key", str(key), "--key-id", config[role]["key_id"]]
-        plan_timeout = strict_json_loads(paths["plan.json"].read_bytes()).get(
-            "wall_timeout_seconds"
-        )
-        if type(plan_timeout) is not int or plan_timeout < 1:
-            raise ValueError("service plan timeout invalid")
-        try:
-            process = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-m",
-                    "benchmarks.codegraph_compare.receipt_v3_signer",
-                    *command,
-                ],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                start_new_session=True,
-                pass_fds=tuple(paths.fds)
-                + ((int(key.name),) if str(key).startswith("/proc/self/fd/") else ()),
+            if role == "executor":
+                command = ["sign-executor", *independent, *common]
+            else:
+                draft = Path(temporary) / "draft.json"
+                draft.write_bytes(canonical_json_bytes(request["draft"]))
+                os.chmod(draft, 0o400)
+                command = [
+                    "sign-approver",
+                    "--attestation",
+                    str(draft),
+                    *independent,
+                    *common,
+                ]
+            command += ["--private-key", str(key), "--key-id", config[role]["key_id"]]
+            plan_timeout = strict_json_loads(paths["plan.json"].read_bytes()).get(
+                "wall_timeout_seconds"
             )
+            if type(plan_timeout) is not int or plan_timeout < 1:
+                raise ValueError("service plan timeout invalid")
             try:
-                stdout, stderr = process.communicate(timeout=plan_timeout)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, 9)
-                process.communicate()
-                raise TimeoutError(
-                    f"{role} verification cancelled at plan deadline"
-                ) from None
-            if process.returncode:
-                raise ValueError(
-                    f"{role} independent verification failed: {stderr[:200]!r}"
+                process = subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-m",
+                        "benchmarks.codegraph_compare.receipt_v3_signer",
+                        *command,
+                    ],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    start_new_session=True,
+                    pass_fds=tuple(paths.fds)
+                    + (
+                        (int(key.name),)
+                        if str(key).startswith("/proc/self/fd/")
+                        else ()
+                    ),
                 )
-            result = strict_json_loads(stdout)
-            return response["job_id"], result
-        finally:
-            paths.close()
+                try:
+                    stdout, stderr = process.communicate(timeout=plan_timeout)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, 9)
+                    process.communicate()
+                    raise TimeoutError(
+                        f"{role} verification cancelled at plan deadline"
+                    ) from None
+                if process.returncode:
+                    raise ValueError(
+                        f"{role} independent verification failed: {stderr[:200]!r}"
+                    )
+                result = strict_json_loads(stdout)
+                return response["job_id"], result
+            finally:
+                paths.close()
+    finally:
+        paths.close()
 
 
 def serve_once(
@@ -353,6 +416,7 @@ def serve_once(
     key: Path,
     signer: Ed25519PrivateKey,
     measurement: dict[str, Any],
+    launch_attestation: dict[str, Any],
     allowed_client_uid: int,
 ) -> None:
     connection, _ = listener.accept()
@@ -366,6 +430,7 @@ def serve_once(
             staged_root,
             key,
             measurement,
+            launch_attestation,
         )
         service_identity = measurement
         response = {
@@ -479,20 +544,21 @@ def main(argv: list[str] | None = None) -> int:
     config = parse_public_config(Path(args.public_config).read_bytes())
     if os.geteuid() != config[args.role]["peer_uid"]:
         raise SystemExit("receipt service UID does not match root-signed identity")
-    key_fd, key_raw = secure_key(Path(args.private_key), os.geteuid())
-    key_path = Path(f"/proc/self/fd/{key_fd}")
-    signer = Ed25519PrivateKey.from_private_bytes(key_raw)
+    # Measure and authenticate the actual launch before the signing key is opened.
     measurement = measure_runtime(
         config["trusted"][f"{args.role}_runtime"]["measurement"]
     )
-    if config["schema_version"] >= 6:
-        if not args.launch_attestation:
-            raise SystemExit("root-signed service launch attestation is required")
-        verify_service_launch_attestation(
-            strict_json_loads(Path(args.launch_attestation).read_bytes()),
-            args.role,
-            config,
-        )
+    if not args.launch_attestation:
+        raise SystemExit("root-signed service launch attestation is required")
+    launch_attestation = strict_json_loads(Path(args.launch_attestation).read_bytes())
+    verify_service_launch_attestation(
+        launch_attestation,
+        args.role,
+        config,
+    )
+    key_fd, key_raw = secure_key(Path(args.private_key), os.geteuid())
+    key_path = Path(f"/proc/self/fd/{key_fd}")
+    signer = Ed25519PrivateKey.from_private_bytes(key_raw)
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(args.socket)
     os.chmod(args.socket, 0o660)  # nosec B103
@@ -509,6 +575,7 @@ def main(argv: list[str] | None = None) -> int:
                 key=key_path,
                 signer=signer,
                 measurement=measurement,
+                launch_attestation=launch_attestation,
                 allowed_client_uid=args.allowed_client_uid,
             )
 

@@ -9,6 +9,7 @@ import platform
 import socket
 import stat
 import struct
+import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -62,23 +63,40 @@ def verify_contract(request: Any) -> Mapping[str, Any]:
         raise ValueError("authority policy permits run-cell only")
     contract = _exact(
         request["contract"],
-        frozenset({"schema_version", "job_id", "cell", "nonce", "root_signature"}),
-        "run-cell contract",
+        frozenset(
+            {
+                "schema_version",
+                "job_id",
+                "cell",
+                "nonce",
+                "decision_id",
+                "decision_nonce",
+                "expires_at",
+                "root_signature",
+            }
+        ),
+        "run-cell decision contract",
     )
     cell = _exact(
         contract["cell"], frozenset({"repo_id", "arm_id", "attempt"}), "contract cell"
     )
     if (
-        contract["schema_version"] != 1
+        contract["schema_version"] != 2
         or type(cell["attempt"]) is not int
         or cell["attempt"] != 1
+        or type(contract["expires_at"]) is not int
+        or contract["expires_at"] <= time.time_ns()
     ):
-        raise ValueError("run-cell contract version or attempt invalid")
+        raise ValueError(
+            "run-cell decision contract version, attempt, or expiry invalid"
+        )
     for name in ("repo_id", "arm_id"):
         if type(cell[name]) is not str or not cell[name] or len(cell[name]) > 64:
             raise ValueError("contract cell identity invalid")
     _hex64(contract["job_id"], "job id")
     _hex64(contract["nonce"], "nonce")
+    _hex64(contract["decision_id"], "decision id")
+    _hex64(contract["decision_nonce"], "decision nonce")
     unsigned = {
         key: value for key, value in contract.items() if key != "root_signature"
     }
@@ -279,8 +297,6 @@ def main(argv: list[str] | None = None) -> int:
     if os.geteuid() != 0 or platform.system() != "Linux":
         raise SystemExit("authority service requires Linux root")
     from benchmarks.codegraph_compare.audit_authority_runner import AuthorityRunner
-
-    key = _load_key(Path(args.private_key))
     from benchmarks.codegraph_compare.verifier import parse_public_config
 
     config = parse_public_config(Path(args.public_config).read_bytes())
@@ -288,6 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     verify_service_launch_attestation(
         strict_json_loads(Path(args.launch_attestation).read_bytes()), "auditor", config
     )
+    key = _load_key(Path(args.private_key))
     runner = AuthorityRunner(Path(args.staged_root), Path(args.artifact_root), key)
     path = Path(args.socket)
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

@@ -1,0 +1,193 @@
+{
+  "$id": "no1-008a-public-config-v6",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "approver": {
+      "additionalProperties": false,
+      "properties": {
+        "key_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "peer_uid": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "public_key_hex": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "service_measurement": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key_id",
+        "public_key_hex",
+        "protocol",
+        "peer_uid",
+        "service_measurement"
+      ],
+      "type": "object"
+    },
+    "auditor": {
+      "additionalProperties": false,
+      "properties": {
+        "key_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "peer_uid": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "public_key_hex": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "service_measurement": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key_id",
+        "public_key_hex",
+        "protocol",
+        "peer_uid",
+        "service_measurement"
+      ],
+      "type": "object"
+    },
+    "decision_consumer": {
+      "additionalProperties": false,
+      "properties": {
+        "key_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "peer_uid": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "public_key_hex": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "service_measurement": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key_id",
+        "public_key_hex",
+        "protocol",
+        "peer_uid",
+        "service_measurement"
+      ],
+      "type": "object"
+    },
+    "executor": {
+      "additionalProperties": false,
+      "properties": {
+        "key_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "peer_uid": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "public_key_hex": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "service_measurement": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key_id",
+        "public_key_hex",
+        "protocol",
+        "peer_uid",
+        "service_measurement"
+      ],
+      "type": "object"
+    },
+    "root_signature": {
+      "pattern": "^[0-9a-f]{128}$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 6
+    },
+    "trusted": {
+      "type": "object"
+    },
+    "verifier": {
+      "additionalProperties": false,
+      "properties": {
+        "key_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "peer_uid": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "public_key_hex": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "service_measurement": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key_id",
+        "public_key_hex",
+        "protocol",
+        "peer_uid",
+        "service_measurement"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "executor",
+    "approver",
+    "auditor",
+    "verifier",
+    "decision_consumer",
+    "trusted",
+    "root_signature"
+  ],
+  "type": "object"
+}

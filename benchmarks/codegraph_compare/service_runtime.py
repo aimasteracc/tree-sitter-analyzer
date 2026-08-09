@@ -186,9 +186,21 @@ def _module_manifest(expected: dict[str, str]) -> dict[str, str]:
         except ValueError:
             key = "external:" + record.as_posix()
         loaded[key] = record
-    if set(loaded) != set(expected):
-        raise ValueError("loaded non-stdlib module closure differs from root manifest")
-    actual = {key: _sha256_file(path) for key, path in sorted(loaded.items())}
+    if not set(loaded).issubset(expected):
+        raise ValueError(
+            "loaded non-stdlib module is absent from root closure manifest"
+        )
+    closure: dict[str, Path] = {}
+    for key in expected:
+        if key.startswith("package:"):
+            candidate = purelib / key.removeprefix("package:")
+        elif key.startswith("external:"):
+            candidate = Path(key.removeprefix("external:"))
+        else:
+            candidate = PROJECT_ROOT / key
+        closure[key] = candidate.resolve(strict=True)
+    # Hash the complete build-published closure, not merely modules imported so far.
+    actual = {key: _sha256_file(path) for key, path in sorted(closure.items())}
     changed = [key for key in actual if actual[key] != expected[key]]
     if changed:
         raise ValueError(f"loaded module changed: {changed[0]}")
@@ -252,11 +264,35 @@ def _proc_identity(pid: int | str = "self") -> dict[str, Any]:
     )
     if len(stat_fields) < 22 or not cgroup:
         raise ValueError("service process identity unavailable")
+    status_map = {
+        row.split(":", 1)[0]: row.split(":", 1)[1].strip()
+        for row in status
+        if ":" in row
+    }
+    namespace_names = ("mnt", "pid", "net", "user", "uts", "ipc", "cgroup")
+    namespaces = {
+        name: os.readlink(f"/proc/{pid}/ns/{name}") for name in namespace_names
+    }
+    executable = Path(f"/proc/{pid}/exe").resolve(strict=True)
+    cmdline_raw = Path(f"/proc/{pid}/cmdline").read_bytes()
     return {
         "host_pid": nspids[0],
         "container_pid": nspids[-1],
         "starttime": stat_fields[21],
         "cgroup": cgroup,
+        "executable": str(executable),
+        "executable_sha256": _sha256_file(executable),
+        "cmdline": [
+            part.decode("utf-8", "strict") for part in cmdline_raw.split(b"\0") if part
+        ],
+        "namespaces": namespaces,
+        "capabilities": {
+            name: status_map.get(name)
+            for name in ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb")
+        },
+        "no_new_privs": status_map.get("NoNewPrivs"),
+        "seccomp": status_map.get("Seccomp"),
+        "seccomp_filters": status_map.get("Seccomp_filters"),
     }
 
 
@@ -362,8 +398,92 @@ def verify_service_launch_attestation(
         or process["host_pid"] <= 0
         or any(
             process.get(name) != actual.get(name)
-            for name in ("container_pid", "starttime", "cgroup")
+            for name in (
+                "container_pid",
+                "starttime",
+                "cgroup",
+                "executable",
+                "executable_sha256",
+                "cmdline",
+                "namespaces",
+                "capabilities",
+                "no_new_privs",
+                "seccomp",
+                "seccomp_filters",
+            )
         )
     ):
         raise ValueError("service launch process/cgroup binding mismatch")
     return dict(claim)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Authority launcher/attestor CLI; emits one canonical attestation per role."""
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command", required=True)
+    attest = sub.add_parser("attest-launch")
+    attest.add_argument("--public-config", required=True)
+    attest.add_argument("--private-key", required=True)
+    attest.add_argument("--key-id", required=True)
+    attest.add_argument("--output-dir", required=True)
+    attest.add_argument(
+        "--container",
+        action="append",
+        required=True,
+        help="ROLE=CONTAINER (exact executor,approver,auditor,verifier)",
+    )
+    args = parser.parse_args(argv)
+    from benchmarks.codegraph_compare.verifier import parse_public_config
+
+    config = parse_public_config(Path(args.public_config).read_bytes())
+    pairs = {}
+    for raw in args.container:
+        role, separator, container = raw.partition("=")
+        if not separator or role in pairs:
+            raise ValueError("container mapping invalid or duplicate")
+        pairs[role] = container
+    required = {"executor", "approver", "auditor", "verifier"}
+    if set(pairs) != required:
+        raise ValueError("launcher requires the exact four signing/verifying roles")
+    fd, raw_key = secure_key(Path(args.private_key), os.geteuid())
+    try:
+        key = Ed25519PrivateKey.from_private_bytes(raw_key)
+        output = Path(args.output_dir)
+        output.mkdir(mode=0o700)
+        for role, container in sorted(pairs.items()):
+            value = create_service_launch_attestation(
+                container, role, config, key, args.key_id
+            )
+            path = output / f"{role}-launch-attestation.json"
+            descriptor = os.open(
+                path,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | os.O_CLOEXEC
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o400,
+            )
+            try:
+                payload = canonical_json_bytes(value) + b"\n"
+                while payload:
+                    payload = payload[os.write(descriptor, payload) :]
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        parent = os.open(
+            output, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_DIRECTORY", 0)
+        )
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+    finally:
+        os.close(fd)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

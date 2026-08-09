@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from benchmarks.codegraph_compare.audit_authority_client import run_cell
+from benchmarks.codegraph_compare.decision_consumer_service import request_decision
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
@@ -49,6 +50,20 @@ def _run_impl(args: argparse.Namespace) -> int:
     nonces = {contract.get("nonce") for contract in contracts.values()}
     if len(nonces) != 1:
         raise ValueError("root-signed run contracts must share one correlation nonce")
+    decision_ids = {contract.get("decision_id") for contract in contracts.values()}
+    decision_nonces = {
+        contract.get("decision_nonce") for contract in contracts.values()
+    }
+    if len(decision_ids) != 14 or len(decision_nonces) != 14:
+        raise ValueError(
+            "each root-signed contract needs a unique decision id and nonce"
+        )
+    if any(
+        type(contract.get("expires_at")) is not int
+        or contract["expires_at"] <= time.time_ns()
+        for contract in contracts.values()
+    ):
+        raise ValueError("root-signed decision contract is expired")
     correlation_nonce = nonces.pop()
     if type(correlation_nonce) is not str or len(correlation_nonce) != 64:
         raise ValueError("root-signed correlation nonce invalid")
@@ -66,6 +81,8 @@ def _run_impl(args: argparse.Namespace) -> int:
     deadline = time.monotonic() + sum(value * 4 for value in plan_timeouts.values())
     for identity in EXPECTED_CELLS:
         contract = contracts[identity]
+        if contract["expires_at"] <= time.time_ns():
+            raise TimeoutError("root-signed decision contract expired before execution")
         staged = staged_root / contract["job_id"]
         plan = strict_json_loads((staged / "plan.json").read_bytes())
         wall_timeout = plan_timeouts[identity]
@@ -131,6 +148,24 @@ def _run_impl(args: argparse.Namespace) -> int:
         raise ValueError(
             "verifier live ledger head no longer matches fresh verdict; retry a new decision"
         )
+    decision_contract = strict_json_loads(
+        Path(args.decision_contract).resolve(strict=True).read_bytes()
+    )
+    if (
+        decision_contract.get("manifest_sha256") != envelope["manifest_sha256"]
+        or decision_contract.get("decision_nonce") != correlation_nonce
+        or decision_contract.get("ledger_head") != retained
+    ):
+        raise ValueError(
+            "root decision contract does not pin fresh manifest/nonce/head"
+        )
+    decision_receipt = request_decision(
+        socket_path=Path(args.decision_consumer_socket),
+        contract=decision_contract,
+        envelope=envelope,
+        config=config,
+        timeout=deadline - time.monotonic(),
+    )
     output = Path(args.experiment_root)
     output.mkdir(mode=0o700, exist_ok=True)
     _write(
@@ -139,6 +174,7 @@ def _run_impl(args: argparse.Namespace) -> int:
             "envelope": envelope,
             "live_ledger_head": live_head,
             "proof_status": "HISTORICAL_AFTER_ACCEPTANCE",
+            "decision_receipt": decision_receipt,
         },
     )
     return 0
@@ -176,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
         "executor-socket",
         "approver-socket",
         "verifier-socket",
+        "decision-consumer-socket",
+        "decision-contract",
         "public-config",
         "staged-root",
         "experiment-root",

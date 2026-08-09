@@ -1,0 +1,63 @@
+{
+  "$id": "no1-008a-decision-receipt-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "algorithm": {
+      "const": "Ed25519"
+    },
+    "key_id": {
+      "type": "string"
+    },
+    "receipt": {
+      "additionalProperties": false,
+      "properties": {
+        "consumed_at_ns": {
+          "type": "integer"
+        },
+        "decision_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "decision_nonce": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "ledger_head": {
+          "type": "object"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "service_identity": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "decision_id",
+        "decision_nonce",
+        "manifest_sha256",
+        "ledger_head",
+        "consumed_at_ns",
+        "service_identity"
+      ],
+      "type": "object"
+    },
+    "signature": {
+      "pattern": "^[0-9a-f]{128}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "receipt",
+    "key_id",
+    "algorithm",
+    "signature"
+  ],
+  "type": "object"
+}

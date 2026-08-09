@@ -1,253 +1,304 @@
-"""Crash-safe root-owned one-use verifier challenge hash-chain ledger."""
+"""SQLite-backed crash-safe one-use verifier challenge ledger."""
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import os
 import secrets
+import sqlite3
 import stat
-import struct
 import threading
 import time
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 
-from benchmarks.codegraph_compare.receipt_v3 import (
-    canonical_json_bytes,
-    strict_json_loads,
-)
+from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
 
 GENESIS = "0" * 64
-MAX_LEDGER_BYTES = 64 * 1024 * 1024
-MAX_RECORD_BYTES = 64 * 1024
 EVENTS = frozenset({"CHALLENGED", "VERIFYING", "CONSUMED", "FAILED"})
 
 
-def _write_all(fd: int, payload: bytes) -> None:
-    view = memoryview(payload)
-    while view:
-        written = os.write(fd, view)
-        if written <= 0:
-            raise OSError("short ledger write")
-        view = view[written:]
-
-
 class ChallengeLedger:
-    """A process/thread serialized state machine with durable framed records."""
+    """Indexed O(1) challenge state with FULL-durable atomic transitions.
 
-    def __init__(self, path: Path, *, challenge_quota: int = 1024):
+    SQLite supplies recovery from torn writes; WAL permits concurrent head reads.
+    The lease row prevents two verifier processes from serving the same ledger.
+    """
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        challenge_quota: int = 1024,
+        total_quota: int = 1_000_000,
+        challenge_ttl_seconds: int = 900,
+    ):
         self.path = path
         self.challenge_quota = challenge_quota
-        self._lock = threading.Lock()
+        self.total_quota = total_quota
+        self.challenge_ttl_ns = challenge_ttl_seconds * 1_000_000_000
+        self._lock = threading.RLock()
         parent = path.parent.resolve(strict=True)
         metadata = os.stat(parent)
         if metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) & 0o022:
             raise ValueError("challenge ledger directory must be root-controlled")
-        self.fd = os.open(
-            path,
-            os.O_RDWR
-            | os.O_APPEND
-            | os.O_CREAT
-            | os.O_CLOEXEC
-            | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
+        self.db = sqlite3.connect(
+            path, timeout=30, isolation_level=None, check_same_thread=False
         )
-        info = os.fstat(self.fd)
-        if (
-            not stat.S_ISREG(info.st_mode)
-            or info.st_uid != 0
-            or stat.S_IMODE(info.st_mode) != 0o600
-            or info.st_nlink != 1
-        ):
-            os.close(self.fd)
-            raise ValueError("challenge ledger must be root-owned 0600 regular file")
         try:
-            with self._exclusive():
-                records, _previous = self._read_locked()
-                states = {record["challenge"]: record for record in records}
-                # A process crash can strand VERIFYING; restart closes it fail-safe.
-                for challenge, record in list(states.items()):
-                    if record["event"] == "VERIFYING":
-                        self._transition(record["manifest_sha256"], challenge, "FAILED")
-        except Exception:
-            os.close(self.fd)
+            self.db.execute("PRAGMA journal_mode=WAL")
+            self.db.execute("PRAGMA synchronous=FULL")
+            self.db.execute("PRAGMA foreign_keys=ON")
+            self.db.executescript("""
+                CREATE TABLE IF NOT EXISTS meta (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                    counter INTEGER NOT NULL, head_hash TEXT NOT NULL,
+                    lease_pid INTEGER, lease_start TEXT);
+                INSERT OR IGNORE INTO meta VALUES(1,0,printf('%064d',0),NULL,NULL);
+                CREATE TABLE IF NOT EXISTS challenges (
+                    challenge TEXT PRIMARY KEY, manifest_sha256 TEXT NOT NULL,
+                    state TEXT NOT NULL, issued_at_ns INTEGER NOT NULL,
+                    expires_at_ns INTEGER NOT NULL, last_counter INTEGER NOT NULL);
+                CREATE INDEX IF NOT EXISTS challenges_state_expiry
+                    ON challenges(state, expires_at_ns);
+                CREATE TABLE IF NOT EXISTS events (
+                    counter INTEGER PRIMARY KEY, event TEXT NOT NULL,
+                    challenge TEXT NOT NULL, manifest_sha256 TEXT NOT NULL,
+                    issued_at_ns INTEGER NOT NULL, event_at_ns INTEGER NOT NULL,
+                    prev_hash TEXT NOT NULL, record_hash TEXT NOT NULL UNIQUE);
+            """)
+            os.chmod(path, 0o600)
+            info = os.stat(path, follow_symlinks=False)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != 0
+                or stat.S_IMODE(info.st_mode) != 0o600
+                or info.st_nlink != 1
+            ):
+                raise ValueError(
+                    "challenge ledger must be root-owned 0600 regular file"
+                )
+            self._acquire_lease()
+            with self._transaction():
+                rows = self.db.execute(
+                    "SELECT challenge,manifest_sha256 FROM challenges WHERE state='VERIFYING'"
+                ).fetchall()
+                for challenge, manifest in rows:
+                    self._transition_locked(manifest, challenge, "FAILED")
+        except BaseException:
+            self.db.close()
             raise
 
-    class _Guard:
+    class _Transaction:
         def __init__(self, owner: ChallengeLedger):
             self.owner = owner
 
-        def __enter__(self) -> None:
+        def __enter__(self) -> ChallengeLedger._Transaction:
             self.owner._lock.acquire()
-            fcntl.flock(self.owner.fd, fcntl.LOCK_EX)
+            self.owner.db.execute("BEGIN IMMEDIATE")
+            return self
 
-        def __exit__(self, *_: object) -> None:
-            fcntl.flock(self.owner.fd, fcntl.LOCK_UN)
-            self.owner._lock.release()
+        def __exit__(
+            self,
+            typ: type[BaseException] | None,
+            value: BaseException | None,
+            tb: TracebackType | None,
+        ) -> None:
+            try:
+                self.owner.db.execute("ROLLBACK" if typ else "COMMIT")
+            finally:
+                self.owner._lock.release()
 
-    def _exclusive(self) -> ChallengeLedger._Guard:
-        return self._Guard(self)
+    def _transaction(self) -> ChallengeLedger._Transaction:
+        return self._Transaction(self)
+
+    def _acquire_lease(self) -> None:
+        start = Path("/proc/self/stat").read_text(encoding="ascii").split()[21]
+        with self._transaction():
+            pid, old_start = self.db.execute(
+                "SELECT lease_pid,lease_start FROM meta WHERE singleton=1"
+            ).fetchone()
+            if pid is not None:
+                try:
+                    live = (
+                        Path(f"/proc/{pid}/stat")
+                        .read_text(encoding="ascii")
+                        .split()[21]
+                        == old_start
+                    )
+                except (FileNotFoundError, ProcessLookupError):
+                    live = False
+                if live:
+                    raise RuntimeError(
+                        "challenge ledger already has a live singleton lease"
+                    )
+            self.db.execute(
+                "UPDATE meta SET lease_pid=?,lease_start=? WHERE singleton=1",
+                (os.getpid(), start),
+            )
 
     def close(self) -> None:
-        os.close(self.fd)
-
-    def _read_locked(self) -> tuple[list[dict[str, Any]], str]:
-        size = os.fstat(self.fd).st_size
-        if size > MAX_LEDGER_BYTES:
-            raise ValueError("challenge ledger exceeds bound")
-        raw = os.pread(self.fd, size, 0)
-        if len(raw) != size:
-            raise ValueError("challenge ledger changed during read")
-        records: list[dict[str, Any]] = []
-        offset, previous = 0, GENESIS
-        while offset < len(raw):
-            if len(raw) - offset < 4:
-                raise ValueError("challenge ledger has partial record header")
-            length = struct.unpack("!I", raw[offset : offset + 4])[0]
-            offset += 4
-            if length < 2 or length > MAX_RECORD_BYTES or len(raw) - offset < length:
-                raise ValueError("challenge ledger has partial or invalid record")
-            payload = raw[offset : offset + length]
-            offset += length
-            item = strict_json_loads(payload)
-            keys = {
-                "counter",
-                "event",
-                "challenge",
-                "manifest_sha256",
-                "issued_at_ns",
-                "event_at_ns",
-                "prev_hash",
-                "record_hash",
-            }
-            if (
-                type(item) is not dict
-                or set(item) != keys
-                or canonical_json_bytes(item) != payload
-                or item["counter"] != len(records) + 1
-                or item["prev_hash"] != previous
-                or item["event"] not in EVENTS
-            ):
-                raise ValueError("challenge ledger chain is invalid")
-            unsigned = {
-                key: value for key, value in item.items() if key != "record_hash"
-            }
-            digest = hashlib.sha256(canonical_json_bytes(unsigned)).hexdigest()
-            if digest != item["record_hash"]:
-                raise ValueError("challenge ledger record hash mismatch")
-            previous = digest
-            records.append(item)
-        self._validate_transitions(records)
-        return records, previous
+        with self._lock:
+            try:
+                start = Path("/proc/self/stat").read_text(encoding="ascii").split()[21]
+                self.db.execute("BEGIN IMMEDIATE")
+                self.db.execute(
+                    "UPDATE meta SET lease_pid=NULL,lease_start=NULL WHERE singleton=1 AND lease_pid=? AND lease_start=?",
+                    (os.getpid(), start),
+                )
+                self.db.execute("COMMIT")
+            finally:
+                self.db.close()
 
     @staticmethod
-    def _validate_transitions(records: list[dict[str, Any]]) -> None:
-        states: dict[str, str] = {}
-        for item in records:
-            old = states.get(item["challenge"])
-            allowed = {
-                None: "CHALLENGED",
-                "CHALLENGED": "VERIFYING",
-                "VERIFYING": item["event"],
-            }
-            if (
-                old not in allowed
-                or item["event"] != allowed[old]
-                or (old == "VERIFYING" and item["event"] not in {"CONSUMED", "FAILED"})
-            ):
-                raise ValueError("challenge ledger state transition is invalid")
-            states[item["challenge"]] = item["event"]
-
-    def _append(self, item: dict[str, Any]) -> dict[str, Any]:
-        item["record_hash"] = hashlib.sha256(canonical_json_bytes(item)).hexdigest()
-        payload = canonical_json_bytes(item)
-        _write_all(self.fd, struct.pack("!I", len(payload)) + payload)
-        os.fsync(self.fd)
-        parent_fd = os.open(
-            self.path.parent, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_DIRECTORY", 0)
-        )
-        try:
-            os.fsync(parent_fd)
-        finally:
-            os.close(parent_fd)
-        return dict(item)
-
-    def _transition(
-        self, manifest_sha256: str, challenge: str, event: str
+    def _record(
+        counter: int,
+        event: str,
+        challenge: str,
+        manifest: str,
+        issued: int,
+        now: int,
+        previous: str,
     ) -> dict[str, Any]:
-        records, previous = self._read_locked()
-        related = [r for r in records if r["challenge"] == challenge]
+        item = {
+            "counter": counter,
+            "event": event,
+            "challenge": challenge,
+            "manifest_sha256": manifest,
+            "issued_at_ns": issued,
+            "event_at_ns": now,
+            "prev_hash": previous,
+        }
+        item["record_hash"] = hashlib.sha256(canonical_json_bytes(item)).hexdigest()
+        return item
+
+    def _append_locked(
+        self, event: str, challenge: str, manifest: str, issued: int
+    ) -> dict[str, Any]:
+        counter, previous = self.db.execute(
+            "SELECT counter,head_hash FROM meta WHERE singleton=1"
+        ).fetchone()
+        item = self._record(
+            counter + 1, event, challenge, manifest, issued, time.time_ns(), previous
+        )
+        self.db.execute(
+            "INSERT INTO events VALUES(?,?,?,?,?,?,?,?)",
+            tuple(
+                item[k]
+                for k in (
+                    "counter",
+                    "event",
+                    "challenge",
+                    "manifest_sha256",
+                    "issued_at_ns",
+                    "event_at_ns",
+                    "prev_hash",
+                    "record_hash",
+                )
+            ),
+        )
+        self.db.execute(
+            "UPDATE meta SET counter=?,head_hash=? WHERE singleton=1",
+            (item["counter"], item["record_hash"]),
+        )
+        return item
+
+    def _expire_locked(self, now: int) -> None:
+        rows = self.db.execute(
+            "SELECT challenge,manifest_sha256 FROM challenges WHERE state='CHALLENGED' AND expires_at_ns<=?",
+            (now,),
+        ).fetchall()
+        for challenge, manifest in rows:
+            item = self._append_locked(
+                "FAILED",
+                challenge,
+                manifest,
+                self.db.execute(
+                    "SELECT issued_at_ns FROM challenges WHERE challenge=?",
+                    (challenge,),
+                ).fetchone()[0],
+            )
+            self.db.execute(
+                "UPDATE challenges SET state='FAILED',last_counter=? WHERE challenge=?",
+                (item["counter"], challenge),
+            )
+
+    def begin(self, manifest_sha256: str) -> dict[str, Any]:
+        now = time.time_ns()
+        with self._transaction():
+            self._expire_locked(now)
+            total = self.db.execute("SELECT COUNT(*) FROM challenges").fetchone()[0]
+            active = self.db.execute(
+                "SELECT COUNT(*) FROM challenges WHERE state='CHALLENGED'"
+            ).fetchone()[0]
+            if total >= self.total_quota:
+                raise RuntimeError("challenge total quota exceeded")
+            if active >= self.challenge_quota:
+                raise RuntimeError("outstanding challenge quota exceeded")
+            challenge = secrets.token_hex(32)
+            while self.db.execute(
+                "SELECT 1 FROM challenges WHERE challenge=?", (challenge,)
+            ).fetchone():
+                challenge = secrets.token_hex(32)
+            item = self._append_locked("CHALLENGED", challenge, manifest_sha256, now)
+            self.db.execute(
+                "INSERT INTO challenges VALUES(?,?,?,?,?,?)",
+                (
+                    challenge,
+                    manifest_sha256,
+                    "CHALLENGED",
+                    now,
+                    now + self.challenge_ttl_ns,
+                    item["counter"],
+                ),
+            )
+            return item
+
+    def _transition_locked(
+        self, manifest: str, challenge: str, event: str
+    ) -> dict[str, Any]:
+        row = self.db.execute(
+            "SELECT manifest_sha256,state,issued_at_ns,expires_at_ns FROM challenges WHERE challenge=?",
+            (challenge,),
+        ).fetchone()
         expected = {
             "VERIFYING": "CHALLENGED",
             "CONSUMED": "VERIFYING",
             "FAILED": "VERIFYING",
         }[event]
-        if (
-            not related
-            or related[-1]["event"] != expected
-            or related[0]["manifest_sha256"] != manifest_sha256
-        ):
+        if not row or row[0] != manifest or row[1] != expected:
             raise ValueError(
                 "verifier challenge is absent, mismatched, or in terminal state"
             )
-        issued = related[0]
-        return self._append(
-            {
-                "counter": len(records) + 1,
-                "event": event,
-                "challenge": challenge,
-                "manifest_sha256": manifest_sha256,
-                "issued_at_ns": issued["issued_at_ns"],
-                "event_at_ns": time.time_ns(),
-                "prev_hash": previous,
-            }
-        )
-
-    def begin(self, manifest_sha256: str) -> dict[str, Any]:
-        with self._exclusive():
-            records, previous = self._read_locked()
-            active = {r["challenge"] for r in records if r["event"] == "CHALLENGED"} - {
-                r["challenge"]
-                for r in records
-                if r["event"] in {"VERIFYING", "CONSUMED", "FAILED"}
-            }
-            if len(active) >= self.challenge_quota:
-                raise RuntimeError("outstanding challenge quota exceeded")
-            used = {r["challenge"] for r in records}
-            challenge = secrets.token_hex(32)
-            while challenge in used:
-                challenge = secrets.token_hex(32)
-            now = time.time_ns()
-            return self._append(
-                {
-                    "counter": len(records) + 1,
-                    "event": "CHALLENGED",
-                    "challenge": challenge,
-                    "manifest_sha256": manifest_sha256,
-                    "issued_at_ns": now,
-                    "event_at_ns": now,
-                    "prev_hash": previous,
-                }
+        if event == "VERIFYING" and row[3] <= time.time_ns():
+            failed = self._append_locked("FAILED", challenge, manifest, row[2])
+            self.db.execute(
+                "UPDATE challenges SET state='FAILED',last_counter=? WHERE challenge=?",
+                (failed["counter"], challenge),
             )
+            raise TimeoutError("verifier challenge expired")
+        item = self._append_locked(event, challenge, manifest, row[2])
+        self.db.execute(
+            "UPDATE challenges SET state=?,last_counter=? WHERE challenge=?",
+            (event, item["counter"], challenge),
+        )
+        return item
 
     def start_verifying(self, manifest_sha256: str, challenge: str) -> dict[str, Any]:
-        with self._exclusive():
-            return self._transition(manifest_sha256, challenge, "VERIFYING")
+        with self._transaction():
+            return self._transition_locked(manifest_sha256, challenge, "VERIFYING")
 
     def finish(
         self, manifest_sha256: str, challenge: str, *, success: bool
     ) -> dict[str, Any]:
-        record, _head = self.finish_with_head(
-            manifest_sha256, challenge, success=success
-        )
-        return record
+        return self.finish_with_head(manifest_sha256, challenge, success=success)[0]
 
     def finish_with_head(
         self, manifest_sha256: str, challenge: str, *, success: bool
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        with self._exclusive():
-            record = self._transition(
+        with self._transaction():
+            record = self._transition_locked(
                 manifest_sha256, challenge, "CONSUMED" if success else "FAILED"
             )
             return record, {
@@ -256,9 +307,11 @@ class ChallengeLedger:
             }
 
     def head(self) -> dict[str, Any]:
-        with self._exclusive():
-            records, digest = self._read_locked()
-            return {"counter": len(records), "record_hash": digest}
+        with self._lock:
+            row = self.db.execute(
+                "SELECT counter,head_hash FROM meta WHERE singleton=1"
+            ).fetchone()
+            return {"counter": row[0], "record_hash": row[1]}
 
     def consume(self, manifest_sha256: str, challenge: str) -> dict[str, Any]:
         self.start_verifying(manifest_sha256, challenge)

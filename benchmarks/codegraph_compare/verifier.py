@@ -46,6 +46,7 @@ PUBLIC_CONFIG_KEYS = frozenset(
         "approver",
         "auditor",
         "verifier",
+        "decision_consumer",
         "trusted",
         "root_signature",
     }
@@ -64,10 +65,18 @@ TRUSTED_KEYS = frozenset(
         "images",
         "auditor_runtime",
         "verifier_runtime",
+        "decision_consumer_runtime",
         "image_ids",
     }
 )
-IMAGE_ROLES = ("producer", "executor", "approver", "auditor", "verifier")
+IMAGE_ROLES = (
+    "producer",
+    "executor",
+    "approver",
+    "auditor",
+    "verifier",
+    "decision_consumer",
+)
 PUBLIC_ROLE_KEYS = frozenset(
     {"key_id", "public_key_hex", "protocol", "peer_uid", "service_measurement"}
 )
@@ -125,10 +134,12 @@ def parse_public_config(
         config = raw
     else:
         config = _exact(raw, PUBLIC_CONFIG_KEYS, "public config")
-    if type(config["schema_version"]) is not int or config["schema_version"] not in (
-        {2, 3, 4, 5} if diagnostic_mode else {4, 5}
-    ):
-        raise ValueError("public config schema is not authorized")
+    # Production has one public contract.  Keeping old versions readable here made
+    # a launch-attestation downgrade indistinguishable from an intentional legacy
+    # deployment.  Diagnostic mode only relaxes the root signature, never shape or
+    # version.
+    if type(config["schema_version"]) is not int or config["schema_version"] != 6:
+        raise ValueError("public config schema must be exact integer 6")
     if "root_signature" in config:
         signature = config["root_signature"]
         if (
@@ -158,7 +169,7 @@ def parse_public_config(
             raise ValueError("public config root signature mismatch") from exc
     keys: list[bytes] = []
     ids: list[str] = []
-    for role in ("executor", "approver", "auditor", "verifier"):
+    for role in ("executor", "approver", "auditor", "verifier", "decision_consumer"):
         item = _exact(
             config[role],
             AUDITOR_AUTHORITY_KEYS if role == "auditor" else PUBLIC_ROLE_KEYS,
@@ -176,7 +187,9 @@ def parse_public_config(
         keys.append(bytes.fromhex(encoded))
         ids.append(item["key_id"])
         expected_protocol = (
-            "no1-008a-audit-v1" if role == "auditor" else f"no1-008a-{role}-service-v1"
+            "no1-008a-audit-v1"
+            if role == "auditor"
+            else f"no1-008a-{role.replace('_', '-')}-service-v1"
         )
         if (
             item["protocol"] != expected_protocol
@@ -185,7 +198,7 @@ def parse_public_config(
             or _HEX64.fullmatch(item["service_measurement"]) is None
         ):
             raise ValueError(f"external {role} service contract is invalid")
-    if len(set(ids)) != 4 or len(set(keys)) != 4:
+    if len(set(ids)) != 5 or len(set(keys)) != 5:
         raise ValueError("public signer identities must differ")
     trusted_keys = (
         TRUSTED_KEYS
@@ -228,10 +241,9 @@ def parse_public_config(
     ):
         raise ValueError("trusted evidence digest invalid")
     images = _exact(trusted["images"], frozenset(IMAGE_ROLES), "trusted images")
-    if (
-        any(_IMAGE.fullmatch(images[role]) is None for role in IMAGE_ROLES)
-        or len(set(images.values())) != 5
-    ):
+    if any(_IMAGE.fullmatch(images[role]) is None for role in IMAGE_ROLES) or len(
+        set(images.values())
+    ) != len(IMAGE_ROLES):
         raise ValueError("role images must be exact, authorized, and distinct")
     image_ids = _exact(
         trusted["image_ids"], frozenset(IMAGE_ROLES), "trusted image IDs"
@@ -239,7 +251,7 @@ def parse_public_config(
     if any(_IMAGE.fullmatch(image_ids[role]) is None for role in IMAGE_ROLES):
         raise ValueError("top-level Docker image IDs must be root-authorized")
     runtime_roles = (
-        ("executor", "approver", "auditor", "verifier")
+        ("executor", "approver", "auditor", "verifier", "decision_consumer")
         if config["schema_version"] >= 5
         else ("auditor", "verifier")
     )
@@ -297,7 +309,9 @@ def parse_public_config(
     if config["schema_version"] >= 6:
         launches = _exact(
             config["trusted"]["service_launch"],
-            frozenset({"executor", "approver", "auditor", "verifier"}),
+            frozenset(
+                {"executor", "approver", "auditor", "verifier", "decision_consumer"}
+            ),
             "service launch config",
         )
         launch_keys = frozenset(

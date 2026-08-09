@@ -6,6 +6,7 @@ import socket
 import struct
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -79,10 +80,13 @@ def test_authority_server_rejects_unsigned_run_cell_before_runner(
     listener.bind(str(socket_path))
     listener.listen(1)
     contract = {
-        "schema_version": 1,
+        "schema_version": 2,
         "job_id": "1" * 64,
         "cell": {"repo_id": "gin", "arm_id": "tsa-warm", "attempt": 1},
         "nonce": "2" * 64,
+        "decision_id": "3" * 64,
+        "decision_nonce": "4" * 64,
+        "expires_at": time.time_ns() + 60_000_000_000,
         "root_signature": "0" * 128,
     }
     try:
@@ -120,10 +124,13 @@ def _signed_contract(root: Ed25519PrivateKey) -> dict[str, object]:
     from benchmarks.codegraph_compare.audit_authority_service import CONTRACT_DOMAIN
 
     unsigned = {
-        "schema_version": 1,
+        "schema_version": 2,
         "job_id": "1" * 64,
         "cell": {"repo_id": "gin", "arm_id": "tsa-warm", "attempt": 1},
         "nonce": "2" * 64,
+        "decision_id": "3" * 64,
+        "decision_nonce": "4" * 64,
+        "expires_at": time.time_ns() + 60_000_000_000,
     }
     return {
         **unsigned,

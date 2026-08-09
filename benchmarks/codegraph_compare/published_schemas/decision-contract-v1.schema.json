@@ -1,0 +1,56 @@
+{
+  "$id": "no1-008a-decision-contract-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "decision_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "decision_nonce": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "expires_at": {
+      "type": "integer"
+    },
+    "ledger_head": {
+      "additionalProperties": false,
+      "properties": {
+        "counter": {
+          "type": "integer"
+        },
+        "record_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "counter",
+        "record_hash"
+      ],
+      "type": "object"
+    },
+    "manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "root_signature": {
+      "pattern": "^[0-9a-f]{128}$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "decision_id",
+    "decision_nonce",
+    "expires_at",
+    "manifest_sha256",
+    "ledger_head",
+    "root_signature"
+  ],
+  "type": "object"
+}
