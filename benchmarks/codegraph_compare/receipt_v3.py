@@ -21,6 +21,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
+from benchmarks.codegraph_compare.receipt_inventory import (
+    validate_receipt_inventory,
+)
+
 # fmt: off
 # Closed schema stays visibly compact and below the 500-line module cap.
 DOMAIN = b"NO1-008A-CELL-RECEIPT-V3\0"
@@ -45,7 +49,6 @@ TOP_KEYS = frozenset({
     "approver_signature", "receipt_hash",
 })
 SIGNATURE_KEYS = frozenset({"key_id", "algorithm", "signature"})
-ELIGIBILITY_KEYS = frozenset({"repo_id", "source_rules_hash", "commit", "tracked_regular_paths", "tracked_entries", "root_tree_id", "tracked_files", "eligible_paths", "prefilter_exclusions", "tracked_inventory_hash", "eligible_paths_hash", "repo_fingerprint"})
 
 
 def canonical_plan_hash(plan: Mapping[str, Any]) -> str:
@@ -193,22 +196,12 @@ def validate_body(body: Any) -> None:
     _hex(source["repo_fingerprint"], "source.repo_fingerprint")
     if source["read_only"] is not True or source["mount_target"] != "/source":
         raise ValueError("source mount must be /source read-only")
-    eligibility = _exact(source["eligibility"], ELIGIBILITY_KEYS, "source.eligibility")
-    _text(eligibility["repo_id"], "eligibility.repo_id", 64)
-    _text(eligibility["commit"], "eligibility.commit", 128)
-    root_tree_id = _text(eligibility["root_tree_id"], "eligibility.root_tree_id", 64)
-    if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", root_tree_id) is None:
-        raise ValueError("eligibility.root_tree_id must be a Git object ID")
-    for name in ("source_rules_hash", "tracked_inventory_hash", "eligible_paths_hash", "repo_fingerprint"):
-        _hex(eligibility[name], f"eligibility.{name}")
-    for name in ("tracked_regular_paths", "eligible_paths"):
-        if type(eligibility[name]) is not list or eligibility[name] != sorted(set(eligibility[name])):
-            raise ValueError(f"eligibility.{name} must be sorted and unique")
-        for path in eligibility[name]:
-            _path(path, f"eligibility.{name}")
-    exclusions = eligibility["prefilter_exclusions"]
-    if type(exclusions) is not list or any(type(item) is not list or len(item) != 2 or any(type(part) is not str or not part for part in item) for item in exclusions):
-        raise ValueError("eligibility exclusions must be exact string pairs")
+    eligibility = validate_receipt_inventory(source["eligibility"])
+    if (
+        source["commit"] != eligibility["commit"]
+        or source["repo_fingerprint"] != eligibility["repo_fingerprint"]
+    ):
+        raise ValueError("source fields do not bind the validated eligibility inventory")
 
     environment = _exact(body["environment"], frozenset({"environment_digest", "image_digest", "docker_security_flags", "network_mode", "seccomp_sha256", "credentials_stripped"}), "environment")
     _hex(environment["environment_digest"], "environment.environment_digest")

@@ -12787,6 +12787,7 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
             "wall_timeout_seconds": 10,
             "resource_ceilings": {"io_bytes": 32 * 1024 * 1024},
         }
+        plan["plan_hash"] = canonical_plan_hash(plan)
         plans.append(plan)
         job_id = f"{ordinal + 1:064x}"
         contract = {
@@ -12801,7 +12802,7 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
         job = staged_root / job_id
         job.mkdir()
         (job / "plan.json").write_bytes(canonical_json_bytes(plan))
-        (job / "inventory.json").write_bytes(canonical_json_bytes({"files": []}))
+        (job / "inventory.json").write_bytes(canonical_json_bytes({"repo_id": repo}))
     decision = {
         "decision_id": "b" * 64,
         "expires_at_ns": 10**30,
@@ -12837,6 +12838,12 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
         qualification_operator, "verify_decision_contract", lambda value: value
     )
     monkeypatch.setattr(
+        qualification_operator, "validate_producer_plan", lambda value: value
+    )
+    monkeypatch.setattr(
+        qualification_operator, "validate_receipt_inventory", lambda value: value
+    )
+    monkeypatch.setattr(
         qualification_operator,
         "verify_contract",
         lambda request: request["contract"],
@@ -12867,7 +12874,7 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
     with pytest.raises(RuntimeError, match="observed authority timeout"):
         qualification_operator._run_impl(args)
 
-    assert observed == [522]
+    assert observed == [1932]
     assert plans[0]["wall_timeout_seconds"] == 10
 
 
@@ -13559,7 +13566,9 @@ def test_producer_gate_fails_if_container_exits_before_release(
             OSError(errno.ENXIO, "no reader")
         ),
     )
-    monkeypatch.setattr(runner, "_run", lambda *_args: b'[{"State":{"Running":false}}]')
+    monkeypatch.setattr(
+        runner, "_run", lambda *_args, **_kwargs: b'[{"State":{"Running":false}}]'
+    )
     with pytest.raises(ValueError, match="exited before launch gate"):
         runner._release_producer_gate(gate, "container", 10**30)
 
@@ -14522,6 +14531,7 @@ def test_operator_rejects_short_common_lifetime_before_first_cell(
             "wall_timeout_seconds": 10,
             "resource_ceilings": {"io_bytes": 32 * 1024 * 1024},
         }
+        plan["plan_hash"] = canonical_plan_hash(plan)
         plans.append(plan)
         job_id = f"{ordinal + 1:064x}"
         contract = {
@@ -14535,7 +14545,7 @@ def test_operator_rejects_short_common_lifetime_before_first_cell(
         job = staged_root / job_id
         job.mkdir()
         (job / "plan.json").write_bytes(canonical_json_bytes(plan))
-        (job / "inventory.json").write_bytes(canonical_json_bytes({"files": []}))
+        (job / "inventory.json").write_bytes(canonical_json_bytes({"repo_id": repo}))
     decision = {
         "decision_id": "b" * 64,
         "expires_at_ns": expiry,
@@ -14566,6 +14576,8 @@ def test_operator_rejects_short_common_lifetime_before_first_cell(
         },
     )
     monkeypatch.setattr(operator, "verify_decision_contract", lambda value: value)
+    monkeypatch.setattr(operator, "validate_producer_plan", lambda value: value)
+    monkeypatch.setattr(operator, "validate_receipt_inventory", lambda value: value)
     monkeypatch.setattr(
         operator, "verify_contract", lambda request: request["contract"]
     )
@@ -14845,7 +14857,7 @@ def test_authority_budget_includes_all_bounded_post_processing():
                 "resource_ceilings": {"io_bytes": 32 * 1024 * 1024},
             }
         )
-        == 522
+        == 1932
     )
 
 
@@ -15026,7 +15038,7 @@ def test_exact14_budget_uses_sealed_image_extractions_not_producer_wall():
         }
     }
 
-    assert exact14_execution_budget_seconds(plans) == 1172
+    assert exact14_execution_budget_seconds(plans) == 2942
 
 
 def test_live_output_size_ignores_disappearing_entry(tmp_path: Path, monkeypatch):
@@ -15334,6 +15346,38 @@ def test_receipt_frame_preflight_rejects_approver_draft_ceiling(monkeypatch):
 
     with pytest.raises(ValueError, match="receipt frame upper bound"):
         operator.preflight_receipt_service_frames(plan, inventory)
+
+
+def test_receipt_inventory_rejects_missing_commit_before_signing():
+    # PR #1249 review 3744887352: all inventories share the receipt validator.
+    from benchmarks.codegraph_compare.receipt_inventory import (
+        validate_receipt_inventory,
+    )
+
+    eligibility = dict(_qualification_v3_body()["source"]["eligibility"])
+    del eligibility["commit"]
+
+    with pytest.raises(ValueError, match="unknown or missing fields"):
+        validate_receipt_inventory({"eligibility": eligibility})
+
+
+def test_receipt_server_frame_deadline_scales_to_maximum_payload(monkeypatch):
+    # PR #1249 review 3744887360: 16 MiB reads use the declared frame size.
+    import struct
+
+    from benchmarks.codegraph_compare import receipt_v3_service
+
+    deadlines = []
+
+    def receive(_connection, size, deadline):
+        deadlines.append(deadline)
+        return struct.pack("!I", receipt_v3_service.MAX_MESSAGE) if size == 4 else b"{}"
+
+    monkeypatch.setattr(receipt_v3_service, "recv_exact", receive)
+    monkeypatch.setattr(receipt_v3_service.time, "monotonic", lambda: 100.0)
+
+    assert receipt_v3_service._frame(object()) == {}
+    assert deadlines == [110.0, 116.0]
 
 
 _mark_posix_qualification_section_tests()

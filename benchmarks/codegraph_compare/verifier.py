@@ -15,7 +15,10 @@ from typing import Any
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from benchmarks.codegraph_compare.execution_budget import extraction_timeout_seconds
+from benchmarks.codegraph_compare.execution_budget import (
+    AUTHORITY_COMMAND_TIMEOUT_SECONDS,
+    extraction_timeout_seconds,
+)
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
@@ -405,7 +408,7 @@ def _run_verity(command: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
         stdin=subprocess.DEVNULL,
         capture_output=True,
         check=False,
-        timeout=120,
+        timeout=AUTHORITY_COMMAND_TIMEOUT_SECONDS,
         pass_fds=descriptors,
     )
 

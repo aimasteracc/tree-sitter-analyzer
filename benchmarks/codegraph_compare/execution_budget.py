@@ -7,6 +7,30 @@ from collections.abc import Mapping
 from typing import Any
 
 AUTHORITY_COMMAND_TIMEOUT_SECONDS = 120
+HOST_AUDIT_COMMAND_TIMEOUT_SECONDS = 30
+# Every independently bounded authority subprocess on the successful path.  The
+# preflight entries run before reservation but inside the operator deadline.
+AUTHORITY_COMMAND_OPERATIONS_PER_CELL = (
+    "preflight_inputs_docker_inspect",
+    "preflight_cgroup_docker_info",
+    "execution_inputs_docker_inspect",
+    "execution_cgroup_docker_info",
+    "docker_create",
+    "docker_start",
+    "docker_started_inspect",
+    "launch_gate_docker_inspect",
+    "truncate_data_image",
+    "mkfs_ext4",
+    "debugfs_remove_lost_found",
+    "truncate_hash_image",
+    "verity_format",
+    "docker_remove",
+)
+HOST_AUDIT_OPERATIONS_PER_CELL = (
+    "launch_docker_inspect",
+    "terminal_docker_inspect",
+    "terminal_docker_events",
+)
 DEBUGFS_FIXED_OVERHEAD_SECONDS = 30
 DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND = 16 * 1024 * 1024
 # Covers bounded hashing, fsync, audit construction, signing, and response assembly.
@@ -15,6 +39,7 @@ AUTHORITY_HASH_SIGN_MARGIN_SECONDS = 120
 # during full semantic verification.  The fresh verifier extracts once per cell.
 RECEIPT_ROLE_EXTRACTIONS_PER_CELL = 2
 VERIFIER_EXTRACTIONS_PER_CELL = 1
+VERITY_VERIFY_OPERATIONS_PER_CELL = 3
 EXECUTOR_HASH_SIGN_MARGIN_SECONDS = 120
 APPROVER_HASH_SIGN_MARGIN_SECONDS = 120
 VERIFIER_HASH_SIGN_MARGIN_SECONDS = 120
@@ -57,11 +82,12 @@ def authority_cell_budget_seconds(plan: Mapping[str, Any]) -> int:
     payload = ceilings.get("io_bytes") if type(ceilings) is dict else None
     if type(wall) is not int or wall < 1 or type(payload) is not int or payload < 0:
         raise ValueError("authority budget inputs are invalid")
-    # mkfs, lost+found debugfs mutation, and veritysetup each use the common
-    # command bound.  The integrity extraction has its payload-derived bound.
+    # Producer wait owns ``wall``.  Every other subprocess has its own maximum;
+    # debugfs extraction is size-derived, while audit/hash/sign work is explicit.
     return (
         wall
-        + 3 * AUTHORITY_COMMAND_TIMEOUT_SECONDS
+        + len(AUTHORITY_COMMAND_OPERATIONS_PER_CELL) * AUTHORITY_COMMAND_TIMEOUT_SECONDS
+        + len(HOST_AUDIT_OPERATIONS_PER_CELL) * HOST_AUDIT_COMMAND_TIMEOUT_SECONDS
         + debugfs_payload_timeout_seconds(payload)
         + AUTHORITY_HASH_SIGN_MARGIN_SECONDS
     )
@@ -90,7 +116,11 @@ def post_authority_cell_budget_seconds(plan: Mapping[str, Any]) -> int:
         + APPROVER_HASH_SIGN_MARGIN_SECONDS
         + VERIFIER_HASH_SIGN_MARGIN_SECONDS
     )
-    return extraction_count * extraction + margins
+    return (
+        extraction_count * extraction
+        + VERITY_VERIFY_OPERATIONS_PER_CELL * AUTHORITY_COMMAND_TIMEOUT_SECONDS
+        + margins
+    )
 
 
 def exact14_execution_budget_seconds(plans: Mapping[Any, Mapping[str, Any]]) -> int:

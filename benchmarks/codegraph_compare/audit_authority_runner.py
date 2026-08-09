@@ -82,6 +82,7 @@ PRODUCER_GATE_WRAPPER = (
 def _release_producer_gate(gate: Path, container: str, deadline: float) -> None:
     """Release a live, blocked producer only after its launch audit is durable."""
     ready_deadline = min(deadline, time.monotonic() + 10.0)
+    inspected_running = False
     while True:
         try:
             descriptor = os.open(
@@ -95,10 +96,21 @@ def _release_producer_gate(gate: Path, container: str, deadline: float) -> None:
         except OSError as exc:
             if exc.errno != errno.ENXIO:
                 raise
-            inspected = json.loads(_run("docker", "inspect", container))[0]
-            state = inspected.get("State", {})
-            if state.get("Running") is not True:
-                raise ValueError("producer exited before launch gate release") from None
+            if not inspected_running:
+                remaining = ready_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        "producer launch gate readiness expired"
+                    ) from None
+                inspected = json.loads(
+                    _run("docker", "inspect", container, timeout=remaining)
+                )[0]
+                state = inspected.get("State", {})
+                if state.get("Running") is not True:
+                    raise ValueError(
+                        "producer exited before launch gate release"
+                    ) from None
+                inspected_running = True
             if time.monotonic() >= ready_deadline:
                 raise TimeoutError("producer launch gate readiness expired") from None
             time.sleep(0.01)
@@ -757,7 +769,12 @@ class AuthorityRunner:
         finally:
             if pidfd_descriptor >= 0:
                 os.close(pidfd_descriptor)
-            subprocess.run(["docker", "rm", "-f", container], capture_output=True)
+            subprocess.run(
+                ["docker", "rm", "-f", container],
+                capture_output=True,
+                timeout=AUTHORITY_COMMAND_TIMEOUT_SECONDS,
+                check=False,
+            )
             try:
                 gate.unlink()
             except FileNotFoundError:

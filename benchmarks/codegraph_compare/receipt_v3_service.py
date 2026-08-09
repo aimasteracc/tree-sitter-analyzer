@@ -32,6 +32,7 @@ from benchmarks.codegraph_compare.service_runtime import (
     measure_runtime,
     peer_allowed,
     read_frame,
+    recv_exact,
     secure_key,
     verify_service_launch_attestation,
     wait_for_launch_release,
@@ -45,7 +46,8 @@ from benchmarks.codegraph_compare.verifier import parse_public_config
 MAX_MESSAGE = 16 * 1024 * 1024
 RESPONSE_DOMAIN = b"NO1-008A-RUN-CELL-RESPONSE-V1\0"
 SERVICE_RESPONSE_DOMAIN = b"NO1-008A-RECEIPT-SERVICE-RESPONSE-V1\0"
-READ_DEADLINE_SECONDS = 10
+FRAME_HEADER_DEADLINE_SECONDS = 10
+FRAME_MIN_THROUGHPUT_BYTES_PER_SECOND = 1024 * 1024
 
 
 class _PreSendTransportError(ConnectionError):
@@ -67,10 +69,23 @@ _RETRYABLE_TRANSPORT_ERRORS = (
 )
 
 
-def _frame(
-    connection: socket.socket, seconds: float = READ_DEADLINE_SECONDS
-) -> dict[str, Any]:
-    value = read_frame(connection, MAX_MESSAGE, seconds, "receipt service request")
+def _frame(connection: socket.socket, seconds: float | None = None) -> dict[str, Any]:
+    """Read a request under a caller deadline or a frame-size-derived budget."""
+    if seconds is not None:
+        value = read_frame(connection, MAX_MESSAGE, seconds, "receipt service request")
+    else:
+        header = recv_exact(
+            connection, 4, time.monotonic() + FRAME_HEADER_DEADLINE_SECONDS
+        )
+        size = struct.unpack("!I", header)[0]
+        if size < 2 or size > MAX_MESSAGE:
+            raise ValueError("receipt service request size invalid")
+        transfer_seconds = max(
+            FRAME_HEADER_DEADLINE_SECONDS,
+            size / FRAME_MIN_THROUGHPUT_BYTES_PER_SECOND,
+        )
+        payload = recv_exact(connection, size, time.monotonic() + transfer_seconds)
+        value = strict_json_loads(payload)
     if type(value) is not dict:
         raise ValueError("receipt service frame must be an object")
     return value

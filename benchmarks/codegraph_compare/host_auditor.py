@@ -15,6 +15,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from benchmarks.codegraph_compare.audit_authority_client import exchange as _authority
 from benchmarks.codegraph_compare.audit_authority_storage import _producer_mount_targets
+from benchmarks.codegraph_compare.execution_budget import (
+    HOST_AUDIT_COMMAND_TIMEOUT_SECONDS,
+)
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
@@ -35,7 +38,11 @@ MAX_MESSAGE = 4 * 1024 * 1024
 
 def _run(*args: str) -> bytes:
     result = subprocess.run(
-        args, stdin=subprocess.DEVNULL, capture_output=True, check=False, timeout=30
+        args,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=False,
+        timeout=HOST_AUDIT_COMMAND_TIMEOUT_SECONDS,
     )
     if result.returncode:
         raise ValueError(f"host observation failed: {args[1]}")

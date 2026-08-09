@@ -24,6 +24,7 @@ from benchmarks.codegraph_compare.execution_budget import (
     authority_cell_budget_seconds,
     exact14_execution_budget_seconds,
 )
+from benchmarks.codegraph_compare.receipt_inventory import validate_receipt_inventory
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
@@ -33,6 +34,9 @@ from benchmarks.codegraph_compare.receipt_v3_service import (
 )
 from benchmarks.codegraph_compare.receipt_v3_service import (
     request_receipt,
+)
+from benchmarks.codegraph_compare.setup_qualification_executor import (
+    validate_producer_plan,
 )
 from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 from benchmarks.codegraph_compare.verifier import parse_public_config
@@ -164,21 +168,23 @@ def _run_impl(args: argparse.Namespace) -> int:
                 staged_root / contracts[identity]["job_id"] / "inventory.json"
             ).read_bytes()
         )
-        if type(inventory) is not dict:
-            raise ValueError("operator inventory must be an object")
+        eligibility = validate_receipt_inventory(inventory)
+        if eligibility["repo_id"] != identity[0]:
+            raise ValueError("staged inventory does not match contract repository")
         inventories[identity] = inventory
         preflight_receipt_service_frames(plan, inventory)
-        value = plan.get("wall_timeout_seconds")
-        if type(value) is not int or value < 1:
-            raise ValueError("operator plan timeout invalid")
+        plan = validate_producer_plan(plan)
+        if plan["cell"] != contracts[identity]["cell"]:
+            raise ValueError("staged plan cell does not exactly match its contract")
         authority_cell_budget_seconds(plan)
         plans[identity] = plan
         ordinal = list(EXPECTED_CELLS).index(identity)
         from benchmarks.codegraph_compare.receipt_v3 import canonical_plan_hash
 
+        logical_hash = canonical_plan_hash(plan)
         if (
-            canonical_plan_hash(plan)
-            != decision_contract["cells"][ordinal]["plan_sha256"]
+            plan["plan_hash"] != logical_hash
+            or logical_hash != decision_contract["cells"][ordinal]["plan_sha256"]
         ):
             raise ValueError("staged plan does not match offline decision cell hash")
     if decision_contract["plan_set_hash"] != config["trusted"]["plan_set_hash"]:
