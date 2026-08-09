@@ -8363,7 +8363,7 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
         "attempt": 1,
         "plan_hash": plan.digest,
         "artifact_path": plan.artifact_path,
-        "eligibility": asdict(plan.eligibility),
+        "eligibility": json.loads(json.dumps(asdict(plan.eligibility))),
         "tool": asdict(plan.tool),
         "config": asdict(plan.config),
         "counters": dict(ZERO_COUNTERS),
@@ -8652,6 +8652,7 @@ def test_strict_validator_rejects_network_audit_mutation(tmp_path: Path):
             ("attempt",),
             2,
             (
+                "RECEIPT_SCHEMA_MISMATCH",
                 "CELL_IDENTITY_MISMATCH",
                 "INDEX_PROVENANCE_MISSING",
                 "OS_AUDIT_MISSING",
@@ -8703,6 +8704,7 @@ def test_strict_validator_rejects_network_audit_mutation(tmp_path: Path):
             ("raw_executions", 0, "id"),
             "foreign",
             (
+                "RECEIPT_SCHEMA_MISMATCH",
                 "RAW_EXECUTION_EVIDENCE_MISSING",
                 "INDEX_PROVENANCE_MISSING",
                 "OS_AUDIT_MISSING",
@@ -8723,6 +8725,7 @@ def test_strict_validator_rejects_network_audit_mutation(tmp_path: Path):
             ("raw_executions", 0, "argv"),
             [],
             (
+                "RECEIPT_SCHEMA_MISMATCH",
                 "RAW_EXECUTION_EVIDENCE_MISSING",
                 "INDEX_PROVENANCE_MISSING",
                 "OS_AUDIT_MISSING",
@@ -8748,7 +8751,11 @@ def test_strict_validator_rejects_network_audit_mutation(tmp_path: Path):
             ),
         ),
         (("human_oracle_approval", "approved"), False, "HUMAN_ORACLE_APPROVAL_MISSING"),
-        (("human_oracle_approval", "key_id"), "", "HUMAN_ORACLE_APPROVAL_MISSING"),
+        (
+            ("human_oracle_approval", "key_id"),
+            "",
+            ("RECEIPT_SCHEMA_MISMATCH", "HUMAN_ORACLE_APPROVAL_MISSING"),
+        ),
         (
             ("index_content_hash",),
             "0" * 64,
@@ -8890,9 +8897,12 @@ def test_resource_plan_rejects_each_missing_ceiling():
     assert tuple(rejected) == tuple(valid)
 
 
-@pytest.mark.parametrize("value", (float("nan"), float("inf"), True))
+@pytest.mark.parametrize(
+    ("value", "canonicalization_failure"),
+    ((float("nan"), True), (float("inf"), True), (True, False)),
+)
 def test_strict_validator_rejects_nonfinite_or_boolean_resource_value(
-    tmp_path: Path, value
+    tmp_path: Path, value, canonicalization_failure
 ):
     import copy
 
@@ -8903,16 +8913,26 @@ def test_strict_validator_rejects_nonfinite_or_boolean_resource_value(
     receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
     receipt["resource_observation"]["wall_seconds"] = value
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(
-        receipt,
-        plan=plan,
-        cell_root=cell_root,
-        verifier_config=_qualification_verifier_config(),
-    ) == (
+    expected = (
+        "RECEIPT_SCHEMA_MISMATCH",
         "RESOURCE_LIMIT_VIOLATION",
+        *(
+            ("EVIDENCE_CORE_CANONICALIZATION_FAILED",)
+            if canonicalization_failure
+            else ()
+        ),
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
         "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
+    assert (
+        validate_cell_receipt(
+            receipt,
+            plan=plan,
+            cell_root=cell_root,
+            verifier_config=_qualification_verifier_config(),
+        )
+        == expected
     )
 
 
@@ -9143,6 +9163,113 @@ def test_receipt_parser_recursively_rejects_nonfinite_json_constants(
 
     with pytest.raises(ValueError, match="Non-finite JSON number"):
         _parse_receipt(payload.encode("utf-8"))
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    (
+        (("attempt",), True),
+        (("raw_executions", 0, "stderr_bytes", "size_bytes"), False),
+        (("resource_observation", "peak_processes"), 1.5),
+    ),
+)
+def test_receipt_schema_rejects_non_exact_scalar_types(tmp_path: Path, path, value):
+    # PR #1247: bools must not compare equal to integers and counts stay integral.
+    import copy
+
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
+    target = receipt
+    for component in path[:-1]:
+        target = target[component]
+    target[path[-1]] = value
+    _resign_qualification_receipt(receipt)
+
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
+        "RECEIPT_SCHEMA_MISMATCH",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
+
+
+def test_receipt_parser_rejects_exponent_overflow(tmp_path: Path):
+    # PR #1247: parse_constant does not see a finite token that overflows float.
+    import json
+
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        _parse_receipt,
+    )
+
+    plan = _qualification_plans(tmp_path)[0]
+    receipt = _write_valid_qualification_receipt(tmp_path / "cell", plan)
+    payload = json.dumps(receipt, sort_keys=True).replace(
+        '"wall_seconds": 1', '"wall_seconds": 1e400'
+    )
+
+    with pytest.raises(ValueError, match="Non-finite JSON number"):
+        _parse_receipt(payload.encode("utf-8"))
+
+
+def test_validator_rejects_null_digest_signatures_after_core_failure(tmp_path: Path):
+    # PR #1247: a non-canonical evidence core cannot authenticate as a null digest.
+    import copy
+    import json
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
+    receipt["raw_executions"][1]["oracle_spec_hash"] = float("inf")
+    executor_payload = {
+        "schema_version": 1,
+        "plan_hash": plan.digest,
+        "evidence_core_digest": None,
+    }
+
+    def sign(seed: bytes, payload):
+        encoded = json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+        return Ed25519PrivateKey.from_private_bytes(seed * 32).sign(encoded).hex()
+
+    receipt["index_provenance"]["payload"] = executor_payload
+    receipt["index_provenance"]["signature"] = sign(b"\x02", executor_payload)
+    receipt["os_audit"]["payload"] = executor_payload
+    receipt["os_audit"]["signature"] = sign(b"\x02", executor_payload)
+    approval_payload = dict(receipt["human_oracle_approval"]["payload"])
+    approval_payload["evidence_core_digest"] = None
+    receipt["human_oracle_approval"]["payload"] = approval_payload
+    receipt["human_oracle_approval"]["signature"] = sign(b"\x01", approval_payload)
+    _resign_qualification_receipt(receipt)
+
+    failures = validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    )
+    assert failures == (
+        "RECEIPT_SCHEMA_MISMATCH",
+        "RAW_EXECUTION_EVIDENCE_MISSING",
+        "EVIDENCE_CORE_CANONICALIZATION_FAILED",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
 
 
 def test_strict_validator_rejects_receipt_extension_even_with_matching_hash(

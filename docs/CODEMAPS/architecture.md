@@ -90,6 +90,17 @@ contract violation.**
 | `list-files` / `search-content` / `find-and-grep` | `cli/commands/*_cli.py` | fd / ripgrep / fd+rg standalone utilities |
 | Python API (no console script) | `api.py` | Embeddable library entry |
 
+## Benchmark qualification support
+
+`benchmarks/codegraph_compare/setup_qualification.py` is a compatibility facade for
+the NO1-008A E0 evidence boundary. Responsibilities are split into focused modules:
+
+- `setup_qualification_plan.py` — immutable plan models and constants
+- `setup_qualification_inventory.py` — Git-backed source inventory
+- `setup_qualification_schema.py` — strict recursive receipt JSON schema
+- `setup_qualification_validation.py` — filesystem, evidence-core, and signature checks
+- `setup_qualification_orchestration.py` — non-executing E0 orchestration
+
 ## Critical Invariants (do NOT change without reading [`CLAUDE.md`](../../CLAUDE.md))
 
 1. **MCP default `output_format` = `"toon"`** — locked. Flipping to JSON loses 50-70% token savings.

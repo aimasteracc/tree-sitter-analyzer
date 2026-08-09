@@ -17,6 +17,7 @@ from benchmarks.codegraph_compare.setup_qualification import (
     CellPlanV1,
     EligibilityV1,
     canonical_relative_path,
+    strict_json_loads,
     validate_receipt_schema_v2,
 )
 
@@ -70,26 +71,9 @@ def _validate_plans(
     return frozen
 
 
-def _reject_duplicate_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"Duplicate JSON member: {key}")
-        result[key] = value
-    return result
-
-
 def _parse_receipt(payload: bytes) -> dict[str, Any]:
     """Strict parser retained for a future fresh external verifier artifact."""
-
-    def reject_constant(value: str) -> None:
-        raise ValueError(f"Non-finite JSON number is forbidden: {value}")
-
-    parsed = json.loads(
-        payload,
-        object_pairs_hook=_reject_duplicate_members,
-        parse_constant=reject_constant,
-    )
+    parsed = strict_json_loads(payload)
     if not isinstance(parsed, dict):
         raise ValueError("Receipt JSON must be an object")
     validate_receipt_schema_v2(parsed)
