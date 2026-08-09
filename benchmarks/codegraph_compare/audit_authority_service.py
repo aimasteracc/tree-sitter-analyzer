@@ -342,6 +342,11 @@ def serve_once(
                 result, contract, artifact_root, key, key_id
             )
             transaction = getattr(runner, "run_transaction", None)
+            preflight = getattr(runner, "preflight", None)
+            if preflight is not None:
+                # Plan/schema failures must not consume the one-shot authority
+                # reservation; execution failures remain terminal reservations.
+                preflight(contract)
             if transaction is not None:
                 reply = transaction(contract, finalize)
             else:

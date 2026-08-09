@@ -318,3 +318,44 @@ def test_receipt_service_has_no_signer_child_handoff():
     source = Path("benchmarks/codegraph_compare/receipt_v3_service.py").read_text()
     assert "subprocess.Popen" not in source
     assert "pass_fds" not in source
+
+
+def test_authority_preflight_rejects_plan_before_transaction_reservation(
+    _socket_path: Path, monkeypatch
+):
+    # PR #1249 review 3744561306: invalid producer IDs do not consume job authority.
+    root = Ed25519PrivateKey.from_private_bytes(b"R" * 32)
+    monkeypatch.setattr(
+        "benchmarks.codegraph_compare.audit_authority_service.baked_root_public_key",
+        lambda: root.public_key().public_bytes_raw(),
+    )
+    events = []
+
+    class Runner:
+        def preflight(self, _contract):
+            events.append("preflight")
+            raise ValueError("producer execution IDs are not exact")
+
+        def run_transaction(self, _contract, _finalize):
+            events.append("reservation")
+            raise AssertionError("reservation consumed")
+
+    socket_path = _socket_path
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(socket_path))
+    listener.listen(1)
+    try:
+        response = _exchange(
+            listener,
+            socket_path,
+            {"operation": "run-cell", "contract": _signed_contract(root)},
+            runner=Runner(),
+        )
+    finally:
+        listener.close()
+
+    assert events == ["preflight"]
+    assert response == {
+        "error": "ValueError",
+        "reason": "producer execution IDs are not exact",
+    }

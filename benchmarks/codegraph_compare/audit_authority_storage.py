@@ -74,9 +74,14 @@ def _source_archive_ceiling(inventory_payload: bytes) -> int:
         ):
             raise ValueError("authorized inventory file size is invalid")
         payload_bytes += ((item[3] + 511) // 512) * 512
-    # One header per file plus tar end/padding records.  Python's USTAR writer
-    # pads to RECORDSIZE, so twenty extra blocks are sufficient and exact.
-    ceiling = payload_bytes + (len(files) + 20) * 512
+    # tarfile writes one 512-byte header per member, pads every payload to a
+    # 512-byte boundary, appends two zero end blocks, then pads the complete
+    # archive to RECORDSIZE.  Mirror that algorithm exactly: adding a fixed
+    # record can otherwise underestimate when the pre-end offset is unaligned.
+    unpadded = payload_bytes + (len(files) + 2) * tarfile.BLOCKSIZE
+    ceiling = (
+        (unpadded + tarfile.RECORDSIZE - 1) // tarfile.RECORDSIZE
+    ) * tarfile.RECORDSIZE
     hard_ceiling = 16 * 1024 * 1024 * 1024
     if ceiling > hard_ceiling:
         raise ValueError("authorized source inventory exceeds hard resource ceiling")
@@ -238,6 +243,11 @@ def _producer_mount_targets(plan: Mapping[str, Any]) -> tuple[str, str, str]:
     executions = plan.get("executions")
     if type(executions) is not list or not executions:
         raise ValueError("producer plan executions are absent")
+    execution_ids = [
+        item.get("id") if type(item) is dict else None for item in executions
+    ]
+    if execution_ids != ["delete", "build", "health", "symbol", "call"]:
+        raise ValueError("producer execution IDs are not exact")
     tool_targets = {
         item.get("argv", [None])[0]
         for item in executions

@@ -180,12 +180,10 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
         if type(item["query"]) is not dict or type(item["expected_result"]) is not dict:
             raise ValueError("execution query and expected result must be objects")
         ids.append(item["id"])
-    if (
-        ids[:3] != ["delete", "build", "health"]
-        or len(ids) != len(set(ids))
-        or len(ids) != 5
-    ):
-        raise ValueError("execution count, order, or uniqueness is invalid")
+    if ids != ["delete", "build", "health", "symbol", "call"]:
+        raise ValueError(
+            "executions must use exact delete/build/health/symbol/call IDs"
+        )
     encoded = canonical_json_bytes(plan).decode("utf-8").upper()
     if any(
         fragment in encoded

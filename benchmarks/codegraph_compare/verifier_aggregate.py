@@ -341,6 +341,14 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     return raw
 
 
+def _write_all(descriptor: int, payload: bytes) -> None:
+    while payload:
+        written = os.write(descriptor, payload)
+        if written == 0:
+            raise OSError("aggregate output write made no progress")
+        payload = payload[written:]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -437,7 +445,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         0o600,
     )
     try:
-        os.write(descriptor, canonical_json_bytes(result) + b"\n")
+        _write_all(descriptor, canonical_json_bytes(result) + b"\n")
         os.fsync(descriptor)
     finally:
         os.close(descriptor)

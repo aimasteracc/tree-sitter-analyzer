@@ -12941,13 +12941,14 @@ def test_host_auditor_accepts_only_all_eight_exact_producer_bind_mounts(
     plan = {
         "executions": [
             {
+                "id": name,
                 "argv": [
                     "/tool/bin",
                     name,
                     "--config",
                     "/config/pinned.json",
                     *(["--source", "/source"] if name == "build" else []),
-                ]
+                ],
             }
             for name in ("delete", "build", "health", "symbol", "call")
         ]
@@ -14142,6 +14143,118 @@ def test_service_launch_schema_matches_process_identity_shape():
     }
 
     assert list(Draft202012Validator(schema).iter_errors(envelope)) == []
+
+
+def test_source_archive_ceiling_matches_tarfile_record_algorithm(tmp_path: Path):
+    # PR #1249 review 3744561292: the authority ceiling mirrors tarfile exactly.
+    import io
+    import tarfile
+
+    from benchmarks.codegraph_compare.audit_authority_storage import (
+        _source_archive_ceiling,
+    )
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    sizes = (1, 513, 8193)
+    records = []
+    archive_path = tmp_path / "source.tar"
+    with tarfile.open(archive_path, "w", format=tarfile.USTAR_FORMAT) as archive:
+        for number, size in enumerate(sizes):
+            payload = bytes([number + 1]) * size
+            name = f"file-{number}"
+            info = tarfile.TarInfo(name)
+            info.size = size
+            archive.addfile(info, io.BytesIO(payload))
+            records.append(
+                [
+                    name,
+                    "100644",
+                    "a" * 40,
+                    size,
+                    hashlib.sha256(payload).hexdigest(),
+                ]
+            )
+    inventory = canonical_json_bytes({"eligibility": {"tracked_files": records}})
+
+    assert _source_archive_ceiling(inventory) == archive_path.stat().st_size
+
+
+def test_aggregate_output_writer_retries_partial_writes(monkeypatch):
+    # PR #1249 review 3744561299: a short write cannot truncate aggregate evidence.
+    from benchmarks.codegraph_compare import verifier_aggregate
+
+    observed = bytearray()
+
+    def partial(_descriptor, payload):
+        count = min(2, len(payload))
+        observed.extend(payload[:count])
+        return count
+
+    monkeypatch.setattr(verifier_aggregate.os, "write", partial)
+    verifier_aggregate._write_all(7, b"abcdef")
+
+    assert bytes(observed) == b"abcdef"
+
+
+def test_aggregate_output_writer_rejects_zero_progress(monkeypatch):
+    # PR #1249 review 3744561299: zero-progress writes fail closed.
+    from benchmarks.codegraph_compare import verifier_aggregate
+
+    monkeypatch.setattr(verifier_aggregate.os, "write", lambda *_args: 0)
+
+    with pytest.raises(OSError, match="made no progress"):
+        verifier_aggregate._write_all(7, b"x")
+
+
+def test_authority_mount_plan_rejects_nonexact_oracle_execution_id():
+    # PR #1249 review 3744561306: receipt-v3 IDs are fixed before reservation.
+    from benchmarks.codegraph_compare.audit_authority_storage import (
+        _producer_mount_targets,
+    )
+
+    plan = {
+        "executions": [
+            {
+                "id": execution_id,
+                "argv": [
+                    "/tool/bin",
+                    execution_id,
+                    "--config",
+                    "/config/pinned.json",
+                    *(["--source", "/source"] if execution_id == "build" else []),
+                ],
+            }
+            for execution_id in ("delete", "build", "health", "symbol-query", "call")
+        ]
+    }
+
+    with pytest.raises(ValueError, match="execution IDs are not exact"):
+        _producer_mount_targets(plan)
+
+
+def test_ext4_image_sizing_rejects_large_sparse_output(tmp_path: Path):
+    # PR #1249 review 3744561310: sparse logical bytes cannot bypass output ceilings.
+    from benchmarks.codegraph_compare.audit_authority_runner import _ext4_image_size
+
+    core = tmp_path / "core"
+    core.mkdir()
+    (core / "sparse-index").write_bytes(b"")
+    os.truncate(core / "sparse-index", 128 * 1024 * 1024)
+
+    with pytest.raises(ValueError, match="authorized output ceiling"):
+        _ext4_image_size(core, 64 * 1024 * 1024)
+
+
+def test_ext4_image_sizing_uses_sealed_core_usage(tmp_path: Path):
+    # PR #1249 review 3744561310: small outputs no longer allocate a fixed 1 GiB.
+    from benchmarks.codegraph_compare.audit_authority_runner import _ext4_image_size
+
+    core = tmp_path / "core"
+    core.mkdir()
+    (core / "index").mkdir()
+    (core / "index" / "data").write_bytes(b"x")
+
+    assert _ext4_image_size(core, 128 * 1024 * 1024) == 68 * 1024 * 1024
 
 
 _mark_posix_qualification_section_tests()

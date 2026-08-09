@@ -39,6 +39,9 @@ from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_plan_hash,
     strict_json_loads,
 )
+from benchmarks.codegraph_compare.setup_qualification_executor import (
+    validate_producer_plan,
+)
 from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
 from benchmarks.codegraph_compare.verifier import parse_public_config
 
@@ -140,6 +143,61 @@ def _docker_wall_deadline(started_at: str, wall_timeout: int) -> float:
     started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
     elapsed = time.time() - started.timestamp()
     return time.monotonic() + max(0.0, wall_timeout - elapsed)
+
+
+_EXT4_METADATA_MIN_BYTES = 64 * 1024 * 1024
+_EXT4_ROUND_BYTES = 4 * 1024 * 1024
+_MAX_AUTHORIZED_OUTPUT_BYTES = 16 * 1024 * 1024 * 1024
+
+
+def _authorized_output_ceiling(plan: Mapping[str, Any]) -> int:
+    """Return the root-signed aggregate raw/index output ceiling."""
+    ceilings = plan.get("resource_ceilings")
+    value = ceilings.get("io_bytes") if type(ceilings) is dict else None
+    if type(value) is not int or value <= 0 or value > _MAX_AUTHORIZED_OUTPUT_BYTES:
+        raise ValueError("plan output ceiling is invalid or exceeds authority maximum")
+    return value
+
+
+def _round_up(value: int, alignment: int) -> int:
+    return ((value + alignment - 1) // alignment) * alignment
+
+
+def _ext4_image_size(core: Path, authorized_output_bytes: int) -> int:
+    """Size ext4 from sealed logical/allocated bytes and inode metadata.
+
+    Logical size is charged as well as allocated blocks so a huge sparse file
+    cannot bypass the signed output budget and surprise ``mkfs.ext4 -d``.
+    """
+    if (
+        type(authorized_output_bytes) is not int
+        or authorized_output_bytes <= 0
+        or authorized_output_bytes > _MAX_AUTHORIZED_OUTPUT_BYTES
+    ):
+        raise ValueError("authorized output ceiling is invalid")
+    charged_bytes = 4096  # root inode
+    for path in core.rglob("*"):
+        metadata = os.lstat(path)
+        charged_bytes += 4096  # conservative inode/directory-entry metadata
+        if stat.S_ISREG(metadata.st_mode):
+            allocated = getattr(metadata, "st_blocks", 0) * 512
+            charged_bytes += max(metadata.st_size, allocated)
+        elif not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError("producer core contains unsupported entry")
+        if charged_bytes > authorized_output_bytes:
+            raise ValueError("producer core exceeds authorized output ceiling")
+    required = _EXT4_METADATA_MIN_BYTES + (charged_bytes * 5 + 3) // 4
+    maximum = _EXT4_METADATA_MIN_BYTES + (authorized_output_bytes * 5 + 3) // 4
+    image_size = _round_up(required, _EXT4_ROUND_BYTES)
+    if image_size > _round_up(maximum, _EXT4_ROUND_BYTES):
+        raise ValueError("ext4 image exceeds authorized plan-derived ceiling")
+    return image_size
+
+
+def _verity_hash_image_size(data_size: int) -> int:
+    # SHA-256 verity fanout is 128 hashes per 4 KiB block.  One percent plus a
+    # fixed superblock/metadata reserve remains conservative at every allowed size.
+    return _round_up(16 * 1024 * 1024 + (data_size + 99) // 100, _EXT4_ROUND_BYTES)
 
 
 def _validate_producer_output(output: Path) -> Path:
@@ -374,10 +432,18 @@ class AuthorityRunner:
         # the exact staged bytes passed to Docker, not a daemon-returned digest.
         return wall_timeout
 
+    def preflight(self, contract: Mapping[str, Any]) -> None:
+        """Reject a malformed producer plan before consuming the one-shot job ID."""
+        job, _declared, config = self._inputs(contract)
+        self._verify_staged(job, contract, config)
+        plan = validate_producer_plan(strict_json_loads(_read(job / "plan.json")))
+        _authorized_output_ceiling(plan)
+
     def _execute(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
         job, declared, config = self._inputs(contract)
         wall_timeout = self._verify_staged(job, contract, config)
-        plan = strict_json_loads(_read(job / "plan.json"))
+        plan = validate_producer_plan(strict_json_loads(_read(job / "plan.json")))
+        output_ceiling = _authorized_output_ceiling(plan)
         source_target, tool_target, config_target = _producer_mount_targets(plan)
         image = declared["producer_image"]
         if image.split("@")[-1] != config["trusted"]["images"]["producer"]:
@@ -458,6 +524,8 @@ class AuthorityRunner:
             "4g",
             "--cpus",
             "1",
+            "--ulimit",
+            f"fsize={output_ceiling}:{output_ceiling}",
             "--tmpfs",
             f"{Path('/') / 'tmp'}:rw,noexec,nosuid,nodev,size=64m",
             "--entrypoint",
@@ -540,13 +608,14 @@ class AuthorityRunner:
             os.chmod(output, 0o555, follow_symlinks=False)  # nosec B103
             data = destination / "data.img"
             hashes = destination / "hash.img"
-            _run("truncate", "-s", "1G", str(data))
+            data_size = _ext4_image_size(core, output_ceiling)
+            _run("truncate", "-s", str(data_size), str(data))
             _run("mkfs.ext4", "-q", "-d", str(core), str(data))
             # mkfs.ext4 creates an authority-extraneous /lost+found.  Remove it
             # before dm-verity so extraction hashes the exact sealed payload tree.
             _run("debugfs", "-w", "-R", "rmdir lost+found", str(data))
             _assert_ext4_payload(data, core)
-            _run("truncate", "-s", "256M", str(hashes))
+            _run("truncate", "-s", str(_verity_hash_image_size(data_size)), str(hashes))
             format_output = _run(
                 "veritysetup", "format", str(data), str(hashes), "--hash", "sha256"
             )
