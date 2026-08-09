@@ -52,6 +52,10 @@ MANIFEST_MAX_DEPTH = 64
 MANIFEST_MAX_NODES = 4_000_000
 
 
+class _PostSendTransportError(Exception):
+    """A request was fully sent but its response transport did not complete."""
+
+
 def _manifest_json_loads(payload: bytes) -> dict[str, Any]:
     """Parse verifier frames with protocol bounds independent of receipt limits."""
     if type(payload) is not bytes or not payload or len(payload) > MAX_FRAME:
@@ -430,12 +434,23 @@ def _round_trip(
         if pid <= 0 or uid != config["verifier"]["peer_uid"]:
             raise ValueError("external verifier peer UID mismatch")
         _send(client, request)
-        client.shutdown(socket.SHUT_WR)
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("verifier overall deadline expired")
-        client.settimeout(remaining)
-        return _frame(client, remaining)
+        try:
+            client.shutdown(socket.SHUT_WR)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("verifier overall deadline expired")
+            client.settimeout(remaining)
+            return _frame(client, remaining)
+        except ValueError as error:
+            if str(error) != "frame truncated":
+                raise
+            raise _PostSendTransportError(
+                "verifier response frame truncated"
+            ) from error
+        except (TimeoutError, BrokenPipeError, ConnectionError, OSError) as error:
+            raise _PostSendTransportError(
+                "verifier response transport failed"
+            ) from error
     finally:
         client.close()
 
@@ -607,7 +622,7 @@ def request_verdict(
         raise TimeoutError("verifier overall deadline expired")
     try:
         envelope = _round_trip(socket_path, request, config, remaining)
-    except (TimeoutError, BrokenPipeError, ConnectionError, OSError):
+    except _PostSendTransportError:
         recovery_remaining = deadline - time.monotonic()
         if recovery_remaining <= 0:
             raise

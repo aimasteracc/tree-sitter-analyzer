@@ -25,7 +25,12 @@ def copy_file(source: Path, destination: Path, mode: int = 0o444) -> None:
         try:
             os.fchmod(out, mode)  # creation mode is otherwise reduced by the umask
             while chunk := os.read(fd, 1024 * 1024):
-                os.write(out, chunk)
+                view = chunk
+                while view:
+                    written = os.write(out, view)
+                    if written == 0:
+                        raise OSError("staged input write made no progress")
+                    view = view[written:]
             os.fsync(out)
         finally:
             os.close(out)

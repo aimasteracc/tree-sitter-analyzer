@@ -1,4 +1,98 @@
 {
+  "$defs": {
+    "image": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "launch": {
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "type": "array"
+        },
+        "entrypoint": {
+          "type": ["array","null"]
+        },
+        "image_id": {
+          "$ref": "#/$defs/image"
+        },
+        "mounts": {
+          "type": "array"
+        },
+        "network_mode": {
+          "const": "none"
+        },
+        "readonly_rootfs": {
+          "const": true
+        },
+        "security_opt": {
+          "type": "array"
+        },
+        "user": {
+          "type": "string"
+        }
+      },
+      "required": ["image_id","cmd","entrypoint","user","readonly_rootfs","mounts","network_mode","security_opt"],
+      "type": "object"
+    },
+    "measurement": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_writable_mounts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "closure_manifest": {
+          "additionalProperties": {
+            "$ref": "#/$defs/sha256"
+          },
+          "type": "object"
+        },
+        "closure_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "gid": {
+          "type": "integer"
+        },
+        "interpreter_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "rootfs_readonly": {
+          "type": "boolean"
+        },
+        "uid": {
+          "type": "integer"
+        }
+      },
+      "required": ["interpreter_sha256","closure_manifest","closure_manifest_sha256","uid","gid","rootfs_readonly","allowed_writable_mounts"],
+      "type": "object"
+    },
+    "runtime": {
+      "additionalProperties": false,
+      "properties": {
+        "closure_manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "image_digest": {
+          "$ref": "#/$defs/image"
+        },
+        "image_id": {
+          "$ref": "#/$defs/image"
+        },
+        "measurement": {
+          "$ref": "#/$defs/measurement"
+        }
+      },
+      "required": ["image_digest","image_id","closure_manifest_sha256","measurement"],
+      "type": "object"
+    },
+    "sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
   "$id": "no1-008a-public-config-v6",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
@@ -16,24 +110,16 @@
           "type": "integer"
         },
         "protocol": {
-          "type": "string"
+          "const": "no1-008a-approver-service-v1"
         },
         "public_key_hex": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
+          "$ref": "#/$defs/sha256"
         },
         "service_measurement": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
+          "$ref": "#/$defs/sha256"
         }
       },
-      "required": [
-        "key_id",
-        "public_key_hex",
-        "protocol",
-        "peer_uid",
-        "service_measurement"
-      ],
+      "required": ["key_id","public_key_hex","protocol","peer_uid","service_measurement"],
       "type": "object"
     },
     "auditor": {
@@ -49,24 +135,16 @@
           "type": "integer"
         },
         "protocol": {
-          "type": "string"
+          "const": "no1-008a-audit-v1"
         },
         "public_key_hex": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
+          "$ref": "#/$defs/sha256"
         },
         "service_measurement": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
+          "$ref": "#/$defs/sha256"
         }
       },
-      "required": [
-        "key_id",
-        "public_key_hex",
-        "protocol",
-        "peer_uid",
-        "service_measurement"
-      ],
+      "required": ["key_id","public_key_hex","protocol","peer_uid","service_measurement"],
       "type": "object"
     },
     "decision_consumer": {
@@ -82,24 +160,16 @@
           "type": "integer"
         },
         "protocol": {
-          "type": "string"
+          "const": "no1-008a-decision-consumer-service-v1"
         },
         "public_key_hex": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
+          "$ref": "#/$defs/sha256"
         },
         "service_measurement": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
+          "$ref": "#/$defs/sha256"
         }
       },
-      "required": [
-        "key_id",
-        "public_key_hex",
-        "protocol",
-        "peer_uid",
-        "service_measurement"
-      ],
+      "required": ["key_id","public_key_hex","protocol","peer_uid","service_measurement"],
       "type": "object"
     },
     "executor": {
@@ -115,24 +185,16 @@
           "type": "integer"
         },
         "protocol": {
-          "type": "string"
+          "const": "no1-008a-executor-service-v1"
         },
         "public_key_hex": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
+          "$ref": "#/$defs/sha256"
         },
         "service_measurement": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
+          "$ref": "#/$defs/sha256"
         }
       },
-      "required": [
-        "key_id",
-        "public_key_hex",
-        "protocol",
-        "peer_uid",
-        "service_measurement"
-      ],
+      "required": ["key_id","public_key_hex","protocol","peer_uid","service_measurement"],
       "type": "object"
     },
     "root_signature": {
@@ -144,6 +206,118 @@
     },
     "trusted": {
       "additionalProperties": false,
+      "properties": {
+        "approver_runtime": {
+          "$ref": "#/$defs/runtime"
+        },
+        "auditor_runtime": {
+          "$ref": "#/$defs/runtime"
+        },
+        "config_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "decision_consumer_runtime": {
+          "$ref": "#/$defs/runtime"
+        },
+        "executor_runtime": {
+          "$ref": "#/$defs/runtime"
+        },
+        "image_ids": {
+          "additionalProperties": {
+            "$ref": "#/$defs/image"
+          },
+          "propertyNames": {
+            "enum": ["producer","executor","approver","auditor","verifier","decision_consumer"]
+          },
+          "required": ["producer","executor","approver","auditor","verifier","decision_consumer"],
+          "type": "object"
+        },
+        "images": {
+          "additionalProperties": {
+            "$ref": "#/$defs/image"
+          },
+          "propertyNames": {
+            "enum": ["producer","executor","approver","auditor","verifier","decision_consumer"]
+          },
+          "required": ["producer","executor","approver","auditor","verifier","decision_consumer"],
+          "type": "object"
+        },
+        "inventory_sha256": {
+          "additionalProperties": {
+            "$ref": "#/$defs/sha256"
+          },
+          "propertyNames": {
+            "enum": ["vscode","excalidraw","django","tokio","okhttp","gin","alamofire"]
+          },
+          "required": ["vscode","excalidraw","django","tokio","okhttp","gin","alamofire"],
+          "type": "object"
+        },
+        "plan_document_sha256": {
+          "additionalProperties": {
+            "$ref": "#/$defs/sha256"
+          },
+          "propertyNames": {
+            "enum": ["vscode/tsa-warm","vscode/codegraph-warm","excalidraw/tsa-warm","excalidraw/codegraph-warm","django/tsa-warm","django/codegraph-warm","tokio/tsa-warm","tokio/codegraph-warm","okhttp/tsa-warm","okhttp/codegraph-warm","gin/tsa-warm","gin/codegraph-warm","alamofire/tsa-warm","alamofire/codegraph-warm"]
+          },
+          "required": ["vscode/tsa-warm","vscode/codegraph-warm","excalidraw/tsa-warm","excalidraw/codegraph-warm","django/tsa-warm","django/codegraph-warm","tokio/tsa-warm","tokio/codegraph-warm","okhttp/tsa-warm","okhttp/codegraph-warm","gin/tsa-warm","gin/codegraph-warm","alamofire/tsa-warm","alamofire/codegraph-warm"],
+          "type": "object"
+        },
+        "plan_hashes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/sha256"
+          },
+          "propertyNames": {
+            "enum": ["vscode/tsa-warm","vscode/codegraph-warm","excalidraw/tsa-warm","excalidraw/codegraph-warm","django/tsa-warm","django/codegraph-warm","tokio/tsa-warm","tokio/codegraph-warm","okhttp/tsa-warm","okhttp/codegraph-warm","gin/tsa-warm","gin/codegraph-warm","alamofire/tsa-warm","alamofire/codegraph-warm"]
+          },
+          "required": ["vscode/tsa-warm","vscode/codegraph-warm","excalidraw/tsa-warm","excalidraw/codegraph-warm","django/tsa-warm","django/codegraph-warm","tokio/tsa-warm","tokio/codegraph-warm","okhttp/tsa-warm","okhttp/codegraph-warm","gin/tsa-warm","gin/codegraph-warm","alamofire/tsa-warm","alamofire/codegraph-warm"],
+          "type": "object"
+        },
+        "plan_set_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "seccomp_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "service_launch": {
+          "additionalProperties": false,
+          "properties": {
+            "approver": {
+              "$ref": "#/$defs/launch"
+            },
+            "auditor": {
+              "$ref": "#/$defs/launch"
+            },
+            "decision_consumer": {
+              "$ref": "#/$defs/launch"
+            },
+            "executor": {
+              "$ref": "#/$defs/launch"
+            },
+            "verifier": {
+              "$ref": "#/$defs/launch"
+            }
+          },
+          "required": ["executor","approver","auditor","verifier","decision_consumer"],
+          "type": "object"
+        },
+        "source_snapshot_sha256": {
+          "additionalProperties": {
+            "$ref": "#/$defs/sha256"
+          },
+          "propertyNames": {
+            "enum": ["vscode","excalidraw","django","tokio","okhttp","gin","alamofire"]
+          },
+          "required": ["vscode","excalidraw","django","tokio","okhttp","gin","alamofire"],
+          "type": "object"
+        },
+        "tool_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "verifier_runtime": {
+          "$ref": "#/$defs/runtime"
+        }
+      },
+      "required": ["plan_set_hash","plan_hashes","plan_document_sha256","inventory_sha256","source_snapshot_sha256","tool_sha256","config_sha256","seccomp_sha256","images","image_ids","executor_runtime","approver_runtime","auditor_runtime","verifier_runtime","decision_consumer_runtime","service_launch"],
       "type": "object"
     },
     "verifier": {
@@ -159,36 +333,19 @@
           "type": "integer"
         },
         "protocol": {
-          "type": "string"
+          "const": "no1-008a-verifier-service-v1"
         },
         "public_key_hex": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
+          "$ref": "#/$defs/sha256"
         },
         "service_measurement": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
+          "$ref": "#/$defs/sha256"
         }
       },
-      "required": [
-        "key_id",
-        "public_key_hex",
-        "protocol",
-        "peer_uid",
-        "service_measurement"
-      ],
+      "required": ["key_id","public_key_hex","protocol","peer_uid","service_measurement"],
       "type": "object"
     }
   },
-  "required": [
-    "schema_version",
-    "executor",
-    "approver",
-    "auditor",
-    "verifier",
-    "decision_consumer",
-    "trusted",
-    "root_signature"
-  ],
+  "required": ["schema_version","executor","approver","auditor","verifier","decision_consumer","trusted","root_signature"],
   "type": "object"
 }

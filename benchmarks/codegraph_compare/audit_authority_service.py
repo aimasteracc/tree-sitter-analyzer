@@ -58,7 +58,9 @@ def _hex64(value: Any, label: str) -> str:
     return value
 
 
-def verify_contract(request: Any) -> Mapping[str, Any]:
+def verify_contract(
+    request: Any, *, require_unexpired: bool = True
+) -> Mapping[str, Any]:
     request = _exact(request, frozenset({"operation", "contract"}), "request")
     if request["operation"] != "run-cell":
         raise ValueError("authority policy permits run-cell only")
@@ -86,7 +88,7 @@ def verify_contract(request: Any) -> Mapping[str, Any]:
         or type(cell["attempt"]) is not int
         or cell["attempt"] != 1
         or type(contract["expires_at_ns"]) is not int
-        or contract["expires_at_ns"] <= time.time_ns()
+        or (require_unexpired and contract["expires_at_ns"] <= time.time_ns())
     ):
         raise ValueError(
             "run-cell decision contract version, attempt, or expiry invalid"
@@ -218,6 +220,92 @@ def attest_service_launch(
     return create_service_launch_attestation(container, role, config, key, key_id)
 
 
+def _signed_response(
+    result: Mapping[str, Any],
+    contract: Mapping[str, Any],
+    artifact_root: Path | None,
+    key: Ed25519PrivateKey,
+    key_id: str,
+) -> dict[str, Any]:
+    result = _exact(result, frozenset({"audit", "artifacts"}), "runner result")
+    audit = _exact(
+        result["audit"],
+        frozenset({"protocol", "phase", "service_measurement", "audit"}),
+        "canonical terminal audit",
+    )
+    artifacts = result["artifacts"]
+    if type(artifacts) is not dict or frozenset(artifacts) != ARTIFACT_NAMES:
+        raise ValueError("runner artifact set is not closed")
+    descriptors = [
+        _artifact_descriptor(name, artifacts[name], contract, artifact_root)
+        for name in sorted(ARTIFACT_NAMES)
+    ]
+    audit_envelope = {
+        "audit": audit,
+        "key_id": key_id,
+        "algorithm": "Ed25519",
+        "signature": key.sign(AUDIT_DOMAIN + canonical_json_bytes(audit)).hex(),
+    }
+    response = {
+        "contract_digest": hashlib.sha256(canonical_json_bytes(contract)).hexdigest(),
+        "job_id": contract["job_id"],
+        "cell": contract["cell"],
+        "nonce": contract["nonce"],
+        "audit": audit_envelope,
+        "artifacts": descriptors,
+    }
+    return {
+        "response": response,
+        "key_id": key_id,
+        "algorithm": "Ed25519",
+        "signature": key.sign(RESPONSE_DOMAIN + canonical_json_bytes(response)).hex(),
+    }
+
+
+def _verify_signed_response(
+    envelope: Any,
+    contract: Mapping[str, Any],
+    key: Ed25519PrivateKey,
+    key_id: str,
+) -> Mapping[str, Any]:
+    envelope = _exact(
+        envelope,
+        frozenset({"response", "key_id", "algorithm", "signature"}),
+        "persisted authority envelope",
+    )
+    response = _exact(
+        envelope["response"],
+        frozenset({"contract_digest", "job_id", "cell", "nonce", "audit", "artifacts"}),
+        "persisted authority response",
+    )
+    if (
+        envelope["key_id"] != key_id
+        or envelope["algorithm"] != "Ed25519"
+        or response["contract_digest"]
+        != hashlib.sha256(canonical_json_bytes(contract)).hexdigest()
+        or response["job_id"] != contract["job_id"]
+        or response["cell"] != contract["cell"]
+        or response["nonce"] != contract["nonce"]
+    ):
+        raise ValueError("persisted authority response binding mismatch")
+    key.public_key().verify(
+        bytes.fromhex(envelope["signature"]),
+        RESPONSE_DOMAIN + canonical_json_bytes(response),
+    )
+    audit = _exact(
+        response["audit"],
+        frozenset({"audit", "key_id", "algorithm", "signature"}),
+        "persisted terminal audit envelope",
+    )
+    if audit["key_id"] != key_id or audit["algorithm"] != "Ed25519":
+        raise ValueError("persisted terminal audit identity mismatch")
+    key.public_key().verify(
+        bytes.fromhex(audit["signature"]),
+        AUDIT_DOMAIN + canonical_json_bytes(audit["audit"]),
+    )
+    return dict(envelope)
+
+
 def serve_once(
     listener: socket.socket,
     *,
@@ -232,46 +320,33 @@ def serve_once(
     try:
         if allowed_client_uid is not None:
             peer_allowed(connection, allowed_client_uid)
-        contract = verify_contract(_read_frame(connection))
-        result = _exact(
-            runner(contract), frozenset({"audit", "artifacts"}), "runner result"
-        )
-        audit = _exact(
-            result["audit"],
-            frozenset({"protocol", "phase", "service_measurement", "audit"}),
-            "canonical terminal audit",
-        )
-        artifacts = result["artifacts"]
-        if type(artifacts) is not dict or frozenset(artifacts) != ARTIFACT_NAMES:
-            raise ValueError("runner artifact set is not closed")
-        descriptors = [
-            _artifact_descriptor(name, artifacts[name], contract, artifact_root)
-            for name in sorted(ARTIFACT_NAMES)
-        ]
-        audit_envelope = {
-            "audit": audit,
-            "key_id": key_id,
-            "algorithm": "Ed25519",
-            "signature": key.sign(AUDIT_DOMAIN + canonical_json_bytes(audit)).hex(),
-        }
-        response = {
-            "contract_digest": hashlib.sha256(
-                canonical_json_bytes(contract)
-            ).hexdigest(),
-            "job_id": contract["job_id"],
-            "cell": contract["cell"],
-            "nonce": contract["nonce"],
-            "audit": audit_envelope,
-            "artifacts": descriptors,
-        }
-        reply = {
-            "response": response,
-            "key_id": key_id,
-            "algorithm": "Ed25519",
-            "signature": key.sign(
-                RESPONSE_DOMAIN + canonical_json_bytes(response)
-            ).hex(),
-        }
+        request = _read_frame(connection)
+        if (
+            type(request) is dict
+            and set(request) == {"operation", "contract", "job_id"}
+            and request["operation"] == "query-job-response"
+        ):
+            contract = verify_contract(
+                {"operation": "run-cell", "contract": request["contract"]},
+                require_unexpired=False,
+            )
+            if request["job_id"] != contract["job_id"]:
+                raise ValueError("query job id does not match signed contract")
+            query = getattr(runner, "query_response", None)
+            if query is None:
+                raise ValueError("authority runner does not support durable queries")
+            reply = _verify_signed_response(query(contract), contract, key, key_id)
+        else:
+            contract = verify_contract(request)
+            finalize = lambda result: _signed_response(  # noqa: E731
+                result, contract, artifact_root, key, key_id
+            )
+            transaction = getattr(runner, "run_transaction", None)
+            if transaction is not None:
+                reply = transaction(contract, finalize)
+            else:
+                # Diagnostic runners do not own a persistent transaction store.
+                reply = finalize(runner(contract))
     except Exception as error:
         reply = {"error": type(error).__name__, "reason": str(error)}
     try:

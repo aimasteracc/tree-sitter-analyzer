@@ -13571,4 +13571,218 @@ def test_service_launch_release_is_blocked_until_private_release_exists(tmp_path
     assert observed == [b"{}"]
 
 
+def test_stage_copy_file_completes_short_writes(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744482394: staging must retain every byte after a short write.
+    from benchmarks.codegraph_compare import stage_inputs
+
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.write_bytes(b"trusted-stage-bytes")
+    real_write = os.write
+
+    def short_write(descriptor, payload):
+        return real_write(descriptor, payload[:3])
+
+    monkeypatch.setattr(stage_inputs.os, "write", short_write)
+    stage_inputs.copy_file(source, destination)
+
+    assert destination.read_bytes() == b"trusted-stage-bytes"
+
+
+def test_stage_copy_file_rejects_zero_progress(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744482394: a zero-byte write cannot stage trusted input.
+    from benchmarks.codegraph_compare import stage_inputs
+
+    source = tmp_path / "source"
+    source.write_bytes(b"trusted-stage-bytes")
+    monkeypatch.setattr(stage_inputs.os, "write", lambda *_args: 0)
+
+    with pytest.raises(OSError, match="staged input write made no progress"):
+        stage_inputs.copy_file(source, tmp_path / "destination")
+
+
+def test_public_config_v6_published_schema_accepts_runtime_config():
+    # PR #1249 review 3744482399: trusted is the same closed object on both surfaces.
+    from jsonschema import Draft202012Validator
+
+    schema = json.loads(
+        Path(
+            "benchmarks/codegraph_compare/published_schemas/public-config-v6.schema.json"
+        ).read_bytes()
+    )
+    config = _qualification_v3_public_config()
+
+    assert list(Draft202012Validator(schema).iter_errors(config)) == []
+
+
+def test_public_config_v6_schema_and_runtime_reject_extra_trusted_field():
+    # PR #1249 review 3744482399: neither schema nor parser permits trusted extensions.
+    import copy
+
+    from jsonschema import Draft202012Validator
+
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.verifier import parse_public_config
+
+    schema = json.loads(
+        Path(
+            "benchmarks/codegraph_compare/published_schemas/public-config-v6.schema.json"
+        ).read_bytes()
+    )
+    config = copy.deepcopy(_qualification_v3_public_config())
+    config["trusted"]["untrusted_extension"] = "0" * 64
+    diagnostic = copy.deepcopy(config)
+    diagnostic.pop("root_signature")
+
+    with pytest.raises(
+        ValueError, match="trusted config has unknown or missing fields"
+    ):
+        parse_public_config(canonical_json_bytes(diagnostic), diagnostic_mode=True)
+    assert len(list(Draft202012Validator(schema).iter_errors(config))) == 1
+
+
+def test_authority_runner_persists_response_before_success(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744482397: SUCCESS never precedes the durable signed response.
+    runner = _authority_runner_for_test(tmp_path)
+    runner._execute = lambda _contract: {"audit": {}, "artifacts": {}}
+    runner._sync_sealed_job = lambda _job_id, _result: None
+    job_id = "8" * 64
+    events = []
+    persist = runner._persist_response
+    terminal = runner._terminal_state
+
+    def record_persist(job, response):
+        persist(job, response)
+        events.append("response-fsync")
+
+    def record_terminal(job, state, payload):
+        events.append("success-replace")
+        terminal(job, state, payload)
+
+    monkeypatch.setattr(runner, "_persist_response", record_persist)
+    monkeypatch.setattr(runner, "_terminal_state", record_terminal)
+    reply = {"response": {"job_id": job_id}, "signature": "a" * 128}
+
+    assert runner.run_transaction({"job_id": job_id}, lambda _result: reply) == reply
+    assert events == ["response-fsync", "success-replace"]
+    assert runner.query_response({"job_id": job_id}) == reply
+
+
+def test_verifier_request_recovers_only_post_send_truncated_frame(monkeypatch):
+    # PR #1249 review 3744482391: clean EOF after CONSUMED queries the exact verdict.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import verifier_service
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    key = Ed25519PrivateKey.from_private_bytes(b"\x55" * 32)
+    config = _qualification_v3_public_config()
+    digest_manifest = {
+        "cells": [
+            {
+                "contract": {
+                    "decision_id": "a" * 64,
+                    "decision_contract_sha256": "b" * 64,
+                }
+            }
+        ]
+    }
+    raw = canonical_json_bytes(digest_manifest)
+    digest = hashlib.sha256(raw).hexdigest()
+    challenge = "c" * 64
+    measurement = config["trusted"]["verifier_runtime"]["measurement"]
+    begin_signed = {
+        "manifest_sha256": digest,
+        "challenge": challenge,
+        "ledger_counter": 1,
+        "ledger_prev_hash": "0" * 64,
+        "issued_at_ns": 7,
+        "service_identity": measurement,
+    }
+    begin = {
+        **begin_signed,
+        "key_id": config["verifier"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": key.sign(
+            verifier_service.CHALLENGE_DOMAIN + canonical_json_bytes(begin_signed)
+        ).hex(),
+    }
+    calls = []
+
+    def round_trip(*_args, **_kwargs):
+        calls.append("round-trip")
+        if len(calls) == 1:
+            return begin
+        raise verifier_service._PostSendTransportError("frame truncated")
+
+    recovered = {"manifest_sha256": digest, "challenge": challenge}
+    monkeypatch.setattr(verifier_service, "_round_trip", round_trip)
+    monkeypatch.setattr(
+        verifier_service,
+        "query_verdict",
+        lambda **_kwargs: calls.append("query-verdict") or recovered,
+    )
+    # Stop after proving selection of the persisted exact identity.
+    with pytest.raises(ValueError, match="binding mismatch"):
+        verifier_service.request_verdict(
+            socket_path=Path("authority.sock"),
+            manifest=digest_manifest,
+            config=config,
+            timeout=10,
+        )
+
+    assert calls == ["round-trip", "round-trip", "query-verdict"]
+
+
+def test_verifier_request_does_not_recover_semantic_value_error(monkeypatch):
+    # PR #1249 review 3744482391: semantic rejection is never converted into a query.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import verifier_service
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    key = Ed25519PrivateKey.from_private_bytes(b"\x55" * 32)
+    config = _qualification_v3_public_config()
+    manifest = {"cells": [{"contract": {}}]}
+    digest = hashlib.sha256(canonical_json_bytes(manifest)).hexdigest()
+    begin_signed = {
+        "manifest_sha256": digest,
+        "challenge": "c" * 64,
+        "ledger_counter": 1,
+        "ledger_prev_hash": "0" * 64,
+        "issued_at_ns": 7,
+        "service_identity": config["trusted"]["verifier_runtime"]["measurement"],
+    }
+    begin = {
+        **begin_signed,
+        "key_id": config["verifier"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": key.sign(
+            verifier_service.CHALLENGE_DOMAIN + canonical_json_bytes(begin_signed)
+        ).hex(),
+    }
+    replies = iter((begin, ValueError("manifest frame must be a JSON object")))
+
+    def round_trip(*_args, **_kwargs):
+        value = next(replies)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(verifier_service, "_round_trip", round_trip)
+    monkeypatch.setattr(
+        verifier_service,
+        "query_verdict",
+        lambda **_kwargs: pytest.fail("semantic error queried persisted verdict"),
+    )
+
+    with pytest.raises(ValueError, match="manifest frame must be a JSON object"):
+        verifier_service.request_verdict(
+            socket_path=Path("authority.sock"),
+            manifest=manifest,
+            config=config,
+            timeout=10,
+        )
+
+
 _mark_posix_qualification_section_tests()

@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 import threading
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -643,7 +643,19 @@ class AuthorityRunner:
         for path in sorted(directories, key=lambda item: len(item.parts), reverse=True):
             _fsync_directory(path)
 
-    def __call__(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
+    @staticmethod
+    def _write_all(descriptor: int, payload: bytes, label: str) -> None:
+        while payload:
+            written = os.write(descriptor, payload)
+            if written == 0:
+                raise OSError(f"{label} write made no progress")
+            payload = payload[written:]
+
+    def __call__(
+        self,
+        contract: Mapping[str, Any],
+        finalize: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    ) -> Mapping[str, Any]:
         with self._exclusive_execution():
             job_id = contract.get("job_id")
             if type(job_id) is not str or len(job_id) != 64:
@@ -653,7 +665,7 @@ class AuthorityRunner:
                 state, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400
             )
             try:
-                os.write(descriptor, b"RUNNING\n")
+                self._write_all(descriptor, b"RUNNING\n", "authority state")
                 os.fsync(descriptor)
             finally:
                 os.close(descriptor)
@@ -661,6 +673,9 @@ class AuthorityRunner:
             try:
                 result = self._execute(contract)
                 self._sync_sealed_job(job_id, result)
+                committed = finalize(result) if finalize is not None else result
+                if finalize is not None:
+                    self._persist_response(job_id, committed)
             except Exception as error:
                 destination = self._artifacts / job_id
                 if destination.exists():
@@ -670,7 +685,46 @@ class AuthorityRunner:
                 )
                 raise
             self._terminal_state(job_id, state, b"SUCCESS\n")
-            return result
+            return committed
+
+    def run_transaction(
+        self,
+        contract: Mapping[str, Any],
+        finalize: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        """Persist the finalized signed response before the SUCCESS transition."""
+        return self(contract, finalize)
+
+    def _persist_response(self, job_id: str, response: Mapping[str, Any]) -> None:
+        path = self._artifacts / f"{job_id}.response.json"
+        payload = canonical_json_bytes(response)
+        descriptor = os.open(
+            path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400
+        )
+        try:
+            os.fchmod(descriptor, 0o400)
+            self._write_all(descriptor, payload, "authority response")
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        _fsync_directory(self._artifacts)
+
+    def query_response(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Read only a response whose one-shot transaction is durably successful."""
+        job_id = contract.get("job_id")
+        if type(job_id) is not str or len(job_id) != 64:
+            raise ValueError("query job id invalid")
+        with self._exclusive_execution():
+            state = self._artifacts / f"{job_id}.state"
+            if _read(state, limit=64) != b"SUCCESS\n":
+                raise ValueError("authority job response is not committed")
+            raw = _read(
+                self._artifacts / f"{job_id}.response.json", limit=4 * 1024 * 1024
+            )
+            response = strict_json_loads(raw)
+            if type(response) is not dict or canonical_json_bytes(response) != raw:
+                raise ValueError("persisted authority response is not canonical")
+            return response
 
     def _terminal_state(self, job_id: str, state: Path, payload: bytes) -> None:
         temporary = self._artifacts / f".{job_id}.state.tmp"
@@ -680,7 +734,7 @@ class AuthorityRunner:
             0o400,
         )
         try:
-            os.write(descriptor, payload)
+            self._write_all(descriptor, payload, "authority terminal state")
             os.fsync(descriptor)
         finally:
             os.close(descriptor)

@@ -19,6 +19,49 @@ from benchmarks.codegraph_compare.service_runtime import read_frame
 MAX_MESSAGE = 4 * 1024 * 1024
 
 
+class _PostSendTransportError(Exception):
+    """The complete request was sent but no complete response was received."""
+
+
+def _request_response(
+    request: dict[str, Any],
+    socket_path: Path,
+    authority: dict[str, Any],
+    timeout: float,
+) -> dict[str, Any]:
+    wire = canonical_json_bytes(request)
+    if len(wire) > MAX_MESSAGE:
+        raise ValueError("authority request exceeds protocol bound")
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(timeout)
+    try:
+        client.connect(str(socket_path))
+        _pid, uid, _gid = _peer_credentials(client)
+        if uid != authority["peer_uid"]:
+            raise ValueError("external audit authority peer UID mismatch")
+        client.sendall(struct.pack("!I", len(wire)) + wire)
+        try:
+            client.shutdown(socket.SHUT_WR)
+            response = read_frame(
+                client, MAX_MESSAGE, timeout, "external authority response"
+            )
+            if type(response) is not dict:
+                raise ValueError("external authority response must be an object")
+            return response
+        except ValueError as error:
+            if str(error) != "frame truncated":
+                raise
+            raise _PostSendTransportError(
+                "authority response frame truncated"
+            ) from error
+        except (TimeoutError, BrokenPipeError, ConnectionError, OSError) as error:
+            raise _PostSendTransportError(
+                "authority response transport failed"
+            ) from error
+    finally:
+        client.close()
+
+
 def _peer_credentials(client: socket.socket) -> tuple[int, int, int]:
     option = getattr(socket, "SO_PEERCRED", None)
     if option is None:
@@ -81,20 +124,19 @@ def run_cell(
     timeout = authority.get("wall_timeout_seconds", 120)
     if type(timeout) not in {int, float} or timeout <= 0:
         raise ValueError("authority timeout contract invalid")
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(timeout)
     try:
-        client.connect(str(socket_path))
-        _pid, uid, _gid = _peer_credentials(client)
-        if uid != authority["peer_uid"]:
-            raise ValueError("external audit authority peer UID mismatch")
-        client.sendall(struct.pack("!I", len(wire)) + wire)
-        client.shutdown(socket.SHUT_WR)
-        envelope = read_frame(
-            client, MAX_MESSAGE, timeout, "external authority response"
+        envelope = _request_response(request, socket_path, authority, timeout)
+    except _PostSendTransportError:
+        envelope = _request_response(
+            {
+                "operation": "query-job-response",
+                "contract": contract,
+                "job_id": contract["job_id"],
+            },
+            socket_path,
+            authority,
+            timeout,
         )
-    finally:
-        client.close()
     if type(envelope) is dict and frozenset(envelope) == {"error", "reason"}:
         raise ValueError(f"authority rejected request: {envelope['reason']}")
     if type(envelope) is not dict or frozenset(envelope) != {
