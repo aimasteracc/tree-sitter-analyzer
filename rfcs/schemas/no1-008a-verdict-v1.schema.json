@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "no1-008a-verdict-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_stage",
+    "status",
+    "expected_cells",
+    "observed_receipts",
+    "attempts_per_cell",
+    "counters",
+    "publishable",
+    "winner",
+    "dominance_allowed",
+    "unlock_allowed"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "evaluation_stage": {
+      "const": "E0"
+    },
+    "status": {
+      "enum": [
+        "SETUP_QUALIFIED",
+        "NOT_EVALUATED"
+      ]
+    },
+    "expected_cells": {
+      "const": 14
+    },
+    "observed_receipts": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 14
+    },
+    "attempts_per_cell": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api_cost_usd",
+        "input_tokens",
+        "model_calls",
+        "network_requests",
+        "output_tokens",
+        "provider_requests"
+      ],
+      "properties": {
+        "api_cost_usd": {
+          "type": "number",
+          "const": 0
+        },
+        "input_tokens": {
+          "type": "number",
+          "const": 0
+        },
+        "model_calls": {
+          "type": "number",
+          "const": 0
+        },
+        "network_requests": {
+          "type": "number",
+          "const": 0
+        },
+        "output_tokens": {
+          "type": "number",
+          "const": 0
+        },
+        "provider_requests": {
+          "type": "number",
+          "const": 0
+        }
+      }
+    },
+    "publishable": {
+      "const": false
+    },
+    "winner": {
+      "type": "null"
+    },
+    "dominance_allowed": {
+      "const": false
+    },
+    "unlock_allowed": {
+      "const": false
+    }
+  }
+}

@@ -1,0 +1,641 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "no1-008a-cell-receipt-v3.schema.json",
+  "title": "NO1-008A detached cell receipt v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "body",
+    "body_sha256",
+    "executor_signature",
+    "approver_signature",
+    "receipt_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 3
+    },
+    "body": {
+      "$ref": "#/$defs/body"
+    },
+    "body_sha256": {
+      "$ref": "#/$defs/hash"
+    },
+    "executor_signature": {
+      "$ref": "#/$defs/signature"
+    },
+    "approver_signature": {
+      "$ref": "#/$defs/signature"
+    },
+    "receipt_hash": {
+      "$ref": "#/$defs/hash"
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "positive": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "nonnegative": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "blob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "size_bytes",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "size_bytes": {
+          "$ref": "#/$defs/nonnegative"
+        },
+        "sha256": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key_id",
+        "algorithm",
+        "signature"
+      ],
+      "properties": {
+        "key_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "algorithm": {
+          "const": "Ed25519"
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{128}$"
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "argv",
+        "cwd",
+        "environment_digest",
+        "exit_code",
+        "stdout_bytes",
+        "stderr_bytes",
+        "query_bytes",
+        "index_bytes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "cwd": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "environment_digest": {
+          "$ref": "#/$defs/hash"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "stdout_bytes": {
+          "$ref": "#/$defs/blob"
+        },
+        "stderr_bytes": {
+          "$ref": "#/$defs/blob"
+        },
+        "query_bytes": {
+          "$ref": "#/$defs/blob"
+        },
+        "index_bytes": {
+          "$ref": "#/$defs/blob"
+        }
+      }
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cell",
+        "plan",
+        "source",
+        "environment",
+        "counters",
+        "resources",
+        "executions",
+        "index_partition",
+        "snapshot",
+        "process_audit",
+        "oracle_approval"
+      ],
+      "properties": {
+        "cell": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repo_id",
+            "arm_id",
+            "attempt",
+            "artifact_path"
+          ],
+          "properties": {
+            "repo_id": {
+              "enum": [
+                "vscode",
+                "excalidraw",
+                "django",
+                "tokio",
+                "okhttp",
+                "gin",
+                "alamofire"
+              ]
+            },
+            "arm_id": {
+              "enum": [
+                "tsa-warm",
+                "codegraph-warm"
+              ]
+            },
+            "attempt": {
+              "const": 1
+            },
+            "artifact_path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            }
+          }
+        },
+        "plan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "plan_hash",
+            "plan_set_hash",
+            "tool_sha256",
+            "config_sha256",
+            "image_digest",
+            "seccomp_sha256"
+          ],
+          "properties": {
+            "plan_hash": {
+              "$ref": "#/$defs/hash"
+            },
+            "plan_set_hash": {
+              "$ref": "#/$defs/hash"
+            },
+            "tool_sha256": {
+              "$ref": "#/$defs/hash"
+            },
+            "config_sha256": {
+              "$ref": "#/$defs/hash"
+            },
+            "seccomp_sha256": {
+              "$ref": "#/$defs/hash"
+            },
+            "image_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "commit",
+            "eligibility",
+            "repo_fingerprint",
+            "mount_target",
+            "read_only"
+          ],
+          "properties": {
+            "commit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "eligibility": {
+              "$ref": "#/$defs/eligibility"
+            },
+            "repo_fingerprint": {
+              "$ref": "#/$defs/hash"
+            },
+            "mount_target": {
+              "const": "/source"
+            },
+            "read_only": {
+              "const": true
+            }
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "environment_digest",
+            "image_digest",
+            "docker_security_flags",
+            "network_mode",
+            "seccomp_sha256",
+            "credentials_stripped"
+          ],
+          "properties": {
+            "environment_digest": {
+              "$ref": "#/$defs/hash"
+            },
+            "image_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "docker_security_flags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "network_mode": {
+              "const": "none"
+            },
+            "seccomp_sha256": {
+              "$ref": "#/$defs/hash"
+            },
+            "credentials_stripped": {
+              "const": true
+            }
+          }
+        },
+        "counters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "api_cost_usd",
+            "input_tokens",
+            "model_calls",
+            "network_requests",
+            "output_tokens",
+            "provider_requests"
+          ],
+          "properties": {
+            "api_cost_usd": {
+              "type": "number",
+              "const": 0
+            },
+            "input_tokens": {
+              "type": "number",
+              "const": 0
+            },
+            "model_calls": {
+              "type": "number",
+              "const": 0
+            },
+            "network_requests": {
+              "type": "number",
+              "const": 0
+            },
+            "output_tokens": {
+              "type": "number",
+              "const": 0
+            },
+            "provider_requests": {
+              "type": "number",
+              "const": 0
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "plan_digest",
+            "wall_seconds",
+            "cpu_seconds",
+            "index_bytes",
+            "disk_written_bytes",
+            "free_disk_bytes_before",
+            "peak_rss_bytes",
+            "peak_processes",
+            "peak_open_files",
+            "peak_concurrency"
+          ],
+          "properties": {
+            "plan_digest": {
+              "$ref": "#/$defs/hash"
+            },
+            "wall_seconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "cpu_seconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "index_bytes": {
+              "type": "number",
+              "minimum": 0
+            },
+            "disk_written_bytes": {
+              "type": "number",
+              "minimum": 0
+            },
+            "free_disk_bytes_before": {
+              "type": "number",
+              "minimum": 0
+            },
+            "peak_rss_bytes": {
+              "type": "number",
+              "minimum": 0
+            },
+            "peak_processes": {
+              "type": "number",
+              "minimum": 0
+            },
+            "peak_open_files": {
+              "type": "number",
+              "minimum": 0
+            },
+            "peak_concurrency": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "executions": {
+          "type": "array",
+          "minItems": 4,
+          "items": {
+            "$ref": "#/$defs/execution"
+          }
+        },
+        "index_partition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "indexed_paths",
+            "excluded_paths",
+            "parse_error_paths",
+            "indexed_paths_hash",
+            "excluded_paths_hash",
+            "parse_error_paths_hash"
+          ],
+          "properties": {
+            "indexed_paths": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "excluded_paths": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "parse_error_paths": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "indexed_paths_hash": {
+              "$ref": "#/$defs/hash"
+            },
+            "excluded_paths_hash": {
+              "$ref": "#/$defs/hash"
+            },
+            "parse_error_paths_hash": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        "snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "format",
+            "data_image_sha256",
+            "data_image_size",
+            "hash_image_sha256",
+            "hash_image_size",
+            "root_hash",
+            "salt",
+            "data_block_size",
+            "hash_block_size",
+            "data_blocks",
+            "mount_flags",
+            "tree_hash",
+            "index_content_hash"
+          ],
+          "properties": {
+            "format": {
+              "const": "dm-verity-v1"
+            },
+            "data_image_sha256": {
+              "$ref": "#/$defs/hash"
+            },
+            "hash_image_sha256": {
+              "$ref": "#/$defs/hash"
+            },
+            "root_hash": {
+              "$ref": "#/$defs/hash"
+            },
+            "salt": {
+              "$ref": "#/$defs/hash"
+            },
+            "tree_hash": {
+              "$ref": "#/$defs/hash"
+            },
+            "index_content_hash": {
+              "$ref": "#/$defs/hash"
+            },
+            "data_image_size": {
+              "$ref": "#/$defs/positive"
+            },
+            "hash_image_size": {
+              "$ref": "#/$defs/positive"
+            },
+            "data_block_size": {
+              "$ref": "#/$defs/positive"
+            },
+            "hash_block_size": {
+              "$ref": "#/$defs/positive"
+            },
+            "data_blocks": {
+              "$ref": "#/$defs/positive"
+            },
+            "mount_flags": {
+              "const": [
+                "ro",
+                "nosuid",
+                "nodev",
+                "noexec"
+              ]
+            }
+          }
+        },
+        "process_audit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "producer_container_id",
+            "image_digest",
+            "cgroup_id",
+            "pid1_exit",
+            "descendants_after_stop",
+            "one_start",
+            "network_syscall_denials",
+            "audit_bytes"
+          ],
+          "properties": {
+            "producer_container_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "image_digest": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cgroup_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pid1_exit": {
+              "type": "integer"
+            },
+            "descendants_after_stop": {
+              "const": 0
+            },
+            "one_start": {
+              "const": true
+            },
+            "network_syscall_denials": {
+              "$ref": "#/$defs/nonnegative"
+            },
+            "audit_bytes": {
+              "$ref": "#/$defs/blob"
+            }
+          }
+        },
+        "oracle_approval": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "approved",
+            "approval_bytes"
+          ],
+          "properties": {
+            "approved": {
+              "const": true
+            },
+            "approval_bytes": {
+              "$ref": "#/$defs/blob"
+            }
+          }
+        }
+      }
+    },
+    "eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repo_id",
+        "source_rules_hash",
+        "commit",
+        "tracked_regular_paths",
+        "eligible_paths",
+        "prefilter_exclusions",
+        "tracked_inventory_hash",
+        "eligible_paths_hash",
+        "repo_fingerprint"
+      ],
+      "properties": {
+        "repo_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_rules_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "commit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tracked_regular_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "eligible_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "prefilter_exclusions": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "tracked_inventory_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "eligible_paths_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "repo_fingerprint": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    }
+  }
+}

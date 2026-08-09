@@ -11173,4 +11173,401 @@ def test_validator_rejects_empty_retained_receipt_object(tmp_path: Path):
 
 
 # Keep this invocation at absolute EOF so every qualification test inherits the marker.
+
+
+# NO1-008A receipt-v3 detached execution contract (setup evidence only).
+def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
+    blob = {
+        "path": "raw/empty",
+        "size_bytes": 0,
+        "sha256": hashlib.sha256(b"").hexdigest(),
+    }
+    executions = []
+    for execution_id in ("delete", "build", "health", "symbol", "call"):
+        executions.append(
+            {
+                "id": execution_id,
+                "argv": ["/tool/bin", execution_id],
+                "cwd": "/source",
+                "environment_digest": "1" * 64,
+                "exit_code": 0,
+                "stdout_bytes": dict(blob),
+                "stderr_bytes": dict(blob),
+                "query_bytes": dict(blob),
+                "index_bytes": dict(blob),
+            }
+        )
+    return {
+        "cell": {
+            "repo_id": repo_id,
+            "arm_id": arm_id,
+            "attempt": 1,
+            "artifact_path": f"cells/{repo_id}/{arm_id}/cell-receipt.json",
+        },
+        "plan": {
+            "plan_hash": "2" * 64,
+            "plan_set_hash": "3" * 64,
+            "tool_sha256": "4" * 64,
+            "config_sha256": "5" * 64,
+            "image_digest": "sha256:" + "6" * 64,
+            "seccomp_sha256": "7" * 64,
+        },
+        "source": {
+            "commit": "8" * 40,
+            "eligibility": {
+                "repo_id": repo_id,
+                "source_rules_hash": "4" * 64,
+                "commit": "8" * 40,
+                "tracked_regular_paths": ["main.ts"],
+                "eligible_paths": ["main.ts"],
+                "prefilter_exclusions": [],
+                "tracked_inventory_hash": "5" * 64,
+                "eligible_paths_hash": "6" * 64,
+                "repo_fingerprint": "9" * 64,
+            },
+            "repo_fingerprint": "9" * 64,
+            "mount_target": "/source",
+            "read_only": True,
+        },
+        "environment": {
+            "environment_digest": "1" * 64,
+            "image_digest": "sha256:" + "6" * 64,
+            "docker_security_flags": [
+                "--network",
+                "none",
+                "--read-only",
+                "--cap-drop",
+                "ALL",
+            ],
+            "network_mode": "none",
+            "seccomp_sha256": "7" * 64,
+            "credentials_stripped": True,
+        },
+        "counters": {
+            "api_cost_usd": 0,
+            "input_tokens": 0,
+            "model_calls": 0,
+            "network_requests": 0,
+            "output_tokens": 0,
+            "provider_requests": 0,
+        },
+        "resources": {
+            "plan_digest": "a" * 64,
+            "wall_seconds": 1,
+            "cpu_seconds": 1,
+            "index_bytes": 1,
+            "disk_written_bytes": 1,
+            "free_disk_bytes_before": 1,
+            "peak_rss_bytes": 1,
+            "peak_processes": 1,
+            "peak_open_files": 1,
+            "peak_concurrency": 1,
+        },
+        "executions": executions,
+        "index_partition": {
+            "indexed_paths": ["main.ts"],
+            "excluded_paths": [],
+            "parse_error_paths": [],
+            "indexed_paths_hash": "b" * 64,
+            "excluded_paths_hash": "c" * 64,
+            "parse_error_paths_hash": "d" * 64,
+        },
+        "snapshot": {
+            "format": "dm-verity-v1",
+            "data_image_sha256": "e" * 64,
+            "data_image_size": 1,
+            "hash_image_sha256": "f" * 64,
+            "hash_image_size": 1,
+            "root_hash": "0" * 64,
+            "salt": "1" * 64,
+            "data_block_size": 4096,
+            "hash_block_size": 4096,
+            "data_blocks": 1,
+            "mount_flags": ["ro", "nosuid", "nodev", "noexec"],
+            "tree_hash": "2" * 64,
+            "index_content_hash": "3" * 64,
+        },
+        "process_audit": {
+            "producer_container_id": "producer-1",
+            "image_digest": "sha256:" + "6" * 64,
+            "cgroup_id": "cg-1",
+            "pid1_exit": 0,
+            "descendants_after_stop": 0,
+            "one_start": True,
+            "network_syscall_denials": 1,
+            "audit_bytes": dict(blob),
+        },
+        "oracle_approval": {"approved": True, "approval_bytes": dict(blob)},
+    }
+
+
+def _qualification_v3_receipt(repo_id="vscode", arm_id="tsa-warm"):
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        assemble_receipt,
+        sign_body,
+        signature_record,
+    )
+
+    body = _qualification_v3_body(repo_id, arm_id)
+    executor = signature_record("executor", sign_body(body, b"\x11" * 32))
+    approver = signature_record("approver", sign_body(body, b"\x22" * 32))
+    return assemble_receipt(body, executor, approver)
+
+
+def _qualification_v3_public_config():
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    return {
+        "schema_version": 1,
+        "executor": {
+            "key_id": "executor",
+            "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
+            .public_key()
+            .public_bytes_raw()
+            .hex(),
+        },
+        "approver": {
+            "key_id": "approver",
+            "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x22" * 32)
+            .public_key()
+            .public_bytes_raw()
+            .hex(),
+        },
+    }
+
+
+def test_qualification_v3_signatures_cover_byte_identical_canonical_body():
+    from benchmarks.codegraph_compare.receipt_v3 import verify_receipt
+
+    config = _qualification_v3_public_config()
+    receipt = _qualification_v3_receipt()
+    verify_receipt(
+        receipt,
+        config["executor"]["key_id"],
+        bytes.fromhex(config["executor"]["public_key_hex"]),
+        config["approver"]["key_id"],
+        bytes.fromhex(config["approver"]["public_key_hex"]),
+    )
+    assert (
+        receipt["body_sha256"]
+        == hashlib.sha256(
+            json.dumps(
+                receipt["body"],
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
+    )
+
+
+def test_qualification_v3_approver_verifies_executor_handoff_before_signing():
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        approve_executor_attestation,
+        create_executor_attestation,
+    )
+
+    body = _qualification_v3_body()
+    handoff = create_executor_attestation(body, "executor", b"\x11" * 32)
+    receipt = approve_executor_attestation(
+        handoff,
+        "executor",
+        Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
+        .public_key()
+        .public_bytes_raw(),
+        "approver",
+        b"\x22" * 32,
+    )
+
+    assert receipt["executor_signature"] == handoff["executor_signature"]
+
+
+def test_qualification_v3_rejects_body_mutation():
+    from benchmarks.codegraph_compare.receipt_v3 import verify_receipt
+
+    receipt = _qualification_v3_receipt()
+    receipt["body"]["cell"]["repo_id"] = "gin"
+    config = _qualification_v3_public_config()
+    with pytest.raises(ValueError, match="body hash mismatch"):
+        verify_receipt(
+            receipt,
+            "executor",
+            bytes.fromhex(config["executor"]["public_key_hex"]),
+            "approver",
+            bytes.fromhex(config["approver"]["public_key_hex"]),
+        )
+
+
+def test_qualification_v3_rejects_signature_swap():
+    from benchmarks.codegraph_compare.receipt_v3 import verify_receipt
+
+    receipt = _qualification_v3_receipt()
+    (
+        receipt["executor_signature"]["signature"],
+        receipt["approver_signature"]["signature"],
+    ) = (
+        receipt["approver_signature"]["signature"],
+        receipt["executor_signature"]["signature"],
+    )
+    receipt["receipt_hash"] = hashlib.sha256(
+        json.dumps(
+            {k: v for k, v in receipt.items() if k != "receipt_hash"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    config = _qualification_v3_public_config()
+    with pytest.raises(ValueError, match="signature mismatch"):
+        verify_receipt(
+            receipt,
+            "executor",
+            bytes.fromhex(config["executor"]["public_key_hex"]),
+            "approver",
+            bytes.fromhex(config["approver"]["public_key_hex"]),
+        )
+
+
+def test_qualification_v3_rejects_duplicate_json_member():
+    from benchmarks.codegraph_compare.receipt_v3 import strict_json_loads
+
+    with pytest.raises(ValueError, match="duplicate JSON member"):
+        strict_json_loads(b'{"schema_version":3,"schema_version":3}')
+
+
+def test_qualification_v3_rejects_nan():
+    from benchmarks.codegraph_compare.receipt_v3 import strict_json_loads
+
+    with pytest.raises(ValueError, match="non-finite"):
+        strict_json_loads(b'{"value":NaN}')
+
+
+def test_qualification_v3_rejects_extra_nested_field():
+    from benchmarks.codegraph_compare.receipt_v3 import validate_body
+
+    body = _qualification_v3_body()
+    body["cell"]["unexpected"] = False
+    with pytest.raises(ValueError, match="unknown or missing fields"):
+        validate_body(body)
+
+
+def test_qualification_v3_rejects_noncanonical_artifact_path():
+    from benchmarks.codegraph_compare.receipt_v3 import validate_body
+
+    body = _qualification_v3_body()
+    body["cell"]["artifact_path"] = "cells/../receipt.json"
+    with pytest.raises(ValueError, match="not canonical"):
+        validate_body(body)
+
+
+def test_qualification_v3_aggregate_requires_exact_canonical_14_order():
+    from benchmarks.codegraph_compare.setup_qualification import EXPECTED_CELLS
+    from benchmarks.codegraph_compare.verifier import aggregate_verdict
+
+    receipts = [_qualification_v3_receipt(repo, arm) for repo, arm in EXPECTED_CELLS]
+    assert aggregate_verdict(receipts)["status"] == "SETUP_QUALIFIED"
+
+
+def test_qualification_v3_aggregate_rejects_reordered_cells():
+    from benchmarks.codegraph_compare.setup_qualification import EXPECTED_CELLS
+    from benchmarks.codegraph_compare.verifier import aggregate_verdict
+
+    receipts = [_qualification_v3_receipt(repo, arm) for repo, arm in EXPECTED_CELLS]
+    receipts[0], receipts[1] = receipts[1], receipts[0]
+    assert aggregate_verdict(receipts)["status"] == "NOT_EVALUATED"
+
+
+def test_qualification_v3_aggregate_claims_remain_e0_and_disabled():
+    from benchmarks.codegraph_compare.verifier import aggregate_verdict
+
+    verdict = aggregate_verdict([])
+    assert {
+        key: verdict[key]
+        for key in (
+            "evaluation_stage",
+            "status",
+            "publishable",
+            "winner",
+            "dominance_allowed",
+            "unlock_allowed",
+        )
+    } == {
+        "evaluation_stage": "E0",
+        "status": "NOT_EVALUATED",
+        "publishable": False,
+        "winner": None,
+        "dominance_allowed": False,
+        "unlock_allowed": False,
+    }
+
+
+def test_qualification_executor_rejects_nonempty_output(tmp_path: Path):
+    from benchmarks.codegraph_compare.setup_qualification_executor import produce_cell
+
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "preexisting").write_bytes(b"untrusted")
+    with pytest.raises(ValueError, match="fresh empty directory"):
+        produce_cell({}, output)
+
+
+def test_qualification_operator_contract_is_exact_e0_without_docker():
+    completed = subprocess.run(
+        ["bash", "scripts/no1_008a_operator.sh", "contract"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+    assert (
+        result["cells"],
+        result["attempts_per_cell"],
+        result["max_concurrency"],
+        result["evaluation_stage"],
+        result["status"],
+        result["publishable"],
+        result["winner"],
+        result["dominance_allowed"],
+        result["unlock_allowed"],
+    ) == (14, 1, 1, "E0", "NOT_EVALUATED", False, None, False, False)
+
+
+def test_qualification_operator_dry_run_emits_each_cell_once():
+    completed = subprocess.run(
+        ["bash", "scripts/no1_008a_operator.sh", "dry-run"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    rows = [json.loads(line) for line in completed.stdout.splitlines()]
+    identities = [(row["repo_id"], row["arm_id"], row["attempt"]) for row in rows[:-1]]
+    from benchmarks.codegraph_compare.setup_qualification import EXPECTED_CELLS
+
+    assert identities == [(repo, arm, 1) for repo, arm in EXPECTED_CELLS]
+
+
+def test_qualification_seccomp_denies_exact_network_syscall_set():
+    profile = json.loads(Path("scripts/no1_008a_no_network_seccomp.json").read_text())
+    assert profile["syscalls"] == [
+        {
+            "names": [
+                "socket",
+                "socketpair",
+                "connect",
+                "bind",
+                "listen",
+                "accept",
+                "accept4",
+                "sendto",
+                "sendmsg",
+                "recvfrom",
+                "recvmsg",
+            ],
+            "action": "SCMP_ACT_ERRNO",
+            "errnoRet": 1,
+        }
+    ]
+
+
 _mark_posix_qualification_section_tests()

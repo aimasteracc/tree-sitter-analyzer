@@ -434,3 +434,29 @@ Column meanings:
 - `fail_rate` — percentage of repeats with `error` set or `overall < 2.5`
 
 A result is considered **dominant** if it scores higher on `med_overall` AND lower on `med_tokens` than the next-best arm. Neither dimension alone is sufficient.
+
+
+## NO1-008A detached receipt v3 operator (E0 only)
+
+Receipt v2 remains a non-upgradable E0 compatibility boundary. The v3 path uses
+four isolated roles: a keyless producer, an executor signer, an approver signer,
+and a fresh verifier that receives only two distinct public keys. The immutable
+core is a dm-verity snapshot; `cell-receipt.json` is detached and both signatures
+cover the same domain-separated canonical body bytes.
+
+Inspect the exact 14-cell contract without Docker or keys:
+
+```bash
+scripts/no1_008a_operator.sh contract
+scripts/no1_008a_operator.sh dry-run
+bash -n scripts/no1_008a_operator.sh
+```
+
+A real `run` is Linux/root-only, requires digest-pinned preloaded images and
+root-owned mode-0400 raw key files, and applies `--network none`, a network-deny
+seccomp profile, a read-only root filesystem, all-capability drop, and isolated
+mounts. It is intentionally not run in ordinary CI. No evidence in this change
+marks NO1-008A complete: all claims remain `E0` / `NOT_EVALUATED`, non-publishable,
+with `winner=null` and dominance/unlock disabled. `SETUP_QUALIFIED`, if later
+issued by a fresh exact-14 verifier, is setup evidence only and is not E2 or a
+product comparison.
