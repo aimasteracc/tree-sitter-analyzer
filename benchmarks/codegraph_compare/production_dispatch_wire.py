@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import math
-import os
 import re
-import stat
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -18,15 +14,15 @@ from benchmarks.codegraph_compare.canary_evidence import (
     canonical_sha256,
     validate_canary_manifest,
 )
-from benchmarks.codegraph_compare.production_collector import (
-    _DIR_FLAGS,
-    _FILE_NOFOLLOW,
-    _open_parent_and_create_root,
+from benchmarks.codegraph_compare.production_authorities import (
+    ProviderReservationReceiptV1,
+    ProviderUsageReceiptV1,
 )
 from benchmarks.codegraph_compare.production_trust import (
-    OperatorTrustConfigV1,
     ProductionRunSpecV1,
 )
+
+_LOWER_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -70,109 +66,6 @@ class ProductionDispatchRequestV1:
         )
 
 
-PROVIDER_RECEIPT_ROLE = "provider-budget-gateway"
-DEFAULT_PROVIDER_RECEIPT_KEY_ID = "legacy-provider-receipt-key"
-_LOWER_SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_CANONICAL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
-
-
-@dataclass(frozen=True)
-class ProviderReservationReceiptV1:
-    schema_version: int
-    spec_hash: str
-    reservation_id: str
-    request_limit: int
-    token_limit: int
-    budget_ceiling_usd: float
-    issuer_role: str
-    key_id: str
-    hmac_sha256: str
-
-
-def validate_provider_reservation_receipt_v1(receipt: object) -> None:
-    """Enforce the exact provider receipt schema before any HMAC operation."""
-    if type(receipt) is not ProviderReservationReceiptV1:
-        raise ValueError("provider receipt must be exact ProviderReservationReceiptV1")
-    if type(receipt.schema_version) is not int or receipt.schema_version != 1:
-        raise ValueError("provider receipt schema_version must be exact integer 1")
-    if (
-        type(receipt.spec_hash) is not str
-        or _LOWER_SHA256.fullmatch(receipt.spec_hash) is None
-    ):
-        raise ValueError("provider receipt spec_hash must be lowercase SHA-256")
-    for label in ("reservation_id", "issuer_role", "key_id"):
-        value = getattr(receipt, label)
-        if (
-            type(value) is not str
-            or _CANONICAL_ID.fullmatch(value) is None
-            or ".." in value
-        ):
-            raise ValueError(f"provider receipt {label} must be a bounded canonical id")
-    for label in ("request_limit", "token_limit"):
-        value = getattr(receipt, label)
-        if type(value) is not int or value <= 0:
-            raise ValueError(
-                f"provider receipt {label} must be a positive exact integer"
-            )
-    if (
-        type(receipt.budget_ceiling_usd) is not float
-        or not math.isfinite(receipt.budget_ceiling_usd)
-        or receipt.budget_ceiling_usd <= 0
-    ):
-        raise ValueError("provider receipt budget must be a positive finite float")
-    if (
-        type(receipt.hmac_sha256) is not str
-        or _LOWER_SHA256.fullmatch(receipt.hmac_sha256) is None
-    ):
-        raise ValueError("provider receipt HMAC must be lowercase SHA-256")
-
-
-def issue_provider_reservation_receipt(
-    spec: ProductionRunSpecV1,
-    reservation_id: str,
-    key: bytes,
-    *,
-    issuer_role: str = PROVIDER_RECEIPT_ROLE,
-    key_id: str = DEFAULT_PROVIDER_RECEIPT_KEY_ID,
-) -> ProviderReservationReceiptV1:
-    if (
-        type(key) is not bytes
-        or len(key) < 32
-        or type(reservation_id) is not str
-        or _CANONICAL_ID.fullmatch(reservation_id) is None
-        or ".." in reservation_id
-        or type(issuer_role) is not str
-        or _CANONICAL_ID.fullmatch(issuer_role) is None
-        or ".." in issuer_role
-        or type(key_id) is not str
-        or _CANONICAL_ID.fullmatch(key_id) is None
-        or ".." in key_id
-    ):
-        raise ValueError("provider reservation identity/key invalid")
-    fields = {
-        "schema_version": 1,
-        "spec_hash": spec.spec_hash,
-        "reservation_id": reservation_id,
-        "request_limit": spec.request_limit,
-        "token_limit": spec.token_limit,
-        "budget_ceiling_usd": spec.budget_ceiling_usd,
-        "issuer_role": issuer_role,
-        "key_id": key_id,
-    }
-    signature = hmac.new(key, _canonical(fields), hashlib.sha256).hexdigest()
-    return ProviderReservationReceiptV1(
-        schema_version=1,
-        spec_hash=spec.spec_hash,
-        reservation_id=reservation_id,
-        request_limit=spec.request_limit,
-        token_limit=spec.token_limit,
-        budget_ceiling_usd=spec.budget_ceiling_usd,
-        issuer_role=issuer_role,
-        key_id=key_id,
-        hmac_sha256=signature,
-    )
-
-
 @dataclass(frozen=True)
 class ProviderRunResult:
     provider_request_count: int
@@ -187,6 +80,7 @@ class ProviderRunResult:
     wait_completed: bool = False
     usage_complete: bool = False
     provider_reservation_receipt: ProviderReservationReceiptV1 | None = None
+    provider_usage_receipt: ProviderUsageReceiptV1 | None = None
 
 
 class ProviderRunFailure(RuntimeError):
@@ -195,32 +89,10 @@ class ProviderRunFailure(RuntimeError):
         self.partial = partial
 
 
-class ProviderRequestGate:
-    def __init__(
-        self,
-        provider_call: Callable[[ProductionDispatchRequestV1], ProviderRunResult],
-        *,
-        before_call: Callable[[], None] | None = None,
-    ) -> None:
-        self._call = provider_call
-        self._before_call = before_call
-        self._count = 0
-
-    @property
-    def count(self) -> int:
-        return self._count
-
-    def call(self, request: ProductionDispatchRequestV1) -> ProviderRunResult:
-        if self._count != 0:
-            raise RuntimeError("PROVIDER_REQUEST_LIMIT_REACHED")
-        if self._before_call is not None:
-            self._before_call()
-        self._count = 1
-        return self._call(request)
-
-
 @dataclass(frozen=True)
 class TrustedOfflineTestAdapter:
+    """Marker only. Offline fakes are never executed by production dispatch."""
+
     run: Callable[[ProductionDispatchRequestV1], ProviderRunResult]
 
 
@@ -427,7 +299,10 @@ def load_journal_event_v1(data: str | bytes) -> dict[str, Any]:
                     or _LOWER_SHA256.fullmatch(value["evidence_digest"]) is None
                 )
             )
-            or (value["status"] == "PASS" and value["evidence_digest"] is None)
+            or (
+                value["status"] == "PASS"
+                and (value["evidence_digest"] is None or value["violations"])
+            )
         ):
             raise ValueError("terminal event invalid")
     _assert_canonical_input(data, value)
@@ -461,7 +336,9 @@ def load_production_dispatch_receipt_v1(
         type(receipt.status) is not str
         or receipt.status not in ("PASS", "INVALID", "NOT_EVALUATED")
         or type(receipt.evidence_level) is not str
-        or receipt.evidence_level != "E0"
+        or receipt.evidence_level not in ("E0", "E1")
+        or (receipt.status == "PASS" and receipt.evidence_level != "E1")
+        or (receipt.status != "PASS" and receipt.evidence_level != "E0")
         or receipt.winner is not None
         or receipt.dominance_allowed
         or receipt.publishable
@@ -494,7 +371,8 @@ def load_production_dispatch_receipt_v1(
     ):
         raise ValueError("termination_reason must be a bounded non-empty string")
     if receipt.status == "PASS" and (
-        not receipt.reservation_durable
+        bool(receipt.violations)
+        or not receipt.reservation_durable
         or not receipt.terminal_durable
         or receipt.model_callbacks_invoked != 1
         or receipt.envelope_hash is None
@@ -509,204 +387,3 @@ def load_production_dispatch_receipt_v1(
         )
     _assert_canonical_input(data, value)
     return receipt
-
-
-class _Journal:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.parent_fd, self.fd, self.pin = _open_parent_and_create_root(root)
-        parent_st = os.fstat(self.parent_fd)
-        self.parent_pin = (parent_st.st_dev, parent_st.st_ino)
-
-    def assert_pin(self) -> None:
-        """Prove the signed path still names the pinned journal and parent."""
-        try:
-            parent_st = os.stat(self.root.parent, follow_symlinks=False)
-            root_st = os.stat(
-                self.root.name, dir_fd=self.parent_fd, follow_symlinks=False
-            )
-            signed_st = os.stat(self.root, follow_symlinks=False)
-            parent_fd_st = os.fstat(self.parent_fd)
-            root_fd_st = os.fstat(self.fd)
-        except OSError as error:
-            raise RuntimeError("Journal signed path is no longer reachable") from error
-        if (
-            stat.S_ISLNK(parent_st.st_mode)
-            or (
-                parent_st.st_dev,
-                parent_st.st_ino,
-            )
-            != self.parent_pin
-        ):
-            raise RuntimeError("Journal parent inode changed")
-        if (parent_fd_st.st_dev, parent_fd_st.st_ino) != self.parent_pin:
-            raise RuntimeError("Journal parent descriptor changed")
-        for candidate in (root_st, signed_st, root_fd_st):
-            if (
-                stat.S_ISLNK(candidate.st_mode)
-                or (
-                    candidate.st_dev,
-                    candidate.st_ino,
-                )
-                != self.pin
-            ):
-                raise RuntimeError("Journal root inode changed")
-
-    def _write_pinned(self, name: str, value: object) -> None:
-        body = _canonical(value)
-        fd = os.open(
-            name,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | _FILE_NOFOLLOW,
-            0o400,
-            dir_fd=self.fd,
-        )
-        try:
-            offset = 0
-            while offset < len(body):
-                offset += os.write(fd, body[offset:])
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-        os.fsync(self.fd)
-        os.fsync(self.parent_fd)
-
-    def write(self, name: str, value: object) -> None:
-        self.assert_pin()
-        self._write_pinned(name, value)
-        self.assert_pin()
-
-    def write_unknown_to_pin(self, name: str, value: object) -> None:
-        """Best-effort forensic record; never establishes signed-path durability."""
-        self._write_pinned(name, value)
-
-    def close(self) -> None:
-        for fd in (self.fd, self.parent_fd):
-            try:
-                os.close(fd)
-            except OSError:
-                pass
-
-
-def _open_existing_dir(path: Path) -> int:
-    absolute = path.resolve(strict=True)
-    if str(absolute) != str(path):
-        raise ValueError("directory must be canonical absolute")
-    fd = os.open("/", _DIR_FLAGS)
-    try:
-        for part in absolute.parts[1:]:
-            child = os.open(part, _DIR_FLAGS, dir_fd=fd)
-            os.close(fd)
-            fd = child
-        return fd
-    except Exception:
-        os.close(fd)
-        raise
-
-
-class _OperatorLedger:
-    """Pinned operator-precreated ledger root and parent identity."""
-
-    def __init__(
-        self, request: ProductionDispatchRequestV1, config: OperatorTrustConfigV1
-    ) -> None:
-        root = config.global_nonce_ledger_root
-        if root is None or str(root) != request.spec.global_nonce_ledger_root:
-            raise ValueError("operator ledger path does not match signed spec")
-        self.root = root
-        self.parent_fd = _open_existing_dir(root.parent)
-        try:
-            self.fd = os.open(root.name, _DIR_FLAGS, dir_fd=self.parent_fd)
-        except Exception:
-            os.close(self.parent_fd)
-            raise
-        self.expected_root = (
-            request.spec.ledger_root_device,
-            request.spec.ledger_root_inode,
-            request.spec.ledger_root_uid,
-            request.spec.ledger_root_mode,
-        )
-        self.expected_parent = (
-            request.spec.ledger_parent_device,
-            request.spec.ledger_parent_inode,
-            request.spec.ledger_parent_uid,
-            request.spec.ledger_parent_mode,
-        )
-        self.assert_identity()
-
-    @staticmethod
-    def _identity(value: os.stat_result) -> tuple[int, int, int, int]:
-        return value.st_dev, value.st_ino, value.st_uid, value.st_mode
-
-    def assert_identity(self) -> None:
-        try:
-            parent_path = os.lstat(self.root.parent)
-            root_path = os.lstat(self.root)
-            parent_fd = os.fstat(self.parent_fd)
-            root_fd = os.fstat(self.fd)
-            root_at = os.stat(
-                self.root.name, dir_fd=self.parent_fd, follow_symlinks=False
-            )
-        except OSError as error:
-            raise RuntimeError("operator ledger identity unavailable") from error
-        if any(
-            stat.S_ISLNK(item.st_mode)
-            for item in (parent_path, root_path, parent_fd, root_fd, root_at)
-        ):
-            raise RuntimeError("operator ledger identity contains symlink")
-        if any(
-            self._identity(item) != self.expected_parent
-            for item in (parent_path, parent_fd)
-        ):
-            raise RuntimeError("operator ledger parent identity changed")
-        if any(
-            self._identity(item) != self.expected_root
-            for item in (root_path, root_fd, root_at)
-        ):
-            raise RuntimeError("operator ledger root identity changed")
-
-    def close(self) -> None:
-        os.close(self.fd)
-        os.close(self.parent_fd)
-
-
-def _claim_global(
-    request: ProductionDispatchRequestV1, ledger: _OperatorLedger
-) -> None:
-    ledger.assert_identity()
-    name = (
-        canonical_sha256(
-            {
-                "schema_version": 1,
-                "spec_hash": request.spec.spec_hash,
-                "nonce": request.spec.nonce,
-            }
-        )
-        + ".claim"
-    )
-    body = _canonical(
-        {
-            "schema_version": 1,
-            "event": "GLOBAL_CLAIM",
-            "spec_hash": request.spec.spec_hash,
-            "nonce": request.spec.nonce,
-            "envelope_hash": request.envelope_hash,
-        }
-    )
-    try:
-        claim = os.open(
-            name,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | _FILE_NOFOLLOW,
-            0o400,
-            dir_fd=ledger.fd,
-        )
-        try:
-            offset = 0
-            while offset < len(body):
-                offset += os.write(claim, body[offset:])
-            os.fsync(claim)
-        finally:
-            os.close(claim)
-        os.fsync(ledger.fd)
-        os.fsync(ledger.parent_fd)
-    finally:
-        ledger.assert_identity()
