@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
-import stat
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -19,8 +19,16 @@ from typing import Any
 from benchmarks.codegraph_compare.integrity import _sha256
 from benchmarks.codegraph_compare.setup_qualification_paths import (
     _hash_tree,
-    _lstat_regular_beneath,
+    _read_regular_beneath,
+    _tree_size,
     canonical_relative_path,
+)
+from benchmarks.codegraph_compare.setup_qualification_trust import (
+    TRUSTED_APPROVER_KEY_ID,
+    TRUSTED_APPROVER_PUBLIC_KEY,
+    TRUSTED_EXECUTOR_KEY_ID,
+    TRUSTED_EXECUTOR_PUBLIC_KEY,
+    _verify_signature,
 )
 
 REPOSITORIES = ("vscode", "excalidraw", "django", "tokio", "okhttp", "gin", "alamofire")
@@ -174,13 +182,13 @@ class HarnessArtifactV1:
 
     @classmethod
     def read(cls, path: Path) -> HarnessArtifactV1:
-        if stat.S_ISLNK(os.lstat(path).st_mode):
-            raise ValueError("Harness artifact path must not be a symlink")
-        resolved = path.resolve(strict=True)
-        if stat.S_ISLNK(os.lstat(resolved).st_mode) or not resolved.is_file():
-            raise ValueError("Harness artifact must be a non-symlink regular file")
-        payload = resolved.read_bytes()
-        return cls(str(resolved), len(payload), _bytes_hash(payload))
+        absolute = path.absolute()
+        if not absolute.is_absolute():
+            raise ValueError("Harness artifact must have an absolute path")
+        payload = _read_regular_beneath(
+            Path(absolute.anchor), absolute.as_posix().lstrip("/")
+        )
+        return cls(str(absolute), len(payload), _bytes_hash(payload))
 
 
 @dataclass(frozen=True)
@@ -194,6 +202,7 @@ class CellPlanV1:
     config: HarnessArtifactV1
     oracle_specs: tuple[OracleSpecV1, ...]
     resources: ResourcePlanV1
+    parse_error_allowlist: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if (self.repo_id, self.arm_id) not in EXPECTED_CELLS or self.attempt != 1:
@@ -203,6 +212,11 @@ class CellPlanV1:
             raise ValueError("Eligibility is not bound to the planned repository")
         if {spec.kind for spec in self.oracle_specs} != {"symbol", "call"}:
             raise ValueError("Each plan requires symbol and call human oracles")
+        allowlist = _sorted_paths(self.parse_error_allowlist, "parse-error allowlist")
+        if not set(allowlist).issubset(self.eligibility.eligible_paths):
+            raise ValueError(
+                "Parse-error allowlist must be pre-registered eligible paths"
+            )
 
     @property
     def digest(self) -> str:
@@ -258,8 +272,7 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
             continue
         if mode not in _REGULAR_MODES:
             raise ValueError(f"Unsupported tracked mode {mode}: {relative}")
-        path = _lstat_regular_beneath(repo, relative)
-        payload = path.read_bytes()
+        payload = _read_regular_beneath(repo, relative)
         regular.append(relative)
         file_hashes.append((relative, mode, object_id, _bytes_hash(payload)))
         components = relative.split("/")
@@ -313,13 +326,17 @@ def produce_strict_cell(**_: Any) -> dict[str, Any]:
 def validate_cell_receipt(
     receipt: Mapping[str, Any], *, plan: CellPlanV1, cell_root: Path
 ) -> tuple[str, ...]:
-    """Strictly validate one planned cell without granting qualification."""
+    """Strictly validate one receipt against trusted plans and independent evidence."""
     failures: list[str] = []
     try:
-        if stat.S_ISLNK(os.lstat(cell_root).st_mode) or not cell_root.is_dir():
-            failures.append("CELL_ROOT_ISOLATION_MISMATCH")
+        root_fd = os.open(cell_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        os.close(root_fd)
     except OSError:
         failures.append("CELL_ROOT_ISOLATION_MISMATCH")
+    if receipt.get("schema_version") != 2 or isinstance(
+        receipt.get("schema_version"), bool
+    ):
+        failures.append("RECEIPT_SCHEMA_MISMATCH")
     unsigned = dict(receipt)
     claimed_hash = unsigned.pop("receipt_hash", None)
     if claimed_hash != _sha256(unsigned):
@@ -352,6 +369,7 @@ def validate_cell_receipt(
         failures.append("HARNESS_BYTES_MISMATCH")
     if receipt.get("counters") != ZERO_COUNTERS:
         failures.append("FORBIDDEN_COUNTER_MISMATCH")
+
     observation = receipt.get("resource_observation")
     if (
         not isinstance(observation, Mapping)
@@ -369,44 +387,80 @@ def validate_cell_receipt(
             ("peak_open_files", plan.resources.max_open_files),
             ("peak_concurrency", 1),
         )
-        if observation.get(
-            "free_disk_bytes_before", -1
-        ) < plan.resources.min_free_disk_bytes or any(
-            not isinstance(observation.get(key), (int, float))
-            or observation[key] < 0
-            or observation[key] > ceiling
-            for key, ceiling in maxima
+        values = (
+            ("free_disk_bytes_before", observation.get("free_disk_bytes_before")),
+            *((key, observation.get(key)) for key, _ in maxima),
+        )
+        numeric = all(
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+            for _, value in values
+        )
+        if (
+            not numeric
+            or observation["free_disk_bytes_before"]
+            < plan.resources.min_free_disk_bytes
+            or any(
+                observation[key] < 0 or observation[key] > ceiling
+                for key, ceiling in maxima
+            )
         ):
             failures.append("RESOURCE_LIMIT_VIOLATION")
+
+    partition = receipt.get("index_partition")
+    try:
+        if not isinstance(partition, Mapping):
+            raise ValueError
+        indexed = _sorted_paths(partition.get("indexed_paths", ()), "indexed")
+        excluded = _sorted_paths(partition.get("excluded_paths", ()), "excluded")
+        errors = _sorted_paths(partition.get("parse_error_paths", ()), "parse-error")
+        allowlist = _sorted_paths(
+            partition.get("parse_error_allowlist", ()), "parse-error allowlist"
+        )
+        if allowlist != plan.parse_error_allowlist:
+            raise ValueError
+        eligible = set(plan.eligibility.eligible_paths)
+        groups = (set(indexed), set(excluded), set(errors))
+        if any(groups[a] & groups[b] for a, b in ((0, 1), (0, 2), (1, 2))):
+            raise ValueError
+        if set().union(*groups) != eligible or set(errors) != set(allowlist):
+            raise ValueError
+        if (
+            partition.get("indexed_paths_hash") != _sha256(list(indexed))
+            or partition.get("excluded_paths_hash") != _sha256(list(excluded))
+            or partition.get("parse_error_paths_hash") != _sha256(list(errors))
+        ):
+            raise ValueError
+    except (TypeError, ValueError):
+        failures.append("INDEX_PARTITION_MISMATCH")
+
     index_relative = receipt.get("index_path")
     try:
         if not isinstance(index_relative, str):
-            raise ValueError("Index path must be a string")
+            raise ValueError
         index_path = cell_root / canonical_relative_path(index_relative)
-        actual_index_bytes = sum(
-            os.lstat(path).st_size
-            for path in index_path.rglob("*")
-            if stat.S_ISREG(os.lstat(path).st_mode)
-        )
+        actual_index_hash = _hash_tree(index_path)
+        actual_index_bytes = _tree_size(index_path)
         if (
-            _hash_tree(index_path) != receipt.get("index_content_hash")
+            actual_index_hash != receipt.get("index_content_hash")
             or not isinstance(observation, Mapping)
             or observation.get("index_bytes") != actual_index_bytes
         ):
-            failures.append("INDEX_BYTES_MISMATCH")
-    except (TypeError, ValueError, FileNotFoundError):
+            raise ValueError
+    except (OSError, TypeError, ValueError):
         failures.append("INDEX_BYTES_MISMATCH")
+        actual_index_hash = None
 
     def valid_blob(raw: object) -> bool:
         if not isinstance(raw, Mapping):
             return False
+        relative = raw.get("path")
+        if not isinstance(relative, str):
+            return False
         try:
-            relative = raw.get("path")
-            if not isinstance(relative, str):
-                return False
-            path = _lstat_regular_beneath(cell_root, relative)
-            payload = path.read_bytes()
-        except (OSError, TypeError, ValueError):
+            payload = _read_regular_beneath(cell_root, relative)
+        except (OSError, RuntimeError, TypeError, ValueError):
             return False
         return raw.get("size_bytes") == len(payload) and raw.get(
             "sha256"
@@ -415,13 +469,14 @@ def validate_cell_receipt(
     executions = receipt.get("raw_executions")
     expected_ids = ("build", *(spec.oracle_id for spec in plan.oracle_specs))
     raw_paths: list[str] = []
-    if (
-        not isinstance(executions, list)
-        or tuple(item.get("id") for item in executions if isinstance(item, Mapping))
-        != expected_ids
-    ):
-        failures.append("RAW_EXECUTION_EVIDENCE_MISSING")
-    else:
+    execution_evidence: list[dict[str, Any]] = []
+    execution_valid = (
+        isinstance(executions, list)
+        and tuple(item.get("id") for item in executions if isinstance(item, Mapping))
+        == expected_ids
+    )
+    if isinstance(executions, list) and execution_valid:
+        specs = {spec.oracle_id: spec for spec in plan.oracle_specs}
         for item in executions:
             blobs = tuple(
                 item.get(key)
@@ -442,10 +497,68 @@ def validate_cell_receipt(
                 or not all(isinstance(arg, str) and arg for arg in item.get("argv", ()))
                 or not all(valid_blob(blob) for blob in blobs)
             ):
-                failures.append("RAW_EXECUTION_EVIDENCE_MISSING")
+                execution_valid = False
                 break
-        if len(raw_paths) != len(set(raw_paths)):
-            failures.append("RAW_EXECUTION_EVIDENCE_MISSING")
+            if item["id"] != "build":
+                spec = specs[item["id"]]
+                try:
+                    query = json.loads(
+                        _read_regular_beneath(cell_root, item["query_bytes"]["path"])
+                    )
+                    result = json.loads(
+                        _read_regular_beneath(cell_root, item["stdout_bytes"]["path"])
+                    )
+                except (OSError, ValueError, json.JSONDecodeError):
+                    execution_valid = False
+                    break
+                if (
+                    item.get("oracle_spec_hash") != spec.digest
+                    or query != dict(spec.query)
+                    or result != spec.expected_result
+                ):
+                    execution_valid = False
+                    break
+            execution_evidence.append(
+                {
+                    "id": item["id"],
+                    "argv": item["argv"],
+                    "stdout": item["stdout_bytes"]["sha256"],
+                    "stderr": item["stderr_bytes"]["sha256"],
+                    "query": item["query_bytes"]["sha256"],
+                    "index": item["index_bytes"]["sha256"],
+                }
+            )
+    if not execution_valid or len(raw_paths) != len(set(raw_paths)):
+        failures.append("RAW_EXECUTION_EVIDENCE_MISSING")
+
+    provenance = receipt.get("index_provenance")
+    provenance_payload = {
+        "plan_hash": plan.digest,
+        "repo_fingerprint": plan.eligibility.repo_fingerprint,
+        "commit": plan.eligibility.commit,
+        "tool": asdict(plan.tool),
+        "config": asdict(plan.config),
+        "build_argv": executions[0].get("argv")
+        if isinstance(executions, list)
+        and executions
+        and isinstance(executions[0], Mapping)
+        else None,
+        "index_content_hash": actual_index_hash,
+        "execution_evidence_hash": _sha256(execution_evidence),
+    }
+    if (
+        not isinstance(provenance, Mapping)
+        or provenance.get("payload") != provenance_payload
+        or not _verify_signature(
+            key_id=provenance.get("key_id"),
+            signature=provenance.get("signature"),
+            payload=provenance_payload,
+            expected_key_id=TRUSTED_EXECUTOR_KEY_ID,
+            public_key=TRUSTED_EXECUTOR_PUBLIC_KEY,
+        )
+    ):
+        failures.append("INDEX_PROVENANCE_MISSING")
+
     audit = receipt.get("os_audit")
     required_audit = {
         "network_denied": True,
@@ -453,18 +566,54 @@ def validate_cell_receipt(
         "descendants_observed": True,
         "process_audited": True,
     }
+    audit_payload = {
+        "plan_hash": plan.digest,
+        "execution_evidence_hash": _sha256(execution_evidence),
+        "audit_blob_hash": audit.get("audit_bytes", {}).get("sha256")
+        if isinstance(audit, Mapping)
+        else None,
+        "index_content_hash": actual_index_hash,
+        **required_audit,
+    }
     if (
         not isinstance(audit, Mapping)
         or any(audit.get(k) != v for k, v in required_audit.items())
         or not valid_blob(audit.get("audit_bytes"))
+        or audit.get("payload") != audit_payload
+        or not _verify_signature(
+            key_id=audit.get("key_id"),
+            signature=audit.get("signature"),
+            payload=audit_payload,
+            expected_key_id=TRUSTED_EXECUTOR_KEY_ID,
+            public_key=TRUSTED_EXECUTOR_PUBLIC_KEY,
+        )
     ):
         failures.append("OS_AUDIT_MISSING")
+
     approval = receipt.get("human_oracle_approval")
+    approval_payload = {
+        "plan_hash": plan.digest,
+        "oracle_specs_hash": _sha256([asdict(spec) for spec in plan.oracle_specs]),
+        "execution_evidence_hash": _sha256(execution_evidence),
+        "approval_blob_hash": approval.get("approval_bytes", {}).get("sha256")
+        if isinstance(approval, Mapping)
+        else None,
+        "index_content_hash": actual_index_hash,
+        "audit_payload_hash": _sha256(audit_payload),
+    }
     if (
         not isinstance(approval, Mapping)
         or approval.get("approved") is not True
-        or not approval.get("authority")
         or not valid_blob(approval.get("approval_bytes"))
+        or approval.get("payload") != approval_payload
+        or approval.get("key_id") == TRUSTED_EXECUTOR_KEY_ID
+        or not _verify_signature(
+            key_id=approval.get("key_id"),
+            signature=approval.get("signature"),
+            payload=approval_payload,
+            expected_key_id=TRUSTED_APPROVER_KEY_ID,
+            public_key=TRUSTED_APPROVER_PUBLIC_KEY,
+        )
     ):
         failures.append("HUMAN_ORACLE_APPROVAL_MISSING")
     return tuple(dict.fromkeys(failures))

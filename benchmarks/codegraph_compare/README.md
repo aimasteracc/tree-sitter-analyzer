@@ -115,13 +115,18 @@ an unfavorable outcome.
 
 `setup_qualification.py` is a model-free RFC-0021 **E0 evidence contract**
 for the seven pinned repositories and two indexed arms. It validates canonical
-POSIX paths, complete plan-bound source eligibility, harness-read tool/config
-bytes, raw argv/stdout/stderr/query/index artifacts, OS network/process audit,
-human oracle approval, and observed resource ceilings. It deliberately has no
-collector adapter: `produce_strict_cell` fails `NOT_EVALUATED` until a
-harness-owned sandbox executor exists. The orchestrator invokes the exact
-ordered 14-cell plan once per cell, validates every on-disk receipt, records all
-failures, seals a checksum manifest, and can emit only `E0/NOT_EVALUATED`.
+POSIX paths using `openat`/`O_NOFOLLOW`, schema-v2 receipts, exact finite
+resource observations, exact indexed/excluded/parse-error partitions, and full
+oracle-spec/query/normalized-result bindings. Index and execution provenance
+plus OS audit evidence require the pinned independent executor signature;
+plan/evidence approval requires a different pinned human-approver signature.
+Neither private key is available to a producer. It deliberately has no collector
+adapter: `produce_strict_cell` fails `NOT_EVALUATED` until a harness-owned sandbox
+executor exists. Plans must match the commits in `repos.yaml`, and both arms use
+identical eligibility. The orchestrator invokes the exact ordered 14-cell plan
+once per cell, then re-reads and strictly revalidates every immutable receipt and
+digest immediately before sealing. It records all failures and can emit only
+`E0/NOT_EVALUATED`.
 There is no reachable `QUALIFIED`, publish, winner, dominance, or unlock state.
 
 This is **not an operator command to run qualification yet**. NO1-003C, an
