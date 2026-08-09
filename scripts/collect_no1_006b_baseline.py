@@ -125,7 +125,7 @@ def install_environment(repo: Path, venv: Path, requirements: Path, wheel: Path)
     return python
 
 
-INVENTORY_CODE = r"""import importlib.metadata as m, json, os, stat
+INVENTORY_CODE = r"""import importlib.metadata as m, json, os, stat, sys
 from pathlib import Path
 root_name="tree-sitter-analyzer"; root=m.distribution(root_name); dists={}
 for dist in m.distributions():
@@ -133,7 +133,7 @@ for dist in m.distributions():
  if not name or name in dists: raise RuntimeError(f"missing or duplicate distribution: {name!r}")
  dists[name] = dist.version
 if len(dists)>256: raise RuntimeError("distribution limit exceeded")
-venv=Path(os.environ["VIRTUAL_ENV"]).resolve(); seen_paths=set(); seen_inodes=set(); total=0; files=0
+venv=Path(sys.prefix).resolve(); seen_paths=set(); seen_inodes=set(); total=0; files=0
 for dist in m.distributions():
  for item in dist.files or []:
   if item.name=="direct_url.json" or item.suffix==".pyc": continue
