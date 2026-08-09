@@ -54,6 +54,18 @@ def test_receipt_binds_distinct_collector_and_subject_commits() -> None:
     assert report["collector"]["commit"] != report["source"]["commit"]
 
 
+def test_schema_rejects_subject_tree_mutation() -> None:
+    report=mutated(("source","git_tree"),"0"*40)
+    with pytest.raises(ValidationError): collector.validate_receipt(report,schema())
+
+
+def test_validator_rejects_subject_tree_mutation_when_schema_constraint_is_removed() -> None:
+    # PR #1250: retain a runtime binding even if receipt validation is called with a weakened schema.
+    weakened=copy.deepcopy(schema()); weakened["properties"]["source"]["properties"]["git_tree"]={"type":"string"}
+    report=mutated(("source","git_tree"),"0"*40)
+    with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,weakened)
+
+
 def test_receipt_binds_exact_collector_and_schema_bytes() -> None:
     report=baseline()
     commit=report["collector"]["commit"]
@@ -61,11 +73,23 @@ def test_receipt_binds_exact_collector_and_schema_bytes() -> None:
     assert [report["collector"]["script_sha256"],report["collector"]["schema_sha256"]] == [collector.digest_bytes(blob) for blob in blobs]
 
 
-def test_receipt_binds_exact_collector_tool_lock_and_export() -> None:
-    report=baseline(); command=report["commands"]["collector_tool_export"]
-    exported=subprocess.run(command,cwd=REPO,check=True,capture_output=True).stdout
-    lock_blob=subprocess.run(["git","show",f"{report['collector']['commit']}:uv.lock"],cwd=REPO,check=True,capture_output=True).stdout
+def test_receipt_binds_exact_collector_tool_lock_and_export(tmp_path: Path) -> None:
+    # PR #1250: the historical collector closure must be derived from its bound commit, never reviewed HEAD.
+    report=baseline(); commit=report["collector"]["commit"]; command=report["commands"]["collector_tool_export"]
+    uv=Path(shutil.which(command[0]) or "missing").resolve(strict=True)
+    uv_version=subprocess.run([str(uv),"--version"],check=True,capture_output=True,text=True).stdout.strip()
+    assert uv_version.split()[:2] == report["environment"]["uv"]["version"].split()[:2]
+    bound_command=[str(uv),*command[1:]]
+    worktree=tmp_path/"collector"
+    subprocess.run(["git","worktree","add","-q","--detach",str(worktree),commit],cwd=REPO,check=True)
+    try:
+        assert subprocess.run(["git","status","--porcelain=v1","--untracked-files=all","--ignored"],cwd=worktree,check=True,capture_output=True,text=True).stdout == ""
+        exported=subprocess.run(bound_command,cwd=worktree,env=collector.clean_env(),check=True,capture_output=True).stdout
+        lock_blob=subprocess.run(["git","show",f"{commit}:uv.lock"],cwd=worktree,env=collector.clean_env(),check=True,capture_output=True).stdout
+    finally:
+        subprocess.run(["git","worktree","remove","--force",str(worktree)],cwd=REPO,check=True)
     assert [report["collector"]["tool_lock_sha256"],report["collector"]["tool_export_sha256"]] == [collector.digest_bytes(lock_blob),collector.digest_bytes(exported)]
+    assert worktree.exists() is False
 
 
 def test_schema_rejects_invalid_rfc3339_timestamp() -> None:
@@ -339,6 +363,22 @@ def test_uv_export_ignores_hostile_config_file(monkeypatch: pytest.MonkeyPatch, 
     command=["uv","export","--no-config","--frozen","--offline","--only-group",collector.TOOL_GROUP,"--no-emit-project","--format","requirements-txt"]
     result=collector.run(command,cwd=REPO)
     assert b"packaging==25.0" in result.stdout
+
+
+def test_source_archive_ignores_hostile_local_and_global_tar_umask(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # PR #1250: archive identity must be independent of ambient and repository Git configuration.
+    source=tmp_path/"source"; source.mkdir(); (source/"file.txt").write_text("content\n")
+    for command in (["git","init","-q"],["git","config","user.email","contract@example.invalid"],["git","config","user.name","Contract"],["git","add","."],["git","commit","-qm","source"]):
+        subprocess.run(command,cwd=source,check=True)
+    clean_digest=collector.source_archive_sha(source,tmp_path/"clean.tar")
+    global_config=tmp_path/"hostile.gitconfig"; global_config.write_text("[tar]\n\tumask = 077\n")
+    subprocess.run(["git","config","tar.umask","077"],cwd=source,check=True)
+    original=collector.clean_env
+    def hostile_env(overrides: dict[str,str] | None=None) -> dict[str,str]:
+        environment=original(overrides); environment["GIT_CONFIG_GLOBAL"]=str(global_config); return environment
+    monkeypatch.setattr(collector,"clean_env",hostile_env)
+    hostile_digest=collector.source_archive_sha(source,tmp_path/"hostile.tar")
+    assert hostile_digest == clean_digest
 
 
 def test_bound_blob_hash_is_independent_of_crlf_checkout(tmp_path: Path) -> None:

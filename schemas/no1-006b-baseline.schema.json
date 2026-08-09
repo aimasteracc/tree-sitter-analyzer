@@ -53,7 +53,7 @@
       "required": ["commit","git_tree","lock_sha256","source_archive_sha256","root_wheel_filename","root_wheel_sha256","root_wheel_artifact_size_bytes"],
       "properties": {
         "commit": {"const":"7e0e8f6e03270fcbf4025d717415ef69c9354145"},
-        "git_tree": {"type":"string","pattern":"^[0-9a-f]{40}$"},
+        "git_tree": {"const":"fe340eff33002b67ae88b34f1174bbcca4efc370"},
         "lock_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
         "source_archive_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
         "root_wheel_filename": {"type":"string","pattern":"^[^/]+\\.whl$","maxLength":200},

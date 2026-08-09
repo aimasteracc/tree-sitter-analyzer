@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 EXPECTED_SUBJECT_COMMIT = "7e0e8f6e03270fcbf4025d717415ef69c9354145"
+EXPECTED_SUBJECT_TREE = "fe340eff33002b67ae88b34f1174bbcca4efc370"
 ROOT_NAME = "tree-sitter-analyzer"
 TOOL_GROUP = "no1-006b-collector-tool"
 HATCHLING_VERSION = "1.31.0"
@@ -64,7 +65,8 @@ def clean_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
     # inherited UV_* input: it selects already-downloaded offline artifacts, not
     # resolution or index policy.
     keep = {key: os.environ[key] for key in ("HOME", "PATH", "TMPDIR", "UV_CACHE_DIR") if key in os.environ}
-    clean = {**keep, "UV_NO_CONFIG": "1", "UV_OFFLINE": "1", "PYTHONDONTWRITEBYTECODE": "1", "LC_ALL": "C", "LANG": "C"}
+    clean = {**keep, "UV_NO_CONFIG": "1", "UV_OFFLINE": "1", "PYTHONDONTWRITEBYTECODE": "1", "LC_ALL": "C", "LANG": "C",
+             "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
     for key,value in (overrides or {}).items():
         if key.startswith("UV_"): raise ValueError(f"uv environment override is not allowed: {key}")
         clean[key]=value
@@ -157,7 +159,10 @@ def require_clean_subject(repo: Path, expected_commit: str) -> dict[str, str]:
     lock = repo / "uv.lock"
     if not lock.is_file() or lock.is_symlink():
         raise RuntimeError("subject uv.lock must be a regular non-symlink file")
-    return {"commit": commit, "git_tree": git(repo, "rev-parse", "HEAD^{tree}").decode().strip(),
+    tree = git(repo, "rev-parse", "HEAD^{tree}").decode().strip()
+    if tree != EXPECTED_SUBJECT_TREE:
+        raise RuntimeError(f"expected subject tree {EXPECTED_SUBJECT_TREE}, found {tree}")
+    return {"commit": commit, "git_tree": tree,
             "lock_sha256": digest_bytes(bound_blob(repo,commit,"uv.lock"))}
 
 
@@ -243,7 +248,7 @@ def build_environment() -> dict[str, Any]:
 
 
 def source_archive_sha(repo: Path, destination: Path) -> str:
-    run(["git", "archive", "--format=tar", "HEAD", "-o", str(destination)], cwd=repo)
+    run(["git", "-c", "tar.umask=000", "archive", "--format=tar", "HEAD", "-o", str(destination)], cwd=repo)
     require_file_budget(destination,MAX_SOURCE_ARCHIVE_BYTES,"source archive")
     return sha256(destination)
 
@@ -459,7 +464,8 @@ def validate_receipt(report: dict[str, Any], schema: dict[str, Any]) -> None:
             next((row["name"] for row in distributions if row["role"]=="root"),None)==ROOT_NAME,
             m["dependency_distribution_count_excluding_root"]==roles.count("direct")+roles.count("transitive"),
             report["source"]["root_wheel_artifact_size_bytes"]==m["root_wheel_artifact_size_bytes"],
-            closure["lock_sha256"]==report["source"]["lock_sha256"], len(names)==len(set(names)), names==sorted(names),
+            closure["lock_sha256"]==report["source"]["lock_sha256"], report["source"]["git_tree"]==EXPECTED_SUBJECT_TREE,
+            len(names)==len(set(names)), names==sorted(names),
             report["environment"]["system"]==report["measured_axis"], os_consistent,
             report["environment"]["uv"]=={"version":EXPECTED_UV_VERSION,"sha256":EXPECTED_UV_SHA256},
             report["environment"]["build_python"]==report["environment"]["python"],
