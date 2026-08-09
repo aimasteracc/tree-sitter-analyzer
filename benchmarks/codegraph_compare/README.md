@@ -151,6 +151,39 @@ terminalize the cell, and do not rerun it. Escalate the immutable receipt and
 violation list to the maintainers; never delete, overwrite, relabel, or exclude
 an unfavorable outcome.
 
+## NO1-008A seven-repository setup qualification (implementation only)
+
+`setup_qualification.py` is a model-free RFC-0021 **E0 contract scaffold**
+for the seven pinned repositories and two indexed arms. The current orchestrator
+is intentionally non-executing: it accepts no producer callback, invokes no
+producer, observes zero receipts, creates no checksum manifest, and seals no
+evidence. It always records `E0/NOT_EVALUATED` with the hard requirement for a
+future isolated external producer and a fresh trusted verifier artifact. That
+executor must build inside an isolated read-only filesystem snapshot, quiesce all
+producer descendants, block writes for the full verifier read, and sign the
+snapshot identity and those OS-enforced facts before any tree hash is computed.
+A mutable checkout or a finite number of verifier rereads is not evidence of
+immutability.
+
+Plans must match every field of an explicit trusted inventory map derived from
+the pinned repository checkouts, not merely the commit label. Each plan freezes
+the exact ordered deletion, build, health, symbol-query, and call-query argv;
+the receipt validator requires that complete ordered set and exit code zero.
+Signature trust roots are an explicit immutable `VerifierConfigV1` argument to
+the pure validator. No mutable module trust-key global can be monkeypatched into
+an authorization decision. The retained validator and strict parser are only
+building blocks for the future fresh verifier process; they are not called by
+the E0 orchestrator. There is no reachable `QUALIFIED`, receipt sealing, publish,
+winner, dominance, or unlock state.
+
+This is **not an operator command to run qualification yet**. NO1-003C, an
+independently reviewed oracle set, a real OS-level network/process sandbox, and
+an executor capable of independently capturing raw bytes remain gates. Do not
+run the real matrix, mark NO1-008A complete, start 008B, or describe these setup
+artifacts as E2/No.1/winner evidence. A failed attempt is followed by a new
+experiment directory, never overwrite or selective retry. Acquisition/cache
+preparation remains separate from the offline qualification phase.
+
 ## Quantitative README claim release gate
 
 The checked-in `claim_registry.json` is the sole source for public benchmark,

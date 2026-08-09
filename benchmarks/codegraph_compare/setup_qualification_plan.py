@@ -1,0 +1,614 @@
+"""Immutable plans and shared contracts for NO1-008A E0 evidence."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import os
+import re
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+from benchmarks.codegraph_compare.integrity import _sha256
+from benchmarks.codegraph_compare.setup_qualification_paths import (
+    _hash_regular_descriptor,
+    _open_beneath,
+    _open_root,
+    canonical_relative_path,
+)
+
+REPOSITORIES = ("vscode", "excalidraw", "django", "tokio", "okhttp", "gin", "alamofire")
+INDEXED_ARMS = ("tsa-warm", "codegraph-warm")
+EXPECTED_CELLS = tuple((repo, arm) for repo in REPOSITORIES for arm in INDEXED_ARMS)
+INDEX_PATH_PLACEHOLDER = "{plan.index_path}"
+_RESERVED_ORACLE_QUERY_FLAGS = frozenset(
+    {
+        "command",
+        "config",
+        "cwd",
+        "format",
+        "help",
+        "index",
+        "index-path",
+        "kind",
+        "output",
+        "project-root",
+        "root",
+        "source",
+        "source-path",
+        "tool",
+        "tool-path",
+        "version",
+        "working-directory",
+    }
+)
+ZERO_COUNTERS = {
+    "model_calls": 0,
+    "provider_requests": 0,
+    "network_requests": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "api_cost_usd": 0,
+}
+FROZEN_EXECUTION_ENVIRONMENT = (
+    ("HOME", "/nonexistent"),
+    ("LANG", "C.UTF-8"),
+    ("LC_ALL", "C.UTF-8"),
+    ("NO_PROXY", "*"),
+    ("PATH", ""),
+)
+FROZEN_EXECUTION_ENVIRONMENT_DIGEST = _sha256(FROZEN_EXECUTION_ENVIRONMENT)
+
+
+def _bytes_hash(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _write_exclusive(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", closefd=False) as stream:
+            json.dump(payload, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+    finally:
+        os.close(descriptor)
+
+
+_MAX_PLAN_JSON_DEPTH = 128
+_MAX_PLAN_JSON_NODES = 100_000
+
+
+def _canonical_typed_json_bytes(value: object) -> bytes:
+    """Copy one exact JSON value into canonical immutable bytes."""
+    if type(value) is bytes:
+        try:
+            decoded = json.loads(value)
+        except (json.JSONDecodeError, RecursionError) as exc:
+            raise ValueError(
+                "Expected result bytes must contain canonical JSON"
+            ) from exc
+        canonical = _canonical_typed_json_bytes(decoded)
+        if canonical != value:
+            raise ValueError("Expected result bytes must be canonical JSON")
+        return value
+    nodes = 0
+    stack: list[tuple[object, int]] = [(value, 1)]
+    while stack:
+        item, depth = stack.pop()
+        nodes += 1
+        if depth > _MAX_PLAN_JSON_DEPTH or nodes > _MAX_PLAN_JSON_NODES:
+            raise ValueError("Expected result exceeds trusted JSON bounds")
+        if type(item) is dict:
+            if any(type(key) is not str for key in item):
+                raise ValueError("Expected result object keys must be strings")
+            stack.extend((child, depth + 1) for child in item.values())
+        elif type(item) is list:
+            stack.extend((child, depth + 1) for child in item)
+        elif item is None or type(item) in {str, bool, int}:
+            continue
+        elif type(item) is float and math.isfinite(item):
+            continue
+        else:
+            raise ValueError("Expected result must use exact JSON value types")
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (RecursionError, TypeError, ValueError) as exc:
+        raise ValueError("Expected result is not canonical bounded JSON") from exc
+
+
+def _oracle_payload(spec: OracleSpecV1) -> dict[str, object]:
+    return {
+        "oracle_id": spec.oracle_id,
+        "kind": spec.kind,
+        "query": spec.query,
+        "expected_result": json.loads(spec.expected_result),
+    }
+
+
+def _plan_payload(plan: CellPlanV1) -> dict[str, object]:
+    payload = asdict(plan)
+    payload["oracle_specs"] = [_oracle_payload(spec) for spec in plan.oracle_specs]
+    return payload
+
+
+@dataclass(frozen=True)
+class SourceRulesV1:
+    extensions_by_repo: tuple[tuple[str, tuple[str, ...]], ...]
+    excluded_components: tuple[str, ...] = (
+        ".git",
+        "node_modules",
+        "vendor",
+        "third_party",
+        "dist",
+        "build",
+    )
+    generated_markers: tuple[bytes, ...] = (
+        b"Code generated",
+        b"@generated",
+        b"DO NOT EDIT",
+        b"Generated by",
+    )
+    minified_suffixes: tuple[str, ...] = (".min.js", ".min.css")
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.extensions_by_repo) is not tuple
+            or any(
+                type(item) is not tuple
+                or len(item) != 2
+                or type(item[0]) is not str
+                or type(item[1]) is not tuple
+                for item in self.extensions_by_repo
+            )
+            or type(self.excluded_components) is not tuple
+            or any(type(item) is not str for item in self.excluded_components)
+            or type(self.generated_markers) is not tuple
+            or any(type(item) is not bytes for item in self.generated_markers)
+            or type(self.minified_suffixes) is not tuple
+            or any(type(item) is not str for item in self.minified_suffixes)
+        ):
+            raise ValueError("Source rules require exact immutable containers")
+        if tuple(repo for repo, _ in self.extensions_by_repo) != REPOSITORIES:
+            raise ValueError("Source rules must list the canonical seven repositories")
+        for _, extensions in self.extensions_by_repo:
+            if extensions != tuple(sorted(set(extensions))) or any(
+                not item.startswith(".") for item in extensions
+            ):
+                raise ValueError("Extensions must be sorted, unique dotted suffixes")
+
+    @property
+    def digest(self) -> str:
+        payload = asdict(self)
+        payload["generated_markers"] = [item.hex() for item in self.generated_markers]
+        return _sha256(payload)
+
+    def extensions(self, repo_id: str) -> tuple[str, ...]:
+        return dict(self.extensions_by_repo)[repo_id]
+
+
+DEFAULT_SOURCE_RULES = SourceRulesV1(
+    (
+        ("vscode", (".ts", ".tsx")),
+        ("excalidraw", (".ts", ".tsx")),
+        ("django", (".py",)),
+        ("tokio", (".rs",)),
+        ("okhttp", (".java", ".kt")),
+        ("gin", (".go",)),
+        ("alamofire", (".swift",)),
+    )
+)
+
+
+@dataclass(frozen=True)
+class EligibilityV1:
+    repo_id: str
+    source_rules_hash: str
+    commit: str
+    tracked_regular_paths: tuple[str, ...]
+    eligible_paths: tuple[str, ...]
+    prefilter_exclusions: tuple[tuple[str, str], ...]
+    tracked_inventory_hash: str
+    eligible_paths_hash: str
+    repo_fingerprint: str
+
+    def __post_init__(self) -> None:
+        scalars = (
+            self.repo_id,
+            self.source_rules_hash,
+            self.commit,
+            self.tracked_inventory_hash,
+            self.eligible_paths_hash,
+            self.repo_fingerprint,
+        )
+        if any(type(value) is not str or not value for value in scalars):
+            raise ValueError("Eligibility scalar fields must be non-empty strings")
+        if (
+            type(self.tracked_regular_paths) is not tuple
+            or type(self.eligible_paths) is not tuple
+            or any(
+                type(path) is not str
+                for path in (*self.tracked_regular_paths, *self.eligible_paths)
+            )
+            or type(self.prefilter_exclusions) is not tuple
+            or any(
+                type(item) is not tuple
+                or len(item) != 2
+                or any(type(part) is not str for part in item)
+                for item in self.prefilter_exclusions
+            )
+        ):
+            raise ValueError("Eligibility requires exact immutable containers")
+
+
+@dataclass(frozen=True)
+class OracleSpecV1:
+    oracle_id: str
+    kind: str
+    query: tuple[tuple[str, str], ...]
+    expected_result: Any
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.oracle_id) is not str
+            or type(self.kind) is not str
+            or self.kind not in {"symbol", "call"}
+            or not self.oracle_id
+        ):
+            raise ValueError("Oracle must be a named symbol or call query")
+        if type(self.query) is not tuple or any(
+            type(item) is not tuple
+            or len(item) != 2
+            or any(type(part) is not str or not part for part in item)
+            for item in self.query
+        ):
+            raise ValueError("Oracle query must use exact immutable string pairs")
+        query_keys = tuple(key for key, _ in self.query)
+        normalized_keys = tuple(
+            re.sub(r"[-_]+", "-", key.lstrip("-").casefold()) for key in query_keys
+        )
+        if (
+            not self.query
+            or self.query != tuple(sorted(self.query))
+            or len(query_keys) != len(set(query_keys))
+        ):
+            raise ValueError("Oracle parameter keys must be sorted and unique")
+        if any(
+            not key or key in _RESERVED_ORACLE_QUERY_FLAGS for key in normalized_keys
+        ) or len(normalized_keys) != len(set(normalized_keys)):
+            raise ValueError(
+                "Oracle query flags must not collide after normalization or use "
+                "harness-owned flags"
+            )
+        object.__setattr__(
+            self, "expected_result", _canonical_typed_json_bytes(self.expected_result)
+        )
+
+    @property
+    def digest(self) -> str:
+        return _sha256(_oracle_payload(self))
+
+
+def _is_finite_number(value: object) -> bool:
+    """Check JSON numbers without converting arbitrary-size integers to float."""
+    return type(value) is int or (type(value) is float and math.isfinite(value))
+
+
+@dataclass(frozen=True)
+class ResourcePlanV1:
+    wall_timeout_seconds: int
+    max_cpu_seconds: int
+    max_index_bytes: int
+    max_disk_write_bytes: int
+    min_free_disk_bytes: int
+    max_rss_bytes: int
+    max_processes: int
+    max_open_files: int
+    max_concurrency: int = 1
+
+    def __post_init__(self) -> None:
+        values = tuple(asdict(self).values())
+        if (
+            any(type(value) is not int or value <= 0 for value in values)
+            or self.max_concurrency != 1
+        ):
+            raise ValueError(
+                "Every resource ceiling must be positive; concurrency is exactly one"
+            )
+
+    @property
+    def digest(self) -> str:
+        return _sha256(asdict(self))
+
+
+_MAX_HARNESS_ARTIFACT_BYTES = 256 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class HarnessArtifactV1:
+    path: str
+    size_bytes: int
+    sha256: str
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.path) is not str
+            or not self.path
+            or type(self.size_bytes) is not int
+            or self.size_bytes < 0
+            or type(self.sha256) is not str
+            or len(self.sha256) != 64
+            or any(char not in "0123456789abcdef" for char in self.sha256)
+        ):
+            raise ValueError("Harness artifact fields must be exact immutable values")
+
+    @classmethod
+    def read(
+        cls,
+        path: Path,
+        *,
+        expected_size: int | None = None,
+        max_bytes: int = _MAX_HARNESS_ARTIFACT_BYTES,
+    ) -> HarnessArtifactV1:
+        """Authenticate a regular harness file without materializing its bytes."""
+        absolute = path.absolute()
+        if not absolute.is_absolute():
+            raise ValueError("Harness artifact must have an absolute path")
+        root_fd = _open_root(Path(absolute.anchor))
+        descriptor: int | None = None
+        try:
+            descriptor = _open_beneath(root_fd, absolute.as_posix().lstrip("/"))
+            metadata = os.fstat(descriptor)
+            snapshot_size = metadata.st_size
+            if expected_size is not None and snapshot_size != expected_size:
+                raise ValueError(
+                    "Harness artifact size does not match trusted expectation"
+                )
+            digest = _hash_regular_descriptor(
+                descriptor,
+                expected_size=snapshot_size,
+                max_bytes=max_bytes,
+            )
+            return cls(str(absolute), snapshot_size, digest)
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+            os.close(root_fd)
+
+
+@dataclass(frozen=True)
+class ExecutionSpecV1:
+    """One exact external command and environment frozen by the trusted plan."""
+
+    execution_id: str
+    argv: tuple[str, ...]
+    cwd: str
+    environment_digest: str
+
+    def __post_init__(self) -> None:
+        cwd = Path(self.cwd) if type(self.cwd) is str else None
+        if (
+            type(self.execution_id) is not str
+            or not self.execution_id
+            or type(self.argv) is not tuple
+            or not self.argv
+            or any(type(arg) is not str or not arg for arg in self.argv)
+            or cwd is None
+            or not cwd.is_absolute()
+            or cwd.as_posix() != self.cwd
+            or cwd.resolve() != cwd
+            or self.environment_digest != FROZEN_EXECUTION_ENVIRONMENT_DIGEST
+        ):
+            raise ValueError(
+                "Execution IDs, argv, canonical cwd, and frozen environment digest "
+                "must be exact"
+            )
+
+
+@dataclass(frozen=True)
+class CellPlanV1:
+    repo_id: str
+    arm_id: str
+    attempt: int
+    artifact_path: str
+    index_path: str
+    source_checkout_path: str
+    eligibility: EligibilityV1
+    tool: HarnessArtifactV1
+    config: HarnessArtifactV1
+    oracle_specs: tuple[OracleSpecV1, ...]
+    resources: ResourcePlanV1
+    executions: tuple[ExecutionSpecV1, ...]
+    parse_error_allowlist: tuple[str, ...] = ()
+    explicit_excluded_allowlist: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.repo_id) is not str
+            or type(self.arm_id) is not str
+            or type(self.artifact_path) is not str
+            or type(self.index_path) is not str
+            or type(self.source_checkout_path) is not str
+            or type(self.eligibility) is not EligibilityV1
+            or type(self.tool) is not HarnessArtifactV1
+            or type(self.config) is not HarnessArtifactV1
+            or type(self.resources) is not ResourcePlanV1
+            or type(self.oracle_specs) is not tuple
+            or any(type(spec) is not OracleSpecV1 for spec in self.oracle_specs)
+            or type(self.executions) is not tuple
+            or any(type(spec) is not ExecutionSpecV1 for spec in self.executions)
+            or type(self.parse_error_allowlist) is not tuple
+            or type(self.explicit_excluded_allowlist) is not tuple
+        ):
+            raise ValueError("Cell plans require exact immutable containers and models")
+        if (
+            (self.repo_id, self.arm_id) not in EXPECTED_CELLS
+            or type(self.attempt) is not int
+            or self.attempt != 1
+        ):
+            raise ValueError("Plan identity must be a canonical cell at attempt 1")
+        artifact_path = canonical_relative_path(self.artifact_path)
+        index_path = canonical_relative_path(self.index_path)
+        source_path = Path(self.source_checkout_path)
+        if (
+            not source_path.is_absolute()
+            or source_path.as_posix() != self.source_checkout_path
+            or source_path.resolve() != source_path
+        ):
+            raise ValueError("Source checkout path must be canonical and absolute")
+        cell_namespace = f"cells/{self.repo_id}/{self.arm_id}"
+        if artifact_path != f"{cell_namespace}/cell-receipt.json":
+            raise ValueError("Receipt artifact must use its canonical cell namespace")
+        expected_index_path = f"{cell_namespace}/index"
+        reserved_namespaces = (
+            f"{cell_namespace}/raw",
+            f"{cell_namespace}/cell-receipt.json",
+            "plan",
+            "plan.json",
+            "manifest",
+            "manifest.json",
+        )
+        if any(
+            index_path == reserved
+            or index_path.startswith(f"{reserved}/")
+            or reserved.startswith(f"{index_path}/")
+            for reserved in reserved_namespaces
+        ):
+            raise ValueError(
+                "Index path must not overlap a reserved evidence namespace"
+            )
+        if index_path != expected_index_path:
+            raise ValueError("Index path must use the exact canonical cell index path")
+        if self.eligibility.repo_id != self.repo_id:
+            raise ValueError("Eligibility is not bound to the planned repository")
+        oracle_ids = tuple(spec.oracle_id for spec in self.oracle_specs)
+        reserved_execution_ids = {"delete", "build", "health"}
+        if (
+            {spec.kind for spec in self.oracle_specs} != {"symbol", "call"}
+            or len(oracle_ids) != len(set(oracle_ids))
+            or not reserved_execution_ids.isdisjoint(oracle_ids)
+        ):
+            raise ValueError(
+                "Each plan requires unique symbol and call oracle IDs that are not "
+                "reserved execution IDs"
+            )
+        execution_ids = tuple(spec.execution_id for spec in self.executions)
+        if execution_ids != ("delete", "build", "health", *oracle_ids):
+            raise ValueError(
+                "Plan must freeze ordered delete/build/health/symbol/call executions"
+            )
+        oracle_by_id = {spec.oracle_id: spec for spec in self.oracle_specs}
+        execution_root = Path(self.executions[0].cwd)
+        absolute_index_path = (execution_root / index_path).resolve()
+        if absolute_index_path.as_posix() != (execution_root / index_path).as_posix():
+            raise ValueError(
+                "Plan index must resolve canonically beneath execution cwd"
+            )
+        expected_cwds = (
+            execution_root.as_posix(),
+            self.source_checkout_path,
+            execution_root.as_posix(),
+            *(execution_root.as_posix() for _ in self.oracle_specs),
+        )
+        if tuple(spec.cwd for spec in self.executions) != expected_cwds:
+            raise ValueError(
+                "Frozen execution cwd must use the trusted experiment root or canonical source checkout"
+            )
+        trusted_index_argument = absolute_index_path.as_posix()
+        expected_argv: list[tuple[str, ...]] = [
+            (
+                self.tool.path,
+                "delete",
+                "--config",
+                self.config.path,
+                "--index",
+                trusted_index_argument,
+            ),
+            (
+                self.tool.path,
+                "build",
+                "--config",
+                self.config.path,
+                "--source",
+                self.source_checkout_path,
+                "--index",
+                trusted_index_argument,
+            ),
+            (
+                self.tool.path,
+                "health",
+                "--config",
+                self.config.path,
+                "--index",
+                trusted_index_argument,
+            ),
+        ]
+        for execution in self.executions[3:]:
+            oracle = oracle_by_id[execution.execution_id]
+            query_flags = tuple(
+                part for key, value in oracle.query for part in (f"--{key}", value)
+            )
+            expected_argv.append(
+                (
+                    self.tool.path,
+                    oracle.kind,
+                    "--config",
+                    self.config.path,
+                    *query_flags,
+                    "--index",
+                    trusted_index_argument,
+                )
+            )
+        if tuple(spec.argv for spec in self.executions) != tuple(expected_argv):
+            raise ValueError(
+                "Frozen execution argv must exactly bind authenticated tool/config, "
+                "canonical source checkout, and absolute trusted plan-bound index path"
+            )
+        parse_allowlist = _sorted_paths(
+            self.parse_error_allowlist, "parse-error allowlist"
+        )
+        excluded_allowlist = _sorted_paths(
+            self.explicit_excluded_allowlist, "explicit excluded allowlist"
+        )
+        eligible = set(self.eligibility.eligible_paths)
+        if (
+            not set(parse_allowlist).issubset(eligible)
+            or not set(excluded_allowlist).issubset(eligible)
+            or set(parse_allowlist) & set(excluded_allowlist)
+        ):
+            raise ValueError(
+                "Parse-error and explicit exclusion allowlists must be disjoint "
+                "pre-registered eligible paths"
+            )
+
+    @property
+    def digest(self) -> str:
+        return _sha256(_plan_payload(self))
+
+
+def _sorted_paths(paths: Sequence[str], name: str) -> tuple[str, ...]:
+    value = tuple(canonical_relative_path(path) for path in paths)
+    if value != tuple(sorted(set(value))):
+        raise ValueError(f"{name} paths must be sorted and unique")
+    return value
+
+
+def produce_strict_cell(**_: Any) -> dict[str, Any]:
+    """Refuse producer self-attestation until a harness sandbox executor exists."""
+    raise RuntimeError(
+        "NOT_EVALUATED: harness-owned sandbox executor is not implemented"
+    )
