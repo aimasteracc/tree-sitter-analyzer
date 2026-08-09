@@ -38,6 +38,7 @@ PLAN_KEYS = frozenset(
         "image_digest",
         "seccomp_sha256",
         "resource_plan_digest",
+        "resource_ceilings",
         "index_partition",
         "oracle_statement",
     }
@@ -114,6 +115,25 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
         or not plan["oracle_statement"]
     ):
         raise ValueError("artifact path and oracle statement are required")
+    ceilings = _exact(
+        plan["resource_ceilings"],
+        frozenset(
+            {"wall_ns", "cpu_usec", "io_bytes", "memory_peak_bytes", "pids_peak"}
+        ),
+        "resource ceilings",
+    )
+    if any(type(value) is not int or value < 0 for value in ceilings.values()):
+        raise ValueError("resource ceilings must be exact non-negative integers")
+    expected_resource_digest = hashlib.sha256(
+        canonical_json_bytes(
+            {
+                "wall_timeout_seconds": plan["wall_timeout_seconds"],
+                "resource_ceilings": ceilings,
+            }
+        )
+    ).hexdigest()
+    if plan["resource_plan_digest"] != expected_resource_digest:
+        raise ValueError("canonical resource plan digest mismatch")
     partition = _exact(
         plan["index_partition"],
         frozenset({"indexed_paths", "excluded_paths", "parse_error_paths"}),

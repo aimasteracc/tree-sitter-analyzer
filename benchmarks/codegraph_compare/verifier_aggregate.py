@@ -63,6 +63,10 @@ def validate_manifest(manifest: Mapping[str, Any]) -> Mapping[str, Any]:
             "data_image",
             "hash_image",
             "process_audit",
+            "source_snapshot",
+            "tool",
+            "config",
+            "seccomp",
         ):
             if exact[required] in (None, "", {}, []):
                 raise ValueError("manifest evidence must not be empty")
@@ -80,11 +84,33 @@ def aggregate_verdict(
     process_identity_factory: Callable[[int], str] | None = None,
 ) -> dict[str, Any]:
     violations: list[tuple[str, ...]] = []
-    manifest_valid = False
+    observed_receipts = 0
+    observed_attempts: list[int] = []
     try:
         exact = validate_manifest(manifest)
-        manifest_valid = True
-        parse_public_config(canonical_json_bytes(public_config))
+        config = parse_public_config(canonical_json_bytes(public_config))
+        contract = _mapping(exact["run_contract"], "run contract")
+        if contract != {
+            "plan_set_hash": config["trusted"]["plan_set_hash"],
+            "run_nonce": exact["verifier_nonce"],
+        }:
+            raise ValueError("fresh run contract mismatch")
+        from benchmarks.codegraph_compare.verifier_evidence import _canonical_plan_hash
+
+        plan_hashes = [
+            _canonical_plan_hash(_mapping(cell["plan"], "plan"))
+            for cell in exact["cells"]
+        ]
+        import hashlib
+
+        recomputed_plan_set = hashlib.sha256(
+            canonical_json_bytes(plan_hashes)
+        ).hexdigest()
+        if recomputed_plan_set != config["trusted"]["plan_set_hash"] or any(
+            cell["plan"].get("plan_set_hash") != recomputed_plan_set
+            for cell in exact["cells"]
+        ):
+            raise ValueError("fourteen-cell canonical plan-set hash mismatch")
         factory = process_identity_factory or (
             lambda number: f"verifier-{os.getpid()}-{number}-{secrets.token_hex(16)}"
         )
@@ -93,22 +119,33 @@ def aggregate_verdict(
             plan = _mapping(cell["plan"], "plan")
             inventory = _mapping(cell["inventory"], "inventory")
             evidence = {
-                key: cell[key] for key in ("data_image", "hash_image", "process_audit")
-            }
-            violations.append(
-                verify_cell(
-                    receipt,
-                    public_config=public_config,
-                    plan=plan,
-                    inventory=inventory,
-                    evidence=evidence,
-                    runner=runner,
-                    extractor=extractor,
-                    verifier_nonce=exact["verifier_nonce"],
-                    verifier_image_digest=exact["verifier_image_digest"],
-                    process_identity=factory(number),
+                key: cell[key]
+                for key in (
+                    "data_image",
+                    "hash_image",
+                    "process_audit",
+                    "source_snapshot",
+                    "tool",
+                    "config",
+                    "seccomp",
                 )
+            }
+            cell_violations = verify_cell(
+                receipt,
+                public_config=public_config,
+                plan=plan,
+                inventory=inventory,
+                evidence=evidence,
+                runner=runner,
+                extractor=extractor,
+                verifier_nonce=exact["verifier_nonce"],
+                verifier_image_digest=exact["verifier_image_digest"],
+                process_identity=factory(number),
             )
+            violations.append(cell_violations)
+            if not cell_violations:
+                observed_receipts += 1
+                observed_attempts.append(cell["attempt"])
         qualified = len(violations) == 14 and all(item == () for item in violations)
     except (KeyError, TypeError, ValueError):
         qualified = False
@@ -117,8 +154,10 @@ def aggregate_verdict(
         **CLAIMS,
         "status": "SETUP_QUALIFIED" if qualified else "NOT_EVALUATED",
         "expected_cells": 14,
-        "observed_receipts": 14 if manifest_valid else 0,
-        "attempts_per_cell": 1 if manifest_valid else None,
+        "observed_receipts": observed_receipts,
+        "attempts_per_cell": 1
+        if observed_receipts == 14 and observed_attempts == [1] * 14
+        else None,
         "counters": dict(ZERO_COUNTERS),
     }
 
@@ -127,6 +166,11 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     raw = strict_json_loads(path.read_bytes())
     root = path.parent.resolve(strict=True)
     validate_manifest(raw)
+    contract_relative = canonical_relative_path(raw["run_contract"])
+    contract_target = _safe_path(str(root / contract_relative), "run contract")
+    if root not in contract_target.parents:
+        raise ValueError("run contract escaped controlled root")
+    raw["run_contract"] = strict_json_loads(contract_target.read_bytes())
     for cell in raw["cells"]:
         for name in ("plan", "inventory", "receipt"):
             relative = canonical_relative_path(cell[name])
@@ -134,7 +178,15 @@ def _load_manifest(path: Path) -> dict[str, Any]:
             if root not in target.parents:
                 raise ValueError("manifest document escaped controlled root")
             cell[name] = strict_json_loads(target.read_bytes())
-        for name in ("data_image", "hash_image", "process_audit"):
+        for name in (
+            "data_image",
+            "hash_image",
+            "process_audit",
+            "source_snapshot",
+            "tool",
+            "config",
+            "seccomp",
+        ):
             relative = canonical_relative_path(cell[name])
             target = _safe_path(str(root / relative), "manifest evidence")
             if root not in target.parents:
@@ -172,7 +224,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError("ordinal must identify one cell")
         item = manifest["cells"][args.ordinal]
         evidence = {
-            key: item[key] for key in ("data_image", "hash_image", "process_audit")
+            key: item[key]
+            for key in (
+                "data_image",
+                "hash_image",
+                "process_audit",
+                "source_snapshot",
+                "tool",
+                "config",
+                "seccomp",
+            )
         }
         failures = verify_cell(
             item["receipt"],

@@ -11198,6 +11198,13 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
             }
         )
     return {
+        "run_nonce": "a" * 64,
+        "role_images": {
+            "producer": "sha256:" + "6" * 64,
+            "executor": "sha256:" + "7" * 64,
+            "approver": "sha256:" + "8" * 64,
+            "verifier": "sha256:" + "9" * 64,
+        },
         "cell": {
             "repo_id": repo_id,
             "arm_id": arm_id,
@@ -11253,15 +11260,11 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
         },
         "resources": {
             "plan_digest": "a" * 64,
-            "wall_seconds": 1,
-            "cpu_seconds": 1,
-            "index_bytes": 1,
-            "disk_written_bytes": 1,
-            "free_disk_bytes_before": 1,
-            "peak_rss_bytes": 1,
-            "peak_processes": 1,
-            "peak_open_files": 1,
-            "peak_concurrency": 1,
+            "wall_ns": 1,
+            "cpu_usec": 1,
+            "io_bytes": 1,
+            "memory_peak_bytes": 1,
+            "pids_peak": 1,
         },
         "executions": executions,
         "index_partition": {
@@ -11283,7 +11286,6 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
             "data_block_size": 4096,
             "hash_block_size": 4096,
             "data_blocks": 1,
-            "mount_flags": ["ro", "nosuid", "nodev", "noexec"],
             "tree_hash": "2" * 64,
             "index_content_hash": "3" * 64,
         },
@@ -11291,10 +11293,21 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
             "producer_container_id": "producer-1",
             "image_digest": "sha256:" + "6" * 64,
             "cgroup_id": "cg-1",
+            "network_mode": "none",
+            "security_opt": ["no-new-privileges", "seccomp=" + "7" * 64],
+            "restart_count": 0,
+            "terminal_pid": 0,
+            "launch_count": 1,
+            "cgroup_processes_after_stop": [],
             "pid1_exit": 0,
-            "descendants_after_stop": 0,
-            "one_start": True,
-            "network_syscall_denials": 1,
+            "run_nonce": "a" * 64,
+            "resource_observations": {
+                "wall_ns": 1,
+                "cpu_usec": 1,
+                "io_bytes": 1,
+                "memory_peak_bytes": 1,
+                "pids_peak": 1,
+            },
             "audit_bytes": dict(blob),
         },
         "oracle_approval": {
@@ -11326,7 +11339,7 @@ def _qualification_v3_public_config():
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "executor": {
             "key_id": "executor",
             "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
@@ -11340,6 +11353,62 @@ def _qualification_v3_public_config():
             .public_key()
             .public_bytes_raw()
             .hex(),
+        },
+        "auditor": {
+            "key_id": "auditor",
+            "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x33" * 32)
+            .public_key()
+            .public_bytes_raw()
+            .hex(),
+        },
+        "trusted": {
+            "plan_set_hash": "3" * 64,
+            "plan_hashes": {
+                f"{repo}/{arm}": "2" * 64
+                for repo in (
+                    "vscode",
+                    "excalidraw",
+                    "django",
+                    "tokio",
+                    "okhttp",
+                    "gin",
+                    "alamofire",
+                )
+                for arm in ("tsa-warm", "codegraph-warm")
+            },
+            "inventory_sha256": dict.fromkeys(
+                (
+                    "vscode",
+                    "excalidraw",
+                    "django",
+                    "tokio",
+                    "okhttp",
+                    "gin",
+                    "alamofire",
+                ),
+                "4" * 64,
+            ),
+            "source_snapshot_sha256": dict.fromkeys(
+                (
+                    "vscode",
+                    "excalidraw",
+                    "django",
+                    "tokio",
+                    "okhttp",
+                    "gin",
+                    "alamofire",
+                ),
+                "5" * 64,
+            ),
+            "tool_sha256": "4" * 64,
+            "config_sha256": "5" * 64,
+            "seccomp_sha256": "7" * 64,
+            "images": {
+                "producer": "sha256:" + "6" * 64,
+                "executor": "sha256:" + "7" * 64,
+                "approver": "sha256:" + "8" * 64,
+                "verifier": "sha256:" + "9" * 64,
+            },
         },
     }
 
@@ -11476,6 +11545,7 @@ def _qualification_v3_manifest():
         "schema_version": 1,
         "verifier_nonce": "a" * 64,
         "verifier_image_digest": "sha256:" + "b" * 64,
+        "run_contract": {"plan_set_hash": "3" * 64, "run_nonce": "a" * 64},
         "cells": [
             {
                 "repo_id": repo,
@@ -11487,6 +11557,10 @@ def _qualification_v3_manifest():
                 "data_image": "/evidence/data.img",
                 "hash_image": "/evidence/hash.img",
                 "process_audit": "/evidence/process-audit.json",
+                "source_snapshot": "/evidence/source.tar",
+                "tool": "/evidence/tool",
+                "config": "/evidence/config",
+                "seccomp": "/evidence/seccomp",
             }
             for repo, arm in EXPECTED_CELLS
         ],
@@ -11499,11 +11573,25 @@ def test_qualification_v3_aggregate_requires_public_config_and_full_verification
     from benchmarks.codegraph_compare import verifier_aggregate as verifier
 
     manifest = _qualification_v3_manifest()
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    plan_hashes = [
+        hashlib.sha256(canonical_json_bytes(cell["plan"])).hexdigest()
+        for cell in manifest["cells"]
+    ]
+    plan_set_hash = hashlib.sha256(canonical_json_bytes(plan_hashes)).hexdigest()
+    for cell in manifest["cells"]:
+        cell["plan"]["plan_set_hash"] = plan_set_hash
+    config = _qualification_v3_public_config()
+    config["trusted"]["plan_set_hash"] = plan_set_hash
+    manifest["run_contract"]["plan_set_hash"] = plan_set_hash
+    config["trusted"]["plan_hashes"] = {
+        f"{cell['repo_id']}/{cell['arm_id']}": digest
+        for cell, digest in zip(manifest["cells"], plan_hashes, strict=True)
+    }
     monkeypatch.setattr(verifier, "verify_cell", lambda *args, **kwargs: ())
     assert (
-        verifier.aggregate_verdict(
-            manifest, public_config=_qualification_v3_public_config()
-        )["status"]
+        verifier.aggregate_verdict(manifest, public_config=config)["status"]
         == "SETUP_QUALIFIED"
     )
 
@@ -11673,12 +11761,19 @@ def test_qualification_v3_verity_command_binds_both_image_hashes(tmp_path: Path)
         {"data_image": str(data.resolve()), "hash_image": str(hashes.resolve())},
         runner,
     )
-    assert commands == [
+    normalized = [
+        [
+            "/proc/self/fd/<open>" if part.startswith("/proc/self/fd/") else part
+            for part in command
+        ]
+        for command in commands
+    ]
+    assert normalized == [
         [
             "veritysetup",
             "verify",
-            str(data.resolve()),
-            str(hashes.resolve()),
+            "/proc/self/fd/<open>",
+            "/proc/self/fd/<open>",
             "0" * 64,
             "--hash",
             "sha256",
@@ -11688,6 +11783,8 @@ def test_qualification_v3_verity_command_binds_both_image_hashes(tmp_path: Path)
             "4096",
             "--hash-block-size",
             "4096",
+            "--data-blocks",
+            "1",
         ]
     ]
 
@@ -11790,6 +11887,58 @@ def test_qualification_v3_operator_preflight_requires_all_images_and_seccomp():
         )
         if fragment in operator
     )
+
+
+def test_qualification_v3_runtime_schema_acceptance_parity():
+    # Audit 2026-08-09 P2.1: published schema and runtime accept the same emitted receipt.
+    import jsonschema
+
+    from benchmarks.codegraph_compare.receipt_v3 import validate_receipt_shape
+
+    receipt = _qualification_v3_receipt()
+    schema = json.loads(
+        Path("rfcs/schemas/no1-008a-cell-receipt-v3.schema.json").read_text()
+    )
+    validate_receipt_shape(receipt)
+    jsonschema.Draft202012Validator(schema).validate(receipt)
+
+
+def test_qualification_v3_runtime_schema_mutation_contract():
+    # Audit 2026-08-09 P2.1: representative shape mutations have exact parser parity.
+    import copy
+
+    import jsonschema
+
+    from benchmarks.codegraph_compare.receipt_v3 import validate_receipt_shape
+
+    schema = json.loads(
+        Path("rfcs/schemas/no1-008a-cell-receipt-v3.schema.json").read_text()
+    )
+    mutations = []
+    missing = copy.deepcopy(_qualification_v3_receipt())
+    del missing["body"]["run_nonce"]
+    mutations.append(missing)
+    extra = copy.deepcopy(_qualification_v3_receipt())
+    extra["body"]["snapshot"]["mount_flags"] = ["ro"]
+    mutations.append(extra)
+    order = copy.deepcopy(_qualification_v3_receipt())
+    order["body"]["executions"][0]["id"] = "health"
+    mutations.append(order)
+    duplicate = copy.deepcopy(_qualification_v3_receipt())
+    duplicate["body"]["index_partition"]["indexed_paths"] *= 2
+    mutations.append(duplicate)
+    outcomes = []
+    for receipt in mutations:
+        try:
+            validate_receipt_shape(receipt)
+            runtime = True
+        except ValueError:
+            runtime = False
+        schema_valid = not tuple(
+            jsonschema.Draft202012Validator(schema).iter_errors(receipt)
+        )
+        outcomes.append((runtime, schema_valid))
+    assert outcomes == [(False, False), (False, False), (False, False), (False, False)]
 
 
 _mark_posix_qualification_section_tests()

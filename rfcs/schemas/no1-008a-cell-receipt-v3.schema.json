@@ -154,7 +154,9 @@
         "index_partition",
         "snapshot",
         "process_audit",
-        "oracle_approval"
+        "oracle_approval",
+        "run_nonce",
+        "role_images"
       ],
       "properties": {
         "cell": {
@@ -335,65 +337,125 @@
           "additionalProperties": false,
           "required": [
             "plan_digest",
-            "wall_seconds",
-            "cpu_seconds",
-            "index_bytes",
-            "disk_written_bytes",
-            "free_disk_bytes_before",
-            "peak_rss_bytes",
-            "peak_processes",
-            "peak_open_files",
-            "peak_concurrency"
+            "wall_ns",
+            "cpu_usec",
+            "io_bytes",
+            "memory_peak_bytes",
+            "pids_peak"
           ],
           "properties": {
             "plan_digest": {
               "$ref": "#/$defs/hash"
             },
-            "wall_seconds": {
-              "type": "number",
-              "minimum": 0
+            "wall_ns": {
+              "$ref": "#/$defs/nonnegative"
             },
-            "cpu_seconds": {
-              "type": "number",
-              "minimum": 0
+            "cpu_usec": {
+              "$ref": "#/$defs/nonnegative"
             },
-            "index_bytes": {
-              "type": "number",
-              "minimum": 0
+            "io_bytes": {
+              "$ref": "#/$defs/nonnegative"
             },
-            "disk_written_bytes": {
-              "type": "number",
-              "minimum": 0
+            "memory_peak_bytes": {
+              "$ref": "#/$defs/nonnegative"
             },
-            "free_disk_bytes_before": {
-              "type": "number",
-              "minimum": 0
-            },
-            "peak_rss_bytes": {
-              "type": "number",
-              "minimum": 0
-            },
-            "peak_processes": {
-              "type": "number",
-              "minimum": 0
-            },
-            "peak_open_files": {
-              "type": "number",
-              "minimum": 0
-            },
-            "peak_concurrency": {
-              "type": "number",
-              "minimum": 0
+            "pids_peak": {
+              "$ref": "#/$defs/nonnegative"
             }
           }
         },
         "executions": {
           "type": "array",
           "minItems": 5,
-          "items": {
-            "$ref": "#/$defs/execution"
-          },
-          "maxItems": 5
+          "maxItems": 5,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/execution"
+                },
+                {
+                  "properties": {
+                    "id": {
+                      "const": "delete"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ]
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/execution"
+                },
+                {
+                  "properties": {
+                    "id": {
+                      "const": "build"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ]
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/execution"
+                },
+                {
+                  "properties": {
+                    "id": {
+                      "const": "health"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ]
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/execution"
+                },
+                {
+                  "properties": {
+                    "id": {
+                      "const": "symbol"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ]
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/execution"
+                },
+                {
+                  "properties": {
+                    "id": {
+                      "const": "call"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ]
+                }
+              ]
+            }
+          ],
+          "items": false
         },
         "index_partition": {
           "type": "object",
@@ -453,7 +515,6 @@
             "data_block_size",
             "hash_block_size",
             "data_blocks",
-            "mount_flags",
             "tree_hash",
             "index_content_hash"
           ],
@@ -493,14 +554,6 @@
             },
             "data_blocks": {
               "$ref": "#/$defs/positive"
-            },
-            "mount_flags": {
-              "const": [
-                "ro",
-                "nosuid",
-                "nodev",
-                "noexec"
-              ]
             }
           }
         },
@@ -511,36 +564,86 @@
             "producer_container_id",
             "image_digest",
             "cgroup_id",
+            "network_mode",
+            "security_opt",
+            "restart_count",
+            "terminal_pid",
+            "launch_count",
+            "cgroup_processes_after_stop",
             "pid1_exit",
-            "descendants_after_stop",
-            "one_start",
-            "network_syscall_denials",
+            "run_nonce",
+            "resource_observations",
             "audit_bytes"
           ],
           "properties": {
             "producer_container_id": {
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "maxLength": 4096
             },
             "image_digest": {
               "type": "string",
-              "minLength": 1
+              "pattern": "^sha256:[0-9a-f]{64}$"
             },
             "cgroup_id": {
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "maxLength": 4096
+            },
+            "network_mode": {
+              "const": "none"
+            },
+            "security_opt": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "restart_count": {
+              "const": 0
+            },
+            "terminal_pid": {
+              "const": 0
+            },
+            "launch_count": {
+              "const": 1
+            },
+            "cgroup_processes_after_stop": {
+              "const": []
             },
             "pid1_exit": {
               "type": "integer"
             },
-            "descendants_after_stop": {
-              "const": 0
+            "run_nonce": {
+              "$ref": "#/$defs/hash"
             },
-            "one_start": {
-              "const": true
-            },
-            "network_syscall_denials": {
-              "$ref": "#/$defs/nonnegative"
+            "resource_observations": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "wall_ns",
+                "cpu_usec",
+                "io_bytes",
+                "memory_peak_bytes",
+                "pids_peak"
+              ],
+              "properties": {
+                "wall_ns": {
+                  "$ref": "#/$defs/nonnegative"
+                },
+                "cpu_usec": {
+                  "$ref": "#/$defs/nonnegative"
+                },
+                "io_bytes": {
+                  "$ref": "#/$defs/nonnegative"
+                },
+                "memory_peak_bytes": {
+                  "$ref": "#/$defs/nonnegative"
+                },
+                "pids_peak": {
+                  "$ref": "#/$defs/nonnegative"
+                }
+              }
             },
             "audit_bytes": {
               "$ref": "#/$defs/blob"
@@ -566,6 +669,37 @@
             },
             "oracle_results_hash": {
               "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        "run_nonce": {
+          "$ref": "#/$defs/hash"
+        },
+        "role_images": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "producer",
+            "executor",
+            "approver",
+            "verifier"
+          ],
+          "properties": {
+            "producer": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "executor": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "approver": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "verifier": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
             }
           }
         }
@@ -601,13 +735,15 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/relativePath"
-          }
+          },
+          "uniqueItems": true
         },
         "eligible_paths": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/relativePath"
-          }
+          },
+          "uniqueItems": true
         },
         "prefilter_exclusions": {
           "type": "array",
@@ -615,10 +751,12 @@
             "type": "array",
             "prefixItems": [
               {
-                "type": "string"
+                "type": "string",
+                "minLength": 1
               },
               {
-                "type": "string"
+                "type": "string",
+                "minLength": 1
               }
             ],
             "items": false,

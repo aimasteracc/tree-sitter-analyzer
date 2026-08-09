@@ -7,6 +7,7 @@ import hashlib
 import os
 import stat
 import sys
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -17,7 +18,15 @@ from benchmarks.codegraph_compare.receipt_v3 import (
     strict_json_loads,
 )
 from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
-from benchmarks.codegraph_compare.verifier import _sha_file, parse_public_config
+from benchmarks.codegraph_compare.verifier import (
+    _extract_ext4,
+    _sha_file,
+    _verify_external_audit,
+    _verify_recomputed,
+    _verify_trusted_inputs,
+    _verify_verity,
+    parse_public_config,
+)
 
 
 def _safe_path(raw: str) -> Path:
@@ -60,7 +69,8 @@ def _build_body(args: argparse.Namespace) -> dict[str, object]:
     result = strict_json_loads(result_path.read_bytes())
     audit_path = _safe_path(args.process_audit)
     audit_payload = audit_path.read_bytes()
-    audit = strict_json_loads(audit_payload)
+    audit_envelope = strict_json_loads(audit_payload)
+    audit = audit_envelope["audit"]
     data = _safe_path(args.data_image)
     hashes = _safe_path(args.hash_image)
     data_size, data_sha = _sha_file(data)
@@ -94,15 +104,7 @@ def _build_body(args: argparse.Namespace) -> dict[str, object]:
     index = core / "index"
     resources = {
         "plan_digest": plan["resource_plan_digest"],
-        "wall_seconds": 0,
-        "cpu_seconds": cpu_seconds,
-        "index_bytes": sum(p.stat().st_size for p in index.rglob("*") if p.is_file()),
-        "disk_written_bytes": data_size + hash_size,
-        "free_disk_bytes_before": 0,
-        "peak_rss_bytes": 0,
-        "peak_processes": 1,
-        "peak_open_files": 0,
-        "peak_concurrency": 1,
+        **audit["resource_observations"],
     }
     eligibility = inventory.get("eligibility", inventory)
     audit_blob = {
@@ -111,6 +113,11 @@ def _build_body(args: argparse.Namespace) -> dict[str, object]:
         "sha256": hashlib.sha256(audit_payload).hexdigest(),
     }
     return {
+        "run_nonce": args.run_nonce,
+        "role_images": {
+            role: getattr(args, f"{role}_image_digest")
+            for role in ("producer", "executor", "approver", "verifier")
+        },
         "cell": {**plan["cell"], "artifact_path": plan["artifact_path"]},
         "plan": {
             key: plan[key]
@@ -161,7 +168,6 @@ def _build_body(args: argparse.Namespace) -> dict[str, object]:
             "data_block_size": args.data_block_size,
             "hash_block_size": args.hash_block_size,
             "data_blocks": args.data_blocks,
-            "mount_flags": ["ro", "nosuid", "nodev", "noexec"],
             "tree_hash": _hash_tree(core),
             "index_content_hash": _hash_tree(index),
         },
@@ -181,6 +187,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
     executor = subparsers.add_parser("sign-executor")
     executor.add_argument("--body")
+    executor.add_argument("--run-nonce")
+    for role in ("producer", "executor", "approver", "verifier"):
+        executor.add_argument(f"--{role}-image-digest")
     executor.add_argument("--plan")
     executor.add_argument("--inventory")
     executor.add_argument("--core-root")
@@ -196,7 +205,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     executor.add_argument("--key-id", required=True)
     approver = subparsers.add_parser("sign-approver")
     approver.add_argument("--attestation", required=True)
+    approver.add_argument("--run-nonce", required=True)
+    for role in ("producer", "executor", "approver", "verifier"):
+        approver.add_argument(f"--{role}-image-digest", required=True)
     approver.add_argument("--public-config", required=True)
+    for option in (
+        "plan",
+        "inventory",
+        "core-root",
+        "data-image",
+        "hash-image",
+        "process-audit",
+        "source-snapshot",
+        "tool",
+        "config",
+        "seccomp",
+        "root-hash",
+        "salt",
+    ):
+        approver.add_argument(f"--{option}", required=True)
+    approver.add_argument("--data-block-size", type=int, required=True)
+    approver.add_argument("--hash-block-size", type=int, required=True)
+    approver.add_argument("--data-blocks", type=int, required=True)
     approver.add_argument("--private-key", required=True)
     approver.add_argument("--key-id", required=True)
     args = parser.parse_args(argv)
@@ -226,6 +256,44 @@ def main(argv: Sequence[str] | None = None) -> int:
         config = parse_public_config(_safe_path(args.public_config).read_bytes())
         if args.key_id != config["approver"]["key_id"]:
             raise ValueError("approver key ID does not match public config")
+        # Independent semantic approval: consume every raw oracle/snapshot/audit input,
+        # rebuild the complete body, and reject before signing unless byte-identical.
+        recomputed = _build_body(args)
+        if canonical_json_bytes(recomputed) != canonical_json_bytes(
+            attestation.get("body")
+        ):
+            raise ValueError("approver full evidence/oracle verification mismatch")
+        plan = strict_json_loads(_safe_path(args.plan).read_bytes())
+        inventory = strict_json_loads(_safe_path(args.inventory).read_bytes())
+        evidence = {
+            name: getattr(args, name)
+            for name in (
+                "data_image",
+                "hash_image",
+                "process_audit",
+                "source_snapshot",
+                "tool",
+                "config",
+                "seccomp",
+            )
+        }
+        _verify_trusted_inputs(recomputed, plan, inventory, evidence, config)
+        image_fds = _verify_verity(
+            recomputed,
+            evidence,
+            __import__(
+                "benchmarks.codegraph_compare.verifier", fromlist=["_run_verity"]
+            )._run_verity,
+        )
+        try:
+            _verify_external_audit(recomputed, evidence, config)
+            with tempfile.TemporaryDirectory(prefix="no1-008a-approve-") as temporary:
+                extracted = Path(temporary)
+                _extract_ext4(Path(f"/proc/self/fd/{image_fds[0]}"), extracted)
+                _verify_recomputed(recomputed, plan, inventory, extracted)
+        finally:
+            for descriptor in image_fds:
+                os.close(descriptor)
         result = approve_executor_attestation(
             attestation,
             config["executor"]["key_id"],

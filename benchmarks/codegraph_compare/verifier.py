@@ -18,14 +18,16 @@ from benchmarks.codegraph_compare.receipt_v3 import (
     verify_receipt,
 )
 from benchmarks.codegraph_compare.setup_qualification_paths import (
-    _hash_tree,
     _open_beneath,
     _open_root,
     canonical_relative_path,
 )
-from benchmarks.codegraph_compare.setup_qualification_plan import (
-    ZERO_COUNTERS,
+from benchmarks.codegraph_compare.verifier_evidence import (
+    _verify_external_audit,
+    _verify_trusted_inputs,
+    _verify_verity,
 )
+from benchmarks.codegraph_compare.verifier_recompute import _verify_recomputed
 
 CLAIMS = {
     "evaluation_stage": "E0",
@@ -34,10 +36,31 @@ CLAIMS = {
     "dominance_allowed": False,
     "unlock_allowed": False,
 }
-PUBLIC_CONFIG_KEYS = frozenset({"schema_version", "executor", "approver"})
+PUBLIC_CONFIG_KEYS = frozenset(
+    {"schema_version", "executor", "approver", "auditor", "trusted"}
+)
+TRUSTED_KEYS = frozenset(
+    {
+        "plan_set_hash",
+        "plan_hashes",
+        "inventory_sha256",
+        "source_snapshot_sha256",
+        "tool_sha256",
+        "config_sha256",
+        "seccomp_sha256",
+        "images",
+    }
+)
+IMAGE_ROLES = ("producer", "executor", "approver", "verifier")
 PUBLIC_ROLE_KEYS = frozenset({"key_id", "public_key_hex"})
 MANIFEST_KEYS = frozenset(
-    {"schema_version", "verifier_nonce", "verifier_image_digest", "cells"}
+    {
+        "schema_version",
+        "verifier_nonce",
+        "verifier_image_digest",
+        "run_contract",
+        "cells",
+    }
 )
 CELL_KEYS = frozenset(
     {
@@ -50,6 +73,10 @@ CELL_KEYS = frozenset(
         "data_image",
         "hash_image",
         "process_audit",
+        "source_snapshot",
+        "tool",
+        "config",
+        "seccomp",
     }
 )
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
@@ -66,11 +93,11 @@ def _exact(value: Any, keys: frozenset[str], label: str) -> Mapping[str, Any]:
 
 def parse_public_config(payload: bytes) -> dict[str, Any]:
     config = _exact(strict_json_loads(payload), PUBLIC_CONFIG_KEYS, "public config")
-    if type(config["schema_version"]) is not int or config["schema_version"] != 1:
-        raise ValueError("public config schema must be exact integer 1")
+    if type(config["schema_version"]) is not int or config["schema_version"] != 2:
+        raise ValueError("public config schema must be exact integer 2")
     keys: list[bytes] = []
     ids: list[str] = []
-    for role in ("executor", "approver"):
+    for role in ("executor", "approver", "auditor"):
         item = _exact(config[role], PUBLIC_ROLE_KEYS, role)
         if (
             type(item["key_id"]) is not str
@@ -83,8 +110,43 @@ def parse_public_config(payload: bytes) -> dict[str, Any]:
             raise ValueError("public key must contain 32 lowercase hexadecimal bytes")
         keys.append(bytes.fromhex(encoded))
         ids.append(item["key_id"])
-    if ids[0] == ids[1] or keys[0] == keys[1]:
+    if len(set(ids)) != 3 or len(set(keys)) != 3:
         raise ValueError("public signer identities must differ")
+    trusted = _exact(config["trusted"], TRUSTED_KEYS, "trusted config")
+    for name in ("plan_set_hash", "tool_sha256", "config_sha256", "seccomp_sha256"):
+        if _HEX64.fullmatch(trusted[name]) is None:
+            raise ValueError(f"trusted {name} invalid")
+    expected_plan_keys = {
+        f"{repo}/{arm}"
+        for repo, arm in __import__(
+            "benchmarks.codegraph_compare.setup_qualification_plan",
+            fromlist=["EXPECTED_CELLS"],
+        ).EXPECTED_CELLS
+    }
+    if (
+        set(trusted["plan_hashes"]) != expected_plan_keys
+        or set(trusted["inventory_sha256"])
+        != {key.split("/")[0] for key in expected_plan_keys}
+        or set(trusted["source_snapshot_sha256"])
+        != {key.split("/")[0] for key in expected_plan_keys}
+    ):
+        raise ValueError("trusted plan/inventory/source set is not exact")
+    if any(
+        _HEX64.fullmatch(value) is None
+        for table in (
+            trusted["plan_hashes"],
+            trusted["inventory_sha256"],
+            trusted["source_snapshot_sha256"],
+        )
+        for value in table.values()
+    ):
+        raise ValueError("trusted evidence digest invalid")
+    images = _exact(trusted["images"], frozenset(IMAGE_ROLES), "trusted images")
+    if (
+        any(_IMAGE.fullmatch(images[role]) is None for role in IMAGE_ROLES)
+        or len(set(images.values())) != 4
+    ):
+        raise ValueError("role images must be exact, authorized, and distinct")
     return dict(config)
 
 
@@ -177,12 +239,18 @@ def _plan_executions(plan: Mapping[str, Any]) -> list[Mapping[str, Any]]:
 
 
 def _run_verity(command: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
+    descriptors = tuple(
+        int(part.rsplit("/", 1)[-1])
+        for part in command
+        if str(part).startswith("/proc/self/fd/")
+    )
     return subprocess.run(
         list(command),
         stdin=subprocess.DEVNULL,
         capture_output=True,
         check=False,
         timeout=120,
+        pass_fds=descriptors,
     )
 
 
@@ -194,6 +262,9 @@ def _extract_ext4(data_image: Path, destination: Path) -> None:
         capture_output=True,
         check=False,
         timeout=120,
+        pass_fds=(int(str(data_image).rsplit("/", 1)[-1]),)
+        if str(data_image).startswith("/proc/self/fd/")
+        else (),
     )
     if result.returncode != 0:
         raise ValueError("read-only ext4 extraction failed")
@@ -201,209 +272,6 @@ def _extract_ext4(data_image: Path, destination: Path) -> None:
 
 def _hash_list(paths: list[str]) -> str:
     return hashlib.sha256(canonical_json_bytes(paths)).hexdigest()
-
-
-def _verify_verity(
-    body: Mapping[str, Any], evidence: Mapping[str, Any], runner: Runner
-) -> None:
-    snapshot = body["snapshot"]
-    data = _safe_path(evidence["data_image"], "data image")
-    hashes = _safe_path(evidence["hash_image"], "hash image")
-    data_size, data_sha = _sha_file(data)
-    hash_size, hash_sha = _sha_file(hashes)
-    if (data_size, data_sha, hash_size, hash_sha) != (
-        snapshot["data_image_size"],
-        snapshot["data_image_sha256"],
-        snapshot["hash_image_size"],
-        snapshot["hash_image_sha256"],
-    ):
-        raise ValueError("image digest or size mismatch")
-    result = runner(
-        [
-            "veritysetup",
-            "verify",
-            str(data),
-            str(hashes),
-            snapshot["root_hash"],
-            "--hash",
-            "sha256",
-            "--salt",
-            snapshot["salt"],
-            "--data-block-size",
-            str(snapshot["data_block_size"]),
-            "--hash-block-size",
-            str(snapshot["hash_block_size"]),
-        ]
-    )
-    if result.returncode != 0:
-        raise ValueError("veritysetup verification failed")
-
-
-def _verify_external_audit(
-    body: Mapping[str, Any], evidence: Mapping[str, Any]
-) -> Mapping[str, Any]:
-    audit_path = _safe_path(evidence["process_audit"], "terminal process audit")
-    payload = audit_path.read_bytes()
-    blob = body["process_audit"]["audit_bytes"]
-    if (
-        blob["path"] != "terminal/process-audit.json"
-        or len(payload) != blob["size_bytes"]
-        or hashlib.sha256(payload).hexdigest() != blob["sha256"]
-    ):
-        raise ValueError("terminal process audit bytes mismatch")
-    audit = strict_json_loads(payload)
-    expected = {
-        key: value
-        for key, value in body["process_audit"].items()
-        if key != "audit_bytes"
-    }
-    if audit != expected:
-        raise ValueError("terminal process audit facts mismatch")
-    if audit["descendants_after_stop"] != 0 or audit["one_start"] is not True:
-        raise ValueError("producer did not terminate exactly once")
-    return audit
-
-
-def _verify_recomputed(
-    body: Mapping[str, Any],
-    plan: Mapping[str, Any],
-    inventory: Mapping[str, Any],
-    core: Path,
-) -> None:
-    cell = body["cell"]
-    if (cell["repo_id"], cell["arm_id"], cell["attempt"]) != (
-        plan.get("repo_id"),
-        plan.get("arm_id"),
-        plan.get("attempt"),
-    ):
-        raise ValueError("plan identity mismatch")
-    eligibility = inventory.get("eligibility", inventory)
-    if (
-        body["source"]["eligibility"] != eligibility
-        or body["source"]["commit"] != eligibility.get("commit")
-        or body["source"]["repo_fingerprint"] != eligibility.get("repo_fingerprint")
-    ):
-        raise ValueError("inventory mismatch")
-    expected_plan = {
-        key: plan[key]
-        for key in (
-            "plan_hash",
-            "plan_set_hash",
-            "tool_sha256",
-            "config_sha256",
-            "image_digest",
-            "seccomp_sha256",
-        )
-    }
-    if body["plan"] != expected_plan:
-        raise ValueError("trusted plan hashes mismatch")
-    environment = body["environment"]
-    if (
-        environment["image_digest"] != plan["image_digest"]
-        or environment["seccomp_sha256"] != plan["seccomp_sha256"]
-        or environment["network_mode"] != "none"
-    ):
-        raise ValueError("trusted environment mismatch")
-    expected_exec = _plan_executions(plan)
-    observed = body["executions"]
-    expected_tuples = [
-        (
-            item.get("id", item.get("execution_id")),
-            item["argv"],
-            item["cwd"],
-            item["environment_digest"],
-        )
-        for item in expected_exec
-    ]
-    observed_tuples = [
-        (item["id"], item["argv"], item["cwd"], item["environment_digest"])
-        for item in observed
-    ]
-    if observed_tuples != expected_tuples or any(
-        item["exit_code"] != 0 for item in observed
-    ):
-        raise ValueError("execution count, order, command, or result mismatch")
-    producer_result = strict_json_loads(
-        _read_core(
-            core, "producer-result.json", (core / "producer-result.json").stat().st_size
-        )
-    )
-    result_executions = [
-        {
-            key: item[key]
-            for key in (
-                "id",
-                "argv",
-                "cwd",
-                "environment_digest",
-                "exit_code",
-                "stdout_bytes",
-                "stderr_bytes",
-                "query_bytes",
-                "index_bytes",
-            )
-        }
-        for item in producer_result.get("executions", [])
-        if type(item) is dict
-    ]
-    if result_executions != observed or producer_result.get("counters") != dict(
-        ZERO_COUNTERS
-    ):
-        raise ValueError("producer result mismatch")
-    for item, spec in zip(observed, expected_exec, strict=True):
-        for field in ("stdout_bytes", "stderr_bytes", "query_bytes", "index_bytes"):
-            blob = item[field]
-            payload = _read_core(core, blob["path"], blob["size_bytes"])
-            if hashlib.sha256(payload).hexdigest() != blob["sha256"]:
-                raise ValueError("raw bytes mismatch")
-        query = spec.get("query")
-        if query is not None and _read_core(
-            core, item["query_bytes"]["path"], item["query_bytes"]["size_bytes"]
-        ) != canonical_json_bytes(query):
-            raise ValueError("oracle query bytes mismatch")
-        if item["id"] not in {"delete", "build", "health"}:
-            expected_result = spec.get("expected_result")
-            stdout = _read_core(
-                core, item["stdout_bytes"]["path"], item["stdout_bytes"]["size_bytes"]
-            )
-            if expected_result is None or stdout.rstrip(b"\n") != canonical_json_bytes(
-                expected_result
-            ):
-                raise ValueError("oracle result bytes mismatch")
-    partition = body["index_partition"]
-    names = ("indexed_paths", "excluded_paths", "parse_error_paths")
-    for name in names:
-        if partition[f"{name}_hash"] != _hash_list(partition[name]):
-            raise ValueError("partition hash mismatch")
-    union = set().union(*(set(partition[name]) for name in names))
-    if union != set(eligibility["eligible_paths"]):
-        raise ValueError("partition gap or extra path")
-    if _hash_tree(core) != body["snapshot"]["tree_hash"]:
-        raise ValueError("sealed core tree mismatch")
-    index = core / "index"
-    if (
-        not index.is_dir()
-        or _hash_tree(index) != body["snapshot"]["index_content_hash"]
-    ):
-        raise ValueError("index content mismatch")
-    if body["counters"] != dict(ZERO_COUNTERS):
-        raise ValueError("zero counters mismatch")
-    resources = plan.get("resources", {})
-    digest = (
-        resources.get(
-            "digest", resources.get("plan_digest", plan.get("resource_plan_digest"))
-        )
-        if type(resources) is dict
-        else None
-    )
-    if digest is not None and body["resources"]["plan_digest"] != digest:
-        raise ValueError("resource plan mismatch")
-    oracle_hashes = [item["stdout_bytes"]["sha256"] for item in observed[3:]]
-    if (
-        body["oracle_approval"]["oracle_results_hash"]
-        != hashlib.sha256(canonical_json_bytes(oracle_hashes)).hexdigest()
-    ):
-        raise ValueError("oracle results hash mismatch")
 
 
 def verify_cell(
@@ -436,6 +304,8 @@ def verify_cell(
             bytes.fromhex(config["approver"]["public_key_hex"]),
         )
         body = receipt["body"]
+        if body["run_nonce"] != verifier_nonce:
+            raise ValueError("fresh run nonce mismatch")
         if (
             process_identity
             in {
@@ -445,14 +315,21 @@ def verify_cell(
             or verifier_image_digest == body["process_audit"]["image_digest"]
         ):
             raise ValueError("verifier is not fresh")
-        _verify_verity(body, evidence, runner)
-        audit = _verify_external_audit(body, evidence)
-        if audit["image_digest"] != body["environment"]["image_digest"]:
-            raise ValueError("producer image mismatch")
-        with tempfile.TemporaryDirectory(prefix="no1-008a-verify-") as temporary:
-            extracted = Path(temporary)
-            extractor(_safe_path(evidence["data_image"], "data image"), extracted)
-            _verify_recomputed(body, plan, inventory, extracted)
+        _verify_trusted_inputs(body, plan, inventory, evidence, config)
+        if verifier_image_digest != config["trusted"]["images"]["verifier"]:
+            raise ValueError("unauthorized verifier image")
+        image_fds = _verify_verity(body, evidence, runner)
+        try:
+            audit = _verify_external_audit(body, evidence, config)
+            if audit["image_digest"] != body["environment"]["image_digest"]:
+                raise ValueError("producer image mismatch")
+            with tempfile.TemporaryDirectory(prefix="no1-008a-verify-") as temporary:
+                extracted = Path(temporary)
+                extractor(Path(f"/proc/self/fd/{image_fds[0]}"), extracted)
+                _verify_recomputed(body, plan, inventory, extracted)
+        finally:
+            for descriptor in image_fds:
+                os.close(descriptor)
         return ()
     except (KeyError, OSError, subprocess.SubprocessError, TypeError, ValueError):
         return ("CELL_EVIDENCE_INVALID",)

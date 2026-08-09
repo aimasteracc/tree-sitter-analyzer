@@ -11,6 +11,8 @@ import json
 import math
 import re
 from collections.abc import Mapping
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from cryptography.exceptions import InvalidSignature
@@ -31,7 +33,7 @@ MAX_STRING_BYTES = 4 * 1024 * 1024
 
 BODY_KEYS = frozenset({
     "cell", "plan", "source", "environment", "counters", "resources",
-    "executions", "index_partition", "snapshot", "process_audit", "oracle_approval",
+    "executions", "index_partition", "snapshot", "process_audit", "oracle_approval", "run_nonce", "role_images",
 })
 COUNTER_KEYS = frozenset({
     "api_cost_usd", "input_tokens", "model_calls", "network_requests",
@@ -117,7 +119,7 @@ def _exact(value: Any, keys: frozenset[str], label: str) -> Mapping[str, Any]:
 
 
 def _text(value: Any, label: str, maximum: int = 4096) -> str:
-    if type(value) is not str or not value or len(value.encode()) > maximum:
+    if type(value) is not str or not value or len(value) > maximum:
         raise ValueError(f"{label} must be a bounded non-empty string")
     return value
 
@@ -154,13 +156,15 @@ def _blob(value: Any, label: str) -> None:
 
 def validate_body(body: Any) -> None:
     body = _exact(body, BODY_KEYS, "body")
+    _hex(body["run_nonce"], "run_nonce")
+    images = _exact(body["role_images"], frozenset({"producer", "executor", "approver", "verifier"}), "role_images")
+    if any(re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None for value in images.values()) or len(set(images.values())) != 4:
+        raise ValueError("role image digests must be exact and distinct")
     cell = _exact(body["cell"], frozenset({"repo_id", "arm_id", "attempt", "artifact_path"}), "cell")
     _text(cell["repo_id"], "cell.repo_id", 64)
     _text(cell["arm_id"], "cell.arm_id", 64)
     if cell["repo_id"] not in {"vscode", "excalidraw", "django", "tokio", "okhttp", "gin", "alamofire"} or cell["arm_id"] not in {"tsa-warm", "codegraph-warm"}:
         raise ValueError("cell identity must belong to the exact 14-cell manifest")
-    if cell["artifact_path"] != f"cells/{cell['repo_id']}/{cell['arm_id']}/cell-receipt.json":
-        raise ValueError("cell artifact path must match its exact identity")
     if cell["attempt"] != 1 or type(cell["attempt"]) is not int:
         raise ValueError("cell attempt must be exact integer 1")
     _path(cell["artifact_path"], "cell.artifact_path")
@@ -204,23 +208,23 @@ def validate_body(body: Any) -> None:
     if any(type(value) not in (int, float) or type(value) is bool or value != 0 for value in counters.values()):
         raise ValueError("all qualification counters must be exact zero")
 
-    resources = _exact(body["resources"], frozenset({"plan_digest", "wall_seconds", "cpu_seconds", "index_bytes", "disk_written_bytes", "free_disk_bytes_before", "peak_rss_bytes", "peak_processes", "peak_open_files", "peak_concurrency"}), "resources")
+    resources = _exact(body["resources"], frozenset({"plan_digest", "wall_ns", "cpu_usec", "io_bytes", "memory_peak_bytes", "pids_peak"}), "resources")
     _hex(resources["plan_digest"], "resources.plan_digest")
     for key, value in resources.items():
-        if key != "plan_digest" and (type(value) not in (int, float) or type(value) is bool or not math.isfinite(value) or value < 0):
-            raise ValueError(f"resources.{key} must be finite and non-negative")
+        if key != "plan_digest":
+            _integer(value, f"resources.{key}")
 
     if type(body["executions"]) is not list or len(body["executions"]) != 5:
         raise ValueError("executions must contain exact delete/build/health/symbol/call order")
     execution_keys = frozenset({"id", "argv", "cwd", "environment_digest", "exit_code", "stdout_bytes", "stderr_bytes", "query_bytes", "index_bytes"})
     execution_ids = [item.get("id") if type(item) is dict else None for item in body["executions"]]
-    if execution_ids[:3] != ["delete", "build", "health"] or len(set(execution_ids)) != 5:
+    if execution_ids != ["delete", "build", "health", "symbol", "call"]:
         raise ValueError("executions must contain exact unique plan order")
     for number, execution in enumerate(body["executions"]):
         item = _exact(execution, execution_keys, f"executions[{number}]")
         _text(item["id"], "execution.id")
         _path(item["cwd"], "execution.cwd", absolute=True)
-        if type(item["argv"]) is not list or not item["argv"] or any(type(arg) is not str or not arg for arg in item["argv"]):
+        if type(item["argv"]) is not list or not item["argv"] or any(type(arg) is not str or not arg or len(arg) > 4096 for arg in item["argv"]):
             raise ValueError("execution argv must be exact non-empty strings")
         _hex(item["environment_digest"], "execution.environment_digest")
         if type(item["exit_code"]) is not int:
@@ -231,8 +235,8 @@ def validate_body(body: Any) -> None:
     partition = _exact(body["index_partition"], frozenset({"indexed_paths", "excluded_paths", "parse_error_paths", "indexed_paths_hash", "excluded_paths_hash", "parse_error_paths_hash"}), "index_partition")
     for name in ("indexed_paths", "excluded_paths", "parse_error_paths"):
         paths = partition[name]
-        if type(paths) is not list or paths != sorted(set(paths)):
-            raise ValueError(f"{name} must be sorted and unique")
+        if type(paths) is not list or len(paths) != len(set(paths)):
+            raise ValueError(f"{name} must be unique")
         for path in paths:
             _path(path, name)
     for name in ("indexed_paths_hash", "excluded_paths_hash", "parse_error_paths_hash"):
@@ -241,20 +245,28 @@ def validate_body(body: Any) -> None:
     if any(sets[a] & sets[b] for a, b in ((0, 1), (0, 2), (1, 2))):
         raise ValueError("index partition overlaps")
 
-    snapshot = _exact(body["snapshot"], frozenset({"format", "data_image_sha256", "data_image_size", "hash_image_sha256", "hash_image_size", "root_hash", "salt", "data_block_size", "hash_block_size", "data_blocks", "mount_flags", "tree_hash", "index_content_hash"}), "snapshot")
-    if snapshot["format"] != "dm-verity-v1" or snapshot["mount_flags"] != ["ro", "nosuid", "nodev", "noexec"]:
-        raise ValueError("snapshot must be an exact read-only dm-verity mount")
+    snapshot = _exact(body["snapshot"], frozenset({"format", "data_image_sha256", "data_image_size", "hash_image_sha256", "hash_image_size", "root_hash", "salt", "data_block_size", "hash_block_size", "data_blocks", "tree_hash", "index_content_hash"}), "snapshot")
+    if snapshot["format"] != "dm-verity-v1":
+        raise ValueError("snapshot must use dm-verity-v1")
     for name in ("data_image_sha256", "hash_image_sha256", "root_hash", "tree_hash", "index_content_hash"):
         _hex(snapshot[name], f"snapshot.{name}")
     _hex(snapshot["salt"], "snapshot.salt")
     for name in ("data_image_size", "hash_image_size", "data_block_size", "hash_block_size", "data_blocks"):
         _integer(snapshot[name], f"snapshot.{name}", minimum=1)
 
-    audit = _exact(body["process_audit"], frozenset({"producer_container_id", "image_digest", "cgroup_id", "pid1_exit", "descendants_after_stop", "one_start", "network_syscall_denials", "audit_bytes"}), "process_audit")
-    for name in ("producer_container_id", "image_digest", "cgroup_id"):
+    audit_keys = frozenset({"producer_container_id", "image_digest", "cgroup_id", "network_mode", "security_opt", "restart_count", "terminal_pid", "launch_count", "cgroup_processes_after_stop", "pid1_exit", "run_nonce", "resource_observations", "audit_bytes"})
+    audit = _exact(body["process_audit"], audit_keys, "process_audit")
+    _hex(audit["run_nonce"], "process_audit.run_nonce")
+    for name in ("producer_container_id", "cgroup_id"):
         _text(audit[name], f"process_audit.{name}")
-    if type(audit["pid1_exit"]) is not int or audit["descendants_after_stop"] != 0 or audit["one_start"] is not True or type(audit["network_syscall_denials"]) is not int or audit["network_syscall_denials"] < 0:
-        raise ValueError("process audit is not terminal and isolated")
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", _text(audit["image_digest"], "process_audit.image_digest")) is None:
+        raise ValueError("host audit image digest must be exact")
+    if audit["network_mode"] != "none" or audit["restart_count"] != 0 or audit["terminal_pid"] != 0 or audit["launch_count"] != 1 or audit["cgroup_processes_after_stop"] != [] or type(audit["pid1_exit"]) is not int:
+        raise ValueError("signed host audit is not terminal, isolated, and one-launch")
+    if audit["resource_observations"] != {key: value for key, value in resources.items() if key != "plan_digest"}:
+        raise ValueError("resources are not exact signed host observations")
+    if type(audit["security_opt"]) is not list or any(type(item) is not str for item in audit["security_opt"]):
+        raise ValueError("host audit security options invalid")
     _blob(audit["audit_bytes"], "process_audit.audit_bytes")
 
     approval = _exact(body["oracle_approval"], frozenset({"approved", "statement", "oracle_results_hash"}), "oracle_approval")
@@ -328,7 +340,24 @@ def assemble_receipt(body: Mapping[str, Any], executor: Mapping[str, Any], appro
     }
     validate_receipt_shape({**result, "receipt_hash": "0" * 64})
     result["receipt_hash"] = receipt_hash(result)
+    validate_published_schema(result)
     return result
+
+
+@lru_cache(maxsize=1)
+def _published_schema() -> Mapping[str, Any]:
+    from jsonschema import Draft202012Validator
+    path = Path(__file__).parents[2] / "rfcs/schemas/no1-008a-cell-receipt-v3.schema.json"
+    schema = strict_json_loads(path.read_bytes())
+    Draft202012Validator.check_schema(schema)
+    return schema
+
+
+def validate_published_schema(receipt: Any) -> None:
+    from jsonschema import Draft202012Validator
+    errors = sorted(Draft202012Validator(_published_schema()).iter_errors(receipt), key=lambda error: list(error.path))
+    if errors:
+        raise ValueError(f"published receipt schema mismatch: {errors[0].message}")
 
 
 def validate_receipt_shape(receipt: Any) -> None:
@@ -350,6 +379,7 @@ def validate_receipt_shape(receipt: Any) -> None:
 
 def verify_receipt(receipt: Mapping[str, Any], executor_key_id: str, executor_public_key: bytes, approver_key_id: str, approver_public_key: bytes) -> None:
     validate_receipt_shape(receipt)
+    validate_published_schema(receipt)
     if type(executor_public_key) is not bytes or type(approver_public_key) is not bytes or len(executor_public_key) != 32 or len(approver_public_key) != 32:
         raise ValueError("public keys must be exactly 32 raw bytes")
     if executor_public_key == approver_public_key or executor_key_id == approver_key_id:
