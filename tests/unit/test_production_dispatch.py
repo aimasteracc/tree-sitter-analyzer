@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from benchmarks.codegraph_compare import production_dispatch_validation
 from benchmarks.codegraph_compare.canary_evidence import create_canary_manifest
 from benchmarks.codegraph_compare.production_anchor import (
     AnchorKey,
@@ -27,6 +28,7 @@ from benchmarks.codegraph_compare.production_authorities import (
     verify_experiment_receipt,
 )
 from benchmarks.codegraph_compare.production_dispatch import (
+    ProductionDispatchReceiptV1,
     ProductionDispatchRequestV1,
     ProviderRunResult,
     TrustedOfflineTestAdapter,
@@ -47,6 +49,11 @@ NOW = 1_900_000_000
 SPEND = AnchorKey(b"s" * 32)
 JUDGE = AnchorKey(b"j" * 32)
 DIGEST = "e" * 64
+
+
+def _require_trusted_dirfd_platform():
+    if not production_dispatch_validation._trusted_dirfd_supported():
+        pytest.skip("tracked: NO1-003D production dispatch requires openat/O_NOFOLLOW")
 
 
 def _signed(private, receipt_type, **fields):
@@ -302,6 +309,7 @@ def _kwargs(request, a):
 
 
 def test_external_receipts_authorize_exactly_one_supervised_transport(tmp_path):
+    _require_trusted_dirfd_platform()
     request, config, attestation, judge, a = _inputs(tmp_path)
     receipt = dispatch_once(request, config, attestation, judge, **_kwargs(request, a))
     assert receipt.status == "PASS"
@@ -333,6 +341,7 @@ def test_missing_real_transport_authority_is_zero_callback(tmp_path):
 
 
 def test_started_claim_failure_gets_durable_invalid_terminal(tmp_path):
+    _require_trusted_dirfd_platform()
     request, config, attestation, judge, a = _inputs(tmp_path)
     kwargs = _kwargs(request, a)
     kwargs["experiment_authority"] = lambda *_: (_ for _ in ()).throw(
@@ -346,6 +355,7 @@ def test_started_claim_failure_gets_durable_invalid_terminal(tmp_path):
 
 
 def test_signed_ledger_inode_is_revalidated_after_claim(tmp_path, monkeypatch):
+    _require_trusted_dirfd_platform()
     # PR #1248: inode reuse must not hide replacement of the signed ledger root.
     request, config, attestation, judge, a = _inputs(tmp_path)
     kwargs = _kwargs(request, a)
@@ -393,6 +403,7 @@ def test_independent_judge_flag_blocks_dispatch(tmp_path):
 
 
 def test_long_signed_termination_reason_is_durable_invalid(tmp_path):
+    _require_trusted_dirfd_platform()
     request, config, attestation, judge, a = _inputs(tmp_path)
     kwargs = _kwargs(request, a)
     original = a.supervised
@@ -428,13 +439,25 @@ def test_runner_is_never_executed(tmp_path):
     assert calls == []
 
 
-def test_pass_receipt_with_violations_is_rejected(tmp_path):
-    request, config, attestation, judge, a = _inputs(tmp_path)
-    receipt = dispatch_once(request, config, attestation, judge, **_kwargs(request, a))
-    value = receipt.to_wire_dict()
-    value["violations"] = ["INVALID"]
+def test_pass_receipt_with_violations_is_rejected():
+    authority_receipt = _canonical({"signature_ed25519": "0" * 128}).decode()
+    receipt = ProductionDispatchReceiptV1(
+        status="PASS",
+        violations=("INVALID",),
+        envelope_hash="a" * 64,
+        reservation_durable=True,
+        terminal_durable=True,
+        model_callbacks_invoked=1,
+        provider_requests=1,
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=0.0,
+        termination_reason="completed",
+        evidence_digest="b" * 64,
+        authority_receipts=(authority_receipt,) * 6,
+    )
     with pytest.raises(ValueError, match="PASS receipt"):
-        load_production_dispatch_receipt_v1(_canonical(value))
+        load_production_dispatch_receipt_v1(receipt.to_json())
 
 
 def test_terminal_pass_with_violations_is_rejected():
@@ -497,6 +520,7 @@ def test_experiment_authority_rejects_independent_three_dollar_cell_reservation(
 
 
 def test_transport_exception_is_counted_and_terminalized(tmp_path):
+    _require_trusted_dirfd_platform()
     # PR #1248: a started transport remains one callback on exception paths.
     request, config, attestation, judge, authorities = _inputs(tmp_path)
     kwargs = _kwargs(request, authorities)
@@ -516,6 +540,7 @@ def test_transport_exception_is_counted_and_terminalized(tmp_path):
 
 
 def test_wrong_type_embedded_provider_receipt_is_durable_invalid(tmp_path):
+    _require_trusted_dirfd_platform()
     # PR #1248: malformed exact-result receipts must not escape serialization.
     request, config, attestation, judge, authorities = _inputs(tmp_path)
     original = authorities.supervised
@@ -538,6 +563,7 @@ def test_wrong_type_embedded_provider_receipt_is_durable_invalid(tmp_path):
 
 
 def test_experiment_state_mutation_blocks_transport(tmp_path):
+    _require_trusted_dirfd_platform()
     # PR #1248: experiment admission must be revalidated immediately before use.
     request, config, attestation, judge, authorities = _inputs(tmp_path)
     state = [request.spec.workspace_baseline_sha256]
@@ -589,6 +615,7 @@ def test_unsupported_dirfd_platform_blocks_all_authorities(tmp_path, monkeypatch
 
 
 def test_generated_transport_violation_is_wire_bounded(tmp_path):
+    _require_trusted_dirfd_platform()
     # PR #1248: authority diagnostics must remain persistable in strict v1 wire form.
     request, config, attestation, judge, authorities = _inputs(tmp_path)
     kwargs = _kwargs(request, authorities)
@@ -601,6 +628,7 @@ def test_generated_transport_violation_is_wire_bounded(tmp_path):
 
 
 def test_pass_loader_requires_and_verifies_trusted_context(tmp_path):
+    _require_trusted_dirfd_platform()
     # PR #1248: persisted PASS cannot be accepted from shape-only embedded receipts.
     request, config, attestation, judge, authorities = _inputs(tmp_path)
     qualification = qualify_production_trust_v2(
