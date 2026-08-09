@@ -143,6 +143,8 @@ class OperatorTrustConfigV1:
     immutable_journal_root: Path | None = None
     global_nonce_ledger_root: Path | None = None
     pinned_provider_receipt_key: Path | None = None
+    provider_receipt_role: str = "provider-budget-gateway"
+    provider_receipt_key_id: str = "legacy-provider-receipt-key"
 
 
 @dataclass(frozen=True)
@@ -324,6 +326,9 @@ def qualify_production_trust_v2(
         if config.pinned_judge is None:
             raise ValueError("pinned judge key is required")
         judge_key = AnchorKey.from_file(config.pinned_judge)
+        if config.pinned_provider_receipt_key is None:
+            raise ValueError("pinned provider receipt key is required")
+        provider_receipt_key = AnchorKey.from_file(config.pinned_provider_receipt_key)
     except Exception as error:
         return ProductionQualification(
             "NOT_EVALUATED", (f"ROLE_KEY_UNAVAILABLE:{error}",), spec_hash, False
@@ -348,15 +353,13 @@ def qualify_production_trust_v2(
     # so that client-process-kill mode is handled explicitly rather than via flag mutation.
     violations: list[str] = []
     assert config.pinned_judge is not None
+    assert config.pinned_provider_receipt_key is not None
     for path, label in (
         (config.trust_store, "trust_store"),
         (config.pinned_anchor, "pinned_anchor"),
         (config.pinned_judge, "pinned_judge"),
         (config.pinned_provider_receipt_key, "pinned_provider_receipt_key"),
     ):
-        if path is None:
-            violations.append(f"{label.upper()}_UNAVAILABLE")
-            continue
         violation = _trusted_external_file(path, evidence_bundle_root, label)
         if violation is not None:
             violations.append(violation)
@@ -372,12 +375,29 @@ def qualify_production_trust_v2(
     # material is identical.  Compare a one-way fingerprint, never raw keys.
     import hashlib
 
-    if (
-        hashlib.sha256(anchor_key.raw).digest()
-        == hashlib.sha256(judge_key.raw).digest()
-    ):
+    material_fingerprints = (
+        hashlib.sha256(anchor_key.raw).digest(),
+        hashlib.sha256(judge_key.raw).digest(),
+        hashlib.sha256(provider_receipt_key.raw).digest(),
+    )
+    if len(set(material_fingerprints)) != 3:
         violations.append("ROLE_KEY_MATERIAL_NOT_INDEPENDENT")
-    if config.spend_key_id == config.judge_key_id:
+    role_ids = (
+        "spend-authorizer",
+        "independent-judge",
+        config.provider_receipt_role,
+    )
+    if (
+        len(set(role_ids)) != 3
+        or config.provider_receipt_role != "provider-budget-gateway"
+    ):
+        violations.append("ROLE_IDENTITIES_NOT_INDEPENDENT")
+    key_ids = (
+        config.spend_key_id,
+        config.judge_key_id,
+        config.provider_receipt_key_id,
+    )
+    if len(set(key_ids)) != 3:
         violations.append("ROLE_KEY_IDS_NOT_INDEPENDENT")
     artifact_lexical = _absolute_lexical(config.immutable_artifact_root)
     bundle_lexical = _absolute_lexical(evidence_bundle_root)

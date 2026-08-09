@@ -5,6 +5,7 @@ import hmac
 import json
 import math
 import os
+import stat
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -68,6 +69,10 @@ class ProductionDispatchRequestV1:
         )
 
 
+PROVIDER_RECEIPT_ROLE = "provider-budget-gateway"
+DEFAULT_PROVIDER_RECEIPT_KEY_ID = "legacy-provider-receipt-key"
+
+
 @dataclass(frozen=True)
 class ProviderReservationReceiptV1:
     schema_version: int
@@ -76,11 +81,18 @@ class ProviderReservationReceiptV1:
     request_limit: int
     token_limit: int
     budget_ceiling_usd: float
+    issuer_role: str
+    key_id: str
     hmac_sha256: str
 
 
 def issue_provider_reservation_receipt(
-    spec: ProductionRunSpecV1, reservation_id: str, key: bytes
+    spec: ProductionRunSpecV1,
+    reservation_id: str,
+    key: bytes,
+    *,
+    issuer_role: str = PROVIDER_RECEIPT_ROLE,
+    key_id: str = DEFAULT_PROVIDER_RECEIPT_KEY_ID,
 ) -> ProviderReservationReceiptV1:
     if type(reservation_id) is not str or not reservation_id or len(key) < 32:
         raise ValueError("provider reservation identity/key invalid")
@@ -91,6 +103,8 @@ def issue_provider_reservation_receipt(
         "request_limit": spec.request_limit,
         "token_limit": spec.token_limit,
         "budget_ceiling_usd": spec.budget_ceiling_usd,
+        "issuer_role": issuer_role,
+        "key_id": key_id,
     }
     signature = hmac.new(key, _canonical(fields), hashlib.sha256).hexdigest()
     return ProviderReservationReceiptV1(
@@ -100,6 +114,8 @@ def issue_provider_reservation_receipt(
         request_limit=spec.request_limit,
         token_limit=spec.token_limit,
         budget_ceiling_usd=spec.budget_ceiling_usd,
+        issuer_role=issuer_role,
+        key_id=key_id,
         hmac_sha256=signature,
     )
 
@@ -362,8 +378,44 @@ class _Journal:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.parent_fd, self.fd, self.pin = _open_parent_and_create_root(root)
+        parent_st = os.fstat(self.parent_fd)
+        self.parent_pin = (parent_st.st_dev, parent_st.st_ino)
 
-    def write(self, name: str, value: object) -> None:
+    def assert_pin(self) -> None:
+        """Prove the signed path still names the pinned journal and parent."""
+        try:
+            parent_st = os.stat(self.root.parent, follow_symlinks=False)
+            root_st = os.stat(
+                self.root.name, dir_fd=self.parent_fd, follow_symlinks=False
+            )
+            signed_st = os.stat(self.root, follow_symlinks=False)
+            parent_fd_st = os.fstat(self.parent_fd)
+            root_fd_st = os.fstat(self.fd)
+        except OSError as error:
+            raise RuntimeError("Journal signed path is no longer reachable") from error
+        if (
+            stat.S_ISLNK(parent_st.st_mode)
+            or (
+                parent_st.st_dev,
+                parent_st.st_ino,
+            )
+            != self.parent_pin
+        ):
+            raise RuntimeError("Journal parent inode changed")
+        if (parent_fd_st.st_dev, parent_fd_st.st_ino) != self.parent_pin:
+            raise RuntimeError("Journal parent descriptor changed")
+        for candidate in (root_st, signed_st, root_fd_st):
+            if (
+                stat.S_ISLNK(candidate.st_mode)
+                or (
+                    candidate.st_dev,
+                    candidate.st_ino,
+                )
+                != self.pin
+            ):
+                raise RuntimeError("Journal root inode changed")
+
+    def _write_pinned(self, name: str, value: object) -> None:
         body = _canonical(value) + b"\n"
         fd = os.open(
             name,
@@ -380,6 +432,15 @@ class _Journal:
             os.close(fd)
         os.fsync(self.fd)
         os.fsync(self.parent_fd)
+
+    def write(self, name: str, value: object) -> None:
+        self.assert_pin()
+        self._write_pinned(name, value)
+        self.assert_pin()
+
+    def write_unknown_to_pin(self, name: str, value: object) -> None:
+        """Best-effort forensic record; never establishes signed-path durability."""
+        self._write_pinned(name, value)
 
     def close(self) -> None:
         for fd in (self.fd, self.parent_fd):

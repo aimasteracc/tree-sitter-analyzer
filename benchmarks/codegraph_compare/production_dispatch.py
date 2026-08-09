@@ -176,6 +176,8 @@ def _verify_provider_receipt(
         "request_limit": receipt.request_limit,
         "token_limit": receipt.token_limit,
         "budget_ceiling_usd": receipt.budget_ceiling_usd,
+        "issuer_role": receipt.issuer_role,
+        "key_id": receipt.key_id,
     }
     expected = hmac.new(key, _canonical(fields), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, receipt.hmac_sha256) or fields != {
@@ -185,6 +187,8 @@ def _verify_provider_receipt(
         "request_limit": 1,
         "token_limit": spec.token_limit,
         "budget_ceiling_usd": spec.budget_ceiling_usd,
+        "issuer_role": config.provider_receipt_role,
+        "key_id": config.provider_receipt_key_id,
     }:
         return ("PROVIDER_RESERVATION_INVALID",)
     return ()
@@ -461,6 +465,21 @@ def dispatch_once(
                     f"TERMINAL_WRITE_FAILED:{type(error).__name__}:{error}"
                 )
                 status = "INVALID"
+                reserved = False
+                terminal = False
+                try:
+                    journal.write_unknown_to_pin(
+                        "999-terminal.json",
+                        {
+                            "schema_version": 1,
+                            "event": "TERMINAL",
+                            "status": "UNKNOWN",
+                            "violations": run_violations,
+                            "evidence_digest": digest,
+                        },
+                    )
+                except Exception:
+                    pass
             journal.close()
     return _receipt(
         status,

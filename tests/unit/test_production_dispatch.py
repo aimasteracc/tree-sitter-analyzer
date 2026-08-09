@@ -34,7 +34,7 @@ JUDGE = AnchorKey(b"j" * 32)
 DIGEST = "e" * 64
 
 
-def _inputs(tmp_path: Path):
+def _inputs(tmp_path: Path, *, journal_parent: Path | None = None):
     manifest = create_canary_manifest(
         benchmark_git_sha="git",
         benchmark_version="v1",
@@ -48,7 +48,7 @@ def _inputs(tmp_path: Path):
         seed=7,
     )
     cell = manifest.cells[0]
-    journal = (tmp_path / "journal").resolve()
+    journal = ((journal_parent or tmp_path) / "journal").resolve()
     evidence = (tmp_path / "evidence").resolve()
     ledger = (tmp_path / "global-ledger").resolve()
     ledger.mkdir()
@@ -419,6 +419,78 @@ def test_evidence_root_symlink_swap_is_invalid_and_cannot_escape(tmp_path: Path)
     )
     assert receipt.status == "INVALID"
     assert tuple(outside.iterdir()) == ()
+
+
+def test_journal_signed_path_swap_is_invalid_and_not_durable(tmp_path: Path):
+    # Incident 2026-07-03: a runner could hide the journal and still receive PASS.
+    request, config, attestation, judge = _inputs(tmp_path)
+    moved = tmp_path / "moved-journal"
+    replacement = tmp_path / "replacement-journal"
+    replacement.mkdir()
+
+    def provider(current):
+        current.journal_root.rename(moved)
+        current.journal_root.symlink_to(replacement, target_is_directory=True)
+        return _provider(current)
+
+    receipt = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=lambda current, gate: gate.call(current),
+        provider_call=provider,
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    terminal = load_journal_event_v1((moved / "999-terminal.json").read_text())
+    assert receipt.status == "INVALID"
+    assert receipt.reservation_durable is False
+    assert receipt.terminal_durable is False
+    assert receipt.violations == (
+        "TERMINAL_WRITE_FAILED:RuntimeError:Journal root inode changed",
+    )
+    assert terminal["status"] == "UNKNOWN"
+    assert tuple(replacement.iterdir()) == ()
+
+
+def test_journal_parent_path_swap_is_invalid_and_not_durable(tmp_path: Path):
+    # Incident 2026-07-03: journal durability also depends on its pinned parent.
+    signed_parent = tmp_path / "signed-parent"
+    request, config, attestation, judge = _inputs(
+        tmp_path, journal_parent=signed_parent
+    )
+    moved_parent = tmp_path / "moved-parent"
+
+    def provider(current):
+        signed_parent.rename(moved_parent)
+        signed_parent.mkdir()
+        (signed_parent / "journal").mkdir()
+        return _provider(current)
+
+    receipt = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=lambda current, gate: gate.call(current),
+        provider_call=provider,
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    terminal = load_journal_event_v1(
+        (moved_parent / "journal" / "999-terminal.json").read_text()
+    )
+    assert receipt.status == "INVALID"
+    assert receipt.reservation_durable is False
+    assert receipt.terminal_durable is False
+    assert receipt.violations == (
+        "TERMINAL_WRITE_FAILED:RuntimeError:Journal parent inode changed",
+    )
+    assert terminal["status"] == "UNKNOWN"
+    assert tuple(path.name for path in signed_parent.iterdir()) == ("journal",)
 
 
 def test_strict_wire_rejects_duplicate_receipt_and_event_keys():

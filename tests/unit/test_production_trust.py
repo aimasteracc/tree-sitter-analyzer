@@ -251,9 +251,11 @@ def _v2_config(tmp_path: Path, bundle: Path) -> OperatorTrustConfigV1:
     trust_store = operator / "trust-store.json"
     anchor = operator / "anchor.key"
     judge = operator / "judge.key"
+    provider = operator / "provider.key"
     trust_store.write_text("{}\n", encoding="utf-8")
     anchor.write_text(_HEX_ANCHOR_KEY, encoding="utf-8")
     judge.write_text(_HEX_JUDGE_KEY, encoding="utf-8")
+    provider.write_text((b"p" * 32).hex(), encoding="utf-8")
     return OperatorTrustConfigV1(
         trust_store=trust_store,
         pinned_anchor=anchor,
@@ -271,7 +273,7 @@ def _v2_config(tmp_path: Path, bundle: Path) -> OperatorTrustConfigV1:
         budget_enforcement_mode="provider",
         immutable_journal_root=Path("/tmp/no1-trust-journal").resolve(),
         global_nonce_ledger_root=Path("/tmp/no1-trust-global-ledger").resolve(),
-        pinned_provider_receipt_key=anchor,
+        pinned_provider_receipt_key=provider,
     )
 
 
@@ -563,6 +565,107 @@ def test_v2_rejects_distinct_files_with_identical_key_material(tmp_path: Path):
         expected_evidence_digest="a" * 64,
     )
     assert result.violations == ("ROLE_KEY_MATERIAL_NOT_INDEPENDENT",)
+
+
+@pytest.mark.parametrize("provider_key_role", ("spend", "judge"))
+def test_v2_rejects_provider_receipt_key_material_collision(
+    tmp_path: Path, provider_key_role: str
+):
+    # Incident 2026-07-03: spend holders could forge provider receipts.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    colliding_path = (
+        config.pinned_anchor if provider_key_role == "spend" else config.pinned_judge
+    )
+    config = replace(config, pinned_provider_receipt_key=colliding_path)
+    now = 1_900_000_000
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="provider",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _judge_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert result.violations == ("ROLE_KEY_MATERIAL_NOT_INDEPENDENT",)
+
+
+def test_v2_rejects_provider_receipt_role_collision(tmp_path: Path):
+    # Incident 2026-07-03: provider trust identity must be independently pinned.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = replace(
+        _v2_config(tmp_path, bundle), provider_receipt_role="spend-authorizer"
+    )
+    now = 1_900_000_000
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="provider",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _judge_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert result.violations == ("ROLE_IDENTITIES_NOT_INDEPENDENT",)
+
+
+def test_v2_rejects_provider_receipt_key_id_collision(tmp_path: Path):
+    # Incident 2026-07-03: provider trust identity must be independently pinned.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = replace(
+        _v2_config(tmp_path, bundle), provider_receipt_key_id="legacy-spend-key"
+    )
+    now = 1_900_000_000
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="provider",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _judge_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert result.violations == ("ROLE_KEY_IDS_NOT_INDEPENDENT",)
 
 
 def test_v2_rejects_client_kill_wait_self_reporting_mode(tmp_path: Path):
