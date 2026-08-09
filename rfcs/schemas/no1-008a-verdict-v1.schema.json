@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "no1-008a-verdict-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_stage",
+    "status",
+    "expected_cells",
+    "observed_receipts",
+    "attempts_per_cell",
+    "counters",
+    "publishable",
+    "winner",
+    "dominance_allowed",
+    "unlock_allowed",
+    "authorization",
+    "top_level_reasons",
+    "cell_diagnostics"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "evaluation_stage": {
+      "const": "E0"
+    },
+    "status": {
+      "enum": [
+        "SETUP_QUALIFIED",
+        "NOT_EVALUATED"
+      ]
+    },
+    "expected_cells": {
+      "const": 14
+    },
+    "observed_receipts": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 14
+    },
+    "attempts_per_cell": {
+      "enum": [
+        1,
+        null
+      ]
+    },
+    "counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api_cost_usd",
+        "input_tokens",
+        "model_calls",
+        "network_requests",
+        "output_tokens",
+        "provider_requests"
+      ],
+      "properties": {
+        "api_cost_usd": {
+          "type": "number",
+          "const": 0
+        },
+        "input_tokens": {
+          "type": "number",
+          "const": 0
+        },
+        "model_calls": {
+          "type": "number",
+          "const": 0
+        },
+        "network_requests": {
+          "type": "number",
+          "const": 0
+        },
+        "output_tokens": {
+          "type": "number",
+          "const": 0
+        },
+        "provider_requests": {
+          "type": "number",
+          "const": 0
+        }
+      }
+    },
+    "publishable": {
+      "const": false
+    },
+    "winner": {
+      "type": "null"
+    },
+    "dominance_allowed": {
+      "const": false
+    },
+    "unlock_allowed": {
+      "const": false
+    },
+    "authorization": {
+      "enum": [
+        "PRODUCTION_VERIFIER",
+        "DIAGNOSTIC_ONLY"
+      ]
+    },
+    "top_level_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cell_diagnostics": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 14,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repo_id",
+          "arm_id",
+          "reasons"
+        ],
+        "properties": {
+          "repo_id": {
+            "type": "string"
+          },
+          "arm_id": {
+            "type": "string"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "SETUP_QUALIFIED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "observed_receipts": {
+            "const": 14
+          },
+          "attempts_per_cell": {
+            "const": 1
+          },
+          "authorization": {
+            "const": "PRODUCTION_VERIFIER"
+          },
+          "top_level_reasons": {
+            "maxItems": 0
+          },
+          "cell_diagnostics": {
+            "minItems": 14,
+            "maxItems": 14,
+            "items": {
+              "properties": {
+                "reasons": {
+                  "maxItems": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "authorization": {
+            "const": "DIAGNOSTIC_ONLY"
+          }
+        },
+        "required": [
+          "authorization"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "NOT_EVALUATED"
+          },
+          "top_level_reasons": {
+            "minItems": 1,
+            "contains": {
+              "const": "DIAGNOSTIC_ONLY"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

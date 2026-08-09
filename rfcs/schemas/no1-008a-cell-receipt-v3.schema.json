@@ -1,0 +1,35 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://tree-sitter-analyzer.invalid/schemas/no1-008a-cell-receipt-v3.schema.json",
+ "title": "NO1-008A detached cell receipt v3",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "schema_version",
+  "body",
+  "body_sha256",
+  "executor_signature",
+  "approver_signature",
+  "receipt_hash"
+ ],
+ "properties": {
+  "schema_version": {
+   "const": 3
+  },
+  "body": {
+   "$ref": "no1-008a-cell-receipt-v3-body.schema.json"
+  },
+  "body_sha256": {
+   "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+  },
+  "executor_signature": {
+   "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/signature"
+  },
+  "approver_signature": {
+   "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/signature"
+  },
+  "receipt_hash": {
+   "$ref": "no1-008a-cell-receipt-v3-common.schema.json#/$defs/hash"
+  }
+ }
+}

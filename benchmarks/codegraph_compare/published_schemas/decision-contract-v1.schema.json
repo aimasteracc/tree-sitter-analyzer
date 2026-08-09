@@ -1,0 +1,69 @@
+{
+  "$id": "no1-008a-decision-contract-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "cells": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "arm_id": {
+            "type": "string"
+          },
+          "plan_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "repo_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo_id",
+          "arm_id",
+          "plan_sha256"
+        ],
+        "type": "object"
+      },
+      "maxItems": 14,
+      "minItems": 14,
+      "type": "array"
+    },
+    "decision_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "decision_nonce": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "expires_at_ns": {
+      "type": "integer"
+    },
+    "issued_at_ns": {
+      "type": "integer"
+    },
+    "plan_set_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "root_signature": {
+      "pattern": "^[0-9a-f]{128}$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "decision_id",
+    "decision_nonce",
+    "issued_at_ns",
+    "expires_at_ns",
+    "plan_set_hash",
+    "cells",
+    "root_signature"
+  ],
+  "type": "object"
+}

@@ -434,3 +434,80 @@ Column meanings:
 - `fail_rate` — percentage of repeats with `error` set or `overall < 2.5`
 
 A result is considered **dominant** if it scores higher on `med_overall` AND lower on `med_tokens` than the next-best arm. Neither dimension alone is sufficient.
+
+
+## NO1-008A detached receipt v3 operator (E0 only)
+
+The authority host and its root service are the trusted boundary. The operator is
+untrusted and unprivileged: it has no Docker socket, root capability, cgroup/mkfs
+access, auditor key, or writable producer output. It submits only an offline-root-
+signed `run-cell` contract containing `job_id`, cell identity, and nonce. The Unix
+server has no arbitrary-sign operation and rejects every operation except
+`run-cell` before invoking privileged code.
+
+The service independently reads authority-controlled staged public config, plan,
+inventory, source snapshot, source tree, tool, config, seccomp, and immutable image
+identities. Root-signed config pins the service Ed25519 public key and the authorized
+service image/interpreter/module digests; `service_measurement` is checked against
+the running service module. The service creates its own output and cgroup, launches
+the exact producer, captures PID/starttime/pidfd availability/cgroup, requires exit
+zero and `cgroup.events populated=0` throughout the subtree, and immediately seals
+ext4 plus dm-verity in a service-owned non-writable directory. Its signed canonical audit retains the launch token and hashes the sealed data/hash
+images and all staged inputs. Mutable core directories never cross a service response.
+
+The seccomp claim is deliberately narrow: it attests that trusted supervisor code
+passed the exact root-authorized staged bytes to Docker. Docker does not return the
+loaded profile digest, so no such daemon-observation claim is made. Qualification
+also requires a Linux root + Docker/cgroup-v2/ext4/dm-verity E2E; where unavailable,
+the path fails closed rather than substituting mocks.
+
+This does not defend against a malicious authority-host root. Such root is explicitly
+trusted and can control the service, kernel, Docker daemon, cgroups, and storage.
+Executor, approver, and verifier are separate bounded-worker Unix services with
+distinct private keys retained as validated file descriptors and server-side
+`SO_PEERCRED` UID policy. Before binding a socket, each service requires an authority-signed service-launch
+attestation. The authority obtains Docker's top-level image ID, Cmd, Entrypoint,
+User, ReadonlyRootfs, mounts, network mode, SecurityOpt, container ID, PID,
+starttime, and cgroup itself; the service binds those facts to `/proc/self` and the
+root config's pinned image ID and command. It then measures the actual interpreter,
+all loaded non-stdlib project/package modules plus installed RECORD files, UID/GID,
+read-only root filesystem, and exact writable-mount set. Each measured service performs semantic verification and Ed25519 signing directly;
+private-key descriptors are retained by that service and are never inherited by a
+child. Responses retain the actual measurement rather than a copied expected value.
+
+All root-signed cell contracts share one correlation nonce. The operator cannot
+choose a verifier challenge: it first submits the canonical manifest hash, and the
+verifier issues a random challenge bound to that hash and a monotonic counter in a
+durable root-owned append-only hash-chain ledger. The length-prefixed, fsynced ledger applies the locked state machine
+`CHALLENGED -> VERIFYING -> CONSUMED/FAILED`; partial records, bad hashes, duplicate
+use, and replay after restart are rejected, and a crash-stranded VERIFYING record
+is failed on restart. The response contains separately signed consumption and
+ledger-head proofs. The signed `CONSUMED` proof is the acceptance fact; the consumer does not query a
+mutable live head, avoiding a TOCTOU race. An offline root-signed decision contract
+binds one ID/nonce, the common plan set, and all fourteen cell plan hashes before
+execution; it deliberately contains no post-run head. The consumer atomically
+records its use in root-controlled SQLite and returns the original signed receipt on
+an idempotent query after a commit-time disconnect. The authority host is trusted;
+this protocol does not claim resistance to rollback by a malicious database host. The verifier recomputes all fourteen receipts. Only a closed,
+reason-free verdict authorized as `PRODUCTION_VERIFIER` may say `SETUP_QUALIFIED`.
+The operator derives one total monotonic budget for the serial authority, executor,
+approver, and verifier phases from the fourteen signed plans; non-positive remaining time is a terminal timeout and leaves a durable `CANCELLED`
+state, while other failures leave `FAILED` and success records exact completion.
+
+Diagnostic verification always remains `E0/NOT_EVALUATED`; retained aggregate
+results include top-level authorization and failure reasons. `SETUP_QUALIFIED` is
+setup evidence only, never E2, a winner, a real-time freshness claim, or a
+publishable comparison.
+
+Build and run the wrapper through the `operator` image target so the root anchor is
+baked into the read-only image root. Host execution is fail-closed unless the anchor
+resource is externally pinned, read-only, and outside the writable checkout; a
+checkout-provided writable anchor is never accepted.
+
+Inspect the unprivileged contract surface without Docker or keys:
+
+```bash
+scripts/no1_008a_operator.sh contract
+scripts/no1_008a_operator.sh dry-run
+bash -n scripts/no1_008a_operator.sh
+```

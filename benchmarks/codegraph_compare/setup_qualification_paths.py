@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import heapq
 import os
 import stat
 import time
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+from benchmarks.codegraph_compare.execution_budget import hashing_timeout_seconds
 
 
 def canonical_relative_path(value: str) -> str:
@@ -107,21 +110,49 @@ def _visit_tree(
     max_depth: int = _DEFAULT_TREE_MAX_DEPTH,
     max_entries: int = _DEFAULT_TREE_MAX_ENTRIES,
     max_directories: int = _DEFAULT_TREE_MAX_DIRECTORIES,
+    deadline_monotonic: float | None = None,
 ) -> None:
     """Visit a trusted-bounded tree without Python recursion or path re-resolution."""
     if min(max_depth, max_entries, max_directories) < 0:
         raise ValueError("Artifact tree traversal ceilings must be non-negative")
 
+    def check_deadline() -> None:
+        if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+            raise TimeoutError("Artifact tree traversal deadline expired")
+
     def bounded_names(descriptor: int, remaining: int) -> list[str]:
-        names: list[str] = []
+        # Sorting a producer-controlled million-name directory in one C call would
+        # make the deadline unobservable.  Enumerate and sort bounded chunks, then
+        # merge them with checks between every small unit of work.
+        chunks: list[list[str]] = []
+        chunk: list[str] = []
+        count = 0
+        check_deadline()
         with os.scandir(descriptor) as entries:
             for entry in entries:
-                names.append(entry.name)
-                if len(names) > remaining:
+                chunk.append(entry.name)
+                count += 1
+                if count > remaining:
                     raise ValueError(
                         "Artifact tree exceeds trusted entry count ceiling"
                     )
-        names.sort()
+                if len(chunk) == 256:
+                    check_deadline()
+                    chunk.sort()
+                    check_deadline()
+                    chunks.append(chunk)
+                    chunk = []
+        if chunk:
+            check_deadline()
+            chunk.sort()
+            check_deadline()
+            chunks.append(chunk)
+        names: list[str] = []
+        for name in heapq.merge(*chunks):
+            names.append(name)
+            if len(names) % 256 == 0:
+                check_deadline()
+        check_deadline()
         return names
 
     # Each frame owns its descriptor except the root frame supplied by the caller.
@@ -242,7 +273,8 @@ def _hash_regular_descriptor(
     *,
     expected_size: int,
     max_bytes: int,
-    timeout_seconds: float = _DEFAULT_STREAM_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
+    deadline_monotonic: float | None = None,
     digest: Any | None = None,
 ) -> str:
     """Hash one immutable-size snapshot without following producer growth."""
@@ -257,12 +289,22 @@ def _hash_regular_descriptor(
         raise ValueError("Sparse artifact files are forbidden")
 
     target = digest if digest is not None else hashlib.sha256()
-    deadline = time.monotonic() + timeout_seconds
+    derived_timeout = hashing_timeout_seconds(
+        expected_size, deadline_monotonic=deadline_monotonic
+    )
+    if timeout_seconds is not None:
+        if timeout_seconds <= 0:
+            raise ValueError("Artifact file hashing timeout is invalid")
+        derived_timeout = min(derived_timeout, timeout_seconds)
+    deadline = min(
+        time.monotonic() + derived_timeout,
+        deadline_monotonic if deadline_monotonic is not None else float("inf"),
+    )
     read_total = 0
     max_reads = (expected_size + _HASH_CHUNK_BYTES - 1) // _HASH_CHUNK_BYTES
     reads = 0
     while read_total < expected_size:
-        if reads >= max_reads or time.monotonic() > deadline:
+        if reads >= max_reads or time.monotonic() >= deadline:
             raise ValueError("Artifact file hashing exceeded its bounded loop")
         chunk = os.read(descriptor, min(_HASH_CHUNK_BYTES, expected_size - read_total))
         reads += 1
@@ -277,12 +319,18 @@ def _hash_regular_descriptor(
         raise ValueError("Artifact file grew while hashing")
     if _stable_file_identity(os.fstat(descriptor)) != identity:
         raise ValueError("Artifact file changed while hashing")
-    if time.monotonic() > deadline:
+    if time.monotonic() >= deadline:
         raise ValueError("Artifact file hashing exceeded its timeout")
     return target.hexdigest()
 
 
-def _stream_file(descriptor: int, digest: Any, *, remaining: int) -> int:
+def _stream_file(
+    descriptor: int,
+    digest: Any,
+    *,
+    remaining: int,
+    deadline_monotonic: float | None = None,
+) -> int:
     metadata = os.fstat(descriptor)
     identity = _stable_file_identity(metadata)
     digest.update(metadata.st_size.to_bytes(8, "big"))
@@ -291,6 +339,7 @@ def _stream_file(descriptor: int, digest: Any, *, remaining: int) -> int:
         descriptor,
         expected_size=metadata.st_size,
         max_bytes=remaining,
+        deadline_monotonic=deadline_monotonic,
         digest=digest,
     )
     if _stable_file_identity(os.fstat(descriptor)) != identity:
@@ -304,7 +353,10 @@ def _update_typed_path(digest: Any, kind: bytes, relative: str) -> None:
 
 
 def _snapshot_tree_descriptor(
-    directory_fd: int, *, max_bytes: int
+    directory_fd: int,
+    *,
+    max_bytes: int,
+    deadline_monotonic: float | None = None,
 ) -> tuple[str, int, int, int]:
     digest = hashlib.sha256()
     consumed = 0
@@ -314,23 +366,39 @@ def _snapshot_tree_descriptor(
     def collect_file(descriptor: int, item: str) -> None:
         nonlocal consumed, file_count
         _update_typed_path(digest, b"F", item)
-        consumed += _stream_file(descriptor, digest, remaining=max_bytes - consumed)
+        consumed += _stream_file(
+            descriptor,
+            digest,
+            remaining=max_bytes - consumed,
+            deadline_monotonic=deadline_monotonic,
+        )
         file_count += 1
 
     def collect_directory(_descriptor: int, item: str) -> None:
         nonlocal directory_count
+        if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+            raise TimeoutError("Artifact tree hashing deadline expired")
         _update_typed_path(digest, b"D", item)
         directory_count += 1
 
-    _visit_tree(directory_fd, collect_file, collect_directory)
+    _visit_tree(
+        directory_fd,
+        collect_file,
+        collect_directory,
+        deadline_monotonic=deadline_monotonic,
+    )
     digest.update(
         b"C" + file_count.to_bytes(8, "big") + directory_count.to_bytes(8, "big")
     )
     return digest.hexdigest(), consumed, directory_count, file_count
 
 
-def _hash_tree_descriptor(directory_fd: int, *, max_bytes: int) -> str:
-    return _snapshot_tree_descriptor(directory_fd, max_bytes=max_bytes)[0]
+def _hash_tree_descriptor(
+    directory_fd: int, *, max_bytes: int, deadline_monotonic: float | None = None
+) -> str:
+    return _snapshot_tree_descriptor(
+        directory_fd, max_bytes=max_bytes, deadline_monotonic=deadline_monotonic
+    )[0]
 
 
 def _snapshot_tree_at(
@@ -353,9 +421,16 @@ def _hash_tree_at(
         os.close(directory_fd)
 
 
-def _hash_tree(root: Path, *, max_bytes: int = _DEFAULT_TREE_CEILING_BYTES) -> str:
+def _hash_tree(
+    root: Path,
+    *,
+    max_bytes: int = _DEFAULT_TREE_CEILING_BYTES,
+    deadline_monotonic: float | None = None,
+) -> str:
     root_fd = _open_root(root)
     try:
-        return _hash_tree_descriptor(root_fd, max_bytes=max_bytes)
+        return _hash_tree_descriptor(
+            root_fd, max_bytes=max_bytes, deadline_monotonic=deadline_monotonic
+        )
     finally:
         os.close(root_fd)

@@ -1,0 +1,994 @@
+"""Privileged execution half of the NO1-008A run-cell authority."""
+
+from __future__ import annotations
+
+import errno
+import fcntl
+import json
+import os
+import shutil
+import stat
+import subprocess
+import tempfile
+import threading
+import time
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from benchmarks.codegraph_compare.audit_authority_storage import (
+    _fsync_directory,
+    _materialize_source,
+    _producer_mount_targets,
+    _read,
+    _secure_directory,
+    _sha,
+    _source_archive_ceiling,
+)
+from benchmarks.codegraph_compare.execution_budget import (
+    AUTHORITY_COMMAND_TIMEOUT_SECONDS,
+    MAX_OUTPUT_ENTRIES,
+    OUTPUT_ENTRY_METADATA_CHARGE_BYTES,
+    debugfs_payload_timeout_seconds,
+    sealed_image_upper_bound_bytes,
+)
+from benchmarks.codegraph_compare.host_auditor import (
+    LAUNCH_DOMAIN,
+    _request,
+    launch,
+    terminal,
+)
+from benchmarks.codegraph_compare.receipt_v3 import (
+    canonical_json_bytes,
+    canonical_plan_hash,
+    strict_json_loads,
+)
+from benchmarks.codegraph_compare.setup_qualification_executor import (
+    validate_producer_plan,
+)
+from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
+from benchmarks.codegraph_compare.verifier import parse_public_config
+
+
+def _run(*args: str, timeout: float = AUTHORITY_COMMAND_TIMEOUT_SECONDS) -> bytes:
+    """Run every unit of authority work in a killable process group."""
+    process = subprocess.Popen(
+        args,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        os.killpg(process.pid, 9)
+        process.communicate()
+        raise TimeoutError(f"authority command deadline expired: {args[0]}") from None
+    if process.returncode:
+        raise ValueError(f"authority command failed: {args[0]}: {stderr[:200]!r}")
+    return stdout
+
+
+class AuthorityCleanupFatal(BaseException):
+    """Unrecoverable producer cleanup ambiguity; the service must stop listening."""
+
+
+def _docker_container_absent(container: str, timeout: float) -> bool:
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", container],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=max(0.001, timeout),
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    if result.returncode == 0:
+        return False
+    message = (result.stdout + result.stderr).decode(errors="replace").lower()
+    return "no such object" in message or "no such container" in message
+
+
+def _cgroup_unpopulated(cgroup: Path) -> bool:
+    try:
+        events = dict(
+            line.split()
+            for line in _read(cgroup / "cgroup.events").decode().splitlines()
+        )
+    except FileNotFoundError:
+        return True
+    return events.get("populated") == "0"
+
+
+def _cleanup_producer(container: str, cgroup: Path) -> None:
+    """Remove one producer and prove both Docker and cgroup absence before return."""
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", container],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=AUTHORITY_COMMAND_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        # An interrupted Docker RPC leaves container state unknown.  Continue with
+        # kernel-level termination, but never return until both authorities agree.
+        pass
+    deadline = time.monotonic() + AUTHORITY_COMMAND_TIMEOUT_SECONDS
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AuthorityCleanupFatal(
+                "producer cleanup could not confirm Docker/cgroup absence"
+            )
+        try:
+            kill = os.open(
+                cgroup / "cgroup.kill",
+                os.O_WRONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                os.write(kill, b"1")
+            finally:
+                os.close(kill)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            # A transient busy/delegation error is safe only if polling below can
+            # still prove the subtree is empty and removable.
+            pass
+        absent = _docker_container_absent(container, min(5.0, remaining))
+        empty = _cgroup_unpopulated(cgroup)
+        if absent and empty:
+            try:
+                cgroup.rmdir()
+            except FileNotFoundError:
+                return
+            except OSError:
+                pass
+            else:
+                return
+        time.sleep(min(0.05, max(0.001, deadline - time.monotonic())))
+
+
+PRODUCER_GATE_TARGET = "/run/no1-008a-launch-gate"
+PRODUCER_GATE_WRAPPER = (
+    'IFS= read -r signal < "$1" || exit 125; '
+    '[ "$signal" = RELEASE ] || exit 126; shift; '
+    'exec python -m benchmarks.codegraph_compare.setup_qualification_executor "$@"'
+)
+
+
+def _release_producer_gate(gate: Path, container: str, deadline: float) -> None:
+    """Release a live, blocked producer only after its launch audit is durable."""
+    ready_deadline = min(deadline, time.monotonic() + 10.0)
+    inspected_running = False
+    while True:
+        try:
+            descriptor = os.open(
+                gate,
+                os.O_WRONLY
+                | os.O_NONBLOCK
+                | os.O_CLOEXEC
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            break
+        except OSError as exc:
+            if exc.errno != errno.ENXIO:
+                raise
+            if not inspected_running:
+                remaining = ready_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        "producer launch gate readiness expired"
+                    ) from None
+                inspected = json.loads(
+                    _run("docker", "inspect", container, timeout=remaining)
+                )[0]
+                state = inspected.get("State", {})
+                if state.get("Running") is not True:
+                    raise ValueError(
+                        "producer exited before launch gate release"
+                    ) from None
+                inspected_running = True
+            if time.monotonic() >= ready_deadline:
+                raise TimeoutError("producer launch gate readiness expired") from None
+            time.sleep(0.01)
+    try:
+        payload = b"RELEASE\n"
+        while payload:
+            written = os.write(descriptor, payload)
+            if written == 0:
+                raise OSError("producer launch gate write made no progress")
+            payload = payload[written:]
+    finally:
+        os.close(descriptor)
+
+
+def _wait_container(container: str, deadline: float) -> str:
+    """Wait only until the producer wall deadline; Docker RPC cleanup is separate."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("producer Docker wall deadline expired")
+    process = subprocess.Popen(
+        ["docker", "wait", container],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=remaining)
+    except subprocess.TimeoutExpired:
+        subprocess.run(
+            ["docker", "kill", container],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        process.communicate(timeout=30)
+        raise TimeoutError("producer Docker wall deadline expired") from None
+    if process.returncode:
+        raise ValueError(f"authority command failed: docker wait: {stderr[:200]!r}")
+    return stdout.decode().strip()
+
+
+def _docker_wall_deadline(started_at: str, wall_timeout: int) -> float:
+    from datetime import datetime
+
+    started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+    elapsed = time.time() - started.timestamp()
+    return time.monotonic() + max(0.0, wall_timeout - elapsed)
+
+
+_EXT4_METADATA_MIN_BYTES = 64 * 1024 * 1024
+_EXT4_ROUND_BYTES = 4 * 1024 * 1024
+_MAX_AUTHORIZED_OUTPUT_BYTES = 16 * 1024 * 1024 * 1024
+_MAX_SEALED_CORE_ENTRIES = MAX_OUTPUT_ENTRIES
+_EXT4_INODE_RESERVE_NUMERATOR = 11
+_EXT4_INODE_RESERVE_DENOMINATOR = 10
+
+
+def _authorized_output_ceiling(plan: Mapping[str, Any]) -> int:
+    """Return the root-signed aggregate raw/index output ceiling."""
+    ceilings = plan.get("resource_ceilings")
+    value = ceilings.get("io_bytes") if type(ceilings) is dict else None
+    if type(value) is not int or value <= 0 or value > _MAX_AUTHORIZED_OUTPUT_BYTES:
+        raise ValueError("plan output ceiling is invalid or exceeds authority maximum")
+    return value
+
+
+def _round_up(value: int, alignment: int) -> int:
+    return ((value + alignment - 1) // alignment) * alignment
+
+
+def _ext4_layout(core: Path, authorized_output_bytes: int) -> tuple[int, int, int]:
+    """Return image bytes, reserved inodes, and charged extraction payload bytes."""
+    if (
+        type(authorized_output_bytes) is not int
+        or authorized_output_bytes <= 0
+        or authorized_output_bytes > _MAX_AUTHORIZED_OUTPUT_BYTES
+    ):
+        raise ValueError("authorized output ceiling is invalid")
+    charged_bytes = OUTPUT_ENTRY_METADATA_CHARGE_BYTES
+    core_entries = 1  # the sealed core root becomes the filesystem root
+    directories = 1
+    regular_files = 0
+    symlinks = 0
+    for current, child_directories, child_files in os.walk(core, followlinks=False):
+        for name in child_directories + child_files:
+            metadata = os.lstat(Path(current) / name)
+            core_entries += 1
+            if core_entries > _MAX_SEALED_CORE_ENTRIES:
+                raise ValueError("producer core entry count exceeds authority maximum")
+            charged_bytes += OUTPUT_ENTRY_METADATA_CHARGE_BYTES
+            if stat.S_ISREG(metadata.st_mode):
+                regular_files += 1
+                allocated = getattr(metadata, "st_blocks", 0) * 512
+                charged_bytes += max(metadata.st_size, allocated)
+            elif stat.S_ISDIR(metadata.st_mode):
+                directories += 1
+            elif stat.S_ISLNK(metadata.st_mode):
+                symlinks += 1
+            else:
+                raise ValueError("producer core contains unsupported entry")
+            if charged_bytes > authorized_output_bytes:
+                raise ValueError("producer core exceeds authorized output ceiling")
+    if core_entries != directories + regular_files + symlinks or symlinks != 0:
+        raise ValueError("producer core inode accounting is not exact")
+
+    required = _EXT4_METADATA_MIN_BYTES + (charged_bytes * 5 + 3) // 4
+    image_size = _round_up(required, _EXT4_ROUND_BYTES)
+    if image_size > sealed_image_upper_bound_bytes(authorized_output_bytes):
+        raise ValueError("ext4 image exceeds authorized plan-derived ceiling")
+
+    # Include the filesystem root and mkfs-created lost+found, then retain ten
+    # percent for e2fsprogs metadata behavior instead of relying on byte ratios.
+    required_inodes = core_entries + 1
+    inode_count = (
+        required_inodes * _EXT4_INODE_RESERVE_NUMERATOR
+        + _EXT4_INODE_RESERVE_DENOMINATOR
+        - 1
+    ) // _EXT4_INODE_RESERVE_DENOMINATOR
+    return image_size, inode_count, charged_bytes
+
+
+def _ext4_image_size(core: Path, authorized_output_bytes: int) -> int:
+    """Compatibility wrapper returning the sealed-core-derived image size."""
+    return _ext4_layout(core, authorized_output_bytes)[0]
+
+
+def _verity_hash_image_size(data_size: int) -> int:
+    # SHA-256 verity fanout is 128 hashes per 4 KiB block.  One percent plus a
+    # fixed superblock/metadata reserve remains conservative at every allowed size.
+    return _round_up(16 * 1024 * 1024 + (data_size + 99) // 100, _EXT4_ROUND_BYTES)
+
+
+def _validate_producer_output(output: Path) -> Path:
+    entries = list(os.scandir(output))
+    if (
+        len(entries) != 1
+        or entries[0].name != "core"
+        or not entries[0].is_dir(follow_symlinks=False)
+    ):
+        raise ValueError("producer output must contain exactly one real core directory")
+    core = output / "core"
+    seen: set[tuple[int, int]] = set()
+    for current, directories, files in os.walk(core, followlinks=False):
+        for name in directories + files:
+            path = Path(current) / name
+            metadata = os.lstat(path)
+            if stat.S_ISLNK(metadata.st_mode) or not (
+                stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)
+            ):
+                raise ValueError("producer core contains symlink or special entry")
+            identity = (metadata.st_dev, metadata.st_ino)
+            if identity in seen or (
+                stat.S_ISREG(metadata.st_mode) and metadata.st_nlink != 1
+            ):
+                raise ValueError("producer core contains hard-linked entry")
+            seen.add(identity)
+    return core
+
+
+def _assert_ext4_payload(
+    data_image: Path,
+    payload: Path,
+    *,
+    payload_bytes: int,
+    contract_expires_at_ns: int,
+) -> None:
+    """Extract at an authorized minimum rate without crossing contract expiry."""
+    if type(payload_bytes) is not int or payload_bytes < 0:
+        raise ValueError("ext4 extraction payload size is invalid")
+    if type(contract_expires_at_ns) is not int:
+        raise ValueError("authority contract expiry is invalid")
+    required_timeout = debugfs_payload_timeout_seconds(payload_bytes)
+    remaining = (contract_expires_at_ns - time.time_ns()) / 1_000_000_000
+    if remaining <= 0:
+        raise TimeoutError("authority contract expired before ext4 extraction")
+    extraction_timeout = min(float(required_timeout), remaining)
+    with tempfile.TemporaryDirectory(prefix="no1-008a-ext4-check-") as temporary:
+        extracted = Path(temporary)
+        _run(
+            "debugfs",
+            "-R",
+            f"rdump / {extracted}",
+            str(data_image),
+            timeout=extraction_timeout,
+        )
+        if _hash_tree(extracted) != _hash_tree(payload):
+            raise ValueError("ext4 image tree differs from sealed authority payload")
+
+
+def _seal_tree(root: Path) -> None:
+    for _current, directories, files, directory_fd in os.fwalk(
+        root, topdown=False, follow_symlinks=False
+    ):
+        for name in files:
+            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("sealed core leaf changed type")
+            os.chown(name, 0, 0, dir_fd=directory_fd, follow_symlinks=False)
+            os.chmod(name, 0o444, dir_fd=directory_fd, follow_symlinks=False)
+        for name in directories:
+            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if not stat.S_ISDIR(metadata.st_mode):
+                raise ValueError("sealed core directory changed type")
+            os.chown(name, 0, 0, dir_fd=directory_fd, follow_symlinks=False)
+            os.chmod(name, 0o555, dir_fd=directory_fd, follow_symlinks=False)  # nosec B103
+    os.chown(root, 0, 0, follow_symlinks=False)
+    os.chmod(root, 0o555, follow_symlinks=False)  # nosec B103
+
+
+def _cgroup_empty(root: Path) -> list[str]:
+    populated: list[str] = []
+    for current, directories, _files in os.walk(root, followlinks=False):
+        directories.sort()
+        events = dict(
+            line.split()
+            for line in _read(Path(current) / "cgroup.events").decode().splitlines()
+        )
+        if events.get("populated") != "0":
+            populated.append(current)
+    if populated:
+        raise ValueError("producer cgroup subtree remains populated")
+    return populated
+
+
+def _pid_identity(pid: int) -> tuple[str, int]:
+    raw = _read(Path(f"/proc/{pid}/stat")).decode()
+    if ")" not in raw:
+        raise ValueError("launch process stat is incomplete")
+    fields = raw.rsplit(")", 1)[1].split()
+    if len(fields) < 20:
+        raise ValueError("launch process stat is incomplete")
+    pidfd_open = getattr(os, "pidfd_open", None)
+    if pidfd_open is None:
+        raise ValueError("pidfd_open is required for authority launch identity")
+    descriptor = pidfd_open(pid)
+    return fields[19], descriptor
+
+
+_CGROUP_ROOT = Path("/sys/fs/cgroup")
+_REQUIRED_CGROUP_CONTROLLERS = frozenset({"cpu", "memory", "io", "pids"})
+_REQUIRED_CGROUP_CONTROL_FILES = ("cpu.max", "memory.max", "io.max", "pids.max")
+
+
+def _preflight_cgroup_host() -> Path:
+    """Require the exact writable cgroup-v2 delegation used by producer jobs."""
+    docker_info = json.loads(_run("docker", "info", "--format", "{{json .}}"))
+    if (
+        type(docker_info) is not dict
+        or docker_info.get("CgroupVersion") != "2"
+        or docker_info.get("CgroupDriver") != "cgroupfs"
+    ):
+        raise ValueError("authority supports only cgroup-v2 cgroupfs Docker")
+    available = set(_read(_CGROUP_ROOT / "cgroup.controllers").decode().split())
+    if not _REQUIRED_CGROUP_CONTROLLERS.issubset(available):
+        raise ValueError("required cgroup-v2 controllers are unavailable")
+    subtree_control = _CGROUP_ROOT / "cgroup.subtree_control"
+    delegated = set(_read(subtree_control).decode().split())
+    if not _REQUIRED_CGROUP_CONTROLLERS.issubset(delegated):
+        raise ValueError("required cgroup-v2 controllers are not delegated")
+    writable = (_CGROUP_ROOT, subtree_control) + tuple(
+        _CGROUP_ROOT / name for name in _REQUIRED_CGROUP_CONTROL_FILES
+    )
+    if any(not os.access(path, os.W_OK) for path in writable):
+        raise ValueError("required cgroup-v2 delegation is not writable")
+    return _CGROUP_ROOT
+
+
+class AuthorityRunner:
+    """Runs only pre-staged, root-authorized jobs and seals their outputs."""
+
+    def __init__(self, staged_root: Path, artifact_root: Path, key: Ed25519PrivateKey):
+        self._staged = staged_root.resolve(strict=True)
+        self._artifacts = artifact_root.resolve(strict=True)
+        _secure_directory(self._staged)
+        _secure_directory(self._artifacts)
+        self._key = key
+        self._semaphore = threading.BoundedSemaphore(1)
+        self._lock_path = self._artifacts / ".authority.lock"
+        descriptor = os.open(
+            self._lock_path,
+            os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW,
+            0o600,
+        )
+        try:
+            metadata = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != 0
+                or stat.S_IMODE(metadata.st_mode) != 0o600
+                or metadata.st_nlink != 1
+            ):
+                raise ValueError("authority global lock is not protected")
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        _fsync_directory(self._artifacts)
+
+    @contextmanager
+    def _exclusive_execution(self) -> Iterator[None]:
+        with self._semaphore:
+            descriptor = os.open(
+                self._lock_path, os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW
+            )
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
+                yield
+            finally:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+                os.close(descriptor)
+
+    def _inputs(
+        self, contract: Mapping[str, Any]
+    ) -> tuple[Path, Mapping[str, Any], dict[str, Any]]:
+        job = self._staged / contract["job_id"]
+        _secure_directory(job)
+        declared = strict_json_loads(_read(job / "authority-job.json"))
+        expected = frozenset({"job_id", "cell", "nonce", "producer_image"})
+        if type(declared) is not dict or frozenset(declared) != expected:
+            raise ValueError("authority job declaration is not closed")
+        if any(
+            declared[name] != contract[name] for name in ("job_id", "cell", "nonce")
+        ):
+            raise ValueError("staged job does not match root contract")
+        config = parse_public_config(_read(job / "public-config.json"))
+        runtime = config["trusted"]["auditor_runtime"]
+        hostname = os.environ.get("HOSTNAME", "")
+        inspected = json.loads(_run("docker", "inspect", hostname))
+        own = inspected[0] if type(inspected) is list and len(inspected) == 1 else {}
+        mounts = own.get("Mounts", [])
+        if (
+            own.get("Image") != runtime["image_id"]
+            or own.get("Image") != config["trusted"]["image_ids"]["auditor"]
+            or own.get("Config", {}).get("Image", "").split("@")[-1]
+            != runtime["image_digest"]
+            or own.get("Config", {})
+            .get("Labels", {})
+            .get("org.tree-sitter-analyzer.no1-008a.closure-sha256")
+            != runtime["closure_manifest_sha256"]
+            or own.get("HostConfig", {}).get("ReadonlyRootfs") is not True
+            or any(
+                mount.get("Destination", "").startswith(
+                    ("/opt/tsa", "/usr/local/lib/python")
+                )
+                for mount in mounts
+            )
+        ):
+            raise ValueError("authority immutable image closure is not root-authorized")
+        return job, declared, config
+
+    def _verify_staged(
+        self, job: Path, contract: Mapping[str, Any], config: Mapping[str, Any]
+    ) -> int:
+        cell = contract["cell"]
+        identity = f"{cell['repo_id']}/{cell['arm_id']}"
+        plan = strict_json_loads(_read(job / "plan.json"))
+        plan_cell = plan.get("cell")
+        if type(plan_cell) is not dict or any(
+            plan_cell.get(name) != cell[name] for name in cell
+        ):
+            raise ValueError("staged plan cell mismatch")
+        logical_hash = canonical_plan_hash(plan)
+        if (
+            plan.get("plan_hash") != logical_hash
+            or logical_hash != config["trusted"]["plan_hashes"][identity]
+        ):
+            raise ValueError("root-authorized canonical plan hash mismatch")
+        checks = {
+            "plan.json": config["trusted"]["plan_document_sha256"][identity],
+            "inventory.json": config["trusted"]["inventory_sha256"][cell["repo_id"]],
+            "tool": config["trusted"]["tool_sha256"],
+            "config": config["trusted"]["config_sha256"],
+            "seccomp": config["trusted"]["seccomp_sha256"],
+        }
+        for name, expected in checks.items():
+            staged = job / name
+            metadata = os.lstat(staged)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != 0
+                or stat.S_IMODE(metadata.st_mode) & 0o022
+                or metadata.st_nlink != 1
+            ):
+                raise ValueError(
+                    f"staged input is not immutable root-owned regular: {name}"
+                )
+            if _sha(staged) != expected:
+                raise ValueError(f"root-authorized staged hash mismatch: {name}")
+        inventory_payload = _read(job / "inventory.json")
+        archive_ceiling = _source_archive_ceiling(inventory_payload)
+        snapshot = job / "source-snapshot.tar"
+        metadata = os.lstat(snapshot)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != 0
+            or stat.S_IMODE(metadata.st_mode) & 0o022
+            or metadata.st_nlink != 1
+        ):
+            raise ValueError(
+                "staged input is not immutable root-owned regular: source-snapshot.tar"
+            )
+        if (
+            _sha(snapshot, limit=archive_ceiling)
+            != config["trusted"]["source_snapshot_sha256"][cell["repo_id"]]
+        ):
+            raise ValueError(
+                "root-authorized staged hash mismatch: source-snapshot.tar"
+            )
+        wall_timeout = plan.get("wall_timeout_seconds")
+        if type(wall_timeout) is not int or wall_timeout < 1 or wall_timeout > 86400:
+            raise ValueError("staged plan timeout invalid")
+        # The seccomp statement is intentionally an authority-code attestation of
+        # the exact staged bytes passed to Docker, not a daemon-returned digest.
+        return wall_timeout
+
+    def preflight(self, contract: Mapping[str, Any]) -> None:
+        """Reject a malformed producer plan before consuming the one-shot job ID."""
+        job, _declared, config = self._inputs(contract)
+        self._verify_staged(job, contract, config)
+        plan = validate_producer_plan(strict_json_loads(_read(job / "plan.json")))
+        _authorized_output_ceiling(plan)
+        _producer_mount_targets(plan)
+        # Host capability errors are deterministic and must precede the durable
+        # one-shot RUNNING reservation made by __call__().
+        _preflight_cgroup_host()
+
+    def _execute(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
+        job, declared, config = self._inputs(contract)
+        wall_timeout = self._verify_staged(job, contract, config)
+        plan = validate_producer_plan(strict_json_loads(_read(job / "plan.json")))
+        output_ceiling = _authorized_output_ceiling(plan)
+        source_target, tool_target, config_target = _producer_mount_targets(plan)
+        image = declared["producer_image"]
+        if image.split("@")[-1] != config["trusted"]["images"]["producer"]:
+            raise ValueError("producer launch reference is not root-authorized")
+        destination = self._artifacts / contract["job_id"]
+        _secure_directory(destination, fresh=True)
+        source = destination / "source"
+        archive_ceiling = _source_archive_ceiling(_read(job / "inventory.json"))
+        _materialize_source(
+            job / "source-snapshot.tar",
+            source,
+            inventory_payload=_read(job / "inventory.json"),
+            ceiling=archive_ceiling,
+        )
+        output = destination / "producer-output"
+        output.mkdir(mode=0o700)
+        os.chown(output, 65532, 65532)
+        gate = destination / "producer-launch-gate"
+        os.mkfifo(gate, mode=0o444)
+        os.chown(gate, 0, 0, follow_symlinks=False)
+        os.chmod(gate, 0o444, follow_symlinks=False)
+        gate_metadata = os.lstat(gate)
+        if (
+            not stat.S_ISFIFO(gate_metadata.st_mode)
+            or gate_metadata.st_uid != 0
+            or gate_metadata.st_nlink != 1
+            or stat.S_IMODE(gate_metadata.st_mode) != 0o444
+        ):
+            raise ValueError("producer launch gate is not an exact authority FIFO")
+        cgroup_name = f"no1-008a-{contract['job_id']}"
+        # Recheck immediately before cgroup creation so a daemon reload or
+        # delegation change cannot race the reservation-time preflight.
+        cgroup_root = _preflight_cgroup_host()
+        cgroup = cgroup_root / cgroup_name
+        cgroup.mkdir(mode=0o755)
+        name = f"no1-008a-{contract['job_id'][:24]}"
+        since = str(int(time.time()))
+        mounts = [
+            (source, source_target, True),
+            (job / "tool", tool_target, True),
+            (job / "config", config_target, True),
+            (job / "seccomp", "/plan/seccomp.json", True),
+            (job / "plan.json", "/plan/cell-plan.json", True),
+            (job / "inventory.json", "/plan/inventory.json", True),
+            (gate, PRODUCER_GATE_TARGET, True),
+            (output, "/out", False),
+        ]
+        command = [
+            "docker",
+            "create",
+            "--name",
+            name,
+            "--cgroup-parent",
+            f"/{cgroup_name}",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--security-opt",
+            f"seccomp={job / 'seccomp'}",
+            "--user",
+            "65532:65532",
+            "--pids-limit",
+            "64",
+            "--memory",
+            "4g",
+            "--cpus",
+            "1",
+            "--ulimit",
+            f"fsize={output_ceiling}:{output_ceiling}",
+            "--tmpfs",
+            f"{Path('/') / 'tmp'}:rw,noexec,nosuid,nodev,size=64m",
+            "--entrypoint",
+            "/bin/sh",
+        ]
+        for source, target, readonly in mounts:
+            suffix = ",readonly,bind-propagation=rprivate" if readonly else ""
+            command += ["--mount", f"type=bind,src={source},dst={target}{suffix}"]
+        container = (
+            _run(
+                *(
+                    command
+                    + [
+                        image,
+                        "-c",
+                        PRODUCER_GATE_WRAPPER,
+                        "no1-008a-gate",
+                        PRODUCER_GATE_TARGET,
+                        "--plan",
+                        "/plan/cell-plan.json",
+                        "--out",
+                        "/out",
+                    ]
+                )
+            )
+            .decode()
+            .strip()
+        )
+        pidfd_descriptor = -1
+        try:
+            _run("docker", "start", container)
+            inspected = json.loads(_run("docker", "inspect", container))[0]
+            producer_deadline = _docker_wall_deadline(
+                inspected["State"]["StartedAt"], wall_timeout
+            )
+            pid = inspected["State"]["Pid"]
+            starttime, pidfd_descriptor = _pid_identity(pid)
+            launched = launch(
+                container, image, job / "seccomp", since, contract["nonce"], config
+            )
+            if launched["launch_pid"] != pid:
+                raise ValueError("Docker launch PID changed during pidfd capture")
+            launched.update(launch_starttime=starttime, launch_pidfd_opened=True)
+            launch_request = _request("launch", launched, config["auditor"])
+            launch_envelope = {
+                "audit": launch_request,
+                "key_id": config["auditor"]["key_id"],
+                "algorithm": "Ed25519",
+                "signature": self._key.sign(
+                    LAUNCH_DOMAIN + canonical_json_bytes(launch_request)
+                ).hex(),
+            }
+            launch_path = destination / "launch-audit.json"
+            launch_descriptor = os.open(
+                launch_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
+                0o400,
+            )
+            try:
+                launch_payload = canonical_json_bytes(launch_envelope)
+                while launch_payload:
+                    written = os.write(launch_descriptor, launch_payload)
+                    if written == 0:
+                        raise OSError("launch audit write made no progress")
+                    launch_payload = launch_payload[written:]
+                os.fsync(launch_descriptor)
+            finally:
+                os.close(launch_descriptor)
+            _fsync_directory(destination)
+            _release_producer_gate(gate, container, producer_deadline)
+            exit_code = _wait_container(container, producer_deadline)
+            if exit_code != "0":
+                raise ValueError("producer did not exit zero")
+            os.chown(output, 0, 0)
+            os.chmod(output, 0o500)
+            _cgroup_empty(Path(launched["cgroup_id"]))
+            core = _validate_producer_output(output)
+            _seal_tree(core)
+            os.chown(output, 0, 0, follow_symlinks=False)
+            os.chmod(output, 0o555, follow_symlinks=False)  # nosec B103
+            data = destination / "data.img"
+            hashes = destination / "hash.img"
+            data_size, inode_count, payload_bytes = _ext4_layout(core, output_ceiling)
+            _run("truncate", "-s", str(data_size), str(data))
+            _run(
+                "mkfs.ext4",
+                "-q",
+                "-N",
+                str(inode_count),
+                "-d",
+                str(core),
+                str(data),
+            )
+            # mkfs.ext4 creates an authority-extraneous /lost+found.  Remove it
+            # before dm-verity so extraction hashes the exact sealed payload tree.
+            _run("debugfs", "-w", "-R", "rmdir lost+found", str(data))
+            _assert_ext4_payload(
+                data,
+                core,
+                payload_bytes=payload_bytes,
+                contract_expires_at_ns=contract["expires_at_ns"],
+            )
+            _run("truncate", "-s", str(_verity_hash_image_size(data_size)), str(hashes))
+            format_output = _run(
+                "veritysetup", "format", str(data), str(hashes), "--hash", "sha256"
+            )
+            process = terminal(
+                canonical_json_bytes(launch_envelope),
+                job / "seccomp",
+                image,
+                data,
+                hashes,
+                config,
+            )
+            process["plan"]["canonical_sha256"] = canonical_plan_hash(
+                strict_json_loads(_read(job / "plan.json"))
+            )
+            process.update(
+                launch_pid=pid,
+                launch_starttime=starttime,
+                launch_pidfd_opened=True,
+                cgroup_populated=0,
+                cgroup_subtree_populated=[],
+                launch_token=launch_envelope,
+                core_tree_sha256=_hash_tree(core),
+                source_snapshot_sha256=_sha(
+                    job / "source-snapshot.tar", limit=archive_ceiling
+                ),
+                tool_sha256=_sha(job / "tool"),
+                config_sha256=_sha(job / "config"),
+            )
+            audit = _request("terminal", process, config["auditor"])
+            (destination / "verity-format.txt").write_bytes(format_output)
+            for path in (data, hashes, launch_path, destination / "verity-format.txt"):
+                metadata = os.lstat(path)
+                if not stat.S_ISREG(metadata.st_mode):
+                    raise ValueError("authority artifact changed type before sealing")
+                os.chown(path, 0, 0, follow_symlinks=False)
+                os.chmod(path, 0o444, follow_symlinks=False)
+            os.chmod(destination, 0o555)  # nosec B103
+            refs = {
+                name: str(destination / name)
+                for name in (
+                    "data.img",
+                    "hash.img",
+                    "launch-audit.json",
+                    "verity-format.txt",
+                )
+            }
+            return {"audit": audit, "artifacts": refs}
+        finally:
+            if pidfd_descriptor >= 0:
+                os.close(pidfd_descriptor)
+            _cleanup_producer(container, cgroup)
+            try:
+                gate.unlink()
+            except FileNotFoundError:
+                pass
+
+    def _sync_sealed_job(self, job_id: str, result: Mapping[str, Any]) -> None:
+        """Durably sync every signed artifact and its job directory before SUCCESS."""
+        artifacts = result.get("artifacts")
+        if type(artifacts) is not dict:
+            raise ValueError("runner result artifacts are absent before sealing")
+        job = (self._artifacts / job_id).resolve(strict=True)
+        files: set[Path] = set()
+        directories: set[Path] = {job}
+        for raw in artifacts.values():
+            path = Path(raw).resolve(strict=True)
+            if job != path and job not in path.parents:
+                raise ValueError("sealed artifact escapes job directory")
+            if path.is_dir():
+                directories.add(path)
+                for child in path.rglob("*"):
+                    if child.is_file() and not child.is_symlink():
+                        files.add(child)
+                    elif child.is_dir() and not child.is_symlink():
+                        directories.add(child)
+                    else:
+                        raise ValueError("sealed artifact tree contains special entry")
+            elif path.is_file() and not path.is_symlink():
+                files.add(path)
+            else:
+                raise ValueError("sealed artifact is not a regular file or directory")
+        for path in sorted(files):
+            descriptor = os.open(
+                path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+            )
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        for path in sorted(directories, key=lambda item: len(item.parts), reverse=True):
+            _fsync_directory(path)
+
+    @staticmethod
+    def _write_all(descriptor: int, payload: bytes, label: str) -> None:
+        while payload:
+            written = os.write(descriptor, payload)
+            if written == 0:
+                raise OSError(f"{label} write made no progress")
+            payload = payload[written:]
+
+    def __call__(
+        self,
+        contract: Mapping[str, Any],
+        finalize: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    ) -> Mapping[str, Any]:
+        with self._exclusive_execution():
+            job_id = contract.get("job_id")
+            if type(job_id) is not str or len(job_id) != 64:
+                raise ValueError("job id invalid before one-shot reservation")
+            state = self._artifacts / f"{job_id}.state"
+            descriptor = os.open(
+                state, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400
+            )
+            try:
+                self._write_all(descriptor, b"RUNNING\n", "authority state")
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            _fsync_directory(self._artifacts)
+            try:
+                result = self._execute(contract)
+                self._sync_sealed_job(job_id, result)
+                committed = finalize(result) if finalize is not None else result
+                if finalize is not None:
+                    self._persist_response(job_id, committed)
+            except Exception as error:
+                destination = self._artifacts / job_id
+                if destination.exists():
+                    shutil.rmtree(destination)
+                self._terminal_state(
+                    job_id, state, f"FAILED:{type(error).__name__}\n".encode("ascii")
+                )
+                raise
+            self._terminal_state(job_id, state, b"SUCCESS\n")
+            return committed
+
+    def run_transaction(
+        self,
+        contract: Mapping[str, Any],
+        finalize: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        """Persist the finalized signed response before the SUCCESS transition."""
+        return self(contract, finalize)
+
+    def _persist_response(self, job_id: str, response: Mapping[str, Any]) -> None:
+        path = self._artifacts / f"{job_id}.response.json"
+        payload = canonical_json_bytes(response)
+        descriptor = os.open(
+            path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400
+        )
+        try:
+            os.fchmod(descriptor, 0o400)
+            self._write_all(descriptor, payload, "authority response")
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        _fsync_directory(self._artifacts)
+
+    def query_response(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Read only a response whose one-shot transaction is durably successful."""
+        job_id = contract.get("job_id")
+        if type(job_id) is not str or len(job_id) != 64:
+            raise ValueError("query job id invalid")
+        with self._exclusive_execution():
+            state = self._artifacts / f"{job_id}.state"
+            if _read(state, limit=64) != b"SUCCESS\n":
+                raise ValueError("authority job response is not committed")
+            raw = _read(
+                self._artifacts / f"{job_id}.response.json", limit=4 * 1024 * 1024
+            )
+            response = strict_json_loads(raw)
+            if type(response) is not dict or canonical_json_bytes(response) != raw:
+                raise ValueError("persisted authority response is not canonical")
+            return response
+
+    def _terminal_state(self, job_id: str, state: Path, payload: bytes) -> None:
+        temporary = self._artifacts / f".{job_id}.state.tmp"
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o400,
+        )
+        try:
+            self._write_all(descriptor, payload, "authority terminal state")
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.replace(temporary, state)
+        _fsync_directory(self._artifacts)

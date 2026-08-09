@@ -14,9 +14,12 @@ import json
 import os
 import shutil
 import sqlite3
+import stat
+import struct
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -8111,6 +8114,200 @@ POSIX_QUALIFICATION_TEST = pytest.mark.skipif(
     "os.name == 'nt'",
     reason="tracked: NO1-008A qualification requires openat/O_NOFOLLOW",
 )
+
+
+def _verifier_recovery_fixture():
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    manifest = {
+        "cells": [
+            {
+                "contract": {
+                    "decision_id": "1" * 64,
+                    "decision_contract_sha256": "2" * 64,
+                }
+            }
+        ]
+    }
+    raw = canonical_json_bytes(manifest)
+    digest = hashlib.sha256(raw).hexdigest()
+    measurement = {"runtime": "trusted"}
+    config = {
+        "verifier": {"key_id": "verifier", "public_key_hex": "00" * 32},
+        "trusted": {"verifier_runtime": {"measurement": measurement}},
+    }
+    begin_signed = {
+        "manifest_sha256": digest,
+        "challenge": "3" * 64,
+        "ledger_counter": 1,
+        "ledger_prev_hash": "0" * 64,
+        "issued_at_ns": 7,
+        "service_identity": measurement,
+    }
+    begin = {
+        **begin_signed,
+        "key_id": "verifier",
+        "algorithm": "Ed25519",
+        "signature": "00" * 64,
+    }
+    consumed = {
+        "counter": 2,
+        "event": "CONSUMED",
+        "challenge": "3" * 64,
+        "manifest_sha256": digest,
+    }
+
+    def proof(record):
+        return {
+            "record": record,
+            "key_id": "verifier",
+            "algorithm": "Ed25519",
+            "signature": "00" * 64,
+        }
+
+    envelope = {
+        "manifest_sha256": digest,
+        "decision_id": "1" * 64,
+        "decision_contract_sha256": "2" * 64,
+        "challenge": "3" * 64,
+        "ledger_counter": 2,
+        "ledger_prev_hash": "4" * 64,
+        "issued_at_ns": 7,
+        "verdict": {},
+        "service_identity": measurement,
+        "consumption_record": proof(consumed),
+        "ledger_head": proof({"counter": 2, "record_hash": "5" * 64}),
+        "key_id": "verifier",
+        "algorithm": "Ed25519",
+        "signature": "00" * 64,
+    }
+    return manifest, config, begin, envelope
+
+
+def _disable_verifier_signature_checks(monkeypatch, verifier_service):
+    class PublicKey:
+        @staticmethod
+        def from_public_bytes(_raw):
+            return PublicKey()
+
+        def verify(self, _signature, _message):
+            return None
+
+    monkeypatch.setattr(verifier_service, "Ed25519PublicKey", PublicKey)
+    monkeypatch.setattr(verifier_service, "_validate_verdict_schema", lambda _v: None)
+
+
+def test_verifier_retries_definitely_unsent_verification_request(monkeypatch):
+    # PR #1249 review 3744975446: the issued challenge remains safe pre-send.
+    from benchmarks.codegraph_compare import verifier_service
+
+    manifest, config, begin, envelope = _verifier_recovery_fixture()
+    _disable_verifier_signature_checks(monkeypatch, verifier_service)
+    operations = []
+
+    def round_trip(_path, request, _config, _timeout):
+        operations.append(request["operation"])
+        if request["operation"] == "begin-exact-14":
+            return begin
+        if operations.count("verify-exact-14") == 1:
+            raise verifier_service._PreSendTransportError("unsent")
+        return envelope
+
+    monkeypatch.setattr(verifier_service, "_round_trip", round_trip)
+
+    assert (
+        verifier_service.request_verdict(
+            socket_path=Path("/unused"), manifest=manifest, config=config, timeout=1
+        )
+        == envelope
+    )
+    assert operations == ["begin-exact-14", "verify-exact-14", "verify-exact-14"]
+
+
+def test_verifier_polls_until_ambiguous_request_commits(monkeypatch):
+    # PR #1249 review 3744975448: VERIFYING is transient under the original deadline.
+    from benchmarks.codegraph_compare import verifier_service
+
+    manifest, config, begin, envelope = _verifier_recovery_fixture()
+    _disable_verifier_signature_checks(monkeypatch, verifier_service)
+    operations = []
+
+    def round_trip(_path, request, _config, _timeout):
+        operations.append(request["operation"])
+        if request["operation"] == "begin-exact-14":
+            return begin
+        raise verifier_service._PostSendTransportError("ambiguous")
+
+    polls = iter(
+        (
+            verifier_service._VerdictPending("in progress"),
+            verifier_service._VerdictPending("not found"),
+            envelope,
+        )
+    )
+
+    def query(**_kwargs):
+        value = next(polls)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(verifier_service, "_round_trip", round_trip)
+    monkeypatch.setattr(verifier_service, "query_verdict", query)
+    monkeypatch.setattr(verifier_service.time, "sleep", lambda _delay: None)
+
+    assert (
+        verifier_service.request_verdict(
+            socket_path=Path("/unused"), manifest=manifest, config=config, timeout=1
+        )
+        == envelope
+    )
+    assert operations == ["begin-exact-14", "verify-exact-14"]
+
+
+def test_operator_rejects_staged_inventory_with_untrusted_digest(monkeypatch):
+    # PR #1249 review 3744975449: digest failure must precede authority use.
+    from benchmarks.codegraph_compare import qualification_operator as operator
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    payload = canonical_json_bytes({"repo_id": "repo"})
+    monkeypatch.setattr(operator, "validate_receipt_inventory", lambda value: value)
+
+    with pytest.raises(ValueError, match="trusted inventory digest"):
+        operator._validate_staged_inventory(payload, "repo", "0" * 64)
+
+
+def test_decision_parser_accepts_payload_above_receipt_parser_ceiling():
+    # PR #1249 review 3744975455: decision parsing must honor its 64 MiB frame.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    padding = "x" * (16 * 1024 * 1024)
+    payload = ('{"padding":"' + padding + '"}').encode()
+
+    assert consumer._decision_json_loads(payload) == {"padding": padding}
+
+
+def test_decision_preflight_rejects_final_frame_before_execution(monkeypatch):
+    # PR #1249 review 3744975455: bound the final consume envelope pre-execution.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    monkeypatch.setattr(consumer, "DECISION_ENVELOPE_SCHEMA_OVERHEAD", 0)
+    monkeypatch.setattr(consumer, "MAX_FRAME", 10)
+
+    with pytest.raises(ValueError, match="upper bound exceeds frame ceiling"):
+        consumer.preflight_decision_consume_request(
+            {}, 0, {"closure_manifest": "root-signed-runtime"}
+        )
+
+
+def test_staged_plan_path_rejects_parent_traversal():
+    # PR #1249 review 3744975460: receipt paths are canonical before reservation.
+    from benchmarks.codegraph_compare.setup_qualification_executor import _bounded_path
+
+    with pytest.raises(ValueError, match="artifact path is not canonical"):
+        _bounded_path("../artifact", "artifact path")
+
+
 _POSIX_QUALIFICATION_SECTION_START = sys._getframe().f_lineno
 
 
@@ -8605,7 +8802,7 @@ def test_large_source_inventory_uses_constant_subprocess_count(tmp_path: Path):
         result = inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
 
     assert len(result.tracked_regular_paths) == 256
-    assert len(starts) == 10
+    assert len(starts) == 12
     assert [command[:3] for command in starts].count(
         ("git", "cat-file", "--batch")
     ) == 1
@@ -8681,6 +8878,8 @@ def _qualification_plans(tmp_path: Path):
         DEFAULT_SOURCE_RULES.digest,
         commits["vscode"],
         ("main.ts",),
+        (("main.ts", "100644", "a" * 40),),
+        (("main.ts", "100644", "a" * 40, 1, "e" * 64),),
         ("main.ts",),
         (),
         "b" * 64,
@@ -9750,11 +9949,24 @@ def test_source_inventory_is_exactly_bound_to_git_modes_objects_and_bytes(
         for path, mode, object_id in regular
     ]
 
+    root_tree_id = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
     assert asdict(inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)) == {
         "repo_id": "vscode",
         "source_rules_hash": DEFAULT_SOURCE_RULES.digest,
         "commit": commit,
         "tracked_regular_paths": ("generated.ts", "main.ts", "notes.md"),
+        "tracked_entries": tuple(records),
+        "root_tree_id": root_tree_id,
+        "tracked_files": tuple(
+            (path, mode, object_id, (repo / path).stat().st_size, content_hash)
+            for path, mode, object_id, content_hash in file_hashes
+        ),
         "eligible_paths": ("main.ts",),
         "prefilter_exclusions": (
             ("deps/submodule", "gitlink"),
@@ -9816,6 +10028,31 @@ def test_index_tree_breadth_is_rejected_before_unbounded_sort(tmp_path: Path):
     try:
         with pytest.raises(ValueError, match="entry count ceiling"):
             paths._visit_tree(root_fd, lambda _fd, _path: None, max_entries=3)
+    finally:
+        os.close(root_fd)
+
+
+def test_index_tree_enumeration_checks_deadline_before_chunk_sort(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745026816: wide directories cannot hide an expired deadline.
+    from benchmarks.codegraph_compare import setup_qualification_paths as paths
+
+    index = tmp_path / "index"
+    index.mkdir()
+    for number in range(256):
+        (index / f"{number:03d}").write_bytes(b"")
+    root_fd = paths._open_root(index)
+    monkeypatch.setattr(
+        paths, "time", SimpleNamespace(monotonic=iter((0.0, 1.0)).__next__)
+    )
+    try:
+        with pytest.raises(TimeoutError, match="traversal deadline"):
+            paths._visit_tree(
+                root_fd,
+                lambda _fd, _path: None,
+                deadline_monotonic=0.5,
+            )
     finally:
         os.close(root_fd)
 
@@ -11173,4 +11410,4915 @@ def test_validator_rejects_empty_retained_receipt_object(tmp_path: Path):
 
 
 # Keep this invocation at absolute EOF so every qualification test inherits the marker.
+
+
+# NO1-008A receipt-v3 detached execution contract (setup evidence only).
+def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
+    blob = {
+        "path": "raw/empty",
+        "size_bytes": 0,
+        "sha256": hashlib.sha256(b"").hexdigest(),
+    }
+    executions = []
+    for execution_id in ("delete", "build", "health", "symbol", "call"):
+        executions.append(
+            {
+                "id": execution_id,
+                "argv": [
+                    "/tool/bin",
+                    execution_id,
+                    "--source",
+                    "/source",
+                    "--config",
+                    "/config.json",
+                ],
+                "cwd": "/source",
+                "environment_digest": "1" * 64,
+                "exit_code": 0,
+                "stdout_bytes": dict(blob),
+                "stderr_bytes": dict(blob),
+                "query_bytes": dict(blob),
+                "final_index_observation": dict(blob),
+            }
+        )
+    return {
+        "run_nonce": "a" * 64,
+        "role_images": {
+            "producer": "sha256:" + "6" * 64,
+            "executor": "sha256:" + "7" * 64,
+            "approver": "sha256:" + "8" * 64,
+            "auditor": "sha256:" + "a" * 64,
+            "verifier": "sha256:" + "9" * 64,
+        },
+        "cell": {
+            "repo_id": repo_id,
+            "arm_id": arm_id,
+            "attempt": 1,
+            "artifact_path": f"cells/{repo_id}/{arm_id}/cell-receipt.json",
+        },
+        "plan": {
+            "plan_hash": "2" * 64,
+            "plan_set_hash": "3" * 64,
+            "tool_sha256": "4" * 64,
+            "config_sha256": "5" * 64,
+            "image_digest": "sha256:" + "6" * 64,
+            "seccomp_sha256": "7" * 64,
+        },
+        "source": {
+            "commit": "8" * 40,
+            "eligibility": {
+                "repo_id": repo_id,
+                "source_rules_hash": "4" * 64,
+                "commit": "8" * 40,
+                "tracked_regular_paths": ["main.ts"],
+                "tracked_entries": [["main.ts", "100644", "a" * 40]],
+                "root_tree_id": "c" * 40,
+                "tracked_files": [["main.ts", "100644", "a" * 40, 1, "b" * 64]],
+                "eligible_paths": ["main.ts"],
+                "prefilter_exclusions": [],
+                "tracked_inventory_hash": "5" * 64,
+                "eligible_paths_hash": "6" * 64,
+                "repo_fingerprint": "9" * 64,
+            },
+            "repo_fingerprint": "9" * 64,
+            "mount_target": "/source",
+            "read_only": True,
+        },
+        "environment": {
+            "environment_digest": "1" * 64,
+            "image_digest": "sha256:" + "6" * 64,
+            "docker_security_flags": [
+                "--network",
+                "none",
+                "--read-only",
+                "--cap-drop",
+                "ALL",
+            ],
+            "network_mode": "none",
+            "seccomp_sha256": "7" * 64,
+            "credentials_stripped": True,
+        },
+        "counters": {
+            "api_cost_usd": 0,
+            "input_tokens": 0,
+            "model_calls": 0,
+            "network_requests": 0,
+            "output_tokens": 0,
+            "provider_requests": 0,
+        },
+        "resources": {
+            "plan_digest": "a" * 64,
+            "wall_ns": 1,
+            "cpu_usec": 1,
+            "io_bytes": 1,
+            "memory_peak_bytes": 1,
+            "pids_peak": 1,
+        },
+        "executions": executions,
+        "index_partition": {
+            "indexed_paths": ["main.ts"],
+            "excluded_paths": [],
+            "parse_error_paths": [],
+            "indexed_paths_hash": "b" * 64,
+            "excluded_paths_hash": "c" * 64,
+            "parse_error_paths_hash": "d" * 64,
+        },
+        "snapshot": {
+            "format": "dm-verity-v1",
+            "data_image_sha256": "e" * 64,
+            "data_image_size": 1,
+            "hash_image_sha256": "f" * 64,
+            "hash_image_size": 1,
+            "root_hash": "0" * 64,
+            "salt": "1" * 64,
+            "data_block_size": 4096,
+            "hash_block_size": 4096,
+            "data_blocks": 1,
+            "tree_hash": "2" * 64,
+            "index_content_hash": "3" * 64,
+        },
+        "process_audit": {
+            "producer_container_id": "producer-1",
+            "actual_image_id": "sha256:" + "a" * 64,
+            "launch_token_sha256": "b" * 64,
+            "container_user": "65532:65532",
+            "readonly_rootfs": True,
+            "cap_drop": ["ALL"],
+            "mounts": [
+                ["/host/config", "/config.json", True],
+                ["/host/out", "/out", False],
+                ["/host/plan", "/plan/cell-plan.json", True],
+                ["/host/inventory", "/plan/inventory.json", True],
+                ["/host/gate", "/run/no1-008a-launch-gate", True],
+                ["/host/seccomp", "/plan/seccomp.json", True],
+                ["/host/source", "/source", True],
+                ["/host/tool", "/tool/bin", True],
+            ],
+            "resource_limits": {
+                "pids_limit": 64,
+                "memory": 4294967296,
+                "nano_cpus": 1000000000,
+            },
+            "tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=64m"},
+            "image_digest": "sha256:" + "6" * 64,
+            "cgroup_id": "cg-1",
+            "network_mode": "none",
+            "security_opt": ["no-new-privileges", "seccomp=" + "7" * 64],
+            "restart_count": 0,
+            "terminal_pid": 0,
+            "launch_count": 1,
+            "cgroup_processes_after_stop": [],
+            "pid1_exit": 0,
+            "run_nonce": "a" * 64,
+            "resource_observations": {
+                "wall_ns": 1,
+                "cpu_usec": 1,
+                "io_bytes": 1,
+                "memory_peak_bytes": 1,
+                "pids_peak": 1,
+            },
+            "audit_bytes": dict(blob),
+        },
+        "oracle_approval": {
+            "approved": True,
+            "statement": "approver authorizes the exact oracle results",
+            "oracle_results_hash": hashlib.sha256(
+                json.dumps(
+                    [blob["sha256"], blob["sha256"]], separators=(",", ":")
+                ).encode()
+            ).hexdigest(),
+        },
+    }
+
+
+def _qualification_v3_receipt(repo_id="vscode", arm_id="tsa-warm"):
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        assemble_receipt,
+        sign_body,
+        signature_record,
+    )
+
+    body = _qualification_v3_body(repo_id, arm_id)
+    executor = signature_record("executor", sign_body(body, b"\x11" * 32))
+    approver = signature_record("approver", sign_body(body, b"\x22" * 32))
+    return assemble_receipt(body, executor, approver)
+
+
+def _qualification_v3_public_config():
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    role_specs = {
+        "executor": (b"\x11" * 32, 901, "a"),
+        "approver": (b"\x22" * 32, 902, "b"),
+        "auditor": (b"\x33" * 32, 900, "d"),
+        "verifier": (b"\x55" * 32, 903, "e"),
+        "decision_consumer": (b"\x66" * 32, 904, "f"),
+    }
+    image_suffixes = {
+        "producer": "6",
+        "executor": "7",
+        "approver": "8",
+        "auditor": "a",
+        "verifier": "9",
+        "decision_consumer": "f",
+    }
+    image_id_suffixes = dict(zip(image_suffixes, "abcdef", strict=True))
+
+    config = {
+        "schema_version": 6,
+        **{
+            role: {
+                "key_id": "verifier-service" if role == "verifier" else role,
+                "public_key_hex": Ed25519PrivateKey.from_private_bytes(private)
+                .public_key()
+                .public_bytes_raw()
+                .hex(),
+                "protocol": (
+                    "no1-008a-audit-v1"
+                    if role == "auditor"
+                    else f"no1-008a-{role.replace('_', '-')}-service-v1"
+                ),
+                "peer_uid": uid,
+                "service_measurement": measurement * 64,
+            }
+            for role, (private, uid, measurement) in role_specs.items()
+        },
+        "trusted": {
+            "plan_set_hash": "3" * 64,
+            "plan_hashes": {
+                f"{repo}/{arm}": "2" * 64
+                for repo in (
+                    "vscode",
+                    "excalidraw",
+                    "django",
+                    "tokio",
+                    "okhttp",
+                    "gin",
+                    "alamofire",
+                )
+                for arm in ("tsa-warm", "codegraph-warm")
+            },
+            "plan_document_sha256": {
+                f"{repo}/{arm}": "1" * 64
+                for repo in (
+                    "vscode",
+                    "excalidraw",
+                    "django",
+                    "tokio",
+                    "okhttp",
+                    "gin",
+                    "alamofire",
+                )
+                for arm in ("tsa-warm", "codegraph-warm")
+            },
+            "inventory_sha256": dict.fromkeys(
+                (
+                    "vscode",
+                    "excalidraw",
+                    "django",
+                    "tokio",
+                    "okhttp",
+                    "gin",
+                    "alamofire",
+                ),
+                "4" * 64,
+            ),
+            "source_snapshot_sha256": dict.fromkeys(
+                (
+                    "vscode",
+                    "excalidraw",
+                    "django",
+                    "tokio",
+                    "okhttp",
+                    "gin",
+                    "alamofire",
+                ),
+                "5" * 64,
+            ),
+            "tool_sha256": "4" * 64,
+            "config_sha256": "5" * 64,
+            "seccomp_sha256": "7" * 64,
+            "images": {
+                role: "sha256:" + suffix * 64 for role, suffix in image_suffixes.items()
+            },
+            "image_ids": {
+                role: "sha256:" + suffix * 64
+                for role, suffix in image_id_suffixes.items()
+            },
+        },
+    }
+    trusted = config["trusted"]
+    for role, (_private, uid, measurement) in role_specs.items():
+        trusted[f"{role}_runtime"] = {
+            "image_digest": trusted["images"][role],
+            "image_id": trusted["image_ids"][role],
+            "closure_manifest_sha256": measurement * 64,
+            "measurement": {
+                "interpreter_sha256": "1" * 64,
+                "closure_manifest": {},
+                "closure_manifest_sha256": measurement * 64,
+                "uid": uid,
+                "gid": uid,
+                "rootfs_readonly": True,
+                "allowed_writable_mounts": [],
+            },
+        }
+    trusted["service_launch"] = {
+        role: {
+            "image_id": trusted["image_ids"][role],
+            "cmd": ["python", "-m", f"benchmarks.codegraph_compare.{role}_service"],
+            "entrypoint": None,
+            "user": str(uid),
+            "readonly_rootfs": True,
+            "mounts": [],
+            "network_mode": "none",
+            "security_opt": ["no-new-privileges:true"],
+        }
+        for role, (_private, uid, _measurement) in role_specs.items()
+    }
+    return _sign_qualification_v3_config(config)
+
+
+def _sign_qualification_v3_config(config):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.verifier import ROOT_SIGNATURE_DOMAIN
+
+    unsigned = {key: value for key, value in config.items() if key != "root_signature"}
+    config["root_signature"] = (
+        Ed25519PrivateKey.from_private_bytes(b"\x44" * 32)
+        .sign(ROOT_SIGNATURE_DOMAIN + canonical_json_bytes(unsigned))
+        .hex()
+    )
+    return config
+
+
+def test_qualification_v3_signatures_cover_byte_identical_canonical_body():
+    from benchmarks.codegraph_compare.receipt_v3 import verify_receipt
+
+    config = _qualification_v3_public_config()
+    receipt = _qualification_v3_receipt()
+    verify_receipt(
+        receipt,
+        config["executor"]["key_id"],
+        bytes.fromhex(config["executor"]["public_key_hex"]),
+        config["approver"]["key_id"],
+        bytes.fromhex(config["approver"]["public_key_hex"]),
+    )
+    assert (
+        receipt["body_sha256"]
+        == hashlib.sha256(
+            json.dumps(
+                receipt["body"],
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
+    )
+
+
+def test_qualification_v3_approver_verifies_executor_handoff_before_signing():
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        approve_executor_attestation,
+        create_executor_attestation,
+    )
+
+    body = _qualification_v3_body()
+    handoff = create_executor_attestation(body, "executor", b"\x11" * 32)
+    receipt = approve_executor_attestation(
+        handoff,
+        "executor",
+        Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
+        .public_key()
+        .public_bytes_raw(),
+        "approver",
+        b"\x22" * 32,
+    )
+
+    assert receipt["executor_signature"] == handoff["executor_signature"]
+
+
+def test_qualification_v3_rejects_body_mutation():
+    from benchmarks.codegraph_compare.receipt_v3 import verify_receipt
+
+    receipt = _qualification_v3_receipt()
+    receipt["body"]["cell"]["repo_id"] = "gin"
+    config = _qualification_v3_public_config()
+    with pytest.raises(ValueError, match="artifact path|body hash mismatch"):
+        verify_receipt(
+            receipt,
+            "executor",
+            bytes.fromhex(config["executor"]["public_key_hex"]),
+            "approver",
+            bytes.fromhex(config["approver"]["public_key_hex"]),
+        )
+
+
+def test_qualification_v3_rejects_signature_swap():
+    from benchmarks.codegraph_compare.receipt_v3 import verify_receipt
+
+    receipt = _qualification_v3_receipt()
+    (
+        receipt["executor_signature"]["signature"],
+        receipt["approver_signature"]["signature"],
+    ) = (
+        receipt["approver_signature"]["signature"],
+        receipt["executor_signature"]["signature"],
+    )
+    receipt["receipt_hash"] = hashlib.sha256(
+        json.dumps(
+            {k: v for k, v in receipt.items() if k != "receipt_hash"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    config = _qualification_v3_public_config()
+    with pytest.raises(ValueError, match="signature mismatch"):
+        verify_receipt(
+            receipt,
+            "executor",
+            bytes.fromhex(config["executor"]["public_key_hex"]),
+            "approver",
+            bytes.fromhex(config["approver"]["public_key_hex"]),
+        )
+
+
+def test_qualification_v3_rejects_duplicate_json_member():
+    from benchmarks.codegraph_compare.receipt_v3 import strict_json_loads
+
+    with pytest.raises(ValueError, match="duplicate JSON member"):
+        strict_json_loads(b'{"schema_version":3,"schema_version":3}')
+
+
+def test_qualification_v3_rejects_nan():
+    from benchmarks.codegraph_compare.receipt_v3 import strict_json_loads
+
+    with pytest.raises(ValueError, match="non-finite"):
+        strict_json_loads(b'{"value":NaN}')
+
+
+def test_qualification_v3_rejects_extra_nested_field():
+    from benchmarks.codegraph_compare.receipt_v3 import validate_body
+
+    body = _qualification_v3_body()
+    body["cell"]["unexpected"] = False
+    with pytest.raises(ValueError, match="unknown or missing fields"):
+        validate_body(body)
+
+
+def test_qualification_v3_rejects_noncanonical_artifact_path():
+    from benchmarks.codegraph_compare.receipt_v3 import validate_body
+
+    body = _qualification_v3_body()
+    body["cell"]["artifact_path"] = "cells/../receipt.json"
+    with pytest.raises(ValueError, match="artifact path|not canonical"):
+        validate_body(body)
+
+
+def _qualification_v3_manifest():
+    from benchmarks.codegraph_compare.setup_qualification import EXPECTED_CELLS
+
+    return {
+        "schema_version": 1,
+        "verifier_nonce": "a" * 64,
+        "verifier_image_digest": "sha256:" + "b" * 64,
+        "run_contract": {"plan_set_hash": "3" * 64, "run_nonce": "a" * 64},
+        "cells": [
+            {
+                "repo_id": repo,
+                "arm_id": arm,
+                "attempt": 1,
+                "plan": {"identity": f"{repo}/{arm}"},
+                "inventory": {"repo_id": repo},
+                "receipt": _qualification_v3_receipt(repo, arm),
+                "data_image": "/evidence/data.img",
+                "hash_image": "/evidence/hash.img",
+                "process_audit": "/evidence/process-audit.json",
+                "source_snapshot": "/evidence/source.tar",
+                "tool": "/evidence/tool",
+                "config": "/evidence/config",
+                "seccomp": "/evidence/seccomp",
+            }
+            for repo, arm in EXPECTED_CELLS
+        ],
+    }
+
+
+def test_qualification_v3_aggregate_requires_public_config_and_full_verification(
+    monkeypatch,
+):
+    from benchmarks.codegraph_compare import verifier_aggregate as verifier
+
+    manifest = _qualification_v3_manifest()
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    plan_hashes = [
+        hashlib.sha256(canonical_json_bytes(cell["plan"])).hexdigest()
+        for cell in manifest["cells"]
+    ]
+    plan_set_hash = hashlib.sha256(canonical_json_bytes(plan_hashes)).hexdigest()
+    for cell in manifest["cells"]:
+        cell["plan"]["plan_set_hash"] = plan_set_hash
+    config = _qualification_v3_public_config()
+    config["trusted"]["plan_set_hash"] = plan_set_hash
+    manifest["run_contract"]["plan_set_hash"] = plan_set_hash
+    config["trusted"]["plan_hashes"] = {
+        f"{cell['repo_id']}/{cell['arm_id']}": digest
+        for cell, digest in zip(manifest["cells"], plan_hashes, strict=True)
+    }
+    config["trusted"]["plan_document_sha256"] = {
+        f"{cell['repo_id']}/{cell['arm_id']}": hashlib.sha256(
+            canonical_json_bytes(cell["plan"])
+        ).hexdigest()
+        for cell in manifest["cells"]
+    }
+    _sign_qualification_v3_config(config)
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import trust_anchor
+
+    monkeypatch.setattr(
+        trust_anchor,
+        "baked_root_public_key",
+        lambda: (
+            Ed25519PrivateKey.from_private_bytes(b"\x44" * 32)
+            .public_key()
+            .public_bytes_raw()
+        ),
+    )
+    monkeypatch.setattr(verifier, "verify_cell", lambda *args, **kwargs: ())
+    diagnostic_root = (
+        Ed25519PrivateKey.from_private_bytes(b"\x44" * 32)
+        .public_key()
+        .public_bytes_raw()
+    )
+    assert (
+        verifier.aggregate_verdict(
+            manifest,
+            public_config=config,
+            diagnostic_mode=True,
+            diagnostic_root_public_key=diagnostic_root,
+        )["status"]
+        == "NOT_EVALUATED"
+    )
+    assert (
+        verifier.aggregate_verdict(manifest, public_config=config)["status"]
+        == "SETUP_QUALIFIED"
+    )
+
+
+def test_qualification_v3_aggregate_rejects_reordered_cells(monkeypatch):
+    from benchmarks.codegraph_compare import verifier
+
+    manifest = _qualification_v3_manifest()
+    manifest["cells"][0], manifest["cells"][1] = (
+        manifest["cells"][1],
+        manifest["cells"][0],
+    )
+    monkeypatch.setattr(verifier, "verify_cell", lambda *args, **kwargs: ())
+    assert (
+        verifier.aggregate_verdict(
+            manifest, public_config=_qualification_v3_public_config()
+        )["status"]
+        == "NOT_EVALUATED"
+    )
+
+
+def test_qualification_v3_aggregate_has_no_default_empty_violations():
+    from benchmarks.codegraph_compare.verifier import aggregate_verdict
+
+    with pytest.raises(TypeError, match="public_config"):
+        aggregate_verdict({})
+
+
+def test_qualification_v3_aggregate_claims_remain_e0_and_disabled():
+    from benchmarks.codegraph_compare.verifier import aggregate_verdict
+
+    verdict = aggregate_verdict({}, public_config=_qualification_v3_public_config())
+    assert {
+        key: verdict[key]
+        for key in (
+            "evaluation_stage",
+            "status",
+            "publishable",
+            "winner",
+            "dominance_allowed",
+            "unlock_allowed",
+        )
+    } == {
+        "evaluation_stage": "E0",
+        "status": "NOT_EVALUATED",
+        "publishable": False,
+        "winner": None,
+        "dominance_allowed": False,
+        "unlock_allowed": False,
+    }
+
+
+def test_qualification_executor_fails_closed_without_posix_resource(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 run 31334854030: Windows may import validators but cannot execute.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    output = tmp_path / "out"
+    monkeypatch.setattr(executor, "_resource", None)
+
+    with pytest.raises(RuntimeError, match="requires POSIX resource limits"):
+        executor.produce_cell({}, output)
+    assert output.exists() is False
+
+
+def test_qualification_validator_remains_usable_without_posix_resource(monkeypatch):
+    # PR #1249 run 31334854030: missing resource must not break module collection.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    monkeypatch.setattr(executor, "_resource", None)
+
+    with pytest.raises(ValueError, match="unknown or missing fields"):
+        executor.validate_producer_plan({})
+
+
+def test_qualification_executor_rejects_nonempty_output(tmp_path: Path):
+    from benchmarks.codegraph_compare.setup_qualification_executor import produce_cell
+
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "preexisting").write_bytes(b"untrusted")
+    with pytest.raises(ValueError, match="fresh empty directory"):
+        produce_cell({}, output)
+
+
+def test_qualification_index_observation_streams_canonical_bounded_records(
+    tmp_path: Path,
+):
+    # PR #1249 review 3745026823: observations are bounded before producer success.
+    from benchmarks.codegraph_compare.setup_qualification_executor import (
+        _write_final_index_observation,
+    )
+
+    index = tmp_path / "index"
+    raw = tmp_path / "raw"
+    index.mkdir()
+    raw.mkdir()
+    (index / "b").write_bytes(b"bb")
+    (index / "a").write_bytes(b"a")
+    descriptor = _write_final_index_observation(
+        index, raw, "observation", deadline_monotonic=time.monotonic() + 10
+    )
+
+    assert descriptor == {
+        "path": "raw/observation",
+        "size_bytes": (raw / "observation").stat().st_size,
+        "sha256": hashlib.sha256((raw / "observation").read_bytes()).hexdigest(),
+    }
+    assert json.loads((raw / "observation").read_bytes()) == [
+        {
+            "path": "a",
+            "sha256": hashlib.sha256(b"a").hexdigest(),
+            "size_bytes": 1,
+        },
+        {
+            "path": "b",
+            "sha256": hashlib.sha256(b"bb").hexdigest(),
+            "size_bytes": 2,
+        },
+    ]
+
+
+def test_qualification_index_observation_rejects_receipt_node_overflow(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745026823: node complexity fails before successful sealing.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    index = tmp_path / "index"
+    raw = tmp_path / "raw"
+    index.mkdir()
+    raw.mkdir()
+    (index / "only").write_bytes(b"x")
+    monkeypatch.setattr(executor, "MAX_NODES", 3)
+
+    with pytest.raises(ValueError, match="receipt node bound"):
+        executor._write_final_index_observation(
+            index, raw, "observation", deadline_monotonic=time.monotonic() + 10
+        )
+
+
+def test_qualification_index_observation_rejects_receipt_byte_overflow(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745026823: byte complexity fails before successful sealing.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    index = tmp_path / "index"
+    raw = tmp_path / "raw"
+    index.mkdir()
+    raw.mkdir()
+    monkeypatch.setattr(executor, "MAX_JSON_BYTES", len(b'{"records":}'))
+
+    with pytest.raises(ValueError, match="receipt JSON bound"):
+        executor._write_final_index_observation(
+            index, raw, "observation", deadline_monotonic=time.monotonic() + 10
+        )
+
+
+def test_sealed_read_budget_uses_named_actual_passes():
+    # PR #1249 review 3745026813: budget counts signer x2 and verifier readers.
+    from benchmarks.codegraph_compare.execution_budget import sealed_read_passes
+
+    assert sealed_read_passes("executor") == sealed_read_passes("approver")
+    assert {
+        role: {kind: len(names) for kind, names in sealed_read_passes(role).items()}
+        for role in ("executor", "approver", "verifier")
+    } == {
+        "executor": {"images": 4, "output": 9},
+        "approver": {"images": 4, "output": 9},
+        "verifier": {"images": 2, "output": 5},
+    }
+
+
+def test_qualification_operator_contract_is_exact_closed_service_pipeline():
+    completed = subprocess.run(
+        ["bash", "scripts/no1_008a_operator.sh", "contract"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+    assert result == {
+        "schema_version": 1,
+        "cells": 14,
+        "attempts_per_cell": 1,
+        "max_concurrency": 1,
+        "roles": [
+            "producer",
+            "auditor",
+            "executor",
+            "approver",
+            "verifier",
+            "decision-consumer",
+        ],
+        "qualification": "production-verifier-exact-14-only",
+    }
+
+
+def test_qualification_operator_dry_run_emits_each_cell_once():
+    completed = subprocess.run(
+        ["bash", "scripts/no1_008a_operator.sh", "dry-run"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    rows = [json.loads(line) for line in completed.stdout.splitlines()]
+    identities = [(row["repo_id"], row["arm_id"], row["attempt"]) for row in rows]
+    from benchmarks.codegraph_compare.setup_qualification import EXPECTED_CELLS
+
+    assert identities == [(repo, arm, 1) for repo, arm in EXPECTED_CELLS]
+
+
+def test_qualification_seccomp_denies_exact_network_syscall_set():
+    profile = json.loads(Path("scripts/no1_008a_no_network_seccomp.json").read_text())
+    assert profile["syscalls"] == [
+        {
+            "names": [
+                "socket",
+                "socketpair",
+                "connect",
+                "bind",
+                "listen",
+                "accept",
+                "accept4",
+                "sendto",
+                "sendmsg",
+                "recvfrom",
+                "recvmsg",
+            ],
+            "action": "SCMP_ACT_ERRNO",
+            "errnoRet": 1,
+        }
+    ]
+
+
+def test_qualification_v3_manifest_requires_each_of_fourteen_complete_cells():
+    # Audit 2026-08-09 B2: aggregate authority requires a complete external manifest.
+    from benchmarks.codegraph_compare.verifier import validate_manifest
+
+    manifest = _qualification_v3_manifest()
+    del manifest["cells"][0]["hash_image"]
+    with pytest.raises(ValueError, match="manifest cell"):
+        validate_manifest(manifest)
+
+
+def test_qualification_v3_manifest_rejects_thirteen_cells():
+    # Audit 2026-08-09 B2: no partial matrix can enter aggregate verification.
+    from benchmarks.codegraph_compare.verifier import validate_manifest
+
+    manifest = _qualification_v3_manifest()
+    manifest["cells"].pop()
+    with pytest.raises(ValueError, match="exact 14"):
+        validate_manifest(manifest)
+
+
+def test_qualification_v3_verity_command_binds_both_image_hashes(tmp_path: Path):
+    # Audit 2026-08-09 B3: fresh verifier authenticates data/hash images itself.
+    from benchmarks.codegraph_compare.verifier import _verify_verity
+
+    data = tmp_path / "data.img"
+    hashes = tmp_path / "hash.img"
+    data.write_bytes(b"data")
+    hashes.write_bytes(b"hash")
+    body = _qualification_v3_body()
+    snapshot = body["snapshot"]
+    snapshot.update(
+        {
+            "data_image_size": 4,
+            "data_image_sha256": hashlib.sha256(b"data").hexdigest(),
+            "hash_image_size": 4,
+            "hash_image_sha256": hashlib.sha256(b"hash").hexdigest(),
+        }
+    )
+    commands = []
+
+    def runner(command):
+        commands.append(list(command))
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    _verify_verity(
+        body,
+        {"data_image": str(data.resolve()), "hash_image": str(hashes.resolve())},
+        runner,
+    )
+    normalized = [
+        [
+            "/proc/self/fd/<open>" if part.startswith("/proc/self/fd/") else part
+            for part in command
+        ]
+        for command in commands
+    ]
+    assert normalized == [
+        [
+            "veritysetup",
+            "verify",
+            "/proc/self/fd/<open>",
+            "/proc/self/fd/<open>",
+            "0" * 64,
+            "--hash",
+            "sha256",
+            "--salt",
+            "1" * 64,
+            "--data-block-size",
+            "4096",
+            "--hash-block-size",
+            "4096",
+            "--data-blocks",
+            "1",
+        ]
+    ]
+
+
+def test_qualification_v3_verity_rejects_mutated_hash_image(tmp_path: Path):
+    # Audit 2026-08-09 B3: mutation of either image fails before extraction.
+    from benchmarks.codegraph_compare.verifier import _verify_verity
+
+    data = tmp_path / "data.img"
+    hashes = tmp_path / "hash.img"
+    data.write_bytes(b"data")
+    hashes.write_bytes(b"mutated")
+    body = _qualification_v3_body()
+    body["snapshot"].update(
+        {
+            "data_image_size": 4,
+            "data_image_sha256": hashlib.sha256(b"data").hexdigest(),
+            "hash_image_size": 4,
+            "hash_image_sha256": hashlib.sha256(b"hash").hexdigest(),
+        }
+    )
+    with pytest.raises(ValueError, match="image digest"):
+        _verify_verity(
+            body,
+            {"data_image": str(data.resolve()), "hash_image": str(hashes.resolve())},
+            lambda command: subprocess.CompletedProcess(command, 0, b"", b""),
+        )
+
+
+def test_qualification_v3_run_correlation_requires_process_isolation():
+    # Audit 2026-08-09 P1.3: exit codes are never accepted as process identity.
+    from benchmarks.codegraph_compare.verifier import verify_cell
+
+    receipt = _qualification_v3_receipt()
+    body = receipt["body"]
+    failures = verify_cell(
+        receipt,
+        public_config=_qualification_v3_public_config(),
+        plan={},
+        inventory={},
+        evidence={},
+        verifier_nonce="a" * 64,
+        verifier_image_digest=body["process_audit"]["image_digest"],
+        process_identity="fresh-process",
+        diagnostic_mode=True,
+        diagnostic_root_public_key=__import__(
+            "cryptography.hazmat.primitives.asymmetric.ed25519",
+            fromlist=["Ed25519PrivateKey"],
+        )
+        .Ed25519PrivateKey.from_private_bytes(b"\x44" * 32)
+        .public_key()
+        .public_bytes_raw(),
+    )
+    assert failures == (
+        "CELL_EVIDENCE_INVALID:verifier process is not isolated from producer",
+    )
+
+
+def test_qualification_v3_runtime_requires_exact_five_execution_order():
+    # Audit 2026-08-09 P2.1: runtime and schema pin identical execution cardinality.
+    from benchmarks.codegraph_compare.receipt_v3 import validate_body
+
+    body = _qualification_v3_body()
+    body["executions"].pop()
+    with pytest.raises(ValueError, match="exact delete"):
+        validate_body(body)
+
+
+def test_qualification_v3_decision_commit_disconnect_queries_original_receipt(
+    monkeypatch,
+):
+    # Audit 2026-08-09 B2: an EOF after commit must use the idempotent query path.
+    import json
+    import struct
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    config = _qualification_v3_public_config()
+    contract = {"decision_id": "d" * 64, "issued_at_ns": 0, "expires_at_ns": 2}
+    envelope = {"manifest_sha256": "e" * 64}
+    body = {
+        "schema_version": 1,
+        "decision_id": contract["decision_id"],
+        "decision_contract_sha256": hashlib.sha256(
+            canonical_json_bytes(contract)
+        ).hexdigest(),
+        "manifest_sha256": envelope["manifest_sha256"],
+        "verdict_status": "SETUP_QUALIFIED",
+        "consumed_at_ns": 1,
+        "service_identity": config["trusted"]["decision_consumer_runtime"][
+            "measurement"
+        ],
+    }
+    receipt = {
+        "receipt": body,
+        "key_id": config["decision_consumer"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": Ed25519PrivateKey.from_private_bytes(b"\x66" * 32)
+        .sign(consumer.RECEIPT_DOMAIN + canonical_json_bytes(body))
+        .hex(),
+    }
+    requests = []
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["decision_consumer"]["peer_uid"], 123)
+
+        def send(self, framed):
+            requests.append(json.loads(framed[4:]))
+            return len(framed)
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    replies = iter(
+        (ValueError("frame truncated"), {"status": "consumed", "receipt": receipt})
+    )
+
+    def read_reply(*_args):
+        reply = next(replies)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(consumer.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(consumer.socket, "socket", lambda *_args: FakeSocket())
+    monkeypatch.setattr(consumer, "read_frame", read_reply)
+
+    assert (
+        consumer.request_decision(
+            socket_path=Path("/unused"),
+            contract=contract,
+            envelope=envelope,
+            config=config,
+            timeout=1,
+        )
+        == receipt
+    )
+    assert [request["operation"] for request in requests] == [
+        "consume-decision",
+        "query-decision",
+    ]
+    assert requests[1]["decision_id"] == contract["decision_id"]
+
+
+def test_qualification_v3_operator_delegates_privileged_run_cell_authority():
+    operator = Path("scripts/no1_008a_operator.sh").read_text(encoding="utf-8")
+    pipeline = Path("benchmarks/codegraph_compare/qualification_operator.py").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "from benchmarks.codegraph_compare.audit_authority_client import run_cell"
+        in pipeline
+    )
+    assert "request_receipt" in pipeline
+    assert "docker " not in operator
+    assert "mkfs.ext4" not in operator
+    assert "/var/run/docker.sock" not in operator
+
+
+def test_qualification_v3_operator_preflight_requires_contracts_and_authority():
+    operator = Path("scripts/no1_008a_operator.sh").read_text(encoding="utf-8")
+    assert (
+        '"$AUTHORITY_SOCKET" "$EXECUTOR_SOCKET" "$APPROVER_SOCKET" "$VERIFIER_SOCKET"'
+        in operator
+    )
+    assert '"$PUBLIC_CONFIG" "$STAGED_ROOT"' in operator
+
+
+def test_qualification_v3_runtime_schema_acceptance_parity():
+    # Audit 2026-08-09 P2.1: published schema and runtime accept the same emitted receipt.
+    from benchmarks.codegraph_compare.receipt_v3 import validate_receipt_shape
+
+    receipt = _qualification_v3_receipt()
+    validate_receipt_shape(receipt)
+
+
+def test_qualification_v3_runtime_schema_mutation_contract():
+    # Audit 2026-08-09 P2.1: representative shape mutations have exact parser parity.
+    import copy
+
+    from jsonschema import Draft202012Validator
+
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        _published_schema,
+        validate_receipt_shape,
+    )
+
+    schema, registry = _published_schema()
+    validator = Draft202012Validator(schema, registry=registry)
+    mutations = []
+    missing = copy.deepcopy(_qualification_v3_receipt())
+    del missing["body"]["run_nonce"]
+    mutations.append(missing)
+    extra = copy.deepcopy(_qualification_v3_receipt())
+    extra["body"]["snapshot"]["mount_flags"] = ["ro"]
+    mutations.append(extra)
+    order = copy.deepcopy(_qualification_v3_receipt())
+    order["body"]["executions"][0]["id"] = "health"
+    mutations.append(order)
+    duplicate = copy.deepcopy(_qualification_v3_receipt())
+    duplicate["body"]["index_partition"]["indexed_paths"] *= 2
+    mutations.append(duplicate)
+    outcomes = []
+    for receipt in mutations:
+        try:
+            validate_receipt_shape(receipt)
+            runtime = True
+        except ValueError:
+            runtime = False
+        schema_valid = not tuple(validator.iter_errors(receipt))
+        outcomes.append((runtime, schema_valid))
+    assert outcomes == [(False, False), (False, False), (False, False), (False, False)]
+
+
+def test_receipt_v3_rejects_an_eighth_mount_with_wrong_target():
+    # PR #1249 review 3744439666: the launch gate makes exactly eight targets.
+    from benchmarks.codegraph_compare.receipt_v3 import validate_receipt_shape
+
+    receipt = _qualification_v3_receipt()
+    receipt["body"]["process_audit"]["mounts"][6][1] = "/unexpected"
+
+    with pytest.raises(ValueError, match="mount"):
+        validate_receipt_shape(receipt)
+
+
+def test_receipt_v3_rejects_writable_non_output_mount():
+    # PR #1249 review 3744302996: only the producer output mount is writable.
+    from benchmarks.codegraph_compare.receipt_v3 import validate_receipt_shape
+
+    receipt = _qualification_v3_receipt()
+    receipt["body"]["process_audit"]["mounts"][0][2] = False
+
+    with pytest.raises(ValueError, match="mount"):
+        validate_receipt_shape(receipt)
+
+
+def test_stage_copy_file_applies_requested_mode_despite_umask(tmp_path: Path):
+    # PR #1249 review 3744303005: distinct service UIDs must read staged inputs.
+    from benchmarks.codegraph_compare.stage_inputs import copy_file
+
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.write_bytes(b"trusted")
+    previous = os.umask(0o077)
+    try:
+        copy_file(source, destination, 0o444)
+    finally:
+        os.umask(previous)
+
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o444
+
+
+def test_operator_success_state_replace_is_directory_durable(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744303001: terminal success must survive host power loss.
+    from benchmarks.codegraph_compare import qualification_operator
+
+    output = tmp_path / "experiment"
+    synced = []
+    monkeypatch.setattr(qualification_operator, "_run_impl", lambda _args: 0)
+    monkeypatch.setattr(
+        qualification_operator, "_fsync_directory", lambda path: synced.append(path)
+    )
+
+    assert qualification_operator.run(SimpleNamespace(experiment_root=str(output))) == 0
+    assert synced == [output, output, output]
+    assert json.loads((output / "operator-state.json").read_bytes()) == {
+        "completed_cells": 14,
+        "state": "SUCCESS",
+    }
+
+
+def test_operator_failed_state_replace_is_directory_durable(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744303001: terminal failure must survive host power loss.
+    from benchmarks.codegraph_compare import qualification_operator
+
+    output = tmp_path / "experiment"
+    synced = []
+
+    def fail(_args):
+        raise RuntimeError("failed")
+
+    monkeypatch.setattr(qualification_operator, "_run_impl", fail)
+    monkeypatch.setattr(
+        qualification_operator, "_fsync_directory", lambda path: synced.append(path)
+    )
+
+    with pytest.raises(RuntimeError, match="failed"):
+        qualification_operator.run(SimpleNamespace(experiment_root=str(output)))
+    assert synced == [output, output, output]
+    assert json.loads((output / "operator-state.json").read_bytes()) == {
+        "error": "RuntimeError",
+        "state": "FAILED",
+    }
+
+
+def test_receipt_v3_docker_context_allows_only_five_schema_refs():
+    # PR #1249 review 3744303008: the runtime schema COPY needs its exact closure.
+    negations = [
+        line
+        for line in Path(".dockerignore").read_text(encoding="utf-8").splitlines()
+        if line.startswith("!rfcs")
+    ]
+
+    assert negations == [
+        "!rfcs/",
+        "!rfcs/schemas/",
+        "!rfcs/schemas/no1-008a-cell-receipt-v3.schema.json",
+        "!rfcs/schemas/no1-008a-cell-receipt-v3-body.schema.json",
+        "!rfcs/schemas/no1-008a-cell-receipt-v3-common.schema.json",
+        "!rfcs/schemas/no1-008a-cell-receipt-v3-fields-a.schema.json",
+        "!rfcs/schemas/no1-008a-cell-receipt-v3-fields-b.schema.json",
+    ]
+
+
+def test_all_service_sockets_defer_access_control_to_peer_uid():
+    # PR #1249 review 3744303010: service primary groups differ from the operator's.
+    sources = {
+        path: Path(path).read_text(encoding="utf-8")
+        for path in (
+            "benchmarks/codegraph_compare/audit_authority_service.py",
+            "benchmarks/codegraph_compare/receipt_v3_service.py",
+            "benchmarks/codegraph_compare/verifier_service.py",
+            "benchmarks/codegraph_compare/decision_consumer_service.py",
+        )
+    }
+
+    assert {
+        path: (source.count("0o666"), source.count("peer_allowed("))
+        for path, source in sources.items()
+    } == {
+        "benchmarks/codegraph_compare/audit_authority_service.py": (1, 1),
+        "benchmarks/codegraph_compare/receipt_v3_service.py": (1, 1),
+        "benchmarks/codegraph_compare/verifier_service.py": (1, 1),
+        "benchmarks/codegraph_compare/decision_consumer_service.py": (1, 1),
+    }
+
+
+def test_qualification_v3_schema_fragments_stay_below_file_cap():
+    # Audit 2026-08-09 P2.2: externally referenced schema fragments remain reviewable.
+    schemas = sorted(Path("rfcs/schemas").glob("no1-008a-cell-receipt-v3*.schema.json"))
+    assert [path.name for path in schemas] == [
+        "no1-008a-cell-receipt-v3-body.schema.json",
+        "no1-008a-cell-receipt-v3-common.schema.json",
+        "no1-008a-cell-receipt-v3-fields-a.schema.json",
+        "no1-008a-cell-receipt-v3-fields-b.schema.json",
+        "no1-008a-cell-receipt-v3.schema.json",
+    ]
+    assert {path.name: len(path.read_text().splitlines()) for path in schemas} == {
+        "no1-008a-cell-receipt-v3-body.schema.json": 62,
+        "no1-008a-cell-receipt-v3-common.schema.json": 261,
+        "no1-008a-cell-receipt-v3-fields-a.schema.json": 211,
+        "no1-008a-cell-receipt-v3-fields-b.schema.json": 446,
+        "no1-008a-cell-receipt-v3.schema.json": 35,
+    }
+
+
+def test_qualification_v3_operator_uses_only_root_authenticated_public_config():
+    operator = Path("scripts/no1_008a_operator.sh").read_text()
+    assert "parse_public_config" in operator
+    assert "--diagnostic-mode" not in operator
+    assert (
+        "production CLIs authenticate"
+        not in Path("benchmarks/codegraph_compare/README.md").read_text()
+    )
+
+
+def _diagnostic_authority_server(socket_path: Path, key: bytes):
+    import socket
+    import struct
+    import threading
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare.host_auditor import DOMAIN
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        canonical_json_bytes,
+        strict_json_loads,
+    )
+
+    ready = threading.Event()
+
+    def serve():
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        listener.bind(str(socket_path))
+        listener.listen(1)
+        ready.set()
+        connection, _ = listener.accept()
+        header = connection.recv(4)
+        size = struct.unpack("!I", header)[0]
+        wire = bytearray()
+        while len(wire) < size:
+            wire.extend(connection.recv(size - len(wire)))
+        request = strict_json_loads(bytes(wire))
+        envelope = {
+            "audit": request,
+            "key_id": "auditor",
+            "algorithm": "Ed25519",
+            "signature": Ed25519PrivateKey.from_private_bytes(key)
+            .sign(DOMAIN + canonical_json_bytes(request))
+            .hex(),
+        }
+        response = canonical_json_bytes(envelope)
+        connection.sendall(struct.pack("!I", len(response)) + response)
+        connection.close()
+        listener.close()
+        socket_path.unlink(missing_ok=True)
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    ready.wait(timeout=5)
+    return thread
+
+
+def test_qualification_external_audit_protocol_verifies_exact_signed_request(
+    tmp_path: Path, monkeypatch
+):
+    # Mutation 5 (2026-08-10): only the external Unix authority may authorize an audit.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import audit_authority_client
+    from benchmarks.codegraph_compare.host_auditor import DOMAIN, _authority
+
+    monkeypatch.setattr(
+        audit_authority_client,
+        "_peer_credentials",
+        lambda client: (1, os.getuid(), os.getgid()),
+    )
+    key = b"\x33" * 32
+    socket_path = Path("/tmp") / f"tsa-audit-{os.getpid()}-{tmp_path.name[-6:]}.sock"
+    thread = _diagnostic_authority_server(socket_path, key)
+    authority = {
+        "key_id": "auditor",
+        "public_key_hex": Ed25519PrivateKey.from_private_bytes(key)
+        .public_key()
+        .public_bytes_raw()
+        .hex(),
+        "peer_uid": os.getuid(),
+    }
+    request = {
+        "protocol": "no1-008a-audit-v1",
+        "phase": "terminal",
+        "service_measurement": "d" * 64,
+        "audit": {"producer_container_id": "immutable-id"},
+    }
+    envelope = _authority(request, socket_path, authority, DOMAIN)
+    thread.join(timeout=5)
+    assert envelope["audit"] == request
+
+
+def test_qualification_external_audit_protocol_rejects_forged_reply(
+    tmp_path: Path, monkeypatch
+):
+    # Mutation 5 (2026-08-10): a socket endpoint without the pinned key is non-authorizing.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import audit_authority_client
+    from benchmarks.codegraph_compare.host_auditor import DOMAIN, _authority
+
+    monkeypatch.setattr(
+        audit_authority_client,
+        "_peer_credentials",
+        lambda client: (1, os.getuid(), os.getgid()),
+    )
+    socket_path = Path("/tmp") / f"tsa-forge-{os.getpid()}-{tmp_path.name[-6:]}.sock"
+    thread = _diagnostic_authority_server(socket_path, b"\x55" * 32)
+    authority = {
+        "key_id": "auditor",
+        "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x33" * 32)
+        .public_key()
+        .public_bytes_raw()
+        .hex(),
+        "peer_uid": os.getuid(),
+    }
+    request = {
+        "protocol": "no1-008a-audit-v1",
+        "phase": "terminal",
+        "service_measurement": "d" * 64,
+        "audit": {},
+    }
+    with pytest.raises(ValueError, match="signature mismatch"):
+        _authority(request, socket_path, authority, DOMAIN)
+    thread.join(timeout=5)
+
+
+def test_qualification_host_auditor_rejects_local_private_key_cli():
+    # Mutation 5 (2026-08-10): production has no local auditor-key compatibility path.
+    from benchmarks.codegraph_compare.host_auditor import main
+
+    with pytest.raises(SystemExit) as error:
+        main(
+            [
+                "launch",
+                "--container",
+                "container",
+                "--seccomp",
+                "/seccomp",
+                "--expected-image",
+                "image@sha256:" + "1" * 64,
+                "--authority-socket",
+                "/authority.sock",
+                "--public-config",
+                "/config.json",
+                "--since",
+                "1",
+                "--run-nonce",
+                "2" * 64,
+                "--private-key",
+                "/local/auditor.key",
+            ]
+        )
+    assert error.value.code == 2
+
+
+def test_qualification_host_auditor_checks_root_pinned_top_level_image_id():
+    # Mutation 5 (2026-08-10): Config.Image alone cannot authorize a container.
+    from benchmarks.codegraph_compare.host_auditor import _docker_facts
+
+    inspected = {
+        "Image": "sha256:" + "9" * 64,
+        "Config": {"Image": "producer@sha256:" + "1" * 64, "User": "65532:65532"},
+        "HostConfig": {
+            "ReadonlyRootfs": True,
+            "CapDrop": ["ALL"],
+            "NetworkMode": "none",
+            "SecurityOpt": ["no-new-privileges", "seccomp=/trusted/seccomp"],
+            "PidsLimit": 64,
+            "Memory": 4294967296,
+            "NanoCpus": 1000000000,
+            "Tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=64m"},
+        },
+    }
+    with pytest.raises(ValueError, match="top-level Image ID"):
+        _docker_facts(
+            inspected,
+            "producer@sha256:" + "1" * 64,
+            "sha256:" + "8" * 64,
+            Path("/trusted/seccomp"),
+        )
+
+
+def test_qualification_host_auditor_preserves_exact_observed_security_options():
+    # PR #1249 review 3745026819: terminal evidence is observed, not synthesized.
+    from benchmarks.codegraph_compare.host_auditor import (
+        PRODUCER_GATE_TARGET,
+        PRODUCER_GATE_WRAPPER,
+        _docker_facts,
+    )
+
+    image = "producer@sha256:" + "1" * 64
+    image_id = "sha256:" + "8" * 64
+    inspected = {
+        "Image": image_id,
+        "Config": {
+            "Image": image,
+            "User": "65532:65532",
+            "Entrypoint": ["/bin/sh"],
+            "Cmd": [
+                "-c",
+                PRODUCER_GATE_WRAPPER,
+                "no1-008a-gate",
+                PRODUCER_GATE_TARGET,
+                "--plan",
+                "/plan/cell-plan.json",
+                "--out",
+                "/out",
+            ],
+        },
+        "HostConfig": {
+            "ReadonlyRootfs": True,
+            "CapDrop": ["ALL"],
+            "NetworkMode": "none",
+            "SecurityOpt": ["no-new-privileges", "seccomp=/trusted/seccomp"],
+            "PidsLimit": 64,
+            "Memory": 4294967296,
+            "NanoCpus": 1000000000,
+            "Tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=64m"},
+        },
+    }
+
+    assert _docker_facts(inspected, image, image_id, Path("/trusted/seccomp"))[
+        "security_opt"
+    ] == ["no-new-privileges", "seccomp=/trusted/seccomp"]
+
+
+def test_qualification_host_auditor_rejects_extra_security_option():
+    # PR #1249 review 3745026819: unrequested Docker isolation options fail closed.
+    from benchmarks.codegraph_compare.host_auditor import (
+        PRODUCER_GATE_TARGET,
+        PRODUCER_GATE_WRAPPER,
+        _docker_facts,
+    )
+
+    image = "producer@sha256:" + "1" * 64
+    inspected = {
+        "Image": "sha256:" + "8" * 64,
+        "Config": {
+            "Image": image,
+            "User": "65532:65532",
+            "Entrypoint": ["/bin/sh"],
+            "Cmd": [
+                "-c",
+                PRODUCER_GATE_WRAPPER,
+                "no1-008a-gate",
+                PRODUCER_GATE_TARGET,
+                "--plan",
+                "/plan/cell-plan.json",
+                "--out",
+                "/out",
+            ],
+        },
+        "HostConfig": {
+            "ReadonlyRootfs": True,
+            "CapDrop": ["ALL"],
+            "NetworkMode": "none",
+            "SecurityOpt": [
+                "no-new-privileges",
+                "seccomp=/trusted/seccomp",
+                "label=disable",
+            ],
+            "PidsLimit": 64,
+            "Memory": 4294967296,
+            "NanoCpus": 1000000000,
+            "Tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=64m"},
+        },
+    }
+
+    with pytest.raises(ValueError, match="security facts mismatch"):
+        _docker_facts(
+            inspected,
+            image,
+            "sha256:" + "8" * 64,
+            Path("/trusted/seccomp"),
+        )
+
+
+def test_no1_008a_wrapper_forwards_decision_service_inputs(tmp_path: Path):
+    # PR #1249 review 3744178808: the documented wrapper dropped required inputs.
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    capture = tmp_path / "argv"
+    python = fake_bin / "python3"
+    python.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = - ]; then cat >/dev/null; exit 0; fi\n'
+        'printf \'%s\\n\' "$@" > "$CAPTURE"\n'
+    )
+    python.chmod(0o755)
+    realpath = fake_bin / "realpath"
+    realpath.write_text(
+        "#!/bin/sh\n"
+        '[ "$1" = -e ] && shift\n'
+        '[ "$1" = -- ] && shift\n'
+        "printf '%s\\n' \"$1\"\n"
+    )
+    realpath.chmod(0o755)
+    paths = {}
+    for name in ("contracts", "staged"):
+        paths[name] = tmp_path / name
+        paths[name].mkdir()
+    for name in (
+        "authority.sock",
+        "executor.sock",
+        "approver.sock",
+        "verifier.sock",
+        "decision.sock",
+        "decision.json",
+        "config.json",
+    ):
+        paths[name] = tmp_path / name
+        paths[name].write_bytes(b"{}")
+    command = [
+        "bash",
+        "scripts/no1_008a_operator.sh",
+        "run",
+        "--contracts-dir",
+        str(paths["contracts"]),
+        "--authority-socket",
+        str(paths["authority.sock"]),
+        "--executor-socket",
+        str(paths["executor.sock"]),
+        "--approver-socket",
+        str(paths["approver.sock"]),
+        "--verifier-socket",
+        str(paths["verifier.sock"]),
+        "--decision-consumer-socket",
+        str(paths["decision.sock"]),
+        "--decision-contract",
+        str(paths["decision.json"]),
+        "--public-config",
+        str(paths["config.json"]),
+        "--staged-root",
+        str(paths["staged"]),
+        "--experiment-root",
+        str(tmp_path / "experiment"),
+    ]
+    environment = {**os.environ, "CAPTURE": str(capture)}
+    environment["PATH"] = f"{fake_bin}:{environment['PATH']}"
+
+    result = subprocess.run(command, env=environment, capture_output=True, text=True)
+
+    assert result.returncode == 0
+    argv = capture.read_text().splitlines()
+    assert argv[argv.index("--decision-consumer-socket") + 1] == str(
+        paths["decision.sock"]
+    )
+    assert argv[argv.index("--decision-contract") + 1] == str(paths["decision.json"])
+
+
+def test_authority_materialized_source_is_immutable_and_producer_readable(
+    tmp_path: Path,
+):
+    # PR #1249 review 3744178810: UID 65532 could not traverse root-only snapshots.
+    import io
+    import stat
+    import tarfile
+
+    from benchmarks.codegraph_compare.audit_authority_storage import (
+        _materialize_source,
+    )
+
+    snapshot = tmp_path / "source.tar"
+    payloads = {
+        "pkg/main.py": ("100644", b"print('ok')\n"),
+        "pkg/run.sh": ("100755", b"#!/bin/sh\nexit 0\n"),
+    }
+    with tarfile.open(snapshot, "w") as archive:
+        for relative, (git_mode, payload) in payloads.items():
+            info = tarfile.TarInfo(relative)
+            info.size = len(payload)
+            info.uid = info.gid = 0
+            info.mode = 0o755 if git_mode == "100755" else 0o644
+            archive.addfile(info, io.BytesIO(payload))
+    destination = tmp_path / "source"
+    inventory = json.dumps(
+        {
+            "eligibility": {
+                "tracked_files": [
+                    [
+                        relative,
+                        git_mode,
+                        hashlib.sha1(
+                            f"blob {len(payload)}\0".encode() + payload
+                        ).hexdigest(),
+                        len(payload),
+                        hashlib.sha256(payload).hexdigest(),
+                    ]
+                    for relative, (git_mode, payload) in payloads.items()
+                ]
+            }
+        }
+    ).encode()
+
+    _materialize_source(
+        snapshot,
+        destination,
+        inventory_payload=inventory,
+        ceiling=snapshot.stat().st_size,
+    )
+
+    assert {
+        relative: stat.S_IMODE((destination / relative).stat().st_mode)
+        for relative in payloads
+    } == {"pkg/main.py": 0o444, "pkg/run.sh": 0o555}
+    assert stat.S_IMODE((destination / "pkg").stat().st_mode) == 0o555
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o555
+
+
+def test_stage_inventory_tree_uses_read_only_modes_from_git_inventory(
+    tmp_path: Path,
+):
+    # PR #1249 review 3744439670: staged executable and regular blobs must be immutable.
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.stage_inputs import stage_inventory_tree
+
+    source = tmp_path / "checkout"
+    source.mkdir()
+    payloads = {
+        "README.md": ("100644", b"fixture\n"),
+        "bin/tool": ("100755", b"#!/bin/sh\n"),
+    }
+    records = []
+    for relative, (mode, payload) in payloads.items():
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        oid = hashlib.sha1(f"blob {len(payload)}\0".encode() + payload).hexdigest()
+        records.append(
+            [relative, mode, oid, len(payload), hashlib.sha256(payload).hexdigest()]
+        )
+    inventory = tmp_path / "inventory.json"
+    inventory.write_bytes(
+        canonical_json_bytes({"eligibility": {"tracked_files": records}})
+    )
+    destination = tmp_path / "staged"
+
+    stage_inventory_tree(source, destination, tmp_path / "source.tar", inventory)
+
+    assert {
+        relative: stat.S_IMODE((destination / relative).stat().st_mode)
+        for relative in payloads
+    } == {"README.md": 0o444, "bin/tool": 0o555}
+    assert stat.S_IMODE((destination / "bin").stat().st_mode) == 0o555
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o555
+
+
+def test_verifier_ledger_is_private_and_owned_by_service_uid(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744178813: verifier USER 903 must own its writable ledger.
+    import stat
+
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    monkeypatch.setattr(ChallengeLedger, "_acquire_lease", lambda _self: None)
+    ChallengeLedger(tmp_path / "ledger.sqlite")
+    metadata = (tmp_path / "ledger.sqlite").stat()
+    assert metadata.st_uid == os.geteuid()
+    assert stat.S_IMODE(metadata.st_mode) == 0o600
+
+
+def test_no1_008a_dockerfile_has_independent_decision_consumer_target():
+    # PR #1249 review 3744178814: the final decision service was not buildable.
+    dockerfile = Path("benchmarks/codegraph_compare/Dockerfile.no1-008a").read_text()
+    target = dockerfile.split("FROM runtime AS decision-consumer\n", 1)[1]
+    assert 'org.tree-sitter-analyzer.no1-008a.role="decision-consumer"' in target
+    assert "USER 904:904" in target
+    assert (
+        'ENTRYPOINT ["python", "-m", '
+        '"benchmarks.codegraph_compare.decision_consumer_service"]'
+    ) in target
+
+
+def _authority_runner_for_test(tmp_path: Path):
+    import threading
+
+    from benchmarks.codegraph_compare.audit_authority_runner import AuthorityRunner
+
+    runner = AuthorityRunner.__new__(AuthorityRunner)
+    runner._artifacts = tmp_path
+    runner._semaphore = threading.BoundedSemaphore(1)
+    runner._lock_path = tmp_path / ".authority.lock"
+    runner._lock_path.write_bytes(b"")
+    return runner
+
+
+def test_authority_serializes_distinct_signed_jobs(tmp_path: Path):
+    # PR #1249 review 3744178818: direct clients bypassed max_concurrency=1.
+    import threading
+    import time
+
+    runner = _authority_runner_for_test(tmp_path)
+    runner._sync_sealed_job = lambda _job_id, _result: None
+    guard = threading.Lock()
+    active = 0
+    maximum = 0
+
+    def execute(_contract):
+        nonlocal active, maximum
+        with guard:
+            active += 1
+            maximum = max(maximum, active)
+        time.sleep(0.05)
+        with guard:
+            active -= 1
+        return {"ok": True}
+
+    runner._execute = execute
+    threads = [
+        threading.Thread(target=runner, args=({"job_id": digit * 64},))
+        for digit in ("1", "2")
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert maximum == 1
+    assert [
+        (tmp_path / f"{digit * 64}.state").read_bytes() for digit in ("1", "2")
+    ] == [b"SUCCESS\n", b"SUCCESS\n"]
+
+
+def test_authority_fsyncs_parent_after_reservation_and_terminal_replace(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744178821: file fsync alone did not persist directory entries.
+    from benchmarks.codegraph_compare import audit_authority_runner
+
+    runner = _authority_runner_for_test(tmp_path)
+    runner._execute = lambda _contract: {"ok": True}
+    runner._sync_sealed_job = lambda _job_id, _result: None
+    synced = []
+    monkeypatch.setattr(
+        audit_authority_runner, "_fsync_directory", lambda path: synced.append(path)
+    )
+
+    runner({"job_id": "3" * 64})
+
+    assert synced == [tmp_path, tmp_path]
+
+
+def test_operator_gives_authority_aggregate_remaining_timeout(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744178822: sealing time must not consume producer wall budget.
+    from benchmarks.codegraph_compare import qualification_operator
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        canonical_json_bytes,
+        canonical_plan_hash,
+    )
+    from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
+
+    contracts_dir = tmp_path / "contracts"
+    staged_root = tmp_path / "staged"
+    contracts_dir.mkdir()
+    staged_root.mkdir()
+    plans = []
+    contracts = []
+    for ordinal, (repo, arm) in enumerate(EXPECTED_CELLS):
+        plan = {
+            "cell": {"repo_id": repo, "arm_id": arm, "attempt": 1},
+            "wall_timeout_seconds": 10,
+            "resource_ceilings": {"io_bytes": 32 * 1024 * 1024},
+        }
+        plan["plan_hash"] = canonical_plan_hash(plan)
+        plans.append(plan)
+        job_id = f"{ordinal + 1:064x}"
+        contract = {
+            "job_id": job_id,
+            "cell": plan["cell"],
+            "nonce": "a" * 64,
+            "decision_id": "b" * 64,
+            "expires_at_ns": 10**30,
+        }
+        contracts.append(contract)
+        (contracts_dir / f"{ordinal}.json").write_bytes(canonical_json_bytes(contract))
+        job = staged_root / job_id
+        job.mkdir()
+        (job / "plan.json").write_bytes(canonical_json_bytes(plan))
+        (job / "inventory.json").write_bytes(canonical_json_bytes({"repo_id": repo}))
+    decision = {
+        "decision_id": "b" * 64,
+        "expires_at_ns": 10**30,
+        "plan_set_hash": "c" * 64,
+        "cells": [
+            {
+                "repo_id": repo,
+                "arm_id": arm,
+                "plan_sha256": canonical_plan_hash(plan),
+            }
+            for (repo, arm), plan in zip(EXPECTED_CELLS, plans, strict=True)
+        ],
+    }
+    decision_path = tmp_path / "decision.json"
+    decision_path.write_bytes(canonical_json_bytes(decision))
+    digest = hashlib.sha256(canonical_json_bytes(decision)).hexdigest()
+    for contract in contracts:
+        contract["decision_contract_sha256"] = digest
+    # Rewrite after adding the common decision digest.
+    for ordinal, contract in enumerate(contracts):
+        (contracts_dir / f"{ordinal}.json").write_bytes(canonical_json_bytes(contract))
+    public_config = tmp_path / "public.json"
+    public_config.write_bytes(b"{}")
+    monkeypatch.setattr(
+        qualification_operator,
+        "parse_public_config",
+        lambda _raw: {
+            "auditor": {"peer_uid": 0},
+            "trusted": {
+                "plan_set_hash": "c" * 64,
+                "inventory_sha256": {
+                    repo: hashlib.sha256(
+                        canonical_json_bytes({"repo_id": repo})
+                    ).hexdigest()
+                    for repo, _arm in EXPECTED_CELLS
+                },
+                "verifier_runtime": {"measurement": {}},
+            },
+        },
+    )
+    monkeypatch.setattr(
+        qualification_operator, "verify_decision_contract", lambda value: value
+    )
+    monkeypatch.setattr(
+        qualification_operator, "verify_configured_plan_set", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        qualification_operator, "validate_producer_plan", lambda value: value
+    )
+    monkeypatch.setattr(
+        qualification_operator, "validate_receipt_inventory", lambda value: value
+    )
+    monkeypatch.setattr(
+        qualification_operator,
+        "verify_contract",
+        lambda request: request["contract"],
+    )
+    ticks = iter((100.0, 101.0))
+    monkeypatch.setattr(
+        qualification_operator,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: next(ticks), time_ns=__import__("time").time_ns
+        ),
+    )
+    observed = []
+
+    def stop_after_authority(_contract, _socket, authority):
+        observed.append(authority["wall_timeout_seconds"])
+        raise RuntimeError("observed authority timeout")
+
+    monkeypatch.setattr(qualification_operator, "run_cell", stop_after_authority)
+    args = SimpleNamespace(
+        public_config=str(public_config),
+        contracts_dir=str(contracts_dir),
+        decision_contract=str(decision_path),
+        staged_root=str(staged_root),
+        authority_socket=str(tmp_path / "authority.sock"),
+    )
+
+    with pytest.raises(RuntimeError, match="observed authority timeout"):
+        qualification_operator._run_impl(args)
+
+    assert observed == [1932]
+    assert plans[0]["wall_timeout_seconds"] == 10
+
+
+def test_receipt_image_provenance_excludes_post_decision_consumer():
+    # PR #1249 review 3744178824: receipt-v3 signs exactly five pre-decision roles.
+    from benchmarks.codegraph_compare.verifier_evidence import _receipt_images
+
+    images = {
+        role: f"sha256:{number:064x}"
+        for number, role in enumerate(
+            (
+                "producer",
+                "executor",
+                "approver",
+                "auditor",
+                "verifier",
+                "decision_consumer",
+            ),
+            start=1,
+        )
+    }
+
+    assert _receipt_images({"images": images}) == {
+        role: images[role]
+        for role in ("producer", "executor", "approver", "auditor", "verifier")
+    }
+
+
+def test_authority_mounts_authenticated_plan_inputs_at_exact_read_only_targets():
+    # PR #1249 review 3744178826: staged tool/config bytes must reach plan argv paths.
+    from benchmarks.codegraph_compare.audit_authority_storage import (
+        _producer_mount_targets,
+    )
+
+    plan = {
+        "executions": [
+            {
+                "id": execution_id,
+                "argv": [
+                    "/tool/bin",
+                    execution_id,
+                    "--config",
+                    "/config/pinned.json",
+                    *(["--source", "/source"] if execution_id == "build" else []),
+                ],
+            }
+            for execution_id in ("delete", "build", "health", "symbol", "call")
+        ]
+    }
+    runner_source = Path(
+        "benchmarks/codegraph_compare/audit_authority_runner.py"
+    ).read_text()
+
+    assert _producer_mount_targets(plan) == (
+        "/source",
+        "/tool/bin",
+        "/config/pinned.json",
+    )
+    assert '(job / "tool", tool_target, True)' in runner_source
+    assert '(job / "config", config_target, True)' in runner_source
+    assert '(job / "seccomp", "/plan/seccomp.json", True)' in runner_source
+
+
+def test_host_auditor_accepts_only_all_eight_exact_producer_bind_mounts(
+    tmp_path: Path,
+    monkeypatch,
+):
+    # PR #1249 review 3744261017: authenticated tool/config/seccomp mounts are mandatory.
+    from benchmarks.codegraph_compare.host_auditor import _mounts
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    staged = tmp_path / "staged"
+    artifact = tmp_path / "artifact"
+    staged.mkdir()
+    artifact.mkdir()
+    source = artifact / "source"
+    output = artifact / "producer-output"
+    gate = artifact / "producer-launch-gate"
+    source.mkdir()
+    output.mkdir()
+    os.mkfifo(gate, mode=0o444)
+    plan = {
+        "executions": [
+            {
+                "id": name,
+                "argv": [
+                    "/tool/bin",
+                    name,
+                    "--config",
+                    "/config/pinned.json",
+                    *(["--source", "/source"] if name == "build" else []),
+                ],
+            }
+            for name in ("delete", "build", "health", "symbol", "call")
+        ]
+    }
+    sources = {
+        "/source": source,
+        "/tool/bin": staged / "tool",
+        "/config/pinned.json": staged / "config",
+        "/plan/seccomp.json": staged / "seccomp",
+        "/plan/cell-plan.json": staged / "plan.json",
+        "/plan/inventory.json": staged / "inventory.json",
+        "/run/no1-008a-launch-gate": gate,
+        "/out": output,
+    }
+    for target in sources.values():
+        if not target.exists():
+            target.write_bytes(b"x")
+    sources["/plan/cell-plan.json"].write_bytes(canonical_json_bytes(plan))
+    inspected = {
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": str(source_path),
+                "Destination": target,
+                "RW": target == "/out",
+                "Propagation": "rprivate",
+            }
+            for target, source_path in sources.items()
+        ]
+    }
+
+    real_lstat = os.lstat
+
+    def authority_lstat(path):
+        metadata = real_lstat(path)
+        if Path(path) == gate:
+            return SimpleNamespace(
+                st_mode=metadata.st_mode, st_uid=0, st_nlink=metadata.st_nlink
+            )
+        return metadata
+
+    monkeypatch.setattr(
+        "benchmarks.codegraph_compare.host_auditor.os.lstat", authority_lstat
+    )
+    assert set(_mounts(inspected)) == set(sources)
+    inspected["Mounts"][1]["Source"] = str(staged / "config")
+    with pytest.raises(ValueError, match="authenticated mount source mismatch"):
+        _mounts(inspected)
+
+
+def test_authority_removes_ext4_lost_found_and_checks_payload_before_verity():
+    # PR #1249 review 3744439674: mkfs lost+found must not alter the signed tree hash.
+    source = Path("benchmarks/codegraph_compare/audit_authority_runner.py").read_text()
+
+    commands = [
+        '"mkfs.ext4",',
+        '_run("debugfs", "-w", "-R", "rmdir lost+found", str(data))',
+        "_assert_ext4_payload(",
+        '"veritysetup", "format", str(data), str(hashes)',
+    ]
+
+    sealing = source[source.index("data_size, inode_count, payload_bytes =") :]
+    assert [sealing.index(command) for command in commands] == sorted(
+        sealing.index(command) for command in commands
+    )
+
+
+def test_authority_streams_repository_sized_source_archive_under_inventory_ceiling(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744261021: source snapshots are not receipt-sized messages.
+    import io
+    import tarfile
+
+    from benchmarks.codegraph_compare import audit_authority_storage as storage
+    from benchmarks.codegraph_compare.audit_authority_storage import (
+        _materialize_source,
+        _sha,
+        _source_archive_ceiling,
+    )
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    payload = b"x" * (17 * 1024 * 1024)
+    inventory = canonical_json_bytes(
+        {
+            "eligibility": {
+                "tracked_files": [
+                    [
+                        "large.bin",
+                        "100644",
+                        hashlib.sha1(
+                            f"blob {len(payload)}\0".encode() + payload
+                        ).hexdigest(),
+                        len(payload),
+                        hashlib.sha256(payload).hexdigest(),
+                    ]
+                ]
+            }
+        }
+    )
+    ceiling = _source_archive_ceiling(inventory)
+    snapshot = tmp_path / "source.tar"
+    with tarfile.open(snapshot, "w", format=tarfile.USTAR_FORMAT) as archive:
+        info = tarfile.TarInfo("large.bin")
+        info.size = len(payload)
+        info.uid = info.gid = 0
+        info.mode = 0o644
+        archive.addfile(info, io.BytesIO(payload))
+
+    destination = tmp_path / "source"
+    monkeypatch.setattr(
+        storage,
+        "_read",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("source archive was buffered through _read")
+        ),
+    )
+    digest = _sha(snapshot, limit=ceiling)
+    _materialize_source(
+        snapshot, destination, inventory_payload=inventory, ceiling=ceiling
+    )
+
+    assert digest == hashlib.sha256(snapshot.read_bytes()).hexdigest()
+    assert (destination / "large.bin").stat().st_size == 17 * 1024 * 1024
+
+
+def test_decision_ledger_requires_uid_904_private_writable_parent(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744261023: SQLite WAL needs a service-owned private parent.
+    import stat
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    parent = tmp_path / "ledger"
+    parent.mkdir(mode=0o700)
+    real_stat = consumer.os.stat
+
+    def service_stat(path, *args, **kwargs):
+        metadata = real_stat(path, *args, **kwargs)
+        if Path(path) == parent:
+            return SimpleNamespace(st_uid=904, st_mode=stat.S_IFDIR | 0o700)
+        return metadata
+
+    monkeypatch.setattr(consumer.os, "stat", service_stat)
+    monkeypatch.setattr(
+        consumer.os,
+        "access",
+        lambda path, mode: (path, mode) == (parent, os.W_OK | os.X_OK),
+    )
+
+    ledger = consumer.DecisionLedger(
+        parent / "decisions.sqlite", _qualification_v3_public_config()
+    )
+
+    assert ledger.path == parent / "decisions.sqlite"
+    assert stat.S_IMODE(ledger.path.stat().st_mode) == 0o600
+
+    def root_stat(path, *args, **kwargs):
+        metadata = real_stat(path, *args, **kwargs)
+        if Path(path) == parent:
+            return SimpleNamespace(st_uid=0, st_mode=stat.S_IFDIR | 0o700)
+        return metadata
+
+    monkeypatch.setattr(consumer.os, "stat", root_stat)
+    with pytest.raises(ValueError, match="UID 904 private 0700"):
+        consumer.DecisionLedger(
+            parent / "other.sqlite", _qualification_v3_public_config()
+        )
+
+
+def test_decision_consumer_recomputes_ordered_exact14_config_plan_binding():
+    # PR #1249 review 3744261026: direct consumers must enforce root config plans.
+    from benchmarks.codegraph_compare.decision_consumer_service import (
+        verify_configured_plan_set,
+    )
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
+
+    hashes = [f"{ordinal:064x}" for ordinal in range(1, 15)]
+    plan_set_hash = hashlib.sha256(canonical_json_bytes(hashes)).hexdigest()
+    contract = {
+        "plan_set_hash": plan_set_hash,
+        "cells": [
+            {"repo_id": repo, "arm_id": arm, "plan_sha256": digest}
+            for (repo, arm), digest in zip(EXPECTED_CELLS, hashes, strict=True)
+        ],
+    }
+    config = {
+        "trusted": {
+            "plan_set_hash": plan_set_hash,
+            "plan_hashes": {
+                f"{repo}/{arm}": digest
+                for (repo, arm), digest in zip(EXPECTED_CELLS, hashes, strict=True)
+            },
+        }
+    }
+
+    verify_configured_plan_set(contract, config)
+    contract["cells"][13]["plan_sha256"] = "f" * 64
+    with pytest.raises(ValueError, match="root-config authorized"):
+        verify_configured_plan_set(contract, config)
+
+
+def test_verifier_manifest_parser_uses_64mib_protocol_not_receipt_limits():
+    # PR #1249 review 3744261030: exact-14 manifests have independent frame bounds.
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.verifier_service import _manifest_json_loads
+
+    repeated_inventory = "x" * (17 * 1024 * 1024)
+    manifest = {
+        "operation": "verify-exact-14",
+        "cells": [
+            {
+                "repo_id": f"repo-{ordinal}",
+                "tracked_inventory": repeated_inventory if ordinal == 0 else "",
+            }
+            for ordinal in range(14)
+        ],
+    }
+    payload = canonical_json_bytes(manifest)
+
+    parsed = _manifest_json_loads(payload)
+
+    assert len(payload) == 17_826_453
+    assert len(parsed["cells"]) == 14
+
+
+def test_authority_deadline_subtracts_docker_start_rpc_and_audit_time(monkeypatch):
+    # PR #1249 review 3744261033: producer budget is Docker StartedAt-to-FinishedAt.
+    from benchmarks.codegraph_compare import audit_authority_runner as runner
+
+    clock = SimpleNamespace(
+        time=lambda: 1_003.0,
+        monotonic=lambda: 500.0,
+        time_ns=lambda: 1_000_000_000,
+    )
+    monkeypatch.setattr(runner, "time", clock)
+    process_timeouts = []
+
+    class ImmediateProcess:
+        returncode = 0
+
+        def __init__(self, args):
+            self.args = args
+
+        def communicate(self, timeout):
+            process_timeouts.append((tuple(self.args), timeout))
+            return b"0\n", b""
+
+    monkeypatch.setattr(
+        runner.subprocess,
+        "Popen",
+        lambda args, **_kwargs: ImmediateProcess(args),
+    )
+
+    deadline = runner._docker_wall_deadline("1970-01-01T00:16:40Z", 10)
+    exit_code = runner._wait_container("producer", deadline)
+    runner._run("seal-command")
+
+    extraction_calls = []
+    monkeypatch.setattr(runner, "_hash_tree", lambda _path: "same")
+    monkeypatch.setattr(
+        runner,
+        "_run",
+        lambda *args, timeout: extraction_calls.append((args, timeout)) or b"",
+    )
+    runner._assert_ext4_payload(
+        Path("data.img"),
+        Path("core"),
+        payload_bytes=64 * 1024 * 1024,
+        contract_expires_at_ns=33_000_000_000,
+    )
+
+    assert deadline == 507.0
+    assert exit_code == "0"
+    assert process_timeouts == [
+        (("docker", "wait", "producer"), 7.0),
+        (("seal-command",), 120),
+    ]
+    extraction_command, extraction_timeout = extraction_calls[0]
+    assert extraction_command[:2] == ("debugfs", "-R")
+    assert extraction_command[2].startswith("rdump / ")
+    assert extraction_command[3] == "data.img"
+    assert extraction_timeout == 32.0
+
+
+def test_decision_consumer_contains_four_malformed_connections_and_recovers(
+    monkeypatch,
+):
+    # PR #1249 review 3744358507: per-connection failures must not drain workers.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    class Connection:
+        def __init__(self, send_error=False):
+            self.closed = False
+            self.sent = []
+            self.send_error = send_error
+
+        def sendall(self, payload):
+            if self.send_error:
+                raise BrokenPipeError("peer disconnected")
+            self.sent.append(payload)
+
+        def close(self):
+            self.closed = True
+
+    key = __import__(
+        "cryptography.hazmat.primitives.asymmetric.ed25519",
+        fromlist=["Ed25519PrivateKey"],
+    ).Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
+    connections = [
+        Connection(),
+        Connection(),
+        Connection(),
+        Connection(send_error=True),
+    ]
+    read_results = iter(
+        (
+            EOFError("truncated header"),
+            ValueError("oversized frame"),
+            ValueError("malformed JSON"),
+            {"operation": "query-decision"},
+        )
+    )
+    monkeypatch.setattr(consumer, "peer_allowed", lambda *_args: None)
+
+    def read_request(*_args):
+        result = next(read_results)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(consumer, "read_frame", read_request)
+    monkeypatch.setattr(consumer, "consume_request", lambda *_args: {"ok": True})
+    for connection in connections:
+        consumer._serve_connection(connection, 901, {}, object(), key, {})
+
+    healthy = Connection()
+    monkeypatch.setattr(consumer, "read_frame", lambda *_args: {"operation": "query"})
+    consumer._serve_connection(healthy, 901, {}, object(), key, {})
+
+    assert [connection.closed for connection in connections] == [True, True, True, True]
+    assert healthy.closed is True
+    assert len(healthy.sent) == 1
+
+
+def test_decision_consumer_contains_peer_and_handler_errors(monkeypatch):
+    # PR #1249 review 3744358507: SO_PEERCRED and handler errors stay connection-local.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    class Connection:
+        def __init__(self):
+            self.closed = False
+            self.sent = []
+
+        def sendall(self, payload):
+            self.sent.append(payload)
+
+        def close(self):
+            self.closed = True
+
+    key = __import__(
+        "cryptography.hazmat.primitives.asymmetric.ed25519",
+        fromlist=["Ed25519PrivateKey"],
+    ).Ed25519PrivateKey.from_private_bytes(b"\x12" * 32)
+    denied = Connection()
+    monkeypatch.setattr(
+        consumer,
+        "peer_allowed",
+        lambda *_args: (_ for _ in ()).throw(PermissionError("wrong UID")),
+    )
+    consumer._serve_connection(denied, 901, {}, object(), key, {})
+
+    handled = Connection()
+    monkeypatch.setattr(consumer, "peer_allowed", lambda *_args: None)
+    monkeypatch.setattr(consumer, "read_frame", lambda *_args: {})
+    monkeypatch.setattr(
+        consumer,
+        "consume_request",
+        lambda *_args: (_ for _ in ()).throw(ValueError("bad decision")),
+    )
+    consumer._serve_connection(handled, 901, {}, object(), key, {})
+
+    assert denied.closed is True
+    assert denied.sent == []
+    assert handled.closed is True
+    assert len(handled.sent) == 1
+
+
+def test_decision_consumer_rejects_wrong_private_key_before_ledger_or_listener(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744358513: a wrong key must not poison the one-shot ledger.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    public = tmp_path / "public.json"
+    public.write_bytes(b"{}")
+    launch_attestation = tmp_path / "launch.json"
+    launch_attestation.write_bytes(b"{}")
+    configured_key = __import__(
+        "cryptography.hazmat.primitives.asymmetric.ed25519",
+        fromlist=["Ed25519PrivateKey"],
+    ).Ed25519PrivateKey.from_private_bytes(b"\x66" * 32)
+    monkeypatch.setattr(consumer.os, "geteuid", lambda: 904)
+    monkeypatch.setattr(
+        consumer,
+        "parse_public_config",
+        lambda _raw: {
+            "decision_consumer": {
+                "peer_uid": 904,
+                "public_key_hex": configured_key.public_key().public_bytes_raw().hex(),
+            },
+            "trusted": {"decision_consumer_runtime": {"measurement": {}}},
+        },
+    )
+    monkeypatch.setattr(consumer, "measure_runtime", lambda _value: {})
+    monkeypatch.setattr(consumer, "wait_for_launch_release", lambda *_args: b"{}")
+    monkeypatch.setattr(
+        consumer, "verify_service_launch_attestation", lambda *_args: {}
+    )
+    descriptor = os.open(os.devnull, os.O_RDONLY)
+    monkeypatch.setattr(
+        consumer, "secure_key", lambda *_args: (descriptor, b"\x65" * 32)
+    )
+    monkeypatch.setattr(
+        consumer,
+        "DecisionLedger",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("ledger opened")),
+    )
+
+    with pytest.raises(SystemExit, match="does not match public config"):
+        consumer.main(
+            [
+                "--socket",
+                str(tmp_path / "decision.sock"),
+                "--private-key",
+                str(tmp_path / "key"),
+                "--public-config",
+                str(public),
+                "--ledger",
+                str(tmp_path / "ledger.sqlite"),
+                "--launch-attestation",
+                str(launch_attestation),
+                "--launch-release",
+                str(tmp_path / "RELEASE"),
+                "--allowed-client-uid",
+                "901",
+            ]
+        )
+
+
+def test_operator_write_completes_short_writes_before_fsync(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744358510: a successful write retains the full envelope.
+    from benchmarks.codegraph_compare import qualification_operator as operator
+
+    real_write = os.write
+
+    def short_write(descriptor, payload):
+        return real_write(descriptor, payload[:3])
+
+    monkeypatch.setattr(operator.os, "write", short_write)
+    path = tmp_path / "evidence.json"
+    operator._write(path, {"status": "SUCCESS"})
+
+    assert path.read_bytes() == b'{"status":"SUCCESS"}\n'
+
+
+def test_operator_write_rejects_zero_progress(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744358510: zero-byte writes cannot report operator success.
+    from benchmarks.codegraph_compare import qualification_operator as operator
+
+    monkeypatch.setattr(operator.os, "write", lambda *_args: 0)
+    with pytest.raises(OSError, match="made no progress"):
+        operator._write(tmp_path / "evidence.json", {"status": "SUCCESS"})
+
+
+def test_launch_attestation_handoff_uses_private_role_owned_paths(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744358508: distinct service UIDs can read only their artifact.
+    from benchmarks.codegraph_compare import service_runtime
+
+    output = tmp_path / "handoff"
+    public = tmp_path / "public.json"
+    public.write_bytes(b"{}")
+    descriptor = os.open(os.devnull, os.O_RDONLY)
+    monkeypatch.setattr(service_runtime.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(
+        service_runtime, "secure_key", lambda *_args: (descriptor, b"\x31" * 32)
+    )
+    monkeypatch.setattr(
+        "benchmarks.codegraph_compare.verifier.parse_public_config", lambda _raw: {}
+    )
+    monkeypatch.setattr(
+        service_runtime,
+        "create_service_launch_attestation",
+        lambda _container, role, *_args: {"role": role},
+    )
+    directory_owners = []
+    file_owners = []
+    monkeypatch.setattr(
+        service_runtime.os,
+        "chown",
+        lambda path, uid, gid: directory_owners.append((Path(path).name, uid, gid)),
+    )
+    monkeypatch.setattr(
+        service_runtime.os,
+        "fchown",
+        lambda _fd, uid, gid: file_owners.append((uid, gid)),
+    )
+    mappings = [
+        item
+        for role in ("executor", "approver", "auditor", "verifier", "decision_consumer")
+        for item in ("--container", f"{role}=container-{role}")
+    ]
+    assert (
+        service_runtime.main(
+            [
+                "attest-launch",
+                "--public-config",
+                str(public),
+                "--private-key",
+                "key",
+                "--key-id",
+                "launcher",
+                "--output-dir",
+                str(output),
+                *mappings,
+            ]
+        )
+        == 0
+    )
+
+    expected = {
+        "executor": 901,
+        "approver": 902,
+        "auditor": 0,
+        "verifier": 903,
+        "decision_consumer": 904,
+    }
+    assert stat.S_IMODE(output.stat().st_mode) == 0o711
+    assert {
+        name: stat.S_IMODE((output / name).stat().st_mode) for name in expected
+    } == dict.fromkeys(expected, 448)
+    assert {
+        name: stat.S_IMODE((output / name / "launch-attestation.json").stat().st_mode)
+        for name in expected
+    } == dict.fromkeys(expected, 256)
+    assert directory_owners == [
+        (name, expected[name], expected[name]) for name in sorted(expected)
+    ]
+    assert {
+        name: stat.S_IMODE((output / name / "RELEASE").stat().st_mode)
+        for name in expected
+    } == dict.fromkeys(expected, 256)
+    assert sorted(file_owners) == sorted(
+        (uid, uid) for uid in expected.values() for _artifact in range(2)
+    )
+
+
+def test_producer_gate_releases_only_exact_signal(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744358517: producer commands wait for authority release.
+    import threading
+
+    from benchmarks.codegraph_compare import audit_authority_runner as runner
+
+    gate = tmp_path / "gate"
+    os.mkfifo(gate, mode=0o444)
+    os.chmod(gate, 0o644)
+    received = []
+    reader = threading.Thread(target=lambda: received.append(gate.read_bytes()))
+    reader.start()
+    monkeypatch.setattr(runner, "_run", lambda *_args: b'[{"State":{"Running":true}}]')
+    runner._release_producer_gate(gate, "container", __import__("time").monotonic() + 2)
+    reader.join(timeout=2)
+
+    assert received == [b"RELEASE\n"]
+
+
+def test_producer_gate_fails_if_container_exits_before_release(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744358517: exit-before-gate is a terminal authority failure.
+    import errno
+
+    from benchmarks.codegraph_compare import audit_authority_runner as runner
+
+    gate = tmp_path / "gate"
+    os.mkfifo(gate, mode=0o444)
+    monkeypatch.setattr(
+        runner.os,
+        "open",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError(errno.ENXIO, "no reader")
+        ),
+    )
+    monkeypatch.setattr(
+        runner, "_run", lambda *_args, **_kwargs: b'[{"State":{"Running":false}}]'
+    )
+    with pytest.raises(ValueError, match="exited before launch gate"):
+        runner._release_producer_gate(gate, "container", 10**30)
+
+
+def test_producer_gate_readiness_timeout_is_terminal(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744358517: a missing gate reader cannot hang the reservation.
+    import errno
+
+    from benchmarks.codegraph_compare import audit_authority_runner as runner
+
+    gate = tmp_path / "gate"
+    os.mkfifo(gate, mode=0o444)
+    monkeypatch.setattr(
+        runner.os,
+        "open",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError(errno.ENXIO, "no reader")
+        ),
+    )
+    monkeypatch.setattr(runner, "_run", lambda *_args: b'[{"State":{"Running":true}}]')
+    calls = iter((0.0,))
+    monkeypatch.setattr(runner.time, "monotonic", lambda: next(calls, 11.0))
+    with pytest.raises(TimeoutError, match="gate readiness expired"):
+        runner._release_producer_gate(gate, "container", 10**30)
+
+
+def test_verifier_ledger_consumed_transition_persists_canonical_envelope_atomically(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744400335: a committed CONSUMED fact must recover its envelope.
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    monkeypatch.setattr(ChallengeLedger, "_acquire_lease", lambda _self: None)
+    ledger = ChallengeLedger(tmp_path / "verifier.sqlite")
+    manifest = "a" * 64
+    challenge = ledger.begin(manifest)["challenge"]
+    ledger.start_verifying(manifest, challenge)
+    expected = canonical_json_bytes({"challenge": challenge, "signed": True})
+
+    record, head, stored = ledger.finish_with_envelope(
+        manifest, challenge, lambda _record, _head: expected
+    )
+
+    assert record["event"] == "CONSUMED"
+    assert head == {"counter": record["counter"], "record_hash": record["record_hash"]}
+    assert stored == expected
+    assert ledger.verdict(manifest, challenge) == expected
+
+
+def test_service_launch_release_is_blocked_until_private_release_exists(tmp_path: Path):
+    # PR #1249 review 3744400323: services start blocked before exact-five attestation.
+    import threading
+    import time
+
+    from benchmarks.codegraph_compare.service_runtime import wait_for_launch_release
+
+    attestation = tmp_path / "launch-attestation.json"
+    release = tmp_path / "RELEASE"
+    attestation.write_bytes(b"{}")
+    attestation.chmod(0o400)
+    observed = []
+    waiter = threading.Thread(
+        target=lambda: observed.append(
+            wait_for_launch_release(attestation, release, timeout_seconds=2)
+        )
+    )
+    waiter.start()
+    time.sleep(0.05)
+    assert observed == []
+    release.write_bytes(b"RELEASE\n")
+    release.chmod(0o400)
+    waiter.join(timeout=2)
+    assert observed == [b"{}"]
+
+
+def test_stage_copy_file_completes_short_writes(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744482394: staging must retain every byte after a short write.
+    from benchmarks.codegraph_compare import stage_inputs
+
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.write_bytes(b"trusted-stage-bytes")
+    real_write = os.write
+
+    def short_write(descriptor, payload):
+        return real_write(descriptor, payload[:3])
+
+    monkeypatch.setattr(stage_inputs.os, "write", short_write)
+    stage_inputs.copy_file(source, destination)
+
+    assert destination.read_bytes() == b"trusted-stage-bytes"
+
+
+def test_stage_copy_file_rejects_zero_progress(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744482394: a zero-byte write cannot stage trusted input.
+    from benchmarks.codegraph_compare import stage_inputs
+
+    source = tmp_path / "source"
+    source.write_bytes(b"trusted-stage-bytes")
+    monkeypatch.setattr(stage_inputs.os, "write", lambda *_args: 0)
+
+    with pytest.raises(OSError, match="staged input write made no progress"):
+        stage_inputs.copy_file(source, tmp_path / "destination")
+
+
+def test_public_config_v6_published_schema_accepts_runtime_config():
+    # PR #1249 review 3744482399: trusted is the same closed object on both surfaces.
+    from jsonschema import Draft202012Validator
+
+    schema = json.loads(
+        Path(
+            "benchmarks/codegraph_compare/published_schemas/public-config-v6.schema.json"
+        ).read_bytes()
+    )
+    config = _qualification_v3_public_config()
+
+    assert list(Draft202012Validator(schema).iter_errors(config)) == []
+
+
+def test_public_config_v6_schema_and_runtime_reject_extra_trusted_field():
+    # PR #1249 review 3744482399: neither schema nor parser permits trusted extensions.
+    import copy
+
+    from jsonschema import Draft202012Validator
+
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.verifier import parse_public_config
+
+    schema = json.loads(
+        Path(
+            "benchmarks/codegraph_compare/published_schemas/public-config-v6.schema.json"
+        ).read_bytes()
+    )
+    config = copy.deepcopy(_qualification_v3_public_config())
+    config["trusted"]["untrusted_extension"] = "0" * 64
+    diagnostic = copy.deepcopy(config)
+    diagnostic.pop("root_signature")
+
+    with pytest.raises(
+        ValueError, match="trusted config has unknown or missing fields"
+    ):
+        parse_public_config(canonical_json_bytes(diagnostic), diagnostic_mode=True)
+    assert len(list(Draft202012Validator(schema).iter_errors(config))) == 1
+
+
+def test_authority_runner_persists_response_before_success(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744482397: SUCCESS never precedes the durable signed response.
+    runner = _authority_runner_for_test(tmp_path)
+    runner._execute = lambda _contract: {"audit": {}, "artifacts": {}}
+    runner._sync_sealed_job = lambda _job_id, _result: None
+    job_id = "8" * 64
+    events = []
+    persist = runner._persist_response
+    terminal = runner._terminal_state
+
+    def record_persist(job, response):
+        persist(job, response)
+        events.append("response-fsync")
+
+    def record_terminal(job, state, payload):
+        events.append("success-replace")
+        terminal(job, state, payload)
+
+    monkeypatch.setattr(runner, "_persist_response", record_persist)
+    monkeypatch.setattr(runner, "_terminal_state", record_terminal)
+    reply = {"response": {"job_id": job_id}, "signature": "a" * 128}
+
+    assert runner.run_transaction({"job_id": job_id}, lambda _result: reply) == reply
+    assert events == ["response-fsync", "success-replace"]
+    assert runner.query_response({"job_id": job_id}) == reply
+
+
+def test_verifier_request_recovers_only_post_send_truncated_frame(monkeypatch):
+    # PR #1249 review 3744482391: clean EOF after CONSUMED queries the exact verdict.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import verifier_service
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    key = Ed25519PrivateKey.from_private_bytes(b"\x55" * 32)
+    config = _qualification_v3_public_config()
+    digest_manifest = {
+        "cells": [
+            {
+                "contract": {
+                    "decision_id": "a" * 64,
+                    "decision_contract_sha256": "b" * 64,
+                }
+            }
+        ]
+    }
+    raw = canonical_json_bytes(digest_manifest)
+    digest = hashlib.sha256(raw).hexdigest()
+    challenge = "c" * 64
+    measurement = config["trusted"]["verifier_runtime"]["measurement"]
+    begin_signed = {
+        "manifest_sha256": digest,
+        "challenge": challenge,
+        "ledger_counter": 1,
+        "ledger_prev_hash": "0" * 64,
+        "issued_at_ns": 7,
+        "service_identity": measurement,
+    }
+    begin = {
+        **begin_signed,
+        "key_id": config["verifier"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": key.sign(
+            verifier_service.CHALLENGE_DOMAIN + canonical_json_bytes(begin_signed)
+        ).hex(),
+    }
+    calls = []
+
+    def round_trip(*_args, **_kwargs):
+        calls.append("round-trip")
+        if len(calls) == 1:
+            return begin
+        raise verifier_service._PostSendTransportError("frame truncated")
+
+    recovered = {"manifest_sha256": digest, "challenge": challenge}
+    monkeypatch.setattr(verifier_service, "_round_trip", round_trip)
+    monkeypatch.setattr(
+        verifier_service,
+        "query_verdict",
+        lambda **_kwargs: calls.append("query-verdict") or recovered,
+    )
+    # Stop after proving selection of the persisted exact identity.
+    with pytest.raises(ValueError, match="binding mismatch"):
+        verifier_service.request_verdict(
+            socket_path=Path("authority.sock"),
+            manifest=digest_manifest,
+            config=config,
+            timeout=10,
+        )
+
+    assert calls == ["round-trip", "round-trip", "query-verdict"]
+
+
+def test_verifier_request_does_not_recover_semantic_value_error(monkeypatch):
+    # PR #1249 review 3744482391: semantic rejection is never converted into a query.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import verifier_service
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    key = Ed25519PrivateKey.from_private_bytes(b"\x55" * 32)
+    config = _qualification_v3_public_config()
+    manifest = {"cells": [{"contract": {}}]}
+    digest = hashlib.sha256(canonical_json_bytes(manifest)).hexdigest()
+    begin_signed = {
+        "manifest_sha256": digest,
+        "challenge": "c" * 64,
+        "ledger_counter": 1,
+        "ledger_prev_hash": "0" * 64,
+        "issued_at_ns": 7,
+        "service_identity": config["trusted"]["verifier_runtime"]["measurement"],
+    }
+    begin = {
+        **begin_signed,
+        "key_id": config["verifier"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": key.sign(
+            verifier_service.CHALLENGE_DOMAIN + canonical_json_bytes(begin_signed)
+        ).hex(),
+    }
+    replies = iter((begin, ValueError("manifest frame must be a JSON object")))
+
+    def round_trip(*_args, **_kwargs):
+        value = next(replies)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(verifier_service, "_round_trip", round_trip)
+    monkeypatch.setattr(
+        verifier_service,
+        "query_verdict",
+        lambda **_kwargs: pytest.fail("semantic error queried persisted verdict"),
+    )
+
+    with pytest.raises(ValueError, match="manifest frame must be a JSON object"):
+        verifier_service.request_verdict(
+            socket_path=Path("authority.sock"),
+            manifest=manifest,
+            config=config,
+            timeout=10,
+        )
+
+
+def test_verifier_begin_retries_one_lost_response(monkeypatch):
+    # PR #1249 review 3744516421: BEGIN response loss recovers the manifest challenge.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import verifier_service
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    key = Ed25519PrivateKey.from_private_bytes(b"\x55" * 32)
+    config = _qualification_v3_public_config()
+    manifest = {"cells": [{"contract": {}}]}
+    digest = hashlib.sha256(canonical_json_bytes(manifest)).hexdigest()
+    signed = {
+        "manifest_sha256": digest,
+        "challenge": "c" * 64,
+        "ledger_counter": 1,
+        "ledger_prev_hash": "0" * 64,
+        "issued_at_ns": 7,
+        "service_identity": config["trusted"]["verifier_runtime"]["measurement"],
+    }
+    begin = {
+        **signed,
+        "key_id": config["verifier"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": key.sign(
+            verifier_service.CHALLENGE_DOMAIN + canonical_json_bytes(signed)
+        ).hex(),
+    }
+    replies = iter(
+        (
+            verifier_service._PostSendTransportError("response lost"),
+            begin,
+            ValueError("semantic stop"),
+        )
+    )
+    requests = []
+
+    def round_trip(_path, request, _config, _timeout):
+        requests.append(request["operation"])
+        value = next(replies)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(verifier_service, "_round_trip", round_trip)
+
+    with pytest.raises(ValueError, match="semantic stop"):
+        verifier_service.request_verdict(
+            socket_path=Path("verifier.sock"),
+            manifest=manifest,
+            config=config,
+            timeout=10,
+        )
+
+    assert requests == ["begin-exact-14", "begin-exact-14", "verify-exact-14"]
+
+
+def test_verifier_ledger_begin_is_manifest_idempotent(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744516421: a retry returns the already committed challenge.
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    monkeypatch.setattr(ChallengeLedger, "_acquire_lease", lambda _self: None)
+    ledger = ChallengeLedger(tmp_path / "verifier.sqlite")
+
+    first = ledger.begin("a" * 64)
+    second = ledger.begin("a" * 64)
+
+    assert second == first
+    assert ledger.head()["counter"] == 1
+
+
+def test_receipt_client_retries_one_lost_response(monkeypatch):
+    # PR #1249 review 3744516423: immutable stateless signing survives response loss.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import receipt_v3_service as service
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    config = _qualification_v3_public_config()
+    key = Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
+    response = {
+        "job_id": "7" * 64,
+        "receipt": {"signed": True},
+        "service_identity": config["trusted"]["executor_runtime"]["measurement"],
+    }
+    reply = {
+        "response": response,
+        "key_id": config["executor"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": key.sign(
+            service.SERVICE_RESPONSE_DOMAIN + canonical_json_bytes(response)
+        ).hex(),
+    }
+    frames = iter((ValueError("frame truncated"), reply))
+    sockets = []
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["executor"]["peer_uid"], 123)
+
+        def sendall(self, _payload):
+            pass
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def socket_factory(*_args):
+        item = FakeSocket()
+        sockets.append(item)
+        return item
+
+    def frame(*_args):
+        value = next(frames)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(service.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(service.socket, "socket", socket_factory)
+    monkeypatch.setattr(service, "_frame", frame)
+
+    receipt = service.request_receipt(
+        role="executor",
+        socket_path=Path("executor.sock"),
+        authority_response={"response": {"job_id": "7" * 64}},
+        config=config,
+        timeout=10,
+    )
+
+    assert receipt == {"signed": True}
+    assert len(sockets) == 2
+
+
+def test_receipt_client_does_not_retry_semantic_rejection(monkeypatch):
+    # PR #1249 review 3744516423: service semantic errors remain terminal.
+    from benchmarks.codegraph_compare import receipt_v3_service as service
+
+    config = _qualification_v3_public_config()
+    sockets = []
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["executor"]["peer_uid"], 123)
+
+        def sendall(self, _payload):
+            pass
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def socket_factory(*_args):
+        sockets.append(FakeSocket())
+        return sockets[-1]
+
+    monkeypatch.setattr(service.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(service.socket, "socket", socket_factory)
+    monkeypatch.setattr(
+        service, "_frame", lambda *_args: {"error": "ValueError", "reason": "bad job"}
+    )
+
+    with pytest.raises(ValueError, match="service rejected job: bad job"):
+        service.request_receipt(
+            role="executor",
+            socket_path=Path("executor.sock"),
+            authority_response={"response": {"job_id": "7" * 64}},
+            config=config,
+            timeout=10,
+        )
+
+    assert len(sockets) == 1
+
+
+def test_receipt_client_bounds_response_loss_retry(monkeypatch):
+    # PR #1249 review 3744516423: persistent response loss gets only one retry.
+    from benchmarks.codegraph_compare import receipt_v3_service as service
+
+    config = _qualification_v3_public_config()
+    sockets = []
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["executor"]["peer_uid"], 123)
+
+        def sendall(self, _payload):
+            pass
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def socket_factory(*_args):
+        sockets.append(FakeSocket())
+        return sockets[-1]
+
+    monkeypatch.setattr(service.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(service.socket, "socket", socket_factory)
+    monkeypatch.setattr(
+        service,
+        "_frame",
+        lambda *_args: (_ for _ in ()).throw(ValueError("frame truncated")),
+    )
+
+    with pytest.raises(service._PostSendTransportError):
+        service.request_receipt(
+            role="executor",
+            socket_path=Path("executor.sock"),
+            authority_response={"response": {"job_id": "7" * 64}},
+            config=config,
+            timeout=10,
+        )
+
+    assert len(sockets) == 2
+
+
+def test_receipt_client_retries_connect_failure_with_original_deadline(monkeypatch):
+    # PR #1249 review 3744853007: transient pre-send failures get one bounded retry.
+    from benchmarks.codegraph_compare import receipt_v3_service as service
+
+    config = _qualification_v3_public_config()
+    sockets = []
+    observed_timeouts = []
+    ticks = iter((100.0, 101.0, 102.0, 103.0, 104.0))
+
+    class FakeSocket:
+        def settimeout(self, timeout):
+            observed_timeouts.append(timeout)
+
+        def connect(self, _path):
+            if len(sockets) == 1:
+                raise ConnectionRefusedError("not listening")
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["executor"]["peer_uid"], 123)
+
+        def sendall(self, _payload):
+            pass
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def socket_factory(*_args):
+        sockets.append(FakeSocket())
+        return sockets[-1]
+
+    monkeypatch.setattr(service, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+    monkeypatch.setattr(service.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(service.socket, "socket", socket_factory)
+    monkeypatch.setattr(
+        service, "_frame", lambda *_args: {"error": "ValueError", "reason": "bad job"}
+    )
+
+    with pytest.raises(ValueError, match="service rejected job: bad job"):
+        service.request_receipt(
+            role="executor",
+            socket_path=Path("executor.sock"),
+            authority_response={"response": {"job_id": "7" * 64}},
+            config=config,
+            timeout=10,
+        )
+
+    assert observed_timeouts == [9.0, 7.0]
+    assert len(sockets) == 2
+
+
+def test_receipt_client_retries_ambiguous_send_failure_once(monkeypatch):
+    # PR #1249 review 3744853007: stateless signing makes a partial send retry safe.
+    from benchmarks.codegraph_compare import receipt_v3_service as service
+
+    config = _qualification_v3_public_config()
+    sockets = []
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["executor"]["peer_uid"], 123)
+
+        def sendall(self, _payload):
+            raise BrokenPipeError("partial frame")
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def socket_factory(*_args):
+        sockets.append(FakeSocket())
+        return sockets[-1]
+
+    monkeypatch.setattr(service.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(service.socket, "socket", socket_factory)
+    with pytest.raises(service._SendTransportError, match="transmission failed"):
+        service.request_receipt(
+            role="executor",
+            socket_path=Path("executor.sock"),
+            authority_response={"response": {"job_id": "7" * 64}},
+            config=config,
+            timeout=10,
+        )
+
+    assert len(sockets) == 2
+
+
+def test_decision_issuer_separates_run_contract_directory(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744516427: operator input contains exactly run contracts.
+    from benchmarks.codegraph_compare import decision_contract_issuer as issuer
+    from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
+
+    descriptor = os.open(os.devnull, os.O_RDONLY)
+    monkeypatch.setattr(issuer, "secure_key", lambda *_args: (descriptor, b"\x44" * 32))
+    monkeypatch.setattr(
+        issuer,
+        "issue",
+        lambda *_args, **_kwargs: (
+            {"decision_id": "d" * 64},
+            [
+                {"cell": {"repo_id": repo, "arm_id": arm}}
+                for repo, arm in EXPECTED_CELLS
+            ],
+        ),
+    )
+    output = tmp_path / "issued"
+
+    result = issuer.main(
+        [
+            "--plans-dir",
+            str(tmp_path),
+            "--private-key",
+            str(tmp_path / "unused.key"),
+            "--output-dir",
+            str(output),
+        ]
+    )
+
+    assert result == 0
+    assert sorted(path.name for path in output.glob("*.json")) == [
+        "decision-contract.json"
+    ]
+    assert len(list((output / "run_contracts").glob("*.json"))) == 14
+
+
+def test_decision_consumer_rejects_stale_verifier_runtime_identity():
+    # PR #1249 review 3744516428: verdict runtime must match root-signed config.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    config = _qualification_v3_public_config()
+    contract = {"decision_id": "d" * 64}
+    envelope = {
+        "manifest_sha256": "a" * 64,
+        "decision_id": "d" * 64,
+        "decision_contract_sha256": hashlib.sha256(
+            consumer.canonical_json_bytes(contract)
+        ).hexdigest(),
+        "challenge": "b" * 64,
+        "ledger_counter": 1,
+        "ledger_prev_hash": "0" * 64,
+        "issued_at_ns": 1,
+        "verdict": {},
+        "service_identity": {"stale": True},
+        "consumption_record": {},
+        "ledger_head": {},
+        "key_id": config["verifier"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": "0" * 128,
+    }
+
+    with pytest.raises(ValueError, match="verifier identity mismatch"):
+        consumer.verify_verdict_envelope(envelope, contract, config)
+
+
+def test_service_launch_schema_matches_process_identity_shape():
+    # PR #1249 review 3744516431: published process fields match _proc_identity().
+    from jsonschema import Draft202012Validator
+
+    schema = json.loads(
+        Path(
+            "benchmarks/codegraph_compare/published_schemas/service-launch-v1.schema.json"
+        ).read_bytes()
+    )
+    process = {
+        "host_pid": 123,
+        "container_pid": 1,
+        "starttime": "456",
+        "cgroup": "0::/container",
+        "executable": "/usr/bin/python3",
+        "executable_sha256": "a" * 64,
+        "cmdline": ["python", "-m", "service"],
+        "namespaces": {
+            name: f"{name}:[1]"
+            for name in ("mnt", "pid", "net", "user", "uts", "ipc", "cgroup")
+        },
+        "capabilities": dict.fromkeys(
+            ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"),
+            "0000000000000000",
+        ),
+        "no_new_privs": "1",
+        "seccomp": "2",
+        "seccomp_filters": "1",
+    }
+    attestation = {
+        "container_id": "b" * 64,
+        "role": "verifier",
+        "image_id": "sha256:" + "c" * 64,
+        "cmd": ["python"],
+        "entrypoint": None,
+        "user": "903",
+        "readonly_rootfs": True,
+        "mounts": [],
+        "network_mode": "none",
+        "security_opt": [],
+        "process": process,
+    }
+    envelope = {
+        "attestation": attestation,
+        "key_id": "auditor",
+        "algorithm": "Ed25519",
+        "signature": "d" * 128,
+    }
+
+    assert list(Draft202012Validator(schema).iter_errors(envelope)) == []
+
+
+def test_source_archive_ceiling_matches_tarfile_record_algorithm(tmp_path: Path):
+    # PR #1249 review 3744561292: the authority ceiling mirrors tarfile exactly.
+    import io
+    import tarfile
+
+    from benchmarks.codegraph_compare.audit_authority_storage import (
+        _source_archive_ceiling,
+    )
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    sizes = (1, 513, 8193)
+    records = []
+    archive_path = tmp_path / "source.tar"
+    with tarfile.open(archive_path, "w", format=tarfile.USTAR_FORMAT) as archive:
+        for number, size in enumerate(sizes):
+            payload = bytes([number + 1]) * size
+            name = f"file-{number}"
+            info = tarfile.TarInfo(name)
+            info.size = size
+            archive.addfile(info, io.BytesIO(payload))
+            records.append(
+                [
+                    name,
+                    "100644",
+                    "a" * 40,
+                    size,
+                    hashlib.sha256(payload).hexdigest(),
+                ]
+            )
+    inventory = canonical_json_bytes({"eligibility": {"tracked_files": records}})
+
+    assert _source_archive_ceiling(inventory) == archive_path.stat().st_size
+
+
+def test_aggregate_output_writer_retries_partial_writes(monkeypatch):
+    # PR #1249 review 3744561299: a short write cannot truncate aggregate evidence.
+    from benchmarks.codegraph_compare import verifier_aggregate
+
+    observed = bytearray()
+
+    def partial(_descriptor, payload):
+        count = min(2, len(payload))
+        observed.extend(payload[:count])
+        return count
+
+    monkeypatch.setattr(verifier_aggregate.os, "write", partial)
+    verifier_aggregate._write_all(7, b"abcdef")
+
+    assert bytes(observed) == b"abcdef"
+
+
+def test_aggregate_output_writer_rejects_zero_progress(monkeypatch):
+    # PR #1249 review 3744561299: zero-progress writes fail closed.
+    from benchmarks.codegraph_compare import verifier_aggregate
+
+    monkeypatch.setattr(verifier_aggregate.os, "write", lambda *_args: 0)
+
+    with pytest.raises(OSError, match="made no progress"):
+        verifier_aggregate._write_all(7, b"x")
+
+
+def test_authority_mount_plan_rejects_nonexact_oracle_execution_id():
+    # PR #1249 review 3744561306: receipt-v3 IDs are fixed before reservation.
+    from benchmarks.codegraph_compare.audit_authority_storage import (
+        _producer_mount_targets,
+    )
+
+    plan = {
+        "executions": [
+            {
+                "id": execution_id,
+                "argv": [
+                    "/tool/bin",
+                    execution_id,
+                    "--config",
+                    "/config/pinned.json",
+                    *(["--source", "/source"] if execution_id == "build" else []),
+                ],
+            }
+            for execution_id in ("delete", "build", "health", "symbol-query", "call")
+        ]
+    }
+
+    with pytest.raises(ValueError, match="execution IDs are not exact"):
+        _producer_mount_targets(plan)
+
+
+def test_ext4_image_sizing_rejects_large_sparse_output(tmp_path: Path):
+    # PR #1249 review 3744561310: sparse logical bytes cannot bypass output ceilings.
+    from benchmarks.codegraph_compare.audit_authority_runner import _ext4_image_size
+
+    core = tmp_path / "core"
+    core.mkdir()
+    (core / "sparse-index").write_bytes(b"")
+    os.truncate(core / "sparse-index", 128 * 1024 * 1024)
+
+    with pytest.raises(ValueError, match="authorized output ceiling"):
+        _ext4_image_size(core, 64 * 1024 * 1024)
+
+
+def test_ext4_image_sizing_uses_sealed_core_usage(tmp_path: Path):
+    # PR #1249 review 3744561310: small outputs no longer allocate a fixed 1 GiB.
+    from benchmarks.codegraph_compare.audit_authority_runner import _ext4_image_size
+
+    core = tmp_path / "core"
+    core.mkdir()
+    (core / "index").mkdir()
+    (core / "index" / "data").write_bytes(b"x")
+
+    assert _ext4_image_size(core, 128 * 1024 * 1024) == 68 * 1024 * 1024
+
+
+@pytest.mark.parametrize(
+    ("statement", "message"),
+    (
+        ("UPDATE events SET counter=3 WHERE counter=2", "counter discontinuity"),
+        (
+            "UPDATE events SET prev_hash=printf('%064d',9) WHERE counter=2",
+            "previous hash mismatch",
+        ),
+        (
+            "UPDATE events SET record_hash=printf('%064d',8) WHERE counter=2",
+            "record hash mismatch",
+        ),
+        ("UPDATE meta SET head_hash=printf('%064d',7)", "meta head mismatch"),
+        ("UPDATE challenges SET state='CONSUMED'", "materialized state mismatch"),
+    ),
+)
+def test_verifier_ledger_startup_rejects_persisted_chain_corruption(
+    tmp_path: Path, monkeypatch, statement: str, message: str
+):
+    # PR #1249 review 3744588266: no lease may extend a corrupted durable chain.
+    import sqlite3
+
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    leases = []
+    monkeypatch.setattr(
+        ChallengeLedger, "_acquire_lease", lambda _self: leases.append("lease")
+    )
+    path = tmp_path / "verifier.sqlite"
+    ledger = ChallengeLedger(path)
+    challenge = ledger.begin("a" * 64)["challenge"]
+    ledger.start_verifying("a" * 64, challenge)
+    db = sqlite3.connect(path)
+    try:
+        db.execute(statement)
+        db.commit()
+    finally:
+        db.close()
+    leases.clear()
+
+    with pytest.raises(ValueError, match=message):
+        ChallengeLedger(path)
+
+    assert leases == []
+
+
+def test_decision_receipt_rejects_stale_configured_service_identity():
+    # PR #1249 review 3744588264: a retained key cannot authorize an old runtime.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    config = _qualification_v3_public_config()
+    contract = {"decision_id": "d" * 64}
+    envelope = {"manifest_sha256": "e" * 64}
+    body = {
+        "schema_version": 1,
+        "decision_id": contract["decision_id"],
+        "decision_contract_sha256": hashlib.sha256(
+            canonical_json_bytes(contract)
+        ).hexdigest(),
+        "manifest_sha256": envelope["manifest_sha256"],
+        "verdict_status": "SETUP_QUALIFIED",
+        "consumed_at_ns": 1,
+        "service_identity": {"stale": True},
+    }
+    reply = {
+        "receipt": body,
+        "key_id": config["decision_consumer"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": Ed25519PrivateKey.from_private_bytes(b"\x66" * 32)
+        .sign(consumer.RECEIPT_DOMAIN + canonical_json_bytes(body))
+        .hex(),
+    }
+
+    with pytest.raises(ValueError, match="not bound"):
+        consumer._verify_decision_receipt(reply, contract, envelope, config)
+
+
+def test_operator_rejects_short_common_lifetime_before_first_cell(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744588269: closed serial budget failure consumes no job.
+    from benchmarks.codegraph_compare import qualification_operator as operator
+    from benchmarks.codegraph_compare.receipt_v3 import (
+        canonical_json_bytes,
+        canonical_plan_hash,
+    )
+    from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
+
+    now = 1_000_000_000_000
+    expiry = now + 7_898 * 1_000_000_000 - 1
+    contracts_dir = tmp_path / "contracts"
+    staged_root = tmp_path / "staged"
+    contracts_dir.mkdir()
+    staged_root.mkdir()
+    plans = []
+    contracts = []
+    for ordinal, (repo, arm) in enumerate(EXPECTED_CELLS):
+        plan = {
+            "cell": {"repo_id": repo, "arm_id": arm, "attempt": 1},
+            "wall_timeout_seconds": 10,
+            "resource_ceilings": {"io_bytes": 32 * 1024 * 1024},
+        }
+        plan["plan_hash"] = canonical_plan_hash(plan)
+        plans.append(plan)
+        job_id = f"{ordinal + 1:064x}"
+        contract = {
+            "job_id": job_id,
+            "cell": plan["cell"],
+            "nonce": "a" * 64,
+            "decision_id": "b" * 64,
+            "expires_at_ns": expiry,
+        }
+        contracts.append(contract)
+        job = staged_root / job_id
+        job.mkdir()
+        (job / "plan.json").write_bytes(canonical_json_bytes(plan))
+        (job / "inventory.json").write_bytes(canonical_json_bytes({"repo_id": repo}))
+    decision = {
+        "decision_id": "b" * 64,
+        "expires_at_ns": expiry,
+        "plan_set_hash": "c" * 64,
+        "cells": [
+            {
+                "repo_id": repo,
+                "arm_id": arm,
+                "plan_sha256": canonical_plan_hash(plan),
+            }
+            for (repo, arm), plan in zip(EXPECTED_CELLS, plans, strict=True)
+        ],
+    }
+    decision_path = tmp_path / "decision.json"
+    decision_path.write_bytes(canonical_json_bytes(decision))
+    digest = hashlib.sha256(canonical_json_bytes(decision)).hexdigest()
+    for ordinal, contract in enumerate(contracts):
+        contract["decision_contract_sha256"] = digest
+        (contracts_dir / f"{ordinal}.json").write_bytes(canonical_json_bytes(contract))
+    config_path = tmp_path / "public.json"
+    config_path.write_bytes(b"{}")
+    monkeypatch.setattr(
+        operator,
+        "parse_public_config",
+        lambda _raw: {
+            "auditor": {"peer_uid": 0},
+            "trusted": {
+                "plan_set_hash": "c" * 64,
+                "inventory_sha256": {
+                    repo: hashlib.sha256(
+                        canonical_json_bytes({"repo_id": repo})
+                    ).hexdigest()
+                    for repo, _arm in EXPECTED_CELLS
+                },
+                "verifier_runtime": {"measurement": {}},
+            },
+        },
+    )
+    monkeypatch.setattr(operator, "verify_decision_contract", lambda value: value)
+    monkeypatch.setattr(operator, "verify_configured_plan_set", lambda *_args: None)
+    monkeypatch.setattr(operator, "validate_producer_plan", lambda value: value)
+    monkeypatch.setattr(operator, "validate_receipt_inventory", lambda value: value)
+    monkeypatch.setattr(
+        operator, "verify_contract", lambda request: request["contract"]
+    )
+    monkeypatch.setattr(operator.time, "time_ns", lambda: now)
+    callbacks = []
+    monkeypatch.setattr(operator, "run_cell", lambda *_args: callbacks.append("cell"))
+    args = SimpleNamespace(
+        public_config=str(config_path),
+        contracts_dir=str(contracts_dir),
+        decision_contract=str(decision_path),
+        staged_root=str(staged_root),
+        authority_socket=str(tmp_path / "authority.sock"),
+    )
+
+    with pytest.raises(TimeoutError, match="closed serial budget"):
+        operator._run_impl(args)
+
+    assert callbacks == []
+
+
+def test_decision_ledger_startup_rejects_corrupt_persisted_receipt(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744588266: decision SQLite is validated before listening.
+    import sqlite3
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    parent = tmp_path / "decision-ledger"
+    parent.mkdir(mode=0o700)
+    real_stat = consumer.os.stat
+
+    def service_stat(path, *args, **kwargs):
+        metadata = real_stat(path, *args, **kwargs)
+        if Path(path) == parent:
+            return SimpleNamespace(st_uid=904, st_mode=stat.S_IFDIR | 0o700)
+        return metadata
+
+    monkeypatch.setattr(consumer.os, "stat", service_stat)
+    monkeypatch.setattr(consumer.os, "access", lambda *_args: True)
+    path = parent / "decisions.sqlite"
+    consumer.DecisionLedger(path, _qualification_v3_public_config())
+    db = sqlite3.connect(path)
+    try:
+        db.execute(
+            "INSERT INTO consumed VALUES(?,?,?,?,?)",
+            ("a" * 64, "b" * 64, "c" * 64, 1, b"{}\n"),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    with pytest.raises(ValueError, match="receipt is not canonical"):
+        consumer.DecisionLedger(path, _qualification_v3_public_config())
+
+
+def test_ext4_layout_reserves_exact_sealed_core_inodes(tmp_path: Path):
+    # PR #1249 review 3744627741: byte sizing alone under-provisioned small-file inodes.
+    from benchmarks.codegraph_compare.audit_authority_runner import _ext4_layout
+
+    core = tmp_path / "core"
+    core.mkdir()
+    (core / "index").mkdir()
+    (core / "one").write_bytes(b"")
+    (core / "index" / "two").write_bytes(b"")
+
+    assert _ext4_layout(core, 128 * 1024 * 1024) == (
+        68 * 1024 * 1024,
+        6,
+        16 * 1024,
+    )
+
+
+def test_ext4_layout_rejects_core_above_entry_bound(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744627741: inode counting work has an authority-owned bound.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    core = tmp_path / "core"
+    core.mkdir()
+    (core / "one").write_bytes(b"")
+    (core / "two").write_bytes(b"")
+    monkeypatch.setattr(authority, "_MAX_SEALED_CORE_ENTRIES", 2)
+
+    with pytest.raises(ValueError, match="entry count exceeds authority maximum"):
+        authority._ext4_layout(core, 128 * 1024 * 1024)
+
+
+def test_debugfs_timeout_scales_with_payload_and_contract_expiry(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744627743: extraction cannot inherit the fixed 120s default.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    observed = []
+    monkeypatch.setattr(authority.time, "time_ns", lambda: 1_000_000_000)
+    monkeypatch.setattr(authority, "_hash_tree", lambda _path: "same")
+    monkeypatch.setattr(
+        authority,
+        "_run",
+        lambda *args, timeout: observed.append((args, timeout)) or b"",
+    )
+
+    authority._assert_ext4_payload(
+        tmp_path / "data.img",
+        tmp_path / "core",
+        payload_bytes=64 * 1024 * 1024,
+        contract_expires_at_ns=33_000_000_000,
+    )
+
+    command, timeout = observed[0]
+    assert command[:2] == ("debugfs", "-R")
+    assert command[2].startswith("rdump / ")
+    assert command[3] == str(tmp_path / "data.img")
+    assert timeout == 32.0
+
+
+def test_authority_preflight_rejects_ambiguous_mount_without_state(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744627747: plan mount errors must precede reservation.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    job = tmp_path / "job"
+    job.mkdir()
+    plan = {
+        "resource_ceilings": {"io_bytes": 1024},
+        "executions": [
+            {
+                "id": execution_id,
+                "argv": [
+                    "/tool/bin",
+                    execution_id,
+                    "--config",
+                    "/config.json",
+                    *(
+                        ["--source", "/source", "--source", "/source"]
+                        if execution_id == "build"
+                        else []
+                    ),
+                ],
+            }
+            for execution_id in ("delete", "build", "health", "symbol", "call")
+        ],
+    }
+    (job / "plan.json").write_bytes(canonical_json_bytes(plan))
+    runner = object.__new__(authority.AuthorityRunner)
+    runner._artifacts = tmp_path
+    runner._inputs = lambda _contract: (job, {}, {})
+    runner._verify_staged = lambda *_args: 1
+    monkeypatch.setattr(authority, "validate_producer_plan", lambda value: value)
+
+    with pytest.raises(ValueError, match="source target is not exact"):
+        runner.preflight({"job_id": "a" * 64})
+
+    assert list(tmp_path.glob("*.state")) == []
+
+
+def test_authority_cgroup_host_failure_precedes_running_reservation(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744853003: deterministic host failures cannot consume a job.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    job = tmp_path / "job"
+    artifacts = tmp_path / "artifacts"
+    job.mkdir()
+    artifacts.mkdir()
+    (job / "plan.json").write_text("{}")
+    runner = object.__new__(authority.AuthorityRunner)
+    runner._artifacts = artifacts
+    runner._inputs = lambda _contract: (job, {}, {})
+    runner._verify_staged = lambda *_args: 1
+    monkeypatch.setattr(authority, "validate_producer_plan", lambda value: value)
+    monkeypatch.setattr(authority, "_authorized_output_ceiling", lambda _plan: 1)
+    monkeypatch.setattr(
+        authority,
+        "_producer_mount_targets",
+        lambda _plan: ("/source", "/tool", "/config"),
+    )
+    monkeypatch.setattr(
+        authority,
+        "_run",
+        lambda *_args: b'{"CgroupVersion":"2","CgroupDriver":"systemd"}',
+    )
+
+    with pytest.raises(ValueError, match="only cgroup-v2 cgroupfs Docker"):
+        runner.preflight({"job_id": "a" * 64})
+
+    assert list(artifacts.glob("*.state")) == []
+
+
+def _mock_authority_cgroup_host(tmp_path: Path, monkeypatch):
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    cgroup = tmp_path / "cgroup"
+    cgroup.mkdir()
+    (cgroup / "cgroup.controllers").write_text("cpu memory io pids")
+    (cgroup / "cgroup.subtree_control").write_text("cpu memory io pids")
+    monkeypatch.setattr(authority, "_CGROUP_ROOT", cgroup)
+    monkeypatch.setattr(
+        authority,
+        "_run",
+        lambda *_args: b'{"CgroupVersion":"2","CgroupDriver":"cgroupfs"}',
+    )
+    monkeypatch.setattr(authority.os, "access", lambda *_args: True)
+    return authority, cgroup
+
+
+def test_authority_requires_all_available_cgroup_controllers(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744853003: every producer controller must be available.
+    authority, cgroup = _mock_authority_cgroup_host(tmp_path, monkeypatch)
+    (cgroup / "cgroup.controllers").write_text("cpu memory pids")
+
+    with pytest.raises(ValueError, match="controllers are unavailable"):
+        authority._preflight_cgroup_host()
+
+
+def test_authority_requires_all_delegated_cgroup_controllers(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744853003: every producer controller must be delegated.
+    authority, cgroup = _mock_authority_cgroup_host(tmp_path, monkeypatch)
+    (cgroup / "cgroup.subtree_control").write_text("cpu memory pids")
+
+    with pytest.raises(ValueError, match="controllers are not delegated"):
+        authority._preflight_cgroup_host()
+
+
+def test_authority_requires_writable_cgroup_delegation(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744853003: the delegated hierarchy must accept a child.
+    authority, _cgroup = _mock_authority_cgroup_host(tmp_path, monkeypatch)
+    monkeypatch.setattr(authority.os, "access", lambda *_args: False)
+
+    with pytest.raises(ValueError, match="delegation is not writable"):
+        authority._preflight_cgroup_host()
+
+
+def test_authority_response_recovery_uses_original_absolute_deadline(monkeypatch):
+    # PR #1249 review 3744677879: recovery cannot renew a consumed request budget.
+    from benchmarks.codegraph_compare import audit_authority_client as client
+
+    observed = []
+    ticks = iter((100.0, 101.0, 105.0))
+    monkeypatch.setattr(client, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+
+    def request(_request, _socket, _authority, timeout):
+        observed.append(timeout)
+        if len(observed) == 1:
+            raise client._PostSendTransportError("lost")
+        raise RuntimeError("recovery observed")
+
+    monkeypatch.setattr(client, "_request_response", request)
+
+    with pytest.raises(RuntimeError, match="recovery observed"):
+        client.run_cell(
+            {"job_id": "a" * 64},
+            Path("/authority.sock"),
+            {"wall_timeout_seconds": 10},
+        )
+
+    assert observed == [9.0, 5.0]
+
+
+def test_authority_budget_includes_all_bounded_post_processing():
+    # PR #1249 review 3744677882: preflight covers work after producer exit.
+    from benchmarks.codegraph_compare.execution_budget import (
+        authority_cell_budget_seconds,
+    )
+
+    assert (
+        authority_cell_budget_seconds(
+            {
+                "wall_timeout_seconds": 10,
+                "resource_ceilings": {"io_bytes": 32 * 1024 * 1024},
+            }
+        )
+        == 1932
+    )
+
+
+def test_verifier_envelope_build_failure_durably_terminalizes_verifying(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744677886: an envelope persistence failure cannot strand VERIFYING.
+    import sqlite3
+
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    monkeypatch.setattr(ChallengeLedger, "_acquire_lease", lambda _self: None)
+    ledger = ChallengeLedger(tmp_path / "verifier.sqlite")
+    manifest = "a" * 64
+    challenge = ledger.begin(manifest)["challenge"]
+    ledger.start_verifying(manifest, challenge)
+
+    with pytest.raises(OSError, match="signing failed"):
+        ledger.finish_with_envelope(
+            manifest,
+            challenge,
+            lambda _record, _head: (_ for _ in ()).throw(OSError("signing failed")),
+        )
+    assert ledger.recover_envelope_or_fail(manifest, challenge) is None
+    database = sqlite3.connect(ledger.path)
+    try:
+        state = database.execute(
+            "SELECT state FROM challenges WHERE challenge=?", (challenge,)
+        ).fetchone()[0]
+    finally:
+        database.close()
+
+    assert state == "FAILED"
+
+
+def test_streamed_blob_descriptor_does_not_use_read_bytes(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744677888: producer evidence descriptors are streamed from disk.
+    from benchmarks.codegraph_compare.setup_qualification_executor import (
+        _describe_blob,
+    )
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "stdout").write_bytes(b"abc" * 1024)
+    monkeypatch.setattr(Path, "read_bytes", lambda _self: pytest.fail("buffered read"))
+
+    assert _describe_blob(raw, "stdout") == {
+        "path": "raw/stdout",
+        "size_bytes": 3072,
+        "sha256": hashlib.sha256(b"abc" * 1024).hexdigest(),
+    }
+
+
+def test_core_blob_bound_uses_signed_output_ceiling_not_legacy_512mib():
+    # PR #1249 review 3744728241: valid large descriptors use the signed ceiling.
+    from benchmarks.codegraph_compare.verifier_recompute import _core_blob_size
+
+    size = 513 * 1024 * 1024
+    plan = {"resource_ceilings": {"io_bytes": size}}
+
+    assert _core_blob_size(plan, size) == 537_919_488
+    with pytest.raises(ValueError, match="signed output ceiling"):
+        _core_blob_size(plan, size + 1)
+
+
+def test_shared_verifier_debugfs_timeout_uses_image_size_and_absolute_deadline(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744728245: all receipt/verifier extraction shares this path.
+    from benchmarks.codegraph_compare import execution_budget, verifier
+
+    image = tmp_path / "data.img"
+    image.write_bytes(b"")
+    os.truncate(image, 16 * 1024 * 1024 * 1024)
+    observed = []
+    monkeypatch.setattr(execution_budget.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(
+        verifier.subprocess,
+        "run",
+        lambda *args, **kwargs: (
+            observed.append(kwargs["timeout"]) or SimpleNamespace(returncode=0)
+        ),
+    )
+
+    verifier._extract_ext4(image, tmp_path / "out", deadline_monotonic=200.0)
+
+    assert observed == [100.0]
+
+
+def test_exact14_manifest_preflight_counts_outer_json_escaping_and_rejects_ceiling(
+    monkeypatch,
+):
+    # PR #1249 review 3744728248: frame failure must precede the first cell.
+    from benchmarks.codegraph_compare import verifier_service
+
+    cells = [({"p": '"'}, {"i": "\\"}, {"c": 1}) for _ in range(14)]
+
+    assert verifier_service.exact14_manifest_preflight_bound(cells) == 29_364_798
+    monkeypatch.setattr(verifier_service, "MAX_FRAME", 29_364_797)
+    with pytest.raises(ValueError, match="protocol ceiling"):
+        verifier_service.preflight_exact14_manifest(cells)
+
+
+def test_decision_ledger_startup_verifies_persisted_receipt_signature(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744728250: logical receipt corruption fails before listen.
+    import sqlite3
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    parent = tmp_path / "signed-decision-ledger"
+    parent.mkdir(mode=0o700)
+    real_stat = consumer.os.stat
+
+    def service_stat(path, *args, **kwargs):
+        metadata = real_stat(path, *args, **kwargs)
+        if Path(path) == parent:
+            return SimpleNamespace(
+                st_uid=904, st_mode=__import__("stat").S_IFDIR | 0o700
+            )
+        return metadata
+
+    monkeypatch.setattr(consumer.os, "stat", service_stat)
+    monkeypatch.setattr(consumer.os, "access", lambda *_args: True)
+    config = _qualification_v3_public_config()
+    path = parent / "decisions.sqlite"
+    consumer.DecisionLedger(path, config)
+    body = {
+        "schema_version": 1,
+        "decision_id": "a" * 64,
+        "decision_contract_sha256": "d" * 64,
+        "manifest_sha256": "c" * 64,
+        "verdict_status": "SETUP_QUALIFIED",
+        "consumed_at_ns": 1,
+        "service_identity": config["trusted"]["decision_consumer_runtime"][
+            "measurement"
+        ],
+    }
+    signature = (
+        Ed25519PrivateKey.from_private_bytes(b"\x66" * 32)
+        .sign(consumer.RECEIPT_DOMAIN + canonical_json_bytes(body))
+        .hex()
+    )
+    receipt = {
+        "receipt": body,
+        "key_id": config["decision_consumer"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": ("0" if signature[0] != "0" else "1") + signature[1:],
+    }
+    db = sqlite3.connect(path)
+    try:
+        db.execute(
+            "INSERT INTO consumed VALUES(?,?,?,?,?)",
+            ("a" * 64, "b" * 64, "c" * 64, 1, canonical_json_bytes(receipt)),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    with pytest.raises(ValueError, match="signature invalid"):
+        consumer.DecisionLedger(path, config)
+
+
+def test_exact14_budget_uses_sealed_image_extractions_not_producer_wall():
+    # PR #1249 review 3744776113: post-authority service work uses image bounds.
+    from benchmarks.codegraph_compare.execution_budget import (
+        exact14_execution_budget_seconds,
+    )
+
+    plans = {
+        ("repo", "arm"): {
+            "wall_timeout_seconds": 1,
+            "resource_ceilings": {"io_bytes": 16 * 1024 * 1024},
+        }
+    }
+
+    assert exact14_execution_budget_seconds(plans) == 3120
+
+
+def test_live_output_size_ignores_disappearing_entry(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744776119: mutable producer trees race live accounting.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "index.db").write_bytes(b"abc")
+    real_lstat = executor.os.lstat
+
+    def vanished(path):
+        if Path(path).name == "index.db":
+            raise FileNotFoundError(path)
+        return real_lstat(path)
+
+    monkeypatch.setattr(executor.os, "lstat", vanished)
+
+    assert executor._output_size(output, strict=False) == 0
+
+
+def test_live_output_size_charges_allocated_blocks_and_shared_metadata(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745125491: empty and sparse output consumes live budget.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+    from benchmarks.codegraph_compare.execution_budget import (
+        OUTPUT_ENTRY_METADATA_CHARGE_BYTES,
+    )
+
+    output = tmp_path / "output"
+    output.mkdir()
+    item = output / "item"
+    item.touch()
+    real_lstat = executor.os.lstat
+
+    def allocated(path):
+        metadata = real_lstat(path)
+        if Path(path) == item:
+            return SimpleNamespace(st_mode=metadata.st_mode, st_blocks=2)
+        return metadata
+
+    monkeypatch.setattr(executor.os, "lstat", allocated)
+
+    assert executor._output_size(output) == 1024 + OUTPUT_ENTRY_METADATA_CHARGE_BYTES
+
+
+def test_live_output_size_rejects_entry_count_above_shared_bound(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745125491: every mutable-tree scan has bounded work.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "one").touch()
+    (output / "two").touch()
+    monkeypatch.setattr(executor, "_MAX_OUTPUT_ENTRIES", 1)
+
+    with pytest.raises(ValueError, match="entry count exceeds authority maximum"):
+        executor._output_size(output, ceiling=1024 * 1024)
+
+
+def test_live_output_size_enforces_signed_ceiling_during_scan(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3745125491: allocated output cannot grow past signed bytes.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    output = tmp_path / "output"
+    output.mkdir()
+    item = output / "item"
+    item.touch()
+    real_lstat = executor.os.lstat
+
+    def allocated(path):
+        metadata = real_lstat(path)
+        if Path(path) == item:
+            return SimpleNamespace(st_mode=metadata.st_mode, st_blocks=2)
+        return metadata
+
+    monkeypatch.setattr(executor.os, "lstat", allocated)
+
+    with pytest.raises(ValueError, match="exceeds signed I/O ceiling"):
+        executor._output_size(output, ceiling=5119)
+
+
+def test_terminal_output_size_rejects_disappearing_entry(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744776119: only the stable terminal snapshot is strict.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "index.db").write_bytes(b"abc")
+    real_lstat = executor.os.lstat
+
+    def vanished(path):
+        if Path(path).name == "index.db":
+            raise FileNotFoundError(path)
+        return real_lstat(path)
+
+    monkeypatch.setattr(executor.os, "lstat", vanished)
+
+    with pytest.raises(FileNotFoundError):
+        executor._output_size(output)
+
+
+def test_decision_ledger_rechecks_expiry_inside_transaction(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744776126: lock wait cannot permit post-expiry consumption.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    ledger = object.__new__(consumer.DecisionLedger)
+    ledger.path = tmp_path / "decision.sqlite"
+    captured = []
+    monkeypatch.setattr(consumer.time, "time_ns", lambda: 100)
+
+    with pytest.raises(TimeoutError, match="expired before consumption"):
+        ledger.consume(
+            {"decision_id": "a" * 64, "decision_nonce": "b" * 64, "expires_at_ns": 100},
+            "c" * 64,
+            lambda consumed_at: captured.append(consumed_at) or {},
+        )
+
+    assert captured == []
+
+
+def test_decision_ledger_binds_receipt_and_row_to_transaction_timestamp(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744776126: one in-transaction timestamp binds durable facts.
+    import sqlite3
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    ledger = object.__new__(consumer.DecisionLedger)
+    ledger.path = tmp_path / "decision.sqlite"
+    database = sqlite3.connect(ledger.path)
+    database.execute(
+        "CREATE TABLE consumed(decision_id TEXT PRIMARY KEY,decision_nonce TEXT UNIQUE NOT NULL,manifest_sha256 TEXT NOT NULL,consumed_at_ns INTEGER NOT NULL,receipt_json BLOB NOT NULL)"
+    )
+    database.close()
+    monkeypatch.setattr(consumer.time, "time_ns", lambda: 101)
+
+    receipt = ledger.consume(
+        {"decision_id": "a" * 64, "decision_nonce": "b" * 64, "expires_at_ns": 102},
+        "c" * 64,
+        lambda consumed_at: {"consumed_at_ns": consumed_at},
+    )
+    database = sqlite3.connect(ledger.path)
+    try:
+        row_time = database.execute(
+            "SELECT consumed_at_ns FROM consumed WHERE decision_id=?", ("a" * 64,)
+        ).fetchone()[0]
+    finally:
+        database.close()
+
+    assert receipt["consumed_at_ns"] == 101
+    assert row_time == 101
+
+
+def test_decision_client_retries_one_presend_failure(monkeypatch):
+    # PR #1249 review 3744776122: a zero-byte failure cannot imply consumption.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    config = _qualification_v3_public_config()
+    attempts = []
+    reply = {"durable": True}
+
+    class FakeSocket:
+        def __init__(self):
+            self.number = len(attempts)
+            attempts.append(self.number)
+
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            if self.number == 0:
+                raise ConnectionRefusedError("not listening")
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 1, config["decision_consumer"]["peer_uid"], 1)
+
+        def send(self, payload):
+            return len(payload)
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(consumer.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(consumer.socket, "socket", lambda *_args: FakeSocket())
+    monkeypatch.setattr(consumer, "read_frame", lambda *_args: reply)
+    monkeypatch.setattr(
+        consumer, "_verify_decision_receipt", lambda value, *_args: value
+    )
+
+    result = consumer.request_decision(
+        socket_path=Path("/unused"),
+        contract={"decision_id": "a" * 64},
+        envelope={},
+        config=config,
+        timeout=1,
+    )
+
+    assert result == reply
+    assert attempts == [0, 1]
+
+
+def test_decision_client_queries_ambiguous_send_before_retrying_consume(monkeypatch):
+    # PR #1249 review 3744776122: not-found recovery permits one bounded retry.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    config = _qualification_v3_public_config()
+    operations = []
+    replies = iter(
+        (
+            EOFError("lost consume response"),
+            {"status": "not-found"},
+            {"durable": True},
+        )
+    )
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 1, config["decision_consumer"]["peer_uid"], 1)
+
+        def send(self, framed):
+            operations.append(json.loads(framed[4:])["operation"])
+            return len(framed)
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def read_reply(*_args):
+        value = next(replies)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(consumer.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(consumer.socket, "socket", lambda *_args: FakeSocket())
+    monkeypatch.setattr(consumer, "read_frame", read_reply)
+    monkeypatch.setattr(
+        consumer, "_verify_decision_receipt", lambda value, *_args: value
+    )
+
+    result = consumer.request_decision(
+        socket_path=Path("/unused"),
+        contract={"decision_id": "a" * 64},
+        envelope={},
+        config=config,
+        timeout=1,
+    )
+
+    assert result == {"durable": True}
+    assert operations == ["consume-decision", "query-decision", "consume-decision"]
+
+
+def test_decision_client_polls_in_progress_ambiguous_consume(monkeypatch):
+    # PR #1249 review 3745125493: a delivered consume may still be verifying.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    config = _qualification_v3_public_config()
+    operations = []
+    replies = iter(
+        (
+            EOFError("lost consume response"),
+            {"status": "in-progress"},
+            {"status": "consumed", "receipt": {"durable": True}},
+        )
+    )
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 1, config["decision_consumer"]["peer_uid"], 1)
+
+        def send(self, framed):
+            operations.append(json.loads(framed[4:])["operation"])
+            return len(framed)
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def read_reply(*_args):
+        value = next(replies)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(consumer.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(consumer.socket, "socket", lambda *_args: FakeSocket())
+    monkeypatch.setattr(consumer, "read_frame", read_reply)
+    monkeypatch.setattr(consumer.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        consumer, "_verify_decision_receipt", lambda value, *_args: value
+    )
+
+    result = consumer.request_decision(
+        socket_path=Path("/unused"),
+        contract={"decision_id": "a" * 64},
+        envelope={},
+        config=config,
+        timeout=1,
+    )
+
+    assert result == {"durable": True}
+    assert operations == ["consume-decision", "query-decision", "query-decision"]
+
+
+def test_decision_client_recovers_receipt_after_retry_reports_consumed(monkeypatch):
+    # PR #1249 review 3745125493: replay races must never lose a durable receipt.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    config = _qualification_v3_public_config()
+    operations = []
+    replies = iter(
+        (
+            EOFError("lost consume response"),
+            {"status": "not-found"},
+            {"error": "ValueError", "reason": "decision already consumed"},
+            {"status": "in-progress"},
+            {"status": "consumed", "receipt": {"durable": True}},
+        )
+    )
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 1, config["decision_consumer"]["peer_uid"], 1)
+
+        def send(self, framed):
+            operations.append(json.loads(framed[4:])["operation"])
+            return len(framed)
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def read_reply(*_args):
+        value = next(replies)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(consumer.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(consumer.socket, "socket", lambda *_args: FakeSocket())
+    monkeypatch.setattr(consumer, "read_frame", read_reply)
+    monkeypatch.setattr(consumer.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        consumer, "_verify_decision_receipt", lambda value, *_args: value
+    )
+
+    result = consumer.request_decision(
+        socket_path=Path("/unused"),
+        contract={"decision_id": "a" * 64},
+        envelope={},
+        config=config,
+        timeout=1,
+    )
+
+    assert result == {"durable": True}
+    assert operations == [
+        "consume-decision",
+        "query-decision",
+        "consume-decision",
+        "query-decision",
+        "query-decision",
+    ]
+
+
+def test_producer_plan_rejects_noncanonical_environment_digest_before_execution():
+    # PR #1249 review 3744776130: stale execution digests fail producer preflight.
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.setup_qualification_executor import (
+        validate_producer_plan,
+    )
+
+    environment = {
+        "HOME": "/nonexistent",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": "/usr/bin",
+    }
+    ceilings = {
+        "wall_ns": 1,
+        "cpu_usec": 1,
+        "io_bytes": 1,
+        "memory_peak_bytes": 1,
+        "pids_peak": 1,
+    }
+    resource_digest = hashlib.sha256(
+        canonical_json_bytes({"wall_timeout_seconds": 1, "resource_ceilings": ceilings})
+    ).hexdigest()
+    plan = {
+        "schema_version": 1,
+        "cell": {"repo_id": "repo", "arm_id": "arm", "attempt": 1},
+        "executions": [
+            {
+                "id": execution_id,
+                "argv": ["/bin/tool"],
+                "cwd": "/source",
+                "environment_digest": "0" * 64,
+                "query": {},
+                "expected_result": {},
+            }
+            for execution_id in ("delete", "build", "health", "symbol", "call")
+        ],
+        "wall_timeout_seconds": 1,
+        "environment": environment,
+        "artifact_path": "artifact",
+        "plan_hash": "a" * 64,
+        "plan_set_hash": "b" * 64,
+        "tool_sha256": "c" * 64,
+        "config_sha256": "d" * 64,
+        "image_digest": "sha256:" + "e" * 64,
+        "seccomp_sha256": "f" * 64,
+        "resource_plan_digest": resource_digest,
+        "resource_ceilings": ceilings,
+        "index_partition": {
+            "indexed_paths": [],
+            "excluded_paths": [],
+            "parse_error_paths": [],
+        },
+        "oracle_statement": "exact",
+    }
+
+    with pytest.raises(ValueError, match="environment digest is not canonical"):
+        validate_producer_plan(plan)
+
+
+def test_exact14_manifest_preflight_rejects_node_budget_before_wire(monkeypatch):
+    # PR #1249 review 3744822109: byte-fit manifests still need exact node accounting.
+    from benchmarks.codegraph_compare import verifier_service
+
+    cells = [({"p": 1}, {"i": 1}, {"c": 1}) for _ in range(14)]
+    monkeypatch.setattr(verifier_service, "MANIFEST_MAX_NODES", 1_400_101)
+
+    with pytest.raises(ValueError, match="complexity exceeds protocol ceiling"):
+        verifier_service.preflight_exact14_manifest(cells)
+
+
+def test_verifier_server_frame_deadline_scales_to_maximum_payload(monkeypatch):
+    # PR #1249 review 3744822112: 512 MiB reads must not retain a fixed 10s budget.
+    import struct
+
+    from benchmarks.codegraph_compare import verifier_service
+
+    deadlines = []
+
+    def receive(_connection, size, deadline):
+        deadlines.append(deadline)
+        return struct.pack("!I", verifier_service.MAX_FRAME) if size == 4 else b"{}"
+
+    monkeypatch.setattr(verifier_service, "recv_exact", receive)
+    monkeypatch.setattr(verifier_service.time, "monotonic", lambda: 100.0)
+
+    assert verifier_service._frame(object()) == {}
+    assert deadlines == [110.0, 164.0]
+
+
+def test_receipt_frame_preflight_rejects_approver_draft_ceiling(monkeypatch):
+    # PR #1249 review 3744822118: all receipt frames must fit before authority use.
+    from benchmarks.codegraph_compare import qualification_operator as operator
+
+    plan = {"plan": "x"}
+    inventory = {"eligibility": {"paths": ["a"]}}
+    bounds = operator.preflight_receipt_service_frames(plan, inventory)
+    monkeypatch.setattr(operator, "RECEIPT_MAX_MESSAGE", bounds["approver_request"] - 1)
+
+    with pytest.raises(ValueError, match="receipt frame upper bound"):
+        operator.preflight_receipt_service_frames(plan, inventory)
+
+
+def test_receipt_inventory_rejects_missing_commit_before_signing():
+    # PR #1249 review 3744887352: all inventories share the receipt validator.
+    from benchmarks.codegraph_compare.receipt_inventory import (
+        validate_receipt_inventory,
+    )
+
+    eligibility = dict(_qualification_v3_body()["source"]["eligibility"])
+    del eligibility["commit"]
+
+    with pytest.raises(ValueError, match="unknown or missing fields"):
+        validate_receipt_inventory({"eligibility": eligibility})
+
+
+def test_receipt_server_frame_deadline_scales_to_maximum_payload(monkeypatch):
+    # PR #1249 review 3744887360: 16 MiB reads use the declared frame size.
+    import struct
+
+    from benchmarks.codegraph_compare import receipt_v3_service
+
+    deadlines = []
+
+    def receive(_connection, size, deadline):
+        deadlines.append(deadline)
+        return struct.pack("!I", receipt_v3_service.MAX_MESSAGE) if size == 4 else b"{}"
+
+    monkeypatch.setattr(receipt_v3_service, "recv_exact", receive)
+    monkeypatch.setattr(receipt_v3_service.time, "monotonic", lambda: 100.0)
+
+    assert receipt_v3_service._frame(object()) == {}
+    assert deadlines == [110.0, 116.0]
+
+
+@pytest.mark.parametrize("failure", ["connect", "send"])
+def test_authority_retries_transport_failure_under_original_deadline(
+    monkeypatch, failure: str
+):
+    # PR #1249 reviews 3744915224: no authority retry may renew the cell budget.
+    from benchmarks.codegraph_compare import audit_authority_client as client
+
+    observed: list[tuple[str, float]] = []
+    ticks = iter((100.0, 101.0, 105.0))
+    monkeypatch.setattr(client, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+
+    def request(payload, _socket, _authority, timeout):
+        observed.append((payload["operation"], timeout))
+        if len(observed) == 1:
+            error = (
+                client._PreSendTransportError("not connected")
+                if failure == "connect"
+                else client._SendTransportError("ambiguous send")
+            )
+            raise error
+        raise RuntimeError("bounded retry observed")
+
+    monkeypatch.setattr(client, "_request_response", request)
+
+    with pytest.raises(RuntimeError, match="bounded retry observed"):
+        client.run_cell(
+            {"job_id": "a" * 64},
+            Path("/authority.sock"),
+            {"wall_timeout_seconds": 10},
+        )
+
+    expected_operation = "run-cell" if failure == "connect" else "query-job-response"
+    assert observed == [("run-cell", 9.0), (expected_operation, 5.0)]
+
+
+def test_verifier_begin_retries_pre_send_failure_under_original_deadline(monkeypatch):
+    # PR #1249 review 3744915230: BEGIN connect failure is safe to retry once.
+    from benchmarks.codegraph_compare import verifier_service
+
+    requests: list[tuple[str, float]] = []
+    ticks = iter((100.0, 101.0, 105.0))
+    monkeypatch.setattr(
+        verifier_service, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+    )
+
+    def round_trip(_path, request, _config, timeout):
+        requests.append((request["operation"], timeout))
+        if len(requests) == 1:
+            raise verifier_service._PreSendTransportError("not connected")
+        raise RuntimeError("bounded retry observed")
+
+    monkeypatch.setattr(verifier_service, "_round_trip", round_trip)
+
+    with pytest.raises(RuntimeError, match="bounded retry observed"):
+        verifier_service.request_verdict(
+            socket_path=Path("/verifier.sock"),
+            manifest={"cells": []},
+            config={},
+            timeout=10,
+        )
+
+    assert requests == [("begin-exact-14", 9.0), ("begin-exact-14", 5.0)]
+
+
+@pytest.mark.parametrize("role", ["executor", "approver"])
+def test_receipt_signer_rechecks_expired_deadline_before_signature(monkeypatch, role):
+    # PR #1249 review 3744915233: completed semantic work cannot sign after expiry.
+    from benchmarks.codegraph_compare import receipt_v3_signer as signer
+
+    body = {"sealed": True}
+    monkeypatch.setattr(signer, "_safe_path", lambda _path: Path("/sealed.img"))
+    monkeypatch.setattr(signer, "_extract_ext4", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(signer, "_build_body", lambda *_args, **_kwargs: body)
+    monkeypatch.setattr(signer, "_full_semantic_verify", lambda *_args, **_kwargs: body)
+    monkeypatch.setattr(signer.time, "monotonic", lambda: 5.0)
+    monkeypatch.setattr(
+        signer,
+        "create_executor_attestation",
+        lambda *_args: pytest.fail("expired executor receipt was signed"),
+    )
+    monkeypatch.setattr(
+        signer,
+        "approve_executor_attestation",
+        lambda *_args: pytest.fail("expired approver receipt was signed"),
+    )
+    args = SimpleNamespace(data_image="/sealed.img")
+    config = {role: {"key_id": role}}
+    draft = {"body": body} if role == "approver" else None
+
+    with pytest.raises(TimeoutError, match=f"{role} receipt signing deadline expired"):
+        signer.sign_verified_receipt(
+            role=role,
+            args=args,
+            config=config,
+            key=b"key",
+            key_id=role,
+            draft=draft,
+            deadline_monotonic=5.0,
+        )
+
+
+def test_verifier_expired_after_semantics_transitions_failed_without_envelope(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744915235: expiry immediately before commit is FAILED.
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import verifier_service
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    monkeypatch.setattr(ChallengeLedger, "_acquire_lease", lambda _self: None)
+    ledger = ChallengeLedger(tmp_path / "deadline.sqlite")
+    digest = "a" * 64
+    challenge = ledger.begin(digest)["challenge"]
+    ticks = iter((9, 10))
+    monkeypatch.setattr(verifier_service.time, "monotonic_ns", lambda: next(ticks))
+    monkeypatch.setattr(
+        verifier_service,
+        "_load_manifest",
+        lambda *_args, **_kwargs: (
+            {"cells": []},
+            digest,
+            challenge,
+            "b" * 64,
+            "c" * 64,
+        ),
+    )
+    monkeypatch.setattr(verifier_service, "aggregate_verdict", lambda *_a, **_k: {})
+    monkeypatch.setattr(verifier_service, "_validate_verdict_schema", lambda _v: None)
+
+    with pytest.raises(TimeoutError, match="service contract deadline expired"):
+        verifier_service._verify(
+            {
+                "manifest_sha256": digest,
+                "challenge": challenge,
+                "deadline_monotonic_ns": 10,
+            },
+            {},
+            tmp_path,
+            tmp_path,
+            Ed25519PrivateKey.generate(),
+            ledger,
+            {},
+        )
+    database = sqlite3.connect(ledger.path)
+    try:
+        state = database.execute(
+            "SELECT state FROM challenges WHERE challenge=?", (challenge,)
+        ).fetchone()[0]
+        verdict_count = database.execute("SELECT COUNT(*) FROM verdicts").fetchone()[0]
+    finally:
+        database.close()
+
+    assert (state, verdict_count) == ("FAILED", 0)
+
+
+def test_operator_recomputes_configured_plan_set_before_authority_calls():
+    # PR #1249 review 3744915238: stale aggregate hashes fail before cell consumption.
+    source = Path("benchmarks/codegraph_compare/qualification_operator.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert source.count("verify_configured_plan_set(decision_contract, config)") == 1
+    assert source.index(
+        "verify_configured_plan_set(decision_contract, config)"
+    ) < source.index("authority = run_cell(")
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    (
+        "src,bad.py",
+        "src/control\x1f.py",
+        "src\\bad.py",
+        "/src/bad.py",
+        "src/./bad.py",
+        "a" * 4097,
+    ),
+)
+def test_receipt_inventory_enforces_published_relative_path(invalid: str):
+    # PR #1249 review 3744944744: preflight must match published relativePath.
+    from benchmarks.codegraph_compare.receipt_inventory import (
+        validate_receipt_inventory,
+    )
+
+    eligibility = dict(_qualification_v3_body()["source"]["eligibility"])
+    eligibility["eligible_paths"] = [invalid]
+
+    with pytest.raises(ValueError, match="canonical relative path"):
+        validate_receipt_inventory({"eligibility": eligibility})
+
+
+def test_receipt_inventory_accepts_consistent_sha256_git_object_ids():
+    # PR #1249 review 3744944747: SHA-256 Git repositories use 64-char OIDs.
+    from benchmarks.codegraph_compare.receipt_inventory import (
+        validate_receipt_inventory,
+    )
+
+    eligibility = dict(_qualification_v3_body()["source"]["eligibility"])
+    eligibility["commit"] = "a" * 64
+    eligibility["root_tree_id"] = "b" * 64
+    eligibility["tracked_entries"] = [
+        [path, mode, "c" * 64]
+        for path, mode, _object_id in eligibility["tracked_entries"]
+    ]
+    eligibility["tracked_files"] = [
+        [path, mode, "c" * 64, size, digest]
+        for path, mode, _object_id, size, digest in eligibility["tracked_files"]
+    ]
+
+    validated = validate_receipt_inventory({"eligibility": eligibility})
+
+    assert validated["root_tree_id"] == "b" * 64
+
+
+def test_receipt_inventory_rejects_mixed_git_object_formats():
+    # PR #1249 review 3744944747: every OID must match the root-tree algorithm.
+    from benchmarks.codegraph_compare.receipt_inventory import (
+        validate_receipt_inventory,
+    )
+
+    eligibility = dict(_qualification_v3_body()["source"]["eligibility"])
+    eligibility["root_tree_id"] = "b" * 64
+
+    with pytest.raises(ValueError, match="match root tree format"):
+        validate_receipt_inventory({"eligibility": eligibility})
+
+
+def test_verifier_file_hash_checks_absolute_deadline(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744944740: large evidence hashes cannot outlive service work.
+    from benchmarks.codegraph_compare import verifier
+
+    evidence = tmp_path / "evidence.bin"
+    evidence.write_bytes(b"payload")
+    monkeypatch.setattr(verifier.time, "monotonic", lambda: 10.0)
+
+    with pytest.raises(TimeoutError, match="hashing deadline expired"):
+        verifier._sha_file(evidence, deadline_monotonic=10.0)
+
+
+def test_authority_cleanup_recovers_only_after_confirmed_absence(monkeypatch):
+    # PR #1249 review 3744944754: ambiguous rm requires Docker+cgroup confirmation.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    calls = []
+
+    def run(command, **_kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired(command, 120)
+        return SimpleNamespace(
+            returncode=1,
+            stdout=b"",
+            stderr=b"Error: No such object: producer",
+        )
+
+    monkeypatch.setattr(authority.subprocess, "run", run)
+
+    authority._cleanup_producer("producer", Path("/missing/cgroup"))
+
+    assert calls == [
+        ["docker", "rm", "-f", "producer"],
+        ["docker", "inspect", "producer"],
+    ]
+
+
+def test_authority_cleanup_unknown_state_is_process_fatal(monkeypatch):
+    # PR #1249 review 3744944754: unconfirmed cleanup must fail-stop the service.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    ticks = iter((0.0, 0.0, 1.0, 1.0))
+    monkeypatch.setattr(authority, "AUTHORITY_COMMAND_TIMEOUT_SECONDS", 0.5)
+    monkeypatch.setattr(
+        authority,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: next(ticks),
+            sleep=lambda _seconds: None,
+        ),
+    )
+    monkeypatch.setattr(authority, "_docker_container_absent", lambda *_args: False)
+    monkeypatch.setattr(
+        authority.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1),
+    )
+
+    with pytest.raises(
+        authority.AuthorityCleanupFatal,
+        match="could not confirm Docker/cgroup absence",
+    ):
+        authority._cleanup_producer("producer", Path("/missing/cgroup"))
+
+
 _mark_posix_qualification_section_tests()
