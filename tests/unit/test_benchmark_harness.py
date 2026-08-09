@@ -13180,12 +13180,59 @@ def test_authority_deadline_subtracts_docker_start_rpc_and_audit_time(monkeypatc
     # PR #1249 review 3744261033: producer budget is Docker StartedAt-to-FinishedAt.
     from benchmarks.codegraph_compare import audit_authority_runner as runner
 
-    monkeypatch.setattr(runner.time, "time", lambda: 1_003.0)
-    monkeypatch.setattr(runner.time, "monotonic", lambda: 500.0)
+    clock = SimpleNamespace(
+        time=lambda: 1_003.0,
+        monotonic=lambda: 500.0,
+        time_ns=lambda: 1_000_000_000,
+    )
+    monkeypatch.setattr(runner, "time", clock)
+    process_timeouts = []
+
+    class ImmediateProcess:
+        returncode = 0
+
+        def __init__(self, args):
+            self.args = args
+
+        def communicate(self, timeout):
+            process_timeouts.append((tuple(self.args), timeout))
+            return b"0\n", b""
+
+    monkeypatch.setattr(
+        runner.subprocess,
+        "Popen",
+        lambda args, **_kwargs: ImmediateProcess(args),
+    )
 
     deadline = runner._docker_wall_deadline("1970-01-01T00:16:40Z", 10)
+    exit_code = runner._wait_container("producer", deadline)
+    runner._run("seal-command")
+
+    extraction_calls = []
+    monkeypatch.setattr(runner, "_hash_tree", lambda _path: "same")
+    monkeypatch.setattr(
+        runner,
+        "_run",
+        lambda *args, timeout: extraction_calls.append((args, timeout)) or b"",
+    )
+    runner._assert_ext4_payload(
+        Path("data.img"),
+        Path("core"),
+        payload_bytes=64 * 1024 * 1024,
+        contract_expires_at_ns=33_000_000_000,
+    )
 
     assert deadline == 507.0
+    assert exit_code == "0"
+    assert process_timeouts == [
+        (("docker", "wait", "producer"), 7.0),
+        (("seal-command",), 120),
+    ]
+    extraction_command, extraction_timeout = extraction_calls[0]
+    assert extraction_command[:2] == ("debugfs", "-R")
+    assert extraction_command[2].startswith("rdump / ")
+    assert extraction_command[3] == "data.img"
+    assert extraction_timeout == 32.0
 
 
 def test_decision_consumer_contains_four_malformed_connections_and_recovers(
