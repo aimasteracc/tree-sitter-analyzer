@@ -129,8 +129,8 @@ def _read_operator_key(path: Path) -> OperatorKeyPin:
         material = bytes.fromhex(encoded.decode("utf-8").strip())
     except (UnicodeDecodeError, ValueError) as error:
         raise ValueError(f"operator key must be hex-encoded: {path}") from error
-    if len(material) < 32:
-        raise ValueError(f"operator key must contain at least 32 bytes: {path}")
+    if len(material) != 32:
+        raise ValueError(f"operator key must contain exactly 32 bytes: {path}")
     return OperatorKeyPin(
         str(_absolute_lexical(path)),
         before.st_dev,

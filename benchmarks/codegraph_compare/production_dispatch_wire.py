@@ -20,6 +20,8 @@ from benchmarks.codegraph_compare.production_authorities import (
     SupervisedTransportReceiptV1,
 )
 from benchmarks.codegraph_compare.production_trust import (
+    OperatorTrustConfigV1,
+    ProductionQualification,
     ProductionRunSpecV1,
 )
 
@@ -326,8 +328,8 @@ def load_journal_event_v1(data: str | bytes) -> dict[str, Any]:
     return value
 
 
-def load_production_dispatch_receipt_v1(
-    data: str | bytes,
+def _load_production_dispatch_receipt_v1(
+    data: str | bytes, *, allow_unverified_pass: bool
 ) -> ProductionDispatchReceiptV1:
     value = _strict_json(data)
     fields = set(ProductionDispatchReceiptV1.__dataclass_fields__)
@@ -416,4 +418,35 @@ def load_production_dispatch_receipt_v1(
             "PASS receipt durability/callback/usage/digest invariant invalid"
         )
     _assert_canonical_input(data, value)
+    if receipt.status == "PASS" and not allow_unverified_pass:
+        raise ValueError("PASS receipt requires trusted verification context")
     return receipt
+
+
+def load_production_dispatch_receipt_v1(
+    data: str | bytes,
+) -> ProductionDispatchReceiptV1:
+    """Strictly load non-PASS evidence; PASS needs pinned verification context."""
+    return _load_production_dispatch_receipt_v1(data, allow_unverified_pass=False)
+
+
+def load_verified_production_dispatch_receipt_v1(
+    data: str | bytes,
+    *,
+    request: ProductionDispatchRequestV1,
+    config: OperatorTrustConfigV1,
+    qualification: ProductionQualification,
+    now_unix: int,
+) -> ProductionDispatchReceiptV1:
+    """Load PASS only after verifying all signed receipts and outer bindings."""
+    from benchmarks.codegraph_compare.production_dispatch_validation import (
+        load_verified_production_dispatch_receipt_v1 as verify_load,
+    )
+
+    return verify_load(
+        data,
+        request=request,
+        config=config,
+        qualification=qualification,
+        now_unix=now_unix,
+    )

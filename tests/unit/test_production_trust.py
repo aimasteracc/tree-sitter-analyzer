@@ -716,3 +716,38 @@ def test_v2_rejects_client_kill_wait_self_reporting_mode(tmp_path: Path):
     )
     assert "UNTRUSTED_CLIENT_PROCESS_SUPERVISION" in result.violations
     assert result.model_callbacks_allowed is False
+
+
+def test_v2_rejects_33_byte_ed25519_key_before_admission(tmp_path: Path):
+    # PR #1248: every Ed25519 role pin is exactly 32 bytes at qualification time.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    assert config.pinned_provider_receipt_key is not None
+    config.pinned_provider_receipt_key.write_text((b"c" * 33).hex())
+    now = 1_900_000_000
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="provider",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _judge_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert result.violations == (
+        f"ROLE_KEY_UNAVAILABLE:operator key must contain exactly 32 bytes: "
+        f"{config.pinned_provider_receipt_key}",
+    )

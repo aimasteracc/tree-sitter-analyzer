@@ -36,7 +36,7 @@ jq -e '
   .synthetic_judge_signature_verified == true and
   .independent_judge_available == false and
   .denial_probe_qualification_status == "NOT_EVALUATED" and
-  .denial_probe_violations == ["ROLE_KEYS_NOT_INDEPENDENT","ROLE_KEY_MATERIAL_NOT_INDEPENDENT"] and
+  .denial_probe_violations == ["ROLE_KEYS_NOT_INDEPENDENT","ROLE_KEY_MATERIAL_NOT_INDEPENDENT","INDEPENDENT_JUDGE_UNAVAILABLE"] and
   .bound_fixture_gate_eligible == true and
   .production_dispatch_allowed == false and
   .model_callbacks_invoked == 0 and

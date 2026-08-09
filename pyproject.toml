@@ -87,7 +87,6 @@ dependencies = [
     "anthropic>=0.104.1",
     "tree-sitter-bash>=0.23.0",
     "tree-sitter-scala>=0.23.0",
-    "cryptography>=44.0.0",
 ]
 
 # Add C# to optional dependencies
@@ -726,4 +725,5 @@ dev = [
     # Python 3.10 lacks tomllib; tests fall back via ``try/except ImportError``.
     "tomli>=2.0.0; python_version<'3.11'",
     "mutmut>=3.6.0",
+    "cryptography>=44.0.0",
 ]

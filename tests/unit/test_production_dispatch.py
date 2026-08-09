@@ -33,12 +33,14 @@ from benchmarks.codegraph_compare.production_dispatch import (
     dispatch_once,
     load_journal_event_v1,
     load_production_dispatch_receipt_v1,
+    load_verified_production_dispatch_receipt_v1,
 )
 from benchmarks.codegraph_compare.production_judge import submit_verdict
 from benchmarks.codegraph_compare.production_trust import (
     OperatorTrustConfigV1,
     ProductionRunSpecV1,
     capture_ledger_identity,
+    qualify_production_trust_v2,
 )
 
 NOW = 1_900_000_000
@@ -492,3 +494,127 @@ def test_experiment_authority_rejects_independent_three_dollar_cell_reservation(
             key_id="experiment-v1",
             now_unix=NOW,
         )
+
+
+def test_transport_exception_is_counted_and_terminalized(tmp_path):
+    # PR #1248: a started transport remains one callback on exception paths.
+    request, config, attestation, judge, authorities = _inputs(tmp_path)
+    kwargs = _kwargs(request, authorities)
+    kwargs["transport_authority"] = lambda *_: (_ for _ in ()).throw(
+        RuntimeError("transport failed")
+    )
+    receipt = dispatch_once(request, config, attestation, judge, **kwargs)
+    assert (
+        receipt.status,
+        receipt.model_callbacks_invoked,
+        receipt.terminal_durable,
+    ) == (
+        "INVALID",
+        1,
+        True,
+    )
+
+
+def test_wrong_type_embedded_provider_receipt_is_durable_invalid(tmp_path):
+    # PR #1248: malformed exact-result receipts must not escape serialization.
+    request, config, attestation, judge, authorities = _inputs(tmp_path)
+    original = authorities.supervised
+    kwargs = _kwargs(request, authorities)
+
+    def malformed(*args):
+        return replace(original(*args), provider_usage_receipt="not-a-receipt")
+
+    kwargs["transport_authority"] = malformed
+    receipt = dispatch_once(request, config, attestation, judge, **kwargs)
+    assert (
+        receipt.status,
+        receipt.model_callbacks_invoked,
+        receipt.terminal_durable,
+    ) == (
+        "INVALID",
+        1,
+        True,
+    )
+
+
+def test_experiment_state_mutation_blocks_transport(tmp_path):
+    # PR #1248: experiment admission must be revalidated immediately before use.
+    request, config, attestation, judge, authorities = _inputs(tmp_path)
+    state = [request.spec.workspace_baseline_sha256]
+    calls = []
+    original = authorities.reserve_experiment
+    kwargs = _kwargs(request, authorities)
+    kwargs["current_state"] = lambda: (
+        request.spec.launch_identity_sha256,
+        state[0],
+    )
+
+    def mutate(*args):
+        receipt = original(*args)
+        state[0] = "0" * 64
+        return receipt
+
+    kwargs["experiment_authority"] = mutate
+    kwargs["transport_authority"] = lambda *args: calls.append(args)
+    receipt = dispatch_once(request, config, attestation, judge, **kwargs)
+    assert (receipt.status, receipt.model_callbacks_invoked, len(calls)) == (
+        "INVALID",
+        0,
+        0,
+    )
+
+
+def test_unsupported_dirfd_platform_blocks_all_authorities(tmp_path, monkeypatch):
+    # PR #1248: Windows cannot claim ledger durability without dirfd support.
+    request, config, attestation, judge, authorities = _inputs(tmp_path)
+    calls = []
+    kwargs = _kwargs(request, authorities)
+    kwargs["claim_authority"] = lambda *args: calls.append(args)
+    monkeypatch.setattr(
+        "benchmarks.codegraph_compare.production_dispatch_validation.os.name", "nt"
+    )
+    receipt = dispatch_once(request, config, attestation, judge, **kwargs)
+    assert (receipt.status, receipt.model_callbacks_invoked, len(calls)) == (
+        "NOT_EVALUATED",
+        0,
+        0,
+    )
+
+
+def test_generated_transport_violation_is_wire_bounded(tmp_path):
+    # PR #1248: authority diagnostics must remain persistable in strict v1 wire form.
+    request, config, attestation, judge, authorities = _inputs(tmp_path)
+    kwargs = _kwargs(request, authorities)
+    kwargs["transport_authority"] = lambda *_: (_ for _ in ()).throw(
+        RuntimeError("x" * 2000)
+    )
+    receipt = dispatch_once(request, config, attestation, judge, **kwargs)
+    loaded = load_production_dispatch_receipt_v1(receipt.to_json())
+    assert tuple(map(len, loaded.violations)) == (1024,)
+
+
+def test_pass_loader_requires_and_verifies_trusted_context(tmp_path):
+    # PR #1248: persisted PASS cannot be accepted from shape-only embedded receipts.
+    request, config, attestation, judge, authorities = _inputs(tmp_path)
+    qualification = qualify_production_trust_v2(
+        request.spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=request.evidence_root.parent / "bundle",
+        now_unix=NOW,
+        expected_evidence_digest=request.qualification_evidence_digest,
+    )
+    receipt = dispatch_once(
+        request, config, attestation, judge, **_kwargs(request, authorities)
+    )
+    with pytest.raises(ValueError, match="trusted verification context"):
+        load_production_dispatch_receipt_v1(receipt.to_json())
+    loaded = load_verified_production_dispatch_receipt_v1(
+        receipt.to_json(),
+        request=request,
+        config=config,
+        qualification=qualification,
+        now_unix=NOW,
+    )
+    assert loaded.status == "PASS"
