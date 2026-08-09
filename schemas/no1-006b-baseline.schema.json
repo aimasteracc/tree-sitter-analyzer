@@ -1,266 +1,194 @@
 {
-  "$defs": {
-    "startup": {
-      "additionalProperties": false,
-      "properties": {
-        "cold_ms": {
-          "exclusiveMinimum": 0,
-          "type": "number"
-        },
-        "definition": {
-          "type": "string"
-        },
-        "warm_ms": {
-          "items": {
-            "exclusiveMinimum": 0,
-            "type": "number"
-          },
-          "maxItems": 20,
-          "minItems": 3,
-          "type": "array"
-        }
-      },
-      "required": [
-        "definition",
-        "cold_ms",
-        "warm_ms"
-      ],
-      "type": "object"
-    }
-  },
-  "$id": "https://tree-sitter-analyzer.dev/schemas/no1-006b-baseline.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tree-sitter-analyzer.dev/schemas/no1-006b-baseline.schema.json",
+  "title": "NO1-006B receipt v2",
+  "type": "object",
   "additionalProperties": false,
-  "properties": {
-    "collected_at_utc": {
-      "format": "date-time",
-      "type": "string"
-    },
-    "commands": {
-      "additionalProperties": false,
-      "properties": {
-        "build": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 2,
-          "type": "array"
-        },
-        "cli_probe": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 2,
-          "type": "array"
-        },
-        "install": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 2,
-          "type": "array"
-        },
-        "mcp_probe": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 2,
-          "type": "array"
-        }
-      },
-      "required": [
-        "build",
-        "install",
-        "cli_probe",
-        "mcp_probe"
-      ],
-      "type": "object"
-    },
-    "environment": {
-      "additionalProperties": false,
-      "properties": {
-        "machine": {
-          "type": "string"
-        },
-        "network_policy": {
-          "const": "uv --offline; no network measurement"
-        },
-        "os": {
-          "type": "string"
-        },
-        "python": {
-          "additionalProperties": false,
-          "properties": {
-            "executable": {
-              "type": "string"
-            },
-            "implementation": {
-              "type": "string"
-            },
-            "version": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "version",
-            "implementation",
-            "executable"
-          ],
-          "type": "object"
-        },
-        "system": {
-          "const": "macos"
-        },
-        "uv": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "os",
-        "system",
-        "machine",
-        "python",
-        "uv",
-        "network_policy"
-      ],
-      "type": "object"
-    },
-    "evidence_level": {
-      "const": "E0"
-    },
-    "measurements": {
-      "additionalProperties": false,
-      "properties": {
-        "cli_startup": {
-          "$ref": "#/$defs/startup"
-        },
-        "direct_dependency_count": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "direct_dependency_names": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "download_scope": {
-          "type": "string"
-        },
-        "download_size_bytes": {
-          "minimum": 1,
-          "type": "integer"
-        },
-        "installed_distribution_count": {
-          "minimum": 1,
-          "type": "integer"
-        },
-        "installed_size_bytes": {
-          "minimum": 1,
-          "type": "integer"
-        },
-        "installed_size_scope": {
-          "type": "string"
-        },
-        "mcp_startup": {
-          "$ref": "#/$defs/startup"
-        },
-        "transitive_dependency_count": {
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "download_size_bytes",
-        "download_scope",
-        "installed_size_bytes",
-        "installed_size_scope",
-        "direct_dependency_count",
-        "transitive_dependency_count",
-        "installed_distribution_count",
-        "direct_dependency_names",
-        "cli_startup",
-        "mcp_startup"
-      ],
-      "type": "object"
-    },
-    "platform_axes": {
-      "additionalProperties": false,
-      "properties": {
-        "linux": {
-          "const": "unknown"
-        },
-        "macos": {
-          "const": "measured_e0"
-        },
-        "windows": {
-          "const": "unknown"
-        }
-      },
-      "required": [
-        "macos",
-        "linux",
-        "windows"
-      ],
-      "type": "object"
-    },
-    "repeats": {
-      "maximum": 20,
-      "minimum": 3,
-      "type": "integer"
-    },
-    "report_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "type": "string"
-    },
-    "roadmap_id": {
-      "const": "NO1-006B"
-    },
-    "schema_version": {
-      "const": 1
-    },
-    "source": {
-      "additionalProperties": false,
-      "properties": {
-        "commit": {
-          "const": "7e0e8f6e03270fcbf4025d717415ef69c9354145"
-        },
-        "wheel_filename": {
-          "pattern": "\\.whl$",
-          "type": "string"
-        },
-        "wheel_sha256": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
-        },
-        "wheel_size_bytes": {
-          "minimum": 1,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "commit",
-        "wheel_filename",
-        "wheel_sha256",
-        "wheel_size_bytes"
-      ],
-      "type": "object"
-    }
-  },
   "required": [
     "schema_version",
     "roadmap_id",
     "evidence_level",
+    "collection_started_at_utc",
+    "collection_finished_at_utc",
+    "collector",
     "source",
+    "dependency_closure",
     "environment",
-    "commands",
     "measurements",
+    "commands",
     "repeats",
+    "measured_axis",
     "platform_axes",
-    "report_sha256",
-    "collected_at_utc"
+    "canonical_payload_sha256"
   ],
-  "title": "NO1-006B measured baseline",
-  "type": "object"
+  "properties": {
+    "schema_version": {"const":2},
+    "roadmap_id": {"const":"NO1-006B"},
+    "evidence_level": {"const":"E0"},
+    "collection_started_at_utc": {"type":"string","format":"date-time"},
+    "collection_finished_at_utc": {"type":"string","format":"date-time"},
+    "canonical_payload_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "collector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit","script_sha256","schema_sha256"],
+      "properties": {
+        "commit": {"type":"string","pattern":"^[0-9a-f]{40}$"},
+        "script_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "schema_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit","git_tree","lock_sha256","source_archive_sha256","root_wheel_filename","root_wheel_sha256","root_wheel_artifact_size_bytes"],
+      "properties": {
+        "commit": {"const":"7e0e8f6e03270fcbf4025d717415ef69c9354145"},
+        "git_tree": {"type":"string","pattern":"^[0-9a-f]{40}$"},
+        "lock_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "source_archive_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "root_wheel_filename": {"type":"string","pattern":"^[^/]+\\.whl$","maxLength":200},
+        "root_wheel_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "root_wheel_artifact_size_bytes": {"type":"integer","minimum":1}
+      }
+    },
+    "dependency_closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["derivation","export_sha256","lock_sha256","distributions"],
+      "properties": {
+        "derivation": {"const":"uv.lock frozen export; hashed exact requirements; project wheel installed separately with --no-deps"},
+        "export_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "lock_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "distributions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name","version","role"],
+            "properties": {
+              "name": {"type":"string","pattern":"^[a-z0-9]+(?:-[a-z0-9]+)*$","maxLength":100},
+              "version": {"type":"string","minLength":1,"maxLength":100},
+              "role": {"enum":["root","direct","transitive"]}
+            }
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os","system","machine","python","uv","network_policy","bytecode_policy","cache_protocol"],
+      "properties": {
+        "os": {"type":"string","minLength":1,"maxLength":256},
+        "system": {"enum":["macos","linux","windows"]},
+        "machine": {"type":"string","minLength":1,"maxLength":100},
+        "python": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version","implementation"],
+          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50}}
+        },
+        "uv": {"type":"string","minLength":1,"maxLength":100},
+        "network_policy": {"const":"UV_OFFLINE=1; uv --offline; no network transfer measurement"},
+        "bytecode_policy": {"const":"PYTHONDONTWRITEBYTECODE=1"},
+        "cache_protocol": {
+          "const": "two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm"
+        }
+      }
+    },
+    "measurements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root_wheel_artifact_size_bytes",
+        "network_transfer_bytes",
+        "installed_size_bytes",
+        "installed_regular_file_count",
+        "installed_size_scope",
+        "direct_dependency_count",
+        "transitive_dependency_count",
+        "dependency_distribution_count_excluding_root",
+        "installed_distribution_count_including_root",
+        "cli_startup",
+        "mcp_startup"
+      ],
+      "properties": {
+        "root_wheel_artifact_size_bytes": {"type":"integer","minimum":1},
+        "network_transfer_bytes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status","reason"],
+          "properties": {"status":{"const":"unknown"},"reason":{"const":"offline cache artifacts do not measure network transfer"}}
+        },
+        "installed_size_bytes": {"type":"integer","minimum":1},
+        "installed_regular_file_count": {"type":"integer","minimum":1},
+        "installed_size_scope": {
+          "const": "unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded"
+        },
+        "direct_dependency_count": {"type":"integer","minimum":0},
+        "transitive_dependency_count": {"type":"integer","minimum":0},
+        "dependency_distribution_count_excluding_root": {"type":"integer","minimum":0},
+        "installed_distribution_count_including_root": {"type":"integer","minimum":1},
+        "cli_startup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["definition","cold_ms","warm_ms"],
+          "properties": {
+            "definition": {"type":"string","minLength":20,"maxLength":256},
+            "cold_ms": {"type":"number","exclusiveMinimum":0},
+            "warm_ms": {"type":"array","minItems":3,"maxItems":20,"items":{"type":"number","exclusiveMinimum":0}}
+          }
+        },
+        "mcp_startup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["definition","cold_ms","warm_ms","tool_names"],
+          "properties": {
+            "definition": {"type":"string","minLength":20,"maxLength":256},
+            "cold_ms": {"type":"number","exclusiveMinimum":0},
+            "warm_ms": {"type":"array","minItems":3,"maxItems":20,"items":{"type":"number","exclusiveMinimum":0}},
+            "tool_names": {"const":["edit","health","index","nav","project","search","set_project_path","structure","viz"]}
+          }
+        }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["export","build","closure_install","root_install","cli_probe","mcp_probe"],
+      "properties": {
+        "export": {"const":["uv","export","--frozen","--offline","--no-dev","--no-emit-project","--format","requirements-txt"]},
+        "build": {"const":["uv","build","--wheel","--offline","--out-dir","<temp>/dist"]},
+        "closure_install": {"const":["uv","pip","install","--offline","--no-deps","--require-hashes","-r","<locked-requirements>"]},
+        "root_install": {"const":["uv","pip","install","--offline","--no-deps","<root-wheel>"]},
+        "cli_probe": {"const":["tree-sitter-analyzer","fixture.py","--summary","--format","json"]},
+        "mcp_probe": {"const":["tree-sitter-analyzer-mcp","--project-root","<fixture>","initialize","notifications/initialized","tools/list"]}
+      }
+    },
+    "repeats": {"type":"integer","minimum":3,"maximum":20},
+    "measured_axis": {"enum":["macos","linux","windows"]},
+    "platform_axes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["macos","linux","windows"],
+      "properties": {"macos":{"enum":["measured_e0","unknown"]},"linux":{"enum":["measured_e0","unknown"]},"windows":{"enum":["measured_e0","unknown"]}}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties":{"measured_axis":{"const":"macos"}}},
+      "then": {"properties":{"platform_axes":{"properties":{"macos":{"const":"measured_e0"},"linux":{"const":"unknown"},"windows":{"const":"unknown"}}}}}
+    },
+    {
+      "if": {"properties":{"measured_axis":{"const":"linux"}}},
+      "then": {"properties":{"platform_axes":{"properties":{"linux":{"const":"measured_e0"},"macos":{"const":"unknown"},"windows":{"const":"unknown"}}}}}
+    },
+    {
+      "if": {"properties":{"measured_axis":{"const":"windows"}}},
+      "then": {"properties":{"platform_axes":{"properties":{"windows":{"const":"measured_e0"},"macos":{"const":"unknown"},"linux":{"const":"unknown"}}}}}
+    }
+  ]
 }
