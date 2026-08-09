@@ -28,6 +28,7 @@ from benchmarks.codegraph_compare.setup_qualification_plan import (
     _sorted_paths,
 )
 from benchmarks.codegraph_compare.setup_qualification_schema import (
+    _MAX_STRICT_JSON_BYTES,
     _canonical_json_bytes,
     _strict_json_bytes,
     validate_direct_json_bounds,
@@ -98,6 +99,58 @@ def _evidence_core_payload(
     }
 
 
+def _read_retained_receipt(
+    *, cell_fd: int, plan: CellPlanV1, supplied: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Stably read the plan-bound receipt from the pinned cell snapshot."""
+    cell_namespace = f"cells/{plan.repo_id}--{plan.arm_id}/"
+    if not plan.artifact_path.startswith(cell_namespace):
+        raise ValueError("Receipt artifact is outside its canonical cell namespace")
+    relative = canonical_relative_path(plan.artifact_path[len(cell_namespace) :])
+    descriptor: int | None = None
+    try:
+        descriptor = _open_beneath(cell_fd, relative)
+        metadata = os.fstat(descriptor)
+        identity = _stable_file_identity(metadata)
+        size = metadata.st_size
+        first_hash = _hash_regular_descriptor(
+            descriptor, expected_size=size, max_bytes=_MAX_STRICT_JSON_BYTES
+        )
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        chunks: list[bytes] = []
+        remaining = size
+        while remaining:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                raise ValueError("Retained receipt ended before its trusted size")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise ValueError("Retained receipt grew during its trusted read")
+        payload = b"".join(chunks)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        second_hash = _hash_regular_descriptor(
+            descriptor, expected_size=size, max_bytes=_MAX_STRICT_JSON_BYTES
+        )
+        if (
+            first_hash != second_hash
+            or hashlib.sha256(payload).hexdigest() != first_hash
+            or _stable_file_identity(os.fstat(descriptor)) != identity
+        ):
+            raise ValueError("Retained receipt changed during validation")
+        retained = _strict_json_bytes(payload)
+        if type(retained) is not dict or type(supplied) is not dict or not retained:
+            raise ValueError("Retained receipt must be a non-empty exact JSON object")
+        if _canonical_json_bytes(retained) != _canonical_json_bytes(
+            supplied
+        ) or _sha256(retained) != _sha256(supplied):
+            raise ValueError("Retained receipt differs from the supplied mapping")
+        return retained
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
 def validate_cell_receipt(
     receipt: Mapping[str, Any],
     *,
@@ -128,8 +181,17 @@ def validate_cell_receipt(
     except (OSError, RuntimeError, TypeError, ValueError):
         failures.append("CELL_ROOT_ISOLATION_MISMATCH")
     try:
+        retained_receipt = receipt
+        if cell_fd is not None:
+            try:
+                retained_receipt = _read_retained_receipt(
+                    cell_fd=cell_fd, plan=plan, supplied=receipt
+                )
+            except (OSError, RuntimeError, TypeError, ValueError):
+                failures.append("RETAINED_RECEIPT_MISMATCH")
+                return tuple(dict.fromkeys(failures))
         return _validate_open_cell_receipt(
-            receipt,
+            retained_receipt,
             plan=plan,
             verifier_config=verifier_config,
             failures=failures,

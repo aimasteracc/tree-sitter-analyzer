@@ -8948,13 +8948,19 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
     return receipt
 
 
-def _validate_qualification_receipt(receipt, *, plan, cell_root, verifier_config):
+def _validate_qualification_receipt(
+    receipt, *, plan, cell_root, verifier_config, sync_retained=True
+):
     from benchmarks.codegraph_compare.setup_qualification import (
         _open_root,
         _stable_directory_identity,
         validate_cell_receipt,
     )
 
+    if sync_retained:
+        (cell_root / "cell-receipt.json").write_text(
+            json.dumps(receipt, sort_keys=True), encoding="utf-8"
+        )
     experiment_root = cell_root.parent
     root_fd = _open_root(experiment_root)
     try:
@@ -9281,7 +9287,7 @@ def test_direct_receipt_rejects_excessive_nesting_without_recursion_error(
         plan=plan,
         cell_root=cell_root,
         verifier_config=_qualification_verifier_config(),
-    ) == ("RECEIPT_SCHEMA_MISMATCH", "RECEIPT_HASH_MISMATCH")
+    ) == ("RETAINED_RECEIPT_MISMATCH",)
 
 
 def test_direct_receipt_rejects_excessive_node_count_before_hash(tmp_path: Path):
@@ -9301,7 +9307,7 @@ def test_direct_receipt_rejects_excessive_node_count_before_hash(tmp_path: Path)
             verifier_config=_qualification_verifier_config(),
         )
 
-    assert failures == ("RECEIPT_SCHEMA_MISMATCH", "RECEIPT_HASH_MISMATCH")
+    assert failures == ("RETAINED_RECEIPT_MISMATCH",)
 
 
 def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
@@ -9845,16 +9851,15 @@ def test_strict_validator_rejects_nonfinite_or_boolean_resource_value(
     receipt["resource_observation"]["wall_seconds"] = value
     _resign_qualification_receipt(receipt)
     expected = (
-        "RECEIPT_SCHEMA_MISMATCH",
-        "RESOURCE_LIMIT_VIOLATION",
-        *(
-            ("EVIDENCE_CORE_CANONICALIZATION_FAILED",)
-            if canonicalization_failure
-            else ()
-        ),
-        "INDEX_PROVENANCE_MISSING",
-        "OS_AUDIT_MISSING",
-        "HUMAN_ORACLE_APPROVAL_MISSING",
+        ("RETAINED_RECEIPT_MISMATCH",)
+        if canonicalization_failure
+        else (
+            "RECEIPT_SCHEMA_MISMATCH",
+            "RESOURCE_LIMIT_VIOLATION",
+            "INDEX_PROVENANCE_MISSING",
+            "OS_AUDIT_MISSING",
+            "HUMAN_ORACLE_APPROVAL_MISSING",
+        )
     )
     assert (
         _validate_qualification_receipt(
@@ -10211,14 +10216,7 @@ def test_validator_rejects_null_digest_signatures_after_core_failure(tmp_path: P
         cell_root=cell_root,
         verifier_config=_qualification_verifier_config(),
     )
-    assert failures == (
-        "RECEIPT_SCHEMA_MISMATCH",
-        "RAW_EXECUTION_EVIDENCE_MISSING",
-        "EVIDENCE_CORE_CANONICALIZATION_FAILED",
-        "INDEX_PROVENANCE_MISSING",
-        "OS_AUDIT_MISSING",
-        "HUMAN_ORACLE_APPROVAL_MISSING",
-    )
+    assert failures == ("RETAINED_RECEIPT_MISMATCH",)
 
 
 def test_strict_validator_rejects_receipt_extension_even_with_matching_hash(
@@ -10887,6 +10885,107 @@ def test_latest_qualification_tests_skip_in_simulated_windows(request, monkeypat
         (True, "tracked: NO1-008A qualification requires openat/O_NOFOLLOW"),
         (True, "tracked: NO1-008A qualification requires openat/O_NOFOLLOW"),
     )
+
+
+def test_plan_set_rejects_cross_arm_resource_plan_difference(tmp_path: Path):
+    # PR #1247 review 3743050574: comparison arms share one exact resource budget.
+    from dataclasses import replace
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        _trusted_commits,
+        _validate_plans,
+    )
+
+    plans = list(_qualification_plans(tmp_path))
+    plans[1] = replace(
+        plans[1],
+        resources=replace(
+            plans[1].resources,
+            wall_timeout_seconds=plans[1].resources.wall_timeout_seconds + 1,
+        ),
+    )
+    trusted = _trusted_commits(Path("benchmarks/codegraph_compare/repos.yaml"))
+
+    with pytest.raises(ValueError, match="exactly identical resource plans"):
+        _validate_plans(plans, trusted, _qualification_inventories(plans))
+
+
+def test_validator_rejects_missing_retained_receipt(tmp_path: Path):
+    # PR #1247 review 3743050577: supplied mappings cannot replace retained evidence.
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    (cell_root / "cell-receipt.json").unlink()
+
+    assert _validate_qualification_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+        sync_retained=False,
+    ) == ("RETAINED_RECEIPT_MISMATCH",)
+
+
+def test_validator_rejects_stale_retained_receipt(tmp_path: Path):
+    # PR #1247 review 3743050577: retained and supplied hashes must match exactly.
+    import copy
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    stale = copy.deepcopy(receipt)
+    stale["resource_observation"]["wall_seconds"] = 2
+    _resign_qualification_receipt(stale)
+    (cell_root / "cell-receipt.json").write_text(
+        json.dumps(stale, sort_keys=True), encoding="utf-8"
+    )
+
+    assert _validate_qualification_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+        sync_retained=False,
+    ) == ("RETAINED_RECEIPT_MISMATCH",)
+
+
+def test_validator_rejects_type_different_retained_receipt(tmp_path: Path):
+    # PR #1247 review 3743050577: JSON true never aliases integer one.
+    import copy
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    type_different = copy.deepcopy(receipt)
+    type_different["resource_observation"]["wall_seconds"] = True
+    _resign_qualification_receipt(type_different)
+    (cell_root / "cell-receipt.json").write_text(
+        json.dumps(type_different, sort_keys=True), encoding="utf-8"
+    )
+
+    assert _validate_qualification_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+        sync_retained=False,
+    ) == ("RETAINED_RECEIPT_MISMATCH",)
+
+
+def test_validator_rejects_empty_retained_receipt_object(tmp_path: Path):
+    # PR #1247 review 3743050577: an empty retained JSON object is not evidence.
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    (cell_root / "cell-receipt.json").write_bytes(b"{}")
+
+    assert _validate_qualification_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+        sync_retained=False,
+    ) == ("RETAINED_RECEIPT_MISMATCH",)
 
 
 # Keep this invocation at absolute EOF so every qualification test inherits the marker.

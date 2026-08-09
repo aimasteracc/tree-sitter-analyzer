@@ -78,6 +78,11 @@ def _validate_plans(
                 "Both arms must use exactly identical oracle specifications"
             )
         if (
+            previous.resources != plan.resources
+            or previous.resources.digest != plan.resources.digest
+        ):
+            raise ValueError("Both arms must use exactly identical resource plans")
+        if (
             previous.parse_error_allowlist != plan.parse_error_allowlist
             or previous.explicit_excluded_allowlist != plan.explicit_excluded_allowlist
         ):
