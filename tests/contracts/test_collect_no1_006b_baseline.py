@@ -97,6 +97,27 @@ def test_schema_supports_each_native_axis_without_fabricating_measurements() -> 
     collector.validate_receipt(report,schema())
 
 
+def inventory_from_requirements(monkeypatch: pytest.MonkeyPatch, requirements: list[str]) -> dict:
+    payload={"versions":{"tree-sitter-analyzer":"1","Foo.Bar":"2"},"requires":requirements,"installed_size_bytes":1,"regular_file_count":1}
+    completed=__import__("subprocess").CompletedProcess([],0,json.dumps(payload).encode(),b"")
+    monkeypatch.setattr(collector,"run",lambda *args,**kwargs: completed)
+    return collector.inventory(Path("python"),Path("."))
+
+
+def test_inventory_evaluates_arbitrary_pep508_marker(monkeypatch: pytest.MonkeyPatch) -> None:
+    report=inventory_from_requirements(monkeypatch,["Foo.Bar; python_version > '3.0'"])
+    assert report["distributions"][0] == {"name":"foo-bar","version":"2","role":"direct"}
+
+
+def test_inventory_excludes_unselected_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    report=inventory_from_requirements(monkeypatch,["Foo.Bar; extra == 'feature'"])
+    assert report["distributions"][0] == {"name":"foo-bar","version":"2","role":"transitive"}
+
+
+def test_safe_write_rejects_broken_output_symlink(tmp_path: Path) -> None:
+    link=tmp_path/"receipt"; link.symlink_to(tmp_path/"missing")
+    with pytest.raises(ValueError,match="symlink"): collector.safe_write(link,b"bad",REPO)
+
 def test_safe_write_rejects_output_symlink(tmp_path: Path) -> None:
     target=tmp_path/"target"; target.write_text("safe"); link=tmp_path/"receipt"; link.symlink_to(target)
     with pytest.raises(ValueError,match="symlink"): collector.safe_write(link,b"bad",REPO)

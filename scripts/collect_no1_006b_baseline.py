@@ -47,11 +47,27 @@ def clean_env() -> dict[str, str]:
 
 
 def run(command: list[str], *, cwd: Path, timeout: int = 180) -> subprocess.CompletedProcess[bytes]:
-    result = subprocess.run(command, cwd=cwd, env=clean_env(), capture_output=True, timeout=timeout, start_new_session=True)
-    if len(result.stdout) + len(result.stderr) > MAX_CAPTURE_BYTES:
-        raise RuntimeError(f"subprocess output exceeded {MAX_CAPTURE_BYTES} bytes")
+    process=subprocess.Popen(command,cwd=cwd,env=clean_env(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+    assert process.stdout is not None and process.stderr is not None
+    selector=selectors.DefaultSelector(); selector.register(process.stdout,selectors.EVENT_READ,"stdout"); selector.register(process.stderr,selectors.EVENT_READ,"stderr")
+    buffers={"stdout":bytearray(),"stderr":bytearray()}; deadline=time.monotonic()+timeout
+    try:
+        while selector.get_map() and time.monotonic()<deadline:
+            for key,_ in selector.select(max(0,deadline-time.monotonic())):
+                block=os.read(key.fileobj.fileno(),65536)
+                if not block: selector.unregister(key.fileobj); continue
+                buffers[key.data].extend(block)
+                if sum(map(len,buffers.values()))>MAX_CAPTURE_BYTES: raise RuntimeError(f"subprocess output exceeded {MAX_CAPTURE_BYTES} bytes")
+        if selector.get_map(): raise TimeoutError(f"command exceeded {timeout} seconds")
+        returncode=process.wait(timeout=3)
+    except BaseException:
+        try: os.killpg(process.pid,signal.SIGKILL)
+        except ProcessLookupError: pass
+        process.wait(timeout=3); raise
+    finally: selector.close()
+    result=subprocess.CompletedProcess(command,returncode,bytes(buffers["stdout"]),bytes(buffers["stderr"]))
     if result.returncode:
-        detail = result.stderr[-4096:].decode(errors="replace")
+        detail=result.stderr[-4096:].decode(errors="replace")
         raise RuntimeError(f"command failed ({result.returncode}): {command!r}: {detail}")
     return result
 
@@ -271,7 +287,7 @@ def safe_write(output: Path, data: bytes, subject: Path) -> None:
         if stat.S_ISLNK(current.lstat().st_mode): raise ValueError("output parent chain must not contain symlinks")
         if current == current.parent: break
         current=current.parent
-    if output.exists() and output.is_symlink(): raise ValueError("output must not be a symlink")
+    if output.is_symlink(): raise ValueError("output must not be a symlink")
     flags=os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,"O_NOFOLLOW",0)
     temp=parent/f".{output.name}.{os.getpid()}.tmp"
     fd=os.open(temp,flags,0o600)
