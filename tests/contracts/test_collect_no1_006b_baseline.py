@@ -185,7 +185,8 @@ def test_file_budget_rejects_oversized_artifact(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError,match="disk budget"): collector.require_file_budget(artifact,1,"test artifact")
 
 
-def test_collector_rejects_unbounded_repeat_count(tmp_path: Path) -> None:
+def test_collector_rejects_unbounded_repeat_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(collector.platform, "system", lambda: "Darwin")
     with pytest.raises(ValueError,match="between 3 and 20"): collector.collect(REPO,tmp_path/"receipt.json",21,collector.EXPECTED_SUBJECT_COMMIT)
 
 def test_rfc_reproduction_command_uses_external_interpreter() -> None:
