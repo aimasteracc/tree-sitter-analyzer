@@ -14,6 +14,12 @@ _DIR_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLL
 _FILE_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 
+def _dirfd_supported() -> bool:
+    """Return whether this runtime provides the POSIX dirfd primitives we use."""
+    required = (os.open, os.mkdir, os.unlink)
+    return os.name == "posix" and all(item in os.supports_dir_fd for item in required)
+
+
 def _component(value: str, label: str) -> str:
     if not value or value in (".", "..") or "/" in value or "\\" in value:
         raise ValueError(f"{label} must not contain path separators: {value!r}")
@@ -61,6 +67,8 @@ class CollectionReceipt:
     artifact_count: int
     ledger_sha256: str
     artifacts: tuple[ArtifactReceipt, ...]
+    durable: bool
+    durability: str
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -68,6 +76,8 @@ class CollectionReceipt:
             "artifact_count": self.artifact_count,
             "ledger_sha256": self.ledger_sha256,
             "artifacts": [a.__dict__ for a in self.artifacts],
+            "durable": self.durable,
+            "durability": self.durability,
         }
 
 
@@ -76,17 +86,42 @@ class EvidenceCollector:
 
     def __init__(self, artifact_root: Path) -> None:
         self._root = artifact_root
+        self._uses_dirfd = _dirfd_supported()
         try:
-            self._parent_fd, self._root_fd, self._pin = _open_parent_and_create_root(
-                artifact_root
-            )
+            if self._uses_dirfd:
+                self._parent_fd, self._root_fd, self._pin = (
+                    _open_parent_and_create_root(artifact_root)
+                )
+            else:
+                self._create_bounded_root()
         except FileExistsError as error:
             raise ValueError(
-                f"Artifact root must not pre-exist; cannot guarantee immutability: {artifact_root}"
+                f"Artifact root must not pre-exist: {artifact_root}"
             ) from error
         self._artifacts: list[ArtifactReceipt] = []
         self._fds: dict[tuple[str, str], tuple[int, int]] = {}
         self._finalized = False
+
+    def _create_bounded_root(self) -> None:
+        """Create a diagnostic-only root without claiming dirfd durability.
+
+        Windows has no Python ``openat``/``dir_fd`` equivalent.  This fallback
+        therefore uses canonical, component-bounded pathlib operations and
+        exclusive file creation, while receipts explicitly report durability as
+        unsupported.  It is suitable only for the local E0 diagnostic bundle.
+        """
+        absolute = self._root.resolve(strict=False)
+        if not absolute.is_absolute() or absolute != self._root:
+            raise ValueError("Artifact root must be a canonical absolute path")
+        absolute.parent.mkdir(parents=True, exist_ok=True)
+        absolute.mkdir(mode=0o700)
+        resolved = absolute.resolve(strict=True)
+        if resolved != absolute or resolved.is_symlink():
+            raise RuntimeError("Evidence root is not a bounded canonical directory")
+        st = resolved.stat(follow_symlinks=False)
+        self._pin = (st.st_dev, st.st_ino)
+        self._parent_fd = -1
+        self._root_fd = -1
 
     @property
     def root(self) -> Path:
@@ -110,6 +145,8 @@ class EvidenceCollector:
         if type(payload) is not bytes:
             raise ValueError("payload must be exact bytes")
         self._assert_pin()
+        if not self._uses_dirfd:
+            return self._collect_bounded(run_id, kind, payload)
         try:
             os.mkdir(run_id, 0o700, dir_fd=self._root_fd)
             os.fsync(self._root_fd)
@@ -122,7 +159,6 @@ class EvidenceCollector:
             0o600,
             dir_fd=run_fd,
         )
-        visible = True
         try:
             offset = 0
             while offset < len(payload):
@@ -131,11 +167,10 @@ class EvidenceCollector:
             os.fsync(run_fd)
         except Exception:
             os.close(descriptor)
-            if visible:
-                try:
-                    os.unlink(kind, dir_fd=run_fd)
-                except OSError:
-                    pass
+            try:
+                os.unlink(kind, dir_fd=run_fd)
+            except OSError:
+                pass
             os.close(run_fd)
             raise
         os.close(descriptor)
@@ -148,27 +183,73 @@ class EvidenceCollector:
         )
         return receipt
 
+    def _collect_bounded(
+        self, run_id: str, kind: str, payload: bytes
+    ) -> ArtifactReceipt:
+        """Write one Windows diagnostic artifact with exclusive creation."""
+        run_path = self._root / run_id
+        try:
+            run_path.mkdir(mode=0o700)
+        except FileExistsError:
+            if run_path.is_symlink() or not run_path.is_dir():
+                raise RuntimeError(
+                    "Evidence run path is not a bounded directory"
+                ) from None
+        if run_path.resolve(strict=True) != run_path:
+            raise RuntimeError("Evidence run path escaped the diagnostic root")
+        artifact_path = run_path / kind
+        created = False
+        try:
+            with artifact_path.open("xb") as stream:
+                created = True
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except Exception:
+            if created:
+                try:
+                    artifact_path.unlink()
+                except OSError:
+                    pass
+            raise
+        digest = hashlib.sha256(payload).hexdigest()
+        receipt = ArtifactReceipt(kind, run_id, str(artifact_path), digest)
+        self._artifacts.append(receipt)
+        return receipt
+
     def finalize(self) -> CollectionReceipt:
         if self._finalized:
             raise RuntimeError("Collector is already finalised")
         self._finalized = True
         self._assert_pin()
         for artifact in self._artifacts:
-            run_fd, file_fd = self._fds[(artifact.run_id, artifact.kind)]
-            os.lseek(file_fd, 0, os.SEEK_SET)
-            chunks = []
-            while True:
-                chunk = os.read(file_fd, 65536)
-                if not chunk:
-                    break
-                chunks.append(chunk)
-            if hashlib.sha256(b"".join(chunks)).hexdigest() != artifact.sha256:
+            if self._uses_dirfd:
+                run_fd, file_fd = self._fds[(artifact.run_id, artifact.kind)]
+                os.lseek(file_fd, 0, os.SEEK_SET)
+                chunks = []
+                while True:
+                    chunk = os.read(file_fd, 65536)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                content = b"".join(chunks)
+            else:
+                artifact_path = Path(artifact.path)
+                if (
+                    artifact_path.parent.resolve(strict=True)
+                    != self._root / artifact.run_id
+                ):
+                    raise RuntimeError("Evidence artifact escaped the diagnostic root")
+                content = artifact_path.read_bytes()
+            if hashlib.sha256(content).hexdigest() != artifact.sha256:
                 raise RuntimeError(
                     f"Evidence artifact was modified after collection: {artifact.path}"
                 )
-            os.fchmod(file_fd, 0o400)
-            os.fsync(file_fd)
-            os.fsync(run_fd)
+            if self._uses_dirfd:
+                os.fchmod(file_fd, 0o400)
+                os.fsync(file_fd)
+                os.fsync(run_fd)
+            # The fallback stays writable: it is E0 diagnostics, not immutable.
         ordered = sorted(self._artifacts, key=lambda a: (a.run_id, a.kind))
         entries = [
             {"kind": a.kind, "run_id": a.run_id, "sha256": a.sha256} for a in ordered
@@ -186,6 +267,8 @@ class EvidenceCollector:
             len(ordered),
             hashlib.sha256(data).hexdigest(),
             tuple(ordered),
+            False,
+            "local-dirfd-diagnostic-only" if self._uses_dirfd else "unsupported",
         )
 
     def close(self) -> None:

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
+from benchmarks.codegraph_compare import production_collector
 from benchmarks.codegraph_compare.production_collector import (
     ArtifactReceipt,
     CollectionReceipt,
@@ -75,17 +77,24 @@ class TestEvidenceCollector:
         assert isinstance(receipt, CollectionReceipt)
         assert receipt.artifact_count == 1
         assert len(receipt.ledger_sha256) == 64
+        assert receipt.durable is False
+        expected = (
+            "local-dirfd-diagnostic-only" if os.name == "posix" else "unsupported"
+        )
+        assert receipt.durability == expected
 
-    def test_finalize_sorts_artifacts_by_run_id_then_kind(
-        self, tmp_path: Path
-    ) -> None:
+    def test_finalize_sorts_artifacts_by_run_id_then_kind(self, tmp_path: Path) -> None:
         collector = EvidenceCollector(tmp_path / "run")
         collector.collect("cell2", "receipt", b"r2")
         collector.collect("cell1", "transcript", b"tx1")
         collector.collect("cell1", "receipt", b"r1")
         receipt = collector.finalize()
         ids = [(a.run_id, a.kind) for a in receipt.artifacts]
-        assert ids == [("cell1", "receipt"), ("cell1", "transcript"), ("cell2", "receipt")]
+        assert ids == [
+            ("cell1", "receipt"),
+            ("cell1", "transcript"),
+            ("cell2", "receipt"),
+        ]
 
     def test_finalize_ledger_digest_changes_when_payload_changes(
         self, tmp_path: Path
@@ -119,9 +128,7 @@ class TestEvidenceCollector:
         assert len(receipt.ledger_sha256) == 64
         assert receipt.artifacts == ()
 
-    def test_artifact_file_content_matches_receipt_sha256(
-        self, tmp_path: Path
-    ) -> None:
+    def test_artifact_file_content_matches_receipt_sha256(self, tmp_path: Path) -> None:
         import hashlib
 
         payload = b"binary content"
@@ -155,6 +162,36 @@ class TestEvidenceCollector:
 
         collector = EvidenceCollector(tmp_path / "run")
         artifact = collector.collect("cell1", "transcript", b"sealed")
-        collector.finalize()
+        receipt = collector.finalize()
         mode = stat.S_IMODE(Path(artifact.path).stat().st_mode)
-        assert mode & stat.S_IWRITE == 0, "artifact must not be owner-writable after finalize"
+        if os.name == "posix":
+            assert mode & stat.S_IWRITE == 0, (
+                "artifact must not be owner-writable after finalize"
+            )
+        else:
+            assert receipt.durability == "unsupported"
+
+    def test_windows_fallback_is_bounded_and_explicitly_non_durable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # CI job 93194929365: Windows cannot use the POSIX / + openat walk.
+        monkeypatch.setattr(production_collector, "_dirfd_supported", lambda: False)
+        root = (tmp_path / "windows-e0").resolve()
+        collector = EvidenceCollector(root)
+        artifact = collector.collect("cell1", "transcript", b"diagnostic")
+        receipt = collector.finalize()
+        collector.close()
+        assert Path(artifact.path).read_bytes() == b"diagnostic"
+        assert receipt.durable is False
+        assert receipt.durability == "unsupported"
+
+    def test_windows_fallback_rejects_preexisting_artifact(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # CI job 93194929365: fallback writes remain exclusive, never overwrite.
+        monkeypatch.setattr(production_collector, "_dirfd_supported", lambda: False)
+        collector = EvidenceCollector((tmp_path / "windows-e0").resolve())
+        collector.collect("cell1", "transcript", b"first")
+        with pytest.raises(FileExistsError):
+            collector.collect("cell1", "transcript", b"second")
+        assert (collector.root / "cell1" / "transcript").read_bytes() == b"first"

@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from benchmarks.codegraph_compare import production_collector
 from benchmarks.codegraph_compare.canary_evidence import create_canary_manifest
 from benchmarks.codegraph_compare.production_anchor import (
     AnchorKey,
@@ -355,8 +356,11 @@ def test_replayed_signed_claim_fails_fresh_dispatch_challenge(tmp_path: Path):
     assert "claim receipt binding or lifetime mismatch" in second.violations[0]
 
 
-def test_rename_race_local_evidence_cannot_claim_terminal_durability(tmp_path: Path):
-    # Incident 2026-07-03: path stat/open/write races falsely claimed durability.
+def test_rename_race_local_evidence_cannot_claim_terminal_durability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # Incident 2026-07-03 / CI job 93194929365: local Windows E0 is not authority.
+    monkeypatch.setattr(production_collector, "_dirfd_supported", lambda: False)
     request, config, attestation, judge, authorities = _inputs(tmp_path)
     moved = tmp_path / "moved-evidence"
 
