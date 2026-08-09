@@ -47,6 +47,8 @@ class OfflineRehearsalReceipt:
     spec_hash: str
     evidence_digest: str
     artifact_count: int
+    evidence_durable: bool
+    evidence_durability: str
     attestation_verified: bool
     synthetic_judge_signature_verified: bool
     independent_judge_available: bool
@@ -158,7 +160,13 @@ def run_offline_rehearsal(
         b'{"cost_usd":0.0,"input_tokens":0,"output_tokens":0}\n',
     )
     collection = collector.finalize()
-    if any(
+    expected_durability = {
+        "local-dirfd-diagnostic-only",
+        "unsupported",
+    }
+    if collection.durable or collection.durability not in expected_durability:
+        raise RuntimeError("offline rehearsal collector overstated E0 durability")
+    if collection.durability == "local-dirfd-diagnostic-only" and any(
         stat.S_IMODE(Path(item.path).stat().st_mode) & stat.S_IWUSR
         for item in collection.artifacts
     ):
@@ -254,6 +262,8 @@ def run_offline_rehearsal(
         spec_hash=spec.spec_hash,
         evidence_digest=collection.ledger_sha256,
         artifact_count=collection.artifact_count,
+        evidence_durable=collection.durable,
+        evidence_durability=collection.durability,
         attestation_verified=True,
         synthetic_judge_signature_verified=True,
         independent_judge_available=False,

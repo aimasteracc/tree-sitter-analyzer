@@ -29,6 +29,9 @@ jq -e '
   .status == "PASS" and
   .execution_mode == "offline-rehearsal" and
   .artifact_count == 2 and
+  .evidence_durable == false and
+  (.evidence_durability == "local-dirfd-diagnostic-only" or
+   .evidence_durability == "unsupported") and
   .attestation_verified == true and
   .synthetic_judge_signature_verified == true and
   .independent_judge_available == false and
@@ -44,8 +47,11 @@ jq -e '
 ' "$WORK_PARENT/receipt.json"
 ```
 
-`synthetic_judge_signature_verified=true` proves only that the same-process
-rehearsal record is canonically signed. It is deliberately not represented as an
+`evidence_durable=false` is mandatory for this E0 rehearsal. POSIX reports
+`local-dirfd-diagnostic-only` after mode sealing; Windows reports `unsupported`
+because it has no equivalent `openat`/`dir_fd` durability boundary. Neither mode
+is production evidence. `synthetic_judge_signature_verified=true` proves only
+that the same-process rehearsal record is canonically signed. It is deliberately not represented as an
 independent judgment. `denial_probe_qualification_status=NOT_EVALUATED` with role-key path and material independence violations proves the production gate remains closed. The
 ephemeral key, `offline-rehearsal-only` cell, `offline-fixture-no-model` model
 identity, and `production_dispatch_allowed=false` prevent reuse as canary

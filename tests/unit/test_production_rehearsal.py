@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from benchmarks.codegraph_compare import production_collector
 from benchmarks.codegraph_compare.production_rehearsal import run_offline_rehearsal
 
 
@@ -74,6 +75,25 @@ def test_offline_rehearsal_rejects_reuse_of_work_root(tmp_path: Path) -> None:
         run_offline_rehearsal(work_root, now_unix=1_900_000_000)
 
 
+def test_offline_rehearsal_accepts_windows_unsupported_e0_collection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # CI job 93196343962: Windows E0 collection has no POSIX mode sealing.
+    monkeypatch.setattr(production_collector, "_dirfd_supported", lambda: False)
+    receipt = run_offline_rehearsal(
+        tmp_path / "windows-offline-rehearsal", now_unix=1_900_000_000
+    )
+    assert (
+        receipt.status,
+        receipt.evidence_durable,
+        receipt.evidence_durability,
+        receipt.evidence_level,
+        receipt.model_callbacks_invoked,
+        receipt.provider_requests,
+        receipt.cost_usd,
+    ) == ("PASS", False, "unsupported", "E0", 0, 0, 0.0)
+
+
 def test_offline_rehearsal_cli_receipt_matches_runbook_contract(tmp_path: Path) -> None:
     completed = subprocess.run(
         [
@@ -97,6 +117,15 @@ def test_offline_rehearsal_cli_receipt_matches_runbook_contract(tmp_path: Path) 
         ["ROLE_KEYS_NOT_INDEPENDENT", "ROLE_KEY_MATERIAL_NOT_INDEPENDENT"],
         True,
     )
+    expected_durability = (
+        "local-dirfd-diagnostic-only"
+        if production_collector._dirfd_supported()
+        else "unsupported"
+    )
+    assert (
+        payload["evidence_durable"],
+        payload["evidence_durability"],
+    ) == (False, expected_durability)
     assert (
         payload["model_callbacks_invoked"],
         payload["provider_requests"],
