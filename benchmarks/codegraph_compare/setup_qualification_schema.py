@@ -46,6 +46,7 @@ _EXECUTION_KEYS = frozenset(
     {
         "id",
         "argv",
+        "cwd",
         "exit_code",
         "environment_digest",
         "stdout_bytes",
@@ -99,6 +100,10 @@ def _parse_finite_float(value: str) -> float:
 _MAX_STRICT_JSON_BYTES = 4 * 1024 * 1024
 _MAX_STRICT_JSON_DEPTH = 128
 _MAX_STRICT_JSON_NODES = 100_000
+_MAX_DIRECT_STRING_UTF8_BYTES = 1024 * 1024
+_MAX_DIRECT_INTEGER_DIGITS = 4096
+_MAX_DIRECT_INTEGER_BITS = 16_384
+_MAX_DIRECT_ENCODED_SCALAR_BYTES = _MAX_STRICT_JSON_BYTES
 
 
 def _validate_json_envelope(payload: bytes) -> None:
@@ -129,9 +134,31 @@ def _validate_json_envelope(payload: bytes) -> None:
                 break
 
 
+def _encoded_string_size(value: str) -> int:
+    """Measure one canonical JSON string without allocating its encoded copy."""
+    encoded_bytes = 2  # surrounding quotes
+    utf8_bytes = 0
+    for character in value:
+        codepoint = ord(character)
+        if 0xD800 <= codepoint <= 0xDFFF:
+            raise ValueError("Direct JSON strings must contain valid Unicode")
+        width = len(character.encode("utf-8"))
+        utf8_bytes += width
+        if utf8_bytes > _MAX_DIRECT_STRING_UTF8_BYTES:
+            raise ValueError("Direct JSON string exceeds the UTF-8 byte ceiling")
+        if character in {'"', "\\"}:
+            encoded_bytes += 2
+        elif codepoint < 0x20:
+            encoded_bytes += 2 if character in "\b\f\n\r\t" else 6
+        else:
+            encoded_bytes += width
+    return encoded_bytes
+
+
 def validate_direct_json_bounds(value: object) -> None:
     """Bound a caller-provided JSON tree before recursive schema/hash work."""
     nodes = 0
+    encoded_scalar_bytes = 0
     stack: list[tuple[object, int]] = [(value, 1)]
     while stack:
         item, depth = stack.pop()
@@ -139,11 +166,35 @@ def validate_direct_json_bounds(value: object) -> None:
         if depth > _MAX_STRICT_JSON_DEPTH or nodes > _MAX_STRICT_JSON_NODES:
             raise ValueError("Direct JSON exceeds trusted depth or node limits")
         if type(item) is dict:
-            stack.extend((child, depth + 1) for child in item.values())
+            for key, child in item.items():
+                if type(key) is not str:
+                    raise ValueError("Direct JSON object keys must be strings")
+                encoded_scalar_bytes += _encoded_string_size(key)
+                stack.append((child, depth + 1))
         elif type(item) is list:
             stack.extend((child, depth + 1) for child in item)
+        elif type(item) is str:
+            encoded_scalar_bytes += _encoded_string_size(item)
+        elif type(item) is int:
+            bits = abs(item).bit_length()
+            if bits > _MAX_DIRECT_INTEGER_BITS:
+                raise ValueError("Direct JSON integer exceeds the bit ceiling")
+            digits = str(abs(item))
+            if len(digits) > _MAX_DIRECT_INTEGER_DIGITS:
+                raise ValueError("Direct JSON integer exceeds the digit ceiling")
+            encoded_scalar_bytes += len(digits) + (1 if item < 0 else 0)
+        elif type(item) is float:
+            if not math.isfinite(item):
+                raise ValueError("Direct JSON numbers must be finite")
+            encoded_scalar_bytes += len(repr(item))
+        elif item is True:
+            encoded_scalar_bytes += 4
+        elif item is False or item is None:
+            encoded_scalar_bytes += 5 if item is False else 4
         else:
-            continue
+            raise ValueError("Direct JSON must use exact JSON scalar types")
+        if encoded_scalar_bytes > _MAX_DIRECT_ENCODED_SCALAR_BYTES:
+            raise ValueError("Direct JSON exceeds the aggregate encoded scalar budget")
 
 
 def strict_json_loads(payload: bytes) -> Any:
@@ -404,6 +455,7 @@ def validate_receipt_schema_v2(receipt: object) -> None:
         argv = _require_string_array(execution["argv"], f"{name}.argv")
         if not argv:
             raise ValueError(f"{name}.argv must not be empty")
+        _require_path(execution["cwd"], f"{name}.cwd", absolute=True)
         _require_int(execution["exit_code"], f"{name}.exit_code")
         _require_hash(execution["environment_digest"], f"{name}.environment_digest")
         if "oracle_spec_hash" in execution:

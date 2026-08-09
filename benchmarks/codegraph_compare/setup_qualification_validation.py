@@ -103,7 +103,7 @@ def _read_retained_receipt(
     *, cell_fd: int, plan: CellPlanV1, supplied: Mapping[str, Any]
 ) -> dict[str, Any]:
     """Stably read the plan-bound receipt from the pinned cell snapshot."""
-    cell_namespace = f"cells/{plan.repo_id}--{plan.arm_id}/"
+    cell_namespace = f"cells/{plan.repo_id}/{plan.arm_id}/"
     if not plan.artifact_path.startswith(cell_namespace):
         raise ValueError("Receipt artifact is outside its canonical cell namespace")
     relative = canonical_relative_path(plan.artifact_path[len(cell_namespace) :])
@@ -163,6 +163,10 @@ def validate_cell_receipt(
 ) -> tuple[str, ...]:
     """Strictly validate one receipt against trusted plans and independent evidence."""
     failures: list[str] = []
+    try:
+        validate_direct_json_bounds(receipt)
+    except (RecursionError, TypeError, ValueError):
+        return ("RECEIPT_SCHEMA_MISMATCH",)
     cell_fd: int | None = None
     try:
         if (
@@ -390,7 +394,7 @@ def _validate_open_cell_receipt(
         if index_path != plan.index_path or cell_fd is None or not snapshot_trusted:
             raise ValueError
         canonical_relative_path(index_path)
-        cell_namespace = f"cells/{plan.repo_id}--{plan.arm_id}/"
+        cell_namespace = f"cells/{plan.repo_id}/{plan.arm_id}/"
         if not index_path.startswith(cell_namespace):
             raise ValueError
         index_relative = index_path[len(cell_namespace) :]
@@ -501,6 +505,7 @@ def _validate_open_cell_receipt(
         frozen_argv = {
             spec.execution_id: list(spec.argv) for spec in expected_executions
         }
+        frozen_cwd = {spec.execution_id: spec.cwd for spec in expected_executions}
         for item in executions:
             blob_keys = ("stdout_bytes", "stderr_bytes", "query_bytes", "index_bytes")
             blobs = tuple(item.get(key) for key in blob_keys)
@@ -520,6 +525,7 @@ def _validate_open_cell_receipt(
                 item.get("exit_code") != 0
                 or isinstance(item.get("exit_code"), bool)
                 or item.get("argv") != frozen_argv.get(item.get("id"))
+                or item.get("cwd") != frozen_cwd.get(item.get("id"))
                 or item.get("environment_digest")
                 != next(
                     spec.environment_digest

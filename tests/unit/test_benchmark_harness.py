@@ -8377,6 +8377,7 @@ def test_cell_plan_rejects_reserved_oracle_execution_ids(
         ExecutionSpecV1(
             spec.oracle_id,
             ("oracle", spec.oracle_id, plan.index_path),
+            plan.executions[0].cwd,
             plan.executions[0].environment_digest,
         )
         for spec in oracles
@@ -8419,6 +8420,7 @@ def test_execution_spec_rejects_mutable_argv():
         ExecutionSpecV1(
             "build",
             ["tool", "build"],  # type: ignore[arg-type]
+            "/tmp",
             "0" * 64,
         )
 
@@ -8693,8 +8695,8 @@ def _qualification_plans(tmp_path: Path):
             repo,
             arm,
             1,
-            f"cells/{repo}--{arm}/cell-receipt.json",
-            f"cells/{repo}--{arm}/index",
+            f"cells/{repo}/{arm}/cell-receipt.json",
+            f"cells/{repo}/{arm}/index",
             source_checkout.as_posix(),
             replace(base, repo_id=repo, commit=commits[repo]),
             tool,
@@ -8710,8 +8712,11 @@ def _qualification_plans(tmp_path: Path):
                         "--config",
                         str(config_path),
                         "--index",
-                        f"cells/{repo}--{arm}/index",
+                        (tmp_path / "cells" / repo / arm / "index")
+                        .resolve()
+                        .as_posix(),
                     ),
+                    tmp_path.resolve().as_posix(),
                     FROZEN_EXECUTION_ENVIRONMENT_DIGEST,
                 ),
                 ExecutionSpecV1(
@@ -8724,8 +8729,11 @@ def _qualification_plans(tmp_path: Path):
                         "--source",
                         source_checkout.as_posix(),
                         "--index",
-                        f"cells/{repo}--{arm}/index",
+                        (tmp_path / "cells" / repo / arm / "index")
+                        .resolve()
+                        .as_posix(),
                     ),
+                    source_checkout.as_posix(),
                     FROZEN_EXECUTION_ENVIRONMENT_DIGEST,
                 ),
                 ExecutionSpecV1(
@@ -8736,8 +8744,11 @@ def _qualification_plans(tmp_path: Path):
                         "--config",
                         str(config_path),
                         "--index",
-                        f"cells/{repo}--{arm}/index",
+                        (tmp_path / "cells" / repo / arm / "index")
+                        .resolve()
+                        .as_posix(),
                     ),
+                    tmp_path.resolve().as_posix(),
                     FROZEN_EXECUTION_ENVIRONMENT_DIGEST,
                 ),
                 *(
@@ -8753,8 +8764,11 @@ def _qualification_plans(tmp_path: Path):
                                 (),
                             ),
                             "--index",
-                            f"cells/{repo}--{arm}/index",
+                            (tmp_path / "cells" / repo / arm / "index")
+                            .resolve()
+                            .as_posix(),
                         ),
+                        tmp_path.resolve().as_posix(),
                         FROZEN_EXECUTION_ENVIRONMENT_DIGEST,
                     )
                     for spec in _qualification_oracles()
@@ -8820,6 +8834,7 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
         item = {
             "id": identifier,
             "argv": list(execution.argv),
+            "cwd": execution.cwd,
             "exit_code": 0,
             "environment_digest": execution.environment_digest,
             "stdout_bytes": blob(f"raw/{number}-stdout", stdout),
@@ -9287,7 +9302,7 @@ def test_direct_receipt_rejects_excessive_nesting_without_recursion_error(
         plan=plan,
         cell_root=cell_root,
         verifier_config=_qualification_verifier_config(),
-    ) == ("RETAINED_RECEIPT_MISMATCH",)
+    ) == ("RECEIPT_SCHEMA_MISMATCH",)
 
 
 def test_direct_receipt_rejects_excessive_node_count_before_hash(tmp_path: Path):
@@ -9307,7 +9322,176 @@ def test_direct_receipt_rejects_excessive_node_count_before_hash(tmp_path: Path)
             verifier_config=_qualification_verifier_config(),
         )
 
-    assert failures == ("RETAINED_RECEIPT_MISMATCH",)
+    assert failures == ("RECEIPT_SCHEMA_MISMATCH",)
+
+
+@pytest.mark.parametrize(
+    "query_key",
+    ("config", "--INDEX", "source_path", "cwd", "tool-path"),
+)
+def test_oracle_spec_rejects_harness_owned_query_flags(query_key: str):
+    # PR #1247: query expansion cannot override harness-selected execution inputs.
+    from benchmarks.codegraph_compare.setup_qualification import OracleSpecV1
+
+    with pytest.raises(ValueError, match="harness-owned flags"):
+        OracleSpecV1(
+            "reserved.query",
+            "symbol",
+            ((query_key, "decoy"),),
+            {"matches": []},
+        )
+
+
+def test_oracle_spec_rejects_query_flag_normalization_collision():
+    # PR #1247: syntactic aliases must not produce duplicate parser options.
+    from benchmarks.codegraph_compare.setup_qualification import OracleSpecV1
+
+    with pytest.raises(ValueError, match="collide after normalization"):
+        OracleSpecV1(
+            "alias.query",
+            "symbol",
+            (("foo-bar", "one"), ("foo_bar", "two")),
+            {"matches": []},
+        )
+
+
+def test_cell_plan_rejects_noncanonical_execution_cwd(tmp_path: Path):
+    # PR #1247: every frozen command is bound to an authenticated working directory.
+    from dataclasses import replace
+
+    plan = _qualification_plans(tmp_path)[0]
+    changed = replace(plan.executions[2], cwd=plan.source_checkout_path)
+
+    with pytest.raises(ValueError, match="trusted experiment root"):
+        replace(plan, executions=(*plan.executions[:2], changed, *plan.executions[3:]))
+
+
+def test_strict_validator_rejects_execution_cwd_mutation(tmp_path: Path):
+    # PR #1247: a receipt cannot relocate an otherwise exact frozen command.
+    import copy
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
+    receipt["raw_executions"][0]["cwd"] = plan.source_checkout_path
+    _resign_qualification_receipt(receipt)
+
+    assert _validate_qualification_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
+        "RAW_EXECUTION_EVIDENCE_MISSING",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
+
+
+def test_strict_validator_rejects_execution_environment_mutation(tmp_path: Path):
+    # PR #1247: receipt environment evidence must equal the frozen plan digest.
+    import copy
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
+    receipt["raw_executions"][0]["environment_digest"] = "0" * 64
+    _resign_qualification_receipt(receipt)
+
+    assert _validate_qualification_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
+        "RAW_EXECUTION_EVIDENCE_MISSING",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
+
+
+@pytest.mark.parametrize(
+    "index_path",
+    (
+        "cells/vscode/tsa-warm",
+        "cells/vscode/tsa-warm/index/shard",
+        "cells/vscode/tsa-warm/raw",
+        "cells/vscode/tsa-warm/raw/index",
+        "cells/vscode/tsa-warm/cell-receipt.json",
+        "plan.json",
+        "manifest/index",
+    ),
+)
+def test_cell_plan_rejects_nonexact_or_reserved_index_path(
+    tmp_path: Path, index_path: str
+):
+    # PR #1247: index output cannot overlap retained evidence or control documents.
+    from dataclasses import replace
+
+    plan = _qualification_plans(tmp_path)[0]
+
+    with pytest.raises(ValueError, match="Index path"):
+        replace(plan, index_path=index_path)
+
+
+def test_direct_json_bounds_rejects_string_above_utf8_ceiling():
+    # PR #1247: direct receipts get the same scalar allocation boundary as bytes.
+    from benchmarks.codegraph_compare.setup_qualification_schema import (
+        validate_direct_json_bounds,
+    )
+
+    with pytest.raises(ValueError, match="UTF-8 byte ceiling"):
+        validate_direct_json_bounds("x" * (1024 * 1024 + 1))
+
+
+def test_direct_json_bounds_rejects_integer_above_bit_ceiling():
+    # PR #1247: hashing never formats an attacker-sized direct integer.
+    from benchmarks.codegraph_compare.setup_qualification_schema import (
+        validate_direct_json_bounds,
+    )
+
+    with pytest.raises(ValueError, match="bit ceiling"):
+        validate_direct_json_bounds(1 << 16_384)
+
+
+def test_direct_json_bounds_rejects_integer_above_digit_ceiling():
+    # PR #1247: decimal conversion is bounded independently of integer bit size.
+    from benchmarks.codegraph_compare.setup_qualification_schema import (
+        validate_direct_json_bounds,
+    )
+
+    with pytest.raises(ValueError, match="digit ceiling"):
+        validate_direct_json_bounds(10**4096)
+
+
+def test_direct_json_bounds_rejects_aggregate_scalar_budget():
+    # PR #1247: many individually valid strings share one encoded byte budget.
+    import benchmarks.codegraph_compare.setup_qualification_schema as schema
+
+    with patch.object(schema, "_MAX_DIRECT_ENCODED_SCALAR_BYTES", 15):
+        with pytest.raises(ValueError, match="aggregate encoded scalar budget"):
+            schema.validate_direct_json_bounds(["123456", "abcdef"])
+
+
+def test_direct_receipt_scalar_bounds_run_before_hashing(tmp_path: Path):
+    # PR #1247: direct receipt bounds precede canonical hashing and hex decoding.
+    import benchmarks.codegraph_compare.setup_qualification_validation as validation
+
+    plan = _qualification_plans(tmp_path)[0]
+    receipt = _write_valid_qualification_receipt(tmp_path / "cell", plan)
+    receipt["receipt_hash"] = "x" * (1024 * 1024 + 1)
+
+    with patch.object(validation, "_sha256", side_effect=AssertionError("hashed")):
+        failures = validation.validate_cell_receipt(
+            receipt,
+            plan=plan,
+            cell_root=tmp_path / "cell",
+            verifier_config=_qualification_verifier_config(),
+        )
+
+    assert failures == ("RECEIPT_SCHEMA_MISMATCH",)
 
 
 def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
@@ -9851,7 +10035,7 @@ def test_strict_validator_rejects_nonfinite_or_boolean_resource_value(
     receipt["resource_observation"]["wall_seconds"] = value
     _resign_qualification_receipt(receipt)
     expected = (
-        ("RETAINED_RECEIPT_MISMATCH",)
+        ("RECEIPT_SCHEMA_MISMATCH",)
         if canonicalization_failure
         else (
             "RECEIPT_SCHEMA_MISMATCH",
@@ -10216,7 +10400,7 @@ def test_validator_rejects_null_digest_signatures_after_core_failure(tmp_path: P
         cell_root=cell_root,
         verifier_config=_qualification_verifier_config(),
     )
-    assert failures == ("RETAINED_RECEIPT_MISMATCH",)
+    assert failures == ("RECEIPT_SCHEMA_MISMATCH",)
 
 
 def test_strict_validator_rejects_receipt_extension_even_with_matching_hash(
@@ -10569,7 +10753,7 @@ def test_strict_validator_rejects_decoy_receipt_index_path(tmp_path: Path):
     decoy = cell_root / "decoy"
     decoy.mkdir()
     (decoy / "index.bin").write_bytes(b"frozen index")
-    receipt["index_path"] = f"cells/{plan.repo_id}--{plan.arm_id}/decoy"
+    receipt["index_path"] = f"cells/{plan.repo_id}/{plan.arm_id}/decoy"
     _resign_qualification_receipt(receipt)
 
     assert _validate_qualification_receipt(

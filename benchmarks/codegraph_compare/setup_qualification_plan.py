@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import os
+import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -23,6 +24,27 @@ REPOSITORIES = ("vscode", "excalidraw", "django", "tokio", "okhttp", "gin", "ala
 INDEXED_ARMS = ("tsa-warm", "codegraph-warm")
 EXPECTED_CELLS = tuple((repo, arm) for repo in REPOSITORIES for arm in INDEXED_ARMS)
 INDEX_PATH_PLACEHOLDER = "{plan.index_path}"
+_RESERVED_ORACLE_QUERY_FLAGS = frozenset(
+    {
+        "command",
+        "config",
+        "cwd",
+        "format",
+        "help",
+        "index",
+        "index-path",
+        "kind",
+        "output",
+        "project-root",
+        "root",
+        "source",
+        "source-path",
+        "tool",
+        "tool-path",
+        "version",
+        "working-directory",
+    }
+)
 ZERO_COUNTERS = {
     "model_calls": 0,
     "provider_requests": 0,
@@ -256,12 +278,22 @@ class OracleSpecV1:
         ):
             raise ValueError("Oracle query must use exact immutable string pairs")
         query_keys = tuple(key for key, _ in self.query)
+        normalized_keys = tuple(
+            re.sub(r"[-_]+", "-", key.lstrip("-").casefold()) for key in query_keys
+        )
         if (
             not self.query
             or self.query != tuple(sorted(self.query))
             or len(query_keys) != len(set(query_keys))
         ):
             raise ValueError("Oracle parameter keys must be sorted and unique")
+        if any(
+            not key or key in _RESERVED_ORACLE_QUERY_FLAGS for key in normalized_keys
+        ) or len(normalized_keys) != len(set(normalized_keys)):
+            raise ValueError(
+                "Oracle query flags must not collide after normalization or use "
+                "harness-owned flags"
+            )
         object.__setattr__(
             self, "expected_result", _canonical_typed_json_bytes(self.expected_result)
         )
@@ -364,19 +396,26 @@ class ExecutionSpecV1:
 
     execution_id: str
     argv: tuple[str, ...]
+    cwd: str
     environment_digest: str
 
     def __post_init__(self) -> None:
+        cwd = Path(self.cwd) if type(self.cwd) is str else None
         if (
             type(self.execution_id) is not str
             or not self.execution_id
             or type(self.argv) is not tuple
             or not self.argv
             or any(type(arg) is not str or not arg for arg in self.argv)
+            or cwd is None
+            or not cwd.is_absolute()
+            or cwd.as_posix() != self.cwd
+            or cwd.resolve() != cwd
             or self.environment_digest != FROZEN_EXECUTION_ENVIRONMENT_DIGEST
         ):
             raise ValueError(
-                "Execution IDs, argv, and frozen environment digest must be exact"
+                "Execution IDs, argv, canonical cwd, and frozen environment digest "
+                "must be exact"
             )
 
 
@@ -431,11 +470,29 @@ class CellPlanV1:
             or source_path.resolve() != source_path
         ):
             raise ValueError("Source checkout path must be canonical and absolute")
-        cell_namespace = f"cells/{self.repo_id}--{self.arm_id}"
+        cell_namespace = f"cells/{self.repo_id}/{self.arm_id}"
         if artifact_path != f"{cell_namespace}/cell-receipt.json":
             raise ValueError("Receipt artifact must use its canonical cell namespace")
-        if not index_path.startswith(f"{cell_namespace}/"):
-            raise ValueError("Index path must be beneath its canonical cell namespace")
+        expected_index_path = f"{cell_namespace}/index"
+        reserved_namespaces = (
+            f"{cell_namespace}/raw",
+            f"{cell_namespace}/cell-receipt.json",
+            "plan",
+            "plan.json",
+            "manifest",
+            "manifest.json",
+        )
+        if any(
+            index_path == reserved
+            or index_path.startswith(f"{reserved}/")
+            or reserved.startswith(f"{index_path}/")
+            for reserved in reserved_namespaces
+        ):
+            raise ValueError(
+                "Index path must not overlap a reserved evidence namespace"
+            )
+        if index_path != expected_index_path:
+            raise ValueError("Index path must use the exact canonical cell index path")
         if self.eligibility.repo_id != self.repo_id:
             raise ValueError("Eligibility is not bound to the planned repository")
         oracle_ids = tuple(spec.oracle_id for spec in self.oracle_specs)
@@ -455,6 +512,23 @@ class CellPlanV1:
                 "Plan must freeze ordered delete/build/health/symbol/call executions"
             )
         oracle_by_id = {spec.oracle_id: spec for spec in self.oracle_specs}
+        execution_root = Path(self.executions[0].cwd)
+        absolute_index_path = (execution_root / index_path).resolve()
+        if absolute_index_path.as_posix() != (execution_root / index_path).as_posix():
+            raise ValueError(
+                "Plan index must resolve canonically beneath execution cwd"
+            )
+        expected_cwds = (
+            execution_root.as_posix(),
+            self.source_checkout_path,
+            execution_root.as_posix(),
+            *(execution_root.as_posix() for _ in self.oracle_specs),
+        )
+        if tuple(spec.cwd for spec in self.executions) != expected_cwds:
+            raise ValueError(
+                "Frozen execution cwd must use the trusted experiment root or canonical source checkout"
+            )
+        trusted_index_argument = absolute_index_path.as_posix()
         expected_argv: list[tuple[str, ...]] = [
             (
                 self.tool.path,
@@ -462,7 +536,7 @@ class CellPlanV1:
                 "--config",
                 self.config.path,
                 "--index",
-                self.index_path,
+                trusted_index_argument,
             ),
             (
                 self.tool.path,
@@ -472,7 +546,7 @@ class CellPlanV1:
                 "--source",
                 self.source_checkout_path,
                 "--index",
-                self.index_path,
+                trusted_index_argument,
             ),
             (
                 self.tool.path,
@@ -480,7 +554,7 @@ class CellPlanV1:
                 "--config",
                 self.config.path,
                 "--index",
-                self.index_path,
+                trusted_index_argument,
             ),
         ]
         for execution in self.executions[3:]:
@@ -496,12 +570,13 @@ class CellPlanV1:
                     self.config.path,
                     *query_flags,
                     "--index",
-                    self.index_path,
+                    trusted_index_argument,
                 )
             )
         if tuple(spec.argv for spec in self.executions) != tuple(expected_argv):
             raise ValueError(
-                "Frozen execution argv must exactly bind authenticated tool/config, canonical source checkout, and plan-bound index path"
+                "Frozen execution argv must exactly bind authenticated tool/config, "
+                "canonical source checkout, and absolute trusted plan-bound index path"
             )
         parse_allowlist = _sorted_paths(
             self.parse_error_allowlist, "parse-error allowlist"
