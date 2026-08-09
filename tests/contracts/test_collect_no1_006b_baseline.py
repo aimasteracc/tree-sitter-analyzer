@@ -70,7 +70,37 @@ def test_receipt_binds_exact_collector_tool_lock_and_export() -> None:
 
 def test_schema_rejects_invalid_rfc3339_timestamp() -> None:
     report=mutated(("collection_started_at_utc",),"not-a-date")
-    with pytest.raises(ValueError, match="Invalid isoformat"): collector.validate_receipt(report,schema())
+    with pytest.raises(ValueError, match="strict RFC 3339"): collector.validate_receipt(report,schema())
+
+
+def test_validator_rejects_space_separated_timestamp() -> None:
+    report=mutated(("collection_started_at_utc",),"2026-08-09 23:09:51+00:00")
+    with pytest.raises(ValueError, match="strict RFC 3339"): collector.validate_receipt(report,schema())
+
+
+def test_validator_rejects_lowercase_utc_designator() -> None:
+    report=mutated(("collection_started_at_utc",),"2026-08-09T23:09:51z")
+    with pytest.raises(ValueError, match="strict RFC 3339"): collector.validate_receipt(report,schema())
+
+
+def test_validator_rejects_naive_timestamp() -> None:
+    report=mutated(("collection_started_at_utc",),"2026-08-09T23:09:51")
+    with pytest.raises(ValueError, match="strict RFC 3339"): collector.validate_receipt(report,schema())
+
+
+def test_rfc3339_parser_round_trips_fractional_offset_timestamp() -> None:
+    value="2026-08-09T23:09:51.800365+09:30"
+    assert collector.parse_rfc3339(value).isoformat() == value
+
+
+def test_rfc3339_parser_rejects_out_of_range_timestamp() -> None:
+    with pytest.raises(ValueError, match="month must be in"):
+        collector.parse_rfc3339("2026-13-09T23:09:51Z")
+
+
+def test_schema_retains_date_time_format_annotations() -> None:
+    properties=schema()["properties"]
+    assert [properties[key]["format"] for key in ("collection_started_at_utc","collection_finished_at_utc")] == ["date-time","date-time"]
 
 
 def test_validator_rejects_reverse_timestamp_order() -> None:
@@ -222,6 +252,33 @@ def test_file_budget_rejects_oversized_artifact(tmp_path: Path) -> None:
 def test_collector_rejects_unbounded_repeat_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(collector.platform, "system", lambda: "Darwin")
     with pytest.raises(ValueError,match="between 3 and 20"): collector.collect(REPO,tmp_path/"receipt.json",21,collector.EXPECTED_SUBJECT_COMMIT)
+
+def test_rfc_generated_summary_equals_checked_in_receipt() -> None:
+    text=RFC.read_text()
+    generated=text.split("<!-- BEGIN GENERATED RECEIPT SUMMARY -->\n",1)[1].split("\n<!-- END GENERATED RECEIPT SUMMARY -->",1)[0]
+    assert generated == collector.render_receipt_summary(baseline())
+
+
+def test_collector_commit_is_ancestor_of_reviewed_head() -> None:
+    commit=baseline()["collector"]["commit"]
+    result=subprocess.run(["git","merge-base","--is-ancestor",commit,"HEAD"],cwd=REPO)
+    assert result.returncode == 0
+
+
+def test_fresh_clone_can_resolve_and_checkout_collector_commit(tmp_path: Path) -> None:
+    commit=baseline()["collector"]["commit"]
+    bare=tmp_path/"reviewed.git"; clone=tmp_path/"clone"; worktree=tmp_path/"collector"
+    subprocess.run(["git","init","--bare","-q",str(bare)],check=True)
+    subprocess.run(["git","push","-q",str(bare),"HEAD:refs/heads/reviewed"],cwd=REPO,check=True)
+    subprocess.run(["git","clone","-q","--no-local","--no-tags","--single-branch","--branch","reviewed",str(bare),str(clone)],check=True)
+    subprocess.run(["git","worktree","add","-q","--detach",str(worktree),commit],cwd=clone,check=True)
+    assert subprocess.run(["git","rev-parse","HEAD"],cwd=worktree,check=True,capture_output=True,text=True).stdout.strip() == commit
+
+
+def test_rfc_requires_merge_commit_to_preserve_collector_ancestry() -> None:
+    reproduction=RFC.read_text().split("## Reproduction of the descriptive receipt",1)[1].split("```bash",1)[0]
+    assert [phrase in reproduction for phrase in ("merge-commit strategy","Squash","rebase merges are prohibited","gh pr merge 1250","--merge")] == [True,True,True,True,True]
+
 
 def test_rfc_reproduction_command_uses_external_interpreter() -> None:
     # NO1-006B review 2026-08-10: a repo-local ignored venv made the clean gate reject the documented command.

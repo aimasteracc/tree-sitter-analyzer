@@ -355,14 +355,49 @@ def canonical_hash(report: dict[str, Any]) -> str:
 def load_schema() -> dict[str, Any]:
     return json.loads(SCHEMA.read_text())
 
+RFC3339_PATTERN = re.compile(
+    r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})\Z"
+)
+
+
+def parse_rfc3339(value: str) -> datetime:
+    if RFC3339_PATTERN.fullmatch(value) is None:
+        raise ValueError(f"timestamp is not strict RFC 3339: {value!r}")
+    parsed=datetime.fromisoformat(value[:-1]+"+00:00" if value.endswith("Z") else value)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"timestamp is not timezone-aware: {value!r}")
+    if datetime.fromisoformat(parsed.isoformat()) != parsed:
+        raise ValueError(f"timestamp does not round-trip: {value!r}")
+    return parsed
+
+
+def render_receipt_summary(report: dict[str, Any]) -> str:
+    m=report["measurements"]; source=report["source"]
+    cli=m["cli_startup"]; mcp=m["mcp_startup"]
+    cli_samples=", ".join(str(value) for value in cli["warm_ms"])
+    mcp_samples=", ".join(str(value) for value in mcp["warm_ms"])
+    return "\n".join([
+        f"Its canonical payload SHA-256 is `{report['canonical_payload_sha256']}`.",
+        "",
+        "| Axis | Measured value |",
+        "|---|---:|",
+        f"| root wheel artifact SHA-256 / bytes | `{source['root_wheel_sha256']}` / {source['root_wheel_artifact_size_bytes']:,} |",
+        "| network transfer | unknown (offline measurement) |",
+        f"| installed distribution files | {m['installed_size_bytes']:,} bytes across {m['installed_regular_file_count']:,} unique regular files |",
+        f"| dependencies excluding root (direct + transitive) | {m['dependency_distribution_count_excluding_root']} ({m['direct_dependency_count']} + {m['transitive_dependency_count']}) |",
+        f"| installed distributions including root | {m['installed_distribution_count_including_root']} |",
+        f"| CLI bytecode-cold; warm samples (ms) | {cli['cold_ms']}; {cli_samples} |",
+        f"| MCP protocol-ready cold; warm samples (ms) | {mcp['cold_ms']}; {mcp_samples} |",
+    ])
+
 
 def validate_receipt(report: dict[str, Any], schema: dict[str, Any]) -> None:
     from jsonschema import Draft202012Validator, FormatChecker
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(report)
     m=report["measurements"]; closure=report["dependency_closure"]; distributions=closure["distributions"]
     roles=[row["role"] for row in distributions]; names=[row["name"] for row in distributions]
-    started=datetime.fromisoformat(report["collection_started_at_utc"].replace("Z","+00:00"))
-    finished=datetime.fromisoformat(report["collection_finished_at_utc"].replace("Z","+00:00"))
+    started=parse_rfc3339(report["collection_started_at_utc"])
+    finished=parse_rfc3339(report["collection_finished_at_utc"])
     checks=[len(m["cli_startup"]["warm_ms"])==report["repeats"], len(m["mcp_startup"]["warm_ms"])==report["repeats"],
             m["direct_dependency_count"]==roles.count("direct"), m["transitive_dependency_count"]==roles.count("transitive"),
             m["installed_distribution_count_including_root"]==len(distributions), roles.count("root")==1,

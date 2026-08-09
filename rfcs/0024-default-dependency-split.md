@@ -91,6 +91,13 @@ atomically replaced, then the directory is fsynced.
 
 ## Reproduction of the descriptive receipt
 
+The receipt binds collector commit `712dfaabda2e8f3845c94c19545902b334875828`,
+which is an intermediate commit on this PR branch. Therefore PR #1250 **must be
+merged with GitHub's merge-commit strategy**, preserving branch ancestry. Squash
+and rebase merges are prohibited because they make the bound collector commit
+unreachable in a fresh clone. The merge orchestrator must use `gh pr merge 1250
+--merge` (not `--squash` or `--rebase`).
+
 Run this from any checkout of the repository, with CPython 3.14 and all locked
 artifacts already available in the offline uv cache. It creates separate clean,
 detached collector and subject worktrees. The collector's separately locked,
@@ -149,7 +156,8 @@ printf 'remove external run directory when finished: %s\n' "$RUN_ROOT"
 The post-hoc hardened collector produced
 [`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
 from collector commit `712dfaabda2e8f3845c94c19545902b334875828` and the distinct pinned subject.
-Its canonical payload SHA-256 is `f36cc5176f546306864dd11780c0203aafd1683d85a30e87efe9ab131f54c0e2`.
+<!-- BEGIN GENERATED RECEIPT SUMMARY -->
+Its canonical payload SHA-256 is `563fc3e80265fdb595182c7b2c1deb64e1626f15c1605cbf39496004b14ee06f`.
 
 | Axis | Measured value |
 |---|---:|
@@ -158,8 +166,9 @@ Its canonical payload SHA-256 is `f36cc5176f546306864dd11780c0203aafd1683d85a30e
 | installed distribution files | 89,982,491 bytes across 4,743 unique regular files |
 | dependencies excluding root (direct + transitive) | 64 (33 + 31) |
 | installed distributions including root | 65 |
-| CLI bytecode-cold; warm samples (ms) | 1891.219; 574.648, 604.485, 785.379, 574.203, 581.477 |
-| MCP protocol-ready cold; warm samples (ms) | 2113.429; 767.763, 836.009, 763.113, 786.522, 767.58 |
+| CLI bytecode-cold; warm samples (ms) | 1575.56; 565.793, 610.982, 609.892, 574.942, 640.368 |
+| MCP protocol-ready cold; warm samples (ms) | 2170.627; 829.817, 783.43, 775.074, 791.538, 808.726 |
+<!-- END GENERATED RECEIPT SUMMARY -->
 
 This is macOS arm64 CPython 3.14.3 only. Linux and Windows remain `unknown` and
 cannot pass admission. “Cold” does not claim an OS page-cache flush. The larger,
