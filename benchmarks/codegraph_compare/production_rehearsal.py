@@ -84,8 +84,11 @@ def run_offline_rehearsal(
     operator_root = work_root / "operator"
     bundle_root = work_root / "untrusted-bundle"
     qualification_root = work_root / "qualification-evidence"
-    production_artifact_root = work_root / "unused-production-artifacts"
+    production_artifact_root = (work_root / "unused-production-artifacts").resolve()
+    production_journal_root = (work_root / "unused-production-journal").resolve()
+    global_ledger_root = (work_root / "operator-global-ledger").resolve()
     operator_root.mkdir(parents=True, mode=0o700)
+    global_ledger_root.mkdir(mode=0o700)
     bundle_root.mkdir(mode=0o700)
 
     key = AnchorKey(raw=secrets.token_bytes(32))
@@ -115,13 +118,16 @@ def run_offline_rehearsal(
         request_limit=1,
         nonce=nonce,
         expires_at_unix=now + 600,
+        journal_root=str(production_journal_root),
+        evidence_root=str(production_artifact_root),
+        global_nonce_ledger_root=str(global_ledger_root),
     )
     attestation = prepare_attestation(
         spec.spec_hash,
         spec.nonce,
         spec.expires_at_unix,
         key,
-        budget_enforcement_mode="client-process-kill",
+        budget_enforcement_mode="provider",
         now_unix=now,
         key_id="rehearsal-spend",
     )
@@ -168,16 +174,19 @@ def run_offline_rehearsal(
         pinned_judge=anchor_path,
         immutable_artifact_root=production_artifact_root,
         trusted_roles=_ROLES,
-        provider_budget_enforced=False,
+        provider_budget_enforced=True,
         append_only_ledger=True,
         immutable_collector=True,
         isolated_execution=True,
         verification_to_use_closed=True,
         # A same-process rehearsal signature is deliberately not independent.
         independent_judge=False,
-        budget_enforcement_mode="client-process-kill",
+        budget_enforcement_mode="provider",
         spend_key_id="rehearsal-spend",
         judge_key_id="rehearsal-judge",
+        immutable_journal_root=production_journal_root,
+        global_nonce_ledger_root=global_ledger_root,
+        pinned_provider_receipt_key=anchor_path,
     )
     qualification = qualify_production_trust_v2(
         spec,
@@ -188,7 +197,10 @@ def run_offline_rehearsal(
         now_unix=now,
         expected_evidence_digest=collection.ledger_sha256,
     )
-    expected_violations = ("ROLE_KEYS_NOT_INDEPENDENT",)
+    expected_violations = (
+        "ROLE_KEYS_NOT_INDEPENDENT",
+        "ROLE_KEY_MATERIAL_NOT_INDEPENDENT",
+    )
     if (
         qualification.status != "NOT_EVALUATED"
         or qualification.violations != expected_violations

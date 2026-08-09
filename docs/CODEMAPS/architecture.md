@@ -104,7 +104,8 @@ rollback incidents.
 ## Offline-qualified production canary boundary
 
 `benchmarks/codegraph_compare/production_dispatch.py` is a one-shot, single-cell
-gateway with an `O_EXCL` reservation/terminal journal, dual role-pinned trust
-keys, frozen manifest/spec envelope validation, pre/post callback revalidation,
-and fail-closed partial evidence. It imports no provider implementation and does
+gateway with a global `O_EXCL` nonce/spec ledger, inode-pinned `openat`/
+`O_NOFOLLOW` reservation/evidence writes, material-independent role-pinned keys,
+strict v1 wire/event schemas, provider receipt verification, a dispatcher-owned
+exact-one callback wrapper, and fail-closed partial evidence. It imports no provider implementation and does
 not open `CanaryProtocol` production mode; NO1-003C remains human-authorized.

@@ -8,6 +8,7 @@ independent services described by issue #1223.
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -48,6 +49,17 @@ class ProductionRunSpecV1:
     request_limit: int
     nonce: str
     expires_at_unix: int
+    journal_root: str
+    evidence_root: str
+    global_nonce_ledger_root: str
+
+    def to_wire_dict(self) -> dict[str, object]:
+        return {"schema_version": SCHEMA_VERSION, **self.__dict__}
+
+    def to_json(self) -> str:
+        return json.dumps(
+            self.to_wire_dict(), allow_nan=False, sort_keys=True, separators=(",", ":")
+        )
 
     @property
     def spec_hash(self) -> str:
@@ -66,8 +78,45 @@ class ProductionRunSpecV1:
                 "request_limit": self.request_limit,
                 "nonce": self.nonce,
                 "expires_at_unix": self.expires_at_unix,
+                "journal_root": self.journal_root,
+                "evidence_root": self.evidence_root,
+                "global_nonce_ledger_root": self.global_nonce_ledger_root,
             }
         )
+
+
+def load_production_run_spec_v1(data: str | bytes) -> ProductionRunSpecV1:
+    """Load strict v1 JSON, rejecting duplicate and unknown fields."""
+
+    def pairs(items: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError(f"duplicate JSON key: {key}")
+            result[key] = value
+        return result
+
+    value = json.loads(
+        data,
+        object_pairs_hook=pairs,
+        parse_constant=lambda item: (_ for _ in ()).throw(
+            ValueError(f"non-finite number: {item}")
+        ),
+    )
+    if type(value) is not dict or value.pop("schema_version", None) != SCHEMA_VERSION:
+        raise ValueError("unsupported run spec wire schema")
+    if set(value) != set(ProductionRunSpecV1.__dataclass_fields__):
+        raise ValueError("run spec fields must match strict v1 schema")
+    spec = ProductionRunSpecV1(**value)
+    validate_production_run_spec(spec)
+    if spec.to_json() != json.dumps(
+        {"schema_version": SCHEMA_VERSION, **value},
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ):
+        raise ValueError("run spec is not canonical")
+    return spec
 
 
 @dataclass(frozen=True)
@@ -91,6 +140,9 @@ class OperatorTrustConfigV1:
     pinned_judge: Path | None = None
     spend_key_id: str = "legacy-spend-key"
     judge_key_id: str = "legacy-judge-key"
+    immutable_journal_root: Path | None = None
+    global_nonce_ledger_root: Path | None = None
+    pinned_provider_receipt_key: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +176,15 @@ def validate_production_run_spec(spec: object) -> None:
         if type(value) is not int or value <= 0:
             raise ValueError(f"{label} must be a positive integer")
     _nonempty(spec.nonce, "nonce")
+    for root_label, root_value in (
+        ("journal_root", spec.journal_root),
+        ("evidence_root", spec.evidence_root),
+        ("global_nonce_ledger_root", spec.global_nonce_ledger_root),
+    ):
+        _nonempty(root_value, root_label)
+        path = Path(root_value)
+        if not path.is_absolute() or str(_absolute_lexical(path)) != root_value:
+            raise ValueError(f"{root_label} must be a canonical absolute path")
 
 
 def _absolute_lexical(path: Path) -> Path:
@@ -231,36 +292,7 @@ def qualify_production_trust_v2(
     now_unix: int,
     expected_evidence_digest: str,
 ) -> ProductionQualification:
-    """Extended qualification that enables model_callbacks_allowed when all trust
-    gates are satisfied.
-
-    Spend and Judge keys are loaded exclusively from independently pinned config
-    paths (never caller arguments), with distinct roles and key IDs.
-
-    The judge record's evidence_digest is compared against expected_evidence_digest
-    so that an authentic ACCEPT from an earlier or unrelated run cannot be replayed.
-
-    The attestation's budget_enforcement_mode must match config.budget_enforcement_mode;
-    mismatches are rejected regardless of whether both values are individually valid.
-
-    Budget enforcement note: when config.budget_enforcement_mode is
-    "client-process-kill", provider-side spend reservation is unavailable
-    (Codex CLI limitation — issue #1223).  Client-side process kill and
-    post-run usage verification are the accepted alternative per the maintainer
-    decision recorded 2026-08-07.
-
-    Args:
-        spec: A ProductionRunSpecV1 instance.
-        config: An OperatorTrustConfigV1 (operator-controlled, never bundle-provided).
-        attestation: A SpendAttestation issued by the Anchor Custodian.
-        judge_record: A JudgeRecord signed by the Judge.
-        evidence_bundle_root: Path that must not contain the trust store or anchor.
-        now_unix: Current Unix time for expiry checks.
-        expected_evidence_digest: SHA-256 that judge_record.evidence_digest must equal.
-
-    Returns:
-        ProductionQualification with model_callbacks_allowed=True only on full ACCEPT.
-    """
+    """Verify independently pinned roles and signed production admission."""
     from benchmarks.codegraph_compare.production_anchor import (
         AnchorKey,
         SpendAttestation,
@@ -320,7 +352,11 @@ def qualify_production_trust_v2(
         (config.trust_store, "trust_store"),
         (config.pinned_anchor, "pinned_anchor"),
         (config.pinned_judge, "pinned_judge"),
+        (config.pinned_provider_receipt_key, "pinned_provider_receipt_key"),
     ):
+        if path is None:
+            violations.append(f"{label.upper()}_UNAVAILABLE")
+            continue
         violation = _trusted_external_file(path, evidence_bundle_root, label)
         if violation is not None:
             violations.append(violation)
@@ -332,6 +368,15 @@ def qualify_production_trust_v2(
                 violations.append("ROLE_KEYS_NOT_INDEPENDENT")
         except OSError:
             pass
+    # Different filenames and IDs are not independent when the secret/public
+    # material is identical.  Compare a one-way fingerprint, never raw keys.
+    import hashlib
+
+    if (
+        hashlib.sha256(anchor_key.raw).digest()
+        == hashlib.sha256(judge_key.raw).digest()
+    ):
+        violations.append("ROLE_KEY_MATERIAL_NOT_INDEPENDENT")
     if config.spend_key_id == config.judge_key_id:
         violations.append("ROLE_KEY_IDS_NOT_INDEPENDENT")
     artifact_lexical = _absolute_lexical(config.immutable_artifact_root)
@@ -344,16 +389,33 @@ def qualify_production_trust_v2(
         violations.append("ARTIFACT_ROOT_PREEXISTS")
     if config.trusted_roles != _REQUIRED_ROLES:
         violations.append("TRUST_ROLES_INCOMPLETE")
-    # Budget enforcement: provider-side preferred; client-process-kill explicitly accepted.
-    if config.budget_enforcement_mode not in ("provider", "client-process-kill"):
-        violations.append(
-            f"UNKNOWN_BUDGET_ENFORCEMENT_MODE:{config.budget_enforcement_mode!r}"
-        )
-    elif (
-        config.budget_enforcement_mode == "provider"
-        and config.provider_budget_enforced is not True
-    ):
+    # No trustworthy process supervisor exists in this library boundary.  A
+    # client runner may not attest its own kill/wait state.  Production accepts
+    # only a provider-enforced reservation gateway.
+    if config.budget_enforcement_mode != "provider":
+        violations.append("UNTRUSTED_CLIENT_PROCESS_SUPERVISION")
+    elif config.provider_budget_enforced is not True:
         violations.append("PROVIDER_BUDGET_GATEWAY_UNAVAILABLE")
+    expected_roots = (
+        (
+            config.immutable_artifact_root,
+            spec.evidence_root,
+            "EVIDENCE_ROOT_NOT_OPERATOR_BOUND",
+        ),
+        (
+            config.immutable_journal_root,
+            spec.journal_root,
+            "JOURNAL_ROOT_NOT_OPERATOR_BOUND",
+        ),
+        (
+            config.global_nonce_ledger_root,
+            spec.global_nonce_ledger_root,
+            "GLOBAL_LEDGER_ROOT_NOT_OPERATOR_BOUND",
+        ),
+    )
+    for configured, signed, violation in expected_roots:
+        if configured is None or str(configured.resolve(strict=False)) != signed:
+            violations.append(violation)
     for enabled, violation in (
         (config.append_only_ledger, "APPEND_ONLY_LEDGER_UNAVAILABLE"),
         (config.immutable_collector, "IMMUTABLE_COLLECTOR_UNAVAILABLE"),

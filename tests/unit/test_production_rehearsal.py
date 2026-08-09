@@ -31,7 +31,11 @@ def test_offline_rehearsal_denial_probe_fails_closed(receipt) -> None:
         receipt.independent_judge_available,
         receipt.denial_probe_qualification_status,
         receipt.denial_probe_violations,
-    ) == (False, "NOT_EVALUATED", ("ROLE_KEYS_NOT_INDEPENDENT",))
+    ) == (
+        False,
+        "NOT_EVALUATED",
+        ("ROLE_KEYS_NOT_INDEPENDENT", "ROLE_KEY_MATERIAL_NOT_INDEPENDENT"),
+    )
 
 
 def test_offline_rehearsal_bound_fixture_traverses_v2_bindings(receipt) -> None:
@@ -88,7 +92,11 @@ def test_offline_rehearsal_cli_receipt_matches_runbook_contract(tmp_path: Path) 
         payload["denial_probe_qualification_status"],
         payload["denial_probe_violations"],
         payload["bound_fixture_gate_eligible"],
-    ) == ("NOT_EVALUATED", ["ROLE_KEYS_NOT_INDEPENDENT"], True)
+    ) == (
+        "NOT_EVALUATED",
+        ["ROLE_KEYS_NOT_INDEPENDENT", "ROLE_KEY_MATERIAL_NOT_INDEPENDENT"],
+        True,
+    )
     assert (
         payload["model_callbacks_invoked"],
         payload["provider_requests"],

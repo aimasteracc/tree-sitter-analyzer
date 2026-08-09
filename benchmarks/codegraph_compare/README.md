@@ -31,7 +31,7 @@ jq -e '
   .synthetic_judge_signature_verified == true and
   .independent_judge_available == false and
   .denial_probe_qualification_status == "NOT_EVALUATED" and
-  .denial_probe_violations == ["ROLE_KEYS_NOT_INDEPENDENT"] and
+  .denial_probe_violations == ["ROLE_KEYS_NOT_INDEPENDENT","ROLE_KEY_MATERIAL_NOT_INDEPENDENT"] and
   .bound_fixture_gate_eligible == true and
   .production_dispatch_allowed == false and
   .model_callbacks_invoked == 0 and
@@ -44,8 +44,7 @@ jq -e '
 
 `synthetic_judge_signature_verified=true` proves only that the same-process
 rehearsal record is canonically signed. It is deliberately not represented as an
-independent judgment. `denial_probe_qualification_status=NOT_EVALUATED` with
-`ROLE_KEYS_NOT_INDEPENDENT` proves the production gate remains closed. The
+independent judgment. `denial_probe_qualification_status=NOT_EVALUATED` with role-key path and material independence violations proves the production gate remains closed. The
 ephemeral key, `offline-rehearsal-only` cell, `offline-fixture-no-model` model
 identity, and `production_dispatch_allowed=false` prevent reuse as canary
 evidence. Preserve the receipt for review, then securely remove the temporary
@@ -58,7 +57,10 @@ uv run pytest -q \
   tests/unit/test_production_anchor.py \
   tests/unit/test_production_collector.py \
   tests/unit/test_production_trust.py \
+  tests/unit/test_production_dispatch.py \
+  tests/unit/test_production_rehearsal.py \
   tests/unit/test_benchmark_harness.py
+uv run python scripts/no1_003d_mutations.py
 uv run python -m tree_sitter_analyzer --change-impact --format json
 ```
 
@@ -70,20 +72,25 @@ checks.
 ### 3. Production readiness checklist (all items mandatory)
 
 The Anchor Custodian, Budget Gateway, Evidence Collector, independent Judge,
-and execution operator must record approval out of band. Before any future real
-call, all of the following must be true:
+and execution operator must record approval out of band. The strict wire request
+contains `schema_version`, `manifest`, `spec`, `cell_order`, `timeout_seconds`,
+`qualification_evidence_digest`, `journal_root`, and `evidence_root`; the spec
+also binds `global_nonce_ledger_root`. Operator config pins independent spend,
+judge, and provider-receipt keys and their key IDs. Before any future real call,
+all of the following must be true:
 
 1. The exact Gin commit, clean workspace fingerprint, prompt hash, MCP launch
    identities, exact model ID, nonce, expiry, one-cell request limit, token limit,
-   and USD ceiling are frozen in `ProductionRunSpecV1`.
+   USD ceiling, and canonical absolute journal/evidence/global-ledger roots are
+   frozen in the strict `ProductionRunSpecV1` v1 wire schema.
 2. The anchor and trust store are operator-controlled regular files outside the
    checkout and evidence bundle, with no symlink component. No TOFU,
    bundle-provided key, environment inheritance, or self-signed replacement is
    allowed.
-3. `SpendAttestation` binds the exact spec hash, nonce, expiry, and budget mode.
-   Provider reservation is preferred. `client-process-kill` is only the recorded
-   Codex CLI limitation; it still requires timeout/kill and post-run usage
-   verification and never permits ceiling overrun.
+3. `SpendAttestation` and `JudgeRecord` bind the exact spec hash (including all
+   three roots), nonce, expiry, and provider budget mode. `client-process-kill`
+   self-reporting is rejected: only a verifiable provider reservation receipt
+   plus the dispatcher-owned exact-one callback wrapper is admissible.
 4. The collector root is fresh and external. Every write is exclusive and the
    finalized ledger/artifacts are immutable. Checkout/runtime audits and cleanup
    must pass for each arm.
@@ -97,9 +104,11 @@ call, all of the following must be true:
 7. Output remains E0/internal: `winner=null`, `dominance_allowed=false`, and
    `publishable=false`. No No.1, dominance, production-readiness, E1+, or public
    benchmark claim is permitted.
-8. A separately reviewed production dispatcher proves it consumes the qualified
-   spec exactly once and atomically records reservation, usage, termination, and
-   immutable evidence. **That dispatcher is not present today.**
+8. The library dispatcher boundary consumes a globally claimed nonce/spec once,
+   uses dirfd/openat/O_NOFOLLOW inode-pinned journals and evidence, and records
+   strict v1 reservation/terminal/receipt events. A production provider adapter
+   and operator command are not present today; `TrustedOfflineTestAdapter` is
+   explicitly test-only and is rejected by production dispatch.
 
 ### 4. Abort and escalation
 

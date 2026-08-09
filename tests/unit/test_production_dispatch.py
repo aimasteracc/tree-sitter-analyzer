@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from benchmarks.codegraph_compare.canary_evidence import create_canary_manifest
 from benchmarks.codegraph_compare.production_anchor import (
     AnchorKey,
@@ -12,9 +14,13 @@ from benchmarks.codegraph_compare.production_anchor import (
 )
 from benchmarks.codegraph_compare.production_dispatch import (
     ProductionDispatchRequestV1,
+    ProviderRequestGate,
     ProviderRunFailure,
     ProviderRunResult,
     dispatch_once,
+    issue_provider_reservation_receipt,
+    load_journal_event_v1,
+    load_production_dispatch_receipt_v1,
 )
 from benchmarks.codegraph_compare.production_judge import submit_verdict
 from benchmarks.codegraph_compare.production_trust import (
@@ -42,6 +48,10 @@ def _inputs(tmp_path: Path):
         seed=7,
     )
     cell = manifest.cells[0]
+    journal = (tmp_path / "journal").resolve()
+    evidence = (tmp_path / "evidence").resolve()
+    ledger = (tmp_path / "global-ledger").resolve()
+    ledger.mkdir()
     spec = ProductionRunSpecV1(
         manifest.manifest_hash,
         cell.cell_id,
@@ -54,6 +64,9 @@ def _inputs(tmp_path: Path):
         1,
         "one-shot-nonce",
         NOW + 100,
+        str(journal),
+        str(evidence),
+        str(ledger),
     )
     operator = tmp_path / "operator"
     operator.mkdir()
@@ -63,31 +76,36 @@ def _inputs(tmp_path: Path):
     judge_path.write_text(JUDGE.raw.hex())
     store = operator / "roles.json"
     store.write_text("{}")
-    evidence = tmp_path / "evidence"
+    provider_path = operator / "provider.key"
+    provider_path.write_text((b"p" * 32).hex())
     config = OperatorTrustConfigV1(
         store,
         spend_path,
         evidence,
         frozenset({"anchor-custodian", "budget-gateway", "evidence-collector"}),
-        False,
         True,
         True,
         True,
         True,
         True,
-        "client-process-kill",
+        True,
+        "provider",
         judge_path,
         "spend-2026",
         "judge-2026",
+        journal,
+        ledger,
+        provider_path,
     )
     request = ProductionDispatchRequestV1(
-        manifest, spec, 0, 30, DIGEST, tmp_path / "journal", evidence
+        manifest, spec, 0, 30, DIGEST, journal, evidence
     )
     attestation = prepare_attestation(
         spec.spec_hash,
         spec.nonce,
         spec.expires_at_unix,
         SPEND,
+        budget_enforcement_mode="provider",
         now_unix=NOW,
         key_id="spend-2026",
     )
@@ -120,13 +138,22 @@ def _result(**changes):
     return ProviderRunResult(**values)
 
 
+def _provider(request, **changes):
+    return _result(
+        provider_reservation_receipt=issue_provider_reservation_receipt(
+            request.spec, "provider-reservation-1", b"p" * 32
+        ),
+        **changes,
+    )
+
+
 def test_success_consumes_reservation_before_exactly_one_callback(tmp_path: Path):
     request, config, attestation, judge = _inputs(tmp_path)
     observations = []
 
-    def runner(_request):
+    def runner(_request, gate):
         observations.append((request.journal_root / "000-reserved.json").is_file())
-        return _result()
+        return gate.call(_request)
 
     receipt = dispatch_once(
         request,
@@ -135,6 +162,7 @@ def test_success_consumes_reservation_before_exactly_one_callback(tmp_path: Path
         judge,
         evidence_bundle_root=tmp_path / "bundle",
         runner=runner,
+        provider_call=lambda request: _provider(request),
         clock=lambda: NOW,
         current_state=_state(request),
     )
@@ -153,9 +181,9 @@ def test_second_consumption_invokes_zero_callbacks(tmp_path: Path):
     request, config, attestation, judge = _inputs(tmp_path)
     calls = []
 
-    def runner(_request):
+    def runner(_request, gate):
         calls.append("call")
-        return _result()
+        return gate.call(_request)
 
     first = dispatch_once(
         request,
@@ -164,6 +192,7 @@ def test_second_consumption_invokes_zero_callbacks(tmp_path: Path):
         judge,
         evidence_bundle_root=tmp_path / "bundle",
         runner=runner,
+        provider_call=lambda request: _provider(request),
         clock=lambda: NOW,
         current_state=_state(request),
     )
@@ -174,6 +203,7 @@ def test_second_consumption_invokes_zero_callbacks(tmp_path: Path):
         judge,
         evidence_bundle_root=tmp_path / "bundle",
         runner=runner,
+        provider_call=lambda request: _provider(request),
         clock=lambda: NOW,
         current_state=_state(request),
     )
@@ -191,7 +221,8 @@ def test_non_single_request_is_rejected_before_callback(tmp_path: Path):
         attestation,
         judge,
         evidence_bundle_root=tmp_path / "bundle",
-        runner=lambda _: _result(),
+        runner=lambda request, gate: gate.call(request),
+        provider_call=lambda request: _provider(request),
         clock=lambda: NOW,
         current_state=_state(bad),
     )
@@ -209,7 +240,8 @@ def test_expiry_after_reservation_is_terminal_without_callback(tmp_path: Path):
         attestation,
         judge,
         evidence_bundle_root=tmp_path / "bundle",
-        runner=lambda _: _result(),
+        runner=lambda request, gate: gate.call(request),
+        provider_call=lambda request: _provider(request),
         clock=lambda: next(ticks),
         current_state=_state(request),
     )
@@ -241,7 +273,8 @@ def test_workspace_change_after_callback_invalidates_result(tmp_path: Path):
         attestation,
         judge,
         evidence_bundle_root=tmp_path / "bundle",
-        runner=lambda _: _result(),
+        runner=lambda request, gate: gate.call(request),
+        provider_call=lambda request: _provider(request),
         clock=lambda: NOW,
         current_state=lambda: next(states),
     )
@@ -261,8 +294,8 @@ def test_timeout_failure_preserves_partial_evidence_and_terminal(tmp_path: Path)
         usage_complete=False,
     )
 
-    def runner(_):
-        raise ProviderRunFailure("timeout", partial)
+    def runner(request, gate):
+        return gate.call(request)
 
     receipt = dispatch_once(
         request,
@@ -271,6 +304,9 @@ def test_timeout_failure_preserves_partial_evidence_and_terminal(tmp_path: Path)
         judge,
         evidence_bundle_root=tmp_path / "bundle",
         runner=runner,
+        provider_call=lambda request: (_ for _ in ()).throw(
+            ProviderRunFailure("timeout", partial)
+        ),
         clock=lambda: NOW,
         current_state=_state(request),
     )
@@ -296,7 +332,8 @@ def test_unknown_nonfinite_usage_fails_closed(tmp_path: Path):
         attestation,
         judge,
         evidence_bundle_root=tmp_path / "bundle",
-        runner=lambda _: _result(cost_usd=float("nan")),
+        runner=lambda request, gate: gate.call(request),
+        provider_call=lambda request: _provider(request, cost_usd=float("nan")),
         clock=lambda: NOW,
         current_state=_state(request),
     )
@@ -305,3 +342,124 @@ def test_unknown_nonfinite_usage_fails_closed(tmp_path: Path):
     assert receipt.evidence_digest is not None
     assert receipt.terminal_durable is True
     assert receipt.violations == ("USAGE_MISSING_OR_INVALID",)
+
+
+def test_dispatcher_gate_rejects_second_request_before_provider_call(tmp_path: Path):
+    request, _, _, _ = _inputs(tmp_path)
+    calls = []
+    gate = ProviderRequestGate(lambda _: calls.append("called") or _provider(request))
+    gate.call(request)
+    with pytest.raises(RuntimeError, match="PROVIDER_REQUEST_LIMIT_REACHED"):
+        gate.call(request)
+    assert calls == ["called"]
+
+
+def test_bool_request_count_and_float_tokens_are_invalid(tmp_path: Path):
+    request, config, attestation, judge = _inputs(tmp_path)
+    receipt = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=lambda current, gate: gate.call(current),
+        provider_call=lambda current: _provider(
+            current, provider_request_count=True, input_tokens=1.5
+        ),
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    assert receipt.status == "INVALID"
+    assert receipt.violations == ("USAGE_MISSING_OR_INVALID",)
+
+
+def test_global_claim_blocks_replay_after_local_roots_are_removed(tmp_path: Path):
+    import shutil
+
+    request, config, attestation, judge = _inputs(tmp_path)
+    calls = []
+    kwargs = {
+        "evidence_bundle_root": tmp_path / "bundle",
+        "runner": lambda current, gate: gate.call(current),
+        "provider_call": lambda current: calls.append("called") or _provider(current),
+        "clock": lambda: NOW,
+        "current_state": _state(request),
+    }
+    first = dispatch_once(request, config, attestation, judge, **kwargs)
+    shutil.rmtree(request.journal_root)
+    shutil.rmtree(request.evidence_root)
+    second = dispatch_once(request, config, attestation, judge, **kwargs)
+    assert first.status == "PASS"
+    assert second.status == "NOT_EVALUATED"
+    assert calls == ["called"]
+
+
+def test_evidence_root_symlink_swap_is_invalid_and_cannot_escape(tmp_path: Path):
+    import shutil
+
+    request, config, attestation, judge = _inputs(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    def provider(current):
+        shutil.rmtree(current.evidence_root)
+        current.evidence_root.symlink_to(outside, target_is_directory=True)
+        return _provider(current)
+
+    receipt = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=lambda current, gate: gate.call(current),
+        provider_call=provider,
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    assert receipt.status == "INVALID"
+    assert tuple(outside.iterdir()) == ()
+
+
+def test_strict_wire_rejects_duplicate_receipt_and_event_keys():
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        load_production_dispatch_receipt_v1('{"schema_version":1,"schema_version":1}')
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        load_journal_event_v1(
+            '{"schema_version":1,"event":"RESERVED","event":"TERMINAL"}'
+        )
+
+
+def test_hanging_reservation_is_recovered_as_terminal_unknown(tmp_path: Path):
+    import json
+
+    request, config, attestation, judge = _inputs(tmp_path)
+    request.journal_root.mkdir()
+    (request.journal_root / "000-reserved.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "event": "RESERVED",
+                "envelope_hash": request.envelope_hash,
+                "spec_hash": request.spec.spec_hash,
+                "nonce": request.spec.nonce,
+            }
+        )
+    )
+    receipt = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=lambda current, gate: gate.call(current),
+        provider_call=lambda current: _provider(current),
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    terminal = load_journal_event_v1(
+        (request.journal_root / "999-terminal.json").read_text()
+    )
+    assert receipt.status == "NOT_EVALUATED"
+    assert terminal["status"] == "UNKNOWN"
+    assert terminal["violations"] == ["RECOVERED_HANGING_CLAIM"]
