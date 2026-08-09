@@ -66,16 +66,21 @@ def _directory_identity(prefix: str, value: os.stat_result) -> dict[str, int]:
     }
 
 
+def _trusted_dirfd_supported() -> bool:
+    """Return whether trusted ledger pinning primitives are available."""
+    return (
+        os.name != "nt"
+        and hasattr(os, "O_NOFOLLOW")
+        and hasattr(os, "O_DIRECTORY")
+        and os.open in os.supports_dir_fd
+        and os.stat in os.supports_dir_fd
+        and os.stat in os.supports_follow_symlinks
+    )
+
+
 def pin_ledger_directory(request: ProductionDispatchRequestV1) -> PinnedLedgerDirectory:
     """Open the signed ledger root relative to a pinned trusted parent directory."""
-    if (
-        os.name == "nt"
-        or not hasattr(os, "O_NOFOLLOW")
-        or not hasattr(os, "O_DIRECTORY")
-        or os.open not in os.supports_dir_fd
-        or os.stat not in os.supports_dir_fd
-        or os.stat not in os.supports_follow_symlinks
-    ):
+    if not _trusted_dirfd_supported():
         raise OSError("trusted dirfd ledger pinning is unsupported on this platform")
     root = Path(request.spec.global_nonce_ledger_root)
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW

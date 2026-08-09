@@ -565,17 +565,24 @@ def test_experiment_state_mutation_blocks_transport(tmp_path):
 
 
 def test_unsupported_dirfd_platform_blocks_all_authorities(tmp_path, monkeypatch):
-    # PR #1248: Windows cannot claim ledger durability without dirfd support.
+    # PR #1248: unsupported dirfd platforms must fail before any authority call.
     request, config, attestation, judge, authorities = _inputs(tmp_path)
     calls = []
     kwargs = _kwargs(request, authorities)
     kwargs["claim_authority"] = lambda *args: calls.append(args)
     monkeypatch.setattr(
-        "benchmarks.codegraph_compare.production_dispatch_validation.os.name", "nt"
+        "benchmarks.codegraph_compare.production_dispatch_validation._trusted_dirfd_supported",
+        lambda: False,
     )
     receipt = dispatch_once(request, config, attestation, judge, **kwargs)
-    assert (receipt.status, receipt.model_callbacks_invoked, len(calls)) == (
+    assert (
+        receipt.status,
+        len(receipt.authority_receipts),
+        receipt.model_callbacks_invoked,
+        len(calls),
+    ) == (
         "NOT_EVALUATED",
+        0,
         0,
         0,
     )
