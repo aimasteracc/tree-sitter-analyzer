@@ -11,7 +11,10 @@ import pytest
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+from benchmarks.codegraph_compare.receipt_v3 import (
+    canonical_json_bytes,
+    strict_json_loads,
+)
 from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 from benchmarks.codegraph_compare.verifier_service import (
     CHALLENGE_DOMAIN,
@@ -61,6 +64,21 @@ def _measurement() -> dict[str, object]:
         "gid": 1000,
         "rootfs_readonly": True,
         "allowed_writable_mounts": ["/tmp"],
+    }
+
+
+def _manifest() -> dict[str, object]:
+    return {
+        "schema_version": 2,
+        "correlation_nonce": "4" * 64,
+        "cells": [
+            {
+                "contract": {
+                    "decision_id": "7" * 64,
+                    "decision_contract_sha256": "a" * 64,
+                }
+            }
+        ],
     }
 
 
@@ -114,6 +132,8 @@ def _server(path: Path, key: Ed25519PrivateKey, *, forge: bool) -> threading.Thr
         first.close()
         connection, _ = listener.accept()
         request = _frame(connection)
+        manifest = strict_json_loads(request["manifest_bytes"].encode("utf-8"))
+        decision = manifest["cells"][0]["contract"]
         consumed = {
             "counter": 3,
             "event": "CONSUMED",
@@ -138,6 +158,8 @@ def _server(path: Path, key: Ed25519PrivateKey, *, forge: bool) -> threading.Thr
 
         signed = {
             "manifest_sha256": request["manifest_sha256"],
+            "decision_id": decision["decision_id"],
+            "decision_contract_sha256": decision["decision_contract_sha256"],
             "challenge": request["challenge"],
             "ledger_counter": 3,
             "ledger_prev_hash": "8" * 64,
@@ -179,7 +201,7 @@ def test_external_verifier_client_accepts_signed_runtime_bound_envelope(tmp_path
     thread = _server(path, key, forge=False)
     envelope = request_verdict(
         socket_path=path,
-        manifest={"schema_version": 2, "correlation_nonce": "4" * 64, "cells": []},
+        manifest=_manifest(),
         config=_config(key),
         timeout=2,
     )
@@ -198,7 +220,7 @@ def test_external_verifier_client_rejects_forged_verdict_signature(tmp_path: Pat
     with pytest.raises(InvalidSignature):
         request_verdict(
             socket_path=path,
-            manifest={"schema_version": 2, "correlation_nonce": "4" * 64, "cells": []},
+            manifest=_manifest(),
             config=_config(key),
             timeout=2,
         )
