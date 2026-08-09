@@ -127,9 +127,11 @@ def test_finalize_receipt_loads_bound_schema_before_write(monkeypatch: pytest.Mo
 
 def inventory_from_requirements(monkeypatch: pytest.MonkeyPatch, requirements: list[str], python_version: str="3.14") -> dict:
     marker_environment={"implementation_name":"cpython","implementation_version":python_version,"os_name":"posix","platform_machine":"arm64","platform_python_implementation":"CPython","platform_release":"test","platform_system":"Darwin","platform_version":"test","python_full_version":python_version,"python_version":python_version}
-    payload={"versions":{"tree-sitter-analyzer":"1","Foo.Bar":"2"},"requires":requirements,"marker_environment":marker_environment,"installed_size_bytes":1,"regular_file_count":1}
-    completed=__import__("subprocess").CompletedProcess([],0,json.dumps(payload).encode(),b"")
-    monkeypatch.setattr(collector,"run",lambda *args,**kwargs: completed)
+    payload={"versions":{"tree-sitter-analyzer":"1","Foo.Bar":"2"},"requires":requirements,"installed_size_bytes":1,"regular_file_count":1}
+    def fake_run(command: list[str],**kwargs: object) -> object:
+        output=marker_environment if command[-1] == collector.TARGET_MARKER_CODE else payload
+        return __import__("subprocess").CompletedProcess([],0,json.dumps(output).encode(),b"")
+    monkeypatch.setattr(collector,"run",fake_run)
     return collector.inventory(Path("python"),Path("."))
 
 

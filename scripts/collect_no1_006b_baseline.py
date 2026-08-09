@@ -52,13 +52,13 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def clean_env() -> dict[str, str]:
+def clean_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
     keep = {key: os.environ[key] for key in ("HOME", "PATH", "TMPDIR", "UV_CACHE_DIR") if key in os.environ}
-    return {**keep, "UV_OFFLINE": "1", "PYTHONDONTWRITEBYTECODE": "1", "LC_ALL": "C", "LANG": "C"}
+    return {**keep, "UV_OFFLINE": "1", "PYTHONDONTWRITEBYTECODE": "1", "LC_ALL": "C", "LANG": "C", **(overrides or {})}
 
 
-def run(command: list[str], *, cwd: Path, timeout: int = 180) -> subprocess.CompletedProcess[bytes]:
-    process=subprocess.Popen(command,cwd=cwd,env=clean_env(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+def run(command: list[str], *, cwd: Path, timeout: int = 180, env_overrides: dict[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
+    process=subprocess.Popen(command,cwd=cwd,env=clean_env(env_overrides),stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
     assert process.stdout is not None and process.stderr is not None
     selector=selectors.DefaultSelector(); selector.register(process.stdout,selectors.EVENT_READ,"stdout"); selector.register(process.stderr,selectors.EVENT_READ,"stderr")
     buffers={"stdout":bytearray(),"stderr":bytearray()}; deadline=time.monotonic()+timeout
@@ -155,7 +155,6 @@ def install_environment(repo: Path, venv: Path, requirements: Path, wheel: Path)
 
 INVENTORY_CODE = r"""import importlib.metadata as m, json, os, stat, sys
 from pathlib import Path
-from packaging.markers import default_environment
 root_name="tree-sitter-analyzer"; root=m.distribution(root_name); dists={}
 for dist in m.distributions():
  name=dist.metadata.get("Name") or ""
@@ -176,14 +175,18 @@ for dist in m.distributions():
   path_key=str(resolved); inode=(st.st_dev,st.st_ino)
   if path_key in seen_paths or inode in seen_inodes: continue
   seen_paths.add(path_key); seen_inodes.add(inode); total += st.st_size
-print(json.dumps({"versions":dists,"requires":root.requires or [],"marker_environment":default_environment(),"installed_size_bytes":total,"regular_file_count":len(seen_paths)}))"""
+print(json.dumps({"versions":dists,"requires":root.requires or [],"installed_size_bytes":total,"regular_file_count":len(seen_paths)}))"""
+TARGET_MARKER_CODE = "from packaging.markers import default_environment; import json; print(json.dumps(default_environment()))"
 
 
 def inventory(python: Path, cwd: Path) -> dict[str, Any]:
     from packaging.requirements import Requirement
     from packaging.utils import canonicalize_name
     raw=json.loads(run([str(python), "-c", INVENTORY_CODE], cwd=cwd).stdout)
-    env=raw.pop("marker_environment"); env["extra"]=""; direct=set()
+    import packaging
+    packaging_root=Path(packaging.__file__).resolve().parent.parent
+    env=json.loads(run([str(python),"-c",TARGET_MARKER_CODE],cwd=cwd,env_overrides={"PYTHONPATH":str(packaging_root)}).stdout)
+    env["extra"]=""; direct=set()
     for value in raw.pop("requires"):
         requirement=Requirement(value)
         if requirement.marker is None or requirement.marker.evaluate(env):
