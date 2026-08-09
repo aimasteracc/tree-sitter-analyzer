@@ -9447,6 +9447,92 @@ def test_index_tree_hash_rejects_concurrent_append(tmp_path: Path, monkeypatch):
     assert writer.is_alive() is False
 
 
+def test_index_tree_hash_handles_one_thousand_directory_levels(tmp_path: Path):
+    # PR #1247: producer-controlled depth must not consume Python recursion.
+    import hashlib
+    import os
+
+    from benchmarks.codegraph_compare.setup_qualification import _hash_tree
+
+    index = tmp_path / "index"
+    index.mkdir()
+    root_fd = os.open(index, os.O_RDONLY | os.O_DIRECTORY)
+    current = os.dup(root_fd)
+    try:
+        for _ in range(1000):
+            os.mkdir("d", dir_fd=current)
+            child = os.open("d", os.O_RDONLY | os.O_DIRECTORY, dir_fd=current)
+            os.close(current)
+            current = child
+        descriptor = os.open(
+            "leaf.bin", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=current
+        )
+        os.write(descriptor, b"deep")
+        os.close(descriptor)
+    finally:
+        os.close(current)
+
+    digest = hashlib.sha256()
+    relative = "/".join(("d",) * 1000 + ("leaf.bin",)).encode()
+    digest.update(b"F" + len(relative).to_bytes(8, "big") + relative)
+    digest.update((4).to_bytes(8, "big") + b"deep")
+    for depth in range(1000, 0, -1):
+        directory = "/".join(("d",) * depth).encode()
+        digest.update(b"D" + len(directory).to_bytes(8, "big") + directory)
+    digest.update(b"C" + (1).to_bytes(8, "big") + (1000).to_bytes(8, "big"))
+    try:
+        assert _hash_tree(index) == digest.hexdigest()
+    finally:
+        descriptors = [os.dup(root_fd)]
+        try:
+            for _ in range(1000):
+                descriptors.append(
+                    os.open("d", os.O_RDONLY | os.O_DIRECTORY, dir_fd=descriptors[-1])
+                )
+            os.unlink("leaf.bin", dir_fd=descriptors[-1])
+            for number in range(999, -1, -1):
+                os.rmdir("d", dir_fd=descriptors[number])
+        finally:
+            for descriptor in reversed(descriptors):
+                os.close(descriptor)
+            os.close(root_fd)
+
+
+def test_index_tree_hash_rejects_same_size_concurrent_rewrite(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1247: size stability alone must not authenticate mutable index bytes.
+    import os
+
+    import pytest
+
+    from benchmarks.codegraph_compare import setup_qualification_paths as paths
+
+    index = tmp_path / "index"
+    index.mkdir()
+    target = index / "artifact.bin"
+    target.write_bytes(b"original")
+    real_read = os.read
+    rewritten = False
+
+    def coordinated_read(descriptor: int, size: int) -> bytes:
+        nonlocal rewritten
+        if size == 1 and not rewritten:
+            rewritten = True
+            with target.open("r+b") as stream:
+                stream.write(b"modified")
+                stream.flush()
+                os.fsync(stream.fileno())
+        return real_read(descriptor, size)
+
+    monkeypatch.setattr(paths.os, "read", coordinated_read)
+
+    with pytest.raises(ValueError, match="changed while hashing"):
+        paths._hash_tree(index)
+
+    assert rewritten is True
+
+
 def test_resource_plan_rejects_each_missing_ceiling():
     from dataclasses import fields
 
