@@ -30,6 +30,7 @@ from benchmarks.codegraph_compare.production_judge import (
 from benchmarks.codegraph_compare.production_trust import (
     OperatorTrustConfigV1,
     ProductionRunSpecV1,
+    capture_ledger_identity,
     qualify_production_trust_v2,
 )
 
@@ -93,13 +94,17 @@ def run_offline_rehearsal(
 
     key = AnchorKey(raw=secrets.token_bytes(32))
     judge_key = AnchorKey(raw=secrets.token_bytes(32))
+    provider_key = AnchorKey(raw=secrets.token_bytes(32))
     anchor_path = operator_root / "ephemeral-rehearsal-anchor.key"
     judge_path = operator_root / "ephemeral-rehearsal-judge.key"
+    provider_path = operator_root / "ephemeral-rehearsal-provider.key"
     trust_store = operator_root / "trust-store.json"
     anchor_path.write_text(key.raw.hex(), encoding="utf-8")
     judge_path.write_text(judge_key.raw.hex(), encoding="utf-8")
+    provider_path.write_text(provider_key.raw.hex(), encoding="utf-8")
     anchor_path.chmod(0o400)
     judge_path.chmod(0o400)
+    provider_path.chmod(0o400)
     trust_store.write_text('{"protocol":"NO1-003B-OFFLINE"}\n', encoding="utf-8")
     trust_store.chmod(0o400)
 
@@ -121,6 +126,7 @@ def run_offline_rehearsal(
         journal_root=str(production_journal_root),
         evidence_root=str(production_artifact_root),
         global_nonce_ledger_root=str(global_ledger_root),
+        **capture_ledger_identity(global_ledger_root),
     )
     attestation = prepare_attestation(
         spec.spec_hash,
@@ -216,7 +222,12 @@ def run_offline_rehearsal(
     # Eligibility is observed but never consumed by a dispatch callback.
     bound_qualification = qualify_production_trust_v2(
         spec,
-        replace(config, pinned_judge=judge_path, independent_judge=True),
+        replace(
+            config,
+            pinned_judge=judge_path,
+            pinned_provider_receipt_key=provider_path,
+            independent_judge=True,
+        ),
         attestation,
         judge,
         evidence_bundle_root=bundle_root,

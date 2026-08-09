@@ -75,8 +75,11 @@ The Anchor Custodian, Budget Gateway, Evidence Collector, independent Judge,
 and execution operator must record approval out of band. The strict wire request
 contains `schema_version`, `manifest`, `spec`, `cell_order`, `timeout_seconds`,
 `qualification_evidence_digest`, `journal_root`, and `evidence_root`; the spec
-also binds `global_nonce_ledger_root`. Operator config pins independent spend,
-judge, and provider-receipt keys and their key IDs. Before any future real call,
+binds the operator-precreated `global_nonce_ledger_root` plus the root and parent
+`lstat` device/inode/uid/mode identities. The dispatcher never creates this root
+and revalidates both identities around the claim and at later dispatch boundaries.
+Renaming and recreating the same signed path is rejected. Operator config pins
+independent spend, judge, and provider-receipt keys and their key IDs. Before any future real call,
 all of the following must be true:
 
 1. The exact Gin commit, clean workspace fingerprint, prompt hash, MCP launch
@@ -88,9 +91,14 @@ all of the following must be true:
    bundle-provided key, environment inheritance, or self-signed replacement is
    allowed.
 3. `SpendAttestation` and `JudgeRecord` bind the exact spec hash (including all
-   three roots), nonce, expiry, and provider budget mode. `client-process-kill`
-   self-reporting is rejected: only a verifiable provider reservation receipt
-   plus the dispatcher-owned exact-one callback wrapper is admissible.
+   three roots and the global-ledger identities), nonce, expiry, and provider
+   budget mode. `client-process-kill` self-reporting is rejected: only an exact-v1
+   provider reservation receipt (canonical bounded identities, exact numeric
+   types, lowercase SHA-256/HMAC) plus the dispatcher-owned exact-one callback
+   wrapper is admissible. Provider-key identity is observed before/after the call,
+   after runner return or exception, and before PASS; receipt verification always
+   uses the qualification-time pinned bytes. These discrete checks do not claim
+   visibility into a transient swap that is restored between observations.
 4. The collector root is fresh and external. Every write is exclusive and the
    finalized ledger/artifacts are immutable. Checkout/runtime audits and cleanup
    must pass for each arm.

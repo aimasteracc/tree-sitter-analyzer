@@ -21,6 +21,8 @@ from benchmarks.codegraph_compare.production_dispatch_wire import (
     _canonical,
     _claim_global,
     _Journal,
+    _OperatorLedger,
+    validate_provider_reservation_receipt_v1,
 )
 from benchmarks.codegraph_compare.production_dispatch_wire import (
     issue_provider_reservation_receipt as issue_provider_reservation_receipt,
@@ -167,6 +169,10 @@ def _verify_provider_receipt(
     receipt = result.provider_reservation_receipt
     if type(receipt) is not ProviderReservationReceiptV1:
         return ("VERIFIABLE_PROVIDER_RESERVATION_MISSING",)
+    try:
+        validate_provider_reservation_receipt_v1(receipt)
+    except (TypeError, ValueError):
+        return ("PROVIDER_RESERVATION_INVALID",)
     # Verification deliberately uses the immutable qualification-time bytes,
     # never the mutable operator path after a provider callback.
     key = provider_key.material
@@ -302,6 +308,7 @@ def dispatch_once(
     if qualification.status != "ACCEPT" or not qualification.model_callbacks_allowed:
         return _receipt("NOT_EVALUATED", qualification.violations, request)
     journal = None
+    ledger = None
     reserved = False
     terminal = False
     result = None
@@ -311,6 +318,9 @@ def dispatch_once(
     gate = ProviderRequestGate(provider_call)
     try:
         try:
+            # The dispatcher opens only the operator-precreated ledger and pins both
+            # its root and parent to the lstat identity signed into the run spec.
+            ledger = _OperatorLedger(request, config)
             journal = _Journal(request.journal_root)
             journal.write(
                 "000-reserved.json",
@@ -322,7 +332,8 @@ def dispatch_once(
                     "nonce": request.spec.nonce,
                 },
             )
-            _claim_global(request, config)
+            _claim_global(request, ledger)
+            ledger.assert_identity()
             reserved = True
         except FileExistsError as error:
             run_violations.append(f"RESERVATION_REFUSED:{error}")
@@ -445,7 +456,30 @@ def dispatch_once(
                 run_violations.append(
                     f"PROVIDER_EXCEPTION:{type(error).__name__}:{error}"
                 )
-            run_violations.extend(key_boundary_violations)
+            # A hostile runner still executes after gate.call returns. Re-pin the
+            # provider key and operator ledger at the runner boundary regardless
+            # of whether the runner returned or raised.
+            assert provider_key is not None
+            assert second.spend_key_sha256 is not None
+            assert second.judge_key_sha256 is not None
+            key_boundary_violations.extend(
+                revalidate_provider_key_pin(
+                    provider_key,
+                    config.pinned_provider_receipt_key,  # type: ignore[arg-type]
+                    second.spend_key_sha256,
+                    second.judge_key_sha256,
+                )
+            )
+            try:
+                assert ledger is not None
+                ledger.assert_identity()
+            except Exception as error:
+                run_violations.append(
+                    f"GLOBAL_LEDGER_IDENTITY_CHANGED:{type(error).__name__}:{error}"
+                )
+            for violation in key_boundary_violations:
+                if violation not in run_violations:
+                    run_violations.append(violation)
             run_violations.extend(_revalidate(request, clock, current_state))
         if result is None:
             collector.collect(
@@ -489,6 +523,23 @@ def dispatch_once(
                 usage["cost_usd"] = None
             collector.collect(request.spec.cell_id, "usage", _canonical(usage))
         digest = collector.finalize().ledger_sha256
+        # Final terminal decision uses a fresh observation. The receipt remains
+        # cryptographically verified with qualification-time pinned bytes; this
+        # does not claim observation of swaps that are restored between checks.
+        if not run_violations:
+            assert provider_key is not None
+            assert second.spend_key_sha256 is not None
+            assert second.judge_key_sha256 is not None
+            run_violations.extend(
+                revalidate_provider_key_pin(
+                    provider_key,
+                    config.pinned_provider_receipt_key,  # type: ignore[arg-type]
+                    second.spend_key_sha256,
+                    second.judge_key_sha256,
+                )
+            )
+            assert ledger is not None
+            ledger.assert_identity()
         status = "PASS" if not run_violations else "INVALID"
     except Exception as error:
         run_violations.append(
@@ -498,6 +549,21 @@ def dispatch_once(
     finally:
         if journal is not None:
             try:
+                if status == "PASS":
+                    assert provider_key is not None
+                    assert second.spend_key_sha256 is not None
+                    assert second.judge_key_sha256 is not None
+                    final_key_violations = revalidate_provider_key_pin(
+                        provider_key,
+                        config.pinned_provider_receipt_key,  # type: ignore[arg-type]
+                        second.spend_key_sha256,
+                        second.judge_key_sha256,
+                    )
+                    if final_key_violations:
+                        run_violations.extend(final_key_violations)
+                        status = "INVALID"
+                    assert ledger is not None
+                    ledger.assert_identity()
                 journal.write(
                     "999-terminal.json",
                     {
@@ -530,6 +596,8 @@ def dispatch_once(
                 except Exception:
                     pass
             journal.close()
+        if ledger is not None:
+            ledger.close()
     return _receipt(
         status,
         tuple(run_violations),

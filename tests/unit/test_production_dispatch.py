@@ -26,6 +26,7 @@ from benchmarks.codegraph_compare.production_judge import submit_verdict
 from benchmarks.codegraph_compare.production_trust import (
     OperatorTrustConfigV1,
     ProductionRunSpecV1,
+    capture_ledger_identity,
 )
 
 NOW = 1_900_000_000
@@ -67,6 +68,7 @@ def _inputs(tmp_path: Path, *, journal_parent: Path | None = None):
         str(journal),
         str(evidence),
         str(ledger),
+        **capture_ledger_identity(ledger),
     )
     operator = tmp_path / "operator"
     operator.mkdir()
@@ -515,7 +517,9 @@ def test_hanging_reservation_is_recovered_as_terminal_unknown(tmp_path: Path):
                 "envelope_hash": request.envelope_hash,
                 "spec_hash": request.spec.spec_hash,
                 "nonce": request.spec.nonce,
-            }
+            },
+            sort_keys=True,
+            separators=(",", ":"),
         )
     )
     receipt = dispatch_once(
@@ -631,3 +635,138 @@ def test_provider_key_mutation_immediately_before_callback_blocks_callback(
     )
     assert receipt.model_callbacks_invoked == 0
     assert provider_calls == []
+
+
+def test_provider_key_mutation_after_gate_return_is_invalid(tmp_path: Path):
+    # Incident NO1-003D zero3: runner code executes after the provider gate returns.
+    request, config, attestation, judge = _inputs(tmp_path)
+    provider_path = config.pinned_provider_receipt_key
+    assert provider_path is not None
+
+    def runner(current, gate):
+        result = gate.call(current)
+        provider_path.write_text(SPEND.raw.hex())
+        return result
+
+    receipt = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=runner,
+        provider_call=lambda current: _provider(current),
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    assert receipt.status == "INVALID"
+    assert receipt.violations == ("PROVIDER_RECEIPT_KEY_CHANGED",)
+    assert receipt.model_callbacks_invoked == 1
+
+
+def test_same_signed_ledger_path_recreated_is_rejected(tmp_path: Path):
+    # Incident NO1-003D zero3: a path string is not a persistent ledger identity.
+    import shutil
+
+    request, config, attestation, judge = _inputs(tmp_path)
+    first = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=lambda current, gate: gate.call(current),
+        provider_call=lambda current: _provider(current),
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    shutil.rmtree(request.journal_root)
+    shutil.rmtree(request.evidence_root)
+    moved = config.global_nonce_ledger_root.with_name("old-ledger")
+    config.global_nonce_ledger_root.rename(moved)
+    config.global_nonce_ledger_root.mkdir()
+    callbacks = []
+    second = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=lambda current, gate: gate.call(current),
+        provider_call=lambda current: callbacks.append(current) or _provider(current),
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    assert first.status == "PASS"
+    assert second.status == "INVALID"
+    assert second.model_callbacks_invoked == 0
+    assert callbacks == []
+    assert second.violations[0].startswith(
+        "RESERVATION_DURABILITY_UNKNOWN:RuntimeError:"
+    )
+
+
+@pytest.mark.parametrize("bad_reservation_id", [None, True, 7, "", "../x"])
+def test_provider_receipt_rejects_noncanonical_reservation_identity(
+    tmp_path: Path, bad_reservation_id: object
+):
+    # Incident NO1-003D zero3: signed malformed receipt identities remain malformed.
+    request, config, attestation, judge = _inputs(tmp_path)
+    valid = issue_provider_reservation_receipt(
+        request.spec, "provider-reservation-1", b"p" * 32
+    )
+    malformed = replace(valid, reservation_id=bad_reservation_id)
+    receipt = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=lambda current, gate: gate.call(current),
+        provider_call=lambda current: _result(provider_reservation_receipt=malformed),
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    assert receipt.status == "INVALID"
+    assert receipt.violations == ("PROVIDER_RESERVATION_INVALID",)
+
+
+def test_wire_loaders_reject_noncanonical_and_invalid_invariants(tmp_path: Path):
+    # Incident NO1-003D zero3: parsed equivalence is weaker than canonical bytes.
+    import json
+
+    request, config, attestation, judge = _inputs(tmp_path)
+    receipt = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=lambda current, gate: gate.call(current),
+        provider_call=lambda current: _provider(current),
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    with pytest.raises(ValueError, match="not canonical"):
+        load_production_dispatch_receipt_v1(" " + receipt.to_json())
+    bad = receipt.to_wire_dict()
+    bad["model_callbacks_invoked"] = 2
+    with pytest.raises(ValueError, match="exact integer 0 or 1"):
+        load_production_dispatch_receipt_v1(
+            json.dumps(bad, sort_keys=True, separators=(",", ":"))
+        )
+    bad = receipt.to_wire_dict()
+    bad["reservation_durable"] = False
+    with pytest.raises(ValueError, match="PASS receipt"):
+        load_production_dispatch_receipt_v1(
+            json.dumps(bad, sort_keys=True, separators=(",", ":"))
+        )
+    event = {
+        "schema_version": 1,
+        "event": "RESERVED",
+        "envelope_hash": "a" * 64,
+        "spec_hash": 7,
+        "nonce": None,
+    }
+    with pytest.raises(ValueError, match="reservation event identity invalid"):
+        load_journal_event_v1(json.dumps(event, sort_keys=True, separators=(",", ":")))

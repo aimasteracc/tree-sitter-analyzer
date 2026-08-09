@@ -157,3 +157,48 @@ print(
     (req.journal_root / "999-terminal.json").exists(),
     r.violations,
 )
+
+# same signed ledger path cannot be replayed after rename/recreate
+root = Path(tempfile.mkdtemp()).resolve()
+req, cfg, att, jdg = _inputs(root)
+r1, c1 = run(req, cfg, att, jdg)
+shutil.rmtree(req.journal_root)
+shutil.rmtree(req.evidence_root)
+cfg.global_nonce_ledger_root.rename(root / "old-global-ledger")
+cfg.global_nonce_ledger_root.mkdir()
+r2, c2 = run(req, cfg, att, jdg)
+print(
+    "same_signed_ledger_recreate",
+    r1.status,
+    r2.status,
+    "callbacks",
+    len(c1) + len(c2),
+    r2.violations,
+)
+
+# runner cannot swap the provider key after gate.call returns
+root = Path(tempfile.mkdtemp()).resolve()
+req, cfg, att, jdg = _inputs(root)
+provider_path = cfg.pinned_provider_receipt_key
+assert provider_path is not None
+calls = []
+
+
+def post_gate_runner(current, gate):
+    result = gate.call(current)
+    provider_path.write_text(SPEND.raw.hex())
+    return result
+
+
+r = dispatch_once(
+    req,
+    cfg,
+    att,
+    jdg,
+    evidence_bundle_root=root / "bundle",
+    runner=post_gate_runner,
+    provider_call=lambda current: calls.append(1) or _provider(current),
+    clock=lambda: NOW,
+    current_state=_state(req),
+)
+print("provider_after_gate_swap", r.status, r.violations, "callbacks", len(calls))

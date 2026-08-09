@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 from dataclasses import replace
 from pathlib import Path
 
@@ -39,6 +40,14 @@ def _spec() -> ProductionRunSpecV1:
         global_nonce_ledger_root=str(
             Path("/tmp/no1-trust-global-ledger").resolve().resolve()
         ),
+        ledger_root_device=1,
+        ledger_root_inode=2,
+        ledger_root_uid=0,
+        ledger_root_mode=stat.S_IFDIR | 0o700,
+        ledger_parent_device=1,
+        ledger_parent_inode=3,
+        ledger_parent_uid=0,
+        ledger_parent_mode=stat.S_IFDIR | 0o700,
     )
 
 

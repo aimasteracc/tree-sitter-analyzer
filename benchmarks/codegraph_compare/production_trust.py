@@ -54,6 +54,14 @@ class ProductionRunSpecV1:
     journal_root: str
     evidence_root: str
     global_nonce_ledger_root: str
+    ledger_root_device: int
+    ledger_root_inode: int
+    ledger_root_uid: int
+    ledger_root_mode: int
+    ledger_parent_device: int
+    ledger_parent_inode: int
+    ledger_parent_uid: int
+    ledger_parent_mode: int
 
     def to_wire_dict(self) -> dict[str, object]:
         return {"schema_version": SCHEMA_VERSION, **self.__dict__}
@@ -83,6 +91,14 @@ class ProductionRunSpecV1:
                 "journal_root": self.journal_root,
                 "evidence_root": self.evidence_root,
                 "global_nonce_ledger_root": self.global_nonce_ledger_root,
+                "ledger_root_device": self.ledger_root_device,
+                "ledger_root_inode": self.ledger_root_inode,
+                "ledger_root_uid": self.ledger_root_uid,
+                "ledger_root_mode": self.ledger_root_mode,
+                "ledger_parent_device": self.ledger_parent_device,
+                "ledger_parent_inode": self.ledger_parent_inode,
+                "ledger_parent_uid": self.ledger_parent_uid,
+                "ledger_parent_mode": self.ledger_parent_mode,
             }
         )
 
@@ -111,11 +127,17 @@ def load_production_run_spec_v1(data: str | bytes) -> ProductionRunSpecV1:
         raise ValueError("run spec fields must match strict v1 schema")
     spec = ProductionRunSpecV1(**value)
     validate_production_run_spec(spec)
-    if spec.to_json() != json.dumps(
+    canonical = json.dumps(
         {"schema_version": SCHEMA_VERSION, **value},
         allow_nan=False,
         sort_keys=True,
         separators=(",", ":"),
+    )
+    original = data.decode("utf-8") if type(data) is bytes else data
+    if (
+        type(original) is not str
+        or spec.to_json() != canonical
+        or original != canonical
     ):
         raise ValueError("run spec is not canonical")
     return spec
@@ -203,6 +225,45 @@ def validate_production_run_spec(spec: object) -> None:
         path = Path(root_value)
         if not path.is_absolute() or str(_absolute_lexical(path)) != root_value:
             raise ValueError(f"{root_label} must be a canonical absolute path")
+    for label in (
+        "ledger_root_device",
+        "ledger_root_inode",
+        "ledger_root_uid",
+        "ledger_root_mode",
+        "ledger_parent_device",
+        "ledger_parent_inode",
+        "ledger_parent_uid",
+        "ledger_parent_mode",
+    ):
+        value = getattr(spec, label)
+        if type(value) is not int or value < 0:
+            raise ValueError(f"{label} must be a non-negative exact integer")
+    if spec.ledger_root_inode == 0 or spec.ledger_parent_inode == 0:
+        raise ValueError("ledger inode identities must be non-zero")
+    if not stat.S_ISDIR(spec.ledger_root_mode) or not stat.S_ISDIR(
+        spec.ledger_parent_mode
+    ):
+        raise ValueError("ledger root and parent identities must describe directories")
+
+
+def capture_ledger_identity(root: Path) -> dict[str, int]:
+    """Capture the lstat identity that an operator must bind into the signed spec."""
+    root_stat = os.lstat(root)
+    parent_stat = os.lstat(root.parent)
+    if stat.S_ISLNK(root_stat.st_mode) or stat.S_ISLNK(parent_stat.st_mode):
+        raise ValueError("ledger root and parent must not be symlinks")
+    if not stat.S_ISDIR(root_stat.st_mode) or not stat.S_ISDIR(parent_stat.st_mode):
+        raise ValueError("ledger root and parent must be directories")
+    return {
+        "ledger_root_device": root_stat.st_dev,
+        "ledger_root_inode": root_stat.st_ino,
+        "ledger_root_uid": root_stat.st_uid,
+        "ledger_root_mode": root_stat.st_mode,
+        "ledger_parent_device": parent_stat.st_dev,
+        "ledger_parent_inode": parent_stat.st_ino,
+        "ledger_parent_uid": parent_stat.st_uid,
+        "ledger_parent_mode": parent_stat.st_mode,
+    }
 
 
 def _absolute_lexical(path: Path) -> Path:

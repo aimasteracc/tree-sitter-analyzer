@@ -40,17 +40,14 @@ def recover_hanging_journal(request: ProductionDispatchRequestV1) -> bool:
                 raise ValueError("hanging reservation envelope mismatch")
         finally:
             os.close(reserved)
-        payload = (
-            _canonical(
-                {
-                    "schema_version": 1,
-                    "event": "TERMINAL",
-                    "status": "UNKNOWN",
-                    "violations": ["RECOVERED_HANGING_CLAIM"],
-                    "evidence_digest": None,
-                }
-            )
-            + b"\n"
+        payload = _canonical(
+            {
+                "schema_version": 1,
+                "event": "TERMINAL",
+                "status": "UNKNOWN",
+                "violations": ["RECOVERED_HANGING_CLAIM"],
+                "evidence_digest": None,
+            }
         )
         terminal = os.open(
             "999-terminal.json",
