@@ -17,6 +17,11 @@ from benchmarks.codegraph_compare.receipt_v3_service import (
     _verify_authority,
 )
 
+pytestmark = pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: NO1-008A production authority requires Linux openat/cgroup/dm-verity",
+)
+
 
 def _authority_envelope() -> tuple[dict[str, object], dict[str, object]]:
     key = Ed25519PrivateKey.from_private_bytes(b"A" * 32)

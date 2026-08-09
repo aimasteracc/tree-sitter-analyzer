@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import secrets
+import os
 import socket
+import tempfile
 import threading
 from pathlib import Path
 
@@ -24,6 +25,17 @@ from benchmarks.codegraph_compare.verifier_service import (
     _send,
     request_verdict,
 )
+
+pytestmark = pytest.mark.skipif(
+    os.name == "nt" or not hasattr(socket, "SO_PEERCRED"),
+    reason="tracked: NO1-008A production authority requires Linux openat/cgroup/dm-verity",
+)
+
+
+@pytest.fixture
+def _socket_path():
+    with tempfile.TemporaryDirectory(prefix="tsa-v-", dir=Path.cwd()) as directory:
+        yield Path(directory) / "v.sock"
 
 
 def _verdict() -> dict[str, object]:
@@ -191,13 +203,11 @@ def _server(path: Path, key: Ed25519PrivateKey, *, forge: bool) -> threading.Thr
     return thread
 
 
-@pytest.mark.skipif(
-    not hasattr(socket, "SO_PEERCRED"),
-    reason="tracked: external verifier peer credentials require Linux CI",
-)
-def test_external_verifier_client_accepts_signed_runtime_bound_envelope(tmp_path: Path):
+def test_external_verifier_client_accepts_signed_runtime_bound_envelope(
+    _socket_path: Path,
+):
     key = Ed25519PrivateKey.generate()
-    path = Path("/tmp") / f"v-{secrets.token_hex(4)}.sock"
+    path = _socket_path
     thread = _server(path, key, forge=False)
     envelope = request_verdict(
         socket_path=path,
@@ -209,13 +219,11 @@ def test_external_verifier_client_accepts_signed_runtime_bound_envelope(tmp_path
     assert envelope["verdict"] == _verdict()
 
 
-@pytest.mark.skipif(
-    not hasattr(socket, "SO_PEERCRED"),
-    reason="tracked: external verifier peer credentials require Linux CI",
-)
-def test_external_verifier_client_rejects_forged_verdict_signature(tmp_path: Path):
+def test_external_verifier_client_rejects_forged_verdict_signature(
+    _socket_path: Path,
+):
     key = Ed25519PrivateKey.generate()
-    path = Path("/tmp") / f"v-{secrets.token_hex(4)}.sock"
+    path = _socket_path
     thread = _server(path, key, forge=True)
     with pytest.raises(InvalidSignature):
         request_verdict(

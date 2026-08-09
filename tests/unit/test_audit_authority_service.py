@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import socket
 import struct
 import tempfile
@@ -10,6 +11,7 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from benchmarks.codegraph_compare.audit_authority_service import serve_once
@@ -17,6 +19,17 @@ from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
 )
+
+pytestmark = pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: NO1-008A production authority requires Linux openat/cgroup/dm-verity",
+)
+
+
+@pytest.fixture
+def _socket_path():
+    with tempfile.TemporaryDirectory(prefix="tsa-a-", dir=Path.cwd()) as directory:
+        yield Path(directory) / "a.sock"
 
 
 def _exchange(
@@ -49,8 +62,8 @@ def _exchange(
     return strict_json_loads(bytes(response))
 
 
-def test_authority_server_rejects_direct_arbitrary_sign_request(tmp_path: Path):
-    socket_path = Path(tempfile.mkdtemp(prefix="tsa-a-", dir="/tmp")) / "a.sock"
+def test_authority_server_rejects_direct_arbitrary_sign_request(_socket_path: Path):
+    socket_path = _socket_path
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(str(socket_path))
     listener.listen(1)
@@ -69,14 +82,14 @@ def test_authority_server_rejects_direct_arbitrary_sign_request(tmp_path: Path):
 
 
 def test_authority_server_rejects_unsigned_run_cell_before_runner(
-    tmp_path: Path, monkeypatch
+    _socket_path: Path, monkeypatch
 ):
     root = Ed25519PrivateKey.from_private_bytes(b"R" * 32)
     monkeypatch.setattr(
         "benchmarks.codegraph_compare.audit_authority_service.baked_root_public_key",
         lambda: root.public_key().public_bytes_raw(),
     )
-    socket_path = Path(tempfile.mkdtemp(prefix="tsa-a-", dir="/tmp")) / "a.sock"
+    socket_path = _socket_path
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(str(socket_path))
     listener.listen(1)
@@ -142,7 +155,7 @@ def _signed_contract(root: Ed25519PrivateKey) -> dict[str, object]:
 
 
 def test_authority_response_signs_exact_closed_artifact_descriptors(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, _socket_path: Path, monkeypatch
 ):
     root = Ed25519PrivateKey.from_private_bytes(b"R" * 32)
     monkeypatch.setattr(
@@ -170,7 +183,7 @@ def test_authority_response_signs_exact_closed_artifact_descriptors(
             "verity-format.txt",
         )
     }
-    socket_path = Path(tempfile.mkdtemp(prefix="tsa-r-", dir="/tmp")) / "a.sock"
+    socket_path = _socket_path
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(str(socket_path))
     listener.listen(1)
@@ -193,7 +206,9 @@ def test_authority_response_signs_exact_closed_artifact_descriptors(
     assert response["response"]["job_id"] == "1" * 64
 
 
-def test_authority_response_rejects_symlink_artifact(tmp_path: Path, monkeypatch):
+def test_authority_response_rejects_symlink_artifact(
+    tmp_path: Path, _socket_path: Path, monkeypatch
+):
     root = Ed25519PrivateKey.from_private_bytes(b"R" * 32)
     monkeypatch.setattr(
         "benchmarks.codegraph_compare.audit_authority_service.baked_root_public_key",
@@ -215,7 +230,7 @@ def test_authority_response_rejects_symlink_artifact(tmp_path: Path, monkeypatch
             "verity-format.txt",
         )
     }
-    socket_path = Path(tempfile.mkdtemp(prefix="tsa-r-", dir="/tmp")) / "a.sock"
+    socket_path = _socket_path
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(str(socket_path))
     listener.listen(1)
