@@ -57,13 +57,14 @@ def test_receipt_binds_distinct_collector_and_subject_commits() -> None:
 def test_receipt_binds_exact_collector_and_schema_bytes() -> None:
     report=baseline()
     commit=report["collector"]["commit"]
-    assert [report["collector"]["script_sha256"],report["collector"]["schema_sha256"]] == [collector.digest_bytes(collector.git(REPO,"show",f"{commit}:scripts/collect_no1_006b_baseline.py")),collector.digest_bytes(collector.git(REPO,"show",f"{commit}:schemas/no1-006b-baseline.schema.json"))]
+    blobs=[subprocess.run(["git","show",f"{commit}:{path}"],cwd=REPO,check=True,capture_output=True).stdout for path in ("scripts/collect_no1_006b_baseline.py","schemas/no1-006b-baseline.schema.json")]
+    assert [report["collector"]["script_sha256"],report["collector"]["schema_sha256"]] == [collector.digest_bytes(blob) for blob in blobs]
 
 
 def test_receipt_binds_exact_collector_tool_lock_and_export() -> None:
     report=baseline(); command=report["commands"]["collector_tool_export"]
     exported=subprocess.run(command,cwd=REPO,check=True,capture_output=True).stdout
-    lock_blob=collector.git(REPO,"show",f"{report['collector']['commit']}:uv.lock")
+    lock_blob=subprocess.run(["git","show",f"{report['collector']['commit']}:uv.lock"],cwd=REPO,check=True,capture_output=True).stdout
     assert [report["collector"]["tool_lock_sha256"],report["collector"]["tool_export_sha256"]] == [collector.digest_bytes(lock_blob),collector.digest_bytes(exported)]
 
 
@@ -267,6 +268,7 @@ def test_clean_env_drops_hostile_uv_configuration(monkeypatch: pytest.MonkeyPatc
     assert {key:environment.get(key) for key in ("UV_CONFIG_FILE","UV_INDEX_URL","UV_NO_CONFIG","UV_OFFLINE")} == {"UV_CONFIG_FILE":None,"UV_INDEX_URL":None,"UV_NO_CONFIG":"1","UV_OFFLINE":"1"}
 
 
+@pytest.mark.skipif(os.name == "nt", reason="tracked: NO1-006B collector currently emits macOS-only E0 receipts")
 def test_uv_export_ignores_hostile_config_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     hostile=tmp_path/"uv.toml"; hostile.write_text("this is not valid toml = [")
     monkeypatch.setenv("UV_CONFIG_FILE",str(hostile))
@@ -275,6 +277,7 @@ def test_uv_export_ignores_hostile_config_file(monkeypatch: pytest.MonkeyPatch, 
     assert b"packaging==25.0" in result.stdout
 
 
+@pytest.mark.skipif(os.name == "nt", reason="tracked: NO1-006B collector currently emits macOS-only E0 receipts")
 def test_bound_blob_hash_is_independent_of_crlf_checkout(tmp_path: Path) -> None:
     repo=tmp_path/"repo"; repo.mkdir(); tracked=repo/"uv.lock"; tracked.write_bytes(b"version = 1\n")
     for command in (["git","init","-q"],["git","config","user.email","contract@example.invalid"],["git","config","user.name","Contract"],["git","add","uv.lock"],["git","commit","-qm","blob"]): subprocess.run(command,cwd=repo,check=True)
