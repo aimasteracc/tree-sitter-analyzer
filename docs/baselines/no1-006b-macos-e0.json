@@ -1,11 +1,11 @@
 {
-  "canonical_payload_sha256": "f1ff36c9ccd75a29a106227b6b448947c42b12e8c45c10910fb558b35f362973",
-  "collection_finished_at_utc": "2026-08-09T23:10:04.379071+00:00",
-  "collection_started_at_utc": "2026-08-09T23:09:51.800365+00:00",
+  "canonical_payload_sha256": "76b9b1ccd228c1726931ca4e01d2615a7ea5c391c97edf1baf4ab4806c889587",
+  "collection_finished_at_utc": "2026-08-09T23:39:41.908857+00:00",
+  "collection_started_at_utc": "2026-08-09T23:39:28.153006+00:00",
   "collector": {
-    "commit": "712dfaabda2e8f3845c94c19545902b334875828",
-    "schema_sha256": "0907a27c77dc27f6c35445be7343e48e98a79a11b0b0fc9819a0e3ad1f0e767f",
-    "script_sha256": "d4d42f0c81d137f18ddca394cf55acfaf9dd23e9af305c5fa29fbd3acf53f99f",
+    "commit": "5aae8c904c1be3a1582d87881a697e15949ff259",
+    "schema_sha256": "bd6bd670c8abb91581c84c8e21cde5deb2bf9f7216490718121619bf6c02b82a",
+    "script_sha256": "facd9f0edc07aab6ba5b4c3a563edb3cc8bb36320ad6b34324e2ecf68f337531",
     "tool_export_sha256": "6517ea8430512af84251d2b58a58cef8a008e16a224075448dc0d3158215ea75",
     "tool_inventory": [
       {
@@ -493,14 +493,14 @@
   "measured_axis": "macos",
   "measurements": {
     "cli_startup": {
-      "cold_ms": 1575.56,
+      "cold_ms": 1593.083,
       "definition": "clock before Popen through exact successful JSON analysis of fixture.py",
       "warm_ms": [
-        565.793,
-        610.982,
-        609.892,
-        574.942,
-        640.368
+        573.375,
+        574.295,
+        572.336,
+        569.315,
+        590.321
       ]
     },
     "dependency_distribution_count_excluding_root": 64,
@@ -510,7 +510,7 @@
     "installed_size_bytes": 89982491,
     "installed_size_scope": "unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded",
     "mcp_startup": {
-      "cold_ms": 2170.627,
+      "cold_ms": 2219.696,
       "definition": "clock before Popen through successful initialize, initialized notification, and exact tools/list readiness",
       "tool_names": [
         "edit",
@@ -524,11 +524,11 @@
         "viz"
       ],
       "warm_ms": [
-        829.817,
-        783.43,
-        775.074,
-        791.538,
-        808.726
+        848.983,
+        912.212,
+        781.013,
+        796.063,
+        771.235
       ]
     },
     "network_transfer_bytes": {
