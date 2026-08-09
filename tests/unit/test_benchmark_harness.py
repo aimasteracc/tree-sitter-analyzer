@@ -13007,14 +13007,15 @@ def test_authority_removes_ext4_lost_found_and_checks_payload_before_verity():
     source = Path("benchmarks/codegraph_compare/audit_authority_runner.py").read_text()
 
     commands = [
-        '_run("mkfs.ext4", "-q", "-d", str(core), str(data))',
+        '"mkfs.ext4",',
         '_run("debugfs", "-w", "-R", "rmdir lost+found", str(data))',
-        "_assert_ext4_payload(data, core)",
+        "_assert_ext4_payload(",
         '"veritysetup", "format", str(data), str(hashes)',
     ]
 
-    assert [source.index(command) for command in commands] == sorted(
-        source.index(command) for command in commands
+    sealing = source[source.index("data_size, inode_count, payload_bytes =") :]
+    assert [sealing.index(command) for command in commands] == sorted(
+        sealing.index(command) for command in commands
     )
 
 
@@ -14458,6 +14459,108 @@ def test_decision_ledger_startup_rejects_corrupt_persisted_receipt(
 
     with pytest.raises(ValueError, match="receipt is not canonical"):
         consumer.DecisionLedger(path)
+
+
+def test_ext4_layout_reserves_exact_sealed_core_inodes(tmp_path: Path):
+    # PR #1249 review 3744627741: byte sizing alone under-provisioned small-file inodes.
+    from benchmarks.codegraph_compare.audit_authority_runner import _ext4_layout
+
+    core = tmp_path / "core"
+    core.mkdir()
+    (core / "index").mkdir()
+    (core / "one").write_bytes(b"")
+    (core / "index" / "two").write_bytes(b"")
+
+    assert _ext4_layout(core, 128 * 1024 * 1024) == (
+        68 * 1024 * 1024,
+        6,
+        16 * 1024,
+    )
+
+
+def test_ext4_layout_rejects_core_above_entry_bound(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744627741: inode counting work has an authority-owned bound.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    core = tmp_path / "core"
+    core.mkdir()
+    (core / "one").write_bytes(b"")
+    (core / "two").write_bytes(b"")
+    monkeypatch.setattr(authority, "_MAX_SEALED_CORE_ENTRIES", 2)
+
+    with pytest.raises(ValueError, match="entry count exceeds authority maximum"):
+        authority._ext4_layout(core, 128 * 1024 * 1024)
+
+
+def test_debugfs_timeout_scales_with_payload_and_contract_expiry(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744627743: extraction cannot inherit the fixed 120s default.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    observed = []
+    monkeypatch.setattr(authority.time, "time_ns", lambda: 1_000_000_000)
+    monkeypatch.setattr(authority, "_hash_tree", lambda _path: "same")
+    monkeypatch.setattr(
+        authority,
+        "_run",
+        lambda *args, timeout: observed.append((args, timeout)) or b"",
+    )
+
+    authority._assert_ext4_payload(
+        tmp_path / "data.img",
+        tmp_path / "core",
+        payload_bytes=64 * 1024 * 1024,
+        contract_expires_at_ns=33_000_000_000,
+    )
+
+    command, timeout = observed[0]
+    assert command[:2] == ("debugfs", "-R")
+    assert command[2].startswith("rdump / ")
+    assert command[3] == str(tmp_path / "data.img")
+    assert timeout == 32.0
+
+
+def test_authority_preflight_rejects_ambiguous_mount_without_state(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744627747: plan mount errors must precede reservation.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    job = tmp_path / "job"
+    job.mkdir()
+    plan = {
+        "resource_ceilings": {"io_bytes": 1024},
+        "executions": [
+            {
+                "id": execution_id,
+                "argv": [
+                    "/tool/bin",
+                    execution_id,
+                    "--config",
+                    "/config.json",
+                    *(
+                        ["--source", "/source", "--source", "/source"]
+                        if execution_id == "build"
+                        else []
+                    ),
+                ],
+            }
+            for execution_id in ("delete", "build", "health", "symbol", "call")
+        ],
+    }
+    (job / "plan.json").write_bytes(canonical_json_bytes(plan))
+    runner = object.__new__(authority.AuthorityRunner)
+    runner._artifacts = tmp_path
+    runner._inputs = lambda _contract: (job, {}, {})
+    runner._verify_staged = lambda *_args: 1
+    monkeypatch.setattr(authority, "validate_producer_plan", lambda value: value)
+
+    with pytest.raises(ValueError, match="source target is not exact"):
+        runner.preflight({"job_id": "a" * 64})
+
+    assert list(tmp_path.glob("*.state")) == []
 
 
 _mark_posix_qualification_section_tests()

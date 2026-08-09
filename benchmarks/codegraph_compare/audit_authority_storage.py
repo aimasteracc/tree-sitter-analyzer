@@ -264,8 +264,9 @@ def _producer_mount_targets(plan: Mapping[str, Any]) -> tuple[str, str, str]:
             ("--source", source_targets),
         ):
             positions = [index for index, value in enumerate(argv) if value == option]
-            if option == "--config" and len(positions) != 1:
-                raise ValueError("producer config target is not exact")
+            expected_count = 1 if option == "--config" or item["id"] == "build" else 0
+            if len(positions) != expected_count:
+                raise ValueError(f"producer {option[2:]} target is not exact")
             if any(index + 1 >= len(argv) for index in positions):
                 raise ValueError("producer mount target argument is incomplete")
             targets.update(argv[index + 1] for index in positions)

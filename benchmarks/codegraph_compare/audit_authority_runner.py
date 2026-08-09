@@ -46,7 +46,7 @@ from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
 from benchmarks.codegraph_compare.verifier import parse_public_config
 
 
-def _run(*args: str, timeout: int = 120) -> bytes:
+def _run(*args: str, timeout: float = 120) -> bytes:
     """Run every unit of authority work in a killable process group."""
     process = subprocess.Popen(
         args,
@@ -148,6 +148,11 @@ def _docker_wall_deadline(started_at: str, wall_timeout: int) -> float:
 _EXT4_METADATA_MIN_BYTES = 64 * 1024 * 1024
 _EXT4_ROUND_BYTES = 4 * 1024 * 1024
 _MAX_AUTHORIZED_OUTPUT_BYTES = 16 * 1024 * 1024 * 1024
+_MAX_SEALED_CORE_ENTRIES = 1_000_000
+_EXT4_INODE_RESERVE_NUMERATOR = 11
+_EXT4_INODE_RESERVE_DENOMINATOR = 10
+_DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND = 16 * 1024 * 1024
+_DEBUGFS_FIXED_OVERHEAD_SECONDS = 30
 
 
 def _authorized_output_ceiling(plan: Mapping[str, Any]) -> int:
@@ -163,35 +168,61 @@ def _round_up(value: int, alignment: int) -> int:
     return ((value + alignment - 1) // alignment) * alignment
 
 
-def _ext4_image_size(core: Path, authorized_output_bytes: int) -> int:
-    """Size ext4 from sealed logical/allocated bytes and inode metadata.
-
-    Logical size is charged as well as allocated blocks so a huge sparse file
-    cannot bypass the signed output budget and surprise ``mkfs.ext4 -d``.
-    """
+def _ext4_layout(core: Path, authorized_output_bytes: int) -> tuple[int, int, int]:
+    """Return image bytes, reserved inodes, and charged extraction payload bytes."""
     if (
         type(authorized_output_bytes) is not int
         or authorized_output_bytes <= 0
         or authorized_output_bytes > _MAX_AUTHORIZED_OUTPUT_BYTES
     ):
         raise ValueError("authorized output ceiling is invalid")
-    charged_bytes = 4096  # root inode
-    for path in core.rglob("*"):
-        metadata = os.lstat(path)
-        charged_bytes += 4096  # conservative inode/directory-entry metadata
-        if stat.S_ISREG(metadata.st_mode):
-            allocated = getattr(metadata, "st_blocks", 0) * 512
-            charged_bytes += max(metadata.st_size, allocated)
-        elif not stat.S_ISDIR(metadata.st_mode):
-            raise ValueError("producer core contains unsupported entry")
-        if charged_bytes > authorized_output_bytes:
-            raise ValueError("producer core exceeds authorized output ceiling")
+    charged_bytes = 4096  # filesystem root inode/directory metadata
+    core_entries = 1  # the sealed core root becomes the filesystem root
+    directories = 1
+    regular_files = 0
+    symlinks = 0
+    for current, child_directories, child_files in os.walk(core, followlinks=False):
+        for name in child_directories + child_files:
+            metadata = os.lstat(Path(current) / name)
+            core_entries += 1
+            if core_entries > _MAX_SEALED_CORE_ENTRIES:
+                raise ValueError("producer core entry count exceeds authority maximum")
+            charged_bytes += 4096  # conservative inode/directory-entry metadata
+            if stat.S_ISREG(metadata.st_mode):
+                regular_files += 1
+                allocated = getattr(metadata, "st_blocks", 0) * 512
+                charged_bytes += max(metadata.st_size, allocated)
+            elif stat.S_ISDIR(metadata.st_mode):
+                directories += 1
+            elif stat.S_ISLNK(metadata.st_mode):
+                symlinks += 1
+            else:
+                raise ValueError("producer core contains unsupported entry")
+            if charged_bytes > authorized_output_bytes:
+                raise ValueError("producer core exceeds authorized output ceiling")
+    if core_entries != directories + regular_files + symlinks or symlinks != 0:
+        raise ValueError("producer core inode accounting is not exact")
+
     required = _EXT4_METADATA_MIN_BYTES + (charged_bytes * 5 + 3) // 4
     maximum = _EXT4_METADATA_MIN_BYTES + (authorized_output_bytes * 5 + 3) // 4
     image_size = _round_up(required, _EXT4_ROUND_BYTES)
     if image_size > _round_up(maximum, _EXT4_ROUND_BYTES):
         raise ValueError("ext4 image exceeds authorized plan-derived ceiling")
-    return image_size
+
+    # Include the filesystem root and mkfs-created lost+found, then retain ten
+    # percent for e2fsprogs metadata behavior instead of relying on byte ratios.
+    required_inodes = core_entries + 1
+    inode_count = (
+        required_inodes * _EXT4_INODE_RESERVE_NUMERATOR
+        + _EXT4_INODE_RESERVE_DENOMINATOR
+        - 1
+    ) // _EXT4_INODE_RESERVE_DENOMINATOR
+    return image_size, inode_count, charged_bytes
+
+
+def _ext4_image_size(core: Path, authorized_output_bytes: int) -> int:
+    """Compatibility wrapper returning the sealed-core-derived image size."""
+    return _ext4_layout(core, authorized_output_bytes)[0]
 
 
 def _verity_hash_image_size(data_size: int) -> int:
@@ -227,11 +258,36 @@ def _validate_producer_output(output: Path) -> Path:
     return core
 
 
-def _assert_ext4_payload(data_image: Path, payload: Path) -> None:
-    """Prove the mkfs result extracts to the exact authority payload tree."""
+def _assert_ext4_payload(
+    data_image: Path,
+    payload: Path,
+    *,
+    payload_bytes: int,
+    contract_expires_at_ns: int,
+) -> None:
+    """Extract at an authorized minimum rate without crossing contract expiry."""
+    if type(payload_bytes) is not int or payload_bytes < 0:
+        raise ValueError("ext4 extraction payload size is invalid")
+    if type(contract_expires_at_ns) is not int:
+        raise ValueError("authority contract expiry is invalid")
+    required_timeout = (
+        _DEBUGFS_FIXED_OVERHEAD_SECONDS
+        + (payload_bytes + _DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND - 1)
+        // _DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND
+    )
+    remaining = (contract_expires_at_ns - time.time_ns()) / 1_000_000_000
+    if remaining <= 0:
+        raise TimeoutError("authority contract expired before ext4 extraction")
+    extraction_timeout = min(float(required_timeout), remaining)
     with tempfile.TemporaryDirectory(prefix="no1-008a-ext4-check-") as temporary:
         extracted = Path(temporary)
-        _run("debugfs", "-R", f"rdump / {extracted}", str(data_image))
+        _run(
+            "debugfs",
+            "-R",
+            f"rdump / {extracted}",
+            str(data_image),
+            timeout=extraction_timeout,
+        )
         if _hash_tree(extracted) != _hash_tree(payload):
             raise ValueError("ext4 image tree differs from sealed authority payload")
 
@@ -438,6 +494,7 @@ class AuthorityRunner:
         self._verify_staged(job, contract, config)
         plan = validate_producer_plan(strict_json_loads(_read(job / "plan.json")))
         _authorized_output_ceiling(plan)
+        _producer_mount_targets(plan)
 
     def _execute(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
         job, declared, config = self._inputs(contract)
@@ -608,13 +665,26 @@ class AuthorityRunner:
             os.chmod(output, 0o555, follow_symlinks=False)  # nosec B103
             data = destination / "data.img"
             hashes = destination / "hash.img"
-            data_size = _ext4_image_size(core, output_ceiling)
+            data_size, inode_count, payload_bytes = _ext4_layout(core, output_ceiling)
             _run("truncate", "-s", str(data_size), str(data))
-            _run("mkfs.ext4", "-q", "-d", str(core), str(data))
+            _run(
+                "mkfs.ext4",
+                "-q",
+                "-N",
+                str(inode_count),
+                "-d",
+                str(core),
+                str(data),
+            )
             # mkfs.ext4 creates an authority-extraneous /lost+found.  Remove it
             # before dm-verity so extraction hashes the exact sealed payload tree.
             _run("debugfs", "-w", "-R", "rmdir lost+found", str(data))
-            _assert_ext4_payload(data, core)
+            _assert_ext4_payload(
+                data,
+                core,
+                payload_bytes=payload_bytes,
+                contract_expires_at_ns=contract["expires_at_ns"],
+            )
             _run("truncate", "-s", str(_verity_hash_image_size(data_size)), str(hashes))
             format_output = _run(
                 "veritysetup", "format", str(data), str(hashes), "--hash", "sha256"
