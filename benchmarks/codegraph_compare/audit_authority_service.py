@@ -338,9 +338,16 @@ def serve_once(
             reply = _verify_signed_response(query(contract), contract, key, key_id)
         else:
             contract = verify_contract(request)
-            finalize = lambda result: _signed_response(  # noqa: E731
-                result, contract, artifact_root, key, key_id
-            )
+
+            def finalize(result: Mapping[str, Any]) -> dict[str, Any]:
+                # SUCCESS is one-shot and durable.  Bind that transition to a
+                # wall-clock instant strictly inside the root-signed lifetime.
+                if time.time_ns() >= contract["expires_at_ns"]:
+                    raise TimeoutError(
+                        "authority contract expired before terminal finalization"
+                    )
+                return _signed_response(result, contract, artifact_root, key, key_id)
+
             transaction = getattr(runner, "run_transaction", None)
             preflight = getattr(runner, "preflight", None)
             if preflight is not None:

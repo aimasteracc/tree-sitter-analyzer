@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import socket
 import sqlite3
@@ -42,7 +43,89 @@ from benchmarks.codegraph_compare.verifier_service import LEDGER_DOMAIN, VERDICT
 DECISION_DOMAIN = b"NO1-008A-DECISION-CONTRACT-V1\0"
 RECEIPT_DOMAIN = b"NO1-008A-DECISION-RECEIPT-V1\0"
 MAX_FRAME = 64 * 1024 * 1024
+DECISION_MAX_DEPTH = 64
+DECISION_MAX_NODES = 1_000_000
+DECISION_ENVELOPE_SCHEMA_OVERHEAD = 2 * 1024 * 1024
 _HEX = frozenset("0123456789abcdef")
+
+
+def _decision_complexity(value: Any) -> tuple[int, int]:
+    nodes = 0
+    deepest = 0
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    while stack:
+        item, depth = stack.pop()
+        nodes += 1
+        deepest = max(deepest, depth)
+        if nodes > DECISION_MAX_NODES or depth > DECISION_MAX_DEPTH:
+            raise ValueError("decision JSON complexity limit exceeded")
+        if type(item) is list:
+            stack.extend((child, depth + 1) for child in item)
+        elif type(item) is dict:
+            stack.extend((child, depth + 1) for child in item.values())
+        elif type(item) not in (str, bool, int, float, type(None)):
+            raise ValueError("decision JSON value type invalid")
+    return nodes, deepest
+
+
+def _decision_json_loads(payload: bytes) -> dict[str, Any]:
+    """Parse the complete advertised decision frame with duplicate protection."""
+    if type(payload) is not bytes or not payload or len(payload) > MAX_FRAME:
+        raise ValueError("decision JSON byte size is invalid")
+
+    def pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError(f"duplicate JSON member: {key}")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"non-finite JSON number rejected: {value}")
+
+    try:
+        value = json.loads(
+            payload.decode("utf-8", errors="strict"),
+            object_pairs_hook=pairs,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("invalid decision JSON") from error
+    if type(value) is not dict:
+        raise ValueError("decision frame must be a JSON object")
+    _decision_complexity(value)
+    return value
+
+
+def preflight_decision_consume_request(
+    contract: dict[str, Any],
+    verifier_request_bound: int,
+    verifier_measurement: dict[str, Any],
+) -> int:
+    """Bound the final consume frame before any one-shot service is called."""
+    if (
+        type(contract) is not dict
+        or type(verifier_request_bound) is not int
+        or type(verifier_measurement) is not dict
+    ):
+        raise ValueError("decision consume preflight inputs invalid")
+    if verifier_request_bound < 0:
+        raise ValueError("verifier request bound invalid")
+    retained = canonical_json_bytes(contract) + canonical_json_bytes(
+        verifier_measurement
+    )
+    escaped_retained = len(retained) + retained.count(b'"') + retained.count(b"\\")
+    bound = (
+        verifier_request_bound + escaped_retained + DECISION_ENVELOPE_SCHEMA_OVERHEAD
+    )
+    if bound > MAX_FRAME:
+        raise ValueError("decision consume request upper bound exceeds frame ceiling")
+    contract_nodes, _depth = _decision_complexity(contract)
+    measurement_nodes, _depth = _decision_complexity(verifier_measurement)
+    if contract_nodes + measurement_nodes + 100_000 > DECISION_MAX_NODES:
+        raise ValueError("decision consume request exceeds parser node ceiling")
+    return bound
 
 
 def _hex64(value: Any, label: str) -> str:
@@ -412,6 +495,9 @@ def request_decision(
         if remaining <= 0:
             raise TimeoutError("decision deadline expired")
         payload = canonical_json_bytes(request)
+        if len(payload) > MAX_FRAME:
+            raise ValueError("decision request exceeds frame ceiling")
+        _decision_complexity(request)
         frame = struct.pack("!I", len(payload)) + payload
         sent = 0
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -503,7 +589,9 @@ def _serve_connection(
     """Contain every client failure so malformed peers cannot drain workers."""
     try:
         peer_allowed(conn, allowed_client_uid)
-        request = read_frame(conn, MAX_FRAME, 10, "decision request")
+        request = read_frame(
+            conn, MAX_FRAME, 10, "decision request", _decision_json_loads
+        )
         try:
             reply = consume_request(request, config, ledger, key, identity)
         except Exception as exc:

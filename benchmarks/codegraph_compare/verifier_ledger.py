@@ -408,6 +408,14 @@ class ChallengeLedger:
                 (challenge, manifest_sha256),
             ).fetchone()
             if row is None:
+                state = self.db.execute(
+                    "SELECT state FROM challenges WHERE challenge=? AND manifest_sha256=?",
+                    (challenge, manifest_sha256),
+                ).fetchone()
+                if state is not None and state[0] == "VERIFYING":
+                    raise ValueError("verifier verdict in progress")
+                if state is not None and state[0] == "FAILED":
+                    raise ValueError("verifier verdict terminal failure")
                 raise ValueError("verifier verdict not found")
             return bytes(row[0])
 

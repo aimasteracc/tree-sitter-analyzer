@@ -136,6 +136,10 @@ class _PostSendTransportError(ConnectionError):
     """A request may have been sent but its response transport did not complete."""
 
 
+class _VerdictPending(ConnectionError):
+    """An ambiguous verification has not reached a durable terminal state yet."""
+
+
 def _manifest_json_loads(payload: bytes) -> dict[str, Any]:
     """Parse verifier frames with protocol bounds independent of receipt limits."""
     if type(payload) is not bytes or not payload or len(payload) > MAX_FRAME:
@@ -636,6 +640,13 @@ def query_verdict(
         config,
         timeout,
     )
+    if type(envelope) is dict and set(envelope) == {"error", "reason"}:
+        if envelope["reason"] in {
+            "verifier verdict in progress",
+            "verifier verdict not found",
+        }:
+            raise _VerdictPending(envelope["reason"])
+        raise ValueError(f"verifier verdict query failed: {envelope['reason']}")
     required = {
         "manifest_sha256",
         "decision_id",
@@ -764,17 +775,47 @@ def request_verdict(
         raise TimeoutError("verifier overall deadline expired")
     try:
         envelope = _round_trip(socket_path, request, config, remaining)
-    except _PostSendTransportError:
-        recovery_remaining = deadline - time.monotonic()
-        if recovery_remaining <= 0:
+    except _PreSendTransportError:
+        # The challenge was not consumed: replay the identical request once under
+        # the original deadline rather than abandoning fourteen completed cells.
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             raise
-        envelope = query_verdict(
-            socket_path=socket_path,
-            manifest_sha256=digest,
-            challenge=begin["challenge"],
-            config=config,
-            timeout=recovery_remaining,
-        )
+        try:
+            envelope = _round_trip(socket_path, request, config, remaining)
+        except _PostSendTransportError:
+            envelope = None
+    except _PostSendTransportError:
+        envelope = None
+    if envelope is None:
+        delay = 0.01
+        while True:
+            recovery_remaining = deadline - time.monotonic()
+            if recovery_remaining <= 0:
+                raise TimeoutError(
+                    "verifier verdict recovery exceeded original deadline"
+                )
+            try:
+                envelope = query_verdict(
+                    socket_path=socket_path,
+                    manifest_sha256=digest,
+                    challenge=begin["challenge"],
+                    config=config,
+                    timeout=recovery_remaining,
+                )
+                break
+            except (
+                _VerdictPending,
+                _PreSendTransportError,
+                _PostSendTransportError,
+            ):
+                recovery_remaining = deadline - time.monotonic()
+                if recovery_remaining <= 0:
+                    raise TimeoutError(
+                        "verifier verdict recovery exceeded original deadline"
+                    ) from None
+                time.sleep(min(delay, recovery_remaining))
+                delay = min(delay * 2, 0.25)
     if type(envelope) is dict and set(envelope) == {"error", "reason"}:
         raise ValueError(f"external verifier rejected manifest: {envelope['reason']}")
     expected = {

@@ -359,3 +359,44 @@ def test_authority_preflight_rejects_plan_before_transaction_reservation(
         "error": "ValueError",
         "reason": "producer execution IDs are not exact",
     }
+
+
+def test_authority_rechecks_expiry_before_terminal_signature(
+    _socket_path: Path, monkeypatch
+):
+    # PR #1249 review 3744975457: work completion cannot outlive signed authority.
+    from benchmarks.codegraph_compare import audit_authority_service as service
+
+    root = Ed25519PrivateKey.from_private_bytes(b"R" * 32)
+    contract = _signed_contract(root)
+    monkeypatch.setattr(
+        service, "baked_root_public_key", lambda: root.public_key().public_bytes_raw()
+    )
+    ticks = iter((contract["expires_at_ns"] - 1, contract["expires_at_ns"]))
+    monkeypatch.setattr(service.time, "time_ns", lambda: next(ticks))
+    events = []
+
+    class Runner:
+        def run_transaction(self, request, finalize):
+            events.append(request["job_id"])
+            return finalize({})
+
+    socket_path = _socket_path
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(socket_path))
+    listener.listen(1)
+    try:
+        response = _exchange(
+            listener,
+            socket_path,
+            {"operation": "run-cell", "contract": contract},
+            runner=Runner(),
+        )
+    finally:
+        listener.close()
+
+    assert events == ["1" * 64]
+    assert response == {
+        "error": "TimeoutError",
+        "reason": "authority contract expired before terminal finalization",
+    }

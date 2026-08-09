@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import time
 from pathlib import Path
@@ -16,6 +17,7 @@ from benchmarks.codegraph_compare.audit_authority_service import (
     verify_contract,
 )
 from benchmarks.codegraph_compare.decision_consumer_service import (
+    preflight_decision_consume_request,
     request_decision,
     verify_configured_plan_set,
     verify_decision_contract,
@@ -108,6 +110,22 @@ def _write(path: Path, value: Any) -> None:
     _fsync_directory(path.parent)
 
 
+def _validate_staged_inventory(
+    inventory_bytes: bytes,
+    repo_id: str,
+    trusted_digest: str,
+) -> dict[str, Any]:
+    inventory = strict_json_loads(inventory_bytes)
+    eligibility = validate_receipt_inventory(inventory)
+    if eligibility["repo_id"] != repo_id:
+        raise ValueError("staged inventory does not match contract repository")
+    if canonical_json_bytes(inventory) != inventory_bytes:
+        raise ValueError("staged inventory bytes are not canonical JSON")
+    if hashlib.sha256(inventory_bytes).hexdigest() != trusted_digest:
+        raise ValueError("staged inventory does not match trusted inventory digest")
+    return inventory
+
+
 def _run_impl(args: argparse.Namespace) -> int:
     config_path = Path(args.public_config).resolve(strict=True)
     config = parse_public_config(config_path.read_bytes())
@@ -164,14 +182,14 @@ def _run_impl(args: argparse.Namespace) -> int:
         plan = strict_json_loads(
             (staged_root / contracts[identity]["job_id"] / "plan.json").read_bytes()
         )
-        inventory = strict_json_loads(
-            (
-                staged_root / contracts[identity]["job_id"] / "inventory.json"
-            ).read_bytes()
+        inventory_bytes = (
+            staged_root / contracts[identity]["job_id"] / "inventory.json"
+        ).read_bytes()
+        inventory = _validate_staged_inventory(
+            inventory_bytes,
+            identity[0],
+            config["trusted"]["inventory_sha256"][identity[0]],
         )
-        eligibility = validate_receipt_inventory(inventory)
-        if eligibility["repo_id"] != identity[0]:
-            raise ValueError("staged inventory does not match contract repository")
         inventories[identity] = inventory
         preflight_receipt_service_frames(plan, inventory)
         plan = validate_producer_plan(plan)
@@ -191,11 +209,16 @@ def _run_impl(args: argparse.Namespace) -> int:
     verify_configured_plan_set(decision_contract, config)
     # This bound uses only root-staged inputs and runs before the first authority
     # reservation, so an oversized exact-14 frame consumes no cell.
-    preflight_exact14_manifest(
+    verifier_request_bound = preflight_exact14_manifest(
         [
             (plans[identity], inventories[identity], contracts[identity])
             for identity in EXPECTED_CELLS
         ]
+    )
+    preflight_decision_consume_request(
+        decision_contract,
+        verifier_request_bound,
+        config["trusted"]["verifier_runtime"]["measurement"],
     )
     serial_budget_seconds = exact14_execution_budget_seconds(plans)
     required_lifetime_ns = (

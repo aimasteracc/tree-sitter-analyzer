@@ -52,6 +52,26 @@ EXECUTION_KEYS = frozenset(
 ENVIRONMENT_KEYS = frozenset({"HOME", "LANG", "LC_ALL", "PATH"})
 MAX_EXPECTED_RESULT_BYTES = 4 * 1024 * 1024
 
+
+def _bounded_path(value: Any, label: str, *, absolute: bool = False) -> str:
+    if type(value) is not str or not value or len(value) > 4096:
+        raise ValueError(f"{label} must be a bounded path")
+    if (
+        "," in value
+        or "\\" in value
+        or "//" in value
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise ValueError(f"{label} is not canonical")
+    parts = value.split("/")
+    start = 1 if absolute else 0
+    if absolute != value.startswith("/") or any(
+        part in ("", ".", "..") for part in parts[start:]
+    ):
+        raise ValueError(f"{label} is not canonical")
+    return value
+
+
 FORBIDDEN_ENV_FRAGMENTS = (
     "KEY",
     "TOKEN",
@@ -83,7 +103,7 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
     cell = _exact(plan["cell"], CELL_KEYS, "cell")
     if (
         any(
-            type(cell[name]) is not str or not cell[name]
+            type(cell[name]) is not str or not cell[name] or len(cell[name]) > 64
             for name in ("repo_id", "arm_id")
         )
         or cell["attempt"] != 1
@@ -113,12 +133,13 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
         or re.fullmatch(r"sha256:[0-9a-f]{64}", plan["image_digest"]) is None
     ):
         raise ValueError("image digest must be exact")
+    _bounded_path(plan["artifact_path"], "artifact path")
     if (
-        type(plan["artifact_path"]) is not str
-        or type(plan["oracle_statement"]) is not str
+        type(plan["oracle_statement"]) is not str
         or not plan["oracle_statement"]
+        or len(plan["oracle_statement"]) > 4096
     ):
-        raise ValueError("artifact path and oracle statement are required")
+        raise ValueError("oracle statement must be a bounded non-empty string")
     ceilings = _exact(
         plan["resource_ceilings"],
         frozenset(
@@ -145,6 +166,14 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
     )
     if any(type(partition[name]) is not list for name in partition):
         raise ValueError("index partition lists are required")
+    for name in partition:
+        paths = partition[name]
+        if any(type(path) is not str for path in paths) or len(paths) != len(
+            set(paths)
+        ):
+            raise ValueError(f"{name} paths must be unique canonical strings")
+        for path in paths:
+            _bounded_path(path, name)
     environment = _exact(plan["environment"], ENVIRONMENT_KEYS, "environment")
     if (
         environment["HOME"] != "/nonexistent"
@@ -170,15 +199,15 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
             or not item["id"]
             or type(item["argv"]) is not list
             or not item["argv"]
-            or any(type(arg) is not str or not arg for arg in item["argv"])
+            or any(
+                type(arg) is not str or not arg or len(arg) > 4096
+                for arg in item["argv"]
+            )
         ):
             raise ValueError("execution identity and argv must be exact")
-        if (
-            not item["argv"][0].startswith("/")
-            or type(item["cwd"]) is not str
-            or not item["cwd"].startswith("/")
-        ):
-            raise ValueError("execution argv[0] and cwd must be absolute")
+        if not item["argv"][0].startswith("/"):
+            raise ValueError("execution argv[0] must be absolute")
+        _bounded_path(item["cwd"], "execution cwd", absolute=True)
         if (
             type(item["environment_digest"]) is not str
             or re.fullmatch(r"[0-9a-f]{64}", item["environment_digest"]) is None
