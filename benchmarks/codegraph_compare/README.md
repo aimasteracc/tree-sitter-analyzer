@@ -4,11 +4,13 @@
 ## NO1-003B production-canary operator runbook
 
 > **Current decision: NO-GO for a real canary.** NO1-003D provides only an
-> offline-qualified, injected-runner dispatch boundary; it contains no provider
-> implementation or operator command. `CanaryProtocol` still rejects every
-> non-fixture execution with `QUALIFICATION_SCAFFOLD_NOT_PRODUCTION_READY`.
-> Do not bypass that stop or call an adapter directly. A real NO1-003C run still
-> requires separate human budget authorization, external paths, and role keys.
+> offline-qualified, direct single-transport dispatch boundary; it contains no
+> provider implementation or operator command. A caller-supplied `runner` is a
+> fail-closed compatibility marker and is never executed. `CanaryProtocol` still
+> rejects every non-fixture execution with
+> `QUALIFICATION_SCAFFOLD_NOT_PRODUCTION_READY`. Do not bypass that stop or call
+> an adapter directly. A real NO1-003C run still requires separate human budget
+> authorization, external authorities, external paths, and independent role keys.
 
 ### 1. Run the zero-cost offline rehearsal
 
@@ -74,13 +76,16 @@ checks.
 The Anchor Custodian, Budget Gateway, Evidence Collector, independent Judge,
 and execution operator must record approval out of band. The strict wire request
 contains `schema_version`, `manifest`, `spec`, `cell_order`, `timeout_seconds`,
-`qualification_evidence_digest`, `journal_root`, and `evidence_root`; the spec
-binds the operator-precreated `global_nonce_ledger_root` plus the root and parent
-`lstat` device/inode/uid/mode identities. The dispatcher never creates this root
-and revalidates both identities around the claim and at later dispatch boundaries.
-Renaming and recreating the same signed path is rejected. Operator config pins
-independent spend, judge, and provider-receipt keys and their key IDs. Before any future real call,
-all of the following must be true:
+`qualification_evidence_digest`, `journal_root`, and `evidence_root`. The spec
+continues to bind the configured roots and ledger identity material as frozen
+input, but no local journal, pathname, inode, or ledger establishes a claim or
+terminal authorization. Operator config pins independent spend and judge keys
+and independent Ed25519 public keys/key IDs for the external nonce-claim,
+provider-budget, and immutable-evidence authorities. The dispatcher contains no
+authority private key or receipt issuer. Production PASS requires all three
+external facts: a fresh one-shot claim receipt bound to the dispatch challenge,
+signed provider reservation and usage receipts, and a signed terminal evidence
+receipt. Before any future real call, all of the following must be true:
 
 1. The exact Gin commit, clean workspace fingerprint, prompt hash, MCP launch
    identities, exact model ID, nonce, expiry, one-cell request limit, token limit,
@@ -91,17 +96,21 @@ all of the following must be true:
    bundle-provided key, environment inheritance, or self-signed replacement is
    allowed.
 3. `SpendAttestation` and `JudgeRecord` bind the exact spec hash (including all
-   three roots and the global-ledger identities), nonce, expiry, and provider
-   budget mode. `client-process-kill` self-reporting is rejected: only an exact-v1
-   provider reservation receipt (canonical bounded identities, exact numeric
-   types, lowercase SHA-256/HMAC) plus the dispatcher-owned exact-one callback
-   wrapper is admissible. Provider-key identity is observed before/after the call,
-   after runner return or exception, and before PASS; receipt verification always
-   uses the qualification-time pinned bytes. These discrete checks do not claim
-   visibility into a transient swap that is restored between observations.
-4. The collector root is fresh and external. Every write is exclusive and the
-   finalized ledger/artifacts are immutable. Checkout/runtime audits and cleanup
-   must pass for each arm.
+   three roots and the ledger identity material), nonce, expiry, and provider
+   budget mode. `client-process-kill` self-reporting is rejected. The dispatcher
+   makes exactly one direct `provider_call(request)` after a verified external
+   one-shot claim; it never invokes a runner or exposes the transport to one.
+   Exact-v1 provider reservation and usage receipts require canonical bounded
+   identities, exact numeric types, and Ed25519 signatures verified with the
+   qualification-time pinned provider public key.
+4. The collector root is fresh and external. The configured local journal and
+   collected evidence are E0 diagnostics only. `EvidenceCollector.finalize()`
+   always reports
+   `durable=false`: POSIX dirfd collection reports
+   `local-dirfd-diagnostic-only`, while Windows/no-dirfd reports
+   `durability="unsupported"` and does not simulate read-only or WORM storage.
+   Dispatch consumes only the local ledger SHA-256 as an input to the external
+   evidence authority; local files cannot establish terminal durability or PASS.
 5. The Judge independently signs the exact evidence digest and spec hash. Any
    missing, stale, mismatched, non-`ACCEPT`, or unverifiable record is terminal
    `NOT_EVALUATED`/`INVALID`, never a retry opportunity or a TSA win.
@@ -112,11 +121,17 @@ all of the following must be true:
 7. Output remains E0/internal: `winner=null`, `dominance_allowed=false`, and
    `publishable=false`. No No.1, dominance, production-readiness, E1+, or public
    benchmark claim is permitted.
-8. The library dispatcher boundary consumes a globally claimed nonce/spec once,
-   uses dirfd/openat/O_NOFOLLOW inode-pinned journals and evidence, and records
-   strict v1 reservation/terminal/receipt events. A production provider adapter
-   and operator command are not present today; `TrustedOfflineTestAdapter` is
-   explicitly test-only and is rejected by production dispatch.
+8. The library dispatcher accepts a one-shot claim only from the external
+   nonce-claim authority, verifies provider reservation/usage receipts from the
+   external provider-budget authority, and accepts terminal durability only from
+   the external immutable-evidence authority. All are independently pinned
+   Ed25519 verification roles. Missing transport/authority inputs or unavailable
+   authority public-key pins fail before transport as `NOT_EVALUATED` with zero
+   callbacks. A refused or invalid claim also invokes zero callbacks; an invalid
+   terminal evidence receipt after the call remains E0 and cannot become PASS.
+   A production provider adapter and operator command are not present today;
+   `TrustedOfflineTestAdapter` is explicitly test-only and is rejected by
+   production dispatch.
 
 ### 4. Abort and escalation
 

@@ -104,8 +104,21 @@ rollback incidents.
 ## Offline-qualified production canary boundary
 
 `benchmarks/codegraph_compare/production_dispatch.py` is a one-shot, single-cell
-gateway with a global `O_EXCL` nonce/spec ledger, inode-pinned `openat`/
-`O_NOFOLLOW` reservation/evidence writes, material-independent role-pinned keys,
-strict v1 wire/event schemas, provider receipt verification, a dispatcher-owned
-exact-one callback wrapper, and fail-closed partial evidence. It imports no provider implementation and does
+gateway with one direct `provider_call(request)` transport site. Caller-supplied
+runners are never executed. A production PASS requires three independently
+pinned Ed25519 external facts: a fresh nonce/spec claim bound to the dispatch
+challenge, provider-budget reservation and exact-one usage receipts, and an
+immutable-evidence terminal receipt bound to the local evidence digest, provider
+usage receipt, and claim ID. Production code keeps public verification keys only;
+it provides no authority private keys or receipt issuers. Missing transport or
+authority inputs/public-key pins returns `NOT_EVALUATED` before transport with
+zero callbacks; invalid or unavailable terminal authority cannot produce PASS.
+
+`benchmarks/codegraph_compare/production_collector.py` creates only a local E0
+diagnostic bundle. Its receipt is always `durable=false`; POSIX dirfd collection
+is `local-dirfd-diagnostic-only`, and Windows/no-dirfd durability is
+`unsupported` without simulated read-only/WORM guarantees. Local journal,
+ledger, pathname, inode, and evidence state do not authorize a claim or terminal
+result. The dispatcher passes only the local ledger digest to the external
+evidence authority. This boundary imports no provider implementation and does
 not open `CanaryProtocol` production mode; NO1-003C remains human-authorized.
