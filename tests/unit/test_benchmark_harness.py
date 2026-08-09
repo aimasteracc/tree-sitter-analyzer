@@ -7368,7 +7368,8 @@ class TestCanaryEvidence:
         right = canonical_sha256({"a": [1, "x"], "b": 2})
 
         assert (
-            left == "8cbd548a32262b76a6536efe4e7ba86a0e811fcd0475d83a43e10acd0615aa37"
+            left
+            == "8cbd548a32262b76a6536efe4e7ba86a0e811fcd0475d83a43e10acd0615aa37"  # pragma: allowlist secret
         )
         assert right == left
 
@@ -8102,3 +8103,248 @@ class TestCanaryProtocol:
         assert result.violations[0] == (
             "CELL_INVALID:tsa-warm-canary:cleanup=cleanup failed"
         )
+
+
+def _qualification_git_repo(path: Path) -> str:
+    import subprocess
+
+    path.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"], cwd=path, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=path, check=True)
+    (path / "main.ts").write_text("export class Main {}\n", encoding="utf-8")
+    (path / "generated.ts").write_text("// @generated DO NOT EDIT\n", encoding="utf-8")
+    (path / "notes.md").write_text("notes\n", encoding="utf-8")
+    (path / "linked.ts").symlink_to("main.ts")
+    subprocess.run(
+        ["git", "add", "main.ts", "generated.ts", "notes.md", "linked.ts"],
+        cwd=path,
+        check=True,
+    )
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=path, check=True)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=path,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"160000,{commit},deps/submodule",
+        ],
+        cwd=path,
+        check=True,
+    )
+    subprocess.run(["git", "commit", "-qm", "gitlink"], cwd=path, check=True)
+    (path / "deps" / "submodule").mkdir(parents=True)
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=path,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def _qualification_oracles():
+    from benchmarks.codegraph_compare.setup_qualification import OracleSpecV1
+
+    return (
+        OracleSpecV1(
+            "main.symbol", "symbol", (("name", "Main"),), {"path": "main.ts", "line": 1}
+        ),
+        OracleSpecV1(
+            "main.call",
+            "call",
+            (("callee", "Main"), ("caller", "entry")),
+            [{"path": "main.ts"}],
+        ),
+    )
+
+
+class _QualificationCollector:
+    def build(self, checkout, index_dir, eligible_paths, *, cold, offline):
+        from benchmarks.codegraph_compare.setup_qualification import BuildResultV1
+
+        assert cold is True
+        assert offline is True
+        index_dir.mkdir()
+        (index_dir / "index.bin").write_bytes(b"frozen")
+        return BuildResultV1(
+            indexed_paths=eligible_paths,
+            explicitly_excluded_paths=(),
+            parse_error_paths=(),
+            build_seconds=1.0,
+            tool_fingerprint="tool-sha",
+            config_fingerprint="config-sha",
+            raw_receipt={"exit_code": 0, "cold": cold, "offline": offline},
+            counters={
+                "model_calls": 0,
+                "provider_requests": 0,
+                "network_requests": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "api_cost_usd": 0,
+            },
+        )
+
+    def query(self, index_dir, spec, *, offline):
+        assert offline is True
+        return spec.expected_result
+
+
+def test_source_rules_classify_tracked_gitlink_symlink_and_generated(tmp_path: Path):
+    from benchmarks.codegraph_compare.integrity import _sha256
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+    )
+
+    repo = tmp_path / "repo"
+    _qualification_git_repo(repo)
+    inventory = inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
+
+    assert inventory.tracked_regular_paths == ("generated.ts", "main.ts", "notes.md")
+    assert inventory.eligible_paths == ("main.ts",)
+    assert inventory.prefilter_exclusions == (
+        ("deps/submodule", "gitlink"),
+        ("generated.ts", "generated"),
+        ("linked.ts", "symlink"),
+        ("notes.md", "extension"),
+    )
+    assert inventory.eligible_paths_hash == _sha256(["main.ts"])
+
+
+def test_strict_cell_receipt_binds_raw_symbol_and_call_oracles(tmp_path: Path):
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+        produce_strict_cell,
+        validate_cell_receipt,
+    )
+
+    source = tmp_path / "source"
+    commit = _qualification_git_repo(source)
+    fingerprint = inventory_sources(
+        "vscode", source, DEFAULT_SOURCE_RULES
+    ).repo_fingerprint
+    specs = _qualification_oracles()
+    receipt = produce_strict_cell(
+        repo_id="vscode",
+        arm_id="tsa-warm",
+        source_checkout=source,
+        workspace=tmp_path / "cell",
+        rules=DEFAULT_SOURCE_RULES,
+        oracle_specs=specs,
+        collector=_QualificationCollector(),
+        expected_commit=commit,
+        expected_tool_fingerprint="tool-sha",
+        expected_config_fingerprint="config-sha",
+    )
+
+    assert (
+        validate_cell_receipt(
+            receipt,
+            rules=DEFAULT_SOURCE_RULES,
+            oracle_specs=specs,
+            expected_repo_fingerprint=fingerprint,
+            expected_tool_fingerprint="tool-sha",
+            expected_config_fingerprint="config-sha",
+        )
+        == ()
+    )
+    assert tuple(item["kind"] for item in receipt["oracle_receipts"]) == (
+        "symbol",
+        "call",
+    )
+
+
+def test_strict_validator_rejects_forged_oracle_receipt(tmp_path: Path):
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+        produce_strict_cell,
+        validate_cell_receipt,
+    )
+
+    source = tmp_path / "source"
+    commit = _qualification_git_repo(source)
+    fingerprint = inventory_sources(
+        "vscode", source, DEFAULT_SOURCE_RULES
+    ).repo_fingerprint
+    specs = _qualification_oracles()
+    receipt = produce_strict_cell(
+        repo_id="vscode",
+        arm_id="tsa-warm",
+        source_checkout=source,
+        workspace=tmp_path / "cell",
+        rules=DEFAULT_SOURCE_RULES,
+        oracle_specs=specs,
+        collector=_QualificationCollector(),
+        expected_commit=commit,
+        expected_tool_fingerprint="tool-sha",
+        expected_config_fingerprint="config-sha",
+    )
+    receipt["oracle_receipts"][0]["raw_result"] = {"path": "forged.ts", "line": 1}
+
+    assert validate_cell_receipt(
+        receipt,
+        rules=DEFAULT_SOURCE_RULES,
+        oracle_specs=specs,
+        expected_repo_fingerprint=fingerprint,
+        expected_tool_fingerprint="tool-sha",
+        expected_config_fingerprint="config-sha",
+    ) == ("RECEIPT_HASH_MISMATCH", "ORACLE_RECEIPT_MISMATCH")
+
+
+def test_qualification_orchestrator_runs_exact_cells_and_blocks_all(tmp_path: Path):
+    from benchmarks.codegraph_compare.setup_qualification import EXPECTED_CELLS
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        orchestrate_qualification,
+    )
+
+    observed = []
+
+    def producer(repo_id, arm_id, cell_root):
+        observed.append((repo_id, arm_id))
+        if repo_id == "django" and arm_id == "tsa-warm":
+            raise RuntimeError("synthetic build failure")
+        cell_root.mkdir(parents=True)
+        return {"repo_id": repo_id, "arm_id": arm_id}
+
+    verdict = orchestrate_qualification(
+        experiment_root=tmp_path / "experiment", producer=producer
+    )
+
+    assert tuple(observed) == EXPECTED_CELLS
+    assert verdict == {
+        "schema_version": 1,
+        "status": "BLOCKED",
+        "publishable": False,
+        "winner": None,
+        "dominance_allowed": False,
+        "expected_cells": 14,
+        "observed_receipts": 13,
+        "failures": [
+            {
+                "repo_id": "django",
+                "arm_id": "tsa-warm",
+                "error": "RuntimeError: synthetic build failure",
+            }
+        ],
+        "counters": {
+            "model_calls": 0,
+            "provider_requests": 0,
+            "network_requests": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "api_cost_usd": 0,
+        },
+    }

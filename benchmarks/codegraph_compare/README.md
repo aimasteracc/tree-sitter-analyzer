@@ -111,6 +111,25 @@ terminalize the cell, and do not rerun it. Escalate the immutable receipt and
 violation list to the maintainers; never delete, overwrite, relabel, or exclude
 an unfavorable outcome.
 
+## NO1-008A seven-repository setup qualification (implementation only)
+
+`setup_qualification.py` is the model-free RFC-0021 producer/validator core for
+the seven pinned repositories and the two required indexed arms. It freezes
+`SourceRulesV1` before either arm builds, uses a fresh arm-isolated checkout and
+index namespace, requires cold/offline collectors, exact source partitions, and
+hash-bound raw symbol plus call oracle receipts. The orchestrator always plans
+exactly 14 cells and records every cell failure before issuing one fail-all
+verdict. Model/provider/network/token/USD counters must all remain zero.
+
+This is **not an operator command to run qualification yet**. NO1-003C and the
+independent seven-repository oracle review remain human gates. Do not run the
+real seven-repository matrix, mark NO1-008A complete, start 008B, or describe
+these setup artifacts as E2/No.1/winner evidence. A future authorized run must
+supply pinned strict collectors and reviewed `OracleSpecV1` configurations; a
+failed run is immutable and is followed by a new experiment directory, never an
+overwrite or selective retry. Acquisition/cache preparation is separate from
+the offline qualification phase.
+
 ## Quantitative README claim release gate
 
 The checked-in `claim_registry.json` is the sole source for public benchmark,
