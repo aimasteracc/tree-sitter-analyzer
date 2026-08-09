@@ -71,7 +71,8 @@ def test_local_identity_uses_deterministic_absolute_posix_sandbox(
     try:
         assert root == tmp_path / "tsa-outdated-native-0-0-linux"
         assert root.is_absolute()
-        assert root.stat().st_mode & 0o777 == 0o700
+        if os.name != "nt":
+            assert root.stat().st_mode & 0o777 == 0o700
     finally:
         qualification.shutil.rmtree(root)
 
