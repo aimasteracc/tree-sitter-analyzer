@@ -94,6 +94,26 @@ def verify_decision_contract(value: Any) -> dict[str, Any]:
     return dict(value)
 
 
+def verify_configured_plan_set(
+    contract: dict[str, Any], config: dict[str, Any]
+) -> None:
+    """Recompute and bind all ordered decision plan hashes to root config."""
+    from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
+
+    trusted = config["trusted"]
+    ordered = [cell["plan_sha256"] for cell in contract["cells"]]
+    recomputed = hashlib.sha256(canonical_json_bytes(ordered)).hexdigest()
+    configured = [
+        trusted["plan_hashes"][f"{repo}/{arm}"] for repo, arm in EXPECTED_CELLS
+    ]
+    if (
+        contract["plan_set_hash"] != recomputed
+        or recomputed != trusted["plan_set_hash"]
+        or ordered != configured
+    ):
+        raise ValueError("decision plan set is not root-config authorized")
+
+
 def verify_verdict_envelope(
     envelope: Any, contract: dict[str, Any], config: dict[str, Any]
 ) -> None:
@@ -186,8 +206,15 @@ class DecisionLedger:
     def __init__(self, path: Path):
         parent = path.parent.resolve(strict=True)
         meta = os.stat(parent)
-        if meta.st_uid != 0 or stat.S_IMODE(meta.st_mode) & 0o022:
-            raise ValueError("decision ledger directory must be root-controlled")
+        if (
+            parent != path.parent
+            or meta.st_uid != 904
+            or stat.S_IMODE(meta.st_mode) != 0o700
+            or not os.access(parent, os.W_OK | os.X_OK)
+        ):
+            raise ValueError(
+                "decision ledger directory must be UID 904 private 0700 and writable"
+            )
         self.path = path
         db = self._connect()
         try:
@@ -272,6 +299,7 @@ def consume_request(
     ):
         raise ValueError("legacy/wrapper decision request rejected")
     contract = verify_decision_contract(request["decision_contract"])
+    verify_configured_plan_set(contract, config)
     envelope = request["verdict_envelope"]
     verify_verdict_envelope(envelope, contract, config)
 
@@ -411,7 +439,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     config = parse_public_config(Path(args.public_config).read_bytes())
     role = "decision_consumer"
-    if os.geteuid() != config[role]["peer_uid"]:
+    if os.geteuid() != 904 or config[role]["peer_uid"] != 904:
         raise SystemExit("decision consumer UID mismatch")
     identity = measure_runtime(config["trusted"][f"{role}_runtime"]["measurement"])
     verify_service_launch_attestation(

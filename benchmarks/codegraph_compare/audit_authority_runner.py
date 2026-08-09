@@ -24,6 +24,7 @@ from benchmarks.codegraph_compare.audit_authority_storage import (
     _read,
     _secure_directory,
     _sha,
+    _source_archive_ceiling,
 )
 from benchmarks.codegraph_compare.host_auditor import (
     LAUNCH_DOMAIN,
@@ -58,6 +59,43 @@ def _run(*args: str, timeout: int = 120) -> bytes:
     if process.returncode:
         raise ValueError(f"authority command failed: {args[0]}: {stderr[:200]!r}")
     return stdout
+
+
+def _wait_container(container: str, deadline: float) -> str:
+    """Wait only until the producer wall deadline; Docker RPC cleanup is separate."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("producer Docker wall deadline expired")
+    process = subprocess.Popen(
+        ["docker", "wait", container],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=remaining)
+    except subprocess.TimeoutExpired:
+        subprocess.run(
+            ["docker", "kill", container],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        process.communicate(timeout=30)
+        raise TimeoutError("producer Docker wall deadline expired") from None
+    if process.returncode:
+        raise ValueError(f"authority command failed: docker wait: {stderr[:200]!r}")
+    return stdout.decode().strip()
+
+
+def _docker_wall_deadline(started_at: str, wall_timeout: int) -> float:
+    from datetime import datetime
+
+    started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+    elapsed = time.time() - started.timestamp()
+    return time.monotonic() + max(0.0, wall_timeout - elapsed)
 
 
 def _validate_producer_output(output: Path) -> Path:
@@ -238,9 +276,6 @@ class AuthorityRunner:
         checks = {
             "plan.json": config["trusted"]["plan_document_sha256"][identity],
             "inventory.json": config["trusted"]["inventory_sha256"][cell["repo_id"]],
-            "source-snapshot.tar": config["trusted"]["source_snapshot_sha256"][
-                cell["repo_id"]
-            ],
             "tool": config["trusted"]["tool_sha256"],
             "config": config["trusted"]["config_sha256"],
             "seccomp": config["trusted"]["seccomp_sha256"],
@@ -259,6 +294,26 @@ class AuthorityRunner:
                 )
             if _sha(staged) != expected:
                 raise ValueError(f"root-authorized staged hash mismatch: {name}")
+        inventory_payload = _read(job / "inventory.json")
+        archive_ceiling = _source_archive_ceiling(inventory_payload)
+        snapshot = job / "source-snapshot.tar"
+        metadata = os.lstat(snapshot)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != 0
+            or stat.S_IMODE(metadata.st_mode) & 0o022
+            or metadata.st_nlink != 1
+        ):
+            raise ValueError(
+                "staged input is not immutable root-owned regular: source-snapshot.tar"
+            )
+        if (
+            _sha(snapshot, limit=archive_ceiling)
+            != config["trusted"]["source_snapshot_sha256"][cell["repo_id"]]
+        ):
+            raise ValueError(
+                "root-authorized staged hash mismatch: source-snapshot.tar"
+            )
         wall_timeout = plan.get("wall_timeout_seconds")
         if type(wall_timeout) is not int or wall_timeout < 1 or wall_timeout > 86400:
             raise ValueError("staged plan timeout invalid")
@@ -277,7 +332,10 @@ class AuthorityRunner:
         destination = self._artifacts / contract["job_id"]
         _secure_directory(destination, fresh=True)
         source = destination / "source"
-        _materialize_source(job / "source-snapshot.tar", source)
+        archive_ceiling = _source_archive_ceiling(_read(job / "inventory.json"))
+        _materialize_source(
+            job / "source-snapshot.tar", source, ceiling=archive_ceiling
+        )
         output = destination / "producer-output"
         output.mkdir(mode=0o700)
         os.chown(output, 65532, 65532)
@@ -348,6 +406,9 @@ class AuthorityRunner:
         try:
             _run("docker", "start", container)
             inspected = json.loads(_run("docker", "inspect", container))[0]
+            producer_deadline = _docker_wall_deadline(
+                inspected["State"]["StartedAt"], wall_timeout
+            )
             pid = inspected["State"]["Pid"]
             starttime, pidfd_descriptor = _pid_identity(pid)
             launched = launch(
@@ -367,11 +428,7 @@ class AuthorityRunner:
             }
             launch_path = destination / "launch-audit.json"
             launch_path.write_bytes(canonical_json_bytes(launch_envelope))
-            exit_code = (
-                _run("docker", "wait", container, timeout=wall_timeout + 60)
-                .decode()
-                .strip()
-            )
+            exit_code = _wait_container(container, producer_deadline)
             if exit_code != "0":
                 raise ValueError("producer did not exit zero")
             os.chown(output, 0, 0)
@@ -408,7 +465,9 @@ class AuthorityRunner:
                 cgroup_subtree_populated=[],
                 launch_token=launch_envelope,
                 core_tree_sha256=_hash_tree(core),
-                source_snapshot_sha256=_sha(job / "source-snapshot.tar"),
+                source_snapshot_sha256=_sha(
+                    job / "source-snapshot.tar", limit=archive_ceiling
+                ),
                 tool_sha256=_sha(job / "tool"),
                 config_sha256=_sha(job / "config"),
             )

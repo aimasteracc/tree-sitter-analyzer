@@ -14,6 +14,7 @@ from typing import Any
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from benchmarks.codegraph_compare.audit_authority_client import exchange as _authority
+from benchmarks.codegraph_compare.audit_authority_storage import _producer_mount_targets
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
@@ -109,25 +110,60 @@ def _mounts(inspected: dict[str, Any]) -> dict[str, dict[str, Any]]:
         raise ValueError("Docker mounts absent")
     by_target: dict[str, dict[str, Any]] = {}
     for item in mounts:
-        if type(item) is dict and type(item.get("Destination")) is str:
-            by_target[item["Destination"]] = item
-    if set(by_target) != {
+        if type(item) is not dict or type(item.get("Destination")) is not str:
+            raise ValueError("producer mount record invalid")
+        target = item["Destination"]
+        if target in by_target:
+            raise ValueError("producer mount target is duplicated")
+        by_target[target] = item
+    fixed = {
         "/source",
         "/plan/cell-plan.json",
         "/plan/inventory.json",
+        "/plan/seccomp.json",
         "/out",
-    }:
+    }
+    if not fixed.issubset(by_target):
+        raise ValueError("producer fixed mount target set mismatch")
+    plan_path = Path(by_target["/plan/cell-plan.json"].get("Source", ""))
+    plan = strict_json_loads(_read(plan_path))
+    source_target, tool_target, config_target = _producer_mount_targets(plan)
+    expected_targets = fixed | {tool_target, config_target}
+    if source_target != "/source" or set(by_target) != expected_targets:
         raise ValueError("producer mount target set mismatch")
+    access = {target: target != "/out" for target in expected_targets}
     if any(
-        by_target[name].get("RW") is not rw
-        for name, rw in {
-            "/source": False,
-            "/plan/cell-plan.json": False,
-            "/plan/inventory.json": False,
-            "/out": True,
-        }.items()
+        by_target[target].get("RW") is access[target] for target in expected_targets
     ):
         raise ValueError("producer mount access mismatch")
+    staged = plan_path.parent
+    expected_sources = {
+        "/plan/cell-plan.json": staged / "plan.json",
+        "/plan/inventory.json": staged / "inventory.json",
+        "/plan/seccomp.json": staged / "seccomp",
+        tool_target: staged / "tool",
+        config_target: staged / "config",
+    }
+    for target, item in by_target.items():
+        source = item.get("Source")
+        if (
+            item.get("Type") != "bind"
+            or type(source) is not str
+            or Path(source).resolve(strict=True).as_posix() != source
+            or item.get("Propagation") not in (None, "rprivate")
+        ):
+            raise ValueError("producer mount source is not exact canonical bind")
+        expected = expected_sources.get(target)
+        if expected is not None and Path(source) != expected:
+            raise ValueError("producer authenticated mount source mismatch")
+    source_path = Path(by_target["/source"]["Source"])
+    output_path = Path(by_target["/out"]["Source"])
+    if (
+        source_path.name != "source"
+        or output_path.name != "producer-output"
+        or source_path.parent != output_path.parent
+    ):
+        raise ValueError("producer source/output mount source mismatch")
     return by_target
 
 
@@ -335,6 +371,9 @@ def terminal(
         "memory_peak_bytes": int(_read(root / "memory.peak").strip()),
         "pids_peak": int(_read(root / "pids.peak").strip()),
     }
+    plan = strict_json_loads(_read(Path(mounts["/plan/cell-plan.json"]["Source"])))
+    if resources["wall_ns"] > plan["wall_timeout_seconds"] * 1_000_000_000:
+        raise TimeoutError("producer Docker wall deadline exceeded")
     return {
         "producer_container_id": inspected["Id"],
         "image_digest": prior["image_digest"],

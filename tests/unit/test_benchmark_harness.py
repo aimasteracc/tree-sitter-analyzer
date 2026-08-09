@@ -12449,7 +12449,7 @@ def test_authority_materialized_source_is_immutable_and_producer_readable(
         archive.addfile(info, io.BytesIO(payload))
     destination = tmp_path / "source"
 
-    _materialize_source(snapshot, destination)
+    _materialize_source(snapshot, destination, ceiling=snapshot.stat().st_size)
 
     assert stat.S_IMODE((destination / "pkg" / "main.py").stat().st_mode) == 0o444
     assert stat.S_IMODE((destination / "pkg").stat().st_mode) == 0o555
@@ -12707,6 +12707,226 @@ def test_authority_mounts_authenticated_plan_inputs_at_exact_read_only_targets()
     assert '(job / "tool", tool_target, True)' in runner_source
     assert '(job / "config", config_target, True)' in runner_source
     assert '(job / "seccomp", "/plan/seccomp.json", True)' in runner_source
+
+
+def test_host_auditor_accepts_only_all_seven_exact_producer_bind_mounts(
+    tmp_path: Path,
+):
+    # PR #1249 review 3744261017: authenticated tool/config/seccomp mounts are mandatory.
+    from benchmarks.codegraph_compare.host_auditor import _mounts
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    staged = tmp_path / "staged"
+    artifact = tmp_path / "artifact"
+    staged.mkdir()
+    artifact.mkdir()
+    source = artifact / "source"
+    output = artifact / "producer-output"
+    source.mkdir()
+    output.mkdir()
+    plan = {
+        "executions": [
+            {
+                "argv": [
+                    "/tool/bin",
+                    name,
+                    "--config",
+                    "/config/pinned.json",
+                    *(["--source", "/source"] if name == "build" else []),
+                ]
+            }
+            for name in ("delete", "build", "health", "symbol", "call")
+        ]
+    }
+    sources = {
+        "/source": source,
+        "/tool/bin": staged / "tool",
+        "/config/pinned.json": staged / "config",
+        "/plan/seccomp.json": staged / "seccomp",
+        "/plan/cell-plan.json": staged / "plan.json",
+        "/plan/inventory.json": staged / "inventory.json",
+        "/out": output,
+    }
+    for target in sources.values():
+        if not target.exists():
+            target.write_bytes(b"x")
+    sources["/plan/cell-plan.json"].write_bytes(canonical_json_bytes(plan))
+    inspected = {
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": str(source_path),
+                "Destination": target,
+                "RW": target == "/out",
+                "Propagation": "rprivate",
+            }
+            for target, source_path in sources.items()
+        ]
+    }
+
+    assert set(_mounts(inspected)) == set(sources)
+    inspected["Mounts"][1]["Source"] = str(staged / "config")
+    with pytest.raises(ValueError, match="authenticated mount source mismatch"):
+        _mounts(inspected)
+
+
+def test_authority_streams_repository_sized_source_archive_under_inventory_ceiling(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744261021: source snapshots are not receipt-sized messages.
+    import io
+    import tarfile
+
+    from benchmarks.codegraph_compare import audit_authority_storage as storage
+    from benchmarks.codegraph_compare.audit_authority_storage import (
+        _materialize_source,
+        _sha,
+        _source_archive_ceiling,
+    )
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    payload = b"x" * (17 * 1024 * 1024)
+    inventory = canonical_json_bytes(
+        {
+            "eligibility": {
+                "tracked_files": [
+                    ["large.bin", "100644", "a" * 40, len(payload), "b" * 64]
+                ]
+            }
+        }
+    )
+    ceiling = _source_archive_ceiling(inventory)
+    snapshot = tmp_path / "source.tar"
+    with tarfile.open(snapshot, "w", format=tarfile.USTAR_FORMAT) as archive:
+        info = tarfile.TarInfo("large.bin")
+        info.size = len(payload)
+        info.uid = info.gid = 0
+        info.mode = 0o644
+        archive.addfile(info, io.BytesIO(payload))
+
+    destination = tmp_path / "source"
+    monkeypatch.setattr(
+        storage,
+        "_read",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("source archive was buffered through _read")
+        ),
+    )
+    digest = _sha(snapshot, limit=ceiling)
+    _materialize_source(snapshot, destination, ceiling=ceiling)
+
+    assert digest == hashlib.sha256(snapshot.read_bytes()).hexdigest()
+    assert (destination / "large.bin").stat().st_size == 17 * 1024 * 1024
+
+
+def test_decision_ledger_requires_uid_904_private_writable_parent(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744261023: SQLite WAL needs a service-owned private parent.
+    import stat
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    parent = tmp_path / "ledger"
+    parent.mkdir(mode=0o700)
+    real_stat = consumer.os.stat
+
+    def service_stat(path, *args, **kwargs):
+        metadata = real_stat(path, *args, **kwargs)
+        if Path(path) == parent:
+            return SimpleNamespace(st_uid=904, st_mode=stat.S_IFDIR | 0o700)
+        return metadata
+
+    monkeypatch.setattr(consumer.os, "stat", service_stat)
+    monkeypatch.setattr(
+        consumer.os,
+        "access",
+        lambda path, mode: (path, mode) == (parent, os.W_OK | os.X_OK),
+    )
+
+    ledger = consumer.DecisionLedger(parent / "decisions.sqlite")
+
+    assert ledger.path == parent / "decisions.sqlite"
+    assert stat.S_IMODE(ledger.path.stat().st_mode) == 0o600
+
+    def root_stat(path, *args, **kwargs):
+        metadata = real_stat(path, *args, **kwargs)
+        if Path(path) == parent:
+            return SimpleNamespace(st_uid=0, st_mode=stat.S_IFDIR | 0o700)
+        return metadata
+
+    monkeypatch.setattr(consumer.os, "stat", root_stat)
+    with pytest.raises(ValueError, match="UID 904 private 0700"):
+        consumer.DecisionLedger(parent / "other.sqlite")
+
+
+def test_decision_consumer_recomputes_ordered_exact14_config_plan_binding():
+    # PR #1249 review 3744261026: direct consumers must enforce root config plans.
+    from benchmarks.codegraph_compare.decision_consumer_service import (
+        verify_configured_plan_set,
+    )
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
+
+    hashes = [f"{ordinal:064x}" for ordinal in range(1, 15)]
+    plan_set_hash = hashlib.sha256(canonical_json_bytes(hashes)).hexdigest()
+    contract = {
+        "plan_set_hash": plan_set_hash,
+        "cells": [
+            {"repo_id": repo, "arm_id": arm, "plan_sha256": digest}
+            for (repo, arm), digest in zip(EXPECTED_CELLS, hashes, strict=True)
+        ],
+    }
+    config = {
+        "trusted": {
+            "plan_set_hash": plan_set_hash,
+            "plan_hashes": {
+                f"{repo}/{arm}": digest
+                for (repo, arm), digest in zip(EXPECTED_CELLS, hashes, strict=True)
+            },
+        }
+    }
+
+    verify_configured_plan_set(contract, config)
+    contract["cells"][13]["plan_sha256"] = "f" * 64
+    with pytest.raises(ValueError, match="root-config authorized"):
+        verify_configured_plan_set(contract, config)
+
+
+def test_verifier_manifest_parser_uses_64mib_protocol_not_receipt_limits():
+    # PR #1249 review 3744261030: exact-14 manifests have independent frame bounds.
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.verifier_service import _manifest_json_loads
+
+    repeated_inventory = "x" * (17 * 1024 * 1024)
+    manifest = {
+        "operation": "verify-exact-14",
+        "cells": [
+            {
+                "repo_id": f"repo-{ordinal}",
+                "tracked_inventory": repeated_inventory if ordinal == 0 else "",
+            }
+            for ordinal in range(14)
+        ],
+    }
+    payload = canonical_json_bytes(manifest)
+
+    parsed = _manifest_json_loads(payload)
+
+    assert len(payload) == 17_826_453
+    assert len(parsed["cells"]) == 14
+
+
+def test_authority_deadline_subtracts_docker_start_rpc_and_audit_time(monkeypatch):
+    # PR #1249 review 3744261033: producer budget is Docker StartedAt-to-FinishedAt.
+    from benchmarks.codegraph_compare import audit_authority_runner as runner
+
+    monkeypatch.setattr(runner.time, "time", lambda: 1_003.0)
+    monkeypatch.setattr(runner.time, "monotonic", lambda: 500.0)
+
+    deadline = runner._docker_wall_deadline("1970-01-01T00:16:40Z", 10)
+
+    assert deadline == 507.0
 
 
 _mark_posix_qualification_section_tests()

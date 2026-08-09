@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import io
+import json
 import os
 import stat
 import tarfile
@@ -34,8 +34,53 @@ def _read(path: Path, limit: int = 16 * 1024 * 1024) -> bytes:
         os.close(descriptor)
 
 
-def _sha(path: Path) -> str:
-    return hashlib.sha256(_read(path)).hexdigest()
+def _sha(path: Path, *, limit: int = 16 * 1024 * 1024) -> str:
+    """Hash a staged regular file through its retained descriptor."""
+    descriptor = os.open(
+        path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > limit:
+            raise ValueError("staged input exceeds authorized bound")
+        digest = hashlib.sha256()
+        size = 0
+        while chunk := os.read(descriptor, 1024 * 1024):
+            size += len(chunk)
+            if size > limit:
+                raise ValueError("staged input exceeds authorized bound")
+            digest.update(chunk)
+        if size != metadata.st_size:
+            raise ValueError("staged input size changed while hashing")
+        return digest.hexdigest()
+    finally:
+        os.close(descriptor)
+
+
+def _source_archive_ceiling(inventory_payload: bytes) -> int:
+    """Derive a conservative USTAR ceiling from the root-authorized inventory."""
+    document = json.loads(inventory_payload)
+    eligibility = document.get("eligibility", document)
+    files = eligibility.get("tracked_files") if type(eligibility) is dict else None
+    if type(files) is not list:
+        raise ValueError("authorized inventory lacks tracked files")
+    payload_bytes = 0
+    for item in files:
+        if (
+            type(item) is not list
+            or len(item) != 5
+            or type(item[3]) is not int
+            or item[3] < 0
+        ):
+            raise ValueError("authorized inventory file size is invalid")
+        payload_bytes += ((item[3] + 511) // 512) * 512
+    # One header per file plus tar end/padding records.  Python's USTAR writer
+    # pads to RECORDSIZE, so twenty extra blocks are sufficient and exact.
+    ceiling = payload_bytes + (len(files) + 20) * 512
+    hard_ceiling = 16 * 1024 * 1024 * 1024
+    if ceiling > hard_ceiling:
+        raise ValueError("authorized source inventory exceeds hard resource ceiling")
+    return ceiling
 
 
 def _secure_directory(path: Path, *, fresh: bool = False) -> None:
@@ -51,32 +96,66 @@ def _secure_directory(path: Path, *, fresh: bool = False) -> None:
         raise ValueError("authority directory is not root-controlled")
 
 
-def _materialize_source(snapshot: Path, destination: Path) -> None:
+def _materialize_source(snapshot: Path, destination: Path, *, ceiling: int) -> None:
+    """Stream an authorized USTAR without ever materializing it in memory."""
     destination.mkdir(mode=0o700)
-    payload = _read(snapshot)
-    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:") as archive:
-        members = archive.getmembers()
-        if not members or any(not member.isfile() for member in members):
-            raise ValueError("source snapshot must contain regular files only")
-        for member in members:
-            relative = canonical_relative_path(member.name)
-            if member.uid != 0 or member.gid != 0 or member.mode & 0o022:
-                raise ValueError("source snapshot metadata is not root-controlled")
-            target = destination / relative
-            target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            stream = archive.extractfile(member)
-            if stream is None:
-                raise ValueError("source snapshot member absent")
-            descriptor = os.open(
-                target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o444
-            )
-            try:
-                while chunk := stream.read(1024 * 1024):
-                    os.write(descriptor, chunk)
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
-            os.chmod(target, 0o444, follow_symlinks=False)
+    descriptor = os.open(
+        snapshot, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_size > ceiling
+            or metadata.st_size == 0
+        ):
+            raise ValueError("source snapshot exceeds authorized inventory ceiling")
+        seen = 0
+        with os.fdopen(os.dup(descriptor), "rb", closefd=True) as stream:
+            with tarfile.open(fileobj=stream, mode="r|") as archive:
+                for member in archive:
+                    seen += 1
+                    if not member.isfile():
+                        raise ValueError(
+                            "source snapshot must contain regular files only"
+                        )
+                    relative = canonical_relative_path(member.name)
+                    if member.uid != 0 or member.gid != 0 or member.mode & 0o022:
+                        raise ValueError(
+                            "source snapshot metadata is not root-controlled"
+                        )
+                    target = destination / relative
+                    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    member_stream = archive.extractfile(member)
+                    if member_stream is None:
+                        raise ValueError("source snapshot member absent")
+                    output = os.open(
+                        target,
+                        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                        0o444,
+                    )
+                    try:
+                        remaining = member.size
+                        while remaining:
+                            chunk = member_stream.read(min(1024 * 1024, remaining))
+                            if not chunk:
+                                raise ValueError("source snapshot member truncated")
+                            written = 0
+                            while written < len(chunk):
+                                written += os.write(output, chunk[written:])
+                            remaining -= len(chunk)
+                        if member_stream.read(1):
+                            raise ValueError(
+                                "source snapshot member exceeds header size"
+                            )
+                        os.fsync(output)
+                    finally:
+                        os.close(output)
+                    os.chmod(target, 0o444, follow_symlinks=False)
+        if seen == 0:
+            raise ValueError("source snapshot is empty")
+    finally:
+        os.close(descriptor)
     for current, directories, _files in os.walk(
         destination, topdown=False, followlinks=False
     ):

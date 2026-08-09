@@ -234,6 +234,23 @@ def _clean_host_environment(frozen: Mapping[str, str]) -> dict[str, str]:
     return dict(frozen)
 
 
+def _producer_start_monotonic() -> float:
+    """Return PID 1/process start on the host monotonic clock when available."""
+    try:
+        fields = Path("/proc/self/stat").read_text(encoding="ascii").split()
+        return int(fields[21]) / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError):
+        # Non-Linux unit-test hosts do not execute the production container.
+        return time.monotonic()
+
+
+def _remaining(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("cell wall timeout expired")
+    return remaining
+
+
 def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
     if out.exists():
         if not out.is_dir() or tuple(out.iterdir()) != ():
@@ -250,14 +267,14 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
         raise ValueError("index must not exist before producer start")
     environment = _clean_host_environment(plan["environment"])
     records: list[dict[str, Any]] = []
-    deadline = time.monotonic() + plan["wall_timeout_seconds"]
+    # The budget begins at producer PID start, so Python setup, observations,
+    # serialization, and command execution share Docker's StartedAt→FinishedAt limit.
+    deadline = _producer_start_monotonic() + plan["wall_timeout_seconds"]
     terminal_failure = False
     for number, execution in enumerate(plan["executions"]):
         if terminal_failure:
             break
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("cell wall timeout expired")
+        remaining = _remaining(deadline)
         before = resource.getrusage(resource.RUSAGE_CHILDREN)
         process = subprocess.Popen(
             execution["argv"],
@@ -279,8 +296,10 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
             stdout = (error.stdout or b"") + (tail_stdout or b"")
             stderr = (error.stderr or b"") + (tail_stderr or b"")
         after = resource.getrusage(resource.RUSAGE_CHILDREN)
+        _remaining(deadline)
         query = canonical_json_bytes(execution["query"])
         index_snapshot = _final_index_observation(index)
+        _remaining(deadline)
         prefix = f"{number:02d}-{execution['id']}"
         records.append(
             {
@@ -299,7 +318,9 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
                 - (before.ru_utime + before.ru_stime),
             }
         )
+        _remaining(deadline)
         terminal_failure = exit_code != 0
+    _remaining(deadline)
     result = {
         "schema_version": 1,
         "cell": plan["cell"],
@@ -321,7 +342,10 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
         "dominance_allowed": False,
         "unlock_allowed": False,
     }
-    (core / "producer-result.json").write_bytes(canonical_json_bytes(result) + b"\n")
+    payload = canonical_json_bytes(result) + b"\n"
+    _remaining(deadline)
+    (core / "producer-result.json").write_bytes(payload)
+    _remaining(deadline)
     return result
 
 

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import sysconfig
 import time
+from collections.abc import Callable
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from types import ModuleType
@@ -44,16 +45,22 @@ def recv_exact(connection: socket.socket, count: int, deadline: float) -> bytes:
 
 
 def read_frame(
-    connection: socket.socket, maximum: int, seconds: float, label: str
+    connection: socket.socket,
+    maximum: int,
+    seconds: float,
+    label: str,
+    parser: Callable[[bytes], Any] | None = None,
 ) -> Any:
     deadline = time.monotonic() + seconds
     header = recv_exact(connection, 4, deadline)
     size = struct.unpack("!I", header)[0]
     if size < 2 or size > maximum:
         raise ValueError(f"{label} size invalid")
-    from benchmarks.codegraph_compare.receipt_v3 import strict_json_loads
+    if parser is None:
+        from benchmarks.codegraph_compare.receipt_v3 import strict_json_loads
 
-    return strict_json_loads(recv_exact(connection, size, deadline))
+        parser = strict_json_loads
+    return parser(recv_exact(connection, size, deadline))
 
 
 def peer_allowed(connection: socket.socket, allowed_uid: int) -> None:

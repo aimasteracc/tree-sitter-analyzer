@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import socket
 import stat
@@ -46,6 +47,53 @@ VERDICT_DOMAIN = b"NO1-008A-EXTERNAL-VERIFIER-VERDICT-V2\0"
 CHALLENGE_DOMAIN = b"NO1-008A-EXTERNAL-VERIFIER-CHALLENGE-V1\0"
 LEDGER_DOMAIN = b"NO1-008A-EXTERNAL-VERIFIER-LEDGER-V1\0"
 _HEX = frozenset("0123456789abcdef")
+MANIFEST_MAX_DEPTH = 64
+MANIFEST_MAX_NODES = 4_000_000
+
+
+def _manifest_json_loads(payload: bytes) -> dict[str, Any]:
+    """Parse verifier frames with protocol bounds independent of receipt limits."""
+    if type(payload) is not bytes or not payload or len(payload) > MAX_FRAME:
+        raise ValueError("manifest JSON byte size is invalid")
+
+    def pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError(f"duplicate JSON member: {key}")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"non-finite JSON number rejected: {value}")
+
+    try:
+        value = json.loads(
+            payload.decode("utf-8", errors="strict"),
+            object_pairs_hook=pairs,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError("invalid manifest JSON") from error
+    if type(value) is not dict:
+        raise ValueError("manifest frame must be a JSON object")
+    nodes = 0
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    while stack:
+        item, depth = stack.pop()
+        nodes += 1
+        if nodes > MANIFEST_MAX_NODES or depth > MANIFEST_MAX_DEPTH:
+            raise ValueError("manifest JSON complexity limit exceeded")
+        if type(item) is str:
+            if len(item.encode("utf-8")) > MAX_FRAME:
+                raise ValueError("manifest JSON string limit exceeded")
+        elif type(item) is list:
+            stack.extend((child, depth + 1) for child in item)
+        elif type(item) is dict:
+            stack.extend((child, depth + 1) for child in item.values())
+        elif type(item) not in (bool, int, float, type(None)):
+            raise ValueError("manifest JSON value type invalid")
+    return value
 
 
 def _hex64(value: Any, label: str) -> str:
@@ -57,7 +105,13 @@ def _hex64(value: Any, label: str) -> str:
 def _frame(
     connection: socket.socket, seconds: float = READ_DEADLINE_SECONDS
 ) -> dict[str, Any]:
-    value = read_frame(connection, MAX_FRAME, seconds, "verifier request")
+    value = read_frame(
+        connection,
+        MAX_FRAME,
+        seconds,
+        "verifier request",
+        parser=_manifest_json_loads,
+    )
     if type(value) is not dict:
         raise ValueError("verifier frame must be an object")
     return value
@@ -99,7 +153,7 @@ def _load_manifest(
     digest = hashlib.sha256(raw).hexdigest()
     if digest != _hex64(request["manifest_sha256"], "manifest hash"):
         raise ValueError("manifest hash mismatch")
-    manifest = strict_json_loads(raw)
+    manifest = _manifest_json_loads(raw)
     if canonical_json_bytes(manifest) != raw:
         raise ValueError("manifest bytes are not canonical")
     if (
