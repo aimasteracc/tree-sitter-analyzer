@@ -424,6 +424,35 @@ def request_decision(
     return _verify_decision_receipt(reply, contract, envelope, config)
 
 
+def _serve_connection(
+    conn: socket.socket,
+    allowed_client_uid: int,
+    config: dict[str, Any],
+    ledger: DecisionLedger,
+    key: Ed25519PrivateKey,
+    identity: dict[str, Any],
+) -> None:
+    """Contain every client failure so malformed peers cannot drain workers."""
+    try:
+        peer_allowed(conn, allowed_client_uid)
+        request = read_frame(conn, MAX_FRAME, 10, "decision request")
+        try:
+            reply = consume_request(request, config, ledger, key, identity)
+        except Exception as exc:
+            reply = {"error": type(exc).__name__, "reason": str(exc)}
+        payload = canonical_json_bytes(reply)
+        conn.sendall(struct.pack("!I", len(payload)) + payload)
+    except Exception:
+        # Authentication, framing, handler serialization, and response transport
+        # errors belong to this connection, never to the long-lived worker future.
+        return
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     for name in (
@@ -447,6 +476,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     fd, raw = secure_key(Path(args.private_key), os.geteuid())
     key = Ed25519PrivateKey.from_private_bytes(raw)
+    if key.public_key().public_bytes_raw().hex() != config[role]["public_key_hex"]:
+        os.close(fd)
+        raise SystemExit("decision consumer private key does not match public config")
     ledger = DecisionLedger(Path(args.ledger))
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(args.socket)
@@ -457,17 +489,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     def worker() -> None:
         while True:
             conn, _ = listener.accept()
-            try:
-                peer_allowed(conn, args.allowed_client_uid)
-                req = read_frame(conn, MAX_FRAME, 10, "decision request")
-                try:
-                    reply = consume_request(req, config, ledger, key, identity)
-                except Exception as exc:
-                    reply = {"error": type(exc).__name__, "reason": str(exc)}
-                payload = canonical_json_bytes(reply)
-                conn.sendall(struct.pack("!I", len(payload)) + payload)
-            finally:
-                conn.close()
+            _serve_connection(
+                conn, args.allowed_client_uid, config, ledger, key, identity
+            )
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         for future in [pool.submit(worker) for _ in range(args.workers)]:

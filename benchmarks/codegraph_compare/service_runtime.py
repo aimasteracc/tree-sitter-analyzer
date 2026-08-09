@@ -459,16 +459,32 @@ def main(argv: list[str] | None = None) -> int:
     required = {"executor", "approver", "auditor", "verifier", "decision_consumer"}
     if set(pairs) != required:
         raise ValueError("launcher requires the exact five service roles")
+    if os.geteuid() != 0:
+        raise ValueError("launch attestation handoff requires the root launcher")
     fd, raw_key = secure_key(Path(args.private_key), os.geteuid())
     try:
         key = Ed25519PrivateKey.from_private_bytes(raw_key)
         output = Path(args.output_dir)
-        output.mkdir(mode=0o700)
+        # The root-owned parent is searchable but not listable.  Each service can
+        # traverse only into its own private, service-owned handoff directory.
+        output.mkdir(mode=0o711)
+        os.chmod(output, 0o711)  # nosec B103 - search-only role handoff parent
+        role_uids = {
+            "executor": 901,
+            "approver": 902,
+            "auditor": 0,
+            "verifier": 903,
+            "decision_consumer": 904,
+        }
         for role, container in sorted(pairs.items()):
+            role_output = output / role
+            role_output.mkdir(mode=0o700)
+            os.chown(role_output, role_uids[role], role_uids[role])
+            os.chmod(role_output, 0o700)
             value = create_service_launch_attestation(
                 container, role, config, key, args.key_id
             )
-            path = output / f"{role}-launch-attestation.json"
+            path = role_output / "launch-attestation.json"
             descriptor = os.open(
                 path,
                 os.O_WRONLY
@@ -481,10 +497,23 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 payload = canonical_json_bytes(value) + b"\n"
                 while payload:
-                    payload = payload[os.write(descriptor, payload) :]
+                    written = os.write(descriptor, payload)
+                    if written == 0:
+                        raise OSError("launch attestation write made no progress")
+                    payload = payload[written:]
+                os.fchown(descriptor, role_uids[role], role_uids[role])
+                os.fchmod(descriptor, 0o400)
                 os.fsync(descriptor)
             finally:
                 os.close(descriptor)
+            role_parent = os.open(
+                role_output,
+                os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_DIRECTORY", 0),
+            )
+            try:
+                os.fsync(role_parent)
+            finally:
+                os.close(role_parent)
         parent = os.open(
             output, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_DIRECTORY", 0)
         )

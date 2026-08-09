@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import json
 import os
@@ -59,6 +60,48 @@ def _run(*args: str, timeout: int = 120) -> bytes:
     if process.returncode:
         raise ValueError(f"authority command failed: {args[0]}: {stderr[:200]!r}")
     return stdout
+
+
+PRODUCER_GATE_TARGET = "/run/no1-008a-launch-gate"
+PRODUCER_GATE_WRAPPER = (
+    'IFS= read -r signal < "$1" || exit 125; '
+    '[ "$signal" = RELEASE ] || exit 126; shift; '
+    'exec python -m benchmarks.codegraph_compare.setup_qualification_executor "$@"'
+)
+
+
+def _release_producer_gate(gate: Path, container: str, deadline: float) -> None:
+    """Release a live, blocked producer only after its launch audit is durable."""
+    ready_deadline = min(deadline, time.monotonic() + 10.0)
+    while True:
+        try:
+            descriptor = os.open(
+                gate,
+                os.O_WRONLY
+                | os.O_NONBLOCK
+                | os.O_CLOEXEC
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            break
+        except OSError as exc:
+            if exc.errno != errno.ENXIO:
+                raise
+            inspected = json.loads(_run("docker", "inspect", container))[0]
+            state = inspected.get("State", {})
+            if state.get("Running") is not True:
+                raise ValueError("producer exited before launch gate release") from None
+            if time.monotonic() >= ready_deadline:
+                raise TimeoutError("producer launch gate readiness expired") from None
+            time.sleep(0.01)
+    try:
+        payload = b"RELEASE\n"
+        while payload:
+            written = os.write(descriptor, payload)
+            if written == 0:
+                raise OSError("producer launch gate write made no progress")
+            payload = payload[written:]
+    finally:
+        os.close(descriptor)
 
 
 def _wait_container(container: str, deadline: float) -> str:
@@ -339,6 +382,18 @@ class AuthorityRunner:
         output = destination / "producer-output"
         output.mkdir(mode=0o700)
         os.chown(output, 65532, 65532)
+        gate = destination / "producer-launch-gate"
+        os.mkfifo(gate, mode=0o444)
+        os.chown(gate, 0, 0, follow_symlinks=False)
+        os.chmod(gate, 0o444, follow_symlinks=False)
+        gate_metadata = os.lstat(gate)
+        if (
+            not stat.S_ISFIFO(gate_metadata.st_mode)
+            or gate_metadata.st_uid != 0
+            or gate_metadata.st_nlink != 1
+            or stat.S_IMODE(gate_metadata.st_mode) != 0o444
+        ):
+            raise ValueError("producer launch gate is not an exact authority FIFO")
         cgroup_name = f"no1-008a-{contract['job_id']}"
         docker_info = json.loads(_run("docker", "info", "--format", "{{json .}}"))
         if (
@@ -363,6 +418,7 @@ class AuthorityRunner:
             (job / "seccomp", "/plan/seccomp.json", True),
             (job / "plan.json", "/plan/cell-plan.json", True),
             (job / "inventory.json", "/plan/inventory.json", True),
+            (gate, PRODUCER_GATE_TARGET, True),
             (output, "/out", False),
         ]
         command = [
@@ -391,13 +447,28 @@ class AuthorityRunner:
             "1",
             "--tmpfs",
             f"{Path('/') / 'tmp'}:rw,noexec,nosuid,nodev,size=64m",
+            "--entrypoint",
+            "/bin/sh",
         ]
         for source, target, readonly in mounts:
             suffix = ",readonly,bind-propagation=rprivate" if readonly else ""
             command += ["--mount", f"type=bind,src={source},dst={target}{suffix}"]
         container = (
             _run(
-                *(command + [image, "--plan", "/plan/cell-plan.json", "--out", "/out"])
+                *(
+                    command
+                    + [
+                        image,
+                        "-c",
+                        PRODUCER_GATE_WRAPPER,
+                        "no1-008a-gate",
+                        PRODUCER_GATE_TARGET,
+                        "--plan",
+                        "/plan/cell-plan.json",
+                        "--out",
+                        "/out",
+                    ]
+                )
             )
             .decode()
             .strip()
@@ -427,7 +498,23 @@ class AuthorityRunner:
                 ).hex(),
             }
             launch_path = destination / "launch-audit.json"
-            launch_path.write_bytes(canonical_json_bytes(launch_envelope))
+            launch_descriptor = os.open(
+                launch_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
+                0o400,
+            )
+            try:
+                launch_payload = canonical_json_bytes(launch_envelope)
+                while launch_payload:
+                    written = os.write(launch_descriptor, launch_payload)
+                    if written == 0:
+                        raise OSError("launch audit write made no progress")
+                    launch_payload = launch_payload[written:]
+                os.fsync(launch_descriptor)
+            finally:
+                os.close(launch_descriptor)
+            _fsync_directory(destination)
+            _release_producer_gate(gate, container, producer_deadline)
             exit_code = _wait_container(container, producer_deadline)
             if exit_code != "0":
                 raise ValueError("producer did not exit zero")
@@ -494,6 +581,10 @@ class AuthorityRunner:
             if pidfd_descriptor >= 0:
                 os.close(pidfd_descriptor)
             subprocess.run(["docker", "rm", "-f", container], capture_output=True)
+            try:
+                gate.unlink()
+            except FileNotFoundError:
+                pass
             try:
                 cgroup.rmdir()
             except OSError:

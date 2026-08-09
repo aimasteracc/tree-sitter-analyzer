@@ -23,6 +23,12 @@ from benchmarks.codegraph_compare.receipt_v3 import (
 DOMAIN = b"NO1-008A-HOST-AUDIT-V1\0"
 LAUNCH_DOMAIN = b"NO1-008A-HOST-LAUNCH-V1\0"
 PROTOCOL = "no1-008a-audit-v1"
+PRODUCER_GATE_TARGET = "/run/no1-008a-launch-gate"
+PRODUCER_GATE_WRAPPER = (
+    'IFS= read -r signal < "$1" || exit 125; '
+    '[ "$signal" = RELEASE ] || exit 126; shift; '
+    'exec python -m benchmarks.codegraph_compare.setup_qualification_executor "$@"'
+)
 TMPFS_TARGET = Path("/").joinpath("tmp").as_posix()
 MAX_MESSAGE = 4 * 1024 * 1024
 
@@ -121,6 +127,7 @@ def _mounts(inspected: dict[str, Any]) -> dict[str, dict[str, Any]]:
         "/plan/cell-plan.json",
         "/plan/inventory.json",
         "/plan/seccomp.json",
+        PRODUCER_GATE_TARGET,
         "/out",
     }
     if not fixed.issubset(by_target):
@@ -137,12 +144,15 @@ def _mounts(inspected: dict[str, Any]) -> dict[str, dict[str, Any]]:
     ):
         raise ValueError("producer mount access mismatch")
     staged = plan_path.parent
+    source_path = Path(by_target["/source"]["Source"])
+    output_path = Path(by_target["/out"]["Source"])
     expected_sources = {
         "/plan/cell-plan.json": staged / "plan.json",
         "/plan/inventory.json": staged / "inventory.json",
         "/plan/seccomp.json": staged / "seccomp",
         tool_target: staged / "tool",
         config_target: staged / "config",
+        PRODUCER_GATE_TARGET: output_path.parent / "producer-launch-gate",
     }
     for target, item in by_target.items():
         source = item.get("Source")
@@ -156,8 +166,15 @@ def _mounts(inspected: dict[str, Any]) -> dict[str, dict[str, Any]]:
         expected = expected_sources.get(target)
         if expected is not None and Path(source) != expected:
             raise ValueError("producer authenticated mount source mismatch")
-    source_path = Path(by_target["/source"]["Source"])
-    output_path = Path(by_target["/out"]["Source"])
+    gate_path = Path(by_target[PRODUCER_GATE_TARGET]["Source"])
+    gate_metadata = os.lstat(gate_path)
+    if (
+        not stat.S_ISFIFO(gate_metadata.st_mode)
+        or gate_metadata.st_uid != 0
+        or gate_metadata.st_nlink != 1
+        or stat.S_IMODE(gate_metadata.st_mode) != 0o444
+    ):
+        raise ValueError("producer launch gate is not an exact authority FIFO")
     if (
         source_path.name != "source"
         or output_path.name != "producer-output"
@@ -187,6 +204,8 @@ def _docker_facts(
         "memory": host.get("Memory"),
         "nano_cpus": host.get("NanoCpus"),
         "tmpfs": host.get("Tmpfs"),
+        "entrypoint": inspected["Config"].get("Entrypoint"),
+        "command": inspected["Config"].get("Cmd"),
     }
     if (
         security["user"] != "65532:65532"
@@ -197,6 +216,18 @@ def _docker_facts(
         or security["memory"] != 4294967296
         or security["nano_cpus"] != 1000000000
         or security["tmpfs"] != {TMPFS_TARGET: "rw,noexec,nosuid,nodev,size=64m"}
+        or security["entrypoint"] != ["/bin/sh"]
+        or security["command"]
+        != [
+            "-c",
+            PRODUCER_GATE_WRAPPER,
+            "no1-008a-gate",
+            PRODUCER_GATE_TARGET,
+            "--plan",
+            "/plan/cell-plan.json",
+            "--out",
+            "/out",
+        ]
     ):
         raise ValueError("producer Docker security facts mismatch")
     return security

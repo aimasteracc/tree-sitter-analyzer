@@ -36,7 +36,12 @@ def _write(path: Path, value: Any) -> None:
         path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
     )
     try:
-        os.write(descriptor, canonical_json_bytes(value) + b"\n")
+        payload = canonical_json_bytes(value) + b"\n"
+        while payload:
+            written = os.write(descriptor, payload)
+            if written == 0:
+                raise OSError("operator evidence write made no progress")
+            payload = payload[written:]
         os.fsync(descriptor)
     finally:
         os.close(descriptor)

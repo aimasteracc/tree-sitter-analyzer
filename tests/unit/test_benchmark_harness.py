@@ -12847,8 +12847,9 @@ def test_authority_mounts_authenticated_plan_inputs_at_exact_read_only_targets()
     assert '(job / "seccomp", "/plan/seccomp.json", True)' in runner_source
 
 
-def test_host_auditor_accepts_only_all_seven_exact_producer_bind_mounts(
+def test_host_auditor_accepts_only_all_eight_exact_producer_bind_mounts(
     tmp_path: Path,
+    monkeypatch,
 ):
     # PR #1249 review 3744261017: authenticated tool/config/seccomp mounts are mandatory.
     from benchmarks.codegraph_compare.host_auditor import _mounts
@@ -12860,8 +12861,10 @@ def test_host_auditor_accepts_only_all_seven_exact_producer_bind_mounts(
     artifact.mkdir()
     source = artifact / "source"
     output = artifact / "producer-output"
+    gate = artifact / "producer-launch-gate"
     source.mkdir()
     output.mkdir()
+    os.mkfifo(gate, mode=0o444)
     plan = {
         "executions": [
             {
@@ -12883,6 +12886,7 @@ def test_host_auditor_accepts_only_all_seven_exact_producer_bind_mounts(
         "/plan/seccomp.json": staged / "seccomp",
         "/plan/cell-plan.json": staged / "plan.json",
         "/plan/inventory.json": staged / "inventory.json",
+        "/run/no1-008a-launch-gate": gate,
         "/out": output,
     }
     for target in sources.values():
@@ -12902,6 +12906,19 @@ def test_host_auditor_accepts_only_all_seven_exact_producer_bind_mounts(
         ]
     }
 
+    real_lstat = os.lstat
+
+    def authority_lstat(path):
+        metadata = real_lstat(path)
+        if Path(path) == gate:
+            return SimpleNamespace(
+                st_mode=metadata.st_mode, st_uid=0, st_nlink=metadata.st_nlink
+            )
+        return metadata
+
+    monkeypatch.setattr(
+        "benchmarks.codegraph_compare.host_auditor.os.lstat", authority_lstat
+    )
     assert set(_mounts(inspected)) == set(sources)
     inspected["Mounts"][1]["Source"] = str(staged / "config")
     with pytest.raises(ValueError, match="authenticated mount source mismatch"):
@@ -13065,6 +13082,336 @@ def test_authority_deadline_subtracts_docker_start_rpc_and_audit_time(monkeypatc
     deadline = runner._docker_wall_deadline("1970-01-01T00:16:40Z", 10)
 
     assert deadline == 507.0
+
+
+def test_decision_consumer_contains_four_malformed_connections_and_recovers(
+    monkeypatch,
+):
+    # PR #1249 review 3744358507: per-connection failures must not drain workers.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    class Connection:
+        def __init__(self, send_error=False):
+            self.closed = False
+            self.sent = []
+            self.send_error = send_error
+
+        def sendall(self, payload):
+            if self.send_error:
+                raise BrokenPipeError("peer disconnected")
+            self.sent.append(payload)
+
+        def close(self):
+            self.closed = True
+
+    key = __import__(
+        "cryptography.hazmat.primitives.asymmetric.ed25519",
+        fromlist=["Ed25519PrivateKey"],
+    ).Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
+    connections = [
+        Connection(),
+        Connection(),
+        Connection(),
+        Connection(send_error=True),
+    ]
+    read_results = iter(
+        (
+            EOFError("truncated header"),
+            ValueError("oversized frame"),
+            ValueError("malformed JSON"),
+            {"operation": "query-decision"},
+        )
+    )
+    monkeypatch.setattr(consumer, "peer_allowed", lambda *_args: None)
+
+    def read_request(*_args):
+        result = next(read_results)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(consumer, "read_frame", read_request)
+    monkeypatch.setattr(consumer, "consume_request", lambda *_args: {"ok": True})
+    for connection in connections:
+        consumer._serve_connection(connection, 901, {}, object(), key, {})
+
+    healthy = Connection()
+    monkeypatch.setattr(consumer, "read_frame", lambda *_args: {"operation": "query"})
+    consumer._serve_connection(healthy, 901, {}, object(), key, {})
+
+    assert [connection.closed for connection in connections] == [True, True, True, True]
+    assert healthy.closed is True
+    assert len(healthy.sent) == 1
+
+
+def test_decision_consumer_contains_peer_and_handler_errors(monkeypatch):
+    # PR #1249 review 3744358507: SO_PEERCRED and handler errors stay connection-local.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    class Connection:
+        def __init__(self):
+            self.closed = False
+            self.sent = []
+
+        def sendall(self, payload):
+            self.sent.append(payload)
+
+        def close(self):
+            self.closed = True
+
+    key = __import__(
+        "cryptography.hazmat.primitives.asymmetric.ed25519",
+        fromlist=["Ed25519PrivateKey"],
+    ).Ed25519PrivateKey.from_private_bytes(b"\x12" * 32)
+    denied = Connection()
+    monkeypatch.setattr(
+        consumer,
+        "peer_allowed",
+        lambda *_args: (_ for _ in ()).throw(PermissionError("wrong UID")),
+    )
+    consumer._serve_connection(denied, 901, {}, object(), key, {})
+
+    handled = Connection()
+    monkeypatch.setattr(consumer, "peer_allowed", lambda *_args: None)
+    monkeypatch.setattr(consumer, "read_frame", lambda *_args: {})
+    monkeypatch.setattr(
+        consumer,
+        "consume_request",
+        lambda *_args: (_ for _ in ()).throw(ValueError("bad decision")),
+    )
+    consumer._serve_connection(handled, 901, {}, object(), key, {})
+
+    assert denied.closed is True
+    assert denied.sent == []
+    assert handled.closed is True
+    assert len(handled.sent) == 1
+
+
+def test_decision_consumer_rejects_wrong_private_key_before_ledger_or_listener(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744358513: a wrong key must not poison the one-shot ledger.
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+
+    public = tmp_path / "public.json"
+    public.write_bytes(b"{}")
+    launch_attestation = tmp_path / "launch.json"
+    launch_attestation.write_bytes(b"{}")
+    configured_key = __import__(
+        "cryptography.hazmat.primitives.asymmetric.ed25519",
+        fromlist=["Ed25519PrivateKey"],
+    ).Ed25519PrivateKey.from_private_bytes(b"\x66" * 32)
+    monkeypatch.setattr(consumer.os, "geteuid", lambda: 904)
+    monkeypatch.setattr(
+        consumer,
+        "parse_public_config",
+        lambda _raw: {
+            "decision_consumer": {
+                "peer_uid": 904,
+                "public_key_hex": configured_key.public_key().public_bytes_raw().hex(),
+            },
+            "trusted": {"decision_consumer_runtime": {"measurement": {}}},
+        },
+    )
+    monkeypatch.setattr(consumer, "measure_runtime", lambda _value: {})
+    monkeypatch.setattr(
+        consumer, "verify_service_launch_attestation", lambda *_args: {}
+    )
+    descriptor = os.open(os.devnull, os.O_RDONLY)
+    monkeypatch.setattr(
+        consumer, "secure_key", lambda *_args: (descriptor, b"\x65" * 32)
+    )
+    monkeypatch.setattr(
+        consumer,
+        "DecisionLedger",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("ledger opened")),
+    )
+
+    with pytest.raises(SystemExit, match="does not match public config"):
+        consumer.main(
+            [
+                "--socket",
+                str(tmp_path / "decision.sock"),
+                "--private-key",
+                str(tmp_path / "key"),
+                "--public-config",
+                str(public),
+                "--ledger",
+                str(tmp_path / "ledger.sqlite"),
+                "--launch-attestation",
+                str(launch_attestation),
+                "--allowed-client-uid",
+                "901",
+            ]
+        )
+
+
+def test_operator_write_completes_short_writes_before_fsync(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744358510: a successful write retains the full envelope.
+    from benchmarks.codegraph_compare import qualification_operator as operator
+
+    real_write = os.write
+
+    def short_write(descriptor, payload):
+        return real_write(descriptor, payload[:3])
+
+    monkeypatch.setattr(operator.os, "write", short_write)
+    path = tmp_path / "evidence.json"
+    operator._write(path, {"status": "SUCCESS"})
+
+    assert path.read_bytes() == b'{"status":"SUCCESS"}\n'
+
+
+def test_operator_write_rejects_zero_progress(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744358510: zero-byte writes cannot report operator success.
+    from benchmarks.codegraph_compare import qualification_operator as operator
+
+    monkeypatch.setattr(operator.os, "write", lambda *_args: 0)
+    with pytest.raises(OSError, match="made no progress"):
+        operator._write(tmp_path / "evidence.json", {"status": "SUCCESS"})
+
+
+def test_launch_attestation_handoff_uses_private_role_owned_paths(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744358508: distinct service UIDs can read only their artifact.
+    from benchmarks.codegraph_compare import service_runtime
+
+    output = tmp_path / "handoff"
+    public = tmp_path / "public.json"
+    public.write_bytes(b"{}")
+    descriptor = os.open(os.devnull, os.O_RDONLY)
+    monkeypatch.setattr(service_runtime.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(
+        service_runtime, "secure_key", lambda *_args: (descriptor, b"\x31" * 32)
+    )
+    monkeypatch.setattr(
+        "benchmarks.codegraph_compare.verifier.parse_public_config", lambda _raw: {}
+    )
+    monkeypatch.setattr(
+        service_runtime,
+        "create_service_launch_attestation",
+        lambda _container, role, *_args: {"role": role},
+    )
+    directory_owners = []
+    file_owners = []
+    monkeypatch.setattr(
+        service_runtime.os,
+        "chown",
+        lambda path, uid, gid: directory_owners.append((Path(path).name, uid, gid)),
+    )
+    monkeypatch.setattr(
+        service_runtime.os,
+        "fchown",
+        lambda _fd, uid, gid: file_owners.append((uid, gid)),
+    )
+    mappings = [
+        item
+        for role in ("executor", "approver", "auditor", "verifier", "decision_consumer")
+        for item in ("--container", f"{role}=container-{role}")
+    ]
+    assert (
+        service_runtime.main(
+            [
+                "attest-launch",
+                "--public-config",
+                str(public),
+                "--private-key",
+                "key",
+                "--key-id",
+                "launcher",
+                "--output-dir",
+                str(output),
+                *mappings,
+            ]
+        )
+        == 0
+    )
+
+    expected = {
+        "executor": 901,
+        "approver": 902,
+        "auditor": 0,
+        "verifier": 903,
+        "decision_consumer": 904,
+    }
+    assert stat.S_IMODE(output.stat().st_mode) == 0o711
+    assert {
+        name: stat.S_IMODE((output / name).stat().st_mode) for name in expected
+    } == dict.fromkeys(expected, 448)
+    assert {
+        name: stat.S_IMODE((output / name / "launch-attestation.json").stat().st_mode)
+        for name in expected
+    } == dict.fromkeys(expected, 256)
+    assert directory_owners == [
+        (name, expected[name], expected[name]) for name in sorted(expected)
+    ]
+    assert sorted(file_owners) == sorted((uid, uid) for uid in expected.values())
+
+
+def test_producer_gate_releases_only_exact_signal(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744358517: producer commands wait for authority release.
+    import threading
+
+    from benchmarks.codegraph_compare import audit_authority_runner as runner
+
+    gate = tmp_path / "gate"
+    os.mkfifo(gate, mode=0o444)
+    os.chmod(gate, 0o644)
+    received = []
+    reader = threading.Thread(target=lambda: received.append(gate.read_bytes()))
+    reader.start()
+    monkeypatch.setattr(runner, "_run", lambda *_args: b'[{"State":{"Running":true}}]')
+    runner._release_producer_gate(gate, "container", __import__("time").monotonic() + 2)
+    reader.join(timeout=2)
+
+    assert received == [b"RELEASE\n"]
+
+
+def test_producer_gate_fails_if_container_exits_before_release(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744358517: exit-before-gate is a terminal authority failure.
+    import errno
+
+    from benchmarks.codegraph_compare import audit_authority_runner as runner
+
+    gate = tmp_path / "gate"
+    os.mkfifo(gate, mode=0o444)
+    monkeypatch.setattr(
+        runner.os,
+        "open",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError(errno.ENXIO, "no reader")
+        ),
+    )
+    monkeypatch.setattr(runner, "_run", lambda *_args: b'[{"State":{"Running":false}}]')
+    with pytest.raises(ValueError, match="exited before launch gate"):
+        runner._release_producer_gate(gate, "container", 10**30)
+
+
+def test_producer_gate_readiness_timeout_is_terminal(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744358517: a missing gate reader cannot hang the reservation.
+    import errno
+
+    from benchmarks.codegraph_compare import audit_authority_runner as runner
+
+    gate = tmp_path / "gate"
+    os.mkfifo(gate, mode=0o444)
+    monkeypatch.setattr(
+        runner.os,
+        "open",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError(errno.ENXIO, "no reader")
+        ),
+    )
+    monkeypatch.setattr(runner, "_run", lambda *_args: b'[{"State":{"Running":true}}]')
+    calls = iter((0.0,))
+    monkeypatch.setattr(runner.time, "monotonic", lambda: next(calls, 11.0))
+    with pytest.raises(TimeoutError, match="gate readiness expired"):
+        runner._release_producer_gate(gate, "container", 10**30)
 
 
 _mark_posix_qualification_section_tests()
