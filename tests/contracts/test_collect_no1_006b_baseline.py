@@ -6,6 +6,10 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -16,6 +20,7 @@ from scripts import collect_no1_006b_baseline as collector
 REPO = Path(__file__).parents[2]
 BASELINE = REPO / "docs/baselines/no1-006b-macos-e0.json"
 SCHEMA = REPO / "schemas/no1-006b-baseline.schema.json"
+RFC = REPO / "rfcs/0024-default-dependency-split.md"
 
 
 def baseline() -> dict:
@@ -182,4 +187,31 @@ def test_file_budget_rejects_oversized_artifact(tmp_path: Path) -> None:
 
 def test_collector_rejects_unbounded_repeat_count(tmp_path: Path) -> None:
     with pytest.raises(ValueError,match="between 3 and 20"): collector.collect(REPO,tmp_path/"receipt.json",21,collector.EXPECTED_SUBJECT_COMMIT)
+
+def test_rfc_reproduction_command_uses_external_interpreter() -> None:
+    # NO1-006B review 2026-08-10: a repo-local ignored venv made the clean gate reject the documented command.
+    reproduction=RFC.read_text().split("## Reproduction of the descriptive receipt",1)[1].split("## Measured macOS E0 receipt",1)[0]
+    assert ".venv/bin/python" not in reproduction
+    assert 'TOOL_VENV="$RUN_ROOT/collector-tool-venv"' in reproduction
+    assert '"$TOOL_PYTHON" "$COLLECTOR/scripts/collect_no1_006b_baseline.py"' in reproduction
+
+
+def test_external_interpreter_probe_preserves_clean_ignored_gate(tmp_path: Path) -> None:
+    # NO1-006B review 2026-08-10: probe the interpreter placement without weakening ignored-file rejection.
+    root=tmp_path/"collector"; (root/"scripts").mkdir(parents=True); (root/"schemas").mkdir()
+    shutil.copy2(Path(collector.__file__),root/"scripts/collect_no1_006b_baseline.py")
+    shutil.copy2(SCHEMA,root/"schemas/no1-006b-baseline.schema.json")
+    for command in (["git","init","-q"],["git","config","user.email","contract@example.invalid"],["git","config","user.name","Contract"],["git","add","."],["git","commit","-qm","probe"]):
+        subprocess.run(command,cwd=root,check=True)
+    interpreter=Path(sys.executable).resolve()
+    assert root.resolve() not in interpreter.parents
+    probe='import importlib.util,json; p="scripts/collect_no1_006b_baseline.py"; s=importlib.util.spec_from_file_location("probe_collector",p); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); print(json.dumps(m.collector_identity(),sort_keys=True))'
+    env={**os.environ,"PYTHONDONTWRITEBYTECODE":"1"}
+    result=subprocess.run([str(interpreter),"-c",probe],cwd=root,env=env,check=True,capture_output=True,text=True)
+    commit=subprocess.run(["git","rev-parse","HEAD"],cwd=root,check=True,capture_output=True,text=True).stdout.strip()
+    expected={"commit":commit,"script_sha256":collector.sha256(root/"scripts/collect_no1_006b_baseline.py"),"schema_sha256":collector.sha256(root/"schemas/no1-006b-baseline.schema.json")}
+    status=subprocess.run(["git","status","--porcelain=v1","--untracked-files=all","--ignored"],cwd=root,check=True,capture_output=True,text=True).stdout
+    assert json.loads(result.stdout) == expected
+    assert status == ""
+
 # fmt: on
