@@ -7253,9 +7253,9 @@ class TestCanaryEvidence:
                 "repository_fingerprint": "f" * 64,
                 "source_before": source_inventory,
                 "source_after": source_inventory,
-                "runtime_namespace": ".ast-cache"
-                if cell.arm == "tsa-warm"
-                else ".codegraph",
+                "runtime_namespace": (
+                    ".ast-cache" if cell.arm == "tsa-warm" else ".codegraph"
+                ),
                 "runtime_before": [],
                 "runtime_after": [["index.db", "b" * 64]],
             }
@@ -7609,9 +7609,11 @@ class TestCanaryEvidence:
             attempts[1],
         )
         artifacts = tuple(
-            replace(artifact, sha256=artifact_hash)
-            if artifact is workspace
-            else artifact
+            (
+                replace(artifact, sha256=artifact_hash)
+                if artifact is workspace
+                else artifact
+            )
             for artifact in artifacts
         )
 
@@ -7838,9 +7840,9 @@ class TestCanaryProtocol:
                 "repository_fingerprint": "f" * 64,
                 "source_before": source_inventory,
                 "source_after": source_inventory,
-                "runtime_namespace": ".ast-cache"
-                if snapshot["arm"] == "tsa-warm"
-                else ".codegraph",
+                "runtime_namespace": (
+                    ".ast-cache" if snapshot["arm"] == "tsa-warm" else ".codegraph"
+                ),
                 "runtime_before": [],
                 "runtime_after": [["index.db", "b" * 64]],
             }
@@ -8198,6 +8200,20 @@ def test_source_rules_inventory_selects_eligible_source(tmp_path: Path):
     assert inventory.eligible_paths == ("main.ts",)
 
 
+def test_source_inventory_requires_canonical_worktree_root(tmp_path: Path):
+    # PR #1247: a subdirectory-scoped ls-files result cannot label the full commit.
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+    )
+
+    repo = tmp_path / "repo"
+    _qualification_git_repo(repo)
+
+    with pytest.raises(ValueError, match="canonical Git worktree root"):
+        inventory_sources("vscode", repo / "deps", DEFAULT_SOURCE_RULES)
+
+
 @pytest.mark.parametrize(
     ("path", "reason"),
     (
@@ -8271,15 +8287,46 @@ def test_cell_plan_allows_oracle_id_that_only_contains_reserved_word(tmp_path: P
 
 
 def test_git_batch_parser_uses_size_framing_for_embedded_nul():
+    import io
+
     import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
 
     payload = b"before\0after"
     digest = hashlib.sha1(f"blob {len(payload)}\0".encode() + payload).hexdigest()
     output = f"{digest} blob {len(payload)}".encode() + b"\0" + payload + b"\0"
 
-    assert inventory_module._parse_batch_blobs(output, (("source.ts", digest),)) == (
-        ("source.ts", payload),
-    )
+    assert inventory_module._stream_blob(
+        io.BytesIO(output), "source.ts", digest, 0
+    ) == (hashlib.sha256(payload).hexdigest(), payload, len(payload))
+
+
+def test_git_batch_rejects_blob_above_trusted_ceiling():
+    import io
+
+    import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
+
+    digest = "a" * 40
+    output = f"{digest} blob 8".encode() + b"\0"
+    with (
+        patch.object(inventory_module, "_GIT_BLOB_CEILING_BYTES", 7),
+        pytest.raises(ValueError, match="blob exceeds trusted size ceiling"),
+    ):
+        inventory_module._stream_blob(io.BytesIO(output), "large.ts", digest, 0)
+
+
+def test_git_batch_rejects_repository_above_trusted_total_ceiling():
+    import io
+
+    import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
+
+    payload = b"content"
+    digest = hashlib.sha1(f"blob {len(payload)}\0".encode() + payload).hexdigest()
+    output = f"{digest} blob {len(payload)}".encode() + b"\0"
+    with (
+        patch.object(inventory_module, "_GIT_TOTAL_CEILING_BYTES", len(payload)),
+        pytest.raises(ValueError, match="trusted total size ceiling"),
+    ):
+        inventory_module._stream_blob(io.BytesIO(output), "source.ts", digest, 1)
 
 
 @pytest.mark.parametrize(
@@ -8296,6 +8343,8 @@ def test_git_batch_parser_uses_size_framing_for_embedded_nul():
 )
 def test_git_batch_parser_rejects_malformed_type_size_or_terminator(mutate):
     # PR #1247: batch framing must fail closed rather than shift into the next blob.
+    import io
+
     import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
 
     payload = b"content"
@@ -8303,25 +8352,35 @@ def test_git_batch_parser_rejects_malformed_type_size_or_terminator(mutate):
     header = f"{digest} blob {len(payload)}".encode() + b"\0"
 
     with pytest.raises(ValueError, match="Git batch"):
-        inventory_module._parse_batch_blobs(
-            mutate(header, payload), (("source.ts", digest),)
+        inventory_module._stream_blob(
+            io.BytesIO(mutate(header, payload)), "source.ts", digest, 0
         )
 
 
 def test_git_batch_timeout_kills_and_reaps_process(tmp_path: Path):
+    import io
+    import time
+
     import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
 
+    class SlowOutput:
+        def read(self, _size):
+            time.sleep(0.1)
+            return b""
+
     process = Mock(args=["git", "cat-file", "--batch", "-Z"])
-    process.communicate.side_effect = [
-        subprocess.TimeoutExpired(process.args, 30),
-        (b"", b""),
-    ]
-    with patch.object(inventory_module.subprocess, "Popen", return_value=process):
+    process.stdin = io.BytesIO()
+    process.stdout = SlowOutput()
+    process.poll.return_value = None
+    with (
+        patch.object(inventory_module.subprocess, "Popen", return_value=process),
+        patch.object(inventory_module, "_GIT_TIMEOUT_SECONDS", 0.01),
+    ):
         with pytest.raises(subprocess.TimeoutExpired):
-            inventory_module._batch_blobs(tmp_path, (("source.ts", "a" * 40),))
+            inventory_module._batch_blob_metadata(tmp_path, (("source.ts", "a" * 40),))
 
     process.kill.assert_called_once_with()
-    assert process.communicate.call_count == 2
+    process.wait.assert_called_once_with()
 
 
 def test_large_source_inventory_uses_constant_subprocess_count(tmp_path: Path):
@@ -8356,7 +8415,7 @@ def test_large_source_inventory_uses_constant_subprocess_count(tmp_path: Path):
         result = inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
 
     assert len(result.tracked_regular_paths) == 256
-    assert len(starts) == 7
+    assert len(starts) == 8
     assert [command[:3] for command in starts].count(
         ("git", "cat-file", "--batch")
     ) == 1
@@ -9804,6 +9863,47 @@ def test_validator_uses_pinned_experiment_descriptor_after_path_replacement(
         os.close(root_fd)
 
 
+def test_plan_set_rejects_cross_arm_oracle_spec_difference(tmp_path: Path):
+    # PR #1247: both comparison arms must use the exact same oracle contract.
+    from dataclasses import replace
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        _trusted_commits,
+        _validate_plans,
+    )
+
+    plans = list(_qualification_plans(tmp_path))
+    changed_oracle = replace(
+        plans[1].oracle_specs[0], expected_result={"path": "other.ts", "line": 1}
+    )
+    plans[1] = replace(
+        plans[1], oracle_specs=(changed_oracle, plans[1].oracle_specs[1])
+    )
+    trusted = _trusted_commits(Path("benchmarks/codegraph_compare/repos.yaml"))
+
+    with pytest.raises(ValueError, match="exactly identical oracle specifications"):
+        _validate_plans(plans, trusted, _qualification_inventories(plans))
+
+
+def test_trusted_manifest_rejects_duplicate_id_before_mapping(tmp_path: Path):
+    # PR #1247: mapping construction must not silently overwrite a repository pin.
+    import yaml
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        _trusted_commits,
+    )
+
+    source = yaml.safe_load(
+        Path("benchmarks/codegraph_compare/repos.yaml").read_text(encoding="utf-8")
+    )
+    source["repos"][-1]["id"] = source["repos"][0]["id"]
+    manifest = tmp_path / "repos.yaml"
+    manifest.write_text(yaml.safe_dump(source), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="IDs must be unique"):
+        _trusted_commits(manifest)
+
+
 def test_e0_orchestrator_never_invokes_producer_or_creates_receipts(tmp_path: Path):
     from benchmarks.codegraph_compare.setup_qualification_orchestration import (
         orchestrate_qualification,
@@ -9913,7 +10013,20 @@ def test_cell_plan_requires_delete_build_health_and_all_oracles(tmp_path: Path):
         replace(plan, executions=plan.executions[1:])
 
 
+def test_index_hash_fails_closed_without_openat_support(tmp_path: Path):
+    from unittest.mock import patch
+
+    from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
+
+    with (
+        patch.object(os, "supports_dir_fd", set()),
+        pytest.raises(RuntimeError, match="requires openat/O_NOFOLLOW support"),
+    ):
+        _hash_tree(tmp_path)
+
+
 def test_index_hash_enforces_trusted_total_size_ceiling(tmp_path: Path):
+    _require_posix_qualification_sandbox()
     import pytest
 
     from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
@@ -9924,6 +10037,7 @@ def test_index_hash_enforces_trusted_total_size_ceiling(tmp_path: Path):
 
 
 def test_index_hash_rejects_sparse_files(tmp_path: Path):
+    _require_posix_qualification_sandbox()
     import pytest
 
     from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree

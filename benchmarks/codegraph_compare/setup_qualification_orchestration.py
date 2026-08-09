@@ -25,12 +25,21 @@ from benchmarks.codegraph_compare.setup_qualification import (
 def _trusted_commits(path: Path) -> dict[str, str]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     try:
-        result = {item["id"]: item["commit"] for item in raw["repos"]}
+        repositories = raw["repos"]
+        if not isinstance(repositories, list) or len(repositories) != 7:
+            raise ValueError(
+                "Trusted repositories manifest must contain exactly seven entries"
+            )
+        identifiers = tuple(item["id"] for item in repositories)
+        commits = tuple(item["commit"] for item in repositories)
     except (KeyError, TypeError) as exc:
         raise ValueError("Malformed trusted repositories manifest") from exc
-    if tuple(result) != tuple(repo for repo, _ in EXPECTED_CELLS[::2]):
+    canonical = tuple(repo for repo, _ in EXPECTED_CELLS[::2])
+    if len(set(identifiers)) != len(identifiers):
+        raise ValueError("Trusted repository IDs must be unique")
+    if identifiers != canonical:
         raise ValueError("Trusted repositories manifest is not canonical")
-    return result
+    return dict(zip(identifiers, commits, strict=True))
 
 
 def _validate_plans(
@@ -60,6 +69,12 @@ def _validate_plans(
         previous = by_repo.setdefault(plan.repo_id, plan)
         if asdict(previous.eligibility) != asdict(plan.eligibility):
             raise ValueError("Both arms must use identical source eligibility")
+        if tuple(map(asdict, previous.oracle_specs)) != tuple(
+            map(asdict, plan.oracle_specs)
+        ):
+            raise ValueError(
+                "Both arms must use exactly identical oracle specifications"
+            )
     for artifact in artifacts:
         canonical_relative_path(artifact)
         if not artifact.startswith("cells/") or not artifact.endswith(
