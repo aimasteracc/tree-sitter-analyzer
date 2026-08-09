@@ -88,6 +88,9 @@ class OperatorTrustConfigV1:
     # "client-process-kill": subprocess timeout + post-run usage verification.
     # The latter is documented as a limitation when Codex CLI lacks a reservation API.
     budget_enforcement_mode: str = "provider"
+    pinned_judge: Path | None = None
+    spend_key_id: str = "legacy-spend-key"
+    judge_key_id: str = "legacy-judge-key"
 
 
 @dataclass(frozen=True)
@@ -231,9 +234,8 @@ def qualify_production_trust_v2(
     """Extended qualification that enables model_callbacks_allowed when all trust
     gates are satisfied.
 
-    The anchor key is loaded exclusively from config.pinned_anchor (never accepted
-    as a caller argument) so that the trust gate cannot be bypassed by supplying a
-    self-generated key.
+    Spend and Judge keys are loaded exclusively from independently pinned config
+    paths (never caller arguments), with distinct roles and key IDs.
 
     The judge record's evidence_digest is compared against expected_evidence_digest
     so that an authentic ACCEPT from an earlier or unrelated run cannot be replayed.
@@ -284,16 +286,15 @@ def qualify_production_trust_v2(
             "NOT_EVALUATED", ("OPERATOR_TRUST_CONFIG_UNAVAILABLE",), spec_hash, False
         )
 
-    # Load anchor key from config.pinned_anchor (out-of-band, never from bundle).
-    # Prevents self-signing: callers cannot supply an arbitrary key.
+    # Production qualification requires two independently pinned role keys.
     try:
         anchor_key = AnchorKey.from_file(config.pinned_anchor)
+        if config.pinned_judge is None:
+            raise ValueError("pinned judge key is required")
+        judge_key = AnchorKey.from_file(config.pinned_judge)
     except Exception as error:
         return ProductionQualification(
-            "NOT_EVALUATED",
-            (f"ANCHOR_KEY_UNAVAILABLE:{error}",),
-            spec_hash,
-            False,
+            "NOT_EVALUATED", (f"ROLE_KEY_UNAVAILABLE:{error}",), spec_hash, False
         )
 
     if not isinstance(attestation, SpendAttestation):
@@ -314,13 +315,25 @@ def qualify_production_trust_v2(
     # Re-implement trust config validation inline (without calling the base function)
     # so that client-process-kill mode is handled explicitly rather than via flag mutation.
     violations: list[str] = []
+    assert config.pinned_judge is not None
     for path, label in (
         (config.trust_store, "trust_store"),
         (config.pinned_anchor, "pinned_anchor"),
+        (config.pinned_judge, "pinned_judge"),
     ):
         violation = _trusted_external_file(path, evidence_bundle_root, label)
         if violation is not None:
             violations.append(violation)
+    if config.pinned_judge is not None:
+        try:
+            if config.pinned_anchor.resolve(strict=True) == config.pinned_judge.resolve(
+                strict=True
+            ):
+                violations.append("ROLE_KEYS_NOT_INDEPENDENT")
+        except OSError:
+            pass
+    if config.spend_key_id == config.judge_key_id:
+        violations.append("ROLE_KEY_IDS_NOT_INDEPENDENT")
     artifact_lexical = _absolute_lexical(config.immutable_artifact_root)
     bundle_lexical = _absolute_lexical(evidence_bundle_root)
     if artifact_lexical == bundle_lexical or bundle_lexical in artifact_lexical.parents:
@@ -333,15 +346,19 @@ def qualify_production_trust_v2(
         violations.append("TRUST_ROLES_INCOMPLETE")
     # Budget enforcement: provider-side preferred; client-process-kill explicitly accepted.
     if config.budget_enforcement_mode not in ("provider", "client-process-kill"):
-        violations.append(f"UNKNOWN_BUDGET_ENFORCEMENT_MODE:{config.budget_enforcement_mode!r}")
-    elif config.budget_enforcement_mode == "provider" and config.provider_budget_enforced is not True:
+        violations.append(
+            f"UNKNOWN_BUDGET_ENFORCEMENT_MODE:{config.budget_enforcement_mode!r}"
+        )
+    elif (
+        config.budget_enforcement_mode == "provider"
+        and config.provider_budget_enforced is not True
+    ):
         violations.append("PROVIDER_BUDGET_GATEWAY_UNAVAILABLE")
     for enabled, violation in (
         (config.append_only_ledger, "APPEND_ONLY_LEDGER_UNAVAILABLE"),
         (config.immutable_collector, "IMMUTABLE_COLLECTOR_UNAVAILABLE"),
         (config.isolated_execution, "ISOLATED_EXECUTION_UNAVAILABLE"),
         (config.verification_to_use_closed, "VERIFICATION_TO_USE_OPEN"),
-        (config.independent_judge, "INDEPENDENT_JUDGE_UNAVAILABLE"),
     ):
         if enabled is not True:
             violations.append(violation)
@@ -351,7 +368,9 @@ def qualify_production_trust_v2(
         violations.append("RUN_SPEC_EXPIRED")
 
     if violations:
-        return ProductionQualification("NOT_EVALUATED", tuple(violations), spec_hash, False)
+        return ProductionQualification(
+            "NOT_EVALUATED", tuple(violations), spec_hash, False
+        )
 
     # Verify attestation HMAC and binding.
     attest_violations: list[str] = []
@@ -367,8 +386,16 @@ def qualify_production_trust_v2(
     except Exception as error:
         attest_violations.append(f"ATTESTATION_INVALID:{error}")
 
+    if attestation.issuer_role != "spend-authorizer":
+        attest_violations.append("ATTESTATION_ROLE_MISMATCH")
+    if attestation.key_id != config.spend_key_id:
+        attest_violations.append("ATTESTATION_KEY_ID_MISMATCH")
+
     # Attestation budget mode must match config — prevents mode substitution.
-    if not attest_violations and attestation.budget_enforcement_mode != config.budget_enforcement_mode:
+    if (
+        not attest_violations
+        and attestation.budget_enforcement_mode != config.budget_enforcement_mode
+    ):
         attest_violations.append(
             f"BUDGET_MODE_MISMATCH:"
             f"attestation={attestation.budget_enforcement_mode!r}:"
@@ -377,8 +404,12 @@ def qualify_production_trust_v2(
 
     # Verify judge record HMAC, verdict, and evidence binding.
     try:
-        verify_judge_record(judge_record, anchor_key)
-        if judge_record.verdict != "ACCEPT":
+        verify_judge_record(judge_record, judge_key)
+        if judge_record.issuer_role != "independent-judge":
+            attest_violations.append("JUDGE_ROLE_MISMATCH")
+        elif judge_record.key_id != config.judge_key_id:
+            attest_violations.append("JUDGE_KEY_ID_MISMATCH")
+        elif judge_record.verdict != "ACCEPT":
             attest_violations.append(f"JUDGE_VERDICT_NOT_ACCEPT:{judge_record.verdict}")
         elif judge_record.evidence_digest != expected_evidence_digest:
             attest_violations.append(

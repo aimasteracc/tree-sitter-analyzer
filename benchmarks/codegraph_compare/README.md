@@ -3,12 +3,12 @@
 
 ## NO1-003B production-canary operator runbook
 
-> **Current decision: NO-GO for a real canary.** The repository can qualify the
-> NO1-002C/002D trust chain, but it intentionally contains no production model
-> dispatcher. `CanaryProtocol` rejects every non-fixture execution with
-> `QUALIFICATION_SCAFFOLD_NOT_PRODUCTION_READY`. Do not bypass that stop, replace
-> `execution_mode`, or call an agent adapter directly. A real run requires a
-> separately reviewed operator-controlled dispatcher and external approvals.
+> **Current decision: NO-GO for a real canary.** NO1-003D provides only an
+> offline-qualified, injected-runner dispatch boundary; it contains no provider
+> implementation or operator command. `CanaryProtocol` still rejects every
+> non-fixture execution with `QUALIFICATION_SCAFFOLD_NOT_PRODUCTION_READY`.
+> Do not bypass that stop or call an adapter directly. A real NO1-003C run still
+> requires separate human budget authorization, external paths, and role keys.
 
 ### 1. Run the zero-cost offline rehearsal
 
@@ -30,9 +30,9 @@ jq -e '
   .attestation_verified == true and
   .synthetic_judge_signature_verified == true and
   .independent_judge_available == false and
-  .trust_qualification_status == "NOT_EVALUATED" and
-  .trust_violations == ["INDEPENDENT_JUDGE_UNAVAILABLE"] and
-  .trust_gate_would_allow_bound_fixture == false and
+  .denial_probe_qualification_status == "NOT_EVALUATED" and
+  .denial_probe_violations == ["ROLE_KEYS_NOT_INDEPENDENT"] and
+  .bound_fixture_gate_eligible == true and
   .production_dispatch_allowed == false and
   .model_callbacks_invoked == 0 and
   .provider_requests == 0 and
@@ -44,8 +44,8 @@ jq -e '
 
 `synthetic_judge_signature_verified=true` proves only that the same-process
 rehearsal record is canonically signed. It is deliberately not represented as an
-independent judgment. `trust_qualification_status=NOT_EVALUATED` with
-`INDEPENDENT_JUDGE_UNAVAILABLE` proves the production gate remains closed. The
+independent judgment. `denial_probe_qualification_status=NOT_EVALUATED` with
+`ROLE_KEYS_NOT_INDEPENDENT` proves the production gate remains closed. The
 ephemeral key, `offline-rehearsal-only` cell, `offline-fixture-no-model` model
 identity, and `production_dispatch_allowed=false` prevent reuse as canary
 evidence. Preserve the receipt for review, then securely remove the temporary

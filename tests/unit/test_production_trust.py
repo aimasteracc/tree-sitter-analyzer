@@ -224,10 +224,15 @@ def test_complete_external_configuration_still_requires_signed_judge_evidence(
 
 # 64 hex chars (32 bytes) — matches bytes.fromhex() requirement in AnchorKey.from_file()
 _HEX_ANCHOR_KEY = "ab" * 32
+_HEX_JUDGE_KEY = "cd" * 32
 
 
 def _anchor_key() -> AnchorKey:
     return AnchorKey(raw=bytes.fromhex(_HEX_ANCHOR_KEY))
+
+
+def _judge_key() -> AnchorKey:
+    return AnchorKey(raw=bytes.fromhex(_HEX_JUDGE_KEY))
 
 
 def _v2_config(tmp_path: Path, bundle: Path) -> OperatorTrustConfigV1:
@@ -237,11 +242,14 @@ def _v2_config(tmp_path: Path, bundle: Path) -> OperatorTrustConfigV1:
     operator.mkdir()
     trust_store = operator / "trust-store.json"
     anchor = operator / "anchor.key"
+    judge = operator / "judge.key"
     trust_store.write_text("{}\n", encoding="utf-8")
     anchor.write_text(_HEX_ANCHOR_KEY, encoding="utf-8")
+    judge.write_text(_HEX_JUDGE_KEY, encoding="utf-8")
     return OperatorTrustConfigV1(
         trust_store=trust_store,
         pinned_anchor=anchor,
+        pinned_judge=judge,
         immutable_artifact_root=tmp_path / "collector-v2" / "new-run",
         trusted_roles=frozenset(
             {"anchor-custodian", "budget-gateway", "evidence-collector"}
@@ -276,7 +284,9 @@ def test_v2_returns_accept_with_valid_attestation_and_judge_record(
         budget_enforcement_mode="client-process-kill",
         now_unix=now,
     )
-    judge = submit_verdict("ACCEPT", evidence_digest, spec.spec_hash, key, now_unix=now)
+    judge = submit_verdict(
+        "ACCEPT", evidence_digest, spec.spec_hash, _judge_key(), now_unix=now
+    )
 
     result = qualify_production_trust_v2(
         spec,
@@ -310,7 +320,9 @@ def test_v2_reject_verdict_blocks_model_callbacks(tmp_path: Path) -> None:
         budget_enforcement_mode="client-process-kill",
         now_unix=now,
     )
-    judge = submit_verdict("REJECT", evidence_digest, spec.spec_hash, key, now_unix=now)
+    judge = submit_verdict(
+        "REJECT", evidence_digest, spec.spec_hash, _judge_key(), now_unix=now
+    )
 
     result = qualify_production_trust_v2(
         spec,
@@ -332,9 +344,10 @@ def test_v2_missing_attestation_blocks_model_callbacks(tmp_path: Path) -> None:
     bundle.mkdir()
     spec = _spec()
     config = _v2_config(tmp_path, bundle)
-    key = _anchor_key()
     evidence_digest = "a" * 64
-    judge = submit_verdict("ACCEPT", evidence_digest, spec.spec_hash, key, now_unix=1_900_000_000)
+    judge = submit_verdict(
+        "ACCEPT", evidence_digest, spec.spec_hash, _judge_key(), now_unix=1_900_000_000
+    )
 
     result = qualify_production_trust_v2(
         spec,
@@ -407,7 +420,9 @@ def test_v2_judge_spec_hash_mismatch_blocks_model_callbacks(tmp_path: Path) -> N
     )
     # Judge is signed with a different spec_hash (run A's hash, replayed for run B)
     different_spec_hash = "f" * 64
-    judge = submit_verdict("ACCEPT", evidence_digest, different_spec_hash, key, now_unix=now)
+    judge = submit_verdict(
+        "ACCEPT", evidence_digest, different_spec_hash, _judge_key(), now_unix=now
+    )
 
     result = qualify_production_trust_v2(
         spec,
@@ -440,4 +455,35 @@ def test_v2_config_alone_still_requires_attestations(tmp_path: Path) -> None:
         expected_evidence_digest="a" * 64,
     )
 
+    assert result.model_callbacks_allowed is False
+
+
+def test_v2_same_file_for_spend_and_judge_roles_is_rejected(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    now = 1_900_000_000
+    same = replace(config, pinned_judge=config.pinned_anchor)
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="client-process-kill",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _anchor_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        same,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert result.violations == ("ROLE_KEYS_NOT_INDEPENDENT",)
     assert result.model_callbacks_allowed is False

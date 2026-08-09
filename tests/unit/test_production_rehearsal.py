@@ -1,5 +1,8 @@
 """Behavioral tests for the offline production trust rehearsal."""
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -28,7 +31,7 @@ def test_offline_rehearsal_denial_probe_fails_closed(receipt) -> None:
         receipt.independent_judge_available,
         receipt.denial_probe_qualification_status,
         receipt.denial_probe_violations,
-    ) == (False, "NOT_EVALUATED", ("INDEPENDENT_JUDGE_UNAVAILABLE",))
+    ) == (False, "NOT_EVALUATED", ("ROLE_KEYS_NOT_INDEPENDENT",))
 
 
 def test_offline_rehearsal_bound_fixture_traverses_v2_bindings(receipt) -> None:
@@ -65,3 +68,37 @@ def test_offline_rehearsal_rejects_reuse_of_work_root(tmp_path: Path) -> None:
     work_root.mkdir()
     with pytest.raises(ValueError, match="must not pre-exist"):
         run_offline_rehearsal(work_root, now_unix=1_900_000_000)
+
+
+def test_offline_rehearsal_cli_receipt_matches_runbook_contract(tmp_path: Path) -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "benchmarks.codegraph_compare.production_rehearsal",
+            "--work-root",
+            str(tmp_path / "cli-offline"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(completed.stdout)
+    assert (
+        payload["denial_probe_qualification_status"],
+        payload["denial_probe_violations"],
+        payload["bound_fixture_gate_eligible"],
+    ) == ("NOT_EVALUATED", ["ROLE_KEYS_NOT_INDEPENDENT"], True)
+    assert (
+        payload["model_callbacks_invoked"],
+        payload["provider_requests"],
+        payload["input_tokens"],
+        payload["output_tokens"],
+        payload["cost_usd"],
+    ) == (0, 0, 0, 0, 0.0)
+    assert (
+        payload["evidence_level"],
+        payload["winner"],
+        payload["dominance_allowed"],
+        payload["publishable"],
+    ) == ("E0", None, False, False)

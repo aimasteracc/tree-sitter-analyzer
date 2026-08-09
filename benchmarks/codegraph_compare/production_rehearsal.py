@@ -89,10 +89,14 @@ def run_offline_rehearsal(
     bundle_root.mkdir(mode=0o700)
 
     key = AnchorKey(raw=secrets.token_bytes(32))
+    judge_key = AnchorKey(raw=secrets.token_bytes(32))
     anchor_path = operator_root / "ephemeral-rehearsal-anchor.key"
+    judge_path = operator_root / "ephemeral-rehearsal-judge.key"
     trust_store = operator_root / "trust-store.json"
     anchor_path.write_text(key.raw.hex(), encoding="utf-8")
+    judge_path.write_text(judge_key.raw.hex(), encoding="utf-8")
     anchor_path.chmod(0o400)
+    judge_path.chmod(0o400)
     trust_store.write_text('{"protocol":"NO1-003B-OFFLINE"}\n', encoding="utf-8")
     trust_store.chmod(0o400)
 
@@ -119,6 +123,7 @@ def run_offline_rehearsal(
         key,
         budget_enforcement_mode="client-process-kill",
         now_unix=now,
+        key_id="rehearsal-spend",
     )
     verify_attestation(
         attestation,
@@ -151,14 +156,16 @@ def run_offline_rehearsal(
         "ACCEPT",
         collection.ledger_sha256,
         spec.spec_hash,
-        key,
+        judge_key,
         judge_note="offline rehearsal fixture only; not production evidence",
         now_unix=now,
+        key_id="rehearsal-judge",
     )
-    verify_judge_record(judge, key)
+    verify_judge_record(judge, judge_key)
     config = OperatorTrustConfigV1(
         trust_store=trust_store,
         pinned_anchor=anchor_path,
+        pinned_judge=anchor_path,
         immutable_artifact_root=production_artifact_root,
         trusted_roles=_ROLES,
         provider_budget_enforced=False,
@@ -169,6 +176,8 @@ def run_offline_rehearsal(
         # A same-process rehearsal signature is deliberately not independent.
         independent_judge=False,
         budget_enforcement_mode="client-process-kill",
+        spend_key_id="rehearsal-spend",
+        judge_key_id="rehearsal-judge",
     )
     qualification = qualify_production_trust_v2(
         spec,
@@ -179,7 +188,7 @@ def run_offline_rehearsal(
         now_unix=now,
         expected_evidence_digest=collection.ledger_sha256,
     )
-    expected_violations = ("INDEPENDENT_JUDGE_UNAVAILABLE",)
+    expected_violations = ("ROLE_KEYS_NOT_INDEPENDENT",)
     if (
         qualification.status != "NOT_EVALUATED"
         or qualification.violations != expected_violations
@@ -195,7 +204,7 @@ def run_offline_rehearsal(
     # Eligibility is observed but never consumed by a dispatch callback.
     bound_qualification = qualify_production_trust_v2(
         spec,
-        replace(config, independent_judge=True),
+        replace(config, pinned_judge=judge_path, independent_judge=True),
         attestation,
         judge,
         evidence_bundle_root=bundle_root,
