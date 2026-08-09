@@ -153,6 +153,7 @@ def _validate_open_cell_receipt(
     if (
         receipt.get("plan_hash") != plan.digest
         or receipt.get("artifact_path") != plan.artifact_path
+        or receipt.get("index_path") != plan.index_path
     ):
         failures.append("PLAN_BINDING_MISMATCH")
     try:
@@ -254,10 +255,15 @@ def _validate_open_cell_receipt(
     except (TypeError, ValueError):
         failures.append("INDEX_PARTITION_MISMATCH")
 
-    index_relative = receipt.get("index_path")
+    index_path = receipt.get("index_path")
     try:
-        if not isinstance(index_relative, str) or cell_fd is None:
+        if index_path != plan.index_path or cell_fd is None:
             raise ValueError
+        canonical_relative_path(index_path)
+        cell_namespace = f"cells/{plan.repo_id}--{plan.arm_id}/"
+        if not index_path.startswith(cell_namespace):
+            raise ValueError
+        index_relative = index_path[len(cell_namespace) :]
         canonical_relative_path(index_relative)
         actual_index_hash = _hash_tree_at(
             cell_fd, index_relative, max_bytes=plan.resources.max_index_bytes

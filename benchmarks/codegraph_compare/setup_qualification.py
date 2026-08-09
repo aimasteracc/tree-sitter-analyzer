@@ -25,6 +25,7 @@ from benchmarks.codegraph_compare.setup_qualification_paths import (
 from benchmarks.codegraph_compare.setup_qualification_plan import (
     DEFAULT_SOURCE_RULES,
     EXPECTED_CELLS,
+    INDEX_PATH_PLACEHOLDER,
     INDEXED_ARMS,
     REPOSITORIES,
     ZERO_COUNTERS,

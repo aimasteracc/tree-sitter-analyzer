@@ -8188,6 +8188,72 @@ def _qualification_source_inventory(tmp_path: Path):
     return inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
 
 
+def test_source_inventory_rejects_assume_unchanged_flag(tmp_path: Path):
+    # PR #1247: status porcelain hides assume-unchanged worktree divergence.
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+    )
+
+    repo = tmp_path / "repo"
+    _qualification_git_repo(repo)
+    subprocess.run(
+        ["git", "update-index", "--assume-unchanged", "main.ts"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "main.ts").write_text("export class Decoy {}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Hidden tracked index flag"):
+        inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
+
+
+def test_source_inventory_rejects_skip_worktree_flag(tmp_path: Path):
+    # PR #1247: skip-worktree entries cannot attest bytes consumed by a build.
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+    )
+
+    repo = tmp_path / "repo"
+    _qualification_git_repo(repo)
+    subprocess.run(
+        ["git", "update-index", "--skip-worktree", "main.ts"],
+        cwd=repo,
+        check=True,
+    )
+
+    with pytest.raises(ValueError, match="Hidden tracked index flag S"):
+        inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
+
+
+def test_source_inventory_hashes_eligible_worktree_bytes_against_blob(
+    tmp_path: Path,
+):
+    # PR #1247: build input bytes are verified independently of Git status hints.
+    import benchmarks.codegraph_compare.setup_qualification_inventory as module
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+    )
+
+    repo = tmp_path / "repo"
+    _qualification_git_repo(repo)
+    pristine_flags = module._tracked_flags(repo)
+    subprocess.run(
+        ["git", "update-index", "--assume-unchanged", "main.ts"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "main.ts").write_text("export class Decoy {}\n", encoding="utf-8")
+
+    with (
+        patch.object(module, "_tracked_flags", return_value=pristine_flags),
+        pytest.raises(ValueError, match="worktree bytes do not match pinned blob"),
+    ):
+        inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
+
+
 def test_source_rules_inventory_tracks_only_regular_files(tmp_path: Path):
     inventory = _qualification_source_inventory(tmp_path)
 
@@ -8254,7 +8320,8 @@ def test_cell_plan_rejects_reserved_oracle_execution_ids(
         plan.oracle_specs[1],
     )
     executions = (*plan.executions[:3],) + tuple(
-        ExecutionSpecV1(spec.oracle_id, ("oracle", spec.oracle_id)) for spec in oracles
+        ExecutionSpecV1(spec.oracle_id, ("oracle", spec.oracle_id, plan.index_path))
+        for spec in oracles
     )
 
     with pytest.raises(ValueError, match="reserved execution IDs"):
@@ -8272,7 +8339,8 @@ def test_cell_plan_allows_oracle_id_that_only_contains_reserved_word(tmp_path: P
         plan.oracle_specs[1],
     )
     executions = (*plan.executions[:3],) + tuple(
-        ExecutionSpecV1(spec.oracle_id, ("oracle", spec.oracle_id)) for spec in oracles
+        ExecutionSpecV1(spec.oracle_id, ("oracle", spec.oracle_id, plan.index_path))
+        for spec in oracles
     )
 
     replaced = replace(plan, oracle_specs=oracles, executions=executions)
@@ -8415,7 +8483,7 @@ def test_large_source_inventory_uses_constant_subprocess_count(tmp_path: Path):
         result = inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
 
     assert len(result.tracked_regular_paths) == 256
-    assert len(starts) == 8
+    assert len(starts) == 10
     assert [command[:3] for command in starts].count(
         ("git", "cat-file", "--batch")
     ) == 1
@@ -8504,19 +8572,33 @@ def _qualification_plans(tmp_path: Path):
             arm,
             1,
             f"cells/{repo}--{arm}/cell-receipt.json",
+            f"cells/{repo}--{arm}/index",
             replace(base, repo_id=repo, commit=commits[repo]),
             tool,
             config,
             _qualification_oracles(),
             resources,
             (
-                ExecutionSpecV1("delete", ("rm-index", repo, arm)),
-                ExecutionSpecV1("build", (str(tool_path), "build", repo, arm)),
-                ExecutionSpecV1("health", (str(tool_path), "health", repo, arm)),
+                ExecutionSpecV1(
+                    "delete", ("rm-index", repo, arm, f"cells/{repo}--{arm}/index")
+                ),
+                ExecutionSpecV1(
+                    "build",
+                    (str(tool_path), "build", repo, arm, f"cells/{repo}--{arm}/index"),
+                ),
+                ExecutionSpecV1(
+                    "health",
+                    (str(tool_path), "health", repo, arm, f"cells/{repo}--{arm}/index"),
+                ),
                 *(
                     ExecutionSpecV1(
                         spec.oracle_id,
-                        (str(tool_path), spec.kind, *sum(spec.query, ())),
+                        (
+                            str(tool_path),
+                            spec.kind,
+                            *sum(spec.query, ()),
+                            f"cells/{repo}--{arm}/index",
+                        ),
                     )
                     for spec in _qualification_oracles()
                 ),
@@ -8619,7 +8701,7 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
             "peak_open_files": 4,
             "peak_concurrency": 1,
         },
-        "index_path": "index",
+        "index_path": plan.index_path,
         "index_content_hash": _hash_tree(index),
         "index_partition": {
             "indexed_paths": sorted(
@@ -9974,6 +10056,28 @@ def test_plan_set_rejects_cross_arm_oracle_spec_difference(tmp_path: Path):
         _validate_plans(plans, trusted, _qualification_inventories(plans))
 
 
+def test_plan_set_distinguishes_boolean_from_integer_oracle_result(
+    tmp_path: Path,
+):
+    # PR #1247: Python equality aliases JSON true and integer 1.
+    from dataclasses import replace
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        _trusted_commits,
+        _validate_plans,
+    )
+
+    plans = list(_qualification_plans(tmp_path))
+    first = replace(plans[0].oracle_specs[0], expected_result={"line": True})
+    second = replace(plans[1].oracle_specs[0], expected_result={"line": 1})
+    plans[0] = replace(plans[0], oracle_specs=(first, plans[0].oracle_specs[1]))
+    plans[1] = replace(plans[1], oracle_specs=(second, plans[1].oracle_specs[1]))
+    trusted = _trusted_commits(Path("benchmarks/codegraph_compare/repos.yaml"))
+
+    with pytest.raises(ValueError, match="exactly identical oracle specifications"):
+        _validate_plans(plans, trusted, _qualification_inventories(plans))
+
+
 def test_trusted_manifest_rejects_duplicate_id_before_mapping(tmp_path: Path):
     # PR #1247: mapping construction must not silently overwrite a repository pin.
     import yaml
@@ -10047,6 +10151,44 @@ def test_e0_orchestrator_rejects_untrusted_complete_inventory(tmp_path: Path):
             plans=plans,
             trusted_inventories=inventories,
         )
+
+
+def test_strict_validator_rejects_decoy_receipt_index_path(tmp_path: Path):
+    # PR #1247: receipt-selected decoy trees cannot replace the plan-bound index.
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    decoy = cell_root / "decoy"
+    decoy.mkdir()
+    (decoy / "index.bin").write_bytes(b"frozen index")
+    receipt["index_path"] = f"cells/{plan.repo_id}--{plan.arm_id}/decoy"
+    _resign_qualification_receipt(receipt)
+
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
+        "PLAN_BINDING_MISMATCH",
+        "INDEX_BYTES_MISMATCH",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
+
+
+def test_cell_plan_requires_each_execution_to_reference_index_path(tmp_path: Path):
+    # PR #1247: every lifecycle and oracle command is bound to the same index.
+    from dataclasses import replace
+
+    plan = _qualification_plans(tmp_path)[0]
+    unbound = replace(plan.executions[2], argv=("health", "without-index"))
+
+    with pytest.raises(ValueError, match="plan-bound index path"):
+        replace(plan, executions=(*plan.executions[:2], unbound, *plan.executions[3:]))
 
 
 def test_strict_validator_requires_exact_ordered_frozen_commands(tmp_path: Path):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import queue
 import subprocess
 import tempfile
@@ -13,6 +14,9 @@ from typing import Protocol
 
 from benchmarks.codegraph_compare.integrity import _sha256
 from benchmarks.codegraph_compare.setup_qualification_paths import (
+    _hash_regular_descriptor,
+    _open_beneath,
+    _open_root,
     canonical_relative_path,
 )
 from benchmarks.codegraph_compare.setup_qualification_plan import (
@@ -75,6 +79,29 @@ def _tracked_stage(repo: Path) -> tuple[tuple[str, str, str], ...]:
     records.sort()
     if len({item[0] for item in records}) != len(records):
         raise ValueError("Duplicate tracked paths")
+    return tuple(records)
+
+
+def _tracked_flags(repo: Path) -> tuple[tuple[str, str], ...]:
+    """Return tracked path tags, rejecting hidden worktree/index divergence flags."""
+    records: list[tuple[str, str]] = []
+    for raw in _git(repo, "ls-files", "-v", "-z", "--full-name").split(b"\0"):
+        if not raw:
+            continue
+        try:
+            tag_bytes, encoded = raw.split(b" ", 1)
+            tag = tag_bytes.decode("ascii")
+            relative = canonical_relative_path(encoded.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ValueError("Malformed tracked index flags") from exc
+        if len(tag) != 1:
+            raise ValueError("Malformed tracked index flags")
+        if tag.islower() or tag == "S":
+            raise ValueError(f"Hidden tracked index flag {tag}: {relative}")
+        records.append((relative, tag))
+    records.sort()
+    if len({path for path, _ in records}) != len(records):
+        raise ValueError("Duplicate tracked index flag paths")
     return tuple(records)
 
 
@@ -236,6 +263,9 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
     """Compute the complete plan-bound source partition from pinned Git blobs."""
     repo = _canonical_repo(repo)
     records = _tracked_stage(repo)
+    flags = _tracked_flags(repo)
+    if tuple(path for path, _ in flags) != tuple(path for path, _, _ in records):
+        raise ValueError("Tracked index flags do not match the pinned inventory")
     commit = _git(repo, "rev-parse", "HEAD").decode("ascii").strip()
     if _git(repo, "status", "--porcelain", "--untracked-files=no"):
         raise ValueError("Tracked qualification checkout is dirty")
@@ -271,7 +301,11 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
         relative: (mode, object_id) for relative, mode, object_id in regular_records
     }
 
+    root_fd = _open_root(repo)
+    worktree_bytes_consumed = 0
+
     def consume_blob(relative: str, content_hash: str, prefix: bytes) -> None:
+        nonlocal worktree_bytes_consumed
         mode, object_id = record_by_path[relative]
         file_hashes.append((relative, mode, object_id, content_hash))
         reason = preclassified[relative]
@@ -280,15 +314,40 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
         ):
             reason = "generated"
         if reason is None:
+            descriptor: int | None = None
+            try:
+                descriptor = _open_beneath(root_fd, relative)
+                size = os.fstat(descriptor).st_size
+                if size > _GIT_BLOB_CEILING_BYTES or (
+                    size > _GIT_TOTAL_CEILING_BYTES - worktree_bytes_consumed
+                ):
+                    raise ValueError(
+                        f"Eligible worktree file exceeds trusted size ceiling: {relative}"
+                    )
+                worktree_hash = _hash_regular_descriptor(
+                    descriptor, expected_size=size, max_bytes=_GIT_BLOB_CEILING_BYTES
+                )
+                if worktree_hash != content_hash:
+                    raise ValueError(
+                        f"Eligible worktree bytes do not match pinned blob: {relative}"
+                    )
+                worktree_bytes_consumed += size
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
             eligible.append(relative)
         else:
             excluded.append((relative, reason))
 
-    _batch_blob_metadata(repo, requests, on_blob=consume_blob)
+    try:
+        _batch_blob_metadata(repo, requests, on_blob=consume_blob)
+    finally:
+        os.close(root_fd)
     if _git(repo, "status", "--porcelain", "--untracked-files=no"):
         raise ValueError("Tracked qualification checkout changed during inventory")
     if (
         _tracked_stage(repo) != records
+        or _tracked_flags(repo) != flags
         or _git(repo, "rev-parse", "HEAD").decode("ascii").strip() != commit
     ):
         raise ValueError("Pinned Git objects changed during inventory")

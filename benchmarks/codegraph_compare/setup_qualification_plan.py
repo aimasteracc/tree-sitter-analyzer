@@ -22,6 +22,7 @@ from benchmarks.codegraph_compare.setup_qualification_paths import (
 REPOSITORIES = ("vscode", "excalidraw", "django", "tokio", "okhttp", "gin", "alamofire")
 INDEXED_ARMS = ("tsa-warm", "codegraph-warm")
 EXPECTED_CELLS = tuple((repo, arm) for repo in REPOSITORIES for arm in INDEXED_ARMS)
+INDEX_PATH_PLACEHOLDER = "{plan.index_path}"
 ZERO_COUNTERS = {
     "model_calls": 0,
     "provider_requests": 0,
@@ -237,6 +238,7 @@ class CellPlanV1:
     arm_id: str
     attempt: int
     artifact_path: str
+    index_path: str
     eligibility: EligibilityV1
     tool: HarnessArtifactV1
     config: HarnessArtifactV1
@@ -253,7 +255,13 @@ class CellPlanV1:
             or self.attempt != 1
         ):
             raise ValueError("Plan identity must be a canonical cell at attempt 1")
-        canonical_relative_path(self.artifact_path)
+        artifact_path = canonical_relative_path(self.artifact_path)
+        index_path = canonical_relative_path(self.index_path)
+        cell_namespace = f"cells/{self.repo_id}--{self.arm_id}"
+        if artifact_path != f"{cell_namespace}/cell-receipt.json":
+            raise ValueError("Receipt artifact must use its canonical cell namespace")
+        if not index_path.startswith(f"{cell_namespace}/"):
+            raise ValueError("Index path must be beneath its canonical cell namespace")
         if self.eligibility.repo_id != self.repo_id:
             raise ValueError("Eligibility is not bound to the planned repository")
         oracle_ids = tuple(spec.oracle_id for spec in self.oracle_specs)
@@ -271,6 +279,14 @@ class CellPlanV1:
         if execution_ids != ("delete", "build", "health", *oracle_ids):
             raise ValueError(
                 "Plan must freeze ordered delete/build/health/symbol/call executions"
+            )
+        if any(
+            sum(arg in {self.index_path, INDEX_PATH_PLACEHOLDER} for arg in spec.argv)
+            != 1
+            for spec in self.executions
+        ):
+            raise ValueError(
+                "Every frozen execution argv must reference the plan-bound index path"
             )
         parse_allowlist = _sorted_paths(
             self.parse_error_allowlist, "parse-error allowlist"

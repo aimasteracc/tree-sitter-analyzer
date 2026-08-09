@@ -16,6 +16,7 @@ from benchmarks.codegraph_compare.setup_qualification import (
     EXPECTED_CELLS,
     CellPlanV1,
     EligibilityV1,
+    _canonical_json_bytes,
     canonical_relative_path,
     strict_json_loads,
     validate_receipt_schema_v2,
@@ -51,10 +52,13 @@ def _validate_plans(
     frozen = tuple(plans)
     identities = tuple((plan.repo_id, plan.arm_id) for plan in frozen)
     artifacts = tuple(plan.artifact_path for plan in frozen)
+    indexes = tuple(plan.index_path for plan in frozen)
     if identities != EXPECTED_CELLS:
         raise ValueError("Plans must be the exact ordered canonical 14-cell set")
     if len(set(artifacts)) != len(artifacts):
         raise ValueError("Every cell must have a unique artifact path")
+    if len(set(indexes)) != len(indexes):
+        raise ValueError("Every cell must have a unique index path")
     if set(trusted_inventories) != set(trusted_commits):
         raise ValueError("Trusted inventory map must cover exactly seven repositories")
     by_repo: dict[str, CellPlanV1] = {}
@@ -69,9 +73,9 @@ def _validate_plans(
         previous = by_repo.setdefault(plan.repo_id, plan)
         if asdict(previous.eligibility) != asdict(plan.eligibility):
             raise ValueError("Both arms must use identical source eligibility")
-        if tuple(map(asdict, previous.oracle_specs)) != tuple(
-            map(asdict, plan.oracle_specs)
-        ):
+        if _canonical_json_bytes(
+            [asdict(spec) for spec in previous.oracle_specs]
+        ) != _canonical_json_bytes([asdict(spec) for spec in plan.oracle_specs]):
             raise ValueError(
                 "Both arms must use exactly identical oracle specifications"
             )
