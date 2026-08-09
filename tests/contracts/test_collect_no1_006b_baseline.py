@@ -97,8 +97,37 @@ def test_schema_supports_each_native_axis_without_fabricating_measurements() -> 
     collector.validate_receipt(report,schema())
 
 
-def inventory_from_requirements(monkeypatch: pytest.MonkeyPatch, requirements: list[str]) -> dict:
-    payload={"versions":{"tree-sitter-analyzer":"1","Foo.Bar":"2"},"requires":requirements,"installed_size_bytes":1,"regular_file_count":1}
+
+def test_schema_rejects_cli_startup_definition_mutation() -> None:
+    report=mutated(("measurements","cli_startup","definition"),"X"*20)
+    with pytest.raises(ValueError): collector.validate_receipt(report,schema())
+
+
+def test_schema_rejects_mcp_startup_definition_mutation() -> None:
+    report=mutated(("measurements","mcp_startup","definition"),"Y"*20)
+    with pytest.raises(ValueError): collector.validate_receipt(report,schema())
+
+
+def test_schema_rejects_measured_axis_contradiction() -> None:
+    report=mutated(("platform_axes","macos"),"unknown")
+    with pytest.raises(ValueError): collector.validate_receipt(report,schema())
+
+
+def test_schema_definitions_equal_collector_constants() -> None:
+    properties=schema()["properties"]["measurements"]["properties"]
+    assert [properties["cli_startup"]["properties"]["definition"]["const"],properties["mcp_startup"]["properties"]["definition"]["const"]] == [collector.CLI_STARTUP_DEFINITION,collector.MCP_STARTUP_DEFINITION]
+
+
+def test_finalize_receipt_loads_bound_schema_before_write(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    observed=[]
+    monkeypatch.setattr(collector,"validate_receipt",lambda report,bound_schema: observed.append(bound_schema))
+    monkeypatch.setattr(collector,"safe_write",lambda output,data,subject: observed.append(json.loads(data)))
+    collector.finalize_receipt(baseline(),tmp_path/"receipt.json",REPO)
+    assert observed == [schema(),baseline()]
+
+def inventory_from_requirements(monkeypatch: pytest.MonkeyPatch, requirements: list[str], python_version: str="3.14") -> dict:
+    marker_environment={"implementation_name":"cpython","implementation_version":python_version,"os_name":"posix","platform_machine":"arm64","platform_python_implementation":"CPython","platform_release":"test","platform_system":"Darwin","platform_version":"test","python_full_version":python_version,"python_version":python_version}
+    payload={"versions":{"tree-sitter-analyzer":"1","Foo.Bar":"2"},"requires":requirements,"marker_environment":marker_environment,"installed_size_bytes":1,"regular_file_count":1}
     completed=__import__("subprocess").CompletedProcess([],0,json.dumps(payload).encode(),b"")
     monkeypatch.setattr(collector,"run",lambda *args,**kwargs: completed)
     return collector.inventory(Path("python"),Path("."))
@@ -107,6 +136,11 @@ def inventory_from_requirements(monkeypatch: pytest.MonkeyPatch, requirements: l
 def test_inventory_evaluates_arbitrary_pep508_marker(monkeypatch: pytest.MonkeyPatch) -> None:
     report=inventory_from_requirements(monkeypatch,["Foo.Bar; python_version > '3.0'"])
     assert report["distributions"][0] == {"name":"foo-bar","version":"2","role":"direct"}
+
+
+def test_inventory_uses_target_interpreter_marker_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    report=inventory_from_requirements(monkeypatch,["Foo.Bar; python_version >= '3.10'"],python_version="2.7")
+    assert report["distributions"][0] == {"name":"foo-bar","version":"2","role":"transitive"}
 
 
 def test_inventory_excludes_unselected_extra(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -130,6 +164,12 @@ def test_bounded_reader_times_out_on_partial_frame(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(collector,"MAX_FRAME_BYTES",64)
     with pytest.raises(TimeoutError,match="absolute deadline"): collector.read_json_frame(Process(),__import__("time").monotonic()+0.01)
     __import__("os").close(write_fd); Process.stdout.close()
+
+
+
+def test_file_budget_rejects_oversized_artifact(tmp_path: Path) -> None:
+    artifact=tmp_path/"artifact"; artifact.write_bytes(b"xx")
+    with pytest.raises(RuntimeError,match="disk budget"): collector.require_file_budget(artifact,1,"test artifact")
 
 
 def test_collector_rejects_unbounded_repeat_count(tmp_path: Path) -> None:

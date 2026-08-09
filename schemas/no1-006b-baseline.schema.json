@@ -80,7 +80,7 @@
     "environment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["os","system","machine","python","uv","network_policy","bytecode_policy","cache_protocol"],
+      "required": ["os","system","machine","python","uv","network_policy","bytecode_policy","cache_protocol","sample_order","host_fingerprint"],
       "properties": {
         "os": {"type":"string","minLength":1,"maxLength":256},
         "system": {"enum":["macos","linux","windows"]},
@@ -96,6 +96,20 @@
         "bytecode_policy": {"const":"PYTHONDONTWRITEBYTECODE=1"},
         "cache_protocol": {
           "const": "two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm"
+        },
+        "sample_order": {"const":"all CLI samples, then all MCP samples"},
+        "host_fingerprint": {
+          "type":"object",
+          "additionalProperties":false,
+          "required":["cpu","logical_cpu_count","ram_bytes","filesystem","virtualization","power"],
+          "properties": {
+            "cpu":{"type":"string","minLength":1,"maxLength":200},
+            "logical_cpu_count":{"type":"integer","minimum":1},
+            "ram_bytes":{"type":"integer","minimum":1},
+            "filesystem":{"const":"unknown; not controlled"},
+            "virtualization":{"const":"unknown; not detected"},
+            "power":{"const":"unknown; not controlled"}
+          }
         }
       }
     },
@@ -137,7 +151,7 @@
           "additionalProperties": false,
           "required": ["definition","cold_ms","warm_ms"],
           "properties": {
-            "definition": {"type":"string","minLength":20,"maxLength":256},
+            "definition": {"const":"clock before Popen through exact successful JSON analysis of fixture.py"},
             "cold_ms": {"type":"number","exclusiveMinimum":0},
             "warm_ms": {"type":"array","minItems":3,"maxItems":20,"items":{"type":"number","exclusiveMinimum":0}}
           }
@@ -147,7 +161,7 @@
           "additionalProperties": false,
           "required": ["definition","cold_ms","warm_ms","tool_names"],
           "properties": {
-            "definition": {"type":"string","minLength":20,"maxLength":256},
+            "definition": {"const":"clock before Popen through successful initialize, initialized notification, and exact tools/list readiness"},
             "cold_ms": {"type":"number","exclusiveMinimum":0},
             "warm_ms": {"type":"array","minItems":3,"maxItems":20,"items":{"type":"number","exclusiveMinimum":0}},
             "tool_names": {"const":["edit","health","index","nav","project","search","set_project_path","structure","viz"]}

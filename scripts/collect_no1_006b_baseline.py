@@ -27,10 +27,21 @@ MAX_CAPTURE_BYTES = 8 * 1024 * 1024
 MAX_FRAME_BYTES = 2 * 1024 * 1024
 MAX_DISTRIBUTIONS = 256
 MAX_FILES = 100_000
+MAX_SOURCE_ARCHIVE_BYTES = 512 * 1024 * 1024
+MAX_REQUIREMENTS_BYTES = 8 * 1024 * 1024
+MAX_ROOT_WHEEL_BYTES = 128 * 1024 * 1024
+CLI_STARTUP_DEFINITION = "clock before Popen through exact successful JSON analysis of fixture.py"
+MCP_STARTUP_DEFINITION = "clock before Popen through successful initialize, initialized notification, and exact tools/list readiness"
+SAMPLE_ORDER = "all CLI samples, then all MCP samples"
 
 
 def digest_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def require_file_budget(path: Path, maximum: int, label: str) -> None:
+    size=path.stat().st_size
+    if size>maximum: raise RuntimeError(f"{label} exceeded {maximum} byte disk budget: {size}")
 
 
 def sha256(path: Path) -> str:
@@ -94,7 +105,7 @@ def collector_identity() -> dict[str, str]:
     script = Path(__file__).resolve()
     root = script.parents[1]
     relative = script.relative_to(root).as_posix()
-    status = git(root, "status", "--porcelain=v1", "--untracked-files=all").decode()
+    status = git(root, "status", "--porcelain=v1", "--untracked-files=all", "--ignored").decode()
     if status:
         raise RuntimeError("collector worktree must be clean; commit protocol changes before collection")
     commit = git(root, "rev-parse", "HEAD").decode().strip()
@@ -109,6 +120,7 @@ def collector_identity() -> dict[str, str]:
 
 def source_archive_sha(repo: Path, destination: Path) -> str:
     run(["git", "archive", "--format=tar", "HEAD", "-o", str(destination)], cwd=repo)
+    require_file_budget(destination,MAX_SOURCE_ARCHIVE_BYTES,"source archive")
     return sha256(destination)
 
 
@@ -118,7 +130,7 @@ def export_closure(repo: Path, destination: Path) -> str:
     text = result.stdout
     if b"--hash=sha256:" not in text or b"==" not in text:
         raise RuntimeError("uv frozen export did not produce hashed exact requirements")
-    destination.write_bytes(text)
+    destination.write_bytes(text); require_file_budget(destination,MAX_REQUIREMENTS_BYTES,"frozen requirements export")
     return digest_bytes(text)
 
 
@@ -143,6 +155,7 @@ def install_environment(repo: Path, venv: Path, requirements: Path, wheel: Path)
 
 INVENTORY_CODE = r"""import importlib.metadata as m, json, os, stat, sys
 from pathlib import Path
+from packaging.markers import default_environment
 root_name="tree-sitter-analyzer"; root=m.distribution(root_name); dists={}
 for dist in m.distributions():
  name=dist.metadata.get("Name") or ""
@@ -163,15 +176,14 @@ for dist in m.distributions():
   path_key=str(resolved); inode=(st.st_dev,st.st_ino)
   if path_key in seen_paths or inode in seen_inodes: continue
   seen_paths.add(path_key); seen_inodes.add(inode); total += st.st_size
-print(json.dumps({"versions":dists,"requires":root.requires or [],"installed_size_bytes":total,"regular_file_count":len(seen_paths)}))"""
+print(json.dumps({"versions":dists,"requires":root.requires or [],"marker_environment":default_environment(),"installed_size_bytes":total,"regular_file_count":len(seen_paths)}))"""
 
 
 def inventory(python: Path, cwd: Path) -> dict[str, Any]:
-    from packaging.markers import default_environment
     from packaging.requirements import Requirement
     from packaging.utils import canonicalize_name
     raw=json.loads(run([str(python), "-c", INVENTORY_CODE], cwd=cwd).stdout)
-    env=default_environment(); env["extra"]=""; direct=set()
+    env=raw.pop("marker_environment"); env["extra"]=""; direct=set()
     for value in raw.pop("requires"):
         requirement=Requirement(value)
         if requirement.marker is None or requirement.marker.evaluate(env):
@@ -257,10 +269,13 @@ def canonical_hash(report: dict[str, Any]) -> str:
     return digest_bytes(json.dumps(body,sort_keys=True,separators=(",",":")).encode())
 
 
-def validate_receipt(report: dict[str, Any], schema: dict[str, Any] | None = None) -> None:
-    if schema is not None:
-        from jsonschema import Draft202012Validator, FormatChecker
-        Draft202012Validator(schema, format_checker=FormatChecker()).validate(report)
+def load_schema() -> dict[str, Any]:
+    return json.loads(SCHEMA.read_text())
+
+
+def validate_receipt(report: dict[str, Any], schema: dict[str, Any]) -> None:
+    from jsonschema import Draft202012Validator, FormatChecker
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(report)
     m=report["measurements"]; closure=report["dependency_closure"]; distributions=closure["distributions"]
     roles=[row["role"] for row in distributions]; names=[row["name"] for row in distributions]
     started=datetime.fromisoformat(report["collection_started_at_utc"].replace("Z","+00:00"))
@@ -275,6 +290,12 @@ def validate_receipt(report: dict[str, Any], schema: dict[str, Any] | None = Non
             report["canonical_payload_sha256"]==canonical_hash(report), started.tzinfo is not None, finished.tzinfo is not None,
             started <= finished]
     if not all(checks): raise ValueError("receipt cross-field consistency check failed")
+
+
+def finalize_receipt(report: dict[str, Any], output: Path, subject: Path) -> None:
+    schema=load_schema()
+    validate_receipt(report,schema)
+    safe_write(output,(json.dumps(report,indent=2,sort_keys=True)+"\n").encode(),subject)
 
 
 def safe_write(output: Path, data: bytes, subject: Path) -> None:
@@ -311,7 +332,7 @@ def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dic
         run(["uv","build","--wheel","--offline","--out-dir",str(dist)],cwd=repo)
         wheels=list(dist.glob("*.whl"))
         if len(wheels)!=1: raise RuntimeError(f"expected exactly one root wheel, found {len(wheels)}")
-        wheel=wheels[0]
+        wheel=wheels[0]; require_file_budget(wheel,MAX_ROOT_WHEEL_BYTES,"root wheel artifact")
         fixture=temp/"fixture"; fixture.mkdir(); (fixture/"fixture.py").write_text("def add(a: int, b: int) -> int:\n    return a + b\n")
         samples={}; inventories=[]; tool_names=None; py_info=None
         for kind in ("cli","mcp"):
@@ -329,8 +350,8 @@ def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dic
           "collection_started_at_utc":started,"collection_finished_at_utc":finished,"collector":collector,
           "source":{**subject,"root_wheel_filename":wheel.name,"root_wheel_sha256":sha256(wheel),"root_wheel_artifact_size_bytes":wheel.stat().st_size},
           "dependency_closure":{"derivation":"uv.lock frozen export; hashed exact requirements; project wheel installed separately with --no-deps","export_sha256":export_sha,"lock_sha256":subject["lock_sha256"],"distributions":rows},
-          "environment":{"os":platform.platform(),"system":"macos","machine":platform.machine(),"python":py_info,"uv":run(["uv","--version"],cwd=repo).stdout.decode().strip(),"network_policy":"UV_OFFLINE=1; uv --offline; no network transfer measurement","bytecode_policy":"PYTHONDONTWRITEBYTECODE=1","cache_protocol":"two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm"},
-          "measurements":{"root_wheel_artifact_size_bytes":wheel.stat().st_size,"network_transfer_bytes":{"status":"unknown","reason":"offline cache artifacts do not measure network transfer"},"installed_size_bytes":inv["installed_size_bytes"],"installed_regular_file_count":inv["regular_file_count"],"installed_size_scope":"unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded","direct_dependency_count":roles.count("direct"),"transitive_dependency_count":roles.count("transitive"),"dependency_distribution_count_excluding_root":len(rows)-1,"installed_distribution_count_including_root":len(rows),"cli_startup":{"definition":"clock before Popen through exact successful JSON analysis of fixture.py","cold_ms":samples["cli"][0],"warm_ms":samples["cli"][1:]},"mcp_startup":{"definition":"clock before Popen through successful initialize, initialized notification, and exact tools/list readiness","cold_ms":samples["mcp"][0],"warm_ms":samples["mcp"][1:],"tool_names":tool_names}},
+          "environment":{"os":platform.platform(),"system":"macos","machine":platform.machine(),"python":py_info,"uv":run(["uv","--version"],cwd=repo).stdout.decode().strip(),"network_policy":"UV_OFFLINE=1; uv --offline; no network transfer measurement","bytecode_policy":"PYTHONDONTWRITEBYTECODE=1","cache_protocol":"two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm","sample_order":SAMPLE_ORDER,"host_fingerprint":{"cpu":platform.processor() or platform.machine() or "unknown","logical_cpu_count":os.cpu_count() or 1,"ram_bytes":os.sysconf("SC_PAGE_SIZE")*os.sysconf("SC_PHYS_PAGES"),"filesystem":"unknown; not controlled","virtualization":"unknown; not detected","power":"unknown; not controlled"}},
+          "measurements":{"root_wheel_artifact_size_bytes":wheel.stat().st_size,"network_transfer_bytes":{"status":"unknown","reason":"offline cache artifacts do not measure network transfer"},"installed_size_bytes":inv["installed_size_bytes"],"installed_regular_file_count":inv["regular_file_count"],"installed_size_scope":"unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded","direct_dependency_count":roles.count("direct"),"transitive_dependency_count":roles.count("transitive"),"dependency_distribution_count_excluding_root":len(rows)-1,"installed_distribution_count_including_root":len(rows),"cli_startup":{"definition":CLI_STARTUP_DEFINITION,"cold_ms":samples["cli"][0],"warm_ms":samples["cli"][1:]},"mcp_startup":{"definition":MCP_STARTUP_DEFINITION,"cold_ms":samples["mcp"][0],"warm_ms":samples["mcp"][1:],"tool_names":tool_names}},
           "commands":{"export":["uv","export","--frozen","--offline","--no-dev","--no-emit-project","--format","requirements-txt"],"build":["uv","build","--wheel","--offline","--out-dir","<temp>/dist"],"closure_install":["uv","pip","install","--offline","--no-deps","--require-hashes","-r","<locked-requirements>"],"root_install":["uv","pip","install","--offline","--no-deps","<root-wheel>"],"cli_probe":["tree-sitter-analyzer","fixture.py","--summary","--format","json"],"mcp_probe":["tree-sitter-analyzer-mcp","--project-root","<fixture>","initialize","notifications/initialized","tools/list"]},
           "repeats":repeats,"measured_axis":"macos","platform_axes":{"macos":"measured_e0","linux":"unknown","windows":"unknown"}}
         report["canonical_payload_sha256"]=canonical_hash(report); validate_receipt(report)

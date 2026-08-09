@@ -1,6 +1,6 @@
 # RFC-0024: Default dependency split measurement protocol
 
-- **Status**: measurement protocol registered; design deferred
+- **Status**: RFC plus descriptive post-hoc E0 baseline; no admission baseline
 - **Author(s)**: Runtime Lead
 - **Created**: 2026-08-08
 - **Last updated**: 2026-08-10
@@ -8,15 +8,19 @@
 
 ## Scope and evidence order
 
-This revision registers the E0 protocol only. The measured subject is the clean,
-detached commit `7e0e8f6e03270fcbf4025d717415ef69c9354145`; the collector is a later,
-separate clean commit. Candidate dependency membership and admission thresholds
-are intentionally deferred until a receipt is committed, so the history proves
-that the probe was registered before recommendations.
+The measured subject is the clean, detached commit
+`7e0e8f6e03270fcbf4025d717415ef69c9354145`; the collector is a later, separate
+clean commit. This document makes no preregistration, blindness, or
+measured-before-design claim. The first RFC draft already contained candidate
+membership and gates. Later commits removed and then restored that material,
+and the current collector and receipt were hardened after the design draft.
+Consequently the protocol and current receipt are post-hoc hardening evidence.
+They provide a descriptive E0 snapshot only and cannot be used as the NO1-011A
+admission baseline.
 
 The collector records its commit plus its script/schema SHA-256, the subject Git
-tree/archive SHA-256 and `uv.lock` SHA-256. The subject rejects tracked,
-untracked, and ignored entries. Every subject Git/uv build/export/install command
+tree/archive SHA-256 and `uv.lock` SHA-256. Both subject and collector reject
+tracked, untracked, and ignored entries. Every subject Git/uv build/export/install command
 has the subject checkout as `cwd`; the collector is run from its own clean
 worktree using `.venv/bin/python` (or `uv run --offline --frozen --no-sync`).
 
@@ -28,8 +32,11 @@ artifact hashes from the subject `uv.lock`. A fresh environment installs that
 hashed closure with `--require-hashes --no-deps`; the locally built project wheel
 is then installed separately with `--no-deps`. The receipt records export/lock
 hashes and every installed canonical distribution name, version, and
-root/direct/transitive role. PEP 508 markers are evaluated with `packaging`'s
-target-environment semantics; extras are not silently included.
+root/direct/transitive role. PEP 508 marker inputs are returned by
+`packaging.markers.default_environment()` inside the target interpreter and are
+then evaluated by the collector; extras are not silently included. This attests
+the frozen resolution and installed versions, not the particular cached artifact
+filename/hash selected from every lockfile-compatible platform wheel.
 
 Root wheel bytes are named `root_wheel_artifact_size_bytes`. Network-transfer
 bytes remain structured `unknown`: an offline cache cannot measure transfer, and
@@ -41,7 +48,10 @@ symlinks and out-of-venv paths and inode-deduplicate hardlinks.
 CLI and MCP each receive an independently created, identically installed fresh
 venv. `PYTHONDONTWRITEBYTECODE=1` makes the first process bytecode-cold; the OS
 page cache is explicitly uncontrolled. Later samples are fresh-process warm,
-not in-process warm. No CLI probe preheats the MCP venv.
+not in-process warm. No CLI probe preheats the MCP venv, but the fixed host order
+is all CLI samples followed by all MCP samples, so shared OS-cache ordering is
+not controlled. The receipt records that order plus CPU/logical-core/RAM fields;
+filesystem, virtualization, and power state remain explicitly unknown.
 
 The CLI clock starts before process creation and ends only after a deterministic
 JSON analysis of a tiny Python fixture is validated. The MCP clock also starts
@@ -63,7 +73,7 @@ Output must be outside the subject repository. Parent symlinks and an output
 symlink are rejected; a same-directory `O_NOFOLLOW` temporary file is fsynced,
 atomically replaced, then the directory is fsynced.
 
-## Reproduction (after this protocol commit)
+## Reproduction of the descriptive receipt
 
 Create a clean detached subject worktree, with required locked artifacts already
 in the offline uv cache:
@@ -77,11 +87,9 @@ UV_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 NO1_006B_PYTHON=3.14 \
 git worktree remove /tmp/no1-006b-subject
 ```
 
-The candidate design, gates, and rollback policy are added only after the receipt commit.
-
 ## Measured macOS E0 receipt
 
-The preregistered protocol produced
+The post-hoc hardened collector produced
 [`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
 from collector commit `86209ee4b9139a92e4d408d2e9bc9d8ad27b65cb` and the distinct pinned subject.
 Its canonical payload SHA-256 is `d49dd24904e93bd4518853ec7d04d1433299b7fc6a4d54970906a78620aaf2d8`.
@@ -101,9 +109,11 @@ cannot pass admission. “Cold” does not claim an OS page-cache flush. The lar
 more honest startup values include real CLI analysis and MCP registry readiness;
 they are not comparable to the superseded advertising/initialize-only probes.
 
-## Candidate design (not implemented)
+## Candidate design sketch (not implemented or recommended)
 
-Only after the independently committed receipt, NO1-011A may prototype:
+The following is retained as a discussion sketch from the original draft. It is
+not a recommendation, selection, or decision, and the descriptive E0 receipt
+does not validate it:
 
 * a default/core candidate retaining CLI/MCP protocol, shared models/security,
   formatters, tree-sitter runtime, and one documented minimal language;
@@ -117,27 +127,26 @@ return deterministic installation hints, never tracebacks, silent loss, or a
 false supported result. Console entry points and the locked CLI JSON/MCP TOON
 defaults remain unchanged.
 
-## Compatibility, admission, and rollback gates
+## Future NO1-011A chronology and possible evaluation dimensions
 
-One exact candidate wheel must pass NO1-006A fresh-install qualification on
-native macOS, Linux, and Windows, current CLI/MCP contracts, every advertised
-language with `full`, and exact diagnostics for default-unavailable features.
-Each native axis supplies schema-v2 pre/post receipts on identical
-hardware/tool/Python/probes and cache protocol; `unknown` cannot pass.
+NO1-011A must start on an independent new branch. Before any final dependency
+split is designed, that branch must commit a frozen collection protocol and
+metric definitions. An independent reviewer must sign off that frozen protocol.
+Only then may the team collect pre-split receipts on native macOS, Linux, and
+Windows. The final split may be designed only after all three pre-split receipts
+are committed. Candidate post-split wheels and receipts come afterward. The
+current macOS receipt is descriptive and is expressly inadmissible as any of
+those three pre-split admission receipts.
 
-Installed bytes, dependency distributions excluding root, direct/transitive
-counts, CLI cold/median warm, and MCP protocol-ready cold/median warm must be no
-worse per axis. Installed bytes and dependency distributions excluding root
-must improve. Root wheel artifact bytes are reported but are not a required
-split improvement: metadata-only dependency movement need not shrink the root
-artifact. Network transfer is unknown and cannot be compared or gated. Raw
-samples, not only medians, remain in each receipt.
-
-Rollback is metadata-only: restore the prior defaults and republish; users may
-select `full` during rollout. Do not couple the split to package moves, engine
-rewrites, schema migrations, or entry-point changes. Any default regression,
-ambiguous optional-import error, NO1-006A failure, or worse qualified axis blocks
-release and triggers rollback.
+Possible dimensions for that future, independently approved protocol include
+installed bytes, dependency distributions excluding root, direct/transitive
+counts, and CLI/MCP cold and raw warm samples. The new protocol must decide exact
+comparability, hardware/cache controls, thresholds, qualification, and rollback
+before collection; this RFC does not freeze them. Network transfer remains
+unknown here and cannot be compared. A future design should retain deterministic
+optional-capability diagnostics, exact entry-point behavior, a compatibility
+path, and metadata-only rollback, but those are discussion constraints rather
+than a selected artifact or admission decision.
 
 ## Alternatives, acceptance, and deferred work
 
@@ -146,12 +155,14 @@ make rollback unsafe and violate offline auditability. Keeping all defaults is
 compatible but preserves the measured footprint. A split increases support
 combinations, so the `full` path and explicit diagnostics are mandatory.
 
-- [x] Measurement protocol committed before candidate recommendations.
-- [x] Exact lock-derived offline closure and raw macOS E0 receipt committed.
+- [x] Exact lock-derived offline closure and descriptive macOS E0 receipt committed.
 - [x] Subject and collector commits/hashes are distinct and bound.
 - [x] Linux/Windows remain honestly unknown.
-- [ ] NO1-011A gathers native pre/post receipts and passes admission gates.
+- [ ] NO1-011A freezes protocol/metrics on a new branch and obtains independent sign-off.
+- [ ] NO1-011A collects three native pre-split receipts before final split design.
 
-Dependency metadata changes, lazy imports, feature diagnostics, and native
-Linux/Windows evidence are deferred to NO1-011A. This E0 receipt supports no
-marketing or cross-platform “faster/lighter” claim.
+NO1-006B may deliver this RFC and descriptive baseline, but that delivery does
+not satisfy future admission. Dependency metadata changes, lazy imports, feature
+diagnostics, and admissible native evidence are deferred to NO1-011A. This E0
+receipt supports no recommendation, marketing claim, or cross-platform
+“faster/lighter” claim.
