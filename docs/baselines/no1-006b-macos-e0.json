@@ -1,11 +1,11 @@
 {
-  "canonical_payload_sha256": "fccbe0919373c8d903f2b471151f5d1d22d04370058c998ec452e1688853f20e",
-  "collection_finished_at_utc": "2026-08-09T21:37:44.186230+00:00",
-  "collection_started_at_utc": "2026-08-09T21:37:32.048654+00:00",
+  "canonical_payload_sha256": "d49dd24904e93bd4518853ec7d04d1433299b7fc6a4d54970906a78620aaf2d8",
+  "collection_finished_at_utc": "2026-08-09T21:40:30.661467+00:00",
+  "collection_started_at_utc": "2026-08-09T21:40:17.987779+00:00",
   "collector": {
-    "commit": "e0ec6867104a15bf8cdbfa219a24d58b9bc5f58f",
+    "commit": "86209ee4b9139a92e4d408d2e9bc9d8ad27b65cb",
     "schema_sha256": "4eec7965f56522c3f33efb99c672c9510d8fefec70578d09bc8b419b55c39afc",
-    "script_sha256": "dbc07392dc09484da8935d39fba4fdf3c792f1f66bd93f4a459ddbb2a42161e1"
+    "script_sha256": "2bc861024e1c3b2176e789755f988686ca9acc7912a2c7dddcb59ca885097ff7"
   },
   "commands": {
     "build": [
@@ -409,14 +409,14 @@
   "measured_axis": "macos",
   "measurements": {
     "cli_startup": {
-      "cold_ms": 1582.848,
+      "cold_ms": 2162.972,
       "definition": "clock before Popen through exact successful JSON analysis of fixture.py",
       "warm_ms": [
-        562.629,
-        561.92,
-        564.073,
-        561.683,
-        563.603
+        565.616,
+        564.229,
+        564.922,
+        567.182,
+        567.764
       ]
     },
     "dependency_distribution_count_excluding_root": 64,
@@ -426,7 +426,7 @@
     "installed_size_bytes": 89982491,
     "installed_size_scope": "unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded",
     "mcp_startup": {
-      "cold_ms": 2215.958,
+      "cold_ms": 2031.752,
       "definition": "clock before Popen through successful initialize, initialized notification, and exact tools/list readiness",
       "tool_names": [
         "edit",
@@ -440,11 +440,11 @@
         "viz"
       ],
       "warm_ms": [
-        749.27,
-        745.801,
-        747.073,
-        749.599,
-        748.017
+        750.991,
+        747.313,
+        746.929,
+        745.964,
+        746.964
       ]
     },
     "network_transfer_bytes": {

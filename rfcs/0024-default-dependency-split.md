@@ -83,8 +83,8 @@ The candidate design, gates, and rollback policy are added only after the receip
 
 The preregistered protocol produced
 [`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
-from collector commit `e0ec6867104a15bf8cdbfa219a24d58b9bc5f58f` and the distinct pinned subject.
-Its canonical payload SHA-256 is `fccbe0919373c8d903f2b471151f5d1d22d04370058c998ec452e1688853f20e`.
+from collector commit `86209ee4b9139a92e4d408d2e9bc9d8ad27b65cb` and the distinct pinned subject.
+Its canonical payload SHA-256 is `d49dd24904e93bd4518853ec7d04d1433299b7fc6a4d54970906a78620aaf2d8`.
 
 | Axis | Measured value |
 |---|---:|
@@ -93,8 +93,8 @@ Its canonical payload SHA-256 is `fccbe0919373c8d903f2b471151f5d1d22d04370058c99
 | installed distribution files | 89,982,491 bytes across 4,743 unique regular files |
 | dependencies excluding root (direct + transitive) | 64 (33 + 31) |
 | installed distributions including root | 65 |
-| CLI bytecode-cold; warm samples (ms) | 1582.848; 562.629, 561.92, 564.073, 561.683, 563.603 |
-| MCP protocol-ready cold; warm samples (ms) | 2215.958; 749.27, 745.801, 747.073, 749.599, 748.017 |
+| CLI bytecode-cold; warm samples (ms) | 2162.972; 565.616, 564.229, 564.922, 567.182, 567.764 |
+| MCP protocol-ready cold; warm samples (ms) | 2031.752; 750.991, 747.313, 746.929, 745.964, 746.964 |
 
 This is macOS arm64 CPython 3.14.3 only. Linux and Windows remain `unknown` and
 cannot pass admission. “Cold” does not claim an OS page-cache flush. The larger,
