@@ -14089,6 +14089,103 @@ def test_receipt_client_bounds_response_loss_retry(monkeypatch):
     assert len(sockets) == 2
 
 
+def test_receipt_client_retries_connect_failure_with_original_deadline(monkeypatch):
+    # PR #1249 review 3744853007: transient pre-send failures get one bounded retry.
+    from benchmarks.codegraph_compare import receipt_v3_service as service
+
+    config = _qualification_v3_public_config()
+    sockets = []
+    observed_timeouts = []
+    ticks = iter((100.0, 101.0, 102.0, 103.0, 104.0))
+
+    class FakeSocket:
+        def settimeout(self, timeout):
+            observed_timeouts.append(timeout)
+
+        def connect(self, _path):
+            if len(sockets) == 1:
+                raise ConnectionRefusedError("not listening")
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["executor"]["peer_uid"], 123)
+
+        def sendall(self, _payload):
+            pass
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def socket_factory(*_args):
+        sockets.append(FakeSocket())
+        return sockets[-1]
+
+    monkeypatch.setattr(service, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+    monkeypatch.setattr(service.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(service.socket, "socket", socket_factory)
+    monkeypatch.setattr(
+        service, "_frame", lambda *_args: {"error": "ValueError", "reason": "bad job"}
+    )
+
+    with pytest.raises(ValueError, match="service rejected job: bad job"):
+        service.request_receipt(
+            role="executor",
+            socket_path=Path("executor.sock"),
+            authority_response={"response": {"job_id": "7" * 64}},
+            config=config,
+            timeout=10,
+        )
+
+    assert observed_timeouts == [9.0, 7.0]
+    assert len(sockets) == 2
+
+
+def test_receipt_client_retries_ambiguous_send_failure_once(monkeypatch):
+    # PR #1249 review 3744853007: stateless signing makes a partial send retry safe.
+    from benchmarks.codegraph_compare import receipt_v3_service as service
+
+    config = _qualification_v3_public_config()
+    sockets = []
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def connect(self, _path):
+            pass
+
+        def getsockopt(self, _level, _option, _size):
+            return struct.pack("3i", 123, config["executor"]["peer_uid"], 123)
+
+        def sendall(self, _payload):
+            raise BrokenPipeError("partial frame")
+
+        def shutdown(self, _how):
+            pass
+
+        def close(self):
+            pass
+
+    def socket_factory(*_args):
+        sockets.append(FakeSocket())
+        return sockets[-1]
+
+    monkeypatch.setattr(service.socket, "SO_PEERCRED", 1, raising=False)
+    monkeypatch.setattr(service.socket, "socket", socket_factory)
+    with pytest.raises(service._SendTransportError, match="transmission failed"):
+        service.request_receipt(
+            role="executor",
+            socket_path=Path("executor.sock"),
+            authority_response={"response": {"job_id": "7" * 64}},
+            config=config,
+            timeout=10,
+        )
+
+    assert len(sockets) == 2
+
+
 def test_decision_issuer_separates_run_contract_directory(tmp_path: Path, monkeypatch):
     # PR #1249 review 3744516427: operator input contains exactly run contracts.
     from benchmarks.codegraph_compare import decision_contract_issuer as issuer
@@ -14625,6 +14722,88 @@ def test_authority_preflight_rejects_ambiguous_mount_without_state(
         runner.preflight({"job_id": "a" * 64})
 
     assert list(tmp_path.glob("*.state")) == []
+
+
+def test_authority_cgroup_host_failure_precedes_running_reservation(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744853003: deterministic host failures cannot consume a job.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    job = tmp_path / "job"
+    artifacts = tmp_path / "artifacts"
+    job.mkdir()
+    artifacts.mkdir()
+    (job / "plan.json").write_text("{}")
+    runner = object.__new__(authority.AuthorityRunner)
+    runner._artifacts = artifacts
+    runner._inputs = lambda _contract: (job, {}, {})
+    runner._verify_staged = lambda *_args: 1
+    monkeypatch.setattr(authority, "validate_producer_plan", lambda value: value)
+    monkeypatch.setattr(authority, "_authorized_output_ceiling", lambda _plan: 1)
+    monkeypatch.setattr(
+        authority,
+        "_producer_mount_targets",
+        lambda _plan: ("/source", "/tool", "/config"),
+    )
+    monkeypatch.setattr(
+        authority,
+        "_run",
+        lambda *_args: b'{"CgroupVersion":"2","CgroupDriver":"systemd"}',
+    )
+
+    with pytest.raises(ValueError, match="only cgroup-v2 cgroupfs Docker"):
+        runner.preflight({"job_id": "a" * 64})
+
+    assert list(artifacts.glob("*.state")) == []
+
+
+def _mock_authority_cgroup_host(tmp_path: Path, monkeypatch):
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    cgroup = tmp_path / "cgroup"
+    cgroup.mkdir()
+    (cgroup / "cgroup.controllers").write_text("cpu memory io pids")
+    (cgroup / "cgroup.subtree_control").write_text("cpu memory io pids")
+    monkeypatch.setattr(authority, "_CGROUP_ROOT", cgroup)
+    monkeypatch.setattr(
+        authority,
+        "_run",
+        lambda *_args: b'{"CgroupVersion":"2","CgroupDriver":"cgroupfs"}',
+    )
+    monkeypatch.setattr(authority.os, "access", lambda *_args: True)
+    return authority, cgroup
+
+
+def test_authority_requires_all_available_cgroup_controllers(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744853003: every producer controller must be available.
+    authority, cgroup = _mock_authority_cgroup_host(tmp_path, monkeypatch)
+    (cgroup / "cgroup.controllers").write_text("cpu memory pids")
+
+    with pytest.raises(ValueError, match="controllers are unavailable"):
+        authority._preflight_cgroup_host()
+
+
+def test_authority_requires_all_delegated_cgroup_controllers(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744853003: every producer controller must be delegated.
+    authority, cgroup = _mock_authority_cgroup_host(tmp_path, monkeypatch)
+    (cgroup / "cgroup.subtree_control").write_text("cpu memory pids")
+
+    with pytest.raises(ValueError, match="controllers are not delegated"):
+        authority._preflight_cgroup_host()
+
+
+def test_authority_requires_writable_cgroup_delegation(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744853003: the delegated hierarchy must accept a child.
+    authority, _cgroup = _mock_authority_cgroup_host(tmp_path, monkeypatch)
+    monkeypatch.setattr(authority.os, "access", lambda *_args: False)
+
+    with pytest.raises(ValueError, match="delegation is not writable"):
+        authority._preflight_cgroup_host()
 
 
 def test_authority_response_recovery_uses_original_absolute_deadline(monkeypatch):

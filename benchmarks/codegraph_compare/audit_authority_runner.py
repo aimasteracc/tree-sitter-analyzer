@@ -339,6 +339,35 @@ def _pid_identity(pid: int) -> tuple[str, int]:
     return fields[19], descriptor
 
 
+_CGROUP_ROOT = Path("/sys/fs/cgroup")
+_REQUIRED_CGROUP_CONTROLLERS = frozenset({"cpu", "memory", "io", "pids"})
+_REQUIRED_CGROUP_CONTROL_FILES = ("cpu.max", "memory.max", "io.max", "pids.max")
+
+
+def _preflight_cgroup_host() -> Path:
+    """Require the exact writable cgroup-v2 delegation used by producer jobs."""
+    docker_info = json.loads(_run("docker", "info", "--format", "{{json .}}"))
+    if (
+        type(docker_info) is not dict
+        or docker_info.get("CgroupVersion") != "2"
+        or docker_info.get("CgroupDriver") != "cgroupfs"
+    ):
+        raise ValueError("authority supports only cgroup-v2 cgroupfs Docker")
+    available = set(_read(_CGROUP_ROOT / "cgroup.controllers").decode().split())
+    if not _REQUIRED_CGROUP_CONTROLLERS.issubset(available):
+        raise ValueError("required cgroup-v2 controllers are unavailable")
+    subtree_control = _CGROUP_ROOT / "cgroup.subtree_control"
+    delegated = set(_read(subtree_control).decode().split())
+    if not _REQUIRED_CGROUP_CONTROLLERS.issubset(delegated):
+        raise ValueError("required cgroup-v2 controllers are not delegated")
+    writable = (_CGROUP_ROOT, subtree_control) + tuple(
+        _CGROUP_ROOT / name for name in _REQUIRED_CGROUP_CONTROL_FILES
+    )
+    if any(not os.access(path, os.W_OK) for path in writable):
+        raise ValueError("required cgroup-v2 delegation is not writable")
+    return _CGROUP_ROOT
+
+
 class AuthorityRunner:
     """Runs only pre-staged, root-authorized jobs and seals their outputs."""
 
@@ -493,6 +522,9 @@ class AuthorityRunner:
         plan = validate_producer_plan(strict_json_loads(_read(job / "plan.json")))
         _authorized_output_ceiling(plan)
         _producer_mount_targets(plan)
+        # Host capability errors are deterministic and must precede the durable
+        # one-shot RUNNING reservation made by __call__().
+        _preflight_cgroup_host()
 
     def _execute(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
         job, declared, config = self._inputs(contract)
@@ -529,18 +561,9 @@ class AuthorityRunner:
         ):
             raise ValueError("producer launch gate is not an exact authority FIFO")
         cgroup_name = f"no1-008a-{contract['job_id']}"
-        docker_info = json.loads(_run("docker", "info", "--format", "{{json .}}"))
-        if (
-            docker_info.get("CgroupVersion") != "2"
-            or docker_info.get("CgroupDriver") != "cgroupfs"
-        ):
-            raise ValueError(
-                "authority supports only preflighted cgroup-v2 cgroupfs Docker"
-            )
-        cgroup_root = Path("/sys/fs/cgroup")
-        controllers = set(_read(cgroup_root / "cgroup.controllers").decode().split())
-        if not {"cpu", "memory", "pids", "io"}.issubset(controllers):
-            raise ValueError("required cgroup-v2 controllers are unavailable")
+        # Recheck immediately before cgroup creation so a daemon reload or
+        # delegation change cannot race the reservation-time preflight.
+        cgroup_root = _preflight_cgroup_host()
         cgroup = cgroup_root / cgroup_name
         cgroup.mkdir(mode=0o755)
         name = f"no1-008a-{contract['job_id'][:24]}"

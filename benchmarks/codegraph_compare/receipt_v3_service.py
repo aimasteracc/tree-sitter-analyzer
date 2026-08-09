@@ -48,8 +48,23 @@ SERVICE_RESPONSE_DOMAIN = b"NO1-008A-RECEIPT-SERVICE-RESPONSE-V1\0"
 READ_DEADLINE_SECONDS = 10
 
 
+class _PreSendTransportError(ConnectionError):
+    """The receipt service connection failed before request transmission."""
+
+
+class _SendTransportError(ConnectionError):
+    """Request transmission failed and may have delivered a partial frame."""
+
+
 class _PostSendTransportError(ConnectionError):
     """The immutable signing request was sent but its response was lost."""
+
+
+_RETRYABLE_TRANSPORT_ERRORS = (
+    _PreSendTransportError,
+    _SendTransportError,
+    _PostSendTransportError,
+)
 
 
 def _frame(
@@ -427,7 +442,12 @@ def request_receipt(
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         client.settimeout(remaining)
         try:
-            client.connect(str(socket_path))
+            try:
+                client.connect(str(socket_path))
+            except (TimeoutError, BrokenPipeError, ConnectionError, OSError) as error:
+                raise _PreSendTransportError(
+                    f"{role} service connection failed"
+                ) from error
             option = getattr(socket, "SO_PEERCRED", None)
             if option is None:
                 raise ValueError("Unix peer credentials unavailable")
@@ -436,7 +456,14 @@ def request_receipt(
             )
             if uid != service["peer_uid"]:
                 raise ValueError(f"{role} service peer UID mismatch")
-            client.sendall(framed)
+            try:
+                client.sendall(framed)
+            except (TimeoutError, BrokenPipeError, ConnectionError, OSError) as error:
+                # sendall does not disclose whether a prefix reached the peer.
+                # Stateless signing makes retrying that ambiguity safe.
+                raise _SendTransportError(
+                    f"{role} request transmission failed"
+                ) from error
             try:
                 client.shutdown(socket.SHUT_WR)
                 return _frame(client, deadline - time.monotonic())
@@ -455,11 +482,12 @@ def request_receipt(
 
     try:
         reply = round_trip()
-    except _PostSendTransportError:
+    except _RETRYABLE_TRANSPORT_ERRORS:
         if deadline - time.monotonic() <= 0:
             raise
         # Signing immutable authority evidence is stateless and idempotent. One
-        # retry recovers a response lost after the first request was delivered.
+        # retry covers connect, ambiguous partial-send, and response-loss errors,
+        # while round_trip keeps both attempts within the original deadline.
         reply = round_trip()
     if set(reply) == {"error", "reason"}:
         raise ValueError(f"{role} service rejected job: {reply['reason']}")
