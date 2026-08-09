@@ -91,7 +91,7 @@ atomically replaced, then the directory is fsynced.
 
 ## Reproduction of the descriptive receipt
 
-The receipt binds collector commit `5aae8c904c1be3a1582d87881a697e15949ff259`,
+The receipt binds collector commit `8737609090478e47cedf49522e33947bd0cc0e64`,
 which is an intermediate commit on this PR branch. Therefore PR #1250 **must be
 merged with GitHub's merge-commit strategy**, preserving branch ancestry. Squash
 and rebase merges are prohibited because they make the bound collector commit
@@ -118,7 +118,7 @@ for name in $(env | sed -n 's/^\(UV_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name";
 export UV_NO_CONFIG=1 UV_OFFLINE=1
 if test -n "$UV_CACHE_DIR_SAVED"; then export UV_CACHE_DIR=$UV_CACHE_DIR_SAVED; fi
 SOURCE_REPO=$(git rev-parse --show-toplevel)
-COLLECTOR_COMMIT=5aae8c904c1be3a1582d87881a697e15949ff259
+COLLECTOR_COMMIT=8737609090478e47cedf49522e33947bd0cc0e64
 SUBJECT_COMMIT=7e0e8f6e03270fcbf4025d717415ef69c9354145
 RUN_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/no1-006b.XXXXXX")
 RUN_ROOT=$(cd "$RUN_ROOT" && pwd -P)
@@ -162,9 +162,9 @@ printf 'remove external run directory when finished: %s\n' "$RUN_ROOT"
 
 The post-hoc hardened collector produced
 [`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
-from collector commit `5aae8c904c1be3a1582d87881a697e15949ff259` and the distinct pinned subject.
+from collector commit `8737609090478e47cedf49522e33947bd0cc0e64` and the distinct pinned subject.
 <!-- BEGIN GENERATED RECEIPT SUMMARY -->
-Its canonical payload SHA-256 is `76b9b1ccd228c1726931ca4e01d2615a7ea5c391c97edf1baf4ab4806c889587`.
+Its canonical payload SHA-256 is `59e0d58b6dd1c53d62309de2fa48773699c76cae27c7167c5fa6e234a27dcad1`.
 
 | Axis | Measured value |
 |---|---:|
