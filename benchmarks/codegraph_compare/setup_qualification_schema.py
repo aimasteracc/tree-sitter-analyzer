@@ -83,16 +83,52 @@ def _parse_finite_float(value: str) -> float:
     return parsed
 
 
+_MAX_STRICT_JSON_BYTES = 4 * 1024 * 1024
+_MAX_STRICT_JSON_DEPTH = 128
+
+
+def _validate_json_envelope(payload: bytes) -> None:
+    if type(payload) is not bytes:
+        raise ValueError("Strict JSON input must be bytes")
+    if len(payload) > _MAX_STRICT_JSON_BYTES:
+        raise ValueError("Strict JSON exceeds the trusted size limit")
+    depth = 0
+    in_string = False
+    escaped = False
+    for byte in payload:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif byte == 0x5C:  # backslash
+                escaped = True
+            elif byte == 0x22:  # quote
+                in_string = False
+        elif byte == 0x22:
+            in_string = True
+        elif byte in (0x5B, 0x7B):  # [ {
+            depth += 1
+            if depth > _MAX_STRICT_JSON_DEPTH:
+                raise ValueError("Strict JSON exceeds the trusted nesting limit")
+        elif byte in (0x5D, 0x7D):  # ] }
+            depth -= 1
+            if depth < 0:
+                break
+
+
 def strict_json_loads(payload: bytes) -> Any:
     def reject_constant(value: str) -> None:
         raise ValueError(f"Non-finite JSON number is forbidden: {value}")
 
-    return json.loads(
-        payload,
-        object_pairs_hook=_reject_duplicate_members,
-        parse_constant=reject_constant,
-        parse_float=_parse_finite_float,
-    )
+    _validate_json_envelope(payload)
+    try:
+        return json.loads(
+            payload,
+            object_pairs_hook=_reject_duplicate_members,
+            parse_constant=reject_constant,
+            parse_float=_parse_finite_float,
+        )
+    except RecursionError as exc:
+        raise ValueError("Strict JSON nesting is a validation violation") from exc
 
 
 def _canonical_json_bytes(value: object) -> bytes:

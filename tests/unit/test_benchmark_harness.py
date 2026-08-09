@@ -8443,6 +8443,21 @@ def _qualification_inventories(plans):
     return {plan.repo_id: plan.eligibility for plan in plans}
 
 
+def test_harness_artifact_rejects_huge_sparse_file(tmp_path: Path):
+    # PR #1247: pinned harness verification must not materialize hostile files.
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification import HarnessArtifactV1
+
+    sparse = tmp_path / "tool.bin"
+    with sparse.open("wb") as stream:
+        stream.seek(512 * 1024 * 1024)
+        stream.write(b"x")
+
+    with pytest.raises(ValueError, match="trusted size ceiling"):
+        HarnessArtifactV1.read(sparse)
+
+
 def _qualification_plans(tmp_path: Path):
     _require_posix_qualification_sandbox()
     from dataclasses import replace
@@ -9282,10 +9297,72 @@ def test_index_tree_hash_binds_exact_paths_and_bytes(tmp_path: Path):
     (index / "nested/b.bin").write_bytes(b"bb")
     digest = hashlib.sha256()
     for relative, payload in ((b"a.bin", b"a"), (b"nested/b.bin", b"bb")):
-        digest.update(len(relative).to_bytes(8, "big") + relative)
+        digest.update(b"F" + len(relative).to_bytes(8, "big") + relative)
         digest.update(len(payload).to_bytes(8, "big") + payload)
+    directory = b"nested"
+    digest.update(b"D" + len(directory).to_bytes(8, "big") + directory)
+    digest.update(b"C" + (2).to_bytes(8, "big") + (1).to_bytes(8, "big"))
 
     assert _hash_tree(index) == digest.hexdigest()
+
+
+def test_index_tree_hash_binds_empty_directory_mutation(tmp_path: Path):
+    # PR #1247: empty index shards are topology, even though they contain no bytes.
+    from benchmarks.codegraph_compare.setup_qualification import _hash_tree
+
+    index = tmp_path / "index"
+    index.mkdir()
+    before = _hash_tree(index)
+    (index / "empty-shard").mkdir()
+
+    assert _hash_tree(index) != before
+
+
+def test_index_tree_hash_rejects_concurrent_append(tmp_path: Path, monkeypatch):
+    # PR #1247: a producer must not extend the verifier's snapshotted read.
+    import os
+    import threading
+
+    import pytest
+
+    from benchmarks.codegraph_compare import setup_qualification_paths as paths
+
+    index = tmp_path / "index"
+    index.mkdir()
+    target = index / "artifact.bin"
+    target.write_bytes(b"a" * (paths._HASH_CHUNK_BYTES + 1))
+    append_requested = threading.Event()
+    appended = threading.Event()
+    real_read = os.read
+
+    def append() -> None:
+        assert append_requested.wait(timeout=2)
+        with target.open("ab") as stream:
+            stream.write(b"growth")
+            stream.flush()
+            os.fsync(stream.fileno())
+        appended.set()
+
+    writer = threading.Thread(target=append)
+    writer.start()
+    first_read = True
+
+    def coordinated_read(descriptor: int, size: int) -> bytes:
+        nonlocal first_read
+        if first_read and size == paths._HASH_CHUNK_BYTES:
+            first_read = False
+            append_requested.set()
+            assert appended.wait(timeout=2)
+        return real_read(descriptor, size)
+
+    monkeypatch.setattr(paths.os, "read", coordinated_read)
+    try:
+        with pytest.raises(ValueError, match="grew while hashing"):
+            paths._hash_tree(index)
+    finally:
+        writer.join(timeout=2)
+
+    assert writer.is_alive() is False
 
 
 def test_resource_plan_rejects_each_missing_ceiling():
@@ -9764,6 +9841,18 @@ def test_receipt_parser_rejects_extension_at_every_object_schema(
 
     with pytest.raises(ValueError, match="exactly the schema-v2 keys"):
         _parse_receipt(json.dumps(receipt, sort_keys=True).encode("utf-8"))
+
+
+def test_strict_receipt_json_rejects_excessive_depth_before_loading():
+    # PR #1247: producer JSON depth is a validation failure, not verifier recursion.
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification import strict_json_loads
+
+    payload = b"[" * 129 + b"0" + b"]" * 129
+
+    with pytest.raises(ValueError, match="trusted nesting limit"):
+        strict_json_loads(payload)
 
 
 def test_receipt_parser_preserves_valid_canonical_hash_roundtrip(tmp_path: Path):

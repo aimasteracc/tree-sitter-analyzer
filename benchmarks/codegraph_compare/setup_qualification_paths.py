@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
+import time
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -137,62 +138,107 @@ def _tree_size(root: Path) -> int:
 
 _HASH_CHUNK_BYTES = 1024 * 1024
 _DEFAULT_TREE_CEILING_BYTES = 1024 * 1024 * 1024
+_DEFAULT_STREAM_TIMEOUT_SECONDS = 30.0
+
+
+def _hash_regular_descriptor(
+    descriptor: int,
+    *,
+    expected_size: int,
+    max_bytes: int,
+    timeout_seconds: float = _DEFAULT_STREAM_TIMEOUT_SECONDS,
+    digest: Any | None = None,
+) -> str:
+    """Hash one immutable-size snapshot without following producer growth."""
+    metadata = os.fstat(descriptor)
+    if metadata.st_size != expected_size:
+        raise ValueError("Artifact file size does not match trusted expectation")
+    if expected_size < 0 or expected_size > max_bytes:
+        raise ValueError("Artifact file exceeds trusted size ceiling")
+    allocated = getattr(metadata, "st_blocks", 0) * 512
+    if expected_size > 0 and allocated < expected_size:
+        raise ValueError("Sparse artifact files are forbidden")
+
+    target = digest if digest is not None else hashlib.sha256()
+    deadline = time.monotonic() + timeout_seconds
+    read_total = 0
+    max_reads = (expected_size + _HASH_CHUNK_BYTES - 1) // _HASH_CHUNK_BYTES
+    reads = 0
+    while read_total < expected_size:
+        if reads >= max_reads or time.monotonic() > deadline:
+            raise ValueError("Artifact file hashing exceeded its bounded loop")
+        chunk = os.read(descriptor, min(_HASH_CHUNK_BYTES, expected_size - read_total))
+        reads += 1
+        if not chunk:
+            raise ValueError("Artifact file changed while hashing")
+        read_total += len(chunk)
+        target.update(chunk)
+
+    # Exactly one bounded byte distinguishes the snapshot from a concurrently
+    # appended file without ever chasing a producer-controlled EOF.
+    if os.read(descriptor, 1):
+        raise ValueError("Artifact file grew while hashing")
+    if os.fstat(descriptor).st_size != expected_size:
+        raise ValueError("Artifact file changed while hashing")
+    if time.monotonic() > deadline:
+        raise ValueError("Artifact file hashing exceeded its timeout")
+    return target.hexdigest()
 
 
 def _stream_file(descriptor: int, digest: Any, *, remaining: int) -> int:
     metadata = os.fstat(descriptor)
-    if metadata.st_size > remaining:
-        raise ValueError("Artifact tree exceeds trusted size ceiling")
-    allocated = getattr(metadata, "st_blocks", 0) * 512
-    if metadata.st_size > _HASH_CHUNK_BYTES and allocated < metadata.st_size:
-        raise ValueError("Sparse artifact files are forbidden")
     digest.update(metadata.st_size.to_bytes(8, "big"))
-    read_total = 0
-    with os.fdopen(os.dup(descriptor), "rb") as stream:
-        while True:
-            chunk = stream.read(_HASH_CHUNK_BYTES)
-            if not chunk:
-                break
-            read_total += len(chunk)
-            digest.update(chunk)
-    if read_total != metadata.st_size:
-        raise ValueError("Artifact file changed while hashing")
-    return read_total
+    _hash_regular_descriptor(
+        descriptor,
+        expected_size=metadata.st_size,
+        max_bytes=remaining,
+        digest=digest,
+    )
+    return metadata.st_size
+
+
+def _update_typed_path(digest: Any, kind: bytes, relative: str) -> None:
+    encoded = relative.encode("utf-8")
+    digest.update(kind + len(encoded).to_bytes(8, "big") + encoded)
+
+
+def _hash_tree_descriptor(directory_fd: int, *, max_bytes: int) -> str:
+    digest = hashlib.sha256()
+    consumed = 0
+    file_count = 0
+    directory_count = 0
+
+    def collect_file(descriptor: int, item: str) -> None:
+        nonlocal consumed, file_count
+        _update_typed_path(digest, b"F", item)
+        consumed += _stream_file(descriptor, digest, remaining=max_bytes - consumed)
+        file_count += 1
+
+    def collect_directory(_descriptor: int, item: str) -> None:
+        nonlocal directory_count
+        _update_typed_path(digest, b"D", item)
+        directory_count += 1
+
+    _visit_tree(directory_fd, collect_file, collect_directory)
+    digest.update(
+        b"C" + file_count.to_bytes(8, "big") + directory_count.to_bytes(8, "big")
+    )
+    return digest.hexdigest()
 
 
 def _hash_tree_at(
     root_fd: int, relative: str, *, max_bytes: int = _DEFAULT_TREE_CEILING_BYTES
 ) -> str:
     directory_fd = _open_beneath(root_fd, relative, directory=True)
-    digest = hashlib.sha256()
-    consumed = 0
-
-    def collect(descriptor: int, item: str) -> None:
-        nonlocal consumed
-        encoded = item.encode()
-        digest.update(len(encoded).to_bytes(8, "big") + encoded)
-        consumed += _stream_file(descriptor, digest, remaining=max_bytes - consumed)
-
     try:
-        _visit_tree(directory_fd, collect)
-        return digest.hexdigest()
+        return _hash_tree_descriptor(directory_fd, max_bytes=max_bytes)
     finally:
         os.close(directory_fd)
 
 
 def _hash_tree(root: Path, *, max_bytes: int = _DEFAULT_TREE_CEILING_BYTES) -> str:
     root_fd = _open_root(root)
-    digest = hashlib.sha256()
-    consumed = 0
-
-    def collect(descriptor: int, relative: str) -> None:
-        nonlocal consumed
-        encoded = relative.encode()
-        digest.update(len(encoded).to_bytes(8, "big") + encoded)
-        consumed += _stream_file(descriptor, digest, remaining=max_bytes - consumed)
-
     try:
-        _visit_tree(root_fd, collect)
-        return digest.hexdigest()
+        return _hash_tree_descriptor(root_fd, max_bytes=max_bytes)
     finally:
         os.close(root_fd)

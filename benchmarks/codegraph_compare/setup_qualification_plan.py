@@ -13,7 +13,9 @@ from typing import Any
 
 from benchmarks.codegraph_compare.integrity import _sha256
 from benchmarks.codegraph_compare.setup_qualification_paths import (
-    _read_regular_beneath,
+    _hash_regular_descriptor,
+    _open_beneath,
+    _open_root,
     canonical_relative_path,
 )
 
@@ -169,6 +171,9 @@ class ResourcePlanV1:
         return _sha256(asdict(self))
 
 
+_MAX_HARNESS_ARTIFACT_BYTES = 256 * 1024 * 1024
+
+
 @dataclass(frozen=True)
 class HarnessArtifactV1:
     path: str
@@ -176,14 +181,37 @@ class HarnessArtifactV1:
     sha256: str
 
     @classmethod
-    def read(cls, path: Path) -> HarnessArtifactV1:
+    def read(
+        cls,
+        path: Path,
+        *,
+        expected_size: int | None = None,
+        max_bytes: int = _MAX_HARNESS_ARTIFACT_BYTES,
+    ) -> HarnessArtifactV1:
+        """Authenticate a regular harness file without materializing its bytes."""
         absolute = path.absolute()
         if not absolute.is_absolute():
             raise ValueError("Harness artifact must have an absolute path")
-        payload = _read_regular_beneath(
-            Path(absolute.anchor), absolute.as_posix().lstrip("/")
-        )
-        return cls(str(absolute), len(payload), _bytes_hash(payload))
+        root_fd = _open_root(Path(absolute.anchor))
+        descriptor: int | None = None
+        try:
+            descriptor = _open_beneath(root_fd, absolute.as_posix().lstrip("/"))
+            metadata = os.fstat(descriptor)
+            snapshot_size = metadata.st_size
+            if expected_size is not None and snapshot_size != expected_size:
+                raise ValueError(
+                    "Harness artifact size does not match trusted expectation"
+                )
+            digest = _hash_regular_descriptor(
+                descriptor,
+                expected_size=snapshot_size,
+                max_bytes=max_bytes,
+            )
+            return cls(str(absolute), snapshot_size, digest)
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+            os.close(root_fd)
 
 
 @dataclass(frozen=True)

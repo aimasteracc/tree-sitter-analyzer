@@ -165,8 +165,14 @@ def _validate_open_cell_receipt(
         failures.append("SOURCE_ELIGIBILITY_MISMATCH")
     try:
         harness_bytes_valid = (
-            HarnessArtifactV1.read(Path(plan.tool.path)) == plan.tool
-            and HarnessArtifactV1.read(Path(plan.config.path)) == plan.config
+            HarnessArtifactV1.read(
+                Path(plan.tool.path), expected_size=plan.tool.size_bytes
+            )
+            == plan.tool
+            and HarnessArtifactV1.read(
+                Path(plan.config.path), expected_size=plan.config.size_bytes
+            )
+            == plan.config
         )
     except (OSError, ValueError):
         harness_bytes_valid = False
