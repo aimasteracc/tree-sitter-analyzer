@@ -314,13 +314,47 @@
     },
     "mounts": {
      "type": "array",
-     "minItems": 4,
-     "maxItems": 4,
+     "minItems": 7,
+     "maxItems": 7,
+     "uniqueItems": true,
      "items": {
       "type": "array",
       "minItems": 3,
-      "maxItems": 3
-     }
+      "maxItems": 3,
+      "prefixItems": [
+       {
+        "type": "string",
+        "pattern": "^/[^/].*$"
+       },
+       {
+        "type": "string",
+        "pattern": "^/[^/].*$"
+       },
+       {
+        "type": "boolean"
+       }
+      ],
+      "allOf": [
+       {
+        "if": {
+         "prefixItems": [{}, {"const": "/out"}]
+        },
+        "then": {
+         "prefixItems": [{}, {}, {"const": false}]
+        },
+        "else": {
+         "prefixItems": [{}, {}, {"const": true}]
+        }
+       }
+      ]
+     },
+     "allOf": [
+      {"contains": {"prefixItems": [{}, {"const": "/source"}]}, "minContains": 1, "maxContains": 1},
+      {"contains": {"prefixItems": [{}, {"const": "/out"}]}, "minContains": 1, "maxContains": 1},
+      {"contains": {"prefixItems": [{}, {"const": "/plan/seccomp.json"}]}, "minContains": 1, "maxContains": 1},
+      {"contains": {"prefixItems": [{}, {"const": "/plan/cell-plan.json"}]}, "minContains": 1, "maxContains": 1},
+      {"contains": {"prefixItems": [{}, {"const": "/plan/inventory.json"}]}, "minContains": 1, "maxContains": 1}
+     ]
     },
     "resource_limits": {
      "type": "object",

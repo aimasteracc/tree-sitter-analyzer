@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import textwrap
@@ -11202,7 +11203,14 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
         executions.append(
             {
                 "id": execution_id,
-                "argv": ["/tool/bin", execution_id],
+                "argv": [
+                    "/tool/bin",
+                    execution_id,
+                    "--source",
+                    "/source",
+                    "--config",
+                    "/config.json",
+                ],
                 "cwd": "/source",
                 "environment_digest": "1" * 64,
                 "exit_code": 0,
@@ -11316,10 +11324,13 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
             "readonly_rootfs": True,
             "cap_drop": ["ALL"],
             "mounts": [
-                ["/host/source", "/source", True],
+                ["/host/config", "/config.json", True],
+                ["/host/out", "/out", False],
                 ["/host/plan", "/plan/cell-plan.json", True],
                 ["/host/inventory", "/plan/inventory.json", True],
-                ["/host/out", "/out", False],
+                ["/host/seccomp", "/plan/seccomp.json", True],
+                ["/host/source", "/source", True],
+                ["/host/tool", "/tool/bin", True],
             ],
             "resource_limits": {
                 "pids_limit": 64,
@@ -12152,6 +12163,133 @@ def test_qualification_v3_runtime_schema_mutation_contract():
     assert outcomes == [(False, False), (False, False), (False, False), (False, False)]
 
 
+def test_receipt_v3_rejects_a_seventh_mount_with_wrong_target():
+    # PR #1249 review 3744302996: the authenticated layout is exactly seven targets.
+    from benchmarks.codegraph_compare.receipt_v3 import validate_receipt_shape
+
+    receipt = _qualification_v3_receipt()
+    receipt["body"]["process_audit"]["mounts"][5][1] = "/unexpected"
+
+    with pytest.raises(ValueError, match="mount"):
+        validate_receipt_shape(receipt)
+
+
+def test_receipt_v3_rejects_writable_non_output_mount():
+    # PR #1249 review 3744302996: only the producer output mount is writable.
+    from benchmarks.codegraph_compare.receipt_v3 import validate_receipt_shape
+
+    receipt = _qualification_v3_receipt()
+    receipt["body"]["process_audit"]["mounts"][0][2] = False
+
+    with pytest.raises(ValueError, match="mount"):
+        validate_receipt_shape(receipt)
+
+
+def test_stage_copy_file_applies_requested_mode_despite_umask(tmp_path: Path):
+    # PR #1249 review 3744303005: distinct service UIDs must read staged inputs.
+    from benchmarks.codegraph_compare.stage_inputs import copy_file
+
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.write_bytes(b"trusted")
+    previous = os.umask(0o077)
+    try:
+        copy_file(source, destination, 0o444)
+    finally:
+        os.umask(previous)
+
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o444
+
+
+def test_operator_success_state_replace_is_directory_durable(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744303001: terminal success must survive host power loss.
+    from benchmarks.codegraph_compare import qualification_operator
+
+    output = tmp_path / "experiment"
+    synced = []
+    monkeypatch.setattr(qualification_operator, "_run_impl", lambda _args: 0)
+    monkeypatch.setattr(
+        qualification_operator, "_fsync_directory", lambda path: synced.append(path)
+    )
+
+    assert qualification_operator.run(SimpleNamespace(experiment_root=str(output))) == 0
+    assert synced == [output, output, output]
+    assert json.loads((output / "operator-state.json").read_bytes()) == {
+        "completed_cells": 14,
+        "state": "SUCCESS",
+    }
+
+
+def test_operator_failed_state_replace_is_directory_durable(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744303001: terminal failure must survive host power loss.
+    from benchmarks.codegraph_compare import qualification_operator
+
+    output = tmp_path / "experiment"
+    synced = []
+
+    def fail(_args):
+        raise RuntimeError("failed")
+
+    monkeypatch.setattr(qualification_operator, "_run_impl", fail)
+    monkeypatch.setattr(
+        qualification_operator, "_fsync_directory", lambda path: synced.append(path)
+    )
+
+    with pytest.raises(RuntimeError, match="failed"):
+        qualification_operator.run(SimpleNamespace(experiment_root=str(output)))
+    assert synced == [output, output, output]
+    assert json.loads((output / "operator-state.json").read_bytes()) == {
+        "error": "RuntimeError",
+        "state": "FAILED",
+    }
+
+
+def test_receipt_v3_docker_context_allows_only_five_schema_refs():
+    # PR #1249 review 3744303008: the runtime schema COPY needs its exact closure.
+    negations = [
+        line
+        for line in Path(".dockerignore").read_text(encoding="utf-8").splitlines()
+        if line.startswith("!rfcs")
+    ]
+
+    assert negations == [
+        "!rfcs/",
+        "!rfcs/schemas/",
+        "!rfcs/schemas/no1-008a-cell-receipt-v3.schema.json",
+        "!rfcs/schemas/no1-008a-cell-receipt-v3-body.schema.json",
+        "!rfcs/schemas/no1-008a-cell-receipt-v3-common.schema.json",
+        "!rfcs/schemas/no1-008a-cell-receipt-v3-fields-a.schema.json",
+        "!rfcs/schemas/no1-008a-cell-receipt-v3-fields-b.schema.json",
+    ]
+
+
+def test_all_service_sockets_defer_access_control_to_peer_uid():
+    # PR #1249 review 3744303010: service primary groups differ from the operator's.
+    sources = {
+        path: Path(path).read_text(encoding="utf-8")
+        for path in (
+            "benchmarks/codegraph_compare/audit_authority_service.py",
+            "benchmarks/codegraph_compare/receipt_v3_service.py",
+            "benchmarks/codegraph_compare/verifier_service.py",
+            "benchmarks/codegraph_compare/decision_consumer_service.py",
+        )
+    }
+
+    assert {
+        path: (source.count("0o666"), source.count("peer_allowed("))
+        for path, source in sources.items()
+    } == {
+        "benchmarks/codegraph_compare/audit_authority_service.py": (1, 1),
+        "benchmarks/codegraph_compare/receipt_v3_service.py": (1, 1),
+        "benchmarks/codegraph_compare/verifier_service.py": (1, 1),
+        "benchmarks/codegraph_compare/decision_consumer_service.py": (1, 1),
+    }
+
+
 def test_qualification_v3_schema_fragments_stay_below_file_cap():
     # Audit 2026-08-09 P2.2: externally referenced schema fragments remain reviewable.
     schemas = sorted(Path("rfcs/schemas").glob("no1-008a-cell-receipt-v3*.schema.json"))
@@ -12166,7 +12304,7 @@ def test_qualification_v3_schema_fragments_stay_below_file_cap():
         "no1-008a-cell-receipt-v3-body.schema.json": 62,
         "no1-008a-cell-receipt-v3-common.schema.json": 261,
         "no1-008a-cell-receipt-v3-fields-a.schema.json": 211,
-        "no1-008a-cell-receipt-v3-fields-b.schema.json": 411,
+        "no1-008a-cell-receipt-v3-fields-b.schema.json": 445,
         "no1-008a-cell-receipt-v3.schema.json": 35,
     }
 

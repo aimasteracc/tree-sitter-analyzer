@@ -309,7 +309,8 @@ def main(argv: list[str] | None = None) -> int:
     path = Path(args.socket)
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(str(path))
-    os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP)
+    # Filesystem access must not preempt the exact SO_PEERCRED UID authorization.
+    os.chmod(path, 0o666)  # nosec B103 - local socket; peer UID is fail-closed
     listener.listen(args.workers)
 
     def worker() -> None:

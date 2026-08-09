@@ -23,6 +23,7 @@ def copy_file(source: Path, destination: Path, mode: int = 0o444) -> None:
             destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode
         )
         try:
+            os.fchmod(out, mode)  # creation mode is otherwise reduced by the umask
             while chunk := os.read(fd, 1024 * 1024):
                 os.write(out, chunk)
             os.fsync(out)

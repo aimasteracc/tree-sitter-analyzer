@@ -484,7 +484,8 @@ def main(argv: list[str] | None = None) -> int:
     signer = Ed25519PrivateKey.from_private_bytes(key_raw)
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(args.socket)
-    os.chmod(args.socket, 0o660)  # nosec B103
+    # Filesystem access must not preempt the exact SO_PEERCRED UID authorization.
+    os.chmod(args.socket, 0o666)  # nosec B103 - local socket; peer UID is fail-closed
     listener.listen(args.workers)
 
     def worker() -> None:

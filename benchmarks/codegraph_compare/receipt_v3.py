@@ -280,8 +280,47 @@ def validate_body(body: Any) -> None:
         raise ValueError("host audit container isolation facts invalid")
     if audit["resource_limits"] != {"pids_limit": 64, "memory": 4294967296, "nano_cpus": 1000000000} or audit["tmpfs"] != {TMPFS_TARGET: "rw,noexec,nosuid,nodev,size=64m"}:
         raise ValueError("host audit limits/tmpfs invalid")
-    if type(audit["mounts"]) is not list or len(audit["mounts"]) != 4:
+    mounts = audit["mounts"]
+    if type(mounts) is not list or len(mounts) != 7:
         raise ValueError("host audit mount facts invalid")
+    tool_targets = {item["argv"][0] for item in body["executions"]}
+    config_targets = {
+        item["argv"][index + 1]
+        for item in body["executions"]
+        for index, value in enumerate(item["argv"][:-1])
+        if value == "--config"
+    }
+    source_targets = {
+        item["argv"][index + 1]
+        for item in body["executions"]
+        for index, value in enumerate(item["argv"][:-1])
+        if value == "--source"
+    }
+    if len(tool_targets) != 1 or len(config_targets) != 1 or source_targets != {"/source"}:
+        raise ValueError("host audit mount targets cannot be derived exactly")
+    expected_mount_access = {
+        "/source": True,
+        next(iter(tool_targets)): True,
+        next(iter(config_targets)): True,
+        "/plan/seccomp.json": True,
+        "/plan/cell-plan.json": True,
+        "/plan/inventory.json": True,
+        "/out": False,
+    }
+    if len(expected_mount_access) != 7:
+        raise ValueError("host audit mount targets are not disjoint")
+    observed_mount_access: dict[str, bool] = {}
+    for number, mount in enumerate(mounts):
+        if type(mount) is not list or len(mount) != 3:
+            raise ValueError("host audit mount facts invalid")
+        source_path, target, read_only = mount
+        _path(source_path, f"process_audit.mounts[{number}].source", absolute=True)
+        _path(target, f"process_audit.mounts[{number}].target", absolute=True)
+        if type(read_only) is not bool or target in observed_mount_access:
+            raise ValueError("host audit mount facts invalid")
+        observed_mount_access[target] = read_only
+    if observed_mount_access != expected_mount_access:
+        raise ValueError("host audit mount targets or access invalid")
     for name in ("producer_container_id", "cgroup_id"):
         _text(audit[name], f"process_audit.{name}")
     if re.fullmatch(r"sha256:[0-9a-f]{64}", _text(audit["image_digest"], "process_audit.image_digest")) is None:

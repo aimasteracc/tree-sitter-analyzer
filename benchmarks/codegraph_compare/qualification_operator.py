@@ -23,6 +23,14 @@ from benchmarks.codegraph_compare.verifier import parse_public_config
 from benchmarks.codegraph_compare.verifier_service import request_verdict
 
 
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def _write(path: Path, value: Any) -> None:
     descriptor = os.open(
         path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
@@ -32,6 +40,7 @@ def _write(path: Path, value: Any) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+    _fsync_directory(path.parent)
 
 
 def _run_impl(args: argparse.Namespace) -> int:
@@ -194,10 +203,12 @@ def run(args: argparse.Namespace) -> int:
         )
         _write(temporary, {"state": terminal, "error": type(error).__name__})
         os.replace(temporary, state)
+        _fsync_directory(output)
         raise
     temporary = output / ".operator-state.tmp"
     _write(temporary, {"state": "SUCCESS", "completed_cells": 14})
     os.replace(temporary, state)
+    _fsync_directory(output)
     return result
 
 
