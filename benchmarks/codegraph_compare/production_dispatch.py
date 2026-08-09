@@ -62,6 +62,10 @@ class ProviderRunResult:
     termination_reason: str
     transcript: bytes
     tool_receipt: bytes = b""
+    provider_reservation_id: str | None = None
+    kill_attempted: bool = False
+    wait_completed: bool = False
+    usage_complete: bool = False
 
 
 class ProviderRunFailure(RuntimeError):
@@ -241,10 +245,12 @@ def _revalidate(
 
 
 def _usage_violations(
-    result: ProviderRunResult, spec: ProductionRunSpecV1
+    result: ProviderRunResult,
+    spec: ProductionRunSpecV1,
+    config: OperatorTrustConfigV1,
 ) -> tuple[str, ...]:
     values = (result.input_tokens, result.output_tokens, result.cost_usd)
-    if any(
+    if result.usage_complete is not True or any(
         v is None
         or isinstance(v, bool)
         or not isinstance(v, (int, float))
@@ -254,6 +260,16 @@ def _usage_violations(
     ):
         return ("USAGE_MISSING_OR_INVALID",)
     violations: list[str] = []
+    if (
+        config.budget_enforcement_mode == "provider"
+        and not result.provider_reservation_id
+    ):
+        violations.append("PROVIDER_RESERVATION_MISSING")
+    if config.budget_enforcement_mode == "client-process-kill":
+        if result.wait_completed is not True:
+            violations.append("CLIENT_PROCESS_WAIT_INCOMPLETE")
+        if "timeout" in result.termination_reason and result.kill_attempted is not True:
+            violations.append("TIMEOUT_KILL_NOT_CONFIRMED")
     if result.provider_request_count != 1:
         violations.append("PROVIDER_REQUEST_COUNT_NOT_ONE")
     assert (
@@ -394,9 +410,16 @@ def dispatch_once(
                 collector.collect(
                     request.spec.cell_id,
                     "termination",
-                    json.dumps({"reason": result.termination_reason}).encode(),
+                    json.dumps(
+                        {
+                            "reason": result.termination_reason,
+                            "kill_attempted": result.kill_attempted,
+                            "wait_completed": result.wait_completed,
+                            "provider_reservation_id": result.provider_reservation_id,
+                        }
+                    ).encode(),
                 )
-                usage_violations = _usage_violations(result, request.spec)
+                usage_violations = _usage_violations(result, request.spec, config)
                 run_violations.extend(usage_violations)
                 usage = {
                     "provider_requests": result.provider_request_count,

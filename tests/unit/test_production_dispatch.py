@@ -113,6 +113,8 @@ def _result(**changes):
         "termination_reason": "completed",
         "transcript": b"partial transcript",
         "tool_receipt": b"tool receipt",
+        "wait_completed": True,
+        "usage_complete": True,
     }
     values.update(changes)
     return ProviderRunResult(**values)
@@ -255,6 +257,8 @@ def test_timeout_failure_preserves_partial_evidence_and_terminal(tmp_path: Path)
         output_tokens=None,
         cost_usd=None,
         termination_reason="timeout-killed-waited",
+        kill_attempted=True,
+        usage_complete=False,
     )
 
     def runner(_):
