@@ -697,6 +697,13 @@ timeout_constant = 10.0
 required-version = ">=0.11.0"
 
 [dependency-groups]
+# Exact, independently exportable toolchain for the NO1-006B collector.
+# These packages are not part of the measured subject runtime closure.
+no1-006b-collector-tool = [
+    "hatchling==1.31.0",
+    "jsonschema==4.25.1",
+    "packaging==25.0",
+]
 dev = [
     "build>=1.2.2.post1",
     "cryptography>=44.0.0",

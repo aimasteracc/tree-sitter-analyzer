@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tree-sitter-analyzer.dev/schemas/no1-006b-baseline.schema.json",
-  "title": "NO1-006B receipt v2",
+  "title": "NO1-006B receipt v3",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -22,7 +22,7 @@
     "canonical_payload_sha256"
   ],
   "properties": {
-    "schema_version": {"const":2},
+    "schema_version": {"const":3},
     "roadmap_id": {"const":"NO1-006B"},
     "evidence_level": {"const":"E0"},
     "collection_started_at_utc": {"type":"string","format":"date-time"},
@@ -31,11 +31,13 @@
     "collector": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["commit","script_sha256","schema_sha256"],
+      "required": ["commit","script_sha256","schema_sha256","tool_lock_sha256","tool_export_sha256"],
       "properties": {
         "commit": {"type":"string","pattern":"^[0-9a-f]{40}$"},
         "script_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
-        "schema_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"}
+        "schema_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "tool_lock_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "tool_export_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"}
       }
     },
     "source": {
@@ -80,7 +82,7 @@
     "environment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["os","system","machine","python","uv","network_policy","bytecode_policy","cache_protocol","sample_order","host_fingerprint"],
+      "required": ["os","system","machine","python","build_python","build_backend","uv","network_policy","bytecode_policy","cache_protocol","sample_order","host_fingerprint"],
       "properties": {
         "os": {"type":"string","minLength":1,"maxLength":256},
         "system": {"enum":["macos","linux","windows"]},
@@ -90,6 +92,18 @@
           "additionalProperties": false,
           "required": ["version","implementation"],
           "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50}}
+        },
+        "build_python": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version","implementation"],
+          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50}}
+        },
+        "build_backend": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name","version"],
+          "properties": {"name":{"const":"hatchling"},"version":{"const":"1.31.0"}}
         },
         "uv": {"type":"string","minLength":1,"maxLength":100},
         "network_policy": {"const":"UV_OFFLINE=1; uv --offline; no network transfer measurement"},
@@ -172,10 +186,11 @@
     "commands": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["export","build","closure_install","root_install","cli_probe","mcp_probe"],
+      "required": ["collector_tool_export","export","build","closure_install","root_install","cli_probe","mcp_probe"],
       "properties": {
+        "collector_tool_export": {"const":["uv","export","--frozen","--offline","--only-group","no1-006b-collector-tool","--no-emit-project","--format","requirements-txt"]},
         "export": {"const":["uv","export","--frozen","--offline","--no-dev","--no-emit-project","--format","requirements-txt"]},
-        "build": {"const":["uv","build","--wheel","--offline","--out-dir","<temp>/dist"]},
+        "build": {"const":["uv","build","--wheel","--offline","--no-build-isolation","--python","<collector-sys-executable>","--out-dir","<temp>/dist"]},
         "closure_install": {"const":["uv","pip","install","--offline","--no-deps","--require-hashes","-r","<locked-requirements>"]},
         "root_install": {"const":["uv","pip","install","--offline","--no-deps","<root-wheel>"]},
         "cli_probe": {"const":["tree-sitter-analyzer","fixture.py","--summary","--format","json"]},
