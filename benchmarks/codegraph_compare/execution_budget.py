@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Mapping
 from typing import Any
 
@@ -23,6 +24,21 @@ def debugfs_payload_timeout_seconds(payload_bytes: int) -> int:
         + (payload_bytes + DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND - 1)
         // DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND
     )
+
+
+def extraction_timeout_seconds(
+    payload_bytes: int, *, deadline_monotonic: float | None = None
+) -> float:
+    """Bound extraction by image size and an optional service-wide deadline."""
+    timeout = float(debugfs_payload_timeout_seconds(payload_bytes))
+    if deadline_monotonic is not None:
+        if type(deadline_monotonic) not in {int, float}:
+            raise ValueError("extraction deadline is invalid")
+        remaining = float(deadline_monotonic) - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("extraction contract deadline expired")
+        timeout = min(timeout, remaining)
+    return max(0.001, timeout)
 
 
 def authority_cell_budget_seconds(plan: Mapping[str, Any]) -> int:

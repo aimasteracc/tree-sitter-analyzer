@@ -12800,6 +12800,7 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
         job = staged_root / job_id
         job.mkdir()
         (job / "plan.json").write_bytes(canonical_json_bytes(plan))
+        (job / "inventory.json").write_bytes(canonical_json_bytes({"files": []}))
     decision = {
         "decision_id": "b" * 64,
         "expires_at_ns": 10**30,
@@ -13104,7 +13105,9 @@ def test_decision_ledger_requires_uid_904_private_writable_parent(
         lambda path, mode: (path, mode) == (parent, os.W_OK | os.X_OK),
     )
 
-    ledger = consumer.DecisionLedger(parent / "decisions.sqlite")
+    ledger = consumer.DecisionLedger(
+        parent / "decisions.sqlite", _qualification_v3_public_config()
+    )
 
     assert ledger.path == parent / "decisions.sqlite"
     assert stat.S_IMODE(ledger.path.stat().st_mode) == 0o600
@@ -13117,7 +13120,9 @@ def test_decision_ledger_requires_uid_904_private_writable_parent(
 
     monkeypatch.setattr(consumer.os, "stat", root_stat)
     with pytest.raises(ValueError, match="UID 904 private 0700"):
-        consumer.DecisionLedger(parent / "other.sqlite")
+        consumer.DecisionLedger(
+            parent / "other.sqlite", _qualification_v3_public_config()
+        )
 
 
 def test_decision_consumer_recomputes_ordered_exact14_config_plan_binding():
@@ -14427,6 +14432,7 @@ def test_operator_rejects_short_common_lifetime_before_first_cell(
         job = staged_root / job_id
         job.mkdir()
         (job / "plan.json").write_bytes(canonical_json_bytes(plan))
+        (job / "inventory.json").write_bytes(canonical_json_bytes({"files": []}))
     decision = {
         "decision_id": "b" * 64,
         "expires_at_ns": expiry,
@@ -14495,7 +14501,7 @@ def test_decision_ledger_startup_rejects_corrupt_persisted_receipt(
     monkeypatch.setattr(consumer.os, "stat", service_stat)
     monkeypatch.setattr(consumer.os, "access", lambda *_args: True)
     path = parent / "decisions.sqlite"
-    consumer.DecisionLedger(path)
+    consumer.DecisionLedger(path, _qualification_v3_public_config())
     db = sqlite3.connect(path)
     try:
         db.execute(
@@ -14507,7 +14513,7 @@ def test_decision_ledger_startup_rejects_corrupt_persisted_receipt(
         db.close()
 
     with pytest.raises(ValueError, match="receipt is not canonical"):
-        consumer.DecisionLedger(path)
+        consumer.DecisionLedger(path, _qualification_v3_public_config())
 
 
 def test_ext4_layout_reserves_exact_sealed_core_inodes(tmp_path: Path):
@@ -14703,6 +14709,120 @@ def test_streamed_blob_descriptor_does_not_use_read_bytes(tmp_path: Path, monkey
         "size_bytes": 3072,
         "sha256": hashlib.sha256(b"abc" * 1024).hexdigest(),
     }
+
+
+def test_core_blob_bound_uses_signed_output_ceiling_not_legacy_512mib():
+    # PR #1249 review 3744728241: valid large descriptors use the signed ceiling.
+    from benchmarks.codegraph_compare.verifier_recompute import _core_blob_size
+
+    size = 513 * 1024 * 1024
+    plan = {"resource_ceilings": {"io_bytes": size}}
+
+    assert _core_blob_size(plan, size) == 537_919_488
+    with pytest.raises(ValueError, match="signed output ceiling"):
+        _core_blob_size(plan, size + 1)
+
+
+def test_shared_verifier_debugfs_timeout_uses_image_size_and_absolute_deadline(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744728245: all receipt/verifier extraction shares this path.
+    from benchmarks.codegraph_compare import execution_budget, verifier
+
+    image = tmp_path / "data.img"
+    image.write_bytes(b"")
+    os.truncate(image, 16 * 1024 * 1024 * 1024)
+    observed = []
+    monkeypatch.setattr(execution_budget.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(
+        verifier.subprocess,
+        "run",
+        lambda *args, **kwargs: (
+            observed.append(kwargs["timeout"]) or SimpleNamespace(returncode=0)
+        ),
+    )
+
+    verifier._extract_ext4(image, tmp_path / "out", deadline_monotonic=200.0)
+
+    assert observed == [100.0]
+
+
+def test_exact14_manifest_preflight_counts_outer_json_escaping_and_rejects_ceiling(
+    monkeypatch,
+):
+    # PR #1249 review 3744728248: frame failure must precede the first cell.
+    from benchmarks.codegraph_compare import verifier_service
+
+    cells = [({"p": '"'}, {"i": "\\"}, {"c": 1}) for _ in range(14)]
+
+    assert verifier_service.exact14_manifest_preflight_bound(cells) == 29_364_798
+    monkeypatch.setattr(verifier_service, "MAX_FRAME", 29_364_797)
+    with pytest.raises(ValueError, match="protocol ceiling"):
+        verifier_service.preflight_exact14_manifest(cells)
+
+
+def test_decision_ledger_startup_verifies_persisted_receipt_signature(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744728250: logical receipt corruption fails before listen.
+    import sqlite3
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from benchmarks.codegraph_compare import decision_consumer_service as consumer
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+
+    parent = tmp_path / "signed-decision-ledger"
+    parent.mkdir(mode=0o700)
+    real_stat = consumer.os.stat
+
+    def service_stat(path, *args, **kwargs):
+        metadata = real_stat(path, *args, **kwargs)
+        if Path(path) == parent:
+            return SimpleNamespace(
+                st_uid=904, st_mode=__import__("stat").S_IFDIR | 0o700
+            )
+        return metadata
+
+    monkeypatch.setattr(consumer.os, "stat", service_stat)
+    monkeypatch.setattr(consumer.os, "access", lambda *_args: True)
+    config = _qualification_v3_public_config()
+    path = parent / "decisions.sqlite"
+    consumer.DecisionLedger(path, config)
+    body = {
+        "schema_version": 1,
+        "decision_id": "a" * 64,
+        "decision_contract_sha256": "d" * 64,
+        "manifest_sha256": "c" * 64,
+        "verdict_status": "SETUP_QUALIFIED",
+        "consumed_at_ns": 1,
+        "service_identity": config["trusted"]["decision_consumer_runtime"][
+            "measurement"
+        ],
+    }
+    signature = (
+        Ed25519PrivateKey.from_private_bytes(b"\x66" * 32)
+        .sign(consumer.RECEIPT_DOMAIN + canonical_json_bytes(body))
+        .hex()
+    )
+    receipt = {
+        "receipt": body,
+        "key_id": config["decision_consumer"]["key_id"],
+        "algorithm": "Ed25519",
+        "signature": ("0" if signature[0] != "0" else "1") + signature[1:],
+    }
+    db = sqlite3.connect(path)
+    try:
+        db.execute(
+            "INSERT INTO consumed VALUES(?,?,?,?,?)",
+            ("a" * 64, "b" * 64, "c" * 64, 1, canonical_json_bytes(receipt)),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    with pytest.raises(ValueError, match="signature invalid"):
+        consumer.DecisionLedger(path, config)
 
 
 _mark_posix_qualification_section_tests()

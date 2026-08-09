@@ -12,6 +12,7 @@ import struct
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,7 @@ from benchmarks.codegraph_compare.verifier_aggregate import (
 )
 from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
 
-MAX_FRAME = 64 * 1024 * 1024
+MAX_FRAME = 512 * 1024 * 1024
 READ_DEADLINE_SECONDS = 10
 VERDICT_DOMAIN = b"NO1-008A-EXTERNAL-VERIFIER-VERDICT-V2\0"
 CHALLENGE_DOMAIN = b"NO1-008A-EXTERNAL-VERIFIER-CHALLENGE-V1\0"
@@ -50,6 +51,39 @@ LEDGER_DOMAIN = b"NO1-008A-EXTERNAL-VERIFIER-LEDGER-V1\0"
 _HEX = frozenset("0123456789abcdef")
 MANIFEST_MAX_DEPTH = 64
 MANIFEST_MAX_NODES = 4_000_000
+# Closed schema overhead for hashes, signatures, artifact descriptors, audit fields,
+# and the two receipt-service envelopes per cell. Variable root-authorized plan and
+# inventory bytes are accounted separately below, including outer JSON escaping.
+MANIFEST_CELL_SCHEMA_OVERHEAD = 2 * 1024 * 1024
+
+
+def exact14_manifest_preflight_bound(
+    cells: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]],
+) -> int:
+    """Return a no-consume upper bound for the canonical exact-14 request frame."""
+    if len(cells) != len(EXPECTED_CELLS):
+        raise ValueError("manifest preflight requires exact fourteen cells")
+    total = 4096
+    for plan, inventory, contract in cells:
+        if any(type(value) is not dict for value in (plan, inventory, contract)):
+            raise ValueError("manifest preflight inputs must be objects")
+        # The manifest is itself carried as the manifest_bytes JSON string. Every
+        # quote/backslash in already-canonical input can therefore grow by one byte.
+        canonical = b"".join(
+            canonical_json_bytes(value) for value in (plan, inventory, contract)
+        )
+        escaped_growth = canonical.count(b'"') + canonical.count(b"\\")
+        total += len(canonical) + escaped_growth + MANIFEST_CELL_SCHEMA_OVERHEAD
+    return total
+
+
+def preflight_exact14_manifest(
+    cells: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]],
+) -> int:
+    bound = exact14_manifest_preflight_bound(cells)
+    if bound > MAX_FRAME:
+        raise ValueError("exact-14 manifest upper bound exceeds protocol ceiling")
+    return bound
 
 
 class _PostSendTransportError(Exception):
@@ -146,7 +180,13 @@ def _load_manifest(
     staged_root: Path,
     temporary: Path,
 ) -> tuple[dict[str, Any], str, str, str, str]:
-    if set(request) != {"operation", "challenge", "manifest_bytes", "manifest_sha256"}:
+    if set(request) != {
+        "operation",
+        "challenge",
+        "manifest_bytes",
+        "manifest_sha256",
+        "deadline_monotonic_ns",
+    }:
         raise ValueError("verifier request is not closed")
     if request["operation"] != "verify-exact-14":
         raise ValueError("verifier operation is not authorized")
@@ -291,6 +331,10 @@ def _verify(
 ) -> dict[str, Any]:
     digest = _hex64(request.get("manifest_sha256"), "manifest hash")
     challenge = _hex64(request.get("challenge"), "verifier challenge")
+    deadline_ns = request.get("deadline_monotonic_ns")
+    if type(deadline_ns) is not int or deadline_ns <= time.monotonic_ns():
+        raise TimeoutError("verifier service contract deadline expired")
+    deadline_monotonic = deadline_ns / 1_000_000_000
     ledger.start_verifying(digest, challenge)
     try:
         with tempfile.TemporaryDirectory(prefix="no1-008a-verifier-") as directory:
@@ -315,7 +359,17 @@ def _verify(
                 if str(cell[name]).startswith("/proc/self/fd/")
             }
             try:
-                verdict = aggregate_verdict(manifest, public_config=config)
+                verdict = aggregate_verdict(
+                    manifest,
+                    public_config=config,
+                    extractor=partial(
+                        __import__(
+                            "benchmarks.codegraph_compare.verifier",
+                            fromlist=["_extract_ext4"],
+                        )._extract_ext4,
+                        deadline_monotonic=deadline_monotonic,
+                    ),
+                )
             finally:
                 for descriptor in pinned:
                     os.close(descriptor)
@@ -630,6 +684,7 @@ def request_verdict(
         "challenge": begin["challenge"],
         "manifest_bytes": raw.decode("utf-8"),
         "manifest_sha256": digest,
+        "deadline_monotonic_ns": int(deadline * 1_000_000_000),
     }
     remaining = deadline - time.monotonic()
     if remaining <= 0:

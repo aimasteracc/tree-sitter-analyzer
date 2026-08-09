@@ -25,7 +25,10 @@ from benchmarks.codegraph_compare.receipt_v3 import (
 from benchmarks.codegraph_compare.receipt_v3_service import request_receipt
 from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 from benchmarks.codegraph_compare.verifier import parse_public_config
-from benchmarks.codegraph_compare.verifier_service import request_verdict
+from benchmarks.codegraph_compare.verifier_service import (
+    preflight_exact14_manifest,
+    request_verdict,
+)
 
 
 def _fsync_directory(path: Path) -> None:
@@ -101,11 +104,20 @@ def _run_impl(args: argparse.Namespace) -> int:
     cells = []
     staged_root = Path(args.staged_root).resolve(strict=True)
     plans: dict[tuple[str, str], dict[str, Any]] = {}
+    inventories: dict[tuple[str, str], dict[str, Any]] = {}
     plan_timeouts: dict[tuple[str, str], int] = {}
     for identity in EXPECTED_CELLS:
         plan = strict_json_loads(
             (staged_root / contracts[identity]["job_id"] / "plan.json").read_bytes()
         )
+        inventory = strict_json_loads(
+            (
+                staged_root / contracts[identity]["job_id"] / "inventory.json"
+            ).read_bytes()
+        )
+        if type(inventory) is not dict:
+            raise ValueError("operator inventory must be an object")
+        inventories[identity] = inventory
         value = plan.get("wall_timeout_seconds")
         if type(value) is not int or value < 1:
             raise ValueError("operator plan timeout invalid")
@@ -122,6 +134,14 @@ def _run_impl(args: argparse.Namespace) -> int:
             raise ValueError("staged plan does not match offline decision cell hash")
     if decision_contract["plan_set_hash"] != config["trusted"]["plan_set_hash"]:
         raise ValueError("offline decision plan set is not root-config authorized")
+    # This bound uses only root-staged inputs and runs before the first authority
+    # reservation, so an oversized exact-14 frame consumes no cell.
+    preflight_exact14_manifest(
+        [
+            (plans[identity], inventories[identity], contracts[identity])
+            for identity in EXPECTED_CELLS
+        ]
+    )
     phase_budget_seconds = sum(plan_timeouts.values())
     authority_budget_seconds = sum(
         authority_cell_budget_seconds(plans[identity]) for identity in EXPECTED_CELLS

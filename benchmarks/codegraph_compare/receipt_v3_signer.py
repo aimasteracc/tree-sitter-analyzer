@@ -232,7 +232,11 @@ def _build_body(
 
 
 def _full_semantic_verify(
-    args: argparse.Namespace, body: dict[str, object], config: dict[str, object]
+    args: argparse.Namespace,
+    body: dict[str, object],
+    config: dict[str, object],
+    *,
+    deadline_monotonic: float | None = None,
 ) -> dict[str, object]:
     """Recompute all raw evidence semantics before either service signs."""
     plan = strict_json_loads(_safe_path(args.plan).read_bytes())
@@ -261,7 +265,11 @@ def _full_semantic_verify(
         _verify_external_audit(body, evidence, config)
         with tempfile.TemporaryDirectory(prefix="no1-008a-semantic-") as temporary:
             extracted = Path(temporary)
-            _extract_ext4(Path(f"/proc/self/fd/{image_fds[0]}"), extracted)
+            _extract_ext4(
+                Path(f"/proc/self/fd/{image_fds[0]}"),
+                extracted,
+                deadline_monotonic=deadline_monotonic,
+            )
             sealed_body = _build_body(args, core_override=extracted)
             if canonical_json_bytes(sealed_body) != canonical_json_bytes(body):
                 raise ValueError(
@@ -282,6 +290,7 @@ def sign_verified_receipt(
     key: bytes,
     key_id: str,
     draft: dict[str, object] | None = None,
+    deadline_monotonic: float | None = None,
 ) -> dict[str, object]:
     """Pure in-process semantic verification/signing for the measured service."""
     if role not in {"executor", "approver"} or key_id != config[role]["key_id"]:
@@ -290,9 +299,15 @@ def sign_verified_receipt(
     # then _full_semantic_verify authenticates dm-verity and extracts it again.
     with tempfile.TemporaryDirectory(prefix=f"no1-008a-{role}-sealed-") as temporary:
         extracted = Path(temporary)
-        _extract_ext4(_safe_path(args.data_image), extracted)
+        _extract_ext4(
+            _safe_path(args.data_image),
+            extracted,
+            deadline_monotonic=deadline_monotonic,
+        )
         body = _build_body(args, core_override=extracted)
-        body = _full_semantic_verify(args, body, config)
+        body = _full_semantic_verify(
+            args, body, config, deadline_monotonic=deadline_monotonic
+        )
     if role == "executor":
         return create_executor_attestation(body, key_id, key)
     if type(draft) is not dict or canonical_json_bytes(body) != canonical_json_bytes(

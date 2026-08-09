@@ -37,14 +37,26 @@ def _plan_executions(plan: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     return [_mapping(item, "plan execution") for item in executions]
 
 
-def _read_core(root: Path, relative: str, expected_size: int) -> bytes:
-    relative = canonical_relative_path(relative)
+def _core_blob_size(plan: Mapping[str, Any], expected_size: int) -> int:
+    """Bind every descriptor size to the root-authorized aggregate output ceiling."""
+    ceilings = plan.get("resource_ceilings")
+    output_ceiling = ceilings.get("io_bytes") if type(ceilings) is dict else None
     if (
-        expected_size > 512 * 1024 * 1024
-        or type(expected_size) is not int
+        type(expected_size) is not int
         or expected_size < 0
+        or type(output_ceiling) is not int
+        or output_ceiling < 0
+        or expected_size > output_ceiling
     ):
-        raise ValueError("core blob size is invalid")
+        raise ValueError("core blob size exceeds signed output ceiling")
+    return expected_size
+
+
+def _read_core(
+    root: Path, relative: str, expected_size: int, plan: Mapping[str, Any]
+) -> bytes:
+    relative = canonical_relative_path(relative)
+    expected_size = _core_blob_size(plan, expected_size)
     root_fd = _open_root(root)
     try:
         descriptor = _open_beneath(root_fd, relative)
@@ -68,10 +80,11 @@ def _read_core(root: Path, relative: str, expected_size: int) -> bytes:
         os.close(root_fd)
 
 
-def _hash_core(root: Path, relative: str, expected_size: int) -> str:
+def _hash_core(
+    root: Path, relative: str, expected_size: int, plan: Mapping[str, Any]
+) -> str:
     relative = canonical_relative_path(relative)
-    if type(expected_size) is not int or expected_size < 0:
-        raise ValueError("core blob size is invalid")
+    expected_size = _core_blob_size(plan, expected_size)
     root_fd = _open_root(root)
     try:
         descriptor = _open_beneath(root_fd, relative)
@@ -93,8 +106,13 @@ def _hash_core(root: Path, relative: str, expected_size: int) -> str:
 
 
 def _stdout_matches_expected(
-    root: Path, relative: str, expected_size: int, expected_result: Any
+    root: Path,
+    relative: str,
+    expected_size: int,
+    expected_result: Any,
+    plan: Mapping[str, Any],
 ) -> bool:
+    expected_size = _core_blob_size(plan, expected_size)
     expected = canonical_json_bytes(expected_result)
     if len(expected) > MAX_EXPECTED_RESULT_BYTES or expected_size < len(expected):
         return False
@@ -199,7 +217,10 @@ def _verify_recomputed(
         raise ValueError("execution count, order, command, or result mismatch")
     producer_result = strict_json_loads(
         _read_core(
-            core, "producer-result.json", (core / "producer-result.json").stat().st_size
+            core,
+            "producer-result.json",
+            (core / "producer-result.json").stat().st_size,
+            plan,
         )
     )
     result_executions = [
@@ -234,11 +255,17 @@ def _verify_recomputed(
             "final_index_observation",
         ):
             blob = item[field]
-            if _hash_core(core, blob["path"], blob["size_bytes"]) != blob["sha256"]:
+            if (
+                _hash_core(core, blob["path"], blob["size_bytes"], plan)
+                != blob["sha256"]
+            ):
                 raise ValueError("raw bytes mismatch")
         query = spec.get("query")
         if query is not None and _read_core(
-            core, item["query_bytes"]["path"], item["query_bytes"]["size_bytes"]
+            core,
+            item["query_bytes"]["path"],
+            item["query_bytes"]["size_bytes"],
+            plan,
         ) != canonical_json_bytes(query):
             raise ValueError("oracle query bytes mismatch")
         expected_result = spec.get("expected_result")
@@ -248,12 +275,14 @@ def _verify_recomputed(
             stdout_blob["path"],
             stdout_blob["size_bytes"],
             expected_result,
+            plan,
         ):
             raise ValueError("expected result bytes mismatch")
         index_payload = _read_core(
             core,
             item["final_index_observation"]["path"],
             item["final_index_observation"]["size_bytes"],
+            plan,
         )
         index_records = strict_json_loads(b'{"records":' + index_payload + b"}")[
             "records"
@@ -265,8 +294,10 @@ def _verify_recomputed(
         ):
             raise ValueError("final index observation records invalid")
         for record in index_records:
-            payload = _read_core(core / "index", record["path"], record["size_bytes"])
-            if hashlib.sha256(payload).hexdigest() != record["sha256"]:
+            if (
+                _hash_core(core / "index", record["path"], record["size_bytes"], plan)
+                != record["sha256"]
+            ):
                 raise ValueError("final index observation content mismatch")
     partition = body["index_partition"]
     names = ("indexed_paths", "excluded_paths", "parse_error_paths")

@@ -10,7 +10,7 @@ import sqlite3
 import stat
 import struct
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -209,7 +209,22 @@ def verify_verdict_envelope(
 class DecisionLedger:
     """Host-authoritative one-use ledger using a fresh connection per transaction."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, config: Mapping[str, Any]):
+        self._decision_config = config
+        role = config.get("decision_consumer")
+        trusted = config.get("trusted")
+        runtime = (
+            trusted.get("decision_consumer_runtime") if type(trusted) is dict else None
+        )
+        if (
+            type(role) is not dict
+            or type(runtime) is not dict
+            or type(role.get("key_id")) is not str
+            or type(role.get("public_key_hex")) is not str
+            or len(role["public_key_hex"]) != 64
+            or type(runtime.get("measurement")) is not dict
+        ):
+            raise ValueError("decision ledger verification config invalid")
         parent = path.parent.resolve(strict=True)
         meta = os.stat(parent)
         if (
@@ -490,7 +505,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if key.public_key().public_bytes_raw().hex() != config[role]["public_key_hex"]:
         os.close(fd)
         raise SystemExit("decision consumer private key does not match public config")
-    ledger = DecisionLedger(Path(args.ledger))
+    ledger = DecisionLedger(Path(args.ledger), config)
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(args.socket)
     # Filesystem access must not preempt the exact SO_PEERCRED UID authorization.

@@ -279,11 +279,15 @@ def _sign(
     measurement: dict[str, Any],
     launch_attestation: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    expected = {"operation", "authority_response"} | (
+    expected = {"operation", "authority_response", "deadline_monotonic_ns"} | (
         {"draft"} if role == "approver" else set()
     )
     if set(request) != expected or request["operation"] != f"{role}-sign":
         raise ValueError("receipt service request is not closed")
+    deadline_ns = request["deadline_monotonic_ns"]
+    if type(deadline_ns) is not int or deadline_ns <= time.monotonic_ns():
+        raise TimeoutError(f"{role} service contract deadline expired")
+    deadline_monotonic = deadline_ns / 1_000_000_000
     response = _verify_authority(request["authority_response"], config)
     paths = _paths(response, artifact_root, staged_root)
     try:
@@ -331,6 +335,7 @@ def _sign(
                 key=signer.private_bytes_raw(),
                 key_id=config[role]["key_id"],
                 draft=request.get("draft"),
+                deadline_monotonic=deadline_monotonic,
             )
             return response["job_id"], result
     finally:
@@ -398,9 +403,11 @@ def request_receipt(
     if timeout <= 0:
         raise TimeoutError(f"{role} overall deadline expired")
     service = config[role]
+    deadline = time.monotonic() + timeout
     request: dict[str, Any] = {
         "operation": f"{role}-sign",
         "authority_response": authority_response,
+        "deadline_monotonic_ns": int(deadline * 1_000_000_000),
     }
     if role == "approver":
         if draft is None:
@@ -412,7 +419,6 @@ def request_receipt(
     if len(payload) > MAX_MESSAGE:
         raise ValueError("receipt service request exceeds protocol bound")
     framed = struct.pack("!I", len(payload)) + payload
-    deadline = time.monotonic() + timeout
 
     def round_trip() -> dict[str, Any]:
         remaining = deadline - time.monotonic()

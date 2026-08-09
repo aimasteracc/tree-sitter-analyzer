@@ -15,15 +15,11 @@ from typing import Any
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from benchmarks.codegraph_compare.execution_budget import extraction_timeout_seconds
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
     verify_receipt,
-)
-from benchmarks.codegraph_compare.setup_qualification_paths import (
-    _open_beneath,
-    _open_root,
-    canonical_relative_path,
 )
 from benchmarks.codegraph_compare.verifier_evidence import (
     _verify_external_audit,
@@ -381,38 +377,6 @@ def _sha_file(path: Path) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
-def _read_core(root: Path, relative: str, expected_size: int) -> bytes:
-    relative = canonical_relative_path(relative)
-    if (
-        expected_size > 512 * 1024 * 1024
-        or type(expected_size) is not int
-        or expected_size < 0
-    ):
-        raise ValueError("core blob size is invalid")
-    root_fd = _open_root(root)
-    try:
-        descriptor = _open_beneath(root_fd, relative)
-        try:
-            metadata = os.fstat(descriptor)
-            if metadata.st_size != expected_size:
-                raise ValueError("core blob size mismatch")
-            chunks = bytearray()
-            while len(chunks) < expected_size:
-                chunk = os.read(
-                    descriptor, min(1024 * 1024, expected_size - len(chunks))
-                )
-                if not chunk:
-                    break
-                chunks.extend(chunk)
-            if len(chunks) != expected_size or os.read(descriptor, 1):
-                raise ValueError("core blob changed")
-            return bytes(chunks)
-        finally:
-            os.close(descriptor)
-    finally:
-        os.close(root_fd)
-
-
 def _mapping(value: Any, label: str) -> Mapping[str, Any]:
     if type(value) is not dict:
         raise ValueError(f"{label} must be an object")
@@ -446,14 +410,32 @@ def _run_verity(command: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
     )
 
 
-def _extract_ext4(data_image: Path, destination: Path) -> None:
+def _extract_ext4(
+    data_image: Path, destination: Path, *, deadline_monotonic: float | None = None
+) -> None:
     # debugfs opens the image read-only by default; destination is a fresh 0700 directory.
+    descriptor = (
+        int(data_image.name)
+        if str(data_image).startswith("/proc/self/fd/")
+        else os.open(
+            data_image, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+        )
+    )
+    owned = not str(data_image).startswith("/proc/self/fd/")
+    try:
+        image_size = os.fstat(descriptor).st_size
+        timeout = extraction_timeout_seconds(
+            image_size, deadline_monotonic=deadline_monotonic
+        )
+    finally:
+        if owned:
+            os.close(descriptor)
     result = subprocess.run(
         ["debugfs", "-R", f"rdump / {destination}", str(data_image)],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         check=False,
-        timeout=120,
+        timeout=timeout,
         pass_fds=(int(str(data_image).rsplit("/", 1)[-1]),)
         if str(data_image).startswith("/proc/self/fd/")
         else (),

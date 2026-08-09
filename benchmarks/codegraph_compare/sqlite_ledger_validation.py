@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
 )
 
 GENESIS = "0" * 64
+DECISION_RECEIPT_DOMAIN = b"NO1-008A-DECISION-RECEIPT-V1\0"
 EVENTS = frozenset({"CHALLENGED", "VERIFYING", "CONSUMED", "FAILED"})
 _HEX = frozenset("0123456789abcdef")
 
@@ -189,12 +192,31 @@ def validate_decision_ledger(owner: Any) -> None:
                 or body["verdict_status"] != "SETUP_QUALIFIED"
                 or type(body["consumed_at_ns"]) is not int
                 or type(body["service_identity"]) is not dict
+                or body["consumed_at_ns"] != consumed_at
+                or body["service_identity"]
+                != owner._decision_config["trusted"]["decision_consumer_runtime"][
+                    "measurement"
+                ]
                 or receipt["algorithm"] != "Ed25519"
-                or type(receipt["key_id"]) is not str
+                or receipt["key_id"]
+                != owner._decision_config["decision_consumer"]["key_id"]
                 or type(receipt["signature"]) is not str
                 or len(receipt["signature"]) != 128
             ):
                 raise ValueError("stored decision receipt does not match ledger row")
             _hex64(body["decision_contract_sha256"], "stored decision digest")
+            try:
+                signature = bytes.fromhex(receipt["signature"])
+                public = bytes.fromhex(
+                    owner._decision_config["decision_consumer"]["public_key_hex"]
+                )
+                Ed25519PublicKey.from_public_bytes(public).verify(
+                    signature,
+                    DECISION_RECEIPT_DOMAIN + canonical_json_bytes(body),
+                )
+            except (TypeError, ValueError) as error:
+                raise ValueError("stored decision receipt signature invalid") from error
+            except Exception as error:
+                raise ValueError("stored decision receipt signature invalid") from error
     finally:
         db.close()
