@@ -38,9 +38,9 @@
       "maximum": 14
     },
     "attempts_per_cell": {
-      "type": [
-        "integer",
-        "null"
+      "enum": [
+        1,
+        null
       ]
     },
     "counters": {
@@ -93,5 +93,29 @@
     "unlock_allowed": {
       "const": false
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "SETUP_QUALIFIED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "observed_receipts": {
+            "const": 14
+          },
+          "attempts_per_cell": {
+            "const": 1
+          }
+        }
+      }
+    }
+  ]
 }

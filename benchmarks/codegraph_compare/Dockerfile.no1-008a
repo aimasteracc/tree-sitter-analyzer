@@ -1,0 +1,22 @@
+# BASE_IMAGE must be supplied as an immutable repository@sha256 reference.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE} AS runtime
+WORKDIR /opt/tsa
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/opt/tsa
+COPY pyproject.toml README.md ./
+COPY tree_sitter_analyzer ./tree_sitter_analyzer
+COPY benchmarks/codegraph_compare ./benchmarks/codegraph_compare
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends cryptsetup-bin e2fsprogs \
+ && rm -rf /var/lib/apt/lists/* \
+ && python -m pip install --no-cache-dir .
+USER 65532:65532
+
+FROM runtime AS producer
+ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.setup_qualification_executor"]
+
+FROM runtime AS signer
+ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.receipt_v3_signer"]
+
+FROM runtime AS verifier
+ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.verifier"]

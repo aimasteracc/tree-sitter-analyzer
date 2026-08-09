@@ -8,7 +8,10 @@
 
 # Tests, benchmarks, docs, RFCs — not needed to run the MCP server.
 tests
-benchmarks
+benchmarks/*
+!benchmarks/codegraph_compare/
+benchmarks/codegraph_compare/*
+!benchmarks/codegraph_compare/*.py
 docs
 rfcs
 examples

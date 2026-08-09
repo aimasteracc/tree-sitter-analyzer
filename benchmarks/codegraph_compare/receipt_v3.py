@@ -136,7 +136,7 @@ def _integer(value: Any, label: str, *, minimum: int = 0) -> int:
 
 def _path(value: Any, label: str, *, absolute: bool = False) -> str:
     text = _text(value, label)
-    if "\0" in text or "\\" in text or "//" in text:
+    if "," in text or "\\" in text or "//" in text or any(ord(char) < 32 or ord(char) == 127 for char in text):
         raise ValueError(f"{label} is not canonical")
     parts = text.split("/")
     start = 1 if absolute else 0
@@ -157,6 +157,10 @@ def validate_body(body: Any) -> None:
     cell = _exact(body["cell"], frozenset({"repo_id", "arm_id", "attempt", "artifact_path"}), "cell")
     _text(cell["repo_id"], "cell.repo_id", 64)
     _text(cell["arm_id"], "cell.arm_id", 64)
+    if cell["repo_id"] not in {"vscode", "excalidraw", "django", "tokio", "okhttp", "gin", "alamofire"} or cell["arm_id"] not in {"tsa-warm", "codegraph-warm"}:
+        raise ValueError("cell identity must belong to the exact 14-cell manifest")
+    if cell["artifact_path"] != f"cells/{cell['repo_id']}/{cell['arm_id']}/cell-receipt.json":
+        raise ValueError("cell artifact path must match its exact identity")
     if cell["attempt"] != 1 or type(cell["attempt"]) is not int:
         raise ValueError("cell attempt must be exact integer 1")
     _path(cell["artifact_path"], "cell.artifact_path")
@@ -164,8 +168,8 @@ def validate_body(body: Any) -> None:
     plan = _exact(body["plan"], frozenset({"plan_hash", "plan_set_hash", "tool_sha256", "config_sha256", "image_digest", "seccomp_sha256"}), "plan")
     for key in ("plan_hash", "plan_set_hash", "tool_sha256", "config_sha256", "seccomp_sha256"):
         _hex(plan[key], f"plan.{key}")
-    if not _text(plan["image_digest"], "plan.image_digest").startswith("sha256:"):
-        raise ValueError("plan image must use a digest")
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", _text(plan["image_digest"], "plan.image_digest")) is None:
+        raise ValueError("plan image must use an exact lowercase sha256 digest")
 
     source = _exact(body["source"], frozenset({"commit", "eligibility", "repo_fingerprint", "mount_target", "read_only"}), "source")
     _text(source["commit"], "source.commit", 128)
@@ -193,7 +197,8 @@ def validate_body(body: Any) -> None:
         raise ValueError("environment isolation is not exact")
     if type(environment["docker_security_flags"]) is not list or any(type(v) is not str for v in environment["docker_security_flags"]):
         raise ValueError("docker security flags must be exact strings")
-    _text(environment["image_digest"], "environment.image_digest")
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", _text(environment["image_digest"], "environment.image_digest")) is None:
+        raise ValueError("environment image must use an exact lowercase sha256 digest")
 
     counters = _exact(body["counters"], COUNTER_KEYS, "counters")
     if any(type(value) not in (int, float) or type(value) is bool or value != 0 for value in counters.values()):
@@ -205,9 +210,12 @@ def validate_body(body: Any) -> None:
         if key != "plan_digest" and (type(value) not in (int, float) or type(value) is bool or not math.isfinite(value) or value < 0):
             raise ValueError(f"resources.{key} must be finite and non-negative")
 
-    if type(body["executions"]) is not list or not body["executions"]:
-        raise ValueError("executions must be a non-empty ordered list")
+    if type(body["executions"]) is not list or len(body["executions"]) != 5:
+        raise ValueError("executions must contain exact delete/build/health/symbol/call order")
     execution_keys = frozenset({"id", "argv", "cwd", "environment_digest", "exit_code", "stdout_bytes", "stderr_bytes", "query_bytes", "index_bytes"})
+    execution_ids = [item.get("id") if type(item) is dict else None for item in body["executions"]]
+    if execution_ids[:3] != ["delete", "build", "health"] or len(set(execution_ids)) != 5:
+        raise ValueError("executions must contain exact unique plan order")
     for number, execution in enumerate(body["executions"]):
         item = _exact(execution, execution_keys, f"executions[{number}]")
         _text(item["id"], "execution.id")
@@ -245,14 +253,15 @@ def validate_body(body: Any) -> None:
     audit = _exact(body["process_audit"], frozenset({"producer_container_id", "image_digest", "cgroup_id", "pid1_exit", "descendants_after_stop", "one_start", "network_syscall_denials", "audit_bytes"}), "process_audit")
     for name in ("producer_container_id", "image_digest", "cgroup_id"):
         _text(audit[name], f"process_audit.{name}")
-    if type(audit["pid1_exit"]) is not int or audit["descendants_after_stop"] != 0 or audit["one_start"] is not True or type(audit["network_syscall_denials"]) is not int:
+    if type(audit["pid1_exit"]) is not int or audit["descendants_after_stop"] != 0 or audit["one_start"] is not True or type(audit["network_syscall_denials"]) is not int or audit["network_syscall_denials"] < 0:
         raise ValueError("process audit is not terminal and isolated")
     _blob(audit["audit_bytes"], "process_audit.audit_bytes")
 
-    approval = _exact(body["oracle_approval"], frozenset({"approved", "approval_bytes"}), "oracle_approval")
+    approval = _exact(body["oracle_approval"], frozenset({"approved", "statement", "oracle_results_hash"}), "oracle_approval")
     if approval["approved"] is not True:
         raise ValueError("oracle approval must be exact true")
-    _blob(approval["approval_bytes"], "oracle_approval.approval_bytes")
+    _text(approval["statement"], "oracle_approval.statement", 4096)
+    _hex(approval["oracle_results_hash"], "oracle_approval.oracle_results_hash")
 
 
 def canonical_body_bytes(body: Mapping[str, Any]) -> bytes:

@@ -104,7 +104,10 @@ the NO1-008A E0 evidence boundary. Responsibilities are split into focused modul
 - `setup_qualification_orchestration.py` — non-executing E0 orchestration
 - `setup_qualification_executor.py` — keyless, single-attempt producer entrypoint
 - `receipt_v3.py` — strict detached receipt body and domain-separated dual signatures
-- `verifier.py` — fresh public-key-only cell and exact-14 aggregate verification
+- `receipt_v3_signer.py` — stdout-only isolated executor/approver signer CLIs
+- `verifier.py` — fresh public-key-only per-cell dm-verity/image/core recomputation
+- `verifier_aggregate.py` — mandatory-public-config exact-14 manifest authority and CLI
+- `Dockerfile.no1-008a` — digest-base multi-target producer/signer/verifier images
 - `scripts/no1_008a_operator.sh` — Linux root/dm-verity isolated four-role operator
 
 Receipt v2 remains fail-closed and cannot be upgraded through the E0 orchestrator.

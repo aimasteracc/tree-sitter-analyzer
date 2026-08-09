@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import resource
 import subprocess
 import time
@@ -23,10 +24,28 @@ from benchmarks.codegraph_compare.receipt_v3 import (
 )
 
 PLAN_KEYS = frozenset(
-    {"schema_version", "cell", "executions", "wall_timeout_seconds", "environment"}
+    {
+        "schema_version",
+        "cell",
+        "executions",
+        "wall_timeout_seconds",
+        "environment",
+        "artifact_path",
+        "plan_hash",
+        "plan_set_hash",
+        "tool_sha256",
+        "config_sha256",
+        "image_digest",
+        "seccomp_sha256",
+        "resource_plan_digest",
+        "index_partition",
+        "oracle_statement",
+    }
 )
 CELL_KEYS = frozenset({"repo_id", "arm_id", "attempt"})
-EXECUTION_KEYS = frozenset({"id", "argv", "cwd", "environment_digest", "query"})
+EXECUTION_KEYS = frozenset(
+    {"id", "argv", "cwd", "environment_digest", "query", "expected_result"}
+)
 ENVIRONMENT_KEYS = frozenset({"HOME", "LANG", "LC_ALL", "PATH"})
 FORBIDDEN_ENV_FRAGMENTS = (
     "KEY",
@@ -71,6 +90,37 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
         or plan["wall_timeout_seconds"] < 1
     ):
         raise ValueError("wall timeout must be a positive integer")
+    for name in (
+        "plan_hash",
+        "plan_set_hash",
+        "tool_sha256",
+        "config_sha256",
+        "seccomp_sha256",
+        "resource_plan_digest",
+    ):
+        if (
+            type(plan[name]) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", plan[name]) is None
+        ):
+            raise ValueError(f"{name} must be exact lowercase sha256")
+    if (
+        type(plan["image_digest"]) is not str
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", plan["image_digest"]) is None
+    ):
+        raise ValueError("image digest must be exact")
+    if (
+        type(plan["artifact_path"]) is not str
+        or type(plan["oracle_statement"]) is not str
+        or not plan["oracle_statement"]
+    ):
+        raise ValueError("artifact path and oracle statement are required")
+    partition = _exact(
+        plan["index_partition"],
+        frozenset({"indexed_paths", "excluded_paths", "parse_error_paths"}),
+        "index partition",
+    )
+    if any(type(partition[name]) is not list for name in partition):
+        raise ValueError("index partition lists are required")
     environment = _exact(plan["environment"], ENVIRONMENT_KEYS, "environment")
     if (
         environment["HOME"] != "/nonexistent"
@@ -81,9 +131,9 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
     if type(environment["PATH"]) is not str or not environment["PATH"]:
         raise ValueError("producer PATH is absent")
     executions = plan["executions"]
-    if type(executions) is not list or len(executions) < 4:
+    if type(executions) is not list or len(executions) != 5:
         raise ValueError(
-            "producer requires delete, build, health, and oracle executions"
+            "producer requires exact delete/build/health/symbol/call executions"
         )
     ids: list[str] = []
     for number, execution in enumerate(executions):
@@ -107,11 +157,15 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
             or len(item["environment_digest"]) != 64
         ):
             raise ValueError("execution environment digest is invalid")
-        if type(item["query"]) is not dict:
-            raise ValueError("execution query must be an object")
+        if type(item["query"]) is not dict or type(item["expected_result"]) is not dict:
+            raise ValueError("execution query and expected result must be objects")
         ids.append(item["id"])
-    if ids[:3] != ["delete", "build", "health"] or len(ids) != len(set(ids)):
-        raise ValueError("execution order or uniqueness is invalid")
+    if (
+        ids[:3] != ["delete", "build", "health"]
+        or len(ids) != len(set(ids))
+        or len(ids) != 5
+    ):
+        raise ValueError("execution count, order, or uniqueness is invalid")
     encoded = canonical_json_bytes(plan).decode("utf-8").upper()
     if any(
         fragment in encoded
@@ -185,23 +239,25 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
         if remaining <= 0:
             raise TimeoutError("cell wall timeout expired")
         before = resource.getrusage(resource.RUSAGE_CHILDREN)
+        process = subprocess.Popen(
+            execution["argv"],
+            cwd=execution["cwd"],
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
         try:
-            completed = subprocess.run(
-                execution["argv"],
-                cwd=execution["cwd"],
-                env=environment,
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                timeout=remaining,
-                check=False,
-            )
-            exit_code = completed.returncode
-            stdout = completed.stdout
-            stderr = completed.stderr
+            stdout, stderr = process.communicate(timeout=remaining)
+            exit_code = process.returncode
         except subprocess.TimeoutExpired as error:
+            # Kill the entire dedicated process group and synchronously reap PID1.
+            os.killpg(process.pid, 9)
+            tail_stdout, tail_stderr = process.communicate()
             exit_code = 124
-            stdout = error.stdout or b""
-            stderr = error.stderr or b""
+            stdout = (error.stdout or b"") + (tail_stdout or b"")
+            stderr = (error.stderr or b"") + (tail_stderr or b"")
         after = resource.getrusage(resource.RUSAGE_CHILDREN)
         query = canonical_json_bytes(execution["query"])
         index_snapshot = _index_bytes(index)

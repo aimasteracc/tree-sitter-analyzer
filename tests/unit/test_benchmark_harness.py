@@ -11297,7 +11297,15 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
             "network_syscall_denials": 1,
             "audit_bytes": dict(blob),
         },
-        "oracle_approval": {"approved": True, "approval_bytes": dict(blob)},
+        "oracle_approval": {
+            "approved": True,
+            "statement": "approver authorizes the exact oracle results",
+            "oracle_results_hash": hashlib.sha256(
+                json.dumps(
+                    [blob["sha256"], blob["sha256"]], separators=(",", ":")
+                ).encode()
+            ).hexdigest(),
+        },
     }
 
 
@@ -11390,7 +11398,7 @@ def test_qualification_v3_rejects_body_mutation():
     receipt = _qualification_v3_receipt()
     receipt["body"]["cell"]["repo_id"] = "gin"
     config = _qualification_v3_public_config()
-    with pytest.raises(ValueError, match="body hash mismatch"):
+    with pytest.raises(ValueError, match="artifact path|body hash mismatch"):
         verify_receipt(
             receipt,
             "executor",
@@ -11457,31 +11465,77 @@ def test_qualification_v3_rejects_noncanonical_artifact_path():
 
     body = _qualification_v3_body()
     body["cell"]["artifact_path"] = "cells/../receipt.json"
-    with pytest.raises(ValueError, match="not canonical"):
+    with pytest.raises(ValueError, match="artifact path|not canonical"):
         validate_body(body)
 
 
-def test_qualification_v3_aggregate_requires_exact_canonical_14_order():
+def _qualification_v3_manifest():
     from benchmarks.codegraph_compare.setup_qualification import EXPECTED_CELLS
+
+    return {
+        "schema_version": 1,
+        "verifier_nonce": "a" * 64,
+        "verifier_image_digest": "sha256:" + "b" * 64,
+        "cells": [
+            {
+                "repo_id": repo,
+                "arm_id": arm,
+                "attempt": 1,
+                "plan": {"identity": f"{repo}/{arm}"},
+                "inventory": {"repo_id": repo},
+                "receipt": _qualification_v3_receipt(repo, arm),
+                "data_image": "/evidence/data.img",
+                "hash_image": "/evidence/hash.img",
+                "process_audit": "/evidence/process-audit.json",
+            }
+            for repo, arm in EXPECTED_CELLS
+        ],
+    }
+
+
+def test_qualification_v3_aggregate_requires_public_config_and_full_verification(
+    monkeypatch,
+):
+    from benchmarks.codegraph_compare import verifier_aggregate as verifier
+
+    manifest = _qualification_v3_manifest()
+    monkeypatch.setattr(verifier, "verify_cell", lambda *args, **kwargs: ())
+    assert (
+        verifier.aggregate_verdict(
+            manifest, public_config=_qualification_v3_public_config()
+        )["status"]
+        == "SETUP_QUALIFIED"
+    )
+
+
+def test_qualification_v3_aggregate_rejects_reordered_cells(monkeypatch):
+    from benchmarks.codegraph_compare import verifier
+
+    manifest = _qualification_v3_manifest()
+    manifest["cells"][0], manifest["cells"][1] = (
+        manifest["cells"][1],
+        manifest["cells"][0],
+    )
+    monkeypatch.setattr(verifier, "verify_cell", lambda *args, **kwargs: ())
+    assert (
+        verifier.aggregate_verdict(
+            manifest, public_config=_qualification_v3_public_config()
+        )["status"]
+        == "NOT_EVALUATED"
+    )
+
+
+def test_qualification_v3_aggregate_has_no_default_empty_violations():
     from benchmarks.codegraph_compare.verifier import aggregate_verdict
 
-    receipts = [_qualification_v3_receipt(repo, arm) for repo, arm in EXPECTED_CELLS]
-    assert aggregate_verdict(receipts)["status"] == "SETUP_QUALIFIED"
-
-
-def test_qualification_v3_aggregate_rejects_reordered_cells():
-    from benchmarks.codegraph_compare.setup_qualification import EXPECTED_CELLS
-    from benchmarks.codegraph_compare.verifier import aggregate_verdict
-
-    receipts = [_qualification_v3_receipt(repo, arm) for repo, arm in EXPECTED_CELLS]
-    receipts[0], receipts[1] = receipts[1], receipts[0]
-    assert aggregate_verdict(receipts)["status"] == "NOT_EVALUATED"
+    with pytest.raises(TypeError, match="public_config"):
+        aggregate_verdict({})
 
 
 def test_qualification_v3_aggregate_claims_remain_e0_and_disabled():
     from benchmarks.codegraph_compare.verifier import aggregate_verdict
 
-    verdict = aggregate_verdict([])
+    verdict = aggregate_verdict({}, public_config=_qualification_v3_public_config())
     assert {
         key: verdict[key]
         for key in (
@@ -11568,6 +11622,174 @@ def test_qualification_seccomp_denies_exact_network_syscall_set():
             "errnoRet": 1,
         }
     ]
+
+
+def test_qualification_v3_manifest_requires_each_of_fourteen_complete_cells():
+    # Audit 2026-08-09 B2: aggregate authority requires a complete external manifest.
+    from benchmarks.codegraph_compare.verifier import validate_manifest
+
+    manifest = _qualification_v3_manifest()
+    del manifest["cells"][0]["hash_image"]
+    with pytest.raises(ValueError, match="manifest cell"):
+        validate_manifest(manifest)
+
+
+def test_qualification_v3_manifest_rejects_thirteen_cells():
+    # Audit 2026-08-09 B2: no partial matrix can enter aggregate verification.
+    from benchmarks.codegraph_compare.verifier import validate_manifest
+
+    manifest = _qualification_v3_manifest()
+    manifest["cells"].pop()
+    with pytest.raises(ValueError, match="exact 14"):
+        validate_manifest(manifest)
+
+
+def test_qualification_v3_verity_command_binds_both_image_hashes(tmp_path: Path):
+    # Audit 2026-08-09 B3: fresh verifier authenticates data/hash images itself.
+    from benchmarks.codegraph_compare.verifier import _verify_verity
+
+    data = tmp_path / "data.img"
+    hashes = tmp_path / "hash.img"
+    data.write_bytes(b"data")
+    hashes.write_bytes(b"hash")
+    body = _qualification_v3_body()
+    snapshot = body["snapshot"]
+    snapshot.update(
+        {
+            "data_image_size": 4,
+            "data_image_sha256": hashlib.sha256(b"data").hexdigest(),
+            "hash_image_size": 4,
+            "hash_image_sha256": hashlib.sha256(b"hash").hexdigest(),
+        }
+    )
+    commands = []
+
+    def runner(command):
+        commands.append(list(command))
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    _verify_verity(
+        body,
+        {"data_image": str(data.resolve()), "hash_image": str(hashes.resolve())},
+        runner,
+    )
+    assert commands == [
+        [
+            "veritysetup",
+            "verify",
+            str(data.resolve()),
+            str(hashes.resolve()),
+            "0" * 64,
+            "--hash",
+            "sha256",
+            "--salt",
+            "1" * 64,
+            "--data-block-size",
+            "4096",
+            "--hash-block-size",
+            "4096",
+        ]
+    ]
+
+
+def test_qualification_v3_verity_rejects_mutated_hash_image(tmp_path: Path):
+    # Audit 2026-08-09 B3: mutation of either image fails before extraction.
+    from benchmarks.codegraph_compare.verifier import _verify_verity
+
+    data = tmp_path / "data.img"
+    hashes = tmp_path / "hash.img"
+    data.write_bytes(b"data")
+    hashes.write_bytes(b"mutated")
+    body = _qualification_v3_body()
+    body["snapshot"].update(
+        {
+            "data_image_size": 4,
+            "data_image_sha256": hashlib.sha256(b"data").hexdigest(),
+            "hash_image_size": 4,
+            "hash_image_sha256": hashlib.sha256(b"hash").hexdigest(),
+        }
+    )
+    with pytest.raises(ValueError, match="image digest"):
+        _verify_verity(
+            body,
+            {"data_image": str(data.resolve()), "hash_image": str(hashes.resolve())},
+            lambda command: subprocess.CompletedProcess(command, 0, b"", b""),
+        )
+
+
+def test_qualification_v3_freshness_uses_image_and_process_identity():
+    # Audit 2026-08-09 P1.3: exit codes are never accepted as process identity.
+    from benchmarks.codegraph_compare.verifier import verify_cell
+
+    receipt = _qualification_v3_receipt()
+    body = receipt["body"]
+    failures = verify_cell(
+        receipt,
+        public_config=_qualification_v3_public_config(),
+        plan={},
+        inventory={},
+        evidence={},
+        verifier_nonce="a" * 64,
+        verifier_image_digest=body["process_audit"]["image_digest"],
+        process_identity="fresh-process",
+    )
+    assert failures == ("CELL_EVIDENCE_INVALID",)
+
+
+def test_qualification_v3_runtime_requires_exact_five_execution_order():
+    # Audit 2026-08-09 P2.1: runtime and schema pin identical execution cardinality.
+    from benchmarks.codegraph_compare.receipt_v3 import validate_body
+
+    body = _qualification_v3_body()
+    body["executions"].pop()
+    with pytest.raises(ValueError, match="exact delete"):
+        validate_body(body)
+
+
+def test_qualification_v3_operator_wires_independent_cell_inputs_and_roles():
+    # Audit 2026-08-09 B1/P1.2: exact CLIs use per-cell inputs and stdout handoff.
+    operator = Path("scripts/no1_008a_operator.sh").read_text(encoding="utf-8")
+    assert (
+        'plan="$cell/plan.json"',
+        'inventory="$cell/inventory.json"',
+        "sign-executor --plan /evidence/plan.json",
+        "sign-approver --attestation /handoff/executor.json",
+        "aggregate --manifest /evidence/manifest.json",
+        '>"$cell/executor-attestation.json"',
+    ) == tuple(
+        fragment
+        for fragment in (
+            'plan="$cell/plan.json"',
+            'inventory="$cell/inventory.json"',
+            "sign-executor --plan /evidence/plan.json",
+            "sign-approver --attestation /handoff/executor.json",
+            "aggregate --manifest /evidence/manifest.json",
+            '>"$cell/executor-attestation.json"',
+        )
+        if fragment in operator
+    )
+
+
+def test_qualification_v3_operator_preflight_requires_all_images_and_seccomp():
+    # Audit 2026-08-09 B1: preflight has no empty-image or empty-seccomp bypass.
+    operator = Path("scripts/no1_008a_operator.sh").read_text(encoding="utf-8")
+    assert (
+        'for path in "$PUBLIC_CONFIG" "$SECCOMP"',
+        "[[ -n $image ]]",
+        'require_digest_image "$image"',
+        'canonical_existing "$PLAN_DIR"',
+        'canonical_existing "$INVENTORY_DIR"',
+    ) == tuple(
+        fragment
+        for fragment in (
+            'for path in "$PUBLIC_CONFIG" "$SECCOMP"',
+            "[[ -n $image ]]",
+            'require_digest_image "$image"',
+            'canonical_existing "$PLAN_DIR"',
+            'canonical_existing "$INVENTORY_DIR"',
+        )
+        if fragment in operator
+    )
 
 
 _mark_posix_qualification_section_tests()

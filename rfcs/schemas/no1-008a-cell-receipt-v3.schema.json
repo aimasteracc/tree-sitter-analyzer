@@ -55,9 +55,7 @@
       ],
       "properties": {
         "path": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4096
+          "$ref": "#/$defs/relativePath"
         },
         "size_bytes": {
           "$ref": "#/$defs/nonnegative"
@@ -120,8 +118,7 @@
           }
         },
         "cwd": {
-          "type": "string",
-          "pattern": "^/"
+          "$ref": "#/$defs/absolutePath"
         },
         "environment_digest": {
           "$ref": "#/$defs/hash"
@@ -192,8 +189,7 @@
             },
             "artifact_path": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 4096
+              "pattern": "^cells/(vscode|excalidraw|django|tokio|okhttp|gin|alamofire)/(tsa-warm|codegraph-warm)/cell-receipt\\.json$"
             }
           }
         },
@@ -393,10 +389,11 @@
         },
         "executions": {
           "type": "array",
-          "minItems": 4,
+          "minItems": 5,
           "items": {
             "$ref": "#/$defs/execution"
-          }
+          },
+          "maxItems": 5
         },
         "index_partition": {
           "type": "object",
@@ -414,24 +411,21 @@
               "type": "array",
               "uniqueItems": true,
               "items": {
-                "type": "string",
-                "minLength": 1
+                "$ref": "#/$defs/relativePath"
               }
             },
             "excluded_paths": {
               "type": "array",
               "uniqueItems": true,
               "items": {
-                "type": "string",
-                "minLength": 1
+                "$ref": "#/$defs/relativePath"
               }
             },
             "parse_error_paths": {
               "type": "array",
               "uniqueItems": true,
               "items": {
-                "type": "string",
-                "minLength": 1
+                "$ref": "#/$defs/relativePath"
               }
             },
             "indexed_paths_hash": {
@@ -558,14 +552,20 @@
           "additionalProperties": false,
           "required": [
             "approved",
-            "approval_bytes"
+            "statement",
+            "oracle_results_hash"
           ],
           "properties": {
             "approved": {
               "const": true
             },
-            "approval_bytes": {
-              "$ref": "#/$defs/blob"
+            "statement": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            },
+            "oracle_results_hash": {
+              "$ref": "#/$defs/hash"
             }
           }
         }
@@ -600,13 +600,13 @@
         "tracked_regular_paths": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/relativePath"
           }
         },
         "eligible_paths": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/relativePath"
           }
         },
         "prefilter_exclusions": {
@@ -636,6 +636,18 @@
           "$ref": "#/$defs/hash"
         }
       }
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[,\\\\\\u0000-\\u001f\\u007f])[^/]+(?:/[^/]+)*$"
+    },
+    "absolutePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^/(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[,\\\\\\u0000-\\u001f\\u007f])[^/]+(?:/[^/]+)*$"
     }
   }
 }
