@@ -499,6 +499,11 @@ results include top-level authorization and failure reasons. `SETUP_QUALIFIED` i
 setup evidence only, never E2, a winner, a real-time freshness claim, or a
 publishable comparison.
 
+Build and run the wrapper through the `operator` image target so the root anchor is
+baked into the read-only image root. Host execution is fail-closed unless the anchor
+resource is externally pinned, read-only, and outside the writable checkout; a
+checkout-provided writable anchor is never accepted.
+
 Inspect the unprivileged contract surface without Docker or keys:
 
 ```bash

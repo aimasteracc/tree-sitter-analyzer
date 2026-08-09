@@ -173,65 +173,102 @@ def _verify_trusted_inputs(
         if source_digest.hexdigest() != trusted["source_snapshot_sha256"][repo]:
             raise ValueError("immutable source snapshot hash mismatch")
         os.lseek(source_fd, 0, os.SEEK_SET)
+        eligibility = inventory.get("eligibility", inventory)
+        tracked = eligibility.get("tracked_files")
+        if type(tracked) is not list:
+            raise ValueError("source inventory lacks tracked file records")
+        tracked_paths = [item[0] for item in tracked]
+        if tracked_paths != eligibility.get("tracked_regular_paths"):
+            raise ValueError("tracked source paths mismatch")
+        generated_paths: set[str] = set()
+        fingerprint = hashlib.sha256()
+        fingerprint.update(b'{"commit":')
+        fingerprint.update(canonical_json_bytes(eligibility.get("commit")))
+        fingerprint.update(b',"files":[')
         with (
             os.fdopen(os.dup(source_fd), "rb") as stream,
-            tarfile.open(fileobj=stream, mode="r:") as archive,
+            tarfile.open(fileobj=stream, mode="r|") as archive,
         ):
-            members = archive.getmembers()
-            for member in members:
+            seen: set[str] = set()
+            count = 0
+            for member in archive:
+                if count >= len(tracked):
+                    raise ValueError("source snapshot contains extra members")
+                path, mode, object_id, expected_size, content_hash = tracked[count]
                 canonical_relative_path(member.name)
-            if any(not member.isfile() for member in members):
-                raise ValueError(
-                    "source snapshot must contain only tracked regular files"
-                )
-            if any(
-                member.uid != 0
-                or member.gid != 0
-                or member.uname
-                or member.gname
-                or member.mtime != 0
-                for member in members
-            ):
-                raise ValueError("source snapshot metadata is not deterministic")
-            regular_members = {
-                member.name: member for member in members if member.isfile()
-            }
-            if len(regular_members) != sum(member.isfile() for member in members):
-                raise ValueError("source snapshot contains duplicate regular paths")
-            eligibility = inventory.get("eligibility", inventory)
-            tracked = eligibility.get("tracked_files")
-            if type(tracked) is not list:
-                raise ValueError("source inventory lacks tracked file records")
-            tracked_paths = [item[0] for item in tracked]
-            if tracked_paths != eligibility.get("tracked_regular_paths"):
-                raise ValueError("tracked source paths mismatch")
-            if set(tracked_paths) != set(regular_members):
-                raise ValueError("source snapshot regular inventory mismatch")
-            if [member.name for member in members] != tracked_paths:
-                raise ValueError("source snapshot order is not canonical")
-            if any(
-                regular_members[path].mode != (0o755 if item[1] == "100755" else 0o644)
-                for path, item in zip(tracked_paths, tracked, strict=True)
-            ):
-                raise ValueError("source snapshot executable modes mismatch")
-            files: list[tuple[str, str, str, str]] = []
-            contents: dict[str, bytes] = {}
-            for path, mode, object_id, expected_size, content_hash in tracked:
-                extracted = archive.extractfile(regular_members[path])
+                if member.name != path or member.name in seen or not member.isfile():
+                    raise ValueError(
+                        "source snapshot order or regular inventory mismatch"
+                    )
+                seen.add(member.name)
+                if (
+                    member.uid != 0
+                    or member.gid != 0
+                    or member.uname
+                    or member.gname
+                    or member.mtime != 0
+                    or member.mode != (0o755 if mode == "100755" else 0o644)
+                    or member.size != expected_size
+                ):
+                    raise ValueError("source snapshot metadata is not deterministic")
+                extracted = archive.extractfile(member)
                 if extracted is None:
                     raise ValueError("tracked source is not extractable")
-                payload = extracted.read(expected_size + 1)
-                if len(payload) != expected_size:
-                    raise ValueError("tracked source size mismatch")
-                digest = hashlib.sha256(payload).hexdigest()
-                algorithm = hashlib.sha1 if len(object_id) == 40 else hashlib.sha256
-                git_oid = algorithm(
-                    f"blob {len(payload)}\0".encode("ascii") + payload
-                ).hexdigest()
-                if digest != content_hash or git_oid != object_id:
+                content_digest = hashlib.sha256()
+                algorithms = {40: hashlib.sha1, 64: hashlib.sha256}
+                try:
+                    object_digest = algorithms[len(object_id)]()
+                except KeyError as exc:
+                    raise ValueError(
+                        "tracked source Git object format invalid"
+                    ) from exc
+                object_digest.update(f"blob {expected_size}\0".encode("ascii"))
+                overlap = b""
+                overlap_bytes = (
+                    max(
+                        (
+                            len(marker)
+                            for marker in DEFAULT_SOURCE_RULES.generated_markers
+                        ),
+                        default=1,
+                    )
+                    - 1
+                )
+                remaining = expected_size
+                generated = False
+                while remaining:
+                    chunk = extracted.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        raise ValueError("tracked source size mismatch")
+                    remaining -= len(chunk)
+                    content_digest.update(chunk)
+                    object_digest.update(chunk)
+                    window = overlap + chunk
+                    if not generated and any(
+                        marker in window
+                        for marker in DEFAULT_SOURCE_RULES.generated_markers
+                    ):
+                        generated = True
+                    overlap = window[-overlap_bytes:] if overlap_bytes else b""
+                if extracted.read(1):
+                    raise ValueError("tracked source exceeds declared size")
+                digest = content_digest.hexdigest()
+                if digest != content_hash or object_digest.hexdigest() != object_id:
                     raise ValueError("tracked source blob identity mismatch")
-                contents[path] = payload
-                files.append((path, mode, object_id, digest))
+                if generated:
+                    generated_paths.add(path)
+                if count:
+                    fingerprint.update(b",")
+                fingerprint.update(
+                    canonical_json_bytes([path, mode, object_id, digest])
+                )
+                count += 1
+            if count != len(tracked):
+                raise ValueError("source snapshot regular inventory mismatch")
+        fingerprint.update(b'],"inventory":')
+        fingerprint.update(canonical_json_bytes(eligibility.get("tracked_entries")))
+        fingerprint.update(b"}")
+        repo_fingerprint = fingerprint.hexdigest()
     finally:
         os.close(source_fd)
     rules = DEFAULT_SOURCE_RULES
@@ -268,7 +305,7 @@ def _verify_trusted_inputs(
             reason = "excluded-component"
         elif any(path.endswith(suffix) for suffix in rules.minified_suffixes):
             reason = "minified"
-        elif any(marker in contents[path] for marker in rules.generated_markers):
+        elif path in generated_paths:
             reason = "generated"
         if reason is None:
             expected_eligible.append(path)
@@ -285,14 +322,7 @@ def _verify_trusted_inputs(
         or eligibility.get("eligible_paths") != expected_eligible
         or eligibility.get("eligible_paths_hash") != sha_json(expected_eligible)
         or eligibility.get("prefilter_exclusions") != expected_excluded
-        or eligibility.get("repo_fingerprint")
-        != sha_json(
-            {
-                "commit": eligibility.get("commit"),
-                "inventory": records,
-                "files": files,
-            }
-        )
+        or eligibility.get("repo_fingerprint") != repo_fingerprint
     ):
         raise ValueError("source inventory semantic recomputation mismatch")
     for name in ("tool", "config", "seccomp"):

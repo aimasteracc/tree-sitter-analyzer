@@ -5,12 +5,20 @@ umask 077
 readonly REPOS=(vscode excalidraw django tokio okhttp gin alamofire)
 readonly ARMS=(tsa-warm codegraph-warm)
 usage(){ echo "usage: $0 contract|dry-run|preflight|run [closed pipeline options]" >&2; exit 64; }
-contract(){ printf '%s\n' '{"schema_version":1,"cells":14,"attempts_per_cell":1,"max_concurrency":1,"roles":["producer","authority-service","executor-service","approver-service","verifier-service"],"qualification":"production-verifier-exact-14-only"}'; }
+contract(){ printf '%s\n' '{"schema_version":1,"cells":14,"attempts_per_cell":1,"max_concurrency":1,"roles":["producer","auditor","executor","approver","verifier","decision-consumer"],"qualification":"production-verifier-exact-14-only"}'; }
 emit_cells(){ local count=0 repo arm; for repo in "${REPOS[@]}"; do for arm in "${ARMS[@]}"; do count=$((count+1)); printf '{"ordinal":%d,"repo_id":"%s","arm_id":"%s","attempt":1}\n' "$count" "$repo" "$arm"; done; done; [[ $count -eq 14 ]]; }
 COMMAND=${1:-}; [[ $# -gt 0 ]] || usage; shift
 [[ $COMMAND != contract ]] || { [[ $# -eq 0 ]] || usage; contract; exit 0; }
 [[ $COMMAND != dry-run ]] || { [[ $# -eq 0 ]] || usage; emit_cells; exit 0; }
 [[ $COMMAND == preflight || $COMMAND == run ]] || usage
+readonly ANCHOR_RESOURCE="$(python3 - <<'PY'
+from benchmarks.codegraph_compare.trust_anchor import ROOT_RESOURCE
+print(ROOT_RESOURCE.resolve(strict=True))
+PY
+)"
+if [[ ${NO1_008A_OPERATOR_IMAGE:-0} != 1 ]]; then
+ [[ $ANCHOR_RESOURCE != "$PWD"/* && ! -w $ANCHOR_RESOURCE ]] || { echo "host execution requires an externally pinned read-only root anchor outside the checkout; use the operator image" >&2; exit 65; }
+fi
 declare CONTRACTS_DIR='' AUTHORITY_SOCKET='' EXECUTOR_SOCKET='' APPROVER_SOCKET='' VERIFIER_SOCKET='' DECISION_CONSUMER_SOCKET='' DECISION_CONTRACT='' PUBLIC_CONFIG='' STAGED_ROOT='' EXPERIMENT_ROOT=''
 while [[ $# -gt 0 ]]; do case $1 in
  --contracts-dir) CONTRACTS_DIR=${2:?}; shift 2;;

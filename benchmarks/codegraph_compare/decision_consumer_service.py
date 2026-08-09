@@ -30,6 +30,7 @@ from benchmarks.codegraph_compare.service_runtime import (
     read_frame,
     secure_key,
     verify_service_launch_attestation,
+    wait_for_launch_release,
 )
 from benchmarks.codegraph_compare.trust_anchor import baked_root_public_key
 from benchmarks.codegraph_compare.verifier import parse_public_config
@@ -461,6 +462,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "public-config",
         "ledger",
         "launch-attestation",
+        "launch-release",
     ):
         parser.add_argument(f"--{name}", required=True)
     parser.add_argument("--allowed-client-uid", required=True, type=int)
@@ -470,10 +472,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     role = "decision_consumer"
     if os.geteuid() != 904 or config[role]["peer_uid"] != 904:
         raise SystemExit("decision consumer UID mismatch")
-    identity = measure_runtime(config["trusted"][f"{role}_runtime"]["measurement"])
-    verify_service_launch_attestation(
-        strict_json_loads(Path(args.launch_attestation).read_bytes()), role, config
+    launch_bytes = wait_for_launch_release(
+        Path(args.launch_attestation), Path(args.launch_release)
     )
+    identity = measure_runtime(config["trusted"][f"{role}_runtime"]["measurement"])
+    verify_service_launch_attestation(strict_json_loads(launch_bytes), role, config)
     fd, raw = secure_key(Path(args.private_key), os.geteuid())
     key = Ed25519PrivateKey.from_private_bytes(raw)
     if key.public_key().public_bytes_raw().hex() != config[role]["public_key_hex"]:

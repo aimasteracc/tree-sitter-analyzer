@@ -31,6 +31,7 @@ from benchmarks.codegraph_compare.service_runtime import (
     read_frame,
     secure_key,
     verify_service_launch_attestation,
+    wait_for_launch_release,
 )
 from benchmarks.codegraph_compare.trust_anchor import baked_root_public_key
 
@@ -293,6 +294,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--public-config", required=True)
     parser.add_argument("--launch-attestation", required=True)
+    parser.add_argument("--launch-release", required=True)
     args = parser.parse_args(argv)
     if os.geteuid() != 0 or platform.system() != "Linux":
         raise SystemExit("authority service requires Linux root")
@@ -300,11 +302,20 @@ def main(argv: list[str] | None = None) -> int:
     from benchmarks.codegraph_compare.verifier import parse_public_config
 
     config = parse_public_config(Path(args.public_config).read_bytes())
+    launch_bytes = wait_for_launch_release(
+        Path(args.launch_attestation), Path(args.launch_release)
+    )
     measure_runtime(config["trusted"]["auditor_runtime"]["measurement"])
     verify_service_launch_attestation(
-        strict_json_loads(Path(args.launch_attestation).read_bytes()), "auditor", config
+        strict_json_loads(launch_bytes), "auditor", config
     )
     key = _load_key(Path(args.private_key))
+    if (
+        args.key_id != config["auditor"]["key_id"]
+        or key.public_key().public_bytes_raw().hex()
+        != config["auditor"]["public_key_hex"]
+    ):
+        raise SystemExit("auditor private key identity does not match public config")
     runner = AuthorityRunner(Path(args.staged_root), Path(args.artifact_root), key)
     path = Path(args.socket)
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

@@ -11822,10 +11822,11 @@ def test_qualification_operator_contract_is_exact_closed_service_pipeline():
         "max_concurrency": 1,
         "roles": [
             "producer",
-            "authority-service",
-            "executor-service",
-            "approver-service",
-            "verifier-service",
+            "auditor",
+            "executor",
+            "approver",
+            "verifier",
+            "decision-consumer",
         ],
         "qualification": "production-verifier-exact-14-only",
     }
@@ -12640,6 +12641,7 @@ def test_authority_serializes_distinct_signed_jobs(tmp_path: Path):
     import time
 
     runner = _authority_runner_for_test(tmp_path)
+    runner._sync_sealed_job = lambda _job_id, _result: None
     guard = threading.Lock()
     active = 0
     maximum = 0
@@ -12678,6 +12680,7 @@ def test_authority_fsyncs_parent_after_reservation_and_terminal_replace(
 
     runner = _authority_runner_for_test(tmp_path)
     runner._execute = lambda _contract: {"ok": True}
+    runner._sync_sealed_job = lambda _job_id, _result: None
     synced = []
     monkeypatch.setattr(
         audit_authority_runner, "_fsync_directory", lambda path: synced.append(path)
@@ -13214,6 +13217,7 @@ def test_decision_consumer_rejects_wrong_private_key_before_ledger_or_listener(
         },
     )
     monkeypatch.setattr(consumer, "measure_runtime", lambda _value: {})
+    monkeypatch.setattr(consumer, "wait_for_launch_release", lambda *_args: b"{}")
     monkeypatch.setattr(
         consumer, "verify_service_launch_attestation", lambda *_args: {}
     )
@@ -13240,6 +13244,8 @@ def test_decision_consumer_rejects_wrong_private_key_before_ledger_or_listener(
                 str(tmp_path / "ledger.sqlite"),
                 "--launch-attestation",
                 str(launch_attestation),
+                "--launch-release",
+                str(tmp_path / "RELEASE"),
                 "--allowed-client-uid",
                 "901",
             ]
@@ -13348,7 +13354,13 @@ def test_launch_attestation_handoff_uses_private_role_owned_paths(
     assert directory_owners == [
         (name, expected[name], expected[name]) for name in sorted(expected)
     ]
-    assert sorted(file_owners) == sorted((uid, uid) for uid in expected.values())
+    assert {
+        name: stat.S_IMODE((output / name / "RELEASE").stat().st_mode)
+        for name in expected
+    } == dict.fromkeys(expected, 256)
+    assert sorted(file_owners) == sorted(
+        (uid, uid) for uid in expected.values() for _artifact in range(2)
+    )
 
 
 def test_producer_gate_releases_only_exact_signal(tmp_path: Path, monkeypatch):
@@ -13412,6 +13424,56 @@ def test_producer_gate_readiness_timeout_is_terminal(tmp_path: Path, monkeypatch
     monkeypatch.setattr(runner.time, "monotonic", lambda: next(calls, 11.0))
     with pytest.raises(TimeoutError, match="gate readiness expired"):
         runner._release_producer_gate(gate, "container", 10**30)
+
+
+def test_verifier_ledger_consumed_transition_persists_canonical_envelope_atomically(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744400335: a committed CONSUMED fact must recover its envelope.
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    monkeypatch.setattr(ChallengeLedger, "_acquire_lease", lambda _self: None)
+    ledger = ChallengeLedger(tmp_path / "verifier.sqlite")
+    manifest = "a" * 64
+    challenge = ledger.begin(manifest)["challenge"]
+    ledger.start_verifying(manifest, challenge)
+    expected = canonical_json_bytes({"challenge": challenge, "signed": True})
+
+    record, head, stored = ledger.finish_with_envelope(
+        manifest, challenge, lambda _record, _head: expected
+    )
+
+    assert record["event"] == "CONSUMED"
+    assert head == {"counter": record["counter"], "record_hash": record["record_hash"]}
+    assert stored == expected
+    assert ledger.verdict(manifest, challenge) == expected
+
+
+def test_service_launch_release_is_blocked_until_private_release_exists(tmp_path: Path):
+    # PR #1249 review 3744400323: services start blocked before exact-five attestation.
+    import threading
+    import time
+
+    from benchmarks.codegraph_compare.service_runtime import wait_for_launch_release
+
+    attestation = tmp_path / "launch-attestation.json"
+    release = tmp_path / "RELEASE"
+    attestation.write_bytes(b"{}")
+    attestation.chmod(0o400)
+    observed = []
+    waiter = threading.Thread(
+        target=lambda: observed.append(
+            wait_for_launch_release(attestation, release, timeout_seconds=2)
+        )
+    )
+    waiter.start()
+    time.sleep(0.05)
+    assert observed == []
+    release.write_bytes(b"RELEASE\n")
+    release.chmod(0o400)
+    waiter.join(timeout=2)
+    assert observed == [b"{}"]
 
 
 _mark_posix_qualification_section_tests()

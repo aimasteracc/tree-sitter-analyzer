@@ -27,6 +27,9 @@ from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _HEX = frozenset("0123456789abcdef")
+SERVICE_ROLES = frozenset(
+    {"executor", "approver", "auditor", "verifier", "decision_consumer"}
+)
 
 
 def recv_exact(connection: socket.socket, count: int, deadline: float) -> bytes:
@@ -311,7 +314,7 @@ def create_service_launch_attestation(
     key_id: str,
 ) -> dict[str, Any]:
     """Authority-side Docker observation; no service self-report is trusted."""
-    if role not in {"executor", "approver", "auditor", "verifier", "decision_consumer"}:
+    if role not in SERVICE_ROLES:
         raise ValueError("service launch role is not authorized")
     if key_id != config["auditor"]["key_id"]:
         raise ValueError("service launch attestor key identity mismatch")
@@ -429,6 +432,82 @@ def verify_service_launch_attestation(
     return dict(claim)
 
 
+def wait_for_launch_release(
+    attestation_path: Path,
+    release_path: Path,
+    *,
+    timeout_seconds: float = 60.0,
+) -> bytes:
+    """Remain blocked until the authority durably publishes and releases a role."""
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            release_fd = os.open(
+                release_path,
+                os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                release_meta = os.fstat(release_fd)
+                signal = os.read(release_fd, 8)
+                if (
+                    not stat.S_ISREG(release_meta.st_mode)
+                    or stat.S_IMODE(release_meta.st_mode) != 0o400
+                    or signal != b"RELEASE\n"
+                    or os.read(release_fd, 1)
+                ):
+                    raise ValueError("service launch release is invalid")
+            finally:
+                os.close(release_fd)
+            break
+        except FileNotFoundError:
+            if time.monotonic() >= deadline:
+                raise TimeoutError("service launch readiness gate expired") from None
+            time.sleep(0.01)
+    descriptor = os.open(
+        attestation_path,
+        os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+    )
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_IMODE(metadata.st_mode) != 0o400
+        ):
+            raise ValueError("service launch attestation handoff is not private")
+        payload = bytearray()
+        while chunk := os.read(descriptor, 1024 * 1024):
+            payload.extend(chunk)
+            if len(payload) > 4 * 1024 * 1024:
+                raise ValueError("service launch attestation exceeds bound")
+        return bytes(payload)
+    finally:
+        os.close(descriptor)
+
+
+def _durable_private_file(path: Path, payload: bytes, uid: int) -> None:
+    descriptor = os.open(
+        path,
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | os.O_CLOEXEC
+        | getattr(os, "O_NOFOLLOW", 0),
+        0o400,
+    )
+    try:
+        view = payload
+        while view:
+            written = os.write(descriptor, view)
+            if written == 0:
+                raise OSError("launch handoff write made no progress")
+            view = view[written:]
+        os.fchown(descriptor, uid, uid)
+        os.fchmod(descriptor, 0o400)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Authority launcher/attestor CLI; emits one canonical attestation per role."""
     import argparse
@@ -485,27 +564,9 @@ def main(argv: list[str] | None = None) -> int:
                 container, role, config, key, args.key_id
             )
             path = role_output / "launch-attestation.json"
-            descriptor = os.open(
-                path,
-                os.O_WRONLY
-                | os.O_CREAT
-                | os.O_EXCL
-                | os.O_CLOEXEC
-                | getattr(os, "O_NOFOLLOW", 0),
-                0o400,
+            _durable_private_file(
+                path, canonical_json_bytes(value) + b"\n", role_uids[role]
             )
-            try:
-                payload = canonical_json_bytes(value) + b"\n"
-                while payload:
-                    written = os.write(descriptor, payload)
-                    if written == 0:
-                        raise OSError("launch attestation write made no progress")
-                    payload = payload[written:]
-                os.fchown(descriptor, role_uids[role], role_uids[role])
-                os.fchmod(descriptor, 0o400)
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
             role_parent = os.open(
                 role_output,
                 os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_DIRECTORY", 0),
@@ -521,6 +582,20 @@ def main(argv: list[str] | None = None) -> int:
             os.fsync(parent)
         finally:
             os.close(parent)
+        # Release only after the exact-five attestation set is durable.
+        for role in sorted(SERVICE_ROLES):
+            role_output = output / role
+            _durable_private_file(
+                role_output / "RELEASE", b"RELEASE\n", role_uids[role]
+            )
+            role_parent = os.open(
+                role_output,
+                os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_DIRECTORY", 0),
+            )
+            try:
+                os.fsync(role_parent)
+            finally:
+                os.close(role_parent)
     finally:
         os.close(fd)
     return 0

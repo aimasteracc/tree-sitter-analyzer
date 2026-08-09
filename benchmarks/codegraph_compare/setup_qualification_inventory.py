@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Protocol
 
 from benchmarks.codegraph_compare.integrity import _sha256
+from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
 from benchmarks.codegraph_compare.setup_qualification_paths import (
     _hash_regular_descriptor,
     _open_beneath,
@@ -288,8 +289,12 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
     regular: list[str] = []
     eligible: list[str] = []
     excluded: list[tuple[str, str]] = []
-    file_hashes: list[tuple[str, str, str, str]] = []
     tracked_files: list[tuple[str, str, str, int, str]] = []
+    fingerprint = hashlib.sha256()
+    fingerprint.update(b'{"commit":')
+    fingerprint.update(canonical_json_bytes(commit))
+    fingerprint.update(b',"files":[')
+    fingerprint_count = 0
     extensions = rules.extensions(repo_id)
     regular_records: list[tuple[str, str, str]] = []
     preclassified: dict[str, str | None] = {}
@@ -324,9 +329,14 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
     def consume_blob(
         relative: str, content_hash: str, generated: bool, size: int
     ) -> None:
-        nonlocal worktree_bytes_consumed
+        nonlocal worktree_bytes_consumed, fingerprint_count
         mode, object_id = record_by_path[relative]
-        file_hashes.append((relative, mode, object_id, content_hash))
+        if fingerprint_count:
+            fingerprint.update(b",")
+        fingerprint.update(
+            canonical_json_bytes([relative, mode, object_id, content_hash])
+        )
+        fingerprint_count += 1
         tracked_files.append((relative, mode, object_id, size, content_hash))
         reason = preclassified[relative]
         if reason is None and generated:
@@ -366,6 +376,12 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
         )
     finally:
         os.close(root_fd)
+    fingerprint.update(b'],"inventory":')
+    fingerprint.update(
+        canonical_json_bytes([[path, mode, oid] for path, mode, oid in records])
+    )
+    fingerprint.update(b"}")
+    repo_fingerprint = fingerprint.hexdigest()
     if _git(
         repo, "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching"
     ):
@@ -388,12 +404,6 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
         tuple(sorted(excluded)),
         _sha256([(p, m, oid) for p, m, oid in records]),
         _sha256(list(eligible_paths)),
-        _sha256(
-            {
-                "commit": commit,
-                "inventory": [(p, m, oid) for p, m, oid in records],
-                "files": file_hashes,
-            }
-        ),
+        repo_fingerprint,
         root_tree_id=root_tree_id,
     )

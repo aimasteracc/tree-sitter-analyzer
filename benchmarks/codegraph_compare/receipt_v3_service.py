@@ -33,6 +33,7 @@ from benchmarks.codegraph_compare.service_runtime import (
     read_frame,
     secure_key,
     verify_service_launch_attestation,
+    wait_for_launch_release,
 )
 from benchmarks.codegraph_compare.setup_qualification_paths import (
     _hash_tree_descriptor,
@@ -463,18 +464,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--staged-root", required=True)
     parser.add_argument("--allowed-client-uid", required=True, type=int)
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--launch-attestation")
+    parser.add_argument("--launch-attestation", required=True)
+    parser.add_argument("--launch-release", required=True)
     args = parser.parse_args(argv)
     config = parse_public_config(Path(args.public_config).read_bytes())
     if os.geteuid() != config[args.role]["peer_uid"]:
         raise SystemExit("receipt service UID does not match root-signed identity")
-    # Measure and authenticate the actual launch before the signing key is opened.
+    # Stay blocked and keyless until the authority has attested all five roles.
+    launch_bytes = wait_for_launch_release(
+        Path(args.launch_attestation), Path(args.launch_release)
+    )
     measurement = measure_runtime(
         config["trusted"][f"{args.role}_runtime"]["measurement"]
     )
-    if not args.launch_attestation:
-        raise SystemExit("root-signed service launch attestation is required")
-    launch_attestation = strict_json_loads(Path(args.launch_attestation).read_bytes())
+    launch_attestation = strict_json_loads(launch_bytes)
     verify_service_launch_attestation(
         launch_attestation,
         args.role,
@@ -482,6 +485,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     key_fd, key_raw = secure_key(Path(args.private_key), os.geteuid())
     signer = Ed25519PrivateKey.from_private_bytes(key_raw)
+    if (
+        signer.public_key().public_bytes_raw().hex()
+        != config[args.role]["public_key_hex"]
+    ):
+        os.close(key_fd)
+        raise SystemExit(f"{args.role} private key does not match public config")
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(args.socket)
     # Filesystem access must not preempt the exact SO_PEERCRED UID authorization.

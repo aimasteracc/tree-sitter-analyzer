@@ -9,6 +9,7 @@ import sqlite3
 import stat
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from types import TracebackType
 from typing import Any, cast
@@ -66,6 +67,11 @@ class ChallengeLedger:
                     challenge TEXT NOT NULL, manifest_sha256 TEXT NOT NULL,
                     issued_at_ns INTEGER NOT NULL, event_at_ns INTEGER NOT NULL,
                     prev_hash TEXT NOT NULL, record_hash TEXT NOT NULL UNIQUE);
+                CREATE TABLE IF NOT EXISTS verdicts (
+                    challenge TEXT PRIMARY KEY,
+                    manifest_sha256 TEXT NOT NULL,
+                    envelope BLOB NOT NULL,
+                    FOREIGN KEY(challenge) REFERENCES challenges(challenge));
                 """)
             finally:
                 db.close()
@@ -319,6 +325,36 @@ class ChallengeLedger:
                 "counter": record["counter"],
                 "record_hash": record["record_hash"],
             }
+
+    def finish_with_envelope(
+        self,
+        manifest_sha256: str,
+        challenge: str,
+        build: Callable[[dict[str, Any], dict[str, Any]], bytes],
+    ) -> tuple[dict[str, Any], dict[str, Any], bytes]:
+        """Atomically commit CONSUMED and its canonical signed verdict bytes."""
+        with self._transaction():
+            record = self._transition_locked(manifest_sha256, challenge, "CONSUMED")
+            head = {"counter": record["counter"], "record_hash": record["record_hash"]}
+            envelope = build(record, head)
+            if type(envelope) is not bytes or not envelope:
+                raise ValueError("canonical verdict envelope bytes are invalid")
+            self.db.execute(
+                "INSERT INTO verdicts(challenge,manifest_sha256,envelope) VALUES(?,?,?)",
+                (challenge, manifest_sha256, envelope),
+            )
+            return record, head, envelope
+
+    def verdict(self, manifest_sha256: str, challenge: str) -> bytes:
+        """Recover committed canonical envelope bytes by both immutable identities."""
+        with self._transaction():
+            row = self.db.execute(
+                "SELECT envelope FROM verdicts WHERE challenge=? AND manifest_sha256=?",
+                (challenge, manifest_sha256),
+            ).fetchone()
+            if row is None:
+                raise ValueError("verifier verdict not found")
+            return bytes(row[0])
 
     def head(self) -> dict[str, Any]:
         with self._transaction():

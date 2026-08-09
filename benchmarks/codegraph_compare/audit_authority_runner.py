@@ -590,6 +590,42 @@ class AuthorityRunner:
             except OSError:
                 pass
 
+    def _sync_sealed_job(self, job_id: str, result: Mapping[str, Any]) -> None:
+        """Durably sync every signed artifact and its job directory before SUCCESS."""
+        artifacts = result.get("artifacts")
+        if type(artifacts) is not dict:
+            raise ValueError("runner result artifacts are absent before sealing")
+        job = (self._artifacts / job_id).resolve(strict=True)
+        files: set[Path] = set()
+        directories: set[Path] = {job}
+        for raw in artifacts.values():
+            path = Path(raw).resolve(strict=True)
+            if job != path and job not in path.parents:
+                raise ValueError("sealed artifact escapes job directory")
+            if path.is_dir():
+                directories.add(path)
+                for child in path.rglob("*"):
+                    if child.is_file() and not child.is_symlink():
+                        files.add(child)
+                    elif child.is_dir() and not child.is_symlink():
+                        directories.add(child)
+                    else:
+                        raise ValueError("sealed artifact tree contains special entry")
+            elif path.is_file() and not path.is_symlink():
+                files.add(path)
+            else:
+                raise ValueError("sealed artifact is not a regular file or directory")
+        for path in sorted(files):
+            descriptor = os.open(
+                path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
+            )
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        for path in sorted(directories, key=lambda item: len(item.parts), reverse=True):
+            _fsync_directory(path)
+
     def __call__(self, contract: Mapping[str, Any]) -> Mapping[str, Any]:
         with self._exclusive_execution():
             job_id = contract.get("job_id")
@@ -607,6 +643,7 @@ class AuthorityRunner:
             _fsync_directory(self._artifacts)
             try:
                 result = self._execute(contract)
+                self._sync_sealed_job(job_id, result)
             except Exception as error:
                 destination = self._artifacts / job_id
                 if destination.exists():

@@ -32,6 +32,7 @@ from benchmarks.codegraph_compare.service_runtime import (
     read_frame,
     secure_key,
     verify_service_launch_attestation,
+    wait_for_launch_release,
 )
 from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 from benchmarks.codegraph_compare.verifier import parse_public_config
@@ -318,26 +319,33 @@ def _verify(
     except BaseException:
         ledger.finish(digest, challenge, success=False)
         raise
-    consumption, head = ledger.finish_with_head(digest, challenge, success=True)
-    signed = {
-        "manifest_sha256": digest,
-        "decision_id": decision_id,
-        "decision_contract_sha256": decision_digest,
-        "challenge": challenge,
-        "ledger_counter": consumption["counter"],
-        "ledger_prev_hash": consumption["prev_hash"],
-        "issued_at_ns": consumption["issued_at_ns"],
-        "verdict": verdict,
-        "service_identity": measurement,
-        "consumption_record": _signed_ledger(consumption, key, config),
-        "ledger_head": _signed_ledger(head, key, config),
-    }
-    return {
-        **signed,
-        "key_id": config["verifier"]["key_id"],
-        "algorithm": "Ed25519",
-        "signature": key.sign(VERDICT_DOMAIN + canonical_json_bytes(signed)).hex(),
-    }
+
+    def build(consumption: dict[str, Any], head: dict[str, Any]) -> bytes:
+        signed = {
+            "manifest_sha256": digest,
+            "decision_id": decision_id,
+            "decision_contract_sha256": decision_digest,
+            "challenge": challenge,
+            "ledger_counter": consumption["counter"],
+            "ledger_prev_hash": consumption["prev_hash"],
+            "issued_at_ns": consumption["issued_at_ns"],
+            "verdict": verdict,
+            "service_identity": measurement,
+            "consumption_record": _signed_ledger(consumption, key, config),
+            "ledger_head": _signed_ledger(head, key, config),
+        }
+        envelope = {
+            **signed,
+            "key_id": config["verifier"]["key_id"],
+            "algorithm": "Ed25519",
+            "signature": key.sign(VERDICT_DOMAIN + canonical_json_bytes(signed)).hex(),
+        }
+        return canonical_json_bytes(envelope)
+
+    _consumption, _head, envelope_bytes = ledger.finish_with_envelope(
+        digest, challenge, build
+    )
+    return _manifest_json_loads(envelope_bytes)
 
 
 def serve_once(
@@ -360,6 +368,13 @@ def serve_once(
             and request["operation"] == "query-ledger-head"
         ):
             reply = _signed_ledger(ledger.head(), key, config)
+        elif (
+            set(request) == {"operation", "manifest_sha256", "challenge"}
+            and request["operation"] == "query-verdict"
+        ):
+            digest = _hex64(request["manifest_sha256"], "manifest hash")
+            challenge = _hex64(request["challenge"], "verifier challenge")
+            reply = _manifest_json_loads(ledger.verdict(digest, challenge))
         elif (
             set(request) == {"operation", "manifest_sha256"}
             and request["operation"] == "begin-exact-14"
@@ -451,6 +466,91 @@ def query_ledger_head(
     return reply
 
 
+def query_verdict(
+    *,
+    socket_path: Path,
+    manifest_sha256: str,
+    challenge: str,
+    config: dict[str, Any],
+    timeout: float,
+) -> dict[str, Any]:
+    """Recover and authenticate a transactionally committed verdict envelope."""
+    digest = _hex64(manifest_sha256, "manifest hash")
+    challenge = _hex64(challenge, "verifier challenge")
+    envelope = _round_trip(
+        socket_path,
+        {
+            "operation": "query-verdict",
+            "manifest_sha256": digest,
+            "challenge": challenge,
+        },
+        config,
+        timeout,
+    )
+    required = {
+        "manifest_sha256",
+        "decision_id",
+        "decision_contract_sha256",
+        "challenge",
+        "ledger_counter",
+        "ledger_prev_hash",
+        "issued_at_ns",
+        "verdict",
+        "service_identity",
+        "consumption_record",
+        "ledger_head",
+        "key_id",
+        "algorithm",
+        "signature",
+    }
+    if (
+        type(envelope) is not dict
+        or set(envelope) != required
+        or envelope["manifest_sha256"] != digest
+        or envelope["challenge"] != challenge
+        or envelope["key_id"] != config["verifier"]["key_id"]
+        or envelope["algorithm"] != "Ed25519"
+        or envelope["service_identity"]
+        != config["trusted"]["verifier_runtime"]["measurement"]
+    ):
+        raise ValueError("recovered verifier verdict binding mismatch")
+    public = Ed25519PublicKey.from_public_bytes(
+        bytes.fromhex(config["verifier"]["public_key_hex"])
+    )
+    signed = {
+        key: envelope[key] for key in required - {"key_id", "algorithm", "signature"}
+    }
+    public.verify(
+        bytes.fromhex(envelope["signature"]),
+        VERDICT_DOMAIN + canonical_json_bytes(signed),
+    )
+    consumption = envelope["consumption_record"]
+    head = envelope["ledger_head"]
+    for retained in (consumption, head):
+        if (
+            type(retained) is not dict
+            or set(retained) != {"record", "key_id", "algorithm", "signature"}
+            or retained["key_id"] != config["verifier"]["key_id"]
+            or retained["algorithm"] != "Ed25519"
+        ):
+            raise ValueError("recovered signed ledger proof is invalid")
+        public.verify(
+            bytes.fromhex(retained["signature"]),
+            LEDGER_DOMAIN + canonical_json_bytes(retained["record"]),
+        )
+    record = consumption["record"]
+    if (
+        record.get("event") != "CONSUMED"
+        or record.get("manifest_sha256") != digest
+        or record.get("challenge") != challenge
+        or record.get("counter") != envelope["ledger_counter"]
+        or head.get("record", {}).get("counter") != envelope["ledger_counter"]
+    ):
+        raise ValueError("recovered verifier consumption proof is not bound")
+    _validate_verdict_schema(envelope["verdict"])
+    return envelope
+
+
 def request_verdict(
     *,
     socket_path: Path,
@@ -505,7 +605,19 @@ def request_verdict(
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise TimeoutError("verifier overall deadline expired")
-    envelope = _round_trip(socket_path, request, config, remaining)
+    try:
+        envelope = _round_trip(socket_path, request, config, remaining)
+    except (TimeoutError, BrokenPipeError, ConnectionError, OSError):
+        recovery_remaining = deadline - time.monotonic()
+        if recovery_remaining <= 0:
+            raise
+        envelope = query_verdict(
+            socket_path=socket_path,
+            manifest_sha256=digest,
+            challenge=begin["challenge"],
+            config=config,
+            timeout=recovery_remaining,
+        )
     if type(envelope) is dict and set(envelope) == {"error", "reason"}:
         raise ValueError(f"external verifier rejected manifest: {envelope['reason']}")
     expected = {
@@ -590,21 +702,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ledger", required=True)
     parser.add_argument("--allowed-client-uid", required=True, type=int)
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--launch-attestation")
+    parser.add_argument("--launch-attestation", required=True)
+    parser.add_argument("--launch-release", required=True)
     args = parser.parse_args(argv)
     config = parse_public_config(Path(args.public_config).read_bytes())
     if os.geteuid() != config["verifier"]["peer_uid"]:
         raise SystemExit("verifier service UID does not match root-signed identity")
+    launch_bytes = wait_for_launch_release(
+        Path(args.launch_attestation), Path(args.launch_release)
+    )
     runtime = config["trusted"]["verifier_runtime"]["measurement"]
     measurement = measure_runtime(runtime)
-    if not args.launch_attestation:
-        raise SystemExit("root-signed service launch attestation is required")
     verify_service_launch_attestation(
-        strict_json_loads(Path(args.launch_attestation).read_bytes()),
+        strict_json_loads(launch_bytes),
         "verifier",
         config,
     )
     key = _load_key(Path(args.private_key))
+    if (
+        key.public_key().public_bytes_raw().hex()
+        != config["verifier"]["public_key_hex"]
+    ):
+        raise SystemExit("verifier private key does not match public config")
     ledger = ChallengeLedger(Path(args.ledger))
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(args.socket)
