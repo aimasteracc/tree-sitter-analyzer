@@ -18,6 +18,7 @@ from benchmarks.codegraph_compare.setup_qualification import (
     CellPlanV1,
     canonical_relative_path,
     validate_cell_receipt,
+    validate_receipt_schema_v2,
 )
 from benchmarks.codegraph_compare.setup_qualification_paths import (
     _manifest_tree_at,
@@ -78,9 +79,21 @@ def _reject_duplicate_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def _parse_receipt(payload: bytes) -> dict[str, Any]:
-    parsed = json.loads(payload, object_pairs_hook=_reject_duplicate_members)
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"Non-finite JSON number is forbidden: {value}")
+
+    parsed = json.loads(
+        payload,
+        object_pairs_hook=_reject_duplicate_members,
+        parse_constant=reject_constant,
+    )
     if not isinstance(parsed, dict):
         raise ValueError("Receipt JSON must be an object")
+    validate_receipt_schema_v2(parsed)
+    unsigned = dict(parsed)
+    claimed_hash = unsigned.pop("receipt_hash")
+    if claimed_hash != _sha256(unsigned):
+        raise ValueError("Receipt hash does not match canonical receipt content")
     return parsed
 
 

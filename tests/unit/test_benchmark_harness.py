@@ -9125,6 +9125,154 @@ def test_resource_plan_rejects_nonfinite_or_boolean_ceiling(value):
         ResourcePlanV1(**values)
 
 
+def test_resource_plan_accepts_arbitrarily_large_exact_integer_ceiling():
+    # PR #1247: math.isfinite used to overflow while converting this JSON integer.
+    from benchmarks.codegraph_compare.setup_qualification import ResourcePlanV1
+
+    plan = ResourcePlanV1(10**400, 20, 1024, 4096, 1, 1024, 2, 8, 1)
+
+    assert plan.wall_timeout_seconds == 10**400
+
+
+def test_strict_validator_rejects_arbitrarily_large_integer_observation(tmp_path: Path):
+    # PR #1247: resource validation must fail closed rather than raise OverflowError.
+    import copy
+
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
+    receipt["resource_observation"]["wall_seconds"] = 10**400
+    _resign_qualification_receipt(receipt)
+
+    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+        "RESOURCE_LIMIT_VIOLATION",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
+
+
+@pytest.mark.parametrize("constant", ("NaN", "Infinity", "-Infinity"))
+def test_receipt_parser_recursively_rejects_nonfinite_json_constants(
+    tmp_path: Path, constant: str
+):
+    # PR #1247: Python's JSON extensions are outside the strict receipt grammar.
+    import json
+
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        _parse_receipt,
+    )
+
+    plan = _qualification_plans(tmp_path)[0]
+    receipt = _write_valid_qualification_receipt(tmp_path / "cell", plan)
+    payload = json.dumps(receipt, sort_keys=True).replace(
+        '"wall_seconds": 1', f'"wall_seconds": {constant}'
+    )
+
+    with pytest.raises(ValueError, match="Non-finite JSON number"):
+        _parse_receipt(payload.encode("utf-8"))
+
+
+def test_strict_validator_rejects_receipt_extension_even_with_matching_hash(
+    tmp_path: Path,
+):
+    # PR #1247: direct validator callers receive a fail-closed schema failure.
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    receipt["extension"] = "unsigned"
+    _resign_qualification_receipt(receipt)
+
+    assert validate_cell_receipt(receipt, plan=plan, cell_root=cell_root) == (
+        "RECEIPT_SCHEMA_MISMATCH",
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        (),
+        ("eligibility",),
+        ("tool",),
+        ("config",),
+        ("counters",),
+        ("resource_observation",),
+        ("index_partition",),
+        ("raw_executions", 0),
+        ("raw_executions", 0, "stdout_bytes"),
+        ("index_provenance",),
+        ("index_provenance", "payload"),
+        ("os_audit",),
+        ("os_audit", "payload"),
+        ("os_audit", "audit_bytes"),
+        ("human_oracle_approval",),
+        ("human_oracle_approval", "payload"),
+        ("human_oracle_approval", "approval_bytes"),
+    ),
+)
+def test_receipt_parser_rejects_extension_at_every_object_schema(
+    tmp_path: Path, path: tuple[object, ...]
+):
+    # PR #1247: unsigned extension members must not survive strict loading.
+    import copy
+    import json
+
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        _parse_receipt,
+    )
+
+    plan = _qualification_plans(tmp_path)[0]
+    receipt = copy.deepcopy(_write_valid_qualification_receipt(tmp_path / "cell", plan))
+    target = receipt
+    for component in path:
+        target = target[component]
+    target["extension"] = "unsigned"
+    _resign_qualification_receipt(receipt)
+
+    with pytest.raises(ValueError, match="exactly the schema-v2 keys"):
+        _parse_receipt(json.dumps(receipt, sort_keys=True).encode("utf-8"))
+
+
+def test_receipt_parser_preserves_valid_canonical_hash_roundtrip(tmp_path: Path):
+    import json
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        _parse_receipt,
+    )
+
+    plan = _qualification_plans(tmp_path)[0]
+    receipt = _write_valid_qualification_receipt(tmp_path / "cell", plan)
+    payload = json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
+
+    assert _parse_receipt(payload) == json.loads(payload)
+
+
+def test_receipt_parser_rejects_stale_canonical_receipt_hash(tmp_path: Path):
+    # PR #1247: strict loading binds the complete closed receipt to its hash.
+    import json
+
+    import pytest
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        _parse_receipt,
+    )
+
+    plan = _qualification_plans(tmp_path)[0]
+    receipt = _write_valid_qualification_receipt(tmp_path / "cell", plan)
+    receipt["resource_observation"]["wall_seconds"] = 2
+
+    with pytest.raises(ValueError, match="Receipt hash does not match"):
+        _parse_receipt(json.dumps(receipt, sort_keys=True).encode("utf-8"))
+
+
 def test_cell_plan_rejects_duplicate_oracle_ids(tmp_path: Path):
     from dataclasses import replace
 

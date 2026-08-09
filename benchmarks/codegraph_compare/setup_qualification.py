@@ -153,6 +153,11 @@ class OracleSpecV1:
         return _sha256(asdict(self))
 
 
+def _is_finite_number(value: object) -> bool:
+    """Check JSON numbers without converting arbitrary-size integers to float."""
+    return type(value) is int or (type(value) is float and math.isfinite(value))
+
+
 @dataclass(frozen=True)
 class ResourcePlanV1:
     wall_timeout_seconds: int
@@ -168,13 +173,7 @@ class ResourcePlanV1:
     def __post_init__(self) -> None:
         values = tuple(asdict(self).values())
         if (
-            any(
-                not isinstance(value, (int, float))
-                or isinstance(value, bool)
-                or not math.isfinite(value)
-                or value <= 0
-                for value in values
-            )
+            any(not _is_finite_number(value) or value <= 0 for value in values)
             or not isinstance(self.max_concurrency, int)
             or isinstance(self.max_concurrency, bool)
             or self.max_concurrency != 1
@@ -377,6 +376,160 @@ def _strict_json_bytes(payload: bytes) -> Any:
     return json.loads(payload, object_pairs_hook=reject_duplicates)
 
 
+_RECEIPT_KEYS = frozenset(
+    {
+        "schema_version",
+        "repo_id",
+        "arm_id",
+        "attempt",
+        "plan_hash",
+        "artifact_path",
+        "eligibility",
+        "tool",
+        "config",
+        "counters",
+        "resource_plan_hash",
+        "resource_observation",
+        "index_path",
+        "index_content_hash",
+        "index_partition",
+        "raw_executions",
+        "index_provenance",
+        "os_audit",
+        "human_oracle_approval",
+        "receipt_hash",
+    }
+)
+_BLOB_KEYS = frozenset({"path", "size_bytes", "sha256"})
+_EXECUTION_KEYS = frozenset(
+    {
+        "id",
+        "argv",
+        "exit_code",
+        "stdout_bytes",
+        "stderr_bytes",
+        "query_bytes",
+        "index_bytes",
+    }
+)
+_SIGNATURE_KEYS = frozenset({"payload", "key_id", "signature"})
+_EXECUTOR_PAYLOAD_KEYS = frozenset(
+    {"schema_version", "plan_hash", "evidence_core_digest"}
+)
+
+
+def _require_exact_keys(
+    value: object, expected: frozenset[str], name: str
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ValueError(f"{name} must contain exactly the schema-v2 keys")
+    return value
+
+
+def validate_receipt_schema_v2(receipt: object) -> None:
+    """Reject every extension field and non-finite number in a schema-v2 receipt."""
+    root = _require_exact_keys(receipt, _RECEIPT_KEYS, "receipt")
+    _require_exact_keys(
+        root["eligibility"],
+        frozenset(
+            {
+                "repo_id",
+                "source_rules_hash",
+                "commit",
+                "tracked_regular_paths",
+                "eligible_paths",
+                "prefilter_exclusions",
+                "tracked_inventory_hash",
+                "eligible_paths_hash",
+                "repo_fingerprint",
+            }
+        ),
+        "eligibility",
+    )
+    for name in ("tool", "config"):
+        _require_exact_keys(root[name], _BLOB_KEYS, name)
+    _require_exact_keys(root["counters"], frozenset(ZERO_COUNTERS), "counters")
+    _require_exact_keys(
+        root["resource_observation"],
+        frozenset(
+            {
+                "wall_seconds",
+                "cpu_seconds",
+                "index_bytes",
+                "disk_written_bytes",
+                "free_disk_bytes_before",
+                "peak_rss_bytes",
+                "peak_processes",
+                "peak_open_files",
+                "peak_concurrency",
+            }
+        ),
+        "resource_observation",
+    )
+    _require_exact_keys(
+        root["index_partition"],
+        frozenset(
+            {
+                "indexed_paths",
+                "excluded_paths",
+                "parse_error_paths",
+                "parse_error_allowlist",
+                "indexed_paths_hash",
+                "excluded_paths_hash",
+                "parse_error_paths_hash",
+            }
+        ),
+        "index_partition",
+    )
+    executions = root["raw_executions"]
+    if not isinstance(executions, list):
+        raise ValueError("raw_executions must be a JSON array")
+    for number, raw in enumerate(executions):
+        if not isinstance(raw, Mapping) or set(raw) not in (
+            _EXECUTION_KEYS,
+            _EXECUTION_KEYS | {"oracle_spec_hash"},
+        ):
+            raise ValueError(
+                f"raw_executions[{number}] must contain exactly the schema-v2 keys"
+            )
+        execution = raw
+        for blob_name in ("stdout_bytes", "stderr_bytes", "query_bytes", "index_bytes"):
+            _require_exact_keys(execution[blob_name], _BLOB_KEYS, blob_name)
+    provenance = _require_exact_keys(
+        root["index_provenance"], _SIGNATURE_KEYS, "index_provenance"
+    )
+    _require_exact_keys(
+        provenance["payload"], _EXECUTOR_PAYLOAD_KEYS, "index_provenance.payload"
+    )
+    audit = _require_exact_keys(
+        root["os_audit"],
+        _SIGNATURE_KEYS
+        | {
+            "network_denied",
+            "credentials_stripped",
+            "descendants_observed",
+            "process_audited",
+            "audit_bytes",
+        },
+        "os_audit",
+    )
+    _require_exact_keys(audit["payload"], _EXECUTOR_PAYLOAD_KEYS, "os_audit.payload")
+    _require_exact_keys(audit["audit_bytes"], _BLOB_KEYS, "os_audit.audit_bytes")
+    approval = _require_exact_keys(
+        root["human_oracle_approval"],
+        _SIGNATURE_KEYS | {"approved", "approval_bytes"},
+        "human_oracle_approval",
+    )
+    _require_exact_keys(
+        approval["payload"],
+        _EXECUTOR_PAYLOAD_KEYS | {"approved", "approval_blob_hash"},
+        "human_oracle_approval.payload",
+    )
+    _require_exact_keys(
+        approval["approval_bytes"], _BLOB_KEYS, "human_oracle_approval.approval_bytes"
+    )
+
+
 def _evidence_core_payload(
     receipt: Mapping[str, Any], *, plan: CellPlanV1, actual_index_hash: object
 ) -> dict[str, Any]:
@@ -452,6 +605,10 @@ def validate_cell_receipt(
             raise ValueError("Cell root is unavailable")
         return _read_regular_at(cell_fd, relative)
 
+    try:
+        validate_receipt_schema_v2(receipt)
+    except (TypeError, ValueError):
+        failures.append("RECEIPT_SCHEMA_MISMATCH")
     if receipt.get("schema_version") != 2 or isinstance(
         receipt.get("schema_version"), bool
     ):
@@ -516,12 +673,7 @@ def validate_cell_receipt(
             ("free_disk_bytes_before", observation.get("free_disk_bytes_before")),
             *((key, observation.get(key)) for key, _ in maxima),
         )
-        numeric = all(
-            isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and math.isfinite(value)
-            for _, value in values
-        )
+        numeric = all(_is_finite_number(value) for _, value in values)
         if (
             not numeric
             or observation["free_disk_bytes_before"]
