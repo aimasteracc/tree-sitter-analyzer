@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import stat
 from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from benchmarks.codegraph_compare.production_anchor import (
     AnchorKey,
@@ -13,6 +16,7 @@ from benchmarks.codegraph_compare.production_judge import submit_verdict
 from benchmarks.codegraph_compare.production_trust import (
     OperatorTrustConfigV1,
     ProductionRunSpecV1,
+    load_production_run_spec_v1,
     qualify_production_trust,
     qualify_production_trust_v2,
 )
@@ -31,6 +35,21 @@ def _spec() -> ProductionRunSpecV1:
         request_limit=2,
         nonce="judge-issued-nonce",
         expires_at_unix=2_000_000_000,
+        journal_root=str(Path("/tmp/no1-trust-journal").resolve().resolve()),
+        evidence_root=str(Path("/tmp/no1-trust-evidence").resolve().resolve()),
+        global_nonce_ledger_root=str(
+            Path("/tmp/no1-trust-global-ledger").resolve().resolve()
+        ),
+        ledger_root_device=1,
+        ledger_root_inode=2,
+        ledger_root_uid=0,
+        ledger_root_mode=stat.S_IFDIR | 0o700,
+        ledger_root_ctime_ns=4,
+        ledger_parent_device=1,
+        ledger_parent_inode=3,
+        ledger_parent_uid=0,
+        ledger_parent_mode=stat.S_IFDIR | 0o700,
+        ledger_parent_ctime_ns=5,
     )
 
 
@@ -224,10 +243,15 @@ def test_complete_external_configuration_still_requires_signed_judge_evidence(
 
 # 64 hex chars (32 bytes) — matches bytes.fromhex() requirement in AnchorKey.from_file()
 _HEX_ANCHOR_KEY = "ab" * 32
+_HEX_JUDGE_KEY = "cd" * 32
 
 
 def _anchor_key() -> AnchorKey:
     return AnchorKey(raw=bytes.fromhex(_HEX_ANCHOR_KEY))
+
+
+def _judge_key() -> AnchorKey:
+    return AnchorKey(raw=bytes.fromhex(_HEX_JUDGE_KEY))
 
 
 def _v2_config(tmp_path: Path, bundle: Path) -> OperatorTrustConfigV1:
@@ -237,22 +261,30 @@ def _v2_config(tmp_path: Path, bundle: Path) -> OperatorTrustConfigV1:
     operator.mkdir()
     trust_store = operator / "trust-store.json"
     anchor = operator / "anchor.key"
+    judge = operator / "judge.key"
+    provider = operator / "provider.key"
     trust_store.write_text("{}\n", encoding="utf-8")
-    anchor.write_text(_HEX_ANCHOR_KEY, encoding="utf-8")
+    anchor.write_text(_anchor_key().public_bytes().hex(), encoding="utf-8")
+    judge.write_text(_judge_key().public_bytes().hex(), encoding="utf-8")
+    provider.write_text((b"p" * 32).hex(), encoding="utf-8")
     return OperatorTrustConfigV1(
         trust_store=trust_store,
         pinned_anchor=anchor,
-        immutable_artifact_root=tmp_path / "collector-v2" / "new-run",
+        pinned_judge=judge,
+        immutable_artifact_root=Path("/tmp/no1-trust-evidence").resolve(),
         trusted_roles=frozenset(
             {"anchor-custodian", "budget-gateway", "evidence-collector"}
         ),
-        provider_budget_enforced=False,
+        provider_budget_enforced=True,
         append_only_ledger=True,
         immutable_collector=True,
         isolated_execution=True,
         verification_to_use_closed=True,
         independent_judge=True,
-        budget_enforcement_mode="client-process-kill",
+        budget_enforcement_mode="provider",
+        immutable_journal_root=Path("/tmp/no1-trust-journal").resolve(),
+        global_nonce_ledger_root=Path("/tmp/no1-trust-global-ledger").resolve(),
+        pinned_provider_receipt_key=provider,
     )
 
 
@@ -273,10 +305,12 @@ def test_v2_returns_accept_with_valid_attestation_and_judge_record(
         spec.nonce,
         spec.expires_at_unix,
         key,
-        budget_enforcement_mode="client-process-kill",
+        budget_enforcement_mode="provider",
         now_unix=now,
     )
-    judge = submit_verdict("ACCEPT", evidence_digest, spec.spec_hash, key, now_unix=now)
+    judge = submit_verdict(
+        "ACCEPT", evidence_digest, spec.spec_hash, _judge_key(), now_unix=now
+    )
 
     result = qualify_production_trust_v2(
         spec,
@@ -307,10 +341,12 @@ def test_v2_reject_verdict_blocks_model_callbacks(tmp_path: Path) -> None:
         spec.nonce,
         spec.expires_at_unix,
         key,
-        budget_enforcement_mode="client-process-kill",
+        budget_enforcement_mode="provider",
         now_unix=now,
     )
-    judge = submit_verdict("REJECT", evidence_digest, spec.spec_hash, key, now_unix=now)
+    judge = submit_verdict(
+        "REJECT", evidence_digest, spec.spec_hash, _judge_key(), now_unix=now
+    )
 
     result = qualify_production_trust_v2(
         spec,
@@ -332,9 +368,10 @@ def test_v2_missing_attestation_blocks_model_callbacks(tmp_path: Path) -> None:
     bundle.mkdir()
     spec = _spec()
     config = _v2_config(tmp_path, bundle)
-    key = _anchor_key()
     evidence_digest = "a" * 64
-    judge = submit_verdict("ACCEPT", evidence_digest, spec.spec_hash, key, now_unix=1_900_000_000)
+    judge = submit_verdict(
+        "ACCEPT", evidence_digest, spec.spec_hash, _judge_key(), now_unix=1_900_000_000
+    )
 
     result = qualify_production_trust_v2(
         spec,
@@ -367,7 +404,7 @@ def test_v2_attestation_signed_with_wrong_key_blocks_model_callbacks(
         spec.nonce,
         spec.expires_at_unix,
         wrong_key,
-        budget_enforcement_mode="client-process-kill",
+        budget_enforcement_mode="provider",
         now_unix=now,
     )
     judge = submit_verdict("ACCEPT", "a" * 64, spec.spec_hash, wrong_key, now_unix=now)
@@ -402,12 +439,14 @@ def test_v2_judge_spec_hash_mismatch_blocks_model_callbacks(tmp_path: Path) -> N
         spec.nonce,
         spec.expires_at_unix,
         key,
-        budget_enforcement_mode="client-process-kill",
+        budget_enforcement_mode="provider",
         now_unix=now,
     )
     # Judge is signed with a different spec_hash (run A's hash, replayed for run B)
     different_spec_hash = "f" * 64
-    judge = submit_verdict("ACCEPT", evidence_digest, different_spec_hash, key, now_unix=now)
+    judge = submit_verdict(
+        "ACCEPT", evidence_digest, different_spec_hash, _judge_key(), now_unix=now
+    )
 
     result = qualify_production_trust_v2(
         spec,
@@ -441,3 +480,274 @@ def test_v2_config_alone_still_requires_attestations(tmp_path: Path) -> None:
     )
 
     assert result.model_callbacks_allowed is False
+
+
+def test_v2_same_file_for_spend_and_judge_roles_is_rejected(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    now = 1_900_000_000
+    same = replace(config, pinned_judge=config.pinned_anchor)
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="provider",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _anchor_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        same,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert result.violations == (
+        "ROLE_KEYS_NOT_INDEPENDENT",
+        "ROLE_KEY_MATERIAL_NOT_INDEPENDENT",
+    )
+    assert result.model_callbacks_allowed is False
+
+
+def test_spec_hash_binds_all_operator_roots():
+    spec = _spec()
+    assert (
+        replace(spec, journal_root=str(Path("/tmp/other-journal").resolve())).spec_hash
+        != spec.spec_hash
+    )
+    assert (
+        replace(
+            spec, evidence_root=str(Path("/tmp/other-evidence").resolve())
+        ).spec_hash
+        != spec.spec_hash
+    )
+    assert (
+        replace(
+            spec, global_nonce_ledger_root=str(Path("/tmp/other-ledger").resolve())
+        ).spec_hash
+        != spec.spec_hash
+    )
+
+
+def test_spec_hash_binds_ledger_change_times():
+    # PR #1248: reused device/inode identities must not preserve the signed hash.
+    spec = _spec()
+    assert replace(spec, ledger_root_ctime_ns=6).spec_hash != spec.spec_hash
+    assert replace(spec, ledger_parent_ctime_ns=7).spec_hash != spec.spec_hash
+
+
+def test_run_spec_wire_rejects_duplicate_and_extra_fields():
+    import json
+
+    spec = _spec()
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        load_production_run_spec_v1(spec.to_json()[:-1] + ',"nonce":"again"}')
+    value = spec.to_wire_dict()
+    value["extra"] = "forbidden"
+    with pytest.raises(ValueError, match="strict v1 schema"):
+        load_production_run_spec_v1(json.dumps(value))
+
+
+def test_v2_rejects_distinct_files_with_identical_key_material(tmp_path: Path):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    config.pinned_judge.write_text(_anchor_key().public_bytes().hex())
+    now = 1_900_000_000
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="provider",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _anchor_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert result.violations == ("ROLE_KEY_MATERIAL_NOT_INDEPENDENT",)
+
+
+@pytest.mark.parametrize("provider_key_role", ("spend", "judge"))
+def test_v2_rejects_provider_receipt_key_material_collision(
+    tmp_path: Path, provider_key_role: str
+):
+    # Incident 2026-07-03: spend holders could forge provider receipts.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    colliding_path = (
+        config.pinned_anchor if provider_key_role == "spend" else config.pinned_judge
+    )
+    config = replace(config, pinned_provider_receipt_key=colliding_path)
+    now = 1_900_000_000
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="provider",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _judge_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert result.violations == ("ROLE_KEY_MATERIAL_NOT_INDEPENDENT",)
+
+
+def test_v2_rejects_provider_receipt_role_collision(tmp_path: Path):
+    # Incident 2026-07-03: provider trust identity must be independently pinned.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = replace(
+        _v2_config(tmp_path, bundle), provider_receipt_role="spend-authorizer"
+    )
+    now = 1_900_000_000
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="provider",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _judge_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert result.violations == ("ROLE_IDENTITIES_NOT_INDEPENDENT",)
+
+
+def test_v2_rejects_provider_receipt_key_id_collision(tmp_path: Path):
+    # Incident 2026-07-03: provider trust identity must be independently pinned.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = replace(
+        _v2_config(tmp_path, bundle), provider_receipt_key_id="legacy-spend-key"
+    )
+    now = 1_900_000_000
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="provider",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _judge_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert result.violations == ("ROLE_KEY_IDS_NOT_INDEPENDENT",)
+
+
+def test_v2_rejects_client_kill_wait_self_reporting_mode(tmp_path: Path):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = replace(
+        _v2_config(tmp_path, bundle), budget_enforcement_mode="client-process-kill"
+    )
+    now = 1_900_000_000
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="client-process-kill",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _judge_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert "UNTRUSTED_CLIENT_PROCESS_SUPERVISION" in result.violations
+    assert result.model_callbacks_allowed is False
+
+
+def test_v2_rejects_33_byte_ed25519_key_before_admission(tmp_path: Path):
+    # PR #1248: every Ed25519 role pin is exactly 32 bytes at qualification time.
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    spec = _spec()
+    config = _v2_config(tmp_path, bundle)
+    assert config.pinned_provider_receipt_key is not None
+    config.pinned_provider_receipt_key.write_text((b"c" * 33).hex())
+    now = 1_900_000_000
+    attestation = prepare_attestation(
+        spec.spec_hash,
+        spec.nonce,
+        spec.expires_at_unix,
+        _anchor_key(),
+        budget_enforcement_mode="provider",
+        now_unix=now,
+    )
+    judge = submit_verdict(
+        "ACCEPT", "a" * 64, spec.spec_hash, _judge_key(), now_unix=now
+    )
+    result = qualify_production_trust_v2(
+        spec,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=bundle,
+        now_unix=now,
+        expected_evidence_digest="a" * 64,
+    )
+    assert result.violations == (
+        f"ROLE_KEY_UNAVAILABLE:operator key must contain exactly 32 bytes: "
+        f"{config.pinned_provider_receipt_key}",
+    )

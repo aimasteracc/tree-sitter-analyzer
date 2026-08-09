@@ -30,6 +30,7 @@ from benchmarks.codegraph_compare.production_judge import (
 from benchmarks.codegraph_compare.production_trust import (
     OperatorTrustConfigV1,
     ProductionRunSpecV1,
+    capture_ledger_identity,
     qualify_production_trust_v2,
 )
 
@@ -46,6 +47,8 @@ class OfflineRehearsalReceipt:
     spec_hash: str
     evidence_digest: str
     artifact_count: int
+    evidence_durable: bool
+    evidence_durability: str
     attestation_verified: bool
     synthetic_judge_signature_verified: bool
     independent_judge_available: bool
@@ -84,15 +87,26 @@ def run_offline_rehearsal(
     operator_root = work_root / "operator"
     bundle_root = work_root / "untrusted-bundle"
     qualification_root = work_root / "qualification-evidence"
-    production_artifact_root = work_root / "unused-production-artifacts"
+    production_artifact_root = (work_root / "unused-production-artifacts").resolve()
+    production_journal_root = (work_root / "unused-production-journal").resolve()
+    global_ledger_root = (work_root / "operator-global-ledger").resolve()
     operator_root.mkdir(parents=True, mode=0o700)
+    global_ledger_root.mkdir(mode=0o700)
     bundle_root.mkdir(mode=0o700)
 
     key = AnchorKey(raw=secrets.token_bytes(32))
+    judge_key = AnchorKey(raw=secrets.token_bytes(32))
+    provider_key = AnchorKey(raw=secrets.token_bytes(32))
     anchor_path = operator_root / "ephemeral-rehearsal-anchor.key"
+    judge_path = operator_root / "ephemeral-rehearsal-judge.key"
+    provider_path = operator_root / "ephemeral-rehearsal-provider.key"
     trust_store = operator_root / "trust-store.json"
-    anchor_path.write_text(key.raw.hex(), encoding="utf-8")
+    anchor_path.write_text(key.public_bytes().hex(), encoding="utf-8")
+    judge_path.write_text(judge_key.public_bytes().hex(), encoding="utf-8")
+    provider_path.write_text(provider_key.public_bytes().hex(), encoding="utf-8")
     anchor_path.chmod(0o400)
+    judge_path.chmod(0o400)
+    provider_path.chmod(0o400)
     trust_store.write_text('{"protocol":"NO1-003B-OFFLINE"}\n', encoding="utf-8")
     trust_store.chmod(0o400)
 
@@ -111,18 +125,23 @@ def run_offline_rehearsal(
         request_limit=1,
         nonce=nonce,
         expires_at_unix=now + 600,
+        journal_root=str(production_journal_root),
+        evidence_root=str(production_artifact_root),
+        global_nonce_ledger_root=str(global_ledger_root),
+        **capture_ledger_identity(global_ledger_root),
     )
     attestation = prepare_attestation(
         spec.spec_hash,
         spec.nonce,
         spec.expires_at_unix,
         key,
-        budget_enforcement_mode="client-process-kill",
+        budget_enforcement_mode="provider",
         now_unix=now,
+        key_id="rehearsal-spend",
     )
     verify_attestation(
         attestation,
-        key,
+        key.public_bytes(),
         spec.spec_hash,
         spec.nonce,
         spec.expires_at_unix,
@@ -141,7 +160,13 @@ def run_offline_rehearsal(
         b'{"cost_usd":0.0,"input_tokens":0,"output_tokens":0}\n',
     )
     collection = collector.finalize()
-    if any(
+    expected_durability = {
+        "local-dirfd-diagnostic-only",
+        "unsupported",
+    }
+    if collection.durable or collection.durability not in expected_durability:
+        raise RuntimeError("offline rehearsal collector overstated E0 durability")
+    if collection.durability == "local-dirfd-diagnostic-only" and any(
         stat.S_IMODE(Path(item.path).stat().st_mode) & stat.S_IWUSR
         for item in collection.artifacts
     ):
@@ -151,24 +176,31 @@ def run_offline_rehearsal(
         "ACCEPT",
         collection.ledger_sha256,
         spec.spec_hash,
-        key,
+        judge_key,
         judge_note="offline rehearsal fixture only; not production evidence",
         now_unix=now,
+        key_id="rehearsal-judge",
     )
-    verify_judge_record(judge, key)
+    verify_judge_record(judge, judge_key.public_bytes())
     config = OperatorTrustConfigV1(
         trust_store=trust_store,
         pinned_anchor=anchor_path,
+        pinned_judge=anchor_path,
         immutable_artifact_root=production_artifact_root,
         trusted_roles=_ROLES,
-        provider_budget_enforced=False,
+        provider_budget_enforced=True,
         append_only_ledger=True,
         immutable_collector=True,
         isolated_execution=True,
         verification_to_use_closed=True,
         # A same-process rehearsal signature is deliberately not independent.
         independent_judge=False,
-        budget_enforcement_mode="client-process-kill",
+        budget_enforcement_mode="provider",
+        spend_key_id="rehearsal-spend",
+        judge_key_id="rehearsal-judge",
+        immutable_journal_root=production_journal_root,
+        global_nonce_ledger_root=global_ledger_root,
+        pinned_provider_receipt_key=anchor_path,
     )
     qualification = qualify_production_trust_v2(
         spec,
@@ -179,7 +211,11 @@ def run_offline_rehearsal(
         now_unix=now,
         expected_evidence_digest=collection.ledger_sha256,
     )
-    expected_violations = ("INDEPENDENT_JUDGE_UNAVAILABLE",)
+    expected_violations = (
+        "ROLE_KEYS_NOT_INDEPENDENT",
+        "ROLE_KEY_MATERIAL_NOT_INDEPENDENT",
+        "INDEPENDENT_JUDGE_UNAVAILABLE",
+    )
     if (
         qualification.status != "NOT_EVALUATED"
         or qualification.violations != expected_violations
@@ -195,7 +231,12 @@ def run_offline_rehearsal(
     # Eligibility is observed but never consumed by a dispatch callback.
     bound_qualification = qualify_production_trust_v2(
         spec,
-        replace(config, independent_judge=True),
+        replace(
+            config,
+            pinned_judge=judge_path,
+            pinned_provider_receipt_key=provider_path,
+            independent_judge=True,
+        ),
         attestation,
         judge,
         evidence_bundle_root=bundle_root,
@@ -222,6 +263,8 @@ def run_offline_rehearsal(
         spec_hash=spec.spec_hash,
         evidence_digest=collection.ledger_sha256,
         artifact_count=collection.artifact_count,
+        evidence_durable=collection.durable,
+        evidence_durability=collection.durability,
         attestation_verified=True,
         synthetic_judge_signature_verified=True,
         independent_judge_available=False,

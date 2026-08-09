@@ -39,7 +39,7 @@ class TestSubmitVerdict:
         assert record.verdict == "ACCEPT"
         assert record.evidence_digest == _EVIDENCE_DIGEST
         assert record.recorded_at_unix == _NOW
-        assert len(record.hmac_sha256) == 64
+        assert len(record.signature_ed25519) == 128
 
     @pytest.mark.parametrize("verdict", sorted(VALID_VERDICTS))
     def test_all_valid_verdicts_accepted(self, verdict: str) -> None:
@@ -69,29 +69,29 @@ class TestSubmitVerdict:
     def test_hmac_differs_between_verdicts(self) -> None:
         accept = _record("ACCEPT")
         reject = _record("REJECT")
-        assert accept.hmac_sha256 != reject.hmac_sha256
+        assert accept.signature_ed25519 != reject.signature_ed25519
 
     def test_hmac_differs_between_evidence_digests(self) -> None:
         r1 = submit_verdict("ACCEPT", "a" * 64, _SPEC_HASH, _key(), now_unix=_NOW)
         r2 = submit_verdict("ACCEPT", "b" * 64, _SPEC_HASH, _key(), now_unix=_NOW)
-        assert r1.hmac_sha256 != r2.hmac_sha256
+        assert r1.signature_ed25519 != r2.signature_ed25519
 
     def test_hmac_differs_between_spec_hashes(self) -> None:
         r1 = submit_verdict("ACCEPT", _EVIDENCE_DIGEST, "c" * 64, _key(), now_unix=_NOW)
         r2 = submit_verdict("ACCEPT", _EVIDENCE_DIGEST, "d" * 64, _key(), now_unix=_NOW)
-        assert r1.hmac_sha256 != r2.hmac_sha256
+        assert r1.signature_ed25519 != r2.signature_ed25519
 
 
 class TestVerifyJudgeRecord:
     def test_valid_record_passes(self) -> None:
         record = _record()
-        verify_judge_record(record, _key())
+        verify_judge_record(record, _key().public_bytes())
 
     def test_wrong_key_rejected(self) -> None:
         record = _record()
         wrong = AnchorKey(raw=b"z" * 32)
-        with pytest.raises(ValueError, match="HMAC"):
-            verify_judge_record(record, wrong)
+        with pytest.raises(ValueError, match="Ed25519"):
+            verify_judge_record(record, wrong.public_bytes())
 
     def test_tampered_verdict_rejected(self) -> None:
         record = _record("ACCEPT")
@@ -102,10 +102,10 @@ class TestVerifyJudgeRecord:
             spec_hash=record.spec_hash,
             recorded_at_unix=record.recorded_at_unix,
             judge_note=record.judge_note,
-            hmac_sha256=record.hmac_sha256,
+            signature_ed25519=record.signature_ed25519,
         )
-        with pytest.raises(ValueError, match="HMAC"):
-            verify_judge_record(tampered, _key())
+        with pytest.raises(ValueError, match="Ed25519"):
+            verify_judge_record(tampered, _key().public_bytes())
 
     def test_tampered_evidence_digest_rejected(self) -> None:
         record = _record()
@@ -116,10 +116,10 @@ class TestVerifyJudgeRecord:
             spec_hash=record.spec_hash,
             recorded_at_unix=record.recorded_at_unix,
             judge_note=record.judge_note,
-            hmac_sha256=record.hmac_sha256,
+            signature_ed25519=record.signature_ed25519,
         )
-        with pytest.raises(ValueError, match="HMAC"):
-            verify_judge_record(tampered, _key())
+        with pytest.raises(ValueError, match="Ed25519"):
+            verify_judge_record(tampered, _key().public_bytes())
 
     def test_tampered_spec_hash_rejected(self) -> None:
         record = _record()
@@ -130,10 +130,10 @@ class TestVerifyJudgeRecord:
             spec_hash="e" * 64,
             recorded_at_unix=record.recorded_at_unix,
             judge_note=record.judge_note,
-            hmac_sha256=record.hmac_sha256,
+            signature_ed25519=record.signature_ed25519,
         )
-        with pytest.raises(ValueError, match="HMAC"):
-            verify_judge_record(tampered, _key())
+        with pytest.raises(ValueError, match="Ed25519"):
+            verify_judge_record(tampered, _key().public_bytes())
 
     def test_non_record_object_rejected(self) -> None:
         with pytest.raises(ValueError, match="JudgeRecord"):
@@ -148,7 +148,7 @@ class TestVerifyJudgeRecord:
             spec_hash=record.spec_hash,
             recorded_at_unix=record.recorded_at_unix,
             judge_note=record.judge_note,
-            hmac_sha256=record.hmac_sha256,
+            signature_ed25519=record.signature_ed25519,
         )
         with pytest.raises(ValueError, match="schema_version"):
-            verify_judge_record(tampered, _key())
+            verify_judge_record(tampered, _key().public_bytes())

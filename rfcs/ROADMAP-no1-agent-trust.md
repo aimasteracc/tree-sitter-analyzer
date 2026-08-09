@@ -212,7 +212,7 @@ from a digest-verified artifact; E0–E3 and blocked records cannot emit text.
 
 | ID | Task | Owner role | Depends on | Acceptance and verification |
 |---|---|---|---|---|
-| NO1-008A | Seven-repository model-free setup qualification | Benchmark Lead | separately recorded RFC-0021 E1 qualification | exact source partitions, zero unallowed parse errors, pinned tool/repo fingerprints, and no model callbacks; any failure blocks NO1-003C and all model-backed phases |
+| NO1-008A | Seven-repository model-free setup qualification | Benchmark Lead | separate RFC-0021 E1 qualification | exact source partitions, zero unallowed parse errors, pinned tool/repo fingerprints, and no model callbacks; any failure blocks NO1-008B and later model-backed phases |
 | NO1-008B | E2 warm confirmatory matrix | Benchmark Lead + Human Operator | NO1-008A | exact expected cells, five repeats, complete evaluations, failures retained |
 | NO1-009A | Select and qualify second indexed competitor | Trust Lead + Independent Reviewer | NO1-003A | frozen version/install/conformance path; unavailable arm is `NOT_EVALUATED`, never a TSA win; it is not added to the frozen RFC-0021 v1 matrix without a separately reviewed v2 experiment and recomputed cells |
 | NO1-010A | Three-task prototype | Product/API Lead | NO1-007A/B | MCP/CLI parity or explicit internal-only status; exact contract tests; real CLI smoke |

@@ -1,28 +1,60 @@
-"""Append-only Evidence Collector for NO1-002D production trust.
-
-This module implements the Evidence Collector role defined in issue #1223.
-All writes use O_CREAT | O_EXCL so existing files are never overwritten.
-The artifact root must not exist before collection begins; the collector
-creates it and owns it exclusively until finalize() is called.
-
-The resulting CollectionReceipt contains a SHA-256 ledger of every artifact,
-suitable for binding into a JudgeRecord or SpendAttestation.
-"""
+"""Symlink-safe append-only evidence collection for the production boundary."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+_DIR_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+_FILE_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+
+def _dirfd_supported() -> bool:
+    """Return whether this runtime provides the POSIX dirfd primitives we use."""
+    required = (os.open, os.mkdir, os.unlink)
+    return os.name == "posix" and all(item in os.supports_dir_fd for item in required)
+
+
+def _component(value: str, label: str) -> str:
+    if not value or value in (".", "..") or "/" in value or "\\" in value:
+        raise ValueError(f"{label} must not contain path separators: {value!r}")
+    return value
+
+
+def _open_parent_and_create_root(root: Path) -> tuple[int, int, tuple[int, int]]:
+    """Walk from / with openat/O_NOFOLLOW, then exclusively mkdir the root."""
+    absolute = root.resolve(strict=False)
+    if not absolute.is_absolute() or absolute != root:
+        raise ValueError("Artifact root must be a canonical absolute path")
+    parts = absolute.parts[1:]
+    fd = os.open("/", _DIR_FLAGS)
+    try:
+        for part in parts[:-1]:
+            try:
+                child = os.open(part, _DIR_FLAGS, dir_fd=fd)
+            except FileNotFoundError:
+                os.mkdir(part, 0o700, dir_fd=fd)
+                os.fsync(fd)
+                child = os.open(part, _DIR_FLAGS, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        os.mkdir(parts[-1], 0o700, dir_fd=fd)
+        os.fsync(fd)
+        root_fd = os.open(parts[-1], _DIR_FLAGS, dir_fd=fd)
+        st = os.fstat(root_fd)
+        return fd, root_fd, (st.st_dev, st.st_ino)
+    except Exception:
+        os.close(fd)
+        raise
+
 
 @dataclass(frozen=True)
 class ArtifactReceipt:
-    """Immutable record of a single collected artifact."""
-
     kind: str
     run_id: str
     path: str
@@ -31,151 +63,230 @@ class ArtifactReceipt:
 
 @dataclass(frozen=True)
 class CollectionReceipt:
-    """Immutable summary of an evidence collection session.
-
-    The ledger_sha256 is the SHA-256 of the canonical JSON serialisation of
-    all (kind, run_id, sha256) tuples, sorted by run_id then kind.  This
-    provides a single digest that binds the entire collection.
-    """
-
     root: str
     artifact_count: int
     ledger_sha256: str
     artifacts: tuple[ArtifactReceipt, ...]
+    durable: bool
+    durability: str
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "root": self.root,
             "artifact_count": self.artifact_count,
             "ledger_sha256": self.ledger_sha256,
-            "artifacts": [
-                {
-                    "kind": a.kind,
-                    "run_id": a.run_id,
-                    "path": a.path,
-                    "sha256": a.sha256,
-                }
-                for a in self.artifacts
-            ],
+            "artifacts": [a.__dict__ for a in self.artifacts],
+            "durable": self.durable,
+            "durability": self.durability,
         }
 
 
 class EvidenceCollector:
-    """Append-only evidence collector backed by an exclusive filesystem root.
-
-    Usage::
-
-        collector = EvidenceCollector(Path("/evidence/run-001"))
-        collector.collect("cell-1", "transcript", transcript_bytes)
-        collector.collect("cell-1", "receipt", receipt_bytes)
-        receipt = collector.finalize()
-
-    After finalize() is called, further collect() calls raise RuntimeError.
-    The artifact_root directory is created with mode 0o700 and must not exist
-    beforehand; the caller is responsible for ensuring the path is outside
-    every evidence bundle and source checkout.
-    """
+    """Collector whose writes remain bound to pinned directory inodes."""
 
     def __init__(self, artifact_root: Path) -> None:
-        if artifact_root.exists():
-            raise ValueError(
-                f"Artifact root must not pre-exist; cannot guarantee immutability: "
-                f"{artifact_root}"
-            )
-        artifact_root.mkdir(parents=True, mode=0o700)
         self._root = artifact_root
+        self._uses_dirfd = _dirfd_supported()
+        try:
+            if self._uses_dirfd:
+                self._parent_fd, self._root_fd, self._pin = (
+                    _open_parent_and_create_root(artifact_root)
+                )
+            else:
+                self._create_bounded_root()
+        except FileExistsError as error:
+            raise ValueError(
+                f"Artifact root must not pre-exist: {artifact_root}"
+            ) from error
         self._artifacts: list[ArtifactReceipt] = []
+        self._fds: dict[tuple[str, str], tuple[int, int]] = {}
         self._finalized = False
+
+    def _create_bounded_root(self) -> None:
+        """Create a diagnostic-only root without claiming dirfd durability.
+
+        Windows has no Python ``openat``/``dir_fd`` equivalent.  This fallback
+        therefore uses canonical, component-bounded pathlib operations and
+        exclusive file creation, while receipts explicitly report durability as
+        unsupported.  It is suitable only for the local E0 diagnostic bundle.
+        """
+        absolute = self._root.resolve(strict=False)
+        if not absolute.is_absolute() or absolute != self._root:
+            raise ValueError("Artifact root must be a canonical absolute path")
+        absolute.parent.mkdir(parents=True, exist_ok=True)
+        absolute.mkdir(mode=0o700)
+        resolved = absolute.resolve(strict=True)
+        if resolved != absolute or resolved.is_symlink():
+            raise RuntimeError("Evidence root is not a bounded canonical directory")
+        st = resolved.stat(follow_symlinks=False)
+        self._pin = (st.st_dev, st.st_ino)
+        self._parent_fd = -1
+        self._root_fd = -1
 
     @property
     def root(self) -> Path:
         return self._root
 
+    def _assert_pin(self) -> None:
+        try:
+            st = os.stat(self._root, follow_symlinks=False)
+        except OSError as error:
+            raise RuntimeError("Evidence root inode is no longer reachable") from error
+        if stat.S_ISLNK(st.st_mode) or (st.st_dev, st.st_ino) != self._pin:
+            raise RuntimeError("Evidence root inode changed during collection")
+
     def collect(self, run_id: str, kind: str, payload: bytes) -> ArtifactReceipt:
-        """Write payload to a new exclusive file and return an immutable receipt.
-
-        Artifacts are stored under ``<root>/<run_id>/<kind>`` so that distinct
-        ``(run_id, kind)`` pairs can never collide regardless of underscores in
-        either identifier.
-
-        Raises:
-            RuntimeError: If the collector has already been finalised.
-            ValueError: If run_id or kind contain path separators.
-            FileExistsError: If an artifact with the same (run_id, kind) already exists.
-        """
         if self._finalized:
-            raise RuntimeError("Collector is already finalised; no further artifacts accepted")
-        if not run_id or "/" in run_id or "\\" in run_id or run_id in (".", ".."):
-            raise ValueError(f"run_id must not contain path separators: {run_id!r}")
-        if not kind or "/" in kind or "\\" in kind or kind in (".", ".."):
-            raise ValueError(f"kind must not contain path separators: {kind!r}")
-        run_dir = self._root / run_id
-        run_dir.mkdir(mode=0o700, exist_ok=True)
-        target = run_dir / kind
+            raise RuntimeError(
+                "Collector is already finalised; no further artifacts accepted"
+            )
+        _component(run_id, "run_id")
+        _component(kind, "kind")
+        if type(payload) is not bytes:
+            raise ValueError("payload must be exact bytes")
+        self._assert_pin()
+        if not self._uses_dirfd:
+            return self._collect_bounded(run_id, kind, payload)
+        try:
+            os.mkdir(run_id, 0o700, dir_fd=self._root_fd)
+            os.fsync(self._root_fd)
+        except FileExistsError:
+            pass
+        run_fd = os.open(run_id, _DIR_FLAGS, dir_fd=self._root_fd)
         descriptor = os.open(
-            target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+            kind,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | _FILE_NOFOLLOW,
+            0o600,
+            dir_fd=run_fd,
         )
         try:
-            with os.fdopen(descriptor, "wb") as stream:
+            offset = 0
+            while offset < len(payload):
+                offset += os.write(descriptor, payload[offset:])
+            os.fsync(descriptor)
+            os.fsync(run_fd)
+        except Exception:
+            os.close(descriptor)
+            try:
+                os.unlink(kind, dir_fd=run_fd)
+            except OSError:
+                pass
+            os.close(run_fd)
+            raise
+        os.close(descriptor)
+        digest = hashlib.sha256(payload).hexdigest()
+        receipt = ArtifactReceipt(kind, run_id, str(self._root / run_id / kind), digest)
+        self._artifacts.append(receipt)
+        self._fds[(run_id, kind)] = (
+            run_fd,
+            os.open(kind, os.O_RDONLY | _FILE_NOFOLLOW, dir_fd=run_fd),
+        )
+        return receipt
+
+    def _collect_bounded(
+        self, run_id: str, kind: str, payload: bytes
+    ) -> ArtifactReceipt:
+        """Write one Windows diagnostic artifact with exclusive creation."""
+        run_path = self._root / run_id
+        try:
+            run_path.mkdir(mode=0o700)
+        except FileExistsError:
+            if run_path.is_symlink() or not run_path.is_dir():
+                raise RuntimeError(
+                    "Evidence run path is not a bounded directory"
+                ) from None
+        if run_path.resolve(strict=True) != run_path:
+            raise RuntimeError("Evidence run path escaped the diagnostic root")
+        artifact_path = run_path / kind
+        created = False
+        try:
+            with artifact_path.open("xb") as stream:
+                created = True
                 stream.write(payload)
                 stream.flush()
                 os.fsync(stream.fileno())
         except Exception:
-            try:
-                target.unlink(missing_ok=True)
-            except OSError:
-                pass
+            if created:
+                try:
+                    artifact_path.unlink()
+                except OSError:
+                    pass
             raise
         digest = hashlib.sha256(payload).hexdigest()
-        receipt = ArtifactReceipt(
-            kind=kind,
-            run_id=run_id,
-            path=str(target.resolve()),
-            sha256=digest,
-        )
+        receipt = ArtifactReceipt(kind, run_id, str(artifact_path), digest)
         self._artifacts.append(receipt)
         return receipt
 
     def finalize(self) -> CollectionReceipt:
-        """Close the collection and return an immutable summary receipt.
-
-        After this call, collect() raises RuntimeError.
-
-        Raises:
-            RuntimeError: If the collector was already finalised.
-        """
         if self._finalized:
             raise RuntimeError("Collector is already finalised")
         self._finalized = True
-        # Rehash every artifact before binding the ledger.  Any file modified
-        # after its receipt was issued will be detected here.  After the check
-        # passes, seal each file read-only (0o400) so post-finalization tampering
-        # is prevented at the OS level.
+        self._assert_pin()
         for artifact in self._artifacts:
-            current_digest = hashlib.sha256(Path(artifact.path).read_bytes()).hexdigest()
-            if current_digest != artifact.sha256:
+            if self._uses_dirfd:
+                run_fd, file_fd = self._fds[(artifact.run_id, artifact.kind)]
+                os.lseek(file_fd, 0, os.SEEK_SET)
+                chunks = []
+                while True:
+                    chunk = os.read(file_fd, 65536)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                content = b"".join(chunks)
+            else:
+                artifact_path = Path(artifact.path)
+                if (
+                    artifact_path.parent.resolve(strict=True)
+                    != self._root / artifact.run_id
+                ):
+                    raise RuntimeError("Evidence artifact escaped the diagnostic root")
+                content = artifact_path.read_bytes()
+            if hashlib.sha256(content).hexdigest() != artifact.sha256:
                 raise RuntimeError(
                     f"Evidence artifact was modified after collection: {artifact.path}"
                 )
-            os.chmod(artifact.path, 0o400)
-        sorted_artifacts = sorted(
-            self._artifacts, key=lambda a: (a.run_id, a.kind)
-        )
-        ledger_entries = [
-            {"kind": a.kind, "run_id": a.run_id, "sha256": a.sha256}
-            for a in sorted_artifacts
+            if self._uses_dirfd:
+                os.fchmod(file_fd, 0o400)
+                os.fsync(file_fd)
+                os.fsync(run_fd)
+            # The fallback stays writable: it is E0 diagnostics, not immutable.
+        ordered = sorted(self._artifacts, key=lambda a: (a.run_id, a.kind))
+        entries = [
+            {"kind": a.kind, "run_id": a.run_id, "sha256": a.sha256} for a in ordered
         ]
-        ledger_bytes = json.dumps(
-            ledger_entries,
+        data = json.dumps(
+            entries,
             ensure_ascii=True,
             allow_nan=False,
             separators=(",", ":"),
             sort_keys=True,
-        ).encode("utf-8")
-        ledger_digest = hashlib.sha256(ledger_bytes).hexdigest()
+        ).encode()
+        self._assert_pin()
         return CollectionReceipt(
-            root=str(self._root.resolve()),
-            artifact_count=len(self._artifacts),
-            ledger_sha256=ledger_digest,
-            artifacts=tuple(sorted_artifacts),
+            str(self._root),
+            len(ordered),
+            hashlib.sha256(data).hexdigest(),
+            tuple(ordered),
+            False,
+            "local-dirfd-diagnostic-only" if self._uses_dirfd else "unsupported",
         )
+
+    def close(self) -> None:
+        for run_fd, file_fd in self._fds.values():
+            for fd in (file_fd, run_fd):
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+        self._fds.clear()
+        for name in ("_root_fd", "_parent_fd"):
+            fd = getattr(self, name, -1)
+            if fd >= 0:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+                setattr(self, name, -1)
+
+    def __del__(self) -> None:
+        self.close()

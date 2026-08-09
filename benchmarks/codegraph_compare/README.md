@@ -3,12 +3,14 @@
 
 ## NO1-003B production-canary operator runbook
 
-> **Current decision: NO-GO for a real canary.** The repository can qualify the
-> NO1-002C/002D trust chain, but it intentionally contains no production model
-> dispatcher. `CanaryProtocol` rejects every non-fixture execution with
-> `QUALIFICATION_SCAFFOLD_NOT_PRODUCTION_READY`. Do not bypass that stop, replace
-> `execution_mode`, or call an agent adapter directly. A real run requires a
-> separately reviewed operator-controlled dispatcher and external approvals.
+> **Current decision: NO-GO for a real canary.** NO1-003D provides only an
+> offline-qualified, direct single-transport dispatch boundary; it contains no
+> provider implementation or operator command. A caller-supplied `runner` is a
+> fail-closed compatibility marker and is never executed. `CanaryProtocol` still
+> rejects every non-fixture execution with
+> `QUALIFICATION_SCAFFOLD_NOT_PRODUCTION_READY`. Do not bypass that stop or call
+> an adapter directly. A real NO1-003C run still requires separate human budget
+> authorization, external authorities, external paths, and independent role keys.
 
 ### 1. Run the zero-cost offline rehearsal
 
@@ -27,12 +29,15 @@ jq -e '
   .status == "PASS" and
   .execution_mode == "offline-rehearsal" and
   .artifact_count == 2 and
+  .evidence_durable == false and
+  (.evidence_durability == "local-dirfd-diagnostic-only" or
+   .evidence_durability == "unsupported") and
   .attestation_verified == true and
   .synthetic_judge_signature_verified == true and
   .independent_judge_available == false and
-  .trust_qualification_status == "NOT_EVALUATED" and
-  .trust_violations == ["INDEPENDENT_JUDGE_UNAVAILABLE"] and
-  .trust_gate_would_allow_bound_fixture == false and
+  .denial_probe_qualification_status == "NOT_EVALUATED" and
+  .denial_probe_violations == ["ROLE_KEYS_NOT_INDEPENDENT","ROLE_KEY_MATERIAL_NOT_INDEPENDENT","INDEPENDENT_JUDGE_UNAVAILABLE"] and
+  .bound_fixture_gate_eligible == true and
   .production_dispatch_allowed == false and
   .model_callbacks_invoked == 0 and
   .provider_requests == 0 and
@@ -42,10 +47,12 @@ jq -e '
 ' "$WORK_PARENT/receipt.json"
 ```
 
-`synthetic_judge_signature_verified=true` proves only that the same-process
-rehearsal record is canonically signed. It is deliberately not represented as an
-independent judgment. `trust_qualification_status=NOT_EVALUATED` with
-`INDEPENDENT_JUDGE_UNAVAILABLE` proves the production gate remains closed. The
+`evidence_durable=false` is mandatory for this E0 rehearsal. POSIX reports
+`local-dirfd-diagnostic-only` after mode sealing; Windows reports `unsupported`
+because it has no equivalent `openat`/`dir_fd` durability boundary. Neither mode
+is production evidence. `synthetic_judge_signature_verified=true` proves only
+that the same-process rehearsal record is canonically signed. It is deliberately not represented as an
+independent judgment. `denial_probe_qualification_status=NOT_EVALUATED` with role-key path and material independence violations proves the production gate remains closed. The
 ephemeral key, `offline-rehearsal-only` cell, `offline-fixture-no-model` model
 identity, and `production_dispatch_allowed=false` prevent reuse as canary
 evidence. Preserve the receipt for review, then securely remove the temporary
@@ -58,7 +65,10 @@ uv run pytest -q \
   tests/unit/test_production_anchor.py \
   tests/unit/test_production_collector.py \
   tests/unit/test_production_trust.py \
+  tests/unit/test_production_dispatch.py \
+  tests/unit/test_production_rehearsal.py \
   tests/unit/test_benchmark_harness.py
+uv run python scripts/no1_003d_mutations.py
 uv run python -m tree_sitter_analyzer --change-impact --format json
 ```
 
@@ -70,36 +80,66 @@ checks.
 ### 3. Production readiness checklist (all items mandatory)
 
 The Anchor Custodian, Budget Gateway, Evidence Collector, independent Judge,
-and execution operator must record approval out of band. Before any future real
-call, all of the following must be true:
+and execution operator must record approval out of band. The strict wire request
+contains `schema_version`, `manifest`, `spec`, `cell_order`, `timeout_seconds`,
+`qualification_evidence_digest`, `journal_root`, and `evidence_root`. The spec
+continues to bind the configured roots and ledger identity material as frozen
+input, but no local journal, pathname, inode, or ledger establishes a claim or
+terminal authorization. Operator config pins independent spend and judge keys
+and independent Ed25519 public keys/key IDs for the external nonce-claim,
+provider-budget, and immutable-evidence authorities. The dispatcher contains no
+authority private key or receipt issuer. Production PASS requires all three
+external facts: a fresh one-shot claim receipt bound to the dispatch challenge,
+signed provider reservation and usage receipts, and a signed terminal evidence
+receipt. Before any future real call, all of the following must be true:
 
 1. The exact Gin commit, clean workspace fingerprint, prompt hash, MCP launch
    identities, exact model ID, nonce, expiry, one-cell request limit, token limit,
-   and USD ceiling are frozen in `ProductionRunSpecV1`.
+   USD ceiling, and canonical absolute journal/evidence/global-ledger roots are
+   frozen in the strict `ProductionRunSpecV1` v1 wire schema.
 2. The anchor and trust store are operator-controlled regular files outside the
    checkout and evidence bundle, with no symlink component. No TOFU,
    bundle-provided key, environment inheritance, or self-signed replacement is
    allowed.
-3. `SpendAttestation` binds the exact spec hash, nonce, expiry, and budget mode.
-   Provider reservation is preferred. `client-process-kill` is only the recorded
-   Codex CLI limitation; it still requires timeout/kill and post-run usage
-   verification and never permits ceiling overrun.
-4. The collector root is fresh and external. Every write is exclusive and the
-   finalized ledger/artifacts are immutable. Checkout/runtime audits and cleanup
-   must pass for each arm.
+3. `SpendAttestation` and `JudgeRecord` bind the exact spec hash (including all
+   three roots and the ledger identity material), nonce, expiry, and provider
+   budget mode. `client-process-kill` self-reporting is rejected. The dispatcher
+   rejects unrestricted provider callables and accepts only an externally supervised
+   transport authority receipt proving exact-one, the frozen timeout, and whole-process
+   termination after a verified one-shot claim. Exact-v1 provider reservation and usage
+   receipts require canonical bounded
+   identities, exact numeric types, and Ed25519 signatures verified with the
+   qualification-time pinned provider public key.
+4. The collector root is fresh and external. The configured local journal and
+   collected evidence are E0 diagnostics only. `EvidenceCollector.finalize()`
+   always reports
+   `durable=false`: POSIX dirfd collection reports
+   `local-dirfd-diagnostic-only`, while Windows/no-dirfd reports
+   `durability="unsupported"` and does not simulate read-only or WORM storage.
+   Dispatch consumes only the local ledger SHA-256 as an input to the external
+   evidence authority; local files cannot establish terminal durability or PASS.
 5. The Judge independently signs the exact evidence digest and spec hash. Any
    missing, stale, mismatched, non-`ACCEPT`, or unverifiable record is terminal
    `NOT_EVALUATED`/`INVALID`, never a retry opportunity or a TSA win.
 6. The exact two indexed cells, order, one attempt each, receipt/tool arguments,
    oracle (`gin.go`, `Engine.ServeHTTP`, `method`), transcript policy, and
-   cumulative USD ceiling remain unchanged. A failure stops the phase; selective
-   retry is forbidden.
+   cumulative USD ceiling remain unchanged. A manifest-level experiment authority
+   reserves from the shared $3 ceiling and binds cell 1 to cell 0's immutable terminal;
+   cell 1 cannot run first or obtain a second independent $3 reservation.
 7. Output remains E0/internal: `winner=null`, `dominance_allowed=false`, and
    `publishable=false`. No No.1, dominance, production-readiness, E1+, or public
    benchmark claim is permitted.
-8. A separately reviewed production dispatcher proves it consumes the qualified
-   spec exactly once and atomically records reservation, usage, termination, and
-   immutable evidence. **That dispatcher is not present today.**
+8. The library dispatcher accepts a one-shot claim only from the external
+   nonce-claim authority, verifies provider reservation/usage receipts from the
+   external provider-budget authority, and accepts terminal durability only from
+   the external immutable-evidence authority. All are independently pinned
+   Ed25519 verification roles. Missing transport/authority inputs or unavailable
+   authority public-key pins fail before transport as `NOT_EVALUATED` with zero
+   callbacks. A refused or invalid claim also invokes zero callbacks; an invalid
+   terminal evidence receipt after the call remains E0 and cannot become PASS.
+   A production provider adapter and operator command are not present today;
+   `TrustedOfflineTestAdapter` is explicitly test-only and is rejected by
+   production dispatch.
 
 ### 4. Abort and escalation
 
