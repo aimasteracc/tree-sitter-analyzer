@@ -12019,6 +12019,30 @@ def test_qualification_v3_aggregate_claims_remain_e0_and_disabled():
     }
 
 
+def test_qualification_executor_fails_closed_without_posix_resource(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 run 31334854030: Windows may import validators but cannot execute.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    output = tmp_path / "out"
+    monkeypatch.setattr(executor, "_resource", None)
+
+    with pytest.raises(RuntimeError, match="requires POSIX resource limits"):
+        executor.produce_cell({}, output)
+    assert output.exists() is False
+
+
+def test_qualification_validator_remains_usable_without_posix_resource(monkeypatch):
+    # PR #1249 run 31334854030: missing resource must not break module collection.
+    from benchmarks.codegraph_compare import setup_qualification_executor as executor
+
+    monkeypatch.setattr(executor, "_resource", None)
+
+    with pytest.raises(ValueError, match="unknown or missing fields"):
+        executor.validate_producer_plan({})
+
+
 def test_qualification_executor_rejects_nonempty_output(tmp_path: Path):
     from benchmarks.codegraph_compare.setup_qualification_executor import produce_cell
 

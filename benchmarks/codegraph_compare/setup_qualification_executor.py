@@ -11,10 +11,14 @@ import hashlib
 import json
 import os
 import re
-import resource
 import stat
 import subprocess
 import time
+
+try:
+    import resource as _resource
+except ImportError:  # pragma: no cover - exercised on Windows
+    _resource = None  # type: ignore[assignment]
 from collections.abc import Mapping, Sequence
 from functools import partial
 from pathlib import Path
@@ -406,9 +410,13 @@ def _output_size(root: Path, *, strict: bool = True, ceiling: int | None = None)
 
 
 def _child_file_limit(limit: int) -> None:
-    soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
-    effective = min(limit, hard) if hard != resource.RLIM_INFINITY else limit
-    resource.setrlimit(resource.RLIMIT_FSIZE, (effective, effective))
+    if _resource is None:
+        raise RuntimeError(
+            "production producer execution requires POSIX resource limits"
+        )
+    soft, hard = _resource.getrlimit(_resource.RLIMIT_FSIZE)
+    effective = min(limit, hard) if hard != _resource.RLIM_INFINITY else limit
+    _resource.setrlimit(_resource.RLIMIT_FSIZE, (effective, effective))
 
 
 def _wait_bounded(
@@ -430,6 +438,10 @@ def _wait_bounded(
 
 
 def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
+    if _resource is None:
+        raise RuntimeError(
+            "production producer execution requires POSIX resource limits"
+        )
     if out.exists():
         if not out.is_dir() or tuple(out.iterdir()) != ():
             raise ValueError("producer output root must be a fresh empty directory")
@@ -454,7 +466,7 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
         if terminal_failure:
             break
         _remaining(deadline)
-        before = resource.getrusage(resource.RUSAGE_CHILDREN)
+        before = _resource.getrusage(_resource.RUSAGE_CHILDREN)
         prefix = f"{number:02d}-{execution['id']}"
         stdout_name = prefix + "-stdout"
         stderr_name = prefix + "-stderr"
@@ -490,7 +502,7 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
         finally:
             stdout_stream.close()
             stderr_stream.close()
-        after = resource.getrusage(resource.RUSAGE_CHILDREN)
+        after = _resource.getrusage(_resource.RUSAGE_CHILDREN)
         _remaining(deadline)
         query = canonical_json_bytes(execution["query"])
         index_observation = _write_final_index_observation(
