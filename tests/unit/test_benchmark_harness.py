@@ -8108,7 +8108,7 @@ class TestCanaryProtocol:
 
 
 POSIX_QUALIFICATION_TEST = pytest.mark.skipif(
-    os.name == "nt",
+    "os.name == 'nt'",
     reason="tracked: NO1-008A qualification requires openat/O_NOFOLLOW",
 )
 _POSIX_QUALIFICATION_SECTION_START = sys._getframe().f_lineno
@@ -10741,10 +10741,6 @@ def _mark_posix_qualification_section_tests() -> None:
             namespace[name] = POSIX_QUALIFICATION_TEST(candidate)
 
 
-# Keep this invocation at EOF so tests appended to the qualification section inherit it.
-_mark_posix_qualification_section_tests()
-
-
 def test_strict_receipt_json_rejects_flat_node_budget_overflow():
     # PR #1247 review 3742970270: byte/depth checks alone missed flat JSON trees.
     from benchmarks.codegraph_compare.setup_qualification import strict_json_loads
@@ -10824,3 +10820,74 @@ def test_qualification_architecture_codemap_lists_security_modules():
         in codemap
     )
     assert "`setup_qualification_trust.py` — externally supplied Ed25519" in codemap
+
+
+def test_posix_qualification_marker_invocation_is_final_top_level_statement():
+    # PR #1247 review final11: appended tests must remain inside the marked section.
+    import ast
+
+    syntax = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    statement = syntax.body[-1]
+
+    assert (
+        type(statement).__name__,
+        type(statement.value).__name__,
+        type(statement.value.func).__name__,
+        statement.value.func.id,
+    ) == ("Expr", "Call", "Name", "_mark_posix_qualification_section_tests")
+
+
+def test_posix_qualification_section_functions_have_collection_marker():
+    # PR #1247 review final11: every collected section test must share the Windows skip.
+    reason = "tracked: NO1-008A qualification requires openat/O_NOFOLLOW"
+    section_tests = tuple(
+        (name, candidate)
+        for name, candidate in globals().items()
+        if name.startswith("test_")
+        and getattr(getattr(candidate, "__code__", None), "co_firstlineno", 0)
+        > _POSIX_QUALIFICATION_SECTION_START
+    )
+    missing = tuple(
+        name
+        for name, candidate in section_tests
+        if not any(
+            mark.name == "skipif" and mark.kwargs.get("reason") == reason
+            for mark in getattr(candidate, "pytestmark", ())
+        )
+    )
+
+    assert missing == ()
+
+
+def test_latest_qualification_tests_skip_in_simulated_windows(request, monkeypatch):
+    # PR #1247 review final11: the five tests appended in 0d4d53f0 stay skipped on Windows.
+    from _pytest.skipping import evaluate_condition
+
+    latest_names = (
+        "test_strict_receipt_json_rejects_flat_node_budget_overflow",
+        "test_source_inventory_rejects_ignored_checkout_path",
+        "test_cell_plan_rejects_authenticated_tool_argv_decoy",
+        "test_raw_blob_same_size_rewrite_is_rejected",
+        "test_qualification_architecture_codemap_lists_security_modules",
+    )
+    marks = tuple(
+        next(mark for mark in globals()[name].pytestmark if mark.name == "skipif")
+        for name in latest_names
+    )
+    with monkeypatch.context() as context:
+        context.setattr(sys.modules[__name__], "os", SimpleNamespace(name="nt"))
+        evaluations = tuple(
+            evaluate_condition(request.node, mark, mark.args[0]) for mark in marks
+        )
+
+    assert evaluations == (
+        (True, "tracked: NO1-008A qualification requires openat/O_NOFOLLOW"),
+        (True, "tracked: NO1-008A qualification requires openat/O_NOFOLLOW"),
+        (True, "tracked: NO1-008A qualification requires openat/O_NOFOLLOW"),
+        (True, "tracked: NO1-008A qualification requires openat/O_NOFOLLOW"),
+        (True, "tracked: NO1-008A qualification requires openat/O_NOFOLLOW"),
+    )
+
+
+# Keep this invocation at absolute EOF so every qualification test inherits the marker.
+_mark_posix_qualification_section_tests()
