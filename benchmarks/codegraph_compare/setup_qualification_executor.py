@@ -12,9 +12,11 @@ import json
 import os
 import re
 import resource
+import stat
 import subprocess
 import time
 from collections.abc import Mapping, Sequence
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +50,8 @@ EXECUTION_KEYS = frozenset(
     {"id", "argv", "cwd", "environment_digest", "query", "expected_result"}
 )
 ENVIRONMENT_KEYS = frozenset({"HOME", "LANG", "LC_ALL", "PATH"})
+MAX_EXPECTED_RESULT_BYTES = 4 * 1024 * 1024
+
 FORBIDDEN_ENV_FRAGMENTS = (
     "KEY",
     "TOKEN",
@@ -179,6 +183,11 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
             raise ValueError("execution environment digest is invalid")
         if type(item["query"]) is not dict or type(item["expected_result"]) is not dict:
             raise ValueError("execution query and expected result must be objects")
+        if (
+            len(canonical_json_bytes(item["expected_result"]))
+            > MAX_EXPECTED_RESULT_BYTES
+        ):
+            raise ValueError("execution expected result exceeds comparison bound")
         ids.append(item["id"])
     if ids != ["delete", "build", "health", "symbol", "call"]:
         raise ValueError(
@@ -193,15 +202,26 @@ def validate_producer_plan(plan: Any) -> dict[str, Any]:
     return dict(plan)
 
 
+def _describe_blob(raw: Path, name: str) -> dict[str, Any]:
+    path = raw / name
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+            size += len(chunk)
+    return {
+        "path": f"raw/{name}",
+        "size_bytes": size,
+        "sha256": digest.hexdigest(),
+    }
+
+
 def _blob(raw: Path, name: str, payload: bytes) -> dict[str, Any]:
     path = raw / name
     with path.open("xb") as stream:
         stream.write(payload)
-    return {
-        "path": f"raw/{name}",
-        "size_bytes": len(payload),
-        "sha256": hashlib.sha256(payload).hexdigest(),
-    }
+    return _describe_blob(raw, name)
 
 
 def _final_index_observation(index: Path) -> bytes:
@@ -211,12 +231,17 @@ def _final_index_observation(index: Path) -> bytes:
             if path.is_symlink() or (not path.is_dir() and not path.is_file()):
                 raise ValueError("index contains an unsupported file")
             if path.is_file():
-                payload = path.read_bytes()
+                digest = hashlib.sha256()
+                size = 0
+                with path.open("rb") as stream:
+                    while chunk := stream.read(1024 * 1024):
+                        digest.update(chunk)
+                        size += len(chunk)
                 records.append(
                     {
                         "path": path.relative_to(index).as_posix(),
-                        "size_bytes": len(payload),
-                        "sha256": hashlib.sha256(payload).hexdigest(),
+                        "size_bytes": size,
+                        "sha256": digest.hexdigest(),
                     }
                 )
     return canonical_json_bytes(records)
@@ -249,6 +274,42 @@ def _remaining(deadline: float) -> float:
     return remaining
 
 
+def _output_size(root: Path) -> int:
+    total = 0
+    for current, directories, files in os.walk(root, followlinks=False):
+        for name in directories + files:
+            metadata = os.lstat(Path(current) / name)
+            if stat.S_ISLNK(metadata.st_mode):
+                raise ValueError("producer output contains a symlink")
+            if stat.S_ISREG(metadata.st_mode):
+                total += metadata.st_size
+    return total
+
+
+def _child_file_limit(limit: int) -> None:
+    soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+    effective = min(limit, hard) if hard != resource.RLIM_INFINITY else limit
+    resource.setrlimit(resource.RLIMIT_FSIZE, (effective, effective))
+
+
+def _wait_bounded(
+    process: subprocess.Popen[bytes], deadline: float, output: Path, ceiling: int
+) -> int:
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            os.killpg(process.pid, 9)
+            process.wait()
+            return 124
+        try:
+            return process.wait(timeout=min(1.0, remaining))
+        except subprocess.TimeoutExpired:
+            if _output_size(output) > ceiling:
+                os.killpg(process.pid, 9)
+                process.wait()
+                raise ValueError("producer output exceeds signed I/O ceiling") from None
+
+
 def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
     if out.exists():
         if not out.is_dir() or tuple(out.iterdir()) != ():
@@ -264,6 +325,7 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
     if index.exists():
         raise ValueError("index must not exist before producer start")
     environment = _clean_host_environment(plan["environment"])
+    output_ceiling = plan["resource_ceilings"]["io_bytes"]
     records: list[dict[str, Any]] = []
     # The budget begins at producer PID start, so Python setup, observations,
     # serialization, and command execution share Docker's StartedAt→FinishedAt limit.
@@ -272,33 +334,48 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
     for number, execution in enumerate(plan["executions"]):
         if terminal_failure:
             break
-        remaining = _remaining(deadline)
+        _remaining(deadline)
         before = resource.getrusage(resource.RUSAGE_CHILDREN)
-        process = subprocess.Popen(
-            execution["argv"],
-            cwd=execution["cwd"],
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            start_new_session=True,
-        )
+        prefix = f"{number:02d}-{execution['id']}"
+        stdout_name = prefix + "-stdout"
+        stderr_name = prefix + "-stderr"
+        stdout_stream = (raw / stdout_name).open("xb")
         try:
-            stdout, stderr = process.communicate(timeout=remaining)
-            exit_code = process.returncode
-        except subprocess.TimeoutExpired as error:
-            # Kill the entire dedicated process group and synchronously reap PID1.
-            os.killpg(process.pid, 9)
-            tail_stdout, tail_stderr = process.communicate()
-            exit_code = 124
-            stdout = (error.stdout or b"") + (tail_stdout or b"")
-            stderr = (error.stderr or b"") + (tail_stderr or b"")
+            stderr_stream = (raw / stderr_name).open("xb")
+        except BaseException:
+            stdout_stream.close()
+            raise
+        try:
+            remaining_ceiling = output_ceiling - _output_size(core)
+            if remaining_ceiling <= 0:
+                raise ValueError("producer output exceeds signed I/O ceiling")
+            process = subprocess.Popen(
+                execution["argv"],
+                cwd=execution["cwd"],
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=stdout_stream,
+                stderr=stderr_stream,
+                start_new_session=True,
+                preexec_fn=partial(_child_file_limit, remaining_ceiling),
+            )
+            try:
+                exit_code = _wait_bounded(process, deadline, core, output_ceiling)
+            except BaseException:
+                if process.poll() is None:
+                    os.killpg(process.pid, 9)
+                    process.wait()
+                raise
+        finally:
+            stdout_stream.close()
+            stderr_stream.close()
         after = resource.getrusage(resource.RUSAGE_CHILDREN)
         _remaining(deadline)
         query = canonical_json_bytes(execution["query"])
         index_snapshot = _final_index_observation(index)
         _remaining(deadline)
-        prefix = f"{number:02d}-{execution['id']}"
+        if _output_size(core) > output_ceiling:
+            raise ValueError("producer output exceeds signed I/O ceiling")
         records.append(
             {
                 "id": execution["id"],
@@ -306,8 +383,8 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
                 "cwd": execution["cwd"],
                 "environment_digest": execution["environment_digest"],
                 "exit_code": exit_code,
-                "stdout_bytes": _blob(raw, prefix + "-stdout", stdout),
-                "stderr_bytes": _blob(raw, prefix + "-stderr", stderr),
+                "stdout_bytes": _describe_blob(raw, stdout_name),
+                "stderr_bytes": _describe_blob(raw, stderr_name),
                 "query_bytes": _blob(raw, prefix + "-query", query),
                 "final_index_observation": _blob(
                     raw, prefix + "-index", index_snapshot
@@ -316,6 +393,8 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
                 - (before.ru_utime + before.ru_stime),
             }
         )
+        if _output_size(core) > output_ceiling:
+            raise ValueError("producer output exceeds signed I/O ceiling")
         _remaining(deadline)
         terminal_failure = exit_code != 0
     _remaining(deadline)
@@ -343,6 +422,8 @@ def produce_cell(plan: Mapping[str, Any], out: Path) -> dict[str, Any]:
     payload = canonical_json_bytes(result) + b"\n"
     _remaining(deadline)
     (core / "producer-result.json").write_bytes(payload)
+    if _output_size(core) > output_ceiling:
+        raise ValueError("producer output exceeds signed I/O ceiling")
     _remaining(deadline)
     return result
 

@@ -13,6 +13,11 @@ from benchmarks.codegraph_compare.decision_consumer_service import (
     request_decision,
     verify_decision_contract,
 )
+from benchmarks.codegraph_compare.execution_budget import (
+    CONTRACT_EXPIRY_MARGIN_SECONDS,
+    POST_AUTHORITY_SERVICE_PHASES,
+    authority_cell_budget_seconds,
+)
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
     strict_json_loads,
@@ -21,9 +26,6 @@ from benchmarks.codegraph_compare.receipt_v3_service import request_receipt
 from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 from benchmarks.codegraph_compare.verifier import parse_public_config
 from benchmarks.codegraph_compare.verifier_service import request_verdict
-
-_SERIAL_SERVICE_PHASES = 5  # authority, executor, approver, verifier, decision
-_CONTRACT_EXPIRY_MARGIN_SECONDS = 30
 
 
 def _fsync_directory(path: Path) -> None:
@@ -98,6 +100,7 @@ def _run_impl(args: argparse.Namespace) -> int:
         raise ValueError("root-signed correlation nonce invalid")
     cells = []
     staged_root = Path(args.staged_root).resolve(strict=True)
+    plans: dict[tuple[str, str], dict[str, Any]] = {}
     plan_timeouts: dict[tuple[str, str], int] = {}
     for identity in EXPECTED_CELLS:
         plan = strict_json_loads(
@@ -106,6 +109,8 @@ def _run_impl(args: argparse.Namespace) -> int:
         value = plan.get("wall_timeout_seconds")
         if type(value) is not int or value < 1:
             raise ValueError("operator plan timeout invalid")
+        authority_cell_budget_seconds(plan)
+        plans[identity] = plan
         plan_timeouts[identity] = value
         ordinal = list(EXPECTED_CELLS).index(identity)
         from benchmarks.codegraph_compare.receipt_v3 import canonical_plan_hash
@@ -118,9 +123,14 @@ def _run_impl(args: argparse.Namespace) -> int:
     if decision_contract["plan_set_hash"] != config["trusted"]["plan_set_hash"]:
         raise ValueError("offline decision plan set is not root-config authorized")
     phase_budget_seconds = sum(plan_timeouts.values())
-    serial_budget_seconds = phase_budget_seconds * _SERIAL_SERVICE_PHASES
+    authority_budget_seconds = sum(
+        authority_cell_budget_seconds(plans[identity]) for identity in EXPECTED_CELLS
+    )
+    serial_budget_seconds = (
+        authority_budget_seconds + phase_budget_seconds * POST_AUTHORITY_SERVICE_PHASES
+    )
     required_lifetime_ns = (
-        serial_budget_seconds + _CONTRACT_EXPIRY_MARGIN_SECONDS
+        serial_budget_seconds + CONTRACT_EXPIRY_MARGIN_SECONDS
     ) * 1_000_000_000
     if common_expiry - time.time_ns() < required_lifetime_ns:
         raise TimeoutError(
@@ -140,7 +150,9 @@ def _run_impl(args: argparse.Namespace) -> int:
             Path(args.authority_socket),
             {
                 **config["auditor"],
-                "wall_timeout_seconds": remaining,
+                "wall_timeout_seconds": min(
+                    remaining, authority_cell_budget_seconds(plans[identity])
+                ),
             },
         )
         draft = request_receipt(

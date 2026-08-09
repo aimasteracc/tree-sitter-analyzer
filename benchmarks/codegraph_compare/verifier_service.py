@@ -346,9 +346,17 @@ def _verify(
         }
         return canonical_json_bytes(envelope)
 
-    _consumption, _head, envelope_bytes = ledger.finish_with_envelope(
-        digest, challenge, build
-    )
+    try:
+        _consumption, _head, envelope_bytes = ledger.finish_with_envelope(
+            digest, challenge, build
+        )
+    except BaseException:
+        # A COMMIT error is ambiguous: query in a fresh transaction before any
+        # failure transition.  Never overwrite a durably CONSUMED challenge.
+        recovered = ledger.recover_envelope_or_fail(digest, challenge)
+        if recovered is not None:
+            return _manifest_json_loads(recovered)
+        raise
     return _manifest_json_loads(envelope_bytes)
 
 

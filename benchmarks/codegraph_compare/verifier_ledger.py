@@ -374,6 +374,26 @@ class ChallengeLedger:
             )
             return record, head, envelope
 
+    def recover_envelope_or_fail(
+        self, manifest_sha256: str, challenge: str
+    ) -> bytes | None:
+        """Recover an ambiguous commit or terminalize only a live VERIFYING row."""
+        with self._transaction():
+            row = self.db.execute(
+                "SELECT c.manifest_sha256,c.state,v.envelope "
+                "FROM challenges AS c LEFT JOIN verdicts AS v "
+                "ON v.challenge=c.challenge AND v.manifest_sha256=c.manifest_sha256 "
+                "WHERE c.challenge=?",
+                (challenge,),
+            ).fetchone()
+            if row is None or row[0] != manifest_sha256:
+                raise ValueError("verifier challenge is absent or mismatched")
+            if row[2] is not None:
+                return bytes(row[2])
+            if row[1] == "VERIFYING":
+                self._transition_locked(manifest_sha256, challenge, "FAILED")
+            return None
+
     def verdict(self, manifest_sha256: str, challenge: str) -> bytes:
         """Recover committed canonical envelope bytes by both immutable identities."""
         with self._transaction():

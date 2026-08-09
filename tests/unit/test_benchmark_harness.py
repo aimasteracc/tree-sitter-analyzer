@@ -12784,6 +12784,7 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
         plan = {
             "cell": {"repo_id": repo, "arm_id": arm, "attempt": 1},
             "wall_timeout_seconds": 10,
+            "resource_ceilings": {"io_bytes": 32 * 1024 * 1024},
         }
         plans.append(plan)
         job_id = f"{ordinal + 1:064x}"
@@ -12859,7 +12860,7 @@ def test_operator_gives_authority_aggregate_remaining_timeout(
     with pytest.raises(RuntimeError, match="observed authority timeout"):
         qualification_operator._run_impl(args)
 
-    assert observed == [699.0]
+    assert observed == [522]
     assert plans[0]["wall_timeout_seconds"] == 10
 
 
@@ -14400,7 +14401,7 @@ def test_operator_rejects_short_common_lifetime_before_first_cell(
     from benchmarks.codegraph_compare.setup_qualification_plan import EXPECTED_CELLS
 
     now = 1_000_000_000_000
-    expiry = now + 729 * 1_000_000_000 - 1
+    expiry = now + 7_898 * 1_000_000_000 - 1
     contracts_dir = tmp_path / "contracts"
     staged_root = tmp_path / "staged"
     contracts_dir.mkdir()
@@ -14411,6 +14412,7 @@ def test_operator_rejects_short_common_lifetime_before_first_cell(
         plan = {
             "cell": {"repo_id": repo, "arm_id": arm, "attempt": 1},
             "wall_timeout_seconds": 10,
+            "resource_ceilings": {"io_bytes": 32 * 1024 * 1024},
         }
         plans.append(plan)
         job_id = f"{ordinal + 1:064x}"
@@ -14608,6 +14610,99 @@ def test_authority_preflight_rejects_ambiguous_mount_without_state(
         runner.preflight({"job_id": "a" * 64})
 
     assert list(tmp_path.glob("*.state")) == []
+
+
+def test_authority_response_recovery_uses_original_absolute_deadline(monkeypatch):
+    # PR #1249 review 3744677879: recovery cannot renew a consumed request budget.
+    from benchmarks.codegraph_compare import audit_authority_client as client
+
+    observed = []
+    ticks = iter((100.0, 101.0, 105.0))
+    monkeypatch.setattr(client, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+
+    def request(_request, _socket, _authority, timeout):
+        observed.append(timeout)
+        if len(observed) == 1:
+            raise client._PostSendTransportError("lost")
+        raise RuntimeError("recovery observed")
+
+    monkeypatch.setattr(client, "_request_response", request)
+
+    with pytest.raises(RuntimeError, match="recovery observed"):
+        client.run_cell(
+            {"job_id": "a" * 64},
+            Path("/authority.sock"),
+            {"wall_timeout_seconds": 10},
+        )
+
+    assert observed == [9.0, 5.0]
+
+
+def test_authority_budget_includes_all_bounded_post_processing():
+    # PR #1249 review 3744677882: preflight covers work after producer exit.
+    from benchmarks.codegraph_compare.execution_budget import (
+        authority_cell_budget_seconds,
+    )
+
+    assert (
+        authority_cell_budget_seconds(
+            {
+                "wall_timeout_seconds": 10,
+                "resource_ceilings": {"io_bytes": 32 * 1024 * 1024},
+            }
+        )
+        == 522
+    )
+
+
+def test_verifier_envelope_build_failure_durably_terminalizes_verifying(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1249 review 3744677886: an envelope persistence failure cannot strand VERIFYING.
+    import sqlite3
+
+    from benchmarks.codegraph_compare.verifier_ledger import ChallengeLedger
+
+    monkeypatch.setattr(ChallengeLedger, "_acquire_lease", lambda _self: None)
+    ledger = ChallengeLedger(tmp_path / "verifier.sqlite")
+    manifest = "a" * 64
+    challenge = ledger.begin(manifest)["challenge"]
+    ledger.start_verifying(manifest, challenge)
+
+    with pytest.raises(OSError, match="signing failed"):
+        ledger.finish_with_envelope(
+            manifest,
+            challenge,
+            lambda _record, _head: (_ for _ in ()).throw(OSError("signing failed")),
+        )
+    assert ledger.recover_envelope_or_fail(manifest, challenge) is None
+    database = sqlite3.connect(ledger.path)
+    try:
+        state = database.execute(
+            "SELECT state FROM challenges WHERE challenge=?", (challenge,)
+        ).fetchone()[0]
+    finally:
+        database.close()
+
+    assert state == "FAILED"
+
+
+def test_streamed_blob_descriptor_does_not_use_read_bytes(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744677888: producer evidence descriptors are streamed from disk.
+    from benchmarks.codegraph_compare.setup_qualification_executor import (
+        _describe_blob,
+    )
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "stdout").write_bytes(b"abc" * 1024)
+    monkeypatch.setattr(Path, "read_bytes", lambda _self: pytest.fail("buffered read"))
+
+    assert _describe_blob(raw, "stdout") == {
+        "path": "raw/stdout",
+        "size_bytes": 3072,
+        "sha256": hashlib.sha256(b"abc" * 1024).hexdigest(),
+    }
 
 
 _mark_posix_qualification_section_tests()

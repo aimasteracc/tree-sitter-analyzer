@@ -28,6 +28,10 @@ from benchmarks.codegraph_compare.audit_authority_storage import (
     _sha,
     _source_archive_ceiling,
 )
+from benchmarks.codegraph_compare.execution_budget import (
+    AUTHORITY_COMMAND_TIMEOUT_SECONDS,
+    debugfs_payload_timeout_seconds,
+)
 from benchmarks.codegraph_compare.host_auditor import (
     LAUNCH_DOMAIN,
     _request,
@@ -46,7 +50,7 @@ from benchmarks.codegraph_compare.setup_qualification_paths import _hash_tree
 from benchmarks.codegraph_compare.verifier import parse_public_config
 
 
-def _run(*args: str, timeout: float = 120) -> bytes:
+def _run(*args: str, timeout: float = AUTHORITY_COMMAND_TIMEOUT_SECONDS) -> bytes:
     """Run every unit of authority work in a killable process group."""
     process = subprocess.Popen(
         args,
@@ -151,8 +155,6 @@ _MAX_AUTHORIZED_OUTPUT_BYTES = 16 * 1024 * 1024 * 1024
 _MAX_SEALED_CORE_ENTRIES = 1_000_000
 _EXT4_INODE_RESERVE_NUMERATOR = 11
 _EXT4_INODE_RESERVE_DENOMINATOR = 10
-_DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND = 16 * 1024 * 1024
-_DEBUGFS_FIXED_OVERHEAD_SECONDS = 30
 
 
 def _authorized_output_ceiling(plan: Mapping[str, Any]) -> int:
@@ -270,11 +272,7 @@ def _assert_ext4_payload(
         raise ValueError("ext4 extraction payload size is invalid")
     if type(contract_expires_at_ns) is not int:
         raise ValueError("authority contract expiry is invalid")
-    required_timeout = (
-        _DEBUGFS_FIXED_OVERHEAD_SECONDS
-        + (payload_bytes + _DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND - 1)
-        // _DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND
-    )
+    required_timeout = debugfs_payload_timeout_seconds(payload_bytes)
     remaining = (contract_expires_at_ns - time.time_ns()) / 1_000_000_000
     if remaining <= 0:
         raise TimeoutError("authority contract expired before ext4 extraction")

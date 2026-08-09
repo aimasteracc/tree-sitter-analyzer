@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import socket
 import struct
+import time
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ def _request_response(
     if len(wire) > MAX_MESSAGE:
         raise ValueError("authority request exceeds protocol bound")
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    deadline = time.monotonic() + timeout
     client.settimeout(timeout)
     try:
         client.connect(str(socket_path))
@@ -42,8 +44,12 @@ def _request_response(
         client.sendall(struct.pack("!I", len(wire)) + wire)
         try:
             client.shutdown(socket.SHUT_WR)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("authority request deadline expired")
+            client.settimeout(remaining)
             response = read_frame(
-                client, MAX_MESSAGE, timeout, "external authority response"
+                client, MAX_MESSAGE, remaining, "external authority response"
             )
             if type(response) is not dict:
                 raise ValueError("external authority response must be an object")
@@ -124,8 +130,17 @@ def run_cell(
     timeout = authority.get("wall_timeout_seconds", 120)
     if type(timeout) not in {int, float} or timeout <= 0:
         raise ValueError("authority timeout contract invalid")
+    timeout = float(timeout)
+    deadline = time.monotonic() + timeout
+
+    def remaining() -> float:
+        value = deadline - time.monotonic()
+        if value <= 0:
+            raise TimeoutError("authority request deadline expired")
+        return value
+
     try:
-        envelope = _request_response(request, socket_path, authority, timeout)
+        envelope = _request_response(request, socket_path, authority, remaining())
     except _PostSendTransportError:
         envelope = _request_response(
             {
@@ -135,7 +150,7 @@ def run_cell(
             },
             socket_path,
             authority,
-            timeout,
+            remaining(),
         )
     if type(envelope) is dict and frozenset(envelope) == {"error", "reason"}:
         raise ValueError(f"authority rejected request: {envelope['reason']}")
