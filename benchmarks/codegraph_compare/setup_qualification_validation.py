@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Mapping
@@ -14,7 +15,6 @@ from benchmarks.codegraph_compare.setup_qualification_paths import (
     _hash_tree_at,
     _open_beneath,
     _open_root,
-    _read_regular_at,
     _tree_size_at,
     canonical_relative_path,
 )
@@ -107,12 +107,27 @@ def validate_cell_receipt(
             )
     except (OSError, RuntimeError, TypeError, ValueError):
         failures.append("CELL_ROOT_ISOLATION_MISMATCH")
+    try:
+        return _validate_open_cell_receipt(
+            receipt,
+            plan=plan,
+            verifier_config=verifier_config,
+            failures=failures,
+            cell_fd=cell_fd,
+        )
+    finally:
+        if cell_fd is not None:
+            os.close(cell_fd)
 
-    def read_cell(relative: str) -> bytes:
-        if cell_fd is None:
-            raise ValueError("Cell root is unavailable")
-        return _read_regular_at(cell_fd, relative)
 
+def _validate_open_cell_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    plan: CellPlanV1,
+    verifier_config: VerifierConfigV1,
+    failures: list[str],
+    cell_fd: int | None,
+) -> tuple[str, ...]:
     try:
         validate_receipt_schema_v2(receipt)
     except (TypeError, ValueError):
@@ -213,7 +228,10 @@ def validate_cell_receipt(
         allowlist = _sorted_paths(
             partition.get("parse_error_allowlist", ()), "parse-error allowlist"
         )
-        if allowlist != plan.parse_error_allowlist:
+        if (
+            allowlist != plan.parse_error_allowlist
+            or excluded != plan.explicit_excluded_allowlist
+        ):
             raise ValueError
         eligible = set(plan.eligibility.eligible_paths)
         groups = (set(indexed), set(excluded), set(errors))
@@ -249,31 +267,73 @@ def validate_cell_receipt(
         failures.append("INDEX_BYTES_MISMATCH")
         actual_index_hash = None
 
-    def valid_blob(raw: object) -> bytes | None:
-        """Return the exact authenticated bytes from the single safe open."""
-        if not isinstance(raw, Mapping):
-            return None
+    blob_bytes_consumed = 0
+    per_blob_ceiling = min(
+        plan.resources.max_index_bytes, plan.resources.max_disk_write_bytes
+    )
+    cumulative_blob_ceiling = plan.resources.max_disk_write_bytes
+    json_materialization_ceiling = min(per_blob_ceiling, 1024 * 1024)
+
+    def valid_blob(
+        raw: object, *, materialize_json: bool = False
+    ) -> tuple[bool, bytes | None]:
+        """Authenticate one bounded regular blob, materializing only small JSON."""
+        nonlocal blob_bytes_consumed
+        if type(raw) is not dict or cell_fd is None:
+            return False, None
         relative = raw.get("path")
-        if not isinstance(relative, str):
-            return None
+        claimed_size = raw.get("size_bytes")
+        if not isinstance(relative, str) or type(claimed_size) is not int:
+            return False, None
+        descriptor: int | None = None
         try:
-            payload = read_cell(relative)
+            descriptor = _open_beneath(cell_fd, relative)
+            metadata = os.fstat(descriptor)
+            allocated = getattr(metadata, "st_blocks", 0) * 512
+            if (
+                metadata.st_size != claimed_size
+                or metadata.st_size > per_blob_ceiling
+                or blob_bytes_consumed + metadata.st_size > cumulative_blob_ceiling
+                or (metadata.st_size > 0 and allocated < metadata.st_size)
+                or (
+                    materialize_json and metadata.st_size > json_materialization_ceiling
+                )
+            ):
+                return False, None
+            digest = hashlib.sha256()
+            payload = bytearray() if materialize_json else None
+            read_total = 0
+            while True:
+                remaining = metadata.st_size - read_total
+                chunk = os.read(descriptor, min(64 * 1024, remaining + 1))
+                if not chunk:
+                    break
+                read_total += len(chunk)
+                if read_total > metadata.st_size:
+                    return False, None
+                digest.update(chunk)
+                if payload is not None:
+                    payload.extend(chunk)
+            if read_total != metadata.st_size or digest.hexdigest() != raw.get(
+                "sha256"
+            ):
+                return False, None
+            blob_bytes_consumed += read_total
+            return True, bytes(payload) if payload is not None else None
         except (OSError, RuntimeError, TypeError, ValueError):
-            return None
-        if raw.get("size_bytes") != len(payload) or raw.get("sha256") != _bytes_hash(
-            payload
-        ):
-            return None
-        return payload
+            return False, None
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
 
     executions = receipt.get("raw_executions")
     expected_executions = plan.executions
     expected_ids = tuple(spec.execution_id for spec in expected_executions)
     raw_paths: list[str] = []
     execution_valid = (
-        isinstance(executions, list)
-        and tuple(item.get("id") for item in executions if isinstance(item, Mapping))
-        == expected_ids
+        type(executions) is list
+        and all(type(item) is dict for item in executions)
+        and tuple(item.get("id") for item in executions) == expected_ids
     )
     if isinstance(executions, list) and execution_valid:
         specs = {spec.oracle_id: spec for spec in plan.oracle_specs}
@@ -286,12 +346,20 @@ def validate_cell_receipt(
             raw_paths.extend(
                 blob.get("path", "") for blob in blobs if isinstance(blob, Mapping)
             )
-            authenticated = tuple(valid_blob(blob) for blob in blobs)
+            is_oracle = item["id"] in specs
+            authenticated = tuple(
+                valid_blob(
+                    blob,
+                    materialize_json=is_oracle
+                    and key in {"stdout_bytes", "query_bytes"},
+                )
+                for key, blob in zip(blob_keys, blobs, strict=True)
+            )
             if (
                 item.get("exit_code") != 0
                 or isinstance(item.get("exit_code"), bool)
                 or item.get("argv") != frozen_argv.get(item.get("id"))
-                or any(payload is None for payload in authenticated)
+                or any(not valid for valid, _ in authenticated)
             ):
                 execution_valid = False
                 break
@@ -300,8 +368,8 @@ def validate_cell_receipt(
                 break
             if item["id"] in specs:
                 spec = specs[item["id"]]
-                query_payload = authenticated[2]
-                result_payload = authenticated[0]
+                query_payload = authenticated[2][1]
+                result_payload = authenticated[0][1]
                 if query_payload is None or result_payload is None:
                     execution_valid = False
                     break
@@ -334,8 +402,8 @@ def validate_cell_receipt(
         "descendants_observed": True,
         "process_audited": True,
     }
-    audit_blob = (
-        valid_blob(audit.get("audit_bytes")) if isinstance(audit, Mapping) else None
+    audit_blob_valid = (
+        valid_blob(audit.get("audit_bytes"))[0] if isinstance(audit, Mapping) else False
     )
     try:
         core_payload = _evidence_core_payload(
@@ -368,7 +436,7 @@ def validate_cell_receipt(
         core_digest is None
         or not isinstance(audit, Mapping)
         or any(audit.get(k) != v for k, v in required_audit.items())
-        or audit_blob is None
+        or not audit_blob_valid
         or audit.get("payload") != executor_payload
         or not _verify_signature(
             key_id=audit.get("key_id"),
@@ -381,10 +449,10 @@ def validate_cell_receipt(
         failures.append("OS_AUDIT_MISSING")
 
     approval = receipt.get("human_oracle_approval")
-    approval_blob = (
-        valid_blob(approval.get("approval_bytes"))
+    approval_blob_valid = (
+        valid_blob(approval.get("approval_bytes"))[0]
         if isinstance(approval, Mapping)
-        else None
+        else False
     )
     approval_bytes = (
         approval.get("approval_bytes") if isinstance(approval, Mapping) else None
@@ -402,7 +470,7 @@ def validate_cell_receipt(
         core_digest is None
         or not isinstance(approval, Mapping)
         or approval.get("approved") is not True
-        or approval_blob is None
+        or not approval_blob_valid
         or approval.get("payload") != approval_payload
         or approval.get("key_id") == verifier_config.executor_key_id
         or not _verify_signature(
@@ -414,6 +482,4 @@ def validate_cell_receipt(
         )
     ):
         failures.append("HUMAN_ORACLE_APPROVAL_MISSING")
-    if cell_fd is not None:
-        os.close(cell_fd)
     return tuple(dict.fromkeys(failures))

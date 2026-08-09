@@ -8175,8 +8175,7 @@ def _qualification_oracles():
     )
 
 
-def test_source_rules_classify_tracked_gitlink_symlink_and_generated(tmp_path: Path):
-    from benchmarks.codegraph_compare.integrity import _sha256
+def _qualification_source_inventory(tmp_path: Path):
     from benchmarks.codegraph_compare.setup_qualification import (
         DEFAULT_SOURCE_RULES,
         inventory_sources,
@@ -8184,16 +8183,43 @@ def test_source_rules_classify_tracked_gitlink_symlink_and_generated(tmp_path: P
 
     repo = tmp_path / "repo"
     _qualification_git_repo(repo)
-    inventory = inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
+    return inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
+
+
+def test_source_rules_inventory_tracks_only_regular_files(tmp_path: Path):
+    inventory = _qualification_source_inventory(tmp_path)
 
     assert inventory.tracked_regular_paths == ("generated.ts", "main.ts", "notes.md")
+
+
+def test_source_rules_inventory_selects_eligible_source(tmp_path: Path):
+    inventory = _qualification_source_inventory(tmp_path)
+
     assert inventory.eligible_paths == ("main.ts",)
-    assert inventory.prefilter_exclusions == (
+
+
+@pytest.mark.parametrize(
+    ("path", "reason"),
+    (
         ("deps/submodule", "gitlink"),
         ("generated.ts", "generated"),
         ("linked.ts", "symlink"),
         ("notes.md", "extension"),
-    )
+    ),
+)
+def test_source_rules_inventory_classifies_one_exclusion(
+    tmp_path: Path, path: str, reason: str
+):
+    inventory = _qualification_source_inventory(tmp_path)
+
+    assert dict(inventory.prefilter_exclusions)[path] == reason
+
+
+def test_source_rules_inventory_hashes_exact_eligible_paths(tmp_path: Path):
+    from benchmarks.codegraph_compare.integrity import _sha256
+
+    inventory = _qualification_source_inventory(tmp_path)
+
     assert inventory.eligible_paths_hash == _sha256(["main.ts"])
 
 
@@ -8522,13 +8548,23 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
         "index_path": "index",
         "index_content_hash": _hash_tree(index),
         "index_partition": {
-            "indexed_paths": ["main.ts"],
-            "excluded_paths": [],
-            "parse_error_paths": [],
-            "parse_error_allowlist": [],
-            "indexed_paths_hash": _sha256(["main.ts"]),
-            "excluded_paths_hash": _sha256([]),
-            "parse_error_paths_hash": _sha256([]),
+            "indexed_paths": sorted(
+                set(plan.eligibility.eligible_paths)
+                - set(plan.explicit_excluded_allowlist)
+                - set(plan.parse_error_allowlist)
+            ),
+            "excluded_paths": list(plan.explicit_excluded_allowlist),
+            "parse_error_paths": list(plan.parse_error_allowlist),
+            "parse_error_allowlist": list(plan.parse_error_allowlist),
+            "indexed_paths_hash": _sha256(
+                sorted(
+                    set(plan.eligibility.eligible_paths)
+                    - set(plan.explicit_excluded_allowlist)
+                    - set(plan.parse_error_allowlist)
+                )
+            ),
+            "excluded_paths_hash": _sha256(list(plan.explicit_excluded_allowlist)),
+            "parse_error_paths_hash": _sha256(list(plan.parse_error_allowlist)),
         },
         "raw_executions": executions,
         "index_provenance": {},
@@ -8706,6 +8742,191 @@ def test_strict_validator_rejects_raw_stdout_mutation(tmp_path: Path):
         cell_root=cell_root,
         verifier_config=_qualification_verifier_config(),
     ) == ("RAW_EXECUTION_EVIDENCE_MISSING",)
+
+
+def test_strict_validator_rejects_scalar_execution_without_crashing(tmp_path: Path):
+    # PR #1247: malformed direct receipts must fail closed at the schema boundary.
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    receipt["raw_executions"].append(7)
+    _resign_qualification_receipt(receipt)
+
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
+        "RECEIPT_SCHEMA_MISMATCH",
+        "RAW_EXECUTION_EVIDENCE_MISSING",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
+
+
+def test_strict_validator_rejects_blob_above_trusted_per_blob_ceiling(tmp_path: Path):
+    # PR #1247: producer-controlled blob metadata must not authorize large reads.
+    from benchmarks.codegraph_compare.setup_qualification import (
+        _bytes_hash,
+        validate_cell_receipt,
+    )
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    blob = receipt["raw_executions"][0]["stdout_bytes"]
+    payload = b"x" * (plan.resources.max_index_bytes + 1)
+    (cell_root / blob["path"]).write_bytes(payload)
+    blob.update(size_bytes=len(payload), sha256=_bytes_hash(payload))
+    _resign_qualification_receipt(receipt)
+
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
+        "RAW_EXECUTION_EVIDENCE_MISSING",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
+
+
+def test_strict_validator_rejects_cumulative_blob_bytes_above_plan(tmp_path: Path):
+    # PR #1247: individually bounded blobs must also share a trusted total budget.
+    from dataclasses import replace
+
+    from benchmarks.codegraph_compare.setup_qualification import (
+        _bytes_hash,
+        validate_cell_receipt,
+    )
+
+    base_plan = _qualification_plans(tmp_path)[0]
+    plan = replace(
+        base_plan,
+        resources=replace(base_plan.resources, max_disk_write_bytes=1500),
+    )
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    for execution in receipt["raw_executions"][:2]:
+        blob = execution["stdout_bytes"]
+        payload = b"x" * 900
+        (cell_root / blob["path"]).write_bytes(payload)
+        blob.update(size_bytes=len(payload), sha256=_bytes_hash(payload))
+    _resign_qualification_receipt(receipt)
+
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
+        "RAW_EXECUTION_EVIDENCE_MISSING",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
+
+
+def test_strict_validator_rejects_sparse_execution_blob(tmp_path: Path):
+    # PR #1247: sparse raw evidence must be rejected before hashing or loading.
+    from benchmarks.codegraph_compare.setup_qualification import (
+        _bytes_hash,
+        validate_cell_receipt,
+    )
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    blob = receipt["raw_executions"][0]["stdout_bytes"]
+    sparse = cell_root / blob["path"]
+    with sparse.open("wb") as stream:
+        stream.truncate(512)
+    if sparse.stat().st_blocks * 512 >= sparse.stat().st_size:
+        pytest.skip("tracked: filesystem does not represent sparse allocation")
+    payload = b"\x00" * 512
+    blob.update(size_bytes=len(payload), sha256=_bytes_hash(payload))
+    _resign_qualification_receipt(receipt)
+
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
+        "RAW_EXECUTION_EVIDENCE_MISSING",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
+
+
+def test_strict_validator_rejects_unplanned_explicit_exclusion(tmp_path: Path):
+    # PR #1247: exclusions are an independent, plan-bound partition category.
+    from benchmarks.codegraph_compare.integrity import _sha256
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    partition = receipt["index_partition"]
+    partition["indexed_paths"] = []
+    partition["indexed_paths_hash"] = _sha256([])
+    partition["excluded_paths"] = ["main.ts"]
+    partition["excluded_paths_hash"] = _sha256(["main.ts"])
+    _resign_qualification_receipt(receipt)
+
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == (
+        "INDEX_PARTITION_MISMATCH",
+        "INDEX_PROVENANCE_MISSING",
+        "OS_AUDIT_MISSING",
+        "HUMAN_ORACLE_APPROVAL_MISSING",
+    )
+
+
+def test_strict_validator_accepts_exact_plan_bound_explicit_exclusion(tmp_path: Path):
+    # PR #1247: explicit exclusions are frozen separately from parse errors.
+    from dataclasses import replace
+
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    base_plan = _qualification_plans(tmp_path)[0]
+    plan = replace(base_plan, explicit_excluded_allowlist=("main.ts",))
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+
+    assert (
+        validate_cell_receipt(
+            receipt,
+            plan=plan,
+            cell_root=cell_root,
+            verifier_config=_qualification_verifier_config(),
+        )
+        == ()
+    )
+
+
+def test_oracle_spec_rejects_duplicate_query_key():
+    # PR #1247: dict conversion must not discard an earlier frozen query value.
+    from benchmarks.codegraph_compare.setup_qualification import OracleSpecV1
+
+    with pytest.raises(ValueError, match="parameter keys"):
+        OracleSpecV1(
+            "duplicate.query",
+            "symbol",
+            (("name", "A"), ("name", "B")),
+            {"path": "main.ts"},
+        )
 
 
 def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
@@ -9306,14 +9527,20 @@ def test_receipt_parser_recursively_rejects_nonfinite_json_constants(
 
 
 @pytest.mark.parametrize(
-    ("path", "value"),
+    ("path", "value", "raw_failure"),
     (
-        (("attempt",), True),
-        (("raw_executions", 0, "stderr_bytes", "size_bytes"), False),
-        (("resource_observation", "peak_processes"), 1.5),
+        (("attempt",), True, ()),
+        (
+            ("raw_executions", 0, "stderr_bytes", "size_bytes"),
+            False,
+            ("RAW_EXECUTION_EVIDENCE_MISSING",),
+        ),
+        (("resource_observation", "peak_processes"), 1.5, ()),
     ),
 )
-def test_receipt_schema_rejects_non_exact_scalar_types(tmp_path: Path, path, value):
+def test_receipt_schema_rejects_non_exact_scalar_types(
+    tmp_path: Path, path, value, raw_failure
+):
     # PR #1247: bools must not compare equal to integers and counts stay integral.
     import copy
 
@@ -9335,6 +9562,7 @@ def test_receipt_schema_rejects_non_exact_scalar_types(tmp_path: Path, path, val
         verifier_config=_qualification_verifier_config(),
     ) == (
         "RECEIPT_SCHEMA_MISMATCH",
+        *raw_failure,
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
         "HUMAN_ORACLE_APPROVAL_MISSING",

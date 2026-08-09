@@ -124,8 +124,13 @@ class OracleSpecV1:
     def __post_init__(self) -> None:
         if self.kind not in {"symbol", "call"} or not self.oracle_id:
             raise ValueError("Oracle must be a named symbol or call query")
-        if not self.query or self.query != tuple(sorted(set(self.query))):
-            raise ValueError("Oracle parameters must be sorted and unique")
+        query_keys = tuple(key for key, _ in self.query)
+        if (
+            not self.query
+            or self.query != tuple(sorted(self.query))
+            or len(query_keys) != len(set(query_keys))
+        ):
+            raise ValueError("Oracle parameter keys must be sorted and unique")
 
     @property
     def digest(self) -> str:
@@ -211,6 +216,7 @@ class CellPlanV1:
     resources: ResourcePlanV1
     executions: tuple[ExecutionSpecV1, ...]
     parse_error_allowlist: tuple[str, ...] = ()
+    explicit_excluded_allowlist: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if (
@@ -238,10 +244,21 @@ class CellPlanV1:
             raise ValueError(
                 "Plan must freeze ordered delete/build/health/symbol/call executions"
             )
-        allowlist = _sorted_paths(self.parse_error_allowlist, "parse-error allowlist")
-        if not set(allowlist).issubset(self.eligibility.eligible_paths):
+        parse_allowlist = _sorted_paths(
+            self.parse_error_allowlist, "parse-error allowlist"
+        )
+        excluded_allowlist = _sorted_paths(
+            self.explicit_excluded_allowlist, "explicit excluded allowlist"
+        )
+        eligible = set(self.eligibility.eligible_paths)
+        if (
+            not set(parse_allowlist).issubset(eligible)
+            or not set(excluded_allowlist).issubset(eligible)
+            or set(parse_allowlist) & set(excluded_allowlist)
+        ):
             raise ValueError(
-                "Parse-error allowlist must be pre-registered eligible paths"
+                "Parse-error and explicit exclusion allowlists must be disjoint "
+                "pre-registered eligible paths"
             )
 
     @property
