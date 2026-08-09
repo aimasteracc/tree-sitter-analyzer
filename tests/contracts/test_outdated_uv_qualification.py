@@ -309,7 +309,9 @@ def valid_passed_report() -> dict[str, object]:
                 "size": 1,
                 "sha256": digest,
             },
-            "executable": executable("0.10.9", "/tmp/old/bundle/uv"),
+            "executable": executable(
+                "0.10.9", "/tmp/tsa-outdated-native-test/old/bundle/uv"
+            ),
         },
         supported_uv={
             "archive": {
@@ -319,7 +321,9 @@ def valid_passed_report() -> dict[str, object]:
                 "size": 1,
                 "sha256": digest,
             },
-            "executable": executable("0.11.0", "/tmp/supported/bundle/uv"),
+            "executable": executable(
+                "0.11.0", "/tmp/tsa-outdated-native-test/supported/bundle/uv"
+            ),
         },
         installer={
             "path": "/checkout/install.sh",
@@ -327,8 +331,8 @@ def valid_passed_report() -> dict[str, object]:
             "first_exit": 1,
             "second_exit": 0,
             "curl_invocations": 0,
-            "first_path": "/tmp/old:/tmp/tools",
-            "second_path": "/tmp/supported:/tmp/tools",
+            "first_path": "/tmp/tsa-outdated-native-test/old/bundle:/tmp/tsa-outdated-native-test/tools",
+            "second_path": "/tmp/tsa-outdated-native-test/supported/bundle:/tmp/tsa-outdated-native-test/tools",
             "curated_tools": list(qualification.REQUIRED_COMMANDS),
         },
         config={
@@ -369,7 +373,9 @@ def valid_passed_report() -> dict[str, object]:
                 "total_files": 0,
                 "summary": "codegraph_status: index missing or empty",
             },
-            "install_tool": executable("0.11.0", "/tmp/supported/bundle/uv"),
+            "install_tool": executable(
+                "0.11.0", "/tmp/tsa-outdated-native-test/supported/bundle/uv"
+            ),
             "install_argv": [
                 "/tmp/supported/bundle/uv",
                 "pip",
@@ -676,6 +682,7 @@ def test_trusted_config_sidecar_accepts_noncanonical_format(tmp_path: Path) -> N
             after,
             "linux",
             "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
+            Path("/tmp/tsa-outdated-native-test"),
         )
         is None
     )
@@ -716,6 +723,7 @@ def test_trusted_config_sidecar_rejects_forgery(tmp_path: Path, mutation: str) -
             after,
             "linux",
             "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
+            Path("/tmp/tsa-outdated-native-test"),
         )
 
 
@@ -740,6 +748,7 @@ def test_trusted_config_rejects_coordinated_command_forgery(tmp_path: Path) -> N
             after,
             "linux",
             "📁 Project root: /tmp/tsa-outdated-native-test/fixture\n",
+            Path("/tmp/tsa-outdated-native-test"),
         )
 
 
@@ -756,7 +765,9 @@ def test_trusted_config_rejects_coordinated_command_forgery(tmp_path: Path) -> N
 def test_trusted_stdout_rejects_ambiguous_or_unstructured_root(stdout: str) -> None:
     # Final gate 2026-07-17: the hash-bound stdout uniquely defines the root.
     with pytest.raises(AssertionError):
-        trusted_helpers()["project_root_from_stdout"](stdout, "linux")
+        trusted_helpers()["project_root_from_stdout"](
+            stdout, "linux", Path("/tmp/tsa-outdated-native-a")
+        )
 
 
 @pytest.mark.parametrize(
@@ -789,6 +800,7 @@ def test_trusted_installer_paths_reject_unverified_first_executable() -> None:
             report["installer"],
             report["old_uv"]["executable"],
             report["supported_uv"]["executable"],
+            Path("/tmp/tsa-outdated-native-test"),
         )
 
 
@@ -801,6 +813,7 @@ def test_trusted_installer_paths_reject_non_curated_path_tail() -> None:
             report["installer"],
             report["old_uv"]["executable"],
             report["supported_uv"]["executable"],
+            Path("/tmp/tsa-outdated-native-test"),
         )
 
 
@@ -871,3 +884,112 @@ def test_trusted_causal_binding_rejects_install_mutation(
         helpers["verify_causal_binding"](
             "linux", tmp_path, causal, bound, tool, wheel, wheel_path, runner, "b" * 64
         )
+
+
+@pytest.mark.parametrize("mutation", ["old-label", "different-root", "tools"])
+def test_trusted_sandbox_root_rejects_candidate_coordination(mutation: str) -> None:
+    # PR #1245: executable archive layouts, not cooperating sidecars, anchor the root.
+    helpers = trusted_helpers()
+    report = valid_passed_report()
+    member = {"member": "bundle/uv", "sha256": "a" * 64, "size": 1}
+    if mutation == "old-label":
+        report["old_uv"]["executable"]["path"] = (
+            "/tmp/tsa-outdated-native-test/evil/bundle/uv"
+        )
+        with pytest.raises(AssertionError):
+            helpers["executable_sandbox_root"](
+                report["old_uv"]["executable"], member, "old", "linux"
+            )
+        return
+    old_root = helpers["executable_sandbox_root"](
+        report["old_uv"]["executable"], member, "old", "linux"
+    )
+    if mutation == "different-root":
+        report["supported_uv"]["executable"]["path"] = (
+            "/tmp/tsa-outdated-native-forged/supported/bundle/uv"
+        )
+        with pytest.raises(AssertionError):
+            helpers["trusted_sandbox_root"](
+                report["old_uv"]["executable"],
+                member,
+                "linux",
+                report["supported_uv"]["executable"],
+                member,
+            )
+        return
+    report["installer"]["first_path"] = (
+        "/tmp/tsa-outdated-native-test/old/bundle:/tmp/attacker/tools"
+    )
+    report["installer"]["second_path"] = (
+        "/tmp/tsa-outdated-native-test/supported/bundle:/tmp/attacker/tools"
+    )
+    with pytest.raises(AssertionError):
+        helpers["verify_installer_paths"](
+            report["installer"],
+            report["old_uv"]["executable"],
+            report["supported_uv"]["executable"],
+            old_root,
+        )
+
+
+def test_trusted_project_root_rejects_coordinated_candidate_value() -> None:
+    # PR #1245: a matching stdout/config claim cannot override the executable root.
+    with pytest.raises(AssertionError):
+        trusted_helpers()["project_root_from_stdout"](
+            "📁 Project root: /tmp/tsa-outdated-native-forged/fixture\n",
+            "linux",
+            Path("/tmp/tsa-outdated-native-test"),
+        )
+
+
+@pytest.mark.parametrize("mutation", ["backup", "before-digest", "extra-entry"])
+def test_trusted_initial_snapshot_rejects_mutation(mutation: str) -> None:
+    # PR #1245: backup identity is the exact complete pre-install HOME snapshot.
+    digest = qualification.hashlib.sha256(b"{}\n").hexdigest()
+    config = valid_passed_report()["config"]
+    initial = [
+        {"path": ".claude", "type": "dir", "sha256": None},
+        {"path": ".claude/.mcp.json", "type": "file", "sha256": digest},
+    ]
+    config["before"] = json.loads(json.dumps(initial))
+    config["after_first"] = json.loads(json.dumps(initial))
+    config["backup_sha256"] = digest
+    if mutation == "backup":
+        config["backup_sha256"] = "0" * 64
+    elif mutation == "before-digest":
+        config["before"][1]["sha256"] = "0" * 64
+    else:
+        config["before"].append({"path": "extra", "type": "dir", "sha256": None})
+        config["after_first"].append({"path": "extra", "type": "dir", "sha256": None})
+    with pytest.raises(AssertionError):
+        trusted_helpers()["verify_initial_config"](config)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b'{"job":"outdated-axis","axis":"linux","status":"failed"}',
+        b'{"job":"outdated-axis","axis":"linux","status":"success","extra":1}',
+        b'{"job":"outdated-axis","axis":"linux","axis":"linux","status":"success"}',
+        b'{"job":"outdated-axis","axis":"linux","status":"success"}\xff',
+    ],
+)
+def test_trusted_job_result_rejects_semantic_or_encoding_mutation(
+    tmp_path: Path, data: bytes
+) -> None:
+    # PR #1245: retained job status is strict UTF-8 JSON with one exact identity.
+    result = tmp_path / "job-result.json"
+    result.write_bytes(data)
+    with pytest.raises((AssertionError, UnicodeDecodeError, json.JSONDecodeError)):
+        trusted_helpers()["verify_job_result"](result, "linux")
+
+
+def test_trusted_job_result_digest_is_content_bound(tmp_path: Path) -> None:
+    # PR #1245: the receipt closure consumes the verified job-result digest.
+    result = tmp_path / "job-result.json"
+    data = b'{"job":"outdated-axis","axis":"windows","status":"success"}\n'
+    result.write_bytes(data)
+    assert (
+        trusted_helpers()["verify_job_result"](result, "windows")
+        == qualification.hashlib.sha256(data).hexdigest()
+    )
