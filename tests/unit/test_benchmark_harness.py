@@ -8436,7 +8436,39 @@ def test_git_batch_parser_uses_size_framing_for_embedded_nul():
 
     assert inventory_module._stream_blob(
         io.BytesIO(output), "source.ts", digest, 0
-    ) == (hashlib.sha256(payload).hexdigest(), payload, len(payload))
+    ) == (hashlib.sha256(payload).hexdigest(), False, len(payload))
+
+
+def test_git_blob_generated_marker_is_detected_after_former_prefix_limit():
+    # PR #1247: generated markers apply to the complete pinned blob.
+    import io
+
+    import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
+
+    payload = b"x" * 5000 + b"DO NOT EDIT"
+    digest = hashlib.sha1(f"blob {len(payload)}\0".encode() + payload).hexdigest()
+    output = f"{digest} blob {len(payload)}".encode() + b"\0" + payload + b"\0"
+
+    assert inventory_module._stream_blob(
+        io.BytesIO(output), "generated.ts", digest, 0, (b"DO NOT EDIT",)
+    ) == (hashlib.sha256(payload).hexdigest(), True, len(payload))
+
+
+def test_git_blob_generated_marker_is_detected_across_chunk_boundary():
+    # PR #1247: rolling overlap binds markers straddling stream chunks.
+    import io
+
+    import benchmarks.codegraph_compare.setup_qualification_inventory as inventory_module
+
+    payload = b"1234567DO NOT EDITtail"
+    digest = hashlib.sha1(f"blob {len(payload)}\0".encode() + payload).hexdigest()
+    output = f"{digest} blob {len(payload)}".encode() + b"\0" + payload + b"\0"
+    with patch.object(inventory_module, "_STREAM_CHUNK_BYTES", 8):
+        result = inventory_module._stream_blob(
+            io.BytesIO(output), "generated.ts", digest, 0, (b"DO NOT EDIT",)
+        )
+
+    assert result == (hashlib.sha256(payload).hexdigest(), True, len(payload))
 
 
 def test_git_batch_rejects_blob_above_trusted_ceiling():
@@ -8636,6 +8668,8 @@ def _qualification_plans(tmp_path: Path):
         "d" * 64,
     )
     resources = ResourcePlanV1(30, 20, 1024, 4096, 1, 1024, 2, 8, 1)
+    source_checkout = (tmp_path / "source-checkout").resolve()
+    source_checkout.mkdir(exist_ok=True)
     return tuple(
         CellPlanV1(
             repo,
@@ -8643,6 +8677,7 @@ def _qualification_plans(tmp_path: Path):
             1,
             f"cells/{repo}--{arm}/cell-receipt.json",
             f"cells/{repo}--{arm}/index",
+            source_checkout.as_posix(),
             replace(base, repo_id=repo, commit=commits[repo]),
             tool,
             config,
@@ -8654,7 +8689,14 @@ def _qualification_plans(tmp_path: Path):
                 ),
                 ExecutionSpecV1(
                     "build",
-                    (str(tool_path), "build", repo, arm, f"cells/{repo}--{arm}/index"),
+                    (
+                        str(tool_path),
+                        "build",
+                        repo,
+                        arm,
+                        source_checkout.as_posix(),
+                        f"cells/{repo}--{arm}/index",
+                    ),
                 ),
                 ExecutionSpecV1(
                     "health",
@@ -8742,6 +8784,14 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
         executions.append(item)
     audit_blob = blob("raw/os-audit", b"deny sockets; process tree audited")
     approval_blob = blob("raw/human-approval", b"approved oracle set")
+    snapshot_payload = {
+        "schema_version": 1,
+        "plan_hash": plan.digest,
+        "snapshot_id": f"snapshot-{plan.repo_id}-{plan.arm_id}",
+        "mount": {"read_only": True},
+        "producer_descendants": 0,
+        "writes_blocked": True,
+    }
     receipt = {
         "schema_version": 2,
         "repo_id": plan.repo_id,
@@ -8787,6 +8837,11 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
             "parse_error_paths_hash": _sha256(list(plan.parse_error_allowlist)),
         },
         "raw_executions": executions,
+        "snapshot_audit": {
+            "payload": snapshot_payload,
+            "key_id": verifier_config.executor_key_id,
+            "signature": sign(b"\x02", snapshot_payload),
+        },
         "index_provenance": {},
         "os_audit": {
             "network_denied": True,
@@ -8842,6 +8897,29 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
     return receipt
 
 
+def _validate_qualification_receipt(receipt, *, plan, cell_root, verifier_config):
+    from benchmarks.codegraph_compare.setup_qualification import (
+        _open_root,
+        _stable_directory_identity,
+        validate_cell_receipt,
+    )
+
+    experiment_root = cell_root.parent
+    root_fd = _open_root(experiment_root)
+    try:
+        return validate_cell_receipt(
+            receipt,
+            plan=plan,
+            cell_root=cell_root,
+            verifier_config=verifier_config,
+            trusted_root_fd=root_fd,
+            trusted_root_identity=_stable_directory_identity(os.fstat(root_fd)),
+            cell_relative=cell_root.name,
+        )
+    finally:
+        os.close(root_fd)
+
+
 def _resign_qualification_receipt(receipt):
     from benchmarks.codegraph_compare.integrity import _sha256
 
@@ -8881,14 +8959,13 @@ def test_producer_refuses_self_reported_collector_evidence():
 
 
 def test_strict_validator_accepts_complete_plan_bound_e0_receipt(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
 
     assert (
-        validate_cell_receipt(
+        _validate_qualification_receipt(
             receipt,
             plan=plan,
             cell_root=cell_root,
@@ -8901,8 +8978,6 @@ def test_strict_validator_accepts_complete_plan_bound_e0_receipt(tmp_path: Path)
 def test_strict_validator_rejects_source_eligibility_mutation(tmp_path: Path):
     import copy
 
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -8910,7 +8985,7 @@ def test_strict_validator_rejects_source_eligibility_mutation(tmp_path: Path):
     mutated["eligibility"]["eligible_paths"] = []
     _resign_qualification_receipt(mutated)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         mutated,
         plan=plan,
         cell_root=cell_root,
@@ -8926,8 +9001,6 @@ def test_strict_validator_rejects_source_eligibility_mutation(tmp_path: Path):
 def test_strict_validator_rejects_resource_observation_mutation(tmp_path: Path):
     import copy
 
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -8935,7 +9008,7 @@ def test_strict_validator_rejects_resource_observation_mutation(tmp_path: Path):
     mutated["resource_observation"]["peak_processes"] = 3
     _resign_qualification_receipt(mutated)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         mutated,
         plan=plan,
         cell_root=cell_root,
@@ -8949,14 +9022,13 @@ def test_strict_validator_rejects_resource_observation_mutation(tmp_path: Path):
 
 
 def test_strict_validator_rejects_raw_stdout_mutation(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     (cell_root / "raw/0-stdout").write_bytes(b"mutated")
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -8966,7 +9038,6 @@ def test_strict_validator_rejects_raw_stdout_mutation(tmp_path: Path):
 
 def test_strict_validator_rejects_scalar_execution_without_crashing(tmp_path: Path):
     # PR #1247: malformed direct receipts must fail closed at the schema boundary.
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
@@ -8974,7 +9045,7 @@ def test_strict_validator_rejects_scalar_execution_without_crashing(tmp_path: Pa
     receipt["raw_executions"].append(7)
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -8992,7 +9063,6 @@ def test_strict_validator_rejects_blob_above_trusted_per_blob_ceiling(tmp_path: 
     # PR #1247: producer-controlled blob metadata must not authorize large reads.
     from benchmarks.codegraph_compare.setup_qualification import (
         _bytes_hash,
-        validate_cell_receipt,
     )
 
     plan = _qualification_plans(tmp_path)[0]
@@ -9004,7 +9074,7 @@ def test_strict_validator_rejects_blob_above_trusted_per_blob_ceiling(tmp_path: 
     blob.update(size_bytes=len(payload), sha256=_bytes_hash(payload))
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9023,7 +9093,6 @@ def test_strict_validator_rejects_cumulative_blob_bytes_above_plan(tmp_path: Pat
 
     from benchmarks.codegraph_compare.setup_qualification import (
         _bytes_hash,
-        validate_cell_receipt,
     )
 
     base_plan = _qualification_plans(tmp_path)[0]
@@ -9040,7 +9109,7 @@ def test_strict_validator_rejects_cumulative_blob_bytes_above_plan(tmp_path: Pat
         blob.update(size_bytes=len(payload), sha256=_bytes_hash(payload))
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9057,7 +9126,6 @@ def test_strict_validator_rejects_sparse_execution_blob(tmp_path: Path):
     # PR #1247: sparse raw evidence must be rejected before hashing or loading.
     from benchmarks.codegraph_compare.setup_qualification import (
         _bytes_hash,
-        validate_cell_receipt,
     )
 
     plan = _qualification_plans(tmp_path)[0]
@@ -9073,7 +9141,7 @@ def test_strict_validator_rejects_sparse_execution_blob(tmp_path: Path):
     blob.update(size_bytes=len(payload), sha256=_bytes_hash(payload))
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9089,7 +9157,6 @@ def test_strict_validator_rejects_sparse_execution_blob(tmp_path: Path):
 def test_strict_validator_rejects_unplanned_explicit_exclusion(tmp_path: Path):
     # PR #1247: exclusions are an independent, plan-bound partition category.
     from benchmarks.codegraph_compare.integrity import _sha256
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
@@ -9101,7 +9168,7 @@ def test_strict_validator_rejects_unplanned_explicit_exclusion(tmp_path: Path):
     partition["excluded_paths_hash"] = _sha256(["main.ts"])
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9118,15 +9185,13 @@ def test_strict_validator_accepts_exact_plan_bound_explicit_exclusion(tmp_path: 
     # PR #1247: explicit exclusions are frozen separately from parse errors.
     from dataclasses import replace
 
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
-
     base_plan = _qualification_plans(tmp_path)[0]
     plan = replace(base_plan, explicit_excluded_allowlist=("main.ts",))
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
 
     assert (
-        validate_cell_receipt(
+        _validate_qualification_receipt(
             receipt,
             plan=plan,
             cell_root=cell_root,
@@ -9153,7 +9218,6 @@ def test_direct_receipt_rejects_excessive_nesting_without_recursion_error(
     tmp_path: Path,
 ):
     # PR #1247: direct objects are bounded before recursive canonical hashing.
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
@@ -9163,7 +9227,7 @@ def test_direct_receipt_rejects_excessive_nesting_without_recursion_error(
         nested = [nested]
     receipt["eligibility"]["eligible_paths"] = nested
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9174,7 +9238,6 @@ def test_direct_receipt_rejects_excessive_nesting_without_recursion_error(
 def test_direct_receipt_rejects_excessive_node_count_before_hash(tmp_path: Path):
     # PR #1247: direct-object node limits are trusted independently of parser limits.
     import benchmarks.codegraph_compare.setup_qualification_schema as schema
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
@@ -9182,7 +9245,7 @@ def test_direct_receipt_rejects_excessive_node_count_before_hash(tmp_path: Path)
     receipt["eligibility"]["eligible_paths"] = ["main.ts", "extra.ts"]
 
     with patch.object(schema, "_MAX_STRICT_JSON_NODES", 10):
-        failures = validate_cell_receipt(
+        failures = _validate_qualification_receipt(
             receipt,
             plan=plan,
             cell_root=cell_root,
@@ -9193,7 +9256,6 @@ def test_direct_receipt_rejects_excessive_node_count_before_hash(tmp_path: Path)
 
 
 def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
@@ -9206,7 +9268,7 @@ def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
     (cell_root / "index").rmdir()
     (cell_root / "index").symlink_to(outside, target_is_directory=True)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9220,14 +9282,13 @@ def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
 
 
 def test_strict_validator_rejects_harness_config_byte_mutation(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     Path(plan.config.path).write_bytes(b"mutated config")
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9238,8 +9299,6 @@ def test_strict_validator_rejects_harness_config_byte_mutation(tmp_path: Path):
 def test_strict_validator_rejects_network_audit_mutation(tmp_path: Path):
     import copy
 
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -9247,7 +9306,7 @@ def test_strict_validator_rejects_network_audit_mutation(tmp_path: Path):
     mutated["os_audit"]["network_denied"] = False
     _resign_qualification_receipt(mutated)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         mutated,
         plan=plan,
         cell_root=cell_root,
@@ -9397,8 +9456,6 @@ def test_strict_validator_rejects_one_receipt_boundary_mutation(
 ):
     import copy
 
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     mutated = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
@@ -9410,7 +9467,7 @@ def test_strict_validator_rejects_one_receipt_boundary_mutation(
 
     wanted = expected if isinstance(expected, tuple) else (expected,)
     assert (
-        validate_cell_receipt(
+        _validate_qualification_receipt(
             mutated,
             plan=plan,
             cell_root=cell_root,
@@ -9504,6 +9561,62 @@ def test_index_tree_hash_binds_empty_directory_mutation(tmp_path: Path):
     (index / "empty-shard").mkdir()
 
     assert _hash_tree(index) != before
+
+
+def test_index_tree_breadth_is_rejected_before_unbounded_sort(tmp_path: Path):
+    # PR #1247: each scandir is collected only to the remaining ceiling plus one.
+    import pytest
+
+    from benchmarks.codegraph_compare import setup_qualification_paths as paths
+
+    index = tmp_path / "index"
+    index.mkdir()
+    for number in range(5):
+        (index / f"{number}.bin").write_bytes(b"x")
+    root_fd = paths._open_root(index)
+    try:
+        with pytest.raises(ValueError, match="entry count ceiling"):
+            paths._visit_tree(root_fd, lambda _fd, _path: None, max_entries=3)
+    finally:
+        os.close(root_fd)
+
+
+def test_index_tree_rejects_directory_topology_race(tmp_path: Path):
+    # PR #1247: directory pre/post metadata must bind one topology snapshot.
+    import pytest
+
+    from benchmarks.codegraph_compare import setup_qualification_paths as paths
+
+    index = tmp_path / "index"
+    index.mkdir()
+    (index / "first.bin").write_bytes(b"x")
+    root_fd = paths._open_root(index)
+
+    def mutate(_descriptor: int, _relative: str) -> None:
+        (index / "late.bin").write_bytes(b"y")
+
+    try:
+        with pytest.raises(ValueError, match="directory changed while hashing"):
+            paths._visit_tree(root_fd, mutate)
+    finally:
+        os.close(root_fd)
+
+
+def test_index_snapshot_returns_hash_bytes_and_exact_counts(tmp_path: Path):
+    # PR #1247: hash, size, and topology counts come from one traversal.
+    from benchmarks.codegraph_compare import setup_qualification_paths as paths
+
+    index = tmp_path / "index"
+    (index / "nested").mkdir(parents=True)
+    (index / "a.bin").write_bytes(b"a")
+    (index / "nested/b.bin").write_bytes(b"bb")
+    root_fd = paths._open_root(tmp_path)
+    try:
+        snapshot = paths._snapshot_tree_at(root_fd, "index")
+    finally:
+        os.close(root_fd)
+
+    assert snapshot == (paths._hash_tree(index), 3, 1, 2)
 
 
 def test_index_tree_hash_rejects_concurrent_append(tmp_path: Path, monkeypatch):
@@ -9677,8 +9790,6 @@ def test_strict_validator_rejects_nonfinite_or_boolean_resource_value(
 ):
     import copy
 
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
@@ -9697,7 +9808,7 @@ def test_strict_validator_rejects_nonfinite_or_boolean_resource_value(
         "HUMAN_ORACLE_APPROVAL_MISSING",
     )
     assert (
-        validate_cell_receipt(
+        _validate_qualification_receipt(
             receipt,
             plan=plan,
             cell_root=cell_root,
@@ -9708,14 +9819,13 @@ def test_strict_validator_rejects_nonfinite_or_boolean_resource_value(
 
 
 def test_strict_validator_rejects_unknown_schema_version(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     receipt["schema_version"] = 1
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9724,7 +9834,6 @@ def test_strict_validator_rejects_unknown_schema_version(tmp_path: Path):
 
 
 def test_strict_validator_rejects_incomplete_index_partition(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
@@ -9734,7 +9843,7 @@ def test_strict_validator_rejects_incomplete_index_partition(tmp_path: Path):
 
     receipt["index_partition"]["indexed_paths_hash"] = _sha256([])
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9748,14 +9857,13 @@ def test_strict_validator_rejects_incomplete_index_partition(tmp_path: Path):
 
 
 def test_strict_validator_rejects_forged_executor_signature(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     receipt["index_provenance"]["signature"] = "00" * 64
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9763,15 +9871,43 @@ def test_strict_validator_rejects_forged_executor_signature(tmp_path: Path):
     ) == ("INDEX_PROVENANCE_MISSING",)
 
 
+def test_validator_authenticates_quiescence_before_tree_hash(
+    tmp_path: Path, monkeypatch
+):
+    # PR #1247: an untrusted snapshot signature must fail before index bytes are read.
+    import benchmarks.codegraph_compare.setup_qualification_validation as validation
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    receipt["snapshot_audit"]["signature"] = "00" * 64
+    _resign_qualification_receipt(receipt)
+    hash_calls = 0
+
+    def forbidden_hash(*_args, **_kwargs):
+        nonlocal hash_calls
+        hash_calls += 1
+        raise AssertionError("tree hash ran before quiescence authentication")
+
+    monkeypatch.setattr(validation, "_snapshot_tree_at", forbidden_hash)
+    failures = _validate_qualification_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    )
+
+    assert (failures[0], hash_calls) == ("SNAPSHOT_AUDIT_MISSING", 0)
+
+
 def test_strict_validator_rejects_forged_audit_signature(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     receipt["os_audit"]["signature"] = "00" * 64
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9780,14 +9916,13 @@ def test_strict_validator_rejects_forged_audit_signature(tmp_path: Path):
 
 
 def test_strict_validator_rejects_forged_approver_signature(tmp_path: Path):
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
     receipt["human_oracle_approval"]["signature"] = "00" * 64
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9807,7 +9942,6 @@ def test_strict_validator_rejects_wrong_normalized_oracle_evidence(
 ):
     from benchmarks.codegraph_compare.setup_qualification import (
         _bytes_hash,
-        validate_cell_receipt,
     )
 
     plan = _qualification_plans(tmp_path)[0]
@@ -9818,7 +9952,7 @@ def test_strict_validator_rejects_wrong_normalized_oracle_evidence(
     blob["size_bytes"] = len(payload)
     blob["sha256"] = _bytes_hash(payload)
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9833,7 +9967,6 @@ def test_strict_validator_rejects_wrong_normalized_oracle_evidence(
 
 def test_strict_validator_rejects_unplanned_parse_error_allowlist(tmp_path: Path):
     from benchmarks.codegraph_compare.integrity import _sha256
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
@@ -9845,7 +9978,7 @@ def test_strict_validator_rejects_unplanned_parse_error_allowlist(tmp_path: Path
     partition["parse_error_allowlist"] = ["main.ts"]
     partition["parse_error_paths_hash"] = _sha256(["main.ts"])
     _resign_qualification_receipt(receipt)
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9892,15 +10025,13 @@ def test_strict_validator_rejects_arbitrarily_large_integer_observation(tmp_path
     # PR #1247: resource validation must fail closed rather than raise OverflowError.
     import copy
 
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
     receipt["resource_observation"]["wall_seconds"] = 10**400
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -9954,8 +10085,6 @@ def test_receipt_schema_rejects_non_exact_scalar_types(
     # PR #1247: bools must not compare equal to integers and counts stay integral.
     import copy
 
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
@@ -9965,7 +10094,7 @@ def test_receipt_schema_rejects_non_exact_scalar_types(
     target[path[-1]] = value
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -10006,8 +10135,6 @@ def test_validator_rejects_null_digest_signatures_after_core_failure(tmp_path: P
 
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = copy.deepcopy(_write_valid_qualification_receipt(cell_root, plan))
@@ -10034,7 +10161,7 @@ def test_validator_rejects_null_digest_signatures_after_core_failure(tmp_path: P
     receipt["human_oracle_approval"]["signature"] = sign(b"\x01", approval_payload)
     _resign_qualification_receipt(receipt)
 
-    failures = validate_cell_receipt(
+    failures = _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -10054,7 +10181,6 @@ def test_strict_validator_rejects_receipt_extension_even_with_matching_hash(
     tmp_path: Path,
 ):
     # PR #1247: direct validator callers receive a fail-closed schema failure.
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
@@ -10062,7 +10188,7 @@ def test_strict_validator_rejects_receipt_extension_even_with_matching_hash(
     receipt["extension"] = "unsigned"
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -10193,11 +10319,36 @@ def test_index_hash_rejects_fifo_without_waiting_for_writer(tmp_path: Path):
         _hash_tree(tmp_path)
 
 
+def test_validator_rejects_default_reopen_through_symlinked_ancestor(tmp_path: Path):
+    # PR #1247: untrusted evidence has no path-reopen fallback.
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    cell = real_parent / "cell"
+    receipt = _write_valid_qualification_receipt(cell, plan)
+    alias = tmp_path / "alias"
+    alias.symlink_to(real_parent, target_is_directory=True)
+
+    failures = validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=alias / "cell",
+        verifier_config=_qualification_verifier_config(),
+    )
+
+    assert failures[0] == "CELL_ROOT_ISOLATION_MISMATCH"
+
+
 def test_validator_uses_pinned_experiment_descriptor_after_path_replacement(
     tmp_path: Path,
 ):
     from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
-    from benchmarks.codegraph_compare.setup_qualification_paths import _open_root
+    from benchmarks.codegraph_compare.setup_qualification_paths import (
+        _open_root,
+        _stable_directory_identity,
+    )
 
     plan = _qualification_plans(tmp_path)[0]
     experiment = tmp_path / "experiment"
@@ -10217,6 +10368,7 @@ def test_validator_uses_pinned_experiment_descriptor_after_path_replacement(
                 cell_root=cell,
                 verifier_config=_qualification_verifier_config(),
                 trusted_root_fd=root_fd,
+                trusted_root_identity=_stable_directory_identity(os.fstat(root_fd)),
                 cell_relative="cells/vscode--tsa-warm",
             )
             == ()
@@ -10378,9 +10530,7 @@ def test_strict_validator_rejects_decoy_receipt_index_path(tmp_path: Path):
     receipt["index_path"] = f"cells/{plan.repo_id}--{plan.arm_id}/decoy"
     _resign_qualification_receipt(receipt)
 
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
-
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -10405,10 +10555,20 @@ def test_cell_plan_requires_each_execution_to_reference_index_path(tmp_path: Pat
         replace(plan, executions=(*plan.executions[:2], unbound, *plan.executions[3:]))
 
 
+def test_cell_plan_build_argv_is_bound_to_exact_source_checkout(tmp_path: Path):
+    # PR #1247: a frozen build cannot consume a checkout other than inventory source.
+    from dataclasses import replace
+
+    plan = _qualification_plans(tmp_path)[0]
+    other_source = (tmp_path / "other-source").resolve()
+    other_source.mkdir()
+
+    with pytest.raises(ValueError, match="canonical source checkout"):
+        replace(plan, source_checkout_path=other_source.as_posix())
+
+
 def test_strict_validator_requires_exact_ordered_frozen_commands(tmp_path: Path):
     import copy
-
-    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
 
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
@@ -10416,7 +10576,7 @@ def test_strict_validator_requires_exact_ordered_frozen_commands(tmp_path: Path)
     receipt["raw_executions"][0]["argv"] = ["true"]
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,
@@ -10497,7 +10657,6 @@ def test_index_hash_rejects_sparse_files(tmp_path: Path):
 def test_oracle_comparison_distinguishes_boolean_from_number(tmp_path: Path):
     from benchmarks.codegraph_compare.setup_qualification import (
         _bytes_hash,
-        validate_cell_receipt,
     )
 
     plan = _qualification_plans(tmp_path)[0]
@@ -10510,7 +10669,7 @@ def test_oracle_comparison_distinguishes_boolean_from_number(tmp_path: Path):
     blob["sha256"] = _bytes_hash(payload)
     _resign_qualification_receipt(receipt)
 
-    assert validate_cell_receipt(
+    assert _validate_qualification_receipt(
         receipt,
         plan=plan,
         cell_root=cell_root,

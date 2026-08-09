@@ -375,6 +375,7 @@ class CellPlanV1:
     attempt: int
     artifact_path: str
     index_path: str
+    source_checkout_path: str
     eligibility: EligibilityV1
     tool: HarnessArtifactV1
     config: HarnessArtifactV1
@@ -390,6 +391,7 @@ class CellPlanV1:
             or type(self.arm_id) is not str
             or type(self.artifact_path) is not str
             or type(self.index_path) is not str
+            or type(self.source_checkout_path) is not str
             or type(self.eligibility) is not EligibilityV1
             or type(self.tool) is not HarnessArtifactV1
             or type(self.config) is not HarnessArtifactV1
@@ -410,6 +412,13 @@ class CellPlanV1:
             raise ValueError("Plan identity must be a canonical cell at attempt 1")
         artifact_path = canonical_relative_path(self.artifact_path)
         index_path = canonical_relative_path(self.index_path)
+        source_path = Path(self.source_checkout_path)
+        if (
+            not source_path.is_absolute()
+            or source_path.as_posix() != self.source_checkout_path
+            or source_path.resolve() != source_path
+        ):
+            raise ValueError("Source checkout path must be canonical and absolute")
         cell_namespace = f"cells/{self.repo_id}--{self.arm_id}"
         if artifact_path != f"{cell_namespace}/cell-receipt.json":
             raise ValueError("Receipt artifact must use its canonical cell namespace")
@@ -440,6 +449,15 @@ class CellPlanV1:
         ):
             raise ValueError(
                 "Every frozen execution argv must reference the plan-bound index path"
+            )
+        build = self.executions[1]
+        if (
+            build.argv.count(self.source_checkout_path) != 1
+            or build.argv.count(self.index_path) != 1
+        ):
+            raise ValueError(
+                "Frozen build argv must explicitly reference the canonical source "
+                "checkout and index paths"
             )
         parse_allowlist = _sorted_paths(
             self.parse_error_allowlist, "parse-error allowlist"

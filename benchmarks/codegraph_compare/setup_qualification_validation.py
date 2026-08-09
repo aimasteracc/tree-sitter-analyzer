@@ -12,10 +12,9 @@ from typing import Any
 
 from benchmarks.codegraph_compare.integrity import _sha256
 from benchmarks.codegraph_compare.setup_qualification_paths import (
-    _hash_tree_at,
     _open_beneath,
-    _open_root,
-    _tree_size_at,
+    _snapshot_tree_at,
+    _stable_directory_identity,
     canonical_relative_path,
 )
 from benchmarks.codegraph_compare.setup_qualification_plan import (
@@ -57,6 +56,7 @@ def _evidence_core_payload(
             "eligibility": receipt.get("eligibility"),
             "repo_fingerprint": plan.eligibility.repo_fingerprint,
             "commit": plan.eligibility.commit,
+            "source_checkout_path": plan.source_checkout_path,
         },
         "tool": receipt.get("tool"),
         "config": receipt.get("config"),
@@ -83,6 +83,9 @@ def _evidence_core_payload(
         # Exact exit codes, argv and complete blob descriptors are signed, not
         # a lossy projection of them.
         "executions": receipt.get("raw_executions"),
+        "snapshot_audit": receipt.get("snapshot_audit", {}).get("payload")
+        if isinstance(receipt.get("snapshot_audit"), Mapping)
+        else None,
         "audit": {
             "network_denied": audit_mapping.get("network_denied"),
             "credentials_stripped": audit_mapping.get("credentials_stripped"),
@@ -100,20 +103,26 @@ def validate_cell_receipt(
     cell_root: Path,
     verifier_config: VerifierConfigV1,
     trusted_root_fd: int | None = None,
+    trusted_root_identity: tuple[int, ...] | None = None,
     cell_relative: str | None = None,
 ) -> tuple[str, ...]:
     """Strictly validate one receipt against trusted plans and independent evidence."""
     failures: list[str] = []
     cell_fd: int | None = None
     try:
-        if trusted_root_fd is None:
-            cell_fd = _open_root(cell_root)
-        else:
-            if cell_relative is None:
-                raise ValueError("Pinned-root validation requires a cell-relative path")
-            cell_fd = _open_beneath(
-                trusted_root_fd, canonical_relative_path(cell_relative), directory=True
+        if (
+            trusted_root_fd is None
+            or trusted_root_identity is None
+            or cell_relative is None
+            or _stable_directory_identity(os.fstat(trusted_root_fd))
+            != trusted_root_identity
+        ):
+            raise ValueError(
+                "Untrusted validation requires a pinned experiment-root identity"
             )
+        cell_fd = _open_beneath(
+            trusted_root_fd, canonical_relative_path(cell_relative), directory=True
+        )
     except (OSError, RuntimeError, TypeError, ValueError):
         failures.append("CELL_ROOT_ISOLATION_MISMATCH")
     try:
@@ -173,6 +182,37 @@ def _validate_open_cell_receipt(
         or receipt.get("index_path") != plan.index_path
     ):
         failures.append("PLAN_BINDING_MISMATCH")
+    snapshot_audit = receipt.get("snapshot_audit")
+    snapshot_payload = (
+        snapshot_audit.get("payload") if isinstance(snapshot_audit, Mapping) else None
+    )
+    expected_snapshot_facts = {
+        "schema_version": 1,
+        "plan_hash": plan.digest,
+        "snapshot_id": snapshot_payload.get("snapshot_id")
+        if isinstance(snapshot_payload, Mapping)
+        else None,
+        "mount": {"read_only": True},
+        "producer_descendants": 0,
+        "writes_blocked": True,
+    }
+    snapshot_trusted = (
+        isinstance(snapshot_audit, Mapping)
+        and isinstance(snapshot_payload, Mapping)
+        and isinstance(snapshot_payload.get("snapshot_id"), str)
+        and bool(snapshot_payload.get("snapshot_id"))
+        and snapshot_payload == expected_snapshot_facts
+        and _verify_signature(
+            key_id=snapshot_audit.get("key_id"),
+            signature=snapshot_audit.get("signature"),
+            payload=snapshot_payload,
+            expected_key_id=verifier_config.executor_key_id,
+            public_key=verifier_config.executor_public_key,
+        )
+    )
+    if not snapshot_trusted:
+        failures.append("SNAPSHOT_AUDIT_MISSING")
+
     try:
         eligibility_valid = _sha256(receipt.get("eligibility")) == _sha256(
             asdict(plan.eligibility)
@@ -274,7 +314,7 @@ def _validate_open_cell_receipt(
 
     index_path = receipt.get("index_path")
     try:
-        if index_path != plan.index_path or cell_fd is None:
+        if index_path != plan.index_path or cell_fd is None or not snapshot_trusted:
             raise ValueError
         canonical_relative_path(index_path)
         cell_namespace = f"cells/{plan.repo_id}--{plan.arm_id}/"
@@ -282,10 +322,14 @@ def _validate_open_cell_receipt(
             raise ValueError
         index_relative = index_path[len(cell_namespace) :]
         canonical_relative_path(index_relative)
-        actual_index_hash = _hash_tree_at(
+        (
+            actual_index_hash,
+            actual_index_bytes,
+            _actual_index_directories,
+            _actual_index_files,
+        ) = _snapshot_tree_at(
             cell_fd, index_relative, max_bytes=plan.resources.max_index_bytes
         )
-        actual_index_bytes = _tree_size_at(cell_fd, index_relative)
         if (
             actual_index_hash != receipt.get("index_content_hash")
             or not isinstance(observation, Mapping)

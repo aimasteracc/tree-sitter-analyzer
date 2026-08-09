@@ -87,6 +87,17 @@ _DEFAULT_TREE_MAX_ENTRIES = 1_000_000
 _DEFAULT_TREE_MAX_DIRECTORIES = 100_000
 
 
+def _stable_directory_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_ctime_ns,
+        metadata.st_mtime_ns,
+        metadata.st_nlink,
+        metadata.st_mode,
+    )
+
+
 def _visit_tree(
     root_fd: int,
     on_file: Callable[[int, str], None],
@@ -101,28 +112,43 @@ def _visit_tree(
     if min(max_depth, max_entries, max_directories) < 0:
         raise ValueError("Artifact tree traversal ceilings must be non-negative")
 
+    def bounded_names(descriptor: int, remaining: int) -> list[str]:
+        names: list[str] = []
+        with os.scandir(descriptor) as entries:
+            for entry in entries:
+                names.append(entry.name)
+                if len(names) > remaining:
+                    raise ValueError(
+                        "Artifact tree exceeds trusted entry count ceiling"
+                    )
+        names.sort()
+        return names
+
     # Each frame owns its descriptor except the root frame supplied by the caller.
-    # Directories are reported when their frame is popped, preserving the former
-    # depth-first/post-order digest contract.
-    stack: list[tuple[int, str, list[str], int, bool]] = [
-        (root_fd, prefix, sorted(os.listdir(root_fd)), 0, False)
+    # Directory metadata is pinned before enumeration and verified after all children
+    # have been consumed, so the result describes one quiescent directory snapshot.
+    root_identity = _stable_directory_identity(os.fstat(root_fd))
+    stack: list[tuple[int, str, list[str], int, bool, tuple[int, ...]]] = [
+        (root_fd, prefix, bounded_names(root_fd, max_entries), 0, False, root_identity)
     ]
     entry_count = 0
     directory_count = 0
     try:
         while stack:
-            directory_fd, directory, names, position, owned = stack[-1]
+            directory_fd, directory, names, position, owned, identity = stack[-1]
             if position == len(names):
                 stack.pop()
-                if owned:
-                    try:
-                        if on_directory is not None:
-                            on_directory(directory_fd, directory)
-                    finally:
+                try:
+                    if _stable_directory_identity(os.fstat(directory_fd)) != identity:
+                        raise ValueError("Artifact directory changed while hashing")
+                    if owned and on_directory is not None:
+                        on_directory(directory_fd, directory)
+                finally:
+                    if owned:
                         os.close(directory_fd)
                 continue
 
-            stack[-1] = (directory_fd, directory, names, position + 1, owned)
+            stack[-1] = (directory_fd, directory, names, position + 1, owned, identity)
             entry_count += 1
             if entry_count > max_entries:
                 raise ValueError("Artifact tree exceeds trusted entry count ceiling")
@@ -140,8 +166,11 @@ def _visit_tree(
                         )
                     if len(stack) > max_depth:
                         raise ValueError("Artifact tree exceeds trusted depth ceiling")
-                    children = sorted(os.listdir(descriptor))
-                    stack.append((descriptor, relative, children, 0, True))
+                    child_identity = _stable_directory_identity(os.fstat(descriptor))
+                    children = bounded_names(descriptor, max_entries - entry_count)
+                    stack.append(
+                        (descriptor, relative, children, 0, True, child_identity)
+                    )
                     descriptor = -1
                 elif stat.S_ISREG(mode):
                     on_file(descriptor, relative)
@@ -153,7 +182,9 @@ def _visit_tree(
     finally:
         # Close every still-live child descriptor on callbacks, listdir, open, or
         # ceiling failures. The root remains owned by the caller.
-        for descriptor, _directory, _names, _position, owned in reversed(stack):
+        for descriptor, _directory, _names, _position, owned, _identity in reversed(
+            stack
+        ):
             if owned:
                 os.close(descriptor)
 
@@ -256,36 +287,13 @@ def _stream_file(descriptor: int, digest: Any, *, remaining: int) -> int:
     identity = _stable_file_identity(metadata)
     digest.update(metadata.st_size.to_bytes(8, "big"))
 
-    first_content = hashlib.sha256()
-
-    class _TeeDigest:
-        def update(self, payload: bytes) -> None:
-            digest.update(payload)
-            first_content.update(payload)
-
-        def hexdigest(self) -> str:
-            return first_content.hexdigest()
-
     _hash_regular_descriptor(
         descriptor,
         expected_size=metadata.st_size,
         max_bytes=remaining,
-        digest=_TeeDigest(),
+        digest=digest,
     )
-    # A second bounded pass closes the same-size overwrite window even on a
-    # filesystem whose timestamp granularity cannot expose a rapid rewrite.
-    os.lseek(descriptor, 0, os.SEEK_SET)
-    second_content = hashlib.sha256()
-    _hash_regular_descriptor(
-        descriptor,
-        expected_size=metadata.st_size,
-        max_bytes=remaining,
-        digest=second_content,
-    )
-    if (
-        first_content.digest() != second_content.digest()
-        or _stable_file_identity(os.fstat(descriptor)) != identity
-    ):
+    if _stable_file_identity(os.fstat(descriptor)) != identity:
         raise ValueError("Artifact file changed while hashing")
     return metadata.st_size
 
@@ -295,7 +303,9 @@ def _update_typed_path(digest: Any, kind: bytes, relative: str) -> None:
     digest.update(kind + len(encoded).to_bytes(8, "big") + encoded)
 
 
-def _hash_tree_descriptor(directory_fd: int, *, max_bytes: int) -> str:
+def _snapshot_tree_descriptor(
+    directory_fd: int, *, max_bytes: int
+) -> tuple[str, int, int, int]:
     digest = hashlib.sha256()
     consumed = 0
     file_count = 0
@@ -316,7 +326,21 @@ def _hash_tree_descriptor(directory_fd: int, *, max_bytes: int) -> str:
     digest.update(
         b"C" + file_count.to_bytes(8, "big") + directory_count.to_bytes(8, "big")
     )
-    return digest.hexdigest()
+    return digest.hexdigest(), consumed, directory_count, file_count
+
+
+def _hash_tree_descriptor(directory_fd: int, *, max_bytes: int) -> str:
+    return _snapshot_tree_descriptor(directory_fd, max_bytes=max_bytes)[0]
+
+
+def _snapshot_tree_at(
+    root_fd: int, relative: str, *, max_bytes: int = _DEFAULT_TREE_CEILING_BYTES
+) -> tuple[str, int, int, int]:
+    directory_fd = _open_beneath(root_fd, relative, directory=True)
+    try:
+        return _snapshot_tree_descriptor(directory_fd, max_bytes=max_bytes)
+    finally:
+        os.close(directory_fd)
 
 
 def _hash_tree_at(

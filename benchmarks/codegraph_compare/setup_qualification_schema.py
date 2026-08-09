@@ -35,6 +35,7 @@ _RECEIPT_KEYS = frozenset(
         "index_partition",
         "raw_executions",
         "index_provenance",
+        "snapshot_audit",
         "os_audit",
         "human_oracle_approval",
         "receipt_hash",
@@ -55,6 +56,16 @@ _EXECUTION_KEYS = frozenset(
 _SIGNATURE_KEYS = frozenset({"payload", "key_id", "signature"})
 _EXECUTOR_PAYLOAD_KEYS = frozenset(
     {"schema_version", "plan_hash", "evidence_core_digest"}
+)
+_SNAPSHOT_PAYLOAD_KEYS = frozenset(
+    {
+        "schema_version",
+        "plan_hash",
+        "snapshot_id",
+        "mount",
+        "producer_descendants",
+        "writes_blocked",
+    }
 )
 _HASH_FIELDS = (
     "source_rules_hash",
@@ -394,6 +405,41 @@ def validate_receipt_schema_v2(receipt: object) -> None:
             _require_hash(execution["oracle_spec_hash"], f"{name}.oracle_spec_hash")
         for blob_name in ("stdout_bytes", "stderr_bytes", "query_bytes", "index_bytes"):
             _validate_blob(execution[blob_name], f"{name}.{blob_name}")
+
+    snapshot = _require_exact_keys(
+        root["snapshot_audit"], _SIGNATURE_KEYS, "snapshot_audit"
+    )
+    snapshot_payload = _require_exact_keys(
+        snapshot["payload"], _SNAPSHOT_PAYLOAD_KEYS, "snapshot_audit.payload"
+    )
+    if (
+        _require_int(
+            snapshot_payload["schema_version"],
+            "snapshot_audit.payload.schema_version",
+            minimum=1,
+        )
+        != 1
+    ):
+        raise ValueError("snapshot_audit.payload.schema_version must equal 1")
+    _require_hash(snapshot_payload["plan_hash"], "snapshot_audit.payload.plan_hash")
+    _require_string(
+        snapshot_payload["snapshot_id"], "snapshot_audit.payload.snapshot_id"
+    )
+    mount = _require_exact_keys(
+        snapshot_payload["mount"],
+        frozenset({"read_only"}),
+        "snapshot_audit.payload.mount",
+    )
+    _require_bool(mount["read_only"], "snapshot_audit.payload.mount.read_only")
+    _require_int(
+        snapshot_payload["producer_descendants"],
+        "snapshot_audit.payload.producer_descendants",
+    )
+    _require_bool(
+        snapshot_payload["writes_blocked"], "snapshot_audit.payload.writes_blocked"
+    )
+    _require_string(snapshot["key_id"], "snapshot_audit.key_id")
+    _require_hash(snapshot["signature"], "snapshot_audit.signature", length=128)
 
     provenance = _require_exact_keys(
         root["index_provenance"], _SIGNATURE_KEYS, "index_provenance"

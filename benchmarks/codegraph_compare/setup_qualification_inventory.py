@@ -150,8 +150,12 @@ def _parse_header(header: bytes, relative: str, expected_id: str) -> int:
 
 
 def _stream_blob(
-    stream: _BinaryReader, relative: str, expected_id: str, total_before: int
-) -> tuple[str, bytes, int]:
+    stream: _BinaryReader,
+    relative: str,
+    expected_id: str,
+    total_before: int,
+    generated_markers: tuple[bytes, ...] = (),
+) -> tuple[str, bool, int]:
     size = _parse_header(_read_header(stream, relative), relative, expected_id)
     if size > _GIT_TOTAL_CEILING_BYTES - total_before:
         raise ValueError("Git blobs exceed trusted total size ceiling")
@@ -162,20 +166,26 @@ def _stream_blob(
         raise ValueError("Unsupported Git object ID length") from exc
     object_digest.update(f"blob {size}\0".encode("ascii"))
     content_digest = hashlib.sha256()
-    prefix = bytearray()
+    generated = False
+    overlap = b""
+    overlap_bytes = max((len(marker) for marker in generated_markers), default=1) - 1
     remaining = size
     while remaining:
         chunk = _read_exact(stream, min(remaining, _STREAM_CHUNK_BYTES), relative)
         remaining -= len(chunk)
         object_digest.update(chunk)
         content_digest.update(chunk)
-        if len(prefix) < 4096:
-            prefix.extend(chunk[: 4096 - len(prefix)])
+        marker_window = overlap + chunk
+        if not generated and any(
+            marker in marker_window for marker in generated_markers
+        ):
+            generated = True
+        overlap = marker_window[-overlap_bytes:] if overlap_bytes else b""
     if _read_exact(stream, 1, relative) != b"\0":
         raise ValueError(f"Git batch payload size or terminator mismatch: {relative}")
     if object_digest.hexdigest() != expected_id:
         raise ValueError(f"Pinned Git object mismatch: {relative}")
-    return content_digest.hexdigest(), bytes(prefix), size
+    return content_digest.hexdigest(), generated, size
 
 
 def _terminate(process: subprocess.Popen[bytes]) -> None:
@@ -186,9 +196,10 @@ def _terminate(process: subprocess.Popen[bytes]) -> None:
 def _batch_blob_metadata(
     repo: Path,
     requests: tuple[tuple[str, str], ...],
-    on_blob: Callable[[str, str, bytes], None] | None = None,
-) -> tuple[tuple[str, str, bytes], ...]:
-    """Stream pinned blobs through one process, retaining only hashes and prefixes."""
+    on_blob: Callable[[str, str, bool], None] | None = None,
+    generated_markers: tuple[bytes, ...] = (),
+) -> tuple[tuple[str, str, bool], ...]:
+    """Stream pinned blobs once, retaining hashes and marker classifications."""
     if not requests:
         return ()
     with tempfile.TemporaryFile() as stderr:
@@ -202,7 +213,7 @@ def _batch_blob_metadata(
         assert process.stdin is not None and process.stdout is not None
         stdin = process.stdin
         stdout = process.stdout
-        responses: queue.Queue[tuple[str, str, bytes] | BaseException] = queue.Queue(
+        responses: queue.Queue[tuple[str, str, bool] | BaseException] = queue.Queue(
             maxsize=1
         )
 
@@ -210,17 +221,17 @@ def _batch_blob_metadata(
             total = 0
             try:
                 for relative, expected_id in requests:
-                    digest, prefix, size = _stream_blob(
-                        stdout, relative, expected_id, total
+                    digest, generated, size = _stream_blob(
+                        stdout, relative, expected_id, total, generated_markers
                     )
                     total += size
-                    responses.put((relative, digest, prefix))
+                    responses.put((relative, digest, generated))
             except BaseException as exc:
                 responses.put(exc)
 
         reader = threading.Thread(target=read_responses, daemon=True)
         reader.start()
-        results: list[tuple[str, str, bytes]] = []
+        results: list[tuple[str, str, bool]] = []
         try:
             for relative, object_id in requests:
                 stdin.write(object_id.encode("ascii") + b"\0")
@@ -304,14 +315,12 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
     root_fd = _open_root(repo)
     worktree_bytes_consumed = 0
 
-    def consume_blob(relative: str, content_hash: str, prefix: bytes) -> None:
+    def consume_blob(relative: str, content_hash: str, generated: bool) -> None:
         nonlocal worktree_bytes_consumed
         mode, object_id = record_by_path[relative]
         file_hashes.append((relative, mode, object_id, content_hash))
         reason = preclassified[relative]
-        if reason is None and any(
-            marker in prefix for marker in rules.generated_markers
-        ):
+        if reason is None and generated:
             reason = "generated"
         if reason is None:
             descriptor: int | None = None
@@ -340,7 +349,12 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
             excluded.append((relative, reason))
 
     try:
-        _batch_blob_metadata(repo, requests, on_blob=consume_blob)
+        _batch_blob_metadata(
+            repo,
+            requests,
+            on_blob=consume_blob,
+            generated_markers=rules.generated_markers,
+        )
     finally:
         os.close(root_fd)
     if _git(repo, "status", "--porcelain=v1", "--untracked-files=all"):

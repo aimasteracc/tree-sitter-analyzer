@@ -18,6 +18,8 @@ from benchmarks.codegraph_compare.setup_qualification_paths import (
     _open_root,
     _read_regular_at,
     _read_regular_beneath,
+    _snapshot_tree_at,
+    _stable_directory_identity,
     _tree_size,
     _tree_size_at,
     canonical_relative_path,

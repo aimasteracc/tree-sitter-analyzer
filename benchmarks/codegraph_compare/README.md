@@ -118,7 +118,12 @@ for the seven pinned repositories and two indexed arms. The current orchestrator
 is intentionally non-executing: it accepts no producer callback, invokes no
 producer, observes zero receipts, creates no checksum manifest, and seals no
 evidence. It always records `E0/NOT_EVALUATED` with the hard requirement for a
-future isolated external producer and a fresh trusted verifier artifact.
+future isolated external producer and a fresh trusted verifier artifact. That
+executor must build inside an isolated read-only filesystem snapshot, quiesce all
+producer descendants, block writes for the full verifier read, and sign the
+snapshot identity and those OS-enforced facts before any tree hash is computed.
+A mutable checkout or a finite number of verifier rereads is not evidence of
+immutability.
 
 Plans must match every field of an explicit trusted inventory map derived from
 the pinned repository checkouts, not merely the commit label. Each plan freezes
