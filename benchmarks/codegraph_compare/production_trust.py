@@ -8,10 +8,12 @@ independent services described by issue #1223.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -148,11 +150,25 @@ class OperatorTrustConfigV1:
 
 
 @dataclass(frozen=True)
+class OperatorKeyPin:
+    """Immutable identity and material captured from an operator key file."""
+
+    path: str
+    device: int
+    inode: int
+    material: bytes
+    material_sha256: str
+
+
+@dataclass(frozen=True)
 class ProductionQualification:
     status: str
     violations: tuple[str, ...]
     spec_hash: str | None
     model_callbacks_allowed: bool
+    provider_receipt_key: OperatorKeyPin | None = None
+    spend_key_sha256: str | None = None
+    judge_key_sha256: str | None = None
 
 
 def validate_production_run_spec(spec: object) -> None:
@@ -196,6 +212,68 @@ def _absolute_lexical(path: Path) -> Path:
 def _has_symlink_component(path: Path) -> bool:
     absolute = _absolute_lexical(path)
     return any(candidate.is_symlink() for candidate in (absolute, *absolute.parents))
+
+
+def _read_operator_key(path: Path) -> OperatorKeyPin:
+    """Read a key through a pinned regular-file descriptor, rejecting path races."""
+
+    if _has_symlink_component(path):
+        raise ValueError(f"operator key path contains a symlink: {path}")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError(f"operator key is not a regular file: {path}")
+        with os.fdopen(os.dup(descriptor), "rb") as stream:
+            encoded = stream.read()
+        after = os.fstat(descriptor)
+        path_stat = os.stat(path, follow_symlinks=False)
+    finally:
+        os.close(descriptor)
+    identity = (before.st_dev, before.st_ino)
+    if identity != (after.st_dev, after.st_ino) or identity != (
+        path_stat.st_dev,
+        path_stat.st_ino,
+    ):
+        raise ValueError(f"operator key path identity changed while reading: {path}")
+    if _has_symlink_component(path):
+        raise ValueError(f"operator key path became a symlink: {path}")
+    try:
+        material = bytes.fromhex(encoded.decode("utf-8").strip())
+    except (UnicodeDecodeError, ValueError) as error:
+        raise ValueError(f"operator key must be hex-encoded: {path}") from error
+    if len(material) < 32:
+        raise ValueError(f"operator key must contain at least 32 bytes: {path}")
+    return OperatorKeyPin(
+        str(_absolute_lexical(path)),
+        before.st_dev,
+        before.st_ino,
+        material,
+        hashlib.sha256(material).hexdigest(),
+    )
+
+
+def revalidate_provider_key_pin(
+    pin: OperatorKeyPin,
+    path: Path,
+    spend_key_sha256: str,
+    judge_key_sha256: str,
+) -> tuple[str, ...]:
+    """Fail closed if the provider verifier path, inode, or material changed."""
+
+    try:
+        current = _read_operator_key(path)
+    except (OSError, ValueError):
+        return ("PROVIDER_RECEIPT_KEY_CHANGED",)
+    if (
+        current.path != pin.path
+        or (current.device, current.inode) != (pin.device, pin.inode)
+        or current.material_sha256 != pin.material_sha256
+        or current.material_sha256 in (spend_key_sha256, judge_key_sha256)
+    ):
+        return ("PROVIDER_RECEIPT_KEY_CHANGED",)
+    return ()
 
 
 def _trusted_external_file(path: Path, bundle_root: Path, label: str) -> str | None:
@@ -322,13 +400,15 @@ def qualify_production_trust_v2(
 
     # Production qualification requires two independently pinned role keys.
     try:
-        anchor_key = AnchorKey.from_file(config.pinned_anchor)
+        anchor_pin = _read_operator_key(config.pinned_anchor)
+        anchor_key = AnchorKey(anchor_pin.material)
         if config.pinned_judge is None:
             raise ValueError("pinned judge key is required")
-        judge_key = AnchorKey.from_file(config.pinned_judge)
+        judge_pin = _read_operator_key(config.pinned_judge)
+        judge_key = AnchorKey(judge_pin.material)
         if config.pinned_provider_receipt_key is None:
             raise ValueError("pinned provider receipt key is required")
-        provider_receipt_key = AnchorKey.from_file(config.pinned_provider_receipt_key)
+        provider_pin = _read_operator_key(config.pinned_provider_receipt_key)
     except Exception as error:
         return ProductionQualification(
             "NOT_EVALUATED", (f"ROLE_KEY_UNAVAILABLE:{error}",), spec_hash, False
@@ -373,12 +453,10 @@ def qualify_production_trust_v2(
             pass
     # Different filenames and IDs are not independent when the secret/public
     # material is identical.  Compare a one-way fingerprint, never raw keys.
-    import hashlib
-
     material_fingerprints = (
-        hashlib.sha256(anchor_key.raw).digest(),
-        hashlib.sha256(judge_key.raw).digest(),
-        hashlib.sha256(provider_receipt_key.raw).digest(),
+        anchor_pin.material_sha256,
+        judge_pin.material_sha256,
+        provider_pin.material_sha256,
     )
     if len(set(material_fingerprints)) != 3:
         violations.append("ROLE_KEY_MATERIAL_NOT_INDEPENDENT")
@@ -513,4 +591,12 @@ def qualify_production_trust_v2(
             "NOT_EVALUATED", tuple(attest_violations), spec_hash, False
         )
 
-    return ProductionQualification("ACCEPT", (), spec_hash, True)
+    return ProductionQualification(
+        "ACCEPT",
+        (),
+        spec_hash,
+        True,
+        provider_pin,
+        anchor_pin.material_sha256,
+        judge_pin.material_sha256,
+    )

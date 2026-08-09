@@ -535,3 +535,99 @@ def test_hanging_reservation_is_recovered_as_terminal_unknown(tmp_path: Path):
     assert receipt.status == "NOT_EVALUATED"
     assert terminal["status"] == "UNKNOWN"
     assert terminal["violations"] == ["RECOVERED_HANGING_CLAIM"]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "replacement_key", "expected_violations"),
+    (
+        (
+            "spend-material",
+            SPEND.raw,
+            ("PROVIDER_RECEIPT_KEY_CHANGED", "PROVIDER_RESERVATION_INVALID"),
+        ),
+        (
+            "judge-material",
+            JUDGE.raw,
+            ("PROVIDER_RECEIPT_KEY_CHANGED", "PROVIDER_RESERVATION_INVALID"),
+        ),
+        ("renamed-path", b"p" * 32, ("PROVIDER_RECEIPT_KEY_CHANGED",)),
+        ("symlink-path", b"p" * 32, ("PROVIDER_RECEIPT_KEY_CHANGED",)),
+    ),
+)
+def test_provider_key_callback_mutation_is_invalid(
+    tmp_path: Path,
+    mutation: str,
+    replacement_key: bytes,
+    expected_violations: tuple[str, ...],
+):
+    # Incident NO1-003D zero2: callbacks must not replace their receipt verifier.
+    request, config, attestation, judge = _inputs(tmp_path)
+    provider_path = config.pinned_provider_receipt_key
+    assert provider_path is not None
+
+    def provider(current):
+        if mutation in ("spend-material", "judge-material"):
+            provider_path.write_text(replacement_key.hex())
+        elif mutation == "renamed-path":
+            provider_path.rename(provider_path.with_suffix(".original"))
+            provider_path.write_text(replacement_key.hex())
+        else:
+            provider_path.rename(provider_path.with_suffix(".original"))
+            replacement = provider_path.with_suffix(".replacement")
+            replacement.write_text(replacement_key.hex())
+            provider_path.symlink_to(replacement)
+        return _result(
+            provider_reservation_receipt=issue_provider_reservation_receipt(
+                current.spec, "provider-reservation-1", replacement_key
+            )
+        )
+
+    receipt = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=lambda current, gate: gate.call(current),
+        provider_call=provider,
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    assert receipt.status == "INVALID"
+    assert receipt.violations == expected_violations
+    assert receipt.model_callbacks_invoked == 1
+
+
+def test_provider_key_mutation_immediately_before_callback_blocks_callback(
+    tmp_path: Path,
+):
+    # Incident NO1-003D zero2: the gate must re-read the key before callback entry.
+    request, config, attestation, judge = _inputs(tmp_path)
+    provider_path = config.pinned_provider_receipt_key
+    assert provider_path is not None
+    provider_calls = []
+
+    def runner(current, gate):
+        provider_path.write_text(SPEND.raw.hex())
+        return gate.call(current)
+
+    receipt = dispatch_once(
+        request,
+        config,
+        attestation,
+        judge,
+        evidence_bundle_root=tmp_path / "bundle",
+        runner=runner,
+        provider_call=lambda current: (
+            provider_calls.append(current) or _provider(current)
+        ),
+        clock=lambda: NOW,
+        current_state=_state(request),
+    )
+    assert receipt.status == "INVALID"
+    assert receipt.violations == (
+        "PROVIDER_EXCEPTION:RuntimeError:provider receipt key changed before callback",
+        "PROVIDER_RECEIPT_KEY_CHANGED",
+    )
+    assert receipt.model_callbacks_invoked == 0
+    assert provider_calls == []

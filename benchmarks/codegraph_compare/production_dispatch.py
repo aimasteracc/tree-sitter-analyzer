@@ -38,9 +38,11 @@ from benchmarks.codegraph_compare.production_journal_recovery import (
     recover_hanging_journal,
 )
 from benchmarks.codegraph_compare.production_trust import (
+    OperatorKeyPin,
     OperatorTrustConfigV1,
     ProductionRunSpecV1,
     qualify_production_trust_v2,
+    revalidate_provider_key_pin,
     validate_production_run_spec,
 )
 
@@ -157,18 +159,17 @@ def _revalidate(
 
 
 def _verify_provider_receipt(
-    result: ProviderRunResult, spec: ProductionRunSpecV1, config: OperatorTrustConfigV1
+    result: ProviderRunResult,
+    spec: ProductionRunSpecV1,
+    config: OperatorTrustConfigV1,
+    provider_key: OperatorKeyPin,
 ) -> tuple[str, ...]:
     receipt = result.provider_reservation_receipt
-    if (
-        type(receipt) is not ProviderReservationReceiptV1
-        or config.pinned_provider_receipt_key is None
-    ):
+    if type(receipt) is not ProviderReservationReceiptV1:
         return ("VERIFIABLE_PROVIDER_RESERVATION_MISSING",)
-    try:
-        key = bytes.fromhex(config.pinned_provider_receipt_key.read_text().strip())
-    except Exception:
-        return ("PROVIDER_RESERVATION_KEY_UNAVAILABLE",)
+    # Verification deliberately uses the immutable qualification-time bytes,
+    # never the mutable operator path after a provider callback.
+    key = provider_key.material
     fields = {
         "schema_version": receipt.schema_version,
         "spec_hash": receipt.spec_hash,
@@ -198,6 +199,7 @@ def _usage_violations(
     result: ProviderRunResult,
     spec: ProductionRunSpecV1,
     config: OperatorTrustConfigV1,
+    provider_key: OperatorKeyPin,
     actual_count: int,
 ) -> tuple[str, ...]:
     if type(result) is not ProviderRunResult:
@@ -214,7 +216,7 @@ def _usage_violations(
         or result.cost_usd < 0
     ):
         return ("USAGE_MISSING_OR_INVALID",)
-    violations = list(_verify_provider_receipt(result, spec, config))
+    violations = list(_verify_provider_receipt(result, spec, config, provider_key))
     if actual_count != 1 or result.provider_request_count != actual_count:
         violations.append("PROVIDER_REQUEST_COUNT_NOT_ONE")
     if result.input_tokens + result.output_tokens > spec.token_limit:
@@ -387,6 +389,51 @@ def dispatch_once(
         )
         run_violations.extend(second.violations)
         run_violations.extend(_revalidate(request, clock, current_state))
+        provider_key = second.provider_receipt_key
+        if not run_violations and (
+            provider_key is None
+            or second.spend_key_sha256 is None
+            or second.judge_key_sha256 is None
+        ):
+            run_violations.append("PROVIDER_RECEIPT_KEY_PIN_UNAVAILABLE")
+
+        key_boundary_violations: list[str] = []
+
+        def revalidate_provider_before_call() -> None:
+            assert provider_key is not None
+            assert second.spend_key_sha256 is not None
+            assert second.judge_key_sha256 is not None
+            before = revalidate_provider_key_pin(
+                provider_key,
+                config.pinned_provider_receipt_key,  # type: ignore[arg-type]
+                second.spend_key_sha256,
+                second.judge_key_sha256,
+            )
+            if before:
+                key_boundary_violations.extend(before)
+                raise RuntimeError("provider receipt key changed before callback")
+
+        def checked_provider_call(
+            current: ProductionDispatchRequestV1,
+        ) -> ProviderRunResult:
+            assert provider_key is not None
+            assert second.spend_key_sha256 is not None
+            assert second.judge_key_sha256 is not None
+            try:
+                return provider_call(current)
+            finally:
+                key_boundary_violations.extend(
+                    revalidate_provider_key_pin(
+                        provider_key,
+                        config.pinned_provider_receipt_key,  # type: ignore[arg-type]
+                        second.spend_key_sha256,
+                        second.judge_key_sha256,
+                    )
+                )
+
+        gate = ProviderRequestGate(
+            checked_provider_call, before_call=revalidate_provider_before_call
+        )
         collector = EvidenceCollector(request.evidence_root)
         if not run_violations:
             try:
@@ -398,6 +445,7 @@ def dispatch_once(
                 run_violations.append(
                     f"PROVIDER_EXCEPTION:{type(error).__name__}:{error}"
                 )
+            run_violations.extend(key_boundary_violations)
             run_violations.extend(_revalidate(request, clock, current_state))
         if result is None:
             collector.collect(
@@ -410,8 +458,9 @@ def dispatch_once(
         else:
             collector.collect(request.spec.cell_id, "transcript", result.transcript)
             collector.collect(request.spec.cell_id, "tool-receipt", result.tool_receipt)
+            assert provider_key is not None
             usage_violations = _usage_violations(
-                result, request.spec, config, gate.count
+                result, request.spec, config, provider_key, gate.count
             )
             run_violations.extend(usage_violations)
             collector.collect(

@@ -144,9 +144,13 @@ class ProviderRunFailure(RuntimeError):
 
 class ProviderRequestGate:
     def __init__(
-        self, provider_call: Callable[[ProductionDispatchRequestV1], ProviderRunResult]
+        self,
+        provider_call: Callable[[ProductionDispatchRequestV1], ProviderRunResult],
+        *,
+        before_call: Callable[[], None] | None = None,
     ) -> None:
         self._call = provider_call
+        self._before_call = before_call
         self._count = 0
 
     @property
@@ -156,6 +160,8 @@ class ProviderRequestGate:
     def call(self, request: ProductionDispatchRequestV1) -> ProviderRunResult:
         if self._count != 0:
             raise RuntimeError("PROVIDER_REQUEST_LIMIT_REACHED")
+        if self._before_call is not None:
+            self._before_call()
         self._count = 1
         return self._call(request)
 
