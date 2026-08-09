@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 
@@ -28,13 +29,19 @@ def _open_root(root: Path) -> int:
     return os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 
 
+def _read_flags() -> int:
+    # O_NONBLOCK makes opening a producer-created FIFO safe; fstat below then
+    # rejects it before any read. It is harmless for regular files/directories.
+    return os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0)
+
+
 def _open_beneath(root_fd: int, relative: str, *, directory: bool = False) -> int:
     parts = canonical_relative_path(relative).split("/")
     current = os.dup(root_fd)
     try:
         for number, component in enumerate(parts):
             last = number == len(parts) - 1
-            flags = os.O_RDONLY | os.O_NOFOLLOW
+            flags = _read_flags()
             if not last or directory:
                 flags |= os.O_DIRECTORY
             next_fd = os.open(component, flags, dir_fd=current)
@@ -50,13 +57,19 @@ def _open_beneath(root_fd: int, relative: str, *, directory: bool = False) -> in
         raise
 
 
+def _read_regular_at(root_fd: int, relative: str) -> bytes:
+    descriptor = _open_beneath(root_fd, relative)
+    try:
+        with os.fdopen(os.dup(descriptor), "rb") as stream:
+            return stream.read()
+    finally:
+        os.close(descriptor)
+
+
 def _read_regular_beneath(root: Path, relative: str) -> bytes:
-    """Read a regular file through stable no-follow directory descriptors."""
     root_fd = _open_root(root)
     try:
-        descriptor = _open_beneath(root_fd, relative)
-        with os.fdopen(descriptor, "rb") as stream:
-            return stream.read()
+        return _read_regular_at(root_fd, relative)
     finally:
         os.close(root_fd)
 
@@ -67,112 +80,128 @@ def _lstat_regular_beneath(root: Path, relative: str) -> Path:
     return root / canonical_relative_path(relative)
 
 
-def _tree_size(root: Path) -> int:
-    """Sum regular file sizes using the same stable no-follow traversal."""
-    root_fd = _open_root(root)
+def _visit_tree(
+    root_fd: int,
+    on_file: Callable[[int, str], None],
+    on_directory: Callable[[int, str], None] | None = None,
+    prefix: str = "",
+) -> None:
+    for name in sorted(os.listdir(root_fd)):
+        relative = f"{prefix}/{name}" if prefix else name
+        canonical_relative_path(relative)
+        descriptor = os.open(name, _read_flags(), dir_fd=root_fd)
+        try:
+            mode = os.fstat(descriptor).st_mode
+            if stat.S_ISDIR(mode):
+                _visit_tree(descriptor, on_file, on_directory, relative)
+                if on_directory is not None:
+                    on_directory(descriptor, relative)
+            elif stat.S_ISREG(mode):
+                on_file(descriptor, relative)
+            else:
+                raise ValueError("Artifact tree contains a special file")
+        finally:
+            os.close(descriptor)
 
-    def visit(directory_fd: int) -> int:
-        total = 0
-        for name in sorted(os.listdir(directory_fd)):
-            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
-            try:
-                mode = os.fstat(descriptor).st_mode
-                if stat.S_ISDIR(mode):
-                    total += visit(descriptor)
-                elif stat.S_ISREG(mode):
-                    total += os.fstat(descriptor).st_size
-                else:
-                    raise ValueError("Index tree contains a special file")
-            finally:
-                os.close(descriptor)
-        return total
+
+def _tree_size_at(root_fd: int, relative: str) -> int:
+    directory_fd = _open_beneath(root_fd, relative, directory=True)
+    total = 0
+
+    def add(descriptor: int, _relative: str) -> None:
+        nonlocal total
+        total += os.fstat(descriptor).st_size
 
     try:
-        return visit(root_fd)
+        _visit_tree(directory_fd, add)
+        return total
+    finally:
+        os.close(directory_fd)
+
+
+def _tree_size(root: Path) -> int:
+    root_fd = _open_root(root)
+    try:
+        total = 0
+
+        def add(descriptor: int, _relative: str) -> None:
+            nonlocal total
+            total += os.fstat(descriptor).st_size
+
+        _visit_tree(root_fd, add)
+        return total
     finally:
         os.close(root_fd)
+
+
+def _seal_tree_at(root_fd: int, mode: int) -> None:
+    """Seal files first, then directories bottom-up, including the pinned root."""
+    _visit_tree(
+        root_fd,
+        lambda descriptor, _relative: os.fchmod(descriptor, mode),
+        lambda descriptor, _relative: os.fchmod(descriptor, 0o500),
+    )
+    os.fchmod(root_fd, 0o500)
 
 
 def _chmod_regular_tree(root: Path, mode: int) -> None:
-    """Change regular evidence modes without path re-resolution."""
     root_fd = _open_root(root)
-
-    def visit(directory_fd: int) -> None:
-        for name in sorted(os.listdir(directory_fd)):
-            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
-            try:
-                kind = os.fstat(descriptor).st_mode
-                if stat.S_ISDIR(kind):
-                    visit(descriptor)
-                elif stat.S_ISREG(kind):
-                    os.fchmod(descriptor, mode)
-                else:
-                    raise ValueError("Artifact tree contains a special file")
-            finally:
-                os.close(descriptor)
-
     try:
-        visit(root_fd)
+        _seal_tree_at(root_fd, mode)
     finally:
         os.close(root_fd)
 
 
-def _manifest_tree(root: Path) -> dict[str, str]:
-    """Return a stable path-to-digest manifest through descriptor traversal."""
-    root_fd = _open_root(root)
+def _manifest_tree_at(root_fd: int) -> dict[str, str]:
     result: dict[str, str] = {}
 
-    def visit(directory_fd: int, prefix: str) -> None:
-        for name in sorted(os.listdir(directory_fd)):
-            relative = f"{prefix}/{name}" if prefix else name
-            canonical_relative_path(relative)
-            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
-            try:
-                mode = os.fstat(descriptor).st_mode
-                if stat.S_ISDIR(mode):
-                    visit(descriptor, relative)
-                elif stat.S_ISREG(mode):
-                    with os.fdopen(os.dup(descriptor), "rb") as stream:
-                        result[relative] = hashlib.sha256(stream.read()).hexdigest()
-                else:
-                    raise ValueError("Artifact tree contains a special file")
-            finally:
-                os.close(descriptor)
+    def collect(descriptor: int, relative: str) -> None:
+        with os.fdopen(os.dup(descriptor), "rb") as stream:
+            result[relative] = hashlib.sha256(stream.read()).hexdigest()
 
-    try:
-        visit(root_fd, "")
-    finally:
-        os.close(root_fd)
+    _visit_tree(root_fd, collect)
     return result
 
 
-def _hash_tree(root: Path) -> str:
-    """Hash canonical names and bytes via recursive openat/O_NOFOLLOW traversal."""
+def _manifest_tree(root: Path) -> dict[str, str]:
     root_fd = _open_root(root)
-    digest = hashlib.sha256()
-
-    def visit(directory_fd: int, prefix: str) -> None:
-        for name in sorted(os.listdir(directory_fd)):
-            relative = f"{prefix}/{name}" if prefix else name
-            canonical_relative_path(relative)
-            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
-            try:
-                mode = os.fstat(descriptor).st_mode
-                if stat.S_ISDIR(mode):
-                    visit(descriptor, relative)
-                elif stat.S_ISREG(mode):
-                    with os.fdopen(os.dup(descriptor), "rb") as stream:
-                        payload = stream.read()
-                    encoded = relative.encode()
-                    digest.update(len(encoded).to_bytes(8, "big") + encoded)
-                    digest.update(len(payload).to_bytes(8, "big") + payload)
-                else:
-                    raise ValueError("Index tree contains a special file")
-            finally:
-                os.close(descriptor)
-
     try:
-        visit(root_fd, "")
+        return _manifest_tree_at(root_fd)
     finally:
         os.close(root_fd)
-    return digest.hexdigest()
+
+
+def _hash_tree_at(root_fd: int, relative: str) -> str:
+    directory_fd = _open_beneath(root_fd, relative, directory=True)
+    digest = hashlib.sha256()
+
+    def collect(descriptor: int, item: str) -> None:
+        with os.fdopen(os.dup(descriptor), "rb") as stream:
+            payload = stream.read()
+        encoded = item.encode()
+        digest.update(len(encoded).to_bytes(8, "big") + encoded)
+        digest.update(len(payload).to_bytes(8, "big") + payload)
+
+    try:
+        _visit_tree(directory_fd, collect)
+        return digest.hexdigest()
+    finally:
+        os.close(directory_fd)
+
+
+def _hash_tree(root: Path) -> str:
+    root_fd = _open_root(root)
+    try:
+        digest = hashlib.sha256()
+
+        def collect(descriptor: int, relative: str) -> None:
+            with os.fdopen(os.dup(descriptor), "rb") as stream:
+                payload = stream.read()
+            encoded = relative.encode()
+            digest.update(len(encoded).to_bytes(8, "big") + encoded)
+            digest.update(len(payload).to_bytes(8, "big") + payload)
+
+        _visit_tree(root_fd, collect)
+        return digest.hexdigest()
+    finally:
+        os.close(root_fd)
