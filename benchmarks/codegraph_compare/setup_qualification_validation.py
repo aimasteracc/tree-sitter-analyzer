@@ -29,6 +29,7 @@ from benchmarks.codegraph_compare.setup_qualification_plan import (
 from benchmarks.codegraph_compare.setup_qualification_schema import (
     _canonical_json_bytes,
     _strict_json_bytes,
+    validate_direct_json_bounds,
     validate_receipt_schema_v2,
 )
 from benchmarks.codegraph_compare.setup_qualification_trust import (
@@ -59,7 +60,15 @@ def _evidence_core_payload(
         },
         "tool": receipt.get("tool"),
         "config": receipt.get("config"),
-        "oracle_specs": [asdict(spec) for spec in plan.oracle_specs],
+        "oracle_specs": [
+            {
+                "oracle_id": spec.oracle_id,
+                "kind": spec.kind,
+                "query": spec.query,
+                "expected_result": json.loads(spec.expected_result),
+            }
+            for spec in plan.oracle_specs
+        ],
         "resources": {
             "plan_hash": receipt.get("resource_plan_hash"),
             "observation": receipt.get("resource_observation"),
@@ -128,9 +137,15 @@ def _validate_open_cell_receipt(
     failures: list[str],
     cell_fd: int | None,
 ) -> tuple[str, ...]:
+    direct_json_bounded = True
+    try:
+        validate_direct_json_bounds(receipt)
+    except (RecursionError, TypeError, ValueError):
+        direct_json_bounded = False
+        failures.append("RECEIPT_SCHEMA_MISMATCH")
     try:
         validate_receipt_schema_v2(receipt)
-    except (TypeError, ValueError):
+    except (RecursionError, TypeError, ValueError):
         failures.append("RECEIPT_SCHEMA_MISMATCH")
     if receipt.get("schema_version") != 2 or isinstance(
         receipt.get("schema_version"), bool
@@ -139,11 +154,13 @@ def _validate_open_cell_receipt(
     unsigned = dict(receipt)
     claimed_hash = unsigned.pop("receipt_hash", None)
     try:
-        receipt_hash_valid = claimed_hash == _sha256(unsigned)
-    except (TypeError, ValueError):
+        receipt_hash_valid = direct_json_bounded and claimed_hash == _sha256(unsigned)
+    except (RecursionError, TypeError, ValueError):
         receipt_hash_valid = False
     if not receipt_hash_valid:
         failures.append("RECEIPT_HASH_MISMATCH")
+    if not direct_json_bounded:
+        return tuple(dict.fromkeys(failures))
     if (receipt.get("repo_id"), receipt.get("arm_id"), receipt.get("attempt")) != (
         plan.repo_id,
         plan.arm_id,
@@ -391,9 +408,9 @@ def _validate_open_cell_receipt(
                     query_matches = _canonical_json_bytes(
                         query
                     ) == _canonical_json_bytes(dict(spec.query))
-                    result_matches = _canonical_json_bytes(
-                        result
-                    ) == _canonical_json_bytes(spec.expected_result)
+                    result_matches = (
+                        _canonical_json_bytes(result) == spec.expected_result
+                    )
                 except (TypeError, ValueError, json.JSONDecodeError):
                     execution_valid = False
                     break

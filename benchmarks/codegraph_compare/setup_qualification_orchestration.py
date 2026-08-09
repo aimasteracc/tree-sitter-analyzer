@@ -16,11 +16,11 @@ from benchmarks.codegraph_compare.setup_qualification import (
     EXPECTED_CELLS,
     CellPlanV1,
     EligibilityV1,
-    _canonical_json_bytes,
     canonical_relative_path,
     strict_json_loads,
     validate_receipt_schema_v2,
 )
+from benchmarks.codegraph_compare.setup_qualification_plan import _plan_payload
 
 
 def _trusted_commits(path: Path) -> dict[str, str]:
@@ -73,12 +73,15 @@ def _validate_plans(
         previous = by_repo.setdefault(plan.repo_id, plan)
         if asdict(previous.eligibility) != asdict(plan.eligibility):
             raise ValueError("Both arms must use identical source eligibility")
-        if _canonical_json_bytes(
-            [asdict(spec) for spec in previous.oracle_specs]
-        ) != _canonical_json_bytes([asdict(spec) for spec in plan.oracle_specs]):
+        if previous.oracle_specs != plan.oracle_specs:
             raise ValueError(
                 "Both arms must use exactly identical oracle specifications"
             )
+        if (
+            previous.parse_error_allowlist != plan.parse_error_allowlist
+            or previous.explicit_excluded_allowlist != plan.explicit_excluded_allowlist
+        ):
+            raise ValueError("Both arms must use exactly identical source allowlists")
     for artifact in artifacts:
         canonical_relative_path(artifact)
         if not artifact.startswith("cells/") or not artifact.endswith(
@@ -141,8 +144,8 @@ def orchestrate_qualification(
     plan_document = {
         "schema_version": 2,
         "evaluation_stage": "E0",
-        "cells": [asdict(plan) for plan in plans],
-        "plan_set_hash": _sha256([asdict(plan) for plan in plans]),
+        "cells": [_plan_payload(plan) for plan in plans],
+        "plan_set_hash": _sha256([_plan_payload(plan) for plan in plans]),
     }
     verdict = {
         "schema_version": 2,

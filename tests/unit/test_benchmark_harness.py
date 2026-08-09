@@ -8188,6 +8188,49 @@ def _qualification_source_inventory(tmp_path: Path):
     return inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
 
 
+@pytest.mark.parametrize("relative", ("rogue.ts", "qualification-index/artifact.bin"))
+def test_source_inventory_rejects_one_untracked_checkout_path(
+    tmp_path: Path, relative: str
+):
+    # PR #1247: a fresh qualification checkout must contain no untracked inputs.
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+    )
+
+    repo = tmp_path / "repo"
+    _qualification_git_repo(repo)
+    path = repo / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"untrusted")
+
+    with pytest.raises(ValueError, match="tracked or untracked changes"):
+        inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
+
+
+def test_source_inventory_rechecks_exact_full_status_after_blob_scan(tmp_path: Path):
+    # PR #1247: checkout cleanliness is snapshotted both before and after inventory.
+    import benchmarks.codegraph_compare.setup_qualification_inventory as module
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+    )
+
+    repo = tmp_path / "repo"
+    _qualification_git_repo(repo)
+    calls: list[tuple[str, ...]] = []
+    original_git = module._git
+
+    def recording_git(path, *arguments, **kwargs):
+        calls.append(arguments)
+        return original_git(path, *arguments, **kwargs)
+
+    with patch.object(module, "_git", side_effect=recording_git):
+        inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
+
+    assert calls.count(("status", "--porcelain=v1", "--untracked-files=all")) == 2
+
+
 def test_source_inventory_rejects_assume_unchanged_flag(tmp_path: Path):
     # PR #1247: status porcelain hides assume-unchanged worktree divergence.
     from benchmarks.codegraph_compare.setup_qualification import (
@@ -8352,6 +8395,33 @@ def test_cell_plan_allows_oracle_id_that_only_contains_reserved_word(tmp_path: P
         "delete.oracle",
         "main.call",
     )
+
+
+def test_execution_spec_rejects_mutable_argv():
+    # PR #1247: frozen dataclasses must not retain caller-owned command lists.
+    from benchmarks.codegraph_compare.setup_qualification import ExecutionSpecV1
+
+    with pytest.raises(ValueError, match="argv"):
+        ExecutionSpecV1("build", ["tool", "build"])  # type: ignore[arg-type]
+
+
+def test_oracle_spec_rejects_mutable_query():
+    # PR #1247: oracle query allowlists use exact immutable tuples.
+    from benchmarks.codegraph_compare.setup_qualification import OracleSpecV1
+
+    with pytest.raises(ValueError, match="immutable string pairs"):
+        OracleSpecV1("main.symbol", "symbol", [("name", "Main")], {})  # type: ignore[arg-type]
+
+
+def test_oracle_expected_result_is_copied_to_canonical_bytes():
+    # PR #1247: later caller mutations cannot alter a signed oracle expectation.
+    from benchmarks.codegraph_compare.setup_qualification import OracleSpecV1
+
+    supplied = {"matches": [{"line": 1, "path": "main.ts"}]}
+    spec = OracleSpecV1("main.symbol", "symbol", (("name", "Main"),), supplied)
+    supplied["matches"][0]["line"] = 99
+
+    assert spec.expected_result == b'{"matches":[{"line":1,"path":"main.ts"}]}'
 
 
 def test_git_batch_parser_uses_size_framing_for_embedded_nul():
@@ -8650,13 +8720,7 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
     for number, execution in enumerate(plan.executions):
         identifier = execution.execution_id
         spec = specs.get(identifier)
-        stdout = (
-            b"{}"
-            if spec is None
-            else json.dumps(
-                spec.expected_result, sort_keys=True, separators=(",", ":")
-            ).encode()
-        )
+        stdout = b"{}" if spec is None else spec.expected_result
         query = (
             b"{}"
             if spec is None
@@ -9083,6 +9147,49 @@ def test_oracle_spec_rejects_duplicate_query_key():
             (("name", "A"), ("name", "B")),
             {"path": "main.ts"},
         )
+
+
+def test_direct_receipt_rejects_excessive_nesting_without_recursion_error(
+    tmp_path: Path,
+):
+    # PR #1247: direct objects are bounded before recursive canonical hashing.
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    nested: object = "leaf"
+    for _ in range(130):
+        nested = [nested]
+    receipt["eligibility"]["eligible_paths"] = nested
+
+    assert validate_cell_receipt(
+        receipt,
+        plan=plan,
+        cell_root=cell_root,
+        verifier_config=_qualification_verifier_config(),
+    ) == ("RECEIPT_SCHEMA_MISMATCH", "RECEIPT_HASH_MISMATCH")
+
+
+def test_direct_receipt_rejects_excessive_node_count_before_hash(tmp_path: Path):
+    # PR #1247: direct-object node limits are trusted independently of parser limits.
+    import benchmarks.codegraph_compare.setup_qualification_schema as schema
+    from benchmarks.codegraph_compare.setup_qualification import validate_cell_receipt
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    receipt["eligibility"]["eligible_paths"] = ["main.ts", "extra.ts"]
+
+    with patch.object(schema, "_MAX_STRICT_JSON_NODES", 10):
+        failures = validate_cell_receipt(
+            receipt,
+            plan=plan,
+            cell_root=cell_root,
+            verifier_config=_qualification_verifier_config(),
+        )
+
+    assert failures == ("RECEIPT_SCHEMA_MISMATCH", "RECEIPT_HASH_MISMATCH")
 
 
 def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
@@ -10161,6 +10268,29 @@ def test_plan_set_distinguishes_boolean_from_integer_oracle_result(
     trusted = _trusted_commits(Path("benchmarks/codegraph_compare/repos.yaml"))
 
     with pytest.raises(ValueError, match="exactly identical oracle specifications"):
+        _validate_plans(plans, trusted, _qualification_inventories(plans))
+
+
+@pytest.mark.parametrize(
+    "field",
+    ("parse_error_allowlist", "explicit_excluded_allowlist"),
+)
+def test_plan_set_rejects_one_cross_arm_allowlist_difference(
+    tmp_path: Path, field: str
+):
+    # PR #1247: comparison arms must index the exact same eligible source workload.
+    from dataclasses import replace
+
+    from benchmarks.codegraph_compare.setup_qualification_orchestration import (
+        _trusted_commits,
+        _validate_plans,
+    )
+
+    plans = list(_qualification_plans(tmp_path))
+    plans[1] = replace(plans[1], **{field: ("main.ts",)})
+    trusted = _trusted_commits(Path("benchmarks/codegraph_compare/repos.yaml"))
+
+    with pytest.raises(ValueError, match="exactly identical source allowlists"):
         _validate_plans(plans, trusted, _qualification_inventories(plans))
 
 

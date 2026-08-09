@@ -85,6 +85,7 @@ def _parse_finite_float(value: str) -> float:
 
 _MAX_STRICT_JSON_BYTES = 4 * 1024 * 1024
 _MAX_STRICT_JSON_DEPTH = 128
+_MAX_STRICT_JSON_NODES = 100_000
 
 
 def _validate_json_envelope(payload: bytes) -> None:
@@ -113,6 +114,23 @@ def _validate_json_envelope(payload: bytes) -> None:
             depth -= 1
             if depth < 0:
                 break
+
+
+def validate_direct_json_bounds(value: object) -> None:
+    """Bound a caller-provided JSON tree before recursive schema/hash work."""
+    nodes = 0
+    stack: list[tuple[object, int]] = [(value, 1)]
+    while stack:
+        item, depth = stack.pop()
+        nodes += 1
+        if depth > _MAX_STRICT_JSON_DEPTH or nodes > _MAX_STRICT_JSON_NODES:
+            raise ValueError("Direct JSON exceeds trusted depth or node limits")
+        if type(item) is dict:
+            stack.extend((child, depth + 1) for child in item.values())
+        elif type(item) is list:
+            stack.extend((child, depth + 1) for child in item)
+        else:
+            continue
 
 
 def strict_json_loads(payload: bytes) -> Any:

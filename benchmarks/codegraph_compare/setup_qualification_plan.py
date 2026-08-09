@@ -53,6 +53,69 @@ def _write_exclusive(path: Path, payload: object) -> None:
         os.close(descriptor)
 
 
+_MAX_PLAN_JSON_DEPTH = 128
+_MAX_PLAN_JSON_NODES = 100_000
+
+
+def _canonical_typed_json_bytes(value: object) -> bytes:
+    """Copy one exact JSON value into canonical immutable bytes."""
+    if type(value) is bytes:
+        try:
+            decoded = json.loads(value)
+        except (json.JSONDecodeError, RecursionError) as exc:
+            raise ValueError(
+                "Expected result bytes must contain canonical JSON"
+            ) from exc
+        canonical = _canonical_typed_json_bytes(decoded)
+        if canonical != value:
+            raise ValueError("Expected result bytes must be canonical JSON")
+        return value
+    nodes = 0
+    stack: list[tuple[object, int]] = [(value, 1)]
+    while stack:
+        item, depth = stack.pop()
+        nodes += 1
+        if depth > _MAX_PLAN_JSON_DEPTH or nodes > _MAX_PLAN_JSON_NODES:
+            raise ValueError("Expected result exceeds trusted JSON bounds")
+        if type(item) is dict:
+            if any(type(key) is not str for key in item):
+                raise ValueError("Expected result object keys must be strings")
+            stack.extend((child, depth + 1) for child in item.values())
+        elif type(item) is list:
+            stack.extend((child, depth + 1) for child in item)
+        elif item is None or type(item) in {str, bool, int}:
+            continue
+        elif type(item) is float and math.isfinite(item):
+            continue
+        else:
+            raise ValueError("Expected result must use exact JSON value types")
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (RecursionError, TypeError, ValueError) as exc:
+        raise ValueError("Expected result is not canonical bounded JSON") from exc
+
+
+def _oracle_payload(spec: OracleSpecV1) -> dict[str, object]:
+    return {
+        "oracle_id": spec.oracle_id,
+        "kind": spec.kind,
+        "query": spec.query,
+        "expected_result": json.loads(spec.expected_result),
+    }
+
+
+def _plan_payload(plan: CellPlanV1) -> dict[str, object]:
+    payload = asdict(plan)
+    payload["oracle_specs"] = [_oracle_payload(spec) for spec in plan.oracle_specs]
+    return payload
+
+
 @dataclass(frozen=True)
 class SourceRulesV1:
     extensions_by_repo: tuple[tuple[str, tuple[str, ...]], ...]
@@ -73,6 +136,23 @@ class SourceRulesV1:
     minified_suffixes: tuple[str, ...] = (".min.js", ".min.css")
 
     def __post_init__(self) -> None:
+        if (
+            type(self.extensions_by_repo) is not tuple
+            or any(
+                type(item) is not tuple
+                or len(item) != 2
+                or type(item[0]) is not str
+                or type(item[1]) is not tuple
+                for item in self.extensions_by_repo
+            )
+            or type(self.excluded_components) is not tuple
+            or any(type(item) is not str for item in self.excluded_components)
+            or type(self.generated_markers) is not tuple
+            or any(type(item) is not bytes for item in self.generated_markers)
+            or type(self.minified_suffixes) is not tuple
+            or any(type(item) is not str for item in self.minified_suffixes)
+        ):
+            raise ValueError("Source rules require exact immutable containers")
         if tuple(repo for repo, _ in self.extensions_by_repo) != REPOSITORIES:
             raise ValueError("Source rules must list the canonical seven repositories")
         for _, extensions in self.extensions_by_repo:
@@ -116,6 +196,34 @@ class EligibilityV1:
     eligible_paths_hash: str
     repo_fingerprint: str
 
+    def __post_init__(self) -> None:
+        scalars = (
+            self.repo_id,
+            self.source_rules_hash,
+            self.commit,
+            self.tracked_inventory_hash,
+            self.eligible_paths_hash,
+            self.repo_fingerprint,
+        )
+        if any(type(value) is not str or not value for value in scalars):
+            raise ValueError("Eligibility scalar fields must be non-empty strings")
+        if (
+            type(self.tracked_regular_paths) is not tuple
+            or type(self.eligible_paths) is not tuple
+            or any(
+                type(path) is not str
+                for path in (*self.tracked_regular_paths, *self.eligible_paths)
+            )
+            or type(self.prefilter_exclusions) is not tuple
+            or any(
+                type(item) is not tuple
+                or len(item) != 2
+                or any(type(part) is not str for part in item)
+                for item in self.prefilter_exclusions
+            )
+        ):
+            raise ValueError("Eligibility requires exact immutable containers")
+
 
 @dataclass(frozen=True)
 class OracleSpecV1:
@@ -125,8 +233,20 @@ class OracleSpecV1:
     expected_result: Any
 
     def __post_init__(self) -> None:
-        if self.kind not in {"symbol", "call"} or not self.oracle_id:
+        if (
+            type(self.oracle_id) is not str
+            or type(self.kind) is not str
+            or self.kind not in {"symbol", "call"}
+            or not self.oracle_id
+        ):
             raise ValueError("Oracle must be a named symbol or call query")
+        if type(self.query) is not tuple or any(
+            type(item) is not tuple
+            or len(item) != 2
+            or any(type(part) is not str or not part for part in item)
+            for item in self.query
+        ):
+            raise ValueError("Oracle query must use exact immutable string pairs")
         query_keys = tuple(key for key, _ in self.query)
         if (
             not self.query
@@ -134,10 +254,13 @@ class OracleSpecV1:
             or len(query_keys) != len(set(query_keys))
         ):
             raise ValueError("Oracle parameter keys must be sorted and unique")
+        object.__setattr__(
+            self, "expected_result", _canonical_typed_json_bytes(self.expected_result)
+        )
 
     @property
     def digest(self) -> str:
-        return _sha256(asdict(self))
+        return _sha256(_oracle_payload(self))
 
 
 def _is_finite_number(value: object) -> bool:
@@ -180,6 +303,18 @@ class HarnessArtifactV1:
     path: str
     size_bytes: int
     sha256: str
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.path) is not str
+            or not self.path
+            or type(self.size_bytes) is not int
+            or self.size_bytes < 0
+            or type(self.sha256) is not str
+            or len(self.sha256) != 64
+            or any(char not in "0123456789abcdef" for char in self.sha256)
+        ):
+            raise ValueError("Harness artifact fields must be exact immutable values")
 
     @classmethod
     def read(
@@ -224,10 +359,11 @@ class ExecutionSpecV1:
 
     def __post_init__(self) -> None:
         if (
-            not isinstance(self.execution_id, str)
+            type(self.execution_id) is not str
             or not self.execution_id
+            or type(self.argv) is not tuple
             or not self.argv
-            or any(not isinstance(arg, str) or not arg for arg in self.argv)
+            or any(type(arg) is not str or not arg for arg in self.argv)
         ):
             raise ValueError("Execution IDs and argv entries must be non-empty")
 
@@ -249,6 +385,23 @@ class CellPlanV1:
     explicit_excluded_allowlist: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if (
+            type(self.repo_id) is not str
+            or type(self.arm_id) is not str
+            or type(self.artifact_path) is not str
+            or type(self.index_path) is not str
+            or type(self.eligibility) is not EligibilityV1
+            or type(self.tool) is not HarnessArtifactV1
+            or type(self.config) is not HarnessArtifactV1
+            or type(self.resources) is not ResourcePlanV1
+            or type(self.oracle_specs) is not tuple
+            or any(type(spec) is not OracleSpecV1 for spec in self.oracle_specs)
+            or type(self.executions) is not tuple
+            or any(type(spec) is not ExecutionSpecV1 for spec in self.executions)
+            or type(self.parse_error_allowlist) is not tuple
+            or type(self.explicit_excluded_allowlist) is not tuple
+        ):
+            raise ValueError("Cell plans require exact immutable containers and models")
         if (
             (self.repo_id, self.arm_id) not in EXPECTED_CELLS
             or type(self.attempt) is not int
@@ -307,7 +460,7 @@ class CellPlanV1:
 
     @property
     def digest(self) -> str:
-        return _sha256(asdict(self))
+        return _sha256(_plan_payload(self))
 
 
 def _sorted_paths(paths: Sequence[str], name: str) -> tuple[str, ...]:
