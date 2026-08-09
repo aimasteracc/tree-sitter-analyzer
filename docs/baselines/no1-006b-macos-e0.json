@@ -1,18 +1,62 @@
 {
-  "canonical_payload_sha256": "f36cc5176f546306864dd11780c0203aafd1683d85a30e87efe9ab131f54c0e2",
-  "collection_finished_at_utc": "2026-08-09T22:51:20.649282+00:00",
-  "collection_started_at_utc": "2026-08-09T22:51:07.636857+00:00",
+  "canonical_payload_sha256": "563fc3e80265fdb595182c7b2c1deb64e1626f15c1605cbf39496004b14ee06f",
+  "collection_finished_at_utc": "2026-08-09T23:10:04.379071+00:00",
+  "collection_started_at_utc": "2026-08-09T23:09:51.800365+00:00",
   "collector": {
-    "commit": "4c414469ae94a2a5e901c3663109801d2ec27018",
-    "schema_sha256": "74471ada9f7c83222b6eec1f5936972724951e5b0b66f45f9116f19d91184e0d",
-    "script_sha256": "080f6852d4ba40322f0ca795a40de42b0ccdf2e848750a1caf42292a54a913c9",
-    "tool_export_sha256": "c0692cbbf44c6a89cea91b29d3892d1fe2fed0a02724fcae26f32ce04f23ad42",
+    "commit": "712dfaabda2e8f3845c94c19545902b334875828",
+    "schema_sha256": "0907a27c77dc27f6c35445be7343e48e98a79a11b0b0fc9819a0e3ad1f0e767f",
+    "script_sha256": "d4d42f0c81d137f18ddca394cf55acfaf9dd23e9af305c5fa29fbd3acf53f99f",
+    "tool_export_sha256": "6517ea8430512af84251d2b58a58cef8a008e16a224075448dc0d3158215ea75",
+    "tool_inventory": [
+      {
+        "name": "attrs",
+        "version": "25.4.0"
+      },
+      {
+        "name": "hatchling",
+        "version": "1.31.0"
+      },
+      {
+        "name": "jsonschema",
+        "version": "4.25.1"
+      },
+      {
+        "name": "jsonschema-specifications",
+        "version": "2025.9.1"
+      },
+      {
+        "name": "packaging",
+        "version": "25.0"
+      },
+      {
+        "name": "pathspec",
+        "version": "1.1.1"
+      },
+      {
+        "name": "pluggy",
+        "version": "1.6.0"
+      },
+      {
+        "name": "referencing",
+        "version": "0.37.0"
+      },
+      {
+        "name": "rpds-py",
+        "version": "0.27.1"
+      },
+      {
+        "name": "trove-classifiers",
+        "version": "2026.6.1.19"
+      }
+    ],
+    "tool_inventory_sha256": "0d0bc6b784ca2e42c4f8ec6b0ebfd0eac7c7626ca1c919954099ba49921ed85b",
     "tool_lock_sha256": "c578db80172ae9e764c27c8c8c3dc3cb05dc207c8abe1854f8c214eaaf67eda8"
   },
   "commands": {
     "build": [
       "uv",
       "build",
+      "--no-config",
       "--wheel",
       "--offline",
       "--no-build-isolation",
@@ -32,6 +76,7 @@
       "uv",
       "pip",
       "install",
+      "--no-config",
       "--offline",
       "--no-deps",
       "--require-hashes",
@@ -41,6 +86,7 @@
     "collector_tool_export": [
       "uv",
       "export",
+      "--no-config",
       "--frozen",
       "--offline",
       "--only-group",
@@ -52,6 +98,7 @@
     "export": [
       "uv",
       "export",
+      "--no-config",
       "--frozen",
       "--offline",
       "--no-dev",
@@ -71,6 +118,7 @@
       "uv",
       "pip",
       "install",
+      "--no-config",
       "--offline",
       "--no-deps",
       "<root-wheel>"
@@ -405,7 +453,7 @@
         "version": "0.37.0"
       }
     ],
-    "export_sha256": "d1b664bccceafeb78caa1240b42d7e3441abe45ddc2c336beb2194dec860d79c",
+    "export_sha256": "33b03a373e2ebeafa44a792d14121f081c1af36870e2d97198a9f6432653b6bb",
     "lock_sha256": "516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"
   },
   "environment": {
@@ -442,14 +490,14 @@
   "measured_axis": "macos",
   "measurements": {
     "cli_startup": {
-      "cold_ms": 1891.219,
+      "cold_ms": 1575.56,
       "definition": "clock before Popen through exact successful JSON analysis of fixture.py",
       "warm_ms": [
-        574.648,
-        604.485,
-        785.379,
-        574.203,
-        581.477
+        565.793,
+        610.982,
+        609.892,
+        574.942,
+        640.368
       ]
     },
     "dependency_distribution_count_excluding_root": 64,
@@ -459,7 +507,7 @@
     "installed_size_bytes": 89982491,
     "installed_size_scope": "unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded",
     "mcp_startup": {
-      "cold_ms": 2113.429,
+      "cold_ms": 2170.627,
       "definition": "clock before Popen through successful initialize, initialized notification, and exact tools/list readiness",
       "tool_names": [
         "edit",
@@ -473,11 +521,11 @@
         "viz"
       ],
       "warm_ms": [
-        767.763,
-        836.009,
-        763.113,
-        786.522,
-        767.58
+        829.817,
+        783.43,
+        775.074,
+        791.538,
+        808.726
       ]
     },
     "network_transfer_bytes": {

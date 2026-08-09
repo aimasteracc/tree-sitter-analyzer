@@ -104,7 +104,7 @@ for name in $(env | sed -n 's/^\(UV_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name";
 export UV_NO_CONFIG=1 UV_OFFLINE=1
 if test -n "$UV_CACHE_DIR_SAVED"; then export UV_CACHE_DIR=$UV_CACHE_DIR_SAVED; fi
 SOURCE_REPO=$(git rev-parse --show-toplevel)
-COLLECTOR_COMMIT=4c414469ae94a2a5e901c3663109801d2ec27018
+COLLECTOR_COMMIT=712dfaabda2e8f3845c94c19545902b334875828
 SUBJECT_COMMIT=7e0e8f6e03270fcbf4025d717415ef69c9354145
 RUN_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/no1-006b.XXXXXX")
 RUN_ROOT=$(cd "$RUN_ROOT" && pwd -P)
@@ -148,7 +148,7 @@ printf 'remove external run directory when finished: %s\n' "$RUN_ROOT"
 
 The post-hoc hardened collector produced
 [`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
-from collector commit `4c414469ae94a2a5e901c3663109801d2ec27018` and the distinct pinned subject.
+from collector commit `712dfaabda2e8f3845c94c19545902b334875828` and the distinct pinned subject.
 Its canonical payload SHA-256 is `f36cc5176f546306864dd11780c0203aafd1683d85a30e87efe9ab131f54c0e2`.
 
 | Axis | Measured value |
