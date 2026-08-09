@@ -35,7 +35,11 @@ def test_offline_rehearsal_denial_probe_fails_closed(receipt) -> None:
     ) == (
         False,
         "NOT_EVALUATED",
-        ("ROLE_KEYS_NOT_INDEPENDENT", "ROLE_KEY_MATERIAL_NOT_INDEPENDENT"),
+        (
+            "ROLE_KEYS_NOT_INDEPENDENT",
+            "ROLE_KEY_MATERIAL_NOT_INDEPENDENT",
+            "INDEPENDENT_JUDGE_UNAVAILABLE",
+        ),
     )
 
 
@@ -114,7 +118,11 @@ def test_offline_rehearsal_cli_receipt_matches_runbook_contract(tmp_path: Path) 
         payload["bound_fixture_gate_eligible"],
     ) == (
         "NOT_EVALUATED",
-        ["ROLE_KEYS_NOT_INDEPENDENT", "ROLE_KEY_MATERIAL_NOT_INDEPENDENT"],
+        [
+            "ROLE_KEYS_NOT_INDEPENDENT",
+            "ROLE_KEY_MATERIAL_NOT_INDEPENDENT",
+            "INDEPENDENT_JUDGE_UNAVAILABLE",
+        ],
         True,
     )
     expected_durability = (

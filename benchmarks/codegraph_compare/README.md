@@ -104,9 +104,10 @@ receipt. Before any future real call, all of the following must be true:
 3. `SpendAttestation` and `JudgeRecord` bind the exact spec hash (including all
    three roots and the ledger identity material), nonce, expiry, and provider
    budget mode. `client-process-kill` self-reporting is rejected. The dispatcher
-   makes exactly one direct `provider_call(request)` after a verified external
-   one-shot claim; it never invokes a runner or exposes the transport to one.
-   Exact-v1 provider reservation and usage receipts require canonical bounded
+   rejects unrestricted provider callables and accepts only an externally supervised
+   transport authority receipt proving exact-one, the frozen timeout, and whole-process
+   termination after a verified one-shot claim. Exact-v1 provider reservation and usage
+   receipts require canonical bounded
    identities, exact numeric types, and Ed25519 signatures verified with the
    qualification-time pinned provider public key.
 4. The collector root is fresh and external. The configured local journal and
@@ -122,8 +123,9 @@ receipt. Before any future real call, all of the following must be true:
    `NOT_EVALUATED`/`INVALID`, never a retry opportunity or a TSA win.
 6. The exact two indexed cells, order, one attempt each, receipt/tool arguments,
    oracle (`gin.go`, `Engine.ServeHTTP`, `method`), transcript policy, and
-   cumulative USD ceiling remain unchanged. A failure stops the phase; selective
-   retry is forbidden.
+   cumulative USD ceiling remain unchanged. A manifest-level experiment authority
+   reserves from the shared $3 ceiling and binds cell 1 to cell 0's immutable terminal;
+   cell 1 cannot run first or obtain a second independent $3 reservation.
 7. Output remains E0/internal: `winner=null`, `dominance_allowed=false`, and
    `publishable=false`. No No.1, dominance, production-readiness, E1+, or public
    benchmark claim is permitted.

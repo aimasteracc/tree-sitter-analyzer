@@ -173,6 +173,58 @@ class ProviderUsageReceiptV1:
         }
 
 
+@dataclass(frozen=True)
+class ExperimentAuthorityReceiptV1:
+    """Manifest-level reservation and schedule admission from external authority."""
+
+    manifest_hash: str
+    spec_hash: str
+    nonce: str
+    cell_order: int
+    cell_reservation_id: str
+    authorized_budget_microusd: int
+    cumulative_reserved_before_microusd: int
+    cumulative_reserved_after_microusd: int
+    previous_terminal_receipt_sha256: str | None
+    issued_at_unix: int
+    issuer_role: str
+    key_id: str
+    signature_ed25519: str
+    schema_version: int = 1
+
+    def signed_fields(self) -> dict[str, Any]:
+        return {
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__
+            if name != "signature_ed25519"
+        }
+
+
+@dataclass(frozen=True)
+class SupervisedTransportReceiptV1:
+    """Proof from an external supervisor that owns the whole provider process."""
+
+    spec_hash: str
+    nonce: str
+    reservation_id: str
+    provider_usage_receipt_sha256: str
+    timeout_seconds: int
+    provider_request_count: int
+    whole_process_terminated: bool
+    issued_at_unix: int
+    issuer_role: str
+    key_id: str
+    signature_ed25519: str
+    schema_version: int = 1
+
+    def signed_fields(self) -> dict[str, Any]:
+        return {
+            name: getattr(self, name)
+            for name in self.__dataclass_fields__
+            if name != "signature_ed25519"
+        }
+
+
 def verify_claim_receipt(
     receipt: object,
     *,
@@ -225,6 +277,8 @@ def verify_provider_receipts(
     spec: ProductionRunSpecV1,
     public_key: bytes,
     key_id: str,
+    authorized_budget_microusd: int | None = None,
+    reservation_id: str | None = None,
 ) -> None:
     if (
         type(reservation) is not ProviderReservationReceiptV1
@@ -253,7 +307,13 @@ def verify_provider_receipts(
         )
     ):
         raise ValueError("provider reservation limits are invalid")
-    budget_micro = round(spec.budget_ceiling_usd * 1_000_000)
+    budget_micro = (
+        round(spec.budget_ceiling_usd * 1_000_000)
+        if authorized_budget_microusd is None
+        else authorized_budget_microusd
+    )
+    if reservation_id is not None and reservation.reservation_id != reservation_id:
+        raise ValueError("provider reservation is not experiment-authority bound")
     if (
         reservation.spec_hash,
         reservation.nonce,
@@ -299,6 +359,137 @@ def verify_provider_receipts(
     ):
         raise ValueError("provider usage exceeds reservation")
     _text(usage.termination_reason, "termination_reason")
+    if len(usage.termination_reason) > 256:
+        raise ValueError("termination_reason exceeds 256 characters")
+
+
+def authority_receipt_sha256(receipt: object) -> str:
+    if not hasattr(receipt, "signed_fields") or not hasattr(
+        receipt, "signature_ed25519"
+    ):
+        raise ValueError("canonical signed authority receipt required")
+    return canonical_sha256(
+        {**receipt.signed_fields(), "signature_ed25519": receipt.signature_ed25519}
+    )
+
+
+def verify_experiment_receipt(
+    receipt: object,
+    *,
+    spec: ProductionRunSpecV1,
+    manifest_hash: str,
+    cell_order: int,
+    previous_terminal_receipt_sha256: str | None,
+    public_key: bytes,
+    key_id: str,
+    now_unix: int,
+) -> None:
+    if type(receipt) is not ExperimentAuthorityReceiptV1:
+        raise ValueError("experiment authority receipt has wrong type")
+    if (
+        receipt.schema_version != 1
+        or receipt.issuer_role != "experiment-authority"
+        or receipt.key_id != key_id
+    ):
+        raise ValueError("experiment authority identity mismatch")
+    if type(receipt.cell_order) is not int or receipt.cell_order not in (0, 1):
+        raise ValueError("experiment cell order invalid")
+    for label, value in (
+        ("authorized budget", receipt.authorized_budget_microusd),
+        ("cumulative before", receipt.cumulative_reserved_before_microusd),
+        ("cumulative after", receipt.cumulative_reserved_after_microusd),
+    ):
+        if type(value) is not int or value < 0:
+            raise ValueError(f"{label} must be a non-negative exact integer")
+    expected_before = (
+        0 if cell_order == 0 else receipt.cumulative_reserved_before_microusd
+    )
+    if (
+        (
+            receipt.manifest_hash,
+            receipt.spec_hash,
+            receipt.nonce,
+            receipt.cell_order,
+            receipt.previous_terminal_receipt_sha256,
+        )
+        != (
+            manifest_hash,
+            spec.spec_hash,
+            spec.nonce,
+            cell_order,
+            previous_terminal_receipt_sha256,
+        )
+        or (
+            cell_order == 0
+            and (
+                receipt.previous_terminal_receipt_sha256 is not None
+                or receipt.cumulative_reserved_before_microusd != 0
+            )
+        )
+        or (
+            cell_order == 1
+            and (
+                previous_terminal_receipt_sha256 is None
+                or receipt.cumulative_reserved_before_microusd <= 0
+            )
+        )
+        or receipt.cumulative_reserved_after_microusd
+        != expected_before + receipt.authorized_budget_microusd
+        or receipt.cumulative_reserved_after_microusd > 3_000_000
+        or receipt.authorized_budget_microusd <= 0
+        or receipt.issued_at_unix > now_unix
+        or now_unix >= spec.expires_at_unix
+    ):
+        raise ValueError("experiment budget/order/previous-terminal binding mismatch")
+    _text(receipt.cell_reservation_id, "cell_reservation_id")
+    verify_ed25519(public_key, receipt.signed_fields(), receipt.signature_ed25519)
+
+
+def verify_transport_receipt(
+    receipt: object,
+    *,
+    spec: ProductionRunSpecV1,
+    usage: ProviderUsageReceiptV1,
+    timeout_seconds: int,
+    public_key: bytes,
+    key_id: str,
+    now_unix: int,
+) -> None:
+    if type(receipt) is not SupervisedTransportReceiptV1:
+        raise ValueError("supervised transport receipt has wrong type")
+    if (
+        receipt.schema_version != 1
+        or receipt.issuer_role != "supervised-transport-authority"
+        or receipt.key_id != key_id
+    ):
+        raise ValueError("supervised transport authority identity mismatch")
+    if (
+        (
+            receipt.spec_hash,
+            receipt.nonce,
+            receipt.reservation_id,
+            receipt.provider_usage_receipt_sha256,
+            receipt.timeout_seconds,
+            receipt.provider_request_count,
+            receipt.whole_process_terminated,
+        )
+        != (
+            spec.spec_hash,
+            spec.nonce,
+            usage.reservation_id,
+            provider_usage_receipt_sha256(usage),
+            timeout_seconds,
+            1,
+            True,
+        )
+        or type(receipt.timeout_seconds) is not int
+        or type(receipt.provider_request_count) is not int
+        or type(receipt.whole_process_terminated) is not bool
+        or receipt.issued_at_unix > now_unix
+        or now_unix >= spec.expires_at_unix
+    ):
+        raise ValueError("transport exact-one/timeout/whole-process binding mismatch")
+    verify_ed25519(public_key, receipt.signed_fields(), receipt.signature_ed25519)
 
 
 def provider_usage_receipt_sha256(receipt: ProviderUsageReceiptV1) -> str:
@@ -312,8 +503,9 @@ def verify_evidence_receipt(
     *,
     spec: ProductionRunSpecV1,
     evidence_digest: str,
-    usage: ProviderUsageReceiptV1,
+    usage_receipt_sha256: str,
     claim: ClaimAuthorityReceiptV1,
+    terminal_status: str,
     public_key: bytes,
     key_id: str,
     now_unix: int,
@@ -333,14 +525,16 @@ def verify_evidence_receipt(
     _text(receipt.nonce, "evidence nonce")
     _text(receipt.terminal_id, "terminal_id")
     _text(receipt.claim_id, "claim_id")
+    if terminal_status not in {"PASS", "INVALID"}:
+        raise ValueError("terminal status must be PASS or INVALID")
     _positive(receipt.issued_at_unix, "issued_at_unix")
     _positive(receipt.run_expires_at_unix, "run_expires_at_unix")
     expected = (
         spec.spec_hash,
         spec.nonce,
         evidence_digest,
-        "PASS",
-        provider_usage_receipt_sha256(usage),
+        terminal_status,
+        usage_receipt_sha256,
         spec.expires_at_unix,
         claim.claim_id,
     )

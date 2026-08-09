@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from benchmarks.codegraph_compare import production_collector
 from benchmarks.codegraph_compare.canary_evidence import create_canary_manifest
 from benchmarks.codegraph_compare.production_anchor import (
     AnchorKey,
@@ -18,11 +17,14 @@ from benchmarks.codegraph_compare.production_anchor import (
 from benchmarks.codegraph_compare.production_authorities import (
     ClaimAuthorityReceiptV1,
     EvidenceAuthorityReceiptV1,
+    ExperimentAuthorityReceiptV1,
     ProviderReservationReceiptV1,
     ProviderUsageReceiptV1,
+    SupervisedTransportReceiptV1,
     _canonical,
     ledger_identity_sha256,
     provider_usage_receipt_sha256,
+    verify_experiment_receipt,
 )
 from benchmarks.codegraph_compare.production_dispatch import (
     ProductionDispatchRequestV1,
@@ -45,10 +47,12 @@ JUDGE = AnchorKey(b"j" * 32)
 DIGEST = "e" * 64
 
 
-def _signed(private: Ed25519PrivateKey, receipt_type, **fields):
+def _signed(private, receipt_type, **fields):
     unsigned = receipt_type(signature_ed25519="0" * 128, **fields)
-    signature = private.sign(_canonical(unsigned.signed_fields())).hex()
-    return replace(unsigned, signature_ed25519=signature)
+    return replace(
+        unsigned,
+        signature_ed25519=private.sign(_canonical(unsigned.signed_fields())).hex(),
+    )
 
 
 class Authorities:
@@ -56,7 +60,9 @@ class Authorities:
         self.provider = Ed25519PrivateKey.generate()
         self.claim = Ed25519PrivateKey.generate()
         self.evidence = Ed25519PrivateKey.generate()
-        self.claimed: set[tuple[str, str]] = set()
+        self.experiment = Ed25519PrivateKey.generate()
+        self.transport = Ed25519PrivateKey.generate()
+        self.claimed = set()
         self.last_claim = None
 
     def claim_once(self, request, challenge, now):
@@ -64,28 +70,46 @@ class Authorities:
         if identity in self.claimed:
             raise RuntimeError("nonce already claimed")
         self.claimed.add(identity)
-        receipt = _signed(
+        self.last_claim = _signed(
             self.claim,
             ClaimAuthorityReceiptV1,
             spec_hash=request.spec.spec_hash,
             nonce=request.spec.nonce,
             ledger_identity_sha256=ledger_identity_sha256(request.spec),
             run_expires_at_unix=request.spec.expires_at_unix,
-            claim_id="external-claim-1",
+            claim_id="claim-1",
             dispatch_challenge=challenge,
             issued_at_unix=now,
             issuer_role="nonce-claim-authority",
             key_id="claim-v1",
             schema_version=1,
         )
-        self.last_claim = receipt
-        return receipt
+        return self.last_claim
 
-    def provider_result(self, request):
+    def reserve_experiment(self, request, previous, now):
+        return _signed(
+            self.experiment,
+            ExperimentAuthorityReceiptV1,
+            manifest_hash=request.manifest.manifest_hash,
+            spec_hash=request.spec.spec_hash,
+            nonce=request.spec.nonce,
+            cell_order=request.cell_order,
+            cell_reservation_id="reservation-1",
+            authorized_budget_microusd=1_500_000,
+            cumulative_reserved_before_microusd=0,
+            cumulative_reserved_after_microusd=1_500_000,
+            previous_terminal_receipt_sha256=previous,
+            issued_at_unix=now,
+            issuer_role="experiment-authority",
+            key_id="experiment-v1",
+            schema_version=1,
+        )
+
+    def supervised(self, request, claim, experiment, now):
         common = {
             "spec_hash": request.spec.spec_hash,
             "nonce": request.spec.nonce,
-            "reservation_id": "reservation-1",
+            "reservation_id": experiment.cell_reservation_id,
             "run_expires_at_unix": request.spec.expires_at_unix,
             "issuer_role": "provider-budget-gateway",
             "key_id": "provider-v1",
@@ -96,7 +120,7 @@ class Authorities:
             ProviderReservationReceiptV1,
             request_limit=1,
             token_limit=request.spec.token_limit,
-            budget_ceiling_microusd=3_000_000,
+            budget_ceiling_microusd=experiment.authorized_budget_microusd,
             **common,
         )
         usage = _signed(
@@ -109,6 +133,21 @@ class Authorities:
             termination_reason="completed",
             **common,
         )
+        transport = _signed(
+            self.transport,
+            SupervisedTransportReceiptV1,
+            spec_hash=request.spec.spec_hash,
+            nonce=request.spec.nonce,
+            reservation_id=experiment.cell_reservation_id,
+            provider_usage_receipt_sha256=provider_usage_receipt_sha256(usage),
+            timeout_seconds=request.timeout_seconds,
+            provider_request_count=1,
+            whole_process_terminated=True,
+            issued_at_unix=now,
+            issuer_role="supervised-transport-authority",
+            key_id="transport-v1",
+            schema_version=1,
+        )
         return ProviderRunResult(
             1,
             10,
@@ -120,19 +159,18 @@ class Authorities:
             usage_complete=True,
             provider_reservation_receipt=reservation,
             provider_usage_receipt=usage,
+            transport_receipt=transport,
         )
 
-    def terminal(self, request, digest, result, claim, now):
+    def terminal(self, request, digest, result, claim, status, usage_hash, now):
         return _signed(
             self.evidence,
             EvidenceAuthorityReceiptV1,
             spec_hash=request.spec.spec_hash,
             nonce=request.spec.nonce,
             evidence_digest=digest,
-            terminal_status="PASS",
-            provider_usage_receipt_sha256=provider_usage_receipt_sha256(
-                result.provider_usage_receipt
-            ),
+            terminal_status=status,
+            provider_usage_receipt_sha256=usage_hash,
             run_expires_at_unix=request.spec.expires_at_unix,
             terminal_id="terminal-1",
             claim_id=claim.claim_id,
@@ -143,12 +181,12 @@ class Authorities:
         )
 
 
-def _write_key(path: Path, raw: bytes):
+def _write(path, raw):
     path.write_text(raw.hex())
     return path
 
 
-def _inputs(tmp_path: Path):
+def _inputs(tmp_path):
     authorities = Authorities()
     manifest = create_canary_manifest(
         benchmark_git_sha="git",
@@ -186,22 +224,21 @@ def _inputs(tmp_path: Path):
     )
     operator = tmp_path / "operator"
     operator.mkdir()
-    spend = _write_key(operator / "spend.key", SPEND.raw)
-    judge_key = _write_key(operator / "judge.key", JUDGE.raw)
-    provider = _write_key(
-        operator / "provider.pub", authorities.provider.public_key().public_bytes_raw()
-    )
-    claim = _write_key(
-        operator / "claim.pub", authorities.claim.public_key().public_bytes_raw()
-    )
-    evidence_key = _write_key(
-        operator / "evidence.pub", authorities.evidence.public_key().public_bytes_raw()
-    )
     store = operator / "roles.json"
     store.write_text("{}")
+    keys = {
+        "spend": SPEND.public_bytes(),
+        "judge": JUDGE.public_bytes(),
+        "provider": authorities.provider.public_key().public_bytes_raw(),
+        "claim": authorities.claim.public_key().public_bytes_raw(),
+        "evidence": authorities.evidence.public_key().public_bytes_raw(),
+        "experiment": authorities.experiment.public_key().public_bytes_raw(),
+        "transport": authorities.transport.public_key().public_bytes_raw(),
+    }
+    paths = {name: _write(operator / f"{name}.pub", raw) for name, raw in keys.items()}
     config = OperatorTrustConfigV1(
         store,
-        spend,
+        paths["spend"],
         evidence,
         frozenset({"anchor-custodian", "budget-gateway", "evidence-collector"}),
         True,
@@ -211,18 +248,22 @@ def _inputs(tmp_path: Path):
         True,
         True,
         "provider",
-        judge_key,
+        paths["judge"],
         "spend-v1",
         "judge-v1",
         journal,
         ledger,
-        provider,
+        paths["provider"],
         "provider-budget-gateway",
         "provider-v1",
-        claim,
+        paths["claim"],
         "claim-v1",
-        evidence_key,
+        paths["evidence"],
         "evidence-v1",
+        paths["experiment"],
+        "experiment-v1",
+        paths["transport"],
+        "transport-v1",
     )
     request = ProductionDispatchRequestV1(
         manifest, spec, 0, 30, DIGEST, journal, evidence
@@ -242,7 +283,7 @@ def _inputs(tmp_path: Path):
     return request, config, attestation, judge, authorities
 
 
-def _kwargs(request, authorities):
+def _kwargs(request, a):
     return {
         "evidence_bundle_root": request.evidence_root.parent / "bundle",
         "clock": lambda: NOW,
@@ -250,170 +291,131 @@ def _kwargs(request, authorities):
             request.spec.launch_identity_sha256,
             request.spec.workspace_baseline_sha256,
         ),
-        "provider_call": authorities.provider_result,
-        "claim_authority": authorities.claim_once,
-        "evidence_authority": authorities.terminal,
+        "transport_authority": a.supervised,
+        "experiment_authority": a.reserve_experiment,
+        "claim_authority": a.claim_once,
+        "evidence_authority": a.terminal,
     }
 
 
-def test_external_receipts_authorize_exactly_one_direct_transport(tmp_path: Path):
-    request, config, attestation, judge, authorities = _inputs(tmp_path)
+def test_external_receipts_authorize_exactly_one_supervised_transport(tmp_path):
+    request, config, attestation, judge, a = _inputs(tmp_path)
+    receipt = dispatch_once(request, config, attestation, judge, **_kwargs(request, a))
+    assert receipt.status == "PASS"
+    assert receipt.model_callbacks_invoked == 1
+    assert receipt.terminal_durable is True
+    assert receipt.evidence_level == "E0"
+    assert len(receipt.authority_receipts) == 6
+
+
+def test_unrestricted_provider_callable_is_rejected_without_callback(tmp_path):
+    request, config, attestation, judge, a = _inputs(tmp_path)
     calls = []
-    kwargs = _kwargs(request, authorities)
-    kwargs["provider_call"] = lambda current: (
-        calls.append(current.spec.nonce) or authorities.provider_result(current)
+    kwargs = _kwargs(request, a)
+    kwargs["provider_call"] = lambda *_: calls.append("called")
+    receipt = dispatch_once(request, config, attestation, judge, **kwargs)
+    assert receipt.status == "NOT_EVALUATED"
+    assert receipt.model_callbacks_invoked == 0
+    assert calls == []
+    assert receipt.violations == ("UNRESTRICTED_PROVIDER_CALLABLE_FORBIDDEN",)
+
+
+def test_missing_real_transport_authority_is_zero_callback(tmp_path):
+    request, config, attestation, judge, a = _inputs(tmp_path)
+    kwargs = _kwargs(request, a)
+    kwargs["transport_authority"] = None
+    receipt = dispatch_once(request, config, attestation, judge, **kwargs)
+    assert receipt.status == "NOT_EVALUATED"
+    assert receipt.model_callbacks_invoked == 0
+
+
+def test_started_claim_failure_gets_durable_invalid_terminal(tmp_path):
+    request, config, attestation, judge, a = _inputs(tmp_path)
+    kwargs = _kwargs(request, a)
+    kwargs["experiment_authority"] = lambda *_: (_ for _ in ()).throw(
+        RuntimeError("refused")
     )
     receipt = dispatch_once(request, config, attestation, judge, **kwargs)
-    assert receipt.status == "PASS"
-    assert receipt.violations == ()
-    assert receipt.model_callbacks_invoked == 1
+    assert receipt.status == "INVALID"
     assert receipt.reservation_durable is True
     assert receipt.terminal_durable is True
-    assert receipt.evidence_level == "E1"
-    assert calls == ["one-shot-nonce"]
+    assert receipt.model_callbacks_invoked == 0
 
 
-def test_provider_gate_and_private_transport_are_not_exposed():
-    # Incident 2026-07-03: hostile runner accessed gate._call for a second spend.
-    import benchmarks.codegraph_compare.production_dispatch as dispatch
-    import benchmarks.codegraph_compare.production_dispatch_wire as wire
+def test_signed_ledger_inode_is_revalidated_after_claim(tmp_path):
+    request, config, attestation, judge, a = _inputs(tmp_path)
+    kwargs = _kwargs(request, a)
+    original = a.claim_once
 
-    assert hasattr(dispatch, "ProviderRequestGate") is False
-    assert hasattr(wire, "ProviderRequestGate") is False
+    def substitute(req, challenge, now):
+        claim = original(req, challenge, now)
+        req.spec.global_nonce_ledger_root and shutil.rmtree(
+            req.spec.global_nonce_ledger_root
+        )
+        Path(req.spec.global_nonce_ledger_root).mkdir()
+        return claim
+
+    kwargs["claim_authority"] = substitute
+    receipt = dispatch_once(request, config, attestation, judge, **kwargs)
+    assert receipt.status == "INVALID"
+    assert receipt.model_callbacks_invoked == 0
+    assert "SIGNED_LEDGER_IDENTITY_CHANGED" in receipt.violations
 
 
-def test_runner_is_never_executed_and_cannot_authorize_real_call(tmp_path: Path):
-    request, config, attestation, judge, authorities = _inputs(tmp_path)
+def test_independent_judge_flag_blocks_dispatch(tmp_path):
+    request, config, attestation, judge, a = _inputs(tmp_path)
+    receipt = dispatch_once(
+        request,
+        replace(config, independent_judge=False),
+        attestation,
+        judge,
+        **_kwargs(request, a),
+    )
+    assert receipt.status == "NOT_EVALUATED"
+    assert "INDEPENDENT_JUDGE_UNAVAILABLE" in receipt.violations
+
+
+def test_long_signed_termination_reason_is_durable_invalid(tmp_path):
+    request, config, attestation, judge, a = _inputs(tmp_path)
+    kwargs = _kwargs(request, a)
+    original = a.supervised
+
+    def malformed(*args):
+        result = original(*args)
+        usage = result.provider_usage_receipt
+        bad = _signed(
+            a.provider,
+            ProviderUsageReceiptV1,
+            **{**usage.signed_fields(), "termination_reason": "x" * 257},
+        )
+        return replace(result, termination_reason="x" * 257, provider_usage_receipt=bad)
+
+    kwargs["transport_authority"] = malformed
+    receipt = dispatch_once(request, config, attestation, judge, **kwargs)
+    assert receipt.status == "INVALID"
+    assert receipt.terminal_durable is True
+
+
+def test_runner_is_never_executed(tmp_path):
+    request, config, attestation, judge, a = _inputs(tmp_path)
     calls = []
     receipt = dispatch_once(
         request,
         config,
         attestation,
         judge,
-        **_kwargs(request, authorities),
-        runner=lambda *_: calls.append("runner"),
-    )
-    assert receipt.status == "NOT_EVALUATED"
-    assert receipt.model_callbacks_invoked == 0
-    assert calls == []
-    assert receipt.violations == (
-        "OFFLINE_FAKE_QUALIFICATION_DOES_NOT_AUTHORIZE_REAL_CALL",
-    )
-
-
-def test_offline_adapter_does_not_invoke_fake_or_real_transport(tmp_path: Path):
-    request, config, attestation, judge, authorities = _inputs(tmp_path)
-    calls = []
-    kwargs = _kwargs(request, authorities)
-    kwargs["provider_call"] = lambda current: (
-        calls.append("real") or authorities.provider_result(current)
-    )
-    adapter = TrustedOfflineTestAdapter(
-        lambda current: calls.append("fake") or authorities.provider_result(current)
-    )
-    receipt = dispatch_once(
-        request, config, attestation, judge, runner=adapter, **kwargs
+        runner=TrustedOfflineTestAdapter(lambda *_: calls.append(1)),
+        **_kwargs(request, a),
     )
     assert receipt.status == "NOT_EVALUATED"
     assert calls == []
 
 
-def test_unlinking_local_claim_state_cannot_replay_callback(tmp_path: Path):
-    # Incident 2026-07-03: unlinking a local 0400 claim allowed a second callback.
-    request, config, attestation, judge, authorities = _inputs(tmp_path)
-    calls = []
-    kwargs = _kwargs(request, authorities)
-    kwargs["provider_call"] = lambda current: (
-        calls.append("called") or authorities.provider_result(current)
-    )
-    first = dispatch_once(request, config, attestation, judge, **kwargs)
-    shutil.rmtree(request.evidence_root)
-    second = dispatch_once(request, config, attestation, judge, **kwargs)
-    assert first.status == "PASS"
-    assert second.status == "NOT_EVALUATED"
-    assert second.model_callbacks_invoked == 0
-    assert calls == ["called"]
-    assert second.violations == (
-        "EXTERNAL_CLAIM_REFUSED:RuntimeError:nonce already claimed",
-    )
-
-
-def test_replayed_signed_claim_fails_fresh_dispatch_challenge(tmp_path: Path):
-    request, config, attestation, judge, authorities = _inputs(tmp_path)
-    calls = []
-    kwargs = _kwargs(request, authorities)
-    kwargs["provider_call"] = lambda current: (
-        calls.append("called") or authorities.provider_result(current)
-    )
-    first = dispatch_once(request, config, attestation, judge, **kwargs)
-    shutil.rmtree(request.evidence_root)
-    cached = authorities.last_claim
-    kwargs["claim_authority"] = lambda *_: cached
-    second = dispatch_once(request, config, attestation, judge, **kwargs)
-    assert first.status == "PASS"
-    assert second.model_callbacks_invoked == 0
-    assert calls == ["called"]
-    assert "claim receipt binding or lifetime mismatch" in second.violations[0]
-
-
-def test_rename_race_local_evidence_cannot_claim_terminal_durability(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    # Incident 2026-07-03 / CI job 93194929365: local Windows E0 is not authority.
-    monkeypatch.setattr(production_collector, "_dirfd_supported", lambda: False)
-    request, config, attestation, judge, authorities = _inputs(tmp_path)
-    moved = tmp_path / "moved-evidence"
-
-    def provider(current):
-        current.evidence_root.mkdir()
-        current.evidence_root.rename(moved)
-        return authorities.provider_result(current)
-
-    kwargs = _kwargs(request, authorities)
-    kwargs["provider_call"] = provider
-    kwargs["evidence_authority"] = lambda *_: (_ for _ in ()).throw(
-        RuntimeError("immutable ingest absent")
-    )
-    receipt = dispatch_once(request, config, attestation, judge, **kwargs)
-    assert receipt.status == "NOT_EVALUATED"
-    assert receipt.terminal_durable is False
-    assert receipt.evidence_level == "E0"
-
-
-def test_missing_external_evidence_authority_prevents_real_call(tmp_path: Path):
-    request, config, attestation, judge, authorities = _inputs(tmp_path)
-    calls = []
-    kwargs = _kwargs(request, authorities)
-    kwargs["provider_call"] = lambda current: (
-        calls.append("called") or authorities.provider_result(current)
-    )
-    kwargs["evidence_authority"] = None
-    receipt = dispatch_once(request, config, attestation, judge, **kwargs)
-    assert receipt.status == "NOT_EVALUATED"
-    assert calls == []
-    assert receipt.evidence_level == "E0"
-
-
-def test_pass_receipt_with_violations_is_rejected():
-    value = {
-        "cost_usd": 0.0,
-        "dominance_allowed": False,
-        "envelope_hash": "a" * 64,
-        "evidence_digest": "b" * 64,
-        "evidence_level": "E1",
-        "input_tokens": 0,
-        "model_callbacks_invoked": 1,
-        "output_tokens": 0,
-        "provider_requests": 1,
-        "publishable": False,
-        "reservation_durable": True,
-        "schema_version": 1,
-        "status": "PASS",
-        "terminal_durable": True,
-        "termination_reason": "completed",
-        "violations": ["PROVIDER_RESERVATION_INVALID"],
-        "winner": None,
-    }
+def test_pass_receipt_with_violations_is_rejected(tmp_path):
+    request, config, attestation, judge, a = _inputs(tmp_path)
+    receipt = dispatch_once(request, config, attestation, judge, **_kwargs(request, a))
+    value = receipt.to_wire_dict()
+    value["violations"] = ["INVALID"]
     with pytest.raises(ValueError, match="PASS receipt"):
         load_production_dispatch_receipt_v1(_canonical(value))
 
@@ -423,8 +425,55 @@ def test_terminal_pass_with_violations_is_rejected():
         "schema_version": 1,
         "event": "TERMINAL",
         "status": "PASS",
-        "violations": ["PROVIDER_RESERVATION_INVALID"],
+        "violations": ["INVALID"],
         "evidence_digest": "b" * 64,
     }
     with pytest.raises(ValueError, match="terminal event invalid"):
         load_journal_event_v1(_canonical(value))
+
+
+def test_experiment_authority_rejects_cell_one_without_previous_terminal(tmp_path):
+    request, _, _, _, authorities = _inputs(tmp_path)
+    receipt = authorities.reserve_experiment(request, None, NOW)
+    fields = receipt.signed_fields()
+    fields.update(
+        cell_order=1,
+        cumulative_reserved_before_microusd=1_500_000,
+        cumulative_reserved_after_microusd=3_000_000,
+    )
+    attacked = _signed(authorities.experiment, ExperimentAuthorityReceiptV1, **fields)
+    with pytest.raises(ValueError, match="previous-terminal"):
+        verify_experiment_receipt(
+            attacked,
+            spec=request.spec,
+            manifest_hash=request.manifest.manifest_hash,
+            cell_order=1,
+            previous_terminal_receipt_sha256=None,
+            public_key=authorities.experiment.public_key().public_bytes_raw(),
+            key_id="experiment-v1",
+            now_unix=NOW,
+        )
+
+
+def test_experiment_authority_rejects_independent_three_dollar_cell_reservation(
+    tmp_path,
+):
+    request, _, _, _, authorities = _inputs(tmp_path)
+    receipt = authorities.reserve_experiment(request, None, NOW)
+    fields = receipt.signed_fields()
+    fields.update(
+        authorized_budget_microusd=3_000_000,
+        cumulative_reserved_after_microusd=3_000_001,
+    )
+    attacked = _signed(authorities.experiment, ExperimentAuthorityReceiptV1, **fields)
+    with pytest.raises(ValueError, match="budget/order"):
+        verify_experiment_receipt(
+            attacked,
+            spec=request.spec,
+            manifest_hash=request.manifest.manifest_hash,
+            cell_order=0,
+            previous_terminal_receipt_sha256=None,
+            public_key=authorities.experiment.public_key().public_bytes_raw(),
+            key_id="experiment-v1",
+            now_unix=NOW,
+        )

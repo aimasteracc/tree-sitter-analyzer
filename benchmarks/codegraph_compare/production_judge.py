@@ -2,7 +2,7 @@
 
 This module implements the Judge role defined in issues #1221 and #1223.
 An independent Judge with a role-specific key reviews the collected evidence
-and records a verdict.  The verdict is HMAC-signed to bind it to
+and records a verdict.  The verdict is Ed25519-signed to bind it to
 a specific evidence_digest, preventing replay of old verdicts against new
 evidence bundles.
 
@@ -16,10 +16,12 @@ Verdicts:
 
 from __future__ import annotations
 
-import hmac
 import time
 from dataclasses import dataclass
 from typing import Any
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from benchmarks.codegraph_compare.production_anchor import (
     AnchorKey,
@@ -36,7 +38,7 @@ VALID_VERDICTS = frozenset({"ACCEPT", "REJECT", "INVALID", "NOT_EVALUATED"})
 class JudgeRecord:
     """Tamper-evident verdict record signed by the independent Judge key.
 
-    The HMAC binds verdict, evidence_digest, spec_hash, recorded_at_unix, and
+    The Ed25519 signature binds verdict, evidence_digest, spec_hash, recorded_at_unix, and
     judge_note so that any post-fact modification is detectable and the verdict
     is tied to a specific run spec (preventing replay across different runs).
     """
@@ -47,7 +49,7 @@ class JudgeRecord:
     spec_hash: str
     recorded_at_unix: int
     judge_note: str
-    hmac_sha256: str
+    signature_ed25519: str
     issuer_role: str = JUDGE_ROLE
     key_id: str = DEFAULT_JUDGE_KEY_ID
 
@@ -59,7 +61,7 @@ class JudgeRecord:
             "spec_hash": self.spec_hash,
             "recorded_at_unix": self.recorded_at_unix,
             "judge_note": self.judge_note,
-            "hmac_sha256": self.hmac_sha256,
+            "signature_ed25519": self.signature_ed25519,
             "issuer_role": self.issuer_role,
             "key_id": self.key_id,
         }
@@ -101,7 +103,7 @@ def submit_verdict(
 ) -> JudgeRecord:
     """Record a signed Judge verdict against a specific evidence bundle and run spec.
 
-    The HMAC payload includes spec_hash so that this verdict cannot be replayed
+    The Ed25519 payload includes spec_hash so that this verdict cannot be replayed
     against a different run whose evidence happens to share the same ledger digest.
 
     Args:
@@ -153,17 +155,17 @@ def submit_verdict(
         spec_hash=spec_hash,
         recorded_at_unix=recorded_at,
         judge_note=judge_note,
-        hmac_sha256=signature,
+        signature_ed25519=signature,
         issuer_role=issuer_role,
         key_id=key_id,
     )
 
 
-def verify_judge_record(record: JudgeRecord, key: AnchorKey) -> None:
-    """Verify a JudgeRecord HMAC signature.
+def verify_judge_record(record: JudgeRecord, public_key: bytes) -> None:
+    """Verify a JudgeRecord Ed25519 signature.
 
     Raises:
-        ValueError: If the record is malformed or HMAC verification fails.
+        ValueError: If the record is malformed or Ed25519 verification fails.
     """
     if not isinstance(record, JudgeRecord):
         raise ValueError("record must be a JudgeRecord")
@@ -186,6 +188,11 @@ def verify_judge_record(record: JudgeRecord, key: AnchorKey) -> None:
         record.issuer_role,
         record.key_id,
     )
-    expected = key.sign(payload)
-    if not hmac.compare_digest(expected, record.hmac_sha256):
-        raise ValueError("JudgeRecord HMAC verification failed")
+    if type(public_key) is not bytes or len(public_key) != 32:
+        raise ValueError("judge verifier requires a 32-byte Ed25519 public key")
+    try:
+        Ed25519PublicKey.from_public_bytes(public_key).verify(
+            bytes.fromhex(record.signature_ed25519), payload
+        )
+    except (InvalidSignature, ValueError) as error:
+        raise ValueError("JudgeRecord Ed25519 verification failed") from error

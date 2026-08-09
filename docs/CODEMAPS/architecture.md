@@ -104,11 +104,13 @@ rollback incidents.
 ## Offline-qualified production canary boundary
 
 `benchmarks/codegraph_compare/production_dispatch.py` is a one-shot, single-cell
-gateway with one direct `provider_call(request)` transport site. Caller-supplied
-runners are never executed. A production PASS requires three independently
-pinned Ed25519 external facts: a fresh nonce/spec claim bound to the dispatch
-challenge, provider-budget reservation and exact-one usage receipts, and an
-immutable-evidence terminal receipt bound to the local evidence digest, provider
+gateway; `production_dispatch_validation.py` holds its fail-closed envelope,
+ledger-inode, provider, and transport validation helpers. The gateway plus an external supervised-transport authority receipt proving exact-one,
+frozen-timeout, and whole-process termination. Unrestricted provider callables and caller-supplied
+runners are never executed. A production PASS requires independently pinned
+Ed25519 external facts: a fresh nonce/spec claim bound to the dispatch challenge,
+a manifest-level cumulative-budget/order reservation, provider-budget reservation
+and exact-one usage, supervised process termination, and an immutable-evidence terminal receipt bound to the local evidence digest, provider
 usage receipt, and claim ID. Production code keeps public verification keys only;
 it provides no authority private keys or receipt issuers. Missing transport or
 authority inputs/public-key pins returns `NOT_EVALUATED` before transport with

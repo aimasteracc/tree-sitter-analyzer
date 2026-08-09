@@ -101,9 +101,9 @@ def run_offline_rehearsal(
     judge_path = operator_root / "ephemeral-rehearsal-judge.key"
     provider_path = operator_root / "ephemeral-rehearsal-provider.key"
     trust_store = operator_root / "trust-store.json"
-    anchor_path.write_text(key.raw.hex(), encoding="utf-8")
-    judge_path.write_text(judge_key.raw.hex(), encoding="utf-8")
-    provider_path.write_text(provider_key.raw.hex(), encoding="utf-8")
+    anchor_path.write_text(key.public_bytes().hex(), encoding="utf-8")
+    judge_path.write_text(judge_key.public_bytes().hex(), encoding="utf-8")
+    provider_path.write_text(provider_key.public_bytes().hex(), encoding="utf-8")
     anchor_path.chmod(0o400)
     judge_path.chmod(0o400)
     provider_path.chmod(0o400)
@@ -141,7 +141,7 @@ def run_offline_rehearsal(
     )
     verify_attestation(
         attestation,
-        key,
+        key.public_bytes(),
         spec.spec_hash,
         spec.nonce,
         spec.expires_at_unix,
@@ -181,7 +181,7 @@ def run_offline_rehearsal(
         now_unix=now,
         key_id="rehearsal-judge",
     )
-    verify_judge_record(judge, judge_key)
+    verify_judge_record(judge, judge_key.public_bytes())
     config = OperatorTrustConfigV1(
         trust_store=trust_store,
         pinned_anchor=anchor_path,
@@ -214,6 +214,7 @@ def run_offline_rehearsal(
     expected_violations = (
         "ROLE_KEYS_NOT_INDEPENDENT",
         "ROLE_KEY_MATERIAL_NOT_INDEPENDENT",
+        "INDEPENDENT_JUDGE_UNAVAILABLE",
     )
     if (
         qualification.status != "NOT_EVALUATED"

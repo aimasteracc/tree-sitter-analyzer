@@ -17,6 +17,7 @@ from benchmarks.codegraph_compare.canary_evidence import (
 from benchmarks.codegraph_compare.production_authorities import (
     ProviderReservationReceiptV1,
     ProviderUsageReceiptV1,
+    SupervisedTransportReceiptV1,
 )
 from benchmarks.codegraph_compare.production_trust import (
     ProductionRunSpecV1,
@@ -34,6 +35,7 @@ class ProductionDispatchRequestV1:
     qualification_evidence_digest: str
     journal_root: Path
     evidence_root: Path
+    previous_terminal_receipt_sha256: str | None = None
 
     def to_wire_dict(self) -> dict[str, Any]:
         return {
@@ -45,6 +47,7 @@ class ProductionDispatchRequestV1:
             "qualification_evidence_digest": self.qualification_evidence_digest,
             "journal_root": str(self.journal_root),
             "evidence_root": str(self.evidence_root),
+            "previous_terminal_receipt_sha256": self.previous_terminal_receipt_sha256,
         }
 
     def to_json(self) -> str:
@@ -62,6 +65,7 @@ class ProductionDispatchRequestV1:
                 "journal_root": self.spec.journal_root,
                 "evidence_root": self.spec.evidence_root,
                 "global_nonce_ledger_root": self.spec.global_nonce_ledger_root,
+                "previous_terminal_receipt_sha256": self.previous_terminal_receipt_sha256,
             }
         )
 
@@ -81,6 +85,7 @@ class ProviderRunResult:
     usage_complete: bool = False
     provider_reservation_receipt: ProviderReservationReceiptV1 | None = None
     provider_usage_receipt: ProviderUsageReceiptV1 | None = None
+    transport_receipt: SupervisedTransportReceiptV1 | None = None
 
 
 class ProviderRunFailure(RuntimeError):
@@ -111,6 +116,7 @@ class ProductionDispatchReceiptV1:
     termination_reason: str
     evidence_digest: str | None
     evidence_level: str = "E0"
+    authority_receipts: tuple[str, ...] = ()
     winner: None = None
     dominance_allowed: bool = False
     publishable: bool = False
@@ -177,6 +183,7 @@ def load_production_dispatch_request_v1(
         "qualification_evidence_digest",
         "journal_root",
         "evidence_root",
+        "previous_terminal_receipt_sha256",
     }
     if (
         set(value) != expected
@@ -226,6 +233,15 @@ def load_production_dispatch_request_v1(
     for name in ("journal_root", "evidence_root"):
         if type(value[name]) is not str:
             raise ValueError(f"{name} must be string")
+    previous = value["previous_terminal_receipt_sha256"]
+    if previous is not None and (
+        type(previous) is not str or _LOWER_SHA256.fullmatch(previous) is None
+    ):
+        raise ValueError(
+            "previous_terminal_receipt_sha256 must be lowercase SHA-256 or null"
+        )
+    if (value["cell_order"] == 0) != (previous is None):
+        raise ValueError("cell 0 must be genesis and cell 1 must bind cell 0 terminal")
     request = ProductionDispatchRequestV1(
         manifest,
         spec,
@@ -234,6 +250,7 @@ def load_production_dispatch_request_v1(
         value["qualification_evidence_digest"],
         Path(value["journal_root"]),
         Path(value["evidence_root"]),
+        value["previous_terminal_receipt_sha256"],
     )
     if (
         str(request.journal_root) != spec.journal_root
@@ -323,6 +340,19 @@ def load_production_dispatch_receipt_v1(
     ):
         raise ValueError("violations must be bounded non-empty strings")
     value["violations"] = tuple(value["violations"])
+    if type(value["authority_receipts"]) is not list or any(
+        type(item) is not str for item in value["authority_receipts"]
+    ):
+        raise ValueError("authority_receipts must be canonical JSON strings")
+    for item in value["authority_receipts"]:
+        signed_receipt = _strict_json(item)
+        _assert_canonical_input(item, signed_receipt)
+        signature = signed_receipt.get("signature_ed25519")
+        if type(signature) is not str or len(signature) != 128:
+            raise ValueError(
+                "authority receipt signature must be canonical Ed25519 hex"
+            )
+    value["authority_receipts"] = tuple(value["authority_receipts"])
     receipt = ProductionDispatchReceiptV1(**value)
     for name in (
         "reservation_durable",
@@ -337,8 +367,7 @@ def load_production_dispatch_receipt_v1(
         or receipt.status not in ("PASS", "INVALID", "NOT_EVALUATED")
         or type(receipt.evidence_level) is not str
         or receipt.evidence_level not in ("E0", "E1")
-        or (receipt.status == "PASS" and receipt.evidence_level != "E1")
-        or (receipt.status != "PASS" and receipt.evidence_level != "E0")
+        or receipt.evidence_level != "E0"
         or receipt.winner is not None
         or receipt.dominance_allowed
         or receipt.publishable
@@ -381,6 +410,7 @@ def load_production_dispatch_receipt_v1(
         or receipt.input_tokens is None
         or receipt.output_tokens is None
         or receipt.cost_usd is None
+        or len(receipt.authority_receipts) != 6
     ):
         raise ValueError(
             "PASS receipt durability/callback/usage/digest invariant invalid"

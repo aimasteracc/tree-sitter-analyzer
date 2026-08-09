@@ -1,4 +1,4 @@
-"""HMAC-SHA256 Anchor Custodian for NO1-002D production trust.
+"""Ed25519 Anchor Custodian issuer helpers for NO1-002D production trust.
 
 This module implements the Anchor Custodian role defined in issue #1223.
 The custodian signs a ProductionRunSpecV1 before any model call, binding the
@@ -14,14 +14,18 @@ Bundle-provided keys, TOFU, and self-signed attestations are forbidden.
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 _ENV_KEY = "CANARY_ANCHOR_KEY"
 _SCHEMA_VERSION = 1
@@ -90,14 +94,28 @@ class AnchorKey:
         return cls(raw=raw)
 
     def sign(self, payload: bytes) -> str:
-        return hmac.new(self.raw, payload, hashlib.sha256).hexdigest()
+        """Issuer-side helper; production dispatch loads only the public key."""
+        if len(self.raw) != 32:
+            raise ValueError("Ed25519 private seed must be exactly 32 bytes")
+        signature: bytes = Ed25519PrivateKey.from_private_bytes(self.raw).sign(payload)
+        return signature.hex()
+
+    def public_bytes(self) -> bytes:
+        if len(self.raw) != 32:
+            raise ValueError("Ed25519 private seed must be exactly 32 bytes")
+        material: bytes = (
+            Ed25519PrivateKey.from_private_bytes(self.raw)
+            .public_key()
+            .public_bytes_raw()
+        )
+        return material
 
 
 @dataclass(frozen=True)
 class SpendAttestation:
     """Tamper-evident record of a pre-authorised production run.
 
-    Issued by the Anchor Custodian before any model call.  The HMAC binds
+    Issued by the Anchor Custodian before any model call.  The Ed25519 signature binds
     spec_hash, nonce, issued_at_unix, and budget_enforcement_mode so that
     post-run verification can detect any substitution.
     """
@@ -107,7 +125,7 @@ class SpendAttestation:
     nonce: str
     issued_at_unix: int
     budget_enforcement_mode: str
-    hmac_sha256: str
+    signature_ed25519: str
     issuer_role: str = SPEND_ROLE
     key_id: str = DEFAULT_SPEND_KEY_ID
 
@@ -118,7 +136,7 @@ class SpendAttestation:
             "nonce": self.nonce,
             "issued_at_unix": self.issued_at_unix,
             "budget_enforcement_mode": self.budget_enforcement_mode,
-            "hmac_sha256": self.hmac_sha256,
+            "signature_ed25519": self.signature_ed25519,
             "issuer_role": self.issuer_role,
             "key_id": self.key_id,
         }
@@ -194,7 +212,7 @@ def prepare_attestation(
         nonce=nonce,
         issued_at_unix=issued_at,
         budget_enforcement_mode=budget_enforcement_mode,
-        hmac_sha256=signature,
+        signature_ed25519=signature,
         issuer_role=issuer_role,
         key_id=key_id,
     )
@@ -202,7 +220,7 @@ def prepare_attestation(
 
 def verify_attestation(
     attestation: SpendAttestation,
-    key: AnchorKey,
+    public_key: bytes,
     expected_spec_hash: str,
     expected_nonce: str,
     expires_at_unix: int,
@@ -212,7 +230,7 @@ def verify_attestation(
     """Verify a SpendAttestation against the run spec and anchor key.
 
     Raises:
-        ValueError: If any check fails (HMAC, spec binding, expiry, etc.).
+        ValueError: If any check fails (Ed25519 signature, spec binding, expiry, etc.).
     """
     if not isinstance(attestation, SpendAttestation):
         raise ValueError("attestation must be a SpendAttestation")
@@ -244,6 +262,11 @@ def verify_attestation(
         attestation.issuer_role,
         attestation.key_id,
     )
-    expected_hmac = key.sign(payload)
-    if not hmac.compare_digest(expected_hmac, attestation.hmac_sha256):
-        raise ValueError("attestation HMAC verification failed")
+    if type(public_key) is not bytes or len(public_key) != 32:
+        raise ValueError("spend verifier requires a 32-byte Ed25519 public key")
+    try:
+        Ed25519PublicKey.from_public_bytes(public_key).verify(
+            bytes.fromhex(attestation.signature_ed25519), payload
+        )
+    except (InvalidSignature, ValueError) as error:
+        raise ValueError("attestation Ed25519 verification failed") from error

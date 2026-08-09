@@ -262,8 +262,8 @@ def _v2_config(tmp_path: Path, bundle: Path) -> OperatorTrustConfigV1:
     judge = operator / "judge.key"
     provider = operator / "provider.key"
     trust_store.write_text("{}\n", encoding="utf-8")
-    anchor.write_text(_HEX_ANCHOR_KEY, encoding="utf-8")
-    judge.write_text(_HEX_JUDGE_KEY, encoding="utf-8")
+    anchor.write_text(_anchor_key().public_bytes().hex(), encoding="utf-8")
+    judge.write_text(_judge_key().public_bytes().hex(), encoding="utf-8")
     provider.write_text((b"p" * 32).hex(), encoding="utf-8")
     return OperatorTrustConfigV1(
         trust_store=trust_store,
@@ -551,7 +551,7 @@ def test_v2_rejects_distinct_files_with_identical_key_material(tmp_path: Path):
     bundle.mkdir()
     spec = _spec()
     config = _v2_config(tmp_path, bundle)
-    config.pinned_judge.write_text(_HEX_ANCHOR_KEY)
+    config.pinned_judge.write_text(_anchor_key().public_bytes().hex())
     now = 1_900_000_000
     attestation = prepare_attestation(
         spec.spec_hash,

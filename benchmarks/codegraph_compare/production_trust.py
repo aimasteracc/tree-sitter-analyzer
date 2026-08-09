@@ -47,9 +47,6 @@ class OperatorTrustConfigV1:
     isolated_execution: bool
     verification_to_use_closed: bool
     independent_judge: bool
-    # "provider": real provider-side spend reservation (preferred).
-    # "client-process-kill": subprocess timeout + post-run usage verification.
-    # The latter is documented as a limitation when Codex CLI lacks a reservation API.
     budget_enforcement_mode: str = "provider"
     pinned_judge: Path | None = None
     spend_key_id: str = "legacy-spend-key"
@@ -63,6 +60,10 @@ class OperatorTrustConfigV1:
     claim_authority_key_id: str = "claim-authority-v1"
     pinned_evidence_authority_key: Path | None = None
     evidence_authority_key_id: str = "evidence-authority-v1"
+    pinned_experiment_authority_key: Path | None = None
+    experiment_authority_key_id: str = "experiment-authority-v1"
+    pinned_transport_authority_key: Path | None = None
+    transport_authority_key_id: str = "transport-authority-v1"
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,8 @@ class ProductionQualification:
     judge_key_sha256: str | None = None
     claim_authority_key: OperatorKeyPin | None = None
     evidence_authority_key: OperatorKeyPin | None = None
+    experiment_authority_key: OperatorKeyPin | None = None
+    transport_authority_key: OperatorKeyPin | None = None
 
 
 def _absolute_lexical(path: Path) -> Path:
@@ -100,7 +103,6 @@ def _has_symlink_component(path: Path) -> bool:
 
 def _read_operator_key(path: Path) -> OperatorKeyPin:
     """Read a key through a pinned regular-file descriptor, rejecting path races."""
-
     if _has_symlink_component(path):
         raise ValueError(f"operator key path contains a symlink: {path}")
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
@@ -165,7 +167,6 @@ def qualify_production_trust(
     now_unix: int,
 ) -> ProductionQualification:
     """Return a fail-closed qualification without invoking production services."""
-
     try:
         validate_production_run_spec(spec)
     except (AttributeError, TypeError, ValueError) as error:
@@ -236,7 +237,6 @@ def qualify_production_trust_v2(
 ) -> ProductionQualification:
     """Verify independently pinned roles and signed production admission."""
     from benchmarks.codegraph_compare.production_anchor import (
-        AnchorKey,
         SpendAttestation,
         verify_attestation,
     )
@@ -245,7 +245,6 @@ def qualify_production_trust_v2(
         verify_judge_record,
     )
 
-    # Validate run spec.
     try:
         validate_production_run_spec(spec)
     except (AttributeError, TypeError, ValueError) as error:
@@ -260,14 +259,11 @@ def qualify_production_trust_v2(
             "NOT_EVALUATED", ("OPERATOR_TRUST_CONFIG_UNAVAILABLE",), spec_hash, False
         )
 
-    # Production qualification requires two independently pinned role keys.
     try:
         anchor_pin = _read_operator_key(config.pinned_anchor)
-        anchor_key = AnchorKey(anchor_pin.material)
         if config.pinned_judge is None:
             raise ValueError("pinned judge key is required")
         judge_pin = _read_operator_key(config.pinned_judge)
-        judge_key = AnchorKey(judge_pin.material)
         if config.pinned_provider_receipt_key is None:
             raise ValueError("pinned provider receipt key is required")
         provider_pin = _read_operator_key(config.pinned_provider_receipt_key)
@@ -280,6 +276,16 @@ def qualify_production_trust_v2(
             None
             if config.pinned_evidence_authority_key is None
             else _read_operator_key(config.pinned_evidence_authority_key)
+        )
+        experiment_pin = (
+            None
+            if config.pinned_experiment_authority_key is None
+            else _read_operator_key(config.pinned_experiment_authority_key)
+        )
+        transport_pin = (
+            None
+            if config.pinned_transport_authority_key is None
+            else _read_operator_key(config.pinned_transport_authority_key)
         )
     except Exception as error:
         return ProductionQualification(
@@ -301,8 +307,6 @@ def qualify_production_trust_v2(
             False,
         )
 
-    # Re-implement trust config validation inline (without calling the base function)
-    # so that client-process-kill mode is handled explicitly rather than via flag mutation.
     violations: list[str] = []
     assert config.pinned_judge is not None
     assert config.pinned_provider_receipt_key is not None
@@ -320,6 +324,14 @@ def qualify_production_trust_v2(
         role_paths.append(
             (config.pinned_evidence_authority_key, "pinned_evidence_authority_key")
         )
+    if config.pinned_experiment_authority_key is not None:
+        role_paths.append(
+            (config.pinned_experiment_authority_key, "pinned_experiment_authority_key")
+        )
+    if config.pinned_transport_authority_key is not None:
+        role_paths.append(
+            (config.pinned_transport_authority_key, "pinned_transport_authority_key")
+        )
     for path, label in role_paths:
         violation = _trusted_external_file(path, evidence_bundle_root, label)
         if violation is not None:
@@ -332,15 +344,15 @@ def qualify_production_trust_v2(
                 violations.append("ROLE_KEYS_NOT_INDEPENDENT")
         except OSError:
             pass
-    # Different filenames and IDs are not independent when the secret/public
-    # material is identical.  Compare a one-way fingerprint, never raw keys.
     material_fingerprints = [
         anchor_pin.material_sha256,
         judge_pin.material_sha256,
         provider_pin.material_sha256,
     ]
     material_fingerprints.extend(
-        pin.material_sha256 for pin in (claim_pin, evidence_pin) if pin is not None
+        pin.material_sha256
+        for pin in (claim_pin, evidence_pin, experiment_pin, transport_pin)
+        if pin is not None
     )
     if len(set(material_fingerprints)) != len(material_fingerprints):
         violations.append("ROLE_KEY_MATERIAL_NOT_INDEPENDENT")
@@ -349,6 +361,10 @@ def qualify_production_trust_v2(
         role_ids.append("nonce-claim-authority")
     if evidence_pin is not None:
         role_ids.append("immutable-evidence-authority")
+    if experiment_pin is not None:
+        role_ids.append("experiment-authority")
+    if transport_pin is not None:
+        role_ids.append("supervised-transport-authority")
     if (
         len(set(role_ids)) != len(role_ids)
         or config.provider_receipt_role != "provider-budget-gateway"
@@ -359,6 +375,10 @@ def qualify_production_trust_v2(
         key_ids.append(config.claim_authority_key_id)
     if evidence_pin is not None:
         key_ids.append(config.evidence_authority_key_id)
+    if experiment_pin is not None:
+        key_ids.append(config.experiment_authority_key_id)
+    if transport_pin is not None:
+        key_ids.append(config.transport_authority_key_id)
     if len(set(key_ids)) != len(key_ids):
         violations.append("ROLE_KEY_IDS_NOT_INDEPENDENT")
     artifact_lexical = _absolute_lexical(config.immutable_artifact_root)
@@ -371,9 +391,6 @@ def qualify_production_trust_v2(
         violations.append("ARTIFACT_ROOT_PREEXISTS")
     if config.trusted_roles != _REQUIRED_ROLES:
         violations.append("TRUST_ROLES_INCOMPLETE")
-    # No trustworthy process supervisor exists in this library boundary.  A
-    # client runner may not attest its own kill/wait state.  Production accepts
-    # only a provider-enforced reservation gateway.
     if config.budget_enforcement_mode != "provider":
         violations.append("UNTRUSTED_CLIENT_PROCESS_SUPERVISION")
     elif config.provider_budget_enforced is not True:
@@ -398,6 +415,8 @@ def qualify_production_trust_v2(
     for configured, signed, violation in expected_roots:
         if configured is None or str(configured.resolve(strict=False)) != signed:
             violations.append(violation)
+    if config.independent_judge is not True:
+        violations.append("INDEPENDENT_JUDGE_UNAVAILABLE")
     for enabled, violation in (
         (config.append_only_ledger, "APPEND_ONLY_LEDGER_UNAVAILABLE"),
         (config.immutable_collector, "IMMUTABLE_COLLECTOR_UNAVAILABLE"),
@@ -416,12 +435,11 @@ def qualify_production_trust_v2(
             "NOT_EVALUATED", tuple(violations), spec_hash, False
         )
 
-    # Verify attestation HMAC and binding.
     attest_violations: list[str] = []
     try:
         verify_attestation(
             attestation,
-            anchor_key,
+            anchor_pin.material,
             spec_hash,
             spec.nonce,
             spec.expires_at_unix,
@@ -435,7 +453,6 @@ def qualify_production_trust_v2(
     if attestation.key_id != config.spend_key_id:
         attest_violations.append("ATTESTATION_KEY_ID_MISMATCH")
 
-    # Attestation budget mode must match config — prevents mode substitution.
     if (
         not attest_violations
         and attestation.budget_enforcement_mode != config.budget_enforcement_mode
@@ -446,9 +463,8 @@ def qualify_production_trust_v2(
             f"config={config.budget_enforcement_mode!r}"
         )
 
-    # Verify judge record HMAC, verdict, and evidence binding.
     try:
-        verify_judge_record(judge_record, judge_key)
+        verify_judge_record(judge_record, judge_pin.material)
         if judge_record.issuer_role != "independent-judge":
             attest_violations.append("JUDGE_ROLE_MISMATCH")
         elif judge_record.key_id != config.judge_key_id:
@@ -485,4 +501,6 @@ def qualify_production_trust_v2(
         judge_pin.material_sha256,
         claim_pin,
         evidence_pin,
+        experiment_pin,
+        transport_pin,
     )

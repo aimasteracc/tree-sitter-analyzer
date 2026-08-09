@@ -12,7 +12,7 @@ from benchmarks.codegraph_compare.production_anchor import (
 )
 
 # 64-char hex string encodes 32 bytes; all characters must be valid hex.
-_GOOD_KEY_HEX = "ab" * 32   # 64 hex chars = 32 bytes
+_GOOD_KEY_HEX = "ab" * 32  # 64 hex chars = 32 bytes
 _SPEC_HASH = "b" * 64
 _NONCE = "judge-nonce-001"
 _EXPIRES = 2_000_000_000
@@ -39,7 +39,9 @@ def _attestation(
 
 
 class TestAnchorKey:
-    def test_from_env_loads_key_and_hex_decodes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_from_env_loads_key_and_hex_decodes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         hex_key = "cd" * 32  # 64 hex chars
         monkeypatch.setenv("CANARY_ANCHOR_KEY", hex_key)
         key = AnchorKey.from_env()
@@ -50,7 +52,9 @@ class TestAnchorKey:
         with pytest.raises(ValueError, match="at least 64 hex characters"):
             AnchorKey.from_env()
 
-    def test_from_env_rejects_missing_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_from_env_rejects_missing_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.delenv("CANARY_ANCHOR_KEY", raising=False)
         with pytest.raises(ValueError, match="at least 64 hex characters"):
             AnchorKey.from_env()
@@ -103,7 +107,7 @@ class TestPrepareAttestation:
         assert att.nonce == _NONCE
         assert att.issued_at_unix == _NOW
         assert att.budget_enforcement_mode == "client-process-kill"
-        assert len(att.hmac_sha256) == 64
+        assert len(att.signature_ed25519) == 128
 
     def test_provider_mode_accepted(self) -> None:
         att = _attestation(budget_enforcement_mode="provider")
@@ -141,39 +145,69 @@ class TestPrepareAttestation:
 class TestVerifyAttestation:
     def test_valid_attestation_passes(self) -> None:
         att = _attestation()
-        verify_attestation(att, _key(), _SPEC_HASH, _NONCE, _EXPIRES, now_unix=_NOW)
+        verify_attestation(
+            att, _key().public_bytes(), _SPEC_HASH, _NONCE, _EXPIRES, now_unix=_NOW
+        )
 
     def test_wrong_spec_hash_rejected(self) -> None:
         att = _attestation()
         with pytest.raises(ValueError, match="spec_hash"):
-            verify_attestation(att, _key(), "c" * 64, _NONCE, _EXPIRES, now_unix=_NOW)
+            verify_attestation(
+                att, _key().public_bytes(), "c" * 64, _NONCE, _EXPIRES, now_unix=_NOW
+            )
 
     def test_wrong_nonce_rejected(self) -> None:
         att = _attestation()
         with pytest.raises(ValueError, match="nonce"):
-            verify_attestation(att, _key(), _SPEC_HASH, "wrong-nonce", _EXPIRES, now_unix=_NOW)
+            verify_attestation(
+                att,
+                _key().public_bytes(),
+                _SPEC_HASH,
+                "wrong-nonce",
+                _EXPIRES,
+                now_unix=_NOW,
+            )
 
     def test_wrong_key_rejected(self) -> None:
         att = _attestation()
         wrong_key = AnchorKey(raw=b"z" * 32)
-        with pytest.raises(ValueError, match="HMAC"):
-            verify_attestation(att, wrong_key, _SPEC_HASH, _NONCE, _EXPIRES, now_unix=_NOW)
+        with pytest.raises(ValueError, match="Ed25519"):
+            verify_attestation(
+                att,
+                wrong_key.public_bytes(),
+                _SPEC_HASH,
+                _NONCE,
+                _EXPIRES,
+                now_unix=_NOW,
+            )
 
     def test_expired_spec_rejected_at_verify_time(self) -> None:
         att = _attestation()
         with pytest.raises(ValueError, match="expired"):
-            verify_attestation(att, _key(), _SPEC_HASH, _NONCE, _EXPIRES, now_unix=_EXPIRES)
+            verify_attestation(
+                att,
+                _key().public_bytes(),
+                _SPEC_HASH,
+                _NONCE,
+                _EXPIRES,
+                now_unix=_EXPIRES,
+            )
 
     def test_future_issued_at_rejected(self) -> None:
         att = _attestation(now_unix=_NOW + 1000)
         with pytest.raises(ValueError, match="future"):
-            verify_attestation(
-                att, _key(), _SPEC_HASH, _NONCE, _EXPIRES, now_unix=_NOW
-            )
+            verify_attestation(att, _key(), _SPEC_HASH, _NONCE, _EXPIRES, now_unix=_NOW)
 
     def test_non_attestation_object_rejected(self) -> None:
         with pytest.raises(ValueError, match="SpendAttestation"):
-            verify_attestation("not-an-attestation", _key(), _SPEC_HASH, _NONCE, _EXPIRES, now_unix=_NOW)  # type: ignore[arg-type]
+            verify_attestation(
+                "not-an-attestation",
+                _key(),
+                _SPEC_HASH,
+                _NONCE,
+                _EXPIRES,
+                now_unix=_NOW,
+            )  # type: ignore[arg-type]
 
     def test_tampered_hmac_rejected(self) -> None:
         att = _attestation()
@@ -183,7 +217,14 @@ class TestVerifyAttestation:
             nonce=att.nonce,
             issued_at_unix=att.issued_at_unix,
             budget_enforcement_mode=att.budget_enforcement_mode,
-            hmac_sha256="0" * 64,
+            signature_ed25519="0" * 64,
         )
-        with pytest.raises(ValueError, match="HMAC"):
-            verify_attestation(tampered, _key(), _SPEC_HASH, _NONCE, _EXPIRES, now_unix=_NOW)
+        with pytest.raises(ValueError, match="Ed25519"):
+            verify_attestation(
+                tampered,
+                _key().public_bytes(),
+                _SPEC_HASH,
+                _NONCE,
+                _EXPIRES,
+                now_unix=_NOW,
+            )
