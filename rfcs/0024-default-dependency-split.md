@@ -28,9 +28,18 @@ repositories.
 
 ## Offline closure protocol
 
-`UV_OFFLINE=1` is mandatory. `uv export --frozen --offline --no-dev
---no-emit-project --format requirements-txt` derives exact requirements with
-artifact hashes from the subject `uv.lock`. A fresh environment installs that
+`UV_OFFLINE=1` is mandatory. Collector tooling is isolated in the exact
+`no1-006b-collector-tool` dependency group: `packaging==25.0`,
+`hatchling==1.31.0`, `jsonschema==4.25.1`, and their lock-resolved closure. Its hashed frozen export
+and the collector `uv.lock` are recorded separately from the subject closure.
+The project wheel is built by the current external collector `sys.executable`
+with `uv build --offline --no-build-isolation --python <collector-sys-executable>`,
+so the recorded CPython implementation/version and exact Hatchling version are
+the build environment rather than an implicitly resolved isolated environment.
+
+`uv export --frozen --offline --no-dev --no-emit-project --format
+requirements-txt` derives exact requirements with artifact hashes from the
+**subject** `uv.lock`. A fresh environment installs that
 hashed closure with `--require-hashes --no-deps`; the locally built project wheel
 is then installed separately with `--no-deps`. The receipt records export/lock
 hashes and every installed canonical distribution name, version, and
@@ -68,7 +77,7 @@ notification, and an exact `tools/list` surface. Binary frames use an absolute
 
 ## Receipt validation and native axes
 
-Schema v2 is property-closed and constrains commands, definitions, formats and
+Schema v3 is property-closed and constrains commands, definitions, formats and
 axis states. The collector validator additionally enforces arithmetic and
 identity invariants: repeats/sample lengths, distribution counts/unique sorted
 names, direct + transitive + root totals, artifact and lock aliases, payload
@@ -84,14 +93,14 @@ atomically replaced, then the directory is fsynced.
 
 Run this from any checkout of the repository, with CPython 3.14 and all locked
 artifacts already available in the offline uv cache. It creates separate clean,
-detached collector and subject worktrees. The collector's exact hashed tooling
-closure, its virtual environment, the receipt, and every other generated file
+detached collector and subject worktrees. The collector's separately locked,
+exact hashed tooling closure, its virtual environment, the receipt, and every other generated file
 live under an external temporary directory:
 
 ```bash
 set -eu
 SOURCE_REPO=$(git rev-parse --show-toplevel)
-COLLECTOR_COMMIT=e33410de6a65a06a404c034c2b7ff50104834d56
+COLLECTOR_COMMIT=4c414469ae94a2a5e901c3663109801d2ec27018
 SUBJECT_COMMIT=7e0e8f6e03270fcbf4025d717415ef69c9354145
 RUN_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/no1-006b.XXXXXX")
 RUN_ROOT=$(cd "$RUN_ROOT" && pwd -P)
@@ -113,8 +122,9 @@ test -z "$(git -C "$COLLECTOR" status --porcelain=v1 --untracked-files=all --ign
 test -z "$(git -C "$SUBJECT" status --porcelain=v1 --untracked-files=all --ignored)"
 (
   cd "$COLLECTOR"
-  UV_OFFLINE=1 uv export --frozen --offline --no-dev --no-emit-project \
-    --format requirements-txt --output-file "$TOOL_REQUIREMENTS"
+  UV_OFFLINE=1 uv export --frozen --offline \
+    --only-group no1-006b-collector-tool --no-emit-project \
+    --format requirements-txt >"$TOOL_REQUIREMENTS"
 )
 UV_OFFLINE=1 uv venv --offline --python 3.14 "$TOOL_VENV"
 UV_OFFLINE=1 uv pip install --offline --python "$TOOL_PYTHON" --no-deps \
@@ -134,8 +144,8 @@ printf 'remove external run directory when finished: %s\n' "$RUN_ROOT"
 
 The post-hoc hardened collector produced
 [`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
-from collector commit `e33410de6a65a06a404c034c2b7ff50104834d56` and the distinct pinned subject.
-Its canonical payload SHA-256 is `90209af9025d18022ac9163fca6efd176c4d0db3befd029955ebef89b2bb683a`.
+from collector commit `4c414469ae94a2a5e901c3663109801d2ec27018` and the distinct pinned subject.
+Its canonical payload SHA-256 is `f36cc5176f546306864dd11780c0203aafd1683d85a30e87efe9ab131f54c0e2`.
 
 | Axis | Measured value |
 |---|---:|
@@ -144,8 +154,8 @@ Its canonical payload SHA-256 is `90209af9025d18022ac9163fca6efd176c4d0db3befd02
 | installed distribution files | 89,982,491 bytes across 4,743 unique regular files |
 | dependencies excluding root (direct + transitive) | 64 (33 + 31) |
 | installed distributions including root | 65 |
-| CLI bytecode-cold; warm samples (ms) | 1760.056; 673.438, 569.999, 567.154, 569.75, 571.197 |
-| MCP protocol-ready cold; warm samples (ms) | 2035.01; 758.606, 752.5, 749.836, 751.183, 753.742 |
+| CLI bytecode-cold; warm samples (ms) | 1891.219; 574.648, 604.485, 785.379, 574.203, 581.477 |
+| MCP protocol-ready cold; warm samples (ms) | 2113.429; 767.763, 836.009, 763.113, 786.522, 767.58 |
 
 This is macOS arm64 CPython 3.14.3 only. Linux and Windows remain `unknown` and
 cannot pass admission. “Cold” does not claim an OS page-cache flush. The larger,

@@ -12,6 +12,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    import tomllib
+except ImportError:  # pragma: no cover - Python 3.10 compatibility
+    import tomli as tomllib
+
 import pytest
 from jsonschema.exceptions import ValidationError
 
@@ -21,6 +26,7 @@ REPO = Path(__file__).parents[2]
 BASELINE = REPO / "docs/baselines/no1-006b-macos-e0.json"
 SCHEMA = REPO / "schemas/no1-006b-baseline.schema.json"
 RFC = REPO / "rfcs/0024-default-dependency-split.md"
+PYPROJECT = REPO / "pyproject.toml"
 
 
 def baseline() -> dict:
@@ -53,6 +59,12 @@ def test_receipt_binds_exact_collector_and_schema_bytes() -> None:
     assert [report["collector"]["script_sha256"],report["collector"]["schema_sha256"]] == [collector.sha256(Path(collector.__file__)),collector.sha256(SCHEMA)]
 
 
+def test_receipt_binds_exact_collector_tool_lock_and_export() -> None:
+    report=baseline(); command=report["commands"]["collector_tool_export"]
+    exported=subprocess.run(command,cwd=REPO,check=True,capture_output=True).stdout
+    assert [report["collector"]["tool_lock_sha256"],report["collector"]["tool_export_sha256"]] == [collector.sha256(REPO/"uv.lock"),collector.digest_bytes(exported)]
+
+
 def test_schema_rejects_invalid_rfc3339_timestamp() -> None:
     report=mutated(("collection_started_at_utc",),"not-a-date")
     with pytest.raises(ValueError, match="Invalid isoformat"): collector.validate_receipt(report,schema())
@@ -80,6 +92,14 @@ def test_validator_rejects_total_count_mismatch() -> None:
 
 def test_validator_rejects_duplicate_distribution_names() -> None:
     report=copy.deepcopy(baseline()); report["dependency_closure"]["distributions"][1]["name"]=report["dependency_closure"]["distributions"][0]["name"]; report["canonical_payload_sha256"]=collector.canonical_hash(report)
+    with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,schema())
+
+
+def test_validator_rejects_root_role_on_non_project_distribution() -> None:
+    # PR #1250: role swapping must not relabel a dependency as the project root.
+    report=copy.deepcopy(baseline()); rows=report["dependency_closure"]["distributions"]
+    project=next(row for row in rows if row["name"]==collector.ROOT_NAME); dependency=next(row for row in rows if row["name"]=="anthropic")
+    project["role"],dependency["role"]="direct","root"; report["canonical_payload_sha256"]=collector.canonical_hash(report)
     with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,schema())
 
 
@@ -116,6 +136,16 @@ def test_schema_rejects_mcp_startup_definition_mutation() -> None:
 
 def test_schema_rejects_measured_axis_contradiction() -> None:
     report=mutated(("platform_axes","macos"),"unknown")
+    with pytest.raises(ValidationError): collector.validate_receipt(report,schema())
+
+
+def test_validator_rejects_build_python_mismatch() -> None:
+    report=mutated(("environment","build_python","version"),"3.13.0")
+    with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,schema())
+
+
+def test_schema_rejects_unpinned_build_backend() -> None:
+    report=mutated(("environment","build_backend","version"),"1.30.0")
     with pytest.raises(ValidationError): collector.validate_receipt(report,schema())
 
 
@@ -195,7 +225,19 @@ def test_rfc_reproduction_command_uses_external_interpreter() -> None:
     reproduction=RFC.read_text().split("## Reproduction of the descriptive receipt",1)[1].split("## Measured macOS E0 receipt",1)[0]
     assert ".venv/bin/python" not in reproduction
     assert 'TOOL_VENV="$RUN_ROOT/collector-tool-venv"' in reproduction
+    assert "--only-group no1-006b-collector-tool --no-emit-project" in reproduction
+    assert '--require-hashes -r "$TOOL_REQUIREMENTS"' in reproduction
     assert '"$TOOL_PYTHON" "$COLLECTOR/scripts/collect_no1_006b_baseline.py"' in reproduction
+
+
+def test_collector_tool_group_has_exact_independent_pins() -> None:
+    groups=tomllib.loads(PYPROJECT.read_text())["dependency-groups"]
+    assert groups[collector.TOOL_GROUP] == ["hatchling==1.31.0","jsonschema==4.25.1","packaging==25.0"]
+
+
+def test_subject_closure_command_excludes_tool_group() -> None:
+    command=baseline()["commands"]["export"]
+    assert command == ["uv","export","--frozen","--offline","--no-dev","--no-emit-project","--format","requirements-txt"]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="tracked: NO1-006B collector currently emits macOS-only E0 receipts")
@@ -204,15 +246,16 @@ def test_external_interpreter_probe_preserves_clean_ignored_gate(tmp_path: Path)
     root=tmp_path/"collector"; (root/"scripts").mkdir(parents=True); (root/"schemas").mkdir()
     shutil.copy2(Path(collector.__file__),root/"scripts/collect_no1_006b_baseline.py")
     shutil.copy2(SCHEMA,root/"schemas/no1-006b-baseline.schema.json")
+    shutil.copy2(REPO/"uv.lock",root/"uv.lock")
     for command in (["git","init","-q"],["git","config","user.email","contract@example.invalid"],["git","config","user.name","Contract"],["git","add","."],["git","commit","-qm","probe"]):
         subprocess.run(command,cwd=root,check=True)
     interpreter=Path(sys.executable).resolve()
     assert root.resolve() not in interpreter.parents
-    probe='import importlib.util,json; p="scripts/collect_no1_006b_baseline.py"; s=importlib.util.spec_from_file_location("probe_collector",p); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); print(json.dumps(m.collector_identity(),sort_keys=True))'
+    probe='import importlib.util,json; p="scripts/collect_no1_006b_baseline.py"; s=importlib.util.spec_from_file_location("probe_collector",p); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); print(json.dumps(m.collector_identity("a"*64),sort_keys=True))'
     env={**os.environ,"PYTHONDONTWRITEBYTECODE":"1"}
     result=subprocess.run([str(interpreter),"-c",probe],cwd=root,env=env,check=True,capture_output=True,text=True)
     commit=subprocess.run(["git","rev-parse","HEAD"],cwd=root,check=True,capture_output=True,text=True).stdout.strip()
-    expected={"commit":commit,"script_sha256":collector.sha256(root/"scripts/collect_no1_006b_baseline.py"),"schema_sha256":collector.sha256(root/"schemas/no1-006b-baseline.schema.json")}
+    expected={"commit":commit,"script_sha256":collector.sha256(root/"scripts/collect_no1_006b_baseline.py"),"schema_sha256":collector.sha256(root/"schemas/no1-006b-baseline.schema.json"),"tool_lock_sha256":collector.sha256(root/"uv.lock"),"tool_export_sha256":"a"*64}
     status=subprocess.run(["git","status","--porcelain=v1","--untracked-files=all","--ignored"],cwd=root,check=True,capture_output=True,text=True).stdout
     assert json.loads(result.stdout) == expected
     assert status == ""

@@ -1,11 +1,13 @@
 {
-  "canonical_payload_sha256": "90209af9025d18022ac9163fca6efd176c4d0db3befd029955ebef89b2bb683a",
-  "collection_finished_at_utc": "2026-08-09T21:56:58.889691+00:00",
-  "collection_started_at_utc": "2026-08-09T21:56:46.708324+00:00",
+  "canonical_payload_sha256": "f36cc5176f546306864dd11780c0203aafd1683d85a30e87efe9ab131f54c0e2",
+  "collection_finished_at_utc": "2026-08-09T22:51:20.649282+00:00",
+  "collection_started_at_utc": "2026-08-09T22:51:07.636857+00:00",
   "collector": {
-    "commit": "e33410de6a65a06a404c034c2b7ff50104834d56",
-    "schema_sha256": "acc1bb3c2fc14471e313866a2b7ae5705f60ec528be323f6f16406f702a91c3e",
-    "script_sha256": "67cb4bfd56487ef6bcaca9296511b8897ceb451fc6bdc612b47585d4e58f423f"
+    "commit": "4c414469ae94a2a5e901c3663109801d2ec27018",
+    "schema_sha256": "74471ada9f7c83222b6eec1f5936972724951e5b0b66f45f9116f19d91184e0d",
+    "script_sha256": "080f6852d4ba40322f0ca795a40de42b0ccdf2e848750a1caf42292a54a913c9",
+    "tool_export_sha256": "c0692cbbf44c6a89cea91b29d3892d1fe2fed0a02724fcae26f32ce04f23ad42",
+    "tool_lock_sha256": "c578db80172ae9e764c27c8c8c3dc3cb05dc207c8abe1854f8c214eaaf67eda8"
   },
   "commands": {
     "build": [
@@ -13,6 +15,9 @@
       "build",
       "--wheel",
       "--offline",
+      "--no-build-isolation",
+      "--python",
+      "<collector-sys-executable>",
       "--out-dir",
       "<temp>/dist"
     ],
@@ -32,6 +37,17 @@
       "--require-hashes",
       "-r",
       "<locked-requirements>"
+    ],
+    "collector_tool_export": [
+      "uv",
+      "export",
+      "--frozen",
+      "--offline",
+      "--only-group",
+      "no1-006b-collector-tool",
+      "--no-emit-project",
+      "--format",
+      "requirements-txt"
     ],
     "export": [
       "uv",
@@ -393,6 +409,14 @@
     "lock_sha256": "516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"
   },
   "environment": {
+    "build_backend": {
+      "name": "hatchling",
+      "version": "1.31.0"
+    },
+    "build_python": {
+      "implementation": "CPython",
+      "version": "3.14.3"
+    },
     "bytecode_policy": "PYTHONDONTWRITEBYTECODE=1",
     "cache_protocol": "two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm",
     "host_fingerprint": {
@@ -418,14 +442,14 @@
   "measured_axis": "macos",
   "measurements": {
     "cli_startup": {
-      "cold_ms": 1760.056,
+      "cold_ms": 1891.219,
       "definition": "clock before Popen through exact successful JSON analysis of fixture.py",
       "warm_ms": [
-        673.438,
-        569.999,
-        567.154,
-        569.75,
-        571.197
+        574.648,
+        604.485,
+        785.379,
+        574.203,
+        581.477
       ]
     },
     "dependency_distribution_count_excluding_root": 64,
@@ -435,7 +459,7 @@
     "installed_size_bytes": 89982491,
     "installed_size_scope": "unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded",
     "mcp_startup": {
-      "cold_ms": 2035.01,
+      "cold_ms": 2113.429,
       "definition": "clock before Popen through successful initialize, initialized notification, and exact tools/list readiness",
       "tool_names": [
         "edit",
@@ -449,11 +473,11 @@
         "viz"
       ],
       "warm_ms": [
-        758.606,
-        752.5,
-        749.836,
-        751.183,
-        753.742
+        767.763,
+        836.009,
+        763.113,
+        786.522,
+        767.58
       ]
     },
     "network_transfer_bytes": {
@@ -470,7 +494,7 @@
   },
   "repeats": 5,
   "roadmap_id": "NO1-006B",
-  "schema_version": 2,
+  "schema_version": 3,
   "source": {
     "commit": "7e0e8f6e03270fcbf4025d717415ef69c9354145",
     "git_tree": "fe340eff33002b67ae88b34f1174bbcca4efc370",
