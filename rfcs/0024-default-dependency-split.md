@@ -99,6 +99,10 @@ live under an external temporary directory:
 
 ```bash
 set -eu
+UV_CACHE_DIR_SAVED=${UV_CACHE_DIR-}
+for name in $(env | sed -n 's/^\(UV_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name"; done
+export UV_NO_CONFIG=1 UV_OFFLINE=1
+if test -n "$UV_CACHE_DIR_SAVED"; then export UV_CACHE_DIR=$UV_CACHE_DIR_SAVED; fi
 SOURCE_REPO=$(git rev-parse --show-toplevel)
 COLLECTOR_COMMIT=4c414469ae94a2a5e901c3663109801d2ec27018
 SUBJECT_COMMIT=7e0e8f6e03270fcbf4025d717415ef69c9354145
@@ -122,16 +126,16 @@ test -z "$(git -C "$COLLECTOR" status --porcelain=v1 --untracked-files=all --ign
 test -z "$(git -C "$SUBJECT" status --porcelain=v1 --untracked-files=all --ignored)"
 (
   cd "$COLLECTOR"
-  UV_OFFLINE=1 uv export --frozen --offline \
+  uv export --no-config --frozen --offline \
     --only-group no1-006b-collector-tool --no-emit-project \
     --format requirements-txt >"$TOOL_REQUIREMENTS"
 )
-UV_OFFLINE=1 uv venv --offline --python 3.14 "$TOOL_VENV"
-UV_OFFLINE=1 uv pip install --offline --python "$TOOL_PYTHON" --no-deps \
+uv venv --no-config --offline --python 3.14 "$TOOL_VENV"
+uv pip install --no-config --offline --python "$TOOL_PYTHON" --no-deps \
   --require-hashes -r "$TOOL_REQUIREMENTS"
 test -z "$(git -C "$COLLECTOR" status --porcelain=v1 --untracked-files=all --ignored)"
 
-UV_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 NO1_006B_PYTHON=3.14 \
+PYTHONDONTWRITEBYTECODE=1 NO1_006B_PYTHON=3.14 \
   "$TOOL_PYTHON" "$COLLECTOR/scripts/collect_no1_006b_baseline.py" \
   --repo "$SUBJECT" --repeats 5 --output "$RECEIPT"
 test -z "$(git -C "$COLLECTOR" status --porcelain=v1 --untracked-files=all --ignored)"

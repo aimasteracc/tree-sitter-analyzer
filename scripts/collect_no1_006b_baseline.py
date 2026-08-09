@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import selectors
 import signal
 import stat
@@ -56,8 +57,15 @@ def sha256(path: Path) -> str:
 
 
 def clean_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
+    # Fail closed against user/project uv configuration. UV_CACHE_DIR is the only
+    # inherited UV_* input: it selects already-downloaded offline artifacts, not
+    # resolution or index policy.
     keep = {key: os.environ[key] for key in ("HOME", "PATH", "TMPDIR", "UV_CACHE_DIR") if key in os.environ}
-    return {**keep, "UV_OFFLINE": "1", "PYTHONDONTWRITEBYTECODE": "1", "LC_ALL": "C", "LANG": "C", **(overrides or {})}
+    clean = {**keep, "UV_NO_CONFIG": "1", "UV_OFFLINE": "1", "PYTHONDONTWRITEBYTECODE": "1", "LC_ALL": "C", "LANG": "C"}
+    for key,value in (overrides or {}).items():
+        if key.startswith("UV_"): raise ValueError(f"uv environment override is not allowed: {key}")
+        clean[key]=value
+    return clean
 
 
 def run(command: list[str], *, cwd: Path, timeout: int = 180, env_overrides: dict[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
@@ -90,6 +98,12 @@ def git(repo: Path, *args: str) -> bytes:
     return run(["git", *args], cwd=repo, timeout=60).stdout
 
 
+def bound_blob(repo: Path, commit: str, relative: str) -> bytes:
+    tracked=git(repo,"ls-files","--error-unmatch",relative).decode().strip()
+    if tracked != relative: raise RuntimeError(f"collector provenance path is not tracked: {relative}")
+    return git(repo,"show",f"{commit}:{relative}")
+
+
 def require_clean_subject(repo: Path, expected_commit: str) -> dict[str, str]:
     commit = git(repo, "rev-parse", "HEAD").decode().strip()
     if commit != expected_commit:
@@ -101,7 +115,7 @@ def require_clean_subject(repo: Path, expected_commit: str) -> dict[str, str]:
     if not lock.is_file() or lock.is_symlink():
         raise RuntimeError("subject uv.lock must be a regular non-symlink file")
     return {"commit": commit, "git_tree": git(repo, "rev-parse", "HEAD^{tree}").decode().strip(),
-            "lock_sha256": sha256(lock)}
+            "lock_sha256": digest_bytes(bound_blob(repo,commit,"uv.lock"))}
 
 
 def collector_identity(tool_export_sha256: str) -> dict[str, str]:
@@ -112,28 +126,72 @@ def collector_identity(tool_export_sha256: str) -> dict[str, str]:
     if status:
         raise RuntimeError("collector worktree must be clean; commit protocol changes before collection")
     commit = git(root, "rev-parse", "HEAD").decode().strip()
-    tracked = git(root, "ls-files", "--error-unmatch", relative).decode().strip()
-    if tracked != relative or git(root, "show", f"HEAD:{relative}") != script.read_bytes():
-        raise RuntimeError("collector script is not the exact version stored at collector HEAD")
     schema_rel = SCHEMA.resolve().relative_to(root).as_posix()
-    if git(root, "show", f"HEAD:{schema_rel}") != SCHEMA.read_bytes():
-        raise RuntimeError("schema is not the exact version stored at collector HEAD")
-    lock = root / "uv.lock"
-    lock_rel = lock.relative_to(root).as_posix()
-    if git(root, "show", f"HEAD:{lock_rel}") != lock.read_bytes():
-        raise RuntimeError("collector tool lock is not the exact version stored at collector HEAD")
-    return {"commit": commit, "script_sha256": sha256(script), "schema_sha256": sha256(SCHEMA),
-            "tool_lock_sha256": sha256(lock), "tool_export_sha256": tool_export_sha256}
+    lock_rel = (root/"uv.lock").relative_to(root).as_posix()
+    # Hash committed blob bytes, not checkout bytes transformed by core.autocrlf.
+    # The clean tracked-worktree gate above binds these blobs to the executing checkout.
+    blobs={name:bound_blob(root,commit,path) for name,path in
+           (("script_sha256",relative),("schema_sha256",schema_rel),("tool_lock_sha256",lock_rel))}
+    return {"commit":commit,**{name:digest_bytes(blob) for name,blob in blobs.items()},
+            "tool_export_sha256":tool_export_sha256}
 
 
-def collector_tool_export(root: Path, destination: Path) -> str:
-    result=run(["uv","export","--frozen","--offline","--only-group",TOOL_GROUP,
+def canonical_inventory_rows(rows: list[dict[str,str]]) -> str:
+    return digest_bytes(json.dumps(rows,sort_keys=True,separators=(",",":")).encode())
+
+
+def validate_collector_environment(export: bytes) -> tuple[list[dict[str,str]],str]:
+    from packaging.markers import default_environment
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+    logical=export.decode("utf-8").replace("\\\r\n"," ").replace("\\\n"," ")
+    expected: dict[str,str]={}
+    marker_env=default_environment(); marker_env["extra"]=""
+    for line in logical.splitlines():
+        stripped=line.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith("--hash="): continue
+        if "--hash=sha256:" not in stripped: raise RuntimeError(f"collector export requirement is unhashed: {stripped}")
+        requirement_text=re.sub(r"\s+--hash=sha256:[0-9a-f]+", "", stripped)
+        requirement=Requirement(requirement_text)
+        if requirement.url or len(requirement.specifier)!=1:
+            raise RuntimeError(f"collector export contains non-exact requirement: {requirement_text}")
+        spec=next(iter(requirement.specifier))
+        if spec.operator != "==": raise RuntimeError(f"collector export contains non-exact requirement: {requirement_text}")
+        if requirement.marker is not None and not requirement.marker.evaluate(marker_env): continue
+        name=canonicalize_name(requirement.name)
+        if name in expected: raise RuntimeError(f"duplicate collector export requirement: {name}")
+        expected[name]=spec.version
+    if not expected: raise RuntimeError("collector export selected no requirements for active environment")
+    code="""import importlib.metadata as m,json,platform,sys
+rows=[]
+for dist in m.distributions():
+ name=dist.metadata.get('Name') or ''
+ rows.append({'name':name,'version':dist.version})
+print(json.dumps({'executable':sys.executable,'python':platform.python_version(),'rows':rows}))"""
+    active=json.loads(run([sys.executable,"-c",code],cwd=Path(__file__).parents[1]).stdout)
+    installed: dict[str,str]={}
+    for row in active["rows"]:
+        name=canonicalize_name(row["name"])
+        if not name or name in installed: raise RuntimeError(f"missing or duplicate active collector distribution: {name!r}")
+        installed[name]=row["version"]
+    if ROOT_NAME in installed: raise RuntimeError("project root must be absent from active collector environment")
+    if installed != expected:
+        missing=sorted(set(expected)-set(installed)); extra=sorted(set(installed)-set(expected))
+        wrong=sorted(name for name in expected.keys() & installed.keys() if expected[name]!=installed[name])
+        raise RuntimeError(f"active collector environment does not exactly match export: missing={missing}, extra={extra}, wrong_version={wrong}")
+    rows=[{"name":name,"version":installed[name]} for name in sorted(installed)]
+    return rows,canonical_inventory_rows(rows)
+
+
+def collector_tool_export(root: Path, destination: Path) -> tuple[str,list[dict[str,str]],str]:
+    result=run(["uv","export","--no-config","--frozen","--offline","--only-group",TOOL_GROUP,
                 "--no-emit-project","--format","requirements-txt"],cwd=root)
     text=result.stdout
     if b"--hash=sha256:" not in text or any(name not in text for name in (b"hatchling==",b"jsonschema==",b"packaging==")):
         raise RuntimeError("collector tool export did not produce the required hashed exact closure")
+    rows,inventory_sha=validate_collector_environment(text)
     destination.write_bytes(text); require_file_budget(destination,MAX_REQUIREMENTS_BYTES,"collector tool export")
-    return digest_bytes(text)
+    return digest_bytes(text),rows,inventory_sha
 
 
 def build_environment() -> dict[str, Any]:
@@ -148,7 +206,7 @@ def source_archive_sha(repo: Path, destination: Path) -> str:
 
 
 def export_closure(repo: Path, destination: Path) -> str:
-    result = run(["uv", "export", "--frozen", "--offline", "--no-dev", "--no-emit-project",
+    result = run(["uv", "export", "--no-config", "--frozen", "--offline", "--no-dev", "--no-emit-project",
                   "--format", "requirements-txt"], cwd=repo)
     text = result.stdout
     if b"--hash=sha256:" not in text or b"==" not in text:
@@ -168,11 +226,11 @@ def executable(venv: Path, name: str) -> Path:
 
 def install_environment(repo: Path, venv: Path, requirements: Path, wheel: Path) -> Path:
     python_spec = os.environ.get("NO1_006B_PYTHON", "3.14")
-    run(["uv", "venv", str(venv), "--python", python_spec, "--offline"], cwd=repo)
+    run(["uv", "venv", "--no-config", str(venv), "--python", python_spec, "--offline"], cwd=repo)
     python = python_path(venv)
-    run(["uv", "pip", "install", "--python", str(python), "--offline", "--no-deps",
+    run(["uv", "pip", "install", "--no-config", "--python", str(python), "--offline", "--no-deps",
          "--require-hashes", "-r", str(requirements)], cwd=repo)
-    run(["uv", "pip", "install", "--python", str(python), "--offline", "--no-deps", str(wheel)], cwd=repo)
+    run(["uv", "pip", "install", "--no-config", "--python", str(python), "--offline", "--no-deps", str(wheel)], cwd=repo)
     return python
 
 
@@ -224,12 +282,11 @@ def inventory(python: Path, cwd: Path) -> dict[str, Any]:
 def cli_sample(program: Path, fixture_dir: Path) -> float:
     started = time.perf_counter_ns()
     result = run([str(program), "fixture.py", "--summary", "--format", "json"], cwd=fixture_dir, timeout=30)
-    elapsed = round((time.perf_counter_ns() - started) / 1_000_000, 3)
     payload = json.loads(result.stdout)
     methods = payload.get("summary", {}).get("methods", [])
     if payload.get("success") is not True or payload.get("language") != "python" or [m.get("name") for m in methods] != ["add"]:
         raise RuntimeError("CLI probe did not return the exact deterministic analysis result")
-    return elapsed
+    return round((time.perf_counter_ns() - started) / 1_000_000, 3)
 
 
 def terminate(process: subprocess.Popen[bytes]) -> None:
@@ -318,6 +375,9 @@ def validate_receipt(report: dict[str, Any], schema: dict[str, Any]) -> None:
             report["environment"]["build_backend"]=={"name":"hatchling","version":HATCHLING_VERSION},
             report["collector"]["tool_export_sha256"]!=closure["export_sha256"],
             report["collector"]["tool_lock_sha256"]!=report["source"]["lock_sha256"],
+            report["collector"]["tool_inventory_sha256"]==canonical_inventory_rows(report["collector"]["tool_inventory"]),
+            [row["name"] for row in report["collector"]["tool_inventory"]]==sorted(row["name"] for row in report["collector"]["tool_inventory"]),
+            ROOT_NAME not in {row["name"] for row in report["collector"]["tool_inventory"]},
             report["canonical_payload_sha256"]==canonical_hash(report), started.tzinfo is not None, finished.tzinfo is not None,
             started <= finished]
     if not all(checks): raise ValueError("receipt cross-field consistency check failed")
@@ -358,12 +418,13 @@ def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dic
     with tempfile.TemporaryDirectory(prefix="no1-006b-") as raw:
         temp=Path(raw); dist=temp/"dist"; dist.mkdir(); requirements=temp/"locked-requirements.txt"
         collector_root=Path(__file__).resolve().parents[1]
-        tool_export_sha=collector_tool_export(collector_root,temp/"collector-tool-requirements.txt")
+        tool_export_sha,tool_rows,tool_inventory_sha=collector_tool_export(collector_root,temp/"collector-tool-requirements.txt")
         collector=collector_identity(tool_export_sha)
+        collector["tool_inventory"]=tool_rows; collector["tool_inventory_sha256"]=tool_inventory_sha
         build_env=build_environment()
         subject["source_archive_sha256"]=source_archive_sha(repo,temp/"source.tar")
         export_sha=export_closure(repo,requirements)
-        run(["uv","build","--wheel","--offline","--no-build-isolation","--python",sys.executable,"--out-dir",str(dist)],cwd=repo)
+        run(["uv","build","--no-config","--wheel","--offline","--no-build-isolation","--python",sys.executable,"--out-dir",str(dist)],cwd=repo)
         wheels=list(dist.glob("*.whl"))
         if len(wheels)!=1: raise RuntimeError(f"expected exactly one root wheel, found {len(wheels)}")
         wheel=wheels[0]; require_file_budget(wheel,MAX_ROOT_WHEEL_BYTES,"root wheel artifact")
@@ -384,9 +445,9 @@ def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dic
           "collection_started_at_utc":started,"collection_finished_at_utc":finished,"collector":collector,
           "source":{**subject,"root_wheel_filename":wheel.name,"root_wheel_sha256":sha256(wheel),"root_wheel_artifact_size_bytes":wheel.stat().st_size},
           "dependency_closure":{"derivation":"uv.lock frozen export; hashed exact requirements; project wheel installed separately with --no-deps","export_sha256":export_sha,"lock_sha256":subject["lock_sha256"],"distributions":rows},
-          "environment":{"os":platform.platform(),"system":"macos","machine":platform.machine(),"python":py_info,"build_python":build_env["python"],"build_backend":{"name":"hatchling","version":build_env["hatchling_version"]},"uv":run(["uv","--version"],cwd=repo).stdout.decode().strip(),"network_policy":"UV_OFFLINE=1; uv --offline; no network transfer measurement","bytecode_policy":"PYTHONDONTWRITEBYTECODE=1","cache_protocol":"two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm","sample_order":SAMPLE_ORDER,"host_fingerprint":{"cpu":platform.processor() or platform.machine() or "unknown","logical_cpu_count":os.cpu_count() or 1,"ram_bytes":os.sysconf("SC_PAGE_SIZE")*os.sysconf("SC_PHYS_PAGES"),"filesystem":"unknown; not controlled","virtualization":"unknown; not detected","power":"unknown; not controlled"}},
+          "environment":{"os":platform.platform(),"system":"macos","machine":platform.machine(),"python":py_info,"build_python":build_env["python"],"build_backend":{"name":"hatchling","version":build_env["hatchling_version"]},"uv":run(["uv","--no-config","--version"],cwd=repo).stdout.decode().strip(),"network_policy":"UV_OFFLINE=1; uv --offline; no network transfer measurement","bytecode_policy":"PYTHONDONTWRITEBYTECODE=1","cache_protocol":"two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm","sample_order":SAMPLE_ORDER,"host_fingerprint":{"cpu":platform.processor() or platform.machine() or "unknown","logical_cpu_count":os.cpu_count() or 1,"ram_bytes":os.sysconf("SC_PAGE_SIZE")*os.sysconf("SC_PHYS_PAGES"),"filesystem":"unknown; not controlled","virtualization":"unknown; not detected","power":"unknown; not controlled"}},
           "measurements":{"root_wheel_artifact_size_bytes":wheel.stat().st_size,"network_transfer_bytes":{"status":"unknown","reason":"offline cache artifacts do not measure network transfer"},"installed_size_bytes":inv["installed_size_bytes"],"installed_regular_file_count":inv["regular_file_count"],"installed_size_scope":"unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded","direct_dependency_count":roles.count("direct"),"transitive_dependency_count":roles.count("transitive"),"dependency_distribution_count_excluding_root":len(rows)-1,"installed_distribution_count_including_root":len(rows),"cli_startup":{"definition":CLI_STARTUP_DEFINITION,"cold_ms":samples["cli"][0],"warm_ms":samples["cli"][1:]},"mcp_startup":{"definition":MCP_STARTUP_DEFINITION,"cold_ms":samples["mcp"][0],"warm_ms":samples["mcp"][1:],"tool_names":tool_names}},
-          "commands":{"collector_tool_export":["uv","export","--frozen","--offline","--only-group",TOOL_GROUP,"--no-emit-project","--format","requirements-txt"],"export":["uv","export","--frozen","--offline","--no-dev","--no-emit-project","--format","requirements-txt"],"build":["uv","build","--wheel","--offline","--no-build-isolation","--python","<collector-sys-executable>","--out-dir","<temp>/dist"],"closure_install":["uv","pip","install","--offline","--no-deps","--require-hashes","-r","<locked-requirements>"],"root_install":["uv","pip","install","--offline","--no-deps","<root-wheel>"],"cli_probe":["tree-sitter-analyzer","fixture.py","--summary","--format","json"],"mcp_probe":["tree-sitter-analyzer-mcp","--project-root","<fixture>","initialize","notifications/initialized","tools/list"]},
+          "commands":{"collector_tool_export":["uv","export","--no-config","--frozen","--offline","--only-group",TOOL_GROUP,"--no-emit-project","--format","requirements-txt"],"export":["uv","export","--no-config","--frozen","--offline","--no-dev","--no-emit-project","--format","requirements-txt"],"build":["uv","build","--no-config","--wheel","--offline","--no-build-isolation","--python","<collector-sys-executable>","--out-dir","<temp>/dist"],"closure_install":["uv","pip","install","--no-config","--offline","--no-deps","--require-hashes","-r","<locked-requirements>"],"root_install":["uv","pip","install","--no-config","--offline","--no-deps","<root-wheel>"],"cli_probe":["tree-sitter-analyzer","fixture.py","--summary","--format","json"],"mcp_probe":["tree-sitter-analyzer-mcp","--project-root","<fixture>","initialize","notifications/initialized","tools/list"]},
           "repeats":repeats,"measured_axis":"macos","platform_axes":{"macos":"measured_e0","linux":"unknown","windows":"unknown"}}
         report["canonical_payload_sha256"]=canonical_hash(report)
         finalize_receipt(report,output,repo); return report

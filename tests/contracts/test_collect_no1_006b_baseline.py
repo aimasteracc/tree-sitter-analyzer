@@ -56,13 +56,15 @@ def test_receipt_binds_distinct_collector_and_subject_commits() -> None:
 
 def test_receipt_binds_exact_collector_and_schema_bytes() -> None:
     report=baseline()
-    assert [report["collector"]["script_sha256"],report["collector"]["schema_sha256"]] == [collector.sha256(Path(collector.__file__)),collector.sha256(SCHEMA)]
+    commit=report["collector"]["commit"]
+    assert [report["collector"]["script_sha256"],report["collector"]["schema_sha256"]] == [collector.digest_bytes(collector.git(REPO,"show",f"{commit}:scripts/collect_no1_006b_baseline.py")),collector.digest_bytes(collector.git(REPO,"show",f"{commit}:schemas/no1-006b-baseline.schema.json"))]
 
 
 def test_receipt_binds_exact_collector_tool_lock_and_export() -> None:
     report=baseline(); command=report["commands"]["collector_tool_export"]
     exported=subprocess.run(command,cwd=REPO,check=True,capture_output=True).stdout
-    assert [report["collector"]["tool_lock_sha256"],report["collector"]["tool_export_sha256"]] == [collector.sha256(REPO/"uv.lock"),collector.digest_bytes(exported)]
+    lock_blob=collector.git(REPO,"show",f"{report['collector']['commit']}:uv.lock")
+    assert [report["collector"]["tool_lock_sha256"],report["collector"]["tool_export_sha256"]] == [collector.digest_bytes(lock_blob),collector.digest_bytes(exported)]
 
 
 def test_schema_rejects_invalid_rfc3339_timestamp() -> None:
@@ -235,9 +237,54 @@ def test_collector_tool_group_has_exact_independent_pins() -> None:
     assert groups[collector.TOOL_GROUP] == ["hatchling==1.31.0","jsonschema==4.25.1","packaging==25.0"]
 
 
+
+def active_tool_inventory(monkeypatch: pytest.MonkeyPatch, rows: list[dict[str,str]]) -> bytes:
+    export=b"packaging==25.0 "+bytes([92])+b"\n    --hash=sha256:"+b"a"*64+b"\n"
+    payload={"executable":sys.executable,"python":"3.14","rows":rows}
+    monkeypatch.setattr(collector,"run",lambda *args,**kwargs: subprocess.CompletedProcess([],0,json.dumps(payload).encode(),b""))
+    return export
+
+
+def test_active_collector_inventory_exactly_matches_selected_export(monkeypatch: pytest.MonkeyPatch) -> None:
+    export=active_tool_inventory(monkeypatch,[{"name":"Packaging","version":"25.0"}])
+    rows,digest=collector.validate_collector_environment(export)
+    assert [rows,digest] == [[{"name":"packaging","version":"25.0"}],collector.canonical_inventory_rows([{"name":"packaging","version":"25.0"}])]
+
+
+def test_active_collector_inventory_rejects_extra_bootstrap_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    export=active_tool_inventory(monkeypatch,[{"name":"packaging","version":"25.0"},{"name":"pip","version":"25.0"}])
+    with pytest.raises(RuntimeError,match="extra=.*pip"): collector.validate_collector_environment(export)
+
+
+def test_active_collector_inventory_rejects_project_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    export=active_tool_inventory(monkeypatch,[{"name":"packaging","version":"25.0"},{"name":"tree-sitter-analyzer","version":"1"}])
+    with pytest.raises(RuntimeError,match="root must be absent"): collector.validate_collector_environment(export)
+
+
+def test_clean_env_drops_hostile_uv_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("UV_CONFIG_FILE","/hostile/uv.toml"); monkeypatch.setenv("UV_INDEX_URL","https://hostile.invalid")
+    environment=collector.clean_env()
+    assert {key:environment.get(key) for key in ("UV_CONFIG_FILE","UV_INDEX_URL","UV_NO_CONFIG","UV_OFFLINE")} == {"UV_CONFIG_FILE":None,"UV_INDEX_URL":None,"UV_NO_CONFIG":"1","UV_OFFLINE":"1"}
+
+
+def test_uv_export_ignores_hostile_config_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    hostile=tmp_path/"uv.toml"; hostile.write_text("this is not valid toml = [")
+    monkeypatch.setenv("UV_CONFIG_FILE",str(hostile))
+    command=["uv","export","--no-config","--frozen","--offline","--only-group",collector.TOOL_GROUP,"--no-emit-project","--format","requirements-txt"]
+    result=collector.run(command,cwd=REPO)
+    assert b"packaging==25.0" in result.stdout
+
+
+def test_bound_blob_hash_is_independent_of_crlf_checkout(tmp_path: Path) -> None:
+    repo=tmp_path/"repo"; repo.mkdir(); tracked=repo/"uv.lock"; tracked.write_bytes(b"version = 1\n")
+    for command in (["git","init","-q"],["git","config","user.email","contract@example.invalid"],["git","config","user.name","Contract"],["git","add","uv.lock"],["git","commit","-qm","blob"]): subprocess.run(command,cwd=repo,check=True)
+    commit=subprocess.run(["git","rev-parse","HEAD"],cwd=repo,check=True,capture_output=True,text=True).stdout.strip()
+    tracked.write_bytes(b"version = 1\r\n")
+    assert collector.digest_bytes(collector.bound_blob(repo,commit,"uv.lock")) == collector.digest_bytes(b"version = 1\n")
+
 def test_subject_closure_command_excludes_tool_group() -> None:
     command=baseline()["commands"]["export"]
-    assert command == ["uv","export","--frozen","--offline","--no-dev","--no-emit-project","--format","requirements-txt"]
+    assert command == ["uv","export","--no-config","--frozen","--offline","--no-dev","--no-emit-project","--format","requirements-txt"]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="tracked: NO1-006B collector currently emits macOS-only E0 receipts")
@@ -255,7 +302,7 @@ def test_external_interpreter_probe_preserves_clean_ignored_gate(tmp_path: Path)
     env={**os.environ,"PYTHONDONTWRITEBYTECODE":"1"}
     result=subprocess.run([str(interpreter),"-c",probe],cwd=root,env=env,check=True,capture_output=True,text=True)
     commit=subprocess.run(["git","rev-parse","HEAD"],cwd=root,check=True,capture_output=True,text=True).stdout.strip()
-    expected={"commit":commit,"script_sha256":collector.sha256(root/"scripts/collect_no1_006b_baseline.py"),"schema_sha256":collector.sha256(root/"schemas/no1-006b-baseline.schema.json"),"tool_lock_sha256":collector.sha256(root/"uv.lock"),"tool_export_sha256":"a"*64}
+    expected={"commit":commit,"script_sha256":collector.digest_bytes(collector.git(root,"show",f"{commit}:scripts/collect_no1_006b_baseline.py")),"schema_sha256":collector.digest_bytes(collector.git(root,"show",f"{commit}:schemas/no1-006b-baseline.schema.json")),"tool_lock_sha256":collector.digest_bytes(collector.git(root,"show",f"{commit}:uv.lock")),"tool_export_sha256":"a"*64}
     status=subprocess.run(["git","status","--porcelain=v1","--untracked-files=all","--ignored"],cwd=root,check=True,capture_output=True,text=True).stdout
     assert json.loads(result.stdout) == expected
     assert status == ""
