@@ -11328,6 +11328,7 @@ def _qualification_v3_body(repo_id="vscode", arm_id="tsa-warm"):
                 ["/host/out", "/out", False],
                 ["/host/plan", "/plan/cell-plan.json", True],
                 ["/host/inventory", "/plan/inventory.json", True],
+                ["/host/gate", "/run/no1-008a-launch-gate", True],
                 ["/host/seccomp", "/plan/seccomp.json", True],
                 ["/host/source", "/source", True],
                 ["/host/tool", "/tool/bin", True],
@@ -12164,12 +12165,12 @@ def test_qualification_v3_runtime_schema_mutation_contract():
     assert outcomes == [(False, False), (False, False), (False, False), (False, False)]
 
 
-def test_receipt_v3_rejects_a_seventh_mount_with_wrong_target():
-    # PR #1249 review 3744302996: the authenticated layout is exactly seven targets.
+def test_receipt_v3_rejects_an_eighth_mount_with_wrong_target():
+    # PR #1249 review 3744439666: the launch gate makes exactly eight targets.
     from benchmarks.codegraph_compare.receipt_v3 import validate_receipt_shape
 
     receipt = _qualification_v3_receipt()
-    receipt["body"]["process_audit"]["mounts"][5][1] = "/unexpected"
+    receipt["body"]["process_audit"]["mounts"][6][1] = "/unexpected"
 
     with pytest.raises(ValueError, match="mount"):
         validate_receipt_shape(receipt)
@@ -12305,7 +12306,7 @@ def test_qualification_v3_schema_fragments_stay_below_file_cap():
         "no1-008a-cell-receipt-v3-body.schema.json": 62,
         "no1-008a-cell-receipt-v3-common.schema.json": 261,
         "no1-008a-cell-receipt-v3-fields-a.schema.json": 211,
-        "no1-008a-cell-receipt-v3-fields-b.schema.json": 445,
+        "no1-008a-cell-receipt-v3-fields-b.schema.json": 446,
         "no1-008a-cell-receipt-v3.schema.json": 35,
     }
 
@@ -12579,19 +12580,87 @@ def test_authority_materialized_source_is_immutable_and_producer_readable(
     )
 
     snapshot = tmp_path / "source.tar"
+    payloads = {
+        "pkg/main.py": ("100644", b"print('ok')\n"),
+        "pkg/run.sh": ("100755", b"#!/bin/sh\nexit 0\n"),
+    }
     with tarfile.open(snapshot, "w") as archive:
-        info = tarfile.TarInfo("pkg/main.py")
-        payload = b"print('ok')\n"
-        info.size = len(payload)
-        info.uid = info.gid = 0
-        info.mode = 0o644
-        archive.addfile(info, io.BytesIO(payload))
+        for relative, (git_mode, payload) in payloads.items():
+            info = tarfile.TarInfo(relative)
+            info.size = len(payload)
+            info.uid = info.gid = 0
+            info.mode = 0o755 if git_mode == "100755" else 0o644
+            archive.addfile(info, io.BytesIO(payload))
     destination = tmp_path / "source"
+    inventory = json.dumps(
+        {
+            "eligibility": {
+                "tracked_files": [
+                    [
+                        relative,
+                        git_mode,
+                        hashlib.sha1(
+                            f"blob {len(payload)}\0".encode() + payload
+                        ).hexdigest(),
+                        len(payload),
+                        hashlib.sha256(payload).hexdigest(),
+                    ]
+                    for relative, (git_mode, payload) in payloads.items()
+                ]
+            }
+        }
+    ).encode()
 
-    _materialize_source(snapshot, destination, ceiling=snapshot.stat().st_size)
+    _materialize_source(
+        snapshot,
+        destination,
+        inventory_payload=inventory,
+        ceiling=snapshot.stat().st_size,
+    )
 
-    assert stat.S_IMODE((destination / "pkg" / "main.py").stat().st_mode) == 0o444
+    assert {
+        relative: stat.S_IMODE((destination / relative).stat().st_mode)
+        for relative in payloads
+    } == {"pkg/main.py": 0o444, "pkg/run.sh": 0o555}
     assert stat.S_IMODE((destination / "pkg").stat().st_mode) == 0o555
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o555
+
+
+def test_stage_inventory_tree_uses_read_only_modes_from_git_inventory(
+    tmp_path: Path,
+):
+    # PR #1249 review 3744439670: staged executable and regular blobs must be immutable.
+    from benchmarks.codegraph_compare.receipt_v3 import canonical_json_bytes
+    from benchmarks.codegraph_compare.stage_inputs import stage_inventory_tree
+
+    source = tmp_path / "checkout"
+    source.mkdir()
+    payloads = {
+        "README.md": ("100644", b"fixture\n"),
+        "bin/tool": ("100755", b"#!/bin/sh\n"),
+    }
+    records = []
+    for relative, (mode, payload) in payloads.items():
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        oid = hashlib.sha1(f"blob {len(payload)}\0".encode() + payload).hexdigest()
+        records.append(
+            [relative, mode, oid, len(payload), hashlib.sha256(payload).hexdigest()]
+        )
+    inventory = tmp_path / "inventory.json"
+    inventory.write_bytes(
+        canonical_json_bytes({"eligibility": {"tracked_files": records}})
+    )
+    destination = tmp_path / "staged"
+
+    stage_inventory_tree(source, destination, tmp_path / "source.tar", inventory)
+
+    assert {
+        relative: stat.S_IMODE((destination / relative).stat().st_mode)
+        for relative in payloads
+    } == {"README.md": 0o444, "bin/tool": 0o555}
+    assert stat.S_IMODE((destination / "bin").stat().st_mode) == 0o555
     assert stat.S_IMODE(destination.stat().st_mode) == 0o555
 
 
@@ -12928,6 +12997,22 @@ def test_host_auditor_accepts_only_all_eight_exact_producer_bind_mounts(
         _mounts(inspected)
 
 
+def test_authority_removes_ext4_lost_found_and_checks_payload_before_verity():
+    # PR #1249 review 3744439674: mkfs lost+found must not alter the signed tree hash.
+    source = Path("benchmarks/codegraph_compare/audit_authority_runner.py").read_text()
+
+    commands = [
+        '_run("mkfs.ext4", "-q", "-d", str(core), str(data))',
+        '_run("debugfs", "-w", "-R", "rmdir lost+found", str(data))',
+        "_assert_ext4_payload(data, core)",
+        '"veritysetup", "format", str(data), str(hashes)',
+    ]
+
+    assert [source.index(command) for command in commands] == sorted(
+        source.index(command) for command in commands
+    )
+
+
 def test_authority_streams_repository_sized_source_archive_under_inventory_ceiling(
     tmp_path: Path, monkeypatch
 ):
@@ -12948,7 +13033,15 @@ def test_authority_streams_repository_sized_source_archive_under_inventory_ceili
         {
             "eligibility": {
                 "tracked_files": [
-                    ["large.bin", "100644", "a" * 40, len(payload), "b" * 64]
+                    [
+                        "large.bin",
+                        "100644",
+                        hashlib.sha1(
+                            f"blob {len(payload)}\0".encode() + payload
+                        ).hexdigest(),
+                        len(payload),
+                        hashlib.sha256(payload).hexdigest(),
+                    ]
                 ]
             }
         }
@@ -12971,7 +13064,9 @@ def test_authority_streams_repository_sized_source_archive_under_inventory_ceili
         ),
     )
     digest = _sha(snapshot, limit=ceiling)
-    _materialize_source(snapshot, destination, ceiling=ceiling)
+    _materialize_source(
+        snapshot, destination, inventory_payload=inventory, ceiling=ceiling
+    )
 
     assert digest == hashlib.sha256(snapshot.read_bytes()).hexdigest()
     assert (destination / "large.bin").stat().st_size == 17 * 1024 * 1024

@@ -314,8 +314,8 @@
     },
     "mounts": {
      "type": "array",
-     "minItems": 7,
-     "maxItems": 7,
+     "minItems": 8,
+     "maxItems": 8,
      "uniqueItems": true,
      "items": {
       "type": "array",
@@ -353,7 +353,8 @@
       {"contains": {"prefixItems": [{}, {"const": "/out"}]}, "minContains": 1, "maxContains": 1},
       {"contains": {"prefixItems": [{}, {"const": "/plan/seccomp.json"}]}, "minContains": 1, "maxContains": 1},
       {"contains": {"prefixItems": [{}, {"const": "/plan/cell-plan.json"}]}, "minContains": 1, "maxContains": 1},
-      {"contains": {"prefixItems": [{}, {"const": "/plan/inventory.json"}]}, "minContains": 1, "maxContains": 1}
+      {"contains": {"prefixItems": [{}, {"const": "/plan/inventory.json"}]}, "minContains": 1, "maxContains": 1},
+      {"contains": {"prefixItems": [{}, {"const": "/run/no1-008a-launch-gate"}]}, "minContains": 1, "maxContains": 1}
      ]
     },
     "resource_limits": {

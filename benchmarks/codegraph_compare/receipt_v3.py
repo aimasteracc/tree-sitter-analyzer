@@ -281,7 +281,7 @@ def validate_body(body: Any) -> None:
     if audit["resource_limits"] != {"pids_limit": 64, "memory": 4294967296, "nano_cpus": 1000000000} or audit["tmpfs"] != {TMPFS_TARGET: "rw,noexec,nosuid,nodev,size=64m"}:
         raise ValueError("host audit limits/tmpfs invalid")
     mounts = audit["mounts"]
-    if type(mounts) is not list or len(mounts) != 7:
+    if type(mounts) is not list or len(mounts) != 8:
         raise ValueError("host audit mount facts invalid")
     tool_targets = {item["argv"][0] for item in body["executions"]}
     config_targets = {
@@ -305,9 +305,10 @@ def validate_body(body: Any) -> None:
         "/plan/seccomp.json": True,
         "/plan/cell-plan.json": True,
         "/plan/inventory.json": True,
+        "/run/no1-008a-launch-gate": True,
         "/out": False,
     }
-    if len(expected_mount_access) != 7:
+    if len(expected_mount_access) != 8:
         raise ValueError("host audit mount targets are not disjoint")
     observed_mount_access: dict[str, bool] = {}
     for number, mount in enumerate(mounts):

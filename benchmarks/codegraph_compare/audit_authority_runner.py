@@ -9,6 +9,7 @@ import os
 import shutil
 import stat
 import subprocess
+import tempfile
 import threading
 import time
 from collections.abc import Iterator, Mapping
@@ -166,6 +167,15 @@ def _validate_producer_output(output: Path) -> Path:
                 raise ValueError("producer core contains hard-linked entry")
             seen.add(identity)
     return core
+
+
+def _assert_ext4_payload(data_image: Path, payload: Path) -> None:
+    """Prove the mkfs result extracts to the exact authority payload tree."""
+    with tempfile.TemporaryDirectory(prefix="no1-008a-ext4-check-") as temporary:
+        extracted = Path(temporary)
+        _run("debugfs", "-R", f"rdump / {extracted}", str(data_image))
+        if _hash_tree(extracted) != _hash_tree(payload):
+            raise ValueError("ext4 image tree differs from sealed authority payload")
 
 
 def _seal_tree(root: Path) -> None:
@@ -377,7 +387,10 @@ class AuthorityRunner:
         source = destination / "source"
         archive_ceiling = _source_archive_ceiling(_read(job / "inventory.json"))
         _materialize_source(
-            job / "source-snapshot.tar", source, ceiling=archive_ceiling
+            job / "source-snapshot.tar",
+            source,
+            inventory_payload=_read(job / "inventory.json"),
+            ceiling=archive_ceiling,
         )
         output = destination / "producer-output"
         output.mkdir(mode=0o700)
@@ -529,6 +542,10 @@ class AuthorityRunner:
             hashes = destination / "hash.img"
             _run("truncate", "-s", "1G", str(data))
             _run("mkfs.ext4", "-q", "-d", str(core), str(data))
+            # mkfs.ext4 creates an authority-extraneous /lost+found.  Remove it
+            # before dm-verity so extraction hashes the exact sealed payload tree.
+            _run("debugfs", "-w", "-R", "rmdir lost+found", str(data))
+            _assert_ext4_payload(data, core)
             _run("truncate", "-s", "256M", str(hashes))
             format_output = _run(
                 "veritysetup", "format", str(data), str(hashes), "--hash", "sha256"

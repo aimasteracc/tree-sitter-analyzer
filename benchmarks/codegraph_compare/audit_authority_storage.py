@@ -96,8 +96,40 @@ def _secure_directory(path: Path, *, fresh: bool = False) -> None:
         raise ValueError("authority directory is not root-controlled")
 
 
-def _materialize_source(snapshot: Path, destination: Path, *, ceiling: int) -> None:
-    """Stream an authorized USTAR without ever materializing it in memory."""
+def _materialize_source(
+    snapshot: Path,
+    destination: Path,
+    *,
+    inventory_payload: bytes,
+    ceiling: int,
+) -> None:
+    """Materialize the exact root-authorized inventory as a read-only tree."""
+    document = json.loads(inventory_payload)
+    eligibility = document.get("eligibility", document)
+    records = eligibility.get("tracked_files") if type(eligibility) is dict else None
+    if type(records) is not list or not records:
+        raise ValueError("authorized inventory lacks tracked files")
+    expected: list[tuple[str, str, str, int, str]] = []
+    for item in records:
+        if (
+            type(item) is not list
+            or len(item) != 5
+            or item[1] not in {"100644", "100755"}
+            or type(item[2]) is not str
+            or len(item[2]) not in {40, 64}
+            or type(item[3]) is not int
+            or item[3] < 0
+            or type(item[4]) is not str
+            or len(item[4]) != 64
+        ):
+            raise ValueError("authorized inventory file record is invalid")
+        relative = canonical_relative_path(item[0])
+        expected.append((relative, item[1], item[2], item[3], item[4]))
+    if expected != sorted(expected) or len({item[0] for item in expected}) != len(
+        expected
+    ):
+        raise ValueError("authorized inventory paths are not sorted and unique")
+
     destination.mkdir(mode=0o700)
     descriptor = os.open(
         snapshot, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
@@ -114,46 +146,75 @@ def _materialize_source(snapshot: Path, destination: Path, *, ceiling: int) -> N
         with os.fdopen(os.dup(descriptor), "rb", closefd=True) as stream:
             with tarfile.open(fileobj=stream, mode="r|") as archive:
                 for member in archive:
-                    seen += 1
-                    if not member.isfile():
+                    if seen == len(expected):
+                        raise ValueError("source snapshot contains extra members")
+                    relative, git_mode, oid, size, content_sha = expected[seen]
+                    tar_mode = 0o755 if git_mode == "100755" else 0o644
+                    if (
+                        not member.isfile()
+                        or canonical_relative_path(member.name) != relative
+                        or member.uid != 0
+                        or member.gid != 0
+                        or member.uname
+                        or member.gname
+                        or member.mtime != 0
+                        or member.mode != tar_mode
+                        or member.size != size
+                    ):
                         raise ValueError(
-                            "source snapshot must contain regular files only"
-                        )
-                    relative = canonical_relative_path(member.name)
-                    if member.uid != 0 or member.gid != 0 or member.mode & 0o022:
-                        raise ValueError(
-                            "source snapshot metadata is not root-controlled"
+                            "source snapshot differs from authorized inventory"
                         )
                     target = destination / relative
                     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
                     member_stream = archive.extractfile(member)
                     if member_stream is None:
                         raise ValueError("source snapshot member absent")
+                    output_mode = 0o555 if git_mode == "100755" else 0o444
                     output = os.open(
                         target,
                         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                        0o444,
+                        output_mode,
                     )
                     try:
-                        remaining = member.size
+                        os.fchmod(output, output_mode)
+                        content_digest = hashlib.sha256()
+                        object_digest = (
+                            hashlib.sha1 if len(oid) == 40 else hashlib.sha256
+                        )()
+                        object_digest.update(f"blob {size}\0".encode("ascii"))
+                        remaining = size
                         while remaining:
                             chunk = member_stream.read(min(1024 * 1024, remaining))
                             if not chunk:
                                 raise ValueError("source snapshot member truncated")
-                            written = 0
-                            while written < len(chunk):
-                                written += os.write(output, chunk[written:])
+                            content_digest.update(chunk)
+                            object_digest.update(chunk)
+                            view = chunk
+                            while view:
+                                written = os.write(output, view)
+                                if written == 0:
+                                    raise OSError(
+                                        "source materialization write made no progress"
+                                    )
+                                view = view[written:]
                             remaining -= len(chunk)
                         if member_stream.read(1):
                             raise ValueError(
                                 "source snapshot member exceeds header size"
                             )
+                        if (
+                            content_digest.hexdigest() != content_sha
+                            or object_digest.hexdigest() != oid
+                        ):
+                            raise ValueError(
+                                "source snapshot bytes differ from authorized inventory"
+                            )
                         os.fsync(output)
                     finally:
                         os.close(output)
-                    os.chmod(target, 0o444, follow_symlinks=False)
-        if seen == 0:
-            raise ValueError("source snapshot is empty")
+                    seen += 1
+        if seen != len(expected):
+            raise ValueError("source snapshot omits authorized inventory members")
     finally:
         os.close(descriptor)
     for current, directories, _files in os.walk(

@@ -99,11 +99,12 @@ def stage_inventory_tree(
                     raise ValueError("staging path collision")
             fd = _open_beneath(root, relative)
             target = destination / relative
-            out_mode = 0o755 if mode == "100755" else 0o644
+            out_mode = 0o555 if mode == "100755" else 0o444
             out = os.open(
                 target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, out_mode
             )
             try:
+                os.fchmod(out, out_mode)  # creation mode is otherwise reduced by umask
                 metadata = os.fstat(fd)
                 if not stat.S_ISREG(metadata.st_mode):
                     raise ValueError("tracked worktree entry is not regular")
