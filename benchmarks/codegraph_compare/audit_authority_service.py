@@ -25,6 +25,7 @@ from benchmarks.codegraph_compare.receipt_v3 import (
 from benchmarks.codegraph_compare.trust_anchor import baked_root_public_key
 
 MAX_MESSAGE = 4 * 1024 * 1024
+READ_DEADLINE_SECONDS = 10
 CONTRACT_DOMAIN = b"NO1-008A-RUN-CELL-CONTRACT-V1\0"
 AUDIT_DOMAIN = b"NO1-008A-HOST-AUDIT-V1\0"
 RESPONSE_DOMAIN = b"NO1-008A-RUN-CELL-RESPONSE-V1\0"
@@ -197,6 +198,7 @@ def serve_once(
     artifact_root: Path | None = None,
 ) -> None:
     connection, _ = listener.accept()
+    connection.settimeout(READ_DEADLINE_SECONDS)
     reply: Mapping[str, Any] | None = None
     try:
         contract = verify_contract(_read_frame(connection))

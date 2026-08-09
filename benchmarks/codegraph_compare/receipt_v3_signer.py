@@ -220,6 +220,43 @@ def _build_body(args: argparse.Namespace) -> dict[str, object]:
     }
 
 
+def _full_semantic_verify(
+    args: argparse.Namespace, body: dict[str, object], config: dict[str, object]
+) -> None:
+    """Recompute all raw evidence semantics before either service signs."""
+    plan = strict_json_loads(_safe_path(args.plan).read_bytes())
+    inventory = strict_json_loads(_safe_path(args.inventory).read_bytes())
+    evidence = {
+        name: getattr(args, name)
+        for name in (
+            "data_image",
+            "hash_image",
+            "process_audit",
+            "source_snapshot",
+            "tool",
+            "config",
+            "seccomp",
+        )
+    }
+    _verify_trusted_inputs(body, plan, inventory, evidence, config)
+    image_fds = _verify_verity(
+        body,
+        evidence,
+        __import__(
+            "benchmarks.codegraph_compare.verifier", fromlist=["_run_verity"]
+        )._run_verity,
+    )
+    try:
+        _verify_external_audit(body, evidence, config)
+        with tempfile.TemporaryDirectory(prefix="no1-008a-semantic-") as temporary:
+            extracted = Path(temporary)
+            _extract_ext4(Path(f"/proc/self/fd/{image_fds[0]}"), extracted)
+            _verify_recomputed(body, plan, inventory, extracted)
+    finally:
+        for descriptor in image_fds:
+            os.close(descriptor)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -239,6 +276,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     executor.add_argument("--data-block-size", type=int, default=4096)
     executor.add_argument("--hash-block-size", type=int, default=4096)
     executor.add_argument("--data-blocks", type=int)
+    for option in ("public-config", "source-snapshot", "tool", "config", "seccomp"):
+        executor.add_argument(f"--{option}", required=True)
     executor.add_argument("--private-key", required=True)
     executor.add_argument("--key-id", required=True)
     approver = subparsers.add_parser("sign-approver")
@@ -308,11 +347,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if bool(args.body) == all(value is not None for value in evidence_args):
             raise ValueError("provide either one body or the complete evidence set")
-        body = (
-            strict_json_loads(_safe_path(args.body).read_bytes())
-            if args.body
-            else _build_body(args)
-        )
+        if args.body:
+            raise ValueError(
+                "executor signing requires complete independent raw evidence"
+            )
+        body = _build_body(args)
+        config = parse_public_config(_safe_path(args.public_config).read_bytes())
+        if args.key_id != config["executor"]["key_id"]:
+            raise ValueError("executor key ID does not match public config")
+        _full_semantic_verify(args, body, config)
         result = create_executor_attestation(body, args.key_id, key)
     else:
         attestation = strict_json_loads(_safe_path(args.attestation).read_bytes())
@@ -326,37 +369,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             attestation.get("body")
         ):
             raise ValueError("approver full evidence/oracle verification mismatch")
-        plan = strict_json_loads(_safe_path(args.plan).read_bytes())
-        inventory = strict_json_loads(_safe_path(args.inventory).read_bytes())
-        evidence = {
-            name: getattr(args, name)
-            for name in (
-                "data_image",
-                "hash_image",
-                "process_audit",
-                "source_snapshot",
-                "tool",
-                "config",
-                "seccomp",
-            )
-        }
-        _verify_trusted_inputs(recomputed, plan, inventory, evidence, config)
-        image_fds = _verify_verity(
-            recomputed,
-            evidence,
-            __import__(
-                "benchmarks.codegraph_compare.verifier", fromlist=["_run_verity"]
-            )._run_verity,
-        )
-        try:
-            _verify_external_audit(recomputed, evidence, config)
-            with tempfile.TemporaryDirectory(prefix="no1-008a-approve-") as temporary:
-                extracted = Path(temporary)
-                _extract_ext4(Path(f"/proc/self/fd/{image_fds[0]}"), extracted)
-                _verify_recomputed(recomputed, plan, inventory, extracted)
-        finally:
-            for descriptor in image_fds:
-                os.close(descriptor)
+        _full_semantic_verify(args, recomputed, config)
         result = approve_executor_attestation(
             attestation,
             config["executor"]["key_id"],

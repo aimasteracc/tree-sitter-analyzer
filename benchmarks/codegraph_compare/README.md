@@ -463,6 +463,16 @@ the path fails closed rather than substituting mocks.
 
 This does not defend against a malicious authority-host root. Such root is explicitly
 trusted and can control the service, kernel, Docker daemon, cgroups, and storage.
+Executor, approver, and verifier are separate Unix services with distinct private
+keys, authorized peer UIDs, immutable images, and closure measurements in the
+root-signed public config. All root-signed cell contracts share one receipt
+correlation nonce; the operator creates a separate one-use verifier challenge. It
+submits only canonical manifest bytes plus their hash. The verifier resolves signed
+authority artifact descriptors beneath its read-only stores, recomputes all fourteen
+receipts, and returns a domain-separated signed verdict envelope binding the manifest
+hash, challenge, verdict, and verifier runtime identity. The operator persists only
+that authenticated envelope.
+
 Diagnostic verification always remains `E0/NOT_EVALUATED`; retained aggregate
 results include top-level authorization and failure reasons. `SETUP_QUALIFIED` is
 setup evidence only, never E2, a winner, or a publishable comparison.

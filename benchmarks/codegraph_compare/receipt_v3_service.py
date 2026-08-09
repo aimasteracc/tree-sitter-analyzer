@@ -19,7 +19,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 from benchmarks.codegraph_compare.receipt_v3 import (
     canonical_json_bytes,
@@ -30,6 +33,8 @@ from benchmarks.codegraph_compare.verifier import parse_public_config
 
 MAX_MESSAGE = 16 * 1024 * 1024
 RESPONSE_DOMAIN = b"NO1-008A-RUN-CELL-RESPONSE-V1\0"
+SERVICE_RESPONSE_DOMAIN = b"NO1-008A-RECEIPT-SERVICE-RESPONSE-V1\0"
+READ_DEADLINE_SECONDS = 10
 
 
 def _frame(connection: socket.socket) -> dict[str, Any]:
@@ -237,8 +242,20 @@ def _sign(
                 f"--{image_role}-image-digest",
                 config["trusted"]["images"][image_role],
             ]
+        independent = [
+            "--public-config",
+            str(paths["public-config.json"]),
+            "--source-snapshot",
+            str(paths["source-snapshot.tar"]),
+            "--tool",
+            str(paths["tool"]),
+            "--config",
+            str(paths["config"]),
+            "--seccomp",
+            str(paths["seccomp"]),
+        ]
         if role == "executor":
-            command = ["sign-executor", *common]
+            command = ["sign-executor", *independent, *common]
         else:
             draft = Path(temporary) / "draft.json"
             draft.write_bytes(canonical_json_bytes(request["draft"]))
@@ -247,16 +264,7 @@ def _sign(
                 "sign-approver",
                 "--attestation",
                 str(draft),
-                "--public-config",
-                str(paths["public-config.json"]),
-                "--source-snapshot",
-                str(paths["source-snapshot.tar"]),
-                "--tool",
-                str(paths["tool"]),
-                "--config",
-                str(paths["config"]),
-                "--seccomp",
-                str(paths["seccomp"]),
+                *independent,
                 *common,
             ]
         command += ["--private-key", str(key), "--key-id", config[role]["key_id"]]
@@ -293,16 +301,34 @@ def serve_once(
     key: Path,
 ) -> None:
     connection, _ = listener.accept()
+    connection.settimeout(READ_DEADLINE_SECONDS)
     try:
         job_id, result = _sign(
             role, _frame(connection), config, artifact_root, staged_root, key
         )
-        reply = {"job_id": job_id, "receipt": result}
+        service_identity = {
+            "image_digest": config["trusted"]["images"][role],
+            "closure_manifest_sha256": config[role]["service_measurement"],
+        }
+        response = {
+            "job_id": job_id,
+            "receipt": result,
+            "service_identity": service_identity,
+        }
+        raw_key = key.read_bytes()
+        reply = {
+            "response": response,
+            "key_id": config[role]["key_id"],
+            "algorithm": "Ed25519",
+            "signature": Ed25519PrivateKey.from_private_bytes(raw_key)
+            .sign(SERVICE_RESPONSE_DOMAIN + canonical_json_bytes(response))
+            .hex(),
+        }
     except Exception as error:
         reply = {"error": type(error).__name__, "reason": str(error)}
     try:
         _send(connection, reply)
-    except (BrokenPipeError, ConnectionError):
+    except (TimeoutError, BrokenPipeError, ConnectionError):
         pass
     finally:
         connection.close()
@@ -349,13 +375,32 @@ def request_receipt(
     if set(reply) == {"error", "reason"}:
         raise ValueError(f"{role} service rejected job: {reply['reason']}")
     expected_job = authority_response["response"]["job_id"]
+    if type(reply) is not dict or set(reply) != {
+        "response",
+        "key_id",
+        "algorithm",
+        "signature",
+    }:
+        raise ValueError(f"{role} service response binding mismatch")
+    response = reply["response"]
+    expected_identity = {
+        "image_digest": config["trusted"]["images"][role],
+        "closure_manifest_sha256": service["service_measurement"],
+    }
     if (
-        type(reply) is not dict
-        or set(reply) != {"job_id", "receipt"}
-        or reply["job_id"] != expected_job
+        type(response) is not dict
+        or set(response) != {"job_id", "receipt", "service_identity"}
+        or response["job_id"] != expected_job
+        or response["service_identity"] != expected_identity
+        or reply["key_id"] != service["key_id"]
+        or reply["algorithm"] != "Ed25519"
     ):
         raise ValueError(f"{role} service response binding mismatch")
-    receipt = reply["receipt"]
+    Ed25519PublicKey.from_public_bytes(bytes.fromhex(service["public_key_hex"])).verify(
+        bytes.fromhex(reply["signature"]),
+        SERVICE_RESPONSE_DOMAIN + canonical_json_bytes(response),
+    )
+    receipt = response["receipt"]
     if type(receipt) is not dict:
         raise ValueError(f"{role} service receipt is not an object")
     return receipt

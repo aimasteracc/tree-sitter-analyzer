@@ -21,13 +21,17 @@ FROM runtime AS producer
 ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.setup_qualification_executor"]
 
 FROM runtime AS executor-service
+ARG NO1_008A_EXECUTOR_CLOSURE_SHA256
 USER 901:901
-LABEL org.tree-sitter-analyzer.no1-008a.role="executor-service"
+LABEL org.tree-sitter-analyzer.no1-008a.role="executor-service" \
+ org.tree-sitter-analyzer.no1-008a.closure-sha256=$NO1_008A_EXECUTOR_CLOSURE_SHA256
 ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.receipt_v3_service", "executor"]
 
 FROM runtime AS approver-service
+ARG NO1_008A_APPROVER_CLOSURE_SHA256
 USER 902:902
-LABEL org.tree-sitter-analyzer.no1-008a.role="approver-service"
+LABEL org.tree-sitter-analyzer.no1-008a.role="approver-service" \
+ org.tree-sitter-analyzer.no1-008a.closure-sha256=$NO1_008A_APPROVER_CLOSURE_SHA256
 ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.receipt_v3_service", "approver"]
 
 FROM runtime AS authority-service
@@ -39,5 +43,8 @@ LABEL org.tree-sitter-analyzer.no1-008a.role="authority-service"
 ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.audit_authority_service"]
 
 FROM runtime AS verifier
-LABEL org.tree-sitter-analyzer.no1-008a.role="verifier"
-ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.verifier"]
+ARG NO1_008A_VERIFIER_CLOSURE_SHA256
+LABEL org.tree-sitter-analyzer.no1-008a.role="verifier-service" \
+ org.tree-sitter-analyzer.no1-008a.closure-sha256=$NO1_008A_VERIFIER_CLOSURE_SHA256
+USER 903:903
+ENTRYPOINT ["python", "-m", "benchmarks.codegraph_compare.verifier_service"]

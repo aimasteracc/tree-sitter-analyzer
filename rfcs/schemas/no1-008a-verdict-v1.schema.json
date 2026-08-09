@@ -156,6 +156,37 @@
           },
           "attempts_per_cell": {
             "const": 1
+          },
+          "authorization": {
+            "const": "PRODUCTION_ROOT"
+          },
+          "top_level_reasons": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "authorization": {
+            "const": "DIAGNOSTIC_ONLY"
+          }
+        },
+        "required": [
+          "authorization"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "NOT_EVALUATED"
+          },
+          "top_level_reasons": {
+            "minItems": 1,
+            "contains": {
+              "const": "DIAGNOSTIC_ONLY"
+            }
           }
         }
       }

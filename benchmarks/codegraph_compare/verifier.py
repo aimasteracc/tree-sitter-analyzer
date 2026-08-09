@@ -40,7 +40,15 @@ CLAIMS = {
     "unlock_allowed": False,
 }
 PUBLIC_CONFIG_KEYS = frozenset(
-    {"schema_version", "executor", "approver", "auditor", "trusted", "root_signature"}
+    {
+        "schema_version",
+        "executor",
+        "approver",
+        "auditor",
+        "verifier",
+        "trusted",
+        "root_signature",
+    }
 )
 ROOT_SIGNATURE_DOMAIN = b"NO1-008A-PUBLIC-CONFIG-ROOT-V1\0"
 TRUSTED_KEYS = frozenset(
@@ -55,6 +63,7 @@ TRUSTED_KEYS = frozenset(
         "seccomp_sha256",
         "images",
         "auditor_runtime",
+        "verifier_runtime",
         "image_ids",
     }
 )
@@ -117,7 +126,7 @@ def parse_public_config(
     else:
         config = _exact(raw, PUBLIC_CONFIG_KEYS, "public config")
     if type(config["schema_version"]) is not int or config["schema_version"] not in (
-        {2, 3} if diagnostic_mode else {3}
+        {2, 3, 4} if diagnostic_mode else {4}
     ):
         raise ValueError("public config schema is not authorized")
     if "root_signature" in config:
@@ -149,7 +158,7 @@ def parse_public_config(
             raise ValueError("public config root signature mismatch") from exc
     keys: list[bytes] = []
     ids: list[str] = []
-    for role in ("executor", "approver", "auditor"):
+    for role in ("executor", "approver", "auditor", "verifier"):
         item = _exact(
             config[role],
             AUDITOR_AUTHORITY_KEYS if role == "auditor" else PUBLIC_ROLE_KEYS,
@@ -176,7 +185,7 @@ def parse_public_config(
             or _HEX64.fullmatch(item["service_measurement"]) is None
         ):
             raise ValueError(f"external {role} service contract is invalid")
-    if len(set(ids)) != 3 or len(set(keys)) != 3:
+    if len(set(ids)) != 4 or len(set(keys)) != 4:
         raise ValueError("public signer identities must differ")
     trusted = _exact(config["trusted"], TRUSTED_KEYS, "trusted config")
     for name in ("plan_set_hash", "tool_sha256", "config_sha256", "seccomp_sha256"):
@@ -220,19 +229,19 @@ def parse_public_config(
     )
     if any(_IMAGE.fullmatch(image_ids[role]) is None for role in IMAGE_ROLES):
         raise ValueError("top-level Docker image IDs must be root-authorized")
-    runtime = _exact(
-        trusted["auditor_runtime"],
-        frozenset({"image_digest", "image_id", "closure_manifest_sha256"}),
-        "auditor runtime",
-    )
-    if (
-        runtime["image_digest"] != images["auditor"]
-        or runtime["image_id"] != image_ids["auditor"]
-        or _HEX64.fullmatch(runtime["closure_manifest_sha256"]) is None
-        or runtime["closure_manifest_sha256"]
-        != config["auditor"]["service_measurement"]
-    ):
-        raise ValueError("auditor runtime authority is invalid")
+    for role in ("auditor", "verifier"):
+        runtime = _exact(
+            trusted[f"{role}_runtime"],
+            frozenset({"image_digest", "image_id", "closure_manifest_sha256"}),
+            f"{role} runtime",
+        )
+        if (
+            runtime["image_digest"] != images[role]
+            or runtime["image_id"] != image_ids[role]
+            or _HEX64.fullmatch(runtime["closure_manifest_sha256"]) is None
+            or runtime["closure_manifest_sha256"] != config[role]["service_measurement"]
+        ):
+            raise ValueError(f"{role} runtime authority is invalid")
     return dict(config)
 
 

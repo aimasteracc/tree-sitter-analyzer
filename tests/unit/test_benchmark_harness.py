@@ -11375,7 +11375,7 @@ def _qualification_v3_public_config():
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     config = {
-        "schema_version": 3,
+        "schema_version": 4,
         "executor": {
             "key_id": "executor",
             "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
@@ -11395,6 +11395,16 @@ def _qualification_v3_public_config():
             "protocol": "no1-008a-approver-service-v1",
             "peer_uid": 901 if "approver" == "executor" else 902,
             "service_measurement": "b" * 64,
+        },
+        "verifier": {
+            "key_id": "verifier-service",
+            "public_key_hex": Ed25519PrivateKey.from_private_bytes(b"\x55" * 32)
+            .public_key()
+            .public_bytes_raw()
+            .hex(),
+            "protocol": "no1-008a-verifier-service-v1",
+            "peer_uid": 903,
+            "service_measurement": "e" * 64,
         },
         "auditor": {
             "key_id": "auditor",
@@ -11479,6 +11489,11 @@ def _qualification_v3_public_config():
                 "image_digest": "sha256:" + "a" * 64,
                 "image_id": "sha256:" + "d" * 64,
                 "closure_manifest_sha256": "d" * 64,
+            },
+            "verifier_runtime": {
+                "image_digest": "sha256:" + "9" * 64,
+                "image_id": "sha256:" + "e" * 64,
+                "closure_manifest_sha256": "e" * 64,
             },
         },
     }
@@ -11793,7 +11808,7 @@ def test_qualification_operator_contract_is_exact_closed_service_pipeline():
             "authority-service",
             "executor-service",
             "approver-service",
-            "fresh-verifier",
+            "verifier-service",
         ],
         "qualification": "production-root-exact-14-only",
     }
@@ -11994,8 +12009,11 @@ def test_qualification_v3_operator_delegates_privileged_run_cell_authority():
 
 def test_qualification_v3_operator_preflight_requires_contracts_and_authority():
     operator = Path("scripts/no1_008a_operator.sh").read_text(encoding="utf-8")
-    assert '"$AUTHORITY_SOCKET" "$EXECUTOR_SOCKET" "$APPROVER_SOCKET"' in operator
-    assert '"$ARTIFACT_ROOT" "$STAGED_ROOT"' in operator
+    assert (
+        '"$AUTHORITY_SOCKET" "$EXECUTOR_SOCKET" "$APPROVER_SOCKET" "$VERIFIER_SOCKET"'
+        in operator
+    )
+    assert '"$PUBLIC_CONFIG" "$STAGED_ROOT"' in operator
 
 
 def test_qualification_v3_runtime_schema_acceptance_parity():

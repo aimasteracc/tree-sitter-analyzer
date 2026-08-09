@@ -209,10 +209,19 @@ def _validate_verdict_schema(value: Mapping[str, Any]) -> None:
         raise ValueError("aggregate verdict does not match the published closed schema")
     if value["authorization"] not in {"PRODUCTION_ROOT", "DIAGNOSTIC_ONLY"}:
         raise ValueError("aggregate authorization invalid")
+    if value["status"] == "SETUP_QUALIFIED" and (
+        value["authorization"] != "PRODUCTION_ROOT" or value["top_level_reasons"]
+    ):
+        raise ValueError("only reason-free production authorization can qualify")
     if type(value["top_level_reasons"]) is not list or any(
         type(reason) is not str for reason in value["top_level_reasons"]
     ):
         raise ValueError("aggregate top-level reasons invalid")
+    if value["authorization"] == "DIAGNOSTIC_ONLY" and (
+        value["status"] != "NOT_EVALUATED"
+        or "DIAGNOSTIC_ONLY" not in value["top_level_reasons"]
+    ):
+        raise ValueError("diagnostic verdict requires an explicit diagnostic reason")
     diagnostics = value["cell_diagnostics"]
     if type(diagnostics) is not list or len(diagnostics) > 14:
         raise ValueError("aggregate cell diagnostics invalid")
