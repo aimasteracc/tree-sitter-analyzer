@@ -354,6 +354,12 @@ def serve_once(
                 reply = finalize(runner(contract))
     except Exception as error:
         reply = {"error": type(error).__name__, "reason": str(error)}
+    except BaseException:
+        # Cleanup ambiguity is process-fatal: close the shared listener so no
+        # worker can accept another producer, then let the fatal signal escape.
+        listener.close()
+        connection.close()
+        raise
     try:
         _write_frame(connection, reply)
     except (TimeoutError, BrokenPipeError, ConnectionError):

@@ -8,6 +8,7 @@ import re
 import stat
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -360,7 +361,9 @@ def _safe_path(raw: Any, label: str) -> Path:
     return path
 
 
-def _sha_file(path: Path) -> tuple[int, str]:
+def _sha_file(
+    path: Path, *, deadline_monotonic: float | None = None
+) -> tuple[int, str]:
     descriptor = os.open(
         path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
     )
@@ -370,6 +373,11 @@ def _sha_file(path: Path) -> tuple[int, str]:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ValueError("evidence image is not regular")
         while True:
+            if (
+                deadline_monotonic is not None
+                and time.monotonic() >= deadline_monotonic
+            ):
+                raise TimeoutError("evidence hashing deadline expired")
             chunk = os.read(descriptor, 1024 * 1024)
             if not chunk:
                 break
@@ -463,6 +471,7 @@ def verify_cell(
     verifier_nonce: str,
     verifier_image_digest: str,
     process_identity: str,
+    deadline_monotonic: float | None = None,
     diagnostic_mode: bool = False,
     diagnostic_root_public_key: bytes | None = None,
 ) -> tuple[str, ...]:
@@ -498,10 +507,19 @@ def verify_cell(
             or verifier_image_digest == body["process_audit"]["image_digest"]
         ):
             raise ValueError("verifier process is not isolated from producer")
-        _verify_trusted_inputs(body, plan, inventory, evidence, config)
+        _verify_trusted_inputs(
+            body,
+            plan,
+            inventory,
+            evidence,
+            config,
+            deadline_monotonic=deadline_monotonic,
+        )
         if verifier_image_digest != config["trusted"]["images"]["verifier"]:
             raise ValueError("unauthorized verifier image")
-        image_fds = _verify_verity(body, evidence, runner)
+        image_fds = _verify_verity(
+            body, evidence, runner, deadline_monotonic=deadline_monotonic
+        )
         try:
             audit = _verify_external_audit(body, evidence, config)
             if audit["image_digest"] != body["environment"]["image_digest"]:
@@ -509,7 +527,13 @@ def verify_cell(
             with tempfile.TemporaryDirectory(prefix="no1-008a-verify-") as temporary:
                 extracted = Path(temporary)
                 extractor(Path(f"/proc/self/fd/{image_fds[0]}"), extracted)
-                _verify_recomputed(body, plan, inventory, extracted)
+                _verify_recomputed(
+                    body,
+                    plan,
+                    inventory,
+                    extracted,
+                    deadline_monotonic=deadline_monotonic,
+                )
         finally:
             for descriptor in image_fds:
                 os.close(descriptor)

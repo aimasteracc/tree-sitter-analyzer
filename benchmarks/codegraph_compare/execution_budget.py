@@ -32,14 +32,28 @@ HOST_AUDIT_OPERATIONS_PER_CELL = (
     "terminal_docker_events",
 )
 DEBUGFS_FIXED_OVERHEAD_SECONDS = 30
-DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND = 16 * 1024 * 1024
-# Covers bounded hashing, fsync, audit construction, signing, and response assembly.
+# Extraction and hashing share one conservative storage-throughput floor.  Budget
+# calculations and incremental readers must use this same floor so neither can
+# silently assume faster media than the other.
+MIN_STORAGE_THROUGHPUT_BYTES_PER_SECOND = 16 * 1024 * 1024
+DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND = MIN_STORAGE_THROUGHPUT_BYTES_PER_SECOND
+HASH_MIN_THROUGHPUT_BYTES_PER_SECOND = MIN_STORAGE_THROUGHPUT_BYTES_PER_SECOND
+HASH_FIXED_OVERHEAD_SECONDS = 30
+# Covers fsync, audit construction, signing, and response assembly after the
+# byte-derived hashing allowances below.
 AUTHORITY_HASH_SIGN_MARGIN_SECONDS = 120
 # Both receipt roles independently extract once to build a body and once again
 # during full semantic verification.  The fresh verifier extracts once per cell.
 RECEIPT_ROLE_EXTRACTIONS_PER_CELL = 2
 VERIFIER_EXTRACTIONS_PER_CELL = 1
 VERITY_VERIFY_OPERATIONS_PER_CELL = 3
+# Complete sealed-evidence read passes.  Each receipt role pins/hashes the images,
+# builds the body twice, verifies verity, and recomputes the core/index.  The fresh
+# verifier pins/hashes and verifies the images once and recomputes core/index once.
+RECEIPT_ROLE_IMAGE_HASH_PASSES_PER_CELL = 4
+RECEIPT_ROLE_OUTPUT_HASH_PASSES_PER_CELL = 8
+VERIFIER_IMAGE_HASH_PASSES_PER_CELL = 2
+VERIFIER_OUTPUT_HASH_PASSES_PER_CELL = 4
 EXECUTOR_HASH_SIGN_MARGIN_SECONDS = 120
 APPROVER_HASH_SIGN_MARGIN_SECONDS = 120
 VERIFIER_HASH_SIGN_MARGIN_SECONDS = 120
@@ -58,6 +72,27 @@ def debugfs_payload_timeout_seconds(payload_bytes: int) -> int:
         + (payload_bytes + DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND - 1)
         // DEBUGFS_MIN_THROUGHPUT_BYTES_PER_SECOND
     )
+
+
+def hashing_timeout_seconds(
+    payload_bytes: int, *, deadline_monotonic: float | None = None
+) -> float:
+    """Return a byte-derived hashing allowance capped by an absolute deadline."""
+    if type(payload_bytes) is not int or payload_bytes < 0:
+        raise ValueError("hashing payload size is invalid")
+    timeout = float(
+        HASH_FIXED_OVERHEAD_SECONDS
+        + (payload_bytes + HASH_MIN_THROUGHPUT_BYTES_PER_SECOND - 1)
+        // HASH_MIN_THROUGHPUT_BYTES_PER_SECOND
+    )
+    if deadline_monotonic is not None:
+        if type(deadline_monotonic) not in {int, float}:
+            raise ValueError("hashing deadline is invalid")
+        remaining = float(deadline_monotonic) - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("hashing contract deadline expired")
+        timeout = min(timeout, remaining)
+    return max(0.001, timeout)
 
 
 def extraction_timeout_seconds(
@@ -101,6 +136,35 @@ def sealed_image_upper_bound_bytes(output: int) -> int:
     return ((maximum + _EXT4_ROUND_BYTES - 1) // _EXT4_ROUND_BYTES) * _EXT4_ROUND_BYTES
 
 
+def verity_hash_image_upper_bound_bytes(data_bytes: int) -> int:
+    """Return the authority's conservative dm-verity hash-image allocation."""
+    if type(data_bytes) is not int or data_bytes < 0:
+        raise ValueError("verity hash image budget input is invalid")
+    raw = 16 * 1024 * 1024 + (data_bytes + 99) // 100
+    return ((raw + _EXT4_ROUND_BYTES - 1) // _EXT4_ROUND_BYTES) * _EXT4_ROUND_BYTES
+
+
+def _sealed_hashing_bytes(plan: Mapping[str, Any], *, role: str) -> int:
+    """Return complete sealed image/tree bytes hashed by one post-authority role."""
+    ceilings = plan.get("resource_ceilings")
+    output = ceilings.get("io_bytes") if type(ceilings) is dict else None
+    if type(output) is not int or output < 0:
+        raise ValueError("post-authority budget input is invalid")
+    data = sealed_image_upper_bound_bytes(output)
+    images = data + verity_hash_image_upper_bound_bytes(data)
+    if role in {"executor", "approver"}:
+        return (
+            RECEIPT_ROLE_IMAGE_HASH_PASSES_PER_CELL * images
+            + RECEIPT_ROLE_OUTPUT_HASH_PASSES_PER_CELL * output
+        )
+    if role == "verifier":
+        return (
+            VERIFIER_IMAGE_HASH_PASSES_PER_CELL * images
+            + VERIFIER_OUTPUT_HASH_PASSES_PER_CELL * output
+        )
+    raise ValueError("post-authority hashing role is invalid")
+
+
 def post_authority_cell_budget_seconds(plan: Mapping[str, Any]) -> int:
     """Bound both receipt signers and fresh verification for one sealed cell."""
     ceilings = plan.get("resource_ceilings")
@@ -111,6 +175,10 @@ def post_authority_cell_budget_seconds(plan: Mapping[str, Any]) -> int:
     extraction_count = (
         2 * RECEIPT_ROLE_EXTRACTIONS_PER_CELL + VERIFIER_EXTRACTIONS_PER_CELL
     )
+    hashing = sum(
+        int(hashing_timeout_seconds(_sealed_hashing_bytes(plan, role=role)))
+        for role in ("executor", "approver", "verifier")
+    )
     margins = (
         EXECUTOR_HASH_SIGN_MARGIN_SECONDS
         + APPROVER_HASH_SIGN_MARGIN_SECONDS
@@ -118,6 +186,7 @@ def post_authority_cell_budget_seconds(plan: Mapping[str, Any]) -> int:
     )
     return (
         extraction_count * extraction
+        + hashing
         + VERITY_VERIFY_OPERATIONS_PER_CELL * AUTHORITY_COMMAND_TIMEOUT_SECONDS
         + margins
     )

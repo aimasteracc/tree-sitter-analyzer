@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -53,7 +54,12 @@ def _core_blob_size(plan: Mapping[str, Any], expected_size: int) -> int:
 
 
 def _read_core(
-    root: Path, relative: str, expected_size: int, plan: Mapping[str, Any]
+    root: Path,
+    relative: str,
+    expected_size: int,
+    plan: Mapping[str, Any],
+    *,
+    deadline_monotonic: float | None = None,
 ) -> bytes:
     relative = canonical_relative_path(relative)
     expected_size = _core_blob_size(plan, expected_size)
@@ -65,6 +71,11 @@ def _read_core(
                 raise ValueError("core blob size mismatch")
             chunks = bytearray()
             while len(chunks) < expected_size:
+                if (
+                    deadline_monotonic is not None
+                    and time.monotonic() >= deadline_monotonic
+                ):
+                    raise TimeoutError("sealed core read deadline expired")
                 chunk = os.read(
                     descriptor, min(1024 * 1024, expected_size - len(chunks))
                 )
@@ -81,7 +92,12 @@ def _read_core(
 
 
 def _hash_core(
-    root: Path, relative: str, expected_size: int, plan: Mapping[str, Any]
+    root: Path,
+    relative: str,
+    expected_size: int,
+    plan: Mapping[str, Any],
+    *,
+    deadline_monotonic: float | None = None,
 ) -> str:
     relative = canonical_relative_path(relative)
     expected_size = _core_blob_size(plan, expected_size)
@@ -93,7 +109,15 @@ def _hash_core(
                 raise ValueError("core blob size mismatch")
             digest = hashlib.sha256()
             size = 0
-            while chunk := os.read(descriptor, 1024 * 1024):
+            while True:
+                if (
+                    deadline_monotonic is not None
+                    and time.monotonic() >= deadline_monotonic
+                ):
+                    raise TimeoutError("sealed core hashing deadline expired")
+                chunk = os.read(descriptor, 1024 * 1024)
+                if not chunk:
+                    break
                 digest.update(chunk)
                 size += len(chunk)
             if size != expected_size:
@@ -111,6 +135,8 @@ def _stdout_matches_expected(
     expected_size: int,
     expected_result: Any,
     plan: Mapping[str, Any],
+    *,
+    deadline_monotonic: float | None = None,
 ) -> bool:
     expected_size = _core_blob_size(plan, expected_size)
     expected = canonical_json_bytes(expected_result)
@@ -124,11 +150,24 @@ def _stdout_matches_expected(
                 return False
             offset = 0
             while offset < len(expected):
+                if (
+                    deadline_monotonic is not None
+                    and time.monotonic() >= deadline_monotonic
+                ):
+                    raise TimeoutError("sealed stdout read deadline expired")
                 chunk = os.read(descriptor, min(1024 * 1024, len(expected) - offset))
                 if chunk != expected[offset : offset + len(chunk)]:
                     return False
                 offset += len(chunk)
-            while chunk := os.read(descriptor, 1024 * 1024):
+            while True:
+                if (
+                    deadline_monotonic is not None
+                    and time.monotonic() >= deadline_monotonic
+                ):
+                    raise TimeoutError("sealed stdout read deadline expired")
+                chunk = os.read(descriptor, 1024 * 1024)
+                if not chunk:
+                    break
                 if chunk.strip(b"\n"):
                     return False
             return offset == len(expected)
@@ -147,6 +186,8 @@ def _verify_recomputed(
     plan: Mapping[str, Any],
     inventory: Mapping[str, Any],
     core: Path,
+    *,
+    deadline_monotonic: float | None = None,
 ) -> None:
     cell = body["cell"]
     if (cell["repo_id"], cell["arm_id"], cell["attempt"]) != (
@@ -221,6 +262,7 @@ def _verify_recomputed(
             "producer-result.json",
             (core / "producer-result.json").stat().st_size,
             plan,
+            deadline_monotonic=deadline_monotonic,
         )
     )
     result_executions = [
@@ -256,7 +298,13 @@ def _verify_recomputed(
         ):
             blob = item[field]
             if (
-                _hash_core(core, blob["path"], blob["size_bytes"], plan)
+                _hash_core(
+                    core,
+                    blob["path"],
+                    blob["size_bytes"],
+                    plan,
+                    deadline_monotonic=deadline_monotonic,
+                )
                 != blob["sha256"]
             ):
                 raise ValueError("raw bytes mismatch")
@@ -266,6 +314,7 @@ def _verify_recomputed(
             item["query_bytes"]["path"],
             item["query_bytes"]["size_bytes"],
             plan,
+            deadline_monotonic=deadline_monotonic,
         ) != canonical_json_bytes(query):
             raise ValueError("oracle query bytes mismatch")
         expected_result = spec.get("expected_result")
@@ -276,6 +325,7 @@ def _verify_recomputed(
             stdout_blob["size_bytes"],
             expected_result,
             plan,
+            deadline_monotonic=deadline_monotonic,
         ):
             raise ValueError("expected result bytes mismatch")
         index_payload = _read_core(
@@ -283,6 +333,7 @@ def _verify_recomputed(
             item["final_index_observation"]["path"],
             item["final_index_observation"]["size_bytes"],
             plan,
+            deadline_monotonic=deadline_monotonic,
         )
         index_records = strict_json_loads(b'{"records":' + index_payload + b"}")[
             "records"
@@ -295,7 +346,13 @@ def _verify_recomputed(
             raise ValueError("final index observation records invalid")
         for record in index_records:
             if (
-                _hash_core(core / "index", record["path"], record["size_bytes"], plan)
+                _hash_core(
+                    core / "index",
+                    record["path"],
+                    record["size_bytes"],
+                    plan,
+                    deadline_monotonic=deadline_monotonic,
+                )
                 != record["sha256"]
             ):
                 raise ValueError("final index observation content mismatch")
@@ -310,12 +367,16 @@ def _verify_recomputed(
     union = set().union(*sets)
     if union != set(eligibility["eligible_paths"]):
         raise ValueError("partition gap or extra path")
-    if _hash_tree(core) != body["snapshot"]["tree_hash"]:
+    if (
+        _hash_tree(core, deadline_monotonic=deadline_monotonic)
+        != body["snapshot"]["tree_hash"]
+    ):
         raise ValueError("sealed core tree mismatch")
     index = core / "index"
     if (
         not index.is_dir()
-        or _hash_tree(index) != body["snapshot"]["index_content_hash"]
+        or _hash_tree(index, deadline_monotonic=deadline_monotonic)
+        != body["snapshot"]["index_content_hash"]
     ):
         raise ValueError("index content mismatch")
     if body["counters"] != dict(ZERO_COUNTERS):

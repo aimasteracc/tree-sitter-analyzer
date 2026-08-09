@@ -71,6 +71,88 @@ def _run(*args: str, timeout: float = AUTHORITY_COMMAND_TIMEOUT_SECONDS) -> byte
     return stdout
 
 
+class AuthorityCleanupFatal(BaseException):
+    """Unrecoverable producer cleanup ambiguity; the service must stop listening."""
+
+
+def _docker_container_absent(container: str, timeout: float) -> bool:
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", container],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=max(0.001, timeout),
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    if result.returncode == 0:
+        return False
+    message = (result.stdout + result.stderr).decode(errors="replace").lower()
+    return "no such object" in message or "no such container" in message
+
+
+def _cgroup_unpopulated(cgroup: Path) -> bool:
+    try:
+        events = dict(
+            line.split()
+            for line in _read(cgroup / "cgroup.events").decode().splitlines()
+        )
+    except FileNotFoundError:
+        return True
+    return events.get("populated") == "0"
+
+
+def _cleanup_producer(container: str, cgroup: Path) -> None:
+    """Remove one producer and prove both Docker and cgroup absence before return."""
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", container],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=AUTHORITY_COMMAND_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        # An interrupted Docker RPC leaves container state unknown.  Continue with
+        # kernel-level termination, but never return until both authorities agree.
+        pass
+    deadline = time.monotonic() + AUTHORITY_COMMAND_TIMEOUT_SECONDS
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AuthorityCleanupFatal(
+                "producer cleanup could not confirm Docker/cgroup absence"
+            )
+        try:
+            kill = os.open(
+                cgroup / "cgroup.kill",
+                os.O_WRONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                os.write(kill, b"1")
+            finally:
+                os.close(kill)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            # A transient busy/delegation error is safe only if polling below can
+            # still prove the subtree is empty and removable.
+            pass
+        absent = _docker_container_absent(container, min(5.0, remaining))
+        empty = _cgroup_unpopulated(cgroup)
+        if absent and empty:
+            try:
+                cgroup.rmdir()
+            except FileNotFoundError:
+                return
+            except OSError:
+                pass
+            else:
+                return
+        time.sleep(min(0.05, max(0.001, deadline - time.monotonic())))
+
+
 PRODUCER_GATE_TARGET = "/run/no1-008a-launch-gate"
 PRODUCER_GATE_WRAPPER = (
     'IFS= read -r signal < "$1" || exit 125; '
@@ -769,19 +851,10 @@ class AuthorityRunner:
         finally:
             if pidfd_descriptor >= 0:
                 os.close(pidfd_descriptor)
-            subprocess.run(
-                ["docker", "rm", "-f", container],
-                capture_output=True,
-                timeout=AUTHORITY_COMMAND_TIMEOUT_SECONDS,
-                check=False,
-            )
+            _cleanup_producer(container, cgroup)
             try:
                 gate.unlink()
             except FileNotFoundError:
-                pass
-            try:
-                cgroup.rmdir()
-            except OSError:
                 pass
 
     def _sync_sealed_job(self, job_id: str, result: Mapping[str, Any]) -> None:

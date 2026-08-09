@@ -75,7 +75,10 @@ def _read_private_key(raw: str) -> bytes:
 
 
 def _build_body(
-    args: argparse.Namespace, *, core_override: Path | None = None
+    args: argparse.Namespace,
+    *,
+    core_override: Path | None = None,
+    deadline_monotonic: float | None = None,
 ) -> dict[str, object]:
     plan = strict_json_loads(_safe_path(args.plan).read_bytes())
     inventory = strict_json_loads(_safe_path(args.inventory).read_bytes())
@@ -96,8 +99,8 @@ def _build_body(
     audit = audit_request["audit"]
     data = _safe_path(args.data_image)
     hashes = _safe_path(args.hash_image)
-    data_size, data_sha = _sha_file(data)
-    hash_size, hash_sha = _sha_file(hashes)
+    data_size, data_sha = _sha_file(data, deadline_monotonic=deadline_monotonic)
+    hash_size, hash_sha = _sha_file(hashes, deadline_monotonic=deadline_monotonic)
     executions = []
     cpu_seconds = 0.0
     for item in result["executions"]:
@@ -191,8 +194,10 @@ def _build_body(
             "data_block_size": args.data_block_size,
             "hash_block_size": args.hash_block_size,
             "data_blocks": args.data_blocks,
-            "tree_hash": _hash_tree(core),
-            "index_content_hash": _hash_tree(index),
+            "tree_hash": _hash_tree(core, deadline_monotonic=deadline_monotonic),
+            "index_content_hash": _hash_tree(
+                index, deadline_monotonic=deadline_monotonic
+            ),
         },
         "process_audit": {
             **{
@@ -254,13 +259,21 @@ def _full_semantic_verify(
             "seccomp",
         )
     }
-    _verify_trusted_inputs(body, plan, inventory, evidence, config)
+    _verify_trusted_inputs(
+        body,
+        plan,
+        inventory,
+        evidence,
+        config,
+        deadline_monotonic=deadline_monotonic,
+    )
     image_fds = _verify_verity(
         body,
         evidence,
         __import__(
             "benchmarks.codegraph_compare.verifier", fromlist=["_run_verity"]
         )._run_verity,
+        deadline_monotonic=deadline_monotonic,
     )
     try:
         _verify_external_audit(body, evidence, config)
@@ -271,12 +284,22 @@ def _full_semantic_verify(
                 extracted,
                 deadline_monotonic=deadline_monotonic,
             )
-            sealed_body = _build_body(args, core_override=extracted)
+            sealed_body = _build_body(
+                args,
+                core_override=extracted,
+                deadline_monotonic=deadline_monotonic,
+            )
             if canonical_json_bytes(sealed_body) != canonical_json_bytes(body):
                 raise ValueError(
                     "unsealed core differs from verified dm-verity extraction"
                 )
-            _verify_recomputed(sealed_body, plan, inventory, extracted)
+            _verify_recomputed(
+                sealed_body,
+                plan,
+                inventory,
+                extracted,
+                deadline_monotonic=deadline_monotonic,
+            )
             return sealed_body
     finally:
         for descriptor in image_fds:
@@ -305,7 +328,11 @@ def sign_verified_receipt(
             extracted,
             deadline_monotonic=deadline_monotonic,
         )
-        body = _build_body(args, core_override=extracted)
+        body = _build_body(
+            args,
+            core_override=extracted,
+            deadline_monotonic=deadline_monotonic,
+        )
         body = _full_semantic_verify(
             args, body, config, deadline_monotonic=deadline_monotonic
         )

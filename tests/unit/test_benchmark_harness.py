@@ -15042,7 +15042,7 @@ def test_exact14_budget_uses_sealed_image_extractions_not_producer_wall():
         }
     }
 
-    assert exact14_execution_budget_seconds(plans) == 2942
+    assert exact14_execution_budget_seconds(plans) == 3117
 
 
 def test_live_output_size_ignores_disappearing_entry(tmp_path: Path, monkeypatch):
@@ -15503,7 +15503,13 @@ def test_verifier_expired_after_semantics_transitions_failed_without_envelope(
     monkeypatch.setattr(
         verifier_service,
         "_load_manifest",
-        lambda *_args: ({"cells": []}, digest, challenge, "b" * 64, "c" * 64),
+        lambda *_args, **_kwargs: (
+            {"cells": []},
+            digest,
+            challenge,
+            "b" * 64,
+            "c" * 64,
+        ),
     )
     monkeypatch.setattr(verifier_service, "aggregate_verdict", lambda *_a, **_k: {})
     monkeypatch.setattr(verifier_service, "_validate_verdict_schema", lambda _v: None)
@@ -15544,6 +15550,132 @@ def test_operator_recomputes_configured_plan_set_before_authority_calls():
     assert source.index(
         "verify_configured_plan_set(decision_contract, config)"
     ) < source.index("authority = run_cell(")
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    (
+        "src,bad.py",
+        "src/control\x1f.py",
+        "src\\bad.py",
+        "/src/bad.py",
+        "src/./bad.py",
+        "a" * 4097,
+    ),
+)
+def test_receipt_inventory_enforces_published_relative_path(invalid: str):
+    # PR #1249 review 3744944744: preflight must match published relativePath.
+    from benchmarks.codegraph_compare.receipt_inventory import (
+        validate_receipt_inventory,
+    )
+
+    eligibility = dict(_qualification_v3_body()["source"]["eligibility"])
+    eligibility["eligible_paths"] = [invalid]
+
+    with pytest.raises(ValueError, match="canonical relative path"):
+        validate_receipt_inventory({"eligibility": eligibility})
+
+
+def test_receipt_inventory_accepts_consistent_sha256_git_object_ids():
+    # PR #1249 review 3744944747: SHA-256 Git repositories use 64-char OIDs.
+    from benchmarks.codegraph_compare.receipt_inventory import (
+        validate_receipt_inventory,
+    )
+
+    eligibility = dict(_qualification_v3_body()["source"]["eligibility"])
+    eligibility["commit"] = "a" * 64
+    eligibility["root_tree_id"] = "b" * 64
+    eligibility["tracked_entries"] = [
+        [path, mode, "c" * 64]
+        for path, mode, _object_id in eligibility["tracked_entries"]
+    ]
+    eligibility["tracked_files"] = [
+        [path, mode, "c" * 64, size, digest]
+        for path, mode, _object_id, size, digest in eligibility["tracked_files"]
+    ]
+
+    validated = validate_receipt_inventory({"eligibility": eligibility})
+
+    assert validated["root_tree_id"] == "b" * 64
+
+
+def test_receipt_inventory_rejects_mixed_git_object_formats():
+    # PR #1249 review 3744944747: every OID must match the root-tree algorithm.
+    from benchmarks.codegraph_compare.receipt_inventory import (
+        validate_receipt_inventory,
+    )
+
+    eligibility = dict(_qualification_v3_body()["source"]["eligibility"])
+    eligibility["root_tree_id"] = "b" * 64
+
+    with pytest.raises(ValueError, match="match root tree format"):
+        validate_receipt_inventory({"eligibility": eligibility})
+
+
+def test_verifier_file_hash_checks_absolute_deadline(tmp_path: Path, monkeypatch):
+    # PR #1249 review 3744944740: large evidence hashes cannot outlive service work.
+    from benchmarks.codegraph_compare import verifier
+
+    evidence = tmp_path / "evidence.bin"
+    evidence.write_bytes(b"payload")
+    monkeypatch.setattr(verifier.time, "monotonic", lambda: 10.0)
+
+    with pytest.raises(TimeoutError, match="hashing deadline expired"):
+        verifier._sha_file(evidence, deadline_monotonic=10.0)
+
+
+def test_authority_cleanup_recovers_only_after_confirmed_absence(monkeypatch):
+    # PR #1249 review 3744944754: ambiguous rm requires Docker+cgroup confirmation.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    calls = []
+
+    def run(command, **_kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired(command, 120)
+        return SimpleNamespace(
+            returncode=1,
+            stdout=b"",
+            stderr=b"Error: No such object: producer",
+        )
+
+    monkeypatch.setattr(authority.subprocess, "run", run)
+
+    authority._cleanup_producer("producer", Path("/missing/cgroup"))
+
+    assert calls == [
+        ["docker", "rm", "-f", "producer"],
+        ["docker", "inspect", "producer"],
+    ]
+
+
+def test_authority_cleanup_unknown_state_is_process_fatal(monkeypatch):
+    # PR #1249 review 3744944754: unconfirmed cleanup must fail-stop the service.
+    from benchmarks.codegraph_compare import audit_authority_runner as authority
+
+    ticks = iter((0.0, 0.0, 1.0, 1.0))
+    monkeypatch.setattr(authority, "AUTHORITY_COMMAND_TIMEOUT_SECONDS", 0.5)
+    monkeypatch.setattr(
+        authority,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: next(ticks),
+            sleep=lambda _seconds: None,
+        ),
+    )
+    monkeypatch.setattr(authority, "_docker_container_absent", lambda *_args: False)
+    monkeypatch.setattr(
+        authority.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1),
+    )
+
+    with pytest.raises(
+        authority.AuthorityCleanupFatal,
+        match="could not confirm Docker/cgroup absence",
+    ):
+        authority._cleanup_producer("producer", Path("/missing/cgroup"))
 
 
 _mark_posix_qualification_section_tests()

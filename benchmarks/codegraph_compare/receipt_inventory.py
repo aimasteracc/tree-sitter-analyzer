@@ -21,8 +21,9 @@ ELIGIBILITY_KEYS = frozenset(
         "repo_fingerprint",
     }
 )
-_HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
+_GIT_OBJECT_ID = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
+_RELATIVE_PATH_MAX_LENGTH = 4096
 _GIT_MODES = frozenset({"100644", "100755", "120000", "160000"})
 
 
@@ -30,8 +31,11 @@ def _path(value: Any, label: str) -> str:
     if (
         type(value) is not str
         or not value
+        or len(value) > _RELATIVE_PATH_MAX_LENGTH
         or value.startswith("/")
+        or "," in value
         or "\\" in value
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
         or "//" in value
         or any(part in ("", ".", "..") for part in value.split("/"))
     ):
@@ -54,13 +58,15 @@ def validate_receipt_inventory(inventory: Any) -> dict[str, Any]:
         raise ValueError("receipt eligibility has unknown or missing fields")
     if type(eligibility["repo_id"]) is not str or not eligibility["repo_id"]:
         raise ValueError("eligibility.repo_id must be a non-empty string")
-    _hex(eligibility["commit"], "eligibility.commit", _HEX40)
-    root_tree = eligibility["root_tree_id"]
-    if (
-        type(root_tree) is not str
-        or re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", root_tree) is None
-    ):
-        raise ValueError("eligibility.root_tree_id must be a Git object ID")
+    commit = _hex(eligibility["commit"], "eligibility.commit", _GIT_OBJECT_ID)
+    root_tree = _hex(
+        eligibility["root_tree_id"],
+        "eligibility.root_tree_id",
+        _GIT_OBJECT_ID,
+    )
+    git_object_id_length = len(root_tree)
+    if len(commit) != git_object_id_length:
+        raise ValueError("eligibility Git object IDs must match root tree format")
     for name in (
         "source_rules_hash",
         "tracked_inventory_hash",
@@ -85,7 +91,11 @@ def validate_receipt_inventory(inventory: Any) -> dict[str, Any]:
         _path(item[0], "eligibility.tracked_entries.path")
         if item[1] not in _GIT_MODES:
             raise ValueError("eligibility.tracked_entries mode is invalid")
-        _hex(item[2], "eligibility.tracked_entries.object_id", _HEX40)
+        object_id = _hex(
+            item[2], "eligibility.tracked_entries.object_id", _GIT_OBJECT_ID
+        )
+        if len(object_id) != git_object_id_length:
+            raise ValueError("tracked entry Git object format differs from root tree")
 
     files = eligibility["tracked_files"]
     if type(files) is not list or files != sorted(files):
@@ -102,7 +112,9 @@ def validate_receipt_inventory(inventory: Any) -> dict[str, Any]:
             or item[3] < 0
         ):
             raise ValueError("eligibility.tracked_files metadata is invalid")
-        _hex(item[2], "eligibility.tracked_files.object_id", _HEX40)
+        object_id = _hex(item[2], "eligibility.tracked_files.object_id", _GIT_OBJECT_ID)
+        if len(object_id) != git_object_id_length:
+            raise ValueError("tracked file Git object format differs from root tree")
         _hex(item[4], "eligibility.tracked_files.sha256")
     if [item[0] for item in files] != eligibility["tracked_regular_paths"]:
         raise ValueError("tracked files do not bind the tracked regular path partition")

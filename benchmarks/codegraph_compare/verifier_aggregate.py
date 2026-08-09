@@ -83,6 +83,7 @@ def aggregate_verdict(
     runner: Runner = _run_verity,
     extractor: Extractor = _extract_ext4,
     process_identity_factory: Callable[[int], str] | None = None,
+    deadline_monotonic: float | None = None,
     diagnostic_mode: bool = False,
     diagnostic_root_public_key: bytes | None = None,
 ) -> dict[str, Any]:
@@ -150,6 +151,7 @@ def aggregate_verdict(
                 verifier_nonce=exact["verifier_nonce"],
                 verifier_image_digest=exact["verifier_image_digest"],
                 process_identity=factory(number),
+                deadline_monotonic=deadline_monotonic,
                 diagnostic_mode=diagnostic_mode,
                 diagnostic_root_public_key=diagnostic_root_public_key,
             )

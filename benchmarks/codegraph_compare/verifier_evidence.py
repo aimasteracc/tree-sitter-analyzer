@@ -6,6 +6,7 @@ import hashlib
 import os
 import stat
 import tarfile
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -69,7 +70,9 @@ def _open_evidence(path: Path) -> int:
     return os.open(path, os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0))
 
 
-def _sha_file(path: Path) -> tuple[int, str]:
+def _sha_file(
+    path: Path, *, deadline_monotonic: float | None = None
+) -> tuple[int, str]:
     descriptor = _open_evidence(path)
     digest = hashlib.sha256()
     size = 0
@@ -77,6 +80,11 @@ def _sha_file(path: Path) -> tuple[int, str]:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ValueError("evidence image is not regular")
         while True:
+            if (
+                deadline_monotonic is not None
+                and time.monotonic() >= deadline_monotonic
+            ):
+                raise TimeoutError("evidence hashing deadline expired")
             chunk = os.read(descriptor, 1024 * 1024)
             if not chunk:
                 break
@@ -134,8 +142,10 @@ def _recompute_git_root(records: list[list[str]]) -> str:
     return tree_oid(root)
 
 
-def _sha_evidence(path: Any, label: str) -> str:
-    return _sha_file(_safe_path(path, label))[1]
+def _sha_evidence(
+    path: Any, label: str, *, deadline_monotonic: float | None = None
+) -> str:
+    return _sha_file(_safe_path(path, label), deadline_monotonic=deadline_monotonic)[1]
 
 
 def _verify_trusted_inputs(
@@ -144,6 +154,8 @@ def _verify_trusted_inputs(
     inventory: Mapping[str, Any],
     evidence: Mapping[str, Any],
     config: Mapping[str, Any],
+    *,
+    deadline_monotonic: float | None = None,
 ) -> None:
     trusted = config["trusted"]
     identity = f"{body['cell']['repo_id']}/{body['cell']['arm_id']}"
@@ -168,7 +180,15 @@ def _verify_trusted_inputs(
     source_fd = _open_evidence(source_path)
     try:
         source_digest = hashlib.sha256()
-        while chunk := os.read(source_fd, 1024 * 1024):
+        while True:
+            if (
+                deadline_monotonic is not None
+                and time.monotonic() >= deadline_monotonic
+            ):
+                raise TimeoutError("source snapshot hashing deadline expired")
+            chunk = os.read(source_fd, 1024 * 1024)
+            if not chunk:
+                break
             source_digest.update(chunk)
         if source_digest.hexdigest() != trusted["source_snapshot_sha256"][repo]:
             raise ValueError("immutable source snapshot hash mismatch")
@@ -237,6 +257,11 @@ def _verify_trusted_inputs(
                 remaining = expected_size
                 generated = False
                 while remaining:
+                    if (
+                        deadline_monotonic is not None
+                        and time.monotonic() >= deadline_monotonic
+                    ):
+                        raise TimeoutError("source blob hashing deadline expired")
                     chunk = extracted.read(min(1024 * 1024, remaining))
                     if not chunk:
                         raise ValueError("tracked source size mismatch")
@@ -250,6 +275,11 @@ def _verify_trusted_inputs(
                     ):
                         generated = True
                     overlap = window[-overlap_bytes:] if overlap_bytes else b""
+                if (
+                    deadline_monotonic is not None
+                    and time.monotonic() >= deadline_monotonic
+                ):
+                    raise TimeoutError("source blob hashing deadline expired")
                 if extracted.read(1):
                     raise ValueError("tracked source exceeds declared size")
                 digest = content_digest.hexdigest()
@@ -326,7 +356,10 @@ def _verify_trusted_inputs(
     ):
         raise ValueError("source inventory semantic recomputation mismatch")
     for name in ("tool", "config", "seccomp"):
-        if _sha_evidence(evidence[name], name) != trusted[f"{name}_sha256"]:
+        if (
+            _sha_evidence(evidence[name], name, deadline_monotonic=deadline_monotonic)
+            != trusted[f"{name}_sha256"]
+        ):
             raise ValueError(f"trusted {name} bytes mismatch")
     if (
         body["plan"]["tool_sha256"] != trusted["tool_sha256"]
@@ -342,7 +375,11 @@ def _verify_trusted_inputs(
 
 
 def _verify_verity(
-    body: Mapping[str, Any], evidence: Mapping[str, Any], runner: Runner
+    body: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+    runner: Runner,
+    *,
+    deadline_monotonic: float | None = None,
 ) -> tuple[int, int]:
     snapshot = body["snapshot"]
     paths = (
@@ -355,7 +392,15 @@ def _verify_verity(
         for descriptor in descriptors:
             digest = hashlib.sha256()
             size = 0
-            while chunk := os.read(descriptor, 1024 * 1024):
+            while True:
+                if (
+                    deadline_monotonic is not None
+                    and time.monotonic() >= deadline_monotonic
+                ):
+                    raise TimeoutError("verity image hashing deadline expired")
+                chunk = os.read(descriptor, 1024 * 1024)
+                if not chunk:
+                    break
                 size += len(chunk)
                 digest.update(chunk)
             os.lseek(descriptor, 0, os.SEEK_SET)

@@ -222,6 +222,8 @@ def _load_manifest(
     artifact_root: Path,
     staged_root: Path,
     temporary: Path,
+    *,
+    deadline_monotonic: float | None = None,
 ) -> tuple[dict[str, Any], str, str, str, str]:
     if set(request) != {
         "operation",
@@ -297,7 +299,12 @@ def _load_manifest(
     retained_fds: list[int] = []
     try:
         for ordinal, (identity, item, response) in enumerate(validated):
-            paths = _paths(response, artifact_root, staged_root)
+            paths = _paths(
+                response,
+                artifact_root,
+                staged_root,
+                deadline_monotonic=deadline_monotonic,
+            )
             try:
                 audit = temporary / f"audit-{ordinal:02d}.json"
                 audit.write_bytes(canonical_json_bytes(response["audit"]))
@@ -383,7 +390,12 @@ def _verify(
         with tempfile.TemporaryDirectory(prefix="no1-008a-verifier-") as directory:
             manifest, loaded_digest, loaded_challenge, decision_id, decision_digest = (
                 _load_manifest(
-                    request, config, artifact_root, staged_root, Path(directory)
+                    request,
+                    config,
+                    artifact_root,
+                    staged_root,
+                    Path(directory),
+                    deadline_monotonic=deadline_monotonic,
                 )
             )
             if (loaded_digest, loaded_challenge) != (digest, challenge):
@@ -412,6 +424,7 @@ def _verify(
                         )._extract_ext4,
                         deadline_monotonic=deadline_monotonic,
                     ),
+                    deadline_monotonic=deadline_monotonic,
                 )
             finally:
                 for descriptor in pinned:

@@ -182,9 +182,15 @@ class PinnedPaths(dict[str, Path]):
             os.close(self.fds.pop())
 
 
-def _directory_size(fd: int) -> int:
+def _check_deadline(deadline_monotonic: float | None, label: str) -> None:
+    if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+        raise TimeoutError(f"{label} deadline expired")
+
+
+def _directory_size(fd: int, *, deadline_monotonic: float | None = None) -> int:
     total = 0
     for name in os.listdir(fd):
+        _check_deadline(deadline_monotonic, "receipt artifact hashing")
         metadata = os.stat(name, dir_fd=fd, follow_symlinks=False)
         if stat.S_ISLNK(metadata.st_mode):
             raise ValueError("core evidence contains a symlink")
@@ -200,7 +206,7 @@ def _directory_size(fd: int) -> int:
                 dir_fd=fd,
             )
             try:
-                total += _directory_size(child)
+                total += _directory_size(child, deadline_monotonic=deadline_monotonic)
             finally:
                 os.close(child)
         else:
@@ -209,7 +215,11 @@ def _directory_size(fd: int) -> int:
 
 
 def _paths(
-    response: dict[str, Any], artifact_root: Path, staged_root: Path
+    response: dict[str, Any],
+    artifact_root: Path,
+    staged_root: Path,
+    *,
+    deadline_monotonic: float | None = None,
 ) -> PinnedPaths:
     """Open every evidence object first, then hash and use only retained FDs."""
     job_id = response["job_id"]
@@ -244,16 +254,25 @@ def _paths(
     pinned = PinnedPaths(result)
     try:
         for name, item in expected.items():
+            _check_deadline(deadline_monotonic, "receipt artifact hashing")
             path = pinned[name]
             fd = int(path.name)
             if name == "core":
-                digest = _hash_tree_descriptor(fd, max_bytes=64 * 1024 * 1024 * 1024)
-                size = _directory_size(fd)
+                digest = _hash_tree_descriptor(
+                    fd,
+                    max_bytes=64 * 1024 * 1024 * 1024,
+                    deadline_monotonic=deadline_monotonic,
+                )
+                size = _directory_size(fd, deadline_monotonic=deadline_monotonic)
             else:
                 digest_object = hashlib.sha256()
                 size = 0
                 offset = 0
-                while chunk := os.pread(fd, 1024 * 1024, offset):
+                while True:
+                    _check_deadline(deadline_monotonic, "receipt artifact hashing")
+                    chunk = os.pread(fd, 1024 * 1024, offset)
+                    if not chunk:
+                        break
                     digest_object.update(chunk)
                     size += len(chunk)
                     offset += len(chunk)
@@ -319,7 +338,12 @@ def _sign(
         raise TimeoutError(f"{role} service contract deadline expired")
     deadline_monotonic = deadline_ns / 1_000_000_000
     response = _verify_authority(request["authority_response"], config)
-    paths = _paths(response, artifact_root, staged_root)
+    paths = _paths(
+        response,
+        artifact_root,
+        staged_root,
+        deadline_monotonic=deadline_monotonic,
+    )
     try:
         verity = _verity(paths["verity-format.txt"])
         with tempfile.TemporaryDirectory(prefix=f"no1-008a-{role}-") as temporary:
