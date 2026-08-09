@@ -278,7 +278,9 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
     if tuple(path for path, _ in flags) != tuple(path for path, _, _ in records):
         raise ValueError("Tracked index flags do not match the pinned inventory")
     commit = _git(repo, "rev-parse", "HEAD").decode("ascii").strip()
-    if _git(repo, "status", "--porcelain=v1", "--untracked-files=all"):
+    if _git(
+        repo, "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching"
+    ):
         raise ValueError("Qualification checkout contains tracked or untracked changes")
     regular: list[str] = []
     eligible: list[str] = []
@@ -357,7 +359,9 @@ def inventory_sources(repo_id: str, repo: Path, rules: SourceRulesV1) -> Eligibi
         )
     finally:
         os.close(root_fd)
-    if _git(repo, "status", "--porcelain=v1", "--untracked-files=all"):
+    if _git(
+        repo, "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching"
+    ):
         raise ValueError("Qualification checkout changed during inventory")
     if (
         _tracked_stage(repo) != records

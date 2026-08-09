@@ -31,6 +31,14 @@ ZERO_COUNTERS = {
     "output_tokens": 0,
     "api_cost_usd": 0,
 }
+FROZEN_EXECUTION_ENVIRONMENT = (
+    ("HOME", "/nonexistent"),
+    ("LANG", "C.UTF-8"),
+    ("LC_ALL", "C.UTF-8"),
+    ("NO_PROXY", "*"),
+    ("PATH", ""),
+)
+FROZEN_EXECUTION_ENVIRONMENT_DIGEST = _sha256(FROZEN_EXECUTION_ENVIRONMENT)
 
 
 def _bytes_hash(payload: bytes) -> str:
@@ -352,10 +360,11 @@ class HarnessArtifactV1:
 
 @dataclass(frozen=True)
 class ExecutionSpecV1:
-    """One exact external command frozen by the trusted plan."""
+    """One exact external command and environment frozen by the trusted plan."""
 
     execution_id: str
     argv: tuple[str, ...]
+    environment_digest: str
 
     def __post_init__(self) -> None:
         if (
@@ -364,8 +373,11 @@ class ExecutionSpecV1:
             or type(self.argv) is not tuple
             or not self.argv
             or any(type(arg) is not str or not arg for arg in self.argv)
+            or self.environment_digest != FROZEN_EXECUTION_ENVIRONMENT_DIGEST
         ):
-            raise ValueError("Execution IDs and argv entries must be non-empty")
+            raise ValueError(
+                "Execution IDs, argv, and frozen environment digest must be exact"
+            )
 
 
 @dataclass(frozen=True)
@@ -442,22 +454,54 @@ class CellPlanV1:
             raise ValueError(
                 "Plan must freeze ordered delete/build/health/symbol/call executions"
             )
-        if any(
-            sum(arg in {self.index_path, INDEX_PATH_PLACEHOLDER} for arg in spec.argv)
-            != 1
-            for spec in self.executions
-        ):
-            raise ValueError(
-                "Every frozen execution argv must reference the plan-bound index path"
+        oracle_by_id = {spec.oracle_id: spec for spec in self.oracle_specs}
+        expected_argv: list[tuple[str, ...]] = [
+            (
+                self.tool.path,
+                "delete",
+                "--config",
+                self.config.path,
+                "--index",
+                self.index_path,
+            ),
+            (
+                self.tool.path,
+                "build",
+                "--config",
+                self.config.path,
+                "--source",
+                self.source_checkout_path,
+                "--index",
+                self.index_path,
+            ),
+            (
+                self.tool.path,
+                "health",
+                "--config",
+                self.config.path,
+                "--index",
+                self.index_path,
+            ),
+        ]
+        for execution in self.executions[3:]:
+            oracle = oracle_by_id[execution.execution_id]
+            query_flags = tuple(
+                part for key, value in oracle.query for part in (f"--{key}", value)
             )
-        build = self.executions[1]
-        if (
-            build.argv.count(self.source_checkout_path) != 1
-            or build.argv.count(self.index_path) != 1
-        ):
+            expected_argv.append(
+                (
+                    self.tool.path,
+                    oracle.kind,
+                    "--config",
+                    self.config.path,
+                    *query_flags,
+                    "--index",
+                    self.index_path,
+                )
+            )
+        if tuple(spec.argv for spec in self.executions) != tuple(expected_argv):
             raise ValueError(
-                "Frozen build argv must explicitly reference the canonical source "
-                "checkout and index paths"
+                "Frozen execution argv must exactly bind authenticated tool/config, canonical source checkout, and plan-bound index path"
             )
         parse_allowlist = _sorted_paths(
             self.parse_error_allowlist, "parse-error allowlist"

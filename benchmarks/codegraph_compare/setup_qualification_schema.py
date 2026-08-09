@@ -47,6 +47,7 @@ _EXECUTION_KEYS = frozenset(
         "id",
         "argv",
         "exit_code",
+        "environment_digest",
         "stdout_bytes",
         "stderr_bytes",
         "query_bytes",
@@ -62,6 +63,7 @@ _SNAPSHOT_PAYLOAD_KEYS = frozenset(
         "schema_version",
         "plan_hash",
         "snapshot_id",
+        "root_identity",
         "mount",
         "producer_descendants",
         "writes_blocked",
@@ -150,12 +152,14 @@ def strict_json_loads(payload: bytes) -> Any:
 
     _validate_json_envelope(payload)
     try:
-        return json.loads(
+        parsed = json.loads(
             payload,
             object_pairs_hook=_reject_duplicate_members,
             parse_constant=reject_constant,
             parse_float=_parse_finite_float,
         )
+        validate_direct_json_bounds(parsed)
+        return parsed
     except RecursionError as exc:
         raise ValueError("Strict JSON nesting is a validation violation") from exc
 
@@ -401,6 +405,7 @@ def validate_receipt_schema_v2(receipt: object) -> None:
         if not argv:
             raise ValueError(f"{name}.argv must not be empty")
         _require_int(execution["exit_code"], f"{name}.exit_code")
+        _require_hash(execution["environment_digest"], f"{name}.environment_digest")
         if "oracle_spec_hash" in execution:
             _require_hash(execution["oracle_spec_hash"], f"{name}.oracle_spec_hash")
         for blob_name in ("stdout_bytes", "stderr_bytes", "query_bytes", "index_bytes"):
@@ -425,6 +430,15 @@ def validate_receipt_schema_v2(receipt: object) -> None:
     _require_string(
         snapshot_payload["snapshot_id"], "snapshot_audit.payload.snapshot_id"
     )
+    root_identity = snapshot_payload["root_identity"]
+    if type(root_identity) is not list or len(root_identity) != 6:
+        raise ValueError("snapshot_audit.payload.root_identity must have six integers")
+    for number, value in enumerate(root_identity):
+        _require_int(
+            value,
+            f"snapshot_audit.payload.root_identity[{number}]",
+            minimum=0,
+        )
     mount = _require_exact_keys(
         snapshot_payload["mount"],
         frozenset({"read_only"}),

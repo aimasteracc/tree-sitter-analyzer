@@ -8229,7 +8229,17 @@ def test_source_inventory_rechecks_exact_full_status_after_blob_scan(tmp_path: P
     with patch.object(module, "_git", side_effect=recording_git):
         inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
 
-    assert calls.count(("status", "--porcelain=v1", "--untracked-files=all")) == 2
+    assert (
+        calls.count(
+            (
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "--ignored=matching",
+            )
+        )
+        == 2
+    )
 
 
 def test_source_inventory_rejects_assume_unchanged_flag(tmp_path: Path):
@@ -8364,7 +8374,11 @@ def test_cell_plan_rejects_reserved_oracle_execution_ids(
         plan.oracle_specs[1],
     )
     executions = (*plan.executions[:3],) + tuple(
-        ExecutionSpecV1(spec.oracle_id, ("oracle", spec.oracle_id, plan.index_path))
+        ExecutionSpecV1(
+            spec.oracle_id,
+            ("oracle", spec.oracle_id, plan.index_path),
+            plan.executions[0].environment_digest,
+        )
         for spec in oracles
     )
 
@@ -8375,16 +8389,15 @@ def test_cell_plan_rejects_reserved_oracle_execution_ids(
 def test_cell_plan_allows_oracle_id_that_only_contains_reserved_word(tmp_path: Path):
     from dataclasses import replace
 
-    from benchmarks.codegraph_compare.setup_qualification import ExecutionSpecV1
-
     plan = _qualification_plans(tmp_path)[0]
     oracles = (
         replace(plan.oracle_specs[0], oracle_id="delete.oracle"),
         plan.oracle_specs[1],
     )
-    executions = (*plan.executions[:3],) + tuple(
-        ExecutionSpecV1(spec.oracle_id, ("oracle", spec.oracle_id, plan.index_path))
-        for spec in oracles
+    executions = (
+        *plan.executions[:3],
+        replace(plan.executions[3], execution_id="delete.oracle"),
+        plan.executions[4],
     )
 
     replaced = replace(plan, oracle_specs=oracles, executions=executions)
@@ -8403,7 +8416,11 @@ def test_execution_spec_rejects_mutable_argv():
     from benchmarks.codegraph_compare.setup_qualification import ExecutionSpecV1
 
     with pytest.raises(ValueError, match="argv"):
-        ExecutionSpecV1("build", ["tool", "build"])  # type: ignore[arg-type]
+        ExecutionSpecV1(
+            "build",
+            ["tool", "build"],  # type: ignore[arg-type]
+            "0" * 64,
+        )
 
 
 def test_oracle_spec_rejects_mutable_query():
@@ -8635,6 +8652,7 @@ def _qualification_plans(tmp_path: Path):
     from benchmarks.codegraph_compare.setup_qualification import (
         DEFAULT_SOURCE_RULES,
         EXPECTED_CELLS,
+        FROZEN_EXECUTION_ENVIRONMENT_DIGEST,
         CellPlanV1,
         EligibilityV1,
         ExecutionSpecV1,
@@ -8685,22 +8703,42 @@ def _qualification_plans(tmp_path: Path):
             resources,
             (
                 ExecutionSpecV1(
-                    "delete", ("rm-index", repo, arm, f"cells/{repo}--{arm}/index")
+                    "delete",
+                    (
+                        str(tool_path),
+                        "delete",
+                        "--config",
+                        str(config_path),
+                        "--index",
+                        f"cells/{repo}--{arm}/index",
+                    ),
+                    FROZEN_EXECUTION_ENVIRONMENT_DIGEST,
                 ),
                 ExecutionSpecV1(
                     "build",
                     (
                         str(tool_path),
                         "build",
-                        repo,
-                        arm,
+                        "--config",
+                        str(config_path),
+                        "--source",
                         source_checkout.as_posix(),
+                        "--index",
                         f"cells/{repo}--{arm}/index",
                     ),
+                    FROZEN_EXECUTION_ENVIRONMENT_DIGEST,
                 ),
                 ExecutionSpecV1(
                     "health",
-                    (str(tool_path), "health", repo, arm, f"cells/{repo}--{arm}/index"),
+                    (
+                        str(tool_path),
+                        "health",
+                        "--config",
+                        str(config_path),
+                        "--index",
+                        f"cells/{repo}--{arm}/index",
+                    ),
+                    FROZEN_EXECUTION_ENVIRONMENT_DIGEST,
                 ),
                 *(
                     ExecutionSpecV1(
@@ -8708,9 +8746,16 @@ def _qualification_plans(tmp_path: Path):
                         (
                             str(tool_path),
                             spec.kind,
-                            *sum(spec.query, ()),
+                            "--config",
+                            str(config_path),
+                            *sum(
+                                ((f"--{key}", value) for key, value in spec.query),
+                                (),
+                            ),
+                            "--index",
                             f"cells/{repo}--{arm}/index",
                         ),
+                        FROZEN_EXECUTION_ENVIRONMENT_DIGEST,
                     )
                     for spec in _qualification_oracles()
                 ),
@@ -8743,6 +8788,8 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
         return Ed25519PrivateKey.from_private_bytes(seed * 32).sign(encoded).hex()
 
     cell_root.mkdir(parents=True, exist_ok=False)
+    # The externally sealed snapshot includes the already-created receipt inode.
+    (cell_root / "cell-receipt.json").touch()
     index = cell_root / "index"
     index.mkdir()
     (index / "index.bin").write_bytes(b"frozen index")
@@ -8774,6 +8821,7 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
             "id": identifier,
             "argv": list(execution.argv),
             "exit_code": 0,
+            "environment_digest": execution.environment_digest,
             "stdout_bytes": blob(f"raw/{number}-stdout", stdout),
             "stderr_bytes": blob(f"raw/{number}-stderr", b""),
             "query_bytes": blob(f"raw/{number}-query", query),
@@ -8788,6 +8836,9 @@ def _write_valid_qualification_receipt(cell_root: Path, plan):
         "schema_version": 1,
         "plan_hash": plan.digest,
         "snapshot_id": f"snapshot-{plan.repo_id}-{plan.arm_id}",
+        "root_identity": list(
+            qualification._stable_directory_identity(cell_root.stat())
+        ),
         "mount": {"read_only": True},
         "producer_descendants": 0,
         "writes_blocked": True,
@@ -8959,7 +9010,6 @@ def test_producer_refuses_self_reported_collector_evidence():
 
 
 def test_strict_validator_accepts_complete_plan_bound_e0_receipt(tmp_path: Path):
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -9022,7 +9072,6 @@ def test_strict_validator_rejects_resource_observation_mutation(tmp_path: Path):
 
 
 def test_strict_validator_rejects_raw_stdout_mutation(tmp_path: Path):
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -9256,7 +9305,6 @@ def test_direct_receipt_rejects_excessive_node_count_before_hash(tmp_path: Path)
 
 
 def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -9274,7 +9322,9 @@ def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
         cell_root=cell_root,
         verifier_config=_qualification_verifier_config(),
     ) == (
+        "SNAPSHOT_AUDIT_MISSING",
         "INDEX_BYTES_MISMATCH",
+        "RAW_EXECUTION_EVIDENCE_MISSING",
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
         "HUMAN_ORACLE_APPROVAL_MISSING",
@@ -9282,7 +9332,6 @@ def test_strict_validator_rejects_index_root_symlink(tmp_path: Path):
 
 
 def test_strict_validator_rejects_harness_config_byte_mutation(tmp_path: Path):
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -9819,7 +9868,6 @@ def test_strict_validator_rejects_nonfinite_or_boolean_resource_value(
 
 
 def test_strict_validator_rejects_unknown_schema_version(tmp_path: Path):
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -9834,7 +9882,6 @@ def test_strict_validator_rejects_unknown_schema_version(tmp_path: Path):
 
 
 def test_strict_validator_rejects_incomplete_index_partition(tmp_path: Path):
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -9857,7 +9904,6 @@ def test_strict_validator_rejects_incomplete_index_partition(tmp_path: Path):
 
 
 def test_strict_validator_rejects_forged_executor_signature(tmp_path: Path):
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -9901,7 +9947,6 @@ def test_validator_authenticates_quiescence_before_tree_hash(
 
 
 def test_strict_validator_rejects_forged_audit_signature(tmp_path: Path):
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -9916,7 +9961,6 @@ def test_strict_validator_rejects_forged_audit_signature(tmp_path: Path):
 
 
 def test_strict_validator_rejects_forged_approver_signature(tmp_path: Path):
-
     plan = _qualification_plans(tmp_path)[0]
     cell_root = tmp_path / "cell"
     receipt = _write_valid_qualification_receipt(cell_root, plan)
@@ -10537,7 +10581,9 @@ def test_strict_validator_rejects_decoy_receipt_index_path(tmp_path: Path):
         verifier_config=_qualification_verifier_config(),
     ) == (
         "PLAN_BINDING_MISMATCH",
+        "SNAPSHOT_AUDIT_MISSING",
         "INDEX_BYTES_MISMATCH",
+        "RAW_EXECUTION_EVIDENCE_MISSING",
         "INDEX_PROVENANCE_MISSING",
         "OS_AUDIT_MISSING",
         "HUMAN_ORACLE_APPROVAL_MISSING",
@@ -10697,3 +10743,84 @@ def _mark_posix_qualification_section_tests() -> None:
 
 # Keep this invocation at EOF so tests appended to the qualification section inherit it.
 _mark_posix_qualification_section_tests()
+
+
+def test_strict_receipt_json_rejects_flat_node_budget_overflow():
+    # PR #1247 review 3742970270: byte/depth checks alone missed flat JSON trees.
+    from benchmarks.codegraph_compare.setup_qualification import strict_json_loads
+
+    payload = b"[" + b",".join([b"0"] * 100_000) + b"]"
+
+    with pytest.raises(ValueError, match="depth or node limits"):
+        strict_json_loads(payload)
+
+
+def test_source_inventory_rejects_ignored_checkout_path(tmp_path: Path):
+    # PR #1247 review 3742970272: fresh evidence requires a completely clean checkout.
+    from benchmarks.codegraph_compare.setup_qualification import (
+        DEFAULT_SOURCE_RULES,
+        inventory_sources,
+    )
+
+    repo = tmp_path / "repo"
+    _qualification_git_repo(repo)
+    (repo / ".git/info/exclude").write_text("rogue.ts\n", encoding="utf-8")
+    (repo / "rogue.ts").write_text("export const decoy = true;\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="tracked or untracked changes"):
+        inventory_sources("vscode", repo, DEFAULT_SOURCE_RULES)
+
+
+def test_cell_plan_rejects_authenticated_tool_argv_decoy(tmp_path: Path):
+    # PR #1247 review 3742970282: signed artifacts must be the executed artifacts.
+    from dataclasses import replace
+
+    plan = _qualification_plans(tmp_path)[0]
+    build = plan.executions[1]
+    decoy = replace(build, argv=("/tmp/decoy", *build.argv[1:]))
+
+    with pytest.raises(ValueError, match="exactly bind authenticated tool/config"):
+        replace(plan, executions=(plan.executions[0], decoy, *plan.executions[2:]))
+
+
+def test_raw_blob_same_size_rewrite_is_rejected(tmp_path: Path):
+    # PR #1247 review 3742970275: a first-pass digest is not quiescence evidence.
+    import benchmarks.codegraph_compare.setup_qualification_validation as module
+
+    plan = _qualification_plans(tmp_path)[0]
+    cell_root = tmp_path / "cell"
+    receipt = _write_valid_qualification_receipt(cell_root, plan)
+    target = cell_root / receipt["raw_executions"][0]["stdout_bytes"]["path"]
+    original_hash = module._hash_regular_descriptor
+    calls = 0
+
+    def rewrite_after_first_hash(*args, **kwargs):
+        nonlocal calls
+        result = original_hash(*args, **kwargs)
+        calls += 1
+        if calls == 1:
+            target.write_bytes(b"[]")
+        return result
+
+    with patch.object(
+        module, "_hash_regular_descriptor", side_effect=rewrite_after_first_hash
+    ):
+        failures = _validate_qualification_receipt(
+            receipt,
+            plan=plan,
+            cell_root=cell_root,
+            verifier_config=_qualification_verifier_config(),
+        )
+
+    assert failures == ("RAW_EXECUTION_EVIDENCE_MISSING",)
+
+
+def test_qualification_architecture_codemap_lists_security_modules():
+    # PR #1247 review 3742970277: codemap-first discovery includes the trust boundary.
+    codemap = Path("docs/CODEMAPS/architecture.md").read_text(encoding="utf-8")
+
+    assert (
+        "`setup_qualification_paths.py` — canonical openat filesystem isolation"
+        in codemap
+    )
+    assert "`setup_qualification_trust.py` — externally supplied Ed25519" in codemap

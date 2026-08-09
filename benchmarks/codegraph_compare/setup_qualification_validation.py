@@ -12,9 +12,11 @@ from typing import Any
 
 from benchmarks.codegraph_compare.integrity import _sha256
 from benchmarks.codegraph_compare.setup_qualification_paths import (
+    _hash_regular_descriptor,
     _open_beneath,
     _snapshot_tree_at,
     _stable_directory_identity,
+    _stable_file_identity,
     canonical_relative_path,
 )
 from benchmarks.codegraph_compare.setup_qualification_plan import (
@@ -132,6 +134,11 @@ def validate_cell_receipt(
             verifier_config=verifier_config,
             failures=failures,
             cell_fd=cell_fd,
+            cell_root_identity=(
+                _stable_directory_identity(os.fstat(cell_fd))
+                if cell_fd is not None
+                else None
+            ),
         )
     finally:
         if cell_fd is not None:
@@ -145,6 +152,7 @@ def _validate_open_cell_receipt(
     verifier_config: VerifierConfigV1,
     failures: list[str],
     cell_fd: int | None,
+    cell_root_identity: tuple[int, ...] | None,
 ) -> tuple[str, ...]:
     direct_json_bounded = True
     try:
@@ -191,6 +199,9 @@ def _validate_open_cell_receipt(
         "plan_hash": plan.digest,
         "snapshot_id": snapshot_payload.get("snapshot_id")
         if isinstance(snapshot_payload, Mapping)
+        else None,
+        "root_identity": list(cell_root_identity)
+        if cell_root_identity is not None
         else None,
         "mount": {"read_only": True},
         "producer_descendants": 0,
@@ -350,18 +361,23 @@ def _validate_open_cell_receipt(
     def valid_blob(
         raw: object, *, materialize_json: bool = False
     ) -> tuple[bool, bytes | None]:
-        """Authenticate one bounded regular blob, materializing only small JSON."""
+        """Authenticate one blob from the signed read-only cell snapshot twice."""
         nonlocal blob_bytes_consumed
-        if type(raw) is not dict or cell_fd is None:
+        if type(raw) is not dict or cell_fd is None or not snapshot_trusted:
             return False, None
         relative = raw.get("path")
         claimed_size = raw.get("size_bytes")
-        if not isinstance(relative, str) or type(claimed_size) is not int:
+        if (
+            not isinstance(relative, str)
+            or not relative.startswith("raw/")
+            or type(claimed_size) is not int
+        ):
             return False, None
         descriptor: int | None = None
         try:
             descriptor = _open_beneath(cell_fd, relative)
             metadata = os.fstat(descriptor)
+            identity = _stable_file_identity(metadata)
             allocated = getattr(metadata, "st_blocks", 0) * 512
             if (
                 metadata.st_size != claimed_size
@@ -373,26 +389,36 @@ def _validate_open_cell_receipt(
                 )
             ):
                 return False, None
-            digest = hashlib.sha256()
-            payload = bytearray() if materialize_json else None
-            read_total = 0
-            while True:
-                remaining = metadata.st_size - read_total
-                chunk = os.read(descriptor, min(64 * 1024, remaining + 1))
-                if not chunk:
-                    break
-                read_total += len(chunk)
-                if read_total > metadata.st_size:
-                    return False, None
-                digest.update(chunk)
-                if payload is not None:
-                    payload.extend(chunk)
-            if read_total != metadata.st_size or digest.hexdigest() != raw.get(
-                "sha256"
+            first_hash = _hash_regular_descriptor(
+                descriptor,
+                expected_size=claimed_size,
+                max_bytes=per_blob_ceiling,
+            )
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            second_hash = _hash_regular_descriptor(
+                descriptor,
+                expected_size=claimed_size,
+                max_bytes=per_blob_ceiling,
+            )
+            if (
+                first_hash != second_hash
+                or first_hash != raw.get("sha256")
+                or _stable_file_identity(os.fstat(descriptor)) != identity
             ):
                 return False, None
-            blob_bytes_consumed += read_total
-            return True, bytes(payload) if payload is not None else None
+            payload: bytes | None = None
+            if materialize_json:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                payload = os.read(descriptor, claimed_size + 1)
+                if (
+                    len(payload) != claimed_size
+                    or hashlib.sha256(payload).hexdigest() != first_hash
+                    or os.read(descriptor, 1)
+                    or _stable_file_identity(os.fstat(descriptor)) != identity
+                ):
+                    return False, None
+            blob_bytes_consumed += claimed_size
+            return True, payload
         except (OSError, RuntimeError, TypeError, ValueError):
             return False, None
         finally:
@@ -432,6 +458,12 @@ def _validate_open_cell_receipt(
                 item.get("exit_code") != 0
                 or isinstance(item.get("exit_code"), bool)
                 or item.get("argv") != frozen_argv.get(item.get("id"))
+                or item.get("environment_digest")
+                != next(
+                    spec.environment_digest
+                    for spec in expected_executions
+                    if spec.execution_id == item.get("id")
+                )
                 or any(not valid for valid, _ in authenticated)
             ):
                 execution_valid = False

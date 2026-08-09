@@ -97,7 +97,9 @@ the NO1-008A E0 evidence boundary. Responsibilities are split into focused modul
 
 - `setup_qualification_plan.py` — immutable plan models and constants
 - `setup_qualification_inventory.py` — Git-backed source inventory
+- `setup_qualification_paths.py` — canonical openat filesystem isolation and quiescent snapshot hashing
 - `setup_qualification_schema.py` — strict recursive receipt JSON schema
+- `setup_qualification_trust.py` — externally supplied Ed25519 verifier trust roots
 - `setup_qualification_validation.py` — filesystem, evidence-core, and signature checks
 - `setup_qualification_orchestration.py` — non-executing E0 orchestration
 
