@@ -436,7 +436,7 @@ class ChangeImpactTool(BaseMCPTool):
             ]
         result = self._attach_diff_snapshot(result, mode, True, frozen=response_frozen)
         if agent_summary_only:
-            snapshot_surface = {
+            snapshot_surface: dict[str, Any] = {
                 key: result[key]
                 for key in (
                     "diff_snapshot_id",
