@@ -355,12 +355,17 @@ class ChangeImpactTool(BaseMCPTool):
                     for scope in scope_paths
                 )
             ]
+        # Scope existence is an identity question, not a changed-record
+        # question. Use only the immutable inventory captured inside the source
+        # oracle epoch; a clean file or directory prefix is still valid.
+        inventory_paths = tuple(consumer.snapshot.inventory_paths)
+        scope_identities = set(inventory_paths).union(workspace_changed_files)
         invalid_scope = [
             scope
             for scope in scope_paths
             if not any(
                 path == scope.rstrip("/") or path.startswith(scope.rstrip("/") + "/")
-                for path in workspace_changed_files
+                for path in scope_identities
             )
         ]
         if changed_files:

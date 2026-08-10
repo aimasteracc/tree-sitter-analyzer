@@ -255,6 +255,14 @@ def oracle_generation(
     return generate(project_root, mode, deadline=deadline)
 
 
+def capture_inventory(
+    root: str, mode: str, *, deadline: float, limit: int
+) -> tuple[str, ...]:
+    from .source_oracle_git import capture_inventory as capture
+
+    return capture(root, mode, deadline=deadline, limit=limit)
+
+
 def source_generation(project_root: str | None, mode: str = "diff") -> str:
     from .source_oracle_git import source_generation as generate
 

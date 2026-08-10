@@ -2117,7 +2117,10 @@ def test_execute_snapshot_translates_strict_verification_conflict(monkeypatch) -
         "changed_records": [{"path": "a.py"}],
     }
     consumer = SimpleNamespace(
-        snapshot=SimpleNamespace(assessed_scope_paths=("a.py",)), release=lambda: None
+        snapshot=SimpleNamespace(
+            assessed_scope_paths=("a.py",), inventory_paths=("a.py",)
+        ),
+        release=lambda: None,
     )
     monkeypatch.setattr(registry.REGISTRY, "create", lambda *a: frozen)
     monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))

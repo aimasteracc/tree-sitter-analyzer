@@ -76,6 +76,38 @@ def test_staged_snapshot_reads_index_not_workspace(tmp_path: Path) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+def test_staged_snapshot_inventory_contains_only_index_tracked_paths(
+    tmp_path: Path,
+) -> None:
+    root = _repo(tmp_path)
+    (root / "untracked.py").write_text("untracked = True\n")
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "staged", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+
+    assert error is None
+    assert consumer is not None
+    assert consumer.snapshot.inventory_paths == ("gone.py", "old.py")
+    consumer.release()
+
+
+@POSIX_SNAPSHOT_TEST
+def test_workspace_snapshot_inventory_includes_bounded_untracked_paths(
+    tmp_path: Path,
+) -> None:
+    root = _repo(tmp_path)
+    (root / "untracked.py").write_text("untracked = True\n")
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+
+    assert error is None
+    assert consumer is not None
+    assert consumer.snapshot.inventory_paths == ("gone.py", "old.py", "untracked.py")
+    consumer.release()
+
+
+@POSIX_SNAPSHOT_TEST
 def test_untracked_executable_uses_canonical_non_git_record(tmp_path: Path) -> None:
     import base64
     import json
@@ -217,6 +249,8 @@ def _frozen_result(
     monkeypatch,
     *,
     records,
+    inventory_paths=(),
+    scope_paths=None,
     bind_error=None,
     publish_error=None,
     agent_summary_only=False,
@@ -225,7 +259,11 @@ def _frozen_result(
 
     from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
 
-    consumer = SimpleNamespace(snapshot=SimpleNamespace(assessed_scope_paths=()))
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(
+            assessed_scope_paths=(), inventory_paths=tuple(inventory_paths)
+        )
+    )
     monkeypatch.setattr(
         snapshots.REGISTRY, "bind_assessed_scope", lambda *args: bind_error
     )
@@ -236,7 +274,7 @@ def _frozen_result(
         frozen={"success": True, "changed_records": records},
         consumer=consumer,
         mode="diff",
-        scope_paths=[],
+        scope_paths=scope_paths or [],
         scope_mode="strict",
         output_format="json",
         agent_summary_only=agent_summary_only,
@@ -274,3 +312,61 @@ def test_frozen_impact_supports_agent_summary_only(monkeypatch) -> None:
     )
 
     assert result["agent_summary_only"] is True
+
+
+def test_frozen_scope_accepts_exact_clean_tracked_file(monkeypatch) -> None:
+    # PR #1252: scope validity comes from frozen inventory, not changed records.
+    result = _frozen_result(
+        monkeypatch,
+        records=[],
+        inventory_paths=("src/clean.py",),
+        scope_paths=["src/clean.py"],
+    )
+
+    assert result["success"] is True
+    assert result["changed_files"] == []
+
+
+def test_frozen_scope_accepts_clean_directory_prefix(monkeypatch) -> None:
+    # PR #1252: a frozen descendant establishes directory-prefix existence.
+    result = _frozen_result(
+        monkeypatch,
+        records=[],
+        inventory_paths=("src/pkg/clean.py",),
+        scope_paths=["src/pkg"],
+    )
+
+    assert result["success"] is True
+    assert result["changed_files"] == []
+
+
+def test_frozen_scope_rejects_truly_absent_path(monkeypatch) -> None:
+    # PR #1252: only identities absent from the frozen inventory are invalid.
+    result = _frozen_result(
+        monkeypatch,
+        records=[],
+        inventory_paths=("src/clean.py",),
+        scope_paths=["missing.py"],
+    )
+
+    assert result["success"] is True
+    assert result["scope_paths_invalid"] == ["missing.py"]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_frozen_scope_inventory_does_not_admit_post_capture_mutation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252: later live workspace identities cannot enter the frozen epoch.
+    root = _repo(tmp_path)
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    captured_inventory = consumer.snapshot.inventory_paths
+    (root / "later.py").write_text("later = True\n")
+
+    assert consumer.snapshot.inventory_paths == captured_inventory
+    assert "later.py" not in consumer.snapshot.inventory_paths
+    consumer.release()

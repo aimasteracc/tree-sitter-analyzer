@@ -18,6 +18,7 @@ from .source_oracle import (
     RootIdentity,
     SourceOracleError,
     canonical_root,
+    capture_inventory,
     normalize_repo_path,
     oracle_generation,
 )
@@ -55,6 +56,7 @@ class FrozenDiffSnapshot:
     mode: str
     normalized_patch: bytes
     files: tuple[FrozenFile, ...]
+    inventory_paths: tuple[str, ...]
     assessed_scope_paths: tuple[str, ...]
     created_monotonic: float
     materialized_bytes: int
@@ -173,7 +175,13 @@ class DiffSnapshotRegistry:
             before, before_identity = oracle_generation(root, mode, deadline=deadline)
             if before_identity != identity:
                 raise SourceOracleError("DIFF_SNAPSHOT_ROOT_MISMATCH")
-            patch, files = _capture_payload(root, mode, deadline, ceiling)
+            inventory_paths = capture_inventory(
+                root, mode, deadline=deadline, limit=ceiling
+            )
+            inventory_size = _path_storage(inventory_paths)
+            patch, files = _capture_payload(
+                root, mode, deadline, ceiling - inventory_size
+            )
             after, after_identity = oracle_generation(root, mode, deadline=deadline)
             if before != after or identity != after_identity:
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
@@ -186,6 +194,7 @@ class DiffSnapshotRegistry:
                     for item in files
                 )
                 + _path_storage(paths)
+                + _path_storage(inventory_paths)
                 + _record_storage(files)
             )
             if size > ceiling:
@@ -199,6 +208,7 @@ class DiffSnapshotRegistry:
                 mode,
                 patch,
                 files,
+                inventory_paths,
                 tuple(sorted(paths, key=os.fsencode)),
                 started,
                 size,

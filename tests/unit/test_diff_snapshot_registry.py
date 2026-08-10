@@ -158,6 +158,7 @@ def _created(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         snapshots, "oracle_generation", lambda *args, **kwargs: ("sg_test", identity)
     )
+    monkeypatch.setattr(snapshots, "capture_inventory", lambda *args, **kwargs: ())
     monkeypatch.setattr(snapshots, "_capture_payload", lambda *args: (b"", ()))
     registry = snapshots.DiffSnapshotRegistry()
     result = registry.create(str(tmp_path), "diff", [])

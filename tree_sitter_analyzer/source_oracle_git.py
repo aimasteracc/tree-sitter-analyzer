@@ -201,6 +201,45 @@ def _tracked_paths(root: str, *, deadline: float) -> list[bytes]:
     return paths
 
 
+def capture_inventory(
+    root: str, mode: str, *, deadline: float, limit: int
+) -> tuple[str, ...]:
+    """Capture the bounded scope-existence inventory inside an oracle epoch.
+
+    Staged analysis is scoped to stage-zero index identities. Workspace analysis
+    additionally includes Git's bounded untracked inventory. Callers must bracket
+    this read with equal source generations and retain this tuple, never re-read
+    the live filesystem when validating a frozen request.
+    """
+    tracked = _tracked_paths(root, deadline=deadline)
+    raw_paths = set(tracked)
+    if mode == "diff":
+        untracked_raw = git_output(
+            root,
+            ["ls-files", "--others", "--exclude-standard", "-z"],
+            deadline=deadline,
+            limit=min(_MAX_INVENTORY_BYTES, limit),
+        )
+        untracked = {path for path in untracked_raw.split(b"\0") if path}
+        if untracked & raw_paths:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        raw_paths.update(untracked)
+    if len(raw_paths) > _MAX_WORKTREE_PATHS:
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+    normalized: list[str] = []
+    charged = 0
+    for raw in sorted(raw_paths):
+        path = normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
+        encoded = os.fsencode(path)
+        if len(encoded) > 4096:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+        charged += len(encoded) + 1
+        if charged > limit:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+        normalized.append(path)
+    return tuple(normalized)
+
+
 def _frame_workspace_path(
     digest: Any,
     root: str,
