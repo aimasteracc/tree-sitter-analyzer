@@ -43,8 +43,6 @@ from .utils.change_impact_response import (
 class ChangeImpactTool(BaseMCPTool):
     """Analyze the impact of code changes using git diff + dependency graph."""
 
-    _capture_diff_snapshot_default: bool = False
-
     def get_tool_schema(self) -> dict[str, Any]:
         """Return the JSON schema for tool input validation."""
         return TOOL_SCHEMA
@@ -151,12 +149,7 @@ class ChangeImpactTool(BaseMCPTool):
         resource_profile = arguments.get("resource_profile", "local_low_impact")
         agent_summary_only = bool(arguments.get("agent_summary_only", False))
         compact_only = bool(arguments.get("compact_only", False))
-        capture_diff_snapshot = bool(
-            arguments.get(
-                "capture_diff_snapshot",
-                getattr(self, "_capture_diff_snapshot_default", False),
-            )
-        )
+        capture_diff_snapshot = arguments.get("capture_diff_snapshot") is True
         frozen: dict[str, object] | None = None
         frozen_consumer: Any = None
         if capture_diff_snapshot:
@@ -183,6 +176,7 @@ class ChangeImpactTool(BaseMCPTool):
                     "error_code": code,
                     "error": code,
                 }
+            scope_paths = normalized_scope
             frozen = REGISTRY.create(self.project_root, mode, normalized_scope)
             if not frozen.get("success"):
                 code = str(frozen["error_code"])
@@ -205,56 +199,35 @@ class ChangeImpactTool(BaseMCPTool):
                     "error_code": error,
                     "error": error,
                 }
-
-        def finish_frozen(result: dict[str, Any]) -> dict[str, Any]:
-            if frozen_consumer is None:
-                return self._attach_diff_snapshot(
-                    result, mode, capture_diff_snapshot, frozen=frozen
+            try:
+                result = self._execute_frozen_snapshot(
+                    frozen=frozen,
+                    consumer=frozen_consumer,
+                    mode=mode,
+                    scope_paths=scope_paths,
+                    scope_mode=scope_mode,
+                    output_format=output_format,
+                    agent_summary_only=agent_summary_only,
+                    compact_only=compact_only,
                 )
-            affected = result.get("affected_files") or []
-            assert frozen is not None
-            assessed = [str(record["path"]) for record in _snapshot_records(frozen)]
-            assessed.extend(
-                str(item.get("path", "") if isinstance(item, dict) else item)
-                for item in affected
-                if (item.get("path") if isinstance(item, dict) else item)
-            )
-            verify_error = REGISTRY.bind_assessed_scope(frozen_consumer, assessed)
-            if verify_error is None:
-                verify_error = REGISTRY.verify(frozen_consumer)
-            frozen["assessed_scope_paths"] = list(
-                frozen_consumer.snapshot.assessed_scope_paths
-            )
-            frozen_consumer.release()
-            if verify_error:
+                if not result.get("success"):
+                    REGISTRY.close_lease(
+                        str(frozen["diff_snapshot_id"]),
+                        str(frozen["route_lease_id"]),
+                    )
+                return result
+            except BaseException:
                 REGISTRY.close_lease(
                     str(frozen["diff_snapshot_id"]), str(frozen["route_lease_id"])
                 )
-                return {
-                    "success": False,
-                    "verdict": "ERROR",
-                    "error_code": verify_error,
-                    "error": verify_error,
-                    "output_format": result.get("output_format", "toon"),
-                }
-            return self._attach_diff_snapshot(result, mode, True, frozen=frozen)
+                raise
+            finally:
+                frozen_consumer.release()
 
         # H8: validate scope paths against disk so a typo cannot silently
         # become "scope matched nothing". The analysis still runs on the
         # remaining valid scope (if any) — we only mark the invalid ones.
-        if frozen is not None:
-            frozen_paths = [str(record["path"]) for record in _snapshot_records(frozen)]
-            scope_paths_invalid = [
-                path
-                for path in scope_paths
-                if not any(
-                    candidate == path.rstrip("/")
-                    or candidate.startswith(path.rstrip("/") + "/")
-                    for candidate in frozen_paths
-                )
-            ]
-        else:
-            scope_paths_invalid = _scope_paths_invalid(self.project_root, scope_paths)
+        scope_paths_invalid = _scope_paths_invalid(self.project_root, scope_paths)
 
         if mode == "pr" and pr_url:
             return self._execute_pr_analysis(
@@ -268,26 +241,10 @@ class ChangeImpactTool(BaseMCPTool):
                 compact_only=compact_only,
             )
 
-        if frozen is not None:
-            workspace_changed_files = [
-                str(record["path"]) for record in _snapshot_records(frozen)
-            ]
-            changed_files = workspace_changed_files
-            if scope_paths:
-                changed_files = [
-                    path
-                    for path in workspace_changed_files
-                    if any(
-                        path == scope.rstrip("/")
-                        or path.startswith(scope.rstrip("/") + "/")
-                        for scope in scope_paths
-                    )
-                ]
-        else:
-            changed_files = _get_changed_files(mode, self.project_root, scope_paths)
-            workspace_changed_files = (
-                _get_changed_files(mode, self.project_root, []) if scope_paths else []
-            )
+        changed_files = _get_changed_files(mode, self.project_root, scope_paths)
+        workspace_changed_files = (
+            _get_changed_files(mode, self.project_root, []) if scope_paths else []
+        )
 
         if not changed_files:
             result = build_no_changes_result(mode, scope_paths)
@@ -317,16 +274,11 @@ class ChangeImpactTool(BaseMCPTool):
             # agent_summary so direct callers (tests, hive-mind workers)
             # see the same envelope shape as MCP-routed callers.
             result = mirror_summary_line(result)
-            result = finish_frozen(result)
             return apply_toon_format_to_response(
                 result, output_format, compact_only=compact_only
             )
 
-        diff_stat = (
-            f"{len(changed_files)} frozen file(s) changed"
-            if frozen is not None
-            else _get_diff_stat(mode, self.project_root, scope_paths)
-        )
+        diff_stat = _get_diff_stat(mode, self.project_root, scope_paths)
         result = _build_change_impact_result(
             ChangeImpactRequest(
                 mode=mode,
@@ -337,15 +289,14 @@ class ChangeImpactTool(BaseMCPTool):
                 scope_paths=scope_paths,
                 agent_summary_only=agent_summary_only,
                 resource_profile=resource_profile,
-                read_only=capture_diff_snapshot,
+                read_only=False,
             )
         )
         # r37fG phase 3: surface related decision_journal entries and
         # upgrade the envelope verdict if any matched decision is more
         # severe than the change-impact builder's primary verdict. The
         # journal stays advisory — never downgrades, never raises.
-        if not capture_diff_snapshot:
-            _enrich_with_journal_decisions(result, self.project_root, changed_files)
+        _enrich_with_journal_decisions(result, self.project_root, changed_files)
         result = attach_queue_ledger(
             result,
             mode=mode,
@@ -367,10 +318,129 @@ class ChangeImpactTool(BaseMCPTool):
         # agent_summary so direct callers see the same envelope shape as
         # MCP-routed callers.
         result = mirror_summary_line(result)
-        result = finish_frozen(result)
         return apply_toon_format_to_response(
             result, output_format, compact_only=compact_only
         )
+
+    def _execute_frozen_snapshot(
+        self,
+        *,
+        frozen: dict[str, object],
+        consumer: Any,
+        mode: str,
+        scope_paths: list[str],
+        scope_mode: str,
+        output_format: str,
+        agent_summary_only: bool,
+        compact_only: bool,
+    ) -> dict[str, Any]:
+        """Build strict impact solely from the captured snapshot records.
+
+        Frozen capture intentionally cannot claim dependency or test impact: those
+        require live graph/cache inputs which are outside the bound source epoch.
+        """
+        from ...diff_snapshot_registry import REGISTRY
+
+        workspace_changed_files = [
+            str(record["path"]) for record in _snapshot_records(frozen)
+        ]
+        changed_files = workspace_changed_files
+        if scope_paths:
+            changed_files = [
+                path
+                for path in workspace_changed_files
+                if any(
+                    path == scope.rstrip("/")
+                    or path.startswith(scope.rstrip("/") + "/")
+                    for scope in scope_paths
+                )
+            ]
+        invalid_scope = [
+            scope
+            for scope in scope_paths
+            if not any(
+                path == scope.rstrip("/") or path.startswith(scope.rstrip("/") + "/")
+                for path in workspace_changed_files
+            )
+        ]
+        if changed_files:
+            result: dict[str, Any] = {
+                "success": True,
+                "mode": mode,
+                "changed_files": changed_files,
+                "changed_count": len(changed_files),
+                "diff_stat": f"{len(changed_files)} frozen file(s) changed",
+                "affected_files": [],
+                "affected_files_unknown": True,
+                "tests_to_run": [],
+                "tests_to_run_unknown": True,
+                "verdict": "REVIEW",
+                "risk_level": "unknown",
+                "summary": (
+                    f"{len(changed_files)} frozen file(s) changed; "
+                    "affected files and tests are unknown without live analysis"
+                ),
+                "agent_summary": {
+                    "verdict": "REVIEW",
+                    "changed_files": changed_files,
+                    "affected_files": [],
+                    "affected_files_unknown": True,
+                    "tests_to_run": [],
+                    "tests_to_run_unknown": True,
+                },
+            }
+        else:
+            result = build_no_changes_result(mode, scope_paths)
+        result["scope_paths"] = scope_paths
+        result["scope_filtered"] = bool(scope_paths)
+        result = attach_queue_ledger(
+            result,
+            mode=mode,
+            scope_paths=scope_paths,
+            scoped_changed_files=changed_files,
+            workspace_changed_files=workspace_changed_files,
+            scope_mode=scope_mode,
+        )
+        result = apply_scope_validation(result, invalid_scope)
+        assessed = sorted(set(workspace_changed_files).union(scope_paths))
+        error = REGISTRY.bind_assessed_scope(consumer, assessed)
+        frozen["assessed_scope_paths"] = list(consumer.snapshot.assessed_scope_paths)
+        if error:
+            return apply_toon_format_to_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error_code": error,
+                    "error": error,
+                    "output_format": output_format,
+                },
+                output_format,
+                compact_only=compact_only,
+            )
+        result = self._attach_diff_snapshot(result, mode, True, frozen=frozen)
+        if agent_summary_only:
+            result = build_agent_summary_only_response(result)
+        result["output_format"] = output_format
+        _canonicalize_change_impact_verdict(result)
+        result = mirror_summary_line(result)
+        formatted = apply_toon_format_to_response(
+            result, output_format, compact_only=compact_only
+        )
+        # Keep this as the final operation before the snapshot is exposed.
+        publish_error = REGISTRY.validate_publish(consumer)
+        if publish_error:
+            return apply_toon_format_to_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error_code": publish_error,
+                    "error": publish_error,
+                    "output_format": output_format,
+                },
+                output_format,
+                compact_only=compact_only,
+            )
+        return formatted
 
     def _execute_pr_analysis(
         self,

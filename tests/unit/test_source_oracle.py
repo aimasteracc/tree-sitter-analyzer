@@ -1,3 +1,4 @@
+import hashlib
 import io
 import os
 import stat
@@ -331,31 +332,16 @@ def test_frame_workspace_path_rejects_malformed_metadata_epoch(
     )
 
 
-def test_oracle_generation_rejects_oversize_index(tmp_path: Path, monkeypatch) -> None:
+def test_safe_absolute_regular_rejects_oversize_index(tmp_path: Path) -> None:
     index = tmp_path / "index"
     index.write_bytes(b"index")
-    identity = oracle.RootIdentity(str(tmp_path), 1, 2)
-    monkeypatch.setattr(
-        oracle, "canonical_root", lambda root: (str(tmp_path), identity)
+
+    _error(
+        lambda: oracle._safe_absolute_regular(
+            str(index), deadline=time.monotonic() + 1, limit=4
+        ),
+        "DIFF_SNAPSHOT_CAPACITY",
     )
-    monkeypatch.setattr(
-        oracle,
-        "git_output",
-        lambda root, args, **k: b".\n" if "--git-dir" in args else b"",
-    )
-
-    class Huge:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-        def read(self, size):
-            return b"x" * (64 * 1024 * 1024 + 1)
-
-    monkeypatch.setattr(oracle, "_open_file", lambda *a, **k: Huge())
-    _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_CAPACITY")
 
 
 def test_tracked_paths_rejects_bounded_path_count(monkeypatch) -> None:
@@ -518,3 +504,191 @@ def test_oracle_generation_rejects_untracked_path_in_tracked_inventory(
     )
 
     _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_GIT_ERROR")
+
+
+def test_normalize_repo_path_preserves_posix_backslash() -> None:
+    if os.name == "nt":
+        pytest.skip("tracked: POSIX path identity behavior")
+    assert oracle.normalize_repo_path(r"a\b.py") == r"a\b.py"
+
+
+def test_frame_workspace_gitlink_binds_initialized_directory(tmp_path: Path) -> None:
+    checkout = tmp_path / "module"
+    checkout.mkdir()
+    digest = hashlib.sha256()
+
+    charge = oracle._frame_workspace_path(
+        digest,
+        str(tmp_path),
+        b"module",
+        deadline=time.monotonic() + 1,
+        content_budget=0,
+        content_required=True,
+        index_entry=b"160000 abcdef 0",
+        head_entry=b"160000 commit abcdef",
+    )
+
+    assert charge == 0
+
+
+def test_oracle_generation_supports_unborn_head_untracked_file(tmp_path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "new.py").write_text("value = 1\n")
+
+    generation, identity = oracle.oracle_generation(str(tmp_path))
+
+    assert (generation[:3], identity.realpath) == ("sg_", str(tmp_path.resolve()))
+
+
+def test_oracle_generation_ignores_inherited_git_routing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "wrong.git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "wrong-tree"))
+
+    generation, _ = oracle.oracle_generation(str(tmp_path))
+
+    assert generation[:3] == "sg_"
+
+
+def test_safe_absolute_regular_rejects_unsupported_platform(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(oracle, "_supports_nofollow", lambda: False)
+
+    _error(
+        lambda: oracle._safe_absolute_regular(
+            str(tmp_path / "index"), deadline=time.monotonic() + 1, limit=1
+        ),
+        "DIFF_SNAPSHOT_GIT_ERROR",
+    )
+
+
+def test_safe_absolute_regular_handles_missing_index(tmp_path: Path) -> None:
+    result = oracle._safe_absolute_regular(
+        str(tmp_path / "index"),
+        deadline=time.monotonic() + 1,
+        limit=1,
+        allow_missing=True,
+    )
+
+    assert (result.data, result.metadata[-1], result.kind) == (
+        None,
+        b"missing",
+        "missing",
+    )
+
+
+def test_safe_absolute_regular_rejects_missing_index(tmp_path: Path) -> None:
+    _error(
+        lambda: oracle._safe_absolute_regular(
+            str(tmp_path / "index"), deadline=time.monotonic() + 1, limit=1
+        ),
+        "DIFF_SNAPSHOT_GIT_ERROR",
+    )
+
+
+def test_safe_absolute_regular_rejects_directory_leaf(tmp_path: Path) -> None:
+    (tmp_path / "index").mkdir()
+
+    _error(
+        lambda: oracle._safe_absolute_regular(
+            str(tmp_path / "index"), deadline=time.monotonic() + 1, limit=1
+        ),
+        "DIFF_SNAPSHOT_GIT_ERROR",
+    )
+
+
+def test_safe_absolute_regular_detects_replace_between_stat_and_open(
+    tmp_path: Path, monkeypatch
+) -> None:
+    index = tmp_path / "index"
+    replacement = tmp_path / "replacement"
+    index.write_bytes(b"old")
+    replacement.write_bytes(b"new")
+    real_open = oracle._open
+
+    def replace_before_open(path, flags, *args, **kwargs):
+        if path == "index" and not args:
+            os.replace(replacement, index)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(oracle, "_open", replace_before_open)
+
+    _error(
+        lambda: oracle._safe_absolute_regular(
+            str(index), deadline=time.monotonic() + 1, limit=10
+        ),
+        "DIFF_SNAPSHOT_SOURCE_CHANGED",
+    )
+
+
+def test_safe_absolute_regular_ignores_close_error(tmp_path: Path, monkeypatch) -> None:
+    index = tmp_path / "index"
+    index.write_bytes(b"index")
+    real_close = oracle._close
+    calls = 0
+
+    def close_then_raise(fd: int) -> None:
+        nonlocal calls
+        real_close(fd)
+        calls += 1
+        if calls == 1:
+            raise OSError("close")
+
+    monkeypatch.setattr(oracle, "_close", close_then_raise)
+
+    result = oracle._safe_absolute_regular(
+        str(index), deadline=time.monotonic() + 1, limit=10
+    )
+
+    assert result.data == b"index"
+
+
+def test_head_identity_rejects_invalid_nonsymbolic_head(monkeypatch) -> None:
+    monkeypatch.setattr(
+        oracle,
+        "git_output",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            oracle.SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        ),
+    )
+
+    _error(
+        lambda: oracle._head_identity(".", deadline=time.monotonic() + 1),
+        "DIFF_SNAPSHOT_GIT_ERROR",
+    )
+
+
+def test_oracle_generation_rejects_unresolvable_git_toplevel(monkeypatch) -> None:
+    identity = oracle.RootIdentity("/root", 1, 2)
+    calls = 0
+
+    def canonical(_root):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return "/root", identity
+        raise oracle.SourceOracleError("DIFF_SNAPSHOT_ROOT_INVALID")
+
+    monkeypatch.setattr(oracle, "canonical_root", canonical)
+    monkeypatch.setattr(oracle, "git_output", lambda *args, **kwargs: b"/bad\n")
+
+    _error(lambda: oracle.oracle_generation("/root"), "DIFF_SNAPSHOT_ROOT_MISMATCH")
+
+
+def test_oracle_generation_rejects_different_git_toplevel(monkeypatch) -> None:
+    identity = oracle.RootIdentity("/root", 1, 2)
+    other = oracle.RootIdentity("/other", 1, 3)
+    calls = 0
+
+    def canonical(_root):
+        nonlocal calls
+        calls += 1
+        return ("/root", identity) if calls == 1 else ("/other", other)
+
+    monkeypatch.setattr(oracle, "canonical_root", canonical)
+    monkeypatch.setattr(oracle, "git_output", lambda *args, **kwargs: b"/other\n")
+
+    _error(lambda: oracle.oracle_generation("/root"), "DIFF_SNAPSHOT_ROOT_MISMATCH")

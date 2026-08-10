@@ -502,3 +502,119 @@ def test_sweep_erases_expired_unpinned_snapshot(tmp_path: Path, monkeypatch) -> 
     _, registry, _ = _created(tmp_path, monkeypatch)
     next(iter(registry._states.values())).expired = True
     assert registry.stats() == (0, 0)
+
+
+def test_numstat_z_binary_rename_uses_destination_path(monkeypatch) -> None:
+    monkeypatch.setattr(
+        snapshots, "git_output", lambda *args, **kwargs: b"-\t-\t\0old.bin\0new.bin\0"
+    )
+
+    result = snapshots._tracked_binary_paths(".", "staged", 1e20, 1024)
+
+    assert result == {"new.bin"}
+
+
+def test_create_rejects_excessive_scope_item_count() -> None:
+    registry = snapshots.DiffSnapshotRegistry()
+
+    result = registry.create(
+        ".", "diff", [f"path-{index}" for index in range(snapshots.MAX_SCOPE_PATHS + 1)]
+    )
+
+    assert result == {"success": False, "error_code": "DIFF_SNAPSHOT_CAPACITY"}
+
+
+def test_validate_publish_rejects_snapshot_expired_while_pinned(
+    tmp_path: Path,
+) -> None:
+    now = [0.0]
+    root = _repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    registry = snapshots.DiffSnapshotRegistry(clock=lambda: now[0])
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    now[0] = snapshots.HARD_LIFETIME_SECONDS
+
+    result = registry.validate_publish(consumer)
+
+    assert result == "DIFF_SNAPSHOT_EXPIRED"
+    consumer.release()
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"bad\0",
+        b"-\t-\t\0old.bin",
+        b"-\t-\t\0old.bin\0",
+        b"-\t-\t\0\0new.bin\0",
+    ],
+)
+def test_numstat_z_rejects_malformed_rename_continuations(monkeypatch, raw) -> None:
+    from tree_sitter_analyzer.source_oracle import SourceOracleError
+
+    monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: raw)
+
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        snapshots._tracked_binary_paths(".", "staged", 1e20, 1024)
+
+
+def test_create_rejects_invalid_scope_storage_inputs() -> None:
+    registry = snapshots.DiffSnapshotRegistry()
+    too_long = "x" * (snapshots.MAX_PATH_BYTES + 1)
+    total_too_long = [f"{index}-" + "x" * 4090 for index in range(257)]
+
+    results = [
+        registry.create(".", "diff", [None]),
+        registry.create(".", "diff", ["../bad"]),
+        registry.create(".", "diff", [too_long]),
+        registry.create(".", "diff", total_too_long),
+    ]
+
+    assert results == [
+        {"success": False, "error_code": "DIFF_SNAPSHOT_INVALID_PATH"},
+        {"success": False, "error_code": "DIFF_SNAPSHOT_INVALID_PATH"},
+        {"success": False, "error_code": "DIFF_SNAPSHOT_CAPACITY"},
+        {"success": False, "error_code": "DIFF_SNAPSHOT_CAPACITY"},
+    ]
+
+
+def test_bind_rejects_invalid_scope_storage_inputs() -> None:
+    registry = snapshots.DiffSnapshotRegistry()
+    too_many = ["x"] * (snapshots.MAX_SCOPE_PATHS + 1)
+    too_long = "x" * (snapshots.MAX_PATH_BYTES + 1)
+    total_too_long = [f"{index}-" + "x" * 4090 for index in range(257)]
+
+    results = [
+        registry.bind_assessed_scope(None, too_many),
+        registry.bind_assessed_scope(None, [None]),
+        registry.bind_assessed_scope(None, [too_long]),
+        registry.bind_assessed_scope(None, total_too_long),
+    ]
+
+    assert results == [
+        "DIFF_SNAPSHOT_CAPACITY",
+        "DIFF_SNAPSHOT_INVALID_PATH",
+        "DIFF_SNAPSHOT_CAPACITY",
+        "DIFF_SNAPSHOT_CAPACITY",
+    ]
+
+
+def test_bind_rejects_lease_closed_while_pinned(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    registry.close_lease(
+        str(created["diff_snapshot_id"]), str(created["route_lease_id"])
+    )
+
+    result = registry.bind_assessed_scope(consumer, ["old.py"])
+
+    assert result == "DIFF_SNAPSHOT_EXPIRED"
+    consumer.release()

@@ -216,7 +216,7 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": False,
             "description": (
                 "RFC-0022 P0.2: atomically freeze workspace/staged patch and bytes. "
-                "The edit facade enables this; legacy direct calls remain compatible."
+                "Explicit opt-in only; CLI, facade, and legacy direct calls remain compatible."
             ),
         },
         "compact_only": {

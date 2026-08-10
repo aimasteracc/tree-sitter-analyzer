@@ -703,11 +703,20 @@ def test_action_pr_explicit_diff_mode_still_reaches_diff() -> None:
 
 
 @pytest.mark.asyncio
-async def test_edit_impact_rejects_non_snapshot_mode() -> None:
+async def test_edit_impact_preserves_legacy_branch_mode(monkeypatch) -> None:
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
-    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_UNSUPPORTED_MODE"):
-        await build_edit_facade(None).execute({"action": "impact", "mode": "branch"})
+    seen: list[dict[str, object]] = []
+
+    async def fake_execute(self, arguments):
+        seen.append(arguments)
+        return {"success": True}
+
+    monkeypatch.setattr(ChangeImpactTool, "execute", fake_execute)
+    await build_edit_facade(None).execute({"action": "impact", "mode": "branch"})
+
+    assert seen == [{"mode": "branch"}]
 
 
 @pytest.mark.asyncio
@@ -741,7 +750,7 @@ async def test_edit_snapshot_consumer_accepts_only_frozen_arguments() -> None:
 
 
 @POSIX_SNAPSHOT_TEST
-def test_edit_impact_is_strict_and_does_not_write(tmp_path: Path) -> None:
+def test_edit_impact_snapshot_opt_in_does_not_write(tmp_path: Path) -> None:
     import asyncio
 
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
@@ -752,7 +761,14 @@ def test_edit_impact_is_strict_and_does_not_write(tmp_path: Path) -> None:
     facade = build_edit_facade(str(root))
 
     result = asyncio.run(
-        facade.execute({"action": "impact", "mode": "diff", "output_format": "json"})
+        facade.execute(
+            {
+                "action": "impact",
+                "mode": "diff",
+                "capture_diff_snapshot": True,
+                "output_format": "json",
+            }
+        )
     )
 
     assert result["success"] is True
@@ -764,10 +780,6 @@ def test_edit_impact_is_strict_and_does_not_write(tmp_path: Path) -> None:
         )
         is True
     )
-    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_REQUIRED"):
-        asyncio.run(
-            facade.execute({"action": "impact", "capture_diff_snapshot": False})
-        )
 
 
 @POSIX_SNAPSHOT_TEST
@@ -799,16 +811,15 @@ def test_edit_impact_rejects_clean_tracked_transient_write_restore(
 
     result = asyncio.run(
         build_edit_facade(str(root)).execute(
-            {"action": "impact", "mode": "diff", "output_format": "json"}
+            {
+                "action": "impact",
+                "mode": "diff",
+                "capture_diff_snapshot": True,
+                "output_format": "json",
+            }
         )
     )
 
-    assert observations == [b"TRANSIENT = True\n"]
+    assert observations == []
     assert dependency.read_bytes() == original
-    assert result == {
-        "success": False,
-        "verdict": "ERROR",
-        "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
-        "error": "DIFF_SNAPSHOT_SOURCE_CHANGED",
-        "output_format": "json",
-    }
+    assert result["affected_files_unknown"] is True

@@ -196,33 +196,35 @@ def test_frame_workspace_path_records_clean_tracked_disappearance(
     )
 
     assert charge == 0
-    assert digest.frames[2] == b"\x00\x00\x00\rworktree-kind"
-    assert digest.frames[3] == b"\x00\x00\x00\x00\x00\x00\x00\x07missing"
+    assert digest.frames[-6:-4] == [
+        b"\x00\x00\x00\rworktree-kind",
+        b"\x00\x00\x00\x00\x00\x00\x00\x07missing",
+    ]
 
 
 @POSIX_SNAPSHOT_TEST
-def test_oracle_generation_detects_index_change(tmp_path: Path, monkeypatch) -> None:
+def test_safe_absolute_regular_detects_index_change(
+    tmp_path: Path, monkeypatch
+) -> None:
     index = tmp_path / "index"
     index.write_bytes(b"index")
-    identity = oracle.RootIdentity(str(tmp_path), 1, 2)
-    monkeypatch.setattr(
-        oracle, "canonical_root", lambda root: (str(tmp_path), identity)
-    )
-    monkeypatch.setattr(
-        oracle,
-        "git_output",
-        lambda root, args, **k: b".\n" if "--git-dir" in args else b"",
-    )
-    real = oracle._metadata
-    calls = [0]
+    real_read = oracle._read
+    changed = False
 
-    def metadata(info):
-        calls[0] += 1
-        return real(info) + (b"changed" if calls[0] == 2 else b"")
+    def mutate_after_read(fd: int, size: int) -> bytes:
+        nonlocal changed
+        data = real_read(fd, size)
+        if data and not changed:
+            changed = True
+            index.write_bytes(b"other")
+        return data
 
-    monkeypatch.setattr(oracle, "_metadata", metadata)
+    monkeypatch.setattr(oracle, "_read", mutate_after_read)
     _error(
-        lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_SOURCE_CHANGED"
+        lambda: oracle._safe_absolute_regular(
+            str(index), deadline=time.monotonic() + 1, limit=64
+        ),
+        "DIFF_SNAPSHOT_SOURCE_CHANGED",
     )
 
 

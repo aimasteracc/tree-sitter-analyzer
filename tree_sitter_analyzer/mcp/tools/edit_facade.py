@@ -104,9 +104,6 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     from .modification_guard_tool import MODIFICATION_TYPES
 
     impact_tool = ChangeImpactTool(project_root)
-    # Facade-local policy: edit.impact is the strict P0.2 route. Direct legacy
-    # ChangeImpactTool calls retain their historical non-snapshot default.
-    impact_tool._capture_diff_snapshot_default = True
 
     class _PRReviewViaFacade(CodeGraphPRReviewTool):
         """Facade ``action=pr`` implies ``mode=pr``.
@@ -131,11 +128,6 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     class _StrictEditFacade(FacadeTool):
         async def execute(self, arguments: dict[str, Any]) -> Any:
             action = arguments.get("action")
-            if action == "impact":
-                if arguments.get("capture_diff_snapshot") is False:
-                    raise ValueError("DIFF_SNAPSHOT_REQUIRED")
-                if arguments.get("mode", "diff") not in ("diff", "staged"):
-                    raise ValueError("DIFF_SNAPSHOT_UNSUPPORTED_MODE")
             if action in ("classify", "ast_diff") and arguments.get("diff_snapshot_id"):
                 allowed = {"action", "diff_snapshot_id", "file_path", "output_format"}
                 if set(arguments) - allowed:

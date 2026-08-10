@@ -56,8 +56,8 @@ Categories of CLI surface:
 - `--overview` — snapshot
 - `--project-health` — health-score distribution
 - `--smart-context` / `smart-context FILE` — SMART workflow context
-- `--change-impact` — blast radius plus RFC-0022 frozen workspace/staged snapshot ID + route lease (`--change-impact-resource-profile local_low_impact` emits nice/xdist-capped local pytest commands plus the original CI command)
-- Frozen snapshot IDs are process-local and intentionally have no cross-process CLI flag. The same-process `edit` MCP facade composes `impact` capture with `ast_diff`/`classify` consumption; legacy CLI file/string/git-ref modes remain distinct.
+- `--change-impact` — blast radius (`--change-impact-resource-profile local_low_impact` emits nice/xdist-capped local pytest commands plus the original CI command); it preserves the legacy live-analysis route and never enables frozen capture implicitly.
+- Frozen workspace/staged snapshot capture is an explicit same-process MCP argument (`capture_diff_snapshot=true`). Snapshot IDs are process-local and intentionally have no cross-process CLI flag; `ast_diff`/`classify` consume an ID plus path, while legacy CLI file/string/git-ref modes remain distinct.
 - `--call-graph` — caller/callee graph
 
 ### Code Quality

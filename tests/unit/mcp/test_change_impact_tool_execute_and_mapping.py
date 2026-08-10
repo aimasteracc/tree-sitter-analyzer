@@ -2233,3 +2233,106 @@ def test_support_pr_summary_only_returns_compact_decision_surface() -> None:
     assert result["agent_summary_only"] is True
     assert result["summary_line"] == "one changed file"
     assert result["next_step"] == "run focused test"
+
+
+def test_strict_snapshot_impact_never_calls_live_analysis(
+    tmp_path, monkeypatch
+) -> None:
+    import subprocess
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    subprocess.run(["git", "add", "a.py"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=tmp_path, check=True)
+    (tmp_path / "a.py").write_text("x = 2\n")
+    monkeypatch.setattr(
+        tool_module,
+        "_build_change_impact_result",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("live analysis")),
+    )
+
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {"capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+
+    assert result["affected_files_unknown"] is True
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_snapshot_exception_releases_pin_and_closes_lease(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    import pytest
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    released: list[bool] = []
+    closed: list[tuple[str, str]] = []
+    frozen = {
+        "success": True,
+        "diff_snapshot_id": "ds",
+        "route_lease_id": "lease",
+        "changed_records": [],
+    }
+    consumer = SimpleNamespace(release=lambda: released.append(True))
+    monkeypatch.setattr(registry.REGISTRY, "create", lambda *args: frozen)
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *args: (consumer, None))
+    monkeypatch.setattr(
+        registry.REGISTRY,
+        "close_lease",
+        lambda sid, lease: closed.append((sid, lease)) or True,
+    )
+    monkeypatch.setattr(
+        tool_module.ChangeImpactTool,
+        "_execute_frozen_snapshot",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("analysis")),
+    )
+
+    with pytest.raises(RuntimeError, match="analysis"):
+        asyncio.run(
+            tool_module.ChangeImpactTool(None).execute(
+                {"capture_diff_snapshot": True, "output_format": "json"}
+            )
+        )
+
+    assert (released, closed) == ([True], [("ds", "lease")])
+
+
+def test_attach_diff_snapshot_disabled_preserves_result() -> None:
+    tool = tool_module.ChangeImpactTool(None)
+    result = {"success": True}
+
+    attached = tool._attach_diff_snapshot(result, "diff", False)
+
+    assert attached == {"success": True}
+
+
+def test_pr_analysis_reports_gh_unavailable(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        tool_module,
+        "parse_pr_url",
+        lambda url: SimpleNamespace(url=url, owner="o", repo="r", number=1),
+    )
+    monkeypatch.setattr(tool_module, "check_gh_available", lambda: False)
+
+    result = tool_module.ChangeImpactTool(None)._execute_pr_analysis(
+        "https://github.com/o/r/pull/1",
+        True,
+        "json",
+        [],
+        False,
+    )
+
+    assert result["error"] == "gh CLI not available or not authenticated"

@@ -337,3 +337,44 @@ class TestSummaryOnlyFastPath:
 
         assert result["success"] is True
         assert result["affected_count"] == 0
+
+
+def test_read_only_request_skips_call_graph_impact(tmp_path, monkeypatch) -> None:
+    from tree_sitter_analyzer.mcp.tools.utils import change_impact_analysis as ci
+
+    class FakeGraph:
+        def nodes(self):
+            return ["src/app.py"]
+
+        def all_nodes(self):
+            return frozenset(["src/app.py"])
+
+        def dependents_of(self, file_rel):
+            return []
+
+        def dependencies_of(self, file_rel):
+            return []
+
+        def has_node(self, file_rel):
+            return file_rel == "src/app.py"
+
+    monkeypatch.setattr(ci, "_load_dependency_graph", lambda _: FakeGraph())
+    monkeypatch.setattr(
+        ci,
+        "compute_call_graph_impact",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("call graph")),
+    )
+
+    result = ci._build_change_impact_result(
+        ci.ChangeImpactRequest(
+            mode="diff",
+            changed_files=["src/app.py"],
+            diff_stat="src/app.py | 1 +",
+            project_root=str(tmp_path),
+            include_tests=False,
+            agent_summary_only=True,
+            read_only=True,
+        )
+    )
+
+    assert result["affected_count"] == 0

@@ -120,7 +120,6 @@ def _args(**overrides: Any) -> Namespace:
                 "agent_summary_only": True,
                 "scope_mode": "report",
                 "compact_only": False,
-                "capture_diff_snapshot": True,
                 "resource_profile": "default",
             },
         ),
@@ -482,7 +481,6 @@ def test_change_impact_cli_does_not_require_file_path(monkeypatch) -> None:
             "agent_summary_only": True,
             "scope_mode": "report",
             "compact_only": False,
-            "capture_diff_snapshot": True,
             "resource_profile": "default",
         },
     }
@@ -530,7 +528,6 @@ def test_change_impact_cli_forwards_scope_paths(monkeypatch) -> None:
             "agent_summary_only": True,
             "scope_mode": "report",
             "compact_only": False,
-            "capture_diff_snapshot": True,
             "resource_profile": "default",
         },
     }
@@ -626,7 +623,6 @@ def test_change_impact_cli_forwards_agent_summary_only(monkeypatch) -> None:
             "agent_summary_only": True,
             "scope_mode": "report",
             "compact_only": False,
-            "capture_diff_snapshot": True,
             "resource_profile": "default",
         },
     }
@@ -669,7 +665,6 @@ def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) 
             "agent_summary_only": True,
             "scope_mode": "report",
             "compact_only": False,
-            "capture_diff_snapshot": True,
             "resource_profile": "default",
         },
     }
@@ -713,7 +708,6 @@ def test_change_impact_cli_forwards_change_impact_full(monkeypatch) -> None:
             "agent_summary_only": False,
             "scope_mode": "report",
             "compact_only": False,
-            "capture_diff_snapshot": True,
             "resource_profile": "default",
         },
     }

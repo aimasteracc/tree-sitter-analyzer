@@ -25,6 +25,26 @@ from .source_oracle import (
 MAX_SNAPSHOTS = 16
 MAX_MATERIALIZED_BYTES = 64 * 1024 * 1024
 HARD_LIFETIME_SECONDS = 35.0
+MAX_SCOPE_PATHS = 4096
+MAX_PATH_BYTES = 4096
+MAX_SCOPE_BYTES = 1024 * 1024
+
+
+def _path_storage(paths: tuple[str, ...] | list[str] | set[str]) -> int:
+    """Charge UTF-8 path payload plus one framing byte per retained value."""
+    return sum(len(os.fsencode(path)) + 1 for path in paths)
+
+
+def _record_storage(files: tuple[FrozenFile, ...]) -> int:
+    """Charge the deterministic serialized changed-record metadata."""
+    return sum(
+        len(
+            json.dumps(
+                item.record.to_dict(), sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        )
+        for item in files
+    )
 
 
 @dataclass(frozen=True)
@@ -179,14 +199,29 @@ def _tracked_binary_paths(
     ]
     raw = git_output(root, args, deadline=deadline, limit=limit)
     binary: set[str] = set()
-    for row in raw.split(b"\0"):
+    tokens = raw.split(b"\0")
+    index = 0
+    while index < len(tokens):
+        row = tokens[index]
+        index += 1
         if not row:
             continue
-        fields = row.split(b"\t")
-        if len(fields) >= 3 and fields[0] == fields[1] == b"-":
-            binary.add(
-                normalize_repo_path(fields[-1].decode("utf-8", "surrogateescape"))
-            )
+        fields = row.split(b"\t", 2)
+        if len(fields) != 3:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        path_raw = fields[2]
+        if not path_raw:
+            # With -z, rename/copy rows continue as old-path NUL new-path NUL.
+            try:
+                _old_raw = tokens[index]
+                path_raw = tokens[index + 1]
+            except IndexError as exc:
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc
+            index += 2
+            if not _old_raw or not path_raw:
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        if fields[0] == fields[1] == b"-":
+            binary.add(normalize_repo_path(path_raw.decode("utf-8", "surrogateescape")))
     return binary
 
 
@@ -300,6 +335,20 @@ class DiffSnapshotRegistry:
     ) -> dict[str, object]:
         if mode not in ("diff", "staged"):
             return self._error("DIFF_SNAPSHOT_UNSUPPORTED_MODE")
+        if len(assessed_scope_paths) > MAX_SCOPE_PATHS:
+            return self._error("DIFF_SNAPSHOT_CAPACITY")
+        if any(not isinstance(path, str) for path in assessed_scope_paths):
+            return self._error("DIFF_SNAPSHOT_INVALID_PATH")
+        try:
+            normalized_input = {
+                normalize_repo_path(path) for path in assessed_scope_paths
+            }
+        except SourceOracleError as exc:
+            return self._error(str(exc))
+        if any(len(os.fsencode(path)) > MAX_PATH_BYTES for path in normalized_input):
+            return self._error("DIFF_SNAPSHOT_CAPACITY")
+        if _path_storage(normalized_input) > MAX_SCOPE_BYTES:
+            return self._error("DIFF_SNAPSHOT_CAPACITY")
         started = self._clock()
         deadline = time.monotonic() + HARD_LIFETIME_SECONDS
         reservation = secrets.token_urlsafe(16)
@@ -325,11 +374,16 @@ class DiffSnapshotRegistry:
             after, after_identity = oracle_generation(root, mode, deadline=deadline)
             if before != after or identity != after_identity:
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
-            paths = {normalize_repo_path(path) for path in assessed_scope_paths}
+            paths = set(normalized_input)
             paths.update(item.record.path for item in files)
-            size = len(patch) + sum(
-                len(item.old_bytes or b"") + len(item.new_bytes or b"")
-                for item in files
+            size = (
+                len(patch)
+                + sum(
+                    len(item.old_bytes or b"") + len(item.new_bytes or b"")
+                    for item in files
+                )
+                + _path_storage(paths)
+                + _record_storage(files)
             )
             if size > ceiling:
                 raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
@@ -407,35 +461,82 @@ class DiffSnapshotRegistry:
         self, consumer: SnapshotConsumer, paths: list[str]
     ) -> str | None:
         """Bind validated analysis paths to the pinned immutable epoch."""
+        if len(paths) > MAX_SCOPE_PATHS:
+            return "DIFF_SNAPSHOT_CAPACITY"
+        if any(not isinstance(path, str) for path in paths):
+            return "DIFF_SNAPSHOT_INVALID_PATH"
         try:
             normalized = tuple(
                 sorted({normalize_repo_path(path) for path in paths}, key=os.fsencode)
             )
         except SourceOracleError as exc:
             return str(exc)
+        if any(len(os.fsencode(path)) > MAX_PATH_BYTES for path in normalized):
+            return "DIFF_SNAPSHOT_CAPACITY"
+        if _path_storage(normalized) > MAX_SCOPE_BYTES:
+            return "DIFF_SNAPSHOT_CAPACITY"
         with self._lock:
             state = self._states.get(consumer.snapshot.snapshot_id)
             if state is None or consumer._pin not in state.pins:
                 return "DIFF_SNAPSHOT_EXPIRED"
-            updated = replace(state.snapshot, assessed_scope_paths=normalized)
+            if (
+                state.expired
+                or not state.lease_open
+                or self._clock() - state.snapshot.created_monotonic
+                >= HARD_LIFETIME_SECONDS
+            ):
+                state.expired = True
+                state.lease_open = False
+                return "DIFF_SNAPSHOT_EXPIRED"
+            old_paths_size = _path_storage(state.snapshot.assessed_scope_paths)
+            delta = _path_storage(normalized) - old_paths_size
+            if self._charged_bytes + delta > MAX_MATERIALIZED_BYTES:
+                return "DIFF_SNAPSHOT_CAPACITY"
+            updated = replace(
+                state.snapshot,
+                assessed_scope_paths=normalized,
+                materialized_bytes=state.snapshot.materialized_bytes + delta,
+            )
             state.snapshot = updated
             consumer.snapshot = updated
+            self._charged_bytes += delta
         return None
 
-    def verify(self, consumer: SnapshotConsumer) -> str | None:
+    def validate_publish(self, consumer: SnapshotConsumer) -> str | None:
+        """Atomically reject a stale/unleased snapshot immediately before publish."""
         try:
             generation, identity = oracle_generation(
                 consumer.snapshot.root_identity.realpath, consumer.snapshot.mode
             )
         except SourceOracleError as exc:
             return str(exc)
-        if identity != consumer.snapshot.root_identity:
-            return "DIFF_SNAPSHOT_ROOT_MISMATCH"
-        return (
-            None
-            if generation == consumer.snapshot.source_generation
-            else "DIFF_SNAPSHOT_SOURCE_CHANGED"
-        )
+        with self._lock:
+            state = self._states.get(consumer.snapshot.snapshot_id)
+            if state is None or state.pins.get(consumer._pin) != consumer._owner:
+                return "DIFF_SNAPSHOT_EXPIRED"
+            if (
+                state.expired
+                or not state.lease_open
+                or self._clock() - state.snapshot.created_monotonic
+                >= HARD_LIFETIME_SECONDS
+            ):
+                state.expired = True
+                state.lease_open = False
+                return "DIFF_SNAPSHOT_EXPIRED"
+            if (
+                state.snapshot.root_identity != consumer.snapshot.root_identity
+                or identity != state.snapshot.root_identity
+            ):
+                return "DIFF_SNAPSHOT_ROOT_MISMATCH"
+            if (
+                state.snapshot.source_generation != consumer.snapshot.source_generation
+                or generation != state.snapshot.source_generation
+            ):
+                return "DIFF_SNAPSHOT_SOURCE_CHANGED"
+        return None
+
+    def verify(self, consumer: SnapshotConsumer) -> str | None:
+        return self.validate_publish(consumer)
 
     def _release(self, sid: str, pin: str, owner: int) -> None:
         with self._lock:
