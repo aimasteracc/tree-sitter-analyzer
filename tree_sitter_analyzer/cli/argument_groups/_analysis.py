@@ -434,10 +434,6 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Framework filter for --detect-routes (default: all)",
     )
     parser.add_argument(
-        "--diff-snapshot-id",
-        help="RFC-0022 frozen diff snapshot ID for --ast-diff or --semantic-classify with file path.",
-    )
-    parser.add_argument(
         "--ast-diff",
         action="store_true",
         help="Structural AST diff — tree-level code change understanding",

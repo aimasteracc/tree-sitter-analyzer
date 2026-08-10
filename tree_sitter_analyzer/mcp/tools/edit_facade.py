@@ -128,7 +128,21 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     from .safe_to_edit_tool import SafeToEditTool
     from .semantic_classify_tool import SemanticClassifyTool
 
-    facade = FacadeTool(
+    class _StrictEditFacade(FacadeTool):
+        async def execute(self, arguments: dict[str, Any]) -> Any:
+            action = arguments.get("action")
+            if action == "impact":
+                if arguments.get("capture_diff_snapshot") is False:
+                    raise ValueError("DIFF_SNAPSHOT_REQUIRED")
+                if arguments.get("mode", "diff") not in ("diff", "staged"):
+                    raise ValueError("DIFF_SNAPSHOT_UNSUPPORTED_MODE")
+            if action in ("classify", "ast_diff") and arguments.get("diff_snapshot_id"):
+                allowed = {"action", "diff_snapshot_id", "file_path", "output_format"}
+                if set(arguments) - allowed:
+                    raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
+            return await super().execute(arguments)
+
+    facade = _StrictEditFacade(
         facade_name="edit",
         action_map={
             "safe": SafeToEditTool(project_root),

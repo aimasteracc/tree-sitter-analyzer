@@ -186,8 +186,11 @@ class ASTDiffTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         if arguments.get("diff_snapshot_id"):
+            allowed = {"diff_snapshot_id", "file_path", "output_format"}
+            if set(arguments) - allowed:
+                raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
             if not arguments.get("file_path"):
-                raise ValueError("file_path is required with diff_snapshot_id")
+                raise ValueError("DIFF_SNAPSHOT_FILE_REQUIRED")
             return True
         mode = self._resolve_mode(arguments)
         if mode == "diff_files":
@@ -262,9 +265,32 @@ class ASTDiffTool(BaseMCPTool):
                     or _language_from_ext(frozen.record.path)
                     or ""
                 )
+                if frozen.record.binary:
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
+                            "error": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
+                        },
+                        output_format,
+                    )
+                try:
+                    old_source = (frozen.old_bytes or b"").decode("utf-8", "strict")
+                    new_source = (frozen.new_bytes or b"").decode("utf-8", "strict")
+                except UnicodeDecodeError:
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
+                            "error": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
+                        },
+                        output_format,
+                    )
                 result = differ.diff_strings(
-                    old_source=(frozen.old_bytes or b"").decode("utf-8", "replace"),
-                    new_source=(frozen.new_bytes or b"").decode("utf-8", "replace"),
+                    old_source=old_source,
+                    new_source=new_source,
                     language=language,
                     old_file=f"{snapshot_id}:old:{frozen.record.path}",
                     new_file=f"{snapshot_id}:new:{frozen.record.path}",

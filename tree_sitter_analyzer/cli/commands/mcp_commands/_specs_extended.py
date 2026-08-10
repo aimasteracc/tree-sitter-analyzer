@@ -133,7 +133,6 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="SemanticClassifyTool",
         label="Semantic change classification",
         build_tool_args=lambda args, output_format: {
-            "diff_snapshot_id": getattr(args, "diff_snapshot_id", None),
             "mode": getattr(args, "semantic_classify_mode", "classify_file")
             or "classify_file",
             "file_path": getattr(args, "file_path", None),

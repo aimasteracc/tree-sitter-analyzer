@@ -235,7 +235,6 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="ASTDiffTool",
         label="Structural AST diff (difftastic-level)",
         build_tool_args=lambda args, output_format: {
-            "diff_snapshot_id": getattr(args, "diff_snapshot_id", None),
             "mode": getattr(args, "ast_diff_mode", "diff_files") or "diff_files",
             "old_file": getattr(args, "ast_diff_old_file", None),
             "new_file": getattr(args, "ast_diff_new_file", None),

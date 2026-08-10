@@ -602,9 +602,9 @@ def test_find_test_files_uses_path_specific_edge_extractor_family():
         },
     )
 
-    assert mapping[
-        "tree_sitter_analyzer/mcp/utils/edge_extractors/java.py"
-    ] == ["tests/unit/mcp/test_project_summary_pagerank.py"]
+    assert mapping["tree_sitter_analyzer/mcp/utils/edge_extractors/java.py"] == [
+        "tests/unit/mcp/test_project_summary_pagerank.py"
+    ]
 
 
 def test_find_test_files_disambiguates_direct_matches_alongside_family_matches():
@@ -737,12 +737,8 @@ def test_find_test_files_preserves_monorepo_package_scope():
         },
     )
 
-    assert mapping["packages/a/core/config.py"] == [
-        "packages/a/tests/test_config.py"
-    ]
-    assert mapping["packages/a/src/config.py"] == [
-        "packages/a/tests/test_config.py"
-    ]
+    assert mapping["packages/a/core/config.py"] == ["packages/a/tests/test_config.py"]
+    assert mapping["packages/a/src/config.py"] == ["packages/a/tests/test_config.py"]
     assert mapping["packages/a/src/core/config.py"] == [
         "packages/a/tests/test_config.py"
     ]
@@ -821,9 +817,7 @@ def test_find_test_files_preserves_outer_affinity_for_exact_direct():
         },
     )
 
-    assert mapping["src/api/client/request.py"] == [
-        "tests/unit/api/test_request.py"
-    ]
+    assert mapping["src/api/client/request.py"] == ["tests/unit/api/test_request.py"]
 
 
 def test_find_test_files_keeps_only_nearest_exact_subsystem_match():
@@ -836,9 +830,7 @@ def test_find_test_files_keeps_only_nearest_exact_subsystem_match():
         },
     )
 
-    assert mapping["src/api/client/config.py"] == [
-        "tests/unit/client/test_config.py"
-    ]
+    assert mapping["src/api/client/config.py"] == ["tests/unit/client/test_config.py"]
 
 
 def test_find_test_files_normalizes_test_prefixed_subsystem_directories():
@@ -892,9 +884,7 @@ def test_find_test_files_preserves_direct_variants_across_test_layers():
         },
     )
 
-    assert mapping[
-        "tree_sitter_analyzer/mcp/tools/analyze_scale_tool.py"
-    ] == [
+    assert mapping["tree_sitter_analyzer/mcp/tools/analyze_scale_tool.py"] == [
         "tests/integration/core/test_analyze_scale_tool_batch_metrics.py",
         "tests/integration/core/test_analyze_scale_tool_file_output.py",
         "tests/integration/mcp/test_tools/test_analyze_scale_tool.py",
@@ -975,9 +965,7 @@ def test_find_test_files_keeps_exact_direct_over_directory_only_affinity():
         },
     )
 
-    assert mapping["src/core/engine.py"] == [
-        "tests/integration/api/test_engine.py"
-    ]
+    assert mapping["src/core/engine.py"] == ["tests/integration/api/test_engine.py"]
 
 
 def test_find_test_files_keeps_exact_direct_over_scope_prefixed_filename():
@@ -990,9 +978,7 @@ def test_find_test_files_keeps_exact_direct_over_scope_prefixed_filename():
         },
     )
 
-    assert mapping["src/core/engine.py"] == [
-        "tests/integration/api/test_engine.py"
-    ]
+    assert mapping["src/core/engine.py"] == ["tests/integration/api/test_engine.py"]
 
 
 def test_find_test_files_keeps_monorepo_package_identity_during_affinity():
@@ -1144,9 +1130,7 @@ def test_find_test_files_rejects_workspace_tests_for_central_sources():
         },
     )
 
-    assert mapping["src/core/config.py"] == [
-        change_impact_tool.AUTO_DISCOVER_TEST_HINT
-    ]
+    assert mapping["src/core/config.py"] == [change_impact_tool.AUTO_DISCOVER_TEST_HINT]
 
 
 def test_find_test_files_ignores_workspace_markers_below_test_root():
@@ -1156,9 +1140,7 @@ def test_find_test_files_ignores_workspace_markers_below_test_root():
         {"tests/apps/users/test_config.py"},
     )
 
-    assert mapping["src/users/config.py"] == [
-        "tests/apps/users/test_config.py"
-    ]
+    assert mapping["src/users/config.py"] == ["tests/apps/users/test_config.py"]
 
 
 def test_find_test_files_filters_cross_package_family_matches():
@@ -1201,9 +1183,7 @@ def test_find_test_files_routes_stem_helper_to_behavioral_suite():
         },
     )
 
-    assert mapping[
-        "tree_sitter_analyzer/mcp/tools/utils/test_discovery_stems.py"
-    ] == [
+    assert mapping["tree_sitter_analyzer/mcp/tools/utils/test_discovery_stems.py"] == [
         "tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py",
         "tests/unit/mcp/test_test_discovery.py",
     ]
@@ -1220,9 +1200,7 @@ def test_find_test_files_supports_irregular_plural_subject():
     )
 
     assert mapping["src/analysis.py"] == ["tests/test_analyses.py"]
-    assert mapping["src/query_analysis.py"] == [
-        "tests/test_query_analyses_errors.py"
-    ]
+    assert mapping["src/query_analysis.py"] == ["tests/test_query_analyses_errors.py"]
 
 
 def test_find_test_files_supports_doubled_z_plural():
@@ -1281,9 +1259,7 @@ def test_find_test_files_protects_plural_direct_from_affinity_fallback():
         },
     )
 
-    assert mapping["src/core/config.py"] == [
-        "tests/integration/api/test_configs.py"
-    ]
+    assert mapping["src/core/config.py"] == ["tests/integration/api/test_configs.py"]
 
 
 def test_find_test_files_preserves_subsystem_after_outer_source_root():
@@ -1321,9 +1297,7 @@ def test_find_test_files_keeps_camel_case_acronyms_intact():
         {"slow/xml-http-request.test.ts"},
     )
 
-    assert mapping["src/XMLHttpRequest.ts"] == [
-        "slow/xml-http-request.test.ts"
-    ]
+    assert mapping["src/XMLHttpRequest.ts"] == ["slow/xml-http-request.test.ts"]
     assert (
         change_impact_tool.test_file_subject_stem("XMLHttpRequest.ts")
         == "xml_http_request"
@@ -1787,3 +1761,160 @@ def test_doc_drift_hints_appends_to_verification_steps():
         "test_readme_counts_match_registry" in step
         for step in result["verification_steps"]
     )
+
+
+def test_pr_impact_scope_uses_filtered_records_and_finalizes(
+    monkeypatch, tmp_path
+) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.mcp.tools.change_impact_tool as impact_module
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+    (tmp_path / "src").mkdir()
+    parsed = SimpleNamespace(
+        url="https://github.com/o/r/pull/1", pr_number=1, slug="o/r"
+    )
+    monkeypatch.setattr(impact_module, "parse_pr_url", lambda url: parsed)
+    monkeypatch.setattr(impact_module, "check_gh_available", lambda: True)
+    monkeypatch.setattr(
+        impact_module, "fetch_pr_changed_files", lambda value: ["src/a.py", "docs/x.md"]
+    )
+    monkeypatch.setattr(
+        impact_module, "fetch_pr_diff_stat", lambda value: "1 file changed"
+    )
+    monkeypatch.setattr(
+        impact_module,
+        "_build_change_impact_result",
+        lambda request: {
+            "success": True,
+            "changed_files": request.changed_files,
+            "agent_summary": {"verdict": "SAFE", "summary_line": "ok"},
+        },
+    )
+
+    result = asyncio.run(
+        ChangeImpactTool(str(tmp_path)).execute(
+            {"pr_url": parsed.url, "scope_paths": ["src"], "output_format": "json"}
+        )
+    )
+    unscoped = asyncio.run(
+        ChangeImpactTool(str(tmp_path)).execute(
+            {"pr_url": parsed.url, "output_format": "json"}
+        )
+    )
+
+    assert result["success"] is True
+    assert unscoped["changed_files"] == ["src/a.py", "docs/x.md"]
+    assert result["changed_files"] == ["src/a.py"]
+    assert result["pr_number"] == 1
+    assert result["verdict"] == "SAFE"
+
+
+def test_name_status_parser_fails_closed_on_truncated_git_output(monkeypatch) -> None:
+    import time
+
+    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+    from tree_sitter_analyzer.source_oracle import SourceOracleError
+
+    monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: b"M\0")
+
+    import pytest
+
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        snapshots._rows(".", "staged", time.monotonic() + 1, 1024)
+
+
+def test_payload_rejects_missing_workspace_epoch_and_budget_overflow(
+    monkeypatch,
+) -> None:
+    import time
+
+    import pytest
+
+    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+    from tree_sitter_analyzer.source_oracle import SafePath, SourceOracleError
+
+    monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: b"")
+    monkeypatch.setattr(snapshots, "_rows", lambda *args: [("M", None, "a.py", True)])
+    monkeypatch.setattr(snapshots, "_tracked_binary_paths", lambda *args: set())
+    monkeypatch.setattr(snapshots, "_blob", lambda *args: b"old")
+    monkeypatch.setattr(
+        snapshots,
+        "safe_workspace_path",
+        lambda *args, **kwargs: SafePath(None, (), "missing"),
+    )
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_SOURCE_CHANGED"):
+        snapshots._capture_payload(".", "diff", time.monotonic() + 1, 1024)
+
+    monkeypatch.setattr(snapshots, "_rows", lambda *args: [("A", None, "a.py", False)])
+    monkeypatch.setattr(
+        snapshots,
+        "safe_workspace_path",
+        lambda *args, **kwargs: SafePath(b"x", (b"bad",), "file"),
+    )
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_CAPACITY"):
+        snapshots._capture_payload(".", "diff", time.monotonic() + 1, 1)
+
+
+def test_create_rejects_oracle_root_identity_drift(tmp_path, monkeypatch) -> None:
+    import subprocess
+
+    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+    from tree_sitter_analyzer.source_oracle import RootIdentity
+
+    root = tmp_path
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+    (root / "a.py").write_text("x = 1\n")
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"], cwd=root, check=True, capture_output=True
+    )
+    monkeypatch.setattr(
+        snapshots,
+        "oracle_generation",
+        lambda *args, **kwargs: ("sg_x", RootIdentity("bad", 1, 2)),
+    )
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert result == {"success": False, "error_code": "DIFF_SNAPSHOT_ROOT_MISMATCH"}
+
+
+def test_name_status_deduplicates_tracked_and_untracked(monkeypatch) -> None:
+    import time
+
+    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+
+    outputs = iter((b"A\0a.py\0", b"a.py\0"))
+    monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: next(outputs))
+
+    assert snapshots._rows(".", "diff", time.monotonic() + 1, 1024) == [
+        ("A", None, "a.py", True)
+    ]
+
+
+def test_payload_accepts_empty_metadata_for_untracked_record(monkeypatch) -> None:
+    import time
+
+    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+    from tree_sitter_analyzer.source_oracle import SafePath
+
+    monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: b"")
+    monkeypatch.setattr(snapshots, "_rows", lambda *args: [("A", None, "a.py", False)])
+    monkeypatch.setattr(snapshots, "_tracked_binary_paths", lambda *args: set())
+    monkeypatch.setattr(
+        snapshots,
+        "safe_workspace_path",
+        lambda *args, **kwargs: SafePath(b"x", (), "file"),
+    )
+
+    patch, files = snapshots._capture_payload(".", "diff", time.monotonic() + 1, 1024)
+
+    assert files[0].new_bytes == b"x"
+    assert b'"mode":0' in patch

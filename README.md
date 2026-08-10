@@ -169,7 +169,7 @@ TSA ships curated workflows under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 324 CLI flags
+### 323 CLI flags
 
 Superset of CodeGraph's CLI surface. Highlights:
 
