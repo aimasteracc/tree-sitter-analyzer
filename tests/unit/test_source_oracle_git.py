@@ -371,9 +371,10 @@ def test_oracle_generation_preserves_gitdir_trailing_newline(
 
 
 @POSIX_SNAPSHOT_TEST
-def test_oracle_generation_skips_missing_dirty_gitlink(
+def test_oracle_generation_preserves_frozen_index_for_dirty_gitlink(
     tmp_path: Path, monkeypatch
 ) -> None:
+    # PR #1252 review: dirty gitlinks are opaque unsupported evidence.
     entry = b"160000 " + b"a" * 40 + b" 0"
     _stub_oracle_inventory(
         tmp_path,
@@ -382,16 +383,21 @@ def test_oracle_generation_skips_missing_dirty_gitlink(
         indexed={b"vendor": entry},
         dirty=b"vendor\0",
     )
+    epochs: list[oracle.GitEpoch] = []
 
-    generation, _identity = oracle.oracle_generation(str(tmp_path), "diff")
+    generation, _identity = oracle.oracle_generation(
+        str(tmp_path), "diff", epoch_out=epochs
+    )
 
     assert generation[:3] == "sg_"
+    assert epochs[0].workspace_gitlinks == ((b"vendor", entry),)
 
 
 @POSIX_SNAPSHOT_TEST
-def test_oracle_generation_rejects_invalid_dirty_gitlink_oid(
+def test_oracle_generation_never_reads_or_runs_child_git_for_dirty_gitlink(
     tmp_path: Path, monkeypatch
 ) -> None:
+    # PR #1252 review: a hostile submodule leaf may be a directory, symlink, or FIFO.
     entry = b"160000 " + b"a" * 40 + b" 0"
     _stub_oracle_inventory(
         tmp_path,
@@ -400,50 +406,27 @@ def test_oracle_generation_rejects_invalid_dirty_gitlink_oid(
         indexed={b"vendor": entry},
         dirty=b"vendor\0",
     )
-    safe = core_oracle.SafePath(None, (b"1,2,16877,0,0,0",), "directory")
-    monkeypatch.setattr(oracle, "safe_workspace_path", lambda *a, **k: safe)
-    original = oracle.git_output
+    top_level_calls: list[tuple[str, ...]] = []
+    original_output = oracle.git_output
 
-    def output(root, args, **kwargs):
-        if args == ["rev-parse", "--verify", "HEAD"] and root != str(tmp_path):
-            return b"not-an-oid\n"
-        return original(root, args, **kwargs)
+    def top_level_only(root, args, **kwargs):
+        assert root == str(tmp_path)
+        top_level_calls.append(tuple(args))
+        return original_output(root, args, **kwargs)
 
-    monkeypatch.setattr(oracle, "git_output", output)
+    monkeypatch.setattr(oracle, "git_output", top_level_only)
+    original_safe = oracle.safe_workspace_path
 
-    _error(
-        lambda: oracle.oracle_generation(str(tmp_path), "diff"),
-        "DIFF_SNAPSHOT_GIT_ERROR",
-    )
+    def reject_gitlink_read(root, path, **kwargs):
+        if path == "vendor":
+            raise AssertionError("gitlink read")
+        return original_safe(root, path, **kwargs)
 
+    monkeypatch.setattr(oracle, "safe_workspace_path", reject_gitlink_read)
 
-@POSIX_SNAPSHOT_TEST
-def test_oracle_generation_rejects_wrong_length_dirty_gitlink_oid(
-    tmp_path: Path, monkeypatch
-) -> None:
-    entry = b"160000 " + b"a" * 40 + b" 0"
-    _stub_oracle_inventory(
-        tmp_path,
-        monkeypatch,
-        tracked=[b"vendor"],
-        indexed={b"vendor": entry},
-        dirty=b"vendor\0",
-    )
-    safe = core_oracle.SafePath(None, (b"1,2,16877,0,0,0",), "directory")
-    monkeypatch.setattr(oracle, "safe_workspace_path", lambda *a, **k: safe)
-    original = oracle.git_output
+    oracle.oracle_generation(str(tmp_path), "diff")
 
-    def output(root, args, **kwargs):
-        if args == ["rev-parse", "--verify", "HEAD"] and root != str(tmp_path):
-            return b"a" * 39 + b"\n"
-        return original(root, args, **kwargs)
-
-    monkeypatch.setattr(oracle, "git_output", output)
-
-    _error(
-        lambda: oracle.oracle_generation(str(tmp_path), "diff"),
-        "DIFF_SNAPSHOT_GIT_ERROR",
-    )
+    assert top_level_calls.count(("rev-parse", "--verify", "HEAD")) == 1
 
 
 def test_frame_workspace_path_propagates_filtered_oid_failure(

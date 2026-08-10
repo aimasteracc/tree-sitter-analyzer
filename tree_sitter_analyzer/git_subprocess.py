@@ -125,9 +125,11 @@ def _run_git_bounded_with_order_file(
     # Snapshot-owned Git must never inherit machine-wide attributes.  Keep this
     # invariant here so oracle, frozen-index, hash, diff, and temp commands agree.
     child_env["GIT_ATTR_NOSYSTEM"] = "1"
-    # Replacement refs are mutable name-resolution policy, not object data.
-    # All snapshot Git commands resolve the original object graph consistently.
+    # Replacement refs and partial-clone fetches are mutable resolution policy,
+    # not frozen object data.  Missing promised objects must fail closed without
+    # contacting a remote or mutating any repository object store.
     child_env["GIT_NO_REPLACE_OBJECTS"] = "1"
+    child_env["GIT_NO_LAZY_FETCH"] = "1"
     process_options = _group_options()
     command = [
         "git",

@@ -145,6 +145,7 @@ def test_dirty_gitlink_same_oid_remains_explicitly_unsupported(tmp_path: Path) -
             "old_mode": "160000",
             "new_mode": "160000",
             "old_oid": oid,
+            "new_oid": oid,
             "unsupported_kind": "dirty_gitlink",
         }
     ]

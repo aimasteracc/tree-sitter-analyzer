@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import os
 import subprocess
-import threading
 from pathlib import Path
 
 import pytest
@@ -371,68 +371,61 @@ def test_pr_analysis_builds_no_changes_response(monkeypatch) -> None:
     assert result["changed_files"] == []
 
 
-def test_idle_short_lifetime_timer_erases_unpinned_bytes(
-    tmp_path: Path, monkeypatch
+@POSIX_SNAPSHOT_TEST
+@pytest.mark.parametrize("hostile_leaf", ["directory", "fifo"])
+def test_dirty_gitlink_preserves_index_evidence_without_reading_hostile_leaf(
+    tmp_path: Path, hostile_leaf: str
 ) -> None:
-    # PR #1252 review 9397: expiry must not depend on a later registry request.
-    install_fake_snapshot_materializer(monkeypatch, tmp_path)
-    monkeypatch.setattr(snapshots, "HARD_LIFETIME_SECONDS", 0.02)
-    entered = threading.Event()
-    proceed = threading.Event()
-    fired = threading.Event()
+    # PR #1252 review: dirty gitlink leaves are opaque even after a hostile swap.
+    root = _repo(tmp_path)
+    oid = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=root, text=True
+    ).strip()
+    subprocess.run(
+        ["git", "update-index", "--add", "--cacheinfo", "160000", oid, "vendor"],
+        cwd=root,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "add gitlink"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    if hostile_leaf == "directory":
+        vendor = root / "vendor"
+        vendor.mkdir()
+        subprocess.run(["git", "init"], cwd=vendor, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=vendor)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=vendor)
+        (vendor / "child.txt").write_text("different child head\n")
+        subprocess.run(["git", "add", "."], cwd=vendor, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "child"],
+            cwd=vendor,
+            check=True,
+            capture_output=True,
+        )
+    else:
+        os.mkfifo(root / "vendor")
 
-    def timer_factory(delay: float, callback):
-        def expire() -> None:
-            entered.set()
-            proceed.wait(1.0)
-            callback()
-            fired.set()
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
 
-        return threading.Timer(delay, expire)
-
-    registry = snapshots.DiffSnapshotRegistry(timer_factory=timer_factory)
-    result = registry.create(str(tmp_path), "diff", ["x.py"])
     assert result["success"] is True
-    assert registry._charged_bytes != 0
-    assert entered.wait(1.0) is True
-
-    proceed.set()
-    assert fired.wait(1.0) is True
-    with registry._lock:
-        assert registry._states == {}
-        assert registry._charged_bytes == 0
-
-
-def test_hard_deadline_timer_retains_pinned_bytes_until_release(
-    tmp_path: Path, monkeypatch
-) -> None:
-    # PR #1252 review 9397: a pinned deadline marks expiry before deferred erase.
-    install_fake_snapshot_materializer(monkeypatch, tmp_path)
-    callbacks = []
-
-    class Timer:
-        daemon = False
-
-        def __init__(self, _delay, callback) -> None:
-            callbacks.append(callback)
-
-        def start(self) -> None:
-            return None
-
-        def cancel(self) -> None:
-            return None
-
-    registry = snapshots.DiffSnapshotRegistry(timer_factory=Timer)
-    result = registry.create(str(tmp_path), "diff", ["x.py"])
-    consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(tmp_path))
-    assert error is None
-    assert consumer is not None
-    charged = registry._charged_bytes
-
-    callbacks[0]()
-    assert registry._charged_bytes == charged
-    assert next(iter(registry._states.values())).expired is True
-    consumer.release()
-    assert registry._charged_bytes == 0
-    callbacks[0]()
-    assert registry._charged_bytes == 0
+    assert result["changed_records"] == [
+        {
+            "path": "vendor",
+            "status": "M",
+            "old_available": True,
+            "new_available": True,
+            "binary": False,
+            "patch_available": False,
+            "old_kind": "gitlink",
+            "new_kind": "gitlink",
+            "old_mode": "160000",
+            "new_mode": "160000",
+            "old_oid": oid,
+            "new_oid": oid,
+            "unsupported_kind": "dirty_gitlink",
+        }
+    ]

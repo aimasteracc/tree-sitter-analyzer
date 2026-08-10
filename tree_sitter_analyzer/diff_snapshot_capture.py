@@ -355,20 +355,24 @@ def _capture_payload(
                 raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
             old_entries = index_entries
             raw_paths = set(frozen.dirty_paths) | set(frozen.untracked_paths)
+            gitlink_entries = dict(frozen.workspace_gitlinks)
             for raw in sorted(raw_paths):
                 path = _decode_path(raw)
                 manifest_entry = (expected_manifest or {}).get(path)
                 if manifest_entry is None:
                     raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
-                safe = safe_workspace_path(
-                    root,
-                    path,
-                    deadline=deadline,
-                    limit=remaining,
-                    expected_chain=manifest_entry.descriptor_chain,
-                    # Regular tracked leaves may have been replaced by dirs.
-                    allow_directory=True,
-                )
+                if raw in gitlink_entries:
+                    safe = SafePath(None, (), "directory")
+                else:
+                    safe = safe_workspace_path(
+                        root,
+                        path,
+                        deadline=deadline,
+                        limit=remaining,
+                        expected_chain=manifest_entry.descriptor_chain,
+                        # Regular tracked leaves may have been replaced by dirs.
+                        allow_directory=True,
+                    )
                 if safe.data is not None:
                     remaining -= len(safe.data)
                 safe_paths[raw] = safe
@@ -412,8 +416,7 @@ def _capture_payload(
             # A dirty submodule can retain the same HEAD OID. Git then emits no
             # row, but the unsupported dirty identity must never be dropped.
             for raw in sorted(dict(frozen.workspace_gitlinks)):
-                if raw in frozen.dirty_paths and raw not in patch_row_paths:
-                    rows.append(("M", None, raw))
+                rows.append(("M", None, raw))
 
         # Git may be configured to emit any order.  The public records use one
         # internal raw-path order in both workspace and staged modes; status
@@ -460,8 +463,9 @@ def _capture_payload(
                         )
                     else:
                         new_mode, new_kind = _safe_mode(safe.kind, safe.metadata)
-                    # Temporary object identity is not a repository attestation.
-                    new_oid = None
+                    # Only a dirty gitlink OID attests the frozen top-level index.
+                    if raw not in dirty_gitlinks:
+                        new_oid = None
                     if safe.kind == "missing":
                         new = None
             path = _decode_path(raw)

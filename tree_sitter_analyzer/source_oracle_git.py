@@ -215,6 +215,17 @@ def _frame_workspace_path(
 ) -> int:
     path = normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
     is_gitlink = bool(index_entry and index_entry.split(b" ", 1)[0] == b"160000")
+    if is_gitlink:
+        # Gitlink worktree leaves are deliberately opaque.  Their frozen index
+        # identity plus the separately framed dirty marker is sufficient, and
+        # avoiding even a leaf open closes directory/symlink/FIFO swap races.
+        _frame(digest, b"worktree-path", raw)
+        _frame(digest, b"worktree-kind", b"gitlink-unread")
+        _frame(digest, b"index-blob", index_entry or b"")
+        _frame(digest, b"HEAD-blob", head_entry or b"missing")
+        if manifest is not None:
+            manifest[path] = WorkspaceManifestEntry((), None)
+        return 0
     safe = safe_workspace_path(
         root,
         path,
@@ -377,30 +388,14 @@ def oracle_generation(
         entry = index_entries[raw]
         if not entry.startswith(b"160000 "):
             continue
-        path = normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
-        safe_gitlink = safe_workspace_path(
-            root, path, deadline=end, limit=0, read_regular=False, allow_directory=True
-        )
-        if safe_gitlink.kind != "directory":
-            continue
-        submodule_root = os.path.join(root, os.fsdecode(raw))
-        oid = _strip_one_record_terminator(
-            git_output(
-                submodule_root,
-                ["rev-parse", "--verify", "HEAD"],
-                deadline=end,
-                limit=4096,
-            )
-        )
-        try:
-            int(oid, 16)
-        except ValueError as exc:
-            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc
-        if len(oid) != len(head):
-            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        workspace_gitlinks[raw] = b"160000 " + oid + b" 0"
+        # A frozen top-level index already supplies the only safe gitlink
+        # identity.  Never inspect the worktree leaf or run Git inside a
+        # submodule: the leaf may be concurrently replaced by a symlink, FIFO,
+        # or hostile repository.  Dirty is retained as explicit unsupported
+        # evidence even when the eventual patch has no row.
+        workspace_gitlinks[raw] = entry
         _frame(digest, b"worktree-gitlink-dirty", raw)
-        _frame(digest, b"worktree-gitlink-head", raw + b"\0" + oid)
+        _frame(digest, b"worktree-gitlink-index", raw + b"\0" + entry)
     if epoch_out is not None:
         epoch_out.append(
             GitEpoch(
@@ -459,7 +454,10 @@ def oracle_generation(
         "--no-color",
         "--no-ext-diff",
         "--no-textconv",
-        "--ignore-submodules=none",
+        # Dirty gitlinks are framed separately from the frozen index and dirty
+        # inventory.  Asking patch-producing Git to inspect their live leaves
+        # would reintroduce child-repository and special-file reads.
+        "--ignore-submodules=all",
     ]
     if mode == "staged":
         diff_args.append(os.fsdecode(head))

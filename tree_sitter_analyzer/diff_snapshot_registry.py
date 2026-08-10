@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
 from .diff_snapshot_capture import _capture_payload
-from .diff_snapshot_expiry import SnapshotExpiryScheduler
+from .diff_snapshot_expiry import SnapshotExpiryScheduler, schedule_expiry
 from .diff_snapshot_leases import (
     FrozenDiffSnapshot,
     SnapshotConsumer,
@@ -229,18 +229,18 @@ class DiffSnapshotRegistry:
                 self._sweep()
                 if self._clock() - started >= HARD_LIFETIME_SECONDS:
                     return snapshot_error("DIFF_SNAPSHOT_TIMEOUT")
-                if (
-                    self._charged_bytes + sum(self._reservations.values()) + size
-                    > MAX_MATERIALIZED_BYTES
-                ):
+                used = self._charged_bytes + sum(self._reservations.values()) + size
+                if used > MAX_MATERIALIZED_BYTES:
                     return snapshot_error("DIFF_SNAPSHOT_CAPACITY")
                 state = _State(snapshot)
                 self._states[sid] = state
                 self._charged_bytes += size
-                self._expiry.schedule(
+                schedule_expiry(
+                    self._expiry,
                     sid,
                     snapshot.created_monotonic + HARD_LIFETIME_SECONDS - self._clock(),
                     lambda: self._expire(sid, state),
+                    rollback=lambda: self._erase(sid),
                 )
             return {
                 "success": True,
