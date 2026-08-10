@@ -2205,3 +2205,31 @@ def test_support_canonicalizer_preserves_nonstr_nested_verdict() -> None:
     result = {"agent_summary": {"verdict": 7}}
     support._canonicalize_change_impact_verdict(result)
     assert result == {"agent_summary": {"verdict": 7}}
+
+
+def test_support_pr_summary_only_returns_compact_decision_surface() -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = support._finalize_pr_result(
+        {
+            "success": True,
+            "verdict": "SAFE",
+            "agent_summary": {
+                "verdict": "SAFE",
+                "summary_line": "one changed file",
+                "next_step": "run focused test",
+            },
+        },
+        parsed=SimpleNamespace(url="https://example/pull/1", pr_number=1, slug="o/r"),
+        scope_paths=[],
+        scope_paths_invalid=[],
+        changed_files=["a.py"],
+        agent_summary_only=True,
+        output_format="json",
+    )
+
+    assert result["agent_summary_only"] is True
+    assert result["summary_line"] == "one changed file"
+    assert result["next_step"] == "run focused test"

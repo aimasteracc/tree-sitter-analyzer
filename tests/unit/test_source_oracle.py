@@ -479,3 +479,138 @@ def test_oracle_generation_supports_staged_mode(tmp_path: Path) -> None:
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     generation, _ = oracle.oracle_generation(str(tmp_path), "staged")
     assert generation.startswith("sg_")
+
+
+def test_oracle_generation_binds_clean_tracked_write_restore(tmp_path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+    target = tmp_path / "clean.py"
+    target.write_bytes(b"SAFE\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    before, _ = oracle.oracle_generation(str(tmp_path))
+
+    target.write_bytes(b"TRANSIENT\n")
+    target.write_bytes(b"SAFE\n")
+    after, _ = oracle.oracle_generation(str(tmp_path))
+
+    assert after != before
+
+
+def test_oracle_generation_binds_clean_tracked_atomic_replace(tmp_path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+    target = tmp_path / "clean.py"
+    target.write_bytes(b"SAFE\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    before, _ = oracle.oracle_generation(str(tmp_path))
+
+    replacement = tmp_path / "replacement"
+    replacement.write_bytes(b"SAFE\n")
+    os.replace(replacement, target)
+    after, _ = oracle.oracle_generation(str(tmp_path))
+
+    assert after != before
+
+
+def test_oracle_generation_fails_closed_without_nofollow_workspace_reads(
+    tmp_path: Path, monkeypatch
+) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    monkeypatch.delattr(oracle.os, "O_NOFOLLOW", raising=False)
+
+    _error(
+        lambda: oracle.oracle_generation(str(tmp_path)),
+        "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED",
+    )
+
+
+def test_tracked_paths_rejects_bounded_path_count(monkeypatch) -> None:
+    monkeypatch.setattr(oracle, "_MAX_WORKTREE_PATHS", 1)
+    monkeypatch.setattr(oracle, "git_output", lambda *args, **kwargs: b"a\0b\0")
+
+    _error(
+        lambda: oracle._tracked_paths(".", deadline=time.monotonic() + 1),
+        "DIFF_SNAPSHOT_CAPACITY",
+    )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"malformed\0",
+        b"100644 a 0\t\0",
+        b"100644 a\tpath\0",
+        b"100644 a 1\tpath\0",
+        b"invalid a 0\tpath\0",
+        b"100644 invalid-hash 0\tpath\0",
+        b"100644 a 0\tpath\x00100644 b 0\tpath\0",
+    ],
+)
+def test_index_entries_rejects_hostile_inventory(monkeypatch, raw: bytes) -> None:
+    monkeypatch.setattr(oracle, "git_output", lambda *args, **kwargs: raw)
+
+    _error(
+        lambda: oracle._index_entries(".", deadline=time.monotonic() + 1),
+        "DIFF_SNAPSHOT_GIT_ERROR",
+    )
+
+
+def test_index_entries_rejects_bounded_path_count(monkeypatch) -> None:
+    raw = b"100644 a 0\ta\x00100644 b 0\tb\0"
+    monkeypatch.setattr(oracle, "_MAX_WORKTREE_PATHS", 1)
+    monkeypatch.setattr(oracle, "git_output", lambda *args, **kwargs: raw)
+
+    _error(
+        lambda: oracle._index_entries(".", deadline=time.monotonic() + 1),
+        "DIFF_SNAPSHOT_CAPACITY",
+    )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"malformed\0",
+        b"100644 blob a\t\0",
+        b"100644 a\tpath\0",
+        b"invalid blob a\tpath\0",
+        b"100644 blob invalid-hash\tpath\0",
+        b"100644 tree a\tpath\0",
+        b"100644 blob a\tpath\x00100644 blob b\tpath\0",
+    ],
+)
+def test_head_entries_rejects_hostile_inventory(monkeypatch, raw: bytes) -> None:
+    monkeypatch.setattr(oracle, "git_output", lambda *args, **kwargs: raw)
+
+    _error(
+        lambda: oracle._head_entries(".", deadline=time.monotonic() + 1),
+        "DIFF_SNAPSHOT_GIT_ERROR",
+    )
+
+
+def test_head_entries_rejects_bounded_path_count(monkeypatch) -> None:
+    raw = b"100644 blob a\ta\x00100644 commit b\tb\0"
+    monkeypatch.setattr(oracle, "_MAX_WORKTREE_PATHS", 1)
+    monkeypatch.setattr(oracle, "git_output", lambda *args, **kwargs: raw)
+
+    _error(
+        lambda: oracle._head_entries(".", deadline=time.monotonic() + 1),
+        "DIFF_SNAPSHOT_CAPACITY",
+    )

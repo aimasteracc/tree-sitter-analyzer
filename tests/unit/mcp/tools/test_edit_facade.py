@@ -767,3 +767,46 @@ def test_edit_impact_is_strict_and_does_not_write(tmp_path: Path) -> None:
         asyncio.run(
             facade.execute({"action": "impact", "capture_diff_snapshot": False})
         )
+
+
+def test_edit_impact_rejects_clean_tracked_transient_write_restore(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Strict impact cannot certify analysis that observed a transient clean file."""
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+    from tree_sitter_analyzer.mcp.tools.utils import change_impact_analysis
+
+    # RFC-0022 P0.2 review 2026-07-01: dependency analysis consumed a clean
+    # tracked transient and certified success after the callback restored it.
+    root = make_repo(tmp_path)
+    changed = root / "old.py"
+    dependency = root / "gone.py"
+    changed.write_text("value = 2\n")
+    original = dependency.read_bytes()
+    observations: list[bytes] = []
+
+    def legacy_dependency_analysis(_project_root):
+        dependency.write_bytes(b"TRANSIENT = True\n")
+        observations.append(dependency.read_bytes())
+        dependency.write_bytes(original)
+        return None
+
+    monkeypatch.setattr(
+        change_impact_analysis, "_load_dependency_graph", legacy_dependency_analysis
+    )
+
+    result = asyncio.run(
+        build_edit_facade(str(root)).execute(
+            {"action": "impact", "mode": "diff", "output_format": "json"}
+        )
+    )
+
+    assert observations == [b"TRANSIENT = True\n"]
+    assert dependency.read_bytes() == original
+    assert result == {
+        "success": False,
+        "verdict": "ERROR",
+        "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
+        "error": "DIFF_SNAPSHOT_SOURCE_CHANGED",
+        "output_format": "json",
+    }
