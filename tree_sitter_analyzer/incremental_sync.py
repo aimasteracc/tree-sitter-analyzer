@@ -88,8 +88,11 @@ class IncrementalSync:
             source_scope = make_source_scope_descriptor(
                 no_default_excludes=True,
                 exclude_patterns=tuple(sorted(exclude_patterns or ())),
+                certification_max_files=max_files,
             )
-        validate_full_index_source_scope(source_scope, exclude_patterns or frozenset())
+        validate_full_index_source_scope(
+            source_scope, exclude_patterns or frozenset(), max_files
+        )
         result = SyncResult()
         conn = self._cache.get_conn()
         indexed_rows = self._load_indexed_rows(conn)

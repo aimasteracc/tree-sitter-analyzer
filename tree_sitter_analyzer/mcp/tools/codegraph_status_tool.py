@@ -170,8 +170,9 @@ class CodeGraphStatusTool(BaseMCPTool):
         )
         if complete:
             hint = (
-                "Index snapshot is complete — pass its snapshot_id capability "
-                "to graph readers."
+                "Index is complete. Use nav/search normally; snapshot IDs are "
+                "process-local audit tokens owned internally for future reader "
+                "composition, not caller inputs."
             )
         elif snapshot.reason == "CONCURRENT_WRITER":
             hint = (

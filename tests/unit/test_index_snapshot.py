@@ -93,6 +93,7 @@ class TestAuthoritativeSnapshotOracle:
         assert result["source_fingerprint"].startswith("sha256:")
         assert result["index_fingerprint"].startswith("sha256:")
         assert result["action_version"] == "index.status/v1"
+        assert "Use nav/search normally" in result["hint"]
 
     @pytest.mark.asyncio
     async def test_successful_full_index_writes_exact_authoritative_manifest(

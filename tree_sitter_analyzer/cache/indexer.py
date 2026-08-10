@@ -685,8 +685,9 @@ def run_index_project(
                 exclude_patterns=tuple(sorted(effective_exclude))
                 if exclude_patterns is not None
                 else (),
+                certification_max_files=max_files,
             )
-        validate_full_index_source_scope(source_scope, effective_exclude)
+        validate_full_index_source_scope(source_scope, effective_exclude, max_files)
         stats, candidates, count = walk_and_partition(
             cache,
             conn,
@@ -834,6 +835,7 @@ def _update_authoritative_manifest(
         and candidate_snapshot.errors == 0
         and stats.get("errors", 0) == 0
         and stats.get("changed_during_run", 0) == 0
+        and stats.get("backfill_errors", 0) == 0
         and {
             str(row["file_path"]).replace("\\", "/")
             for row in conn.execute("SELECT file_path FROM ast_index")
@@ -862,16 +864,19 @@ def post_index_backfill(
     cache: Any,
     stats: dict[str, Any],
 ) -> None:
-    """Run cross-file, Synapse, and unresolved-ref backfills after indexing."""
+    """Run backfills, recording suppressed failures for certification gates."""
+    stats.setdefault("backfill_errors", 0)
     try:
         stats["cross_file_backfill"] = cache.backfill_cross_file_edges()
     except Exception:
+        stats["backfill_errors"] += 1
         logger.debug("cross-file backfill failed", exc_info=True)
     try:
         synapse = cache._run_synapse_backfill()
         if synapse is not None:
             stats["synapse_backfill"] = synapse
     except Exception:
+        stats["backfill_errors"] += 1
         logger.debug("synapse backfill failed", exc_info=True)
     # ``insert_index_row`` already writes every file's graph edges during
     # commit on every SQLite backend. Re-deriving them here is pure duplicate
@@ -882,6 +887,7 @@ def post_index_backfill(
         if unresolved is not None:
             stats["unresolved_refs_backfill"] = unresolved
     except Exception:
+        stats["backfill_errors"] += 1
         logger.debug("unresolved refs backfill failed", exc_info=True)
     try:
         from .unresolved import mark_resolution_converged

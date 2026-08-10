@@ -464,6 +464,13 @@ class TestIndexProject:
 
         assert result["indexed"] == 2
         assert "unresolved_refs_backfill" not in result
+        assert result["backfill_errors"] == 1
+        manifest_count = (
+            cache.get_conn()
+            .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
+            .fetchone()[0]
+        )
+        assert manifest_count == 0
 
     def test_index_project_tolerates_resolution_convergence_failure(
         self, cache, monkeypatch

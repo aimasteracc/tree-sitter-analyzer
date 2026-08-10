@@ -13,14 +13,15 @@ from pathlib import Path
 from typing import Any, Literal
 
 from .constants import EXCLUDE_DIRS
-from .indexing_limits import DEFAULT_INDEX_MAX_FILES
+from .indexing_limits import DEFAULT_INDEX_MAX_FILES, KNOWLEDGE_INDEX_MAX_FILES
 from .languages.lang_extension_map import EXT_TO_LANG
 
 _SOURCE_DEADLINE_SECONDS = 5.0
 _SOURCE_BYTE_BUDGET = 512 * 1024 * 1024
 _DEFAULT_EXCLUDES = frozenset({"tests/golden/corpus_*"})
 _SOURCE_DISCOVERY_POLICY = "tsa-full-index-walk"
-_SOURCE_DISCOVERY_POLICY_VERSION = 1
+_SOURCE_DISCOVERY_POLICY_VERSION = 2
+_SOURCE_PATH_BUDGET = KNOWLEDGE_INDEX_MAX_FILES
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +31,7 @@ class SourceScopeDescriptor:
     roots: tuple[str, ...]
     no_default_excludes: bool
     exclude_patterns: tuple[str, ...]
+    certification_max_files: int
     discovery_policy: str = _SOURCE_DISCOVERY_POLICY
     discovery_policy_version: int = _SOURCE_DISCOVERY_POLICY_VERSION
 
@@ -44,10 +46,14 @@ def make_source_scope_descriptor(
     roots: tuple[str, ...] = (".",),
     no_default_excludes: bool = False,
     exclude_patterns: tuple[str, ...] = (),
+    certification_max_files: int = DEFAULT_INDEX_MAX_FILES,
 ) -> SourceScopeDescriptor:
     """Build a normalized full-index scope descriptor."""
     descriptor = SourceScopeDescriptor(
-        tuple(roots), no_default_excludes, tuple(sorted(set(exclude_patterns)))
+        tuple(roots),
+        no_default_excludes,
+        tuple(sorted(set(exclude_patterns))),
+        certification_max_files,
     )
     return parse_source_scope_descriptor(canonical_source_scope_descriptor(descriptor))
 
@@ -56,6 +62,7 @@ def canonical_source_scope_descriptor(scope: SourceScopeDescriptor) -> str:
     """Serialize a scope with stable keys, values, and separators."""
     return json.dumps(
         {
+            "certification_max_files": scope.certification_max_files,
             "discovery_policy": scope.discovery_policy,
             "discovery_policy_version": scope.discovery_policy_version,
             "exclude_patterns": list(scope.exclude_patterns),
@@ -75,6 +82,7 @@ def parse_source_scope_descriptor(raw: str) -> SourceScopeDescriptor:
     except (TypeError, json.JSONDecodeError) as exc:
         raise ValueError("SOURCE_SCOPE_DESCRIPTOR_INVALID") from exc
     expected = {
+        "certification_max_files",
         "discovery_policy",
         "discovery_policy_version",
         "exclude_patterns",
@@ -87,6 +95,9 @@ def parse_source_scope_descriptor(raw: str) -> SourceScopeDescriptor:
     patterns = value["exclude_patterns"]
     if (
         value["discovery_policy"] != _SOURCE_DISCOVERY_POLICY
+        or not isinstance(value["certification_max_files"], int)
+        or isinstance(value["certification_max_files"], bool)
+        or value["certification_max_files"] <= 0
         or value["discovery_policy_version"] != _SOURCE_DISCOVERY_POLICY_VERSION
         or not isinstance(value["no_default_excludes"], bool)
         or not isinstance(roots, list)
@@ -110,6 +121,7 @@ def parse_source_scope_descriptor(raw: str) -> SourceScopeDescriptor:
         normalized_roots,
         value["no_default_excludes"],
         normalized_patterns,
+        value["certification_max_files"],
     )
     if raw != canonical_source_scope_descriptor(descriptor):
         raise ValueError("SOURCE_SCOPE_DESCRIPTOR_INVALID")
@@ -117,11 +129,17 @@ def parse_source_scope_descriptor(raw: str) -> SourceScopeDescriptor:
 
 
 def validate_full_index_source_scope(
-    scope: SourceScopeDescriptor, effective_excludes: frozenset[str]
+    scope: SourceScopeDescriptor,
+    effective_excludes: frozenset[str],
+    max_files: int | None = None,
 ) -> None:
     """Reject descriptors that do not describe the walk being executed."""
     normalized = frozenset(item.replace("\\", "/") for item in effective_excludes)
-    if scope.roots != (".",) or scope.effective_excludes != normalized:
+    if (
+        scope.roots != (".",)
+        or scope.effective_excludes != normalized
+        or (max_files is not None and scope.certification_max_files != max_files)
+    ):
         raise ValueError("SOURCE_SCOPE_DESCRIPTOR_MISMATCH")
 
 
@@ -238,7 +256,8 @@ def _inventory(
                 fnmatch.fnmatch(rel, p) for p in scope.effective_excludes
             ):
                 continue
-            if len(rows) == DEFAULT_INDEX_MAX_FILES:
+            replay_limit = min(scope.certification_max_files + 1, _SOURCE_PATH_BUDGET)
+            if len(rows) == replay_limit:
                 raise OverflowError
             if not stat.S_ISREG(mode):
                 unsafe = True

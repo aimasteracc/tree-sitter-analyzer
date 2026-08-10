@@ -195,12 +195,12 @@ class TestExecute:
         assert result["phases"]["incremental_sync"]["status"] == "error"
         assert result["phases"]["incremental_sync"]["errors"] == 1
 
-    async def test_verdict_is_warn_when_ast_cache_has_errors(self, tool_with_root):
+    async def test_backfill_errors_withhold_two_phase_manifest(self, tool_with_root):
         with (
             patch.object(
                 tool_with_root,
                 "_phase_ast_cache",
-                return_value={"status": "error", "errors": 1},
+                return_value={"status": "ok", "errors": 0, "backfill_errors": 1},
             ),
             patch.object(
                 tool_with_root,
@@ -217,7 +217,9 @@ class TestExecute:
                 "_phase_call_edge_stats",
                 return_value={"status": "ok"},
             ),
-            patch.object(tool_with_root, "_collect_final_stats", return_value={}),
+            patch.object(
+                tool_with_root, "_collect_final_stats", return_value={}
+            ) as collect_stats,
         ):
             result = await tool_with_root.execute(
                 {
@@ -229,6 +231,7 @@ class TestExecute:
 
         assert result["success"] is True
         assert result["verdict"] == "WARN"
+        assert collect_stats.call_args.kwargs["stamp_manifest"] is False
 
     async def test_default_toon_surfaces_truncation_metadata(self, tool_with_root):
         incremental_phase = {

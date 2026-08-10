@@ -59,6 +59,11 @@ class TestSnapshotFailureContracts:
 
         conn = sqlite3.connect(":memory:")
         published = owner.REGISTRY.publish(self._snapshot(tmp_path), conn, 0)
+        duplicate = sqlite3.connect(":memory:")
+        reused = owner.REGISTRY.publish(self._snapshot(tmp_path), duplicate, 0)
+        assert reused.snapshot_id == published.snapshot_id
+        with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+            duplicate.execute("SELECT 1")
         with pytest.raises(ValueError, match="INDEX_SNAPSHOT_ROOT_MISMATCH"):
             with owner.acquire_index_snapshot(
                 published.snapshot_id, str(tmp_path / "other")
@@ -82,9 +87,20 @@ class TestSnapshotFailureContracts:
         conn = sqlite3.connect(":memory:")
         published = owner.REGISTRY.publish(self._snapshot(tmp_path), conn, 0)
         monkeypatch.setattr(owner, "_clock", lambda: 1000.0)
-        owner.REGISTRY._entries[published.snapshot_id].expires_at = 1.0
+        entry = owner.REGISTRY._entries[published.snapshot_id]
+        entry.readers = 1
+        monkeypatch.setattr(owner, "_MAX_SNAPSHOTS", 1)
+        with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_CAPACITY"):
+            owner.REGISTRY.ensure_capacity(0)
+        entry.readers = 0
         owner.REGISTRY.ensure_capacity(0)
         assert published.snapshot_id not in owner.REGISTRY._entries
+        expiring = owner.REGISTRY.publish(
+            self._snapshot(tmp_path), sqlite3.connect(":memory:"), 0
+        )
+        owner.REGISTRY._entries[expiring.snapshot_id].expires_at = 1.0
+        owner.REGISTRY.ensure_capacity(0)
+        assert expiring.snapshot_id not in owner.REGISTRY._entries
 
     def test_non_posix_missing_index_preserves_missing_contract(
         self, tmp_path, monkeypatch
@@ -242,6 +258,15 @@ class TestSnapshotFailureContracts:
                 raise sqlite3.OperationalError("unsupported")
 
         apply_snapshot_migration(Broken(), lambda *_args: None)
+
+    @requires_posix_fd
+    def test_pinned_path_stat_failure_reports_mismatch(self, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        monkeypatch.setattr(
+            owner.os, "stat", lambda *_a, **_k: (_ for _ in ()).throw(OSError())
+        )
+        assert owner._path_matches_pinned_database(1, 2) is False
 
     @requires_posix_fd
     def test_missing_project_root_is_distinguished(self, tmp_path):
@@ -402,11 +427,18 @@ class TestSnapshotFailureContracts:
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
         assert (rows, unsafe) == ((), False)
 
+    def test_inventory_rejects_scope_root_escape(self, tmp_path):
+        import tree_sitter_analyzer.index_source_snapshot as source
+
+        scope = source.SourceScopeDescriptor(("../escape",), False, (), 20_000)
+        with pytest.raises(OSError, match="source root escapes project"):
+            source._inventory(str(tmp_path), float("inf"), scope, with_content=True)
+
     def test_inventory_file_capacity_is_bounded(self, tmp_path, monkeypatch):
         import tree_sitter_analyzer.index_source_snapshot as source
 
         (tmp_path / "sample.py").write_text("x = 1")
-        monkeypatch.setattr(source, "DEFAULT_INDEX_MAX_FILES", 0)
+        monkeypatch.setattr(source, "_SOURCE_PATH_BUDGET", 0)
         with pytest.raises(OverflowError):
             source._inventory(str(tmp_path), float("inf"), with_content=True)
 

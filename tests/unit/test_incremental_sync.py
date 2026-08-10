@@ -2,6 +2,7 @@
 
 import json
 import os
+import sqlite3
 import sys
 import time
 from unittest.mock import patch
@@ -695,6 +696,58 @@ class TestSavepointRollbackOnPartialWrite:
         assert any("fragile.py" in f for f in new_file_names), (
             f"fragile.py must be re-indexed as new on second sync; got {new_file_names}"
         )
+
+
+class TestFailedFileCleanup:
+    """Issue #886: both failed indexing paths remove partial FTS-backed rows."""
+
+    @staticmethod
+    def _cache_and_connection(fts5_available: bool):
+        from unittest.mock import MagicMock
+
+        conn = sqlite3.connect(":memory:")
+        for table in ("ast_index", "ast_symbol_rows", "ast_symbols_fts"):
+            conn.execute(f"CREATE TABLE {table}(file_path TEXT)")
+            conn.execute(f"INSERT INTO {table} VALUES ('src/flaky.py')")
+        cache = MagicMock(fts5_available=fts5_available)
+        cache.index_file.side_effect = RuntimeError("partial write")
+        return cache, conn
+
+    @pytest.mark.parametrize(
+        ("fts5_available", "expected_counts"),
+        [(True, (0, 0, 0)), (False, (0, 0, 1))],
+    )
+    def test_new_file_failure_cleans_partial_rows(
+        self, fts5_available, expected_counts
+    ):
+        cache, conn = self._cache_and_connection(fts5_available)
+        detail = IncrementalSync(cache)._index_new_file(
+            "src/flaky.py", "/repo/src/flaky.py", conn
+        )
+        counts = tuple(
+            conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("ast_index", "ast_symbol_rows", "ast_symbols_fts")
+        )
+        conn.close()
+        assert (detail["status"], counts) == ("error", expected_counts)
+
+    @pytest.mark.parametrize(
+        ("fts5_available", "expected_counts"),
+        [(True, (0, 0, 0)), (False, (0, 0, 1))],
+    )
+    def test_modified_file_failure_cleans_partial_rows(
+        self, fts5_available, expected_counts
+    ):
+        cache, conn = self._cache_and_connection(fts5_available)
+        detail = IncrementalSync(cache)._reindex_modified(
+            "src/flaky.py", "/repo/src/flaky.py", conn
+        )
+        counts = tuple(
+            conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("ast_index", "ast_symbol_rows", "ast_symbols_fts")
+        )
+        conn.close()
+        assert (detail["status"], counts) == ("error", expected_counts)
 
 
 def test_incremental_sync_preserves_snapshot_candidate_order(tmp_path):

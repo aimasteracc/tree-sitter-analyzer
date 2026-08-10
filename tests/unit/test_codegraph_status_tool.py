@@ -11,6 +11,8 @@ from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
     CodeGraphStatusTool,
 )
 
+requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+
 
 @pytest.fixture
 def tool():
@@ -222,7 +224,7 @@ class TestSnapshotFallbackBounds:
         conn.close()
 
 
-@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+@requires_posix_snapshot
 @pytest.mark.asyncio
 async def test_final_pinned_path_identity_mismatch_is_concurrent_writer(
     tmp_path, monkeypatch
@@ -248,6 +250,7 @@ async def test_final_pinned_path_identity_mismatch_is_concurrent_writer(
 
 
 @pytest.mark.asyncio
+@requires_posix_snapshot
 async def test_default_scope_excludes_golden_corpus_and_stays_complete(tmp_path):
     # PR #1253: status must replay the exact scope certified by full-index.
     golden = tmp_path / "tests" / "golden"
@@ -265,6 +268,7 @@ async def test_default_scope_excludes_golden_corpus_and_stays_complete(tmp_path)
 
 
 @pytest.mark.asyncio
+@requires_posix_snapshot
 async def test_no_default_excludes_scope_includes_golden_corpus(tmp_path):
     # PR #1253: no_default_excludes is persisted rather than hard-coded away.
     golden = tmp_path / "tests" / "golden"
@@ -286,6 +290,7 @@ async def test_no_default_excludes_scope_includes_golden_corpus(tmp_path):
 
 
 @pytest.mark.asyncio
+@requires_posix_snapshot
 async def test_new_file_inside_certified_scope_is_detected(tmp_path):
     # PR #1253: replaying a descriptor must detect later in-scope additions.
     from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
@@ -303,7 +308,7 @@ async def test_new_file_inside_certified_scope_is_detected(tmp_path):
     )
 
 
-@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+@requires_posix_snapshot
 @pytest.mark.asyncio
 async def test_invalid_persisted_scope_cannot_certify_complete(tmp_path):
     # PR #1253: malformed discovery policy is not trusted by status.
@@ -331,6 +336,7 @@ async def test_invalid_persisted_scope_cannot_certify_complete(tmp_path):
 
 
 @pytest.mark.asyncio
+@requires_posix_snapshot
 async def test_bounded_stats_runtime_failure_returns_stable_envelope(
     tmp_path, monkeypatch
 ):
@@ -377,7 +383,7 @@ def test_source_inventory_charges_actual_growth_chunks(tmp_path, monkeypatch):
         source_owner._inventory(str(tmp_path), float("inf"), with_content=True)
 
 
-@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+@requires_posix_snapshot
 @pytest.mark.asyncio
 async def test_missing_scope_manifest_cannot_certify_complete(tmp_path):
     # PR #1253: absent descriptor evidence degrades to partial.
@@ -401,9 +407,9 @@ async def test_missing_scope_manifest_cannot_certify_complete(tmp_path):
     "raw",
     [
         "not-json",
-        '{"discovery_policy":"wrong","discovery_policy_version":1,"exclude_patterns":[],"no_default_excludes":false,"roots":["."]}',
-        '{"discovery_policy":"tsa-full-index-walk","discovery_policy_version":1,"exclude_patterns":[],"no_default_excludes":false,"roots":["../escape"]}',
-        '{ "discovery_policy":"tsa-full-index-walk","discovery_policy_version":1,"exclude_patterns":[],"no_default_excludes":false,"roots":["."]}',
+        '{"certification_max_files":20000,"discovery_policy":"wrong","discovery_policy_version":2,"exclude_patterns":[],"no_default_excludes":false,"roots":["."]}',
+        '{"certification_max_files":20000,"discovery_policy":"tsa-full-index-walk","discovery_policy_version":2,"exclude_patterns":[],"no_default_excludes":false,"roots":["../escape"]}',
+        '{ "certification_max_files":20000,"discovery_policy":"tsa-full-index-walk","discovery_policy_version":2,"exclude_patterns":[],"no_default_excludes":false,"roots":["."]}',
     ],
 )
 def test_source_scope_descriptor_rejects_noncanonical_policy(raw):
@@ -451,6 +457,7 @@ def test_fingerprint_ordering_maps_sqlite_interrupt_before_deadline(monkeypatch)
         list(schema._deadline_ordered_rows(InterruptedConnection(), "SELECT 1", 1.0))
 
 
+@requires_posix_snapshot
 def test_open_bound_database_reports_missing_file_after_cache_open(tmp_path):
     # PR #1253: the secure fd seam closes parent handles on an index-file race.
     from tree_sitter_analyzer.index_snapshot import _open_bound_database
@@ -478,6 +485,7 @@ def test_fingerprint_ordering_preserves_non_budget_sqlite_error(monkeypatch):
         list(schema._deadline_ordered_rows(BrokenConnection(), "SELECT 1", 1.0))
 
 
+@requires_posix_snapshot
 def test_open_bound_database_reports_missing_cache_directory(tmp_path):
     # PR #1253: secure descriptor setup closes the root on a missing cache.
     from tree_sitter_analyzer.index_snapshot import _open_bound_database
@@ -493,5 +501,7 @@ def test_full_index_scope_validation_rejects_mismatched_effective_excludes():
         validate_full_index_source_scope,
     )
 
+    scope = make_source_scope_descriptor(certification_max_files=40_000)
+    assert scope.certification_max_files == 40_000
     with pytest.raises(ValueError, match="SOURCE_SCOPE_DESCRIPTOR_MISMATCH"):
-        validate_full_index_source_scope(make_source_scope_descriptor(), frozenset())
+        validate_full_index_source_scope(scope, frozenset(), 20_000)

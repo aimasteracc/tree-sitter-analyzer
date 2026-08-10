@@ -14,9 +14,11 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import quote
 
+from .index_snapshot_registry import ensure_capacity as ensure_registry_capacity
+from .index_snapshot_registry import reuse_snapshot
 from .index_snapshot_schema import (
     SNAPSHOT_SCHEMA_VERSION,
     index_fingerprint,
@@ -66,8 +68,6 @@ class _Entry:
 
 
 class IndexSnapshotRegistry:
-    """Bounded process-local owner of immutable SQLite capabilities."""
-
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._entries: dict[str, _Entry] = {}
@@ -75,13 +75,9 @@ class IndexSnapshotRegistry:
     def ensure_capacity(self, charged_bytes: int) -> None:
         with self._lock:
             self._purge(_clock())
-            live = sum(entry.charged_bytes for entry in self._entries.values())
-            if (
-                len(self._entries) >= _MAX_SNAPSHOTS
-                or charged_bytes > _MAX_CHARGED_BYTES
-                or live + charged_bytes > _MAX_CHARGED_BYTES
-            ):
-                raise RuntimeError("INDEX_SNAPSHOT_CAPACITY")
+            ensure_registry_capacity(
+                self._entries, charged_bytes, _MAX_SNAPSHOTS, _MAX_CHARGED_BYTES
+            )
 
     def publish(
         self,
@@ -90,6 +86,13 @@ class IndexSnapshotRegistry:
         charged_bytes: int,
     ) -> IndexSnapshot:
         with self._lock:
+            now = _clock()
+            self._purge(now)
+            existing = reuse_snapshot(
+                self._entries, snapshot, connection, now + _TTL_SECONDS
+            )
+            if existing is not None:
+                return cast(IndexSnapshot, existing)
             self.ensure_capacity(charged_bytes)
             snapshot_id = "idxsnap_" + secrets.token_urlsafe(24)
             published = IndexSnapshot(
@@ -157,7 +160,6 @@ atexit.register(REGISTRY.close_all)
 
 
 def read_existing_snapshot(project_root: str) -> IndexSnapshot:
-    """Securely pin, validate, copy, and publish an existing POSIX database."""
     # Absence is platform-independent and publishes no file evidence.  Report it
     # before the secure-fd capability gate so fresh Windows installs preserve the
     # established missing-index contract; an existing database still fails closed.
@@ -318,7 +320,6 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
 def run_graph_snapshot_read(
     snapshot_id: str, project_root: str, source_generation: str | None, reader: Any
 ) -> dict[str, Any]:
-    """Run a production graph read and overwrite every caller-forgeable token."""
     with acquire_index_snapshot(snapshot_id, project_root, source_generation) as (
         snapshot,
         conn,

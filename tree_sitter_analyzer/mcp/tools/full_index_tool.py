@@ -299,6 +299,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         source_scope = make_source_scope_descriptor(
             no_default_excludes=no_default_excludes,
             exclude_patterns=tuple(extra_patterns),
+            certification_max_files=max_files,
         )
         t_start = time.monotonic()
         candidate_snapshot = self._build_candidate_snapshot(
@@ -354,6 +355,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         )
         snapshot_warning = (
             snapshot_report["changed_during_run"] > 0
+            or int(ast_phase.get("backfill_errors", 0)) > 0
             or not snapshot_report["selection_reconciled"]
             or not snapshot_report["phase_totals_reconciled"]
         )
@@ -447,13 +449,16 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             return {
                 "status": (
                     "error"
-                    if errors > 0 or error_summary["error_details_total"] > 0
+                    if errors > 0
+                    or int(result.get("backfill_errors", 0)) > 0
+                    or error_summary["error_details_total"] > 0
                     else "ok"
                 ),
                 "elapsed_seconds": elapsed,
                 "files_indexed": indexed,
                 "files_cached": cached,
                 "errors": errors,
+                "backfill_errors": int(result.get("backfill_errors", 0)),
                 "processed": int(result.get("processed", indexed + cached)),
                 "changed_during_run": int(result.get("changed_during_run", 0)),
                 "changed_during_run_files": sorted(
@@ -467,6 +472,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 ),
                 # Surface the backfill counts produced by _post_index_backfill so
                 # the synapse_resolution phase can report without re-running (A1).
+                "cross_file_backfill": result.get("cross_file_backfill"),
                 "synapse_backfill": result.get("synapse_backfill"),
                 "unresolved_refs_backfill": result.get("unresolved_refs_backfill"),
                 **error_summary,
@@ -648,6 +654,10 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                     conn.rollback()
                     conn.execute("DELETE FROM ast_index_snapshot_manifest")
                     conn.commit()
+            else:
+                conn = cache.get_conn()
+                conn.execute("DELETE FROM ast_index_snapshot_manifest")
+                conn.commit()
             stats = cache.get_stats()
             result = {
                 "total_files": stats.get("total_files", 0),
