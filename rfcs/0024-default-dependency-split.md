@@ -18,8 +18,9 @@ Consequently the protocol and current receipt are post-hoc hardening evidence.
 They provide a descriptive E0 snapshot only and cannot be used as the NO1-011A
 admission baseline.
 
-The collector records its commit plus its script/schema SHA-256, the subject Git
-tree/archive SHA-256 and `uv.lock` SHA-256. Both subject and collector reject
+The collector records its commit plus exact Git-blob SHA-256 values for its main
+script, support module, schema, and tool lock; the subject Git tree/archive and
+`uv.lock` SHA-256 values are also exact frozen constants. Both subject and collector reject
 tracked, untracked, and ignored entries. Every subject Git/uv
 build/export/install command has the subject checkout as `cwd`; the collector is
 run from its own clean worktree by an absolute interpreter path located outside
@@ -34,8 +35,12 @@ repositories.
 and the collector `uv.lock` are recorded separately from the subject closure.
 The project wheel is built by the current external collector `sys.executable`
 with `uv build --offline --no-build-isolation --python <collector-sys-executable>`,
-so the recorded CPython implementation/version and exact Hatchling version are
-the build environment rather than an implicitly resolved isolated environment.
+so the recorded CPython implementation/version, SOABI, cache tag, ABI flags,
+`python_build`, `Py_DEBUG`, pointer width, `CONFIG_ARGS` hash, resolved base
+executable SHA-256, and exact Hatchling version are the build environment rather
+than an implicitly resolved isolated environment. Target venvs must match every
+recorded build identity field except the redacted provenance path; the resolved
+base executable digest is compared exactly.
 
 `uv export --frozen --offline --no-dev --no-emit-project --format
 requirements-txt` derives exact requirements with artifact hashes from the
@@ -43,7 +48,11 @@ requirements-txt` derives exact requirements with artifact hashes from the
 hashed closure with `--require-hashes --no-deps`; the locally built project wheel
 is then installed separately with `--no-deps`. The receipt records export/lock
 hashes and every installed canonical distribution name, version, and
-root/direct/transitive role. PEP 508 marker inputs are returned by
+root/direct/transitive role. The archive digest is frozen as
+`52fc24594778d798257412e0137b096b0c1670d6a376a9d9714f5a49dfbe706c` and the
+subject export digest as
+`33b03a373e2ebeafa44a792d14121f081c1af36870e2d97198a9f6432653b6bb`; detached
+historical contracts reproduce both. PEP 508 marker inputs are returned by
 `packaging.markers.default_environment()` inside the target interpreter and are
 then evaluated by the collector; extras are not silently included. This attests
 the frozen resolution and installed versions. It does not attest which cached
@@ -85,13 +94,18 @@ hash, measured axis, and chronological timezone-aware RFC 3339 timestamps.
 Darwin/Linux/Windows are schema-supported; this collector currently emits only
 macOS `measured_e0`, with Linux and Windows honestly `unknown`.
 
+Final validation parses only the schema blob already bound from the collector
+commit, never the live checkout. Immediately before publication the collector
+rechecks its clean commit and the exact main-script, support, schema, tool-lock,
+and tool-export identities.
+
 Output must be outside the subject repository. Parent symlinks and an output
 symlink are rejected; a same-directory `O_NOFOLLOW` temporary file is fsynced,
 atomically replaced, then the directory is fsynced.
 
 ## Reproduction of the descriptive receipt
 
-The receipt binds collector commit `8ae151999f939a69854b7814bd37206032670445`,
+The receipt binds collector commit `450bd24b0ae19b8279f6d2819203e89186f40d1f`,
 which is an intermediate commit on this PR branch. Therefore PR #1250 **must be
 merged with GitHub's merge-commit strategy**, preserving branch ancestry. Squash
 and rebase merges are prohibited because they make the bound collector commit
@@ -118,7 +132,7 @@ for name in $(env | sed -n 's/^\(UV_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name";
 export UV_NO_CONFIG=1 UV_OFFLINE=1
 if test -n "$UV_CACHE_DIR_SAVED"; then export UV_CACHE_DIR=$UV_CACHE_DIR_SAVED; fi
 SOURCE_REPO=$(git rev-parse --show-toplevel)
-COLLECTOR_COMMIT=8ae151999f939a69854b7814bd37206032670445
+COLLECTOR_COMMIT=450bd24b0ae19b8279f6d2819203e89186f40d1f
 SUBJECT_COMMIT=7e0e8f6e03270fcbf4025d717415ef69c9354145
 RUN_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/no1-006b.XXXXXX")
 RUN_ROOT=$(cd "$RUN_ROOT" && pwd -P)
@@ -162,9 +176,9 @@ printf 'remove external run directory when finished: %s\n' "$RUN_ROOT"
 
 The post-hoc hardened collector produced
 [`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
-from collector commit `8ae151999f939a69854b7814bd37206032670445` and the distinct pinned subject.
+from collector commit `450bd24b0ae19b8279f6d2819203e89186f40d1f` and the distinct pinned subject.
 <!-- BEGIN GENERATED RECEIPT SUMMARY -->
-Its canonical payload SHA-256 is `20fcef5c70491cf174a9cdfcd752ded0dec376f30c57270307c2550d81e92a12`.
+Its canonical payload SHA-256 is `5ffc5966b2241494221ffdc01f6da7d0faf4724807ff7bf16d1b0de68abb6d0b`.
 
 | Axis | Measured value |
 |---|---:|
@@ -173,8 +187,8 @@ Its canonical payload SHA-256 is `20fcef5c70491cf174a9cdfcd752ded0dec376f30c5727
 | installed distribution files | 89,982,491 bytes across 4,743 unique regular files |
 | dependencies excluding root (direct + transitive) | 64 (33 + 31) |
 | installed distributions including root | 65 |
-| CLI bytecode-cold; warm samples (ms) | 1647.66; 578.601, 575.449, 593.264, 668.607, 618.657 |
-| MCP protocol-ready cold; warm samples (ms) | 2154.691; 772.496, 768.706, 757.829, 762.998, 766.867 |
+| CLI bytecode-cold; warm samples (ms) | 1667.954; 592.303, 591.24, 632.435, 718.599, 596.285 |
+| MCP protocol-ready cold; warm samples (ms) | 2699.936; 805.823, 792.849, 764.77, 781.248, 793.983 |
 <!-- END GENERATED RECEIPT SUMMARY -->
 
 This is macOS arm64 CPython 3.14.3 only. Linux and Windows remain `unknown` and
