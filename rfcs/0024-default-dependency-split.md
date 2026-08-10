@@ -105,7 +105,7 @@ atomically replaced, then the directory is fsynced.
 
 ## Reproduction of the descriptive receipt
 
-The receipt binds collector commit `450bd24b0ae19b8279f6d2819203e89186f40d1f`,
+The receipt binds collector commit `3298fee5581c456d92d1fb55e9c0624f0a9ad4a1`,
 which is an intermediate commit on this PR branch. Therefore PR #1250 **must be
 merged with GitHub's merge-commit strategy**, preserving branch ancestry. Squash
 and rebase merges are prohibited because they make the bound collector commit
@@ -132,7 +132,7 @@ for name in $(env | sed -n 's/^\(UV_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name";
 export UV_NO_CONFIG=1 UV_OFFLINE=1
 if test -n "$UV_CACHE_DIR_SAVED"; then export UV_CACHE_DIR=$UV_CACHE_DIR_SAVED; fi
 SOURCE_REPO=$(git rev-parse --show-toplevel)
-COLLECTOR_COMMIT=450bd24b0ae19b8279f6d2819203e89186f40d1f
+COLLECTOR_COMMIT=3298fee5581c456d92d1fb55e9c0624f0a9ad4a1
 SUBJECT_COMMIT=7e0e8f6e03270fcbf4025d717415ef69c9354145
 RUN_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/no1-006b.XXXXXX")
 RUN_ROOT=$(cd "$RUN_ROOT" && pwd -P)
@@ -176,9 +176,9 @@ printf 'remove external run directory when finished: %s\n' "$RUN_ROOT"
 
 The post-hoc hardened collector produced
 [`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
-from collector commit `450bd24b0ae19b8279f6d2819203e89186f40d1f` and the distinct pinned subject.
+from collector commit `3298fee5581c456d92d1fb55e9c0624f0a9ad4a1` and the distinct pinned subject.
 <!-- BEGIN GENERATED RECEIPT SUMMARY -->
-Its canonical payload SHA-256 is `5ffc5966b2241494221ffdc01f6da7d0faf4724807ff7bf16d1b0de68abb6d0b`.
+Its canonical payload SHA-256 is `553dc24fbeeaebc8f85594cfad02712859505e647dcbe5e34fb55b7d85665075`.
 
 | Axis | Measured value |
 |---|---:|
@@ -187,8 +187,8 @@ Its canonical payload SHA-256 is `5ffc5966b2241494221ffdc01f6da7d0faf4724807ff7b
 | installed distribution files | 89,982,491 bytes across 4,743 unique regular files |
 | dependencies excluding root (direct + transitive) | 64 (33 + 31) |
 | installed distributions including root | 65 |
-| CLI bytecode-cold; warm samples (ms) | 1667.954; 592.303, 591.24, 632.435, 718.599, 596.285 |
-| MCP protocol-ready cold; warm samples (ms) | 2699.936; 805.823, 792.849, 764.77, 781.248, 793.983 |
+| CLI bytecode-cold; warm samples (ms) | 1844.442; 594.337, 597.995, 614.898, 588.109, 582.423 |
+| MCP protocol-ready cold; warm samples (ms) | 2051.37; 773.814, 774.441, 768.6, 778.004, 787.846 |
 <!-- END GENERATED RECEIPT SUMMARY -->
 
 This is macOS arm64 CPython 3.14.3 only. Linux and Windows remain `unknown` and

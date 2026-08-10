@@ -1,12 +1,12 @@
 {
-  "canonical_payload_sha256": "5ffc5966b2241494221ffdc01f6da7d0faf4724807ff7bf16d1b0de68abb6d0b",
-  "collection_finished_at_utc": "2026-08-10T00:48:30.534601+00:00",
-  "collection_started_at_utc": "2026-08-10T00:48:15.602525+00:00",
+  "canonical_payload_sha256": "553dc24fbeeaebc8f85594cfad02712859505e647dcbe5e34fb55b7d85665075",
+  "collection_finished_at_utc": "2026-08-10T01:18:22.328491+00:00",
+  "collection_started_at_utc": "2026-08-10T01:18:08.587803+00:00",
   "collector": {
-    "commit": "450bd24b0ae19b8279f6d2819203e89186f40d1f",
-    "schema_sha256": "48ebf89e02b7a84f4516e3f2bb7f334a300e3468caaf3cca2da826bb789a31c1",
-    "script_sha256": "2c6023b2a7366183c554351be29138f659ac706db6eb3a95f51cf4a421abea97",
-    "support_sha256": "6e7919cf62d08af73d14e5313d4de9e6770658e4440ab123b69113ba5efbb3d8",
+    "commit": "3298fee5581c456d92d1fb55e9c0624f0a9ad4a1",
+    "schema_sha256": "1a787e0db556d8963c57b8377be350504e9ac3e2b529f90dbdad02b201ac0698",
+    "script_sha256": "282177813890ad54a6fa43c48432eeecb9adb965d576f8fb7fbe7527d0bffeef",
+    "support_sha256": "59fb0057e4bf51430195b933cd1b78912ee08f4f3fe006121d4cc8cb23f7ae90",
     "tool_export_sha256": "6517ea8430512af84251d2b58a58cef8a008e16a224075448dc0d3158215ea75",
     "tool_inventory": [
       {
@@ -526,14 +526,14 @@
   "measured_axis": "macos",
   "measurements": {
     "cli_startup": {
-      "cold_ms": 1667.954,
+      "cold_ms": 1844.442,
       "definition": "clock before Popen through exact successful JSON analysis of fixture.py",
       "warm_ms": [
-        592.303,
-        591.24,
-        632.435,
-        718.599,
-        596.285
+        594.337,
+        597.995,
+        614.898,
+        588.109,
+        582.423
       ]
     },
     "dependency_distribution_count_excluding_root": 64,
@@ -543,7 +543,7 @@
     "installed_size_bytes": 89982491,
     "installed_size_scope": "unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded",
     "mcp_startup": {
-      "cold_ms": 2699.936,
+      "cold_ms": 2051.37,
       "definition": "clock before Popen through successful initialize, initialized notification, and exact tools/list readiness",
       "tool_names": [
         "edit",
@@ -557,11 +557,11 @@
         "viz"
       ],
       "warm_ms": [
-        805.823,
-        792.849,
-        764.77,
-        781.248,
-        793.983
+        773.814,
+        774.441,
+        768.6,
+        778.004,
+        787.846
       ]
     },
     "network_transfer_bytes": {
