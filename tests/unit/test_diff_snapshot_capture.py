@@ -160,6 +160,90 @@ def test_frozen_environment_rejects_non_stage_zero_entry(tmp_path: Path) -> None
     assert frozen._directory is None
 
 
+def test_frozen_environment_rejects_temp_inside_canonical_project(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tree_sitter_analyzer import diff_snapshot_epoch
+
+    project = tmp_path / "project"
+    project.mkdir()
+    unsafe = project / "tsa-frozen-git-test"
+
+    def make_inside(*, prefix: str) -> str:
+        del prefix
+        unsafe.mkdir()
+        return str(unsafe)
+
+    monkeypatch.setattr(diff_snapshot_epoch.tempfile, "mkdtemp", make_inside)
+    frozen = diff_snapshot_epoch.FrozenGitEnvironment(
+        str(project), _epoch(), time.monotonic() + 1
+    )
+
+    with pytest.raises(
+        snapshots.SourceOracleError, match="^DIFF_SNAPSHOT_UNSAFE_TEMP$"
+    ):
+        frozen.__enter__()
+
+    assert unsafe.exists() is False
+
+
+def test_frozen_environment_rejects_symlink_alias_into_project(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tree_sitter_analyzer import diff_snapshot_epoch
+
+    project = tmp_path / "project"
+    project.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(project, target_is_directory=True)
+    unsafe = project / "tsa-frozen-git-test"
+
+    def make_via_alias(*, prefix: str) -> str:
+        del prefix
+        unsafe.mkdir()
+        return str(alias / unsafe.name)
+
+    monkeypatch.setattr(diff_snapshot_epoch.tempfile, "mkdtemp", make_via_alias)
+    frozen = diff_snapshot_epoch.FrozenGitEnvironment(
+        str(project), _epoch(), time.monotonic() + 1
+    )
+
+    with pytest.raises(
+        snapshots.SourceOracleError, match="^DIFF_SNAPSHOT_UNSAFE_TEMP$"
+    ):
+        frozen.__enter__()
+
+    assert unsafe.exists() is False
+
+
+def test_frozen_environment_allows_temp_on_distinct_path_volume(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tree_sitter_analyzer import diff_snapshot_epoch
+
+    frozen = diff_snapshot_epoch.FrozenGitEnvironment(
+        str(tmp_path), _epoch(), time.monotonic() + 1
+    )
+
+    def run(args, **kwargs):
+        del kwargs
+        if args == ["read-tree", "--empty"]:
+            Path(frozen.index_path).write_bytes(b"index")
+        return b"oid"
+
+    frozen.run = run  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        diff_snapshot_epoch.os.path,
+        "commonpath",
+        lambda paths: (_ for _ in ()).throw(ValueError("distinct volume")),
+    )
+
+    entered = frozen.__enter__()
+    entered.__exit__()
+
+    assert frozen._directory is None
+
+
 def test_frozen_workspace_requires_entered_environment(tmp_path: Path) -> None:
     from tree_sitter_analyzer.diff_snapshot_epoch import FrozenGitEnvironment
 

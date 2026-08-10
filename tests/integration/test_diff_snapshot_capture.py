@@ -272,7 +272,7 @@ def test_non_utf8_path_is_wire_safe_and_round_trips(tmp_path: Path) -> None:
     assert (
         registry.close_lease(
             str(created["diff_snapshot_id"]), str(created["route_lease_id"])
-        )["success"]
+        )
         is True
     )
 

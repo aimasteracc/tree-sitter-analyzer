@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
+from .frozen_git_index import frozen_index_entries
 from .git_subprocess import run_git_bounded
 from .source_oracle import (
     RootIdentity,
@@ -111,71 +112,18 @@ def _index_entries(
     root: str, *, deadline: float, index_bytes: bytes | None = None
 ) -> dict[bytes, bytes]:
     """Parse stage-zero entries from one private mode-0600 index copy."""
-    temporary_index: str | None = None
-    try:
-        env = None
-        if index_bytes is not None:
-            if not index_bytes:
-                return {}
-            descriptor, temporary_index = tempfile.mkstemp(prefix="tsa-index-")
-            with os.fdopen(descriptor, "wb") as stream:
-                os.fchmod(stream.fileno(), 0o600)
-                stream.write(index_bytes)
-            real_root = os.path.realpath(root)
-            if (
-                os.path.commonpath((real_root, os.path.realpath(temporary_index)))
-                == real_root
-            ):
-                raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH")
-            env = {
-                key: value
-                for key, value in os.environ.items()
-                if not key.upper().startswith("GIT_")
-            }
-            env.update(
-                {
-                    "GIT_INDEX_FILE": temporary_index,
-                    "GIT_OPTIONAL_LOCKS": "0",
-                }
-            )
-        args = ["ls-files", "--stage", "-z"]
-        raw = (
-            git_output(root, args, deadline=deadline, limit=_MAX_INVENTORY_BYTES)
-            if index_bytes is None
-            else run_git_bounded(
-                root,
-                args,
-                deadline=deadline,
-                limit=_MAX_INVENTORY_BYTES,
-                env=env,
-                popen=subprocess.Popen,
-            )
-        )
-    finally:
-        if temporary_index is not None:
-            try:
-                os.unlink(temporary_index)
-            except FileNotFoundError:
-                pass
-    entries: dict[bytes, bytes] = {}
-    for row in raw.split(b"\0"):
-        if not row:
-            continue
-        header, separator, path = row.partition(b"\t")
-        fields = header.split(b" ")
-        if not separator or not path or len(fields) != 3 or fields[2] != b"0":
-            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        try:
-            int(fields[0], 8)
-            int(fields[1], 16)
-        except ValueError as exc:
-            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc
-        if path in entries:
-            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        entries[path] = header
-    if len(entries) > _MAX_WORKTREE_PATHS:
-        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
-    return entries
+    return frozen_index_entries(
+        root,
+        deadline=deadline,
+        max_inventory_bytes=_MAX_INVENTORY_BYTES,
+        max_paths=_MAX_WORKTREE_PATHS,
+        index_bytes=index_bytes,
+        git_output_fn=git_output,
+        bounded_git_fn=run_git_bounded,
+        popen=subprocess.Popen,
+        mkstemp=tempfile.mkstemp,
+        unlink=os.unlink,
+    )
 
 
 def _head_entries(

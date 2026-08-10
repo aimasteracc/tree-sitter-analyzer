@@ -269,6 +269,66 @@ def test_failed_windows_taskkill_falls_back_to_process_kill(monkeypatch) -> None
     assert process.kills == 1
 
 
+def test_nonzero_windows_taskkill_falls_back_to_process_kill(monkeypatch) -> None:
+    process = _InputProcess()
+    completed = subprocess.CompletedProcess(["taskkill"], 1)
+    monkeypatch.setattr(bounded, "_IS_WINDOWS", True)
+    monkeypatch.setattr(bounded, "_TASKKILL", lambda *a, **k: completed)
+
+    bounded._kill_group(process)
+
+    assert process.kills == 1
+
+
+def test_nonzero_exit_kills_group_and_reaps_with_exact_waits(monkeypatch) -> None:
+    process = _InputProcess()
+    process.returncode = 3
+    killed: list[int] = []
+    monkeypatch.setattr(bounded, "_remaining", lambda deadline: 0.25)
+    monkeypatch.setattr(bounded, "_kill_group", lambda proc: killed.append(proc.pid))
+
+    with pytest.raises(bounded.SourceOracleError, match="^DIFF_SNAPSHOT_GIT_ERROR$"):
+        bounded.run_git_bounded(
+            ".",
+            ["status"],
+            deadline=1.0,
+            limit=100,
+            popen=lambda *a, **k: process,
+        )
+
+    assert killed == [41]
+    assert process.waits == [0.25, bounded._REAP_TIMEOUT_SECONDS]
+
+
+def test_reap_timeout_rekills_and_uses_only_bounded_waits(monkeypatch) -> None:
+    process = _InputProcess()
+    killed: list[int] = []
+
+    def always_timeout(timeout=None):
+        process.waits.append(timeout)
+        raise subprocess.TimeoutExpired("git", timeout)
+
+    process.wait = always_timeout  # type: ignore[method-assign]
+    monkeypatch.setattr(bounded, "_remaining", lambda deadline: 0.25)
+    monkeypatch.setattr(bounded, "_kill_group", lambda proc: killed.append(proc.pid))
+
+    with pytest.raises(bounded.SourceOracleError, match="^DIFF_SNAPSHOT_TIMEOUT$"):
+        bounded.run_git_bounded(
+            ".",
+            ["status"],
+            deadline=1.0,
+            limit=100,
+            popen=lambda *a, **k: process,
+        )
+
+    assert killed == [41, 41]
+    assert process.waits == [
+        0.25,
+        bounded._REAP_TIMEOUT_SECONDS,
+        bounded._REAP_TIMEOUT_SECONDS,
+    ]
+
+
 @pytest.mark.parametrize("broken_input", [False, True])
 def test_stdin_feed_is_closed_or_tolerates_broken_pipe(broken_input: bool) -> None:
     process = _InputProcess(broken_input=broken_input)
@@ -321,3 +381,29 @@ def test_stdin_feed_tolerates_missing_child_pipe() -> None:
 
     assert output == b"result"
     assert len(process.waits) == 1
+
+
+def test_process_group_wrapper_rejects_platform_without_killpg(monkeypatch) -> None:
+    monkeypatch.delattr(bounded.os, "killpg", raising=False)
+
+    with pytest.raises(OSError, match="process-group termination is unavailable"):
+        bounded._os_kill_process_group(41, 9)
+
+
+def test_cleanup_thread_join_error_does_not_escape() -> None:
+    waits: list[float | None] = []
+
+    class BrokenJoin:
+        def join(self, timeout=None):
+            waits.append(timeout)
+            raise RuntimeError("unstarted")
+
+    ticks = iter([10.0, 11.0])
+    original = bounded.time.monotonic
+    bounded.time.monotonic = lambda: next(ticks)
+    try:
+        bounded._join_threads_bounded([BrokenJoin()])  # type: ignore[list-item]
+    finally:
+        bounded.time.monotonic = original
+
+    assert waits == [4.0]

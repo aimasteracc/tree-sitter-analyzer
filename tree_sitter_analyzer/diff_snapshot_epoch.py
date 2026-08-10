@@ -8,7 +8,12 @@ import tempfile
 from collections.abc import Mapping
 
 from .git_subprocess import run_git_bounded
-from .source_oracle import SafePath, SourceOracleError, _remaining
+from .source_oracle import (
+    SafePath,
+    SourceOracleError,
+    _remaining,
+    canonical_root,
+)
 from .source_oracle_git import (
     GitEpoch,
     _strip_one_record_terminator,
@@ -30,6 +35,18 @@ class FrozenGitEnvironment:
     def __enter__(self) -> FrozenGitEnvironment:
         self._directory = tempfile.mkdtemp(prefix="tsa-frozen-git-")
         try:
+            project_root, _ = canonical_root(self.root)
+            real_project_root = os.path.realpath(project_root)
+            real_directory = os.path.realpath(self._directory)
+            try:
+                inside_project = (
+                    os.path.commonpath((real_project_root, real_directory))
+                    == real_project_root
+                )
+            except ValueError:
+                inside_project = False
+            if inside_project:
+                raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
             os.chmod(self._directory, 0o700)
             self.index_path = os.path.join(self._directory, "index")
             self.object_directory = os.path.join(self._directory, "objects")

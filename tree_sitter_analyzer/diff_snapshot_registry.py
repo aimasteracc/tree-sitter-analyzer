@@ -8,11 +8,11 @@ import os
 import secrets
 import threading
 import time
-from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
 from .diff_snapshot_capture import FrozenFile, _capture_payload
+from .diff_snapshot_leases import ClosedLeaseTombstones, SnapshotConsumer
 from .diff_snapshot_paths import epoch_inventory, path_collection_storage
 from .git_path_codec import path_from_wire, path_to_wire
 from .source_oracle import (
@@ -81,54 +81,22 @@ class _State:
     pins: dict[str, int] = field(default_factory=dict)
 
 
-class SnapshotConsumer:
-    """Thread-owned pin; release is idempotent and synchronized."""
-
-    def __init__(
-        self, registry: DiffSnapshotRegistry, snapshot: FrozenDiffSnapshot, pin: str
-    ):
-        self._registry = registry
-        self.snapshot = snapshot
-        self._pin = pin
-        self._owner = threading.get_ident()
-        self._released = False
-        self._lock = threading.Lock()
-
-    def release(self) -> None:
-        with self._lock:
-            if self._released:
-                return
-            if threading.get_ident() != self._owner:
-                raise RuntimeError("DIFF_SNAPSHOT_WRONG_THREAD")
-            self._registry._release(self.snapshot.snapshot_id, self._pin, self._owner)
-            self._released = True
-
-    def __enter__(self) -> FrozenDiffSnapshot:
-        return self.snapshot
-
-    def __exit__(self, *_: object) -> None:
-        self.release()
-
-
 class DiffSnapshotRegistry:
     def __init__(self, *, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
         self._lock = threading.RLock()
         self._states: dict[str, _State] = {}
         self._reservations: dict[str, int] = {}
-        # A fixed LRU bounds idempotency history independently of request rate.
-        self._closed_leases: OrderedDict[str, tuple[str, float]] = OrderedDict()
+        self._closed_leases = ClosedLeaseTombstones(
+            capacity=MAX_CLOSED_LEASES,
+            lifetime_seconds=HARD_LIFETIME_SECONDS,
+            clock=clock,
+        )
         self._charged_bytes = 0
 
     def _sweep(self) -> None:
         now = self._clock()
-        self._closed_leases = OrderedDict(
-            (sid, value)
-            for sid, value in self._closed_leases.items()
-            if now - value[1] < HARD_LIFETIME_SECONDS
-        )
-        while len(self._closed_leases) > MAX_CLOSED_LEASES:
-            self._closed_leases.popitem(last=False)
+        self._closed_leases.sweep(now=now)
         for sid, state in list(self._states.items()):
             if now - state.snapshot.created_monotonic >= HARD_LIFETIME_SECONDS:
                 state.expired = True
@@ -452,10 +420,9 @@ class DiffSnapshotRegistry:
         """Close an owned route lease; repeating the exact token pair is idempotent."""
         with self._lock:
             self._sweep()
-            closed = self._closed_leases.get(sid)
-            if closed is not None:
-                self._closed_leases.move_to_end(sid)
-                return None if closed[0] == lease else "DIFF_SNAPSHOT_LEASE_MISMATCH"
+            closed, error = self._closed_leases.check(sid, lease)
+            if closed:
+                return error
             state = self._states.get(sid)
             if state is None:
                 return "DIFF_SNAPSHOT_EXPIRED"
@@ -463,9 +430,7 @@ class DiffSnapshotRegistry:
                 return "DIFF_SNAPSHOT_LEASE_MISMATCH"
             state.lease_open = False
             state.expired = True
-            self._closed_leases[sid] = (lease, self._clock())
-            while len(self._closed_leases) > MAX_CLOSED_LEASES:
-                self._closed_leases.popitem(last=False)
+            self._closed_leases.remember(sid, lease)
             if not state.pins:
                 self._erase(sid)
             return None
