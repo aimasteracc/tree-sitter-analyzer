@@ -9,6 +9,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .ast_cache import _EXT_TO_LANG, _walk_source_files
+from .index_source_snapshot import (
+    SourceScopeDescriptor,
+    make_source_scope_descriptor,
+    validate_full_index_source_scope,
+)
 from .indexing_limits import normalize_index_max_files
 from .indexing_snapshot import (
     IndexCandidateSnapshot,
@@ -75,9 +80,16 @@ class IncrementalSync:
         *,
         exclude_patterns: frozenset[str] | None = None,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
+        source_scope: SourceScopeDescriptor | None = None,
     ) -> SyncResult:
         """Sync the on-disk source tree with the AST cache."""
         max_files = normalize_index_max_files(max_files)
+        if source_scope is None:
+            source_scope = make_source_scope_descriptor(
+                no_default_excludes=True,
+                exclude_patterns=tuple(sorted(exclude_patterns or ())),
+            )
+        validate_full_index_source_scope(source_scope, exclude_patterns or frozenset())
         result = SyncResult()
         conn = self._cache.get_conn()
         indexed_rows = self._load_indexed_rows(conn)
@@ -215,6 +227,27 @@ class IncrementalSync:
             from .cache.callgraph_state import mark_call_graph_built
 
             mark_call_graph_built(conn)
+        expected_paths = set(disk_files)
+        if (
+            not result.truncated_by_max_files
+            and result.errors == 0
+            and result.changed_during_run == 0
+            and candidate_snapshot is not None
+            and candidate_snapshot.errors == 0
+            and indexed_paths == expected_paths
+        ):
+            from .index_snapshot_schema import stamp_full_index_manifest
+
+            try:
+                stamp_full_index_manifest(conn, self._cache.project_root, source_scope)
+            except Exception:
+                logger.warning(
+                    "incremental snapshot manifest certification failed",
+                    exc_info=True,
+                )
+                conn.rollback()
+                conn.execute("DELETE FROM ast_index_snapshot_manifest")
+                conn.commit()
 
         return result
 
@@ -378,9 +411,10 @@ class IncrementalSync:
                 conn.execute(
                     "DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,)
                 )
-                conn.execute(
-                    "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
-                )
+                if self._cache.fts5_available:
+                    conn.execute(
+                        "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
+                    )
             except Exception:
                 logger.debug("Cleanup DELETE failed for %s — continuing", rel_path)
             # Issue #806/#805: catch all per-file errors so one pathological
@@ -426,9 +460,10 @@ class IncrementalSync:
                 conn.execute(
                     "DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,)
                 )
-                conn.execute(
-                    "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
-                )
+                if self._cache.fts5_available:
+                    conn.execute(
+                        "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,)
+                    )
             except Exception:
                 logger.debug("Cleanup DELETE failed for %s — continuing", rel_path)
             # Issue #806/#805: same broad guard for re-index path.

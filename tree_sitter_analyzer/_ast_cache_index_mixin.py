@@ -18,6 +18,7 @@ from .cache.callgraph_state import (
 )
 from .cache.extraction import _content_hash
 from .cache.schema import clear_activation_for_file as _clear_activation_for_file_fn
+from .index_source_snapshot import SourceScopeDescriptor
 from .indexing_snapshot import IndexCandidateSnapshot
 from .project_graph import _language_from_ext
 
@@ -232,6 +233,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         language_filter: str | None = None,
         exclude_patterns: frozenset[str] | None = None,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
+        source_scope: SourceScopeDescriptor | None = None,
     ) -> dict[str, Any]:
         """Index every source file below the project root."""
         return _indexer.run_index_project(
@@ -244,6 +246,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             language_filter=language_filter,
             exclude_patterns=exclude_patterns,
             candidate_snapshot=candidate_snapshot,
+            source_scope=source_scope,
         )
 
     def _post_index_backfill(self, stats: dict[str, Any]) -> None:

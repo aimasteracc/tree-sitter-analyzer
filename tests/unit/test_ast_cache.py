@@ -2148,3 +2148,61 @@ def test_force_rebuild_clear_failure_keeps_incomplete_graph_marker(tmp_path):
         cache.close()
 
     assert graph_built is False
+
+
+def test_no_fts_index_file_populates_ordinary_symbol_rows(tmp_path):
+    # PR #1253: ast_symbol_rows is canonical ordinary storage, not an FTS detail.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "sample.py"
+    source.write_text("def answer():\n    return 42\n")
+    cache = ASTCache(str(tmp_path))
+    cache._fts5_available = False
+    try:
+        cache.index_file(str(source))
+        rows = (
+            cache.get_conn()
+            .execute("SELECT name, kind, file_path FROM ast_symbol_rows")
+            .fetchall()
+        )
+    finally:
+        cache.close()
+
+    assert [tuple(row) for row in rows] == [("answer", "function", "sample.py")]
+
+
+def test_no_fts_miswire_definition_reader_uses_ordinary_rows(tmp_path):
+    # PR #1253: no-FTS definition consumers must see newly indexed symbols.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.miswire_audit import _iter_symbol_defs
+
+    source = tmp_path / "sample.py"
+    source.write_text("def answer():\n    return 42\n")
+    cache = ASTCache(str(tmp_path))
+    cache._fts5_available = False
+    try:
+        cache.index_file(str(source))
+        definitions = _iter_symbol_defs(cache.get_conn())
+    finally:
+        cache.close()
+
+    assert definitions == [("answer", "sample.py", "python")]
+
+
+def test_no_fts_symbol_search_reads_ordinary_rows(tmp_path):
+    # PR #1253: linear symbol search must work without the virtual FTS table.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    source = tmp_path / "sample.py"
+    source.write_text("def answer():\n    return 42\n")
+    cache = ASTCache(str(tmp_path))
+    cache._fts5_available = False
+    try:
+        cache.index_file(str(source))
+        results = cache.search_symbols("answer")
+    finally:
+        cache.close()
+
+    assert [(row["name"], row["file"], row["kind"]) for row in results] == [
+        ("answer", "sample.py", "function")
+    ]

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import fnmatch
 import hashlib
+import json
 import os
 import stat
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from .constants import EXCLUDE_DIRS
 from .indexing_limits import DEFAULT_INDEX_MAX_FILES
@@ -18,6 +19,110 @@ from .languages.lang_extension_map import EXT_TO_LANG
 _SOURCE_DEADLINE_SECONDS = 5.0
 _SOURCE_BYTE_BUDGET = 512 * 1024 * 1024
 _DEFAULT_EXCLUDES = frozenset({"tests/golden/corpus_*"})
+_SOURCE_DISCOVERY_POLICY = "tsa-full-index-walk"
+_SOURCE_DISCOVERY_POLICY_VERSION = 1
+
+
+@dataclass(frozen=True, slots=True)
+class SourceScopeDescriptor:
+    """Canonical, replayable source-selection policy certified by a build."""
+
+    roots: tuple[str, ...]
+    no_default_excludes: bool
+    exclude_patterns: tuple[str, ...]
+    discovery_policy: str = _SOURCE_DISCOVERY_POLICY
+    discovery_policy_version: int = _SOURCE_DISCOVERY_POLICY_VERSION
+
+    @property
+    def effective_excludes(self) -> frozenset[str]:
+        extras = frozenset(self.exclude_patterns)
+        return extras if self.no_default_excludes else _DEFAULT_EXCLUDES | extras
+
+
+def make_source_scope_descriptor(
+    *,
+    roots: tuple[str, ...] = (".",),
+    no_default_excludes: bool = False,
+    exclude_patterns: tuple[str, ...] = (),
+) -> SourceScopeDescriptor:
+    """Build a normalized full-index scope descriptor."""
+    descriptor = SourceScopeDescriptor(
+        tuple(roots), no_default_excludes, tuple(sorted(set(exclude_patterns)))
+    )
+    return parse_source_scope_descriptor(canonical_source_scope_descriptor(descriptor))
+
+
+def canonical_source_scope_descriptor(scope: SourceScopeDescriptor) -> str:
+    """Serialize a scope with stable keys, values, and separators."""
+    return json.dumps(
+        {
+            "discovery_policy": scope.discovery_policy,
+            "discovery_policy_version": scope.discovery_policy_version,
+            "exclude_patterns": list(scope.exclude_patterns),
+            "no_default_excludes": scope.no_default_excludes,
+            "roots": list(scope.roots),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def parse_source_scope_descriptor(raw: str) -> SourceScopeDescriptor:
+    """Validate a persisted descriptor strictly enough for safe replay."""
+    try:
+        value: Any = json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("SOURCE_SCOPE_DESCRIPTOR_INVALID") from exc
+    expected = {
+        "discovery_policy",
+        "discovery_policy_version",
+        "exclude_patterns",
+        "no_default_excludes",
+        "roots",
+    }
+    if not isinstance(value, dict) or set(value) != expected:
+        raise ValueError("SOURCE_SCOPE_DESCRIPTOR_INVALID")
+    roots = value["roots"]
+    patterns = value["exclude_patterns"]
+    if (
+        value["discovery_policy"] != _SOURCE_DISCOVERY_POLICY
+        or value["discovery_policy_version"] != _SOURCE_DISCOVERY_POLICY_VERSION
+        or not isinstance(value["no_default_excludes"], bool)
+        or not isinstance(roots, list)
+        or not roots
+        or not isinstance(patterns, list)
+        or any(not isinstance(item, str) for item in roots + patterns)
+    ):
+        raise ValueError("SOURCE_SCOPE_DESCRIPTOR_INVALID")
+    normalized_roots = tuple(dict.fromkeys(item.replace("\\", "/") for item in roots))
+    normalized_patterns = tuple(sorted({item.replace("\\", "/") for item in patterns}))
+    if any(
+        not item
+        or os.path.isabs(item)
+        or item == ".."
+        or item.startswith("../")
+        or "/../" in item
+        for item in normalized_roots
+    ):
+        raise ValueError("SOURCE_SCOPE_DESCRIPTOR_INVALID")
+    descriptor = SourceScopeDescriptor(
+        normalized_roots,
+        value["no_default_excludes"],
+        normalized_patterns,
+    )
+    if raw != canonical_source_scope_descriptor(descriptor):
+        raise ValueError("SOURCE_SCOPE_DESCRIPTOR_INVALID")
+    return descriptor
+
+
+def validate_full_index_source_scope(
+    scope: SourceScopeDescriptor, effective_excludes: frozenset[str]
+) -> None:
+    """Reject descriptors that do not describe the walk being executed."""
+    normalized = frozenset(item.replace("\\", "/") for item in effective_excludes)
+    if scope.roots != (".",) or scope.effective_excludes != normalized:
+        raise ValueError("SOURCE_SCOPE_DESCRIPTOR_MISMATCH")
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,13 +157,16 @@ def recorded_source_rows(conn: object) -> tuple[tuple[str, str, str], ...]:
     )
 
 
-def capture_current_source_snapshot(project_root: str) -> CurrentSourceSnapshot:
-    """Hash a stable, fully bounded view of the authoritative supported scope."""
+def capture_current_source_snapshot(
+    project_root: str, source_scope: SourceScopeDescriptor | None = None
+) -> CurrentSourceSnapshot:
+    """Hash a stable, fully bounded view of the certified supported scope."""
+    scope = source_scope or make_source_scope_descriptor()
     deadline = time.monotonic() + _SOURCE_DEADLINE_SECONDS
     root = os.path.realpath(os.path.abspath(project_root))
     try:
-        first, unsafe = _inventory(root, deadline, with_content=True)
-        second, unsafe_second = _inventory(root, deadline, with_content=False)
+        first, unsafe = _inventory(root, deadline, scope, with_content=True)
+        second, unsafe_second = _inventory(root, deadline, scope, with_content=False)
     except TimeoutError:
         return CurrentSourceSnapshot((), None, None, "unknown", "SOURCE_SCAN_DEADLINE")
     except OverflowError:
@@ -94,12 +202,22 @@ def capture_current_source_snapshot(project_root: str) -> CurrentSourceSnapshot:
 
 
 def _inventory(
-    root: str, deadline: float, *, with_content: bool
+    root: str,
+    deadline: float,
+    scope: SourceScopeDescriptor | None = None,
+    *,
+    with_content: bool,
 ) -> tuple[tuple[tuple[str, str, str], ...], bool]:
+    scope = scope or make_source_scope_descriptor()
     rows: list[tuple[str, str, str]] = []
     unsafe = False
     byte_count = 0
-    stack = [root]
+    stack: list[str] = []
+    for relative_root in reversed(scope.roots):
+        candidate = os.path.realpath(os.path.join(root, relative_root))
+        if not Path(candidate).is_relative_to(root):
+            raise OSError("source root escapes project")
+        stack.append(candidate)
     while stack:
         if time.monotonic() > deadline:
             raise TimeoutError
@@ -117,7 +235,7 @@ def _inventory(
                 continue
             language = EXT_TO_LANG.get(Path(entry.name).suffix.lower())
             if language is None or any(
-                fnmatch.fnmatch(rel, p) for p in _DEFAULT_EXCLUDES
+                fnmatch.fnmatch(rel, p) for p in scope.effective_excludes
             ):
                 continue
             if len(rows) == DEFAULT_INDEX_MAX_FILES:
@@ -129,8 +247,9 @@ def _inventory(
             if not with_content:
                 rows.append((rel, _metadata_marker(info), language))
                 continue
-            byte_count += int(info.st_size)
-            if byte_count > _SOURCE_BYTE_BUDGET:
+            # Pre-stat is admission-only. Actual reads below own the budget so
+            # a file that grows after stat cannot over-allocate the snapshot.
+            if int(info.st_size) > _SOURCE_BYTE_BUDGET - byte_count:
                 raise OverflowError
             try:
                 fd = os.open(entry.path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
@@ -145,6 +264,9 @@ def _inventory(
                     chunk = os.read(fd, 65536)
                     if not chunk:
                         break
+                    byte_count += len(chunk)
+                    if byte_count > _SOURCE_BYTE_BUDGET:
+                        raise OverflowError
                     data.extend(chunk)
                     if time.monotonic() > deadline:
                         raise TimeoutError

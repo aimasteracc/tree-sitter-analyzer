@@ -149,7 +149,7 @@ class TestSnapshotFailureContracts:
         monkeypatch.setattr(
             owner,
             "capture_current_source_snapshot",
-            lambda _root: CurrentSourceSnapshot(
+            lambda _root, _scope=None: CurrentSourceSnapshot(
                 (), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
             ),
         )

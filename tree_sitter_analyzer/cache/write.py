@@ -124,10 +124,12 @@ def write_fts5_symbols(
     rel_path: str,
     language: str,
     symbols: dict[str, Any],
+    fts5_available: bool = True,
 ) -> list[dict[str, Any]]:
-    """Replace FTS5 symbol rows for ``rel_path``. Returns inserted row list."""
+    """Replace ordinary symbol rows and, when available, their FTS projection."""
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
-    conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
+    if fts5_available:
+        conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
     sym_list = symbols.get("symbols", [])
     if not sym_list:
         return []
@@ -155,11 +157,12 @@ def write_fts5_symbols(
     fts_params = [
         (base_id + i, p[0], p[1], rel_path, language) for i, p in enumerate(sym_params)
     ]
-    conn.executemany(
-        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
-        "VALUES (?, ?, ?, ?, ?)",
-        fts_params,
-    )
+    if fts5_available:
+        conn.executemany(
+            "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+            "VALUES (?, ?, ?, ?, ?)",
+            fts_params,
+        )
     return [
         {"id": base_id + i, "line": p[4], "end_line": p[5]}
         for i, p in enumerate(sym_params)
@@ -171,10 +174,12 @@ def write_fts5_symbols_from_tuples(
     rel_path: str,
     language: str,
     symbol_rows: list[tuple[str, str, int, int]],
+    fts5_available: bool = True,
 ) -> list[dict[str, Any]]:
-    """Insert FTS5 symbols from worker-serialised tuples (name, kind, line, end_line)."""
+    """Insert ordinary worker symbol rows and optional FTS projection."""
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
-    conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
+    if fts5_available:
+        conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
     if not symbol_rows:
         return []
     inserted: list[dict[str, Any]] = []
@@ -193,11 +198,12 @@ def write_fts5_symbols_from_tuples(
         (base_id + i, n, k, rel_path, language)
         for i, (n, k, _ln, _el) in enumerate(symbol_rows)
     ]
-    conn.executemany(
-        "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
-        "VALUES (?, ?, ?, ?, ?)",
-        fts_params,
-    )
+    if fts5_available:
+        conn.executemany(
+            "INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language) "
+            "VALUES (?, ?, ?, ?, ?)",
+            fts_params,
+        )
     for i, (_n, _k, ln, el) in enumerate(symbol_rows):
         inserted.append(
             {

@@ -9,7 +9,13 @@ import struct
 import time
 from typing import Any
 
-from .index_source_snapshot import inventory_fingerprint, recorded_source_rows
+from .index_source_snapshot import (
+    SourceScopeDescriptor,
+    canonical_source_scope_descriptor,
+    inventory_fingerprint,
+    make_source_scope_descriptor,
+    recorded_source_rows,
+)
 
 SNAPSHOT_SCHEMA_VERSION = 13
 SCHEMA_V13_INDEX_SNAPSHOT = """
@@ -19,6 +25,7 @@ CREATE TABLE IF NOT EXISTS ast_index_snapshot_manifest (
     source_fingerprint TEXT NOT NULL,
     index_fingerprint TEXT NOT NULL,
     file_count INTEGER NOT NULL,
+    source_scope_descriptor TEXT NOT NULL,
     manifest_version INTEGER NOT NULL
 );
 """
@@ -44,6 +51,7 @@ _REQUIRED_COLUMNS = {
             "source_fingerprint",
             "index_fingerprint",
             "file_count",
+            "source_scope_descriptor",
             "manifest_version",
         }
     ),
@@ -65,9 +73,15 @@ def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:
         pass
 
 
-def stamp_full_index_manifest(conn: sqlite3.Connection, project_root: str) -> None:
+def stamp_full_index_manifest(
+    conn: sqlite3.Connection,
+    project_root: str,
+    source_scope: SourceScopeDescriptor | None = None,
+) -> None:
     """Atomically certify canonical graph rows and the recorded source inventory."""
     root = os.path.realpath(os.path.abspath(project_root))
+    scope = source_scope or make_source_scope_descriptor()
+    scope_json = canonical_source_scope_descriptor(scope)
     source = source_fingerprint(conn, root)
     index = index_fingerprint(conn, root)
     count = int(conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()[0])
@@ -75,8 +89,9 @@ def stamp_full_index_manifest(conn: sqlite3.Connection, project_root: str) -> No
     conn.execute(
         "INSERT INTO ast_index_snapshot_manifest "
         "(singleton, canonical_root, source_fingerprint, index_fingerprint, "
-        "file_count, manifest_version) VALUES (1, ?, ?, ?, ?, 1)",
-        (root, source, index, count),
+        "file_count, source_scope_descriptor, manifest_version) "
+        "VALUES (1, ?, ?, ?, ?, ?, 2)",
+        (root, source, index, count, scope_json),
     )
     conn.commit()
 
@@ -127,8 +142,11 @@ def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:
             str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')
         )
         _frame(digest, b"columns", _typed(columns))
-        encoded_rows: list[bytes] = []
-        for row in conn.execute(f'SELECT * FROM "{table}"'):
+        quoted_columns = tuple(_quote_identifier(column) for column in columns)
+        order_by = ", ".join(f"{column} COLLATE BINARY" for column in quoted_columns)
+        query = f"SELECT * FROM {_quote_identifier(table)} ORDER BY {order_by}"
+        for row in _deadline_ordered_rows(conn, query, deadline):
+            _check_deadline(deadline)
             encoded = _typed(tuple(row))
             rows_seen += 1
             bytes_seen += len(encoded)
@@ -137,11 +155,32 @@ def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:
                 or bytes_seen > _FINGERPRINT_BYTE_BUDGET
             ):
                 raise RuntimeError("INDEX_FINGERPRINT_BUDGET")
-            _check_deadline(deadline)
-            encoded_rows.append(encoded)
-        for encoded in sorted(encoded_rows):
             _frame(digest, b"row", encoded)
+            _check_deadline(deadline)
     return "sha256:" + digest.hexdigest()
+
+
+def _deadline_ordered_rows(
+    conn: sqlite3.Connection, query: str, deadline: float
+) -> Any:
+    """Stream an ORDER BY while interrupting SQLite's internal sorter."""
+
+    def expired() -> int:
+        return int(time.monotonic() > deadline)
+
+    conn.set_progress_handler(expired, 1_000)
+    try:
+        yield from conn.execute(query)
+    except sqlite3.OperationalError as exc:
+        if time.monotonic() > deadline or "interrupt" in str(exc).lower():
+            raise RuntimeError("INDEX_FINGERPRINT_DEADLINE") from exc
+        raise
+    finally:
+        conn.set_progress_handler(None, 0)
+
+
+def _quote_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
 
 
 def _typed(values: tuple[Any, ...]) -> bytes:

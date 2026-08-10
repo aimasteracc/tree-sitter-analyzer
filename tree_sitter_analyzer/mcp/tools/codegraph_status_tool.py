@@ -140,7 +140,7 @@ class CodeGraphStatusTool(BaseMCPTool):
                 stats = read_snapshot_stats(
                     snapshot.snapshot_id,
                     self.project_root,
-                    snapshot.source_generation or "",
+                    snapshot.source_generation,
                 )
                 expected_tokens = {
                     "snapshot_id": snapshot.snapshot_id,
@@ -152,7 +152,7 @@ class CodeGraphStatusTool(BaseMCPTool):
                     stats.get(key) != value for key, value in expected_tokens.items()
                 ):
                     raise ValueError("SNAPSHOT_TOKEN_MISMATCH")
-            except (OSError, ValueError):
+            except (OSError, ValueError, RuntimeError):
                 snapshot = type(snapshot)(
                     None, None, None, None, "unknown", "SNAPSHOT_READ_FAILED", None, 0
                 )
@@ -168,11 +168,21 @@ class CodeGraphStatusTool(BaseMCPTool):
             if snapshot.canonical_root and snapshot.snapshot_id
             else None
         )
-        hint = (
-            "Index snapshot is complete — pass its snapshot_id capability to graph readers."
-            if complete
-            else "Index snapshot is unavailable or not certified by an exact full-index manifest."
-        )
+        if complete:
+            hint = (
+                "Index snapshot is complete — pass its snapshot_id capability "
+                "to graph readers."
+            )
+        elif snapshot.reason == "CONCURRENT_WRITER":
+            hint = (
+                "A full-index rebuild is in progress. Retry status after it finishes. "
+                "Do NOT start another index operation."
+            )
+        else:
+            hint = (
+                "Index snapshot is unavailable or not certified by an exact "
+                "full-index manifest."
+            )
         lag_seconds = None
         if include_lag and cache_path is not None:
             from ...index_lag import compute_qualitative_lag

@@ -25,7 +25,11 @@ from .index_snapshot_schema import (
 from .index_snapshot_schema import (
     stamp_full_index_manifest as stamp_full_index_manifest,
 )
-from .index_source_snapshot import capture_current_source_snapshot, recorded_source_rows
+from .index_source_snapshot import (
+    capture_current_source_snapshot,
+    parse_source_scope_descriptor,
+    recorded_source_rows,
+)
 
 ACTION_VERSION = "index.status/v1"
 _MAX_SNAPSHOTS = 16
@@ -191,37 +195,51 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
             index = index_fingerprint(connection, root)
             recorded = recorded_source_rows(connection)
             manifest = connection.execute(
-                "SELECT canonical_root, source_fingerprint, index_fingerprint, file_count, manifest_version "
+                "SELECT canonical_root, source_fingerprint, index_fingerprint, "
+                "file_count, source_scope_descriptor, manifest_version "
                 "FROM ast_index_snapshot_manifest WHERE singleton=1"
             ).fetchone()
-            current = capture_current_source_snapshot(root)
-            if current.state == "unknown":
-                raise ValueError(current.reason or "SOURCE_SCOPE_UNKNOWN")
+            current = None
+            scope_reason = None
+            if manifest is None:
+                scope_reason = "SOURCE_SCOPE_DESCRIPTOR_MISSING"
+            else:
+                try:
+                    source_scope = parse_source_scope_descriptor(
+                        str(manifest["source_scope_descriptor"])
+                    )
+                except (TypeError, ValueError):
+                    scope_reason = "SOURCE_SCOPE_DESCRIPTOR_INVALID"
+                else:
+                    current = capture_current_source_snapshot(root, source_scope)
+                    if current.state == "unknown":
+                        raise ValueError(current.reason or "SOURCE_SCOPE_UNKNOWN")
             count = len(recorded)
-            exact_sources = current.state == "exact" and recorded == current.rows
+            exact_sources = bool(
+                current and current.state == "exact" and recorded == current.rows
+            )
             exact_manifest = bool(
                 manifest
+                and current
                 and manifest["canonical_root"] == root
                 and manifest["source_fingerprint"] == current.fingerprint
                 and manifest["index_fingerprint"] == index
                 and int(manifest["file_count"]) == count
-                and int(manifest["manifest_version"]) == 1
+                and int(manifest["manifest_version"]) == 2
             )
             complete = exact_sources and exact_manifest
-            reason = (
-                None
-                if complete
-                else (
+            reason = None if complete else scope_reason
+            if reason is None:
+                reason = (
                     current.reason or "SOURCE_INDEX_MISMATCH"
-                    if not exact_sources
+                    if not exact_sources and current
                     else "NO_EXACT_FULL_INDEX_MANIFEST"
                 )
-            )
             snapshot = IndexSnapshot(
                 None,
-                current.fingerprint,
+                current.fingerprint if current else None,
                 index,
-                current.generation,
+                current.generation if current else None,
                 "complete" if complete else "partial",
                 reason,
                 root,
@@ -298,7 +316,7 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
 
 
 def run_graph_snapshot_read(
-    snapshot_id: str, project_root: str, source_generation: str, reader: Any
+    snapshot_id: str, project_root: str, source_generation: str | None, reader: Any
 ) -> dict[str, Any]:
     """Run a production graph read and overwrite every caller-forgeable token."""
     with acquire_index_snapshot(snapshot_id, project_root, source_generation) as (
@@ -319,7 +337,7 @@ def run_graph_snapshot_read(
 
 
 def read_snapshot_stats(
-    snapshot_id: str, project_root: str, source_generation: str
+    snapshot_id: str, project_root: str, source_generation: str | None
 ) -> dict[str, Any]:
     """Read status graph statistics through the production capability seam."""
 

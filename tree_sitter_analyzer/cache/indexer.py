@@ -21,6 +21,11 @@ if TYPE_CHECKING:
     pass
 
 from ..constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
+from ..index_source_snapshot import (
+    SourceScopeDescriptor,
+    make_source_scope_descriptor,
+    validate_full_index_source_scope,
+)
 from ..indexing_limits import normalize_index_max_files
 from ..indexing_snapshot import (
     IndexCandidateSnapshot,
@@ -215,10 +220,8 @@ def parse_and_write(
     )
     from . import write as _write
 
-    inserted: list[dict[str, Any]] = (
-        _write.write_fts5_symbols(conn, rel_path, language, symbols)
-        if cache.fts5_available
-        else []
+    inserted = _write.write_fts5_symbols(
+        conn, rel_path, language, symbols, cache.fts5_available
     )
     cache._write_imports_for_file(conn, rel_path, language, imports)  # noqa: SLF001
     cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
@@ -445,11 +448,13 @@ def insert_index_row(
     )
     from . import write as _write
 
-    inserted_symbol_rows: list[dict[str, Any]] = []
-    if cache.fts5_available:
-        inserted_symbol_rows = _write.write_fts5_symbols_from_tuples(
-            conn, rel_path, r["language"], r["symbol_rows"]
-        )
+    inserted_symbol_rows = _write.write_fts5_symbols_from_tuples(
+        conn,
+        rel_path,
+        r["language"],
+        r["symbol_rows"],
+        cache.fts5_available,
+    )
     call_edges = json.loads(r.get("call_edges_json", "[]"))
     imports_list = json.loads(r.get("imports_json", "[]"))
     cache._write_imports_for_file(conn, rel_path, r["language"], imports_list)  # noqa: SLF001
@@ -610,6 +615,7 @@ def run_index_project(
     language_filter: str | None = None,
     exclude_patterns: frozenset[str] | None = None,
     candidate_snapshot: IndexCandidateSnapshot | None = None,
+    source_scope: SourceScopeDescriptor | None = None,
 ) -> dict[str, Any]:
     """Orchestrate a full ASTCache project index run.
 
@@ -673,6 +679,14 @@ def run_index_project(
             if exclude_patterns is not None
             else _DEFAULT_EXCLUDE_PATTERNS
         )
+        if source_scope is None:
+            source_scope = make_source_scope_descriptor(
+                no_default_excludes=exclude_patterns is not None,
+                exclude_patterns=tuple(sorted(effective_exclude))
+                if exclude_patterns is not None
+                else (),
+            )
+        validate_full_index_source_scope(source_scope, effective_exclude)
         stats, candidates, count = walk_and_partition(
             cache,
             conn,
@@ -794,7 +808,7 @@ def run_index_project(
             stats["db_maintenance"] = (
                 _ast_cache_mod._reclaim_storage_after_full_rebuild(conn, cache.db_path)
             )
-        _update_authoritative_manifest(cache, candidate_snapshot, stats)
+        _update_authoritative_manifest(cache, candidate_snapshot, stats, source_scope)
         return stats
     finally:
         if force:
@@ -805,6 +819,7 @@ def _update_authoritative_manifest(
     cache: Any,
     candidate_snapshot: IndexCandidateSnapshot | None,
     stats: dict[str, Any],
+    source_scope: SourceScopeDescriptor,
 ) -> None:
     """Certify only an exact, successful full-index inventory."""
     conn = cache._get_conn()
@@ -829,7 +844,7 @@ def _update_authoritative_manifest(
         from ..index_snapshot_schema import stamp_full_index_manifest
 
         try:
-            stamp_full_index_manifest(conn, cache.project_root)
+            stamp_full_index_manifest(conn, cache.project_root, source_scope)
             return
         except Exception:
             # Certification is optional evidence, not indexing work.  Never

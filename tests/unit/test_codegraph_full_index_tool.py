@@ -845,3 +845,18 @@ class TestIncrementalPhaseScope:
             max_files=25_001,
             exclude_patterns=exclude_patterns,
         )
+
+
+def test_call_edge_stats_converts_cache_failure_to_phase_error(tmp_path, monkeypatch):
+    # PR #1253: final stats remain bounded when opening the cache fails.
+    import tree_sitter_analyzer.ast_cache as cache_module
+
+    monkeypatch.setattr(
+        cache_module,
+        "ASTCache",
+        lambda _root: (_ for _ in ()).throw(RuntimeError("open failed")),
+    )
+
+    result = CodeGraphFullIndexTool(str(tmp_path))._phase_call_edge_stats()
+
+    assert (result["status"], result["error"]) == ("error", "RuntimeError: open failed")

@@ -21,6 +21,10 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from ...index_source_snapshot import (
+    SourceScopeDescriptor,
+    make_source_scope_descriptor,
+)
 from ...indexing_limits import normalize_index_max_files
 from ...indexing_snapshot import (
     IndexCandidateSnapshot,
@@ -292,6 +296,10 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             extra_patterns,
             no_default_excludes,
         )
+        source_scope = make_source_scope_descriptor(
+            no_default_excludes=no_default_excludes,
+            exclude_patterns=tuple(extra_patterns),
+        )
         t_start = time.monotonic()
         candidate_snapshot = self._build_candidate_snapshot(
             max_files,
@@ -309,12 +317,14 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             include_activation=include_activation,
             exclude_patterns=exclude_patterns,
             candidate_snapshot=candidate_snapshot,
+            source_scope=source_scope,
         )
         phases["ast_cache"] = ast_phase
         incremental_phase = self._phase_incremental_sync(
             max_files,
             exclude_patterns,
             candidate_snapshot=candidate_snapshot,
+            source_scope=source_scope,
         )
         phases["incremental_sync"] = incremental_phase
         phases["fts5"] = self._phase_fts5_stats()
@@ -351,7 +361,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         stats = self._collect_final_stats(
             stamp_manifest=(
                 top_verdict == "INFO" and not candidate_snapshot.truncated_by_max_files
-            )
+            ),
+            source_scope=source_scope,
         )
 
         result: dict[str, Any] = {
@@ -390,6 +401,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         include_activation: bool = False,
         exclude_patterns: frozenset[str] | None = None,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
+        source_scope: SourceScopeDescriptor | None = None,
     ) -> dict[str, Any]:
         t0 = time.monotonic()
         cache: Any | None = None
@@ -406,6 +418,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "include_activation": include_activation,
                 "exclude_patterns": exclude_patterns,
             }
+            if source_scope is not None:
+                index_kwargs["source_scope"] = source_scope
             if candidate_snapshot is not None:
                 index_kwargs["candidate_snapshot"] = candidate_snapshot
             result = cache.index_project(**index_kwargs)
@@ -472,6 +486,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         exclude_patterns: frozenset[str] | None = None,
         *,
         candidate_snapshot: IndexCandidateSnapshot | None = None,
+        source_scope: SourceScopeDescriptor | None = None,
     ) -> dict[str, Any]:
         t0 = time.monotonic()
         cache: Any | None = None
@@ -487,6 +502,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 "max_files": max_files,
                 "exclude_patterns": exclude_patterns,
             }
+            if source_scope is not None:
+                sync_kwargs["source_scope"] = source_scope
             if candidate_snapshot is not None:
                 sync_kwargs["candidate_snapshot"] = candidate_snapshot
             result = sync.sync(**sync_kwargs)
@@ -603,7 +620,12 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         finally:
             _safe_close_cache(cache)
 
-    def _collect_final_stats(self, *, stamp_manifest: bool = False) -> dict[str, Any]:
+    def _collect_final_stats(
+        self,
+        *,
+        stamp_manifest: bool = False,
+        source_scope: SourceScopeDescriptor | None = None,
+    ) -> dict[str, Any]:
         cache: Any | None = None
         try:
             from ...ast_cache import ASTCache
@@ -615,7 +637,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
 
                 try:
                     stamp_full_index_manifest(
-                        cache.get_conn(), self.project_root or "."
+                        cache.get_conn(), self.project_root or ".", source_scope
                     )
                 except Exception:
                     logger.warning(
