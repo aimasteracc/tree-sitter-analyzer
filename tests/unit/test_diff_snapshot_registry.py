@@ -350,11 +350,11 @@ def test_bind_rejects_lease_closed_while_pinned(tmp_path: Path, monkeypatch) -> 
     consumer.release()
 
 
-@POSIX_SNAPSHOT_TEST
 def test_bind_large_to_small_rejects_multiple_pins_without_undercharge(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = _repo(tmp_path)
+    root = tmp_path
+    install_fake_snapshot_materializer(monkeypatch, root)
     registry = snapshots.DiffSnapshotRegistry()
     created = registry.create(str(root), "diff", ["x" * 100])
     first, _ = registry.acquire(str(created["diff_snapshot_id"]), str(root))
@@ -366,9 +366,11 @@ def test_bind_large_to_small_rejects_multiple_pins_without_undercharge(
     second.release()
 
 
-@POSIX_SNAPSHOT_TEST
-def test_bind_assessed_scope_replaces_scope_for_single_pin(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
+def test_bind_assessed_scope_replaces_scope_for_single_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path
+    install_fake_snapshot_materializer(monkeypatch, root)
     registry = snapshots.DiffSnapshotRegistry()
     created = registry.create(str(root), "diff", ["large-path.py"])
     consumer, _ = registry.acquire(str(created["diff_snapshot_id"]), str(root))
