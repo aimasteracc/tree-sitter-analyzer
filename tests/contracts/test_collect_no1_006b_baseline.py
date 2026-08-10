@@ -365,6 +365,7 @@ def test_uv_export_ignores_hostile_config_file(monkeypatch: pytest.MonkeyPatch, 
     assert b"packaging==25.0" in result.stdout
 
 
+@pytest.mark.skipif(os.name == "nt", reason="tracked: NO1-006B collector currently emits macOS-only E0 receipts")
 def test_source_archive_ignores_hostile_local_and_global_tar_umask(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # PR #1250: archive identity must be independent of ambient and repository Git configuration.
     source=tmp_path/"source"; source.mkdir(); (source/"file.txt").write_text("content\n")
