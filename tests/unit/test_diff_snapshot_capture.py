@@ -470,3 +470,23 @@ def test_core_filemode_false_sanitizes_non_file_index_mode(tmp_path: Path) -> No
     )
 
     assert result == {b"a.py": b"100644 " + oid + b" 0"}
+
+
+def test_frozen_workspace_rejects_missing_manifest_binding(tmp_path: Path) -> None:
+    # PR #1252: filtered workspace bytes must match first-oracle evidence.
+    from tree_sitter_analyzer.diff_snapshot_epoch import FrozenGitEnvironment
+    from tree_sitter_analyzer.source_oracle import SafePath
+
+    oid = b"a" * 40
+    frozen = FrozenGitEnvironment(
+        str(tmp_path), _epoch(index_entries=((b"a.py", b"100644 deadbeef 0"),)), 1e20
+    )
+    frozen._directory = str(tmp_path)
+    frozen.index_path = str(tmp_path / "index")
+    Path(frozen.index_path).write_bytes(b"")
+    frozen.run = lambda *args, **kwargs: oid  # type: ignore[method-assign]
+
+    with pytest.raises(
+        snapshots.SourceOracleError, match="DIFF_SNAPSHOT_SOURCE_CHANGED"
+    ):
+        frozen.apply_workspace({b"a.py": SafePath(b"x", (b"1,2,33188,0,0,0",), "file")})

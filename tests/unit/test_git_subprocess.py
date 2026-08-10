@@ -513,6 +513,7 @@ def test_snapshot_git_disables_system_attributes_with_explicit_env() -> None:
     assert captured["env"] == {
         "PATH": os.environ["PATH"],
         "GIT_ATTR_NOSYSTEM": "1",
+        "GIT_NO_REPLACE_OBJECTS": "1",
     }
 
 

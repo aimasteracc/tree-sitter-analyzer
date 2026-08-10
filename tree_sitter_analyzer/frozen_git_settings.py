@@ -249,17 +249,25 @@ def capture_frozen_git_settings(
     )
     remaining -= len(info_file.data or b"")
 
-    attribute_paths = sorted(
-        {
-            raw
-            for raw in inventory
-            if raw == b".gitattributes" or raw.endswith(b"/.gitattributes")
-        }
-    )
-    if len(attribute_paths) + 2 > _MAX_SETTINGS_FILES:
+    # Git consults .gitattributes at the root and at every directory on a
+    # target path, including attribute files hidden by ignore rules.  Derive
+    # this finite candidate set from the already bounded index/worktree target
+    # inventory; never walk the workspace to discover settings.
+    attribute_paths = {b".gitattributes"}
+    for raw in inventory:
+        path = normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
+        parts = os.fsencode(path).split(b"/")
+        for depth in range(1, len(parts)):
+            attribute_paths.add(b"/".join((*parts[:depth], b".gitattributes")))
+    ordered_attribute_paths = sorted(attribute_paths)
+    setting_file_count = len(ordered_attribute_paths) + 1 + int(core_file is not None)
+    if setting_file_count > _MAX_SETTINGS_FILES:
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     worktree_files: list[FrozenSettingFile] = []
-    for raw in attribute_paths:
+    for raw in ordered_attribute_paths:
+        remaining -= len(raw)
+        if remaining < 0:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
         path = normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
         safe: SafePath = safe_workspace_path(
             root, path, deadline=deadline, limit=remaining
@@ -267,7 +275,7 @@ def capture_frozen_git_settings(
         if safe.kind not in ("file", "symlink", "missing"):
             raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
         item = FrozenSettingFile(raw, safe.kind, safe.data)
-        remaining -= len(raw) + len(item.data or b"")
+        remaining -= len(item.data or b"")
         if remaining < 0:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
         worktree_files.append(item)

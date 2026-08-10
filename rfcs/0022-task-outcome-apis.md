@@ -131,11 +131,18 @@ stage entries plus HEAD/object-format identity. All patch/status/numstat/blob re
 are then bound to rebuilt temporary indexes, never the live index or worktree.
 Arbitrary Git path bytes use the lossless ``git-path-b64:<urlsafe-base64>`` wire
 codec (literal names with that prefix are encoded too). Every snapshot-owned Git
-command (oracle generation, config/attribute capture, hashing, diffing, and
-request-scoped temporary plumbing) runs with ``GIT_ATTR_NOSYSTEM=1``. P0.2
+command (oracle generation, HEAD/index enumeration, config/attribute capture,
+hashing, diffing, and request-scoped temporary/shadow plumbing) runs with
+``GIT_ATTR_NOSYSTEM=1`` and ``GIT_NO_REPLACE_OBJECTS=1``. Replacement refs are
+mutable name-resolution policy and are never consulted: oracle identities, old
+entries, patches, and records all use the original HEAD object graph. P0.2
 therefore deliberately excludes machine system attributes: payload and oracle
 use the same deterministic attribute policy, while repository/info and captured
-``core.attributesFile`` inputs remain frozen. Git's built-in text/eol/autocrlf
+``core.attributesFile`` inputs remain frozen. Worktree attribute sources are not
+discovered by a filesystem walk: root and per-directory ``.gitattributes``
+candidates are derived from every bounded index/untracked target path, safely
+read without following links (including ignored candidates), framed into the
+source generation, and materialized in the isolated shadow. Git's built-in text/eol/autocrlf
 conversion is supported; an active ``filter`` attribute (boolean ``set`` or a
 driver value, including LFS) fails before any ``hash-object`` with
 ``DIFF_SNAPSHOT_UNSUPPORTED_FILTER`` so no external clean driver executes.

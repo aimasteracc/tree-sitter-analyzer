@@ -7,8 +7,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit._diff_snapshot_support import make_repo
 from tree_sitter_analyzer import diff_snapshot_epoch as epoch_module
 from tree_sitter_analyzer import frozen_git_settings as settings
+from tree_sitter_analyzer.diff_snapshot_registry import DiffSnapshotRegistry
 from tree_sitter_analyzer.source_epoch import (
     GitEpoch,
     SourceEpoch,
@@ -157,7 +159,7 @@ def test_capture_settings_enforces_total_byte_budget(
 def test_capture_settings_enforces_attribute_file_budget(
     tmp_path: Path, monkeypatch
 ) -> None:
-    monkeypatch.setattr(settings, "_MAX_SETTINGS_FILES", 2)
+    monkeypatch.setattr(settings, "_MAX_SETTINGS_FILES", 1)
 
     with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPACITY$"):
         settings.capture_frozen_git_settings(
@@ -165,34 +167,34 @@ def test_capture_settings_enforces_attribute_file_budget(
         )
 
 
-def test_capture_settings_rejects_special_attribute_leaf(
+def test_capture_settings_rejects_invalid_attribute_leaf(
     tmp_path: Path, monkeypatch
 ) -> None:
-    monkeypatch.setattr(
-        settings,
-        "safe_workspace_path",
-        lambda *_a, **_k: SafePath(None, (), "directory"),
-    )
-
+    reader = lambda *_a, **_k: SafePath(None, (), "directory")  # noqa: E731
+    monkeypatch.setattr(settings, "safe_workspace_path", reader)
     with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_SPECIAL_FILE$"):
         settings.capture_frozen_git_settings(
             str(tmp_path), (b".gitattributes",), 1e20, lambda *_a, **_k: b""
+        )
+    oversized = SafePath(b"x" * settings._MAX_SETTINGS_BYTES, (), "file")
+    monkeypatch.setattr(settings, "safe_workspace_path", lambda *_a, **_k: oversized)
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPACITY$"):
+        settings.capture_frozen_git_settings(
+            str(tmp_path), (), 1e20, lambda *_a, **_k: b""
         )
 
 
 def test_capture_settings_charges_attribute_path_bytes(
     tmp_path: Path, monkeypatch
 ) -> None:
-    monkeypatch.setattr(settings, "_MAX_SETTINGS_BYTES", 512)
-    monkeypatch.setattr(
-        settings,
-        "safe_workspace_path",
-        lambda *_a, **_k: SafePath(b"x" * 512, (), "file"),
-    )
+    info = os.fsencode(settings._absolute_path(str(tmp_path), b".git/info/attributes"))
+    objects = os.fsencode(settings._absolute_path(str(tmp_path), b".git/objects"))
+    budget = len(info) + len(objects) + len(b".gitattributes") - 1
+    monkeypatch.setattr(settings, "_MAX_SETTINGS_BYTES", budget)
 
     with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPACITY$"):
         settings.capture_frozen_git_settings(
-            str(tmp_path), (b"nested/.gitattributes",), 1e20, lambda *_a, **_k: b""
+            str(tmp_path), (), 1e20, lambda *_a, **_k: b""
         )
 
 
@@ -432,3 +434,66 @@ def test_filter_attribute_malformed_output_fails_closed(raw: bytes) -> None:
 def test_filter_attribute_output_without_final_nul_is_accepted() -> None:
     # PR #1252 review thread 4861: bounded Git output need not end in a NUL.
     settings.reject_active_filters(b"a.py\0filter\0unspecified", (b"a.py",))
+
+
+def test_ignored_directory_attributes_are_frozen_for_binary_diff(
+    tmp_path: Path,
+) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6X2mXl: ignored settings still apply.
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+    directory = tmp_path / "dir"
+    directory.mkdir()
+    (directory / "a.txt").write_bytes(b"before\n")
+    (tmp_path / ".gitignore").write_text("dir/.gitattributes\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=tmp_path, check=True)
+    (directory / ".gitattributes").write_text("*.txt binary\n")
+    (directory / "a.txt").write_bytes(b"after\n")
+    result = DiffSnapshotRegistry().create(str(tmp_path), "diff", [])
+
+    assert result["success"] is True
+    assert [(item["path"], item["binary"]) for item in result["changed_records"]] == [
+        ("dir/a.txt", True)
+    ]
+
+
+def test_active_replace_ref_cannot_split_snapshot_head_evidence(tmp_path: Path) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6X2mXp: use the original object graph.
+    root = make_repo(tmp_path)
+    run = lambda *args, input_=None: subprocess.run(  # noqa: E731
+        ["git", *args], cwd=root, input=input_, check=True, capture_output=True
+    ).stdout.strip()
+    original = run("rev-parse", "HEAD")
+    raw_blob = run("rev-parse", "HEAD:old.py")
+    blob = run("hash-object", "-w", "--stdin", input_=b"replacement = True\n")
+    tree = run("mktree", input_=b"100644 blob " + blob + b"\told.py\n")
+    replacement = run("commit-tree", tree.decode(), input_=b"replacement commit\n")
+    run("update-ref", "refs/replace/" + original.decode(), replacement.decode())
+    (root / "old.py").write_bytes(b"value = 2\n")
+    run("add", "old.py")
+    live_patch = run("diff", "--cached")
+    result = (registry := DiffSnapshotRegistry()).create(str(root), "staged", [])
+    consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    frozen = consumer.snapshot.file("old.py")
+    assert b"-replacement = True" in live_patch
+    assert frozen is not None
+    old_oid = result["changed_records"][0]["old_oid"].encode("ascii")
+    assert (frozen.old_bytes, old_oid) == (b"value = 1\n", raw_blob)
+    assert b"-value = 1" in consumer.snapshot.normalized_patch
+    consumer.release()
+
+
+@pytest.mark.parametrize(
+    "argv", [[], ["--fsize", "-1", "--", "git"], ["--fsize", "1", "--", "sh"]]
+)
+def test_git_exec_guard_rejects_unsafe_invocation(argv: list[str]) -> None:
+    # PR #1252: the file-size guard accepts only bounded Git commands.
+    from tree_sitter_analyzer import git_exec_guard
+
+    assert git_exec_guard.main(argv) == 2
