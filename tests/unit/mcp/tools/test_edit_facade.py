@@ -31,7 +31,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
-from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
+from tests.unit._diff_snapshot_support import (
+    POSIX_SNAPSHOT_TEST,
+    install_fake_snapshot_materializer,
+    make_repo,
+)
 from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
 from tree_sitter_analyzer.mcp.tools.facade_tool import FacadeTool
 
@@ -835,6 +839,7 @@ def test_edit_release_snapshot_is_same_process_reachable_and_idempotent(
 
     root = make_repo(tmp_path)
     (root / "old.py").write_text("value = 2\n")
+    install_fake_snapshot_materializer(monkeypatch, root)
     registry = snapshots.DiffSnapshotRegistry()
     monkeypatch.setattr(snapshots, "REGISTRY", registry)
     created = registry.create(str(root), "diff", [])
@@ -859,6 +864,7 @@ def test_edit_release_snapshot_rejects_wrong_ownership_token(
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     root = make_repo(tmp_path)
+    install_fake_snapshot_materializer(monkeypatch, root)
     registry = snapshots.DiffSnapshotRegistry()
     monkeypatch.setattr(snapshots, "REGISTRY", registry)
     created = registry.create(str(root), "diff", [])

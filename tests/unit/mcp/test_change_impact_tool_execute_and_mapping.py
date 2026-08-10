@@ -2,6 +2,8 @@
 
 import asyncio
 
+from tests.unit._diff_snapshot_support import install_fake_snapshot_materializer
+from tree_sitter_analyzer.diff_snapshot_capture import ChangedFile
 from tree_sitter_analyzer.mcp.tools import change_impact_tool as tool_module
 from tree_sitter_analyzer.mcp.tools.utils import (
     change_impact_analysis as change_impact_tool,
@@ -2245,6 +2247,12 @@ def test_strict_snapshot_impact_never_calls_live_analysis(
 
     from tree_sitter_analyzer import diff_snapshot_registry as registry
 
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[ChangedFile("a.py", "M", True, True, False)],
+        inventory_paths=["a.py"],
+    )
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
@@ -2359,10 +2367,16 @@ def _strict_capture_repo(tmp_path, files: dict[str, str]):
     )
 
 
-def test_strict_snapshot_root_scope_matches_all_paths(tmp_path) -> None:
+def test_strict_snapshot_root_scope_matches_all_paths(tmp_path, monkeypatch) -> None:
     # PR #1252 review thread 3746878572.
     from tree_sitter_analyzer import diff_snapshot_registry as registry
 
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[ChangedFile("pkg/a.py", "M", True, True, False)],
+        inventory_paths=["pkg/a.py"],
+    )
     _strict_capture_repo(tmp_path, {"pkg/a.py": "x = 1\n"})
     (tmp_path / "pkg/a.py").write_text("x = 2\n")
     result = asyncio.run(
@@ -2381,12 +2395,20 @@ def test_strict_snapshot_root_scope_matches_all_paths(tmp_path) -> None:
     )
 
 
-def test_strict_snapshot_rename_matches_deleted_old_scope(tmp_path) -> None:
+def test_strict_snapshot_rename_matches_deleted_old_scope(
+    tmp_path, monkeypatch
+) -> None:
     # PR #1252 review thread 3746878577.
     import subprocess
 
     from tree_sitter_analyzer import diff_snapshot_registry as registry
 
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[ChangedFile("new.py", "R", True, True, False, old_path="old.py")],
+        inventory_paths=["new.py"],
+    )
     _strict_capture_repo(tmp_path, {"old.py": "x = 1\n"})
     subprocess.run(["git", "mv", "old.py", "new.py"], cwd=tmp_path, check=True)
     result = asyncio.run(
@@ -2406,10 +2428,16 @@ def test_strict_snapshot_rename_matches_deleted_old_scope(tmp_path) -> None:
     )
 
 
-def test_strict_snapshot_filters_tool_cache_paths(tmp_path) -> None:
+def test_strict_snapshot_filters_tool_cache_paths(tmp_path, monkeypatch) -> None:
     # PR #1252 review thread 3746878600.
     from tree_sitter_analyzer import diff_snapshot_registry as registry
 
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[ChangedFile(".ast-cache/index.db", "M", True, True, False)],
+        inventory_paths=[".ast-cache/index.db"],
+    )
     _strict_capture_repo(tmp_path, {".ast-cache/index.db": "one\n"})
     (tmp_path / ".ast-cache/index.db").write_text("two\n")
     result = asyncio.run(
@@ -2423,10 +2451,16 @@ def test_strict_snapshot_filters_tool_cache_paths(tmp_path) -> None:
     )
 
 
-def test_strict_summary_only_preserves_snapshot_surface(tmp_path) -> None:
+def test_strict_summary_only_preserves_snapshot_surface(tmp_path, monkeypatch) -> None:
     # PR #1252 review thread 3746878602.
     from tree_sitter_analyzer import diff_snapshot_registry as registry
 
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[ChangedFile("a.py", "M", True, True, False)],
+        inventory_paths=["a.py"],
+    )
     _strict_capture_repo(tmp_path, {"a.py": "x = 1\n"})
     (tmp_path / "a.py").write_text("x = 2\n")
     result = asyncio.run(
@@ -2461,10 +2495,19 @@ def test_strict_early_error_uses_requested_toon_formatter() -> None:
     assert isinstance(result["toon_content"], str)
 
 
-def test_strict_scope_response_projects_changed_records(tmp_path) -> None:
+def test_strict_scope_response_projects_changed_records(tmp_path, monkeypatch) -> None:
     # PR #1252 review thread 3746940429.
     from tree_sitter_analyzer import diff_snapshot_registry as registry
 
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[
+            ChangedFile("a.py", "M", True, True, False),
+            ChangedFile("b.py", "M", True, True, False),
+        ],
+        inventory_paths=["a.py", "b.py"],
+    )
     _strict_capture_repo(tmp_path, {"a.py": "a = 1\n", "b.py": "b = 1\n"})
     (tmp_path / "a.py").write_text("a = 2\n")
     (tmp_path / "b.py").write_text("b = 2\n")

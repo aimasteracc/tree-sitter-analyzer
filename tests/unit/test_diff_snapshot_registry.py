@@ -6,7 +6,11 @@ from pathlib import Path
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
-from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
+from tests.unit._diff_snapshot_support import (
+    POSIX_SNAPSHOT_TEST,
+    install_fake_snapshot_materializer,
+    make_repo,
+)
 
 
 def _git(root: Path, *args: str) -> None:
@@ -150,16 +154,7 @@ def test_registry_defensive_capacity_and_mode_errors(tmp_path: Path) -> None:
 
 def _created(tmp_path: Path, monkeypatch):
     """Create registry state without invoking the POSIX workspace oracle."""
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    identity = snapshots.RootIdentity(str(tmp_path), 1, 2)
-    monkeypatch.setattr(
-        snapshots, "canonical_root", lambda value: (str(tmp_path), identity)
-    )
-    monkeypatch.setattr(
-        snapshots, "oracle_generation", lambda *args, **kwargs: ("sg_test", identity)
-    )
-    monkeypatch.setattr(snapshots, "capture_inventory", lambda *args, **kwargs: ())
-    monkeypatch.setattr(snapshots, "_capture_payload", lambda *args: (b"", ()))
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
     registry = snapshots.DiffSnapshotRegistry()
     result = registry.create(str(tmp_path), "diff", [])
     return tmp_path, registry, result
@@ -298,11 +293,11 @@ def test_create_rejects_excessive_scope_item_count() -> None:
 
 
 def test_validate_publish_rejects_snapshot_expired_while_pinned(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
     now = [0.0]
-    root = _repo(tmp_path)
-    (root / "old.py").write_text("value = 2\n")
+    root = tmp_path
+    install_fake_snapshot_materializer(monkeypatch, root)
     registry = snapshots.DiffSnapshotRegistry(clock=lambda: now[0])
     created = registry.create(str(root), "diff", [])
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
@@ -357,9 +352,9 @@ def test_bind_rejects_invalid_scope_storage_inputs() -> None:
     ]
 
 
-def test_bind_rejects_lease_closed_while_pinned(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
-    (root / "old.py").write_text("value = 2\n")
+def test_bind_rejects_lease_closed_while_pinned(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path
+    install_fake_snapshot_materializer(monkeypatch, root)
     registry = snapshots.DiffSnapshotRegistry()
     created = registry.create(str(root), "diff", [])
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
@@ -412,7 +407,8 @@ def test_validate_publish_bounds_oracle_by_remaining_lifetime(
 ) -> None:
     # PR #1252 review thread 3746940417.
     now = [0.0]
-    root = _repo(tmp_path)
+    root = tmp_path
+    install_fake_snapshot_materializer(monkeypatch, root)
     registry = snapshots.DiffSnapshotRegistry(clock=lambda: now[0])
     created = registry.create(str(root), "diff", [])
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
@@ -436,9 +432,10 @@ def test_validate_publish_bounds_oracle_by_remaining_lifetime(
 
 
 def test_validate_publish_marks_closed_pinned_state_expired(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
-    root = _repo(tmp_path)
+    root = tmp_path
+    install_fake_snapshot_materializer(monkeypatch, root)
     registry = snapshots.DiffSnapshotRegistry()
     created = registry.create(str(root), "diff", [])
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
@@ -458,7 +455,8 @@ def test_validate_publish_rejects_expiry_during_bounded_oracle(
     tmp_path: Path, monkeypatch
 ) -> None:
     now = [0.0]
-    root = _repo(tmp_path)
+    root = tmp_path
+    install_fake_snapshot_materializer(monkeypatch, root)
     registry = snapshots.DiffSnapshotRegistry(clock=lambda: now[0])
     created = registry.create(str(root), "diff", [])
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
@@ -478,9 +476,10 @@ def test_validate_publish_rejects_expiry_during_bounded_oracle(
 
 
 def test_validate_publish_rejects_erased_snapshot_before_oracle(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
-    root = _repo(tmp_path)
+    root = tmp_path
+    install_fake_snapshot_materializer(monkeypatch, root)
     registry = snapshots.DiffSnapshotRegistry()
     created = registry.create(str(root), "diff", [])
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))

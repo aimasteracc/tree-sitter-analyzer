@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import tree_sitter_analyzer.source_oracle as oracle
+from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST
 
 
 def _error(call, code: str) -> None:
@@ -30,6 +31,7 @@ def test_canonical_root_translates_stat_error(monkeypatch) -> None:
     _error(lambda: oracle.canonical_root("missing"), "DIFF_SNAPSHOT_ROOT_INVALID")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_translates_leaf_lstat_error(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -49,6 +51,7 @@ def test_safe_workspace_path_translates_leaf_lstat_error(
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_translates_symlink_readlink_error(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -99,6 +102,7 @@ def test_safe_workspace_path_windows_fails_before_opening_files(
     assert opened == []
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_translates_open_error(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         oracle, "_open", lambda *a, **k: (_ for _ in ()).throw(OSError())
@@ -111,6 +115,7 @@ def test_safe_workspace_path_translates_open_error(tmp_path: Path, monkeypatch) 
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_translates_read_error(tmp_path: Path, monkeypatch) -> None:
     target = tmp_path / "x"
     target.write_bytes(b"x")
@@ -129,6 +134,7 @@ def test_normalize_repo_path_strips_each_dot_prefix() -> None:
     assert oracle.normalize_repo_path("././file.py") == "file.py"
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_absolute_regular_rejects_oversize_index(tmp_path: Path) -> None:
     index = tmp_path / "index"
     index.write_bytes(b"index")
@@ -147,6 +153,7 @@ def test_normalize_repo_path_preserves_posix_backslash() -> None:
     assert oracle.normalize_repo_path(r"a\b.py") == r"a\b.py"
 
 
+@POSIX_SNAPSHOT_TEST
 def test_frame_workspace_gitlink_binds_initialized_directory(tmp_path: Path) -> None:
     checkout = tmp_path / "module"
     checkout.mkdir()
@@ -179,6 +186,7 @@ def test_safe_absolute_regular_rejects_unsupported_platform(
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_absolute_regular_handles_missing_index(tmp_path: Path) -> None:
     result = oracle._safe_absolute_regular(
         str(tmp_path / "index"),
@@ -194,6 +202,7 @@ def test_safe_absolute_regular_handles_missing_index(tmp_path: Path) -> None:
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_absolute_regular_rejects_missing_index(tmp_path: Path) -> None:
     _error(
         lambda: oracle._safe_absolute_regular(
@@ -203,6 +212,7 @@ def test_safe_absolute_regular_rejects_missing_index(tmp_path: Path) -> None:
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_absolute_regular_rejects_directory_leaf(tmp_path: Path) -> None:
     (tmp_path / "index").mkdir()
 
@@ -214,6 +224,7 @@ def test_safe_absolute_regular_rejects_directory_leaf(tmp_path: Path) -> None:
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_absolute_regular_detects_replace_between_stat_and_open(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -238,6 +249,7 @@ def test_safe_absolute_regular_detects_replace_between_stat_and_open(
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_absolute_regular_ignores_close_error(tmp_path: Path, monkeypatch) -> None:
     index = tmp_path / "index"
     index.write_bytes(b"index")
@@ -285,6 +297,7 @@ def test_regular_open_flags_fail_closed_without_platform_support(monkeypatch) ->
     _error(oracle._regular_open_flags, "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_payload_read_rejects_replaced_ancestor_chain(tmp_path: Path) -> None:
     # PR #1252 review thread 3746878588: payload must match the pre-epoch manifest.
     root = tmp_path / "repo"

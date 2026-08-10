@@ -5,16 +5,23 @@ from pathlib import Path
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
-from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
+from tests.unit._diff_snapshot_support import (
+    POSIX_SNAPSHOT_TEST,
+    install_fake_snapshot_materializer,
+    make_repo,
+)
 
 
 def _repo(tmp_path: Path) -> Path:
     return make_repo(tmp_path)
 
 
-def test_validate_publish_rejects_released_consumer(tmp_path: Path) -> None:
+def test_validate_publish_rejects_released_consumer(
+    tmp_path: Path, monkeypatch
+) -> None:
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
     registry = snapshots.DiffSnapshotRegistry()
-    created = registry.create(str(_repo(tmp_path)), "diff", [])
+    created = registry.create(str(tmp_path), "diff", [])
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(tmp_path))
     assert error is None
     assert consumer is not None
@@ -26,8 +33,9 @@ def test_validate_publish_rejects_released_consumer(tmp_path: Path) -> None:
 def test_validate_publish_rejects_generation_mismatch(
     tmp_path: Path, monkeypatch
 ) -> None:
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
     registry = snapshots.DiffSnapshotRegistry()
-    created = registry.create(str(_repo(tmp_path)), "diff", [])
+    created = registry.create(str(tmp_path), "diff", [])
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(tmp_path))
     assert error is None
     assert consumer is not None

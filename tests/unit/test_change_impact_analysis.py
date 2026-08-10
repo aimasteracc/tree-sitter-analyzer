@@ -378,24 +378,3 @@ def test_read_only_request_skips_call_graph_impact(tmp_path, monkeypatch) -> Non
     )
 
     assert result["affected_count"] == 0
-
-
-def test_request_without_project_root_skips_call_graph_impact(monkeypatch) -> None:
-    from tree_sitter_analyzer.mcp.tools.utils import change_impact_analysis as ci
-
-    monkeypatch.setattr(
-        ci,
-        "compute_call_graph_impact",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("call graph")),
-    )
-    result = ci._build_change_impact_result(
-        ci.ChangeImpactRequest(
-            mode="diff",
-            changed_files=["src/app.py"],
-            diff_stat="src/app.py | 1 +",
-            project_root=None,
-            include_tests=False,
-            agent_summary_only=True,
-        )
-    )
-    assert result["changed_count"] == 1

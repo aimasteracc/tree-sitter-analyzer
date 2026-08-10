@@ -9,6 +9,7 @@ import pytest
 
 import tree_sitter_analyzer.source_oracle as core_oracle
 import tree_sitter_analyzer.source_oracle_git as oracle
+from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST
 
 
 def _error(call, code: str) -> None:
@@ -93,6 +94,7 @@ def test_git_output_translates_stream_read_error(monkeypatch) -> None:
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_translates_index_lstat_error(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -112,6 +114,7 @@ def test_oracle_generation_translates_index_lstat_error(
     _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_GIT_ERROR")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_rejects_nonregular_index(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -323,6 +326,7 @@ def _stub_oracle_inventory(
     monkeypatch.setattr(oracle, "git_output", git_output)
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_rejects_tracked_index_inventory_mismatch(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -331,6 +335,7 @@ def test_oracle_generation_rejects_tracked_index_inventory_mismatch(
     _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_GIT_ERROR")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_rejects_dirty_inventory_over_capacity(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -347,6 +352,7 @@ def test_oracle_generation_rejects_dirty_inventory_over_capacity(
     _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_CAPACITY")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_rejects_dirty_path_outside_tracked_inventory(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -362,6 +368,7 @@ def test_oracle_generation_rejects_dirty_path_outside_tracked_inventory(
     _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_GIT_ERROR")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_rejects_untracked_path_in_tracked_inventory(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -377,6 +384,7 @@ def test_oracle_generation_rejects_untracked_path_in_tracked_inventory(
     _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_GIT_ERROR")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_supports_unborn_head_untracked_file(tmp_path: Path) -> None:
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     (tmp_path / "new.py").write_text("value = 1\n")
@@ -386,6 +394,7 @@ def test_oracle_generation_supports_unborn_head_untracked_file(tmp_path: Path) -
     assert (generation[:3], identity.realpath) == ("sg_", str(tmp_path.resolve()))
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_ignores_inherited_git_routing(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -413,6 +422,7 @@ def test_head_identity_rejects_invalid_nonsymbolic_head(monkeypatch) -> None:
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_rejects_unresolvable_git_toplevel(monkeypatch) -> None:
     identity = oracle.RootIdentity("/root", 1, 2)
     calls = 0
@@ -430,6 +440,7 @@ def test_oracle_generation_rejects_unresolvable_git_toplevel(monkeypatch) -> Non
     _error(lambda: oracle.oracle_generation("/root"), "DIFF_SNAPSHOT_ROOT_MISMATCH")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_rejects_different_git_toplevel(monkeypatch) -> None:
     identity = oracle.RootIdentity("/root", 1, 2)
     other = oracle.RootIdentity("/other", 1, 3)

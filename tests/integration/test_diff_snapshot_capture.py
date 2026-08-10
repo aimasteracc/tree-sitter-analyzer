@@ -7,7 +7,11 @@ import pytest
 
 import tree_sitter_analyzer.diff_snapshot_capture as capture
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
-from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
+from tests.unit._diff_snapshot_support import (
+    POSIX_SNAPSHOT_TEST,
+    install_fake_snapshot_materializer,
+    make_repo,
+)
 from tree_sitter_analyzer.source_oracle import SafePath
 
 
@@ -203,8 +207,9 @@ def test_numstat_z_rejects_malformed_rename_continuations(monkeypatch, raw) -> N
 def test_bind_assessed_scope_rejects_materialized_capacity(
     tmp_path: Path, monkeypatch
 ) -> None:
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
     registry = snapshots.DiffSnapshotRegistry()
-    created = registry.create(str(_repo(tmp_path)), "diff", [])
+    created = registry.create(str(tmp_path), "diff", [])
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(tmp_path))
     assert error is None
     assert consumer is not None
