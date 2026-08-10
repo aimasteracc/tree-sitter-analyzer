@@ -290,8 +290,16 @@ class DiffSnapshotRegistry:
             return "DIFF_SNAPSHOT_CAPACITY"
         with self._lock:
             state = self._states.get(consumer.snapshot.snapshot_id)
-            if state is None or consumer._pin not in state.pins:
+            if (
+                state is None
+                or consumer._released
+                or state.pins.get(consumer._pin) != consumer._owner
+            ):
                 return "DIFF_SNAPSHOT_EXPIRED"
+            if threading.get_ident() != consumer._owner:
+                return "DIFF_SNAPSHOT_WRONG_THREAD"
+            if len(state.pins) != 1:
+                return "DIFF_SNAPSHOT_IN_USE"
             if (
                 state.expired
                 or not state.lease_open
@@ -325,8 +333,14 @@ class DiffSnapshotRegistry:
             return str(exc)
         with self._lock:
             state = self._states.get(consumer.snapshot.snapshot_id)
-            if state is None or state.pins.get(consumer._pin) != consumer._owner:
+            if (
+                state is None
+                or consumer._released
+                or state.pins.get(consumer._pin) != consumer._owner
+            ):
                 return "DIFF_SNAPSHOT_EXPIRED"
+            if threading.get_ident() != consumer._owner:
+                return "DIFF_SNAPSHOT_WRONG_THREAD"
             if (
                 state.expired
                 or not state.lease_open

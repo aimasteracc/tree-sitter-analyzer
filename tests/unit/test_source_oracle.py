@@ -278,3 +278,8 @@ def test_capture_consistent_delegates_to_git_helper(monkeypatch) -> None:
     )
 
     assert oracle.capture_consistent(".", lambda: 7) == ("sg_value", 7)
+
+
+def test_regular_open_flags_fail_closed_without_platform_support(monkeypatch) -> None:
+    monkeypatch.setattr(oracle, "_supports_nofollow", lambda: False)
+    _error(oracle._regular_open_flags, "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")

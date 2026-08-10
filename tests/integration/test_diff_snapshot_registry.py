@@ -370,3 +370,27 @@ def test_frozen_scope_inventory_does_not_admit_post_capture_mutation(
     assert consumer.snapshot.inventory_paths == captured_inventory
     assert "later.py" not in consumer.snapshot.inventory_paths
     consumer.release()
+
+
+@pytest.mark.parametrize("operation", ["bind", "publish"])
+@POSIX_SNAPSHOT_TEST
+def test_consumer_operations_enforce_thread_ownership(
+    tmp_path: Path, operation: str
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    root = _repo(tmp_path)
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    call = (
+        (lambda: registry.bind_assessed_scope(consumer, ["old.py"]))
+        if operation == "bind"
+        else (lambda: registry.validate_publish(consumer))
+    )
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result = executor.submit(call).result(timeout=2)
+    assert result == "DIFF_SNAPSHOT_WRONG_THREAD"
+    consumer.release()

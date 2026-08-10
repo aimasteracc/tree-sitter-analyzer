@@ -36,7 +36,16 @@ def _close(*args: Any, **kwargs: Any) -> None:
 
 
 def _supports_nofollow() -> bool:
-    return os.name != "nt" and hasattr(os, "O_NOFOLLOW")
+    # Both flags are required for race-safe leaf opens.  O_NOFOLLOW rejects
+    # symlinks; O_NONBLOCK prevents a regular-file-to-FIFO swap from blocking
+    # inside open() before the shared deadline can be checked.
+    return os.name != "nt" and hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK")
+
+
+def _regular_open_flags() -> int:
+    if not _supports_nofollow():
+        raise SourceOracleError("DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
+    return os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
 
 
 class SourceOracleError(RuntimeError):
@@ -148,13 +157,11 @@ def safe_workspace_path(
             raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
         if not read_regular:
             return SafePath(None, tuple(metadata), "file")
-        fd = _open(
-            name,
-            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
-            dir_fd=parent,
-        )
+        fd = _open(name, _regular_open_flags(), dir_fd=parent)
         descriptors.append(fd)
         opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode):
+            raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
         if _metadata(before) != _metadata(opened):
             raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
         buffer = bytearray()
@@ -209,12 +216,12 @@ def _safe_absolute_regular(
             raise
         if not stat.S_ISREG(before.st_mode):
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        fd = _open(
-            parts[-1], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=current
-        )
+        fd = _open(parts[-1], _regular_open_flags(), dir_fd=current)
         descriptors.append(fd)
         opened = os.fstat(fd)
-        if not stat.S_ISREG(opened.st_mode) or _metadata(before) != _metadata(opened):
+        if not stat.S_ISREG(opened.st_mode):
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        if _metadata(before) != _metadata(opened):
             raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
         metadata.append(_metadata(opened))
         data = bytearray()

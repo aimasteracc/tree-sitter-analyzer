@@ -328,3 +328,89 @@ def test_oracle_generation_fails_closed_without_nofollow_workspace_reads(
         lambda: oracle.oracle_generation(str(tmp_path)),
         "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED",
     )
+
+
+@pytest.mark.parametrize(
+    ("reader", "expected"),
+    [
+        ("workspace", "DIFF_SNAPSHOT_SPECIAL_FILE"),
+        ("index", "DIFF_SNAPSHOT_GIT_ERROR"),
+    ],
+)
+@POSIX_SNAPSHOT_TEST
+def test_regular_leaf_fifo_swap_is_subprocess_bounded(
+    tmp_path: Path, reader: str, expected: str
+) -> None:
+    # Security review 2026-07-01: open must not block before its deadline.
+    script = r"""
+import os, pathlib, sys, time
+import tree_sitter_analyzer.source_oracle as oracle
+root = pathlib.Path(sys.argv[1])
+target = root / "leaf"
+target.write_bytes(b"regular")
+real_stat = oracle._stat
+swapped = False
+def racing_stat(path, *args, **kwargs):
+    global swapped
+    result = real_stat(path, *args, **kwargs)
+    if not swapped and os.fsdecode(path) == "leaf":
+        swapped = True
+        target.unlink()
+        os.mkfifo(target)
+    return result
+oracle._stat = racing_stat
+try:
+    if sys.argv[2] == "workspace":
+        oracle.safe_workspace_path(str(root), "leaf", deadline=time.monotonic() + .2, limit=64)
+    else:
+        oracle._safe_absolute_regular(str(target), deadline=time.monotonic() + .2, limit=64)
+except oracle.SourceOracleError as exc:
+    print(exc)
+"""
+    completed = subprocess.run(
+        [os.sys.executable, "-c", script, str(tmp_path), reader],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=2,
+    )
+    assert completed.stdout.strip() == expected
+
+
+@pytest.mark.parametrize(
+    ("reader", "expected"),
+    [
+        ("workspace", "DIFF_SNAPSHOT_SPECIAL_FILE"),
+        ("index", "DIFF_SNAPSHOT_GIT_ERROR"),
+    ],
+)
+@POSIX_SNAPSHOT_TEST
+def test_regular_leaf_fifo_swap_fails_closed_in_process(
+    tmp_path: Path, monkeypatch, reader: str, expected: str
+) -> None:
+    target = tmp_path / "leaf"
+    target.write_bytes(b"regular")
+    real_stat = oracle._stat
+    swapped = False
+
+    def racing_stat(path, *args, **kwargs):
+        nonlocal swapped
+        result = real_stat(path, *args, **kwargs)
+        if not swapped and os.fsdecode(path) == "leaf":
+            swapped = True
+            target.unlink()
+            os.mkfifo(target)
+        return result
+
+    monkeypatch.setattr(oracle, "_stat", racing_stat)
+
+    def read_raced_leaf():
+        if reader == "workspace":
+            return oracle.safe_workspace_path(
+                str(tmp_path), "leaf", deadline=time.monotonic() + 0.2, limit=64
+            )
+        return oracle._safe_absolute_regular(
+            str(target), deadline=time.monotonic() + 0.2, limit=64
+        )
+
+    _error(read_raced_leaf, expected)

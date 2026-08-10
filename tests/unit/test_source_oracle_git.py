@@ -444,3 +444,52 @@ def test_oracle_generation_rejects_different_git_toplevel(monkeypatch) -> None:
     monkeypatch.setattr(oracle, "git_output", lambda *args, **kwargs: b"/other\n")
 
     _error(lambda: oracle.oracle_generation("/root"), "DIFF_SNAPSHOT_ROOT_MISMATCH")
+
+
+def test_capture_inventory_returns_sorted_normalized_diff_paths(monkeypatch) -> None:
+    def output(root, args, **kwargs):
+        return b"tracked.py\0" if "--others" not in args else b"new.py\0"
+
+    monkeypatch.setattr(oracle, "git_output", output)
+    assert oracle.capture_inventory(
+        ".", "diff", deadline=time.monotonic() + 1, limit=100
+    ) == ("new.py", "tracked.py")
+
+
+def test_capture_inventory_rejects_tracked_untracked_overlap(monkeypatch) -> None:
+    monkeypatch.setattr(oracle, "git_output", lambda *a, **k: b"same.py\0")
+    _error(
+        lambda: oracle.capture_inventory(
+            ".", "diff", deadline=time.monotonic() + 1, limit=100
+        ),
+        "DIFF_SNAPSHOT_GIT_ERROR",
+    )
+
+
+def test_capture_inventory_rejects_union_path_count(monkeypatch) -> None:
+    def output(root, args, **kwargs):
+        return b"a\0" if "--others" not in args else b"b\0"
+
+    monkeypatch.setattr(oracle, "git_output", output)
+    monkeypatch.setattr(oracle, "_MAX_WORKTREE_PATHS", 1)
+    _error(
+        lambda: oracle.capture_inventory(
+            ".", "diff", deadline=time.monotonic() + 1, limit=100
+        ),
+        "DIFF_SNAPSHOT_CAPACITY",
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw", "limit"), [(b"x" * 4097 + b"\0", 5000), (b"path\0", 1)]
+)
+def test_capture_inventory_rejects_encoded_storage_capacity(
+    monkeypatch, raw: bytes, limit: int
+) -> None:
+    monkeypatch.setattr(oracle, "git_output", lambda *a, **k: raw)
+    _error(
+        lambda: oracle.capture_inventory(
+            ".", "staged", deadline=time.monotonic() + 1, limit=limit
+        ),
+        "DIFF_SNAPSHOT_CAPACITY",
+    )

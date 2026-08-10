@@ -231,23 +231,23 @@ class ASTDiffTool(BaseMCPTool):
         differ = self._get_differ()
         snapshot_id = arguments.get("diff_snapshot_id")
         consumer = None
-        if snapshot_id:
-            from ...diff_snapshot_registry import REGISTRY
-            from ...project_graph import _language_from_ext
+        try:
+            if snapshot_id:
+                from ...diff_snapshot_registry import REGISTRY
+                from ...project_graph import _language_from_ext
 
-            consumer, error = REGISTRY.acquire(str(snapshot_id), self.project_root)
-            if error:
-                return apply_toon_format_to_response(
-                    {
-                        "success": False,
-                        "verdict": "ERROR",
-                        "error_code": error,
-                        "error": error,
-                    },
-                    output_format,
-                )
-            assert consumer is not None
-            try:
+                consumer, error = REGISTRY.acquire(str(snapshot_id), self.project_root)
+                if error:
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": error,
+                            "error": error,
+                        },
+                        output_format,
+                    )
+                assert consumer is not None
                 frozen = consumer.snapshot.file(arguments["file_path"])
                 if frozen is None:
                     error = "DIFF_SNAPSHOT_FILE_NOT_FOUND"
@@ -295,91 +295,105 @@ class ASTDiffTool(BaseMCPTool):
                     old_file=f"{snapshot_id}:old:{frozen.record.path}",
                     new_file=f"{snapshot_id}:new:{frozen.record.path}",
                 )
-            finally:
-                consumer.release()
-        elif mode == "diff_files":
-            result = differ.diff_files(
-                old_path=arguments["old_file"],
-                new_path=arguments["new_file"],
-                language=arguments.get("language"),
-            )
-        elif mode == "diff_strings":
-            result = differ.diff_strings(
-                old_source=arguments["old_source"],
-                new_source=arguments["new_source"],
-                language=arguments["language"],
-            )
-        elif mode == "diff_git":
-            result = self._diff_git(differ, arguments)
-        else:
-            raise ValueError(f"Unknown mode: {mode}")
-
-        result_dict = result.to_dict(
-            include_children=include_node_bodies, with_child_count=True
-        )
-        # pain #5 (dogfood): ast-diff had no verdict. NOT_FOUND when the two
-        # sides are identical (zero hunks), INFO when there are real changes.
-        # We deliberately don't escalate to REVIEW/CAUTION here — diff
-        # severity is the semantic_classify tool's job.
-        hunks_raw = result_dict.get("hunks", [])
-        hunk_count = len(hunks_raw)
-        lang_str = result_dict.get("language", "unknown")
-
-        # Codex P2: surface parse failures — a hunk with neither "old" nor "new"
-        # key is an error sentinel (e.g. "Both sources failed to parse"), not a
-        # real edit. Real hunks always carry at least one of "old" / "new".
-        is_error_hunk = (
-            hunk_count == 1
-            and "old" not in hunks_raw[0]
-            and "new" not in hunks_raw[0]
-            and hunks_raw[0].get("summary")
-        )
-        if is_error_hunk:
-            agent_summary_line = hunks_raw[0]["summary"]
-            verdict = "ERROR"
-        elif hunk_count:
-            agent_summary_line = f"{hunk_count} AST change(s) in {lang_str}"
-            verdict = "INFO"
-        else:
-            agent_summary_line = f"No AST changes in {lang_str}"
-            verdict = "NOT_FOUND"
-
-        response: dict[str, Any] = {
-            "success": True,
-            "verdict": verdict,
-            "summary_line": agent_summary_line,
-            # Codex P2: agent_summary must be a dict so direct execute() callers
-            # (CLI, tests) can read agent_summary["verdict"] without the MCP
-            # server normalizer running first.
-            "agent_summary": {
-                "summary_line": agent_summary_line,
-                "next_step": (
-                    "Inspect specific hunks to understand the changes. "
-                    "Use semantic_classify for severity rating of each hunk."
-                ),
-                "verdict": verdict,
-            },
-            **result_dict,
-        }
-
-        # Issue #552 — apply byte budget when include_node_bodies=True.
-        # When the hunks serialise to more than NODE_BODIES_BUDGET bytes,
-        # stop inlining children and set transparency flags.
-        if include_node_bodies:
-            import json
-
-            hunks_bytes = len(json.dumps(response.get("hunks", [])))
-            if hunks_bytes > NODE_BODIES_BUDGET:
-                # Rebuild without children and record how many bytes were saved
-                compact_dict = result.to_dict(
-                    include_children=False, with_child_count=True
+            elif mode == "diff_files":
+                result = differ.diff_files(
+                    old_path=arguments["old_file"],
+                    new_path=arguments["new_file"],
+                    language=arguments.get("language"),
                 )
-                compact_hunks_bytes = len(json.dumps(compact_dict.get("hunks", [])))
-                response["hunks"] = compact_dict["hunks"]
-                response["children_truncated"] = True
-                response["bytes_omitted"] = hunks_bytes - compact_hunks_bytes
+            elif mode == "diff_strings":
+                result = differ.diff_strings(
+                    old_source=arguments["old_source"],
+                    new_source=arguments["new_source"],
+                    language=arguments["language"],
+                )
+            elif mode == "diff_git":
+                result = self._diff_git(differ, arguments)
+            else:
+                raise ValueError(f"Unknown mode: {mode}")
 
-        return apply_toon_format_to_response(response, output_format)
+            result_dict = result.to_dict(
+                include_children=include_node_bodies, with_child_count=True
+            )
+            # pain #5 (dogfood): ast-diff had no verdict. NOT_FOUND when the two
+            # sides are identical (zero hunks), INFO when there are real changes.
+            # We deliberately don't escalate to REVIEW/CAUTION here — diff
+            # severity is the semantic_classify tool's job.
+            hunks_raw = result_dict.get("hunks", [])
+            hunk_count = len(hunks_raw)
+            lang_str = result_dict.get("language", "unknown")
+
+            # Codex P2: surface parse failures — a hunk with neither "old" nor "new"
+            # key is an error sentinel (e.g. "Both sources failed to parse"), not a
+            # real edit. Real hunks always carry at least one of "old" / "new".
+            is_error_hunk = (
+                hunk_count == 1
+                and "old" not in hunks_raw[0]
+                and "new" not in hunks_raw[0]
+                and hunks_raw[0].get("summary")
+            )
+            if is_error_hunk:
+                agent_summary_line = hunks_raw[0]["summary"]
+                verdict = "ERROR"
+            elif hunk_count:
+                agent_summary_line = f"{hunk_count} AST change(s) in {lang_str}"
+                verdict = "INFO"
+            else:
+                agent_summary_line = f"No AST changes in {lang_str}"
+                verdict = "NOT_FOUND"
+
+            response: dict[str, Any] = {
+                "success": True,
+                "verdict": verdict,
+                "summary_line": agent_summary_line,
+                # Codex P2: agent_summary must be a dict so direct execute() callers
+                # (CLI, tests) can read agent_summary["verdict"] without the MCP
+                # server normalizer running first.
+                "agent_summary": {
+                    "summary_line": agent_summary_line,
+                    "next_step": (
+                        "Inspect specific hunks to understand the changes. "
+                        "Use semantic_classify for severity rating of each hunk."
+                    ),
+                    "verdict": verdict,
+                },
+                **result_dict,
+            }
+
+            # Issue #552 — apply byte budget when include_node_bodies=True.
+            # When the hunks serialise to more than NODE_BODIES_BUDGET bytes,
+            # stop inlining children and set transparency flags.
+            if include_node_bodies:
+                import json
+
+                hunks_bytes = len(json.dumps(response.get("hunks", [])))
+                if hunks_bytes > NODE_BODIES_BUDGET:
+                    # Rebuild without children and record how many bytes were saved
+                    compact_dict = result.to_dict(
+                        include_children=False, with_child_count=True
+                    )
+                    compact_hunks_bytes = len(json.dumps(compact_dict.get("hunks", [])))
+                    response["hunks"] = compact_dict["hunks"]
+                    response["children_truncated"] = True
+                    response["bytes_omitted"] = hunks_bytes - compact_hunks_bytes
+
+            formatted = apply_toon_format_to_response(response, output_format)
+            if consumer is not None:
+                error = REGISTRY.validate_publish(consumer)
+                if error:
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": error,
+                            "error": error,
+                        },
+                        output_format,
+                    )
+            return formatted
+        finally:
+            if consumer is not None:
+                consumer.release()
 
     def _diff_git(self, differ: ASTDiffer, arguments: dict[str, Any]) -> Any:
         import subprocess

@@ -228,22 +228,22 @@ class SemanticClassifyTool(BaseMCPTool):
         snapshot_id = arguments.get("diff_snapshot_id")
         consumer = None
         file_path: str | None
-        if snapshot_id:
-            from ...diff_snapshot_registry import REGISTRY
+        try:
+            if snapshot_id:
+                from ...diff_snapshot_registry import REGISTRY
 
-            consumer, error = REGISTRY.acquire(str(snapshot_id), self.project_root)
-            if error:
-                return apply_toon_format_to_response(
-                    {
-                        "success": False,
-                        "verdict": "ERROR",
-                        "error_code": error,
-                        "error": error,
-                    },
-                    output_format,
-                )
-            assert consumer is not None
-            try:
+                consumer, error = REGISTRY.acquire(str(snapshot_id), self.project_root)
+                if error:
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": error,
+                            "error": error,
+                        },
+                        output_format,
+                    )
+                assert consumer is not None
                 frozen = consumer.snapshot.file(arguments["file_path"])
                 if frozen is None:
                     error = "DIFF_SNAPSHOT_FILE_NOT_FOUND"
@@ -290,84 +290,98 @@ class SemanticClassifyTool(BaseMCPTool):
                     old_file=f"{snapshot_id}:old:{file_path}",
                     new_file=f"{snapshot_id}:new:{file_path}",
                 )
-            finally:
+            elif mode == "classify_string":
+                diff_result = differ.diff_strings(
+                    old_source=arguments["old_source"],
+                    new_source=arguments["new_source"],
+                    language=arguments["language"],
+                )
+                file_path = arguments.get("file_path")
+            elif mode == "classify_file":
+                file_path = arguments["file_path"]
+                diff_result = self._diff_git(differ, arguments)
+            else:
+                raise ValueError(f"Unknown mode: {mode}")
+
+            classifier = SemanticChangeClassifier(file_path=file_path)
+            classification = classifier.classify(diff_result)
+            # Always deserialize with children so _compact_classification can
+            # strip them (default) or keep them (include_ast_nodes=True).
+            class_dict = classification.to_dict(include_children=True)
+
+            # Map risk_level to canonical verdict vocabulary (pain-01 tsa-landing
+            # contract). NOT_FOUND when there are zero classifications (identical
+            # sources) so agents skip downstream change-impact tools.
+            classifications = class_dict.get("classifications") or []
+            risk_level = class_dict.get("risk_level", "medium")
+            if not classifications:
+                verdict = "NOT_FOUND"
+            elif risk_level == "high":
+                verdict = "CAUTION"
+            elif risk_level == "medium":
+                verdict = "REVIEW"
+            else:
+                verdict = "INFO"
+
+            include_ast_nodes = bool(arguments.get("include_ast_nodes", False))
+            hunk_cap = int(arguments.get("hunk_cap", 50))
+
+            # #528 — build a compact summary list by default; full AST nodes opt-in.
+            # ClassifiedHunk.to_dict() inlines the full ASTDiffHunk which carries
+            # recursive ASTNodeInfo children — up to 267 nodes per hunk on large files.
+            # Strip children (and optionally the entire hunk) unless opted in.
+            all_classifications = class_dict.get("classifications", [])
+            compact_classifications = [
+                _compact_classification(c, include_ast_nodes=include_ast_nodes)
+                for c in all_classifications
+            ]
+
+            truncated = len(compact_classifications) > hunk_cap
+            listed = compact_classifications[:hunk_cap]
+
+            # change_count is part of the agent-contract shape: a scalar that
+            # downstream tools can branch on without walking the classifications
+            # list. Tests pin this name (pain pass 2).
+            response: dict[str, Any] = {
+                "success": True,
+                "file_path": file_path,
+                "diff_hunks": len(diff_result.hunks),
+                "change_count": len(all_classifications),
+                "verdict": verdict,
+                # Scalar summary fields from SemanticClassification (no bulk lists)
+                "dominant_category": class_dict.get("dominant_category"),
+                "dominant_label": class_dict.get("dominant_label"),
+                "risk_level": class_dict.get("risk_level"),
+                "change_summary": class_dict.get("change_summary"),
+                "category_counts": class_dict.get("category_counts"),
+                "classifications": listed,
+            }
+
+            if truncated:
+                response["truncated"] = True
+                response["listed_cap"] = hunk_cap
+                response["next_step"] = (
+                    f"Response capped at {hunk_cap} classifications. "
+                    f"Use hunk_cap={hunk_cap * 2} to see more, or filter by category."
+                )
+
+            formatted = apply_toon_format_to_response(response, output_format)
+            if consumer is not None:
+                error = REGISTRY.validate_publish(consumer)
+                if error:
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": error,
+                            "error": error,
+                        },
+                        output_format,
+                    )
+            return formatted
+        finally:
+            if consumer is not None:
                 consumer.release()
-        elif mode == "classify_string":
-            diff_result = differ.diff_strings(
-                old_source=arguments["old_source"],
-                new_source=arguments["new_source"],
-                language=arguments["language"],
-            )
-            file_path = arguments.get("file_path")
-        elif mode == "classify_file":
-            file_path = arguments["file_path"]
-            diff_result = self._diff_git(differ, arguments)
-        else:
-            raise ValueError(f"Unknown mode: {mode}")
-
-        classifier = SemanticChangeClassifier(file_path=file_path)
-        classification = classifier.classify(diff_result)
-        # Always deserialize with children so _compact_classification can
-        # strip them (default) or keep them (include_ast_nodes=True).
-        class_dict = classification.to_dict(include_children=True)
-
-        # Map risk_level to canonical verdict vocabulary (pain-01 tsa-landing
-        # contract). NOT_FOUND when there are zero classifications (identical
-        # sources) so agents skip downstream change-impact tools.
-        classifications = class_dict.get("classifications") or []
-        risk_level = class_dict.get("risk_level", "medium")
-        if not classifications:
-            verdict = "NOT_FOUND"
-        elif risk_level == "high":
-            verdict = "CAUTION"
-        elif risk_level == "medium":
-            verdict = "REVIEW"
-        else:
-            verdict = "INFO"
-
-        include_ast_nodes = bool(arguments.get("include_ast_nodes", False))
-        hunk_cap = int(arguments.get("hunk_cap", 50))
-
-        # #528 — build a compact summary list by default; full AST nodes opt-in.
-        # ClassifiedHunk.to_dict() inlines the full ASTDiffHunk which carries
-        # recursive ASTNodeInfo children — up to 267 nodes per hunk on large files.
-        # Strip children (and optionally the entire hunk) unless opted in.
-        all_classifications = class_dict.get("classifications", [])
-        compact_classifications = [
-            _compact_classification(c, include_ast_nodes=include_ast_nodes)
-            for c in all_classifications
-        ]
-
-        truncated = len(compact_classifications) > hunk_cap
-        listed = compact_classifications[:hunk_cap]
-
-        # change_count is part of the agent-contract shape: a scalar that
-        # downstream tools can branch on without walking the classifications
-        # list. Tests pin this name (pain pass 2).
-        response: dict[str, Any] = {
-            "success": True,
-            "file_path": file_path,
-            "diff_hunks": len(diff_result.hunks),
-            "change_count": len(all_classifications),
-            "verdict": verdict,
-            # Scalar summary fields from SemanticClassification (no bulk lists)
-            "dominant_category": class_dict.get("dominant_category"),
-            "dominant_label": class_dict.get("dominant_label"),
-            "risk_level": class_dict.get("risk_level"),
-            "change_summary": class_dict.get("change_summary"),
-            "category_counts": class_dict.get("category_counts"),
-            "classifications": listed,
-        }
-
-        if truncated:
-            response["truncated"] = True
-            response["listed_cap"] = hunk_cap
-            response["next_step"] = (
-                f"Response capped at {hunk_cap} classifications. "
-                f"Use hunk_cap={hunk_cap * 2} to see more, or filter by category."
-            )
-
-        return apply_toon_format_to_response(response, output_format)
 
     def _diff_git(self, differ: ASTDiffer, arguments: dict[str, Any]) -> Any:
         import subprocess

@@ -193,6 +193,7 @@ def test_create_rejects_payload_larger_than_reservation(
     monkeypatch.setattr(
         snapshots, "oracle_generation", lambda *a, **k: ("sg", identity)
     )
+    monkeypatch.setattr(snapshots, "capture_inventory", lambda *a, **k: ())
     monkeypatch.setattr(snapshots, "_capture_payload", lambda *a: (b"xx", ()))
     assert registry.create(str(root), "diff", []) == {
         "success": False,
@@ -466,4 +467,31 @@ def test_bind_rejects_lease_closed_while_pinned(tmp_path: Path) -> None:
     result = registry.bind_assessed_scope(consumer, ["old.py"])
 
     assert result == "DIFF_SNAPSHOT_EXPIRED"
+    consumer.release()
+
+
+@POSIX_SNAPSHOT_TEST
+def test_bind_large_to_small_rejects_multiple_pins_without_undercharge(
+    tmp_path: Path,
+) -> None:
+    root = _repo(tmp_path)
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", ["x" * 100])
+    first, _ = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    second, _ = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    charged = registry.stats()[1]
+    assert registry.bind_assessed_scope(first, ["x"]) == "DIFF_SNAPSHOT_IN_USE"
+    assert registry.stats()[1] == charged
+    first.release()
+    second.release()
+
+
+@POSIX_SNAPSHOT_TEST
+def test_bind_assessed_scope_replaces_scope_for_single_pin(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", ["large-path.py"])
+    consumer, _ = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert registry.bind_assessed_scope(consumer, ["small.py"]) is None
+    assert consumer.snapshot.assessed_scope_paths == ("small.py",)
     consumer.release()
