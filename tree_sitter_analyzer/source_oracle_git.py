@@ -9,7 +9,6 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from .frozen_git_index import (
@@ -19,6 +18,12 @@ from .frozen_git_index import (
     has_split_index,
 )
 from .git_subprocess import run_git_bounded
+from .source_epoch import (
+    _EMPTY_TREE_SHA1,
+    _EMPTY_TREE_SHA256,
+    GitEpoch,
+    capture_source_epoch,
+)
 from .source_oracle import (
     RootIdentity,
     SourceOracleError,
@@ -33,39 +38,11 @@ from .source_oracle import (
 
 _LOCK = threading.RLock()
 _T = TypeVar("_T")
-_FRAME_DOMAIN = b"tsa-source-generation-v3"
+_FRAME_DOMAIN = b"tsa-source-generation-v4"
 _MAX_INVENTORY_BYTES = 16 * 1024 * 1024
 _MAX_WORKTREE_PATHS = 200_000
 _MAX_WORKTREE_CONTENT_BYTES = 64 * 1024 * 1024
 _frozen_index_output = frozen_index_output
-_EMPTY_TREE_SHA1 = (
-    b"4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # pragma: allowlist secret
-)
-_EMPTY_TREE_SHA256 = b"6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"  # pragma: allowlist secret
-
-
-@dataclass(frozen=True)
-class GitEpoch:
-    """Exact Git identities captured by the first source-oracle pass."""
-
-    head: bytes
-    object_format: str
-    index_entries: tuple[tuple[bytes, bytes], ...]
-    tracked_paths: tuple[bytes, ...]
-    dirty_paths: tuple[bytes, ...]
-    untracked_paths: tuple[bytes, ...]
-    workspace_gitlinks: tuple[tuple[bytes, bytes], ...] = ()
-    core_filemode: bool = True
-    index_bytes: bytes = b""
-
-    def index_map(self) -> dict[bytes, bytes]:
-        return dict(self.index_entries)
-
-    @property
-    def empty_tree(self) -> bytes:
-        return (
-            _EMPTY_TREE_SHA256 if self.object_format == "sha256" else _EMPTY_TREE_SHA1
-        )
 
 
 def git_output(root: str, args: list[str], *, deadline: float, limit: int) -> bytes:
@@ -380,6 +357,16 @@ def oracle_generation(
     tracked_set = set(tracked)
     if not dirty <= tracked_set or untracked & tracked_set:
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    settings_epoch = capture_source_epoch(
+        root,
+        index_bytes,
+        tuple(sorted(tracked_set | untracked)),
+        deadline=end,
+        object_format=object_format,
+        frozen_output=_frozen_index_output,
+    )
+    _frame(digest, b"attributes", settings_epoch.attribute_fingerprint)
+    _frame(digest, b"config", settings_epoch.config_hash)
     workspace_gitlinks: dict[bytes, bytes] = {}
     for raw in sorted(dirty) if mode == "diff" else ():
         entry = index_entries[raw]
@@ -421,6 +408,7 @@ def oracle_generation(
                 workspace_gitlinks=tuple(sorted(workspace_gitlinks.items())),
                 core_filemode=core_filemode,
                 index_bytes=index_bytes,
+                source_epoch=settings_epoch,
             )
         )
 
@@ -456,6 +444,8 @@ def oracle_generation(
     diff_args += [
         "--binary",
         "--full-index",
+        "--find-renames",
+        "--no-color",
         "--no-ext-diff",
         "--no-textconv",
         "--ignore-submodules=none",

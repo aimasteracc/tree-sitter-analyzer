@@ -8,7 +8,9 @@ from pathlib import Path
 
 import pytest
 
+import tree_sitter_analyzer.diff_snapshot_epoch as epoch_module
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+import tree_sitter_analyzer.frozen_git_index as frozen_index
 import tree_sitter_analyzer.git_subprocess as bounded
 import tree_sitter_analyzer.source_oracle_git as oracle
 from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
@@ -407,3 +409,79 @@ def test_cleanup_thread_join_error_does_not_escape() -> None:
         bounded.time.monotonic = original
 
     assert waits == [4.0]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_file_size_limit_is_applied_in_child(monkeypatch) -> None:
+    # PR #1252 review thread 5947: clean expansion must be kernel-bounded.
+    proc = _Proc()
+    proc.stdin = io.BytesIO()
+    captured: dict[str, object] = {}
+
+    def setter() -> None:
+        pass
+
+    limits: list[int] = []
+
+    def preexec(limit: int):
+        limits.append(limit)
+        return setter
+
+    monkeypatch.setattr(bounded, "_file_size_preexec", preexec)
+
+    def popen(*args, **kwargs):
+        captured.update(kwargs)
+        return proc
+
+    bounded.run_git_bounded(
+        ".",
+        ["hash-object", "-w", "--stdin"],
+        deadline=time.monotonic() + 1,
+        limit=4096,
+        input_=b"payload",
+        popen=popen,
+        file_size_limit=123,
+    )
+
+    assert (captured["preexec_fn"] is setter, limits) == (True, [123])
+
+
+@POSIX_SNAPSHOT_TEST
+def test_recursive_object_store_usage_rejects_shared_budget(tmp_path: Path) -> None:
+    # PR #1252 review thread 5947: temporary objects consume the shared budget.
+    objects = tmp_path / "objects" / "aa"
+    objects.mkdir(parents=True)
+    (objects / "object").write_bytes(b"abc")
+    epoch = oracle.GitEpoch(b"head", "sha1", (), (), (), ())
+    environment = epoch_module.FrozenGitEnvironment(
+        str(tmp_path), epoch, 1e20, storage_byte_limit=2
+    )
+    environment.object_directory = str(tmp_path / "objects")
+
+    _error(environment._refresh_object_usage, "DIFF_SNAPSHOT_CAPACITY")
+
+
+def test_file_size_limit_omits_preexec_on_windows(monkeypatch) -> None:
+    # PR #1252 review thread 5947: Windows remains fail-closed upstream.
+    proc = _Proc()
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(bounded, "_IS_WINDOWS", True)
+
+    def popen(*args, **kwargs):
+        captured.update(kwargs)
+        return proc
+
+    bounded.run_git_bounded(
+        ".", [], deadline=time.monotonic() + 1, limit=1, popen=popen, file_size_limit=1
+    )
+
+    assert "preexec_fn" not in captured
+
+
+def test_has_split_index_rejects_missing_entry_terminator() -> None:
+    fixed = b"\0" * 60 + b"\0\0"
+    raw = b"DIRC" + (2).to_bytes(4, "big") + (1).to_bytes(4, "big")
+    raw += fixed + b"a.py" + b"\1" * 20
+
+    with pytest.raises(oracle.SourceOracleError, match="^DIFF_SNAPSHOT_GIT_ERROR$"):
+        frozen_index.has_split_index(raw, object_format="sha1")

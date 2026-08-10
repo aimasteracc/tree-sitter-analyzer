@@ -446,3 +446,45 @@ def test_removed_tracked_directory_frames_nested_paths_as_missing(
     assert [(item["path"], item["status"]) for item in created["changed_records"]] == [
         ("gone/nested.py", "D")
     ]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_snapshot_patch_ignores_color_ui_always(tmp_path: Path) -> None:
+    # PR #1252 review thread 5954: machine patches are always color-free.
+    root = make_repo(tmp_path)
+    subprocess.run(
+        ["git", "config", "color.ui", "always"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    (root / "old.py").write_text("value = 2\n")
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+
+    assert error is None
+    if consumer is None:
+        pytest.fail("snapshot acquisition must return a consumer")
+    patch = consumer.snapshot.normalized_patch
+    consumer.release()
+    assert b"\x1b" not in patch
+
+
+@POSIX_SNAPSHOT_TEST
+def test_diff_renames_false_cannot_split_frozen_rename(tmp_path: Path) -> None:
+    # PR #1252 review thread 5963: every diff view forces rename detection.
+    root = make_repo(tmp_path)
+    subprocess.run(
+        ["git", "config", "diff.renames", "false"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    (root / "old.py").rename(root / "renamed.py")
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert [
+        (row["status"], row.get("old_path"), row["path"])
+        for row in result["changed_records"]
+    ] == [("R", "old.py", "renamed.py")]

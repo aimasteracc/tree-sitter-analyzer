@@ -18,6 +18,19 @@ _TASKKILL = subprocess.run
 _REAP_TIMEOUT_SECONDS = 5.0
 
 
+def _file_size_preexec(limit: int) -> Callable[[], None]:
+    """Build the POSIX child-only RLIMIT_FSIZE setter (module-local test seam)."""
+
+    def set_limit() -> None:
+        import resource
+
+        _soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+        bounded = min(limit, hard) if hard != resource.RLIM_INFINITY else limit
+        resource.setrlimit(resource.RLIMIT_FSIZE, (bounded, hard))
+
+    return set_limit
+
+
 def _os_kill_process_group(pid: int, sig: int) -> None:
     """Call ``killpg`` only on platforms that provide it."""
     killpg = getattr(os, "killpg", None)
@@ -95,6 +108,7 @@ def run_git_bounded(
     env: dict[str, str] | None = None,
     input_: bytes | None = None,
     popen: PopenFactory = subprocess.Popen,
+    file_size_limit: int | None = None,
 ) -> bytes:
     """Run Git with bounded pipes, disabled fsmonitor, and mandatory reaping."""
     if limit < 0:
@@ -107,6 +121,12 @@ def run_git_bounded(
             if not key.upper().startswith("GIT_")
         }
         child_env["GIT_OPTIONAL_LOCKS"] = "0"
+    process_options = _group_options()
+    if file_size_limit is not None:
+        if file_size_limit < 0:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+        if not _IS_WINDOWS:
+            process_options["preexec_fn"] = _file_size_preexec(file_size_limit)
     try:
         proc = popen(  # nosec B603
             ["git", "-c", "core.fsmonitor=false", *args],
@@ -115,7 +135,7 @@ def run_git_bounded(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=child_env,
-            **_group_options(),
+            **process_options,
         )
     except OSError as exc:
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc

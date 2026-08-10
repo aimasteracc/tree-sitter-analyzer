@@ -9,7 +9,10 @@ from pathlib import Path
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_capture as capture
+import tree_sitter_analyzer.diff_snapshot_epoch as epoch_module
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+import tree_sitter_analyzer.source_oracle_git as oracle
+import tree_sitter_analyzer.temp_cleanup as temp_cleanup
 from tests.unit._diff_snapshot_support import (
     POSIX_SNAPSHOT_TEST,
     install_fake_snapshot_materializer,
@@ -406,3 +409,87 @@ def test_core_filemode_false_preserves_tracked_index_mode(tmp_path: Path) -> Non
     result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
 
     assert result["changed_records"][0]["new_mode"] == "100755"
+
+
+@POSIX_SNAPSHOT_TEST
+def test_payload_only_info_attributes_change_is_rejected(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 5941: payload conversions bind exact attributes.
+    root = _repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    info_attributes = root / ".git" / "info" / "attributes"
+    original_capture = snapshots._capture_payload
+
+    def mutate_attributes(
+        root_path, mode, deadline, ceiling, expected_manifest=None, epoch=None
+    ):
+        info_attributes.write_text("old.py -text\n")
+        try:
+            return original_capture(
+                root_path, mode, deadline, ceiling, expected_manifest, epoch
+            )
+        finally:
+            info_attributes.unlink()
+
+    monkeypatch.setattr(snapshots, "_capture_payload", mutate_attributes)
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert result == {
+        "success": False,
+        "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
+    }
+
+
+@POSIX_SNAPSHOT_TEST
+def test_payload_only_git_config_change_is_rejected(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 5941: payload conversions bind exact config.
+    root = _repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    config_path = root / ".git" / "config"
+    original_config = config_path.read_bytes()
+    original_capture = snapshots._capture_payload
+
+    def mutate_config(
+        root_path, mode, deadline, ceiling, expected_manifest=None, epoch=None
+    ):
+        _git(root, "config", "diff.renames", "false")
+        try:
+            return original_capture(
+                root_path, mode, deadline, ceiling, expected_manifest, epoch
+            )
+        finally:
+            config_path.write_bytes(original_config)
+
+    monkeypatch.setattr(snapshots, "_capture_payload", mutate_config)
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert result == {
+        "success": False,
+        "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
+    }
+
+
+@POSIX_SNAPSHOT_TEST
+def test_frozen_environment_cleanup_failure_is_stable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 5959: simulated Windows handles fail closed.
+    directory = tmp_path / "held"
+    directory.mkdir()
+    frozen = oracle.GitEpoch(b"head", "sha1", (), (), (), ())
+    environment = epoch_module.FrozenGitEnvironment(str(tmp_path), frozen, 1e20)
+    environment._directory = str(directory)
+    monkeypatch.setattr(temp_cleanup, "_SLEEP", lambda _: None)
+    monkeypatch.setattr(
+        temp_cleanup,
+        "_RMTREE",
+        lambda path: (_ for _ in ()).throw(PermissionError("held handle")),
+    )
+
+    with pytest.raises(
+        oracle.SourceOracleError, match="^DIFF_SNAPSHOT_CLEANUP_FAILED$"
+    ):
+        environment.__exit__()

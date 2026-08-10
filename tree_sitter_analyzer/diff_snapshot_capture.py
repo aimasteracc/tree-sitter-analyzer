@@ -107,6 +107,7 @@ def _frozen_rows(
             "--name-status",
             "-z",
             "--find-renames",
+            "--no-color",
             "--no-ext-diff",
             "--no-textconv",
             "--ignore-submodules=none",
@@ -144,6 +145,7 @@ def _rows(
         "--name-status",
         "-z",
         "--find-renames",
+        "--no-color",
         "--no-ext-diff",
         "--no-textconv",
         "--ignore-submodules=none",
@@ -192,6 +194,8 @@ def _tracked_binary_paths(
     args = (["diff", "--cached"] if mode == "staged" else ["diff-files"]) + [
         "--numstat",
         "-z",
+        "--find-renames",
+        "--no-color",
         "--no-ext-diff",
         "--no-textconv",
         "--ignore-submodules=none",
@@ -229,6 +233,8 @@ def _binary_paths(git: FrozenGitEnvironment, base: bytes, limit: int) -> set[byt
             "--cached",
             "--numstat",
             "-z",
+            "--find-renames",
+            "--no-color",
             "--no-ext-diff",
             "--no-textconv",
             "--ignore-submodules=none",
@@ -297,7 +303,10 @@ def _capture_payload(
     index_entries = frozen.index_map()
     head_entries = _head_entries(root, deadline=deadline, head=frozen.head)
     safe_paths: dict[bytes, SafePath] = {}
-    with FrozenGitEnvironment(root, frozen, deadline) as git:
+    with FrozenGitEnvironment(root, frozen, deadline, ceiling) as git:
+        verify_epoch = getattr(git, "verify_source_epoch", None)
+        if verify_epoch is not None:
+            verify_epoch()
         # The workspace comparison base must be the captured index, not HEAD.
         base = frozen.head
         old_entries = head_entries
@@ -324,7 +333,9 @@ def _capture_payload(
                 if safe.data is not None:
                     remaining -= len(safe.data)
                 safe_paths[raw] = safe
+            git.storage_byte_limit = remaining
             workspace_entries = git.apply_workspace(safe_paths, expected_manifest or {})
+            remaining -= git.temporary_bytes
         else:
             workspace_entries = {}
 
@@ -333,6 +344,8 @@ def _capture_payload(
             "--cached",
             "--binary",
             "--full-index",
+            "--find-renames",
+            "--no-color",
             "--no-ext-diff",
             "--no-textconv",
             "--ignore-submodules=none",

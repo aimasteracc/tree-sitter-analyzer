@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 import tempfile
 from collections.abc import Mapping
 
 from .frozen_git_index import safe_external_temp_parent
 from .git_subprocess import run_git_bounded
+from .source_epoch import capture_source_epoch
 from .source_oracle import (
     SafePath,
     SourceOracleError,
@@ -20,6 +22,12 @@ from .source_oracle_git import (
     _strip_one_record_terminator,
     git_output,
 )
+from .temp_cleanup import cleanup_path
+
+
+def _lstat(path: str) -> os.stat_result:
+    """Module-local seam for temporary-store accounting tests."""
+    return os.lstat(path)
 
 
 def _quote_alternate_object_directory(raw: bytes) -> str:
@@ -47,13 +55,24 @@ def _quote_alternate_object_directory(raw: bytes) -> str:
 class FrozenGitEnvironment:
     """Normal temporary index/object store; never writes inside the project."""
 
-    def __init__(self, root: str, epoch: GitEpoch, deadline: float) -> None:
+    def __init__(
+        self,
+        root: str,
+        epoch: GitEpoch,
+        deadline: float,
+        storage_byte_limit: int = 64 * 1024 * 1024,
+        storage_file_limit: int = 200_000,
+    ) -> None:
         self.root = root
         self.epoch = epoch
         self.deadline = deadline
         self._directory: str | None = None
         self.index_path = ""
         self.object_directory: str | None = None
+        self.storage_byte_limit = storage_byte_limit
+        self.storage_file_limit = storage_file_limit
+        self.temporary_bytes = 0
+        self.temporary_files = 0
 
     def __enter__(self) -> FrozenGitEnvironment:
         temp_parent = safe_external_temp_parent(self.root)
@@ -74,11 +93,6 @@ class FrozenGitEnvironment:
             self.index_path = os.path.join(self._directory, "index")
             self.object_directory = os.path.join(self._directory, "objects")
             os.mkdir(self.object_directory, 0o700)
-            self.run(
-                ["hash-object", "-w", "-t", "tree", "--stdin"],
-                limit=4096,
-                input_=b"",
-            )
             for _path, header in self.epoch.index_entries:
                 if header.split(b" ")[-1] != b"0":
                     raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
@@ -98,7 +112,7 @@ class FrozenGitEnvironment:
         directory = self._directory
         self._directory = None
         if directory is not None:
-            shutil.rmtree(directory, ignore_errors=True)
+            cleanup_path(directory, directory=True)
 
     def _env(self) -> dict[str, str]:
         env = {
@@ -107,6 +121,7 @@ class FrozenGitEnvironment:
             if not key.upper().startswith("GIT_")
         }
         env["GIT_OPTIONAL_LOCKS"] = "0"
+        env["GIT_ATTR_NOSYSTEM"] = "1"
         env["GIT_INDEX_FILE"] = self.index_path
         if self.object_directory is not None:
             env["GIT_OBJECT_DIRECTORY"] = self.object_directory
@@ -128,6 +143,7 @@ class FrozenGitEnvironment:
         *,
         limit: int = 64 * 1024 * 1024,
         input_: bytes | None = None,
+        file_size_limit: int | None = None,
     ) -> bytes:
         return run_git_bounded(
             self.root,
@@ -136,7 +152,48 @@ class FrozenGitEnvironment:
             limit=limit,
             env=self._env(),
             input_=input_,
+            file_size_limit=file_size_limit,
         )
+
+    def verify_source_epoch(self) -> None:
+        """Reject transient config/attribute changes before hashes or diffs run."""
+        expected = self.epoch.source_epoch
+        if expected is None:
+            return
+        current = capture_source_epoch(
+            self.root,
+            self.epoch.index_bytes,
+            tuple(
+                sorted(set(self.epoch.tracked_paths) | set(self.epoch.untracked_paths))
+            ),
+            deadline=self.deadline,
+            object_format=self.epoch.object_format,
+        )
+        if current != expected:
+            raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+
+    def _refresh_object_usage(self) -> None:
+        directory = self.object_directory
+        if directory is None:
+            return
+        total = 0
+        files = 0
+        try:
+            for base, dirs, names in os.walk(directory, followlinks=False):
+                for name in dirs + names:
+                    info = _lstat(os.path.join(base, name))
+                    if stat.S_ISLNK(info.st_mode):
+                        raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
+                    files += 1
+                    total += info.st_size
+        except SourceOracleError:
+            raise
+        except OSError as exc:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
+        self.temporary_bytes = total
+        self.temporary_files = files
+        if total > self.storage_byte_limit or files > self.storage_file_limit:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
 
     def apply_workspace(
         self,
@@ -201,7 +258,14 @@ class FrozenGitEnvironment:
                 # ``--path`` applies core.autocrlf, eol, and clean filters using
                 # the exact raw repository path.  argv execution is shell-free.
                 hash_args.insert(2, "--path=" + os.fsdecode(raw))
-            oid = self.run(hash_args, limit=4096, input_=safe.data).strip()
+            remaining_storage = self.storage_byte_limit - self.temporary_bytes
+            oid = self.run(
+                hash_args,
+                limit=4096,
+                input_=safe.data,
+                file_size_limit=remaining_storage,
+            ).strip()
+            self._refresh_object_usage()
             if not oid:
                 raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
             if safe.kind == "file":

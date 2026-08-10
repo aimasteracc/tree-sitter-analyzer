@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 import time
+import types
 from pathlib import Path
 
 import pytest
 
+import tree_sitter_analyzer.diff_snapshot_epoch as epoch_module
 import tree_sitter_analyzer.frozen_git_index as frozen_index
+import tree_sitter_analyzer.git_subprocess as bounded
 import tree_sitter_analyzer.source_oracle_git as oracle
 from tree_sitter_analyzer.frozen_git_index import (
     parse_stage_zero_entries,
@@ -344,3 +348,144 @@ def test_invalidate_index_stat_cache_rejects_missing_path_terminator() -> None:
 
     with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_GIT_ERROR$"):
         frozen_index.invalidate_index_stat_cache(raw, object_format="sha1")
+
+
+def _index_bytes(version: int = 2, flags: int = 0, suffix: bytes = b"") -> bytes:
+    fixed = b"\0" * 60 + flags.to_bytes(2, "big")
+    if version == 4:
+        entry = fixed + b"\0a.py\0"
+    else:
+        entry = fixed + b"a.py\0"
+        entry += b"\0" * ((-len(entry)) % 8)
+    return (
+        b"DIRC"
+        + version.to_bytes(4, "big")
+        + (1).to_bytes(4, "big")
+        + entry
+        + suffix
+        + b"\0" * 20
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw", "code"),
+    [
+        (b"bad", "DIFF_SNAPSHOT_GIT_ERROR"),
+        (_index_bytes(version=1), "DIFF_SNAPSHOT_UNSUPPORTED_INDEX"),
+        (
+            b"DIRC" + (2).to_bytes(4, "big") + (1).to_bytes(4, "big") + b"\0" * 20,
+            "DIFF_SNAPSHOT_GIT_ERROR",
+        ),
+        (_index_bytes(flags=0x4000), "DIFF_SNAPSHOT_GIT_ERROR"),
+    ],
+)
+def test_has_split_index_rejects_malformed_index(raw: bytes, code: str) -> None:
+    # PR #1252 patch-coverage gate: malformed frozen indices fail closed.
+    with pytest.raises(SourceOracleError, match=f"^{code}$"):
+        frozen_index.has_split_index(raw, object_format="sha1")
+
+
+@pytest.mark.parametrize("version", [2, 4])
+def test_has_split_index_accepts_plain_index_versions(version: int) -> None:
+    assert (
+        frozen_index.has_split_index(_index_bytes(version), object_format="sha1")
+        is False
+    )
+
+
+def test_has_split_index_detects_link_extension() -> None:
+    extension = b"link" + (1).to_bytes(4, "big") + b"x"
+    assert (
+        frozen_index.has_split_index(
+            _index_bytes(suffix=extension), object_format="sha1"
+        )
+        is True
+    )
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [b"x", b"ABCD" + (2).to_bytes(4, "big") + b"x"],
+)
+def test_has_split_index_rejects_malformed_extension(suffix: bytes) -> None:
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_GIT_ERROR$"):
+        frozen_index.has_split_index(_index_bytes(suffix=suffix), object_format="sha1")
+
+
+def test_frozen_epoch_without_settings_needs_no_verification(tmp_path: Path) -> None:
+    epoch = oracle.GitEpoch(b"head", "sha1", (), (), (), ())
+    environment = epoch_module.FrozenGitEnvironment(str(tmp_path), epoch, 1e20)
+
+    environment.verify_source_epoch()
+
+
+def test_object_store_symlink_is_rejected(tmp_path: Path) -> None:
+    objects = tmp_path / "objects"
+    objects.mkdir()
+    (objects / "link").symlink_to(tmp_path)
+    epoch = oracle.GitEpoch(b"head", "sha1", (), (), (), ())
+    environment = epoch_module.FrozenGitEnvironment(str(tmp_path), epoch, 1e20)
+    environment.object_directory = str(objects)
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_UNSAFE_TEMP$"):
+        environment._refresh_object_usage()
+
+
+def test_object_store_lstat_error_is_stable(tmp_path: Path, monkeypatch) -> None:
+    objects = tmp_path / "objects"
+    objects.mkdir()
+    (objects / "entry").touch()
+    epoch = oracle.GitEpoch(b"head", "sha1", (), (), (), ())
+    environment = epoch_module.FrozenGitEnvironment(str(tmp_path), epoch, 1e20)
+    environment.object_directory = str(objects)
+    monkeypatch.setattr(
+        epoch_module, "_lstat", lambda path: (_ for _ in ()).throw(OSError())
+    )
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPTURE_ERROR$"):
+        environment._refresh_object_usage()
+
+
+@pytest.mark.parametrize(("hard", "expected"), [(100, 50), (-1, 50)])
+def test_file_size_preexec_sets_bounded_rlimit(
+    monkeypatch, hard: int, expected: int
+) -> None:
+    calls: list[tuple[int, tuple[int, int]]] = []
+    resource = types.SimpleNamespace(
+        RLIMIT_FSIZE=1,
+        RLIM_INFINITY=-1,
+        getrlimit=lambda kind: (75, hard),
+        setrlimit=lambda kind, value: calls.append((kind, value)),
+    )
+    monkeypatch.setitem(sys.modules, "resource", resource)
+
+    bounded._file_size_preexec(50)()
+
+    assert calls == [(1, (expected, hard))]
+
+
+def test_negative_file_size_limit_is_rejected() -> None:
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPACITY$"):
+        bounded.run_git_bounded(".", [], deadline=1e20, limit=1, file_size_limit=-1)
+
+
+def test_has_split_index_rejects_truncated_v4_prefix() -> None:
+    fixed = b"\0" * 60 + b"\0\0"
+    raw = (
+        b"DIRC"
+        + (4).to_bytes(4, "big")
+        + (1).to_bytes(4, "big")
+        + fixed
+        + b"\x80"
+        + b"\1" * 20
+    )
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_GIT_ERROR$"):
+        frozen_index.has_split_index(raw, object_format="sha1")
+
+
+def test_has_split_index_accepts_multibyte_v4_prefix() -> None:
+    fixed = b"\0" * 60 + b"\0\0"
+    raw = b"DIRC" + (4).to_bytes(4, "big") + (1).to_bytes(4, "big")
+    raw += fixed + b"\x80\0a.py\0" + b"\0" * 20
+
+    assert frozen_index.has_split_index(raw, object_format="sha1") is False

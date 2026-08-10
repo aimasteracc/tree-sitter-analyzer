@@ -11,6 +11,7 @@ from contextlib import contextmanager
 
 from .git_subprocess import run_git_bounded
 from .source_oracle import SourceOracleError
+from .temp_cleanup import cleanup_path
 
 GitOutput = Callable[..., bytes]
 BoundedGit = Callable[..., bytes]
@@ -92,10 +93,7 @@ def private_index_file(
             raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
         yield path
     finally:
-        try:
-            unlink(path)
-        except FileNotFoundError:
-            pass
+        cleanup_path(path, unlink=unlink)
 
 
 @contextmanager
@@ -111,7 +109,7 @@ def reconstructed_index_file(
         prefix="tsa-reconstructed-index-", dir=temp_parent
     )
     os.close(descriptor)
-    os.unlink(path)
+    cleanup_path(path)
     env = {
         key: value
         for key, value in os.environ.items()
@@ -140,10 +138,7 @@ def reconstructed_index_file(
         os.chmod(path, 0o600)
         yield path
     finally:
-        try:
-            os.unlink(path)
-        except FileNotFoundError:
-            pass
+        cleanup_path(path)
 
 
 def invalidate_index_stat_cache(index_bytes: bytes, *, object_format: str) -> bytes:
@@ -189,6 +184,8 @@ def frozen_index_output(
     limit: int,
     refresh: bool = False,
     object_format: str = "sha1",
+    input_: bytes | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> bytes:
     """Run Git against an external mode-0600 byte-for-byte index snapshot."""
     materialized = (
@@ -208,7 +205,11 @@ def frozen_index_output(
             if not key.upper().startswith("GIT_")
         }
         env.update({"GIT_INDEX_FILE": index_path, "GIT_OPTIONAL_LOCKS": "0"})
-        return run_git_bounded(root, args, deadline=deadline, limit=limit, env=env)
+        if extra_env is not None:
+            env.update(extra_env)
+        return run_git_bounded(
+            root, args, deadline=deadline, limit=limit, env=env, input_=input_
+        )
 
 
 def parse_stage_zero_entries(raw: bytes, *, max_paths: int) -> dict[bytes, bytes]:
@@ -283,7 +284,7 @@ def has_split_index(index_bytes: bytes, *, object_format: str) -> bool:
         if signature == b"link":
             return True
         offset += size
-    if offset != content_end:
+    if offset != content_end:  # pragma: no cover - loop arithmetic invariant
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
     return False
 
