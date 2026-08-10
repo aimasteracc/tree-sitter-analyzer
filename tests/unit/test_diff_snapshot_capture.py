@@ -171,8 +171,8 @@ def test_frozen_environment_rejects_temp_inside_canonical_project(
     project.mkdir()
     unsafe = project / "tsa-frozen-git-test"
 
-    def make_inside(*, prefix: str) -> str:
-        del prefix
+    def make_inside(*, prefix: str, dir: str) -> str:
+        del prefix, dir
         unsafe.mkdir()
         return str(unsafe)
 
@@ -200,8 +200,8 @@ def test_frozen_environment_rejects_symlink_alias_into_project(
     alias.symlink_to(project, target_is_directory=True)
     unsafe = project / "tsa-frozen-git-test"
 
-    def make_via_alias(*, prefix: str) -> str:
-        del prefix
+    def make_via_alias(*, prefix: str, dir: str) -> str:
+        del prefix, dir
         unsafe.mkdir()
         return str(alias / unsafe.name)
 
@@ -414,3 +414,59 @@ def test_frozen_workspace_rejects_malformed_gitlink_binding(tmp_path: Path) -> N
 
     with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
         frozen.apply_workspace({b"vendor": SafePath(None, (), "directory")})
+
+
+def test_no_safe_temp_parent_rejects_before_mkdtemp(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-y.
+    from tree_sitter_analyzer import diff_snapshot_epoch
+
+    project = tmp_path / "project"
+    project.mkdir()
+    calls: list[str] = []
+
+    def reject_parent(root: str) -> str:
+        del root
+        raise snapshots.SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
+
+    def forbidden_mkdtemp(**kwargs) -> str:
+        calls.append(str(kwargs))
+        raise AssertionError("mkdtemp must not be called")
+
+    monkeypatch.setattr(diff_snapshot_epoch, "safe_external_temp_parent", reject_parent)
+    monkeypatch.setattr(diff_snapshot_epoch.tempfile, "mkdtemp", forbidden_mkdtemp)
+    frozen = diff_snapshot_epoch.FrozenGitEnvironment(
+        str(project), _epoch(), time.monotonic() + 1
+    )
+
+    with pytest.raises(
+        snapshots.SourceOracleError, match="^DIFF_SNAPSHOT_UNSAFE_TEMP$"
+    ):
+        frozen.__enter__()
+
+    assert calls == []
+
+
+def test_core_filemode_false_sanitizes_non_file_index_mode(tmp_path: Path) -> None:
+    # PR #1252 zero-gate 2026-07-02: malformed prior modes cannot leak.
+    from tree_sitter_analyzer.diff_snapshot_epoch import FrozenGitEnvironment
+    from tree_sitter_analyzer.source_oracle import SafePath, WorkspaceManifestEntry
+
+    oid = b"a" * 40
+    frozen = FrozenGitEnvironment(
+        str(tmp_path),
+        _epoch(index_entries=((b"a.py", b"160000 deadbeef 0"),), core_filemode=False),
+        time.monotonic() + 1,
+    )
+    frozen._directory = str(tmp_path)
+    frozen.index_path = str(tmp_path / "index")
+    Path(frozen.index_path).write_bytes(b"")
+    frozen.run = lambda *args, **kwargs: oid  # type: ignore[method-assign]
+
+    result = frozen.apply_workspace(
+        {b"a.py": SafePath(b"x", (b"1,2,33188,0,0,0",), "file")},
+        {"a.py": WorkspaceManifestEntry((), oid)},
+    )
+
+    assert result == {b"a.py": b"100644 " + oid + b" 0"}

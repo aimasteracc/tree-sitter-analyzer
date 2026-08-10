@@ -7,12 +7,13 @@ import shutil
 import tempfile
 from collections.abc import Mapping
 
+from .frozen_git_index import safe_external_temp_parent
 from .git_subprocess import run_git_bounded
 from .source_oracle import (
     SafePath,
     SourceOracleError,
+    WorkspaceManifestEntry,
     _remaining,
-    canonical_root,
 )
 from .source_oracle_git import (
     GitEpoch,
@@ -55,10 +56,10 @@ class FrozenGitEnvironment:
         self.object_directory: str | None = None
 
     def __enter__(self) -> FrozenGitEnvironment:
-        self._directory = tempfile.mkdtemp(prefix="tsa-frozen-git-")
+        temp_parent = safe_external_temp_parent(self.root)
+        self._directory = tempfile.mkdtemp(prefix="tsa-frozen-git-", dir=temp_parent)
         try:
-            project_root, _ = canonical_root(self.root)
-            real_project_root = os.path.realpath(project_root)
+            real_project_root = os.path.realpath(self.root)
             real_directory = os.path.realpath(self._directory)
             try:
                 inside_project = (
@@ -137,8 +138,12 @@ class FrozenGitEnvironment:
             input_=input_,
         )
 
-    def apply_workspace(self, paths: Mapping[bytes, SafePath]) -> dict[bytes, bytes]:
-        """Clone the base index, then write frozen leaves into the second index."""
+    def apply_workspace(
+        self,
+        paths: Mapping[bytes, SafePath],
+        manifest: Mapping[str, WorkspaceManifestEntry] | None = None,
+    ) -> dict[bytes, bytes]:
+        """Clone the base index, then write Git-cleaned frozen leaves."""
         if self._directory is None:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR")
         workspace_index = os.path.join(self._directory, "workspace-index")
@@ -178,13 +183,6 @@ class FrozenGitEnvironment:
                 continue
             if safe.kind not in ("file", "symlink") or safe.data is None:
                 raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
-            oid = self.run(
-                ["hash-object", "-w", "--stdin"],
-                limit=4096,
-                input_=safe.data,
-            ).strip()
-            if not oid:
-                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
             if safe.kind == "symlink":
                 mode = b"120000"
             elif not self.epoch.core_filemode:
@@ -198,6 +196,18 @@ class FrozenGitEnvironment:
                 except (IndexError, ValueError) as exc:
                     raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH") from exc
                 mode = b"100755" if stat_mode & 0o111 else b"100644"
+            hash_args = ["hash-object", "-w", "--stdin"]
+            if safe.kind == "file":
+                # ``--path`` applies core.autocrlf, eol, and clean filters using
+                # the exact raw repository path.  argv execution is shell-free.
+                hash_args.insert(2, "--path=" + os.fsdecode(raw))
+            oid = self.run(hash_args, limit=4096, input_=safe.data).strip()
+            if not oid:
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+            if safe.kind == "file":
+                expected = (manifest or {}).get(os.fsdecode(raw))
+                if expected is None or expected.filtered_oid != oid:
+                    raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
             self.run(
                 [
                     "update-index",

@@ -10,6 +10,7 @@ from .git_path_codec import path_to_wire
 from .source_oracle import (
     SafePath,
     SourceOracleError,
+    WorkspaceManifestEntry,
     git_output,
     normalize_repo_path,
     safe_workspace_path,
@@ -285,7 +286,7 @@ def _capture_payload(
     mode: str,
     deadline: float,
     ceiling: int,
-    expected_manifest: dict[str, tuple[bytes, ...]] | None = None,
+    expected_manifest: dict[str, WorkspaceManifestEntry] | None = None,
     epoch: GitEpoch | None = None,
 ) -> tuple[bytes, tuple[FrozenFile, ...]]:
     """Capture frozen index→worktree or frozen HEAD→index payloads."""
@@ -308,19 +309,22 @@ def _capture_payload(
             raw_paths = set(frozen.dirty_paths) | set(frozen.untracked_paths)
             for raw in sorted(raw_paths):
                 path = _decode_path(raw)
+                manifest_entry = (expected_manifest or {}).get(path)
+                if manifest_entry is None:
+                    raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
                 safe = safe_workspace_path(
                     root,
                     path,
                     deadline=deadline,
                     limit=remaining,
-                    expected_chain=(expected_manifest or {}).get(path),
+                    expected_chain=manifest_entry.descriptor_chain,
                     # Regular tracked leaves may have been replaced by dirs.
                     allow_directory=True,
                 )
                 if safe.data is not None:
                     remaining -= len(safe.data)
                 safe_paths[raw] = safe
-            workspace_entries = git.apply_workspace(safe_paths)
+            workspace_entries = git.apply_workspace(safe_paths, expected_manifest or {})
         else:
             workspace_entries = {}
 

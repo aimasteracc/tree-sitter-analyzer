@@ -66,6 +66,14 @@ class SafePath:
     kind: str
 
 
+@dataclass(frozen=True)
+class WorkspaceManifestEntry:
+    """Pre-capture descriptor identity and Git-cleaned blob identity."""
+
+    descriptor_chain: tuple[bytes, ...]
+    filtered_oid: bytes | None = None
+
+
 def canonical_root(project_root: str | None) -> tuple[str, RootIdentity]:
     root = os.path.realpath(project_root or ".")
     try:
@@ -286,7 +294,7 @@ def oracle_generation(
     mode: str = "diff",
     *,
     deadline: float | None = None,
-    manifest: dict[str, tuple[bytes, ...]] | None = None,
+    manifest: dict[str, WorkspaceManifestEntry] | None = None,
     epoch_out: list[Any] | None = None,
 ) -> tuple[str, RootIdentity]:
     from .source_oracle_git import oracle_generation as generate

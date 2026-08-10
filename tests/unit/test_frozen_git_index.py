@@ -7,10 +7,12 @@ from pathlib import Path
 
 import pytest
 
+import tree_sitter_analyzer.frozen_git_index as frozen_index
 import tree_sitter_analyzer.source_oracle_git as oracle
 from tree_sitter_analyzer.frozen_git_index import (
     parse_stage_zero_entries,
     private_index_file,
+    safe_external_temp_parent,
 )
 from tree_sitter_analyzer.source_oracle import SourceOracleError
 
@@ -40,11 +42,11 @@ def test_private_index_file_rejects_project_directory(tmp_path: Path) -> None:
     project.mkdir()
     target = project / "private-index"
 
-    def create_inside(*, prefix: str) -> tuple[int, str]:
-        del prefix
+    def create_inside(*, prefix: str, dir: str) -> tuple[int, str]:
+        del prefix, dir
         return os.open(target, os.O_CREAT | os.O_RDWR, 0o600), str(target)
 
-    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_UNSAFE_PATH$"):
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_UNSAFE_TEMP$"):
         with private_index_file(str(project), b"exact", mkstemp=create_inside):
             pass
 
@@ -103,7 +105,8 @@ def test_index_entries_rejects_private_index_inside_project(
 ) -> None:
     index_path = tmp_path / "private-index"
 
-    def mkstemp(*, prefix):
+    def mkstemp(*, prefix, dir):
+        del prefix, dir
         descriptor = os.open(index_path, os.O_CREAT | os.O_RDWR, 0o600)
         return descriptor, str(index_path)
 
@@ -113,7 +116,7 @@ def test_index_entries_rejects_private_index_inside_project(
         lambda: oracle._index_entries(
             str(tmp_path), deadline=time.monotonic() + 1, index_bytes=b"index"
         ),
-        "DIFF_SNAPSHOT_UNSAFE_PATH",
+        "DIFF_SNAPSHOT_UNSAFE_TEMP",
     )
     assert index_path.exists() is False
 
@@ -205,3 +208,87 @@ def test_core_filemode_rejects_invalid_boolean(monkeypatch) -> None:
 
     with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
         oracle._core_filemode(".", deadline=1e20)
+
+
+def test_temp_parent_skips_project_tmpdir(tmp_path: Path, monkeypatch) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-y.
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("TMPDIR", str(project))
+    monkeypatch.delenv("TEMP", raising=False)
+    monkeypatch.delenv("TMP", raising=False)
+
+    selected = safe_external_temp_parent(str(project))
+
+    assert selected in (os.path.realpath("/var/tmp"), os.path.realpath("/tmp"))
+
+
+def test_no_safe_temp_parent_rejects_before_mkstemp(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-y.
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("TMPDIR", str(project))
+    monkeypatch.delenv("TEMP", raising=False)
+    monkeypatch.delenv("TMP", raising=False)
+    real_isdir = frozen_index.os.path.isdir
+    monkeypatch.setattr(
+        frozen_index.os.path,
+        "isdir",
+        lambda path: (
+            False
+            if path in (os.path.realpath("/var/tmp"), os.path.realpath("/tmp"))
+            else real_isdir(path)
+        ),
+    )
+    calls: list[str] = []
+
+    def forbidden_mkstemp(**kwargs):
+        calls.append(str(kwargs))
+        raise AssertionError("mkstemp must not be called")
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_UNSAFE_TEMP$"):
+        with private_index_file(str(project), b"index", mkstemp=forbidden_mkstemp):
+            pass
+
+    assert calls == []
+
+
+def test_temp_parent_deduplicates_candidates(tmp_path: Path, monkeypatch) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-y.
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("TMPDIR", str(project))
+    monkeypatch.setenv("TEMP", str(project))
+    monkeypatch.delenv("TMP", raising=False)
+
+    selected = safe_external_temp_parent(str(project))
+
+    assert selected == os.path.realpath("/var/tmp")
+
+
+def test_temp_parent_has_fixed_windows_fallback(tmp_path: Path, monkeypatch) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-y.
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.delenv("TMPDIR", raising=False)
+    monkeypatch.delenv("TEMP", raising=False)
+    monkeypatch.delenv("TMP", raising=False)
+    monkeypatch.setattr(frozen_index.os, "name", "nt")
+    monkeypatch.setattr(frozen_index.tempfile, "gettempdir", lambda: "/var/tmp")
+
+    selected = safe_external_temp_parent(str(project))
+
+    assert selected == os.path.realpath("/var/tmp")
+
+
+@pytest.mark.parametrize("oid", [b"not-hex", b"a" * 39])
+def test_git_filtered_oid_rejects_invalid_git_output(monkeypatch, oid: bytes) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
+    monkeypatch.setattr(frozen_index, "run_git_bounded", lambda *args, **kwargs: oid)
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_GIT_ERROR$"):
+        frozen_index.git_filtered_oid(
+            ".", b"sample.txt", b"data", deadline=time.monotonic() + 1
+        )

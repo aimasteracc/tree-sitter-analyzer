@@ -12,11 +12,16 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from .frozen_git_index import frozen_index_entries, reconstructed_index_file
+from .frozen_git_index import (
+    frozen_index_entries,
+    git_filtered_oid,
+    reconstructed_index_file,
+)
 from .git_subprocess import run_git_bounded
 from .source_oracle import (
     RootIdentity,
     SourceOracleError,
+    WorkspaceManifestEntry,
     _safe_absolute_regular,
     _supports_nofollow,
     canonical_root,
@@ -68,11 +73,9 @@ def git_output(root: str, args: list[str], *, deadline: float, limit: int) -> by
 
 
 def _strip_one_record_terminator(value: bytes) -> bytes:
-    return (
-        value[:-2]
-        if value.endswith(b"\r\n")
-        else (value[:-1] if value.endswith(b"\n") else value)
-    )
+    if value.endswith(b"\r\n"):
+        return value[:-2]
+    return value[:-1] if value.endswith(b"\n") else value
 
 
 def _object_format(root: str, *, deadline: float) -> str:
@@ -92,8 +95,6 @@ def _core_filemode(root: str, *, deadline: float) -> bool:
         limit=16,
     ).strip()
     if value in (b"", b"true"):
-        # ``--default true`` makes empty output unreachable for real Git; keep
-        # the empty case for injected Git seams that predate this frozen input.
         return True
     if value == b"false":
         return False
@@ -254,7 +255,7 @@ def _frame_workspace_path(
     content_required: bool,
     index_entry: bytes | None,
     head_entry: bytes | None,
-    manifest: dict[str, tuple[bytes, ...]] | None = None,
+    manifest: dict[str, WorkspaceManifestEntry] | None = None,
 ) -> int:
     """Frame one no-follow worktree leaf and return its content charge."""
     path = normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
@@ -268,8 +269,13 @@ def _frame_workspace_path(
         allow_directory=True,
     )
     _frame(digest, b"worktree-path", raw)
+    descriptor_chain = stable_descriptor_chain(safe.metadata)
+    filtered_oid: bytes | None = None
+    if safe.kind == "file" and content_required and not is_gitlink:
+        filtered_oid = git_filtered_oid(root, raw, safe.data or b"", deadline=deadline)
+        _frame(digest, b"worktree-filtered-oid", filtered_oid)
     if manifest is not None:
-        manifest[path] = stable_descriptor_chain(safe.metadata)
+        manifest[path] = WorkspaceManifestEntry(descriptor_chain, filtered_oid)
     leaf_metadata = safe.metadata[-1:] if safe.kind != "missing" else ()
     ancestor_metadata = (
         safe.metadata[:-1] if safe.kind != "missing" else safe.metadata[:-1]
@@ -279,10 +285,8 @@ def _frame_workspace_path(
     if safe.kind == "missing":
         _frame(digest, b"worktree-kind", b"missing")
     else:
-        # Frame the complete root-to-leaf no-follow descriptor chain; the leaf
-        # retains the historical field order for stable generation identity.
         fields = leaf_metadata[0].split(b",")
-        if len(fields) != 6:
+        if len(fields) != 6:  # pragma: no cover - safe reader invariant
             raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH")
         _frame(
             digest,
@@ -305,7 +309,7 @@ def oracle_generation(
     mode: str = "diff",
     *,
     deadline: float | None = None,
-    manifest: dict[str, tuple[bytes, ...]] | None = None,
+    manifest: dict[str, WorkspaceManifestEntry] | None = None,
     epoch_out: list[GitEpoch] | None = None,
 ) -> tuple[str, RootIdentity]:
     """Return a domain-framed generation and the exact canonical root identity."""
@@ -354,9 +358,6 @@ def oracle_generation(
     _frame(digest, b"index-kind", safe_index.kind.encode("ascii"))
     index_bytes = safe_index.data or b""
     _frame(digest, b"index-content", hashlib.sha256(index_bytes).digest())
-    # Dependency analysis reads the live checkout, not only dirty paths. Bind
-    # every tracked path so a transient clean-file write+restore or atomic
-    # replacement changes inode/ctime and invalidates the strict result.
     index_entries = _index_entries(root, deadline=end, index_bytes=index_bytes)
     tracked = list(index_entries)
     head_entries = _head_entries(root, deadline=end, head=head)
@@ -415,7 +416,6 @@ def oracle_generation(
         if len(oid) != len(head):
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
         workspace_gitlinks[raw] = b"160000 " + oid + b" 0"
-        # Bind dirty-only gitlinks independently of their HEAD OID.
         _frame(digest, b"worktree-gitlink-dirty", raw)
         _frame(digest, b"worktree-gitlink-head", raw + b"\0" + oid)
     if epoch_out is not None:
@@ -440,7 +440,7 @@ def oracle_generation(
             raw,
             deadline=end,
             content_budget=remaining_content,
-            content_required=raw in dirty,
+            content_required=mode == "diff" and raw in dirty,
             index_entry=index_entries[raw],
             head_entry=head_entries.get(raw),
             manifest=manifest,
@@ -453,7 +453,7 @@ def oracle_generation(
             raw,
             deadline=end,
             content_budget=remaining_content,
-            content_required=True,
+            content_required=mode == "diff",
             index_entry=None,
             head_entry=None,
             manifest=manifest,

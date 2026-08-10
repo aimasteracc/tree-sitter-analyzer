@@ -2489,3 +2489,8 @@ def test_frozen_snapshot_rejects_git_magic_scope_with_toon() -> None:
 
     assert result["format"] == "toon"
     assert "DIFF_SNAPSHOT_UNSUPPORTED_SCOPE" in result["toon_content"]
+
+
+def test_scope_matches_compatibility_wrapper_uses_filesystem_bytes() -> None:
+    # PR #1252 zero-gate 2026-07-02: wrapper keeps raw prefix semantics.
+    assert tool_module._scope_matches("src", "src/main.py") is True

@@ -21,6 +21,7 @@ from .git_path_codec import path_from_wire, path_to_wire
 from .source_oracle import (
     RootIdentity,
     SourceOracleError,
+    WorkspaceManifestEntry,
     canonical_root,
     capture_inventory,
     oracle_generation,
@@ -155,7 +156,7 @@ class DiffSnapshotRegistry:
             self._reservations[reservation] = ceiling
         try:
             root, identity = canonical_root(project_root)
-            pre_manifest: dict[str, tuple[bytes, ...]] = {}
+            pre_manifest: dict[str, WorkspaceManifestEntry] = {}
             epochs: list[GitEpoch] = []
             oracle_params = inspect.signature(oracle_generation).parameters
             if "epoch_out" in oracle_params:
@@ -205,8 +206,15 @@ class DiffSnapshotRegistry:
                 patch, files = _capture_payload(
                     root, mode, deadline, ceiling - inventory_size
                 )
-            after, after_identity = oracle_generation(root, mode, deadline=deadline)
-            if before != after or identity != after_identity:
+            post_manifest: dict[str, WorkspaceManifestEntry] = {}
+            after, after_identity = oracle_generation(
+                root, mode, deadline=deadline, manifest=post_manifest
+            )
+            if (
+                before != after
+                or identity != after_identity
+                or pre_manifest != post_manifest
+            ):
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
             paths = set(normalized_input)
             paths.update(item.record.path for item in files)

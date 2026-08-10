@@ -73,30 +73,6 @@ def test_source_generation_returns_oracle_value(monkeypatch) -> None:
     assert oracle.source_generation(".", "staged") == "sg_test"
 
 
-def test_frame_workspace_path_rejects_malformed_metadata_epoch(
-    tmp_path: Path, monkeypatch
-) -> None:
-    monkeypatch.setattr(
-        oracle,
-        "safe_workspace_path",
-        lambda *args, **kwargs: core_oracle.SafePath(None, (b"incomplete",), "file"),
-    )
-
-    _error(
-        lambda: oracle._frame_workspace_path(
-            SimpleNamespace(update=lambda value: None),
-            str(tmp_path),
-            b"tracked.py",
-            deadline=time.monotonic() + 1,
-            content_budget=10,
-            content_required=False,
-            index_entry=b"100644 blob-id 0",
-            head_entry=b"100644 blob blob-id",
-        ),
-        "DIFF_SNAPSHOT_UNSAFE_PATH",
-    )
-
-
 def test_tracked_paths_rejects_bounded_path_count(monkeypatch) -> None:
     monkeypatch.setattr(oracle, "_MAX_WORKTREE_PATHS", 1)
     monkeypatch.setattr(oracle, "git_output", lambda *args, **kwargs: b"a\0b\0")
@@ -465,5 +441,39 @@ def test_oracle_generation_rejects_wrong_length_dirty_gitlink_oid(
 
     _error(
         lambda: oracle.oracle_generation(str(tmp_path), "diff"),
+        "DIFF_SNAPSHOT_GIT_ERROR",
+    )
+
+
+def test_frame_workspace_path_propagates_filtered_oid_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
+    monkeypatch.setattr(
+        oracle,
+        "safe_workspace_path",
+        lambda *args, **kwargs: core_oracle.SafePath(
+            b"data", (b"1,2,33188,0,0,0",), "file"
+        ),
+    )
+    monkeypatch.setattr(
+        oracle,
+        "git_filtered_oid",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            oracle.SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        ),
+    )
+
+    _error(
+        lambda: oracle._frame_workspace_path(
+            SimpleNamespace(update=lambda value: None),
+            str(tmp_path),
+            b"tracked.py",
+            deadline=time.monotonic() + 1,
+            content_budget=10,
+            content_required=True,
+            index_entry=b"100644 blob-id 0",
+            head_entry=b"100644 blob blob-id",
+        ),
         "DIFF_SNAPSHOT_GIT_ERROR",
     )

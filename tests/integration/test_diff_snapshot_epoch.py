@@ -288,3 +288,144 @@ def test_dirty_gitlink_same_oid_remains_explicitly_unsupported(tmp_path: Path) -
             "unsupported_kind": "dirty_gitlink",
         }
     ]
+
+
+def _assert_frozen_patch_matches_git(root: Path) -> tuple[bytes, bytes]:
+    expected = subprocess.run(
+        [
+            "git",
+            "diff",
+            "--binary",
+            "--full-index",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--ignore-submodules=none",
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    ).stdout
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+    assert created["success"] is True
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    if consumer is None:
+        pytest.fail("snapshot acquisition must return a consumer")
+    frozen = consumer.snapshot.file("sample.txt")
+    if frozen is None:
+        pytest.fail("snapshot must contain sample.txt")
+    actual = consumer.snapshot.normalized_patch
+    new_bytes = frozen.new_bytes
+    consumer.release()
+    assert actual == expected
+    if new_bytes is None:
+        pytest.fail("sample.txt must retain frozen new bytes")
+    return actual, new_bytes
+
+
+@POSIX_SNAPSHOT_TEST
+def test_core_autocrlf_frozen_patch_matches_git_exactly(tmp_path: Path) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
+    root = _repo(tmp_path)
+    (root / "sample.txt").write_bytes(b"one\ntwo\n")
+    _git(root, "add", "sample.txt")
+    _git(root, "commit", "-m", "baseline")
+    _git(root, "config", "core.autocrlf", "true")
+    (root / "sample.txt").write_bytes(b"one\r\nchanged\r\n")
+
+    _patch, new_bytes = _assert_frozen_patch_matches_git(root)
+
+    assert new_bytes == b"one\nchanged\n"
+
+
+@POSIX_SNAPSHOT_TEST
+def test_eol_attribute_frozen_patch_matches_git_exactly(tmp_path: Path) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
+    root = _repo(tmp_path)
+    (root / ".gitattributes").write_text("*.txt text eol=lf\n")
+    (root / "sample.txt").write_bytes(b"left\nright\n")
+    _git(root, "add", ".gitattributes", "sample.txt")
+    _git(root, "commit", "-m", "baseline")
+    (root / "sample.txt").write_bytes(b"left\r\nupdated\r\n")
+
+    _patch, new_bytes = _assert_frozen_patch_matches_git(root)
+
+    assert new_bytes == b"left\nupdated\n"
+
+
+@POSIX_SNAPSHOT_TEST
+def test_clean_filter_frozen_patch_matches_git_exactly(tmp_path: Path) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
+    root = _repo(tmp_path)
+    _git(root, "config", "filter.upper.clean", "tr a-z A-Z")
+    _git(root, "config", "filter.upper.smudge", "cat")
+    (root / ".gitattributes").write_text("*.txt filter=upper\n")
+    (root / "sample.txt").write_bytes(b"old value\n")
+    _git(root, "add", ".gitattributes", "sample.txt")
+    _git(root, "commit", "-m", "baseline")
+    (root / "sample.txt").write_bytes(b"new value\n")
+
+    _patch, new_bytes = _assert_frozen_patch_matches_git(root)
+
+    assert new_bytes == b"NEW VALUE\n"
+
+
+@POSIX_SNAPSHOT_TEST
+def test_nondeterministic_clean_filter_is_rejected(tmp_path: Path) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
+    root = _repo(tmp_path)
+    _git(root, "config", "filter.random.clean", "uuidgen")
+    _git(root, "config", "filter.random.smudge", "cat")
+    (root / ".gitattributes").write_text("*.txt filter=random\n")
+    (root / "sample.txt").write_bytes(b"baseline\n")
+    _git(root, "add", ".gitattributes", "sample.txt")
+    _git(root, "commit", "-m", "baseline")
+    (root / "sample.txt").write_bytes(b"changed\n")
+
+    created = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert created == {"success": False, "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED"}
+
+
+@POSIX_SNAPSHOT_TEST
+def test_staged_blob_is_not_clean_filtered_again(tmp_path: Path) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
+    root = _repo(tmp_path)
+    (root / ".gitattributes").write_text("*.txt filter=block\n")
+    _git(root, "config", "filter.block.clean", "cat")
+    _git(root, "config", "filter.block.smudge", "cat")
+    (root / "sample.txt").write_bytes(b"baseline\n")
+    _git(root, "add", ".gitattributes", "sample.txt")
+    _git(root, "commit", "-m", "baseline")
+    (root / "sample.txt").write_bytes(b"staged\n")
+    _git(root, "add", "sample.txt")
+    _git(root, "config", "filter.block.clean", "false")
+
+    created = snapshots.DiffSnapshotRegistry().create(str(root), "staged", [])
+
+    assert created["success"] is True
+
+
+@POSIX_SNAPSHOT_TEST
+def test_payload_rejects_missing_pre_manifest_binding(tmp_path: Path) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
+    root = _repo(tmp_path)
+    (root / "sample.txt").write_bytes(b"baseline\n")
+    _git(root, "add", "sample.txt")
+    _git(root, "commit", "-m", "baseline")
+    (root / "sample.txt").write_bytes(b"changed\n")
+    epochs = []
+    oracle.oracle_generation(str(root), "diff", epoch_out=epochs, manifest={})
+
+    with pytest.raises(
+        snapshots.SourceOracleError, match="^DIFF_SNAPSHOT_SOURCE_CHANGED$"
+    ):
+        capture._capture_payload(
+            str(root),
+            "diff",
+            __import__("time").monotonic() + 10,
+            1024 * 1024,
+            expected_manifest={},
+            epoch=epochs[0],
+        )

@@ -15,6 +15,56 @@ GitOutput = Callable[..., bytes]
 BoundedGit = Callable[..., bytes]
 
 
+def git_filtered_oid(root: str, raw: bytes, data: bytes, *, deadline: float) -> bytes:
+    """Return Git's cleaned blob identity for exact raw repository path bytes."""
+    oid = run_git_bounded(
+        root,
+        ["hash-object", "--path=" + os.fsdecode(raw), "--stdin"],
+        deadline=deadline,
+        limit=4096,
+        input_=data,
+    ).strip()
+    try:
+        int(oid, 16)
+    except ValueError as exc:
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc
+    if len(oid) not in (40, 64):
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    return oid
+
+
+def safe_external_temp_parent(root: str) -> str:
+    """Select an existing writable temporary parent outside the project."""
+    real_root = os.path.realpath(root)
+    candidates: list[str] = []
+    for name in ("TMPDIR", "TEMP", "TMP"):
+        value = os.environ.get(name)
+        if value:
+            candidates.append(value)
+    if os.name == "nt":
+        candidates.extend((r"C:\Windows\Temp", tempfile.gettempdir()))
+    else:
+        candidates.extend(("/var/tmp", "/tmp"))  # nosec B108
+    seen: set[str] = set()
+    for candidate in candidates:
+        real_candidate = os.path.realpath(candidate)
+        if real_candidate in seen:
+            continue
+        seen.add(real_candidate)
+        try:
+            inside = os.path.commonpath((real_root, real_candidate)) == real_root
+        except ValueError:
+            inside = False
+        if (
+            not inside
+            and os.path.isabs(real_candidate)
+            and os.path.isdir(real_candidate)
+            and os.access(real_candidate, os.W_OK | os.X_OK)
+        ):
+            return real_candidate
+    raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
+
+
 @contextmanager
 def private_index_file(
     root: str,
@@ -24,7 +74,8 @@ def private_index_file(
     unlink: Callable[[str], None] = os.unlink,
 ) -> Iterator[str]:
     """Materialize exact index bytes outside ``root`` with mode 0600."""
-    descriptor, path = mkstemp(prefix="tsa-index-")
+    temp_parent = safe_external_temp_parent(root)
+    descriptor, path = mkstemp(prefix="tsa-index-", dir=temp_parent)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             os.fchmod(stream.fileno(), 0o600)
@@ -37,7 +88,7 @@ def private_index_file(
         except ValueError:
             inside_root = False
         if inside_root:
-            raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH")
+            raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
         yield path
     finally:
         try:
@@ -54,7 +105,10 @@ def reconstructed_index_file(
     deadline: float,
 ) -> Iterator[str]:
     """Build a plain private index from captured stage-zero identities."""
-    descriptor, path = tempfile.mkstemp(prefix="tsa-reconstructed-index-")
+    temp_parent = safe_external_temp_parent(root)
+    descriptor, path = tempfile.mkstemp(
+        prefix="tsa-reconstructed-index-", dir=temp_parent
+    )
     os.close(descriptor)
     os.unlink(path)
     env = {
