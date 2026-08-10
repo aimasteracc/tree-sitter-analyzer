@@ -1,4 +1,6 @@
 import io
+import os
+import shutil
 import stat
 import subprocess
 import time
@@ -505,4 +507,145 @@ def test_capture_inventory_rejects_encoded_storage_capacity(
             ".", "staged", deadline=time.monotonic() + 1, limit=limit
         ),
         "DIFF_SNAPSHOT_CAPACITY",
+    )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_oracle_generation_preserves_repository_trailing_newline(
+    tmp_path: Path,
+) -> None:
+    # PR #1252 review thread 3747224321.
+    root = tmp_path / "repo\n"
+    root.mkdir()
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+
+    generation, identity = oracle.oracle_generation(str(root))
+
+    assert (generation[:3], identity.realpath) == ("sg_", str(root.resolve()))
+
+
+@POSIX_SNAPSHOT_TEST
+def test_oracle_generation_preserves_gitdir_trailing_newline(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3747224321.
+    root = tmp_path / "worktree"
+    root.mkdir()
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    git_dir = tmp_path / "metadata\n"
+    shutil.copytree(root / ".git", git_dir)
+    real_output = oracle.git_output
+
+    def output(repo, args, **kwargs):
+        if args == ["rev-parse", "--git-dir"]:
+            return os.fsencode(git_dir) + b"\n"
+        return real_output(repo, args, **kwargs)
+
+    monkeypatch.setattr(oracle, "git_output", output)
+    generation, identity = oracle.oracle_generation(str(root))
+
+    assert (generation[:3], identity.realpath) == ("sg_", str(root.resolve()))
+
+
+def test_strip_one_record_terminator_preserves_path_newline() -> None:
+    assert oracle._strip_one_record_terminator(b"repo\n\r\n") == b"repo\n"
+
+
+@POSIX_SNAPSHOT_TEST
+def test_git_output_timeout_kills_hostile_descendant(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3747224316.
+    marker = tmp_path / "survived"
+    fake_git = tmp_path / "git"
+    fake_git.write_text(
+        f"#!/bin/sh\n( trap '' TERM; sleep 0.3; echo survived > {marker!s} ) &\nwait\n"
+    )
+    fake_git.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
+
+    _error(
+        lambda: oracle.git_output(
+            str(tmp_path), [], deadline=time.monotonic() + 0.05, limit=4096
+        ),
+        "DIFF_SNAPSHOT_TIMEOUT",
+    )
+    time.sleep(0.4)
+
+    assert marker.exists() is False
+
+
+@POSIX_SNAPSHOT_TEST
+def test_oracle_generation_skips_missing_dirty_gitlink(
+    tmp_path: Path, monkeypatch
+) -> None:
+    entry = b"160000 " + b"a" * 40 + b" 0"
+    _stub_oracle_inventory(
+        tmp_path,
+        monkeypatch,
+        tracked=[b"vendor"],
+        indexed={b"vendor": entry},
+        dirty=b"vendor\0",
+    )
+
+    generation, _identity = oracle.oracle_generation(str(tmp_path), "diff")
+
+    assert generation[:3] == "sg_"
+
+
+@POSIX_SNAPSHOT_TEST
+def test_oracle_generation_rejects_invalid_dirty_gitlink_oid(
+    tmp_path: Path, monkeypatch
+) -> None:
+    entry = b"160000 " + b"a" * 40 + b" 0"
+    _stub_oracle_inventory(
+        tmp_path,
+        monkeypatch,
+        tracked=[b"vendor"],
+        indexed={b"vendor": entry},
+        dirty=b"vendor\0",
+    )
+    safe = core_oracle.SafePath(None, (b"1,2,16877,0,0,0",), "directory")
+    monkeypatch.setattr(oracle, "safe_workspace_path", lambda *a, **k: safe)
+    original = oracle.git_output
+
+    def output(root, args, **kwargs):
+        if args == ["rev-parse", "--verify", "HEAD"] and root != str(tmp_path):
+            return b"not-an-oid\n"
+        return original(root, args, **kwargs)
+
+    monkeypatch.setattr(oracle, "git_output", output)
+
+    _error(
+        lambda: oracle.oracle_generation(str(tmp_path), "diff"),
+        "DIFF_SNAPSHOT_GIT_ERROR",
+    )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_oracle_generation_rejects_wrong_length_dirty_gitlink_oid(
+    tmp_path: Path, monkeypatch
+) -> None:
+    entry = b"160000 " + b"a" * 40 + b" 0"
+    _stub_oracle_inventory(
+        tmp_path,
+        monkeypatch,
+        tracked=[b"vendor"],
+        indexed={b"vendor": entry},
+        dirty=b"vendor\0",
+    )
+    safe = core_oracle.SafePath(None, (b"1,2,16877,0,0,0",), "directory")
+    monkeypatch.setattr(oracle, "safe_workspace_path", lambda *a, **k: safe)
+    original = oracle.git_output
+
+    def output(root, args, **kwargs):
+        if args == ["rev-parse", "--verify", "HEAD"] and root != str(tmp_path):
+            return b"a" * 39 + b"\n"
+        return original(root, args, **kwargs)
+
+    monkeypatch.setattr(oracle, "git_output", output)
+
+    _error(
+        lambda: oracle.oracle_generation(str(tmp_path), "diff"),
+        "DIFF_SNAPSHOT_GIT_ERROR",
     )

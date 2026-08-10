@@ -89,6 +89,7 @@ def _frozen_rows(
             "--find-renames",
             "--no-ext-diff",
             "--no-textconv",
+            "--ignore-submodules=none",
             os.fsdecode(base),
         ],
         limit=limit,
@@ -125,6 +126,7 @@ def _rows(
         "--find-renames",
         "--no-ext-diff",
         "--no-textconv",
+        "--ignore-submodules=none",
     ]
     tokens = [
         item
@@ -172,6 +174,7 @@ def _tracked_binary_paths(
         "-z",
         "--no-ext-diff",
         "--no-textconv",
+        "--ignore-submodules=none",
     ]
     raw = git_output(root, args, deadline=deadline, limit=limit)
     tokens = raw.split(b"\0")
@@ -208,6 +211,7 @@ def _binary_paths(git: FrozenGitEnvironment, base: bytes, limit: int) -> set[byt
             "-z",
             "--no-ext-diff",
             "--no-textconv",
+            "--ignore-submodules=none",
             os.fsdecode(base),
         ],
         limit=limit,
@@ -248,6 +252,8 @@ def _safe_mode(safe_kind: str, metadata: tuple[bytes, ...]) -> tuple[str | None,
         return None, "missing"
     if safe_kind == "symlink":
         return "120000", "symlink"
+    if safe_kind == "directory":
+        return "160000", "gitlink"
     try:
         bits = int(metadata[-1].split(b",")[2])
     except (IndexError, ValueError) as exc:
@@ -278,12 +284,15 @@ def _capture_payload(
             # Capture every workspace-side leaf before hashing or mutating index two.
             for raw in sorted(raw_paths):
                 path = _decode_path(raw)
+                entry = frozen.index_map().get(raw)
+                is_gitlink = bool(entry and entry.startswith(b"160000 "))
                 safe = safe_workspace_path(
                     root,
                     path,
                     deadline=deadline,
                     limit=remaining,
                     expected_chain=(expected_manifest or {}).get(path),
+                    allow_directory=is_gitlink,
                 )
                 if safe.data is not None:
                     remaining -= len(safe.data)
@@ -299,6 +308,7 @@ def _capture_payload(
                 "--full-index",
                 "--no-ext-diff",
                 "--no-textconv",
+                "--ignore-submodules=none",
                 os.fsdecode(frozen.head),
             ],
             limit=remaining,
@@ -311,7 +321,8 @@ def _capture_payload(
             for raw, safe in safe_paths.items():
                 if safe.kind == "missing":
                     final_entries.pop(raw, None)
-                elif raw in workspace_entries:
+                else:
+                    # Every accepted non-missing leaf is materialized or fail-closed.
                     final_entries[raw] = workspace_entries[raw]
         files: list[FrozenFile] = []
         for status, old_raw, raw in rows:

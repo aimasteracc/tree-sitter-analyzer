@@ -75,7 +75,11 @@ task-computed hash are never freshness evidence.
 ### P0.2 Frozen workspace/staged diff snapshot
 
 V1 accepts only `workspace` and `staged`. They map respectively to
-`edit.impact(mode="diff", ...)` and `edit.impact(mode="staged", ...)`.
+`edit.impact(mode="diff", ...)` and `edit.impact(mode="staged", ...)`. Phase 0
+`scope_paths` are literal repository-relative paths only: a leading `:` (Git
+magic/pathspec syntax) fails before capture with the stable
+`DIFF_SNAPSHOT_UNSUPPORTED_SCOPE` envelope; the runtime never consults live Git
+to reinterpret scope against a frozen inventory.
 
 Before Phase A, the edit-adapter runtime must own a process-local, non-persistent
 snapshot registry. `edit.impact` atomically materializes the normalized patch and

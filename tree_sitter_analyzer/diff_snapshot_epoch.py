@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess  # nosec B404
 import tempfile
-import threading
 from collections.abc import Mapping
-from typing import BinaryIO
 
+from .git_subprocess import run_git_bounded
 from .source_oracle import SafePath, SourceOracleError, _remaining
-from .source_oracle_git import GitEpoch, git_output
+from .source_oracle_git import (
+    GitEpoch,
+    _strip_one_record_terminator,
+    git_output,
+)
 
 
 class FrozenGitEnvironment:
@@ -73,7 +75,8 @@ class FrozenGitEnvironment:
                 ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
                 deadline=self.deadline,
                 limit=64 * 1024,
-            ).rstrip(b"\r\n")
+            )
+            objects = _strip_one_record_terminator(objects)
             env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = os.fsdecode(objects)
         return env
 
@@ -84,74 +87,14 @@ class FrozenGitEnvironment:
         limit: int = 64 * 1024 * 1024,
         input_: bytes | None = None,
     ) -> bytes:
-        if limit < 0:
-            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
-        try:
-            proc = subprocess.Popen(  # nosec B603
-                ["git", *args],
-                cwd=self.root,
-                env=self._env(),
-                stdin=subprocess.PIPE if input_ is not None else subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-        except OSError as exc:
-            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc
-        output = bytearray()
-        errors = bytearray()
-        failures: list[str] = []
-
-        def drain(stream: BinaryIO | None, target: bytearray, cap: int) -> None:
-            if stream is None:
-                failures.append("DIFF_SNAPSHOT_GIT_ERROR")
-                return
-            try:
-                while chunk := stream.read(64 * 1024):
-                    if len(target) + len(chunk) > cap:
-                        failures.append("DIFF_SNAPSHOT_CAPACITY")
-                        proc.kill()
-                        return
-                    target.extend(chunk)
-            except OSError:
-                failures.append("DIFF_SNAPSHOT_GIT_ERROR")
-
-        def feed() -> None:
-            if proc.stdin is None or input_ is None:
-                return
-            try:
-                proc.stdin.write(input_)
-                proc.stdin.close()
-            except (BrokenPipeError, OSError):
-                pass
-
-        threads = [
-            threading.Thread(
-                target=drain, args=(proc.stdout, output, limit), daemon=True
-            ),
-            threading.Thread(
-                target=drain, args=(proc.stderr, errors, 64 * 1024), daemon=True
-            ),
-        ]
-        if input_ is not None:
-            threads.append(threading.Thread(target=feed, daemon=True))
-        for thread in threads:
-            thread.start()
-        try:
-            proc.wait(timeout=_remaining(self.deadline))
-            for thread in threads:
-                thread.join(timeout=_remaining(self.deadline))
-        except subprocess.TimeoutExpired as exc:
-            proc.kill()
-            proc.wait()
-            raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT") from exc
-        if any(thread.is_alive() for thread in threads):
-            proc.kill()
-            raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT")
-        if failures:
-            raise SourceOracleError(failures[0])
-        if proc.returncode != 0:
-            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        return bytes(output)
+        return run_git_bounded(
+            self.root,
+            args,
+            deadline=self.deadline,
+            limit=limit,
+            env=self._env(),
+            input_=input_,
+        )
 
     def apply_workspace(self, paths: Mapping[bytes, SafePath]) -> dict[bytes, bytes]:
         """Clone the base index, then write frozen leaves into the second index."""
@@ -166,6 +109,23 @@ class FrozenGitEnvironment:
             _remaining(self.deadline)
             if safe.kind == "missing":
                 self.run(["update-index", "--force-remove", "--", os.fsdecode(raw)])
+                continue
+            if safe.kind == "directory":
+                entry = dict(self.epoch.workspace_gitlinks).get(raw)
+                if entry is None or not entry.startswith(b"160000 "):
+                    raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
+                mode, oid, _stage = entry.split(b" ")
+                self.run(
+                    [
+                        "update-index",
+                        "--add",
+                        "--cacheinfo",
+                        mode.decode(),
+                        oid.decode(),
+                        os.fsdecode(raw),
+                    ]
+                )
+                result[raw] = entry
                 continue
             if safe.kind not in ("file", "symlink") or safe.data is None:
                 raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")

@@ -9,12 +9,12 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, BinaryIO, TypeVar
+from typing import Any, TypeVar
 
+from .git_subprocess import run_git_bounded
 from .source_oracle import (
     RootIdentity,
     SourceOracleError,
-    _remaining,
     _safe_absolute_regular,
     _supports_nofollow,
     canonical_root,
@@ -45,6 +45,7 @@ class GitEpoch:
     tracked_paths: tuple[bytes, ...]
     dirty_paths: tuple[bytes, ...]
     untracked_paths: tuple[bytes, ...]
+    workspace_gitlinks: tuple[tuple[bytes, bytes], ...] = ()
 
     def index_map(self) -> dict[bytes, bytes]:
         return dict(self.index_entries)
@@ -58,78 +59,17 @@ class GitEpoch:
 
 def git_output(root: str, args: list[str], *, deadline: float, limit: int) -> bytes:
     """Run Git fail-closed with a shared deadline and bounded retained output."""
-    if limit < 0:
-        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
-    try:
-        env = {
-            key: value
-            for key, value in os.environ.items()
-            if not key.upper().startswith("GIT_")
-        }
-        env["GIT_OPTIONAL_LOCKS"] = "0"
-        proc = subprocess.Popen(  # nosec B603
-            ["git", *args],
-            cwd=root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-        )
-    except OSError as exc:
-        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc
-
-    output = bytearray()
-    stderr = bytearray()
-    failure: list[str] = []
-
-    def drain(stream: BinaryIO | None, target: bytearray, cap: int, code: str) -> None:
-        try:
-            if stream is None:
-                failure.append("DIFF_SNAPSHOT_GIT_ERROR")
-                return
-            read = stream.read
-            while True:
-                chunk = read(64 * 1024)
-                if not chunk:
-                    break
-                if len(target) + len(chunk) > cap:
-                    failure.append(code)
-                    try:
-                        proc.kill()
-                    except OSError:
-                        pass
-                    break
-                target.extend(chunk)
-        except OSError:
-            failure.append("DIFF_SNAPSHOT_GIT_ERROR")
-
-    out_thread = threading.Thread(
-        target=drain,
-        args=(proc.stdout, output, limit, "DIFF_SNAPSHOT_CAPACITY"),
-        daemon=True,
+    return run_git_bounded(
+        root, args, deadline=deadline, limit=limit, popen=subprocess.Popen
     )
-    err_thread = threading.Thread(
-        target=drain,
-        args=(proc.stderr, stderr, 64 * 1024, "DIFF_SNAPSHOT_GIT_ERROR"),
-        daemon=True,
+
+
+def _strip_one_record_terminator(value: bytes) -> bytes:
+    return (
+        value[:-2]
+        if value.endswith(b"\r\n")
+        else (value[:-1] if value.endswith(b"\n") else value)
     )
-    out_thread.start()
-    err_thread.start()
-    try:
-        proc.wait(timeout=_remaining(deadline))
-    except subprocess.TimeoutExpired as exc:
-        proc.kill()
-        proc.wait()
-        raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT") from exc
-    out_thread.join(timeout=_remaining(deadline))
-    err_thread.join(timeout=_remaining(deadline))
-    if out_thread.is_alive() or err_thread.is_alive():
-        proc.kill()
-        raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT")
-    if failure:
-        raise SourceOracleError(failure[0])
-    if proc.returncode != 0:
-        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-    return bytes(output)
 
 
 def _object_format(root: str, *, deadline: float) -> str:
@@ -353,7 +293,8 @@ def oracle_generation(
     _frame(digest, b"root-stat", f"{identity.device},{identity.inode}".encode())
     top_level = git_output(
         root, ["rev-parse", "--show-toplevel"], deadline=end, limit=64 * 1024
-    ).rstrip(b"\r\n")
+    )
+    top_level = _strip_one_record_terminator(top_level)
     try:
         top_root, top_identity = canonical_root(os.fsdecode(top_level))
     except (UnicodeError, SourceOracleError) as exc:
@@ -366,7 +307,8 @@ def oracle_generation(
     _frame(digest, b"HEAD", head)
     git_dir = git_output(
         root, ["rev-parse", "--git-dir"], deadline=end, limit=64 * 1024
-    ).rstrip(b"\r\n")
+    )
+    git_dir = _strip_one_record_terminator(git_dir)
     decoded_git_dir = os.fsdecode(git_dir)
     index_path = (
         os.path.join(decoded_git_dir, "index")
@@ -394,7 +336,14 @@ def oracle_generation(
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
     dirty_raw = git_output(
         root,
-        ["diff-files", "--name-only", "-z", "--no-ext-diff", "--no-textconv"],
+        [
+            "diff-files",
+            "--name-only",
+            "-z",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--ignore-submodules=none",
+        ],
         deadline=end,
         limit=_MAX_INVENTORY_BYTES,
     )
@@ -411,6 +360,34 @@ def oracle_generation(
     tracked_set = set(tracked)
     if not dirty <= tracked_set or untracked & tracked_set:
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    workspace_gitlinks: dict[bytes, bytes] = {}
+    for raw in sorted(dirty) if mode == "diff" else ():
+        entry = index_entries[raw]
+        if not entry.startswith(b"160000 "):
+            continue
+        path = normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
+        safe_gitlink = safe_workspace_path(
+            root, path, deadline=end, limit=0, read_regular=False, allow_directory=True
+        )
+        if safe_gitlink.kind != "directory":
+            continue
+        submodule_root = os.path.join(root, os.fsdecode(raw))
+        oid = _strip_one_record_terminator(
+            git_output(
+                submodule_root,
+                ["rev-parse", "--verify", "HEAD"],
+                deadline=end,
+                limit=4096,
+            )
+        )
+        try:
+            int(oid, 16)
+        except ValueError as exc:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc
+        if len(oid) != len(head):
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        workspace_gitlinks[raw] = b"160000 " + oid + b" 0"
+        _frame(digest, b"worktree-gitlink-head", raw + b"\0" + oid)
     if epoch_out is not None:
         epoch_out.append(
             GitEpoch(
@@ -420,6 +397,7 @@ def oracle_generation(
                 tracked_paths=tuple(tracked),
                 dirty_paths=tuple(sorted(dirty)),
                 untracked_paths=tuple(sorted(untracked)),
+                workspace_gitlinks=tuple(sorted(workspace_gitlinks.items())),
             )
         )
 
@@ -452,7 +430,13 @@ def oracle_generation(
         remaining_content -= charge
 
     diff_args = ["diff", "--cached"] if mode == "staged" else ["diff-files"]
-    diff_args += ["--binary", "--full-index", "--no-ext-diff", "--no-textconv"]
+    diff_args += [
+        "--binary",
+        "--full-index",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--ignore-submodules=none",
+    ]
     patch = git_output(root, diff_args, deadline=end, limit=64 * 1024 * 1024)
     _frame(digest, b"patch", hashlib.sha256(patch).digest())
     return "sg_" + digest.hexdigest(), identity

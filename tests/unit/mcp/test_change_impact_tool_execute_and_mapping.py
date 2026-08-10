@@ -2473,3 +2473,19 @@ def test_strict_scope_response_projects_changed_records(tmp_path, monkeypatch) -
     registry.close_route_lease(
         str(result["diff_snapshot_id"]), str(result["route_lease_id"])
     )
+
+
+def test_frozen_snapshot_rejects_git_magic_scope_with_toon() -> None:
+    # PR #1252 review thread 3747224326.
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(".").execute(
+            {
+                "capture_diff_snapshot": True,
+                "scope_paths": [":(glob)src/*.py"],
+                "output_format": "toon",
+            }
+        )
+    )
+
+    assert result["format"] == "toon"
+    assert "DIFF_SNAPSHOT_UNSUPPORTED_SCOPE" in result["toon_content"]

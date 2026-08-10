@@ -178,6 +178,10 @@ class ChangeImpactTool(BaseMCPTool):
 
             if mode not in ("diff", "staged"):
                 return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_MODE")
+            # Phase 0 frozen scoping is intentionally literal-only. Passing Git
+            # magic to the prefix matcher would silently change its meaning.
+            if any(str(path).startswith(":") for path in scope_paths):
+                return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_SCOPE")
             from ...diff_snapshot_registry import REGISTRY
             from ...source_oracle import SourceOracleError, normalize_repo_path
 

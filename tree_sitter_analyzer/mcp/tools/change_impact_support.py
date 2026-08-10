@@ -175,7 +175,12 @@ TOOL_SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {"type": "string"},
             "default": [],
-            "description": "Optional pathspecs limiting diff, impact, and test mapping to the current queue scope",
+            "description": (
+                "Optional scopes limiting diff, impact, and test mapping to the "
+                "current queue scope. Frozen snapshot Phase 0 accepts literal "
+                "repository-relative paths only; leading-colon Git magic "
+                "pathspecs return DIFF_SNAPSHOT_UNSUPPORTED_SCOPE."
+            ),
         },
         "scope_mode": {
             "type": "string",

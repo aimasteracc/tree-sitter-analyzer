@@ -489,3 +489,67 @@ def test_safe_mode_reports_symlink() -> None:
 def test_payload_requires_pre_oracle_epoch() -> None:
     with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
         capture._capture_payload(".", "staged", 1e20, 1024)
+
+
+@POSIX_SNAPSHOT_TEST
+def test_staged_gitlink_ignores_configured_submodule_suppression(
+    tmp_path: Path,
+) -> None:
+    # PR #1252 review thread 3747224312.
+    root = _repo(tmp_path)
+    oid = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    _git(root, "config", "diff.ignoreSubmodules", "all")
+    _git(root, "update-index", "--add", "--cacheinfo", f"160000,{oid},vendor")
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "staged", [])
+
+    assert [record["path"] for record in result["changed_records"]] == ["vendor"]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_dirty_gitlink_ignores_configured_submodule_suppression(tmp_path: Path) -> None:
+    # PR #1252 review thread 3747224312.
+    child = _repo(tmp_path / "child")
+    root = _repo(tmp_path / "parent")
+    _git(
+        root,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child),
+        "vendor",
+    )
+    _git(root, "commit", "-am", "add submodule")
+    (child / "next.py").write_text("next = True\n")
+    _git(child, "add", "next.py")
+    _git(child, "commit", "-m", "advance")
+    _git(root / "vendor", "pull", "--ff-only")
+    _git(root, "config", "diff.ignoreSubmodules", "all")
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert [record["path"] for record in result["changed_records"]] == ["vendor"]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_snapshot_disables_external_fsmonitor_hook(tmp_path: Path) -> None:
+    # PR #1252 review thread 3747224316.
+    root = _repo(tmp_path)
+    marker = root / "fsmonitor-invoked"
+    hook = root / "hostile-fsmonitor"
+    hook.write_text(f"#!/bin/sh\necho invoked > {marker!s}\nsleep 30\n")
+    hook.chmod(0o755)
+    _git(root, "config", "core.fsmonitor", str(hook))
+    (root / "old.py").write_text("value = 2\n")
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert result["success"] is True
+    assert marker.exists() is False
