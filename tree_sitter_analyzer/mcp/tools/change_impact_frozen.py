@@ -7,7 +7,7 @@ from typing import Any
 
 from ...git_path_codec import path_from_wire, path_to_wire
 from .change_impact_support import _snapshot_records
-from .utils.change_impact_git import _filter_excluded_paths
+from .utils.change_impact_git import _raw_path_is_excluded
 from .utils.change_impact_response import (
     apply_scope_validation,
     attach_queue_ledger,
@@ -28,10 +28,6 @@ def build_frozen_scope_result(
     scope_mode: str,
 ) -> tuple[dict[str, Any], list[dict[str, object]], list[str], list[str]]:
     records = _snapshot_records(frozen)
-    workspace_changed = _filter_excluded_paths(
-        [str(record["path"]) for record in records]
-    )
-    visible_paths = set(workspace_changed)
     frozen_files = {
         path_to_wire(item.record.path): (item.record.raw_path, item.record.raw_old_path)
         for item in getattr(consumer.snapshot, "files", ())
@@ -48,6 +44,19 @@ def build_frozen_scope_result(
             )
             for record in records
         }
+    # Exclude tool-owned paths on their exact raw byte segments.  In
+    # particular, a non-UTF-8 child of .ast-cache must be removed before its
+    # public path becomes a git-path-b64 token.
+    visible_paths = {
+        public_path
+        for public_path, (raw_path, _raw_old_path) in frozen_files.items()
+        if not _raw_path_is_excluded(raw_path)
+    }
+    workspace_changed = [
+        str(record["path"])
+        for record in records
+        if str(record["path"]) in visible_paths
+    ]
     scope_raw = [os.fsencode(scope) for scope in scope_paths]
     identities = {
         identity
@@ -73,7 +82,9 @@ def build_frozen_scope_result(
         inventory_raw = tuple(
             os.fsencode(path) for path in consumer.snapshot.inventory_paths
         )
-    scope_identities = set(inventory_raw).union(identities)
+    scope_identities = {
+        raw for raw in inventory_raw if not _raw_path_is_excluded(raw)
+    }.union(identities)
     invalid_scope = [
         path_to_wire(scope)
         for scope, raw_scope in zip(scope_paths, scope_raw, strict=True)

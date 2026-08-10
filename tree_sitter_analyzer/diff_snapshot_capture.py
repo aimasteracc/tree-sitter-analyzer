@@ -85,6 +85,14 @@ def _decode_path(raw: bytes) -> str:
     return normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
 
 
+def _row_sort_key(row: tuple[str, bytes | None, bytes]) -> tuple[bytes, bytes, bytes]:
+    """Order records by normalized raw destination, then status and source."""
+    status, old, path = row
+    normalized_path = os.fsencode(_decode_path(path))
+    normalized_old = os.fsencode(_decode_path(old)) if old is not None else b""
+    return normalized_path, status.encode("ascii"), normalized_old
+
+
 def _entry_parts(entry: bytes | None) -> tuple[str | None, str | None, str]:
     if entry is None:
         return None, None, "missing"
@@ -380,7 +388,11 @@ def _capture_payload(
             for raw in sorted(dict(frozen.workspace_gitlinks)):
                 if raw in frozen.dirty_paths and raw not in patch_row_paths:
                     rows.append(("M", None, raw))
-            rows.sort(key=lambda row: row[2])
+
+        # Git may be configured to emit any order.  The public records use one
+        # internal raw-path order in both workspace and staged modes; status
+        # and rename source provide deterministic ties.
+        rows.sort(key=_row_sort_key)
 
         files: list[FrozenFile] = []
         dirty_gitlinks = set(dict(frozen.workspace_gitlinks)) & set(frozen.dirty_paths)

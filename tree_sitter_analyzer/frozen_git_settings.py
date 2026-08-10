@@ -89,9 +89,14 @@ def parse_effective_config(raw: bytes) -> tuple[ConfigEntry, ...]:
             if _is_include_directive(key):
                 continue
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        lowered = key.lower()
+        # Snapshot Git supplies its own validated empty order file.  Never bind
+        # payload identity or shadow config to an external diff.orderFile.
+        if lowered == b"diff.orderfile":
+            continue
         if (
             origin.startswith(b"command line:")
-            and key.lower() == b"core.fsmonitor"
+            and lowered == b"core.fsmonitor"
             and value == b"false"
         ):
             continue
@@ -327,13 +332,16 @@ def serialize_config(
     output = bytearray()
     materialized: list[ConfigEntry] = []
     for entry in entries:
+        lowered = entry.key.lower()
+        if lowered == b"diff.orderfile":
+            continue
         section, subsection, name = _key_parts(entry.key)
         output.extend(b"[" + section)
         if subsection is not None:
             output.extend(b" " + _quoted(subsection))
         output.extend(b"]\n\t" + name)
         value = entry.value
-        if entry.key.lower() == b"core.attributesfile" and core_attributes_path:
+        if lowered == b"core.attributesfile" and core_attributes_path:
             value = core_attributes_path
         if value is not None:
             output.extend(b" = " + _quoted(value))

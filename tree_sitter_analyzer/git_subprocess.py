@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 import signal
+import stat
 import subprocess  # nosec B404
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -87,7 +89,7 @@ def _join_threads_bounded(threads: list[threading.Thread]) -> None:
             continue
 
 
-def run_git_bounded(
+def _run_git_bounded_with_order_file(
     root: str,
     args: list[str],
     *,
@@ -97,6 +99,7 @@ def run_git_bounded(
     input_: bytes | None = None,
     popen: PopenFactory = subprocess.Popen,
     file_size_limit: int | None = None,
+    order_file: str,
 ) -> bytes:
     """Run Git with bounded pipes, disabled fsmonitor, and mandatory reaping."""
     if limit < 0:
@@ -117,7 +120,14 @@ def run_git_bounded(
     # All snapshot Git commands resolve the original object graph consistently.
     child_env["GIT_NO_REPLACE_OBJECTS"] = "1"
     process_options = _group_options()
-    command = ["git", "-c", "core.fsmonitor=false", *args]
+    command = [
+        "git",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "diff.orderFile=" + order_file,
+        *args,
+    ]
     if file_size_limit is not None:
         if file_size_limit < 0:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
@@ -210,3 +220,68 @@ def run_git_bounded(
         if not succeeded:
             _kill_and_reap(proc)
             _join_threads_bounded(threads)
+
+
+def _empty_order_file(root: str) -> tuple[int, str]:
+    """Create a validated portable empty order file outside the project."""
+    real_root = os.path.realpath(root)
+    candidates = [tempfile.gettempdir()]
+    if os.name != "nt":
+        candidates.extend(("/var/tmp", "/tmp"))  # nosec B108
+    for candidate in candidates:
+        real_parent = os.path.realpath(candidate)
+        try:
+            inside = os.path.commonpath((real_root, real_parent)) == real_root
+        except ValueError:
+            inside = False
+        if inside or not os.path.isabs(real_parent) or not os.path.isdir(real_parent):
+            continue
+        if not os.access(real_parent, os.W_OK | os.X_OK):
+            continue
+        try:
+            descriptor, path = tempfile.mkstemp(
+                prefix="tsa-empty-order-", dir=real_parent
+            )
+            os.fchmod(descriptor, 0o600)
+            info = os.lstat(path)
+            if not stat.S_ISREG(info.st_mode) or info.st_size != 0:
+                raise OSError("invalid empty order file")
+            return descriptor, path
+        except OSError:
+            continue
+    raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
+
+
+def run_git_bounded(
+    root: str,
+    args: list[str],
+    *,
+    deadline: float,
+    limit: int,
+    env: dict[str, str] | None = None,
+    input_: bytes | None = None,
+    popen: PopenFactory = subprocess.Popen,
+    file_size_limit: int | None = None,
+) -> bytes:
+    """Run Git with external diff ordering neutralized by an empty private file."""
+    descriptor, order_file = _empty_order_file(root)
+    os.close(descriptor)
+    try:
+        return _run_git_bounded_with_order_file(
+            root,
+            args,
+            deadline=deadline,
+            limit=limit,
+            env=env,
+            input_=input_,
+            popen=popen,
+            file_size_limit=file_size_limit,
+            order_file=order_file,
+        )
+    finally:
+        try:
+            os.unlink(order_file)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc

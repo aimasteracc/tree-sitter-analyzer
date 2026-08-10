@@ -43,7 +43,7 @@ from .source_oracle import (
 
 _LOCK = threading.RLock()
 _T = TypeVar("_T")
-_FRAME_DOMAIN = b"tsa-source-generation-v4"
+_FRAME_DOMAIN = b"tsa-source-generation-v5"
 _MAX_INVENTORY_BYTES = 16 * 1024 * 1024
 _MAX_WORKTREE_PATHS = 200_000
 _MAX_WORKTREE_CONTENT_BYTES = 64 * 1024 * 1024
@@ -312,15 +312,13 @@ def oracle_generation(
         if os.path.isabs(decoded_git_dir)
         else os.path.join(root, decoded_git_dir, "index")
     )
+    # Missing is an empty index for born and unborn HEADs, and is framed exactly.
     safe_index = _safe_absolute_regular(
-        index_path,
-        deadline=end,
-        limit=64 * 1024 * 1024,
-        allow_missing=head in (_EMPTY_TREE_SHA1, _EMPTY_TREE_SHA256),
+        index_path, deadline=end, limit=64 * 1024 * 1024, allow_missing=True
     )
     for descriptor in stable_descriptor_chain(safe_index.metadata):
         _frame(digest, b"index-descriptor-identity", descriptor)
-    _frame(digest, b"index-kind", safe_index.kind.encode("ascii"))
+    _frame(digest, b"index-state", safe_index.kind.encode("ascii"))
     index_bytes = safe_index.data or b""
     _frame(digest, b"index-content", hashlib.sha256(index_bytes).digest())
     if index_bytes and has_split_index(index_bytes, object_format=object_format):

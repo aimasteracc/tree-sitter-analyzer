@@ -127,15 +127,29 @@ cache is permitted inside the project. Capture may use mode-0600 normal indexes
 and a temporary object directory outside the project; these are request-scoped,
 share the same deadline/budget, use the repository object store only as a read-only
 alternate, and are unconditionally deleted. The first oracle pass freezes exact
-stage entries plus HEAD/object-format identity. All patch/status/numstat/blob reads
+stage entries plus HEAD/object-format identity. A missing index is explicitly
+framed as missing and modeled as an empty staged index for both born and unborn
+HEADs; the private environment creates it with ``read-tree --empty``, so a born
+HEAD reports every HEAD entry as a staged deletion. All patch/status/numstat/blob reads
 are then bound to rebuilt temporary indexes, never the live index or worktree.
 Arbitrary Git path bytes use the lossless ``git-path-b64:<urlsafe-base64>`` wire
-codec (literal names with that prefix are encoded too). Every snapshot-owned Git
+codec (literal names with that prefix are encoded too). Tool cache exclusions
+match ASCII ``.ast-cache`` and ``.tree-sitter-cache`` raw path segments before
+wire encoding, including descendants whose remaining bytes are not UTF-8; scope,
+reporting, and queue accounting all use that same filtered identity set. Every snapshot-owned Git
 command (oracle generation, HEAD/index enumeration, config/attribute capture,
 hashing, diffing, and request-scoped temporary/shadow plumbing) runs with
 ``GIT_ATTR_NOSYSTEM=1`` and ``GIT_NO_REPLACE_OBJECTS=1``. Replacement refs are
 mutable name-resolution policy and are never consulted: oracle identities, old
-entries, patches, and records all use the original HEAD object graph. P0.2
+entries, patches, and records all use the original HEAD object graph. External
+``diff.orderFile`` is likewise policy, not snapshot input: effective-config
+capture, serialization, and fingerprints discard that key, while every oracle,
+payload, and pre/post verification Git command overrides it with a validated
+request-scoped empty regular file outside the project (never ``/dev/null``).
+Changing the referenced external file is therefore transient and cannot change
+snapshot identity, patch, or record order. Records are finally sorted by
+normalized internal raw destination bytes with status and raw source bytes as
+stable ties, independently of Git output order. P0.2
 therefore deliberately excludes machine system attributes: payload and oracle
 use the same deterministic attribute policy, while repository/info and captured
 ``core.attributesFile`` inputs remain frozen. Worktree attribute sources are not

@@ -443,10 +443,13 @@ def test_file_size_limit_uses_single_threaded_exec_guard() -> None:
         "git",
         "-c",
         "core.fsmonitor=false",
+        "-c",
+        command[9],
         "hash-object",
         "-w",
         "--stdin",
     ]
+    assert str(command[9]).startswith("diff.orderFile=")
     assert "preexec_fn" not in captured
     assert captured["start_new_session"] is True
 

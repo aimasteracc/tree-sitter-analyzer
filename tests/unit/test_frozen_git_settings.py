@@ -60,6 +60,7 @@ def test_effective_config_parser_preserves_order_and_drops_directives() -> None:
         b"file:b\0include.path\nsecret\0"
         b"file:a\0x.flag\0"
         b"file:a\0x.multi\ntwo\0"
+        b"file:a\0diff.orderFile\n/tmp/external-order\0"
         b"command line:\0core.fsmonitor\nfalse\0"
         b"file:b\0includeif.gitdir:repo.path\nother\0"
     )
@@ -102,6 +103,15 @@ def test_git_config_serializer_round_trips_hostile_values(tmp_path: Path) -> Non
     assert settings.parse_effective_config(raw) == materialized
     assert b"live-secret-path" not in serialized
     assert materialized[-1].value == b"/frozen/attrs"
+
+
+def test_git_config_serializer_drops_diff_order_file() -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6X3LAP.
+    serialized, materialized = settings.serialize_config(
+        (settings.ConfigEntry(b"diff.orderFile", b"/external/order"),), None
+    )
+
+    assert (serialized, materialized) == (b"", ())
 
 
 @pytest.mark.parametrize("key", [b"missingdot", b"bad_name.value", b"x.bad_name"])
@@ -497,3 +507,56 @@ def test_git_exec_guard_rejects_unsafe_invocation(argv: list[str]) -> None:
     from tree_sitter_analyzer import git_exec_guard
 
     assert git_exec_guard.main(argv) == 2
+
+
+def test_staged_records_ignore_git_order_and_use_raw_path_order(tmp_path: Path) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6X3LAF.
+    root = make_repo(tmp_path)
+    order = root.parent / f"{root.name}-order"
+    order.write_text("old.py\ngone.py\n")
+    subprocess.run(
+        ["git", "config", "diff.orderFile", str(order)], cwd=root, check=True
+    )
+    (root / "old.py").write_text("value = 2\n")
+    (root / "gone.py").write_text("gone = False\n")
+    subprocess.run(["git", "add", "old.py", "gone.py"], cwd=root, check=True)
+
+    result = DiffSnapshotRegistry().create(str(root), "staged", [])
+
+    assert [item["path"] for item in result["changed_records"]] == [
+        "gone.py",
+        "old.py",
+    ]
+
+
+def test_missing_born_index_is_empty_and_reports_head_deletions(tmp_path: Path) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6X3LAM.
+    root = make_repo(tmp_path)
+    (root / ".git" / "index").unlink()
+
+    result = DiffSnapshotRegistry().create(str(root), "staged", [])
+
+    assert [(item["path"], item["status"]) for item in result["changed_records"]] == [
+        ("gone.py", "D"),
+        ("old.py", "D"),
+    ]
+
+
+def test_external_diff_order_file_content_is_not_snapshot_input(tmp_path: Path) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6X3LAP.
+    root = make_repo(tmp_path)
+    order = root.parent / f"{root.name}-order"
+    order.write_text("old.py\ngone.py\n")
+    subprocess.run(
+        ["git", "config", "diff.orderFile", str(order)], cwd=root, check=True
+    )
+    (root / "old.py").write_text("value = 2\n")
+    subprocess.run(["git", "add", "old.py"], cwd=root, check=True)
+    first = DiffSnapshotRegistry().create(str(root), "staged", [])
+    order.write_text("gone.py\nold.py\n")
+    second = DiffSnapshotRegistry().create(str(root), "staged", [])
+
+    assert (first["source_generation"], first["changed_records"]) == (
+        second["source_generation"],
+        second["changed_records"],
+    )

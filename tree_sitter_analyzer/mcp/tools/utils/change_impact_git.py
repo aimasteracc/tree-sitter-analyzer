@@ -8,6 +8,13 @@ from tree_sitter_analyzer.cache.fingerprint import (
     _EXCLUDE_DIRS as _PROJECT_EXCLUDE_DIRS,
 )
 
+_RAW_EXCLUDE_DIRS = frozenset(name.encode("ascii") for name in _PROJECT_EXCLUDE_DIRS)
+
+
+def _raw_path_is_excluded(path: bytes) -> bool:
+    """Match cache/tool directory segments before any public wire encoding."""
+    return any(segment in _RAW_EXCLUDE_DIRS for segment in path.split(b"/") if segment)
+
 
 def _path_is_excluded(path: str) -> bool:
     """Return True when ``path`` lies inside a tool-owned / cache directory.

@@ -1,6 +1,7 @@
 """Unit tests for change-impact MCP execute integration and test-file mapping."""
 
 import asyncio
+import os
 
 from tests.unit._diff_snapshot_support import install_fake_snapshot_materializer
 from tree_sitter_analyzer.diff_snapshot_capture import ChangedFile
@@ -2392,6 +2393,41 @@ def test_strict_snapshot_filters_tool_cache_paths(tmp_path, monkeypatch) -> None
             {"capture_diff_snapshot": True, "output_format": "json"}
         )
     )
+    assert (result["changed_files"], result["changed_records"]) == ([], [])
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_snapshot_filters_non_utf8_cache_child_before_wire(
+    tmp_path, monkeypatch
+) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6X3LAT.
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    raw_path = b".ast-cache/\xff.db"
+    path = os.fsdecode(raw_path)
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[
+            ChangedFile(
+                path,
+                "M",
+                True,
+                True,
+                False,
+                _raw_path=raw_path,
+            )
+        ],
+        inventory_paths=[path],
+    )
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {"capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+
     assert result["changed_files"] == []
     registry.close_route_lease(
         str(result["diff_snapshot_id"]), str(result["route_lease_id"])
