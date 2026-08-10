@@ -1815,7 +1815,7 @@ def test_pr_impact_scope_uses_filtered_records_and_finalizes(
 def test_name_status_parser_fails_closed_on_truncated_git_output(monkeypatch) -> None:
     import time
 
-    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+    import tree_sitter_analyzer.diff_snapshot_capture as snapshots
     from tree_sitter_analyzer.source_oracle import SourceOracleError
 
     monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: b"M\0")
@@ -1833,7 +1833,7 @@ def test_payload_rejects_missing_workspace_epoch_and_budget_overflow(
 
     import pytest
 
-    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+    import tree_sitter_analyzer.diff_snapshot_capture as snapshots
     from tree_sitter_analyzer.source_oracle import SafePath, SourceOracleError
 
     monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: b"")
@@ -1889,7 +1889,7 @@ def test_create_rejects_oracle_root_identity_drift(tmp_path, monkeypatch) -> Non
 def test_name_status_deduplicates_tracked_and_untracked(monkeypatch) -> None:
     import time
 
-    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+    import tree_sitter_analyzer.diff_snapshot_capture as snapshots
 
     outputs = iter((b"A\0a.py\0", b"a.py\0"))
     monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: next(outputs))
@@ -1902,7 +1902,7 @@ def test_name_status_deduplicates_tracked_and_untracked(monkeypatch) -> None:
 def test_payload_accepts_empty_metadata_for_untracked_record(monkeypatch) -> None:
     import time
 
-    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+    import tree_sitter_analyzer.diff_snapshot_capture as snapshots
     from tree_sitter_analyzer.source_oracle import SafePath
 
     monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: b"")

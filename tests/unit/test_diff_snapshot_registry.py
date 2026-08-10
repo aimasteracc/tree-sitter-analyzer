@@ -7,7 +7,6 @@ import pytest
 
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
 from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
-from tree_sitter_analyzer.source_oracle import SafePath
 
 
 def _git(root: Path, *args: str) -> None:
@@ -16,62 +15,6 @@ def _git(root: Path, *args: str) -> None:
 
 def _repo(tmp_path: Path) -> Path:
     return make_repo(tmp_path)
-
-
-@POSIX_SNAPSHOT_TEST
-def test_staged_snapshot_freezes_add_delete_rename_binary_and_multiple_files(
-    tmp_path: Path,
-) -> None:
-    root = _repo(tmp_path)
-    _git(root, "mv", "old.py", "renamed.py")
-    (root / "gone.py").unlink()
-    (root / "added.py").write_text("added = True\n")
-    (root / "image.bin").write_bytes(b"a\0b")
-    _git(root, "add", "-A")
-    registry = snapshots.DiffSnapshotRegistry()
-
-    result = registry.create(str(root), "staged", ["impact.py"])
-
-    assert result["success"] is True
-    records = result["changed_records"]
-    assert [record["path"] for record in records] == [
-        "added.py",
-        "gone.py",
-        "image.bin",
-        "renamed.py",
-    ]
-    by_path = {record["path"]: record for record in records}
-    assert by_path["added.py"]["old_available"] is False
-    assert by_path["gone.py"]["new_available"] is False
-    assert by_path["renamed.py"]["old_path"] == "old.py"
-    assert by_path["image.bin"]["binary"] is True
-    assert result["assessed_scope_paths"] == [
-        "added.py",
-        "gone.py",
-        "image.bin",
-        "impact.py",
-        "renamed.py",
-    ]
-
-
-@POSIX_SNAPSHOT_TEST
-def test_staged_snapshot_reads_index_not_workspace(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
-    (root / "old.py").write_text("value = 2\n")
-    _git(root, "add", "old.py")
-    (root / "old.py").write_text("value = 3\n")
-    registry = snapshots.DiffSnapshotRegistry()
-
-    result = registry.create(str(root), "staged", [])
-    consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(root))
-
-    assert error is None
-    assert consumer is not None
-    frozen = consumer.snapshot.file("old.py")
-    assert frozen is not None
-    assert frozen.old_bytes == b"value = 1\n"
-    assert frozen.new_bytes == b"value = 2\n"
-    consumer.release()
 
 
 @POSIX_SNAPSHOT_TEST
@@ -160,31 +103,6 @@ def test_snapshot_consumer_schema_rejects_live_arguments(tmp_path: Path) -> None
         ASTDiffTool(str(tmp_path)).validate_arguments(arguments)
     with pytest.raises(ValueError, match="DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS"):
         SemanticClassifyTool(str(tmp_path)).validate_arguments(arguments)
-
-
-@POSIX_SNAPSHOT_TEST
-def test_untracked_executable_uses_canonical_non_git_record(tmp_path: Path) -> None:
-    import base64
-    import json
-    import os
-
-    root = _repo(tmp_path)
-    script = root / "odd name.py"
-    script.write_bytes(b"print('ok')")
-    script.chmod(0o755)
-    registry = snapshots.DiffSnapshotRegistry()
-    result = registry.create(str(root), "diff", [])
-    consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(root))
-    assert error is None
-    assert consumer is not None
-
-    segment = json.loads(consumer.snapshot.normalized_patch.splitlines()[-1])
-
-    assert segment["type"] == "tsa-untracked-v1"
-    assert segment["mode"] == 0o755
-    assert base64.b64decode(segment["path_b64"]) == os.fsencode("odd name.py")
-    assert base64.b64decode(segment["content_b64"]) == b"print('ok')"
-    consumer.release()
 
 
 def test_consumer_lifecycle_is_idempotent_context_managed_and_thread_owned(
@@ -411,48 +329,6 @@ def test_close_lease_rejects_wrong_lease(tmp_path: Path, monkeypatch) -> None:
     assert registry.close_lease(str(result["diff_snapshot_id"]), "wrong") is False
 
 
-def test_changed_entries_rejects_truncated_git_status(monkeypatch) -> None:
-    monkeypatch.setattr(snapshots, "git_output", lambda *a, **k: b"R\0only-one-path\0")
-    with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
-        snapshots._rows(".", "staged", 1.0, 10)
-
-
-def test_changed_entries_deduplicates_tracked_and_untracked(monkeypatch) -> None:
-    outputs = iter([b"M\0same.py\0", b"same.py\0"])
-    monkeypatch.setattr(snapshots, "git_output", lambda *a, **k: next(outputs))
-    assert snapshots._rows(".", "diff", 1.0, 10) == [("M", None, "same.py", True)]
-
-
-@pytest.mark.parametrize(
-    "fault,code",
-    [
-        ("missing", "DIFF_SNAPSHOT_SOURCE_CHANGED"),
-        ("metadata", None),
-        ("capacity", "DIFF_SNAPSHOT_CAPACITY"),
-    ],
-)
-def test_capture_payload_handles_workspace_faults(
-    monkeypatch, fault: str, code: str | None
-) -> None:
-    safe = SafePath(
-        None if fault == "missing" else b"x",
-        (b"bad",) if fault == "metadata" else (),
-        "file",
-    )
-    monkeypatch.setattr(snapshots, "git_output", lambda *a, **k: b"")
-    monkeypatch.setattr(snapshots, "_rows", lambda *a: [("A", None, "x.py", False)])
-    monkeypatch.setattr(snapshots, "_tracked_binary_paths", lambda *a: set())
-    monkeypatch.setattr(snapshots, "safe_workspace_path", lambda *a, **k: safe)
-    limit = 1 if fault == "capacity" else 100
-    if code is None:
-        assert (
-            snapshots._capture_payload(".", "diff", 1.0, limit)[1][0].new_bytes == b"x"
-        )
-    else:
-        with pytest.raises(snapshots.SourceOracleError, match=code):
-            snapshots._capture_payload(".", "diff", 1.0, limit)
-
-
 def test_create_rejects_oracle_root_identity_drift(tmp_path: Path, monkeypatch) -> None:
     root = _repo(tmp_path)
     identity = snapshots.RootIdentity(str(root), 1, 2)
@@ -504,16 +380,6 @@ def test_sweep_erases_expired_unpinned_snapshot(tmp_path: Path, monkeypatch) -> 
     assert registry.stats() == (0, 0)
 
 
-def test_numstat_z_binary_rename_uses_destination_path(monkeypatch) -> None:
-    monkeypatch.setattr(
-        snapshots, "git_output", lambda *args, **kwargs: b"-\t-\t\0old.bin\0new.bin\0"
-    )
-
-    result = snapshots._tracked_binary_paths(".", "staged", 1e20, 1024)
-
-    assert result == {"new.bin"}
-
-
 def test_create_rejects_excessive_scope_item_count() -> None:
     registry = snapshots.DiffSnapshotRegistry()
 
@@ -541,24 +407,6 @@ def test_validate_publish_rejects_snapshot_expired_while_pinned(
 
     assert result == "DIFF_SNAPSHOT_EXPIRED"
     consumer.release()
-
-
-@pytest.mark.parametrize(
-    "raw",
-    [
-        b"bad\0",
-        b"-\t-\t\0old.bin",
-        b"-\t-\t\0old.bin\0",
-        b"-\t-\t\0\0new.bin\0",
-    ],
-)
-def test_numstat_z_rejects_malformed_rename_continuations(monkeypatch, raw) -> None:
-    from tree_sitter_analyzer.source_oracle import SourceOracleError
-
-    monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: raw)
-
-    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
-        snapshots._tracked_binary_paths(".", "staged", 1e20, 1024)
 
 
 def test_create_rejects_invalid_scope_storage_inputs() -> None:

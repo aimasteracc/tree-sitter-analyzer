@@ -319,8 +319,10 @@ def test_oracle_generation_binds_clean_tracked_atomic_replace(tmp_path: Path) ->
 def test_oracle_generation_fails_closed_without_nofollow_workspace_reads(
     tmp_path: Path, monkeypatch
 ) -> None:
+    import tree_sitter_analyzer.source_oracle_git as oracle_git
+
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    monkeypatch.setattr(oracle, "_supports_nofollow", lambda: False)
+    monkeypatch.setattr(oracle_git, "_supports_nofollow", lambda: False)
 
     _error(
         lambda: oracle.oracle_generation(str(tmp_path)),
