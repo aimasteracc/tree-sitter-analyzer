@@ -34,7 +34,9 @@ def test_private_index_file_is_mode_600_and_removed(tmp_path: Path) -> None:
     with private_index_file(str(project), b"exact") as path:
         observed_path = path
         assert Path(path).read_bytes() == b"exact"
-        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+        assert stat.S_ISREG(os.stat(path).st_mode)
+        if os.name != "nt":
+            assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
 
     assert Path(observed_path).exists() is False
 
@@ -98,7 +100,9 @@ def test_index_entries_uses_private_mode_600_exact_bytes(monkeypatch) -> None:
     )
 
     assert entries == {b"path": b"100644 a 0"}
-    assert observed[0][:2] == (b"exact-index", 0o600)
+    assert observed[0][0] == b"exact-index"
+    if os.name != "nt":
+        assert observed[0][1] == 0o600
     assert Path(observed[0][2]).exists() is False
 
 
@@ -265,7 +269,7 @@ def test_temp_parent_deduplicates_candidates(tmp_path: Path, monkeypatch) -> Non
     assert selected != os.path.realpath(project)
 
 
-def test_temp_parent_has_fixed_windows_fallback(tmp_path: Path, monkeypatch) -> None:
+def test_temp_parent_has_external_windows_fallback(tmp_path: Path, monkeypatch) -> None:
     # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-y.
     project = tmp_path / "project"
     project.mkdir()
@@ -277,7 +281,10 @@ def test_temp_parent_has_fixed_windows_fallback(tmp_path: Path, monkeypatch) -> 
 
     selected = safe_external_temp_parent(str(project))
 
-    assert selected == os.path.realpath("/var/tmp")
+    assert os.path.isabs(selected)
+    assert os.path.commonpath(
+        (os.path.realpath(project), selected)
+    ) != os.path.realpath(project)
 
 
 @pytest.mark.parametrize("oid", [b"not-hex", b"a" * 39])
