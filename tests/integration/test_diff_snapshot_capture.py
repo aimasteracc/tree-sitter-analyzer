@@ -85,6 +85,30 @@ def test_staged_snapshot_reads_index_not_workspace(tmp_path: Path) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
+def test_workspace_patch_uses_canonical_prefixes_with_mnemonic_config(
+    tmp_path: Path,
+) -> None:
+    # PR #1252 review comment 3749572166: patches are a canonical machine format.
+    root = _repo(tmp_path)
+    _git(root, "config", "diff.mnemonicPrefix", "true")
+    (root / "old.py").write_text("value = 2\n")
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+
+    assert error is None
+    assert consumer is not None
+    patch = consumer.snapshot.normalized_patch
+    assert b"diff --git a/old.py b/old.py" in patch
+    assert b"--- a/old.py" in patch
+    assert b"+++ b/old.py" in patch
+    assert b"diff --git c/" not in patch
+    assert b"diff --git i/" not in patch
+    assert b"diff --git w/" not in patch
+    consumer.release()
+
+
+@POSIX_SNAPSHOT_TEST
 def test_staged_snapshot_inventory_contains_only_index_tracked_paths(
     tmp_path: Path,
 ) -> None:

@@ -14,6 +14,7 @@ import tree_sitter_analyzer.frozen_git_index as frozen_index
 import tree_sitter_analyzer.git_subprocess as bounded
 import tree_sitter_analyzer.source_oracle_git as oracle
 from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
+from tree_sitter_analyzer.source_oracle import SafePath
 
 
 def _error(call, code: str) -> None:
@@ -418,6 +419,29 @@ def test_recursive_object_store_usage_rejects_shared_budget(tmp_path: Path) -> N
     environment.object_directory = str(tmp_path / "objects")
 
     _error(environment._refresh_object_usage, "DIFF_SNAPSHOT_CAPACITY")
+
+
+def test_hash_object_reserves_shared_capacity_before_git_write(tmp_path: Path) -> None:
+    # PR #1252 review comment 3749572169: subprocess object writes reserve too.
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    index = shadow / "index"
+    index.write_bytes(b"")
+    epoch = oracle.GitEpoch(b"head", "sha1", (), (), (), ())
+    environment = epoch_module.FrozenGitEnvironment(
+        str(tmp_path), epoch, 1e20, storage_byte_limit=100
+    )
+    environment._directory = str(shadow)
+    environment.index_path = str(index)
+    calls: list[list[str]] = []
+    environment.run = lambda args, **_kwargs: calls.append(args) or b""  # type: ignore[method-assign]
+
+    with pytest.raises(oracle.SourceOracleError, match="^DIFF_SNAPSHOT_CAPACITY$"):
+        environment.apply_workspace(
+            {b"large.py": SafePath(b"x" * 1024, (b"1,2,33188,0,0,0",), "file")}
+        )
+
+    assert calls == []
 
 
 def test_has_split_index_rejects_missing_entry_terminator() -> None:

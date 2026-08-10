@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import os
-import shutil
 import stat
 import tempfile
+import threading
 from collections.abc import Mapping
 
 from .frozen_git_index import safe_external_temp_parent
@@ -20,7 +20,7 @@ from .frozen_git_settings import (
     serialize_config,
 )
 from .git_subprocess import run_git_bounded
-from .secure_temp import set_private_mode
+from .private_temp_materialization import copy_private, write_private
 from .source_oracle import (
     SafePath,
     SourceOracleError,
@@ -80,6 +80,7 @@ class FrozenGitEnvironment:
         self._materialized_config: tuple[ConfigEntry, ...] = ()
         self._base_temporary_bytes = 0
         self._base_temporary_files = 0
+        self._storage_lock = threading.RLock()
         self.storage_byte_limit = storage_byte_limit
         self.storage_file_limit = storage_file_limit
         self.temporary_bytes = 0
@@ -160,24 +161,37 @@ class FrozenGitEnvironment:
             if self.epoch.index_bytes:
                 self._write_private(self.index_path, self.epoch.index_bytes)
             else:
-                self.run(["read-tree", "--empty"], limit=4096)
-                os.chmod(self.index_path, 0o600)
-                self._account_temporary(os.lstat(self.index_path).st_size, 1)
+                header = b"DIRC" + (2).to_bytes(4, "big") + (0).to_bytes(4, "big")
+                checksum = hashlib.new(self.epoch.object_format, header).digest()
+                self._write_private(self.index_path, header + checksum)
             return self
         except Exception:
             self.__exit__()
             raise
 
+    def _reserve_temporary(self, size: int, files: int) -> None:
+        with self._storage_lock:
+            next_bytes = self.temporary_bytes + size
+            next_files = self.temporary_files + files
+            if (
+                next_bytes > self.storage_byte_limit
+                or next_files > self.storage_file_limit
+            ):
+                raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+            self._base_temporary_bytes += size
+            self._base_temporary_files += files
+            self.temporary_bytes = next_bytes
+            self.temporary_files = next_files
+
+    def _rollback_temporary(self, size: int, files: int) -> None:
+        with self._storage_lock:
+            self._base_temporary_bytes -= size
+            self._base_temporary_files -= files
+            self.temporary_bytes -= size
+            self.temporary_files -= files
+
     def _account_temporary(self, size: int, files: int) -> None:
-        self._base_temporary_bytes += size
-        self._base_temporary_files += files
-        self.temporary_bytes = self._base_temporary_bytes
-        self.temporary_files = self._base_temporary_files
-        if (
-            self.temporary_bytes > self.storage_byte_limit
-            or self.temporary_files > self.storage_file_limit
-        ):
-            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+        self._reserve_temporary(size, files)
 
     def _ensure_worktree_parent(self, destination: str) -> None:
         parent = os.path.dirname(destination)
@@ -199,13 +213,15 @@ class FrozenGitEnvironment:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
 
     def _write_private(self, path: str, data: bytes) -> None:
-        try:
-            with open(path, "xb") as stream:
-                set_private_mode(stream.fileno(), path)
-                stream.write(data)
-        except OSError as exc:
-            raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
-        self._account_temporary(len(data), 1)
+        write_private(path, data, self._reserve_temporary, self._rollback_temporary)
+
+    def _copy_private(self, source: str, destination: str) -> None:
+        copy_private(
+            source,
+            destination,
+            self._reserve_temporary,
+            self._rollback_temporary,
+        )
 
     def _materialize_regular(self, item: object, destination: str) -> None:
         kind = getattr(item, "kind", None)
@@ -382,9 +398,7 @@ class FrozenGitEnvironment:
         if self._directory is None:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR")
         workspace_index = os.path.join(self._directory, "workspace-index")
-        shutil.copyfile(self.index_path, workspace_index)
-        os.chmod(workspace_index, 0o600)
-        self._account_temporary(os.lstat(workspace_index).st_size, 1)
+        self._copy_private(self.index_path, workspace_index)
         self.index_path = workspace_index
         result: dict[bytes, bytes] = {}
         # Remove deletions before additions: an untracked regular/symlink may
@@ -448,13 +462,21 @@ class FrozenGitEnvironment:
                 # ``--path`` applies core.autocrlf, eol, and clean filters using
                 # the exact raw repository path.  argv execution is shell-free.
                 hash_args.insert(2, "--path=" + os.fsdecode(raw))
-            remaining_storage = self.storage_byte_limit - self.temporary_bytes
-            oid = self.run(
-                hash_args,
-                limit=4096,
-                input_=safe.data,
-                file_size_limit=remaining_storage,
-            ).strip()
+            # A loose object can be slightly larger than its input because of
+            # the Git header and zlib framing. Reserve that bounded overhead,
+            # plus the fan-out directory and object entry, before Git writes.
+            zlib_overhead = ((len(safe.data) + 16_382) // 16_383) * 5 + 128
+            object_reservation = len(safe.data) + zlib_overhead
+            self._reserve_temporary(object_reservation, 2)
+            try:
+                oid = self.run(
+                    hash_args,
+                    limit=4096,
+                    input_=safe.data,
+                    file_size_limit=object_reservation,
+                ).strip()
+            finally:
+                self._rollback_temporary(object_reservation, 2)
             self._refresh_object_usage()
             if not oid:
                 raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")

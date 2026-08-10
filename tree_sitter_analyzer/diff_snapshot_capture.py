@@ -361,6 +361,10 @@ def _capture_payload(
             "--cached",
             "--binary",
             "--full-index",
+            # Normalized patches are a machine format, independent of
+            # diff.mnemonicPrefix and the reconstructed commit/index roles.
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
             "--find-renames",
             "--no-color",
             "--no-ext-diff",

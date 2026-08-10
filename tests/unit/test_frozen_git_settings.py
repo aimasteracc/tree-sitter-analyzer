@@ -9,6 +9,7 @@ import pytest
 
 from tree_sitter_analyzer import diff_snapshot_epoch as epoch_module
 from tree_sitter_analyzer import frozen_git_settings as settings
+from tree_sitter_analyzer import private_temp_materialization as materialization
 from tree_sitter_analyzer.source_epoch import (
     GitEpoch,
     SourceEpoch,
@@ -287,6 +288,77 @@ def test_shadow_private_write_wraps_existing_destination(tmp_path: Path) -> None
 
     with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPTURE_ERROR$"):
         environment._write_private(str(target), b"replacement")
+
+
+@pytest.mark.parametrize("name", ["config", "index"])
+def test_shadow_capacity_rejects_megabyte_private_file_before_open(
+    tmp_path: Path, monkeypatch, name: str
+) -> None:
+    # PR #1252 review comment 3749572169: capacity is a pre-write invariant.
+    data = b"x" * (1024 * 1024)
+    environment = epoch_module.FrozenGitEnvironment(
+        str(tmp_path), _epoch(), time.monotonic() + 5, storage_byte_limit=len(data) - 1
+    )
+    calls: list[str] = []
+
+    def forbidden_open(*args, **kwargs):
+        calls.append(str(args[0]))
+        raise AssertionError("capacity failure must not open a destination")
+
+    monkeypatch.setattr(materialization, "open", forbidden_open, raising=False)
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPACITY$"):
+        environment._write_private(str(tmp_path / name), data)
+
+    assert calls == []
+
+
+@pytest.mark.parametrize("failure", ["chmod", "write", "fsync"])
+def test_shadow_private_write_failure_rolls_back_and_cleans(
+    tmp_path: Path, monkeypatch, failure: str
+) -> None:
+    target = tmp_path / "private"
+    environment = epoch_module.FrozenGitEnvironment(
+        str(tmp_path), _epoch(), time.monotonic() + 5
+    )
+    if failure == "chmod":
+        monkeypatch.setattr(
+            materialization,
+            "set_private_mode",
+            lambda *_a: (_ for _ in ()).throw(OSError("chmod")),
+        )
+    elif failure == "fsync":
+        monkeypatch.setattr(
+            materialization.os,
+            "fsync",
+            lambda *_a: (_ for _ in ()).throw(OSError("fsync")),
+        )
+    else:
+        real_open = open
+
+        class FailedWrite:
+            def __enter__(self):
+                self.stream = real_open(target, "xb")
+                return self
+
+            def __exit__(self, *args):
+                self.stream.close()
+
+            def fileno(self):
+                return self.stream.fileno()
+
+            def write(self, _data):
+                raise OSError("write")
+
+        monkeypatch.setattr(
+            materialization, "open", lambda *_a, **_k: FailedWrite(), raising=False
+        )
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPTURE_ERROR$"):
+        environment._write_private(str(target), b"payload")
+
+    assert (environment.temporary_bytes, environment.temporary_files) == (0, 0)
+    assert target.exists() is False
 
 
 def test_shadow_rejects_non_regular_setting_file(tmp_path: Path) -> None:
