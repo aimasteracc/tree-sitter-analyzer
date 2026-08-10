@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import tree_sitter_analyzer.diff_snapshot_epoch as epoch_module
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+import tree_sitter_analyzer.git_subprocess as git_subprocess
 from tests.unit._diff_snapshot_support import (
     POSIX_SNAPSHOT_TEST,
     make_repo,
@@ -167,3 +169,164 @@ def test_staged_deletion_freezes_ignored_old_side_attributes(
         "success": False,
         "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
     }
+
+
+@POSIX_SNAPSHOT_TEST
+def test_staged_snapshot_ignores_untracked_fifo_and_later_mutation(
+    tmp_path: Path,
+) -> None:
+    # PR #1252 review thread 3751807896: staged epochs bind only HEAD/index/settings.
+    root = _repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    _git(root, "add", "old.py")
+    fifo = root / "untracked.fifo"
+    os.mkfifo(fifo)
+    registry = snapshots.DiffSnapshotRegistry()
+
+    created = registry.create(str(root), "staged", [])
+    fifo.unlink()
+    (root / "untracked.txt").write_text("unrelated mutation\n")
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+
+    assert error is None
+    assert consumer is not None
+    consumer.release()
+
+
+@POSIX_SNAPSHOT_TEST
+def test_frozen_order_file_uses_project_safety_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3751807878: shadow cwd cannot authorize project temp.
+    root = _repo(tmp_path / "project")
+    ignored_temp = root / "ignored-temp"
+    ignored_temp.mkdir()
+    (root / ".gitignore").write_text("ignored-temp/\n")
+    (root / "old.py").write_text("value = 2\n")
+    _git(root, "add", "old.py")
+    external = tmp_path / "external-temp"
+    external.mkdir()
+    parents: list[str] = []
+    original = git_subprocess.create_private_temp
+
+    def capture_parent(**kwargs):
+        parents.append(str(kwargs["directory"]))
+        return original(**kwargs)
+
+    monkeypatch.setattr(
+        git_subprocess,
+        "_order_file_candidates",
+        lambda: [str(ignored_temp), str(external)],
+    )
+    monkeypatch.setattr(git_subprocess, "create_private_temp", capture_parent)
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "staged", [])
+
+    assert result["success"] is True
+    assert parents == [str(external)] * len(parents)
+    assert tuple(ignored_temp.iterdir()) == ()
+
+
+@POSIX_SNAPSHOT_TEST
+def test_staged_deletion_verifies_exact_settings_inventory(tmp_path: Path) -> None:
+    # PR #1252 review thread 3751807909: shadow check-attr reuses HEAD-only paths.
+    root = _repo(tmp_path)
+    nested = root / "nested"
+    nested.mkdir()
+    (nested / ".gitattributes").write_text("old.txt binary\n")
+    (nested / "old.txt").write_text("old side\n")
+    _git(root, "add", "nested/.gitattributes", "nested/old.txt")
+    _git(root, "commit", "-m", "attribute baseline")
+    _git(root, "rm", "nested/old.txt")
+
+    old_oid = (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD:nested/old.txt"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+        )
+        .stdout.strip()
+        .decode()
+    )
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "staged", [])
+
+    assert result["success"] is True
+    assert result["changed_records"] == [
+        {
+            "path": "nested/old.txt",
+            "status": "D",
+            "old_available": True,
+            "new_available": False,
+            "binary": True,
+            "patch_available": True,
+            "old_kind": "file",
+            "new_kind": "missing",
+            "old_mode": "100644",
+            "old_oid": old_oid,
+        }
+    ]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_staged_gitlink_patch_forces_short_format(tmp_path: Path) -> None:
+    # PR #1252 review thread 3751807924: config cannot enable child commit traversal.
+    child = tmp_path / "child"
+    child.mkdir()
+    _git(child, "init")
+    _git(child, "config", "user.email", "test@example.com")
+    _git(child, "config", "user.name", "Test")
+    (child / "value.txt").write_text("one\n")
+    _git(child, "add", "value.txt")
+    _git(child, "commit", "-m", "one")
+    root = _repo(tmp_path / "super")
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            str(child),
+            "sub",
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    _git(root, "commit", "-am", "gitlink baseline")
+    (child / "value.txt").write_text("two\n")
+    _git(child, "commit", "-am", "two")
+    _git(root / "sub", "fetch")
+    _git(root / "sub", "checkout", "FETCH_HEAD")
+    _git(root, "add", "sub")
+    _git(root, "config", "diff.submodule", "log")
+    expected = subprocess.run(
+        [
+            "git",
+            "diff",
+            "--cached",
+            "--binary",
+            "--full-index",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            "--find-renames",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--submodule=short",
+            "--ignore-submodules=none",
+            "HEAD",
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    ).stdout
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "staged", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+
+    assert error is None
+    assert consumer is not None
+    assert consumer.snapshot.normalized_patch == expected
+    assert b"Submodule sub " not in consumer.snapshot.normalized_patch
+    consumer.release()

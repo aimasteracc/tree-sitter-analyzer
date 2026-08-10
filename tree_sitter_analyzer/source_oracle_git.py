@@ -333,39 +333,42 @@ def oracle_generation(
     filter_candidates = tuple(sorted(index_entries))
     if filter_candidates:
         reject_frozen_filters(root, index_bytes, filter_candidates, end, object_format)
-    refresh_temporary = 2 * len(index_bytes)
-    if refresh_temporary > remaining_bytes:  # pragma: no cover - index gate
-        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
-    dirty_raw = _frozen_index_output(
-        root,
-        index_bytes,
-        [
-            "diff-files",
-            "--name-only",
-            "-z",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--ignore-submodules=none",
-        ],
-        deadline=end,
-        limit=min(_MAX_INVENTORY_BYTES, remaining_bytes - refresh_temporary),
-        refresh=True,
-        object_format=object_format,
-    )
-    if (  # pragma: no cover - bounded output enforces first
-        len(index_bytes) > remaining_bytes - len(dirty_raw)
-    ):
-        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
-    untracked_raw = _frozen_index_output(
-        root,
-        index_bytes,
-        ["ls-files", "--others", "--exclude-standard", "-z"],
-        deadline=end,
-        limit=min(
-            _MAX_INVENTORY_BYTES,
-            remaining_bytes - len(dirty_raw) - len(index_bytes),
-        ),
-    )
+    dirty_raw = b""
+    untracked_raw = b""
+    if mode == "diff":
+        refresh_temporary = 2 * len(index_bytes)
+        if refresh_temporary > remaining_bytes:  # pragma: no cover - index gate
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+        dirty_raw = _frozen_index_output(
+            root,
+            index_bytes,
+            [
+                "diff-files",
+                "--name-only",
+                "-z",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--ignore-submodules=none",
+            ],
+            deadline=end,
+            limit=min(_MAX_INVENTORY_BYTES, remaining_bytes - refresh_temporary),
+            refresh=True,
+            object_format=object_format,
+        )
+        if (  # pragma: no cover - bounded output enforces first
+            len(index_bytes) > remaining_bytes - len(dirty_raw)
+        ):
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+        untracked_raw = _frozen_index_output(
+            root,
+            index_bytes,
+            ["ls-files", "--others", "--exclude-standard", "-z"],
+            deadline=end,
+            limit=min(
+                _MAX_INVENTORY_BYTES,
+                remaining_bytes - len(dirty_raw) - len(index_bytes),
+            ),
+        )
     dirty = {path for path in dirty_raw.split(b"\0") if path}
     untracked = {path for path in untracked_raw.split(b"\0") if path}
     remaining_bytes -= len(dirty_raw) + len(untracked_raw)
@@ -376,10 +379,10 @@ def oracle_generation(
     tracked_set = set(tracked)
     if not dirty <= tracked_set or untracked & tracked_set:
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-    # Attribute lookup for staged deletions and rename sources still walks the
-    # old-side path.  Preserve those HEAD-only ancestors in the shadow settings
-    # inventory even though the paths no longer exist in the frozen index.
-    settings_inventory = tuple(sorted(tracked_set | set(head_entries) | untracked))
+    # Preserve HEAD-only deletion/rename paths in the exact settings inventory.
+    settings_inventory = tuple(sorted(
+        tracked_set | set(head_entries) | (untracked if mode == "diff" else set())
+    ))
     frozen_settings = capture_settings(
         root,
         settings_inventory,
@@ -407,11 +410,8 @@ def oracle_generation(
         entry = index_entries[raw]
         if not entry.startswith(b"160000 "):
             continue
-        # A frozen top-level index already supplies the only safe gitlink
-        # identity.  Never inspect the worktree leaf or run Git inside a
-        # submodule: the leaf may be concurrently replaced by a symlink, FIFO,
-        # or hostile repository.  Dirty is retained as explicit unsupported
-        # evidence even when the eventual patch has no row.
+        # Never inspect a live gitlink leaf; retain dirty state as explicit
+        # unsupported evidence even when the patch has no row.
         workspace_gitlinks[raw] = entry
         _frame(digest, b"worktree-gitlink-dirty", raw)
         _frame(digest, b"worktree-gitlink-index", raw + b"\0" + entry)
@@ -430,11 +430,11 @@ def oracle_generation(
                 index_bytes=index_bytes,
                 source_epoch=settings_epoch,
                 git_settings=frozen_settings,
-                settings_paths=settings_inventory,
+                settings_inventory=settings_inventory,
             )
         )
     remaining_content = min(_MAX_WORKTREE_CONTENT_BYTES, remaining_bytes)
-    for raw in sorted(tracked, key=os.fsencode):
+    for raw in sorted(tracked, key=os.fsencode) if mode == "diff" else ():
         charge = _frame_workspace_path(
             digest,
             root,
@@ -449,7 +449,7 @@ def oracle_generation(
             manifest=manifest,
         )
         remaining_content -= charge
-    for raw in sorted(untracked, key=os.fsencode):
+    for raw in sorted(untracked, key=os.fsencode) if mode == "diff" else ():
         charge = _frame_workspace_path(
             digest,
             root,
@@ -472,6 +472,7 @@ def oracle_generation(
         "--no-color",
         "--no-ext-diff",
         "--no-textconv",
+        "--submodule=short",
         # Dirty gitlinks are framed separately from the frozen index and dirty
         # inventory.  Asking patch-producing Git to inspect their live leaves
         # would reintroduce child-repository and special-file reads.

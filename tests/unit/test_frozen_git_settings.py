@@ -49,6 +49,7 @@ def _epoch(git_settings=None, source_epoch=None, tracked_paths=()):
         index_bytes=b"index",
         source_epoch=source_epoch,
         git_settings=git_settings,
+        settings_inventory=tracked_paths,
     )
 
 

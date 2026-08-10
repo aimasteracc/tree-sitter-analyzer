@@ -280,6 +280,7 @@ class FrozenGitEnvironment:
             env=self._env(),
             input_=input_,
             file_size_limit=file_size_limit,
+            temp_safety_root=self.root,
         )
     def verify_source_epoch(self) -> None:
         """Recompute the pre-oracle fingerprints inside the isolated shadow."""
@@ -289,9 +290,7 @@ class FrozenGitEnvironment:
             return
         if not isinstance(settings, FrozenGitSettings):
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        paths = self.epoch.settings_paths or tuple(
-            sorted(set(self.epoch.tracked_paths) | set(self.epoch.untracked_paths))
-        )
+        paths = self.epoch.settings_inventory
         path_input = b"".join(path + b"\0" for path in paths)
         if len(path_input) > 16 * 1024 * 1024:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")

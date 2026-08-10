@@ -46,7 +46,7 @@ class GitEpoch:
     index_bytes: bytes = b""
     source_epoch: SourceEpoch | None = None
     git_settings: FrozenGitSettings | None = None
-    settings_paths: tuple[bytes, ...] = ()
+    settings_inventory: tuple[bytes, ...] = ()
 
     def index_map(self) -> dict[bytes, bytes]:
         return dict(self.index_entries)

@@ -274,9 +274,15 @@ def run_git_bounded(
     input_: bytes | None = None,
     popen: PopenFactory = subprocess.Popen,
     file_size_limit: int | None = None,
+    temp_safety_root: str | None = None,
 ) -> bytes:
-    """Run Git with external diff ordering neutralized by an empty private file."""
-    descriptor, order_file = _empty_order_file(root)
+    """Run Git with ordering neutralized outside the explicit safety root.
+
+    ``root`` remains the Git process working directory.  Frozen callers use a
+    private shadow worktree there, while ``temp_safety_root`` anchors temporary
+    parent validation to the canonical project root.
+    """
+    descriptor, order_file = _empty_order_file(temp_safety_root or root)
     try:
         try:
             os.close(descriptor)

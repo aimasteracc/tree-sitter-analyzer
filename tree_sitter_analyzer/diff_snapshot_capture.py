@@ -37,7 +37,6 @@ class ChangedFile:
     unsupported_kind: str | None = None
     _raw_path: bytes | None = field(default=None, repr=False, compare=False)
     _raw_old_path: bytes | None = field(default=None, repr=False, compare=False)
-
     @property
     def raw_path(self) -> bytes:
         return self._raw_path if self._raw_path is not None else path_to_raw(self.path)
@@ -119,6 +118,7 @@ def _frozen_rows(
             "--no-color",
             "--no-ext-diff",
             "--no-textconv",
+            "--submodule=short",
             "--ignore-submodules=none",
             os.fsdecode(base),
         ],
@@ -396,6 +396,7 @@ def _capture_payload(
             "--no-color",
             "--no-ext-diff",
             "--no-textconv",
+            "--submodule=short",
             "--ignore-submodules=none",
             os.fsdecode(base),
         ]
