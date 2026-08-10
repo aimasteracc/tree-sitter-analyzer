@@ -462,3 +462,44 @@ def test_entry_parts_rejects_malformed_git_header() -> None:
     # PR #1252 review thread 3746878580.
     with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
         capture._entry_parts(b"160000")
+
+
+@POSIX_SNAPSHOT_TEST
+def test_stage_zero_selector_disambiguates_colon_prefixed_path(tmp_path: Path) -> None:
+    # PR #1252 review thread 3746940420.
+    root = _repo(tmp_path)
+    (root / "foo").write_text("plain old\n")
+    (root / "0:foo").write_text("colon old\n")
+    _git(root, "add", "foo", "0:foo")
+    _git(root, "commit", "-m", "colon baseline")
+    (root / "foo").write_text("plain new\n")
+    (root / "0:foo").write_text("colon new\n")
+    _git(root, "add", "foo", "0:foo")
+    registry = snapshots.DiffSnapshotRegistry()
+
+    created = registry.create(str(root), "staged", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+
+    assert error is None
+    assert consumer is not None
+    frozen = consumer.snapshot.file("0:foo")
+    assert frozen is not None
+    assert (frozen.old_bytes, frozen.new_bytes) == (b"colon old\n", b"colon new\n")
+    consumer.release()
+
+
+def test_every_snapshot_diff_disables_textconv(monkeypatch) -> None:
+    # PR #1252 review thread 3746940423.
+    calls: list[list[str]] = []
+
+    def fake_git(root, args, **kwargs):
+        calls.append(args)
+        return b""
+
+    monkeypatch.setattr(capture, "git_output", fake_git)
+
+    capture._rows(".", "staged", 1e20, 1024)
+    capture._tracked_binary_paths(".", "staged", 1e20, 1024)
+    capture._capture_payload(".", "staged", 1e20, 1024)
+
+    assert ["--no-textconv" in args for args in calls] == [True, True, True, True, True]

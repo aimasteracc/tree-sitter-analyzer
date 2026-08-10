@@ -68,6 +68,7 @@ def _rows(
         "-z",
         "--find-renames",
         "--no-ext-diff",
+        "--no-textconv",
     ]
     raw = git_output(root, args, deadline=deadline, limit=limit)
     tokens = [x for x in raw.split(b"\0") if x]
@@ -118,6 +119,7 @@ def _tracked_binary_paths(
         "--numstat",
         "-z",
         "--no-ext-diff",
+        "--no-textconv",
     ]
     raw = git_output(root, args, deadline=deadline, limit=limit)
     binary: set[str] = set()
@@ -190,6 +192,7 @@ def _capture_payload(
         "--binary",
         "--full-index",
         "--no-ext-diff",
+        "--no-textconv",
     ]
     patch = git_output(root, args, deadline=deadline, limit=remaining)
     remaining -= len(patch)
@@ -225,14 +228,14 @@ def _capture_payload(
         if status != "A" and old_kind != "gitlink":
             old = _blob(
                 root,
-                f"HEAD:{lookup}" if mode == "staged" else f":{lookup}",
+                f"HEAD:{lookup}" if mode == "staged" else f":./{lookup}",
                 deadline,
                 remaining,
             )
             remaining -= len(old)
         if status != "D" and new_kind != "gitlink":
             if mode == "staged":
-                new = _blob(root, f":{path}", deadline, remaining)
+                new = _blob(root, f":./{path}", deadline, remaining)
                 remaining -= len(new)
             else:
                 safe = safe_workspace_path(

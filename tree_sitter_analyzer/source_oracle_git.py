@@ -355,7 +355,7 @@ def oracle_generation(
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
     dirty_raw = git_output(
         root,
-        ["diff-files", "--name-only", "-z", "--no-ext-diff"],
+        ["diff-files", "--name-only", "-z", "--no-ext-diff", "--no-textconv"],
         deadline=end,
         limit=_MAX_INVENTORY_BYTES,
     )
@@ -402,7 +402,7 @@ def oracle_generation(
         remaining_content -= charge
 
     diff_args = ["diff", "--cached"] if mode == "staged" else ["diff-files"]
-    diff_args += ["--binary", "--full-index", "--no-ext-diff"]
+    diff_args += ["--binary", "--full-index", "--no-ext-diff", "--no-textconv"]
     patch = git_output(root, diff_args, deadline=end, limit=64 * 1024 * 1024)
     _frame(digest, b"patch", hashlib.sha256(patch).digest())
     return "sg_" + digest.hexdigest(), identity

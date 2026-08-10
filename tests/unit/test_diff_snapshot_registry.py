@@ -500,3 +500,88 @@ def test_bind_assessed_scope_replaces_scope_for_single_pin(tmp_path: Path) -> No
 def test_release_route_lease_reports_unknown_snapshot() -> None:
     registry = snapshots.DiffSnapshotRegistry()
     assert registry.release_route_lease("missing", "lease") == "DIFF_SNAPSHOT_EXPIRED"
+
+
+def test_validate_publish_bounds_oracle_by_remaining_lifetime(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3746940417.
+    now = [0.0]
+    root = _repo(tmp_path)
+    registry = snapshots.DiffSnapshotRegistry(clock=lambda: now[0])
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    now[0] = snapshots.HARD_LIFETIME_SECONDS - 1.0
+    deadlines: list[float] = []
+    monkeypatch.setattr(snapshots.time, "monotonic", lambda: 100.0)
+
+    def oracle_with_deadline(root, mode, *, deadline=None):
+        deadlines.append(deadline)
+        return consumer.snapshot.source_generation, consumer.snapshot.root_identity
+
+    monkeypatch.setattr(snapshots, "oracle_generation", oracle_with_deadline)
+
+    result = registry.validate_publish(consumer)
+
+    assert result is None
+    assert deadlines == [101.0]
+    consumer.release()
+
+
+def test_validate_publish_marks_closed_pinned_state_expired(
+    tmp_path: Path,
+) -> None:
+    root = _repo(tmp_path)
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    registry.close_lease(
+        str(created["diff_snapshot_id"]), str(created["route_lease_id"])
+    )
+
+    result = registry.validate_publish(consumer)
+
+    assert result == "DIFF_SNAPSHOT_EXPIRED"
+    consumer.release()
+
+
+def test_validate_publish_rejects_expiry_during_bounded_oracle(
+    tmp_path: Path, monkeypatch
+) -> None:
+    now = [0.0]
+    root = _repo(tmp_path)
+    registry = snapshots.DiffSnapshotRegistry(clock=lambda: now[0])
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+
+    def expire_during_oracle(root, mode, *, deadline=None):
+        now[0] = snapshots.HARD_LIFETIME_SECONDS
+        return consumer.snapshot.source_generation, consumer.snapshot.root_identity
+
+    monkeypatch.setattr(snapshots, "oracle_generation", expire_during_oracle)
+
+    result = registry.validate_publish(consumer)
+
+    assert result == "DIFF_SNAPSHOT_EXPIRED"
+    consumer.release()
+
+
+def test_validate_publish_rejects_erased_snapshot_before_oracle(
+    tmp_path: Path,
+) -> None:
+    root = _repo(tmp_path)
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    consumer.release()
+    registry.reset()
+
+    assert registry.validate_publish(consumer) == "DIFF_SNAPSHOT_EXPIRED"

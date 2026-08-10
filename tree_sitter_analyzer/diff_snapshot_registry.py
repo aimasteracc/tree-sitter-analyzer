@@ -351,10 +351,31 @@ class DiffSnapshotRegistry:
 
     def validate_publish(self, consumer: SnapshotConsumer) -> str | None:
         """Atomically reject a stale/unleased snapshot immediately before publish."""
-        try:
-            generation, identity = oracle_generation(
-                consumer.snapshot.root_identity.realpath, consumer.snapshot.mode
+        with self._lock:
+            state = self._states.get(consumer.snapshot.snapshot_id)
+            remaining = (
+                HARD_LIFETIME_SECONDS
+                - (self._clock() - state.snapshot.created_monotonic)
+                if state is not None
+                else 0.0
             )
+            if state is None or state.expired or not state.lease_open or remaining <= 0:
+                if state is not None:
+                    state.expired = True
+                    state.lease_open = False
+                return "DIFF_SNAPSHOT_EXPIRED"
+        try:
+            oracle_params = inspect.signature(oracle_generation).parameters
+            if "deadline" in oracle_params:
+                generation, identity = oracle_generation(
+                    consumer.snapshot.root_identity.realpath,
+                    consumer.snapshot.mode,
+                    deadline=time.monotonic() + remaining,
+                )
+            else:  # compatibility for injected platform seams
+                generation, identity = oracle_generation(
+                    consumer.snapshot.root_identity.realpath, consumer.snapshot.mode
+                )
         except SourceOracleError as exc:
             return str(exc)
         with self._lock:

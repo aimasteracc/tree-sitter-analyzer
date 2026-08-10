@@ -892,3 +892,17 @@ def test_edit_release_snapshot_rejects_alternate_source_arguments() -> None:
                 }
             )
         )
+
+
+def test_edit_release_snapshot_requires_both_ownership_ids() -> None:
+    # PR #1252 review thread 3746878592.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    with pytest.raises(
+        ValueError, match="diff_snapshot_id and route_lease_id are required"
+    ):
+        asyncio.run(
+            build_edit_facade(".").execute(
+                {"action": "release_snapshot", "diff_snapshot_id": "ds"}
+            )
+        )

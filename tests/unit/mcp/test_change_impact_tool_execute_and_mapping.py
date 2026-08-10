@@ -2459,3 +2459,27 @@ def test_strict_early_error_uses_requested_toon_formatter() -> None:
     )
     assert result["format"] == "toon"
     assert isinstance(result["toon_content"], str)
+
+
+def test_strict_scope_response_projects_changed_records(tmp_path) -> None:
+    # PR #1252 review thread 3746940429.
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    _strict_capture_repo(tmp_path, {"a.py": "a = 1\n", "b.py": "b = 1\n"})
+    (tmp_path / "a.py").write_text("a = 2\n")
+    (tmp_path / "b.py").write_text("b = 2\n")
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {
+                "capture_diff_snapshot": True,
+                "scope_paths": ["a.py"],
+                "scope_mode": "strict",
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert [record["path"] for record in result["changed_records"]] == ["a.py"]
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
