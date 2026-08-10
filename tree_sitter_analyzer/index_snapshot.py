@@ -150,6 +150,12 @@ atexit.register(REGISTRY.close_all)
 
 def read_existing_snapshot(project_root: str) -> IndexSnapshot:
     """Securely pin, validate, copy, and publish an existing POSIX database."""
+    # Absence is platform-independent and publishes no file evidence.  Report it
+    # before the secure-fd capability gate so fresh Windows installs preserve the
+    # established missing-index contract; an existing database still fails closed.
+    candidate = os.path.join(os.path.realpath(project_root), ".ast-cache", "index.db")
+    if not os.path.lexists(candidate):
+        return _unknown("MISSING_INDEX")
     if os.name != "posix" or not os.path.exists("/dev/fd"):
         return _unknown("SECURE_FD_SNAPSHOT_UNSUPPORTED")
     handles: tuple[int, int, int] | None = None

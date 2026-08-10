@@ -83,11 +83,21 @@ class TestSnapshotFailureContracts:
         owner.REGISTRY.ensure_capacity(0)
         assert published.snapshot_id not in owner.REGISTRY._entries
 
-    def test_non_posix_secure_snapshot_is_explicitly_unsupported(
+    def test_non_posix_missing_index_preserves_missing_contract(
         self, tmp_path, monkeypatch
     ):
         import tree_sitter_analyzer.index_snapshot as owner
 
+        monkeypatch.setattr(owner.os, "name", "nt")
+        result = owner.read_existing_snapshot(str(tmp_path))
+        assert result.reason == "MISSING_INDEX"
+
+    def test_non_posix_existing_index_is_explicitly_unsupported(
+        self, tmp_path, monkeypatch
+    ):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        self._certified_cache(tmp_path)
         monkeypatch.setattr(owner.os, "name", "nt")
         result = owner.read_existing_snapshot(str(tmp_path))
         assert result.completeness == "unknown"
