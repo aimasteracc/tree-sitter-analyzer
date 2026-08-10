@@ -103,6 +103,11 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     from .codegraph_pr_review_tool import CodeGraphPRReviewTool
     from .modification_guard_tool import MODIFICATION_TYPES
 
+    impact_tool = ChangeImpactTool(project_root)
+    # Facade-local policy: edit.impact is the strict P0.2 route. Direct legacy
+    # ChangeImpactTool calls retain their historical non-snapshot default.
+    impact_tool._capture_diff_snapshot_default = True
+
     class _PRReviewViaFacade(CodeGraphPRReviewTool):
         """Facade ``action=pr`` implies ``mode=pr``.
 
@@ -128,7 +133,7 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
         action_map={
             "safe": SafeToEditTool(project_root),
             "guard": ModificationGuardTool(project_root),
-            "impact": ChangeImpactTool(project_root),
+            "impact": impact_tool,
             "refactor": RefactoringSuggestionsTool(project_root),
             "constraints": ConstraintCheckTool(project_root),
             "pr": _PRReviewViaFacade(project_root),
@@ -147,6 +152,10 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
         # so facade/inner never drift. Never added to required[] (runtime-
         # resolved param convention, locked #397 family).
         extra_public_params={
+            "diff_snapshot_id": {
+                "type": "string",
+                "description": "RFC-0022 frozen diff ID for classify/ast_diff with file_path.",
+            },
             "modification_type": {
                 "type": "string",
                 "enum": list(MODIFICATION_TYPES),

@@ -459,7 +459,7 @@ def test_translated_readmes_reject_unregistered_quantitative_marketing(
             (
                 "Python 3.10 以上",
                 "8 MCP ツール",
-                "### 323 の CLI フラグ",
+                "### 324 の CLI フラグ",
                 "22 言語プラグイン",
                 "13 は `pipeline_registered`",
                 "3 は `index_admitted`",
@@ -471,7 +471,7 @@ def test_translated_readmes_reject_unregistered_quantitative_marketing(
             (
                 "需要 Python 3.10+",
                 "8 个 MCP 工具",
-                "### 323 个 CLI flag",
+                "### 324 个 CLI flag",
                 "22 个语言插件",
                 "13 个为 `pipeline_registered`",
                 "3 个为 `index_admitted`",

@@ -13,6 +13,7 @@ from typing import Any
 
 from ...ast_diff import ASTDiffer
 from ...utils import setup_logger
+from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -70,6 +71,10 @@ class ASTDiffTool(BaseMCPTool):
         return {
             "type": "object",
             "properties": {
+                "diff_snapshot_id": {
+                    "type": "string",
+                    "description": "RFC-0022 frozen snapshot ID; with file_path this strict path never rereads the workspace.",
+                },
                 "mode": {
                     "type": "string",
                     "enum": ["diff_files", "diff_strings", "diff_git"],
@@ -180,6 +185,10 @@ class ASTDiffTool(BaseMCPTool):
         return ""
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        if arguments.get("diff_snapshot_id"):
+            if not arguments.get("file_path"):
+                raise ValueError("file_path is required with diff_snapshot_id")
+            return True
         mode = self._resolve_mode(arguments)
         if mode == "diff_files":
             if not arguments.get("old_file") or not arguments.get("new_file"):
@@ -217,8 +226,52 @@ class ASTDiffTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
         include_node_bodies = bool(arguments.get("include_node_bodies", False))
         differ = self._get_differ()
+        snapshot_id = arguments.get("diff_snapshot_id")
+        consumer = None
+        if snapshot_id:
+            from ...diff_snapshot_registry import REGISTRY
+            from ...project_graph import _language_from_ext
 
-        if mode == "diff_files":
+            consumer, error = REGISTRY.acquire(str(snapshot_id), self.project_root)
+            if error:
+                return apply_toon_format_to_response(
+                    {
+                        "success": False,
+                        "verdict": "ERROR",
+                        "error_code": error,
+                        "error": error,
+                    },
+                    output_format,
+                )
+            assert consumer is not None
+            try:
+                frozen = consumer.snapshot.file(arguments["file_path"])
+                if frozen is None:
+                    error = "DIFF_SNAPSHOT_FILE_NOT_FOUND"
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "NOT_FOUND",
+                            "error_code": error,
+                            "error": error,
+                        },
+                        output_format,
+                    )
+                language = (
+                    arguments.get("language")
+                    or _language_from_ext(frozen.record.path)
+                    or ""
+                )
+                result = differ.diff_strings(
+                    old_source=(frozen.old_bytes or b"").decode("utf-8", "replace"),
+                    new_source=(frozen.new_bytes or b"").decode("utf-8", "replace"),
+                    language=language,
+                    old_file=f"{snapshot_id}:old:{frozen.record.path}",
+                    new_file=f"{snapshot_id}:new:{frozen.record.path}",
+                )
+            finally:
+                consumer.release()
+        elif mode == "diff_files":
             result = differ.diff_files(
                 old_path=arguments["old_file"],
                 new_path=arguments["new_file"],
@@ -299,8 +352,6 @@ class ASTDiffTool(BaseMCPTool):
                 response["hunks"] = compact_dict["hunks"]
                 response["children_truncated"] = True
                 response["bytes_omitted"] = hunks_bytes - compact_hunks_bytes
-
-        from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(response, output_format)
 

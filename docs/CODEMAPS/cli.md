@@ -56,7 +56,8 @@ Categories of CLI surface:
 - `--overview` — snapshot
 - `--project-health` — health-score distribution
 - `--smart-context` / `smart-context FILE` — SMART workflow context
-- `--change-impact` — blast radius (`--change-impact-resource-profile local_low_impact` emits nice/xdist-capped local pytest commands plus the original CI command)
+- `--change-impact` — blast radius plus RFC-0022 frozen workspace/staged snapshot ID + route lease (`--change-impact-resource-profile local_low_impact` emits nice/xdist-capped local pytest commands plus the original CI command)
+- `--diff-snapshot-id ID` with `--ast-diff-file` or `--semantic-classify` — consume frozen bytes without rereading/reconstructing the workspace; legacy file/string/git-ref modes remain compatible
 - `--call-graph` — caller/callee graph
 
 ### Code Quality

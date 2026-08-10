@@ -100,6 +100,10 @@ class SemanticClassifyTool(BaseMCPTool):
         return {
             "type": "object",
             "properties": {
+                "diff_snapshot_id": {
+                    "type": "string",
+                    "description": "RFC-0022 frozen snapshot ID; with file_path this strict path never rereads the workspace.",
+                },
                 "mode": {
                     "type": "string",
                     # pain #11 (dogfood pass 2): the tests pinned a contract
@@ -192,6 +196,10 @@ class SemanticClassifyTool(BaseMCPTool):
         return "classify_string"
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        if arguments.get("diff_snapshot_id"):
+            if not arguments.get("file_path"):
+                raise ValueError("file_path is required with diff_snapshot_id")
+            return True
         mode = self._resolve_mode(arguments)
         if mode == "classify_string":
             if (
@@ -214,8 +222,51 @@ class SemanticClassifyTool(BaseMCPTool):
         mode = self._resolve_mode(arguments)
         output_format = arguments.get("output_format", "toon")
         differ = self._get_differ()
+        snapshot_id = arguments.get("diff_snapshot_id")
+        consumer = None
+        file_path: str | None
+        if snapshot_id:
+            from ...diff_snapshot_registry import REGISTRY
 
-        if mode == "classify_string":
+            consumer, error = REGISTRY.acquire(str(snapshot_id), self.project_root)
+            if error:
+                return apply_toon_format_to_response(
+                    {
+                        "success": False,
+                        "verdict": "ERROR",
+                        "error_code": error,
+                        "error": error,
+                    },
+                    output_format,
+                )
+            assert consumer is not None
+            try:
+                frozen = consumer.snapshot.file(arguments["file_path"])
+                if frozen is None:
+                    error = "DIFF_SNAPSHOT_FILE_NOT_FOUND"
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "NOT_FOUND",
+                            "error_code": error,
+                            "error": error,
+                        },
+                        output_format,
+                    )
+                file_path = frozen.record.path
+                language = (
+                    arguments.get("language") or _language_from_ext(file_path) or ""
+                )
+                diff_result = differ.diff_strings(
+                    old_source=(frozen.old_bytes or b"").decode("utf-8", "replace"),
+                    new_source=(frozen.new_bytes or b"").decode("utf-8", "replace"),
+                    language=language,
+                    old_file=f"{snapshot_id}:old:{file_path}",
+                    new_file=f"{snapshot_id}:new:{file_path}",
+                )
+            finally:
+                consumer.release()
+        elif mode == "classify_string":
             diff_result = differ.diff_strings(
                 old_source=arguments["old_source"],
                 new_source=arguments["new_source"],

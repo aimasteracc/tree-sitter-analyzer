@@ -229,6 +229,14 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": False,
             "description": "Return only the compact agent decision surface instead of full impact details",
         },
+        "capture_diff_snapshot": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "RFC-0022 P0.2: atomically freeze workspace/staged patch and bytes. "
+                "The edit facade enables this; legacy direct calls remain compatible."
+            ),
+        },
         "compact_only": {
             "type": "boolean",
             "default": False,
@@ -276,6 +284,8 @@ def _pr_gh_unavailable_envelope(parsed: Any, output_format: str) -> dict[str, An
 
 class ChangeImpactTool(BaseMCPTool):
     """Analyze the impact of code changes using git diff + dependency graph."""
+
+    _capture_diff_snapshot_default: bool = False
 
     def get_tool_schema(self) -> dict[str, Any]:
         """Return the JSON schema for tool input validation."""
@@ -345,6 +355,39 @@ class ChangeImpactTool(BaseMCPTool):
             raise ValueError("resource_profile must be default|local_low_impact")
         return True
 
+    def _attach_diff_snapshot(
+        self,
+        result: dict[str, Any],
+        mode: str,
+        enabled: bool,
+        assessed_scope_paths: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Attach the P0.2 frozen artifact before response serialization."""
+        if not enabled:
+            return result
+        from ...diff_snapshot_registry import REGISTRY
+
+        affected = result.get("affected_files") or []
+        affected_paths = [
+            item.get("path", "") if isinstance(item, dict) else str(item)
+            for item in affected
+        ]
+        scope = assessed_scope_paths or [
+            *[str(path) for path in result.get("changed_files", [])],
+            *[path for path in affected_paths if path],
+        ]
+        frozen = REGISTRY.create(self.project_root, mode, scope)
+        if not frozen.get("success"):
+            return {
+                "success": False,
+                "verdict": "ERROR",
+                "error_code": frozen["error_code"],
+                "error": frozen["error_code"],
+                "output_format": result.get("output_format", "toon"),
+            }
+        result.update({key: value for key, value in frozen.items() if key != "success"})
+        return result
+
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Analyze git diff + dependency graph for change impact."""
         pr_url = arguments.get("pr_url", "") or ""
@@ -358,6 +401,12 @@ class ChangeImpactTool(BaseMCPTool):
         resource_profile = arguments.get("resource_profile", "local_low_impact")
         agent_summary_only = bool(arguments.get("agent_summary_only", False))
         compact_only = bool(arguments.get("compact_only", False))
+        capture_diff_snapshot = bool(
+            arguments.get(
+                "capture_diff_snapshot",
+                getattr(self, "_capture_diff_snapshot_default", False),
+            )
+        )
 
         # H8: validate scope paths against disk so a typo cannot silently
         # become "scope matched nothing". The analysis still runs on the
@@ -409,6 +458,7 @@ class ChangeImpactTool(BaseMCPTool):
             # agent_summary so direct callers (tests, hive-mind workers)
             # see the same envelope shape as MCP-routed callers.
             result = mirror_summary_line(result)
+            result = self._attach_diff_snapshot(result, mode, capture_diff_snapshot)
             return apply_toon_format_to_response(
                 result, output_format, compact_only=compact_only
             )
@@ -440,6 +490,14 @@ class ChangeImpactTool(BaseMCPTool):
             scope_mode=scope_mode,
         )
         result = apply_scope_validation(result, scope_paths_invalid)
+        affected_for_snapshot = result.get("affected_files") or []
+        frozen_scope_paths = [
+            *changed_files,
+            *[
+                item.get("path", "") if isinstance(item, dict) else str(item)
+                for item in affected_for_snapshot
+            ],
+        ]
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
         result["output_format"] = output_format
@@ -452,6 +510,9 @@ class ChangeImpactTool(BaseMCPTool):
         # agent_summary so direct callers see the same envelope shape as
         # MCP-routed callers.
         result = mirror_summary_line(result)
+        result = self._attach_diff_snapshot(
+            result, mode, capture_diff_snapshot, frozen_scope_paths
+        )
         return apply_toon_format_to_response(
             result, output_format, compact_only=compact_only
         )
