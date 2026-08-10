@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+from tests.unit._diff_snapshot_support import make_repo
 from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool
+from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import SemanticClassifyTool
 
 
 @pytest.fixture
@@ -561,3 +566,106 @@ class TestAstDiffAgentSummaryEnvelope:
         assert result["verdict"] == "ERROR"
         assert result["agent_summary"]["verdict"] == "ERROR"
         assert result["agent_summary"]["summary_line"] == "Both sources failed to parse"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_requires_file_path(tool) -> None:
+    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_FILE_REQUIRED"):
+        await tool.execute({"diff_snapshot_id": "ds"})
+
+
+@pytest.mark.asyncio
+async def test_snapshot_translates_registry_error(tool, monkeypatch) -> None:
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    monkeypatch.setattr(
+        registry.REGISTRY, "acquire", lambda *a: (None, "DIFF_SNAPSHOT_EXPIRED")
+    )
+    result = await tool.execute(
+        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_reports_missing_frozen_file(tool, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(file=lambda path: None), release=lambda: None
+    )
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))
+    result = await tool.execute(
+        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_FILE_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_rejects_non_utf8_frozen_bytes(tool, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    frozen = SimpleNamespace(
+        record=SimpleNamespace(path="x.py", binary=False),
+        old_bytes=b"\xff",
+        new_bytes=b"",
+    )
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(file=lambda path: frozen), release=lambda: None
+    )
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))
+    result = await tool.execute(
+        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT"
+
+
+@pytest.mark.parametrize(
+    ("tool_type", "field", "expected"),
+    [(ASTDiffTool, "hunks", 2), (SemanticClassifyTool, "change_count", 2)],
+)
+def test_snapshot_consumer_uses_frozen_utf8_bytes(
+    tmp_path: Path, tool_type, field: str, expected: int
+) -> None:
+    root = make_repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    result = snapshots.REGISTRY.create(str(root), "diff", [])
+    request = {
+        "diff_snapshot_id": result["diff_snapshot_id"],
+        "file_path": "old.py",
+        "output_format": "json",
+    }
+    response = asyncio.run(tool_type(str(root)).execute(request))
+    assert (
+        len(response[field]) if isinstance(response[field], list) else response[field]
+    ) == expected
+    assert (
+        snapshots.REGISTRY.close_lease(
+            str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+        )
+        is True
+    )
+
+
+@pytest.mark.parametrize("tool_type", [ASTDiffTool, SemanticClassifyTool])
+def test_snapshot_consumer_rejects_binary_content(tmp_path: Path, tool_type) -> None:
+    root = make_repo(tmp_path)
+    (root / "blob.py").write_bytes(b"a\0b")
+    result = snapshots.REGISTRY.create(str(root), "diff", [])
+    request = {
+        "diff_snapshot_id": result["diff_snapshot_id"],
+        "file_path": "blob.py",
+        "output_format": "json",
+    }
+    response = asyncio.run(tool_type(str(root)).execute(request))
+    assert response["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT"
+    assert (
+        snapshots.REGISTRY.close_lease(
+            str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+        )
+        is True
+    )

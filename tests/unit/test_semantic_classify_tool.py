@@ -776,3 +776,59 @@ class TestClassifiedHunkSerializerOptIn:
             "SemanticClassification.to_dict(include_children=True) must deliver children "
             "in at least one hunk.old or hunk.new"
         )
+
+
+@pytest.mark.asyncio
+async def test_snapshot_requires_file_path(tool) -> None:
+    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_FILE_REQUIRED"):
+        await tool.execute({"diff_snapshot_id": "ds"})
+
+
+@pytest.mark.asyncio
+async def test_snapshot_translates_registry_error(tool, monkeypatch) -> None:
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    monkeypatch.setattr(
+        registry.REGISTRY, "acquire", lambda *a: (None, "DIFF_SNAPSHOT_EXPIRED")
+    )
+    result = await tool.execute(
+        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_reports_missing_frozen_file(tool, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(file=lambda path: None), release=lambda: None
+    )
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))
+    result = await tool.execute(
+        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_FILE_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_rejects_non_utf8_frozen_bytes(tool, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    frozen = SimpleNamespace(
+        record=SimpleNamespace(path="x.py", binary=False),
+        old_bytes=b"\xff",
+        new_bytes=b"",
+    )
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(file=lambda path: frozen), release=lambda: None
+    )
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))
+    result = await tool.execute(
+        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT"

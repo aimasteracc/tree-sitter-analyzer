@@ -18,6 +18,7 @@ from .change_impact_support import (
     TOOL_SCHEMA,
     _canonicalize_change_impact_verdict,
     _enrich_with_journal_decisions,
+    _finalize_pr_result,
     _pr_gh_unavailable_envelope,
     _pr_invalid_url_envelope,
     _scope_paths_invalid,
@@ -448,51 +449,6 @@ class ChangeImpactTool(BaseMCPTool):
         )
 
     @staticmethod
-    def _finalize_pr_result(
-        result: dict[str, Any],
-        *,
-        parsed: Any,
-        scope_paths: list[str],
-        scope_paths_invalid: Any,
-        changed_files: list[str],
-        agent_summary_only: bool,
-        output_format: str,
-        scope_mode: str = "report",
-        compact_only: bool = False,
-    ) -> dict[str, Any]:
-        """Attach PR metadata + queue ledger + scope validation, mirror, and TOON.
-
-        Shared by both the no-changes and with-changes branches of
-        ``_execute_pr_analysis``. ``changed_files`` doubles as both
-        ``scoped_changed_files`` and ``workspace_changed_files`` because
-        PR mode pulls them from the same gh-CLI source.
-
-        M5/M10: ``mirror_summary_line`` syncs ``summary_line`` + ``verdict``
-        between top-level and ``agent_summary`` so direct callers see the
-        same envelope shape regardless of routing.
-        """
-        result["pr_url"] = parsed.url
-        result["pr_number"] = parsed.pr_number
-        result["repo"] = parsed.slug
-        result = attach_queue_ledger(
-            result,
-            mode="pr",
-            scope_paths=scope_paths,
-            scoped_changed_files=changed_files,
-            workspace_changed_files=changed_files,
-            scope_mode=scope_mode,
-        )
-        result = apply_scope_validation(result, scope_paths_invalid)
-        if agent_summary_only:
-            result = build_agent_summary_only_response(result)
-        result["output_format"] = output_format
-        # F1 (round-37f7): defensive canonicalization for the PR-mode
-        # path. Mirrors the same protection applied in the diff-mode
-        # branches above — keeps the cross-tool envelope free of
-        # non-canonical verdict tokens regardless of which mode the
-        # caller used.
-        _canonicalize_change_impact_verdict(result)
-        result = mirror_summary_line(result)
-        return apply_toon_format_to_response(
-            result, output_format, compact_only=compact_only
-        )
+    def _finalize_pr_result(result: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        """Delegate shared PR response postprocessing to the support module."""
+        return _finalize_pr_result(result, **kwargs)

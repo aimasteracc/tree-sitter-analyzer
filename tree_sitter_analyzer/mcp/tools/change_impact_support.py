@@ -12,7 +12,12 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.format_helper import apply_toon_format_to_response
-from .base_tool import _canonicalize_verdict
+from .base_tool import _canonicalize_verdict, mirror_summary_line
+from .utils.change_impact_response import (
+    apply_scope_validation,
+    attach_queue_ledger,
+    build_agent_summary_only_response,
+)
 
 
 def _canonicalize_change_impact_verdict(result: dict[str, Any]) -> None:
@@ -97,11 +102,8 @@ def _enrich_with_journal_decisions(
         if strongest <= 0:
             return
         strongest_label = next(
-            (lbl for lbl, rank in _JOURNAL_VERDICT_RANK.items() if rank == strongest),
-            None,
+            lbl for lbl, rank in _JOURNAL_VERDICT_RANK.items() if rank == strongest
         )
-        if strongest_label is None:
-            return
         agent_summary = result.get("agent_summary")
         current_verdict = (
             agent_summary.get("verdict") if isinstance(agent_summary, dict) else None
@@ -270,3 +272,38 @@ def _snapshot_records(frozen: dict[str, object] | None) -> list[dict[str, object
     if not isinstance(raw, list):
         return []
     return [record for record in raw if isinstance(record, dict)]
+
+
+def _finalize_pr_result(
+    result: dict[str, Any],
+    *,
+    parsed: Any,
+    scope_paths: list[str],
+    scope_paths_invalid: Any,
+    changed_files: list[str],
+    agent_summary_only: bool,
+    output_format: str,
+    scope_mode: str = "report",
+    compact_only: bool = False,
+) -> dict[str, Any]:
+    """Attach shared PR metadata, queue/scope controls, summary, and format."""
+    result["pr_url"] = parsed.url
+    result["pr_number"] = parsed.pr_number
+    result["repo"] = parsed.slug
+    result = attach_queue_ledger(
+        result,
+        mode="pr",
+        scope_paths=scope_paths,
+        scoped_changed_files=changed_files,
+        workspace_changed_files=changed_files,
+        scope_mode=scope_mode,
+    )
+    result = apply_scope_validation(result, scope_paths_invalid)
+    if agent_summary_only:
+        result = build_agent_summary_only_response(result)
+    result["output_format"] = output_format
+    _canonicalize_change_impact_verdict(result)
+    result = mirror_summary_line(result)
+    return apply_toon_format_to_response(
+        result, output_format, compact_only=compact_only
+    )

@@ -24,11 +24,14 @@ Covers all §5 required cases from ``.recon/p0-facade-framework-spec.md``:
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+from tests.unit._diff_snapshot_support import make_repo
 from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
 from tree_sitter_analyzer.mcp.tools.facade_tool import FacadeTool
 
@@ -386,7 +389,7 @@ def test_build_edit_facade_returns_facade_tool() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     facade = build_edit_facade(project_root=None)
-    assert type(facade) is FacadeTool
+    assert isinstance(facade, FacadeTool)
 
 
 # ---------------------------------------------------------------------------
@@ -697,3 +700,70 @@ def test_action_pr_explicit_diff_mode_still_reaches_diff() -> None:
     # diff mode reviews local changes — must not demand pr_url
     assert result["success"] is True
     assert result.get("error") is None or "pr_url" not in str(result.get("error"))
+
+
+@pytest.mark.asyncio
+async def test_edit_impact_rejects_non_snapshot_mode() -> None:
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_UNSUPPORTED_MODE"):
+        await build_edit_facade(None).execute({"action": "impact", "mode": "branch"})
+
+
+@pytest.mark.asyncio
+async def test_edit_snapshot_consumer_rejects_conflicting_arguments() -> None:
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS"):
+        await build_edit_facade(None).execute(
+            {
+                "action": "ast_diff",
+                "diff_snapshot_id": "ds",
+                "file_path": "x.py",
+                "old_code": "bad",
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_edit_snapshot_consumer_accepts_only_frozen_arguments() -> None:
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    result = await build_edit_facade(None).execute(
+        {
+            "action": "ast_diff",
+            "diff_snapshot_id": "missing",
+            "file_path": "x.py",
+            "output_format": "json",
+        }
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_EXPIRED"
+
+
+def test_edit_impact_is_strict_and_does_not_write(tmp_path: Path) -> None:
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    root = make_repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    before = {path.relative_to(root) for path in root.rglob("*")}
+    facade = build_edit_facade(str(root))
+
+    result = asyncio.run(
+        facade.execute({"action": "impact", "mode": "diff", "output_format": "json"})
+    )
+
+    assert result["success"] is True
+    assert result["changed_files"] == ["old.py"]
+    assert {path.relative_to(root) for path in root.rglob("*")} == before
+    assert (
+        snapshots.close_route_lease(
+            str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+        )
+        is True
+    )
+    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_REQUIRED"):
+        asyncio.run(
+            facade.execute({"action": "impact", "capture_diff_snapshot": False})
+        )

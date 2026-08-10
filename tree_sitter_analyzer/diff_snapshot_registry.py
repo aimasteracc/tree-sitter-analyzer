@@ -145,7 +145,7 @@ def _rows(
                 index += 1
                 old = None
             path = normalize_repo_path(path_raw.decode("utf-8", "surrogateescape"))
-        except (IndexError, UnicodeError) as exc:
+        except (IndexError, UnicodeError, ValueError) as exc:
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc
         result.append(("R" if status in ("R", "C") else status, old, path, True))
     if mode == "diff":

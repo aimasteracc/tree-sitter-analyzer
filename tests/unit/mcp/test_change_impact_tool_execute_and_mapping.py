@@ -1918,3 +1918,290 @@ def test_payload_accepts_empty_metadata_for_untracked_record(monkeypatch) -> Non
 
     assert files[0].new_bytes == b"x"
     assert b'"mode":0' in patch
+
+
+# Source-bound response helpers are exercised here because they are part of the
+# existing change-impact MCP subsystem.
+def test_support_canonicalizes_nested_and_top_verdicts() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = {"verdict": "CLEAN", "agent_summary": {"verdict": None}}
+    support._canonicalize_change_impact_verdict(result)
+    assert result == {"verdict": "SAFE", "agent_summary": {"verdict": "INFO"}}
+
+
+def test_support_scope_resolution_preserves_absolute_path(tmp_path) -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    assert support._resolve_scope_path("unused", str(tmp_path)) == tmp_path
+
+
+def test_support_scope_validation_reports_only_missing_path(tmp_path) -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    (tmp_path / "present").touch()
+    assert support._scope_paths_invalid(str(tmp_path), ["present", "missing"]) == [
+        "missing"
+    ]
+
+
+def test_support_invalid_pr_envelope_preserves_url() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = support._pr_invalid_url_envelope("invalid", "json")
+    assert result["error"] == "Invalid GitHub PR URL: invalid"
+
+
+def test_support_unavailable_gh_envelope_preserves_parsed_url() -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = support._pr_gh_unavailable_envelope(
+        SimpleNamespace(url="https://example/pr/1"), "json"
+    )
+    assert result["pr_url"] == "https://example/pr/1"
+
+
+def test_support_snapshot_records_filters_malformed_values() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    assert support._snapshot_records({"changed_records": [{"path": "a"}, "bad"]}) == [
+        {"path": "a"}
+    ]
+
+
+def test_support_snapshot_records_rejects_nonlist() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    assert support._snapshot_records({"changed_records": "bad"}) == []
+
+
+def test_support_snapshot_records_accepts_missing_snapshot() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    assert support._snapshot_records(None) == []
+
+
+def test_support_journal_decision_upgrades_weaker_verdict(
+    monkeypatch, tmp_path
+) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    record = SimpleNamespace(id="one", to_dict=lambda: {"verdict": "WARN"})
+    monkeypatch.setattr(
+        journal_module,
+        "DecisionJournal",
+        lambda root: SimpleNamespace(search=lambda **kwargs: [record]),
+    )
+    result = {
+        "verdict": "SAFE",
+        "agent_summary": {"verdict": "SAFE", "next_step": "run tests"},
+    }
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result["verdict"] == "WARN"
+    assert result["agent_summary"]["next_step"].endswith("run tests")
+
+
+def test_support_journal_never_downgrades_stronger_verdict(
+    monkeypatch, tmp_path
+) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    record = SimpleNamespace(id="one", to_dict=lambda: {"verdict": "REVIEW"})
+    monkeypatch.setattr(
+        journal_module,
+        "DecisionJournal",
+        lambda root: SimpleNamespace(search=lambda **kwargs: [record]),
+    )
+    result = {"verdict": "UNSAFE", "agent_summary": {"verdict": "UNSAFE"}}
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result["verdict"] == "UNSAFE"
+
+
+def test_support_journal_failure_does_not_block_result(monkeypatch, tmp_path) -> None:
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    monkeypatch.setattr(
+        journal_module, "DecisionJournal", lambda root: (_ for _ in ()).throw(OSError())
+    )
+    result = {"verdict": "SAFE"}
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result == {"verdict": "SAFE"}
+
+
+def test_attach_diff_snapshot_translates_missing_capture() -> None:
+    tool = tool_module.ChangeImpactTool(None)
+    result = tool._attach_diff_snapshot({"output_format": "json"}, "diff", True)
+    assert result["error_code"] == "DIFF_SNAPSHOT_CAPTURE_ERROR"
+
+
+def test_execute_snapshot_rejects_unsupported_mode() -> None:
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(None).execute(
+            {"mode": "branch", "capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_MODE"
+
+
+def test_execute_snapshot_rejects_invalid_scope() -> None:
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(None).execute(
+            {
+                "capture_diff_snapshot": True,
+                "scope_paths": ["../bad"],
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_INVALID_PATH"
+
+
+def test_execute_snapshot_translates_capture_failure(monkeypatch) -> None:
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    monkeypatch.setattr(
+        registry.REGISTRY,
+        "create",
+        lambda *a: {"success": False, "error_code": "CAPTURE"},
+    )
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(None).execute(
+            {"capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+    assert result["error_code"] == "CAPTURE"
+
+
+def test_execute_snapshot_closes_lease_after_acquire_failure(monkeypatch) -> None:
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    frozen = {
+        "success": True,
+        "diff_snapshot_id": "ds",
+        "route_lease_id": "lease",
+        "changed_records": [],
+    }
+    closed = []
+    monkeypatch.setattr(registry.REGISTRY, "create", lambda *a: frozen)
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (None, "ACQUIRE"))
+    monkeypatch.setattr(
+        registry.REGISTRY, "close_lease", lambda *a: closed.append(a) or True
+    )
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(None).execute(
+            {"capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+    assert result["error_code"] == "ACQUIRE"
+    assert closed == [("ds", "lease")]
+
+
+def test_execute_snapshot_translates_strict_verification_conflict(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    frozen = {
+        "success": True,
+        "diff_snapshot_id": "ds",
+        "route_lease_id": "lease",
+        "changed_records": [{"path": "a.py"}],
+    }
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(assessed_scope_paths=("a.py",)), release=lambda: None
+    )
+    monkeypatch.setattr(registry.REGISTRY, "create", lambda *a: frozen)
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))
+    monkeypatch.setattr(registry.REGISTRY, "bind_assessed_scope", lambda *a: "CONFLICT")
+    monkeypatch.setattr(registry.REGISTRY, "close_lease", lambda *a: True)
+    monkeypatch.setattr(tool_module, "_get_changed_files", lambda *a, **k: ["a.py"])
+    monkeypatch.setattr(tool_module, "_get_diff_stat", lambda *a, **k: {})
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(None).execute(
+            {
+                "capture_diff_snapshot": True,
+                "scope_paths": ["a.py"],
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["error_code"] == "CONFLICT"
+
+
+def test_support_canonicalizer_ignores_nondict_summary() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = {"verdict": 7, "agent_summary": "bad"}
+    support._canonicalize_change_impact_verdict(result)
+    assert result == {"verdict": 7, "agent_summary": "bad"}
+
+
+def test_support_journal_ignores_empty_matches(monkeypatch, tmp_path) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    monkeypatch.setattr(
+        journal_module,
+        "DecisionJournal",
+        lambda root: SimpleNamespace(search=lambda **kwargs: []),
+    )
+    result = {"verdict": "SAFE"}
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result == {"verdict": "SAFE"}
+
+
+def test_support_journal_attaches_safe_match_without_upgrade(
+    monkeypatch, tmp_path
+) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    record = SimpleNamespace(id="one", to_dict=lambda: {"verdict": "SAFE"})
+    monkeypatch.setattr(
+        journal_module,
+        "DecisionJournal",
+        lambda root: SimpleNamespace(search=lambda **kwargs: [record]),
+    )
+    result = {"verdict": "SAFE"}
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result["related_decisions"] == [{"verdict": "SAFE"}]
+
+
+def test_support_journal_upgrades_top_level_without_summary(
+    monkeypatch, tmp_path
+) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    record = SimpleNamespace(id="one", to_dict=lambda: {"verdict": "REVIEW"})
+    monkeypatch.setattr(
+        journal_module,
+        "DecisionJournal",
+        lambda root: SimpleNamespace(search=lambda **kwargs: [record]),
+    )
+    result = {"verdict": "SAFE"}
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result["verdict"] == "REVIEW"
+
+
+def test_support_canonicalizer_preserves_nonstr_nested_verdict() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = {"agent_summary": {"verdict": 7}}
+    support._canonicalize_change_impact_verdict(result)
+    assert result == {"agent_summary": {"verdict": 7}}
