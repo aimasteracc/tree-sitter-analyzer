@@ -36,17 +36,21 @@ def install_fake_snapshot_materializer(
     monkeypatch.setattr(
         snapshots, "canonical_root", lambda value: (canonical, identity)
     )
-    monkeypatch.setattr(
-        snapshots,
-        "oracle_generation",
-        lambda *args, **kwargs: ("sg_test", identity),
-    )
+
+    def fake_oracle(project_root, mode="diff", *, deadline=None, manifest=None):
+        return "sg_test", identity
+
+    monkeypatch.setattr(snapshots, "oracle_generation", fake_oracle)
     monkeypatch.setattr(
         snapshots,
         "capture_inventory",
         lambda *args, **kwargs: tuple(inventory_paths),
     )
-    monkeypatch.setattr(snapshots, "_capture_payload", lambda *args: (b"", frozen))
+
+    def fake_capture(root, mode, deadline, ceiling, expected_manifest=None):
+        return b"", frozen
+
+    monkeypatch.setattr(snapshots, "_capture_payload", fake_capture)
     return identity
 
 

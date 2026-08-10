@@ -1828,38 +1828,6 @@ def test_name_status_parser_fails_closed_on_truncated_git_output(monkeypatch) ->
         snapshots._rows(".", "staged", time.monotonic() + 1, 1024)
 
 
-def test_payload_rejects_missing_workspace_epoch_and_budget_overflow(
-    monkeypatch,
-) -> None:
-    import time
-
-    import pytest
-
-    import tree_sitter_analyzer.diff_snapshot_capture as snapshots
-    from tree_sitter_analyzer.source_oracle import SafePath, SourceOracleError
-
-    monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: b"")
-    monkeypatch.setattr(snapshots, "_rows", lambda *args: [("M", None, "a.py", True)])
-    monkeypatch.setattr(snapshots, "_tracked_binary_paths", lambda *args: set())
-    monkeypatch.setattr(snapshots, "_blob", lambda *args: b"old")
-    monkeypatch.setattr(
-        snapshots,
-        "safe_workspace_path",
-        lambda *args, **kwargs: SafePath(None, (), "missing"),
-    )
-    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_SOURCE_CHANGED"):
-        snapshots._capture_payload(".", "diff", time.monotonic() + 1, 1024)
-
-    monkeypatch.setattr(snapshots, "_rows", lambda *args: [("A", None, "a.py", False)])
-    monkeypatch.setattr(
-        snapshots,
-        "safe_workspace_path",
-        lambda *args, **kwargs: SafePath(b"x", (b"bad",), "file"),
-    )
-    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_CAPACITY"):
-        snapshots._capture_payload(".", "diff", time.monotonic() + 1, 1)
-
-
 def test_create_rejects_oracle_root_identity_drift(tmp_path, monkeypatch) -> None:
     import subprocess
 
@@ -1899,27 +1867,6 @@ def test_name_status_deduplicates_tracked_and_untracked(monkeypatch) -> None:
     assert snapshots._rows(".", "diff", time.monotonic() + 1, 1024) == [
         ("A", None, "a.py", True)
     ]
-
-
-def test_payload_accepts_empty_metadata_for_untracked_record(monkeypatch) -> None:
-    import time
-
-    import tree_sitter_analyzer.diff_snapshot_capture as snapshots
-    from tree_sitter_analyzer.source_oracle import SafePath
-
-    monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: b"")
-    monkeypatch.setattr(snapshots, "_rows", lambda *args: [("A", None, "a.py", False)])
-    monkeypatch.setattr(snapshots, "_tracked_binary_paths", lambda *args: set())
-    monkeypatch.setattr(
-        snapshots,
-        "safe_workspace_path",
-        lambda *args, **kwargs: SafePath(b"x", (), "file"),
-    )
-
-    patch, files = snapshots._capture_payload(".", "diff", time.monotonic() + 1, 1024)
-
-    assert files[0].new_bytes == b"x"
-    assert b'"mode":0' in patch
 
 
 # Source-bound response helpers are exercised here because they are part of the

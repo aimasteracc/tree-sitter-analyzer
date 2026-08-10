@@ -8,6 +8,7 @@ import subprocess  # nosec B404
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, BinaryIO, TypeVar
 
 from .source_oracle import (
@@ -28,6 +29,31 @@ _FRAME_DOMAIN = b"tsa-source-generation-v3"
 _MAX_INVENTORY_BYTES = 16 * 1024 * 1024
 _MAX_WORKTREE_PATHS = 200_000
 _MAX_WORKTREE_CONTENT_BYTES = 64 * 1024 * 1024
+_EMPTY_TREE_SHA1 = (
+    b"4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # pragma: allowlist secret
+)
+_EMPTY_TREE_SHA256 = b"6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"  # pragma: allowlist secret
+
+
+@dataclass(frozen=True)
+class GitEpoch:
+    """Exact Git identities captured by the first source-oracle pass."""
+
+    head: bytes
+    object_format: str
+    index_entries: tuple[tuple[bytes, bytes], ...]
+    tracked_paths: tuple[bytes, ...]
+    dirty_paths: tuple[bytes, ...]
+    untracked_paths: tuple[bytes, ...]
+
+    def index_map(self) -> dict[bytes, bytes]:
+        return dict(self.index_entries)
+
+    @property
+    def empty_tree(self) -> bytes:
+        return (
+            _EMPTY_TREE_SHA256 if self.object_format == "sha256" else _EMPTY_TREE_SHA1
+        )
 
 
 def git_output(root: str, args: list[str], *, deadline: float, limit: int) -> bytes:
@@ -106,21 +132,32 @@ def git_output(root: str, args: list[str], *, deadline: float, limit: int) -> by
     return bytes(output)
 
 
-def _head_identity(root: str, *, deadline: float) -> bytes:
-    """Return HEAD, or Git's canonical empty-tree identity for an unborn branch."""
+def _object_format(root: str, *, deadline: float) -> str:
+    value = git_output(
+        root, ["rev-parse", "--show-object-format"], deadline=deadline, limit=64
+    ).strip()
+    if value not in (b"sha1", b"sha256"):
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    return value.decode("ascii")
+
+
+def _head_identity(
+    root: str, *, deadline: float, object_format: str | None = None
+) -> bytes:
+    """Return exact HEAD, or the format-correct empty-tree identity if unborn."""
     try:
         return git_output(
             root, ["rev-parse", "--verify", "HEAD"], deadline=deadline, limit=4096
         ).strip()
     except SourceOracleError as head_error:
         try:
-            # A symbolic HEAD with no object is precisely the unborn-branch case.
             git_output(
                 root, ["symbolic-ref", "-q", "HEAD"], deadline=deadline, limit=4096
             )
         except SourceOracleError as symbolic_error:
             raise head_error from symbolic_error
-        return b"4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # pragma: allowlist secret
+        fmt = object_format or _object_format(root, deadline=deadline)
+        return _EMPTY_TREE_SHA256 if fmt == "sha256" else _EMPTY_TREE_SHA1
 
 
 def _frame(digest: Any, label: bytes, value: bytes) -> None:
@@ -162,7 +199,7 @@ def _head_entries(
     root: str, *, deadline: float, head: bytes = b"HEAD"
 ) -> dict[bytes, bytes]:
     """Return bounded per-path HEAD tree identities for clean-file binding."""
-    if head == b"4b825dc642cb6eb9a060e54bf8d69288fbee4904":  # pragma: allowlist secret
+    if head in (_EMPTY_TREE_SHA1, _EMPTY_TREE_SHA256):
         return {}
     raw = git_output(
         root,
@@ -303,6 +340,7 @@ def oracle_generation(
     *,
     deadline: float | None = None,
     manifest: dict[str, tuple[bytes, ...]] | None = None,
+    epoch_out: list[GitEpoch] | None = None,
 ) -> tuple[str, RootIdentity]:
     """Return a domain-framed generation and the exact canonical root identity."""
     root, identity = canonical_root(project_root)
@@ -322,7 +360,9 @@ def oracle_generation(
         raise SourceOracleError("DIFF_SNAPSHOT_ROOT_MISMATCH") from exc
     if top_root != root or top_identity != identity:
         raise SourceOracleError("DIFF_SNAPSHOT_ROOT_MISMATCH")
-    head = _head_identity(root, deadline=end)
+    object_format = _object_format(root, deadline=end)
+    head = _head_identity(root, deadline=end, object_format=object_format)
+    _frame(digest, b"object-format", object_format.encode("ascii"))
     _frame(digest, b"HEAD", head)
     git_dir = git_output(
         root, ["rev-parse", "--git-dir"], deadline=end, limit=64 * 1024
@@ -337,8 +377,7 @@ def oracle_generation(
         index_path,
         deadline=end,
         limit=64 * 1024 * 1024,
-        allow_missing=head
-        == b"4b825dc642cb6eb9a060e54bf8d69288fbee4904",  # pragma: allowlist secret
+        allow_missing=head in (_EMPTY_TREE_SHA1, _EMPTY_TREE_SHA256),
     )
     for descriptor in stable_descriptor_chain(safe_index.metadata):
         _frame(digest, b"index-descriptor-identity", descriptor)
@@ -372,6 +411,17 @@ def oracle_generation(
     tracked_set = set(tracked)
     if not dirty <= tracked_set or untracked & tracked_set:
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    if epoch_out is not None:
+        epoch_out.append(
+            GitEpoch(
+                head=head,
+                object_format=object_format,
+                index_entries=tuple(sorted(index_entries.items())),
+                tracked_paths=tuple(tracked),
+                dirty_paths=tuple(sorted(dirty)),
+                untracked_paths=tuple(sorted(untracked)),
+            )
+        )
 
     remaining_content = _MAX_WORKTREE_CONTENT_BYTES
     for raw in sorted(tracked, key=os.fsencode):

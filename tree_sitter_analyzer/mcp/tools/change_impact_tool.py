@@ -3,6 +3,7 @@
 
 from typing import Any
 
+from ...git_path_codec import path_to_wire
 from ...pr_url import (
     check_gh_available,
     fetch_pr_changed_files,
@@ -92,7 +93,8 @@ class ChangeImpactTool(BaseMCPTool):
             "annotations": {
                 "readOnlyHint": True,
                 "destructiveHint": False,
-                "idempotentHint": True,
+                # Mixed operation: capture_diff_snapshot allocates a fresh ID/lease.
+                "idempotentHint": False,
                 "openWorldHint": False,
             },
         }
@@ -366,7 +368,9 @@ class ChangeImpactTool(BaseMCPTool):
         # Scope existence is an identity question, not a changed-record
         # question. Use only the immutable inventory captured inside the source
         # oracle epoch; a clean file or directory prefix is still valid.
-        inventory_paths = tuple(consumer.snapshot.inventory_paths)
+        inventory_paths = tuple(
+            path_to_wire(path) for path in consumer.snapshot.inventory_paths
+        )
         scope_identities = set(inventory_paths).union(record_identities)
         invalid_scope = [
             scope
@@ -414,7 +418,9 @@ class ChangeImpactTool(BaseMCPTool):
         result = apply_scope_validation(result, invalid_scope)
         assessed = sorted(set(workspace_changed_files).union(scope_paths))
         error = REGISTRY.bind_assessed_scope(consumer, assessed)
-        frozen["assessed_scope_paths"] = list(consumer.snapshot.assessed_scope_paths)
+        frozen["assessed_scope_paths"] = [
+            path_to_wire(path) for path in consumer.snapshot.assessed_scope_paths
+        ]
         if error:
             return apply_toon_format_to_response(
                 {

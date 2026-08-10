@@ -103,3 +103,12 @@ def test_create_rejects_oracle_root_identity_drift(tmp_path: Path, monkeypatch) 
         "success": False,
         "error_code": "DIFF_SNAPSHOT_ROOT_MISMATCH",
     }
+
+
+def test_git_epoch_selects_object_format_empty_tree() -> None:
+    from tree_sitter_analyzer.source_oracle_git import GitEpoch
+
+    sha1 = GitEpoch(b"head", "sha1", (), (), (), ()).empty_tree
+    sha256 = GitEpoch(b"head", "sha256", (), (), (), ()).empty_tree
+    assert len(sha1) == 40
+    assert len(sha256) == 64

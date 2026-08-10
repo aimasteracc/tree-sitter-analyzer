@@ -912,3 +912,11 @@ def test_edit_release_snapshot_requires_both_ownership_ids() -> None:
                 {"action": "release_snapshot", "diff_snapshot_id": "ds"}
             )
         )
+
+
+def test_change_impact_annotation_is_non_idempotent_for_optional_capture() -> None:
+    # PR #1252 review thread 3747113064.
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+    definition = ChangeImpactTool().get_tool_definition()
+    assert definition["annotations"]["idempotentHint"] is False

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -12,7 +15,6 @@ from tests.unit._diff_snapshot_support import (
     install_fake_snapshot_materializer,
     make_repo,
 )
-from tree_sitter_analyzer.source_oracle import SafePath
 
 
 def _git(root: Path, *args: str) -> None:
@@ -112,11 +114,7 @@ def test_workspace_snapshot_inventory_includes_bounded_untracked_paths(
 
 
 @POSIX_SNAPSHOT_TEST
-def test_untracked_executable_uses_canonical_non_git_record(tmp_path: Path) -> None:
-    import base64
-    import json
-    import os
-
+def test_untracked_executable_is_frozen_as_git_binary_patch(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     script = root / "odd name.py"
     script.write_bytes(b"print('ok')")
@@ -126,13 +124,11 @@ def test_untracked_executable_uses_canonical_non_git_record(tmp_path: Path) -> N
     consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(root))
     assert error is None
     assert consumer is not None
-
-    segment = json.loads(consumer.snapshot.normalized_patch.splitlines()[-1])
-
-    assert segment["type"] == "tsa-untracked-v1"
-    assert segment["mode"] == 0o755
-    assert base64.b64decode(segment["path_b64"]) == os.fsencode("odd name.py")
-    assert base64.b64decode(segment["content_b64"]) == b"print('ok')"
+    frozen = consumer.snapshot.file("odd name.py")
+    assert frozen is not None
+    assert frozen.record.new_mode == "100755"
+    assert frozen.new_bytes == b"print('ok')"
+    assert b"new file mode 100755" in consumer.snapshot.normalized_patch
     consumer.release()
 
 
@@ -148,32 +144,13 @@ def test_changed_entries_deduplicates_tracked_and_untracked(monkeypatch) -> None
     assert capture._rows(".", "diff", 1.0, 10) == [("M", None, "same.py", True)]
 
 
-@pytest.mark.parametrize(
-    "fault,code",
-    [
-        ("missing", "DIFF_SNAPSHOT_SOURCE_CHANGED"),
-        ("metadata", None),
-        ("capacity", "DIFF_SNAPSHOT_CAPACITY"),
-    ],
-)
-def test_capture_payload_handles_workspace_faults(
-    monkeypatch, fault: str, code: str | None
-) -> None:
-    safe = SafePath(
-        None if fault == "missing" else b"x",
-        (b"bad",) if fault == "metadata" else (),
-        "file",
-    )
-    monkeypatch.setattr(capture, "git_output", lambda *a, **k: b"")
-    monkeypatch.setattr(capture, "_rows", lambda *a: [("A", None, "x.py", False)])
-    monkeypatch.setattr(capture, "_tracked_binary_paths", lambda *a: set())
-    monkeypatch.setattr(capture, "safe_workspace_path", lambda *a, **k: safe)
-    limit = 1 if fault == "capacity" else 100
-    if code is None:
-        assert capture._capture_payload(".", "diff", 1.0, limit)[1][0].new_bytes == b"x"
-    else:
-        with pytest.raises(snapshots.SourceOracleError, match=code):
-            capture._capture_payload(".", "diff", 1.0, limit)
+def test_safe_mode_rejects_malformed_leaf_metadata() -> None:
+    with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_UNSAFE_PATH"):
+        capture._safe_mode("file", (b"bad",))
+
+
+def test_safe_mode_reports_missing_without_mode() -> None:
+    assert capture._safe_mode("missing", ()) == (None, "missing")
 
 
 def test_numstat_z_binary_rename_uses_destination_path(monkeypatch) -> None:
@@ -315,16 +292,200 @@ def test_stage_zero_selector_disambiguates_colon_prefixed_path(tmp_path: Path) -
 
 def test_every_snapshot_diff_disables_textconv(monkeypatch) -> None:
     # PR #1252 review thread 3746940423.
+    from tree_sitter_analyzer.source_oracle_git import GitEpoch
+
     calls: list[list[str]] = []
 
-    def fake_git(root, args, **kwargs):
-        calls.append(args)
-        return b""
+    class FakeFrozenGit:
+        def __init__(self, *args, **kwargs):
+            pass
 
-    monkeypatch.setattr(capture, "git_output", fake_git)
+        def __enter__(self):
+            return self
 
-    capture._rows(".", "staged", 1e20, 1024)
-    capture._tracked_binary_paths(".", "staged", 1e20, 1024)
-    capture._capture_payload(".", "staged", 1e20, 1024)
+        def __exit__(self, *args):
+            return None
 
-    assert ["--no-textconv" in args for args in calls] == [True, True, True, True, True]
+        def run(self, args, **kwargs):
+            calls.append(args)
+            return b""
+
+    monkeypatch.setattr(capture, "FrozenGitEnvironment", FakeFrozenGit)
+    monkeypatch.setattr(capture, "_head_entries", lambda *args, **kwargs: {})
+    epoch = GitEpoch(
+        b"4b825dc642cb6eb9a060e54bf8d69288fbee4904",  # pragma: allowlist secret
+        "sha1",
+        (),
+        (),
+        (),
+        (),
+    )
+    capture._capture_payload(".", "staged", 1e20, 1024, epoch=epoch)
+    diff_calls = [args for args in calls if args and args[0] == "diff"]
+    assert ["--no-textconv" in args for args in diff_calls] == [True, True, True]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_payload_uses_pre_epoch_index_during_transient_replacement(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3747113051: payload must never publish transient index bytes.
+    root = _repo(tmp_path)
+    target = root / "old.py"
+    target.write_text("value = 2\n")
+    subprocess.run(["git", "add", "old.py"], cwd=root, check=True)
+    original_index = (root / ".git" / "index").read_bytes()
+    target.write_text("value = 3\n")
+    subprocess.run(["git", "add", "old.py"], cwd=root, check=True)
+    transient_index = (root / ".git" / "index").read_bytes()
+    (root / ".git" / "index").write_bytes(original_index)
+    original_capture = snapshots._capture_payload
+
+    def replace_during_payload(
+        root_arg, mode, deadline, ceiling, expected_manifest=None, epoch=None
+    ):
+        (root / ".git" / "index").write_bytes(transient_index)
+        try:
+            return original_capture(
+                root_arg,
+                mode,
+                deadline,
+                ceiling,
+                expected_manifest=expected_manifest,
+                epoch=epoch,
+            )
+        finally:
+            (root / ".git" / "index").write_bytes(original_index)
+
+    monkeypatch.setattr(snapshots, "_capture_payload", replace_during_payload)
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "staged", [])
+    assert created["success"] is True
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    assert consumer.snapshot.file("old.py").new_bytes == b"value = 2\n"
+    consumer.release()
+
+
+@POSIX_SNAPSHOT_TEST
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="tracked: PR #1252 Darwin rejects non-UTF-8 leaf creation",
+)
+def test_non_utf8_path_is_wire_safe_and_round_trips(tmp_path: Path) -> None:
+    # PR #1252 review thread 3747113059.
+    root = _repo(tmp_path)
+    raw = b"non-utf8-\xff.py"
+    absolute = os.path.join(os.fsencode(root), raw)
+    fd = os.open(absolute, os.O_WRONLY | os.O_CREAT, 0o644)
+    try:
+        os.write(fd, b"value = 1\n")
+    finally:
+        os.close(fd)
+    subprocess.run([b"git", b"add", b"--", raw], cwd=os.fsencode(root), check=True)
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "staged", [])
+    encoded = json.dumps(created, ensure_ascii=False).encode("utf-8")
+    assert b"git-path-b64:" in encoded
+    token = next(
+        record["path"]
+        for record in created["changed_records"]
+        if record["path"].startswith("git-path-b64:")
+    )
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    assert consumer.snapshot.file(token).new_bytes == b"value = 1\n"
+    consumer.release()
+    assert (
+        registry.close_lease(
+            str(created["diff_snapshot_id"]), str(created["route_lease_id"])
+        )["success"]
+        is True
+    )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_workspace_deletion_and_mode_use_safe_leaf_metadata(tmp_path: Path) -> None:
+    # PR #1252 review thread 3747113054.
+    root = _repo(tmp_path)
+    subprocess.run(["git", "config", "core.filemode", "true"], cwd=root, check=True)
+    (root / "old.py").chmod(0o755)
+    (root / "gone.py").unlink()
+    created = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+    records = {record["path"]: record for record in created["changed_records"]}
+    assert records["old.py"]["new_kind"] == "file"
+    assert records["old.py"]["new_mode"] == "100755"
+    assert "new_oid" not in records["old.py"]
+    assert records["gone.py"]["new_kind"] == "missing"
+    assert "new_mode" not in records["gone.py"]
+    assert "new_oid" not in records["gone.py"]
+
+
+def test_frozen_name_status_rejects_truncated_rename() -> None:
+    class Git:
+        def run(self, *args, **kwargs):
+            return b"R\0only-old\0"
+
+    with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        capture._frozen_rows(Git(), b"head", 1024)
+
+
+def test_compat_name_status_parses_rename_and_untracked(monkeypatch) -> None:
+    outputs = iter((b"R100\0old.py\0new.py\0", b"extra.py\0"))
+    monkeypatch.setattr(capture, "git_output", lambda *args, **kwargs: next(outputs))
+    assert capture._rows(".", "diff", 1e20, 1024) == [
+        ("A", None, "extra.py", False),
+        ("R", "old.py", "new.py", True),
+    ]
+
+
+def test_compat_name_status_successful_staged_path(monkeypatch) -> None:
+    monkeypatch.setattr(
+        capture, "git_output", lambda *args, **kwargs: b"M\0tracked.py\0"
+    )
+    assert capture._rows(".", "staged", 1e20, 1024) == [("M", None, "tracked.py", True)]
+
+
+def test_compat_numstat_ignores_text_path(monkeypatch) -> None:
+    monkeypatch.setattr(
+        capture, "git_output", lambda *args, **kwargs: b"1\t2\ttext.py\0"
+    )
+    assert capture._tracked_binary_paths(".", "staged", 1e20, 1024) == set()
+
+
+def test_frozen_numstat_rejects_malformed_row() -> None:
+    class Git:
+        def run(self, *args, **kwargs):
+            return b"bad\0"
+
+    with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        capture._binary_paths(Git(), b"head", 1024)
+
+
+@pytest.mark.parametrize("raw", [b"-\t-\t\0old.bin", b"-\t-\t\0old.bin\0"])
+def test_frozen_numstat_rejects_truncated_rename(raw: bytes) -> None:
+    class Git:
+        def run(self, *args, **kwargs):
+            return raw
+
+    with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        capture._binary_paths(Git(), b"head", 1024)
+
+
+def test_frozen_numstat_parses_binary_rename_destination() -> None:
+    class Git:
+        def run(self, *args, **kwargs):
+            return b"-\t-\t\0old.bin\0new.bin\0"
+
+    assert capture._binary_paths(Git(), b"head", 1024) == {b"new.bin"}
+
+
+def test_safe_mode_reports_symlink() -> None:
+    assert capture._safe_mode("symlink", ()) == ("120000", "symlink")
+
+
+def test_payload_requires_pre_oracle_epoch() -> None:
+    with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        capture._capture_payload(".", "staged", 1e20, 1024)

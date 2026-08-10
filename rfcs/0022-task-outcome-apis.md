@@ -119,7 +119,18 @@ oracle generation captured by `impact`; a changed source returns
 makes the task stop remaining diff fan-out. Consumer release is also in a
 `finally` block. These stable errors are result data, not exceptions whose text
 is serialized. No snapshot directory, temp file, DB, WAL, or implicit persistent
-cache is permitted.
+cache is permitted inside the project. Capture may use mode-0600 normal indexes
+and a temporary object directory outside the project; these are request-scoped,
+share the same deadline/budget, use the repository object store only as a read-only
+alternate, and are unconditionally deleted. The first oracle pass freezes exact
+stage entries plus HEAD/object-format identity. All patch/status/numstat/blob reads
+are then bound to rebuilt temporary indexes, never the live index or worktree.
+Arbitrary Git path bytes use the lossless ``git-path-b64:<urlsafe-base64>`` wire
+codec (literal names with that prefix are encoded too).
+
+Because ``edit.impact`` conditionally allocates a fresh snapshot ID, lease, slot,
+and byte charge, its MCP annotation is conservatively mixed/non-idempotent
+(``idempotentHint=false``), even when capture is not requested.
 
 Rename, add, delete, multi-file, binary, capacity, expiry, lease cleanup, and
 mid-route workspace mutation are primitive contract tests. Today these adapters

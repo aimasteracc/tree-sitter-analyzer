@@ -330,3 +330,12 @@ def test_stable_descriptor_chain_rejects_malformed_metadata() -> None:
         lambda: oracle.stable_descriptor_chain((b"bad",)),
         "DIFF_SNAPSHOT_UNSAFE_PATH",
     )
+
+
+def test_git_output_wrapper_delegates(monkeypatch) -> None:
+    import tree_sitter_analyzer.source_oracle_git as oracle_git
+
+    monkeypatch.setattr(
+        oracle_git, "git_output", lambda root, args, **kwargs: b"frozen"
+    )
+    assert oracle.git_output(".", ["status"], deadline=1e20, limit=10) == b"frozen"

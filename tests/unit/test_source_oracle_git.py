@@ -313,6 +313,8 @@ def _stub_oracle_inventory(
     monkeypatch.setattr(oracle, "_head_entries", lambda *args, **kwargs: {})
 
     def git_output(root, args, **kwargs):
+        if args == ["rev-parse", "--show-object-format"]:
+            return b"sha1\n"
         if args == ["rev-parse", "--verify", "HEAD"]:
             return b"head\n"
         if args == ["rev-parse", "--git-dir"]:

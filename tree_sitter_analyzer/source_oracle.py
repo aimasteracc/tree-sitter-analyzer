@@ -287,10 +287,17 @@ def oracle_generation(
     *,
     deadline: float | None = None,
     manifest: dict[str, tuple[bytes, ...]] | None = None,
+    epoch_out: list[Any] | None = None,
 ) -> tuple[str, RootIdentity]:
     from .source_oracle_git import oracle_generation as generate
 
-    return generate(project_root, mode, deadline=deadline, manifest=manifest)
+    return generate(
+        project_root,
+        mode,
+        deadline=deadline,
+        manifest=manifest,
+        epoch_out=epoch_out,
+    )
 
 
 def capture_inventory(

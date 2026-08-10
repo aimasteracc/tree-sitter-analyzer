@@ -15,14 +15,16 @@ from .diff_snapshot_capture import (
     FrozenFile,
     _capture_payload,
 )
+from .diff_snapshot_paths import epoch_inventory, path_collection_storage
+from .git_path_codec import path_from_wire, path_to_wire
 from .source_oracle import (
     RootIdentity,
     SourceOracleError,
     canonical_root,
     capture_inventory,
-    normalize_repo_path,
     oracle_generation,
 )
+from .source_oracle_git import GitEpoch
 
 MAX_SNAPSHOTS = 16
 MAX_MATERIALIZED_BYTES = 64 * 1024 * 1024
@@ -33,8 +35,7 @@ MAX_SCOPE_BYTES = 1024 * 1024
 
 
 def _path_storage(paths: tuple[str, ...] | list[str] | set[str]) -> int:
-    """Charge UTF-8 path payload plus one framing byte per retained value."""
-    return sum(len(os.fsencode(path)) + 1 for path in paths)
+    return path_collection_storage(paths)
 
 
 def _record_storage(files: tuple[FrozenFile, ...]) -> int:
@@ -64,7 +65,7 @@ class FrozenDiffSnapshot:
 
     def file(self, path: str) -> FrozenFile | None:
         try:
-            normalized = normalize_repo_path(path)
+            normalized = path_from_wire(path)
         except SourceOracleError:
             return None
         return next(
@@ -152,9 +153,7 @@ class DiffSnapshotRegistry:
         if any(not isinstance(path, str) for path in assessed_scope_paths):
             return self._error("DIFF_SNAPSHOT_INVALID_PATH")
         try:
-            normalized_input = {
-                normalize_repo_path(path) for path in assessed_scope_paths
-            }
+            normalized_input = {path_from_wire(path) for path in assessed_scope_paths}
         except SourceOracleError as exc:
             return self._error(str(exc))
         if any(len(os.fsencode(path)) > MAX_PATH_BYTES for path in normalized_input):
@@ -180,23 +179,44 @@ class DiffSnapshotRegistry:
         try:
             root, identity = canonical_root(project_root)
             pre_manifest: dict[str, tuple[bytes, ...]] = {}
+            epochs: list[GitEpoch] = []
             oracle_params = inspect.signature(oracle_generation).parameters
-            if "manifest" in oracle_params:
+            if "epoch_out" in oracle_params:
+                before, before_identity = oracle_generation(
+                    root,
+                    mode,
+                    deadline=deadline,
+                    manifest=pre_manifest,
+                    epoch_out=epochs,
+                )
+            elif "manifest" in oracle_params:
                 before, before_identity = oracle_generation(
                     root, mode, deadline=deadline, manifest=pre_manifest
                 )
-            else:  # compatibility for injected platform seams
+            else:
                 before, before_identity = oracle_generation(
                     root, mode, deadline=deadline
                 )
             if before_identity != identity:
                 raise SourceOracleError("DIFF_SNAPSHOT_ROOT_MISMATCH")
-            inventory_paths = capture_inventory(
-                root, mode, deadline=deadline, limit=ceiling
+            epoch = epochs[0] if epochs else None
+            inventory_paths = (
+                epoch_inventory(epoch, mode, ceiling)
+                if epoch is not None
+                else capture_inventory(root, mode, deadline=deadline, limit=ceiling)
             )
             inventory_size = _path_storage(inventory_paths)
             capture_params = inspect.signature(_capture_payload).parameters
-            if "expected_manifest" in capture_params:
+            if "epoch" in capture_params and epoch is not None:
+                patch, files = _capture_payload(
+                    root,
+                    mode,
+                    deadline,
+                    ceiling - inventory_size,
+                    expected_manifest=pre_manifest,
+                    epoch=epoch,
+                )
+            elif "expected_manifest" in capture_params:
                 patch, files = _capture_payload(
                     root,
                     mode,
@@ -204,7 +224,7 @@ class DiffSnapshotRegistry:
                     ceiling - inventory_size,
                     expected_manifest=pre_manifest,
                 )
-            else:  # compatibility for injected capture seams
+            else:
                 patch, files = _capture_payload(
                     root, mode, deadline, ceiling - inventory_size
                 )
@@ -252,7 +272,9 @@ class DiffSnapshotRegistry:
                 "route_lease_id": lease,
                 "source_generation": before,
                 "changed_records": [x.record.to_dict() for x in files],
-                "assessed_scope_paths": list(snapshot.assessed_scope_paths),
+                "assessed_scope_paths": [
+                    path_to_wire(path) for path in snapshot.assessed_scope_paths
+                ],
             }
         except SourceOracleError as exc:
             with self._lock:
@@ -306,7 +328,7 @@ class DiffSnapshotRegistry:
             return "DIFF_SNAPSHOT_INVALID_PATH"
         try:
             normalized = tuple(
-                sorted({normalize_repo_path(path) for path in paths}, key=os.fsencode)
+                sorted({path_from_wire(path) for path in paths}, key=os.fsencode)
             )
         except SourceOracleError as exc:
             return str(exc)
