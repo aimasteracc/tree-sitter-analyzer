@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
-from tests.unit._diff_snapshot_support import make_repo
+from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
 from tree_sitter_analyzer.source_oracle import SafePath
 
 
@@ -18,6 +18,7 @@ def _repo(tmp_path: Path) -> Path:
     return make_repo(tmp_path)
 
 
+@POSIX_SNAPSHOT_TEST
 def test_staged_snapshot_freezes_add_delete_rename_binary_and_multiple_files(
     tmp_path: Path,
 ) -> None:
@@ -53,6 +54,7 @@ def test_staged_snapshot_freezes_add_delete_rename_binary_and_multiple_files(
     ]
 
 
+@POSIX_SNAPSHOT_TEST
 def test_staged_snapshot_reads_index_not_workspace(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     (root / "old.py").write_text("value = 2\n")
@@ -72,6 +74,7 @@ def test_staged_snapshot_reads_index_not_workspace(tmp_path: Path) -> None:
     consumer.release()
 
 
+@POSIX_SNAPSHOT_TEST
 def test_capacity_is_stable_error_and_close_releases_charge(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -93,6 +96,7 @@ def test_capacity_is_stable_error_and_close_releases_charge(
     assert registry.stats() == (0, 0)
 
 
+@POSIX_SNAPSHOT_TEST
 def test_expiry_retains_active_consumer_bytes_until_release(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     (root / "old.py").write_text("value = 2\n")
@@ -116,6 +120,7 @@ def test_expiry_retains_active_consumer_bytes_until_release(tmp_path: Path) -> N
     assert registry.stats() == (0, 0)
 
 
+@POSIX_SNAPSHOT_TEST
 def test_snapshot_id_is_bound_to_exact_root_identity(tmp_path: Path) -> None:
     root = _repo(tmp_path / "one")
     other = _repo(tmp_path / "two")
@@ -130,8 +135,8 @@ def test_snapshot_id_is_bound_to_exact_root_identity(tmp_path: Path) -> None:
     assert error == "DIFF_SNAPSHOT_ROOT_MISMATCH"
 
 
-def test_reset_rejects_active_consumer_then_clears(tmp_path: Path) -> None:
-    root, registry, result = _created(tmp_path)
+def test_reset_rejects_active_consumer_then_clears(tmp_path: Path, monkeypatch) -> None:
+    root, registry, result = _created(tmp_path, monkeypatch)
     consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(root))
     assert error is None
     assert consumer is not None
@@ -157,6 +162,7 @@ def test_snapshot_consumer_schema_rejects_live_arguments(tmp_path: Path) -> None
         SemanticClassifyTool(str(tmp_path)).validate_arguments(arguments)
 
 
+@POSIX_SNAPSHOT_TEST
 def test_untracked_executable_uses_canonical_non_git_record(tmp_path: Path) -> None:
     import base64
     import json
@@ -182,11 +188,11 @@ def test_untracked_executable_uses_canonical_non_git_record(tmp_path: Path) -> N
 
 
 def test_consumer_lifecycle_is_idempotent_context_managed_and_thread_owned(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
     import concurrent.futures
 
-    root, registry, result = _created(tmp_path)
+    root, registry, result = _created(tmp_path, monkeypatch)
     consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(root))
     assert error is None
     assert consumer is not None
@@ -224,12 +230,20 @@ def test_registry_defensive_capacity_and_mode_errors(tmp_path: Path) -> None:
     assert called == [True]
 
 
-def _created(tmp_path: Path):
-    root = _repo(tmp_path)
-    (root / "old.py").write_text("value = 2\n")
+def _created(tmp_path: Path, monkeypatch):
+    """Create registry state without invoking the POSIX workspace oracle."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    identity = snapshots.RootIdentity(str(tmp_path), 1, 2)
+    monkeypatch.setattr(
+        snapshots, "canonical_root", lambda value: (str(tmp_path), identity)
+    )
+    monkeypatch.setattr(
+        snapshots, "oracle_generation", lambda *args, **kwargs: ("sg_test", identity)
+    )
+    monkeypatch.setattr(snapshots, "_capture_payload", lambda *args: (b"", ()))
     registry = snapshots.DiffSnapshotRegistry()
-    result = registry.create(str(root), "diff", [])
-    return root, registry, result
+    result = registry.create(str(tmp_path), "diff", [])
+    return tmp_path, registry, result
 
 
 def test_create_releases_reservation_after_unexpected_capture_error(
@@ -322,7 +336,7 @@ def test_acquire_translates_root_error(monkeypatch) -> None:
 def test_acquire_releases_reserved_pin_after_oracle_error(
     tmp_path: Path, monkeypatch
 ) -> None:
-    root, registry, result = _created(tmp_path)
+    root, registry, result = _created(tmp_path, monkeypatch)
     monkeypatch.setattr(
         snapshots,
         "oracle_generation",
@@ -332,8 +346,10 @@ def test_acquire_releases_reserved_pin_after_oracle_error(
     assert next(iter(registry._states.values())).pins == {}
 
 
-def test_bind_assessed_scope_translates_invalid_path(tmp_path: Path) -> None:
-    root, registry, result = _created(tmp_path)
+def test_bind_assessed_scope_translates_invalid_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, registry, result = _created(tmp_path, monkeypatch)
     consumer, _ = registry.acquire(str(result["diff_snapshot_id"]), str(root))
     assert consumer is not None
     assert (
@@ -343,8 +359,10 @@ def test_bind_assessed_scope_translates_invalid_path(tmp_path: Path) -> None:
     consumer.release()
 
 
-def test_bind_assessed_scope_rejects_released_consumer(tmp_path: Path) -> None:
-    root, registry, result = _created(tmp_path)
+def test_bind_assessed_scope_rejects_released_consumer(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, registry, result = _created(tmp_path, monkeypatch)
     consumer, _ = registry.acquire(str(result["diff_snapshot_id"]), str(root))
     assert consumer is not None
     consumer.release()
@@ -352,7 +370,7 @@ def test_bind_assessed_scope_rejects_released_consumer(tmp_path: Path) -> None:
 
 
 def test_verify_translates_oracle_error(tmp_path: Path, monkeypatch) -> None:
-    root, registry, result = _created(tmp_path)
+    root, registry, result = _created(tmp_path, monkeypatch)
     consumer, _ = registry.acquire(str(result["diff_snapshot_id"]), str(root))
     assert consumer is not None
     monkeypatch.setattr(
@@ -364,8 +382,8 @@ def test_verify_translates_oracle_error(tmp_path: Path, monkeypatch) -> None:
     consumer.release()
 
 
-def test_release_rejects_wrong_thread_owner(tmp_path: Path) -> None:
-    root, registry, result = _created(tmp_path)
+def test_release_rejects_wrong_thread_owner(tmp_path: Path, monkeypatch) -> None:
+    root, registry, result = _created(tmp_path, monkeypatch)
     consumer, _ = registry.acquire(str(result["diff_snapshot_id"]), str(root))
     assert isinstance(consumer, snapshots.SnapshotConsumer)
     with pytest.raises(RuntimeError, match="DIFF_SNAPSHOT_PIN_INVALID"):
@@ -373,8 +391,8 @@ def test_release_rejects_wrong_thread_owner(tmp_path: Path) -> None:
     consumer.release()
 
 
-def test_release_rejects_pin_underflow(tmp_path: Path) -> None:
-    root, registry, result = _created(tmp_path)
+def test_release_rejects_pin_underflow(tmp_path: Path, monkeypatch) -> None:
+    root, registry, result = _created(tmp_path, monkeypatch)
     consumer, _ = registry.acquire(str(result["diff_snapshot_id"]), str(root))
     assert consumer is not None
     assert (
@@ -388,8 +406,8 @@ def test_release_rejects_pin_underflow(tmp_path: Path) -> None:
         registry._release(consumer.snapshot.snapshot_id, consumer._pin, consumer._owner)
 
 
-def test_close_lease_rejects_wrong_lease(tmp_path: Path) -> None:
-    _, registry, result = _created(tmp_path)
+def test_close_lease_rejects_wrong_lease(tmp_path: Path, monkeypatch) -> None:
+    _, registry, result = _created(tmp_path, monkeypatch)
     assert registry.close_lease(str(result["diff_snapshot_id"]), "wrong") is False
 
 
@@ -453,7 +471,7 @@ def test_create_rejects_oracle_root_identity_drift(tmp_path: Path, monkeypatch) 
 
 
 def test_acquire_rejects_generation_drift(tmp_path: Path, monkeypatch) -> None:
-    root, registry, result = _created(tmp_path)
+    root, registry, result = _created(tmp_path, monkeypatch)
     identity = next(iter(registry._states.values())).snapshot.root_identity
     monkeypatch.setattr(
         snapshots, "oracle_generation", lambda *a: ("different", identity)
@@ -465,7 +483,7 @@ def test_acquire_rejects_generation_drift(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_verify_rejects_root_identity_drift(tmp_path: Path, monkeypatch) -> None:
-    root, registry, result = _created(tmp_path)
+    root, registry, result = _created(tmp_path, monkeypatch)
     consumer, _ = registry.acquire(str(result["diff_snapshot_id"]), str(root))
     assert consumer is not None
     monkeypatch.setattr(
@@ -480,7 +498,7 @@ def test_verify_rejects_root_identity_drift(tmp_path: Path, monkeypatch) -> None
     consumer.release()
 
 
-def test_sweep_erases_expired_unpinned_snapshot(tmp_path: Path) -> None:
-    _, registry, _ = _created(tmp_path)
+def test_sweep_erases_expired_unpinned_snapshot(tmp_path: Path, monkeypatch) -> None:
+    _, registry, _ = _created(tmp_path, monkeypatch)
     next(iter(registry._states.values())).expired = True
     assert registry.stats() == (0, 0)

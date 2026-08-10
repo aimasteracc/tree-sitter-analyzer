@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 import tree_sitter_analyzer.source_oracle as oracle
+from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST
 
 
 def _error(call, code: str) -> None:
@@ -23,6 +24,7 @@ def test_canonical_root_rejects_non_directory(tmp_path: Path) -> None:
     _error(lambda: oracle.canonical_root(str(target)), "DIFF_SNAPSHOT_ROOT_INVALID")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_reports_missing_leaf(tmp_path: Path) -> None:
     result = oracle.safe_workspace_path(
         str(tmp_path), "missing.py", deadline=time.monotonic() + 1, limit=10
@@ -31,6 +33,7 @@ def test_safe_workspace_path_reports_missing_leaf(tmp_path: Path) -> None:
     assert result.data is None
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_rejects_oversize_symlink(tmp_path: Path) -> None:
     (tmp_path / "link").symlink_to("long-target")
     _error(
@@ -41,6 +44,7 @@ def test_safe_workspace_path_rejects_oversize_symlink(tmp_path: Path) -> None:
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_rejects_special_file(tmp_path: Path) -> None:
     os.mkfifo(tmp_path / "fifo")
     _error(
@@ -51,15 +55,17 @@ def test_safe_workspace_path_rejects_special_file(tmp_path: Path) -> None:
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_ignores_close_error(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "x").write_bytes(b"x")
-    monkeypatch.setattr(oracle.os, "close", lambda fd: (_ for _ in ()).throw(OSError()))
+    monkeypatch.setattr(oracle, "_close", lambda fd: (_ for _ in ()).throw(OSError()))
     result = oracle.safe_workspace_path(
         str(tmp_path), "x", deadline=time.monotonic() + 1, limit=2
     )
     assert result.data == b"x"
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_detects_post_open_identity_change(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -81,6 +87,7 @@ def test_safe_workspace_path_detects_post_open_identity_change(
 
 
 @pytest.mark.parametrize("changed_call", [3, 4])
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_detects_file_identity_changes(
     tmp_path: Path, monkeypatch, changed_call: int
 ) -> None:
@@ -101,6 +108,7 @@ def test_safe_workspace_path_detects_file_identity_changes(
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_detects_symlink_identity_change(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -121,6 +129,7 @@ def test_safe_workspace_path_detects_symlink_identity_change(
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_returns_symlink_text(tmp_path: Path) -> None:
     (tmp_path / "x").symlink_to("target")
     result = oracle.safe_workspace_path(
@@ -129,6 +138,7 @@ def test_safe_workspace_path_returns_symlink_text(tmp_path: Path) -> None:
     assert result == oracle.SafePath(b"target", result.metadata, "symlink")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_rejects_oversize_file(tmp_path: Path) -> None:
     (tmp_path / "x").write_bytes(b"abc")
     _error(
@@ -139,6 +149,7 @@ def test_safe_workspace_path_rejects_oversize_file(tmp_path: Path) -> None:
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_safe_workspace_path_detects_post_read_identity_change(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -167,6 +178,7 @@ class _RecordingDigest:
         self.frames.append(value)
 
 
+@POSIX_SNAPSHOT_TEST
 def test_frame_workspace_path_records_clean_tracked_disappearance(
     tmp_path: Path,
 ) -> None:
@@ -188,6 +200,7 @@ def test_frame_workspace_path_records_clean_tracked_disappearance(
     assert digest.frames[3] == b"\x00\x00\x00\x00\x00\x00\x00\x07missing"
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_detects_index_change(tmp_path: Path, monkeypatch) -> None:
     index = tmp_path / "index"
     index.write_bytes(b"index")
@@ -213,6 +226,7 @@ def test_oracle_generation_detects_index_change(tmp_path: Path, monkeypatch) -> 
     )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_hashes_workspace_and_nested_path(tmp_path: Path) -> None:
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(
@@ -231,6 +245,7 @@ def test_oracle_generation_hashes_workspace_and_nested_path(tmp_path: Path) -> N
     assert identity.realpath == str(tmp_path)
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_supports_staged_mode(tmp_path: Path) -> None:
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(
@@ -248,6 +263,7 @@ def test_oracle_generation_supports_staged_mode(tmp_path: Path) -> None:
     assert generation.startswith("sg_")
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_binds_clean_tracked_write_restore(tmp_path: Path) -> None:
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(
@@ -272,6 +288,7 @@ def test_oracle_generation_binds_clean_tracked_write_restore(tmp_path: Path) -> 
     assert after != before
 
 
+@POSIX_SNAPSHOT_TEST
 def test_oracle_generation_binds_clean_tracked_atomic_replace(tmp_path: Path) -> None:
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(
@@ -301,7 +318,7 @@ def test_oracle_generation_fails_closed_without_nofollow_workspace_reads(
     tmp_path: Path, monkeypatch
 ) -> None:
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    monkeypatch.delattr(oracle.os, "O_NOFOLLOW", raising=False)
+    monkeypatch.setattr(oracle, "_supports_nofollow", lambda: False)
 
     _error(
         lambda: oracle.oracle_generation(str(tmp_path)),

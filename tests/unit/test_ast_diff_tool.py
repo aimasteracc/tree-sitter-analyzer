@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
-from tests.unit._diff_snapshot_support import make_repo
+from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
 from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool
 from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import SemanticClassifyTool
 
@@ -628,6 +628,7 @@ async def test_snapshot_rejects_non_utf8_frozen_bytes(tool, monkeypatch) -> None
     ("tool_type", "field", "expected"),
     [(ASTDiffTool, "hunks", 2), (SemanticClassifyTool, "change_count", 2)],
 )
+@POSIX_SNAPSHOT_TEST
 def test_snapshot_consumer_uses_frozen_utf8_bytes(
     tmp_path: Path, tool_type, field: str, expected: int
 ) -> None:
@@ -652,6 +653,7 @@ def test_snapshot_consumer_uses_frozen_utf8_bytes(
 
 
 @pytest.mark.parametrize("tool_type", [ASTDiffTool, SemanticClassifyTool])
+@POSIX_SNAPSHOT_TEST
 def test_snapshot_consumer_rejects_binary_content(tmp_path: Path, tool_type) -> None:
     root = make_repo(tmp_path)
     (root / "blob.py").write_bytes(b"a\0b")

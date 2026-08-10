@@ -1,4 +1,5 @@
 import io
+import os
 import stat
 import subprocess
 import time
@@ -27,7 +28,7 @@ def test_remaining_rejects_expired_deadline(monkeypatch) -> None:
 
 def test_canonical_root_translates_stat_error(monkeypatch) -> None:
     monkeypatch.setattr(
-        oracle.os, "stat", lambda *a, **k: (_ for _ in ()).throw(OSError())
+        oracle, "_stat", lambda *a, **k: (_ for _ in ()).throw(OSError())
     )
     _error(lambda: oracle.canonical_root("missing"), "DIFF_SNAPSHOT_ROOT_INVALID")
 
@@ -112,14 +113,14 @@ def test_git_output_translates_stream_read_error(monkeypatch) -> None:
 def test_safe_workspace_path_translates_leaf_lstat_error(
     tmp_path: Path, monkeypatch
 ) -> None:
-    real_stat = oracle.os.stat
+    real_stat = oracle._stat
 
     def fail_leaf_lstat(path, *args, **kwargs):
         if kwargs.get("dir_fd") is not None:
             raise PermissionError("injected leaf lstat failure")
         return real_stat(path, *args, **kwargs)
 
-    monkeypatch.setattr(oracle.os, "stat", fail_leaf_lstat)
+    monkeypatch.setattr(oracle, "_stat", fail_leaf_lstat)
     _error(
         lambda: oracle.safe_workspace_path(
             str(tmp_path), "tracked.py", deadline=time.monotonic() + 1, limit=10
@@ -133,8 +134,8 @@ def test_safe_workspace_path_translates_symlink_readlink_error(
 ) -> None:
     (tmp_path / "tracked.py").symlink_to("target.py")
     monkeypatch.setattr(
-        oracle.os,
-        "readlink",
+        oracle,
+        "_readlink",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             PermissionError("injected readlink failure")
         ),
@@ -148,7 +149,7 @@ def test_safe_workspace_path_translates_symlink_readlink_error(
 
 
 def test_safe_workspace_path_rejects_unsupported_platform(monkeypatch) -> None:
-    monkeypatch.delattr(oracle.os, "O_NOFOLLOW", raising=False)
+    monkeypatch.setattr(oracle, "_supports_nofollow", lambda: False)
     _error(
         lambda: oracle.safe_workspace_path(
             ".", "a", deadline=time.monotonic() + 1, limit=1
@@ -157,9 +158,30 @@ def test_safe_workspace_path_rejects_unsupported_platform(monkeypatch) -> None:
     )
 
 
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason="tracked: RFC-0022 P0.2 Windows fail-closed workspace contract",
+)
+def test_safe_workspace_path_windows_fails_before_opening_files(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252: Windows must fail closed before attempting a workspace descriptor.
+    opened: list[tuple[object, ...]] = []
+    monkeypatch.setattr(oracle, "_open", lambda *args, **kwargs: opened.append(args))
+
+    _error(
+        lambda: oracle.safe_workspace_path(
+            str(tmp_path), "a", deadline=time.monotonic() + 1, limit=1
+        ),
+        "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED",
+    )
+
+    assert opened == []
+
+
 def test_safe_workspace_path_translates_open_error(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
-        oracle.os, "open", lambda *a, **k: (_ for _ in ()).throw(OSError())
+        oracle, "_open", lambda *a, **k: (_ for _ in ()).throw(OSError())
     )
     _error(
         lambda: oracle.safe_workspace_path(
@@ -173,7 +195,7 @@ def test_safe_workspace_path_translates_read_error(tmp_path: Path, monkeypatch) 
     target = tmp_path / "x"
     target.write_bytes(b"x")
     monkeypatch.setattr(
-        oracle.os, "read", lambda *a, **k: (_ for _ in ()).throw(OSError())
+        oracle, "_read", lambda *a, **k: (_ for _ in ()).throw(OSError())
     )
     _error(
         lambda: oracle.safe_workspace_path(
@@ -197,7 +219,7 @@ def test_oracle_generation_translates_index_lstat_error(
         lambda root, args, **k: b".git\n" if "--git-dir" in args else b"head",
     )
     monkeypatch.setattr(
-        oracle.os, "stat", lambda *a, **k: (_ for _ in ()).throw(OSError())
+        oracle, "_stat", lambda *a, **k: (_ for _ in ()).throw(OSError())
     )
     _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_GIT_ERROR")
 
@@ -216,7 +238,7 @@ def test_oracle_generation_rejects_nonregular_index(
         lambda root, args, **k: b".git\n" if "--git-dir" in args else b"head",
     )
     monkeypatch.setattr(
-        oracle.os, "stat", lambda *a, **k: SimpleNamespace(st_mode=stat.S_IFDIR)
+        oracle, "_stat", lambda *a, **k: SimpleNamespace(st_mode=stat.S_IFDIR)
     )
     _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_GIT_ERROR")
 
@@ -332,7 +354,7 @@ def test_oracle_generation_rejects_oversize_index(tmp_path: Path, monkeypatch) -
         def read(self, size):
             return b"x" * (64 * 1024 * 1024 + 1)
 
-    monkeypatch.setattr("builtins.open", lambda *a, **k: Huge())
+    monkeypatch.setattr(oracle, "_open_file", lambda *a, **k: Huge())
     _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_CAPACITY")
 
 

@@ -31,7 +31,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
-from tests.unit._diff_snapshot_support import make_repo
+from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
 from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
 from tree_sitter_analyzer.mcp.tools.facade_tool import FacadeTool
 
@@ -740,6 +740,7 @@ async def test_edit_snapshot_consumer_accepts_only_frozen_arguments() -> None:
     assert result["error_code"] == "DIFF_SNAPSHOT_EXPIRED"
 
 
+@POSIX_SNAPSHOT_TEST
 def test_edit_impact_is_strict_and_does_not_write(tmp_path: Path) -> None:
     import asyncio
 
@@ -769,6 +770,7 @@ def test_edit_impact_is_strict_and_does_not_write(tmp_path: Path) -> None:
         )
 
 
+@POSIX_SNAPSHOT_TEST
 def test_edit_impact_rejects_clean_tracked_transient_write_restore(
     tmp_path: Path, monkeypatch
 ) -> None:

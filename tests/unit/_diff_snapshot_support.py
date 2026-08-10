@@ -1,7 +1,15 @@
 """Shared Git repository fixture helpers for frozen snapshot tests."""
 
+import os
 import subprocess
 from pathlib import Path
+
+import pytest
+
+POSIX_SNAPSHOT_TEST = pytest.mark.skipif(
+    os.name == "nt",
+    reason="tracked: RFC-0022 P0.2 workspace snapshots require POSIX openat/O_NOFOLLOW",
+)
 
 
 def make_repo(tmp_path: Path) -> Path:

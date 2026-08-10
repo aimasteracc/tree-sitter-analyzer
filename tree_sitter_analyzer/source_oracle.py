@@ -11,7 +11,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Any, BinaryIO, TypeVar
+from typing import Any, BinaryIO, TypeVar, cast
 
 _LOCK = threading.RLock()
 _T = TypeVar("_T")
@@ -19,6 +19,37 @@ _FRAME_DOMAIN = b"tsa-source-generation-v3"
 _MAX_INVENTORY_BYTES = 16 * 1024 * 1024
 _MAX_WORKTREE_PATHS = 200_000
 _MAX_WORKTREE_CONTENT_BYTES = 64 * 1024 * 1024
+
+
+def _stat(*args: Any, **kwargs: Any) -> os.stat_result:
+    """Module-local stat seam; tests must not mutate the process-wide os module."""
+    return os.stat(*args, **kwargs)
+
+
+def _open(*args: Any, **kwargs: Any) -> int:
+    """Module-local descriptor-open seam for isolated fault injection."""
+    return os.open(*args, **kwargs)
+
+
+def _read(*args: Any, **kwargs: Any) -> bytes:
+    return os.read(*args, **kwargs)
+
+
+def _readlink(*args: Any, **kwargs: Any) -> str | bytes:
+    return cast(str | bytes, os.readlink(*args, **kwargs))
+
+
+def _close(*args: Any, **kwargs: Any) -> None:
+    os.close(*args, **kwargs)
+
+
+def _open_file(*args: Any, **kwargs: Any) -> BinaryIO:
+    """Module-local buffered-file seam for the Git index read."""
+    return cast(BinaryIO, open(*args, **kwargs))  # noqa: PTH123
+
+
+def _supports_nofollow() -> bool:
+    return os.name != "nt" and hasattr(os, "O_NOFOLLOW")
 
 
 class SourceOracleError(RuntimeError):
@@ -42,7 +73,7 @@ class SafePath:
 def canonical_root(project_root: str | None) -> tuple[str, RootIdentity]:
     root = os.path.realpath(project_root or ".")
     try:
-        info = os.stat(root, follow_symlinks=True)
+        info = _stat(root, follow_symlinks=True)
     except OSError as exc:
         raise SourceOracleError("DIFF_SNAPSHOT_ROOT_INVALID") from exc
     if not stat.S_ISDIR(info.st_mode):
@@ -163,31 +194,33 @@ def safe_workspace_path(
 ) -> SafePath:
     """Read a repo path without following any symlink or accepting special files."""
     normalized = normalize_repo_path(path)
-    if os.name == "nt" or not hasattr(os, "O_NOFOLLOW"):
+    if not _supports_nofollow():
         raise SourceOracleError("DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
     parts = normalized.split("/")
-    flags_dir = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | os.O_NOFOLLOW
+    flags_dir = (
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    )
     descriptors: list[int] = []
     metadata: list[bytes] = []
     try:
-        current = os.open(root, flags_dir)
+        current = _open(root, flags_dir)
         descriptors.append(current)
         metadata.append(_metadata(os.fstat(current)))
         for component in parts[:-1]:
-            current = os.open(component, flags_dir, dir_fd=current)
+            current = _open(component, flags_dir, dir_fd=current)
             descriptors.append(current)
             metadata.append(_metadata(os.fstat(current)))
         parent = current
         name = parts[-1]
         try:
-            before = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            before = _stat(name, dir_fd=parent, follow_symlinks=False)
         except FileNotFoundError:
             return SafePath(None, tuple(metadata + [b"missing"]), "missing")
         metadata.append(_metadata(before))
         if stat.S_ISLNK(before.st_mode):
-            target = os.readlink(os.fsencode(name), dir_fd=parent)
+            target = _readlink(os.fsencode(name), dir_fd=parent)
             data = target if isinstance(target, bytes) else os.fsencode(target)
-            after = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            after = _stat(name, dir_fd=parent, follow_symlinks=False)
             if _metadata(before) != _metadata(after):
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
             if len(data) > limit:
@@ -197,7 +230,11 @@ def safe_workspace_path(
             raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
         if not read_regular:
             return SafePath(None, tuple(metadata), "file")
-        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
+        fd = _open(
+            name,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=parent,
+        )
         descriptors.append(fd)
         opened = os.fstat(fd)
         if _metadata(before) != _metadata(opened):
@@ -205,7 +242,7 @@ def safe_workspace_path(
         buffer = bytearray()
         while True:
             _remaining(deadline)
-            chunk = os.read(fd, min(64 * 1024, limit - len(buffer) + 1))
+            chunk = _read(fd, min(64 * 1024, limit - len(buffer) + 1))
             if not chunk:
                 break
             buffer.extend(chunk)
@@ -220,7 +257,7 @@ def safe_workspace_path(
     finally:
         for fd in reversed(descriptors):
             try:
-                os.close(fd)
+                _close(fd)
             except OSError:
                 pass
 
@@ -351,7 +388,7 @@ def oracle_generation(
 ) -> tuple[str, RootIdentity]:
     """Return a domain-framed generation and the exact canonical root identity."""
     root, identity = canonical_root(project_root)
-    if os.name == "nt" or not hasattr(os, "O_NOFOLLOW"):
+    if not _supports_nofollow():
         raise SourceOracleError("DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
     end = deadline if deadline is not None else time.monotonic() + 35.0
     digest = hashlib.sha256()
@@ -368,12 +405,14 @@ def oracle_generation(
     ).rstrip(b"\n")
     index_path = os.path.join(root, os.fsdecode(git_dir), "index")
     try:
-        before_index = os.stat(index_path, follow_symlinks=False)
+        before_index = _stat(index_path, follow_symlinks=False)
         if not stat.S_ISREG(before_index.st_mode):
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        with open(index_path, "rb") as stream:  # index is inside the canonical git dir
+        with _open_file(
+            index_path, "rb"
+        ) as stream:  # index is inside the canonical git dir
             index_bytes = stream.read(64 * 1024 * 1024 + 1)
-        after_index = os.stat(index_path, follow_symlinks=False)
+        after_index = _stat(index_path, follow_symlinks=False)
         if _metadata(before_index) != _metadata(after_index):
             raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
         if len(index_bytes) > 64 * 1024 * 1024:
