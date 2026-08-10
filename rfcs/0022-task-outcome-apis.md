@@ -130,7 +130,18 @@ alternate, and are unconditionally deleted. The first oracle pass freezes exact
 stage entries plus HEAD/object-format identity. All patch/status/numstat/blob reads
 are then bound to rebuilt temporary indexes, never the live index or worktree.
 Arbitrary Git path bytes use the lossless ``git-path-b64:<urlsafe-base64>`` wire
-codec (literal names with that prefix are encoded too).
+codec (literal names with that prefix are encoded too). Every snapshot-owned Git
+command (oracle generation, config/attribute capture, hashing, diffing, and
+request-scoped temporary plumbing) runs with ``GIT_ATTR_NOSYSTEM=1``. P0.2
+therefore deliberately excludes machine system attributes: payload and oracle
+use the same deterministic attribute policy, while repository/info and captured
+``core.attributesFile`` inputs remain frozen. Git's built-in text/eol/autocrlf
+conversion is supported; an active ``filter`` attribute (boolean ``set`` or a
+driver value, including LFS) fails before any ``hash-object`` with
+``DIFF_SNAPSHOT_UNSUPPORTED_FILTER`` so no external clean driver executes.
+Strict AST/classification consumers infer language only from the captured
+normalized path extension; a caller language override conflicts, and an unknown
+extension returns ``DIFF_SNAPSHOT_UNSUPPORTED_LANGUAGE``.
 
 Because ``edit.impact`` conditionally allocates a fresh snapshot ID, lease, slot,
 and byte charge, its MCP annotation is conservatively mixed/non-idempotent

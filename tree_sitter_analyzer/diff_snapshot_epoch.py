@@ -16,6 +16,7 @@ from .frozen_git_settings import (
     FrozenSettingFile,
     config_fingerprint,
     parse_effective_config,
+    reject_active_filters,
     serialize_config,
 )
 from .git_subprocess import run_git_bounded
@@ -282,6 +283,17 @@ class FrozenGitEnvironment:
         path_input = b"".join(path + b"\0" for path in paths)
         if len(path_input) > 16 * 1024 * 1024:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+        filter_paths = tuple(
+            sorted(set(self.epoch.dirty_paths) | set(self.epoch.untracked_paths))
+        )
+        if filter_paths:
+            filter_input = b"".join(path + b"\0" for path in filter_paths)
+            filter_attributes = self.run(
+                ["check-attr", "-z", "filter", "--stdin"],
+                limit=16 * 1024 * 1024,
+                input_=filter_input,
+            )
+            reject_active_filters(filter_attributes, filter_paths)
         attributes = self.run(
             ["check-attr", "-z", "--all", "--stdin"],
             limit=16 * 1024 * 1024,
@@ -374,10 +386,15 @@ class FrozenGitEnvironment:
         self._account_temporary(os.lstat(workspace_index).st_size, 1)
         self.index_path = workspace_index
         result: dict[bytes, bytes] = {}
+        # Remove deletions before additions: an untracked regular/symlink may
+        # replace the directory that previously contained a tracked descendant.
+        for raw, safe in paths.items():
+            if safe.kind == "missing":
+                _remaining(self.deadline)
+                self.run(["update-index", "--force-remove", "--", os.fsdecode(raw)])
         for raw, safe in paths.items():
             _remaining(self.deadline)
             if safe.kind == "missing":
-                self.run(["update-index", "--force-remove", "--", os.fsdecode(raw)])
                 continue
             if safe.kind == "directory":
                 entry = dict(self.epoch.workspace_gitlinks).get(raw)

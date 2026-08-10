@@ -219,6 +219,29 @@ def frozen_index_output(
         )
 
 
+def reject_frozen_filters(
+    root: str,
+    index_bytes: bytes,
+    paths: tuple[bytes, ...],
+    deadline: float,
+    object_format: str,
+) -> None:
+    """Reject active filters resolved against the captured index environment."""
+    from .frozen_git_settings import reject_active_filters
+
+    path_input = b"".join(path + b"\0" for path in paths)
+    raw = frozen_index_output(
+        root,
+        index_bytes,
+        ["check-attr", "-z", "filter", "--stdin"],
+        deadline=deadline,
+        limit=16 * 1024 * 1024,
+        input_=path_input,
+        object_format=object_format,
+    )
+    reject_active_filters(raw, paths)
+
+
 def parse_stage_zero_entries(raw: bytes, *, max_paths: int) -> dict[bytes, bytes]:
     """Parse a bounded ``git ls-files --stage -z`` response."""
     entries: dict[bytes, bytes] = {}

@@ -845,8 +845,7 @@ def test_snapshot_classify_options_are_not_source_conflicts() -> None:
         SemanticClassifyTool(".").validate_arguments(
             {
                 "diff_snapshot_id": "ds",
-                "file_path": "unknown.ext",
-                "language": "python",
+                "file_path": "module.py",
                 "include_ast_nodes": True,
                 "hunk_cap": 7,
                 "output_format": "json",

@@ -399,3 +399,36 @@ def test_source_epoch_bounds_attribute_path_input(monkeypatch) -> None:
 
     with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPACITY$"):
         capture_source_epoch(".", b"", (b"long",), deadline=1e20, object_format="sha1")
+
+
+@pytest.mark.parametrize("inactive", [b"unspecified", b"unset"])
+def test_filter_attribute_inactive_semantics_are_allowed(inactive: bytes) -> None:
+    # PR #1252 review thread 4861: only inactive filter states are deterministic.
+    settings.reject_active_filters(b"a.py\0filter\0" + inactive + b"\0", (b"a.py",))
+
+
+@pytest.mark.parametrize("active", [b"set", b"lfs", b"custom-driver"])
+def test_filter_attribute_active_semantics_are_rejected(active: bytes) -> None:
+    # PR #1252 review thread 4861: external clean drivers must never run.
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_UNSUPPORTED_FILTER"):
+        settings.reject_active_filters(b"a.py\0filter\0" + active + b"\0", (b"a.py",))
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"a.py\0filter",
+        b"",
+        b"other.py\0filter\0unspecified\0",
+        b"a.py\0text\0unspecified\0",
+    ],
+)
+def test_filter_attribute_malformed_output_fails_closed(raw: bytes) -> None:
+    # PR #1252 review thread 4861: frozen check-attr output is exact.
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        settings.reject_active_filters(raw, (b"a.py",))
+
+
+def test_filter_attribute_output_without_final_nul_is_accepted() -> None:
+    # PR #1252 review thread 4861: bounded Git output need not end in a NUL.
+    settings.reject_active_filters(b"a.py\0filter\0unspecified", (b"a.py",))

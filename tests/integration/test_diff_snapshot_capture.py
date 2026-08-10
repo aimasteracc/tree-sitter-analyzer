@@ -493,3 +493,60 @@ def test_frozen_environment_cleanup_failure_is_stable(
         oracle.SourceOracleError, match="^DIFF_SNAPSHOT_CLEANUP_FAILED$"
     ):
         environment.__exit__()
+
+
+@POSIX_SNAPSHOT_TEST
+def test_workspace_snapshot_rejects_clean_filter_without_execution(
+    tmp_path: Path,
+) -> None:
+    # PR #1252 review thread 4861: LFS/custom clean filters are unsupported.
+    root = _repo(tmp_path)
+    sentinel = tmp_path / "filter-ran"
+    driver = tmp_path / "malicious-filter.py"
+    driver.write_text(
+        "import pathlib, sys\n"
+        f"pathlib.Path({str(sentinel)!r}).write_text('ran')\n"
+        "sys.stdout.buffer.write(sys.stdin.buffer.read())\n"
+    )
+    (root / ".gitattributes").write_text("*.py filter=malicious\n")
+    _git(
+        root,
+        "config",
+        "filter.malicious.clean",
+        f"{sys.executable} {driver}",
+    )
+    (root / "old.py").write_text("value = 2\n")
+
+    assert sentinel.exists() is False
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_FILTER"
+    assert sentinel.exists() is False
+
+
+@pytest.mark.parametrize("replacement_kind", ["file", "symlink"])
+@POSIX_SNAPSHOT_TEST
+def test_directory_replacement_captures_deletion_and_untracked_ancestor(
+    tmp_path: Path, replacement_kind: str
+) -> None:
+    # PR #1252 review thread 4858: non-directory ancestor replaces descendants.
+    root = _repo(tmp_path)
+    package = root / "pkg"
+    package.mkdir()
+    (package / "nested.py").write_text("tracked = True\n")
+    _git(root, "add", "pkg/nested.py")
+    _git(root, "commit", "-m", "nested")
+    (package / "nested.py").unlink()
+    package.rmdir()
+    if replacement_kind == "file":
+        package.write_text("replacement\n")
+    else:
+        package.symlink_to("replacement-target")
+
+    registry = snapshots.DiffSnapshotRegistry()
+    result = registry.create(str(root), "diff", [])
+
+    assert result["success"] is True
+    records = {record["path"]: record for record in result["changed_records"]}
+    assert sorted(records) == ["pkg", "pkg/nested.py"]
+    assert records["pkg/nested.py"]["new_available"] is False
+    assert records["pkg"]["old_available"] is False

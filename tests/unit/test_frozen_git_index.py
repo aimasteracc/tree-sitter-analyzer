@@ -447,9 +447,10 @@ def test_object_store_lstat_error_is_stable(tmp_path: Path, monkeypatch) -> None
 
 
 @pytest.mark.parametrize(("hard", "expected"), [(100, 50), (-1, 50)])
-def test_file_size_preexec_sets_bounded_rlimit(
-    monkeypatch, hard: int, expected: int
-) -> None:
+def test_exec_guard_sets_bounded_rlimit(monkeypatch, hard: int, expected: int) -> None:
+    # PR #1252 review thread 4867: only the single-threaded guard sets RLIMIT.
+    from tree_sitter_analyzer import git_exec_guard
+
     calls: list[tuple[int, tuple[int, int]]] = []
     resource = types.SimpleNamespace(
         RLIMIT_FSIZE=1,
@@ -458,9 +459,13 @@ def test_file_size_preexec_sets_bounded_rlimit(
         setrlimit=lambda kind, value: calls.append((kind, value)),
     )
     monkeypatch.setitem(sys.modules, "resource", resource)
+    monkeypatch.setattr(
+        git_exec_guard.os, "execvp", lambda *args: (_ for _ in ()).throw(OSError())
+    )
 
-    bounded._file_size_preexec(50)()
+    result = git_exec_guard.main(["--fsize", "50", "--", "git", "status"])
 
+    assert result == 126
     assert calls == [(1, (expected, hard))]
 
 

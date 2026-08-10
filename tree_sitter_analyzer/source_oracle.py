@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import stat
 import time
@@ -161,14 +162,48 @@ def safe_workspace_path(
         descriptors.append(current)
         metadata.append(_metadata(os.fstat(current)))
         for component in parts[:-1]:
+            parent = current
             try:
-                current = _open(component, flags_dir, dir_fd=current)
+                before_ancestor = _stat(component, dir_fd=parent, follow_symlinks=False)
             except FileNotFoundError:
                 missing_metadata = metadata + [b"missing"]
                 validate_chain(missing_metadata)
                 return SafePath(None, tuple(missing_metadata), "missing")
+            try:
+                current = _open(component, flags_dir, dir_fd=parent)
+            except FileNotFoundError:
+                missing_metadata = metadata + [b"missing"]
+                validate_chain(missing_metadata)
+                return SafePath(None, tuple(missing_metadata), "missing")
+            except OSError as exc:
+                if exc.errno not in (errno.ENOTDIR, errno.ELOOP):
+                    raise
+                # O_DIRECTORY|O_NOFOLLOW reports a stable regular/symlink
+                # ancestor as ENOTDIR/ELOOP.  It means every descendant is
+                # absent, not that the existing ancestor itself is unsafe.
+                try:
+                    after_ancestor = _stat(
+                        component, dir_fd=parent, follow_symlinks=False
+                    )
+                except OSError:
+                    raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH") from exc
+                if (
+                    stat.S_ISDIR(before_ancestor.st_mode)
+                    or stat.S_ISDIR(after_ancestor.st_mode)
+                    or _metadata(before_ancestor) != _metadata(after_ancestor)
+                ):
+                    raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH") from exc
+                missing_metadata = metadata + [
+                    _metadata(before_ancestor),
+                    b"missing",
+                ]
+                validate_chain(missing_metadata)
+                return SafePath(None, tuple(missing_metadata), "missing")
             descriptors.append(current)
-            metadata.append(_metadata(os.fstat(current)))
+            opened_ancestor = os.fstat(current)
+            if _metadata(before_ancestor) != _metadata(opened_ancestor):
+                raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+            metadata.append(_metadata(opened_ancestor))
         parent = current
         name = parts[-1]
         try:

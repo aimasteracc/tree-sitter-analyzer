@@ -17,6 +17,7 @@ from .frozen_git_index import (
     git_filtered_oid,
     has_split_index,
     invalidate_index_stat_cache,
+    reject_frozen_filters,
 )
 from .frozen_git_settings import capture_frozen_git_settings as capture_settings
 from .git_subprocess import run_git_bounded
@@ -78,7 +79,6 @@ def _core_filemode(root: str, *, deadline: float) -> bool:
 def _head_identity(
     root: str, *, deadline: float, object_format: str | None = None
 ) -> bytes:
-    """Return exact HEAD, or the format-correct empty-tree identity if unborn."""
     try:
         return git_output(
             root, ["rev-parse", "--verify", "HEAD"], deadline=deadline, limit=4096
@@ -103,7 +103,6 @@ def _frame(digest: Any, label: bytes, value: bytes) -> None:
 def _index_entries(
     root: str, *, deadline: float, index_bytes: bytes | None = None
 ) -> dict[bytes, bytes]:
-    """Parse stage-zero entries from one private mode-0600 index copy."""
     return frozen_index_entries(
         root,
         deadline=deadline,
@@ -121,7 +120,6 @@ def _index_entries(
 def _head_entries(
     root: str, *, deadline: float, head: bytes = b"HEAD"
 ) -> dict[bytes, bytes]:
-    """Return bounded per-path HEAD tree identities for clean-file binding."""
     if head in (_EMPTY_TREE_SHA1, _EMPTY_TREE_SHA256):
         return {}
     raw = git_output(
@@ -215,7 +213,6 @@ def _frame_workspace_path(
     object_format: str = "sha1",
     manifest: dict[str, WorkspaceManifestEntry] | None = None,
 ) -> int:
-    """Frame one no-follow worktree leaf and return its content charge."""
     path = normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
     is_gitlink = bool(index_entry and index_entry.split(b" ", 1)[0] == b"160000")
     safe = safe_workspace_path(
@@ -361,6 +358,9 @@ def oracle_generation(
     tracked_set = set(tracked)
     if not dirty <= tracked_set or untracked & tracked_set:
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    filter_paths = tuple(sorted(dirty | untracked))
+    if filter_paths:
+        reject_frozen_filters(root, index_bytes, filter_paths, end, object_format)
     settings_inventory = tuple(sorted(tracked_set | untracked))
     frozen_settings = capture_settings(root, settings_inventory, end, git_output)
     settings_epoch = capture_source_epoch(

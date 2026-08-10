@@ -200,7 +200,6 @@ class SemanticClassifyTool(BaseMCPTool):
             allowed = {
                 "diff_snapshot_id",
                 "file_path",
-                "language",
                 "include_ast_nodes",
                 "hunk_cap",
                 "output_format",
@@ -264,9 +263,18 @@ class SemanticClassifyTool(BaseMCPTool):
                         output_format,
                     )
                 file_path = frozen.record.path
-                language = (
-                    arguments.get("language") or _language_from_ext(file_path) or ""
-                )
+                language = _language_from_ext(file_path)
+                if not language:
+                    error = "DIFF_SNAPSHOT_UNSUPPORTED_LANGUAGE"
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": error,
+                            "error": error,
+                        },
+                        output_format,
+                    )
                 if (
                     not getattr(
                         frozen.record, "old_available", frozen.old_bytes is not None

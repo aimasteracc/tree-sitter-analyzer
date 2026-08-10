@@ -143,7 +143,7 @@ def test_payload_uses_pre_epoch_index_during_transient_replacement(
     if not created["success"]:
         assert created == {
             "success": False,
-            "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
+            "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",
         }
         return
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
@@ -355,8 +355,8 @@ def test_eol_attribute_frozen_patch_matches_git_exactly(tmp_path: Path) -> None:
 
 
 @POSIX_SNAPSHOT_TEST
-def test_clean_filter_frozen_patch_matches_git_exactly(tmp_path: Path) -> None:
-    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
+def test_clean_filter_is_rejected_before_frozen_patch(tmp_path: Path) -> None:
+    # PR #1252 review thread 4861: external clean filters are unsupported.
     root = _repo(tmp_path)
     _git(root, "config", "filter.upper.clean", "tr a-z A-Z")
     _git(root, "config", "filter.upper.smudge", "cat")
@@ -366,9 +366,12 @@ def test_clean_filter_frozen_patch_matches_git_exactly(tmp_path: Path) -> None:
     _git(root, "commit", "-m", "baseline")
     (root / "sample.txt").write_bytes(b"new value\n")
 
-    _patch, new_bytes = _assert_frozen_patch_matches_git(root)
+    created = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
 
-    assert new_bytes == b"NEW VALUE\n"
+    assert created == {
+        "success": False,
+        "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",
+    }
 
 
 @POSIX_SNAPSHOT_TEST
@@ -385,11 +388,14 @@ def test_nondeterministic_clean_filter_is_rejected(tmp_path: Path) -> None:
 
     created = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
 
-    assert created == {"success": False, "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED"}
+    assert created == {
+        "success": False,
+        "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",
+    }
 
 
 @POSIX_SNAPSHOT_TEST
-def test_staged_blob_is_not_clean_filtered_again(tmp_path: Path) -> None:
+def test_staged_snapshot_rejects_active_clean_filter(tmp_path: Path) -> None:
     # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
     root = _repo(tmp_path)
     (root / ".gitattributes").write_text("*.txt filter=block\n")
@@ -404,7 +410,10 @@ def test_staged_blob_is_not_clean_filtered_again(tmp_path: Path) -> None:
 
     created = snapshots.DiffSnapshotRegistry().create(str(root), "staged", [])
 
-    assert created["success"] is True
+    assert created == {
+        "success": False,
+        "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",
+    }
 
 
 @POSIX_SNAPSHOT_TEST

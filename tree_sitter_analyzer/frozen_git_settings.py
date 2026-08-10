@@ -160,6 +160,28 @@ def _read_absolute(path: str, deadline: float, remaining: int) -> FrozenSettingF
     return FrozenSettingFile(os.fsencode(os.path.abspath(path)), safe.kind, safe.data)
 
 
+def reject_active_filters(raw: bytes, paths: tuple[bytes, ...]) -> None:
+    """Reject external clean filters from ``check-attr -z filter`` output.
+
+    Git emits one path/attribute/value triple per input.  ``unspecified`` and
+    explicit ``unset`` mean no driver; boolean ``set`` and named values are
+    active and therefore unsupported by deterministic snapshots.
+    """
+    tokens = raw.split(b"\0")
+    if tokens and tokens[-1] == b"":
+        tokens.pop()
+    if len(tokens) % 3:
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    rows = tuple(zip(tokens[0::3], tokens[1::3], tokens[2::3], strict=True))
+    if len(rows) != len(paths):
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    for expected, (path, attribute, value) in zip(paths, rows, strict=True):
+        if path != expected or attribute != b"filter":
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        if value not in (b"unspecified", b"unset"):
+            raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_FILTER")
+
+
 def capture_frozen_git_settings(
     root: str,
     inventory: tuple[bytes, ...],

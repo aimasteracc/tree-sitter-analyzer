@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess  # nosec B404
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -16,19 +17,6 @@ PopenFactory = Callable[..., subprocess.Popen[bytes]]
 _IS_WINDOWS = os.name == "nt"
 _TASKKILL = subprocess.run
 _REAP_TIMEOUT_SECONDS = 5.0
-
-
-def _file_size_preexec(limit: int) -> Callable[[], None]:
-    """Build the POSIX child-only RLIMIT_FSIZE setter (module-local test seam)."""
-
-    def set_limit() -> None:
-        import resource
-
-        _soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
-        bounded = min(limit, hard) if hard != resource.RLIM_INFINITY else limit
-        resource.setrlimit(resource.RLIMIT_FSIZE, (bounded, hard))
-
-    return set_limit
 
 
 def _os_kill_process_group(pid: int, sig: int) -> None:
@@ -113,23 +101,38 @@ def run_git_bounded(
     """Run Git with bounded pipes, disabled fsmonitor, and mandatory reaping."""
     if limit < 0:
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
-    child_env = env
-    if child_env is None:
+    if env is None:
         child_env = {
             key: value
             for key, value in os.environ.items()
             if not key.upper().startswith("GIT_")
         }
         child_env["GIT_OPTIONAL_LOCKS"] = "0"
+    else:
+        child_env = dict(env)
+    # Snapshot-owned Git must never inherit machine-wide attributes.  Keep this
+    # invariant here so oracle, frozen-index, hash, diff, and temp commands agree.
+    child_env["GIT_ATTR_NOSYSTEM"] = "1"
     process_options = _group_options()
+    command = ["git", "-c", "core.fsmonitor=false", *args]
     if file_size_limit is not None:
         if file_size_limit < 0:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
         if not _IS_WINDOWS:
-            process_options["preexec_fn"] = _file_size_preexec(file_size_limit)
+            guard = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "git_exec_guard.py")
+            )
+            command = [
+                sys.executable,
+                guard,
+                "--fsize",
+                str(file_size_limit),
+                "--",
+                *command,
+            ]
     try:
         proc = popen(  # nosec B603
-            ["git", "-c", "core.fsmonitor=false", *args],
+            command,
             cwd=root,
             stdin=subprocess.PIPE if input_ is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,

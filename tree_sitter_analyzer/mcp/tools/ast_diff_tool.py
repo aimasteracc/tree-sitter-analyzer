@@ -189,7 +189,6 @@ class ASTDiffTool(BaseMCPTool):
             allowed = {
                 "diff_snapshot_id",
                 "file_path",
-                "language",
                 "include_node_bodies",
                 "output_format",
             }
@@ -266,11 +265,18 @@ class ASTDiffTool(BaseMCPTool):
                         },
                         output_format,
                     )
-                language = (
-                    arguments.get("language")
-                    or _language_from_ext(frozen.record.path)
-                    or ""
-                )
+                language = _language_from_ext(frozen.record.path)
+                if not language:
+                    error = "DIFF_SNAPSHOT_UNSUPPORTED_LANGUAGE"
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": error,
+                            "error": error,
+                        },
+                        output_format,
+                    )
                 if (
                     not getattr(
                         frozen.record, "old_available", frozen.old_bytes is not None

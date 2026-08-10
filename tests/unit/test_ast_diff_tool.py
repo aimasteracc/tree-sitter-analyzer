@@ -804,8 +804,7 @@ def test_snapshot_ast_options_are_not_source_conflicts() -> None:
         ASTDiffTool(".").validate_arguments(
             {
                 "diff_snapshot_id": "ds",
-                "file_path": "unknown.ext",
-                "language": "python",
+                "file_path": "module.py",
                 "include_node_bodies": True,
                 "output_format": "json",
             }
@@ -876,3 +875,47 @@ async def test_snapshot_consumer_rejects_rename_and_copy_status(
         {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
     )
     assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT"
+
+
+@pytest.mark.parametrize("tool_type", [ASTDiffTool, SemanticClassifyTool])
+def test_snapshot_consumer_rejects_caller_language_override(tool_type) -> None:
+    # PR #1252 review thread 4873: strict language is bound to captured path.
+    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS"):
+        tool_type(".").validate_arguments(
+            {
+                "diff_snapshot_id": "ds",
+                "file_path": "module.py",
+                "language": "javascript",
+            }
+        )
+
+
+@pytest.mark.parametrize("tool_type", [ASTDiffTool, SemanticClassifyTool])
+@pytest.mark.asyncio
+async def test_snapshot_consumer_rejects_unknown_captured_extension(
+    tool_type, monkeypatch
+) -> None:
+    # PR #1252 review thread 4873: unknown captured extension is stable unsupported.
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    frozen = SimpleNamespace(
+        record=SimpleNamespace(path="module.unknown", binary=False),
+        old_bytes=b"old",
+        new_bytes=b"new",
+    )
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(file=lambda path: frozen), release=lambda: None
+    )
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))
+
+    result = await tool_type(".").execute(
+        {
+            "diff_snapshot_id": "ds",
+            "file_path": "module.unknown",
+            "output_format": "json",
+        }
+    )
+
+    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_LANGUAGE"

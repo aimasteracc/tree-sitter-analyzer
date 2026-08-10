@@ -156,6 +156,7 @@ def _stub_oracle_inventory(
         )
 
     monkeypatch.setattr(oracle, "_frozen_index_output", frozen_output)
+    monkeypatch.setattr(oracle, "reject_frozen_filters", lambda *args: None)
 
 
 @POSIX_SNAPSHOT_TEST

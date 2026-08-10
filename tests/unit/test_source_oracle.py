@@ -1,3 +1,4 @@
+import errno
 import hashlib
 import os
 import time
@@ -357,3 +358,163 @@ def test_safe_workspace_path_can_bind_regular_metadata_without_content(
     )
 
     assert (safe.kind, safe.data) == ("file", None)
+
+
+@pytest.mark.parametrize("replacement_kind", ["file", "symlink"])
+@POSIX_SNAPSHOT_TEST
+def test_non_directory_ancestor_makes_descendant_missing(
+    tmp_path: Path, replacement_kind: str
+) -> None:
+    # PR #1252 review thread 4858: replacement deletion is safe inventory state.
+    root = tmp_path / "repo"
+    ancestor = root / "pkg"
+    ancestor.mkdir(parents=True)
+    (ancestor / "a.py").write_text("old\n")
+    (ancestor / "a.py").unlink()
+    ancestor.rmdir()
+    if replacement_kind == "file":
+        ancestor.write_text("replacement\n")
+    else:
+        ancestor.symlink_to("replacement-target")
+
+    result = oracle.safe_workspace_path(
+        str(root), "pkg/a.py", deadline=time.monotonic() + 10, limit=1024
+    )
+
+    assert result.kind == "missing"
+    assert result.metadata[-1] == b"missing"
+    assert len(result.metadata) == 3
+
+
+@POSIX_SNAPSHOT_TEST
+def test_ancestor_disappearing_between_lstat_and_open_is_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 4858: concurrent ancestor deletion is a deletion.
+    root = tmp_path / "repo"
+    (root / "pkg").mkdir(parents=True)
+    real_open = oracle._open
+
+    def open_path(path, flags, **kwargs):
+        if path == "pkg":
+            raise FileNotFoundError()
+        return real_open(path, flags, **kwargs)
+
+    monkeypatch.setattr(oracle, "_open", open_path)
+    result = oracle.safe_workspace_path(
+        str(root), "pkg/a.py", deadline=time.monotonic() + 10, limit=1024
+    )
+
+    assert result.kind == "missing"
+
+
+@POSIX_SNAPSHOT_TEST
+def test_ancestor_permission_error_remains_unsafe(tmp_path: Path, monkeypatch) -> None:
+    # PR #1252 review thread 4858: permission failures are never deletions.
+    root = tmp_path / "repo"
+    (root / "pkg").mkdir(parents=True)
+    real_open = oracle._open
+
+    def open_path(path, flags, **kwargs):
+        if path == "pkg":
+            raise PermissionError(errno.EACCES, "denied")
+        return real_open(path, flags, **kwargs)
+
+    monkeypatch.setattr(oracle, "_open", open_path)
+    _error(
+        lambda: oracle.safe_workspace_path(
+            str(root), "pkg/a.py", deadline=time.monotonic() + 10, limit=1024
+        ),
+        "DIFF_SNAPSHOT_UNSAFE_PATH",
+    )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_non_directory_ancestor_failed_second_lstat_is_unsafe(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 4858: both no-follow identities are mandatory.
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "pkg").write_text("replacement")
+    real_stat = oracle._stat
+    calls = 0
+
+    def stat_path(path, **kwargs):
+        nonlocal calls
+        if path == "pkg":
+            calls += 1
+            if calls == 2:
+                raise FileNotFoundError()
+        return real_stat(path, **kwargs)
+
+    monkeypatch.setattr(oracle, "_stat", stat_path)
+    _error(
+        lambda: oracle.safe_workspace_path(
+            str(root), "pkg/a.py", deadline=time.monotonic() + 10, limit=1024
+        ),
+        "DIFF_SNAPSHOT_UNSAFE_PATH",
+    )
+
+
+@pytest.mark.parametrize(
+    "unsafe_state", ["before-directory", "after-directory", "changed"]
+)
+@POSIX_SNAPSHOT_TEST
+def test_unstable_non_directory_ancestor_is_unsafe(
+    tmp_path: Path, monkeypatch, unsafe_state: str
+) -> None:
+    # PR #1252 review thread 4858: replacement races do not become deletions.
+    root = tmp_path / "repo"
+    root.mkdir()
+    regular = root / "regular"
+    regular.write_text("one")
+    changed = root / "changed"
+    changed.write_text("two")
+    directory = root / "directory"
+    directory.mkdir()
+    before = directory.stat() if unsafe_state == "before-directory" else regular.stat()
+    after = directory.stat() if unsafe_state == "after-directory" else changed.stat()
+    stats = iter([before, after])
+    real_stat = oracle._stat
+    real_open = oracle._open
+
+    def stat_path(path, **kwargs):
+        return next(stats) if path == "pkg" else real_stat(path, **kwargs)
+
+    def open_path(path, flags, **kwargs):
+        if path == "pkg":
+            raise OSError(errno.ENOTDIR, "not directory")
+        return real_open(path, flags, **kwargs)
+
+    monkeypatch.setattr(oracle, "_stat", stat_path)
+    monkeypatch.setattr(oracle, "_open", open_path)
+    _error(
+        lambda: oracle.safe_workspace_path(
+            str(root), "pkg/a.py", deadline=time.monotonic() + 10, limit=1024
+        ),
+        "DIFF_SNAPSHOT_UNSAFE_PATH",
+    )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_ancestor_changed_between_lstat_and_directory_open_is_source_changed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 4858: opened directory must match pre-open identity.
+    root = tmp_path / "repo"
+    (root / "pkg").mkdir(parents=True)
+    other = root / "other"
+    other.mkdir()
+    real_stat = oracle._stat
+
+    def stat_path(path, **kwargs):
+        return other.stat() if path == "pkg" else real_stat(path, **kwargs)
+
+    monkeypatch.setattr(oracle, "_stat", stat_path)
+    _error(
+        lambda: oracle.safe_workspace_path(
+            str(root), "pkg/a.py", deadline=time.monotonic() + 10, limit=1024
+        ),
+        "DIFF_SNAPSHOT_SOURCE_CHANGED",
+    )

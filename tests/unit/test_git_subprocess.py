@@ -412,24 +412,14 @@ def test_cleanup_thread_join_error_does_not_escape() -> None:
 
 
 @POSIX_SNAPSHOT_TEST
-def test_file_size_limit_is_applied_in_child(monkeypatch) -> None:
-    # PR #1252 review thread 5947: clean expansion must be kernel-bounded.
+def test_file_size_limit_uses_single_threaded_exec_guard() -> None:
+    # PR #1252 review thread 4867: threaded parents must not use preexec_fn.
     proc = _Proc()
     proc.stdin = io.BytesIO()
     captured: dict[str, object] = {}
 
-    def setter() -> None:
-        pass
-
-    limits: list[int] = []
-
-    def preexec(limit: int):
-        limits.append(limit)
-        return setter
-
-    monkeypatch.setattr(bounded, "_file_size_preexec", preexec)
-
-    def popen(*args, **kwargs):
+    def popen(command, **kwargs):
+        captured["command"] = command
         captured.update(kwargs)
         return proc
 
@@ -443,7 +433,22 @@ def test_file_size_limit_is_applied_in_child(monkeypatch) -> None:
         file_size_limit=123,
     )
 
-    assert (captured["preexec_fn"] is setter, limits) == (True, [123])
+    command = captured["command"]
+    assert command == [
+        bounded.sys.executable,
+        str(Path(bounded.__file__).with_name("git_exec_guard.py").resolve()),
+        "--fsize",
+        "123",
+        "--",
+        "git",
+        "-c",
+        "core.fsmonitor=false",
+        "hash-object",
+        "-w",
+        "--stdin",
+    ]
+    assert "preexec_fn" not in captured
+    assert captured["start_new_session"] is True
 
 
 @POSIX_SNAPSHOT_TEST
@@ -485,3 +490,34 @@ def test_has_split_index_rejects_missing_entry_terminator() -> None:
 
     with pytest.raises(oracle.SourceOracleError, match="^DIFF_SNAPSHOT_GIT_ERROR$"):
         frozen_index.has_split_index(raw, object_format="sha1")
+
+
+def test_snapshot_git_disables_system_attributes_with_explicit_env() -> None:
+    # PR #1252 review thread 4850: machine attributes are outside P0.2 policy.
+    proc = _Proc()
+    captured: dict[str, object] = {}
+
+    def popen(command, **kwargs):
+        captured.update(kwargs)
+        return proc
+
+    bounded.run_git_bounded(
+        ".",
+        ["status"],
+        deadline=time.monotonic() + 1,
+        limit=4096,
+        env={"PATH": os.environ["PATH"]},
+        popen=popen,
+    )
+
+    assert captured["env"] == {
+        "PATH": os.environ["PATH"],
+        "GIT_ATTR_NOSYSTEM": "1",
+    }
+
+
+def test_git_exec_guard_rejects_invalid_limit() -> None:
+    # PR #1252 review thread 4867: malformed guards fail before exec.
+    from tree_sitter_analyzer import git_exec_guard
+
+    assert git_exec_guard.main(["--fsize", "bad", "--", "git", "status"]) == 2
