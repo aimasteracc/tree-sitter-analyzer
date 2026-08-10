@@ -193,8 +193,12 @@ class CodeGraphStatusTool(BaseMCPTool):
             hint=hint,
             agent_summary={
                 "summary_line": (
-                    f"codegraph_status: {snapshot.completeness} snapshot, "
-                    f"{total_files} files, {total_symbols} symbols"
+                    "codegraph_status: index missing or empty"
+                    if snapshot.reason == "MISSING_INDEX"
+                    else (
+                        f"codegraph_status: {snapshot.completeness} snapshot, "
+                        f"{total_files} files, {total_symbols} symbols"
+                    )
                 ),
                 "next_step": hint,
                 "verdict": verdict,

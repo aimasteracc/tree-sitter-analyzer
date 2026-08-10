@@ -79,6 +79,9 @@ class TestExecuteNoCache:
         assert result["indexed"] is False
         assert result["total_files"] == 0
         assert result["cache_path"] is None
+        assert result["agent_summary"]["summary_line"] == (
+            "codegraph_status: index missing or empty"
+        )
         assert "hint" in result, "WARN response must carry a 'hint' field"
         assert "warm" in result["hint"].lower() or "index" in result["hint"].lower()
 
