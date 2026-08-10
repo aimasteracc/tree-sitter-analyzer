@@ -12,10 +12,11 @@ import selectors
 import signal
 import stat
 import subprocess
+import tarfile
 import tempfile
 import time
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 MAX_CAPTURE_BYTES = 8 * 1024 * 1024
@@ -109,6 +110,69 @@ def bound_blob(repo: Path, commit: str, relative: str) -> bytes:
     if tracked != relative: raise RuntimeError(f"collector provenance path is not tracked: {relative}")
     return bounded_git(repo,"show",f"{commit}:{relative}")
 
+
+
+
+def extract_frozen_snapshot(archive: Path, destination: Path, *, maximum_files: int, maximum_bytes: int) -> None:
+    """Extract a bounded Git tar without trusting tarfile's path handling."""
+    if destination.exists(): raise ValueError("frozen snapshot destination must not exist")
+    destination.mkdir(mode=0o700)
+    with tarfile.open(archive,"r:") as bundle:
+        members=bundle.getmembers()
+        if len(members)>maximum_files: raise RuntimeError("source archive file limit exceeded")
+        seen: set[tuple[str,...]]=set(); total=0; validated=[]
+        for member in members:
+            raw=member.name
+            if not raw or raw.startswith("/") or "\\" in raw: raise ValueError(f"unsafe archive path: {raw!r}")
+            parts=PurePosixPath(raw).parts
+            if any(part in ("",".","..") for part in raw.split("/")) or parts in seen:
+                raise ValueError(f"unsafe or duplicate archive path: {raw!r}")
+            seen.add(parts)
+            if member.isdir(): kind="dir"
+            elif member.isreg(): kind="file"; total += member.size
+            elif member.issym():
+                kind="symlink"; target=member.linkname
+                if not target or target.startswith("/") or "\\" in target or len(target.encode())>4096:
+                    raise ValueError(f"unsafe archive symlink target: {target!r}")
+                depth=len(parts)-1
+                for part in PurePosixPath(target).parts:
+                    if part in ("", "."): continue
+                    if part=="..":
+                        depth -= 1
+                        if depth<0: raise ValueError(f"archive symlink escapes snapshot: {raw!r}")
+                    else: depth += 1
+            else: raise ValueError(f"unsupported archive member type: {raw!r}")
+            if total>maximum_bytes: raise RuntimeError("source archive extracted byte limit exceeded")
+            validated.append((member,parts,kind))
+        for member,parts,kind in validated:
+            path=destination.joinpath(*parts)
+            if kind=="dir": path.mkdir(mode=0o700)
+            elif kind=="file":
+                source=bundle.extractfile(member)
+                if source is None: raise RuntimeError(f"archive file has no payload: {member.name!r}")
+                flags=os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,"O_NOFOLLOW",0)
+                fd=os.open(path,flags,0o700)
+                with source,os.fdopen(fd,"wb") as output:
+                    shutil_copyfileobj(source,output)
+            else: path.symlink_to(member.linkname)
+        root=destination.resolve(strict=True)
+        for member,parts,kind in validated:
+            path=destination.joinpath(*parts)
+            if kind=="symlink":
+                try: resolved=path.resolve(strict=True)
+                except (OSError,RuntimeError) as error: raise ValueError(f"invalid archive symlink: {member.name!r}") from error
+                if resolved != root and root not in resolved.parents: raise ValueError(f"archive symlink escapes snapshot: {member.name!r}")
+            elif kind=="file": os.chmod(path,0o555 if member.mode & 0o111 else 0o444)
+        for _member,parts,kind in reversed(validated):
+            if kind=="dir": os.chmod(destination.joinpath(*parts),0o555)
+        os.chmod(destination,0o555)
+
+
+def shutil_copyfileobj(source: Any, destination: Any) -> None:
+    while True:
+        block=source.read(1024*1024)
+        if not block: return
+        destination.write(block)
 
 def canonical_inventory_rows(rows: list[dict[str,str]]) -> str:
     return digest_bytes(json.dumps(rows,sort_keys=True,separators=(",",":")).encode())

@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 import copy
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 try:
@@ -55,7 +57,7 @@ def test_custom_validator_rejects_frozen_digest_with_weakened_schema(section: st
     with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(mutated((section,field),value),weakened)
 
 
-@pytest.mark.skipif(os.name == "nt", reason="tracked: NO1-006B collector currently emits macOS-only E0 receipts")
+@pytest.mark.skipif(sys.platform != "darwin", reason="tracked: PR #1250 historical archive digest is attested on macOS")
 def test_historical_detached_subject_archive_matches_frozen_digest(tmp_path: Path) -> None:
     archive=tmp_path/"subject.tar"
     subprocess.run(["git","-c","tar.umask=000","archive","--format=tar",collector.EXPECTED_SUBJECT_COMMIT,"-o",str(archive)],cwd=REPO,env=collector.clean_env(),check=True)
@@ -68,6 +70,21 @@ def pinned_mac_uv() -> Path | None:
     candidate=Path(discovered).resolve()
     version=subprocess.run([str(candidate),"--no-config","--version"],capture_output=True,text=True).stdout.strip()
     return candidate if version==collector.EXPECTED_UV_VERSION and collector.sha256(candidate)==collector.EXPECTED_UV_SHA256 else None
+
+
+def pinned_mac_build_uv() -> Path | None:
+    try: backend=__import__("importlib.metadata").metadata.version("hatchling")
+    except __import__("importlib.metadata").metadata.PackageNotFoundError: return None
+    return pinned_mac_uv() if backend==collector.HATCHLING_VERSION else None
+
+
+@pytest.mark.skipif(pinned_mac_build_uv() is None,reason="tracked: PR #1250 historical wheel remeasurement requires the pinned macOS build environment")
+def test_historical_root_wheel_matches_exact_receipt(tmp_path: Path) -> None:
+    archive=tmp_path/"subject.tar"; snapshot=tmp_path/"frozen_snapshot"; dist=tmp_path/"dist"; dist.mkdir()
+    subprocess.run(["git","-c","tar.umask=000","archive","--format=tar",collector.EXPECTED_SUBJECT_COMMIT,"-o",str(archive)],cwd=REPO,env=collector.clean_env(),check=True)
+    collector.extract_frozen_snapshot(archive,snapshot,maximum_files=collector.MAX_FILES,maximum_bytes=collector.MAX_SOURCE_ARCHIVE_BYTES)
+    wheel=collector.build_root_wheel(snapshot,dist,pinned_mac_build_uv())
+    assert collector.sha256(wheel) == collector.EXPECTED_ROOT_WHEEL_SHA256 == baseline()["source"]["root_wheel_sha256"]
 
 
 @pytest.mark.skipif(pinned_mac_uv() is None,reason="tracked: PR #1250 historical export requires the pinned macOS uv environment")
@@ -86,6 +103,13 @@ def test_receipt_binds_distinct_collector_and_subject_commits() -> None:
     report=baseline()
     assert report["source"]["commit"] == collector.EXPECTED_SUBJECT_COMMIT
     assert report["collector"]["commit"] != report["source"]["commit"]
+
+def test_schema_rejects_root_wheel_digest_mutation() -> None:
+    with pytest.raises(ValidationError): collector.validate_receipt(mutated(("source","root_wheel_sha256"),"0"*64),schema())
+
+def test_custom_validator_rejects_root_wheel_digest_with_weakened_schema() -> None:
+    weakened=copy.deepcopy(schema()); weakened["properties"]["source"]["properties"]["root_wheel_sha256"]={"type":"string"}
+    with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(mutated(("source","root_wheel_sha256"),"0"*64),weakened)
 
 def test_schema_rejects_subject_tree_mutation() -> None:
     report=mutated(("source","git_tree"),"0"*40)
@@ -395,6 +419,28 @@ def test_source_archive_ignores_hostile_local_and_global_tar_umask(tmp_path: Pat
     hostile_digest=collector.source_archive_sha(source,tmp_path/"hostile.tar")
     assert hostile_digest == clean_digest
 
+@pytest.mark.parametrize(("name","kind","target"),[("../escape","file",None),("device","device",None),("link","symlink","../escape")])
+def test_frozen_snapshot_rejects_unsafe_tar_members(tmp_path: Path, name: str, kind: str, target: str | None) -> None:
+    # PR #1250: the measured source archive is an untrusted extraction boundary.
+    archive=tmp_path/"bad.tar"; info=tarfile.TarInfo(name)
+    with tarfile.open(archive,"w") as bundle:
+        if kind=="file": info.size=1; bundle.addfile(info,io.BytesIO(b"x"))
+        elif kind=="device": info.type=tarfile.CHRTYPE; bundle.addfile(info)
+        else: info.type=tarfile.SYMTYPE; info.linkname=target or ""; bundle.addfile(info)
+    with pytest.raises(ValueError): collector.extract_frozen_snapshot(archive,tmp_path/"snapshot",maximum_files=10,maximum_bytes=10)
+
+def test_build_root_wheel_uses_frozen_snapshot_during_live_mutation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # PR #1250: packaging bytes must not be read from the mutable subject worktree.
+    live=tmp_path/"live"; snapshot=tmp_path/"frozen_snapshot"; dist=tmp_path/"dist"
+    for path in (live,snapshot,dist): path.mkdir()
+    (live/"subject.py").write_bytes(b"initial"); wheel_bytes=b"frozen wheel"
+    def fake_run(command: list[str], *, cwd: Path, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        assert cwd == snapshot; (live/"subject.py").write_bytes(b"transient mutation"); (dist/"root.whl").write_bytes(wheel_bytes)
+        return subprocess.CompletedProcess(command,0,b"",b"")
+    monkeypatch.setattr(collector,"run",fake_run); monkeypatch.setattr(collector,"EXPECTED_ROOT_WHEEL_SHA256",collector.digest_bytes(wheel_bytes))
+    wheel=collector.build_root_wheel(snapshot,dist,tmp_path/"uv")
+    assert [wheel.read_bytes(),(live/"subject.py").read_bytes()] == [wheel_bytes,b"transient mutation"]
+
 def test_bound_blob_hash_is_independent_of_crlf_checkout(tmp_path: Path) -> None:
     repo=tmp_path/"repo"; repo.mkdir(); tracked=repo/"uv.lock"; tracked.write_bytes(b"version = 1\n")
     for command in (["git","init","-q"],["git","config","user.email","contract@example.invalid"],["git","config","user.name","Contract"],["git","add","uv.lock"],["git","commit","-qm","blob"]): subprocess.run(command,cwd=repo,check=True)
@@ -442,5 +488,12 @@ def test_verified_uv_rejects_digest_mismatch(monkeypatch: pytest.MonkeyPatch, tm
     monkeypatch.setenv("NO1_006B_UV",str(fake))
     monkeypatch.setattr(collector,"run",lambda *args,**kwargs: subprocess.CompletedProcess([],0,(collector.EXPECTED_UV_VERSION+"\n").encode(),b""))
     with pytest.raises(RuntimeError,match="identity mismatch"): collector.verified_uv()
+
+def test_secrets_baseline_preserves_origin_develop_result_signatures() -> None:
+    # PR #1250: rescanning additions must be a union, never delete accepted historical findings.
+    base=json.loads(subprocess.run(["git","show","origin/develop:.secrets.baseline"],cwd=REPO,check=True,capture_output=True).stdout)
+    current=json.loads((REPO/".secrets.baseline").read_text())
+    def signatures(data: dict) -> set: return {(filename,row["type"],row["hashed_secret"]) for filename,rows in data["results"].items() for row in rows}
+    assert signatures(base).issubset(signatures(current))
 
 # fmt: on

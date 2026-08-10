@@ -58,7 +58,7 @@
         "lock_sha256": {"const":"516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"},
         "source_archive_sha256": {"const":"52fc24594778d798257412e0137b096b0c1670d6a376a9d9714f5a49dfbe706c"},
         "root_wheel_filename": {"type":"string","pattern":"^[^/]+\\.whl$","maxLength":200},
-        "root_wheel_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "root_wheel_sha256": {"const":"c1cb3520542fd14dad60ddec55dfac6afbdaa424e7a4a39d875be1801d98f9e8"},
         "root_wheel_artifact_size_bytes": {"type":"integer","minimum":1}
       }
     },

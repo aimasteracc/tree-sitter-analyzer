@@ -26,6 +26,7 @@ EXPECTED_SUBJECT_TREE = "fe340eff33002b67ae88b34f1174bbcca4efc370"
 EXPECTED_SUBJECT_LOCK_SHA256 = "516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"
 EXPECTED_SUBJECT_ARCHIVE_SHA256 = "52fc24594778d798257412e0137b096b0c1670d6a376a9d9714f5a49dfbe706c"
 EXPECTED_SUBJECT_EXPORT_SHA256 = "33b03a373e2ebeafa44a792d14121f081c1af36870e2d97198a9f6432653b6bb"
+EXPECTED_ROOT_WHEEL_SHA256 = "c1cb3520542fd14dad60ddec55dfac6afbdaa424e7a4a39d875be1801d98f9e8"
 ROOT_NAME = "tree-sitter-analyzer"
 TOOL_GROUP = "no1-006b-collector-tool"
 HATCHLING_VERSION = "1.31.0"
@@ -46,9 +47,9 @@ SAMPLE_ORDER = "all CLI samples, then all MCP samples"
 
 
 try:
-    from .no1_006b_baseline_support import MAX_CAPTURE_BYTES,bound_blob,bounded_git,canonical_hash,canonical_inventory_rows,clean_env,digest_bytes,git,parse_rfc3339,require_file_budget,run,safe_write,sha256
+    from .no1_006b_baseline_support import MAX_CAPTURE_BYTES,bound_blob,bounded_git,canonical_hash,canonical_inventory_rows,clean_env,digest_bytes,extract_frozen_snapshot,git,parse_rfc3339,require_file_budget,run,safe_write,sha256
 except ImportError:
-    from no1_006b_baseline_support import MAX_CAPTURE_BYTES,bound_blob,bounded_git,canonical_hash,canonical_inventory_rows,clean_env,digest_bytes,git,parse_rfc3339,require_file_budget,run,safe_write,sha256
+    from no1_006b_baseline_support import MAX_CAPTURE_BYTES,bound_blob,bounded_git,canonical_hash,canonical_inventory_rows,clean_env,digest_bytes,extract_frozen_snapshot,git,parse_rfc3339,require_file_budget,run,safe_write,sha256
 
 def verified_uv() -> tuple[Path,str,str]:
     configured=os.environ.get("NO1_006B_UV")
@@ -215,10 +216,8 @@ def assert_subject_unchanged(repo: Path, expected_commit: str, initial: dict[str
     current=require_clean_subject(repo,expected_commit)
     expected={key:initial[key] for key in ("commit","git_tree","lock_sha256")}
     if current != expected: raise RuntimeError(f"subject identity mutated during {phase}: expected={expected}, found={current}")
-    with tempfile.TemporaryDirectory(prefix="no1-006b-recheck-") as raw:
-        archive_sha=source_archive_sha(repo,Path(raw)/"source.tar")
-    if archive_sha != initial["source_archive_sha256"]:
-        raise RuntimeError(f"subject archive mutated during {phase}: expected={initial['source_archive_sha256']}, found={archive_sha}")
+    if initial["source_archive_sha256"] != EXPECTED_SUBJECT_ARCHIVE_SHA256:
+        raise RuntimeError(f"subject archive identity changed during {phase}")
 
 
 def export_closure(repo: Path, destination: Path, uv: Path) -> str:
@@ -229,6 +228,16 @@ def export_closure(repo: Path, destination: Path, uv: Path) -> str:
         raise RuntimeError("uv frozen export did not produce hashed exact requirements")
     destination.write_bytes(text); require_file_budget(destination,MAX_REQUIREMENTS_BYTES,"frozen requirements export")
     return digest_bytes(text)
+
+
+def build_root_wheel(snapshot: Path, destination: Path, uv: Path) -> Path:
+    run([str(uv),"build","--no-config","--wheel","--offline","--no-build-isolation","--python",sys.executable,"--out-dir",str(destination)],cwd=snapshot)
+    wheels=list(destination.glob("*.whl"))
+    if len(wheels)!=1: raise RuntimeError(f"expected exactly one root wheel, found {len(wheels)}")
+    wheel=wheels[0]; require_file_budget(wheel,MAX_ROOT_WHEEL_BYTES,"root wheel artifact")
+    digest=sha256(wheel)
+    if digest != EXPECTED_ROOT_WHEEL_SHA256: raise RuntimeError(f"root wheel digest mismatch: {digest}")
+    return wheel
 
 
 def python_path(venv: Path) -> Path:
@@ -401,6 +410,7 @@ def validate_receipt(report: dict[str, Any], schema: dict[str, Any]) -> None:
             closure["lock_sha256"]==report["source"]["lock_sha256"], report["source"]["lock_sha256"]==EXPECTED_SUBJECT_LOCK_SHA256,
             report["source"]["git_tree"]==EXPECTED_SUBJECT_TREE,
             report["source"]["source_archive_sha256"]==EXPECTED_SUBJECT_ARCHIVE_SHA256,
+            report["source"]["root_wheel_sha256"]==EXPECTED_ROOT_WHEEL_SHA256,
             closure["export_sha256"]==EXPECTED_SUBJECT_EXPORT_SHA256,
             len(names)==len(set(names)), names==sorted(names),
             report["environment"]["system"]==report["measured_axis"], os_consistent,
@@ -432,35 +442,34 @@ def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dic
     repo=repo.resolve(); started=datetime.now(timezone.utc).isoformat(); subject=require_clean_subject(repo,expected_commit)
     with tempfile.TemporaryDirectory(prefix="no1-006b-") as raw:
         temp=Path(raw); dist=temp/"dist"; dist.mkdir(); requirements=temp/"locked-requirements.txt"
-        subject["source_archive_sha256"]=source_archive_sha(repo,temp/"source.tar")
+        archive=temp/"source.tar"; snapshot=temp/"frozen_snapshot"
+        subject["source_archive_sha256"]=source_archive_sha(repo,archive)
         if subject["source_archive_sha256"] != EXPECTED_SUBJECT_ARCHIVE_SHA256:
             raise RuntimeError("detached subject archive digest does not match the frozen contract")
+        extract_frozen_snapshot(archive,snapshot,maximum_files=MAX_FILES,maximum_bytes=MAX_SOURCE_ARCHIVE_BYTES)
         assert_subject_unchanged(repo,expected_commit,subject,"initial archive")
         collector_root=Path(__file__).resolve().parents[1]
         tool_export_sha,tool_rows,tool_inventory_sha=collector_tool_export(collector_root,temp/"collector-tool-requirements.txt",uv)
         collector,schema_blob=collector_identity(tool_export_sha)
         collector["tool_inventory"]=tool_rows; collector["tool_inventory_sha256"]=tool_inventory_sha
         build_env=build_environment()
-        export_sha=export_closure(repo,requirements,uv)
+        export_sha=export_closure(snapshot,requirements,uv)
         if export_sha != EXPECTED_SUBJECT_EXPORT_SHA256:
             raise RuntimeError("frozen subject export digest does not match the frozen contract")
         assert_subject_unchanged(repo,expected_commit,subject,"before build")
-        run([str(uv),"build","--no-config","--wheel","--offline","--no-build-isolation","--python",sys.executable,"--out-dir",str(dist)],cwd=repo)
+        wheel=build_root_wheel(snapshot,dist,uv)
         assert_subject_unchanged(repo,expected_commit,subject,"after build")
-        wheels=list(dist.glob("*.whl"))
-        if len(wheels)!=1: raise RuntimeError(f"expected exactly one root wheel, found {len(wheels)}")
-        wheel=wheels[0]; require_file_budget(wheel,MAX_ROOT_WHEEL_BYTES,"root wheel artifact")
         fixture=temp/"fixture"; fixture.mkdir(); (fixture/"fixture.py").write_text("def add(a: int, b: int) -> int:\n    return a + b\n")
         samples={}; inventories=[]; tool_names=None; py_info=None
         for kind in ("cli","mcp"):
             assert_subject_unchanged(repo,expected_commit,subject,f"before {kind} install")
-            python=install_environment(repo,temp/f"{kind}-venv",requirements,wheel,uv)
+            python=install_environment(snapshot,temp/f"{kind}-venv",requirements,wheel,uv)
             assert_subject_unchanged(repo,expected_commit,subject,f"after {kind} install")
-            target_python=python_identity(python,repo,"<target-venv-python>")
+            target_python=python_identity(python,snapshot,"<target-venv-python>")
             require_native_python_identity(build_env["python"],target_python)
             if py_info is None: py_info=target_python
             elif target_python != py_info: raise RuntimeError("fresh CLI/MCP environments have different Python identities")
-            inventories.append(inventory(python,repo))
+            inventories.append(inventory(python,snapshot))
             if kind=="cli": samples[kind]=[cli_sample(executable(python.parent.parent,"tree-sitter-analyzer"),fixture) for _ in range(repeats+1)]
             else:
                 results=[mcp_sample(executable(python.parent.parent,"tree-sitter-analyzer-mcp"),fixture) for _ in range(repeats+1)]
