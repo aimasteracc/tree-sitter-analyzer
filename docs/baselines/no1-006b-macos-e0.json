@@ -1,0 +1,591 @@
+{
+  "canonical_payload_sha256": "1c2b212567d52ba6e47837d1837e63e6bc4d6fef6f3dbb3461b7ceb9ea396e0d",
+  "collection_finished_at_utc": "2026-08-10T01:37:31.205208+00:00",
+  "collection_started_at_utc": "2026-08-10T01:37:17.868347+00:00",
+  "collector": {
+    "commit": "edf7dfd53ec70042134af25bca720dc3d512594f",
+    "schema_sha256": "9bbee98ccf2e8b1b819f1614d15904d2f2cf0ea5912b11855c006b03ca28980d",
+    "script_sha256": "7ddcacc1a3fa9402a848cf88e1d115ec9bb01f291db857482ded4ea67dffc08a",
+    "support_sha256": "59fb0057e4bf51430195b933cd1b78912ee08f4f3fe006121d4cc8cb23f7ae90",
+    "tool_export_sha256": "6517ea8430512af84251d2b58a58cef8a008e16a224075448dc0d3158215ea75",
+    "tool_inventory": [
+      {
+        "name": "attrs",
+        "version": "25.4.0"
+      },
+      {
+        "name": "hatchling",
+        "version": "1.31.0"
+      },
+      {
+        "name": "jsonschema",
+        "version": "4.25.1"
+      },
+      {
+        "name": "jsonschema-specifications",
+        "version": "2025.9.1"
+      },
+      {
+        "name": "packaging",
+        "version": "25.0"
+      },
+      {
+        "name": "pathspec",
+        "version": "1.1.1"
+      },
+      {
+        "name": "pluggy",
+        "version": "1.6.0"
+      },
+      {
+        "name": "referencing",
+        "version": "0.37.0"
+      },
+      {
+        "name": "rpds-py",
+        "version": "0.27.1"
+      },
+      {
+        "name": "trove-classifiers",
+        "version": "2026.6.1.19"
+      }
+    ],
+    "tool_inventory_sha256": "0d0bc6b784ca2e42c4f8ec6b0ebfd0eac7c7626ca1c919954099ba49921ed85b",
+    "tool_lock_sha256": "c578db80172ae9e764c27c8c8c3dc3cb05dc207c8abe1854f8c214eaaf67eda8"
+  },
+  "commands": {
+    "build": [
+      "uv",
+      "build",
+      "--no-config",
+      "--wheel",
+      "--offline",
+      "--no-build-isolation",
+      "--python",
+      "<collector-sys-executable>",
+      "--out-dir",
+      "<temp>/dist"
+    ],
+    "cli_probe": [
+      "tree-sitter-analyzer",
+      "fixture.py",
+      "--summary",
+      "--format",
+      "json"
+    ],
+    "closure_install": [
+      "uv",
+      "pip",
+      "install",
+      "--no-config",
+      "--offline",
+      "--no-deps",
+      "--require-hashes",
+      "-r",
+      "<locked-requirements>"
+    ],
+    "collector_tool_export": [
+      "uv",
+      "export",
+      "--no-config",
+      "--frozen",
+      "--offline",
+      "--only-group",
+      "no1-006b-collector-tool",
+      "--no-emit-project",
+      "--format",
+      "requirements-txt"
+    ],
+    "export": [
+      "uv",
+      "export",
+      "--no-config",
+      "--frozen",
+      "--offline",
+      "--no-dev",
+      "--no-emit-project",
+      "--format",
+      "requirements-txt"
+    ],
+    "mcp_probe": [
+      "tree-sitter-analyzer-mcp",
+      "--project-root",
+      "<fixture>",
+      "initialize",
+      "notifications/initialized",
+      "tools/list"
+    ],
+    "root_install": [
+      "uv",
+      "pip",
+      "install",
+      "--no-config",
+      "--offline",
+      "--no-deps",
+      "<root-wheel>"
+    ]
+  },
+  "dependency_closure": {
+    "derivation": "uv.lock frozen export; hashed exact requirements; project wheel installed separately with --no-deps",
+    "distributions": [
+      {
+        "name": "annotated-types",
+        "role": "transitive",
+        "version": "0.7.0"
+      },
+      {
+        "name": "anthropic",
+        "role": "direct",
+        "version": "0.104.1"
+      },
+      {
+        "name": "anyio",
+        "role": "transitive",
+        "version": "4.11.0"
+      },
+      {
+        "name": "attrs",
+        "role": "transitive",
+        "version": "25.4.0"
+      },
+      {
+        "name": "cachetools",
+        "role": "direct",
+        "version": "6.2.1"
+      },
+      {
+        "name": "certifi",
+        "role": "transitive",
+        "version": "2025.10.5"
+      },
+      {
+        "name": "chardet",
+        "role": "direct",
+        "version": "7.4.3"
+      },
+      {
+        "name": "charset-normalizer",
+        "role": "transitive",
+        "version": "3.4.3"
+      },
+      {
+        "name": "click",
+        "role": "transitive",
+        "version": "8.3.0"
+      },
+      {
+        "name": "deepdiff",
+        "role": "direct",
+        "version": "8.6.1"
+      },
+      {
+        "name": "detect-secrets",
+        "role": "direct",
+        "version": "1.5.0"
+      },
+      {
+        "name": "distro",
+        "role": "transitive",
+        "version": "1.9.0"
+      },
+      {
+        "name": "docstring-parser",
+        "role": "transitive",
+        "version": "0.18.0"
+      },
+      {
+        "name": "h11",
+        "role": "transitive",
+        "version": "0.16.0"
+      },
+      {
+        "name": "httpcore",
+        "role": "transitive",
+        "version": "1.0.9"
+      },
+      {
+        "name": "httpx",
+        "role": "transitive",
+        "version": "0.28.1"
+      },
+      {
+        "name": "httpx-sse",
+        "role": "transitive",
+        "version": "0.4.3"
+      },
+      {
+        "name": "idna",
+        "role": "transitive",
+        "version": "3.11"
+      },
+      {
+        "name": "jiter",
+        "role": "transitive",
+        "version": "0.15.0"
+      },
+      {
+        "name": "jsonschema",
+        "role": "direct",
+        "version": "4.25.1"
+      },
+      {
+        "name": "jsonschema-specifications",
+        "role": "transitive",
+        "version": "2025.9.1"
+      },
+      {
+        "name": "mcp",
+        "role": "direct",
+        "version": "1.17.0"
+      },
+      {
+        "name": "networkx",
+        "role": "direct",
+        "version": "3.6.1"
+      },
+      {
+        "name": "numpy",
+        "role": "direct",
+        "version": "2.4.4"
+      },
+      {
+        "name": "orderly-set",
+        "role": "transitive",
+        "version": "5.5.0"
+      },
+      {
+        "name": "pathspec",
+        "role": "direct",
+        "version": "1.1.1"
+      },
+      {
+        "name": "psutil",
+        "role": "direct",
+        "version": "5.9.8"
+      },
+      {
+        "name": "pydantic",
+        "role": "transitive",
+        "version": "2.13.4"
+      },
+      {
+        "name": "pydantic-core",
+        "role": "transitive",
+        "version": "2.46.4"
+      },
+      {
+        "name": "pydantic-settings",
+        "role": "transitive",
+        "version": "2.11.0"
+      },
+      {
+        "name": "python-dotenv",
+        "role": "transitive",
+        "version": "1.1.1"
+      },
+      {
+        "name": "python-multipart",
+        "role": "transitive",
+        "version": "0.0.20"
+      },
+      {
+        "name": "pyyaml",
+        "role": "direct",
+        "version": "6.0.3"
+      },
+      {
+        "name": "referencing",
+        "role": "transitive",
+        "version": "0.37.0"
+      },
+      {
+        "name": "requests",
+        "role": "transitive",
+        "version": "2.32.5"
+      },
+      {
+        "name": "rpds-py",
+        "role": "transitive",
+        "version": "0.27.1"
+      },
+      {
+        "name": "sniffio",
+        "role": "transitive",
+        "version": "1.3.1"
+      },
+      {
+        "name": "sse-starlette",
+        "role": "transitive",
+        "version": "3.0.2"
+      },
+      {
+        "name": "starlette",
+        "role": "transitive",
+        "version": "0.48.0"
+      },
+      {
+        "name": "tree-sitter",
+        "role": "direct",
+        "version": "0.25.2"
+      },
+      {
+        "name": "tree-sitter-analyzer",
+        "role": "root",
+        "version": "1.29.0"
+      },
+      {
+        "name": "tree-sitter-bash",
+        "role": "direct",
+        "version": "0.25.1"
+      },
+      {
+        "name": "tree-sitter-c",
+        "role": "direct",
+        "version": "0.24.1"
+      },
+      {
+        "name": "tree-sitter-c-sharp",
+        "role": "direct",
+        "version": "0.23.1"
+      },
+      {
+        "name": "tree-sitter-cpp",
+        "role": "direct",
+        "version": "0.23.4"
+      },
+      {
+        "name": "tree-sitter-css",
+        "role": "direct",
+        "version": "0.23.2"
+      },
+      {
+        "name": "tree-sitter-go",
+        "role": "direct",
+        "version": "0.23.4"
+      },
+      {
+        "name": "tree-sitter-html",
+        "role": "direct",
+        "version": "0.23.2"
+      },
+      {
+        "name": "tree-sitter-java",
+        "role": "direct",
+        "version": "0.23.5"
+      },
+      {
+        "name": "tree-sitter-javascript",
+        "role": "direct",
+        "version": "0.23.1"
+      },
+      {
+        "name": "tree-sitter-json",
+        "role": "direct",
+        "version": "0.24.8"
+      },
+      {
+        "name": "tree-sitter-kotlin",
+        "role": "direct",
+        "version": "1.1.0"
+      },
+      {
+        "name": "tree-sitter-markdown",
+        "role": "direct",
+        "version": "0.5.1"
+      },
+      {
+        "name": "tree-sitter-php",
+        "role": "direct",
+        "version": "0.24.1"
+      },
+      {
+        "name": "tree-sitter-python",
+        "role": "direct",
+        "version": "0.23.6"
+      },
+      {
+        "name": "tree-sitter-ruby",
+        "role": "direct",
+        "version": "0.23.1"
+      },
+      {
+        "name": "tree-sitter-rust",
+        "role": "direct",
+        "version": "0.24.0"
+      },
+      {
+        "name": "tree-sitter-scala",
+        "role": "direct",
+        "version": "0.26.0"
+      },
+      {
+        "name": "tree-sitter-sql",
+        "role": "direct",
+        "version": "0.3.11"
+      },
+      {
+        "name": "tree-sitter-typescript",
+        "role": "direct",
+        "version": "0.23.2"
+      },
+      {
+        "name": "tree-sitter-yaml",
+        "role": "direct",
+        "version": "0.7.2"
+      },
+      {
+        "name": "typing-extensions",
+        "role": "transitive",
+        "version": "4.15.0"
+      },
+      {
+        "name": "typing-inspection",
+        "role": "transitive",
+        "version": "0.4.2"
+      },
+      {
+        "name": "urllib3",
+        "role": "transitive",
+        "version": "2.5.0"
+      },
+      {
+        "name": "uvicorn",
+        "role": "transitive",
+        "version": "0.37.0"
+      }
+    ],
+    "export_sha256": "33b03a373e2ebeafa44a792d14121f081c1af36870e2d97198a9f6432653b6bb",
+    "lock_sha256": "516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"
+  },
+  "environment": {
+    "build_backend": {
+      "name": "hatchling",
+      "version": "1.31.0"
+    },
+    "build_python": {
+      "abiflags": "",
+      "architecture": "64bit",
+      "cache_tag": "cpython-314",
+      "config_args_sha256": "35095cfb7785f49c8bdc4c64d3c33db5512cd48fbf2799a783fa1ed17923940f",
+      "executable": "<collector-sys-executable>",
+      "implementation": "CPython",
+      "machine": "arm64",
+      "pointer_bits": 64,
+      "py_debug": 0,
+      "python_build": [
+        "main",
+        "Mar  3 2026 15:46:55"
+      ],
+      "resolved_base_executable_sha256": "5e7cec3fb68a25f439c81d0a8510f8e2e0309ef194e68f916aa0443cd8506657",
+      "soabi": "cpython-314-darwin",
+      "sysconfig_platform": "macosx-11.0-arm64",
+      "system": "Darwin",
+      "version": "3.14.3"
+    },
+    "bytecode_policy": "PYTHONDONTWRITEBYTECODE=1",
+    "cache_protocol": "two independent fresh identical venvs; first sample bytecode-cold but OS cache uncontrolled; subsequent samples fresh-process warm",
+    "host_fingerprint": {
+      "cpu": "arm",
+      "filesystem": "unknown; not controlled",
+      "logical_cpu_count": 10,
+      "power": "unknown; not controlled",
+      "ram_bytes": 25769803776,
+      "virtualization": "unknown; not detected"
+    },
+    "machine": "arm64",
+    "network_policy": "UV_OFFLINE=1; uv --offline; no network transfer measurement",
+    "os": "macOS-26.4.1-arm64-arm-64bit-Mach-O",
+    "python": {
+      "abiflags": "",
+      "architecture": "64bit",
+      "cache_tag": "cpython-314",
+      "config_args_sha256": "35095cfb7785f49c8bdc4c64d3c33db5512cd48fbf2799a783fa1ed17923940f",
+      "executable": "<target-venv-python>",
+      "implementation": "CPython",
+      "machine": "arm64",
+      "pointer_bits": 64,
+      "py_debug": 0,
+      "python_build": [
+        "main",
+        "Mar  3 2026 15:46:55"
+      ],
+      "resolved_base_executable_sha256": "5e7cec3fb68a25f439c81d0a8510f8e2e0309ef194e68f916aa0443cd8506657",
+      "soabi": "cpython-314-darwin",
+      "sysconfig_platform": "macosx-11.0-arm64",
+      "system": "Darwin",
+      "version": "3.14.3"
+    },
+    "sample_order": "all CLI samples, then all MCP samples",
+    "system": "macos",
+    "uv": {
+      "sha256": "2b4ccdac26598ca8c300e5c36d24297fa1471c350c46d2f34c835bf06be303ab",
+      "version": "uv 0.12.3 (507230998 2026-08-07 aarch64-apple-darwin)"
+    }
+  },
+  "evidence_level": "E0",
+  "measured_axis": "macos",
+  "measurements": {
+    "cli_startup": {
+      "cold_ms": 1626.038,
+      "definition": "clock before Popen through exact successful JSON analysis of fixture.py",
+      "warm_ms": [
+        583.077,
+        597.136,
+        589.854,
+        597.366,
+        596.285
+      ]
+    },
+    "dependency_distribution_count_excluding_root": 64,
+    "direct_dependency_count": 33,
+    "installed_distribution_count_including_root": 65,
+    "installed_regular_file_count": 4743,
+    "installed_size_bytes": 89982491,
+    "installed_size_scope": "unique resolved in-venv regular files; pyc/direct_url excluded; symlinks rejected; hardlinks inode-deduplicated; interpreter excluded",
+    "mcp_startup": {
+      "cold_ms": 2066.683,
+      "definition": "clock before Popen through successful initialize, initialized notification, and exact tools/list readiness",
+      "tool_names": [
+        "edit",
+        "health",
+        "index",
+        "nav",
+        "project",
+        "search",
+        "set_project_path",
+        "structure",
+        "viz"
+      ],
+      "warm_ms": [
+        777.824,
+        768.227,
+        770.353,
+        773.216,
+        770.441
+      ]
+    },
+    "network_transfer_bytes": {
+      "reason": "offline cache artifacts do not measure network transfer",
+      "status": "unknown"
+    },
+    "root_wheel_artifact_size_bytes": 2209032,
+    "transitive_dependency_count": 31
+  },
+  "platform_axes": {
+    "linux": "unknown",
+    "macos": "measured_e0",
+    "windows": "unknown"
+  },
+  "repeats": 5,
+  "roadmap_id": "NO1-006B",
+  "schema_version": 3,
+  "source": {
+    "commit": "7e0e8f6e03270fcbf4025d717415ef69c9354145",
+    "git_tree": "fe340eff33002b67ae88b34f1174bbcca4efc370",
+    "lock_sha256": "516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909",
+    "root_wheel_artifact_size_bytes": 2209032,
+    "root_wheel_filename": "tree_sitter_analyzer-1.29.0-py3-none-any.whl",
+    "root_wheel_sha256": "c1cb3520542fd14dad60ddec55dfac6afbdaa424e7a4a39d875be1801d98f9e8",
+    "source_archive_sha256": "52fc24594778d798257412e0137b096b0c1670d6a376a9d9714f5a49dfbe706c"
+  }
+}
