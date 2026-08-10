@@ -446,7 +446,8 @@ class TestIndexProject:
         result = cache.index_project(workers=0)
 
         assert result["indexed"] == 2
-        assert "unresolved_refs_backfill" not in result
+        assert result["unresolved_refs_backfill"] is None
+        assert result["backfill_errors"] == 1
 
     def test_index_project_tolerates_unresolved_backfill_failure(
         self, cache, monkeypatch
@@ -525,6 +526,85 @@ class TestIndexProject:
 
         assert result["activation_enabled"] is True
         assert compute.called
+
+
+_BACKFILL_ROUTES = (
+    ("backfill_cross_file_edges", "cross_file_backfill"),
+    ("_run_synapse_backfill", "synapse_backfill"),
+    ("_run_unresolved_refs_backfill", "unresolved_refs_backfill"),
+)
+
+
+def _run_backfill_with_route_result(cache, monkeypatch, route, result):
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    for method, _key in _BACKFILL_ROUTES:
+        monkeypatch.setattr(cache, method, lambda: {"errors": 0})
+    monkeypatch.setattr(cache, route, lambda: result)
+    stats = {}
+    with patch(
+        "tree_sitter_analyzer.cache.unresolved.mark_resolution_converged"
+    ) as converged:
+        post_index_backfill(cache, stats)
+    return stats, converged
+
+
+@pytest.mark.parametrize(("route", "key"), _BACKFILL_ROUTES)
+def test_backfill_returned_errors_fail_certification(cache, monkeypatch, route, key):
+    diagnostic = {"errors": 2, "detail": route}
+    stats, converged = _run_backfill_with_route_result(
+        cache, monkeypatch, route, diagnostic
+    )
+
+    assert stats[key] == diagnostic
+    assert stats["backfill_errors"] == 1
+    converged.assert_not_called()
+
+
+@pytest.mark.parametrize(("route", "key"), _BACKFILL_ROUTES)
+def test_backfill_none_fails_certification_and_is_preserved(
+    cache, monkeypatch, route, key
+):
+    stats, converged = _run_backfill_with_route_result(cache, monkeypatch, route, None)
+
+    assert key in stats
+    assert stats[key] is None
+    assert stats["backfill_errors"] == 1
+    converged.assert_not_called()
+
+
+@pytest.mark.parametrize(("route", "key"), _BACKFILL_ROUTES)
+def test_backfill_nonmapping_fails_certification_and_is_preserved(
+    cache, monkeypatch, route, key
+):
+    stats, converged = _run_backfill_with_route_result(
+        cache, monkeypatch, route, ["unexpected"]
+    )
+
+    assert stats[key] == ["unexpected"]
+    assert stats["backfill_errors"] == 1
+    converged.assert_not_called()
+
+
+@pytest.mark.parametrize(("route", "key"), _BACKFILL_ROUTES)
+def test_backfill_exception_fails_certification(cache, monkeypatch, route, key):
+    def fail():
+        raise RuntimeError(route)
+
+    for method, _key in _BACKFILL_ROUTES:
+        monkeypatch.setattr(cache, method, lambda: {"errors": 0})
+    monkeypatch.setattr(cache, route, fail)
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    stats = {}
+    with patch(
+        "tree_sitter_analyzer.cache.unresolved.mark_resolution_converged"
+    ) as converged:
+        post_index_backfill(cache, stats)
+
+    assert key not in stats
+    assert stats["backfill_errors"] == 1
+    converged.assert_not_called()
 
 
 class TestLookup:

@@ -598,10 +598,13 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             resolved_edges += int(synapse.get("resolved", 0))
         if isinstance(unresolved, dict):
             resolved_edges += int(unresolved.get("resolved", 0))
+        backfill_errors = int(ast_phase.get("backfill_errors", 0))
+        phase_failed = ast_phase.get("status") == "error" or backfill_errors > 0
         return {
-            "status": "ok",
+            "status": "error" if phase_failed else "ok",
             "elapsed_seconds": 0.0,
             "resolved_edges": resolved_edges,
+            "backfill_errors": backfill_errors,
             "note": "resolved during ast_cache phase (single-pass backfill)",
         }
 

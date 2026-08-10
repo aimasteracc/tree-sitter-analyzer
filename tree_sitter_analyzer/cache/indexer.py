@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import datetime, timezone
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
@@ -773,8 +773,12 @@ def run_index_project(
                 cache,
                 stats,
             )
-            if cache._completed_full_index_sweep(stats):
+            if stats.get(
+                "backfill_errors", 0
+            ) == 0 and cache._completed_full_index_sweep(stats):
                 _mark_call_graph_built(cache._get_conn())
+            else:
+                _clear_call_graph_built(cache._get_conn())
         # #978: a fully-cached re-run (indexed == 0) over an already-complete
         # index never reaches the branch above, so a project whose marker was
         # cleared (e.g. predates #708) would stay permanently un-stamped and
@@ -860,6 +864,13 @@ def _update_authoritative_manifest(
     conn.commit()
 
 
+def _record_backfill_result(stats: dict[str, Any], key: str, result: Any) -> None:
+    """Keep a helper diagnostic and fail closed unless it reports zero errors."""
+    stats[key] = result
+    if not isinstance(result, Mapping) or result.get("errors", 0) != 0:
+        stats["backfill_errors"] += 1
+
+
 def post_index_backfill(
     cache: Any,
     stats: dict[str, Any],
@@ -867,14 +878,16 @@ def post_index_backfill(
     """Run backfills, recording suppressed failures for certification gates."""
     stats.setdefault("backfill_errors", 0)
     try:
-        stats["cross_file_backfill"] = cache.backfill_cross_file_edges()
+        _record_backfill_result(
+            stats, "cross_file_backfill", cache.backfill_cross_file_edges()
+        )
     except Exception:
         stats["backfill_errors"] += 1
         logger.debug("cross-file backfill failed", exc_info=True)
     try:
-        synapse = cache._run_synapse_backfill()
-        if synapse is not None:
-            stats["synapse_backfill"] = synapse
+        _record_backfill_result(
+            stats, "synapse_backfill", cache._run_synapse_backfill()
+        )
     except Exception:
         stats["backfill_errors"] += 1
         logger.debug("synapse backfill failed", exc_info=True)
@@ -883,18 +896,21 @@ def post_index_backfill(
     # work: ~85 s on django (47 % of total index time) for an identical edge
     # set (244,590 rows either way, verified).
     try:
-        unresolved = cache._run_unresolved_refs_backfill()
-        if unresolved is not None:
-            stats["unresolved_refs_backfill"] = unresolved
+        _record_backfill_result(
+            stats,
+            "unresolved_refs_backfill",
+            cache._run_unresolved_refs_backfill(),
+        )
     except Exception:
         stats["backfill_errors"] += 1
         logger.debug("unresolved refs backfill failed", exc_info=True)
-    try:
-        from .unresolved import mark_resolution_converged
+    if stats["backfill_errors"] == 0:
+        try:
+            from .unresolved import mark_resolution_converged
 
-        mark_resolution_converged(cache._get_conn())
-    except Exception:
-        logger.debug("could not mark resolution converged", exc_info=True)
+            mark_resolution_converged(cache._get_conn())
+        except Exception:
+            logger.debug("could not mark resolution converged", exc_info=True)
     try:
         from ..knowledge_graph.stores import LadybugKnowledgeGraphStore
 

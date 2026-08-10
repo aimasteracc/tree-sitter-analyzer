@@ -233,6 +233,12 @@ class TestExecute:
         assert result["verdict"] == "WARN"
         assert collect_stats.call_args.kwargs["stamp_manifest"] is False
 
+    async def test_synapse_phase_inherits_ast_backfill_failure(self, tool_with_root):
+        result = tool_with_root._phase_synapse({"status": "ok", "backfill_errors": 1})
+
+        assert result["status"] == "error"
+        assert result["backfill_errors"] == 1
+
     async def test_default_toon_surfaces_truncation_metadata(self, tool_with_root):
         incremental_phase = {
             "status": "error",

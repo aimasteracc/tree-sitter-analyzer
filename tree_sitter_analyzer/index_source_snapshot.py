@@ -230,6 +230,7 @@ def _inventory(
     rows: list[tuple[str, str, str]] = []
     unsafe = False
     byte_count = 0
+    supported_count = 0
     stack: list[str] = []
     for relative_root in reversed(scope.roots):
         candidate = os.path.realpath(os.path.join(root, relative_root))
@@ -252,13 +253,14 @@ def _inventory(
                     stack.append(entry.path)
                 continue
             language = EXT_TO_LANG.get(Path(entry.name).suffix.lower())
-            if language is None or any(
-                fnmatch.fnmatch(rel, p) for p in scope.effective_excludes
-            ):
+            if language is None:
                 continue
-            replay_limit = min(scope.certification_max_files + 1, _SOURCE_PATH_BUDGET)
-            if len(rows) == replay_limit:
+            supported_count += 1
+            replay_limit = min(scope.certification_max_files, _SOURCE_PATH_BUDGET)
+            if supported_count > replay_limit:
                 raise OverflowError
+            if any(fnmatch.fnmatch(rel, p) for p in scope.effective_excludes):
+                continue
             if not stat.S_ISREG(mode):
                 unsafe = True
                 rows.append((rel, _metadata_marker(info) + "|<unsafe>", language))
