@@ -742,9 +742,30 @@ def test_snapshot_consumer_rejects_binary_content(
         ),
     ],
 )
+@pytest.mark.parametrize(
+    ("validation_error", "request_format", "expected_error"),
+    [
+        (
+            "DIFF_SNAPSHOT_SOURCE_CHANGED",
+            "toon",
+            "DIFF_SNAPSHOT_SOURCE_CHANGED",
+        ),
+        ("DIFF_SNAPSHOT_EXPIRED", None, "DIFF_SNAPSHOT_EXPIRED"),
+        (
+            "DIFF_SNAPSHOT_FUTURE_ERROR",
+            None,
+            "DIFF_SNAPSHOT_VALIDATION_ERROR",
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_strict_snapshot_revalidates_while_pinned_before_publish(
-    tool_type, module_name: str, monkeypatch
+async def test_strict_snapshot_final_publish_errors_preserve_toon(
+    tool_type,
+    module_name: str,
+    validation_error: str,
+    request_format: str | None,
+    expected_error: str,
+    monkeypatch,
 ) -> None:
     from importlib import import_module
     from types import SimpleNamespace
@@ -771,23 +792,26 @@ async def test_strict_snapshot_revalidates_while_pinned_before_publish(
 
     def validate_publish(pinned) -> str:
         events.append(("validate", released))
-        return "DIFF_SNAPSHOT_SOURCE_CHANGED"
+        return validation_error
 
     monkeypatch.setattr(registry.REGISTRY, "validate_publish", validate_publish)
+    tool_module = import_module(module_name)
+    original_formatter = tool_module.apply_toon_format_to_response
 
     def formatting(response, output_format):
         events.append(("format", released))
-        return response
+        return original_formatter(response, output_format)
 
-    monkeypatch.setattr(
-        import_module(module_name), "apply_toon_format_to_response", formatting
-    )
-    response = await tool_type(".").execute(
-        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
-    )
-    assert response["error_code"] == "DIFF_SNAPSHOT_SOURCE_CHANGED"
-    assert events == [
-        ("format", False),
+    monkeypatch.setattr(tool_module, "apply_toon_format_to_response", formatting)
+    request = {"diff_snapshot_id": "ds", "file_path": "x.py"}
+    if request_format is not None:
+        request["output_format"] = request_format
+    response = await tool_type(".").execute(request)
+    # PR #1252 review thread 3750964908: final validation must not bypass TOON.
+    assert response["error_code"] == expected_error
+    assert response["format"] == "toon"
+    assert isinstance(response["toon_content"], str)
+    assert events == [("format", False)] * 17 + [
         ("validate", False),
         ("release", True),
     ]

@@ -17,7 +17,10 @@ from ...git_path_codec import path_to_wire
 from ...project_graph import _language_from_ext
 from ...semantic_change_classifier import SemanticChangeClassifier
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import (
+    apply_toon_format_to_response,
+    preformat_diff_snapshot_publish_errors,
+)
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -409,26 +412,14 @@ class SemanticClassifyTool(BaseMCPTool):
                 )
             formatted = apply_toon_format_to_response(response, output_format)
             if consumer is not None:
-                publish_errors = {
-                    code: {
-                        "success": False,
-                        "verdict": "ERROR",
-                        "error_code": code,
-                        "error": code,
-                    }
-                    for code in (
-                        "DIFF_SNAPSHOT_EXPIRED",
-                        "DIFF_SNAPSHOT_WRONG_THREAD",
-                        "DIFF_SNAPSHOT_ROOT_MISMATCH",
-                        "DIFF_SNAPSHOT_SOURCE_CHANGED",
-                        "DIFF_SNAPSHOT_GIT_ERROR",
+                publish_errors, publish_fallback = (
+                    preformat_diff_snapshot_publish_errors(
+                        output_format, apply_toon_format_to_response
                     )
-                }
+                )
                 error = REGISTRY.validate_publish(consumer)
                 if error:
-                    return publish_errors.get(
-                        error, publish_errors["DIFF_SNAPSHOT_GIT_ERROR"]
-                    )
+                    return publish_errors.get(error, publish_fallback)
             return formatted
         finally:
             if consumer is not None:
