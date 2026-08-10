@@ -12,10 +12,13 @@ from typing import BinaryIO
 from .source_oracle import SourceOracleError, _remaining
 
 PopenFactory = Callable[..., subprocess.Popen[bytes]]
+_IS_WINDOWS = os.name == "nt"
+_TASKKILL = subprocess.run
+_KILL_PROCESS_GROUP = os.killpg
 
 
 def _group_options() -> dict[str, object]:
-    if os.name == "nt":
+    if _IS_WINDOWS:
         return {
             "creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
         }
@@ -25,8 +28,8 @@ def _group_options() -> dict[str, object]:
 def _kill_group(proc: subprocess.Popen[bytes]) -> None:
     """Best-effort hard termination of Git and all hook/helper descendants."""
     try:
-        if os.name == "nt" and getattr(proc, "pid", None) is not None:
-            subprocess.run(  # nosec B603 B607
+        if _IS_WINDOWS and getattr(proc, "pid", None) is not None:
+            _TASKKILL(  # nosec B603 B607
                 ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                 check=False,
                 stdin=subprocess.DEVNULL,
@@ -35,7 +38,7 @@ def _kill_group(proc: subprocess.Popen[bytes]) -> None:
                 timeout=5,
             )
         elif getattr(proc, "pid", None) is not None:
-            os.killpg(proc.pid, signal.SIGKILL)
+            _KILL_PROCESS_GROUP(proc.pid, signal.SIGKILL)
         else:
             proc.kill()
     except (OSError, subprocess.SubprocessError):

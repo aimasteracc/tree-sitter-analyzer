@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess  # nosec B404
+import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -106,14 +107,56 @@ def _frame(digest: Any, label: bytes, value: bytes) -> None:
     update(len(value).to_bytes(8, "big") + value)
 
 
-def _index_entries(root: str, *, deadline: float) -> dict[bytes, bytes]:
-    """Return stage-zero blob identities, rejecting conflicts and malformed rows."""
-    raw = git_output(
-        root,
-        ["ls-files", "--stage", "-z"],
-        deadline=deadline,
-        limit=_MAX_INVENTORY_BYTES,
-    )
+def _index_entries(
+    root: str, *, deadline: float, index_bytes: bytes | None = None
+) -> dict[bytes, bytes]:
+    """Parse stage-zero entries from one private mode-0600 index copy."""
+    temporary_index: str | None = None
+    try:
+        env = None
+        if index_bytes is not None:
+            if not index_bytes:
+                return {}
+            descriptor, temporary_index = tempfile.mkstemp(prefix="tsa-index-")
+            with os.fdopen(descriptor, "wb") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(index_bytes)
+            real_root = os.path.realpath(root)
+            if (
+                os.path.commonpath((real_root, os.path.realpath(temporary_index)))
+                == real_root
+            ):
+                raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH")
+            env = {
+                key: value
+                for key, value in os.environ.items()
+                if not key.upper().startswith("GIT_")
+            }
+            env.update(
+                {
+                    "GIT_INDEX_FILE": temporary_index,
+                    "GIT_OPTIONAL_LOCKS": "0",
+                }
+            )
+        args = ["ls-files", "--stage", "-z"]
+        raw = (
+            git_output(root, args, deadline=deadline, limit=_MAX_INVENTORY_BYTES)
+            if index_bytes is None
+            else run_git_bounded(
+                root,
+                args,
+                deadline=deadline,
+                limit=_MAX_INVENTORY_BYTES,
+                env=env,
+                popen=subprocess.Popen,
+            )
+        )
+    finally:
+        if temporary_index is not None:
+            try:
+                os.unlink(temporary_index)
+            except FileNotFoundError:
+                pass
     entries: dict[bytes, bytes] = {}
     for row in raw.split(b"\0"):
         if not row:
@@ -329,11 +372,9 @@ def oracle_generation(
     # Dependency analysis reads the live checkout, not only dirty paths. Bind
     # every tracked path so a transient clean-file write+restore or atomic
     # replacement changes inode/ctime and invalidates the strict result.
-    tracked = _tracked_paths(root, deadline=end)
-    index_entries = _index_entries(root, deadline=end)
+    index_entries = _index_entries(root, deadline=end, index_bytes=index_bytes)
+    tracked = list(index_entries)
     head_entries = _head_entries(root, deadline=end, head=head)
-    if set(tracked) != set(index_entries):
-        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
     dirty_raw = git_output(
         root,
         [

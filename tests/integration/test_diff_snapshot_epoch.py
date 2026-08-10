@@ -7,6 +7,7 @@ import pytest
 
 import tree_sitter_analyzer.diff_snapshot_capture as capture
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+import tree_sitter_analyzer.source_oracle_git as oracle
 from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
 
 
@@ -139,8 +140,54 @@ def test_payload_uses_pre_epoch_index_during_transient_replacement(
     monkeypatch.setattr(snapshots, "_capture_payload", replace_during_payload)
     registry = snapshots.DiffSnapshotRegistry()
     created = registry.create(str(root), "staged", [])
-    assert created["success"] is True
+    if not created["success"]:
+        assert created == {
+            "success": False,
+            "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
+        }
+        return
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer is not None
+    assert consumer.snapshot.file("old.py").new_bytes == b"value = 2\n"
+    consumer.release()
+
+
+@POSIX_SNAPSHOT_TEST
+def test_epoch_entry_derivation_ignores_transient_live_index(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 zero-gate 2026-07-01: stage entries come from no-follow index bytes.
+    root = _repo(tmp_path)
+    target = root / "old.py"
+    target.write_text("value = 2\n")
+    _git(root, "add", "old.py")
+    safe_index = (root / ".git" / "index").read_bytes()
+    target.write_text("value = 3\n")
+    _git(root, "add", "old.py")
+    transient_index = (root / ".git" / "index").read_bytes()
+    (root / ".git" / "index").write_bytes(safe_index)
+    real_entries = oracle._index_entries
+
+    def swap_around_derivation(*args, **kwargs):
+        (root / ".git" / "index").write_bytes(transient_index)
+        try:
+            return real_entries(*args, **kwargs)
+        finally:
+            (root / ".git" / "index").write_bytes(safe_index)
+
+    monkeypatch.setattr(oracle, "_index_entries", swap_around_derivation)
+    registry = snapshots.DiffSnapshotRegistry()
+
+    created = registry.create(str(root), "staged", [])
+    if not created["success"]:
+        assert created == {
+            "success": False,
+            "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
+        }
+        return
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+
     assert error is None
     assert consumer is not None
     assert consumer.snapshot.file("old.py").new_bytes == b"value = 2\n"

@@ -128,6 +128,67 @@ def test_index_entries_rejects_hostile_inventory(monkeypatch, raw: bytes) -> Non
     )
 
 
+def test_index_entries_uses_private_mode_600_exact_bytes(monkeypatch) -> None:
+    observed: list[tuple[bytes, int, str]] = []
+
+    def run(root, args, *, env, **kwargs):
+        path = env["GIT_INDEX_FILE"]
+        observed.append(
+            (Path(path).read_bytes(), stat.S_IMODE(os.stat(path).st_mode), path)
+        )
+        return b"100644 a 0\tpath\0"
+
+    monkeypatch.setattr(oracle, "run_git_bounded", run)
+
+    entries = oracle._index_entries(
+        ".", deadline=time.monotonic() + 1, index_bytes=b"exact-index"
+    )
+
+    assert entries == {b"path": b"100644 a 0"}
+    assert observed[0][:2] == (b"exact-index", 0o600)
+    assert Path(observed[0][2]).exists() is False
+
+
+def test_index_entries_rejects_private_index_inside_project(
+    tmp_path: Path, monkeypatch
+) -> None:
+    index_path = tmp_path / "private-index"
+
+    def mkstemp(*, prefix):
+        descriptor = os.open(index_path, os.O_CREAT | os.O_RDWR, 0o600)
+        return descriptor, str(index_path)
+
+    monkeypatch.setattr(oracle.tempfile, "mkstemp", mkstemp)
+
+    _error(
+        lambda: oracle._index_entries(
+            str(tmp_path), deadline=time.monotonic() + 1, index_bytes=b"index"
+        ),
+        "DIFF_SNAPSHOT_UNSAFE_PATH",
+    )
+    assert index_path.exists() is False
+
+
+def test_index_entries_cleanup_tolerates_already_removed_temp(monkeypatch) -> None:
+    real_unlink = os.unlink
+    removed: list[str] = []
+
+    def remove_then_report_missing(path):
+        real_unlink(path)
+        removed.append(path)
+        raise FileNotFoundError
+
+    monkeypatch.setattr(oracle, "run_git_bounded", lambda *a, **k: b"")
+    monkeypatch.setattr(oracle.os, "unlink", remove_then_report_missing)
+
+    entries = oracle._index_entries(
+        ".", deadline=time.monotonic() + 1, index_bytes=b"index"
+    )
+
+    assert entries == {}
+    assert len(removed) == 1
+
+
 def test_index_entries_rejects_bounded_path_count(monkeypatch) -> None:
     raw = b"100644 a 0\ta\x00100644 b 0\tb\0"
     monkeypatch.setattr(oracle, "_MAX_WORKTREE_PATHS", 1)
@@ -208,12 +269,19 @@ def _stub_oracle_inventory(
 
 
 @POSIX_SNAPSHOT_TEST
-def test_oracle_generation_rejects_tracked_index_inventory_mismatch(
+def test_oracle_generation_epoch_uses_frozen_index_entries(
     tmp_path: Path, monkeypatch
 ) -> None:
-    _stub_oracle_inventory(tmp_path, monkeypatch, tracked=[b"tracked.py"], indexed={})
+    entry = b"100644 blob-id 0"
+    _stub_oracle_inventory(
+        tmp_path, monkeypatch, tracked=[], indexed={b"tracked.py": entry}
+    )
+    monkeypatch.setattr(oracle, "_frame_workspace_path", lambda *a, **k: 0)
+    epochs: list[oracle.GitEpoch] = []
 
-    _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_GIT_ERROR")
+    oracle.oracle_generation(str(tmp_path), epoch_out=epochs)
+
+    assert epochs[0].index_entries == ((b"tracked.py", entry),)
 
 
 @POSIX_SNAPSHOT_TEST

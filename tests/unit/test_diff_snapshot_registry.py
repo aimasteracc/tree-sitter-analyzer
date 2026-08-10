@@ -489,3 +489,30 @@ def test_validate_publish_rejects_erased_snapshot_before_oracle(
     registry.reset()
 
     assert registry.validate_publish(consumer) == "DIFF_SNAPSHOT_EXPIRED"
+
+
+def test_closed_lease_idempotency_history_has_fixed_horizon() -> None:
+    registry = snapshots.DiffSnapshotRegistry(clock=lambda: 0.0)
+    lease = "lease"
+    for index in range(10_000):
+        sid = f"snapshot-{index}"
+        snapshot = type(
+            "Snapshot", (), {"created_monotonic": 0.0, "materialized_bytes": 0}
+        )()
+        registry._states[sid] = snapshots._State(snapshot, lease)
+        assert registry.release_route_lease(sid, lease) is None
+
+    assert len(registry._closed_leases) == snapshots.MAX_CLOSED_LEASES
+    assert registry.release_route_lease("snapshot-0", lease) == "DIFF_SNAPSHOT_EXPIRED"
+    assert registry.release_route_lease("snapshot-9999", lease) is None
+
+
+def test_sweep_hard_evicts_preexisting_closed_lease_overflow() -> None:
+    registry = snapshots.DiffSnapshotRegistry(clock=lambda: 0.0)
+    for index in range(snapshots.MAX_CLOSED_LEASES + 1):
+        registry._closed_leases[f"snapshot-{index}"] = ("lease", 0.0)
+
+    registry.stats()
+
+    assert len(registry._closed_leases) == snapshots.MAX_CLOSED_LEASES
+    assert "snapshot-0" not in registry._closed_leases

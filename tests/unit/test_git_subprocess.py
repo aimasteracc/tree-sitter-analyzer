@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+import tree_sitter_analyzer.git_subprocess as bounded
 import tree_sitter_analyzer.source_oracle_git as oracle
 from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
 
@@ -204,3 +205,119 @@ def test_oracle_generation_ignores_inherited_git_routing(
     generation, _ = oracle.oracle_generation(str(tmp_path))
 
     assert generation[:3] == "sg_"
+
+
+class _Input(io.BytesIO):
+    def __init__(self, *, broken: bool = False) -> None:
+        super().__init__()
+        self.broken = broken
+
+    def write(self, value: bytes) -> int:
+        if self.broken:
+            raise BrokenPipeError
+        return super().write(value)
+
+
+class _InputProcess:
+    def __init__(self, *, broken_input: bool = False, timeout: bool = False) -> None:
+        self.pid = 41
+        self.stdin = _Input(broken=broken_input)
+        self.stdout = io.BytesIO(b"result")
+        self.stderr = io.BytesIO()
+        self.returncode = 0
+        self.timeout = timeout
+        self.waits: list[float | None] = []
+        self.kills = 0
+
+    def wait(self, timeout=None):
+        self.waits.append(timeout)
+        if self.timeout and len(self.waits) == 1:
+            raise subprocess.TimeoutExpired("git", timeout)
+        return 0
+
+    def kill(self) -> None:
+        self.kills += 1
+
+
+def test_windows_process_group_and_taskkill_are_explicit(monkeypatch) -> None:
+    calls = []
+    process = _InputProcess()
+    monkeypatch.setattr(bounded, "_IS_WINDOWS", True)
+    monkeypatch.setattr(bounded, "_TASKKILL", lambda *a, **k: calls.append((a, k)))
+
+    options = bounded._group_options()
+    bounded._kill_group(process)
+
+    assert options == {
+        "creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+    }
+    assert calls[0][0][0] == ["taskkill", "/PID", "41", "/T", "/F"]
+    assert process.kills == 0
+
+
+def test_failed_windows_taskkill_falls_back_to_process_kill(monkeypatch) -> None:
+    process = _InputProcess()
+    monkeypatch.setattr(bounded, "_IS_WINDOWS", True)
+    monkeypatch.setattr(
+        bounded,
+        "_TASKKILL",
+        lambda *a, **k: (_ for _ in ()).throw(subprocess.TimeoutExpired("taskkill", 5)),
+    )
+
+    bounded._kill_group(process)
+
+    assert process.kills == 1
+
+
+@pytest.mark.parametrize("broken_input", [False, True])
+def test_stdin_feed_is_closed_or_tolerates_broken_pipe(broken_input: bool) -> None:
+    process = _InputProcess(broken_input=broken_input)
+
+    output = bounded.run_git_bounded(
+        ".",
+        ["status"],
+        deadline=time.monotonic() + 1,
+        limit=100,
+        input_=b"payload",
+        popen=lambda *a, **k: process,
+    )
+
+    assert output == b"result"
+    assert process.stdin.closed is (not broken_input)
+    assert len(process.waits) == 1
+
+
+def test_timeout_kills_and_reaps_process(monkeypatch) -> None:
+    process = _InputProcess(timeout=True)
+    killed = []
+    monkeypatch.setattr(bounded, "_kill_group", lambda proc: killed.append(proc.pid))
+
+    with pytest.raises(bounded.SourceOracleError, match="^DIFF_SNAPSHOT_TIMEOUT$"):
+        bounded.run_git_bounded(
+            ".",
+            ["status"],
+            deadline=time.monotonic() + 1,
+            limit=100,
+            input_=b"payload",
+            popen=lambda *a, **k: process,
+        )
+
+    assert killed == [41]
+    assert len(process.waits) == 2
+
+
+def test_stdin_feed_tolerates_missing_child_pipe() -> None:
+    process = _InputProcess()
+    process.stdin = None
+
+    output = bounded.run_git_bounded(
+        ".",
+        ["status"],
+        deadline=time.monotonic() + 1,
+        limit=100,
+        input_=b"payload",
+        popen=lambda *a, **k: process,
+    )
+
+    assert output == b"result"
+    assert len(process.waits) == 1

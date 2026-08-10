@@ -8,13 +8,11 @@ import os
 import secrets
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
-from .diff_snapshot_capture import (
-    FrozenFile,
-    _capture_payload,
-)
+from .diff_snapshot_capture import FrozenFile, _capture_payload
 from .diff_snapshot_paths import epoch_inventory, path_collection_storage
 from .git_path_codec import path_from_wire, path_to_wire
 from .source_oracle import (
@@ -27,6 +25,7 @@ from .source_oracle import (
 from .source_oracle_git import GitEpoch
 
 MAX_SNAPSHOTS = 16
+MAX_CLOSED_LEASES = 4 * MAX_SNAPSHOTS
 MAX_MATERIALIZED_BYTES = 64 * 1024 * 1024
 HARD_LIFETIME_SECONDS = 35.0
 MAX_SCOPE_PATHS = 4096
@@ -117,16 +116,19 @@ class DiffSnapshotRegistry:
         self._lock = threading.RLock()
         self._states: dict[str, _State] = {}
         self._reservations: dict[str, int] = {}
-        self._closed_leases: dict[str, tuple[str, float]] = {}
+        # A fixed LRU bounds idempotency history independently of request rate.
+        self._closed_leases: OrderedDict[str, tuple[str, float]] = OrderedDict()
         self._charged_bytes = 0
 
     def _sweep(self) -> None:
         now = self._clock()
-        self._closed_leases = {
-            sid: value
+        self._closed_leases = OrderedDict(
+            (sid, value)
             for sid, value in self._closed_leases.items()
             if now - value[1] < HARD_LIFETIME_SECONDS
-        }
+        )
+        while len(self._closed_leases) > MAX_CLOSED_LEASES:
+            self._closed_leases.popitem(last=False)
         for sid, state in list(self._states.items()):
             if now - state.snapshot.created_monotonic >= HARD_LIFETIME_SECONDS:
                 state.expired = True
@@ -337,6 +339,7 @@ class DiffSnapshotRegistry:
         if _path_storage(normalized) > MAX_SCOPE_BYTES:
             return "DIFF_SNAPSHOT_CAPACITY"
         with self._lock:
+            self._sweep()
             state = self._states.get(consumer.snapshot.snapshot_id)
             if (
                 state is None
@@ -374,6 +377,7 @@ class DiffSnapshotRegistry:
     def validate_publish(self, consumer: SnapshotConsumer) -> str | None:
         """Atomically reject a stale/unleased snapshot immediately before publish."""
         with self._lock:
+            self._sweep()
             state = self._states.get(consumer.snapshot.snapshot_id)
             remaining = (
                 HARD_LIFETIME_SECONDS
@@ -436,6 +440,7 @@ class DiffSnapshotRegistry:
 
     def _release(self, sid: str, pin: str, owner: int) -> None:
         with self._lock:
+            self._sweep()
             state = self._states.get(sid)
             if state is None or state.pins.get(pin) != owner:
                 raise RuntimeError("DIFF_SNAPSHOT_PIN_INVALID")
@@ -449,6 +454,7 @@ class DiffSnapshotRegistry:
             self._sweep()
             closed = self._closed_leases.get(sid)
             if closed is not None:
+                self._closed_leases.move_to_end(sid)
                 return None if closed[0] == lease else "DIFF_SNAPSHOT_LEASE_MISMATCH"
             state = self._states.get(sid)
             if state is None:
@@ -458,6 +464,8 @@ class DiffSnapshotRegistry:
             state.lease_open = False
             state.expired = True
             self._closed_leases[sid] = (lease, self._clock())
+            while len(self._closed_leases) > MAX_CLOSED_LEASES:
+                self._closed_leases.popitem(last=False)
             if not state.pins:
                 self._erase(sid)
             return None
