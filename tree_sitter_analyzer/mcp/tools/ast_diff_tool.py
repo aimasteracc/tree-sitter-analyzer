@@ -12,6 +12,7 @@ Unlike text diffs, understands code structure.
 from typing import Any
 
 from ...ast_diff import ASTDiffer
+from ...git_path_codec import path_to_wire
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
@@ -321,8 +322,8 @@ class ASTDiffTool(BaseMCPTool):
                     old_source=old_source,
                     new_source=new_source,
                     language=language,
-                    old_file=f"{snapshot_id}:old:{frozen.record.path}",
-                    new_file=f"{snapshot_id}:new:{frozen.record.path}",
+                    old_file=f"{snapshot_id}:old:{path_to_wire(frozen.record.path)}",
+                    new_file=f"{snapshot_id}:new:{path_to_wire(frozen.record.path)}",
                 )
             elif mode == "diff_files":
                 result = differ.diff_files(
@@ -406,22 +407,35 @@ class ASTDiffTool(BaseMCPTool):
                     response["children_truncated"] = True
                     response["bytes_omitted"] = hunks_bytes - compact_hunks_bytes
 
+            if consumer is not None:
+                response["diff_snapshot_id"] = getattr(
+                    consumer.snapshot, "snapshot_id", str(snapshot_id)
+                )
+                response["source_generation"] = getattr(
+                    consumer.snapshot, "source_generation", ""
+                )
             formatted = apply_toon_format_to_response(response, output_format)
             if consumer is not None:
+                publish_errors = {
+                    code: {
+                        "success": False,
+                        "verdict": "ERROR",
+                        "error_code": code,
+                        "error": code,
+                    }
+                    for code in (
+                        "DIFF_SNAPSHOT_EXPIRED",
+                        "DIFF_SNAPSHOT_WRONG_THREAD",
+                        "DIFF_SNAPSHOT_ROOT_MISMATCH",
+                        "DIFF_SNAPSHOT_SOURCE_CHANGED",
+                        "DIFF_SNAPSHOT_GIT_ERROR",
+                    )
+                }
                 error = REGISTRY.validate_publish(consumer)
                 if error:
-                    return apply_toon_format_to_response(
-                        {
-                            "success": False,
-                            "verdict": "ERROR",
-                            "error_code": error,
-                            "error": error,
-                        },
-                        output_format,
+                    return publish_errors.get(
+                        error, publish_errors["DIFF_SNAPSHOT_GIT_ERROR"]
                     )
-                response["diff_snapshot_id"] = consumer.snapshot.snapshot_id
-                response["source_generation"] = consumer.snapshot.source_generation
-                formatted = apply_toon_format_to_response(response, output_format)
             return formatted
         finally:
             if consumer is not None:

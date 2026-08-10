@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
-from ...git_path_codec import path_from_wire, path_to_raw, path_to_wire
+from ...git_path_codec import path_from_wire, path_to_raw, path_to_wire, raw_to_path
 from .change_impact_support import _snapshot_records
 from .utils.change_impact_git import _raw_path_is_excluded
 from .utils.change_impact_response import (
@@ -27,55 +27,70 @@ def build_frozen_scope_result(
     scope_mode: str,
 ) -> tuple[dict[str, Any], list[dict[str, object]], list[str], list[str]]:
     records = _snapshot_records(frozen)
-    frozen_files = {
-        path_to_wire(item.record.path): (item.record.raw_path, item.record.raw_old_path)
-        for item in getattr(consumer.snapshot, "files", ())
-    }
-    if not frozen_files:
-        frozen_files = {
-            str(record["path"]): (
-                path_to_raw(path_from_wire(str(record["path"]))),
-                (
-                    path_to_raw(path_from_wire(str(record["old_path"])))
-                    if record.get("old_path")
-                    else None
-                ),
+    snapshot_files = tuple(getattr(consumer.snapshot, "files", ()))
+    entries: list[tuple[dict[str, object], bytes, bytes | None]] = []
+    if len(snapshot_files) == len(records):
+        entries = [
+            (record, item.record.raw_path, item.record.raw_old_path)
+            for record, item in zip(records, snapshot_files, strict=True)
+        ]
+    else:
+        for record in records:
+            raw_path = path_to_raw(path_from_wire(str(record["path"])))
+            raw_old_path = (
+                path_to_raw(path_from_wire(str(record["old_path"])))
+                if record.get("old_path")
+                else None
             )
-            for record in records
-        }
-    # Exclude tool-owned paths on their exact raw byte segments.  In
-    # particular, a non-UTF-8 child of .ast-cache must be removed before its
-    # public path becomes a git-path-b64 token.
-    visible_paths = {
-        public_path
-        for public_path, (raw_path, _raw_old_path) in frozen_files.items()
-        if not _raw_path_is_excluded(raw_path)
-    }
-    workspace_changed = [
-        str(record["path"])
-        for record in records
-        if str(record["path"]) in visible_paths
+            entries.append((record, raw_path, raw_old_path))
+
+    # A rename/copy remains a changed record when either identity is visible.
+    # Project visible paths side-by-side so a source moved into a cache is still
+    # reported as a deletion, while a source moved out reports its new side.
+    visible_entries = [
+        entry
+        for entry in entries
+        if not _raw_path_is_excluded(entry[1])
+        or (entry[2] is not None and not _raw_path_is_excluded(entry[2]))
     ]
+    records = [record for record, _raw, _old in visible_entries]
+
+    def visible_sides(raw_path: bytes, raw_old_path: bytes | None) -> list[str]:
+        if not _raw_path_is_excluded(raw_path):
+            return [path_to_wire(raw_to_path(raw_path))]
+        old_visible = cast(bytes, raw_old_path)
+        return [path_to_wire(raw_to_path(old_visible))]
+
+    workspace_changed = [
+        side
+        for _record, raw_path, raw_old_path in visible_entries
+        for side in visible_sides(raw_path, raw_old_path)
+    ]
+    workspace_changed = list(dict.fromkeys(workspace_changed))
     scope_raw = [path_to_raw(scope) for scope in scope_paths]
     identities = {
         identity
-        for public_path, pair in frozen_files.items()
-        if public_path in visible_paths
-        for identity in pair
-        if identity is not None
+        for _record, raw_path, raw_old_path in visible_entries
+        for identity in (raw_path, raw_old_path)
+        if identity is not None and not _raw_path_is_excluded(identity)
     }
     changed_files = workspace_changed
     if scope_raw:
-        changed_files = [
-            public_path
-            for public_path, (raw_path, raw_old_path) in frozen_files.items()
-            if public_path in visible_paths
-            and any(
-                scope_matches_raw(scope, raw_path)
-                or (raw_old_path is not None and scope_matches_raw(scope, raw_old_path))
-                for scope in scope_raw
+        changed_files = list(
+            dict.fromkeys(
+                side
+                for _record, raw_path, raw_old_path in visible_entries
+                if any(
+                    scope_matches_raw(scope, raw_path)
+                    or (
+                        raw_old_path is not None
+                        and scope_matches_raw(scope, raw_old_path)
+                    )
+                    for scope in scope_raw
+                )
+                for side in visible_sides(raw_path, raw_old_path)
             )
-        ]
+        )
     inventory_raw = getattr(consumer.snapshot, "_inventory_raw_paths", ())
     if not inventory_raw:
         inventory_raw = tuple(

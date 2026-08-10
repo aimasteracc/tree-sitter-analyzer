@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import threading
 from pathlib import Path
 
 import pytest
@@ -368,3 +369,70 @@ def test_pr_analysis_builds_no_changes_response(monkeypatch) -> None:
         parsed.url, True, "json", [], False
     )
     assert result["changed_files"] == []
+
+
+def test_idle_short_lifetime_timer_erases_unpinned_bytes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review 9397: expiry must not depend on a later registry request.
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    monkeypatch.setattr(snapshots, "HARD_LIFETIME_SECONDS", 0.02)
+    entered = threading.Event()
+    proceed = threading.Event()
+    fired = threading.Event()
+
+    def timer_factory(delay: float, callback):
+        def expire() -> None:
+            entered.set()
+            proceed.wait(1.0)
+            callback()
+            fired.set()
+
+        return threading.Timer(delay, expire)
+
+    registry = snapshots.DiffSnapshotRegistry(timer_factory=timer_factory)
+    result = registry.create(str(tmp_path), "diff", ["x.py"])
+    assert result["success"] is True
+    assert registry._charged_bytes != 0
+    assert entered.wait(1.0) is True
+
+    proceed.set()
+    assert fired.wait(1.0) is True
+    with registry._lock:
+        assert registry._states == {}
+        assert registry._charged_bytes == 0
+
+
+def test_hard_deadline_timer_retains_pinned_bytes_until_release(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review 9397: a pinned deadline marks expiry before deferred erase.
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    callbacks = []
+
+    class Timer:
+        daemon = False
+
+        def __init__(self, _delay, callback) -> None:
+            callbacks.append(callback)
+
+        def start(self) -> None:
+            return None
+
+        def cancel(self) -> None:
+            return None
+
+    registry = snapshots.DiffSnapshotRegistry(timer_factory=Timer)
+    result = registry.create(str(tmp_path), "diff", ["x.py"])
+    consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(tmp_path))
+    assert error is None
+    assert consumer is not None
+    charged = registry._charged_bytes
+
+    callbacks[0]()
+    assert registry._charged_bytes == charged
+    assert next(iter(registry._states.values())).expired is True
+    consumer.release()
+    assert registry._charged_bytes == 0
+    callbacks[0]()
+    assert registry._charged_bytes == 0

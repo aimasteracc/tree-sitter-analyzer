@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import threading
 from dataclasses import dataclass
 from typing import Any
@@ -60,3 +63,12 @@ class SnapshotConsumer:
 
     def __exit__(self, *_: object) -> None:
         self.release()
+
+
+def snapshot_error(code: str) -> dict[str, object]:
+    return {"success": False, "error_code": code}
+
+
+def route_lease(key: bytes, snapshot_id: str) -> str:
+    digest = hmac.new(key, snapshot_id.encode("ascii"), hashlib.sha256).digest()
+    return "dl_" + base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")

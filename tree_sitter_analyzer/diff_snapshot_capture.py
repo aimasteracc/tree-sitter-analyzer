@@ -321,6 +321,27 @@ def _capture_payload(
     head_entries = _head_entries(root, deadline=deadline, head=frozen.head)
     safe_paths: dict[bytes, SafePath] = {}
     with FrozenGitEnvironment(root, frozen, deadline, ceiling) as git:
+        # Retained payload bytes and every temporary index/object byte share one
+        # ceiling in both staged and workspace modes.
+        accounted_temporary = getattr(git, "temporary_bytes", 0)
+        remaining -= accounted_temporary
+        if remaining < 0:  # pragma: no cover - environment enforces this first
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+
+        def reserve_temporary_growth() -> None:
+            nonlocal remaining, accounted_temporary
+            current_temporary = getattr(git, "temporary_bytes", 0)
+            growth = current_temporary - accounted_temporary
+            if growth:
+                remaining -= growth
+                accounted_temporary = current_temporary
+            if remaining < 0:  # pragma: no cover - environment enforces this first
+                raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+            # The environment's absolute limit permits only the shared budget
+            # still unconsumed by payload materialization.
+            git.storage_byte_limit = current_temporary + remaining
+
+        reserve_temporary_growth()
         verify_epoch = getattr(git, "verify_source_epoch", None)
         if verify_epoch is not None:
             verify_epoch()
@@ -329,6 +350,7 @@ def _capture_payload(
         old_entries = head_entries
         if mode == "diff":
             base = git.run(["write-tree"], limit=4096).strip()
+            reserve_temporary_growth()
             if not base:
                 raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
             old_entries = index_entries
@@ -350,9 +372,9 @@ def _capture_payload(
                 if safe.data is not None:
                     remaining -= len(safe.data)
                 safe_paths[raw] = safe
-            git.storage_byte_limit = remaining
+            reserve_temporary_growth()
             workspace_entries = git.apply_workspace(safe_paths, expected_manifest or {})
-            remaining -= git.temporary_bytes
+            reserve_temporary_growth()
         else:
             workspace_entries = {}
 
@@ -374,6 +396,7 @@ def _capture_payload(
         ]
         patch = git.run(diff_options, limit=remaining)
         remaining -= len(patch)
+        reserve_temporary_growth()
         rows = _frozen_rows(git, base, min(8 * 1024 * 1024, remaining))
         patch_row_paths = {row[2] for row in rows}
         binaries = _binary_paths(git, base, min(8 * 1024 * 1024, remaining))
@@ -405,10 +428,16 @@ def _capture_payload(
             new_entry = final_entries.get(raw)
             old_mode, old_oid, old_kind = _entry_parts(old_entry)
             new_mode, new_oid, new_kind = _entry_parts(new_entry)
+            if status == "A":
+                # Includes intent-to-add: an added record has no coherent old
+                # identity even when the frozen index contains a placeholder.
+                old_mode, old_oid, old_kind = None, None, "missing"
             old = _blob(git, old_oid, old_kind, remaining) if status != "A" else None
             remaining -= len(old or b"")
+            reserve_temporary_growth()
             new = _blob(git, new_oid, new_kind, remaining) if status != "D" else None
             remaining -= len(new or b"")
+            reserve_temporary_growth()
             if mode == "diff" and raw in safe_paths:
                 safe = safe_paths[raw]
                 if safe.kind == "directory" and raw not in workspace_entries:

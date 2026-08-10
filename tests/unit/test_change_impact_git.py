@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from tree_sitter_analyzer.diff_snapshot_capture import ChangedFile, FrozenFile
+from tree_sitter_analyzer.mcp.tools.change_impact_frozen import (
+    build_frozen_scope_result,
+)
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_git import (
     _get_changed_files,
     _get_diff_stat,
@@ -131,3 +136,43 @@ class TestGetDiffStat:
         mock_git.return_value = (128, "")
         stat = _get_diff_stat("diff", "/src", None)
         assert stat == ""
+
+
+def _frozen_rename(old_path: str, new_path: str):
+    record = ChangedFile(
+        path=new_path,
+        old_path=old_path,
+        status="R",
+        old_available=True,
+        new_available=True,
+        binary=False,
+    )
+    frozen = {"changed_records": [record.to_dict()]}
+    snapshot = SimpleNamespace(
+        files=(FrozenFile(record, b"old", b"new"),),
+        inventory_paths=(old_path, new_path),
+        _inventory_raw_paths=(),
+    )
+    return frozen, SimpleNamespace(snapshot=snapshot)
+
+
+def test_frozen_rename_into_cache_reports_visible_old_side() -> None:
+    # PR #1252 review 9369: a cache destination must not hide the source deletion.
+    frozen, consumer = _frozen_rename("source.py", ".ast-cache/source.py")
+    result, records, changed, _assessed = build_frozen_scope_result(
+        frozen, consumer, "diff", [], "report"
+    )
+    assert records == frozen["changed_records"]
+    assert changed == ["source.py"]
+    assert result["changed_files"] == ["source.py"]
+
+
+def test_frozen_rename_out_of_cache_reports_visible_new_side() -> None:
+    # PR #1252 review 9369: the visible destination remains reportable.
+    frozen, consumer = _frozen_rename(".ast-cache/source.py", "source.py")
+    result, records, changed, _assessed = build_frozen_scope_result(
+        frozen, consumer, "diff", [], "report"
+    )
+    assert records == frozen["changed_records"]
+    assert changed == ["source.py"]
+    assert result["changed_files"] == ["source.py"]

@@ -789,7 +789,6 @@ async def test_strict_snapshot_revalidates_while_pinned_before_publish(
     assert events == [
         ("format", False),
         ("validate", False),
-        ("format", False),
         ("release", True),
     ]
 

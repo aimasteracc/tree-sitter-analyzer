@@ -13,6 +13,7 @@ Can operate in two modes:
 from typing import Any
 
 from ...ast_diff import ASTDiffer
+from ...git_path_codec import path_to_wire
 from ...project_graph import _language_from_ext
 from ...semantic_change_classifier import SemanticChangeClassifier
 from ...utils import setup_logger
@@ -376,7 +377,9 @@ class SemanticClassifyTool(BaseMCPTool):
             # list. Tests pin this name (pain pass 2).
             response: dict[str, Any] = {
                 "success": True,
-                "file_path": file_path,
+                "file_path": path_to_wire(file_path)
+                if consumer is not None and file_path is not None
+                else file_path,
                 "diff_hunks": len(diff_result.hunks),
                 "change_count": len(all_classifications),
                 "verdict": verdict,
@@ -397,22 +400,35 @@ class SemanticClassifyTool(BaseMCPTool):
                     f"Use hunk_cap={hunk_cap * 2} to see more, or filter by category."
                 )
 
+            if consumer is not None:
+                response["diff_snapshot_id"] = getattr(
+                    consumer.snapshot, "snapshot_id", str(snapshot_id)
+                )
+                response["source_generation"] = getattr(
+                    consumer.snapshot, "source_generation", ""
+                )
             formatted = apply_toon_format_to_response(response, output_format)
             if consumer is not None:
+                publish_errors = {
+                    code: {
+                        "success": False,
+                        "verdict": "ERROR",
+                        "error_code": code,
+                        "error": code,
+                    }
+                    for code in (
+                        "DIFF_SNAPSHOT_EXPIRED",
+                        "DIFF_SNAPSHOT_WRONG_THREAD",
+                        "DIFF_SNAPSHOT_ROOT_MISMATCH",
+                        "DIFF_SNAPSHOT_SOURCE_CHANGED",
+                        "DIFF_SNAPSHOT_GIT_ERROR",
+                    )
+                }
                 error = REGISTRY.validate_publish(consumer)
                 if error:
-                    return apply_toon_format_to_response(
-                        {
-                            "success": False,
-                            "verdict": "ERROR",
-                            "error_code": error,
-                            "error": error,
-                        },
-                        output_format,
+                    return publish_errors.get(
+                        error, publish_errors["DIFF_SNAPSHOT_GIT_ERROR"]
                     )
-                response["diff_snapshot_id"] = consumer.snapshot.snapshot_id
-                response["source_generation"] = consumer.snapshot.source_generation
-                formatted = apply_toon_format_to_response(response, output_format)
             return formatted
         finally:
             if consumer is not None:

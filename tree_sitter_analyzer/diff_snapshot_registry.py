@@ -1,9 +1,8 @@
 """Bounded process-local immutable diff snapshot registry (RFC-0022)."""
+# ruff: noqa: I001
 
 from __future__ import annotations
 
-import base64
-import hashlib
 import hmac
 import inspect
 import re
@@ -14,17 +13,22 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
 from .diff_snapshot_capture import _capture_payload
-from .diff_snapshot_leases import FrozenDiffSnapshot, SnapshotConsumer
+from .diff_snapshot_expiry import SnapshotExpiryScheduler
+from .diff_snapshot_leases import (
+    FrozenDiffSnapshot,
+    SnapshotConsumer,
+    route_lease,
+    snapshot_error,
+)
 from .diff_snapshot_paths import (
     epoch_inventory,
+    normalize_bounded_paths,
     path_collection_storage,
     record_storage,
 )
-from .git_path_codec import path_from_wire, path_to_raw, path_to_wire
+from .git_path_codec import path_to_raw, path_to_wire
 from .source_oracle import (
     RootIdentity as RootIdentity,
-)
-from .source_oracle import (
     SourceOracleError,
     WorkspaceManifestEntry,
     canonical_root,
@@ -53,13 +57,17 @@ class _State:
 
 
 class DiffSnapshotRegistry:
-    def __init__(self, *, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        timer_factory: Callable[[float, Callable[[], None]], object] = threading.Timer,
+    ) -> None:
         self._clock = clock
+        self._expiry = SnapshotExpiryScheduler(timer_factory)
         self._lock = threading.RLock()
         self._states: dict[str, _State] = {}
         self._reservations: dict[str, int] = {}
-        # One fixed process-local capability key gives unbounded exact-pair
-        # close idempotency without retaining attacker-controlled tombstones.
         self._lease_key = _PROCESS_LEASE_KEY
         self._charged_bytes = 0
 
@@ -69,57 +77,60 @@ class DiffSnapshotRegistry:
             if now - state.snapshot.created_monotonic >= HARD_LIFETIME_SECONDS:
                 state.expired = True
                 state.lease_open = False
+                self._expiry.cancel(sid)
             if state.expired and not state.pins:
                 self._erase(sid)
 
     def _erase(self, sid: str) -> None:
         state = self._states.pop(sid, None)
         if state:
+            self._expiry.cancel(sid)
             self._charged_bytes -= state.snapshot.materialized_bytes
 
-    @staticmethod
-    def _error(code: str) -> dict[str, object]:
-        return {"success": False, "error_code": code}
+    def _expire(self, sid: str, expected: _State) -> None:
+        with self._lock:
+            state = self._states.get(sid)
+            if state is not expected:
+                return
+            self._expiry.fired(sid)
+            state.expired = True
+            state.lease_open = False
+            if not state.pins:
+                self._erase(sid)
 
     def _route_lease(self, snapshot_id: str) -> str:
-        digest = hmac.new(
-            self._lease_key, snapshot_id.encode("ascii"), hashlib.sha256
-        ).digest()
-        token = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-        return "dl_" + token
+        return route_lease(self._lease_key, snapshot_id)
 
     def create(
         self, project_root: str | None, mode: str, assessed_scope_paths: list[str]
     ) -> dict[str, object]:
         if mode not in ("diff", "staged"):
-            return self._error("DIFF_SNAPSHOT_UNSUPPORTED_MODE")
-        if len(assessed_scope_paths) > MAX_SCOPE_PATHS:
-            return self._error("DIFF_SNAPSHOT_CAPACITY")
-        if any(not isinstance(path, str) for path in assessed_scope_paths):
-            return self._error("DIFF_SNAPSHOT_INVALID_PATH")
+            return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_MODE")
         try:
-            normalized_input = {path_from_wire(path) for path in assessed_scope_paths}
+            normalized_input = set(
+                normalize_bounded_paths(
+                    assessed_scope_paths,
+                    count_limit=MAX_SCOPE_PATHS,
+                    path_limit=MAX_PATH_BYTES,
+                    storage_limit=MAX_SCOPE_BYTES,
+                )
+            )
         except SourceOracleError as exc:
-            return self._error(str(exc))
-        if any(len(path_to_raw(path)) > MAX_PATH_BYTES for path in normalized_input):
-            return self._error("DIFF_SNAPSHOT_CAPACITY")
-        if path_collection_storage(normalized_input) > MAX_SCOPE_BYTES:
-            return self._error("DIFF_SNAPSHOT_CAPACITY")
+            return snapshot_error(str(exc))
         started = self._clock()
         deadline = time.monotonic() + HARD_LIFETIME_SECONDS
         reservation = secrets.token_urlsafe(16)
         with self._lock:
             self._sweep()
             if len(self._states) + len(self._reservations) >= MAX_SNAPSHOTS:
-                return self._error("DIFF_SNAPSHOT_CAPACITY")
+                return snapshot_error("DIFF_SNAPSHOT_CAPACITY")
             ceiling = (
                 MAX_MATERIALIZED_BYTES
                 - self._charged_bytes
                 - sum(self._reservations.values())
             )
             if ceiling <= 0:
-                return self._error("DIFF_SNAPSHOT_CAPACITY")
-            # Conservatively reserve every byte that this capture could retain.
+                return snapshot_error("DIFF_SNAPSHOT_CAPACITY")
             self._reservations[reservation] = ceiling
         try:
             root, identity = canonical_root(project_root)
@@ -198,7 +209,7 @@ class DiffSnapshotRegistry:
             if size > ceiling:
                 raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
             sid = "ds_" + secrets.token_urlsafe(24)
-            lease = self._route_lease(sid)
+            lease = route_lease(self._lease_key, sid)
             snapshot = FrozenDiffSnapshot(
                 sid,
                 before,
@@ -217,16 +228,20 @@ class DiffSnapshotRegistry:
                 self._reservations.pop(reservation, None)
                 self._sweep()
                 if self._clock() - started >= HARD_LIFETIME_SECONDS:
-                    return self._error("DIFF_SNAPSHOT_TIMEOUT")
-                # Re-check the global bound at commit time: concurrent captures
-                # may still own conservative reservations.
+                    return snapshot_error("DIFF_SNAPSHOT_TIMEOUT")
                 if (
                     self._charged_bytes + sum(self._reservations.values()) + size
                     > MAX_MATERIALIZED_BYTES
                 ):
-                    return self._error("DIFF_SNAPSHOT_CAPACITY")
-                self._states[sid] = _State(snapshot)
+                    return snapshot_error("DIFF_SNAPSHOT_CAPACITY")
+                state = _State(snapshot)
+                self._states[sid] = state
                 self._charged_bytes += size
+                self._expiry.schedule(
+                    sid,
+                    snapshot.created_monotonic + HARD_LIFETIME_SECONDS - self._clock(),
+                    lambda: self._expire(sid, state),
+                )
             return {
                 "success": True,
                 "diff_snapshot_id": sid,
@@ -240,11 +255,11 @@ class DiffSnapshotRegistry:
         except SourceOracleError as exc:
             with self._lock:
                 self._reservations.pop(reservation, None)
-            return self._error(str(exc))
+            return snapshot_error(str(exc))
         except Exception:
             with self._lock:
                 self._reservations.pop(reservation, None)
-            return self._error("DIFF_SNAPSHOT_CAPTURE_ERROR")
+            return snapshot_error("DIFF_SNAPSHOT_CAPTURE_ERROR")
 
     def acquire(
         self, snapshot_id: str, project_root: str | None
@@ -306,20 +321,15 @@ class DiffSnapshotRegistry:
         self, consumer: SnapshotConsumer, paths: list[str]
     ) -> str | None:
         """Bind validated analysis paths to the pinned immutable epoch."""
-        if len(paths) > MAX_SCOPE_PATHS:
-            return "DIFF_SNAPSHOT_CAPACITY"
-        if any(not isinstance(path, str) for path in paths):
-            return "DIFF_SNAPSHOT_INVALID_PATH"
         try:
-            normalized = tuple(
-                sorted({path_from_wire(path) for path in paths}, key=path_to_raw)
+            normalized = normalize_bounded_paths(
+                paths,
+                count_limit=MAX_SCOPE_PATHS,
+                path_limit=MAX_PATH_BYTES,
+                storage_limit=MAX_SCOPE_BYTES,
             )
         except SourceOracleError as exc:
             return str(exc)
-        if any(len(path_to_raw(path)) > MAX_PATH_BYTES for path in normalized):
-            return "DIFF_SNAPSHOT_CAPACITY"
-        if path_collection_storage(normalized) > MAX_SCOPE_BYTES:
-            return "DIFF_SNAPSHOT_CAPACITY"
         with self._lock:
             self._sweep()
             state = self._states.get(consumer.snapshot.snapshot_id)
@@ -425,8 +435,7 @@ class DiffSnapshotRegistry:
                 return "DIFF_SNAPSHOT_SOURCE_CHANGED"
         return None
 
-    def verify(self, consumer: SnapshotConsumer) -> str | None:
-        return self.validate_publish(consumer)
+    verify = validate_publish
 
     def _release(self, sid: str, pin: str, owner: int) -> None:
         with self._lock:
@@ -448,7 +457,7 @@ class DiffSnapshotRegistry:
             return "DIFF_SNAPSHOT_LEASE_MISMATCH"
         with self._lock:
             self._sweep()
-            expected = self._route_lease(sid)
+            expected = route_lease(self._lease_key, sid)
             if not hmac.compare_digest(expected, lease):
                 return "DIFF_SNAPSHOT_LEASE_MISMATCH"
             state = self._states.get(sid)
@@ -456,6 +465,7 @@ class DiffSnapshotRegistry:
                 return None
             state.lease_open = False
             state.expired = True
+            self._expiry.cancel(sid)
             if not state.pins:
                 self._erase(sid)
             return None
@@ -467,6 +477,7 @@ class DiffSnapshotRegistry:
         with self._lock:
             if any(state.pins for state in self._states.values()):
                 raise RuntimeError("DIFF_SNAPSHOT_CONSUMERS_ACTIVE")
+            self._expiry.cancel_all()
             self._states.clear()
             self._reservations.clear()
             self._charged_bytes = 0
