@@ -828,8 +828,17 @@ def _update_authoritative_manifest(
     if exact_paths:
         from ..index_snapshot_schema import stamp_full_index_manifest
 
-        stamp_full_index_manifest(conn, cache.project_root)
-        return
+        try:
+            stamp_full_index_manifest(conn, cache.project_root)
+            return
+        except Exception:
+            # Certification is optional evidence, not indexing work.  Never
+            # leave a stale manifest behind when its bounded stamp fails.
+            logger.warning(
+                "index snapshot manifest certification failed", exc_info=True
+            )
+            stats["manifest_warning"] = "INDEX_MANIFEST_CERTIFICATION_FAILED"
+            conn.rollback()
     conn.execute("DELETE FROM ast_index_snapshot_manifest")
     conn.commit()
 

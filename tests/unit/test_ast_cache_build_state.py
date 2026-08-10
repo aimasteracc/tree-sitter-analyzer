@@ -19,6 +19,7 @@ These tests pin the marker contract RED-first.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -28,6 +29,8 @@ import pytest
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache import build_state as bs
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
+
+requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 
 
 def test_build_state_helpers_degrade_on_missing_table() -> None:
@@ -246,6 +249,7 @@ def test_marker_cleared_when_delete_phase_raises(tmp_path: Path, monkeypatch) ->
     assert bs.build_in_progress(real_conn) is False
 
 
+@requires_posix_snapshot
 @pytest.mark.asyncio
 async def test_status_warns_when_rebuilding_with_partial_index(tmp_path: Path) -> None:
     """A nonempty-but-rebuilding cache → status WARN + index_rebuilding flag.
@@ -267,6 +271,7 @@ async def test_status_warns_when_rebuilding_with_partial_index(tmp_path: Path) -
     assert result["verdict"] == "WARN"
 
 
+@requires_posix_snapshot
 @pytest.mark.asyncio
 async def test_status_distinguishes_rebuild_from_missing_index(tmp_path: Path) -> None:
     """Mid-rebuild empty table must NOT read as 'index missing — run index'.

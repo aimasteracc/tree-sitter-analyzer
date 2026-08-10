@@ -21,6 +21,7 @@ import pytest
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.query import fts_search_ranked
 from tree_sitter_analyzer.cache.schema import (
+    SCHEMA_SYMBOL_ROWS,
     SCHEMA_V1,
     SCHEMA_V2_FTS,
     SCHEMA_VERSIONS_DDL,
@@ -78,6 +79,7 @@ _SYMBOLS = [
 def _make_conn(ddl: str) -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
+    conn.executescript(SCHEMA_SYMBOL_ROWS)
     conn.executescript(ddl)
     for name, kind, file_path, line in _SYMBOLS:
         row_id = conn.execute(

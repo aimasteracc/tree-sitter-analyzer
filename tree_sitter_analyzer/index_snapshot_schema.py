@@ -36,9 +36,6 @@ _REQUIRED_COLUMNS = {
             "structure_json",
         }
     ),
-    "ast_symbol_rows": frozenset(
-        {"name", "kind", "file_path", "language", "line", "end_line"}
-    ),
     "ast_imports": frozenset({"file_path", "language", "module_path", "local_name"}),
     "edges": frozenset({"source_node_id", "target_node_id", "kind", "file_path"}),
     "ast_index_snapshot_manifest": frozenset(

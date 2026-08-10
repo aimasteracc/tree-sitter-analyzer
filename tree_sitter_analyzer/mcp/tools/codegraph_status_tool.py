@@ -97,9 +97,13 @@ class CodeGraphStatusTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
         # Status is unconditionally read-only.  JSON Schema defaults are not
         # injected by every direct caller, so omission must be handled here.
-        return self._execute_read_existing(output_format)
+        return self._execute_read_existing(
+            output_format, include_lag=arguments.get("include_lag", True)
+        )
 
-    def _execute_read_existing(self, output_format: str) -> dict[str, Any]:
+    def _execute_read_existing(
+        self, output_format: str, *, include_lag: bool
+    ) -> dict[str, Any]:
         """Serve status solely from one owner-issued SQLite read transaction."""
         from ...index_snapshot import (
             ACTION_VERSION,
@@ -169,6 +173,12 @@ class CodeGraphStatusTool(BaseMCPTool):
             if complete
             else "Index snapshot is unavailable or not certified by an exact full-index manifest."
         )
+        lag_seconds = None
+        if include_lag and cache_path is not None:
+            from ...index_lag import compute_qualitative_lag
+
+            lag_seconds = compute_qualitative_lag(self.project_root, cache_path)
+
         result = build_response(
             verdict=verdict,
             project_root=snapshot.canonical_root or self.project_root,
@@ -180,7 +190,7 @@ class CodeGraphStatusTool(BaseMCPTool):
             symbols_by_language=dict(stats.get("symbols_by_language") or {}),
             edges_by_kind=dict(stats.get("edges_by_kind") or {}),
             fts5_available=bool(stats.get("fts5_available", False)),
-            lag_seconds=None,
+            lag_seconds=lag_seconds,
             cache_path=cache_path,
             snapshot_id=snapshot.snapshot_id,
             source_fingerprint=snapshot.source_fingerprint,

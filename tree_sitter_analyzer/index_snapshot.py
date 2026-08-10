@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import errno
+import json
 import os
 import secrets
 import sqlite3
@@ -33,6 +34,9 @@ _TTL_SECONDS = 35.0
 _SNAPSHOT_OVERHEAD_BYTES = 2 * 1024 * 1024
 _CAPTURE_DEADLINE_SECONDS = 10.0
 _BACKUP_PAGE_BUDGET = 131_072
+_SYMBOL_FALLBACK_BYTE_BUDGET = 512 * 1024 * 1024
+_SYMBOL_FALLBACK_ROW_BUDGET = 2_000_000
+_clock = time.monotonic
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,7 +70,7 @@ class IndexSnapshotRegistry:
 
     def ensure_capacity(self, charged_bytes: int) -> None:
         with self._lock:
-            self._purge(time.monotonic())
+            self._purge(_clock())
             live = sum(entry.charged_bytes for entry in self._entries.values())
             if (
                 len(self._entries) >= _MAX_SNAPSHOTS
@@ -95,7 +99,7 @@ class IndexSnapshotRegistry:
                 snapshot.file_count,
             )
             self._entries[snapshot_id] = _Entry(
-                published, connection, charged_bytes, time.monotonic() + _TTL_SECONDS
+                published, connection, charged_bytes, _clock() + _TTL_SECONDS
             )
             return published
 
@@ -105,7 +109,7 @@ class IndexSnapshotRegistry:
     ) -> Iterator[tuple[IndexSnapshot, sqlite3.Connection]]:
         canonical_root = os.path.realpath(os.path.abspath(project_root))
         with self._lock:
-            now = time.monotonic()
+            now = _clock()
             self._purge(now)
             entry = self._entries.get(snapshot_id)
             if entry is None or entry.expires_at <= now:
@@ -125,7 +129,7 @@ class IndexSnapshotRegistry:
             entry.io_lock.release()
             with self._lock:
                 entry.readers -= 1
-                self._purge(time.monotonic())
+                self._purge(_clock())
 
     def close_all(self) -> None:
         with self._lock:
@@ -174,6 +178,8 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
             connection = sqlite3.connect(
                 uri, uri=True, timeout=0, isolation_level=None, check_same_thread=False
             )
+            if not _path_matches_pinned_database(cache_fd, db_fd):
+                raise ValueError("CONCURRENT_WRITER")
             connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA query_only=ON")
             connection.execute("PRAGMA busy_timeout=0")
@@ -222,13 +228,13 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 count,
             )
             evidence = sqlite3.connect(":memory:", check_same_thread=False)
-            deadline = time.monotonic() + _CAPTURE_DEADLINE_SECONDS
+            deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
             copied_pages = 0
 
             def progress(_status: int, remaining: int, total: int) -> None:
                 nonlocal copied_pages
                 copied_pages = total - remaining
-                if copied_pages > _BACKUP_PAGE_BUDGET or time.monotonic() > deadline:
+                if copied_pages > _BACKUP_PAGE_BUDGET or _clock() > deadline:
                     raise RuntimeError("INDEX_BACKUP_BUDGET")
 
             connection.backup(evidence, pages=64, progress=progress, sleep=0)
@@ -246,7 +252,7 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
                 final.st_size,
                 final.st_mtime_ns,
                 final.st_ctime_ns,
-            ):
+            ) or not _path_matches_pinned_database(cache_fd, db_fd):
                 raise ValueError("CONCURRENT_WRITER")
             connection.close()
             connection = None
@@ -264,9 +270,13 @@ def read_existing_snapshot(project_root: str) -> IndexSnapshot:
         except FileNotFoundError as exc:
             return _unknown(str(exc))
         except sqlite3.DatabaseError as exc:
+            path_changed = bool(
+                handles and not _path_matches_pinned_database(handles[1], handles[2])
+            )
             return _unknown(
                 "CONCURRENT_WRITER"
-                if any(x in str(exc).lower() for x in ("locked", "busy"))
+                if path_changed
+                or any(x in str(exc).lower() for x in ("locked", "busy"))
                 else "CORRUPT_INDEX"
             )
         except (OSError, ValueError, RuntimeError) as exc:
@@ -325,35 +335,85 @@ def read_snapshot_stats(
         def grouped(sql: str) -> dict[str, int]:
             return {str(row[0]): int(row[1]) for row in conn.execute(sql)}
 
+        fts5_available = {
+            "ast_symbols_fts",
+            "ast_symbol_rows",
+        }.issubset(tables)
+        if fts5_available:
+            total_symbols = int(
+                conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0]
+            )
+            symbols_by_kind = grouped(
+                "SELECT kind, COUNT(*) FROM ast_symbol_rows GROUP BY kind ORDER BY kind"
+            )
+            symbols_by_language = grouped(
+                "SELECT language, COUNT(*) FROM ast_symbol_rows "
+                "GROUP BY language ORDER BY language"
+            )
+        else:
+            total_symbols, symbols_by_kind, symbols_by_language = (
+                _fallback_symbol_counts(conn)
+            )
+
         return {
             "total_files": int(
                 conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
             ),
-            "total_symbols": int(
-                conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0]
-            ),
+            "total_symbols": total_symbols,
             "total_edges": int(
                 conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
             ),
-            "symbols_by_kind": grouped(
-                "SELECT kind, COUNT(*) FROM ast_symbol_rows GROUP BY kind ORDER BY kind"
-            ),
-            "symbols_by_language": grouped(
-                "SELECT language, COUNT(*) FROM ast_symbol_rows GROUP BY language ORDER BY language"
-            ),
+            "symbols_by_kind": symbols_by_kind,
+            "symbols_by_language": symbols_by_language,
             "edges_by_kind": grouped(
                 "SELECT kind, COUNT(*) FROM edges GROUP BY kind ORDER BY kind"
             ),
-            "fts5_available": "ast_symbols_fts" in tables,
+            "fts5_available": fts5_available,
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
             "db_size_bytes": page_size * page_count,
             "db_page_size": page_size,
             "db_page_count": page_count,
             "db_free_pages": free_pages,
             "db_free_bytes": free_pages * page_size,
+            "db_auto_vacuum_mode": int(
+                conn.execute("PRAGMA auto_vacuum").fetchone()[0]
+            ),
         }
 
     return run_graph_snapshot_read(snapshot_id, project_root, source_generation, reader)
+
+
+def _fallback_symbol_counts(
+    conn: sqlite3.Connection,
+) -> tuple[int, dict[str, int], dict[str, int]]:
+    """Count legacy/no-FTS symbols from bounded primary index JSON rows."""
+    total = bytes_seen = 0
+    by_kind: dict[str, int] = {}
+    by_language: dict[str, int] = {}
+    for row in conn.execute(
+        "SELECT symbols_json, language FROM ast_index ORDER BY file_path"
+    ):
+        raw = str(row[0])
+        bytes_seen += len(raw.encode("utf-8", "surrogatepass"))
+        if bytes_seen > _SYMBOL_FALLBACK_BYTE_BUDGET:
+            raise RuntimeError("INDEX_SYMBOL_FALLBACK_BUDGET")
+        payload = json.loads(raw)
+        symbols = payload.get("symbols", []) if isinstance(payload, dict) else []
+        if not isinstance(symbols, list):
+            raise ValueError("CORRUPT_INDEX")
+        language = str(row[1])
+        for symbol in symbols:
+            total += 1
+            if total > _SYMBOL_FALLBACK_ROW_BUDGET:
+                raise RuntimeError("INDEX_SYMBOL_FALLBACK_BUDGET")
+            kind = (
+                str(symbol.get("kind", "unknown"))
+                if isinstance(symbol, dict)
+                else "unknown"
+            )
+            by_kind[kind] = by_kind.get(kind, 0) + 1
+            by_language[language] = by_language.get(language, 0) + 1
+    return total, dict(sorted(by_kind.items())), dict(sorted(by_language.items()))
 
 
 def acquire_index_snapshot(
@@ -395,6 +455,19 @@ def _open_bound_database(project_root: str) -> tuple[str, int, int, int]:
         os.close(root_fd)
         raise
     return root, root_fd, cache_fd, db_fd
+
+
+def _path_matches_pinned_database(cache_fd: int, db_fd: int) -> bool:
+    """Return whether the cache path still names the securely pinned inode."""
+    try:
+        path_info = os.stat("index.db", dir_fd=cache_fd, follow_symlinks=False)
+        pinned_info = os.fstat(db_fd)
+    except OSError:
+        return False
+    return (path_info.st_dev, path_info.st_ino) == (
+        pinned_info.st_dev,
+        pinned_info.st_ino,
+    )
 
 
 def _reject_sidecars(cache_fd: int) -> None:

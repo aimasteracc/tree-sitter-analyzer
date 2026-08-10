@@ -9,6 +9,7 @@ Three specific items:
 from __future__ import annotations
 
 import asyncio
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -17,6 +18,8 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
 from tree_sitter_analyzer.mcp.tools.project_overview_tool import ProjectOverviewTool
+
+requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 
 
 def _run(coro):
@@ -250,6 +253,7 @@ def test_overview_risk_unknown_maps_to_info() -> None:
     assert _overview_risk_to_verdict("high") == "REVIEW"
 
 
+@requires_posix_snapshot
 def test_status_corrupt_index_fails_closed_with_include_lag(tmp_path) -> None:
     """lag > 300s → next_step suggests sync before nav/search."""
     import asyncio
@@ -266,6 +270,7 @@ def test_status_corrupt_index_fails_closed_with_include_lag(tmp_path) -> None:
     assert result["oracle_reason"] == "CORRUPT_INDEX"
 
 
+@requires_posix_snapshot
 def test_status_corrupt_index_omits_schema_version(tmp_path) -> None:
     """Non-None schema_version IS emitted (only None is omitted)."""
     import asyncio
@@ -282,6 +287,7 @@ def test_status_corrupt_index_omits_schema_version(tmp_path) -> None:
     assert result["oracle_reason"] == "CORRUPT_INDEX"
 
 
+@requires_posix_snapshot
 def test_status_corrupt_index_returns_warn(tmp_path) -> None:
     """WARN (empty index) branch also emits non-None schema_version."""
     import asyncio

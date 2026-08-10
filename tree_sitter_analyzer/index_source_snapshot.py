@@ -152,14 +152,36 @@ def _inventory(
             finally:
                 os.close(fd)
             marker = _metadata_marker(after)
-            if _metadata_marker(info) != marker or not stat.S_ISREG(opened.st_mode):
+            if not _same_file_metadata(info, after) or not stat.S_ISREG(opened.st_mode):
                 unsafe = True
-            content = bytes(data).decode("utf-8", "replace").encode("utf-8")
+            # Match ``open(..., encoding="utf-8", errors="replace")`` in the
+            # indexer: TextIOWrapper performs universal-newline translation
+            # before the UTF-8 text is hashed.
+            content = bytes(data).decode("utf-8", "replace")
+            normalized = content.replace("\r\n", "\n").replace("\r", "\n")
             rows.append(
-                (rel, marker + "|" + hashlib.sha256(content).hexdigest(), language)
+                (
+                    rel,
+                    marker
+                    + "|"
+                    + hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
+                    language,
+                )
             )
     return tuple(sorted(rows)), unsafe
 
 
 def _metadata_marker(info: os.stat_result) -> str:
     return f"{info.st_dev}:{info.st_ino}:{info.st_size}:{info.st_mtime_ns}:{info.st_ctime_ns}"
+
+
+def _same_file_metadata(before: os.stat_result, after: os.stat_result) -> bool:
+    """Compare path/fd metadata without relying on platform-specific ctime."""
+    identity_matches = not (before.st_ino and after.st_ino) or (
+        before.st_dev,
+        before.st_ino,
+    ) == (after.st_dev, after.st_ino)
+    return identity_matches and (before.st_size, before.st_mtime_ns) == (
+        after.st_size,
+        after.st_mtime_ns,
+    )

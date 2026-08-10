@@ -422,6 +422,21 @@ CREATE INDEX IF NOT EXISTS idx_ast_language
     ON ast_index(language);
 """
 
+SCHEMA_SYMBOL_ROWS = """
+CREATE TABLE IF NOT EXISTS ast_symbol_rows (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    file_path  TEXT NOT NULL,
+    language   TEXT NOT NULL,
+    line       INTEGER NOT NULL DEFAULT 0,
+    end_line   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path
+    ON ast_symbol_rows(file_path);
+"""
+
 SCHEMA_V2_FTS = """
 CREATE VIRTUAL TABLE IF NOT EXISTS ast_symbols_fts
     USING fts5(
@@ -432,19 +447,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS ast_symbols_fts
         content='',
         tokenize='porter unicode61'
     );
-
-CREATE TABLE IF NOT EXISTS ast_symbol_rows (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        name      TEXT NOT NULL,
-        kind      TEXT NOT NULL,
-        file_path TEXT NOT NULL,
-        language  TEXT NOT NULL,
-        line      INTEGER NOT NULL DEFAULT 0,
-        end_line  INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path
-    ON ast_symbol_rows(file_path);
 """
 
 LARGE_REPO_INDEXES: tuple[tuple[str, str], ...] = (
@@ -690,6 +692,8 @@ def init_db(
 ) -> bool:
     """Apply schema DDL and migrations. Returns updated fts5_available flag."""
     conn.executescript(SCHEMA_V1)
+    # Ordinary symbol storage is valid and useful even when SQLite lacks FTS5.
+    conn.executescript(SCHEMA_SYMBOL_ROWS)
     conn.executescript(SCHEMA_VERSIONS_DDL)
     conn.commit()
     if fts5_available is None:

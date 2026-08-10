@@ -609,18 +609,34 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             from ...ast_cache import ASTCache
 
             cache = ASTCache(self.project_root or ".")
+            manifest_warning: str | None = None
             if stamp_manifest:
                 from ...index_snapshot_schema import stamp_full_index_manifest
 
-                stamp_full_index_manifest(cache.get_conn(), self.project_root or ".")
+                try:
+                    stamp_full_index_manifest(
+                        cache.get_conn(), self.project_root or "."
+                    )
+                except Exception:
+                    logger.warning(
+                        "index snapshot manifest certification failed", exc_info=True
+                    )
+                    manifest_warning = "INDEX_MANIFEST_CERTIFICATION_FAILED"
+                    conn = cache.get_conn()
+                    conn.rollback()
+                    conn.execute("DELETE FROM ast_index_snapshot_manifest")
+                    conn.commit()
             stats = cache.get_stats()
-            return {
+            result = {
                 "total_files": stats.get("total_files", 0),
                 "total_symbols": stats.get("total_symbols", 0),
                 "by_language": stats.get("by_language", {}),
                 "fts5_available": stats.get("fts5_available", False),
                 "fts_indexed_symbols": stats.get("fts_indexed_symbols", 0),
             }
+            if manifest_warning is not None:
+                result["manifest_warning"] = manifest_warning
+            return result
         except Exception:
             return {}
         finally:

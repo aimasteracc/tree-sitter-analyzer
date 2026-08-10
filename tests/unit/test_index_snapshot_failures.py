@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
+
+requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 
 
 class TestSnapshotFailureContracts:
@@ -78,7 +81,7 @@ class TestSnapshotFailureContracts:
 
         conn = sqlite3.connect(":memory:")
         published = owner.REGISTRY.publish(self._snapshot(tmp_path), conn, 0)
-        monkeypatch.setattr(owner.time, "monotonic", lambda: 1000.0)
+        monkeypatch.setattr(owner, "_clock", lambda: 1000.0)
         owner.REGISTRY._entries[published.snapshot_id].expires_at = 1.0
         owner.REGISTRY.ensure_capacity(0)
         assert published.snapshot_id not in owner.REGISTRY._entries
@@ -103,6 +106,7 @@ class TestSnapshotFailureContracts:
         assert result.completeness == "unknown"
         assert result.reason == "SECURE_FD_SNAPSHOT_UNSUPPORTED"
 
+    @requires_posix_fd
     @pytest.mark.asyncio
     async def test_database_size_limit_is_checked_before_read(
         self, tmp_path, monkeypatch
@@ -117,6 +121,7 @@ class TestSnapshotFailureContracts:
         assert result["completeness"] == "unknown"
         assert result["oracle_reason"] == "INDEX_SNAPSHOT_CAPACITY"
 
+    @requires_posix_fd
     @pytest.mark.asyncio
     async def test_persisted_build_marker_is_concurrent_writer(self, tmp_path):
         from tree_sitter_analyzer.ast_cache import ASTCache
@@ -132,6 +137,7 @@ class TestSnapshotFailureContracts:
         assert result["completeness"] == "unknown"
         assert result["oracle_reason"] == "CONCURRENT_WRITER"
 
+    @requires_posix_fd
     @pytest.mark.asyncio
     async def test_unknown_source_scope_never_returns_complete(
         self, tmp_path, monkeypatch
@@ -153,6 +159,7 @@ class TestSnapshotFailureContracts:
         assert result["completeness"] == "unknown"
         assert result["oracle_reason"] == "SOURCE_SCAN_DEADLINE"
 
+    @requires_posix_fd
     @pytest.mark.asyncio
     async def test_backup_page_budget_fails_closed(self, tmp_path, monkeypatch):
         import tree_sitter_analyzer.index_snapshot as owner
@@ -165,6 +172,7 @@ class TestSnapshotFailureContracts:
         assert result["completeness"] == "unknown"
         assert result["oracle_reason"] == "INDEX_BACKUP_BUDGET"
 
+    @requires_posix_fd
     def test_graph_reader_requires_mapping_payload(self, tmp_path):
         import tree_sitter_analyzer.index_snapshot as owner
 
@@ -235,12 +243,14 @@ class TestSnapshotFailureContracts:
 
         apply_snapshot_migration(Broken(), lambda *_args: None)
 
+    @requires_posix_fd
     def test_missing_project_root_is_distinguished(self, tmp_path):
         import tree_sitter_analyzer.index_snapshot as owner
 
         with pytest.raises(FileNotFoundError, match="MISSING_PROJECT_ROOT"):
             owner._open_bound_database(str(tmp_path / "absent"))
 
+    @requires_posix_fd
     def test_missing_index_database_closes_bound_directories(self, tmp_path):
         import tree_sitter_analyzer.index_snapshot as owner
 
@@ -248,6 +258,7 @@ class TestSnapshotFailureContracts:
         with pytest.raises(FileNotFoundError, match="MISSING_INDEX"):
             owner._open_bound_database(str(tmp_path))
 
+    @requires_posix_fd
     def test_nonregular_index_database_is_rejected(self, tmp_path):
         import tree_sitter_analyzer.index_snapshot as owner
 
@@ -255,6 +266,7 @@ class TestSnapshotFailureContracts:
         with pytest.raises(ValueError, match="INDEX_PATH_UNSAFE"):
             owner._open_bound_database(str(tmp_path))
 
+    @requires_posix_fd
     def test_cache_open_error_closes_root_handle(self, tmp_path, monkeypatch):
         import tree_sitter_analyzer.index_snapshot as owner
 
@@ -269,6 +281,7 @@ class TestSnapshotFailureContracts:
         with pytest.raises(PermissionError, match="cache denied"):
             owner._open_bound_database(str(tmp_path))
 
+    @requires_posix_fd
     def test_database_open_error_closes_directory_handles(self, tmp_path, monkeypatch):
         import tree_sitter_analyzer.index_snapshot as owner
 
@@ -284,9 +297,8 @@ class TestSnapshotFailureContracts:
         with pytest.raises(PermissionError, match="database denied"):
             owner._open_bound_database(str(tmp_path))
 
+    @requires_posix_fd
     def test_empty_regular_sidecar_is_not_a_concurrent_writer(self, tmp_path):
-        import os
-
         import tree_sitter_analyzer.index_snapshot as owner
 
         cache = tmp_path / ".ast-cache"
@@ -435,21 +447,12 @@ class TestSnapshotFailureContracts:
         import tree_sitter_analyzer.index_source_snapshot as source
 
         (tmp_path / "sample.py").write_text("x = 1")
-        original = source._metadata_marker
-        calls = 0
-
-        def changed_marker(info):
-            nonlocal calls
-            calls += 1
-            return original(info) + (":changed" if calls == 2 else "")
-
-        monkeypatch.setattr(source, "_metadata_marker", changed_marker)
+        monkeypatch.setattr(source, "_same_file_metadata", lambda *_args: False)
         rows, unsafe = source._inventory(str(tmp_path), float("inf"), with_content=True)
         assert (len(rows), unsafe) == (1, True)
 
+    @requires_posix_fd
     def test_supported_nonregular_source_is_unsafe(self, tmp_path):
-        import os
-
         import tree_sitter_analyzer.index_source_snapshot as source
 
         fifo = tmp_path / "pipe.py"
@@ -462,3 +465,32 @@ class TestSnapshotFailureContracts:
             CodeGraphStatusTool(str(tmp_path)).validate_arguments(
                 {"access_mode": "write"}
             )
+
+    @requires_posix_fd
+    def test_bound_database_disappearing_is_missing(self, tmp_path, monkeypatch):
+        import tree_sitter_analyzer.index_snapshot as owner
+
+        cache = tmp_path / ".ast-cache"
+        cache.mkdir()
+        (cache / "index.db").touch()
+        monkeypatch.setattr(
+            owner,
+            "_open_bound_database",
+            lambda *_args: (_ for _ in ()).throw(FileNotFoundError("MISSING_INDEX")),
+        )
+        result = owner.read_existing_snapshot(str(tmp_path))
+        assert result.reason == "MISSING_INDEX"
+
+    def test_no_fts_schema_still_creates_ordinary_symbol_rows(self):
+        from tree_sitter_analyzer.cache import schema
+
+        conn = sqlite3.connect(":memory:")
+        available = schema.init_db(conn, None, lambda _conn: False, [])
+        tables = {
+            str(row[0])
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        conn.close()
+        assert available is False
+        assert "ast_symbol_rows" in tables
+        assert "ast_symbols_fts" not in tables
