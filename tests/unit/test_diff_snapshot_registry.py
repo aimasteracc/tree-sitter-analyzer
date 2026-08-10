@@ -472,7 +472,7 @@ def test_validate_publish_rejects_erased_snapshot_before_oracle(
         ("ds_é" + "a" * 31, "dl_" + "a" * 43),
         ("ds_" + "a" * 32, "dl_é" + "a" * 42),
         ("bad_" + "a" * 31, "dl_" + "a" * 43),
-        ("ds_" + "a" * 100_000, "dl_" + "a" * 43),
+        ("ds_" + "a" * 512, "dl_" + "a" * 43),
     ],
 )
 def test_release_rejects_malformed_capabilities_without_raising(

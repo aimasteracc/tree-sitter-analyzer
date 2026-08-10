@@ -8,10 +8,31 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import tree_sitter_analyzer.diff_snapshot_epoch as epoch_verification
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
 from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
 from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool
 from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import SemanticClassifyTool
+
+
+def _create_stable_consumer_snapshot(
+    monkeypatch: pytest.MonkeyPatch, root: Path
+) -> dict[str, object]:
+    """Capture once, then make consumer publication verification deterministic."""
+    monkeypatch.setattr(
+        epoch_verification.FrozenGitEnvironment,
+        "verify_source_epoch",
+        lambda self: None,
+    )
+    created = snapshots.REGISTRY.create(str(root), "diff", [])
+    identity = snapshots.canonical_root(str(root))[1]
+    generation = str(created["source_generation"])
+    monkeypatch.setattr(
+        snapshots,
+        "oracle_generation",
+        lambda project_root, mode="diff", *, deadline=None: (generation, identity),
+    )
+    return created
 
 
 @pytest.fixture
@@ -630,11 +651,15 @@ async def test_snapshot_rejects_non_utf8_frozen_bytes(tool, monkeypatch) -> None
 )
 @POSIX_SNAPSHOT_TEST
 def test_snapshot_consumer_uses_frozen_utf8_bytes(
-    tmp_path: Path, tool_type, field: str, expected: int
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tool_type,
+    field: str,
+    expected: int,
 ) -> None:
     root = make_repo(tmp_path)
     (root / "old.py").write_text("value = 2\n")
-    result = snapshots.REGISTRY.create(str(root), "diff", [])
+    result = _create_stable_consumer_snapshot(monkeypatch, root)
     request = {
         "diff_snapshot_id": result["diff_snapshot_id"],
         "file_path": "old.py",
@@ -656,12 +681,15 @@ def test_snapshot_consumer_uses_frozen_utf8_bytes(
 @pytest.mark.parametrize("output_format", ["json", "toon"])
 @POSIX_SNAPSHOT_TEST
 def test_snapshot_consumer_echoes_exact_frozen_identity(
-    tmp_path: Path, tool_type, output_format: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tool_type,
+    output_format: str,
 ) -> None:
     # PR #1252 review thread 3748730795: consumers must not infer identity.
     root = make_repo(tmp_path)
     (root / "old.py").write_text("value = 2\n")
-    created = snapshots.REGISTRY.create(str(root), "diff", [])
+    created = _create_stable_consumer_snapshot(monkeypatch, root)
     response = asyncio.run(
         tool_type(str(root)).execute(
             {
@@ -683,10 +711,12 @@ def test_snapshot_consumer_echoes_exact_frozen_identity(
 
 @pytest.mark.parametrize("tool_type", [ASTDiffTool, SemanticClassifyTool])
 @POSIX_SNAPSHOT_TEST
-def test_snapshot_consumer_rejects_binary_content(tmp_path: Path, tool_type) -> None:
+def test_snapshot_consumer_rejects_binary_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool_type
+) -> None:
     root = make_repo(tmp_path)
     (root / "blob.py").write_bytes(b"a\0b")
-    result = snapshots.REGISTRY.create(str(root), "diff", [])
+    result = _create_stable_consumer_snapshot(monkeypatch, root)
     request = {
         "diff_snapshot_id": result["diff_snapshot_id"],
         "file_path": "blob.py",

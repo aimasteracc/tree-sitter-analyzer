@@ -245,7 +245,13 @@ def test_private_mode_uses_path_fallback_without_fchmod(
     finally:
         os.close(descriptor)
 
-    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    info = target.stat()
+    assert stat.S_ISREG(info.st_mode)
+    if os.name == "nt":
+        target.unlink()
+        assert (target.parent.resolve(), target.exists()) == (tmp_path.resolve(), False)
+    else:
+        assert stat.S_IMODE(info.st_mode) == 0o600
 
 
 def test_order_file_close_failure_unlinks_partial(tmp_path: Path, monkeypatch) -> None:
@@ -278,7 +284,7 @@ def test_empty_order_candidate_guards_are_platform_independent(
     project_real = str(project.resolve())
     candidate = tmp_path / "candidate"
     candidate.mkdir()
-    monkeypatch.setattr(bounded.tempfile, "gettempdir", lambda: str(candidate))
+    monkeypatch.setattr(bounded, "_order_file_candidates", lambda: [str(candidate)])
     if case == "cross-volume":
         monkeypatch.setattr(
             bounded.os.path,
@@ -430,10 +436,10 @@ def test_private_temp_cleanup_exceptions_do_not_mask_validation(
 
 
 def test_windows_order_file_candidates_exclude_posix_fallbacks(monkeypatch) -> None:
+    portable = os.path.abspath("portable-temp")
     monkeypatch.setattr(bounded, "_IS_WINDOWS", True)
-    monkeypatch.setattr(bounded.tempfile, "gettempdir", lambda: "portable-temp")
-
-    assert bounded._order_file_candidates() == ["portable-temp"]
+    monkeypatch.setattr(bounded.tempfile, "gettempdir", lambda: portable)
+    assert bounded._order_file_candidates() == [portable]
 
 
 def test_windows_process_group_and_taskkill_are_explicit(monkeypatch) -> None:
@@ -441,7 +447,6 @@ def test_windows_process_group_and_taskkill_are_explicit(monkeypatch) -> None:
     process = _WindowsProcess()
     monkeypatch.setattr(bounded, "_IS_WINDOWS", True)
     monkeypatch.setattr(bounded, "_TASKKILL", lambda *a, **k: calls.append((a, k)))
-
     options = bounded._group_options()
     bounded._kill_group(process)
 
@@ -460,7 +465,6 @@ def test_failed_windows_taskkill_falls_back_to_process_kill(monkeypatch) -> None
         "_TASKKILL",
         lambda *a, **k: (_ for _ in ()).throw(subprocess.TimeoutExpired("taskkill", 5)),
     )
-
     bounded._kill_group(process)
 
     assert process.kills == 1

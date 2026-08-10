@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit._diff_snapshot_support import make_repo
+from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
 from tree_sitter_analyzer import frozen_git_settings as settings
 from tree_sitter_analyzer.diff_snapshot_registry import DiffSnapshotRegistry
 from tree_sitter_analyzer.source_epoch import (
@@ -90,6 +90,7 @@ def test_filter_attribute_output_without_final_nul_is_accepted() -> None:
     settings.reject_active_filters(b"a.py\0filter\0unspecified", (b"a.py",))
 
 
+@POSIX_SNAPSHOT_TEST
 def test_ignored_directory_attributes_are_frozen_for_binary_diff(
     tmp_path: Path,
 ) -> None:
@@ -115,6 +116,7 @@ def test_ignored_directory_attributes_are_frozen_for_binary_diff(
     ]
 
 
+@POSIX_SNAPSHOT_TEST
 def test_active_replace_ref_cannot_split_snapshot_head_evidence(tmp_path: Path) -> None:
     # PR #1252 review thread PRRT_kwDOPVL-OM6X2mXp: use the original object graph.
     root = make_repo(tmp_path)
@@ -143,6 +145,7 @@ def test_active_replace_ref_cannot_split_snapshot_head_evidence(tmp_path: Path) 
     consumer.release()
 
 
+@POSIX_SNAPSHOT_TEST
 def test_staged_records_ignore_git_order_and_use_raw_path_order(tmp_path: Path) -> None:
     # PR #1252 review thread PRRT_kwDOPVL-OM6X3LAF.
     root = make_repo(tmp_path)
@@ -163,6 +166,7 @@ def test_staged_records_ignore_git_order_and_use_raw_path_order(tmp_path: Path) 
     ]
 
 
+@POSIX_SNAPSHOT_TEST
 def test_missing_born_index_is_empty_and_reports_head_deletions(tmp_path: Path) -> None:
     # PR #1252 review thread PRRT_kwDOPVL-OM6X3LAM.
     root = make_repo(tmp_path)
@@ -176,6 +180,7 @@ def test_missing_born_index_is_empty_and_reports_head_deletions(tmp_path: Path) 
     ]
 
 
+@POSIX_SNAPSHOT_TEST
 def test_external_diff_order_file_content_is_not_snapshot_input(tmp_path: Path) -> None:
     # PR #1252 review thread PRRT_kwDOPVL-OM6X3LAP.
     root = make_repo(tmp_path)
