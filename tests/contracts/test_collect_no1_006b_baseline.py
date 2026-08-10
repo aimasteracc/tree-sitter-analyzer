@@ -414,10 +414,15 @@ def test_external_interpreter_probe_preserves_clean_ignored_gate(tmp_path: Path)
     assert status == ""
 
 
-def test_verified_uv_resolves_and_attests_configured_binary(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("NO1_006B_UV",str(Path(shutil.which("uv") or "missing")))
+def test_verified_uv_resolves_and_attests_configured_binary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake=tmp_path/("uv.exe" if os.name=="nt" else "uv"); fake.write_bytes(b"pinned uv fixture")
+    expected_digest=collector.sha256(fake); expected_version="uv test-pinned"
+    monkeypatch.setenv("NO1_006B_UV",str(fake))
+    monkeypatch.setattr(collector,"EXPECTED_UV_SHA256",expected_digest)
+    monkeypatch.setattr(collector,"EXPECTED_UV_VERSION",expected_version)
+    monkeypatch.setattr(collector,"run",lambda *args,**kwargs: subprocess.CompletedProcess([],0,(expected_version+"\n").encode(),b""))
     path,version,digest=collector.verified_uv()
-    assert [path,version,digest] == [Path(shutil.which("uv") or "missing").resolve(),collector.EXPECTED_UV_VERSION,collector.EXPECTED_UV_SHA256]
+    assert [path,version,digest] == [fake.resolve(),expected_version,expected_digest]
 
 
 def test_verified_uv_rejects_digest_mismatch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
