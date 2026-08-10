@@ -17,7 +17,7 @@ Response-envelope semantics (verdict alphabet, truncation fields, `compact_only`
 | `nav` | navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees / callee_tree / caller_tree / test_map / co_change | Call-graph navigation + one-call symbol context; test_map = which tests exercise a function (RFC-0014 Phase B); co_change = git-history temporal coupling (RFC-0014 Phase C) |
 | `structure` | outline / analyze / ast_path / sitemap / class_tree / class_detail / explore / read / signatures | Structural AST analysis + partial file read + signature-only listing |
 | `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / routes / overview / deps / test_gap | Code health, complexity, dependency analysis, untested symbol discovery |
-| `edit` | safe / guard / impact / refactor / constraints / pr / classify / ast_diff | Edit-safety, blast-radius, refactor, PR review |
+| `edit` | safe / guard / impact / refactor / constraints / pr / classify / ast_diff / release_snapshot | Edit-safety, blast-radius, refactor, PR review; RFC-0022 explicit-opt-in POSIX-only frozen workspace/staged snapshots (`impact` issues ID+lease or fails closed on Windows, `ast_diff`/`classify` consume ID+path, `release_snapshot` idempotently closes the owned lease in the same MCP process); legacy staged impact remains Windows-supported |
 | `project` | overview / files / smart / parser / tools / metrics / skills / workflow / journal / doc_sync | Project-intelligence hub |
 | `index` | status / cache / build / full / auto / sync | CodeGraph index lifecycle |
 | `viz` | uml / graph / similarity | UML / graph diagrams + similarity |

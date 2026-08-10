@@ -1,7 +1,10 @@
 """Unit tests for change-impact MCP execute integration and test-file mapping."""
 
 import asyncio
+import os
 
+from tests.unit._diff_snapshot_support import install_fake_snapshot_materializer
+from tree_sitter_analyzer.diff_snapshot_capture import ChangedFile
 from tree_sitter_analyzer.mcp.tools import change_impact_tool as tool_module
 from tree_sitter_analyzer.mcp.tools.utils import (
     change_impact_analysis as change_impact_tool,
@@ -602,9 +605,9 @@ def test_find_test_files_uses_path_specific_edge_extractor_family():
         },
     )
 
-    assert mapping[
-        "tree_sitter_analyzer/mcp/utils/edge_extractors/java.py"
-    ] == ["tests/unit/mcp/test_project_summary_pagerank.py"]
+    assert mapping["tree_sitter_analyzer/mcp/utils/edge_extractors/java.py"] == [
+        "tests/unit/mcp/test_project_summary_pagerank.py"
+    ]
 
 
 def test_find_test_files_disambiguates_direct_matches_alongside_family_matches():
@@ -737,12 +740,8 @@ def test_find_test_files_preserves_monorepo_package_scope():
         },
     )
 
-    assert mapping["packages/a/core/config.py"] == [
-        "packages/a/tests/test_config.py"
-    ]
-    assert mapping["packages/a/src/config.py"] == [
-        "packages/a/tests/test_config.py"
-    ]
+    assert mapping["packages/a/core/config.py"] == ["packages/a/tests/test_config.py"]
+    assert mapping["packages/a/src/config.py"] == ["packages/a/tests/test_config.py"]
     assert mapping["packages/a/src/core/config.py"] == [
         "packages/a/tests/test_config.py"
     ]
@@ -821,9 +820,7 @@ def test_find_test_files_preserves_outer_affinity_for_exact_direct():
         },
     )
 
-    assert mapping["src/api/client/request.py"] == [
-        "tests/unit/api/test_request.py"
-    ]
+    assert mapping["src/api/client/request.py"] == ["tests/unit/api/test_request.py"]
 
 
 def test_find_test_files_keeps_only_nearest_exact_subsystem_match():
@@ -836,9 +833,7 @@ def test_find_test_files_keeps_only_nearest_exact_subsystem_match():
         },
     )
 
-    assert mapping["src/api/client/config.py"] == [
-        "tests/unit/client/test_config.py"
-    ]
+    assert mapping["src/api/client/config.py"] == ["tests/unit/client/test_config.py"]
 
 
 def test_find_test_files_normalizes_test_prefixed_subsystem_directories():
@@ -892,9 +887,7 @@ def test_find_test_files_preserves_direct_variants_across_test_layers():
         },
     )
 
-    assert mapping[
-        "tree_sitter_analyzer/mcp/tools/analyze_scale_tool.py"
-    ] == [
+    assert mapping["tree_sitter_analyzer/mcp/tools/analyze_scale_tool.py"] == [
         "tests/integration/core/test_analyze_scale_tool_batch_metrics.py",
         "tests/integration/core/test_analyze_scale_tool_file_output.py",
         "tests/integration/mcp/test_tools/test_analyze_scale_tool.py",
@@ -975,9 +968,7 @@ def test_find_test_files_keeps_exact_direct_over_directory_only_affinity():
         },
     )
 
-    assert mapping["src/core/engine.py"] == [
-        "tests/integration/api/test_engine.py"
-    ]
+    assert mapping["src/core/engine.py"] == ["tests/integration/api/test_engine.py"]
 
 
 def test_find_test_files_keeps_exact_direct_over_scope_prefixed_filename():
@@ -990,9 +981,7 @@ def test_find_test_files_keeps_exact_direct_over_scope_prefixed_filename():
         },
     )
 
-    assert mapping["src/core/engine.py"] == [
-        "tests/integration/api/test_engine.py"
-    ]
+    assert mapping["src/core/engine.py"] == ["tests/integration/api/test_engine.py"]
 
 
 def test_find_test_files_keeps_monorepo_package_identity_during_affinity():
@@ -1144,9 +1133,7 @@ def test_find_test_files_rejects_workspace_tests_for_central_sources():
         },
     )
 
-    assert mapping["src/core/config.py"] == [
-        change_impact_tool.AUTO_DISCOVER_TEST_HINT
-    ]
+    assert mapping["src/core/config.py"] == [change_impact_tool.AUTO_DISCOVER_TEST_HINT]
 
 
 def test_find_test_files_ignores_workspace_markers_below_test_root():
@@ -1156,9 +1143,7 @@ def test_find_test_files_ignores_workspace_markers_below_test_root():
         {"tests/apps/users/test_config.py"},
     )
 
-    assert mapping["src/users/config.py"] == [
-        "tests/apps/users/test_config.py"
-    ]
+    assert mapping["src/users/config.py"] == ["tests/apps/users/test_config.py"]
 
 
 def test_find_test_files_filters_cross_package_family_matches():
@@ -1201,9 +1186,7 @@ def test_find_test_files_routes_stem_helper_to_behavioral_suite():
         },
     )
 
-    assert mapping[
-        "tree_sitter_analyzer/mcp/tools/utils/test_discovery_stems.py"
-    ] == [
+    assert mapping["tree_sitter_analyzer/mcp/tools/utils/test_discovery_stems.py"] == [
         "tests/unit/mcp/test_change_impact_tool_execute_and_mapping.py",
         "tests/unit/mcp/test_test_discovery.py",
     ]
@@ -1220,9 +1203,7 @@ def test_find_test_files_supports_irregular_plural_subject():
     )
 
     assert mapping["src/analysis.py"] == ["tests/test_analyses.py"]
-    assert mapping["src/query_analysis.py"] == [
-        "tests/test_query_analyses_errors.py"
-    ]
+    assert mapping["src/query_analysis.py"] == ["tests/test_query_analyses_errors.py"]
 
 
 def test_find_test_files_supports_doubled_z_plural():
@@ -1281,9 +1262,7 @@ def test_find_test_files_protects_plural_direct_from_affinity_fallback():
         },
     )
 
-    assert mapping["src/core/config.py"] == [
-        "tests/integration/api/test_configs.py"
-    ]
+    assert mapping["src/core/config.py"] == ["tests/integration/api/test_configs.py"]
 
 
 def test_find_test_files_preserves_subsystem_after_outer_source_root():
@@ -1321,9 +1300,7 @@ def test_find_test_files_keeps_camel_case_acronyms_intact():
         {"slow/xml-http-request.test.ts"},
     )
 
-    assert mapping["src/XMLHttpRequest.ts"] == [
-        "slow/xml-http-request.test.ts"
-    ]
+    assert mapping["src/XMLHttpRequest.ts"] == ["slow/xml-http-request.test.ts"]
     assert (
         change_impact_tool.test_file_subject_stem("XMLHttpRequest.ts")
         == "xml_http_request"
@@ -1786,4 +1763,825 @@ def test_doc_drift_hints_appends_to_verification_steps():
     assert any(
         "test_readme_counts_match_registry" in step
         for step in result["verification_steps"]
+    )
+
+
+def test_pr_impact_scope_uses_filtered_records_and_finalizes(
+    monkeypatch, tmp_path
+) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.mcp.tools.change_impact_tool as impact_module
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+    (tmp_path / "src").mkdir()
+    parsed = SimpleNamespace(
+        url="https://github.com/o/r/pull/1", pr_number=1, slug="o/r"
+    )
+    monkeypatch.setattr(impact_module, "parse_pr_url", lambda url: parsed)
+    monkeypatch.setattr(impact_module, "check_gh_available", lambda: True)
+    monkeypatch.setattr(
+        impact_module, "fetch_pr_changed_files", lambda value: ["src/a.py", "docs/x.md"]
+    )
+    monkeypatch.setattr(
+        impact_module, "fetch_pr_diff_stat", lambda value: "1 file changed"
+    )
+    monkeypatch.setattr(
+        impact_module,
+        "_build_change_impact_result",
+        lambda request: {
+            "success": True,
+            "changed_files": request.changed_files,
+            "agent_summary": {"verdict": "SAFE", "summary_line": "ok"},
+        },
+    )
+
+    result = asyncio.run(
+        ChangeImpactTool(str(tmp_path)).execute(
+            {"pr_url": parsed.url, "scope_paths": ["src"], "output_format": "json"}
+        )
+    )
+    unscoped = asyncio.run(
+        ChangeImpactTool(str(tmp_path)).execute(
+            {"pr_url": parsed.url, "output_format": "json"}
+        )
+    )
+
+    assert result["success"] is True
+    assert unscoped["changed_files"] == ["src/a.py", "docs/x.md"]
+    assert result["changed_files"] == ["src/a.py"]
+    assert result["pr_number"] == 1
+    assert result["verdict"] == "SAFE"
+
+
+def test_name_status_parser_fails_closed_on_truncated_git_output(monkeypatch) -> None:
+    import time
+
+    import tree_sitter_analyzer.diff_snapshot_capture as snapshots
+    from tree_sitter_analyzer.source_oracle import SourceOracleError
+
+    monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: b"M\0")
+
+    import pytest
+
+    with pytest.raises(SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        snapshots._rows(".", "staged", time.monotonic() + 1, 1024)
+
+
+def test_create_rejects_oracle_root_identity_drift(tmp_path, monkeypatch) -> None:
+    import subprocess
+
+    import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+    from tree_sitter_analyzer.source_oracle import RootIdentity
+
+    root = tmp_path
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+    (root / "a.py").write_text("x = 1\n")
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"], cwd=root, check=True, capture_output=True
+    )
+    monkeypatch.setattr(
+        snapshots,
+        "oracle_generation",
+        lambda *args, **kwargs: ("sg_x", RootIdentity("bad", 1, 2)),
+    )
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert result == {"success": False, "error_code": "DIFF_SNAPSHOT_ROOT_MISMATCH"}
+
+
+def test_name_status_deduplicates_tracked_and_untracked(monkeypatch) -> None:
+    import time
+
+    import tree_sitter_analyzer.diff_snapshot_capture as snapshots
+
+    outputs = iter((b"A\0a.py\0", b"a.py\0"))
+    monkeypatch.setattr(snapshots, "git_output", lambda *args, **kwargs: next(outputs))
+
+    assert snapshots._rows(".", "diff", time.monotonic() + 1, 1024) == [
+        ("A", None, "a.py", True)
+    ]
+
+
+# Source-bound response helpers are exercised here because they are part of the
+# existing change-impact MCP subsystem.
+def test_support_canonicalizes_nested_and_top_verdicts() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = {"verdict": "CLEAN", "agent_summary": {"verdict": None}}
+    support._canonicalize_change_impact_verdict(result)
+    assert result == {"verdict": "SAFE", "agent_summary": {"verdict": "INFO"}}
+
+
+def test_support_scope_resolution_preserves_absolute_path(tmp_path) -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    assert support._resolve_scope_path("unused", str(tmp_path)) == tmp_path
+
+
+def test_support_scope_validation_reports_only_missing_path(tmp_path) -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    (tmp_path / "present").touch()
+    assert support._scope_paths_invalid(str(tmp_path), ["present", "missing"]) == [
+        "missing"
+    ]
+
+
+def test_support_invalid_pr_envelope_preserves_url() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = support._pr_invalid_url_envelope("invalid", "json")
+    assert result["error"] == "Invalid GitHub PR URL: invalid"
+
+
+def test_support_unavailable_gh_envelope_preserves_parsed_url() -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = support._pr_gh_unavailable_envelope(
+        SimpleNamespace(url="https://example/pr/1"), "json"
+    )
+    assert result["pr_url"] == "https://example/pr/1"
+
+
+def test_support_snapshot_records_filters_malformed_values() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    assert support._snapshot_records({"changed_records": [{"path": "a"}, "bad"]}) == [
+        {"path": "a"}
+    ]
+
+
+def test_support_snapshot_records_rejects_nonlist() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    assert support._snapshot_records({"changed_records": "bad"}) == []
+
+
+def test_support_snapshot_records_accepts_missing_snapshot() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    assert support._snapshot_records(None) == []
+
+
+def test_support_journal_decision_upgrades_weaker_verdict(
+    monkeypatch, tmp_path
+) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    record = SimpleNamespace(id="one", to_dict=lambda: {"verdict": "WARN"})
+    monkeypatch.setattr(
+        journal_module,
+        "DecisionJournal",
+        lambda root: SimpleNamespace(search=lambda **kwargs: [record]),
+    )
+    result = {
+        "verdict": "SAFE",
+        "agent_summary": {"verdict": "SAFE", "next_step": "run tests"},
+    }
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result["verdict"] == "WARN"
+    assert result["agent_summary"]["next_step"].endswith("run tests")
+
+
+def test_support_journal_never_downgrades_stronger_verdict(
+    monkeypatch, tmp_path
+) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    record = SimpleNamespace(id="one", to_dict=lambda: {"verdict": "REVIEW"})
+    monkeypatch.setattr(
+        journal_module,
+        "DecisionJournal",
+        lambda root: SimpleNamespace(search=lambda **kwargs: [record]),
+    )
+    result = {"verdict": "UNSAFE", "agent_summary": {"verdict": "UNSAFE"}}
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result["verdict"] == "UNSAFE"
+
+
+def test_support_journal_failure_does_not_block_result(monkeypatch, tmp_path) -> None:
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    monkeypatch.setattr(
+        journal_module, "DecisionJournal", lambda root: (_ for _ in ()).throw(OSError())
+    )
+    result = {"verdict": "SAFE"}
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result == {"verdict": "SAFE"}
+
+
+def test_attach_diff_snapshot_translates_missing_capture() -> None:
+    tool = tool_module.ChangeImpactTool(None)
+    result = tool._attach_diff_snapshot({"output_format": "json"}, "diff", True)
+    assert result["error_code"] == "DIFF_SNAPSHOT_CAPTURE_ERROR"
+
+
+def test_execute_snapshot_rejects_unsupported_mode() -> None:
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(None).execute(
+            {"mode": "branch", "capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_MODE"
+
+
+def test_execute_snapshot_rejects_invalid_scope() -> None:
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(None).execute(
+            {
+                "capture_diff_snapshot": True,
+                "scope_paths": ["../bad"],
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_INVALID_PATH"
+
+
+def test_execute_snapshot_translates_capture_failure(monkeypatch) -> None:
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    monkeypatch.setattr(
+        registry.REGISTRY,
+        "create",
+        lambda *a: {"success": False, "error_code": "CAPTURE"},
+    )
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(None).execute(
+            {"capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+    assert result["error_code"] == "CAPTURE"
+
+
+def test_execute_snapshot_closes_lease_after_acquire_failure(monkeypatch) -> None:
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    frozen = {
+        "success": True,
+        "diff_snapshot_id": "ds",
+        "route_lease_id": "lease",
+        "changed_records": [],
+    }
+    closed = []
+    monkeypatch.setattr(registry.REGISTRY, "create", lambda *a: frozen)
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (None, "ACQUIRE"))
+    monkeypatch.setattr(
+        registry.REGISTRY, "close_lease", lambda *a: closed.append(a) or True
+    )
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(None).execute(
+            {"capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+    assert result["error_code"] == "ACQUIRE"
+    assert closed == [("ds", "lease")]
+
+
+def test_execute_snapshot_translates_strict_verification_conflict(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    frozen = {
+        "success": True,
+        "diff_snapshot_id": "ds",
+        "route_lease_id": "lease",
+        "changed_records": [{"path": "a.py"}],
+    }
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(
+            assessed_scope_paths=("a.py",), inventory_paths=("a.py",)
+        ),
+        release=lambda: None,
+    )
+    monkeypatch.setattr(registry.REGISTRY, "create", lambda *a: frozen)
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))
+    monkeypatch.setattr(registry.REGISTRY, "bind_assessed_scope", lambda *a: "CONFLICT")
+    monkeypatch.setattr(registry.REGISTRY, "close_lease", lambda *a: True)
+    monkeypatch.setattr(tool_module, "_get_changed_files", lambda *a, **k: ["a.py"])
+    monkeypatch.setattr(tool_module, "_get_diff_stat", lambda *a, **k: {})
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(None).execute(
+            {
+                "capture_diff_snapshot": True,
+                "scope_paths": ["a.py"],
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["error_code"] == "CONFLICT"
+
+
+def test_support_canonicalizer_ignores_nondict_summary() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = {"verdict": 7, "agent_summary": "bad"}
+    support._canonicalize_change_impact_verdict(result)
+    assert result == {"verdict": 7, "agent_summary": "bad"}
+
+
+def test_support_journal_ignores_empty_matches(monkeypatch, tmp_path) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    monkeypatch.setattr(
+        journal_module,
+        "DecisionJournal",
+        lambda root: SimpleNamespace(search=lambda **kwargs: []),
+    )
+    result = {"verdict": "SAFE"}
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result == {"verdict": "SAFE"}
+
+
+def test_support_journal_attaches_safe_match_without_upgrade(
+    monkeypatch, tmp_path
+) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    record = SimpleNamespace(id="one", to_dict=lambda: {"verdict": "SAFE"})
+    monkeypatch.setattr(
+        journal_module,
+        "DecisionJournal",
+        lambda root: SimpleNamespace(search=lambda **kwargs: [record]),
+    )
+    result = {"verdict": "SAFE"}
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result["related_decisions"] == [{"verdict": "SAFE"}]
+
+
+def test_support_journal_upgrades_top_level_without_summary(
+    monkeypatch, tmp_path
+) -> None:
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.decision_journal as journal_module
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    record = SimpleNamespace(id="one", to_dict=lambda: {"verdict": "REVIEW"})
+    monkeypatch.setattr(
+        journal_module,
+        "DecisionJournal",
+        lambda root: SimpleNamespace(search=lambda **kwargs: [record]),
+    )
+    result = {"verdict": "SAFE"}
+    support._enrich_with_journal_decisions(result, str(tmp_path), ["a.py"])
+    assert result["verdict"] == "REVIEW"
+
+
+def test_support_canonicalizer_preserves_nonstr_nested_verdict() -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = {"agent_summary": {"verdict": 7}}
+    support._canonicalize_change_impact_verdict(result)
+    assert result == {"agent_summary": {"verdict": 7}}
+
+
+def test_support_pr_summary_only_returns_compact_decision_surface() -> None:
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools import change_impact_support as support
+
+    result = support._finalize_pr_result(
+        {
+            "success": True,
+            "verdict": "SAFE",
+            "agent_summary": {
+                "verdict": "SAFE",
+                "summary_line": "one changed file",
+                "next_step": "run focused test",
+            },
+        },
+        parsed=SimpleNamespace(url="https://example/pull/1", pr_number=1, slug="o/r"),
+        scope_paths=[],
+        scope_paths_invalid=[],
+        changed_files=["a.py"],
+        agent_summary_only=True,
+        output_format="json",
+    )
+
+    assert result["agent_summary_only"] is True
+    assert result["summary_line"] == "one changed file"
+    assert result["next_step"] == "run focused test"
+
+
+def test_strict_snapshot_impact_never_calls_live_analysis(
+    tmp_path, monkeypatch
+) -> None:
+    import subprocess
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[ChangedFile("a.py", "M", True, True, False)],
+        inventory_paths=["a.py"],
+    )
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    subprocess.run(["git", "add", "a.py"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=tmp_path, check=True)
+    (tmp_path / "a.py").write_text("x = 2\n")
+    monkeypatch.setattr(
+        tool_module,
+        "_build_change_impact_result",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("live analysis")),
+    )
+
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {"capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+
+    assert result["affected_files_unknown"] is True
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_snapshot_exception_releases_pin_and_closes_lease(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    import pytest
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    released: list[bool] = []
+    closed: list[tuple[str, str]] = []
+    frozen = {
+        "success": True,
+        "diff_snapshot_id": "ds",
+        "route_lease_id": "lease",
+        "changed_records": [],
+    }
+    consumer = SimpleNamespace(release=lambda: released.append(True))
+    monkeypatch.setattr(registry.REGISTRY, "create", lambda *args: frozen)
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *args: (consumer, None))
+    monkeypatch.setattr(
+        registry.REGISTRY,
+        "close_lease",
+        lambda sid, lease: closed.append((sid, lease)) or True,
+    )
+    monkeypatch.setattr(
+        tool_module.ChangeImpactTool,
+        "_execute_frozen_snapshot",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("analysis")),
+    )
+
+    with pytest.raises(RuntimeError, match="analysis"):
+        asyncio.run(
+            tool_module.ChangeImpactTool(None).execute(
+                {"capture_diff_snapshot": True, "output_format": "json"}
+            )
+        )
+
+    assert (released, closed) == ([True], [("ds", "lease")])
+
+
+def test_attach_diff_snapshot_disabled_preserves_result() -> None:
+    tool = tool_module.ChangeImpactTool(None)
+    result = {"success": True}
+
+    attached = tool._attach_diff_snapshot(result, "diff", False)
+
+    assert attached == {"success": True}
+
+
+def test_pr_analysis_reports_gh_unavailable(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        tool_module,
+        "parse_pr_url",
+        lambda url: SimpleNamespace(url=url, owner="o", repo="r", number=1),
+    )
+    monkeypatch.setattr(tool_module, "check_gh_available", lambda: False)
+
+    result = tool_module.ChangeImpactTool(None)._execute_pr_analysis(
+        "https://github.com/o/r/pull/1",
+        True,
+        "json",
+        [],
+        False,
+    )
+
+    assert result["error"] == "gh CLI not available or not authenticated"
+
+
+def _strict_capture_repo(tmp_path, files: dict[str, str]):
+    import subprocess
+
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+    for name, content in files.items():
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"], cwd=tmp_path, check=True, capture_output=True
+    )
+
+
+def test_strict_snapshot_root_scope_matches_all_paths(tmp_path, monkeypatch) -> None:
+    # PR #1252 review thread 3746878572.
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[ChangedFile("pkg/a.py", "M", True, True, False)],
+        inventory_paths=["pkg/a.py"],
+    )
+    _strict_capture_repo(tmp_path, {"pkg/a.py": "x = 1\n"})
+    (tmp_path / "pkg/a.py").write_text("x = 2\n")
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {
+                "capture_diff_snapshot": True,
+                "scope_paths": ["."],
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["changed_files"] == ["pkg/a.py"]
+    assert result["scope_paths_invalid"] == []
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_snapshot_rename_matches_deleted_old_scope(
+    tmp_path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3746878577.
+    import subprocess
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[ChangedFile("new.py", "R", True, True, False, old_path="old.py")],
+        inventory_paths=["new.py"],
+    )
+    _strict_capture_repo(tmp_path, {"old.py": "x = 1\n"})
+    subprocess.run(["git", "mv", "old.py", "new.py"], cwd=tmp_path, check=True)
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {
+                "capture_diff_snapshot": True,
+                "mode": "staged",
+                "scope_paths": ["old.py"],
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["changed_files"] == ["new.py"]
+    assert result["scope_paths_invalid"] == []
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_snapshot_filters_tool_cache_paths(tmp_path, monkeypatch) -> None:
+    # PR #1252 review thread 3746878600.
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[ChangedFile(".ast-cache/index.db", "M", True, True, False)],
+        inventory_paths=[".ast-cache/index.db"],
+    )
+    _strict_capture_repo(tmp_path, {".ast-cache/index.db": "one\n"})
+    (tmp_path / ".ast-cache/index.db").write_text("two\n")
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {"capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+    assert (result["changed_files"], result["changed_records"]) == ([], [])
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_snapshot_filters_non_utf8_cache_child_before_wire(
+    tmp_path, monkeypatch
+) -> None:
+    # PR #1252 review thread PRRT_kwDOPVL-OM6X3LAT.
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    raw_path = b".ast-cache/\xff.db"
+    path = raw_path.decode("utf-8", "surrogateescape")
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[
+            ChangedFile(
+                path,
+                "M",
+                True,
+                True,
+                False,
+                _raw_path=raw_path,
+            )
+        ],
+        inventory_paths=[path],
+    )
+    monkeypatch.setattr(
+        os,
+        "fsencode",
+        lambda value: (_ for _ in ()).throw(AssertionError("host filesystem codec")),
+    )
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {"capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+
+    assert result["changed_files"] == []
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_summary_only_preserves_snapshot_surface(tmp_path, monkeypatch) -> None:
+    # PR #1252 review thread 3746878602.
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[ChangedFile("a.py", "M", True, True, False)],
+        inventory_paths=["a.py"],
+    )
+    _strict_capture_repo(tmp_path, {"a.py": "x = 1\n"})
+    (tmp_path / "a.py").write_text("x = 2\n")
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {
+                "capture_diff_snapshot": True,
+                "agent_summary_only": True,
+                "output_format": "json",
+            }
+        )
+    )
+    keys = (
+        "diff_snapshot_id",
+        "route_lease_id",
+        "source_generation",
+        "changed_records",
+    )
+    assert tuple(key in result for key in keys) == (True, True, True, True)
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_early_error_uses_requested_toon_formatter() -> None:
+    # PR #1252 review thread 3746878603.
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(".").execute(
+            {"capture_diff_snapshot": True, "mode": "branch", "output_format": "toon"}
+        )
+    )
+    assert result["format"] == "toon"
+    assert isinstance(result["toon_content"], str)
+
+
+def test_strict_scope_response_projects_changed_records(tmp_path, monkeypatch) -> None:
+    # PR #1252 review thread 3746940429.
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[
+            ChangedFile("a.py", "M", True, True, False),
+            ChangedFile("b.py", "M", True, True, False),
+        ],
+        inventory_paths=["a.py", "b.py"],
+    )
+    _strict_capture_repo(tmp_path, {"a.py": "a = 1\n", "b.py": "b = 1\n"})
+    (tmp_path / "a.py").write_text("a = 2\n")
+    (tmp_path / "b.py").write_text("b = 2\n")
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {
+                "capture_diff_snapshot": True,
+                "scope_paths": ["a.py"],
+                "scope_mode": "strict",
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert [record["path"] for record in result["changed_records"]] == ["a.py"]
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_frozen_snapshot_rejects_git_magic_scope_with_toon() -> None:
+    # PR #1252 review thread 3747224326.
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(".").execute(
+            {
+                "capture_diff_snapshot": True,
+                "scope_paths": [":(glob)src/*.py"],
+                "output_format": "toon",
+            }
+        )
+    )
+
+    assert result["format"] == "toon"
+    assert "DIFF_SNAPSHOT_UNSUPPORTED_SCOPE" in result["toon_content"]
+
+
+def test_scope_matches_compatibility_wrapper_uses_filesystem_bytes() -> None:
+    # PR #1252 zero-gate 2026-07-02: wrapper keeps raw prefix semantics.
+    assert tool_module._scope_matches("src", "src/main.py") is True
+
+
+def test_strict_scope_rename_into_cache_keeps_visible_source_record(
+    tmp_path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3751175562.
+    import subprocess
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[
+            ChangedFile(
+                ".ast-cache/new.py",
+                "R",
+                True,
+                True,
+                False,
+                old_path="old.py",
+            )
+        ],
+        inventory_paths=[".ast-cache/new.py"],
+    )
+    _strict_capture_repo(tmp_path, {"old.py": "x = 1\n"})
+    (tmp_path / ".ast-cache").mkdir()
+    subprocess.run(
+        ["git", "mv", "old.py", ".ast-cache/new.py"], cwd=tmp_path, check=True
+    )
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {
+                "capture_diff_snapshot": True,
+                "mode": "staged",
+                "scope_paths": ["old.py"],
+                "scope_mode": "strict",
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert result["changed_files"] == ["old.py"]
+    assert [
+        (record["status"], record["old_path"], record["path"])
+        for record in result["changed_records"]
+    ] == [("R", "old.py", ".ast-cache/new.py")]
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
     )

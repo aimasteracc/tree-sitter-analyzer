@@ -24,11 +24,18 @@ Covers all §5 required cases from ``.recon/p0-facade-framework-spec.md``:
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+from tests.unit._diff_snapshot_support import (
+    POSIX_SNAPSHOT_TEST,
+    install_fake_snapshot_materializer,
+    make_repo,
+)
 from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
 from tree_sitter_analyzer.mcp.tools.facade_tool import FacadeTool
 
@@ -147,6 +154,23 @@ def test_impact_action_description_documents_mode_param() -> None:
     assert "mode (diff|staged|branch|pr" in _EDIT_DESCRIPTION
 
 
+def test_impact_snapshot_producer_is_publicly_discoverable() -> None:
+    # PR #1252 review thread 3751415929: schema clients must find the producer.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    properties = build_edit_facade(None).get_tool_definition()["inputSchema"][
+        "properties"
+    ]
+
+    assert properties["capture_diff_snapshot"] == {
+        "type": "boolean",
+        "description": (
+            "Explicitly produce a frozen diff ID for same-process consumers; "
+            "supported only on POSIX."
+        ),
+    }
+
+
 def test_edit_facade_all_actions_present() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
@@ -160,6 +184,7 @@ def test_edit_facade_all_actions_present() -> None:
         "pr",
         "classify",
         "ast_diff",
+        "release_snapshot",
     }
     registered = set(facade.action_map) | set(facade.bespoke_map)
     assert expected == registered
@@ -269,11 +294,11 @@ def test_guard_symbol_passes_through_unchanged() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_no_bespoke_routes() -> None:
+def test_release_snapshot_is_the_only_bespoke_route() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     facade = build_edit_facade(project_root=None)
-    assert facade.bespoke_map == {}, "edit facade should have no bespoke routes"
+    assert set(facade.bespoke_map) == {"release_snapshot"}
     assert len(facade.action_map) == 8
 
 
@@ -386,7 +411,7 @@ def test_build_edit_facade_returns_facade_tool() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     facade = build_edit_facade(project_root=None)
-    assert type(facade) is FacadeTool
+    assert isinstance(facade, FacadeTool)
 
 
 # ---------------------------------------------------------------------------
@@ -533,6 +558,7 @@ def test_edit_facade_schema_includes_action_and_required() -> None:
         "pr",
         "classify",
         "ast_diff",
+        "release_snapshot",
     }
     assert expected == enum_vals
 
@@ -697,3 +723,217 @@ def test_action_pr_explicit_diff_mode_still_reaches_diff() -> None:
     # diff mode reviews local changes — must not demand pr_url
     assert result["success"] is True
     assert result.get("error") is None or "pr_url" not in str(result.get("error"))
+
+
+@pytest.mark.asyncio
+async def test_edit_impact_preserves_legacy_branch_mode(monkeypatch) -> None:
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    seen: list[dict[str, object]] = []
+
+    async def fake_execute(self, arguments):
+        seen.append(arguments)
+        return {"success": True}
+
+    monkeypatch.setattr(ChangeImpactTool, "execute", fake_execute)
+    await build_edit_facade(None).execute({"action": "impact", "mode": "branch"})
+
+    assert seen == [{"mode": "branch"}]
+
+
+@pytest.mark.asyncio
+async def test_edit_snapshot_consumer_rejects_conflicting_arguments() -> None:
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS"):
+        await build_edit_facade(None).execute(
+            {
+                "action": "ast_diff",
+                "diff_snapshot_id": "ds",
+                "file_path": "x.py",
+                "old_code": "bad",
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_edit_snapshot_consumer_accepts_only_frozen_arguments() -> None:
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    result = await build_edit_facade(None).execute(
+        {
+            "action": "ast_diff",
+            "diff_snapshot_id": "missing",
+            "file_path": "x.py",
+            "output_format": "json",
+        }
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_EXPIRED"
+
+
+@POSIX_SNAPSHOT_TEST
+def test_edit_impact_snapshot_opt_in_does_not_write(tmp_path: Path) -> None:
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    root = make_repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    before = {path.relative_to(root) for path in root.rglob("*")}
+    facade = build_edit_facade(str(root))
+
+    result = asyncio.run(
+        facade.execute(
+            {
+                "action": "impact",
+                "mode": "diff",
+                "capture_diff_snapshot": True,
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert result["success"] is True
+    assert result["changed_files"] == ["old.py"]
+    assert {path.relative_to(root) for path in root.rglob("*")} == before
+    assert (
+        snapshots.close_route_lease(
+            str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+        )
+        is True
+    )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_edit_impact_rejects_clean_tracked_transient_write_restore(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Strict impact cannot certify analysis that observed a transient clean file."""
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+    from tree_sitter_analyzer.mcp.tools.utils import change_impact_analysis
+
+    # RFC-0022 P0.2 review 2026-07-01: dependency analysis consumed a clean
+    # tracked transient and certified success after the callback restored it.
+    root = make_repo(tmp_path)
+    changed = root / "old.py"
+    dependency = root / "gone.py"
+    changed.write_text("value = 2\n")
+    original = dependency.read_bytes()
+    observations: list[bytes] = []
+
+    def legacy_dependency_analysis(_project_root):
+        dependency.write_bytes(b"TRANSIENT = True\n")
+        observations.append(dependency.read_bytes())
+        dependency.write_bytes(original)
+        return None
+
+    monkeypatch.setattr(
+        change_impact_analysis, "_load_dependency_graph", legacy_dependency_analysis
+    )
+
+    result = asyncio.run(
+        build_edit_facade(str(root)).execute(
+            {
+                "action": "impact",
+                "mode": "diff",
+                "capture_diff_snapshot": True,
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert observations == []
+    assert dependency.read_bytes() == original
+    assert result["affected_files_unknown"] is True
+
+
+def test_edit_release_snapshot_is_same_process_reachable_and_idempotent(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3746878592.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    root = make_repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    install_fake_snapshot_materializer(monkeypatch, root)
+    registry = snapshots.DiffSnapshotRegistry()
+    monkeypatch.setattr(snapshots, "REGISTRY", registry)
+    created = registry.create(str(root), "diff", [])
+    args = {
+        "action": "release_snapshot",
+        "diff_snapshot_id": created["diff_snapshot_id"],
+        "route_lease_id": created["route_lease_id"],
+        "output_format": "json",
+    }
+    facade = build_edit_facade(str(root))
+
+    first = asyncio.run(facade.execute(args))
+    second = asyncio.run(facade.execute(args))
+
+    assert (first["released"], second["released"]) == (True, True)
+
+
+def test_edit_release_snapshot_rejects_wrong_ownership_token(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3746878592.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    root = make_repo(tmp_path)
+    install_fake_snapshot_materializer(monkeypatch, root)
+    registry = snapshots.DiffSnapshotRegistry()
+    monkeypatch.setattr(snapshots, "REGISTRY", registry)
+    created = registry.create(str(root), "diff", [])
+
+    result = asyncio.run(
+        build_edit_facade(str(root)).execute(
+            {
+                "action": "release_snapshot",
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "route_lease_id": "wrong",
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert result["error_code"] == "DIFF_SNAPSHOT_LEASE_MISMATCH"
+
+
+def test_edit_release_snapshot_rejects_alternate_source_arguments() -> None:
+    # PR #1252 review thread 3746878592.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS"):
+        asyncio.run(
+            build_edit_facade(".").execute(
+                {
+                    "action": "release_snapshot",
+                    "diff_snapshot_id": "ds",
+                    "route_lease_id": "lease",
+                    "file_path": "alternate.py",
+                }
+            )
+        )
+
+
+def test_edit_release_snapshot_requires_both_ownership_ids() -> None:
+    # PR #1252 review thread 3746878592.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    with pytest.raises(
+        ValueError, match="diff_snapshot_id and route_lease_id are required"
+    ):
+        asyncio.run(
+            build_edit_facade(".").execute(
+                {"action": "release_snapshot", "diff_snapshot_id": "ds"}
+            )
+        )
+
+
+def test_change_impact_annotation_is_non_idempotent_for_optional_capture() -> None:
+    # PR #1252 review thread 3747113064.
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+    definition = ChangeImpactTool().get_tool_definition()
+    assert definition["annotations"]["idempotentHint"] is False

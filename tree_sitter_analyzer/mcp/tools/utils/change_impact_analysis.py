@@ -84,6 +84,7 @@ class ChangeImpactRequest:
     scope_paths: list[str] | None = None
     agent_summary_only: bool = False
     resource_profile: str = RESOURCE_PROFILE_DEFAULT
+    read_only: bool = False
 
 
 def _find_test_files(
@@ -131,9 +132,7 @@ def _find_test_files(
             known_paths,
         ):
             direct_related = raw_direct_related
-        has_named_subsystem = bool(
-            source_subsystem_stems(changed_file, graph_nodes)
-        )
+        has_named_subsystem = bool(source_subsystem_stems(changed_file, graph_nodes))
         retained_direct = [
             test_file
             for test_file in direct_related
@@ -142,17 +141,14 @@ def _find_test_files(
         cross_layer_direct_variants = [
             test_file
             for test_file in direct_related
-            if test_file_subject_stem(test_file)
-            != module_stem_for_path(changed_file)
+            if test_file_subject_stem(test_file) != module_stem_for_path(changed_file)
         ]
         scoped_direct = _most_specific_affinity_matches(
             direct_related,
             changed_file,
         )
         selected_direct = sorted(
-            set(retained_direct)
-            | set(cross_layer_direct_variants)
-            | set(scoped_direct)
+            set(retained_direct) | set(cross_layer_direct_variants) | set(scoped_direct)
         )
         if not selected_direct and direct_related:
             # All filename matches belong to another named subsystem. Only in
@@ -187,9 +183,7 @@ def _most_specific_affinity_matches(
     ranked = [
         (rank, test_file)
         for test_file in test_files
-        if (
-            rank := test_path_subsystem_affinity_rank(test_file, changed_file)
-        )
+        if (rank := test_path_subsystem_affinity_rank(test_file, changed_file))
         is not None
     ]
     if not ranked:
@@ -320,11 +314,7 @@ def _is_runnable_test_file(
         (in_test_dir and name.startswith("test_"))
         or (
             name.endswith(test_suffixes)
-            and (
-                not has_java_test_suffix
-                or in_test_dir
-                or in_java_test_source_set
-            )
+            and (not has_java_test_suffix or in_test_dir or in_java_test_source_set)
         )
         or (in_test_dir and (".test." in name or ".spec." in name))
     )
@@ -852,7 +842,7 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     visible_tests = all_tests[:TESTS_TO_RUN_DISPLAY_LIMIT]
 
     call_graph_data: dict[str, Any] | None = None
-    if request.project_root and request.changed_files:
+    if request.project_root and request.changed_files and not request.read_only:
         cg_result = compute_call_graph_impact(
             request.project_root,
             request.changed_files,
@@ -904,7 +894,11 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     if request.agent_summary_only:
         return _attach_constraint_violations(result, request, affected)
 
-    cache = _ensure_ast_cache(request.project_root, request.changed_files)
+    cache = (
+        None
+        if request.read_only
+        else _ensure_ast_cache(request.project_root, request.changed_files)
+    )
     try:
         changed_symbols = _enrich_with_cache_symbols(request.changed_files, cache)
         if changed_symbols:

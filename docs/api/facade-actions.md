@@ -3,13 +3,13 @@
 > **AUTO-GENERATED — do not edit by hand.** Regenerate with `uv run python scripts/generate_facade_actions_doc.py`.
 > Drift-gated by `tests/unit/docs/test_facade_actions_doc_drift.py` (regenerates in-memory and diffs).
 
-The MCP server exposes **8 facade tools** routing **73 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
+The MCP server exposes **8 facade tools** routing **74 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
 
 Reading the tables:
 
 - **Params** — accepted top-level parameters; `*` marks required ones. Facades mechanically alias the canonical `symbol` onto inner `function_name`/`class_name` params (noted inline). Every facade also accepts `action` (required) itself.
 - **Response keys** — the statically declared `ToolResponse` envelope (`get_output_schema()`); `*` marks guaranteed keys. `error` appears on failures. "+ action payload" means the action layers its own result keys on top (`additionalProperties: true`); payload shapes are not statically declared, so they are not listed here — see the facade description for per-action semantics.
-- **CLI twin** — the CLI flag (or console script) covering the same capability, from the CLI-parity contract. 4 actions have no authoritative CLI mapping and show — (honest gap, not an omission).
+- **CLI twin** — the CLI flag (or console script) covering the same capability, from the CLI-parity contract. 5 actions have no authoritative CLI mapping and show — (honest gap, not an omission).
 - *Bespoke routes* (closures with hand-rolled arg handling, e.g. `nav action=test_map`) have their params pinned in the generator with source provenance; the generator fails if the live route set drifts from those pins.
 
 ## `search` — 9 actions
@@ -76,17 +76,18 @@ Reading the tables:
 | `scale` | `file_path`, `file_paths`, `include_complexity`, `include_details`, `include_guidance`, `language`, `metrics_only`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--metrics-only` |
 | `test_gap` | `coverage_json`, `file_path`, `include_covered`, `language`, `max_files`, `max_gaps`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--test-gap` |
 
-## `edit` — 8 actions
+## `edit` — 9 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
-| `ast_diff` | `file_path`, `include_node_bodies`, `language`, `mode`, `new_file`, `new_ref`, `new_source`, `old_file`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-diff` |
-| `classify` | `file_path`, `hunk_cap`, `include_ast_nodes`, `language`, `mode`, `new_ref`, `new_source`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--semantic-classify` |
+| `ast_diff` | `diff_snapshot_id`, `file_path`, `include_node_bodies`, `language`, `mode`, `new_file`, `new_ref`, `new_source`, `old_file`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-diff` |
+| `classify` | `diff_snapshot_id`, `file_path`, `hunk_cap`, `include_ast_nodes`, `language`, `mode`, `new_ref`, `new_source`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--semantic-classify` |
 | `constraints` | `output_format`, `path_filter`, `severity_min` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-constraints` |
 | `guard` | `modification_type`*, `symbol`*, `file_path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--modification-guard` |
-| `impact` | `agent_summary_only`, `compact_only`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
+| `impact` | `agent_summary_only`, `capture_diff_snapshot`, `compact_only`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` — `capture_diff_snapshot` is an explicit boolean producer available only to same-process POSIX consumers | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
 | `pr` | `include_call_graph`, `mode`, `output_format`, `pr_url` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pr-review` |
 | `refactor` | `file_path`*, `include_extractions`, `include_skeleton`, `language`, `max_suggestions`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--refactor` |
+| `release_snapshot` | `diff_snapshot_id`*, `route_lease_id`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
 | `safe` | `file_path`*, `compact_only`, `edit_type`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--safe-to-edit` |
 
 ## `project` — 10 actions

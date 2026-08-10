@@ -75,13 +75,26 @@ task-computed hash are never freshness evidence.
 ### P0.2 Frozen workspace/staged diff snapshot
 
 V1 accepts only `workspace` and `staged`. They map respectively to
-`edit.impact(mode="diff", ...)` and `edit.impact(mode="staged", ...)`.
+`edit.impact(mode="diff", ...)` and `edit.impact(mode="staged", ...)`. Explicit
+snapshot capture is POSIX-only in Phase 0: safely binding the root-to-leaf path
+and Git-index identities requires `openat`/`O_NOFOLLOW`. Native Windows cannot
+provide that binding for ancestor reparse points, so both inputs fail closed with
+`DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED` before Git or file capture. A `ctypes`
+handle or check-then-open fallback is forbidden because it would reintroduce
+TOCTOU traversal. This restriction does not affect legacy staged change-impact
+when `capture_diff_snapshot` is false; that existing Windows route remains
+supported. Phase 0
+`scope_paths` are literal repository-relative paths only: a leading `:` (Git
+magic/pathspec syntax) fails before capture with the stable
+`DIFF_SNAPSHOT_UNSUPPORTED_SCOPE` envelope; the runtime never consults live Git
+to reinterpret scope against a frozen inventory.
 
 Before Phase A, the edit-adapter runtime must own a process-local, non-persistent
 snapshot registry. `edit.impact` atomically materializes the normalized patch and
 all available old/new bytes into an immutable registry entry, then returns its
 opaque `diff_snapshot_id`, `source_generation`, changed-file records (`path`,
-`status`, old/new availability, binary flag), and `assessed_scope_paths`: the
+`status`, old/new availability, binary flag, Git kind/mode/OID), and
+`assessed_scope_paths`: the
 primitive-normalized union of changed paths and impact-produced affected/blast-
 radius paths. `edit.ast_diff` and `edit.classify` accept only that ID plus
 `file_path`; they never reconstruct the captured input. The task only fans out
@@ -99,8 +112,17 @@ release erases an expired entry; otherwise the orchestration host closes the
 primitive-issued route lease in a `finally` block after outcome freeze/failure,
 and erasure occurs once both lease and consumer counts reach zero. Thus an
 overrunning call keeps valid bytes without ever allowing actual retained memory
-or live-slot accounting to exceed the 16-entry/64 MiB budgets. Access after
-expiry or lease close returns `DIFF_SNAPSHOT_EXPIRED`.
+or live-slot accounting to exceed the 16-entry/64 MiB budgets. The long-lived
+MCP process exposes `edit(action="release_snapshot", diff_snapshot_id=id,
+route_lease_id=lease)` so a successful route can close ownership early; repeating
+the exact ID/token pair is idempotent, while a mismatched ownership token fails.
+Access after expiry or lease close returns `DIFF_SNAPSHOT_EXPIRED`.
+
+Phase 0 snapshot and lease IDs are deliberately process-local. A one-shot CLI
+process dies before another invocation can safely consume or release them, so
+there is intentionally no `--diff-snapshot-id` or snapshot-release CLI flag.
+Cross-process persistence and a one-shot task/orchestration facade are Phase A
+work behind the public-surface gate, not Phase 0 CLI parity requirements.
 
 Before every snapshot-consuming call (`constraints`, `ast_diff`, or `classify`),
 its primitive owner acquires that pin, then reacquires and compares the shared-
@@ -109,7 +131,50 @@ oracle generation captured by `impact`; a changed source returns
 makes the task stop remaining diff fan-out. Consumer release is also in a
 `finally` block. These stable errors are result data, not exceptions whose text
 is serialized. No snapshot directory, temp file, DB, WAL, or implicit persistent
-cache is permitted.
+cache is permitted inside the project. Capture may use mode-0600 normal indexes
+and a temporary object directory outside the project; these are request-scoped,
+share the same deadline/budget, use the repository object store only as a read-only
+alternate, and are unconditionally deleted. The first oracle pass freezes exact
+stage entries plus HEAD/object-format identity. A missing index is explicitly
+framed as missing and modeled as an empty staged index for both born and unborn
+HEADs; the private environment creates it with ``read-tree --empty``, so a born
+HEAD reports every HEAD entry as a staged deletion. All patch/status/numstat/blob reads
+are then bound to rebuilt temporary indexes, never the live index or worktree.
+Arbitrary Git path bytes use the lossless ``git-path-b64:<urlsafe-base64>`` wire
+codec (literal names with that prefix are encoded too). Tool cache exclusions
+match ASCII ``.ast-cache`` and ``.tree-sitter-cache`` raw path segments before
+wire encoding, including descendants whose remaining bytes are not UTF-8; scope,
+reporting, and queue accounting all use that same filtered identity set. Every snapshot-owned Git
+command (oracle generation, HEAD/index enumeration, config/attribute capture,
+hashing, diffing, and request-scoped temporary/shadow plumbing) runs with
+``GIT_ATTR_NOSYSTEM=1`` and ``GIT_NO_REPLACE_OBJECTS=1``. Replacement refs are
+mutable name-resolution policy and are never consulted: oracle identities, old
+entries, patches, and records all use the original HEAD object graph. External
+``diff.orderFile`` is likewise policy, not snapshot input: effective-config
+capture, serialization, and fingerprints discard that key, while every oracle,
+payload, and pre/post verification Git command overrides it with a validated
+request-scoped empty regular file outside the project (never ``/dev/null``).
+Changing the referenced external file is therefore transient and cannot change
+snapshot identity, patch, or record order. Records are finally sorted by
+normalized internal raw destination bytes with status and raw source bytes as
+stable ties, independently of Git output order. P0.2
+therefore deliberately excludes machine system attributes: payload and oracle
+use the same deterministic attribute policy, while repository/info and captured
+``core.attributesFile`` inputs remain frozen. Worktree attribute sources are not
+discovered by a filesystem walk: root and per-directory ``.gitattributes``
+candidates are derived from every bounded index/untracked target path, safely
+read without following links (including ignored candidates), framed into the
+source generation, and materialized in the isolated shadow. Git's built-in text/eol/autocrlf
+conversion is supported; an active ``filter`` attribute (boolean ``set`` or a
+driver value, including LFS) fails before any ``hash-object`` with
+``DIFF_SNAPSHOT_UNSUPPORTED_FILTER`` so no external clean driver executes.
+Strict AST/classification consumers infer language only from the captured
+normalized path extension; a caller language override conflicts, and an unknown
+extension returns ``DIFF_SNAPSHOT_UNSUPPORTED_LANGUAGE``.
+
+Because ``edit.impact`` conditionally allocates a fresh snapshot ID, lease, slot,
+and byte charge, its MCP annotation is conservatively mixed/non-idempotent
+(``idempotentHint=false``), even when capture is not requested.
 
 Rename, add, delete, multi-file, binary, capacity, expiry, lease cleanup, and
 mid-route workspace mutation are primitive contract tests. Today these adapters

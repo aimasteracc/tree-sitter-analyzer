@@ -38,6 +38,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..utils.format_helper import apply_toon_format_to_response
 from .facade_tool import FacadeTool
 
 # Annotation honesty — see module docstring above.
@@ -64,7 +65,8 @@ _EDIT_DESCRIPTION = (
     "- action=impact — post-edit dependency blast-radius scan combining git diff + "
     "dependency graph: affected files, must-run tests, risk verdict (SAFE/REVIEW/WARN). "
     "Call after every non-trivial edit. Params: mode (diff|staged|branch|pr, "
-    "default: diff), scope_paths, output_format.\n"
+    "default: diff), scope_paths, output_format, capture_diff_snapshot (boolean; "
+    "explicit opt-in, same-process POSIX producer only).\n"
     "- action=refactor — refactoring-opportunity analysis for a source file: extract "
     "candidates, complexity hotspots, skeleton. Params: file_path, language, "
     "max_suggestions, include_extractions, include_skeleton, output_format.\n"
@@ -84,6 +86,8 @@ _EDIT_DESCRIPTION = (
     "diff_strings (old_source + new_source + language), "
     "diff_git (old_ref + new_ref + file_path). "
     "Params: see inner schema.\n"
+    "- action=release_snapshot — idempotently release a process-local frozen diff. "
+    "Params: diff_snapshot_id + route_lease_id.\n"
     "NOTE: ``safe``/``impact``/``classify``/``constraints``/``pr``/``ast_diff`` are "
     "read-only in practice; ``refactor``/``guard`` suggest changes but do not write "
     "files. readOnlyHint is False for the whole facade (mixed action set)."
@@ -102,6 +106,29 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     from .change_impact_tool import ChangeImpactTool
     from .codegraph_pr_review_tool import CodeGraphPRReviewTool
     from .modification_guard_tool import MODIFICATION_TYPES
+
+    impact_tool = ChangeImpactTool(project_root)
+
+    async def release_snapshot(arguments: dict[str, Any]) -> dict[str, Any]:
+        """Release one process-local RFC-0022 lease through the live MCP process."""
+        from ...diff_snapshot_registry import REGISTRY
+
+        snapshot_id = arguments.get("diff_snapshot_id")
+        lease_id = arguments.get("route_lease_id")
+        output_format = arguments.get("output_format", "toon")
+        if not isinstance(snapshot_id, str) or not isinstance(lease_id, str):
+            raise ValueError("diff_snapshot_id and route_lease_id are required")
+        error = REGISTRY.release_route_lease(snapshot_id, lease_id)
+        result: dict[str, Any] = {
+            "success": error is None,
+            "verdict": "INFO" if error is None else "ERROR",
+            "diff_snapshot_id": snapshot_id,
+            "released": error is None,
+            "output_format": output_format,
+        }
+        if error is not None:
+            result.update(error=error, error_code=error)
+        return apply_toon_format_to_response(result, output_format)
 
     class _PRReviewViaFacade(CodeGraphPRReviewTool):
         """Facade ``action=pr`` implies ``mode=pr``.
@@ -123,21 +150,46 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     from .safe_to_edit_tool import SafeToEditTool
     from .semantic_classify_tool import SemanticClassifyTool
 
-    facade = FacadeTool(
+    class _StrictEditFacade(FacadeTool):
+        async def execute(self, arguments: dict[str, Any]) -> Any:
+            action = arguments.get("action")
+            if action == "release_snapshot":
+                allowed = {
+                    "action",
+                    "diff_snapshot_id",
+                    "route_lease_id",
+                    "output_format",
+                }
+                if set(arguments) - allowed:
+                    raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
+            if action in ("classify", "ast_diff") and arguments.get("diff_snapshot_id"):
+                allowed = {
+                    "action",
+                    "diff_snapshot_id",
+                    "file_path",
+                    "language",
+                    "include_node_bodies",
+                    "include_ast_nodes",
+                    "hunk_cap",
+                    "output_format",
+                }
+                if set(arguments) - allowed:
+                    raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
+            return await super().execute(arguments)
+
+    facade = _StrictEditFacade(
         facade_name="edit",
         action_map={
             "safe": SafeToEditTool(project_root),
             "guard": ModificationGuardTool(project_root),
-            "impact": ChangeImpactTool(project_root),
+            "impact": impact_tool,
             "refactor": RefactoringSuggestionsTool(project_root),
             "constraints": ConstraintCheckTool(project_root),
             "pr": _PRReviewViaFacade(project_root),
             "classify": SemanticClassifyTool(project_root),
             "ast_diff": ASTDiffTool(project_root),
         },
-        # No bespoke routes: all eight inners follow the normal action_map
-        # pattern (dict return, schema-projectable args, no union return type).
-        bespoke_map={},
+        bespoke_map={"release_snapshot": release_snapshot},
         description=_EDIT_DESCRIPTION,
         annotations=_EDIT_ANNOTATIONS,
         project_root=project_root,
@@ -147,6 +199,21 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
         # so facade/inner never drift. Never added to required[] (runtime-
         # resolved param convention, locked #397 family).
         extra_public_params={
+            "capture_diff_snapshot": {
+                "type": "boolean",
+                "description": (
+                    "Explicitly produce a frozen diff ID for same-process consumers; "
+                    "supported only on POSIX."
+                ),
+            },
+            "diff_snapshot_id": {
+                "type": "string",
+                "description": "RFC-0022 frozen diff ID for classify/ast_diff/release_snapshot.",
+            },
+            "route_lease_id": {
+                "type": "string",
+                "description": "Ownership token required by action=release_snapshot.",
+            },
             "modification_type": {
                 "type": "string",
                 "enum": list(MODIFICATION_TYPES),

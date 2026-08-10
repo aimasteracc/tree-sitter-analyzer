@@ -17,6 +17,7 @@ from tree_sitter_analyzer.mcp.utils.format_helper import (
     format_for_file_output,
     format_output,
     get_formatter,
+    preformat_diff_snapshot_publish_errors,
 )
 
 
@@ -531,3 +532,23 @@ class TestIntegration:
         assert "metadata" in attached
         assert "status" in attached
         assert "toon_content" in attached
+
+
+def test_final_oracle_toon_preserves_unsupported_filter_code() -> None:
+    # PR #1252 review thread 3751415923: final oracle errors stay actionable.
+    errors, _generic = preformat_diff_snapshot_publish_errors(
+        "toon", apply_toon_format_to_response
+    )
+
+    assert errors["DIFF_SNAPSHOT_UNSUPPORTED_FILTER"] == {
+        "format": "toon",
+        "toon_content": (
+            "success: false\nverdict: ERROR\n"
+            "error_code: DIFF_SNAPSHOT_UNSUPPORTED_FILTER\n"
+            "error: DIFF_SNAPSHOT_UNSUPPORTED_FILTER"
+        ),
+        "success": False,
+        "verdict": "ERROR",
+        "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",
+        "error": "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",
+    }

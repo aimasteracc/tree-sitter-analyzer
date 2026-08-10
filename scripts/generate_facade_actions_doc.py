@@ -78,9 +78,17 @@ CONDITIONAL_PARAM_NOTES: dict[tuple[str, str], str] = {
         "requires `file_path` or `symbol`; file-scoped queries take "
         "exactly one of `query_key`/`query_string`"
     ),
+    ("edit", "impact"): (
+        "`capture_diff_snapshot` is an explicit boolean producer available only "
+        "to same-process POSIX consumers"
+    ),
 }
 
 BESPOKE_ROUTE_SPECS: dict[tuple[str, str], dict[str, Any]] = {
+    ("edit", "release_snapshot"): {
+        "params": "`diff_snapshot_id`*, `route_lease_id`*, `output_format`",
+        "source": "edit_facade.py::release_snapshot",
+    },
     ("nav", "context"): {
         "params": (
             "`task`* (or `symbol`/`query` as alias), `max_nodes`, "

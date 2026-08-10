@@ -960,6 +960,13 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための55�
 - **FileRestrictionError**: ファイルアクセス制限
 - **PathTraversalError**: パストラバーサル攻撃
 
+For RFC-0022 explicit frozen snapshot capture, native Windows returns the stable
+`DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED` tool error before opening Git or workspace
+files. This is a fail-closed security boundary: Windows ancestor reparse points
+cannot be bound with the required `openat`/`O_NOFOLLOW` semantics, and unsafe
+`ctypes` or check-then-open fallbacks are not used. Legacy staged change-impact
+without `capture_diff_snapshot=true` remains supported on Windows.
+
 ### Error Context Sanitization
 
 エラーレスポンスは自動的に機密情報を除去します：

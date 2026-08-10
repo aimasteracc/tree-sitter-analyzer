@@ -13,10 +13,14 @@ Can operate in two modes:
 from typing import Any
 
 from ...ast_diff import ASTDiffer
+from ...git_path_codec import path_to_wire
 from ...project_graph import _language_from_ext
 from ...semantic_change_classifier import SemanticChangeClassifier
 from ...utils import setup_logger
-from ..utils.format_helper import apply_toon_format_to_response
+from ..utils.format_helper import (
+    apply_toon_format_to_response,
+    preformat_diff_snapshot_publish_errors,
+)
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -100,6 +104,10 @@ class SemanticClassifyTool(BaseMCPTool):
         return {
             "type": "object",
             "properties": {
+                "diff_snapshot_id": {
+                    "type": "string",
+                    "description": "RFC-0022 frozen snapshot ID; with file_path this strict path never rereads the workspace.",
+                },
                 "mode": {
                     "type": "string",
                     # pain #11 (dogfood pass 2): the tests pinned a contract
@@ -192,6 +200,19 @@ class SemanticClassifyTool(BaseMCPTool):
         return "classify_string"
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        if arguments.get("diff_snapshot_id"):
+            allowed = {
+                "diff_snapshot_id",
+                "file_path",
+                "include_ast_nodes",
+                "hunk_cap",
+                "output_format",
+            }
+            if set(arguments) - allowed:
+                raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
+            if not arguments.get("file_path"):
+                raise ValueError("DIFF_SNAPSHOT_FILE_REQUIRED")
+            return True
         mode = self._resolve_mode(arguments)
         if mode == "classify_string":
             if (
@@ -214,83 +235,195 @@ class SemanticClassifyTool(BaseMCPTool):
         mode = self._resolve_mode(arguments)
         output_format = arguments.get("output_format", "toon")
         differ = self._get_differ()
+        snapshot_id = arguments.get("diff_snapshot_id")
+        consumer = None
+        file_path: str | None
+        try:
+            if snapshot_id:
+                from ...diff_snapshot_registry import REGISTRY
 
-        if mode == "classify_string":
-            diff_result = differ.diff_strings(
-                old_source=arguments["old_source"],
-                new_source=arguments["new_source"],
-                language=arguments["language"],
-            )
-            file_path = arguments.get("file_path")
-        elif mode == "classify_file":
-            file_path = arguments["file_path"]
-            diff_result = self._diff_git(differ, arguments)
-        else:
-            raise ValueError(f"Unknown mode: {mode}")
+                consumer, error = REGISTRY.acquire(str(snapshot_id), self.project_root)
+                if error:
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": error,
+                            "error": error,
+                        },
+                        output_format,
+                    )
+                assert consumer is not None
+                frozen = consumer.snapshot.file(arguments["file_path"])
+                if frozen is None:
+                    error = "DIFF_SNAPSHOT_FILE_NOT_FOUND"
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "NOT_FOUND",
+                            "error_code": error,
+                            "error": error,
+                        },
+                        output_format,
+                    )
+                file_path = frozen.record.path
+                language = _language_from_ext(file_path)
+                if not language:
+                    error = "DIFF_SNAPSHOT_UNSUPPORTED_LANGUAGE"
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": error,
+                            "error": error,
+                        },
+                        output_format,
+                    )
+                if (
+                    not getattr(
+                        frozen.record, "old_available", frozen.old_bytes is not None
+                    )
+                    or not getattr(
+                        frozen.record, "new_available", frozen.new_bytes is not None
+                    )
+                    or getattr(frozen.record, "status", None) in ("R", "C")
+                    or getattr(frozen.record, "unsupported_kind", None) is not None
+                    or frozen.record.binary
+                    or any(
+                        kind not in ("file", "missing")
+                        for kind in (
+                            getattr(frozen.record, "old_kind", "file"),
+                            getattr(frozen.record, "new_kind", "file"),
+                        )
+                    )
+                ):
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
+                            "error": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
+                        },
+                        output_format,
+                    )
+                try:
+                    old_source = (frozen.old_bytes or b"").decode("utf-8", "strict")
+                    new_source = (frozen.new_bytes or b"").decode("utf-8", "strict")
+                except UnicodeDecodeError:
+                    return apply_toon_format_to_response(
+                        {
+                            "success": False,
+                            "verdict": "ERROR",
+                            "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
+                            "error": "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT",
+                        },
+                        output_format,
+                    )
+                diff_result = differ.diff_strings(
+                    old_source=old_source,
+                    new_source=new_source,
+                    language=language,
+                    old_file=f"{snapshot_id}:old:{file_path}",
+                    new_file=f"{snapshot_id}:new:{file_path}",
+                )
+            elif mode == "classify_string":
+                diff_result = differ.diff_strings(
+                    old_source=arguments["old_source"],
+                    new_source=arguments["new_source"],
+                    language=arguments["language"],
+                )
+                file_path = arguments.get("file_path")
+            elif mode == "classify_file":
+                file_path = arguments["file_path"]
+                diff_result = self._diff_git(differ, arguments)
+            else:
+                raise ValueError(f"Unknown mode: {mode}")
 
-        classifier = SemanticChangeClassifier(file_path=file_path)
-        classification = classifier.classify(diff_result)
-        # Always deserialize with children so _compact_classification can
-        # strip them (default) or keep them (include_ast_nodes=True).
-        class_dict = classification.to_dict(include_children=True)
+            classifier = SemanticChangeClassifier(file_path=file_path)
+            classification = classifier.classify(diff_result)
+            # Always deserialize with children so _compact_classification can
+            # strip them (default) or keep them (include_ast_nodes=True).
+            class_dict = classification.to_dict(include_children=True)
 
-        # Map risk_level to canonical verdict vocabulary (pain-01 tsa-landing
-        # contract). NOT_FOUND when there are zero classifications (identical
-        # sources) so agents skip downstream change-impact tools.
-        classifications = class_dict.get("classifications") or []
-        risk_level = class_dict.get("risk_level", "medium")
-        if not classifications:
-            verdict = "NOT_FOUND"
-        elif risk_level == "high":
-            verdict = "CAUTION"
-        elif risk_level == "medium":
-            verdict = "REVIEW"
-        else:
-            verdict = "INFO"
+            # Map risk_level to canonical verdict vocabulary (pain-01 tsa-landing
+            # contract). NOT_FOUND when there are zero classifications (identical
+            # sources) so agents skip downstream change-impact tools.
+            classifications = class_dict.get("classifications") or []
+            risk_level = class_dict.get("risk_level", "medium")
+            if not classifications:
+                verdict = "NOT_FOUND"
+            elif risk_level == "high":
+                verdict = "CAUTION"
+            elif risk_level == "medium":
+                verdict = "REVIEW"
+            else:
+                verdict = "INFO"
 
-        include_ast_nodes = bool(arguments.get("include_ast_nodes", False))
-        hunk_cap = int(arguments.get("hunk_cap", 50))
+            include_ast_nodes = bool(arguments.get("include_ast_nodes", False))
+            hunk_cap = int(arguments.get("hunk_cap", 50))
 
-        # #528 — build a compact summary list by default; full AST nodes opt-in.
-        # ClassifiedHunk.to_dict() inlines the full ASTDiffHunk which carries
-        # recursive ASTNodeInfo children — up to 267 nodes per hunk on large files.
-        # Strip children (and optionally the entire hunk) unless opted in.
-        all_classifications = class_dict.get("classifications", [])
-        compact_classifications = [
-            _compact_classification(c, include_ast_nodes=include_ast_nodes)
-            for c in all_classifications
-        ]
+            # #528 — build a compact summary list by default; full AST nodes opt-in.
+            # ClassifiedHunk.to_dict() inlines the full ASTDiffHunk which carries
+            # recursive ASTNodeInfo children — up to 267 nodes per hunk on large files.
+            # Strip children (and optionally the entire hunk) unless opted in.
+            all_classifications = class_dict.get("classifications", [])
+            compact_classifications = [
+                _compact_classification(c, include_ast_nodes=include_ast_nodes)
+                for c in all_classifications
+            ]
 
-        truncated = len(compact_classifications) > hunk_cap
-        listed = compact_classifications[:hunk_cap]
+            truncated = len(compact_classifications) > hunk_cap
+            listed = compact_classifications[:hunk_cap]
 
-        # change_count is part of the agent-contract shape: a scalar that
-        # downstream tools can branch on without walking the classifications
-        # list. Tests pin this name (pain pass 2).
-        response: dict[str, Any] = {
-            "success": True,
-            "file_path": file_path,
-            "diff_hunks": len(diff_result.hunks),
-            "change_count": len(all_classifications),
-            "verdict": verdict,
-            # Scalar summary fields from SemanticClassification (no bulk lists)
-            "dominant_category": class_dict.get("dominant_category"),
-            "dominant_label": class_dict.get("dominant_label"),
-            "risk_level": class_dict.get("risk_level"),
-            "change_summary": class_dict.get("change_summary"),
-            "category_counts": class_dict.get("category_counts"),
-            "classifications": listed,
-        }
+            # change_count is part of the agent-contract shape: a scalar that
+            # downstream tools can branch on without walking the classifications
+            # list. Tests pin this name (pain pass 2).
+            response: dict[str, Any] = {
+                "success": True,
+                "file_path": path_to_wire(file_path)
+                if consumer is not None and file_path is not None
+                else file_path,
+                "diff_hunks": len(diff_result.hunks),
+                "change_count": len(all_classifications),
+                "verdict": verdict,
+                # Scalar summary fields from SemanticClassification (no bulk lists)
+                "dominant_category": class_dict.get("dominant_category"),
+                "dominant_label": class_dict.get("dominant_label"),
+                "risk_level": class_dict.get("risk_level"),
+                "change_summary": class_dict.get("change_summary"),
+                "category_counts": class_dict.get("category_counts"),
+                "classifications": listed,
+            }
 
-        if truncated:
-            response["truncated"] = True
-            response["listed_cap"] = hunk_cap
-            response["next_step"] = (
-                f"Response capped at {hunk_cap} classifications. "
-                f"Use hunk_cap={hunk_cap * 2} to see more, or filter by category."
-            )
+            if truncated:
+                response["truncated"] = True
+                response["listed_cap"] = hunk_cap
+                response["next_step"] = (
+                    f"Response capped at {hunk_cap} classifications. "
+                    f"Use hunk_cap={hunk_cap * 2} to see more, or filter by category."
+                )
 
-        return apply_toon_format_to_response(response, output_format)
+            if consumer is not None:
+                response["diff_snapshot_id"] = getattr(
+                    consumer.snapshot, "snapshot_id", str(snapshot_id)
+                )
+                response["source_generation"] = getattr(
+                    consumer.snapshot, "source_generation", ""
+                )
+            formatted = apply_toon_format_to_response(response, output_format)
+            if consumer is not None:
+                publish_errors, publish_fallback = (
+                    preformat_diff_snapshot_publish_errors(
+                        output_format, apply_toon_format_to_response
+                    )
+                )
+                error = REGISTRY.validate_publish(consumer)
+                if error:
+                    return publish_errors.get(error, publish_fallback)
+            return formatted
+        finally:
+            if consumer is not None:
+                consumer.release()
 
     def _diff_git(self, differ: ASTDiffer, arguments: dict[str, Any]) -> Any:
         import subprocess

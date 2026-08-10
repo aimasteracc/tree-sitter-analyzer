@@ -7,6 +7,7 @@ Provides utility functions for formatting MCP tool output in different formats
 """
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 from ...utils import setup_logger
@@ -279,6 +280,51 @@ def _copy_metadata_fields(
             # Non-empty dict not in the passthrough set → bulk data, strip it
             continue
         toon_response[key] = value
+
+
+DIFF_SNAPSHOT_PUBLISH_ERROR_CODES: tuple[str, ...] = (
+    "DIFF_SNAPSHOT_SOURCE_CHANGED",
+    "DIFF_SNAPSHOT_EXPIRED",
+    "DIFF_SNAPSHOT_ROOT_MISMATCH",
+    "DIFF_SNAPSHOT_NOT_FOUND",
+    "DIFF_SNAPSHOT_WRONG_THREAD",
+    "DIFF_SNAPSHOT_IN_USE",
+    "DIFF_SNAPSHOT_CAPACITY",
+    "DIFF_SNAPSHOT_GIT_ERROR",
+    "DIFF_SNAPSHOT_TIMEOUT",
+    "DIFF_SNAPSHOT_ROOT_INVALID",
+    "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED",
+    "DIFF_SNAPSHOT_UNSAFE_PATH",
+    "DIFF_SNAPSHOT_INVALID_PATH",
+    "DIFF_SNAPSHOT_SPECIAL_FILE",
+    "DIFF_SNAPSHOT_UNSUPPORTED_INDEX",
+    "DIFF_SNAPSHOT_UNSUPPORTED_FILTER",
+    "DIFF_SNAPSHOT_UNSUPPORTED_MODE",
+    "DIFF_SNAPSHOT_CAPTURE_ERROR",
+    "DIFF_SNAPSHOT_CLEANUP_FAILED",
+    "DIFF_SNAPSHOT_UNSAFE_TEMP",
+)
+
+
+def preformat_diff_snapshot_publish_errors(
+    output_format: str,
+    formatter: Callable[[dict[str, Any], str], dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """Format every stable final-validation failure before validation runs."""
+
+    def envelope(code: str) -> dict[str, Any]:
+        return formatter(
+            {
+                "success": False,
+                "verdict": "ERROR",
+                "error_code": code,
+                "error": code,
+            },
+            output_format,
+        )
+
+    errors = {code: envelope(code) for code in DIFF_SNAPSHOT_PUBLISH_ERROR_CODES}
+    return errors, envelope("DIFF_SNAPSHOT_VALIDATION_ERROR")
 
 
 def apply_toon_format_to_response(

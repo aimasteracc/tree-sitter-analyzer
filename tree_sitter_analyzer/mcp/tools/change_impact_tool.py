@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
-"""
-Change Impact Analysis MCP Tool.
+"""Change-impact MCP tool bound to frozen source epochs."""
 
-Combines git diff with dependency graph to provide change impact analysis.
-Tells AI agents: what changed, what's affected, what tests to run.
-
-Supports GitHub PR URL analysis: pass pr_url to fetch diff via gh CLI.
-"""
-
-from pathlib import Path
 from typing import Any
 
+from ...git_path_codec import path_from_wire, path_to_raw, path_to_wire
 from ...pr_url import (
     check_gh_available,
     fetch_pr_changed_files,
@@ -18,7 +11,20 @@ from ...pr_url import (
     parse_pr_url,
 )
 from ..utils.format_helper import apply_toon_format_to_response
-from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
+from .base_tool import BaseMCPTool, mirror_summary_line
+from .change_impact_frozen import build_frozen_scope_result, scope_matches_raw
+from .change_impact_support import (
+    _JOURNAL_VERDICT_RANK as _JOURNAL_VERDICT_RANK,
+)
+from .change_impact_support import (
+    TOOL_SCHEMA,
+    _canonicalize_change_impact_verdict,
+    _enrich_with_journal_decisions,
+    _finalize_pr_result,
+    _pr_gh_unavailable_envelope,
+    _pr_invalid_url_envelope,
+    _scope_paths_invalid,
+)
 from .utils.change_impact_analysis import (
     ChangeImpactRequest,
     _build_change_impact_result,
@@ -34,244 +40,12 @@ from .utils.change_impact_response import (
     build_no_changes_result,
 )
 
-
-def _canonicalize_change_impact_verdict(result: dict[str, Any]) -> None:
-    """Fold both verdict surfaces back to the shared legal vocabulary.
-
-    F1 (round-37f7): the change-impact response builder previously
-    stamped ``verdict="CLEAN"`` for the no-changes path — a token
-    outside :data:`base_tool._LEGAL_VERDICTS`.
-    ``CHANGE_IMPACT_VERDICT_CLEAN`` now stores the canonical
-    ``"SAFE"``, but we also apply :func:`_canonicalize_verdict` at the
-    tool boundary as a belt-and-braces measure: any future helper
-    that re-introduces ``"CLEAN"`` (or any other drift value) gets
-    normalised here before it leaves the tool.
-
-    Mutates in place — the tool's flow uses the same dict reference
-    across the queue-ledger / scope-validation / mirror pipeline, so
-    returning a new dict here would silently drop subsequent
-    updates.
-    """
-    agent_summary = result.get("agent_summary")
-    if isinstance(agent_summary, dict):
-        nested = agent_summary.get("verdict")
-        if isinstance(nested, str) or nested is None:
-            agent_summary["verdict"] = _canonicalize_verdict(nested)
-    top = result.get("verdict")
-    if isinstance(top, str):
-        # Only stamp the top-level when there's already something
-        # there (so we don't manufacture a verdict the response
-        # builder didn't set). The no-changes path leaves the
-        # top-level blank; the ``mirror_summary_line`` helper will
-        # copy from ``agent_summary``.
-        result["verdict"] = _canonicalize_verdict(top)
+_scope_matches_raw = scope_matches_raw
 
 
-_JOURNAL_VERDICT_RANK: dict[str, int] = {
-    "SAFE": 0,
-    "INFO": 0,
-    "NOT_FOUND": 0,
-    "CAUTION": 1,
-    "REVIEW": 2,
-    "WARN": 3,
-    "ERROR": 4,
-    "UNSAFE": 5,
-}
-
-
-def _enrich_with_journal_decisions(
-    result: dict[str, Any],
-    project_root: str | None,
-    changed_files: list[str],
-) -> None:
-    """Phase 3 (r37fG): surface related decision_journal entries.
-
-    For every file in ``changed_files``, search the project's decision
-    journal for entries whose ``scope_paths`` covers that file. Attach
-    matches to ``result["related_decisions"]`` and — if any matched
-    verdict is more severe than the current change_impact verdict —
-    upgrade the envelope verdict so the calling agent cannot silently
-    bypass a recorded REVIEW / UNSAFE / WARN decision.
-
-    Mutates ``result`` in place. Never downgrades. Never raises — a
-    journal-side failure must not block change_impact's primary output.
-    """
-    if not project_root or not changed_files:
-        return
-    try:
-        from ...decision_journal import DecisionJournal
-
-        journal = DecisionJournal(project_root)
-        matches: dict[str, dict[str, Any]] = {}
-        for fp in changed_files[:32]:
-            for rec in journal.search(path_scope=fp, limit=10):
-                matches[rec.id] = rec.to_dict()
-        if not matches:
-            return
-        related = list(matches.values())
-        result["related_decisions"] = related
-        strongest = max(
-            (_JOURNAL_VERDICT_RANK.get(d.get("verdict", ""), 0) for d in related),
-            default=0,
-        )
-        if strongest <= 0:
-            return
-        strongest_label = next(
-            (lbl for lbl, rank in _JOURNAL_VERDICT_RANK.items() if rank == strongest),
-            None,
-        )
-        if strongest_label is None:
-            return
-        agent_summary = result.get("agent_summary")
-        current_verdict = (
-            agent_summary.get("verdict") if isinstance(agent_summary, dict) else None
-        )
-        current_rank = _JOURNAL_VERDICT_RANK.get(current_verdict or "", 0)
-        if strongest <= current_rank:
-            return
-        if isinstance(agent_summary, dict):
-            agent_summary["verdict"] = strongest_label
-            existing_next = agent_summary.get("next_step") or ""
-            agent_summary["next_step"] = (
-                f"⚠ {len(related)} recorded decision(s) match the changed "
-                f"files — strongest verdict={strongest_label}. Surface "
-                "related_decisions verbatim; do NOT reframe. " + str(existing_next)
-            ).strip()
-        result["verdict"] = strongest_label
-    except Exception:
-        return
-
-
-def _resolve_scope_path(project_root: str | None, raw: str) -> Path:
-    """Resolve a user-supplied scope path against the project root.
-
-    Absolute paths are kept as-is; relative paths are interpreted relative
-    to ``project_root`` so the existence check matches what git diff
-    consumes downstream. When ``project_root`` is ``None`` we fall back
-    to the current working directory — git diff would do the same.
-    """
-    p = Path(raw)
-    if p.is_absolute():
-        return p
-    base = Path(project_root) if project_root else Path.cwd()
-    return base / p
-
-
-def _scope_paths_invalid(project_root: str | None, scope_paths: list[str]) -> list[str]:
-    """Return the subset of ``scope_paths`` that do not exist on disk.
-
-    Empty input → empty list. Pure helper so it can be unit-tested in
-    isolation.
-    """
-    return [
-        raw
-        for raw in scope_paths
-        if not _resolve_scope_path(project_root, raw).exists()
-    ]
-
-
-TOOL_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "mode": {
-            "type": "string",
-            "enum": ["diff", "staged", "branch", "pr"],
-            "default": "diff",
-            "description": "diff=unstaged, staged=staged, branch=vs main, pr=from GitHub PR URL",
-        },
-        "pr_url": {
-            "type": "string",
-            "default": "",
-            "description": "GitHub PR URL (e.g. https://github.com/owner/repo/pull/123). Overrides local diff modes.",
-        },
-        "include_tests": {
-            "type": "boolean",
-            "default": True,
-            "description": "Find related test files",
-        },
-        "scope_paths": {
-            "type": "array",
-            "items": {"type": "string"},
-            "default": [],
-            "description": "Optional pathspecs limiting diff, impact, and test mapping to the current queue scope",
-        },
-        "scope_mode": {
-            "type": "string",
-            "enum": ["report", "strict"],
-            "default": "report",
-            "description": (
-                "How out-of-scope dirty files (relative to scope_paths) are "
-                "surfaced. report=list them in the queue ledger preview "
-                "(default); strict=fully mute the list so a large dirty "
-                "worktree cannot bury the scoped result (an honest count is "
-                "still kept). No effect without scope_paths."
-            ),
-        },
-        "resource_profile": {
-            "type": "string",
-            "enum": ["default", "local_low_impact"],
-            "default": "local_low_impact",
-            "description": (
-                "Verification command resource profile. "
-                "local_low_impact (MCP default): emits nice/xdist-capped local pytest "
-                "commands plus a ci_verification_command for CI or queue boundaries — "
-                "safe for AI-agent sessions where aggressive parallelism stalls the machine. "
-                "default: preserves the original broad verification command unchanged."
-            ),
-        },
-        "output_format": {
-            "type": "string",
-            "enum": ["json", "toon"],
-            "default": "toon",
-        },
-        "agent_summary_only": {
-            "type": "boolean",
-            "default": False,
-            "description": "Return only the compact agent decision surface instead of full impact details",
-        },
-        "compact_only": {
-            "type": "boolean",
-            "default": False,
-            "description": (
-                "RFC-0012: with output_format=toon, return only the control "
-                "surface alongside toon_content, dropping metadata already "
-                "encoded in the blob."
-            ),
-        },
-    },
-    "additionalProperties": False,
-}
-
-
-def _pr_invalid_url_envelope(pr_url: str, output_format: str) -> dict[str, Any]:
-    """Pre-flight failure envelope when ``pr_url`` cannot be parsed.
-
-    r37em (dogfood): lifted from ``_execute_pr_analysis`` to keep the
-    main body focused on the happy path.
-    """
-    return apply_toon_format_to_response(
-        {
-            "success": False,
-            "error": f"Invalid GitHub PR URL: {pr_url}",
-            "hint": "Expected format: https://github.com/owner/repo/pull/123",
-            "output_format": output_format,
-        },
-        output_format,
-    )
-
-
-def _pr_gh_unavailable_envelope(parsed: Any, output_format: str) -> dict[str, Any]:
-    """Pre-flight failure envelope when ``gh`` CLI is missing or unauthenticated."""
-    return apply_toon_format_to_response(
-        {
-            "success": False,
-            "error": "gh CLI not available or not authenticated",
-            "hint": "Install gh CLI and run 'gh auth login'",
-            "pr_url": parsed.url,
-            "output_format": output_format,
-        },
-        output_format,
-    )
+def _scope_matches(scope: str, path: str) -> bool:
+    """Compatibility wrapper using lossless filesystem-byte identities."""
+    return scope_matches_raw(path_to_raw(scope), path_to_raw(path))
 
 
 class ChangeImpactTool(BaseMCPTool):
@@ -319,7 +93,8 @@ class ChangeImpactTool(BaseMCPTool):
             "annotations": {
                 "readOnlyHint": True,
                 "destructiveHint": False,
-                "idempotentHint": True,
+                # Mixed operation: capture_diff_snapshot allocates a fresh ID/lease.
+                "idempotentHint": False,
                 "openWorldHint": False,
             },
         }
@@ -345,6 +120,31 @@ class ChangeImpactTool(BaseMCPTool):
             raise ValueError("resource_profile must be default|local_low_impact")
         return True
 
+    def _attach_diff_snapshot(
+        self,
+        result: dict[str, Any],
+        mode: str,
+        enabled: bool,
+        assessed_scope_paths: list[str] | None = None,
+        *,
+        frozen: dict[str, object] | None = None,
+    ) -> dict[str, Any]:
+        """Attach an artifact captured before analysis; never capture after it."""
+        del mode, assessed_scope_paths
+        if not enabled:
+            return result
+        if frozen is None or not frozen.get("success"):
+            code = str((frozen or {}).get("error_code", "DIFF_SNAPSHOT_CAPTURE_ERROR"))
+            return {
+                "success": False,
+                "verdict": "ERROR",
+                "error_code": code,
+                "error": code,
+                "output_format": result.get("output_format", "toon"),
+            }
+        result.update({key: value for key, value in frozen.items() if key != "success"})
+        return result
+
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Analyze git diff + dependency graph for change impact."""
         pr_url = arguments.get("pr_url", "") or ""
@@ -358,6 +158,73 @@ class ChangeImpactTool(BaseMCPTool):
         resource_profile = arguments.get("resource_profile", "local_low_impact")
         agent_summary_only = bool(arguments.get("agent_summary_only", False))
         compact_only = bool(arguments.get("compact_only", False))
+        capture_diff_snapshot = arguments.get("capture_diff_snapshot") is True
+        frozen: dict[str, object] | None = None
+        frozen_consumer: Any = None
+        if capture_diff_snapshot:
+
+            def snapshot_error(code: str) -> dict[str, Any]:
+                return apply_toon_format_to_response(
+                    {
+                        "success": False,
+                        "verdict": "ERROR",
+                        "error_code": code,
+                        "error": code,
+                        "output_format": output_format,
+                    },
+                    output_format,
+                    compact_only=compact_only,
+                )
+
+            if mode not in ("diff", "staged"):
+                return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_MODE")
+            # Phase 0 frozen scoping is intentionally literal-only. Passing Git
+            # magic to the prefix matcher would silently change its meaning.
+            if any(str(path).startswith(":") for path in scope_paths):
+                return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_SCOPE")
+            from ...diff_snapshot_registry import REGISTRY
+            from ...source_oracle import SourceOracleError
+
+            try:
+                normalized_scope = [path_from_wire(str(path)) for path in scope_paths]
+            except SourceOracleError as exc:
+                return snapshot_error(str(exc))
+            scope_paths = normalized_scope
+            frozen = REGISTRY.create(self.project_root, mode, normalized_scope)
+            if not frozen.get("success"):
+                return snapshot_error(str(frozen["error_code"]))
+            frozen_consumer, error = REGISTRY.acquire(
+                str(frozen["diff_snapshot_id"]), self.project_root
+            )
+            if error:
+                REGISTRY.close_lease(
+                    str(frozen["diff_snapshot_id"]), str(frozen["route_lease_id"])
+                )
+                return snapshot_error(error)
+            try:
+                result = self._execute_frozen_snapshot(
+                    frozen=frozen,
+                    consumer=frozen_consumer,
+                    mode=mode,
+                    scope_paths=scope_paths,
+                    scope_mode=scope_mode,
+                    output_format=output_format,
+                    agent_summary_only=agent_summary_only,
+                    compact_only=compact_only,
+                )
+                if not result.get("success"):
+                    REGISTRY.close_lease(
+                        str(frozen["diff_snapshot_id"]),
+                        str(frozen["route_lease_id"]),
+                    )
+                return result
+            except BaseException:
+                REGISTRY.close_lease(
+                    str(frozen["diff_snapshot_id"]), str(frozen["route_lease_id"])
+                )
+                raise
+            finally:
+                frozen_consumer.release()
 
         # H8: validate scope paths against disk so a typo cannot silently
         # become "scope matched nothing". The analysis still runs on the
@@ -424,6 +291,7 @@ class ChangeImpactTool(BaseMCPTool):
                 scope_paths=scope_paths,
                 agent_summary_only=agent_summary_only,
                 resource_profile=resource_profile,
+                read_only=False,
             )
         )
         # r37fG phase 3: surface related decision_journal entries and
@@ -455,6 +323,83 @@ class ChangeImpactTool(BaseMCPTool):
         return apply_toon_format_to_response(
             result, output_format, compact_only=compact_only
         )
+
+    def _execute_frozen_snapshot(
+        self,
+        *,
+        frozen: dict[str, object],
+        consumer: Any,
+        mode: str,
+        scope_paths: list[str],
+        scope_mode: str,
+        output_format: str,
+        agent_summary_only: bool,
+        compact_only: bool,
+    ) -> dict[str, Any]:
+        """Build strict impact solely from the captured snapshot records.
+
+        Frozen capture intentionally cannot claim dependency or test impact: those
+        require live graph/cache inputs which are outside the bound source epoch.
+        """
+        from ...diff_snapshot_registry import REGISTRY
+
+        result, records, changed_files, assessed = build_frozen_scope_result(
+            frozen, consumer, mode, scope_paths, scope_mode
+        )
+        error = REGISTRY.bind_assessed_scope(consumer, assessed)
+        frozen["assessed_scope_paths"] = [
+            path_to_wire(path) for path in consumer.snapshot.assessed_scope_paths
+        ]
+        if error:
+            return apply_toon_format_to_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error_code": error,
+                    "error": error,
+                    "output_format": output_format,
+                },
+                output_format,
+                compact_only=compact_only,
+            )
+        response_frozen = dict(frozen)
+        response_frozen["changed_records"] = records
+        result = self._attach_diff_snapshot(result, mode, True, frozen=response_frozen)
+        if agent_summary_only:
+            snapshot_surface: dict[str, Any] = {
+                key: result[key]
+                for key in (
+                    "diff_snapshot_id",
+                    "route_lease_id",
+                    "source_generation",
+                    "changed_records",
+                    "assessed_scope_paths",
+                )
+                if key in result
+            }
+            result = build_agent_summary_only_response(result)
+            result.update(snapshot_surface)
+        result["output_format"] = output_format
+        _canonicalize_change_impact_verdict(result)
+        result = mirror_summary_line(result)
+        formatted = apply_toon_format_to_response(
+            result, output_format, compact_only=compact_only
+        )
+        # Keep this as the final operation before the snapshot is exposed.
+        publish_error = REGISTRY.validate_publish(consumer)
+        if publish_error:
+            return apply_toon_format_to_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error_code": publish_error,
+                    "error": publish_error,
+                    "output_format": output_format,
+                },
+                output_format,
+                compact_only=compact_only,
+            )
+        return formatted
 
     def _execute_pr_analysis(
         self,
@@ -533,51 +478,6 @@ class ChangeImpactTool(BaseMCPTool):
         )
 
     @staticmethod
-    def _finalize_pr_result(
-        result: dict[str, Any],
-        *,
-        parsed: Any,
-        scope_paths: list[str],
-        scope_paths_invalid: Any,
-        changed_files: list[str],
-        agent_summary_only: bool,
-        output_format: str,
-        scope_mode: str = "report",
-        compact_only: bool = False,
-    ) -> dict[str, Any]:
-        """Attach PR metadata + queue ledger + scope validation, mirror, and TOON.
-
-        Shared by both the no-changes and with-changes branches of
-        ``_execute_pr_analysis``. ``changed_files`` doubles as both
-        ``scoped_changed_files`` and ``workspace_changed_files`` because
-        PR mode pulls them from the same gh-CLI source.
-
-        M5/M10: ``mirror_summary_line`` syncs ``summary_line`` + ``verdict``
-        between top-level and ``agent_summary`` so direct callers see the
-        same envelope shape regardless of routing.
-        """
-        result["pr_url"] = parsed.url
-        result["pr_number"] = parsed.pr_number
-        result["repo"] = parsed.slug
-        result = attach_queue_ledger(
-            result,
-            mode="pr",
-            scope_paths=scope_paths,
-            scoped_changed_files=changed_files,
-            workspace_changed_files=changed_files,
-            scope_mode=scope_mode,
-        )
-        result = apply_scope_validation(result, scope_paths_invalid)
-        if agent_summary_only:
-            result = build_agent_summary_only_response(result)
-        result["output_format"] = output_format
-        # F1 (round-37f7): defensive canonicalization for the PR-mode
-        # path. Mirrors the same protection applied in the diff-mode
-        # branches above — keeps the cross-tool envelope free of
-        # non-canonical verdict tokens regardless of which mode the
-        # caller used.
-        _canonicalize_change_impact_verdict(result)
-        result = mirror_summary_line(result)
-        return apply_toon_format_to_response(
-            result, output_format, compact_only=compact_only
-        )
+    def _finalize_pr_result(result: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        """Delegate shared PR response postprocessing to the support module."""
+        return _finalize_pr_result(result, **kwargs)
