@@ -178,24 +178,3 @@ def test_missing_born_index_is_empty_and_reports_head_deletions(tmp_path: Path) 
         ("gone.py", "D"),
         ("old.py", "D"),
     ]
-
-
-@POSIX_SNAPSHOT_TEST
-def test_external_diff_order_file_content_is_not_snapshot_input(tmp_path: Path) -> None:
-    # PR #1252 review thread PRRT_kwDOPVL-OM6X3LAP.
-    root = make_repo(tmp_path)
-    order = root.parent / f"{root.name}-order"
-    order.write_text("old.py\ngone.py\n")
-    subprocess.run(
-        ["git", "config", "diff.orderFile", str(order)], cwd=root, check=True
-    )
-    (root / "old.py").write_text("value = 2\n")
-    subprocess.run(["git", "add", "old.py"], cwd=root, check=True)
-    first = DiffSnapshotRegistry().create(str(root), "staged", [])
-    order.write_text("gone.py\nold.py\n")
-    second = DiffSnapshotRegistry().create(str(root), "staged", [])
-
-    assert (first["source_generation"], first["changed_records"]) == (
-        second["source_generation"],
-        second["changed_records"],
-    )

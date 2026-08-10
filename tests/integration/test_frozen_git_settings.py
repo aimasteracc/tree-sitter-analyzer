@@ -107,3 +107,22 @@ def test_workspace_snapshot_rejects_clean_filter_without_execution(
     result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
     assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_FILTER"
     assert sentinel.exists() is False
+
+
+@POSIX_SNAPSHOT_TEST
+def test_external_diff_order_file_content_is_not_snapshot_input(tmp_path: Path) -> None:
+    """External order-file changes cannot alter a frozen staged snapshot."""
+    root = make_repo(tmp_path)
+    order = root.parent / f"{root.name}-order"
+    order.write_text("old.py\ngone.py\n")
+    _git(root, "config", "diff.orderFile", str(order))
+    (root / "old.py").write_text("value = 2\n")
+    _git(root, "add", "old.py")
+    first = snapshots.DiffSnapshotRegistry().create(str(root), "staged", [])
+    order.write_text("gone.py\nold.py\n")
+    second = snapshots.DiffSnapshotRegistry().create(str(root), "staged", [])
+
+    assert (first["source_generation"], first["changed_records"]) == (
+        second["source_generation"],
+        second["changed_records"],
+    )
