@@ -31,11 +31,12 @@
     "collector": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["commit","script_sha256","schema_sha256","tool_lock_sha256","tool_export_sha256","tool_inventory","tool_inventory_sha256"],
+      "required": ["commit","script_sha256","schema_sha256","support_sha256","tool_lock_sha256","tool_export_sha256","tool_inventory","tool_inventory_sha256"],
       "properties": {
         "commit": {"type":"string","pattern":"^[0-9a-f]{40}$"},
         "script_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
         "schema_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "support_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
         "tool_lock_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
         "tool_export_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
         "tool_inventory_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
@@ -55,7 +56,7 @@
         "commit": {"const":"7e0e8f6e03270fcbf4025d717415ef69c9354145"},
         "git_tree": {"const":"fe340eff33002b67ae88b34f1174bbcca4efc370"},
         "lock_sha256": {"const":"516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"},
-        "source_archive_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "source_archive_sha256": {"const":"52fc24594778d798257412e0137b096b0c1670d6a376a9d9714f5a49dfbe706c"},
         "root_wheel_filename": {"type":"string","pattern":"^[^/]+\\.whl$","maxLength":200},
         "root_wheel_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
         "root_wheel_artifact_size_bytes": {"type":"integer","minimum":1}
@@ -67,7 +68,7 @@
       "required": ["derivation","export_sha256","lock_sha256","distributions"],
       "properties": {
         "derivation": {"const":"uv.lock frozen export; hashed exact requirements; project wheel installed separately with --no-deps"},
-        "export_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "export_sha256": {"const":"33b03a373e2ebeafa44a792d14121f081c1af36870e2d97198a9f6432653b6bb"},
         "lock_sha256": {"const":"516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"},
         "distributions": {
           "type": "array",
@@ -97,14 +98,14 @@
         "python": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["version","implementation","machine","system","architecture","sysconfig_platform","pointer_bits","executable"],
-          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50},"machine":{"type":"string","minLength":1,"maxLength":100},"system":{"type":"string","minLength":1,"maxLength":100},"architecture":{"type":"string","minLength":1,"maxLength":100},"sysconfig_platform":{"type":"string","minLength":1,"maxLength":200},"pointer_bits":{"type":"integer","enum":[32,64]},"executable":{"const":"<target-venv-python>"}}
+          "required": ["version","implementation","machine","system","architecture","sysconfig_platform","pointer_bits","executable","resolved_base_executable_sha256","soabi","cache_tag","abiflags","python_build","py_debug","config_args_sha256"],
+          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50},"machine":{"type":"string","minLength":1,"maxLength":100},"system":{"type":"string","minLength":1,"maxLength":100},"architecture":{"type":"string","minLength":1,"maxLength":100},"sysconfig_platform":{"type":"string","minLength":1,"maxLength":200},"pointer_bits":{"type":"integer","enum":[32,64]},"executable":{"const":"<target-venv-python>"},"resolved_base_executable_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"soabi":{"type":"string","minLength":1,"maxLength":200},"cache_tag":{"type":"string","minLength":1,"maxLength":100},"abiflags":{"type":"string","maxLength":20},"python_build":{"type":"array","prefixItems":[{"type":"string","minLength":1,"maxLength":100},{"type":"string","minLength":1,"maxLength":100}],"items":false,"minItems":2,"maxItems":2},"py_debug":{"type":"integer","enum":[0,1]},"config_args_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}
         },
         "build_python": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["version","implementation","machine","system","architecture","sysconfig_platform","pointer_bits","executable"],
-          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50},"machine":{"type":"string","minLength":1,"maxLength":100},"system":{"type":"string","minLength":1,"maxLength":100},"architecture":{"type":"string","minLength":1,"maxLength":100},"sysconfig_platform":{"type":"string","minLength":1,"maxLength":200},"pointer_bits":{"type":"integer","enum":[32,64]},"executable":{"const":"<collector-sys-executable>"}}
+          "required": ["version","implementation","machine","system","architecture","sysconfig_platform","pointer_bits","executable","resolved_base_executable_sha256","soabi","cache_tag","abiflags","python_build","py_debug","config_args_sha256"],
+          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50},"machine":{"type":"string","minLength":1,"maxLength":100},"system":{"type":"string","minLength":1,"maxLength":100},"architecture":{"type":"string","minLength":1,"maxLength":100},"sysconfig_platform":{"type":"string","minLength":1,"maxLength":200},"pointer_bits":{"type":"integer","enum":[32,64]},"executable":{"const":"<collector-sys-executable>"},"resolved_base_executable_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"soabi":{"type":"string","minLength":1,"maxLength":200},"cache_tag":{"type":"string","minLength":1,"maxLength":100},"abiflags":{"type":"string","maxLength":20},"python_build":{"type":"array","prefixItems":[{"type":"string","minLength":1,"maxLength":100},{"type":"string","minLength":1,"maxLength":100}],"items":false,"minItems":2,"maxItems":2},"py_debug":{"type":"integer","enum":[0,1]},"config_args_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}}
         },
         "build_backend": {
           "type": "object",

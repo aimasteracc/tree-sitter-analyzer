@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-# ruff: noqa: E701, E702, UP022
+# ruff: noqa: E701, E702, UP022, F401, I001
 # fmt: off
 """Collect the NO1-006B offline, lock-pinned macOS E0 receipt."""
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import platform
@@ -25,14 +24,16 @@ from typing import Any
 EXPECTED_SUBJECT_COMMIT = "7e0e8f6e03270fcbf4025d717415ef69c9354145"
 EXPECTED_SUBJECT_TREE = "fe340eff33002b67ae88b34f1174bbcca4efc370"
 EXPECTED_SUBJECT_LOCK_SHA256 = "516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"
+EXPECTED_SUBJECT_ARCHIVE_SHA256 = "52fc24594778d798257412e0137b096b0c1670d6a376a9d9714f5a49dfbe706c"
+EXPECTED_SUBJECT_EXPORT_SHA256 = "33b03a373e2ebeafa44a792d14121f081c1af36870e2d97198a9f6432653b6bb"
 ROOT_NAME = "tree-sitter-analyzer"
 TOOL_GROUP = "no1-006b-collector-tool"
 HATCHLING_VERSION = "1.31.0"
 EXPECTED_UV_VERSION = "uv 0.12.3 (507230998 2026-08-07 aarch64-apple-darwin)"
 EXPECTED_UV_SHA256 = "2b4ccdac26598ca8c300e5c36d24297fa1471c350c46d2f34c835bf06be303ab"
 SCHEMA = Path(__file__).parents[1] / "schemas/no1-006b-baseline.schema.json"
+SUPPORT = Path(__file__).with_name("no1_006b_baseline_support.py")
 EXPECTED_MCP_TOOLS = sorted(["edit", "health", "index", "nav", "project", "search", "set_project_path", "structure", "viz"])
-MAX_CAPTURE_BYTES = 8 * 1024 * 1024
 MAX_FRAME_BYTES = 2 * 1024 * 1024
 MAX_DISTRIBUTIONS = 256
 MAX_FILES = 100_000
@@ -44,95 +45,10 @@ MCP_STARTUP_DEFINITION = "clock before Popen through successful initialize, init
 SAMPLE_ORDER = "all CLI samples, then all MCP samples"
 
 
-def digest_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def require_file_budget(path: Path, maximum: int, label: str) -> None:
-    size=path.stat().st_size
-    if size>maximum: raise RuntimeError(f"{label} exceeded {maximum} byte disk budget: {size}")
-
-
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
-def clean_env(overrides: dict[str, str] | None = None) -> dict[str, str]:
-    # Fail closed against user/project uv configuration. UV_CACHE_DIR is the only
-    # inherited UV_* input: it selects already-downloaded offline artifacts, not
-    # resolution or index policy.
-    keep = {key: os.environ[key] for key in ("HOME", "PATH", "TMPDIR", "UV_CACHE_DIR") if key in os.environ}
-    clean = {**keep, "UV_NO_CONFIG": "1", "UV_OFFLINE": "1", "PYTHONDONTWRITEBYTECODE": "1", "LC_ALL": "C", "LANG": "C",
-             "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
-    for key,value in (overrides or {}).items():
-        if key.startswith("UV_"): raise ValueError(f"uv environment override is not allowed: {key}")
-        clean[key]=value
-    return clean
-
-
-def run(command: list[str], *, cwd: Path, timeout: int = 180, env_overrides: dict[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
-    process=subprocess.Popen(command,cwd=cwd,env=clean_env(env_overrides),stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
-    assert process.stdout is not None and process.stderr is not None
-    selector=selectors.DefaultSelector(); selector.register(process.stdout,selectors.EVENT_READ,"stdout"); selector.register(process.stderr,selectors.EVENT_READ,"stderr")
-    buffers={"stdout":bytearray(),"stderr":bytearray()}; deadline=time.monotonic()+timeout
-    try:
-        while selector.get_map() and time.monotonic()<deadline:
-            for key,_ in selector.select(max(0,deadline-time.monotonic())):
-                block=os.read(key.fileobj.fileno(),65536)
-                if not block: selector.unregister(key.fileobj); continue
-                buffers[key.data].extend(block)
-                if sum(map(len,buffers.values()))>MAX_CAPTURE_BYTES: raise RuntimeError(f"subprocess output exceeded {MAX_CAPTURE_BYTES} bytes")
-        if selector.get_map(): raise TimeoutError(f"command exceeded {timeout} seconds")
-        returncode=process.wait(timeout=3)
-    except BaseException:
-        try: os.killpg(process.pid,signal.SIGKILL)
-        except ProcessLookupError: pass
-        process.wait(timeout=3); raise
-    finally: selector.close()
-    result=subprocess.CompletedProcess(command,returncode,bytes(buffers["stdout"]),bytes(buffers["stderr"]))
-    if result.returncode:
-        detail=result.stderr[-4096:].decode(errors="replace")
-        raise RuntimeError(f"command failed ({result.returncode}): {command!r}: {detail}")
-    return result
-
-
-def git(repo: Path, *args: str) -> bytes:
-    return run(["git", *args], cwd=repo, timeout=60).stdout
-
-
-def bounded_git(repo: Path, *args: str, timeout: int = 60) -> bytes:
-    # Git provenance reads must work on Windows, whose default selector cannot
-    # monitor anonymous subprocess pipes. Regular temporary files also let us
-    # enforce the byte ceiling while git is still running.
-    with tempfile.TemporaryDirectory(prefix="no1-006b-git-") as raw:
-        stdout_path=Path(raw)/"stdout"; stderr_path=Path(raw)/"stderr"
-        with stdout_path.open("w+b") as stdout, stderr_path.open("w+b") as stderr:
-            process=subprocess.Popen(["git",*args],cwd=repo,env=clean_env(),stdout=stdout,stderr=stderr,start_new_session=True)
-            deadline=time.monotonic()+timeout
-            while process.poll() is None:
-                if time.monotonic() >= deadline or stdout_path.stat().st_size+stderr_path.stat().st_size > MAX_CAPTURE_BYTES:
-                    process.kill(); process.wait(timeout=3)
-                    if time.monotonic() >= deadline: raise TimeoutError(f"git command exceeded {timeout} seconds")
-                    raise RuntimeError(f"git output exceeded {MAX_CAPTURE_BYTES} bytes")
-                time.sleep(0.01)
-            stdout.flush(); stderr.flush()
-            if stdout_path.stat().st_size+stderr_path.stat().st_size > MAX_CAPTURE_BYTES:
-                raise RuntimeError(f"git output exceeded {MAX_CAPTURE_BYTES} bytes")
-            stdout.seek(0); stderr.seek(0); output=stdout.read(); detail=stderr.read()
-        if process.returncode:
-            raise RuntimeError(f"git command failed ({process.returncode}): {args!r}: {detail[-4096:].decode(errors='replace')}")
-        return output
-
-
-def bound_blob(repo: Path, commit: str, relative: str) -> bytes:
-    tracked=bounded_git(repo,"ls-files","--error-unmatch","--",relative).decode().strip()
-    if tracked != relative: raise RuntimeError(f"collector provenance path is not tracked: {relative}")
-    return bounded_git(repo,"show",f"{commit}:{relative}")
-
+try:
+    from .no1_006b_baseline_support import MAX_CAPTURE_BYTES,bound_blob,bounded_git,canonical_hash,canonical_inventory_rows,clean_env,digest_bytes,git,parse_rfc3339,require_file_budget,run,safe_write,sha256
+except ImportError:
+    from no1_006b_baseline_support import MAX_CAPTURE_BYTES,bound_blob,bounded_git,canonical_hash,canonical_inventory_rows,clean_env,digest_bytes,git,parse_rfc3339,require_file_budget,run,safe_write,sha256
 
 def verified_uv() -> tuple[Path,str,str]:
     configured=os.environ.get("NO1_006B_UV")
@@ -169,26 +85,26 @@ def require_clean_subject(repo: Path, expected_commit: str) -> dict[str, str]:
     return {"commit":commit,"git_tree":tree,"lock_sha256":lock_sha256}
 
 
-def collector_identity(tool_export_sha256: str) -> dict[str, str]:
-    script = Path(__file__).resolve()
-    root = script.parents[1]
-    relative = script.relative_to(root).as_posix()
-    status = git(root, "status", "--porcelain=v1", "--untracked-files=all", "--ignored").decode()
-    if status:
-        raise RuntimeError("collector worktree must be clean; commit protocol changes before collection")
-    commit = git(root, "rev-parse", "HEAD").decode().strip()
-    schema_rel = SCHEMA.resolve().relative_to(root).as_posix()
-    lock_rel = (root/"uv.lock").relative_to(root).as_posix()
-    # Hash committed blob bytes, not checkout bytes transformed by core.autocrlf.
-    # The clean tracked-worktree gate above binds these blobs to the executing checkout.
-    blobs={name:bound_blob(root,commit,path) for name,path in
-           (("script_sha256",relative),("schema_sha256",schema_rel),("tool_lock_sha256",lock_rel))}
-    return {"commit":commit,**{name:digest_bytes(blob) for name,blob in blobs.items()},
-            "tool_export_sha256":tool_export_sha256}
+def collector_identity(tool_export_sha256: str) -> tuple[dict[str, str], bytes]:
+    script=Path(__file__).resolve(); root=script.parents[1]
+    paths=(("script_sha256",script.relative_to(root).as_posix()),
+           ("support_sha256",SUPPORT.resolve().relative_to(root).as_posix()),
+           ("schema_sha256",SCHEMA.resolve().relative_to(root).as_posix()),
+           ("tool_lock_sha256","uv.lock"))
+    status=git(root,"status","--porcelain=v1","--untracked-files=all","--ignored").decode()
+    if status: raise RuntimeError("collector worktree must be clean; commit protocol changes before collection")
+    commit=git(root,"rev-parse","HEAD").decode().strip()
+    blobs={name:bound_blob(root,commit,path) for name,path in paths}
+    identity={"commit":commit,**{name:digest_bytes(blob) for name,blob in blobs.items()},
+              "tool_export_sha256":tool_export_sha256}
+    return identity,blobs["schema_sha256"]
 
 
-def canonical_inventory_rows(rows: list[dict[str,str]]) -> str:
-    return digest_bytes(json.dumps(rows,sort_keys=True,separators=(",",":")).encode())
+def assert_collector_unchanged(expected: dict[str, Any], schema_blob: bytes) -> None:
+    current,current_schema=collector_identity(expected["tool_export_sha256"])
+    comparable={key:expected[key] for key in current}
+    if current != comparable or current_schema != schema_blob:
+        raise RuntimeError(f"collector identity mutated before publication: expected={comparable}, found={current}")
 
 
 def validate_collector_environment(export: bytes) -> tuple[list[dict[str,str]],str]:
@@ -245,18 +161,26 @@ def collector_tool_export(root: Path, destination: Path, uv: Path) -> tuple[str,
     return digest_bytes(text),rows,inventory_sha
 
 
-PYTHON_IDENTITY_CODE = """import json,platform,struct,sys,sysconfig
+PYTHON_IDENTITY_CODE = """import hashlib,json,platform,struct,sys,sysconfig
+from pathlib import Path
+resolved=Path(sys.executable).resolve(strict=True)
+digest=hashlib.sha256()
+with resolved.open('rb') as stream:
+ for block in iter(lambda:stream.read(1048576),b''): digest.update(block)
 print(json.dumps({
- 'version':platform.python_version(),
- 'implementation':platform.python_implementation(),
- 'machine':platform.machine(),
- 'system':platform.system(),
- 'architecture':platform.architecture()[0],
- 'sysconfig_platform':sysconfig.get_platform(),
- 'pointer_bits':struct.calcsize('P')*8,
- 'executable':str(__import__('pathlib').Path(sys.executable).resolve()),
+ 'version':platform.python_version(), 'implementation':platform.python_implementation(),
+ 'machine':platform.machine(), 'system':platform.system(),
+ 'architecture':platform.architecture()[0], 'sysconfig_platform':sysconfig.get_platform(),
+ 'pointer_bits':struct.calcsize('P')*8, 'executable':str(resolved),
+ 'resolved_base_executable_sha256':digest.hexdigest(),
+ 'soabi':sysconfig.get_config_var('SOABI') or '', 'cache_tag':sys.implementation.cache_tag or '',
+ 'abiflags':sys.abiflags, 'python_build':list(platform.python_build()),
+ 'py_debug':int(sysconfig.get_config_var('Py_DEBUG') or 0),
+ 'config_args_sha256':hashlib.sha256(str(sysconfig.get_config_var('CONFIG_ARGS') or '').encode()).hexdigest(),
 }))"""
-NATIVE_IDENTITY_FIELDS = ("machine","system","sysconfig_platform","pointer_bits")
+NATIVE_IDENTITY_FIELDS = ("version","implementation","machine","system","architecture",
+                          "sysconfig_platform","pointer_bits","resolved_base_executable_sha256",
+                          "soabi","cache_tag","abiflags","python_build","py_debug","config_args_sha256")
 
 
 def python_identity(python: Path, cwd: Path, executable_provenance: str) -> dict[str, Any]:
@@ -269,10 +193,9 @@ def python_identity(python: Path, cwd: Path, executable_provenance: str) -> dict
 
 
 def require_native_python_identity(collector_python: dict[str, Any], target_python: dict[str, Any]) -> None:
-    mismatches={field:(collector_python[field],target_python[field]) for field in NATIVE_IDENTITY_FIELDS
-                if collector_python[field] != target_python[field]}
-    if mismatches:
-        raise RuntimeError(f"NO1_006B_PYTHON target is not native to collector host: {mismatches}")
+    mismatches={field:(collector_python.get(field),target_python.get(field)) for field in NATIVE_IDENTITY_FIELDS
+                if collector_python.get(field) != target_python.get(field)}
+    if mismatches: raise RuntimeError(f"NO1_006B_PYTHON target is not native to collector host: {mismatches}")
 
 
 def build_environment() -> dict[str, Any]:
@@ -440,30 +363,6 @@ def mcp_sample(program: Path, project_root: Path) -> tuple[float, list[str]]:
         terminate(process)
 
 
-def canonical_hash(report: dict[str, Any]) -> str:
-    body=dict(report); body.pop("canonical_payload_sha256",None)
-    return digest_bytes(json.dumps(body,sort_keys=True,separators=(",",":")).encode())
-
-
-def load_schema() -> dict[str, Any]:
-    return json.loads(SCHEMA.read_text())
-
-RFC3339_PATTERN = re.compile(
-    r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})\Z"
-)
-
-
-def parse_rfc3339(value: str) -> datetime:
-    if RFC3339_PATTERN.fullmatch(value) is None:
-        raise ValueError(f"timestamp is not strict RFC 3339: {value!r}")
-    parsed=datetime.fromisoformat(value[:-1]+"+00:00" if value.endswith("Z") else value)
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ValueError(f"timestamp is not timezone-aware: {value!r}")
-    if datetime.fromisoformat(parsed.isoformat()) != parsed:
-        raise ValueError(f"timestamp does not round-trip: {value!r}")
-    return parsed
-
-
 def render_receipt_summary(report: dict[str, Any]) -> str:
     m=report["measurements"]; source=report["source"]
     cli=m["cli_startup"]; mcp=m["mcp_startup"]
@@ -501,11 +400,13 @@ def validate_receipt(report: dict[str, Any], schema: dict[str, Any]) -> None:
             report["source"]["root_wheel_artifact_size_bytes"]==m["root_wheel_artifact_size_bytes"],
             closure["lock_sha256"]==report["source"]["lock_sha256"], report["source"]["lock_sha256"]==EXPECTED_SUBJECT_LOCK_SHA256,
             report["source"]["git_tree"]==EXPECTED_SUBJECT_TREE,
+            report["source"]["source_archive_sha256"]==EXPECTED_SUBJECT_ARCHIVE_SHA256,
+            closure["export_sha256"]==EXPECTED_SUBJECT_EXPORT_SHA256,
             len(names)==len(set(names)), names==sorted(names),
             report["environment"]["system"]==report["measured_axis"], os_consistent,
             report["environment"]["uv"]=={"version":EXPECTED_UV_VERSION,"sha256":EXPECTED_UV_SHA256},
-            all(report["environment"]["build_python"][field]==report["environment"]["python"][field]
-                for field in ("version","implementation",*NATIVE_IDENTITY_FIELDS)),
+            {key:value for key,value in report["environment"]["build_python"].items() if key!="executable"}==
+            {key:value for key,value in report["environment"]["python"].items() if key!="executable"},
             report["environment"]["machine"]==report["environment"]["python"]["machine"],
             report["environment"]["python"]["system"]=={"macos":"Darwin","linux":"Linux","windows":"Windows"}[system],
             report["environment"]["build_backend"]=={"name":"hatchling","version":HATCHLING_VERSION},
@@ -519,32 +420,9 @@ def validate_receipt(report: dict[str, Any], schema: dict[str, Any]) -> None:
     if not all(checks): raise ValueError("receipt cross-field consistency check failed")
 
 
-def finalize_receipt(report: dict[str, Any], output: Path, subject: Path) -> None:
-    schema=load_schema()
-    validate_receipt(report,schema)
+def finalize_receipt(report: dict[str, Any], output: Path, subject: Path, schema_blob: bytes) -> None:
+    validate_receipt(report,json.loads(schema_blob))
     safe_write(output,(json.dumps(report,indent=2,sort_keys=True)+"\n").encode(),subject)
-
-
-def safe_write(output: Path, data: bytes, subject: Path) -> None:
-    if subject.resolve() == output.resolve() or subject.resolve() in output.resolve().parents:
-        raise ValueError("output must be outside the measured subject repository")
-    parent=output.parent
-    if not parent.exists(): raise ValueError("output parent must already exist")
-    current=parent
-    while True:
-        if stat.S_ISLNK(current.lstat().st_mode): raise ValueError("output parent chain must not contain symlinks")
-        if current == current.parent: break
-        current=current.parent
-    if output.is_symlink(): raise ValueError("output must not be a symlink")
-    flags=os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,"O_NOFOLLOW",0)
-    temp=parent/f".{output.name}.{os.getpid()}.tmp"
-    fd=os.open(temp,flags,0o600)
-    try:
-        with os.fdopen(fd,"wb",closefd=True) as stream: stream.write(data); stream.flush(); os.fsync(stream.fileno())
-        os.replace(temp,output)
-        directory=os.open(parent,os.O_RDONLY); os.fsync(directory); os.close(directory)
-    finally:
-        if temp.exists(): temp.unlink()
 
 
 def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dict[str, Any]:
@@ -555,13 +433,17 @@ def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dic
     with tempfile.TemporaryDirectory(prefix="no1-006b-") as raw:
         temp=Path(raw); dist=temp/"dist"; dist.mkdir(); requirements=temp/"locked-requirements.txt"
         subject["source_archive_sha256"]=source_archive_sha(repo,temp/"source.tar")
+        if subject["source_archive_sha256"] != EXPECTED_SUBJECT_ARCHIVE_SHA256:
+            raise RuntimeError("detached subject archive digest does not match the frozen contract")
         assert_subject_unchanged(repo,expected_commit,subject,"initial archive")
         collector_root=Path(__file__).resolve().parents[1]
         tool_export_sha,tool_rows,tool_inventory_sha=collector_tool_export(collector_root,temp/"collector-tool-requirements.txt",uv)
-        collector=collector_identity(tool_export_sha)
+        collector,schema_blob=collector_identity(tool_export_sha)
         collector["tool_inventory"]=tool_rows; collector["tool_inventory_sha256"]=tool_inventory_sha
         build_env=build_environment()
         export_sha=export_closure(repo,requirements,uv)
+        if export_sha != EXPECTED_SUBJECT_EXPORT_SHA256:
+            raise RuntimeError("frozen subject export digest does not match the frozen contract")
         assert_subject_unchanged(repo,expected_commit,subject,"before build")
         run([str(uv),"build","--no-config","--wheel","--offline","--no-build-isolation","--python",sys.executable,"--out-dir",str(dist)],cwd=repo)
         assert_subject_unchanged(repo,expected_commit,subject,"after build")
@@ -595,7 +477,8 @@ def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dic
           "repeats":repeats,"measured_axis":"macos","platform_axes":{"macos":"measured_e0","linux":"unknown","windows":"unknown"}}
         report["canonical_payload_sha256"]=canonical_hash(report)
         assert_subject_unchanged(repo,expected_commit,subject,"final publication")
-        finalize_receipt(report,output,repo); return report
+        assert_collector_unchanged(collector,schema_blob)
+        finalize_receipt(report,output,repo,schema_blob); return report
 
 
 def main() -> int:
