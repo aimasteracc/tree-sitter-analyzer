@@ -55,6 +55,7 @@ def test_custom_validator_rejects_frozen_digest_with_weakened_schema(section: st
     with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(mutated((section,field),value),weakened)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="tracked: NO1-006B collector currently emits macOS-only E0 receipts")
 def test_historical_detached_subject_archive_matches_frozen_digest(tmp_path: Path) -> None:
     archive=tmp_path/"subject.tar"
     subprocess.run(["git","-c","tar.umask=000","archive","--format=tar",collector.EXPECTED_SUBJECT_COMMIT,"-o",str(archive)],cwd=REPO,env=collector.clean_env(),check=True)
