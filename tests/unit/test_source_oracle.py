@@ -128,6 +128,44 @@ def test_safe_workspace_path_reports_missing_leaf(tmp_path: Path) -> None:
     assert result.data is None
 
 
+def test_safe_workspace_path_translates_leaf_lstat_error(
+    tmp_path: Path, monkeypatch
+) -> None:
+    real_stat = oracle.os.stat
+
+    def fail_leaf_lstat(path, *args, **kwargs):
+        if kwargs.get("dir_fd") is not None:
+            raise PermissionError("injected leaf lstat failure")
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(oracle.os, "stat", fail_leaf_lstat)
+    _error(
+        lambda: oracle.safe_workspace_path(
+            str(tmp_path), "tracked.py", deadline=time.monotonic() + 1, limit=10
+        ),
+        "DIFF_SNAPSHOT_UNSAFE_PATH",
+    )
+
+
+def test_safe_workspace_path_translates_symlink_readlink_error(
+    tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / "tracked.py").symlink_to("target.py")
+    monkeypatch.setattr(
+        oracle.os,
+        "readlink",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            PermissionError("injected readlink failure")
+        ),
+    )
+    _error(
+        lambda: oracle.safe_workspace_path(
+            str(tmp_path), "tracked.py", deadline=time.monotonic() + 1, limit=10
+        ),
+        "DIFF_SNAPSHOT_UNSAFE_PATH",
+    )
+
+
 def test_safe_workspace_path_rejects_unsupported_platform(monkeypatch) -> None:
     monkeypatch.delattr(oracle.os, "O_NOFOLLOW", raising=False)
     _error(
@@ -412,6 +450,59 @@ def test_safe_workspace_path_detects_post_read_identity_change(
     )
 
 
+class _RecordingDigest:
+    def __init__(self) -> None:
+        self.frames: list[bytes] = []
+
+    def update(self, value: bytes) -> None:
+        self.frames.append(value)
+
+
+def test_frame_workspace_path_records_clean_tracked_disappearance(
+    tmp_path: Path,
+) -> None:
+    digest = _RecordingDigest()
+
+    charge = oracle._frame_workspace_path(
+        digest,
+        str(tmp_path),
+        b"tracked.py",
+        deadline=time.monotonic() + 1,
+        content_budget=10,
+        content_required=False,
+        index_entry=b"100644 blob-id 0",
+        head_entry=b"100644 blob blob-id",
+    )
+
+    assert charge == 0
+    assert digest.frames[2] == b"\x00\x00\x00\rworktree-kind"
+    assert digest.frames[3] == b"\x00\x00\x00\x00\x00\x00\x00\x07missing"
+
+
+def test_frame_workspace_path_rejects_malformed_metadata_epoch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        oracle,
+        "safe_workspace_path",
+        lambda *args, **kwargs: oracle.SafePath(None, (b"incomplete",), "file"),
+    )
+
+    _error(
+        lambda: oracle._frame_workspace_path(
+            _RecordingDigest(),
+            str(tmp_path),
+            b"tracked.py",
+            deadline=time.monotonic() + 1,
+            content_budget=10,
+            content_required=False,
+            index_entry=b"100644 blob-id 0",
+            head_entry=b"100644 blob blob-id",
+        ),
+        "DIFF_SNAPSHOT_UNSAFE_PATH",
+    )
+
+
 def test_oracle_generation_detects_index_change(tmp_path: Path, monkeypatch) -> None:
     index = tmp_path / "index"
     index.write_bytes(b"index")
@@ -614,3 +705,91 @@ def test_head_entries_rejects_bounded_path_count(monkeypatch) -> None:
         lambda: oracle._head_entries(".", deadline=time.monotonic() + 1),
         "DIFF_SNAPSHOT_CAPACITY",
     )
+
+
+def _stub_oracle_inventory(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    tracked: list[bytes],
+    indexed: dict[bytes, bytes],
+    dirty: bytes = b"",
+    untracked: bytes = b"",
+) -> None:
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (git_dir / "index").write_bytes(b"index")
+    identity = oracle.RootIdentity(str(tmp_path), 1, 2)
+    monkeypatch.setattr(
+        oracle, "canonical_root", lambda root: (str(tmp_path), identity)
+    )
+    monkeypatch.setattr(oracle, "_tracked_paths", lambda *args, **kwargs: tracked)
+    monkeypatch.setattr(oracle, "_index_entries", lambda *args, **kwargs: indexed)
+    monkeypatch.setattr(oracle, "_head_entries", lambda *args, **kwargs: {})
+
+    def git_output(root, args, **kwargs):
+        if args == ["rev-parse", "--verify", "HEAD"]:
+            return b"head\n"
+        if args == ["rev-parse", "--git-dir"]:
+            return b".git\n"
+        if "--name-only" in args:
+            return dirty
+        if "--others" in args:
+            return untracked
+        return b""
+
+    monkeypatch.setattr(oracle, "git_output", git_output)
+
+
+def test_oracle_generation_rejects_tracked_index_inventory_mismatch(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _stub_oracle_inventory(tmp_path, monkeypatch, tracked=[b"tracked.py"], indexed={})
+
+    _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_GIT_ERROR")
+
+
+def test_oracle_generation_rejects_dirty_inventory_over_capacity(
+    tmp_path: Path, monkeypatch
+) -> None:
+    entry = b"100644 blob-id 0"
+    _stub_oracle_inventory(
+        tmp_path,
+        monkeypatch,
+        tracked=[b"tracked.py"],
+        indexed={b"tracked.py": entry},
+        dirty=b"tracked.py\0",
+    )
+    monkeypatch.setattr(oracle, "_MAX_WORKTREE_PATHS", 0)
+
+    _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_CAPACITY")
+
+
+def test_oracle_generation_rejects_dirty_path_outside_tracked_inventory(
+    tmp_path: Path, monkeypatch
+) -> None:
+    entry = b"100644 blob-id 0"
+    _stub_oracle_inventory(
+        tmp_path,
+        monkeypatch,
+        tracked=[b"tracked.py"],
+        indexed={b"tracked.py": entry},
+        dirty=b"untracked.py\0",
+    )
+
+    _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_GIT_ERROR")
+
+
+def test_oracle_generation_rejects_untracked_path_in_tracked_inventory(
+    tmp_path: Path, monkeypatch
+) -> None:
+    entry = b"100644 blob-id 0"
+    _stub_oracle_inventory(
+        tmp_path,
+        monkeypatch,
+        tracked=[b"tracked.py"],
+        indexed={b"tracked.py": entry},
+        untracked=b"tracked.py\0",
+    )
+
+    _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_GIT_ERROR")
