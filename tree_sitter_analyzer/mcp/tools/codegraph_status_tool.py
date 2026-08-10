@@ -61,6 +61,12 @@ _DB_STORAGE_KEYS = (
 class CodeGraphStatusTool(BaseMCPTool):
     """MCP Tool for index health at-a-glance (CodeGraph parity)."""
 
+    def __init__(
+        self, project_root: str | None = None, *, read_existing_default: bool = False
+    ) -> None:
+        self._read_existing_default = read_existing_default
+        super().__init__(project_root)
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "codegraph_status",
@@ -93,6 +99,12 @@ class CodeGraphStatusTool(BaseMCPTool):
                         "to estimate index lag"
                     ),
                 },
+                "access_mode": {
+                    "type": "string",
+                    "enum": ["read_existing"],
+                    "default": "read_existing",
+                    "description": "Open only an existing compatible index, without writes",
+                },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
@@ -107,12 +119,21 @@ class CodeGraphStatusTool(BaseMCPTool):
         include_lag = arguments.get("include_lag", True)
         if not isinstance(include_lag, bool):
             raise ValueError("include_lag must be a boolean")
+        access_mode = arguments.get("access_mode")
+        if access_mode not in (None, "read_existing"):
+            raise ValueError("access_mode must be read_existing")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
         include_lag = arguments.get("include_lag", True)
         output_format = arguments.get("output_format", "toon")
+        access_mode = arguments.get("access_mode")
+        if access_mode is None and self._read_existing_default:
+            access_mode = "read_existing"
+
+        if access_mode == "read_existing":
+            return self._execute_read_existing(output_format)
 
         # NOT_FOUND: no project_root → we literally cannot look anywhere.
         # Distinct from WARN (project set, just no cache yet) so agents can
@@ -248,6 +269,103 @@ class CodeGraphStatusTool(BaseMCPTool):
         # Item 1: omit schema_version when None (don't emit null scalars)
         if stats and stats.get("schema_version") is not None:
             result["schema_version"] = stats.get("schema_version")
+        return apply_toon_format_to_response(result, output_format)
+
+    def _execute_read_existing(self, output_format: str) -> dict[str, Any]:
+        """Serve status solely from one owner-issued SQLite read transaction."""
+        from ...index_snapshot import (
+            ACTION_VERSION,
+            read_existing_snapshot,
+            read_snapshot_stats,
+        )
+
+        if not self.project_root:
+            result = build_response(
+                verdict="NOT_FOUND",
+                project_root=None,
+                indexed=False,
+                total_files=0,
+                total_symbols=0,
+                fts5_available=False,
+                lag_seconds=None,
+                cache_path=None,
+                snapshot_id=None,
+                source_fingerprint=None,
+                index_fingerprint=None,
+                source_generation=None,
+                completeness="unknown",
+                oracle_reason="MISSING_PROJECT_ROOT",
+                action_version=ACTION_VERSION,
+                access_mode="read_existing",
+                hint="project_root not set. Call set_project_path first.",
+            )
+            return apply_toon_format_to_response(result, output_format)
+
+        snapshot = read_existing_snapshot(self.project_root)
+        stats: dict[str, Any] = {}
+        if snapshot.snapshot_id is not None:
+            try:
+                stats = read_snapshot_stats(snapshot.snapshot_id, self.project_root)
+            except (OSError, ValueError):
+                snapshot = type(snapshot)(
+                    None, None, None, None, "unknown", "SNAPSHOT_READ_FAILED", None, 0
+                )
+                stats = {}
+        total_files = int(stats.get("total_files", 0))
+        total_symbols = int(stats.get("total_symbols", 0))
+        total_edges = int(stats.get("total_edges", 0))
+        indexed = total_files > 0
+        complete = snapshot.completeness == "complete"
+        verdict = "INFO" if indexed and complete else "WARN"
+        cache_path = (
+            os.path.join(snapshot.canonical_root, ".ast-cache", "index.db")
+            if snapshot.canonical_root and snapshot.snapshot_id
+            else None
+        )
+        hint = (
+            "Index snapshot is complete — pass its snapshot_id capability to graph readers."
+            if complete
+            else "Index snapshot is unavailable or not certified by an exact full-index manifest."
+        )
+        result = build_response(
+            verdict=verdict,
+            project_root=snapshot.canonical_root or self.project_root,
+            indexed=indexed,
+            total_files=total_files,
+            total_symbols=total_symbols,
+            total_edges=total_edges,
+            symbols_by_kind=dict(stats.get("symbols_by_kind") or {}),
+            symbols_by_language=dict(stats.get("symbols_by_language") or {}),
+            edges_by_kind=dict(stats.get("edges_by_kind") or {}),
+            fts5_available=bool(stats.get("fts5_available", False)),
+            lag_seconds=None,
+            cache_path=cache_path,
+            snapshot_id=snapshot.snapshot_id,
+            source_fingerprint=snapshot.source_fingerprint,
+            index_fingerprint=snapshot.index_fingerprint,
+            source_generation=snapshot.source_generation,
+            completeness=snapshot.completeness,
+            oracle_reason=snapshot.reason,
+            action_version=ACTION_VERSION,
+            access_mode="read_existing",
+            hint=hint,
+            agent_summary={
+                "summary_line": (
+                    f"codegraph_status: {snapshot.completeness} snapshot, "
+                    f"{total_files} files, {total_symbols} symbols"
+                ),
+                "next_step": hint,
+                "verdict": verdict,
+            },
+        )
+        result.update(_storage_fields(stats))
+        if cache_path:
+            try:
+                result["db_size_bytes"] = os.path.getsize(cache_path)
+            except OSError:
+                pass
+        if stats.get("schema_version") is not None:
+            result["schema_version"] = stats["schema_version"]
         return apply_toon_format_to_response(result, output_format)
 
     def _is_rebuilding(self) -> bool:

@@ -54,6 +54,7 @@ from .cache.schema import (
     init_db as _schema_init_db,
 )
 from .core.parser import Parser
+from .index_snapshot_schema import apply_snapshot_migration as _apply_migration_v13
 
 
 class SchemaIntegrityError(RuntimeError):
@@ -152,6 +153,7 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             (10, _apply_migration_v10),
             (11, _apply_migration_v11),
             (12, _apply_migration_v12),
+            (13, _apply_migration_v13),
         ]
         self._fts5_available = _schema_init_db(
             conn,

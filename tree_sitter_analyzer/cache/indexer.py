@@ -794,10 +794,42 @@ def run_index_project(
             stats["db_maintenance"] = (
                 _ast_cache_mod._reclaim_storage_after_full_rebuild(conn, cache.db_path)
             )
+        _update_authoritative_manifest(cache, candidate_snapshot, stats)
         return stats
     finally:
         if force:
             _clear_build_in_progress(cache._get_conn())
+
+
+def _update_authoritative_manifest(
+    cache: Any,
+    candidate_snapshot: IndexCandidateSnapshot | None,
+    stats: dict[str, Any],
+) -> None:
+    """Certify only an exact, successful full-index inventory."""
+    conn = cache._get_conn()
+    exact_paths = bool(
+        candidate_snapshot is not None
+        and candidate_snapshot.selected > 0
+        and candidate_snapshot.limited == 0
+        and candidate_snapshot.excluded == 0
+        and candidate_snapshot.skipped == 0
+        and candidate_snapshot.errors == 0
+        and stats.get("errors", 0) == 0
+        and stats.get("changed_during_run", 0) == 0
+        and {
+            str(row["file_path"]).replace("\\", "/")
+            for row in conn.execute("SELECT file_path FROM ast_index")
+        }
+        == candidate_snapshot.present_paths
+    )
+    if exact_paths:
+        from ..index_snapshot_schema import stamp_full_index_manifest
+
+        stamp_full_index_manifest(conn, cache.project_root)
+        return
+    conn.execute("DELETE FROM ast_index_snapshot_manifest")
+    conn.commit()
 
 
 def post_index_backfill(

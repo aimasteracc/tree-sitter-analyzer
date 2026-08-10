@@ -114,7 +114,7 @@ Reading the tables:
 | `cache` | `backend`, `file_path`, `force`, `include_activation`, `language`, `limit`, `max_files`, `mode`, `poll_interval`, `query`, `symbol` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-cache` |
 | `full` | `exclude_patterns`, `include_activation`, `max_files`, `mode`, `no_default_excludes`, `output_format`, `resolve_synapse` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--full-index` |
 | `knowledge` | `backend`, `include_docs`, `max_edges`, `max_files`, `max_nodes`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--knowledge-graph-index` |
-| `status` | `include_lag`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-status` |
+| `status` | `access_mode`, `include_lag`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-status` |
 | `sync` | `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--incremental-sync` |
 
 ## `viz` — 4 actions

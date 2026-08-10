@@ -51,8 +51,9 @@ _INDEX_DESCRIPTION = (
     "READ-ONLY:\n"
     "- action=status — check codegraph index health without writing "
     "(codegraph_status equivalent). "
-    "Returns node/edge counts, staleness, and error indicators. "
-    "Params: (none).\n"
+    "Returns node/edge counts plus an owner-issued snapshot_id, source/index "
+    "fingerprints, source_generation, and exact completeness enum. "
+    "Params: access_mode=read_existing.\n"
     "- action=cache — query the raw AST cache for symbols, types, and "
     "references (read-only modes: search, lookup, stats, changes, "
     "watch_status). NOTE: this action ALSO exposes mutating cache modes "
@@ -94,7 +95,7 @@ def build_index_facade(project_root: str | None = None) -> FacadeTool:
         facade_name="index",
         action_map={
             # -- read-only -------------------------------------------------
-            "status": CodeGraphStatusTool(project_root),
+            "status": CodeGraphStatusTool(project_root, read_existing_default=True),
             "cache": ASTCacheTool(project_root),
             # -- writes on-disk index --------------------------------------
             "build": BuildProjectIndexTool(project_root),
