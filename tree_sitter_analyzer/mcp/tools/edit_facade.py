@@ -38,6 +38,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..utils.format_helper import apply_toon_format_to_response
 from .facade_tool import FacadeTool
 
 # Annotation honesty — see module docstring above.
@@ -84,6 +85,8 @@ _EDIT_DESCRIPTION = (
     "diff_strings (old_source + new_source + language), "
     "diff_git (old_ref + new_ref + file_path). "
     "Params: see inner schema.\n"
+    "- action=release_snapshot — idempotently release a process-local frozen diff. "
+    "Params: diff_snapshot_id + route_lease_id.\n"
     "NOTE: ``safe``/``impact``/``classify``/``constraints``/``pr``/``ast_diff`` are "
     "read-only in practice; ``refactor``/``guard`` suggest changes but do not write "
     "files. readOnlyHint is False for the whole facade (mixed action set)."
@@ -104,6 +107,27 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     from .modification_guard_tool import MODIFICATION_TYPES
 
     impact_tool = ChangeImpactTool(project_root)
+
+    async def release_snapshot(arguments: dict[str, Any]) -> dict[str, Any]:
+        """Release one process-local RFC-0022 lease through the live MCP process."""
+        from ...diff_snapshot_registry import REGISTRY
+
+        snapshot_id = arguments.get("diff_snapshot_id")
+        lease_id = arguments.get("route_lease_id")
+        output_format = arguments.get("output_format", "toon")
+        if not isinstance(snapshot_id, str) or not isinstance(lease_id, str):
+            raise ValueError("diff_snapshot_id and route_lease_id are required")
+        error = REGISTRY.release_route_lease(snapshot_id, lease_id)
+        result: dict[str, Any] = {
+            "success": error is None,
+            "verdict": "INFO" if error is None else "ERROR",
+            "diff_snapshot_id": snapshot_id,
+            "released": error is None,
+            "output_format": output_format,
+        }
+        if error is not None:
+            result.update(error=error, error_code=error)
+        return apply_toon_format_to_response(result, output_format)
 
     class _PRReviewViaFacade(CodeGraphPRReviewTool):
         """Facade ``action=pr`` implies ``mode=pr``.
@@ -128,8 +152,26 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
     class _StrictEditFacade(FacadeTool):
         async def execute(self, arguments: dict[str, Any]) -> Any:
             action = arguments.get("action")
+            if action == "release_snapshot":
+                allowed = {
+                    "action",
+                    "diff_snapshot_id",
+                    "route_lease_id",
+                    "output_format",
+                }
+                if set(arguments) - allowed:
+                    raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
             if action in ("classify", "ast_diff") and arguments.get("diff_snapshot_id"):
-                allowed = {"action", "diff_snapshot_id", "file_path", "output_format"}
+                allowed = {
+                    "action",
+                    "diff_snapshot_id",
+                    "file_path",
+                    "language",
+                    "include_node_bodies",
+                    "include_ast_nodes",
+                    "hunk_cap",
+                    "output_format",
+                }
                 if set(arguments) - allowed:
                     raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
             return await super().execute(arguments)
@@ -146,9 +188,7 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
             "classify": SemanticClassifyTool(project_root),
             "ast_diff": ASTDiffTool(project_root),
         },
-        # No bespoke routes: all eight inners follow the normal action_map
-        # pattern (dict return, schema-projectable args, no union return type).
-        bespoke_map={},
+        bespoke_map={"release_snapshot": release_snapshot},
         description=_EDIT_DESCRIPTION,
         annotations=_EDIT_ANNOTATIONS,
         project_root=project_root,
@@ -160,7 +200,11 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
         extra_public_params={
             "diff_snapshot_id": {
                 "type": "string",
-                "description": "RFC-0022 frozen diff ID for classify/ast_diff with file_path.",
+                "description": "RFC-0022 frozen diff ID for classify/ast_diff/release_snapshot.",
+            },
+            "route_lease_id": {
+                "type": "string",
+                "description": "Ownership token required by action=release_snapshot.",
             },
             "modification_type": {
                 "type": "string",

@@ -495,3 +495,8 @@ def test_bind_assessed_scope_replaces_scope_for_single_pin(tmp_path: Path) -> No
     assert registry.bind_assessed_scope(consumer, ["small.py"]) is None
     assert consumer.snapshot.assessed_scope_paths == ("small.py",)
     consumer.release()
+
+
+def test_release_route_lease_reports_unknown_snapshot() -> None:
+    registry = snapshots.DiffSnapshotRegistry()
+    assert registry.release_route_lease("missing", "lease") == "DIFF_SNAPSHOT_EXPIRED"

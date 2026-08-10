@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -832,3 +833,34 @@ async def test_snapshot_rejects_non_utf8_frozen_bytes(tool, monkeypatch) -> None
         {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
     )
     assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT"
+
+
+def test_snapshot_classify_options_are_not_source_conflicts() -> None:
+    # PR #1252 review thread 3746878597.
+    from tree_sitter_analyzer.mcp.tools.semantic_classify_tool import (
+        SemanticClassifyTool,
+    )
+
+    assert (
+        SemanticClassifyTool(".").validate_arguments(
+            {
+                "diff_snapshot_id": "ds",
+                "file_path": "unknown.ext",
+                "language": "python",
+                "include_ast_nodes": True,
+                "hunk_cap": 7,
+                "output_format": "json",
+            }
+        )
+        is True
+    )
+
+
+def test_semantic_classify_execute_rejects_unreachable_unknown_mode() -> None:
+    tool = SemanticClassifyTool(".")
+    with (
+        patch.object(tool, "validate_arguments", return_value=True),
+        patch.object(tool, "_resolve_mode", return_value="unknown"),
+        pytest.raises(ValueError, match="Unknown mode: unknown"),
+    ):
+        asyncio.run(tool.execute({"output_format": "json"}))

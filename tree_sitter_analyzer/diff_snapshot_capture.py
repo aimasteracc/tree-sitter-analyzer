@@ -14,6 +14,7 @@ from .source_oracle import (
     normalize_repo_path,
     safe_workspace_path,
 )
+from .source_oracle_git import _head_entries, _head_identity, _index_entries
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,12 @@ class ChangedFile:
     binary: bool
     old_path: str | None = None
     patch_available: bool = True
+    old_kind: str = "missing"
+    new_kind: str = "missing"
+    old_mode: str | None = None
+    new_mode: str | None = None
+    old_oid: str | None = None
+    new_oid: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         value: dict[str, object] = {
@@ -37,6 +44,12 @@ class ChangedFile:
         }
         if self.old_path is not None:
             value["old_path"] = self.old_path
+        value["old_kind"] = self.old_kind
+        value["new_kind"] = self.new_kind
+        for key in ("old_mode", "new_mode", "old_oid", "new_oid"):
+            item = getattr(self, key)
+            if item is not None:
+                value[key] = item
         return value
 
 
@@ -152,8 +165,25 @@ def _untracked_segment(path: str, data: bytes, file_mode: int, binary: bool) -> 
     )
 
 
+def _entry_parts(entry: bytes | None) -> tuple[str | None, str | None, str]:
+    if entry is None:
+        return None, None, "missing"
+    fields = entry.split(b" ")
+    if len(fields) < 2:
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    mode = fields[0].decode("ascii", "strict")
+    oid_field = fields[1] if len(fields) == 3 and fields[2] == b"0" else fields[-1]
+    oid = oid_field.decode("ascii", "strict")
+    kind = "gitlink" if mode == "160000" else "symlink" if mode == "120000" else "file"
+    return mode, oid, kind
+
+
 def _capture_payload(
-    root: str, mode: str, deadline: float, ceiling: int
+    root: str,
+    mode: str,
+    deadline: float,
+    ceiling: int,
+    expected_manifest: dict[str, tuple[bytes, ...]] | None = None,
 ) -> tuple[bytes, tuple[FrozenFile, ...]]:
     remaining = ceiling
     args = (["diff", "--cached"] if mode == "staged" else ["diff-files"]) + [
@@ -167,14 +197,32 @@ def _capture_payload(
     binaries = _tracked_binary_paths(
         root, mode, deadline, min(8 * 1024 * 1024, remaining)
     )
+    index_entries: dict[bytes, bytes] | None = None
+    head_entries: dict[bytes, bytes] | None = None
     files: list[FrozenFile] = []
     additions = bytearray()
     for status, old_path, path, tracked in rows:
         lookup = old_path or path
+        if tracked and index_entries is None:
+            index_entries = _index_entries(root, deadline=deadline)
+            head = _head_identity(root, deadline=deadline)
+            head_entries = _head_entries(root, deadline=deadline, head=head)
+        old_entry = None
+        new_entry = None
+        if tracked:
+            assert index_entries is not None and head_entries is not None
+            old_entry = (
+                head_entries.get(os.fsencode(lookup))
+                if mode == "staged"
+                else index_entries.get(os.fsencode(lookup))
+            )
+            new_entry = index_entries.get(os.fsencode(path))
+        old_mode, old_oid, old_kind = _entry_parts(old_entry)
+        new_mode, new_oid, new_kind = _entry_parts(new_entry)
         old: bytes | None = None
         new: bytes | None = None
         mode_bits = 0
-        if status != "A":
+        if status != "A" and old_kind != "gitlink":
             old = _blob(
                 root,
                 f"HEAD:{lookup}" if mode == "staged" else f":{lookup}",
@@ -182,17 +230,22 @@ def _capture_payload(
                 remaining,
             )
             remaining -= len(old)
-        if status != "D":
+        if status != "D" and new_kind != "gitlink":
             if mode == "staged":
                 new = _blob(root, f":{path}", deadline, remaining)
                 remaining -= len(new)
             else:
                 safe = safe_workspace_path(
-                    root, path, deadline=deadline, limit=remaining
+                    root,
+                    path,
+                    deadline=deadline,
+                    limit=remaining,
+                    expected_chain=(expected_manifest or {}).get(path),
                 )
                 if safe.data is None:
                     raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
                 new = safe.data
+                new_kind = safe.kind
                 remaining -= len(new)
                 if safe.metadata:
                     try:
@@ -201,7 +254,19 @@ def _capture_payload(
                         mode_bits = 0
         binary = path in binaries or (not tracked and new is not None and b"\0" in new)
         record = ChangedFile(
-            path, status, old is not None, new is not None, binary, old_path, tracked
+            path,
+            status,
+            status != "A",
+            status != "D",
+            binary,
+            old_path,
+            tracked,
+            old_kind,
+            new_kind,
+            old_mode,
+            new_mode,
+            old_oid,
+            new_oid,
         )
         files.append(FrozenFile(record, old, new))
         if not tracked and new is not None:

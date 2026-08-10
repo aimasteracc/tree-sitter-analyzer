@@ -108,6 +108,20 @@ def _metadata(info: os.stat_result) -> bytes:
     return b",".join(str(value).encode("ascii") for value in values)
 
 
+def stable_descriptor_chain(metadata: tuple[bytes, ...]) -> tuple[bytes, ...]:
+    """Return mode/device/inode identities, excluding mutable directory times."""
+    result: list[bytes] = []
+    for descriptor in metadata:
+        if descriptor == b"missing":
+            result.append(descriptor)
+            continue
+        fields = descriptor.split(b",")
+        if len(fields) != 6:
+            raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH")
+        result.append(b",".join(fields[:3]))
+    return tuple(result)
+
+
 def safe_workspace_path(
     root: str,
     path: str,
@@ -116,6 +130,7 @@ def safe_workspace_path(
     limit: int,
     read_regular: bool = True,
     allow_directory: bool = False,
+    expected_chain: tuple[bytes, ...] | None = None,
 ) -> SafePath:
     """Read a repo path without following any symlink or accepting special files."""
     normalized = normalize_repo_path(path)
@@ -127,6 +142,12 @@ def safe_workspace_path(
     )
     descriptors: list[int] = []
     metadata: list[bytes] = []
+
+    def validate_chain(items: list[bytes]) -> None:
+        actual = stable_descriptor_chain(tuple(items))
+        if expected_chain is not None and actual != expected_chain:
+            raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+
     try:
         current = _open(root, flags_dir)
         descriptors.append(current)
@@ -140,7 +161,9 @@ def safe_workspace_path(
         try:
             before = _stat(name, dir_fd=parent, follow_symlinks=False)
         except FileNotFoundError:
-            return SafePath(None, tuple(metadata + [b"missing"]), "missing")
+            missing_metadata = metadata + [b"missing"]
+            validate_chain(missing_metadata)
+            return SafePath(None, tuple(missing_metadata), "missing")
         metadata.append(_metadata(before))
         if stat.S_ISLNK(before.st_mode):
             target = _readlink(os.fsencode(name), dir_fd=parent)
@@ -150,12 +173,15 @@ def safe_workspace_path(
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
             if len(data) > limit:
                 raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+            validate_chain(metadata)
             return SafePath(data, tuple(metadata), "symlink")
         if stat.S_ISDIR(before.st_mode) and allow_directory:
+            validate_chain(metadata)
             return SafePath(None, tuple(metadata), "directory")
         if not stat.S_ISREG(before.st_mode):
             raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
         if not read_regular:
+            validate_chain(metadata)
             return SafePath(None, tuple(metadata), "file")
         fd = _open(name, _regular_open_flags(), dir_fd=parent)
         descriptors.append(fd)
@@ -176,6 +202,7 @@ def safe_workspace_path(
         after = os.fstat(fd)
         if _metadata(opened) != _metadata(after):
             raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+        validate_chain(metadata)
         return SafePath(bytes(buffer), tuple(metadata), "file")
     except OSError as exc:
         raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH") from exc
@@ -255,11 +282,15 @@ def git_output(root: str, args: list[str], *, deadline: float, limit: int) -> by
 
 
 def oracle_generation(
-    project_root: str | None, mode: str = "diff", *, deadline: float | None = None
+    project_root: str | None,
+    mode: str = "diff",
+    *,
+    deadline: float | None = None,
+    manifest: dict[str, tuple[bytes, ...]] | None = None,
 ) -> tuple[str, RootIdentity]:
     from .source_oracle_git import oracle_generation as generate
 
-    return generate(project_root, mode, deadline=deadline)
+    return generate(project_root, mode, deadline=deadline, manifest=manifest)
 
 
 def capture_inventory(

@@ -394,3 +394,71 @@ def test_consumer_operations_enforce_thread_ownership(
         result = executor.submit(call).result(timeout=2)
     assert result == "DIFF_SNAPSHOT_WRONG_THREAD"
     consumer.release()
+
+
+@POSIX_SNAPSHOT_TEST
+def test_staged_gitlink_freezes_mode_and_oid_without_blob_reads(tmp_path: Path) -> None:
+    # PR #1252 review thread 3746878580.
+    root = _repo(tmp_path)
+    oid = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    (root / "vendor").mkdir()
+    _git(root, "update-index", "--add", "--cacheinfo", f"160000,{oid},vendor")
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "staged", [])
+
+    assert result["success"] is True
+    record = next(
+        item for item in result["changed_records"] if item["path"] == "vendor"
+    )
+    assert (record["new_kind"], record["new_mode"], record["new_oid"]) == (
+        "gitlink",
+        "160000",
+        oid,
+    )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_staged_symlink_records_unsupported_source_kind(tmp_path: Path) -> None:
+    # PR #1252 review thread 3746878582.
+    root = _repo(tmp_path)
+    (root / "module.py").symlink_to("old.py")
+    _git(root, "add", "module.py")
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "staged", [])
+
+    assert result["success"] is True
+    record = next(
+        item for item in result["changed_records"] if item["path"] == "module.py"
+    )
+    assert (record["new_kind"], record["new_mode"]) == ("symlink", "120000")
+
+
+@POSIX_SNAPSHOT_TEST
+def test_unrelated_tmp_sibling_does_not_invalidate_snapshot(tmp_path: Path) -> None:
+    # PR #1252 review thread 3746878588.
+    root = _repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+    (tmp_path / "unrelated").mkdir()
+
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+
+    assert error is None
+    assert consumer is not None
+    consumer.release()
+    registry.close_lease(
+        str(created["diff_snapshot_id"]), str(created["route_lease_id"])
+    )
+
+
+def test_entry_parts_rejects_malformed_git_header() -> None:
+    # PR #1252 review thread 3746878580.
+    with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        capture._entry_parts(b"160000")

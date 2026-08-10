@@ -19,6 +19,7 @@ from .source_oracle import (
     canonical_root,
     normalize_repo_path,
     safe_workspace_path,
+    stable_descriptor_chain,
 )
 
 _LOCK = threading.RLock()
@@ -250,6 +251,7 @@ def _frame_workspace_path(
     content_required: bool,
     index_entry: bytes | None,
     head_entry: bytes | None,
+    manifest: dict[str, tuple[bytes, ...]] | None = None,
 ) -> int:
     """Frame one no-follow worktree leaf and return its content charge."""
     path = normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
@@ -263,12 +265,14 @@ def _frame_workspace_path(
         allow_directory=is_gitlink,
     )
     _frame(digest, b"worktree-path", raw)
+    if manifest is not None:
+        manifest[path] = stable_descriptor_chain(safe.metadata)
     leaf_metadata = safe.metadata[-1:] if safe.kind != "missing" else ()
     ancestor_metadata = (
         safe.metadata[:-1] if safe.kind != "missing" else safe.metadata[:-1]
     )
-    for descriptor in ancestor_metadata:
-        _frame(digest, b"worktree-ancestor-stat", descriptor)
+    for descriptor in stable_descriptor_chain(tuple(ancestor_metadata)):
+        _frame(digest, b"worktree-ancestor-identity", descriptor)
     if safe.kind == "missing":
         _frame(digest, b"worktree-kind", b"missing")
     else:
@@ -294,7 +298,11 @@ def _frame_workspace_path(
 
 
 def oracle_generation(
-    project_root: str | None, mode: str = "diff", *, deadline: float | None = None
+    project_root: str | None,
+    mode: str = "diff",
+    *,
+    deadline: float | None = None,
+    manifest: dict[str, tuple[bytes, ...]] | None = None,
 ) -> tuple[str, RootIdentity]:
     """Return a domain-framed generation and the exact canonical root identity."""
     root, identity = canonical_root(project_root)
@@ -332,8 +340,8 @@ def oracle_generation(
         allow_missing=head
         == b"4b825dc642cb6eb9a060e54bf8d69288fbee4904",  # pragma: allowlist secret
     )
-    for descriptor in safe_index.metadata:
-        _frame(digest, b"index-descriptor-stat", descriptor)
+    for descriptor in stable_descriptor_chain(safe_index.metadata):
+        _frame(digest, b"index-descriptor-identity", descriptor)
     _frame(digest, b"index-kind", safe_index.kind.encode("ascii"))
     index_bytes = safe_index.data or b""
     _frame(digest, b"index-content", hashlib.sha256(index_bytes).digest())
@@ -376,6 +384,7 @@ def oracle_generation(
             content_required=raw in dirty,
             index_entry=index_entries[raw],
             head_entry=head_entries.get(raw),
+            manifest=manifest,
         )
         remaining_content -= charge
     for raw in sorted(untracked, key=os.fsencode):
@@ -388,6 +397,7 @@ def oracle_generation(
             content_required=True,
             index_entry=None,
             head_entry=None,
+            manifest=manifest,
         )
         remaining_content -= charge
 

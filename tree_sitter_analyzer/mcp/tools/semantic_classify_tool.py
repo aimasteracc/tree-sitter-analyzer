@@ -197,7 +197,14 @@ class SemanticClassifyTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         if arguments.get("diff_snapshot_id"):
-            allowed = {"diff_snapshot_id", "file_path", "output_format"}
+            allowed = {
+                "diff_snapshot_id",
+                "file_path",
+                "language",
+                "include_ast_nodes",
+                "hunk_cap",
+                "output_format",
+            }
             if set(arguments) - allowed:
                 raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
             if not arguments.get("file_path"):
@@ -260,7 +267,13 @@ class SemanticClassifyTool(BaseMCPTool):
                 language = (
                     arguments.get("language") or _language_from_ext(file_path) or ""
                 )
-                if frozen.record.binary:
+                if frozen.record.binary or any(
+                    kind not in ("file", "missing")
+                    for kind in (
+                        getattr(frozen.record, "old_kind", "file"),
+                        getattr(frozen.record, "new_kind", "file"),
+                    )
+                ):
                     return apply_toon_format_to_response(
                         {
                             "success": False,

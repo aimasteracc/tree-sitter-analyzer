@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import secrets
@@ -115,10 +116,16 @@ class DiffSnapshotRegistry:
         self._lock = threading.RLock()
         self._states: dict[str, _State] = {}
         self._reservations: dict[str, int] = {}
+        self._closed_leases: dict[str, tuple[str, float]] = {}
         self._charged_bytes = 0
 
     def _sweep(self) -> None:
         now = self._clock()
+        self._closed_leases = {
+            sid: value
+            for sid, value in self._closed_leases.items()
+            if now - value[1] < HARD_LIFETIME_SECONDS
+        }
         for sid, state in list(self._states.items()):
             if now - state.snapshot.created_monotonic >= HARD_LIFETIME_SECONDS:
                 state.expired = True
@@ -172,16 +179,35 @@ class DiffSnapshotRegistry:
             self._reservations[reservation] = ceiling
         try:
             root, identity = canonical_root(project_root)
-            before, before_identity = oracle_generation(root, mode, deadline=deadline)
+            pre_manifest: dict[str, tuple[bytes, ...]] = {}
+            oracle_params = inspect.signature(oracle_generation).parameters
+            if "manifest" in oracle_params:
+                before, before_identity = oracle_generation(
+                    root, mode, deadline=deadline, manifest=pre_manifest
+                )
+            else:  # compatibility for injected platform seams
+                before, before_identity = oracle_generation(
+                    root, mode, deadline=deadline
+                )
             if before_identity != identity:
                 raise SourceOracleError("DIFF_SNAPSHOT_ROOT_MISMATCH")
             inventory_paths = capture_inventory(
                 root, mode, deadline=deadline, limit=ceiling
             )
             inventory_size = _path_storage(inventory_paths)
-            patch, files = _capture_payload(
-                root, mode, deadline, ceiling - inventory_size
-            )
+            capture_params = inspect.signature(_capture_payload).parameters
+            if "expected_manifest" in capture_params:
+                patch, files = _capture_payload(
+                    root,
+                    mode,
+                    deadline,
+                    ceiling - inventory_size,
+                    expected_manifest=pre_manifest,
+                )
+            else:  # compatibility for injected capture seams
+                patch, files = _capture_payload(
+                    root, mode, deadline, ceiling - inventory_size
+                )
             after, after_identity = oracle_generation(root, mode, deadline=deadline)
             if before != after or identity != after_identity:
                 raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
@@ -374,17 +400,27 @@ class DiffSnapshotRegistry:
             if not state.pins and (state.expired or not state.lease_open):
                 self._erase(sid)
 
-    def close_lease(self, sid: str, lease: str) -> bool:
+    def release_route_lease(self, sid: str, lease: str) -> str | None:
+        """Close an owned route lease; repeating the exact token pair is idempotent."""
         with self._lock:
             self._sweep()
+            closed = self._closed_leases.get(sid)
+            if closed is not None:
+                return None if closed[0] == lease else "DIFF_SNAPSHOT_LEASE_MISMATCH"
             state = self._states.get(sid)
-            if state is None or state.route_lease_id != lease:
-                return False
+            if state is None:
+                return "DIFF_SNAPSHOT_EXPIRED"
+            if state.route_lease_id != lease:
+                return "DIFF_SNAPSHOT_LEASE_MISMATCH"
             state.lease_open = False
             state.expired = True
+            self._closed_leases[sid] = (lease, self._clock())
             if not state.pins:
                 self._erase(sid)
-            return True
+            return None
+
+    def close_lease(self, sid: str, lease: str) -> bool:
+        return self.release_route_lease(sid, lease) is None
 
     def reset(self) -> None:
         with self._lock:
@@ -392,6 +428,7 @@ class DiffSnapshotRegistry:
                 raise RuntimeError("DIFF_SNAPSHOT_CONSUMERS_ACTIVE")
             self._states.clear()
             self._reservations.clear()
+            self._closed_leases.clear()
             self._charged_bytes = 0
 
     def stats(self) -> tuple[int, int]:

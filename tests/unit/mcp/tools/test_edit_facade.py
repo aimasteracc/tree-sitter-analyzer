@@ -163,6 +163,7 @@ def test_edit_facade_all_actions_present() -> None:
         "pr",
         "classify",
         "ast_diff",
+        "release_snapshot",
     }
     registered = set(facade.action_map) | set(facade.bespoke_map)
     assert expected == registered
@@ -272,11 +273,11 @@ def test_guard_symbol_passes_through_unchanged() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_no_bespoke_routes() -> None:
+def test_release_snapshot_is_the_only_bespoke_route() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     facade = build_edit_facade(project_root=None)
-    assert facade.bespoke_map == {}, "edit facade should have no bespoke routes"
+    assert set(facade.bespoke_map) == {"release_snapshot"}
     assert len(facade.action_map) == 8
 
 
@@ -536,6 +537,7 @@ def test_edit_facade_schema_includes_action_and_required() -> None:
         "pr",
         "classify",
         "ast_diff",
+        "release_snapshot",
     }
     assert expected == enum_vals
 
@@ -823,3 +825,70 @@ def test_edit_impact_rejects_clean_tracked_transient_write_restore(
     assert observations == []
     assert dependency.read_bytes() == original
     assert result["affected_files_unknown"] is True
+
+
+def test_edit_release_snapshot_is_same_process_reachable_and_idempotent(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3746878592.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    root = make_repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    registry = snapshots.DiffSnapshotRegistry()
+    monkeypatch.setattr(snapshots, "REGISTRY", registry)
+    created = registry.create(str(root), "diff", [])
+    args = {
+        "action": "release_snapshot",
+        "diff_snapshot_id": created["diff_snapshot_id"],
+        "route_lease_id": created["route_lease_id"],
+        "output_format": "json",
+    }
+    facade = build_edit_facade(str(root))
+
+    first = asyncio.run(facade.execute(args))
+    second = asyncio.run(facade.execute(args))
+
+    assert (first["released"], second["released"]) == (True, True)
+
+
+def test_edit_release_snapshot_rejects_wrong_ownership_token(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3746878592.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    root = make_repo(tmp_path)
+    registry = snapshots.DiffSnapshotRegistry()
+    monkeypatch.setattr(snapshots, "REGISTRY", registry)
+    created = registry.create(str(root), "diff", [])
+
+    result = asyncio.run(
+        build_edit_facade(str(root)).execute(
+            {
+                "action": "release_snapshot",
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "route_lease_id": "wrong",
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert result["error_code"] == "DIFF_SNAPSHOT_LEASE_MISMATCH"
+
+
+def test_edit_release_snapshot_rejects_alternate_source_arguments() -> None:
+    # PR #1252 review thread 3746878592.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    with pytest.raises(ValueError, match="DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS"):
+        asyncio.run(
+            build_edit_facade(".").execute(
+                {
+                    "action": "release_snapshot",
+                    "diff_snapshot_id": "ds",
+                    "route_lease_id": "lease",
+                    "file_path": "alternate.py",
+                }
+            )
+        )

@@ -81,7 +81,8 @@ Before Phase A, the edit-adapter runtime must own a process-local, non-persisten
 snapshot registry. `edit.impact` atomically materializes the normalized patch and
 all available old/new bytes into an immutable registry entry, then returns its
 opaque `diff_snapshot_id`, `source_generation`, changed-file records (`path`,
-`status`, old/new availability, binary flag), and `assessed_scope_paths`: the
+`status`, old/new availability, binary flag, Git kind/mode/OID), and
+`assessed_scope_paths`: the
 primitive-normalized union of changed paths and impact-produced affected/blast-
 radius paths. `edit.ast_diff` and `edit.classify` accept only that ID plus
 `file_path`; they never reconstruct the captured input. The task only fans out
@@ -99,8 +100,17 @@ release erases an expired entry; otherwise the orchestration host closes the
 primitive-issued route lease in a `finally` block after outcome freeze/failure,
 and erasure occurs once both lease and consumer counts reach zero. Thus an
 overrunning call keeps valid bytes without ever allowing actual retained memory
-or live-slot accounting to exceed the 16-entry/64 MiB budgets. Access after
-expiry or lease close returns `DIFF_SNAPSHOT_EXPIRED`.
+or live-slot accounting to exceed the 16-entry/64 MiB budgets. The long-lived
+MCP process exposes `edit(action="release_snapshot", diff_snapshot_id=id,
+route_lease_id=lease)` so a successful route can close ownership early; repeating
+the exact ID/token pair is idempotent, while a mismatched ownership token fails.
+Access after expiry or lease close returns `DIFF_SNAPSHOT_EXPIRED`.
+
+Phase 0 snapshot and lease IDs are deliberately process-local. A one-shot CLI
+process dies before another invocation can safely consume or release them, so
+there is intentionally no `--diff-snapshot-id` or snapshot-release CLI flag.
+Cross-process persistence and a one-shot task/orchestration facade are Phase A
+work behind the public-surface gate, not Phase 0 CLI parity requirements.
 
 Before every snapshot-consuming call (`constraints`, `ast_diff`, or `classify`),
 its primitive owner acquires that pin, then reacquires and compares the shared-

@@ -283,3 +283,37 @@ def test_capture_consistent_delegates_to_git_helper(monkeypatch) -> None:
 def test_regular_open_flags_fail_closed_without_platform_support(monkeypatch) -> None:
     monkeypatch.setattr(oracle, "_supports_nofollow", lambda: False)
     _error(oracle._regular_open_flags, "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
+
+
+def test_safe_payload_read_rejects_replaced_ancestor_chain(tmp_path: Path) -> None:
+    # PR #1252 review thread 3746878588: payload must match the pre-epoch manifest.
+    root = tmp_path / "repo"
+    target = root / "pkg" / "a.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("trusted\n")
+    before = oracle.safe_workspace_path(
+        str(root), "pkg/a.py", deadline=time.monotonic() + 10, limit=1024
+    )
+    expected = oracle.stable_descriptor_chain(before.metadata)
+    (root / "pkg").rename(root / "original")
+    (root / "pkg").mkdir()
+    (root / "pkg" / "a.py").write_text("replacement\n")
+
+    _error(
+        lambda: oracle.safe_workspace_path(
+            str(root),
+            "pkg/a.py",
+            deadline=time.monotonic() + 10,
+            limit=1024,
+            expected_chain=expected,
+        ),
+        "DIFF_SNAPSHOT_SOURCE_CHANGED",
+    )
+
+
+def test_stable_descriptor_chain_rejects_malformed_metadata() -> None:
+    # PR #1252 review thread 3746878588.
+    _error(
+        lambda: oracle.stable_descriptor_chain((b"bad",)),
+        "DIFF_SNAPSHOT_UNSAFE_PATH",
+    )

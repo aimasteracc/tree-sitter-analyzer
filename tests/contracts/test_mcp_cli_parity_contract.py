@@ -353,6 +353,7 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("edit", "pr"): "_PRReviewViaFacade",
         ("edit", "classify"): "SemanticClassifyTool",
         ("edit", "ast_diff"): "ASTDiffTool",
+        ("edit", "release_snapshot"): "<bespoke>",
         ("project", "overview"): "ProjectOverviewTool",
         ("project", "files"): "ListFilesTool",
         ("project", "smart"): "SmartContextTool",

@@ -733,3 +733,63 @@ async def test_strict_snapshot_revalidates_while_pinned_before_publish(
         ("format", False),
         ("release", True),
     ]
+
+
+def test_snapshot_consumers_reject_symlink_kind() -> None:
+    # PR #1252 review thread 3746878582.
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool
+
+    frozen = SimpleNamespace(
+        record=SimpleNamespace(
+            path="module.py", binary=False, old_kind="symlink", new_kind="symlink"
+        ),
+        old_bytes=b"target.py",
+        new_bytes=b"other.py",
+    )
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(file=lambda path: frozen), release=lambda: None
+    )
+    with patch(
+        "tree_sitter_analyzer.diff_snapshot_registry.REGISTRY.acquire",
+        return_value=(consumer, None),
+    ):
+        result = asyncio.run(
+            ASTDiffTool(".").execute(
+                {
+                    "diff_snapshot_id": "ds",
+                    "file_path": "module.py",
+                    "output_format": "json",
+                }
+            )
+        )
+    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT"
+
+
+def test_snapshot_ast_options_are_not_source_conflicts() -> None:
+    # PR #1252 review thread 3746878597.
+    from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool
+
+    assert (
+        ASTDiffTool(".").validate_arguments(
+            {
+                "diff_snapshot_id": "ds",
+                "file_path": "unknown.ext",
+                "language": "python",
+                "include_node_bodies": True,
+                "output_format": "json",
+            }
+        )
+        is True
+    )
+
+
+def test_ast_diff_execute_rejects_unreachable_unknown_mode() -> None:
+    tool = ASTDiffTool(".")
+    with (
+        patch.object(tool, "validate_arguments", return_value=True),
+        patch.object(tool, "_resolve_mode", return_value="unknown"),
+        pytest.raises(ValueError, match="Unknown mode: unknown"),
+    ):
+        asyncio.run(tool.execute({"output_format": "json"}))

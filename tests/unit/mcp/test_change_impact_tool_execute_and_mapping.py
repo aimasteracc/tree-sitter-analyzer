@@ -2339,3 +2339,123 @@ def test_pr_analysis_reports_gh_unavailable(monkeypatch) -> None:
     )
 
     assert result["error"] == "gh CLI not available or not authenticated"
+
+
+def _strict_capture_repo(tmp_path, files: dict[str, str]):
+    import subprocess
+
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+    for name, content in files.items():
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"], cwd=tmp_path, check=True, capture_output=True
+    )
+
+
+def test_strict_snapshot_root_scope_matches_all_paths(tmp_path) -> None:
+    # PR #1252 review thread 3746878572.
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    _strict_capture_repo(tmp_path, {"pkg/a.py": "x = 1\n"})
+    (tmp_path / "pkg/a.py").write_text("x = 2\n")
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {
+                "capture_diff_snapshot": True,
+                "scope_paths": ["."],
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["changed_files"] == ["pkg/a.py"]
+    assert result["scope_paths_invalid"] == []
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_snapshot_rename_matches_deleted_old_scope(tmp_path) -> None:
+    # PR #1252 review thread 3746878577.
+    import subprocess
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    _strict_capture_repo(tmp_path, {"old.py": "x = 1\n"})
+    subprocess.run(["git", "mv", "old.py", "new.py"], cwd=tmp_path, check=True)
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {
+                "capture_diff_snapshot": True,
+                "mode": "staged",
+                "scope_paths": ["old.py"],
+                "output_format": "json",
+            }
+        )
+    )
+    assert result["changed_files"] == ["new.py"]
+    assert result["scope_paths_invalid"] == []
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_snapshot_filters_tool_cache_paths(tmp_path) -> None:
+    # PR #1252 review thread 3746878600.
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    _strict_capture_repo(tmp_path, {".ast-cache/index.db": "one\n"})
+    (tmp_path / ".ast-cache/index.db").write_text("two\n")
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {"capture_diff_snapshot": True, "output_format": "json"}
+        )
+    )
+    assert result["changed_files"] == []
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_summary_only_preserves_snapshot_surface(tmp_path) -> None:
+    # PR #1252 review thread 3746878602.
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    _strict_capture_repo(tmp_path, {"a.py": "x = 1\n"})
+    (tmp_path / "a.py").write_text("x = 2\n")
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {
+                "capture_diff_snapshot": True,
+                "agent_summary_only": True,
+                "output_format": "json",
+            }
+        )
+    )
+    keys = (
+        "diff_snapshot_id",
+        "route_lease_id",
+        "source_generation",
+        "changed_records",
+    )
+    assert tuple(key in result for key in keys) == (True, True, True, True)
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+def test_strict_early_error_uses_requested_toon_formatter() -> None:
+    # PR #1252 review thread 3746878603.
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(".").execute(
+            {"capture_diff_snapshot": True, "mode": "branch", "output_format": "toon"}
+        )
+    )
+    assert result["format"] == "toon"
+    assert isinstance(result["toon_content"], str)

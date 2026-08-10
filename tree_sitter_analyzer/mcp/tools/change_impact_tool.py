@@ -29,6 +29,7 @@ from .utils.change_impact_analysis import (
     _build_change_impact_result,
 )
 from .utils.change_impact_git import (
+    _filter_excluded_paths,
     _get_changed_files,
     _get_diff_stat,
 )
@@ -38,6 +39,12 @@ from .utils.change_impact_response import (
     build_agent_summary_only_response,
     build_no_changes_result,
 )
+
+
+def _scope_matches(scope: str, path: str) -> bool:
+    """Match one normalized Git scope against a repository-relative identity."""
+    prefix = scope.rstrip("/")
+    return prefix == "." or path == prefix or path.startswith(prefix + "/")
 
 
 class ChangeImpactTool(BaseMCPTool):
@@ -153,14 +160,22 @@ class ChangeImpactTool(BaseMCPTool):
         frozen: dict[str, object] | None = None
         frozen_consumer: Any = None
         if capture_diff_snapshot:
+
+            def snapshot_error(code: str) -> dict[str, Any]:
+                return apply_toon_format_to_response(
+                    {
+                        "success": False,
+                        "verdict": "ERROR",
+                        "error_code": code,
+                        "error": code,
+                        "output_format": output_format,
+                    },
+                    output_format,
+                    compact_only=compact_only,
+                )
+
             if mode not in ("diff", "staged"):
-                code = "DIFF_SNAPSHOT_UNSUPPORTED_MODE"
-                return {
-                    "success": False,
-                    "verdict": "ERROR",
-                    "error_code": code,
-                    "error": code,
-                }
+                return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_MODE")
             from ...diff_snapshot_registry import REGISTRY
             from ...source_oracle import SourceOracleError, normalize_repo_path
 
@@ -169,23 +184,11 @@ class ChangeImpactTool(BaseMCPTool):
                     normalize_repo_path(str(path)) for path in scope_paths
                 ]
             except SourceOracleError as exc:
-                code = str(exc)
-                return {
-                    "success": False,
-                    "verdict": "ERROR",
-                    "error_code": code,
-                    "error": code,
-                }
+                return snapshot_error(str(exc))
             scope_paths = normalized_scope
             frozen = REGISTRY.create(self.project_root, mode, normalized_scope)
             if not frozen.get("success"):
-                code = str(frozen["error_code"])
-                return {
-                    "success": False,
-                    "verdict": "ERROR",
-                    "error_code": code,
-                    "error": code,
-                }
+                return snapshot_error(str(frozen["error_code"]))
             frozen_consumer, error = REGISTRY.acquire(
                 str(frozen["diff_snapshot_id"]), self.project_root
             )
@@ -193,12 +196,7 @@ class ChangeImpactTool(BaseMCPTool):
                 REGISTRY.close_lease(
                     str(frozen["diff_snapshot_id"]), str(frozen["route_lease_id"])
                 )
-                return {
-                    "success": False,
-                    "verdict": "ERROR",
-                    "error_code": error,
-                    "error": error,
-                }
+                return snapshot_error(error)
             try:
                 result = self._execute_frozen_snapshot(
                     frozen=frozen,
@@ -341,17 +339,27 @@ class ChangeImpactTool(BaseMCPTool):
         """
         from ...diff_snapshot_registry import REGISTRY
 
-        workspace_changed_files = [
-            str(record["path"]) for record in _snapshot_records(frozen)
-        ]
+        records = _snapshot_records(frozen)
+        workspace_changed_files = _filter_excluded_paths(
+            [str(record["path"]) for record in records]
+        )
+        visible_paths = set(workspace_changed_files)
+        record_identities = {
+            str(record[key])
+            for record in records
+            if str(record["path"]) in visible_paths
+            for key in ("path", "old_path")
+            if record.get(key)
+        }
         changed_files = workspace_changed_files
         if scope_paths:
             changed_files = [
-                path
-                for path in workspace_changed_files
-                if any(
-                    path == scope.rstrip("/")
-                    or path.startswith(scope.rstrip("/") + "/")
+                str(record["path"])
+                for record in records
+                if str(record["path"]) in visible_paths
+                and any(
+                    _scope_matches(scope, str(record.get("old_path") or ""))
+                    or _scope_matches(scope, str(record["path"]))
                     for scope in scope_paths
                 )
             ]
@@ -359,14 +367,11 @@ class ChangeImpactTool(BaseMCPTool):
         # question. Use only the immutable inventory captured inside the source
         # oracle epoch; a clean file or directory prefix is still valid.
         inventory_paths = tuple(consumer.snapshot.inventory_paths)
-        scope_identities = set(inventory_paths).union(workspace_changed_files)
+        scope_identities = set(inventory_paths).union(record_identities)
         invalid_scope = [
             scope
             for scope in scope_paths
-            if not any(
-                path == scope.rstrip("/") or path.startswith(scope.rstrip("/") + "/")
-                for path in scope_identities
-            )
+            if not any(_scope_matches(scope, path) for path in scope_identities)
         ]
         if changed_files:
             result: dict[str, Any] = {
@@ -424,7 +429,19 @@ class ChangeImpactTool(BaseMCPTool):
             )
         result = self._attach_diff_snapshot(result, mode, True, frozen=frozen)
         if agent_summary_only:
+            snapshot_surface = {
+                key: result[key]
+                for key in (
+                    "diff_snapshot_id",
+                    "route_lease_id",
+                    "source_generation",
+                    "changed_records",
+                    "assessed_scope_paths",
+                )
+                if key in result
+            }
             result = build_agent_summary_only_response(result)
+            result.update(snapshot_surface)
         result["output_format"] = output_format
         _canonicalize_change_impact_verdict(result)
         result = mirror_summary_line(result)

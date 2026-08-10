@@ -81,6 +81,10 @@ CONDITIONAL_PARAM_NOTES: dict[tuple[str, str], str] = {
 }
 
 BESPOKE_ROUTE_SPECS: dict[tuple[str, str], dict[str, Any]] = {
+    ("edit", "release_snapshot"): {
+        "params": "`diff_snapshot_id`*, `route_lease_id`*, `output_format`",
+        "source": "edit_facade.py::release_snapshot",
+    },
     ("nav", "context"): {
         "params": (
             "`task`* (or `symbol`/`query` as alias), `max_nodes`, "
