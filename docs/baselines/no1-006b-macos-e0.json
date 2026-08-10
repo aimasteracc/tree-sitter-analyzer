@@ -1,5 +1,5 @@
 {
-  "canonical_payload_sha256": "59e0d58b6dd1c53d62309de2fa48773699c76cae27c7167c5fa6e234a27dcad1",
+  "canonical_payload_sha256": "4a433da65b79d2cbdd4025f4a368a3e6076f396d7e57da8ef2445db2458f9ef3",
   "collection_finished_at_utc": "2026-08-09T23:39:41.908857+00:00",
   "collection_started_at_utc": "2026-08-09T23:39:28.153006+00:00",
   "collector": {
@@ -462,7 +462,13 @@
       "version": "1.31.0"
     },
     "build_python": {
+      "architecture": "64bit",
+      "executable": "<collector-sys-executable>",
       "implementation": "CPython",
+      "machine": "arm64",
+      "pointer_bits": 64,
+      "sysconfig_platform": "macosx-11.0-arm64",
+      "system": "Darwin",
       "version": "3.14.3"
     },
     "bytecode_policy": "PYTHONDONTWRITEBYTECODE=1",
@@ -479,7 +485,13 @@
     "network_policy": "UV_OFFLINE=1; uv --offline; no network transfer measurement",
     "os": "macOS-26.4.1-arm64-arm-64bit-Mach-O",
     "python": {
+      "architecture": "64bit",
+      "executable": "<target-venv-python>",
       "implementation": "CPython",
+      "machine": "arm64",
+      "pointer_bits": 64,
+      "sysconfig_platform": "macosx-11.0-arm64",
+      "system": "Darwin",
       "version": "3.14.3"
     },
     "sample_order": "all CLI samples, then all MCP samples",

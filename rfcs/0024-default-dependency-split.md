@@ -164,7 +164,7 @@ The post-hoc hardened collector produced
 [`docs/baselines/no1-006b-macos-e0.json`](../docs/baselines/no1-006b-macos-e0.json)
 from collector commit `8737609090478e47cedf49522e33947bd0cc0e64` and the distinct pinned subject.
 <!-- BEGIN GENERATED RECEIPT SUMMARY -->
-Its canonical payload SHA-256 is `59e0d58b6dd1c53d62309de2fa48773699c76cae27c7167c5fa6e234a27dcad1`.
+Its canonical payload SHA-256 is `4a433da65b79d2cbdd4025f4a368a3e6076f396d7e57da8ef2445db2458f9ef3`.
 
 | Axis | Measured value |
 |---|---:|

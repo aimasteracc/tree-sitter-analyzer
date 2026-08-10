@@ -54,7 +54,7 @@
       "properties": {
         "commit": {"const":"7e0e8f6e03270fcbf4025d717415ef69c9354145"},
         "git_tree": {"const":"fe340eff33002b67ae88b34f1174bbcca4efc370"},
-        "lock_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "lock_sha256": {"const":"516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"},
         "source_archive_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
         "root_wheel_filename": {"type":"string","pattern":"^[^/]+\\.whl$","maxLength":200},
         "root_wheel_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
@@ -68,7 +68,7 @@
       "properties": {
         "derivation": {"const":"uv.lock frozen export; hashed exact requirements; project wheel installed separately with --no-deps"},
         "export_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
-        "lock_sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "lock_sha256": {"const":"516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"},
         "distributions": {
           "type": "array",
           "minItems": 1,
@@ -97,14 +97,14 @@
         "python": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["version","implementation"],
-          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50}}
+          "required": ["version","implementation","machine","system","architecture","sysconfig_platform","pointer_bits","executable"],
+          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50},"machine":{"type":"string","minLength":1,"maxLength":100},"system":{"type":"string","minLength":1,"maxLength":100},"architecture":{"type":"string","minLength":1,"maxLength":100},"sysconfig_platform":{"type":"string","minLength":1,"maxLength":200},"pointer_bits":{"type":"integer","enum":[32,64]},"executable":{"const":"<target-venv-python>"}}
         },
         "build_python": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["version","implementation"],
-          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50}}
+          "required": ["version","implementation","machine","system","architecture","sysconfig_platform","pointer_bits","executable"],
+          "properties": {"version":{"type":"string","minLength":1,"maxLength":50},"implementation":{"type":"string","minLength":1,"maxLength":50},"machine":{"type":"string","minLength":1,"maxLength":100},"system":{"type":"string","minLength":1,"maxLength":100},"architecture":{"type":"string","minLength":1,"maxLength":100},"sysconfig_platform":{"type":"string","minLength":1,"maxLength":200},"pointer_bits":{"type":"integer","enum":[32,64]},"executable":{"const":"<collector-sys-executable>"}}
         },
         "build_backend": {
           "type": "object",

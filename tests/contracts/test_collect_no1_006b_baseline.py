@@ -162,7 +162,27 @@ def test_validator_rejects_root_role_on_non_project_distribution() -> None:
 
 def test_validator_rejects_lock_hash_mismatch() -> None:
     report=mutated(("dependency_closure","lock_sha256"),"0"*64)
-    with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,schema())
+    with pytest.raises(ValidationError): collector.validate_receipt(report,schema())
+
+
+def test_receipt_lock_hash_matches_detached_subject_blob() -> None:
+    report=baseline(); commit=report["source"]["commit"]
+    lock_blob=subprocess.run(["git","show",f"{commit}:uv.lock"],cwd=REPO,check=True,capture_output=True).stdout
+    assert report["source"]["lock_sha256"] == collector.digest_bytes(lock_blob) == collector.EXPECTED_SUBJECT_LOCK_SHA256
+
+
+def test_schema_rejects_matching_arbitrary_subject_lock_hashes() -> None:
+    report=mutated(("source","lock_sha256"),"a"*64)
+    report["dependency_closure"]["lock_sha256"]="a"*64; report["canonical_payload_sha256"]=collector.canonical_hash(report)
+    with pytest.raises(ValidationError): collector.validate_receipt(report,schema())
+
+
+def test_validator_rejects_matching_arbitrary_locks_with_weakened_schema() -> None:
+    weakened=copy.deepcopy(schema())
+    for section in ("source","dependency_closure"): weakened["properties"][section]["properties"]["lock_sha256"]={"type":"string"}
+    report=mutated(("source","lock_sha256"),"a"*64)
+    report["dependency_closure"]["lock_sha256"]="a"*64; report["canonical_payload_sha256"]=collector.canonical_hash(report)
+    with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,weakened)
 
 
 def test_validator_rejects_artifact_size_mismatch() -> None:
@@ -175,9 +195,11 @@ def test_validator_rejects_stale_canonical_hash() -> None:
     with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,schema())
 
 
-@pytest.mark.parametrize(("axis","os_label"),[("macos","macOS-26.4.1-arm64"),("linux","Linux-6.8.0-x86_64"),("windows","Windows-11-10.0.26100")])
-def test_schema_supports_each_native_axis_without_fabricating_measurements(axis: str, os_label: str) -> None:
-    report=copy.deepcopy(baseline()); report["measured_axis"]=axis; report["environment"]["system"]=axis; report["environment"]["os"]=os_label
+@pytest.mark.parametrize(("axis","os_label","native_system","machine","sysconfig_platform"),[("macos","macOS-26.4.1-arm64","Darwin","arm64","macosx-11.0-arm64"),("linux","Linux-6.8.0-x86_64","Linux","x86_64","linux-x86_64"),("windows","Windows-11-10.0.26100","Windows","AMD64","win-amd64")])
+def test_schema_supports_each_native_axis_without_fabricating_measurements(axis: str, os_label: str, native_system: str, machine: str, sysconfig_platform: str) -> None:
+    report=copy.deepcopy(baseline()); report["measured_axis"]=axis; report["environment"]["system"]=axis; report["environment"]["os"]=os_label; report["environment"]["machine"]=machine
+    for key in ("python","build_python"):
+        report["environment"][key].update({"system":native_system,"machine":machine,"sysconfig_platform":sysconfig_platform})
     report["platform_axes"]={name:("measured_e0" if name==axis else "unknown") for name in ("macos","linux","windows")}; report["canonical_payload_sha256"]=collector.canonical_hash(report)
     collector.validate_receipt(report,schema())
 
@@ -206,6 +228,18 @@ def test_schema_rejects_measured_axis_contradiction() -> None:
 def test_validator_rejects_build_python_mismatch() -> None:
     report=mutated(("environment","build_python","version"),"3.13.0")
     with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,schema())
+
+
+def test_no1_python_rejects_cross_architecture_target_before_sampling() -> None:
+    host={"machine":"arm64","system":"Darwin","sysconfig_platform":"macosx-11.0-arm64","pointer_bits":64}
+    target={**host,"machine":"x86_64","sysconfig_platform":"macosx-10.9-x86_64"}
+    with pytest.raises(RuntimeError,match="NO1_006B_PYTHON target is not native"):
+        collector.require_native_python_identity(host,target)
+
+
+def test_schema_binds_python_executable_provenance_placeholders() -> None:
+    report=mutated(("environment","python","executable"),"/tmp/target/bin/python")
+    with pytest.raises(ValidationError): collector.validate_receipt(report,schema())
 
 
 def test_schema_rejects_unpinned_build_backend() -> None:

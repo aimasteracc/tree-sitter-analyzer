@@ -24,6 +24,7 @@ from typing import Any
 
 EXPECTED_SUBJECT_COMMIT = "7e0e8f6e03270fcbf4025d717415ef69c9354145"
 EXPECTED_SUBJECT_TREE = "fe340eff33002b67ae88b34f1174bbcca4efc370"
+EXPECTED_SUBJECT_LOCK_SHA256 = "516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc3fa7085639dc0909"
 ROOT_NAME = "tree-sitter-analyzer"
 TOOL_GROUP = "no1-006b-collector-tool"
 HATCHLING_VERSION = "1.31.0"
@@ -162,8 +163,10 @@ def require_clean_subject(repo: Path, expected_commit: str) -> dict[str, str]:
     tree = git(repo, "rev-parse", "HEAD^{tree}").decode().strip()
     if tree != EXPECTED_SUBJECT_TREE:
         raise RuntimeError(f"expected subject tree {EXPECTED_SUBJECT_TREE}, found {tree}")
-    return {"commit": commit, "git_tree": tree,
-            "lock_sha256": digest_bytes(bound_blob(repo,commit,"uv.lock"))}
+    lock_sha256=digest_bytes(bound_blob(repo,commit,"uv.lock"))
+    if lock_sha256 != EXPECTED_SUBJECT_LOCK_SHA256:
+        raise RuntimeError(f"expected subject lock {EXPECTED_SUBJECT_LOCK_SHA256}, found {lock_sha256}")
+    return {"commit":commit,"git_tree":tree,"lock_sha256":lock_sha256}
 
 
 def collector_identity(tool_export_sha256: str) -> dict[str, str]:
@@ -242,9 +245,41 @@ def collector_tool_export(root: Path, destination: Path, uv: Path) -> tuple[str,
     return digest_bytes(text),rows,inventory_sha
 
 
+PYTHON_IDENTITY_CODE = """import json,platform,struct,sys,sysconfig
+print(json.dumps({
+ 'version':platform.python_version(),
+ 'implementation':platform.python_implementation(),
+ 'machine':platform.machine(),
+ 'system':platform.system(),
+ 'architecture':platform.architecture()[0],
+ 'sysconfig_platform':sysconfig.get_platform(),
+ 'pointer_bits':struct.calcsize('P')*8,
+ 'executable':str(__import__('pathlib').Path(sys.executable).resolve()),
+}))"""
+NATIVE_IDENTITY_FIELDS = ("machine","system","sysconfig_platform","pointer_bits")
+
+
+def python_identity(python: Path, cwd: Path, executable_provenance: str) -> dict[str, Any]:
+    identity=json.loads(run([str(python),"-c",PYTHON_IDENTITY_CODE],cwd=cwd).stdout)
+    resolved=python.resolve(strict=True)
+    if Path(identity["executable"]).resolve(strict=True) != resolved:
+        raise RuntimeError("Python identity probe executable does not match requested interpreter")
+    identity["executable"]=executable_provenance
+    return identity
+
+
+def require_native_python_identity(collector_python: dict[str, Any], target_python: dict[str, Any]) -> None:
+    mismatches={field:(collector_python[field],target_python[field]) for field in NATIVE_IDENTITY_FIELDS
+                if collector_python[field] != target_python[field]}
+    if mismatches:
+        raise RuntimeError(f"NO1_006B_PYTHON target is not native to collector host: {mismatches}")
+
+
 def build_environment() -> dict[str, Any]:
-    code="import importlib.metadata as m,json,platform;print(json.dumps({'python':{'version':platform.python_version(),'implementation':platform.python_implementation()},'hatchling_version':m.version('hatchling')}))"
-    return json.loads(run([sys.executable,"-c",code],cwd=Path(__file__).parents[1]).stdout)
+    identity=python_identity(Path(sys.executable),Path(__file__).parents[1],"<collector-sys-executable>")
+    code="import importlib.metadata as m;print(m.version('hatchling'))"
+    version=run([sys.executable,"-c",code],cwd=Path(__file__).parents[1]).stdout.decode().strip()
+    return {"python":identity,"hatchling_version":version}
 
 
 def source_archive_sha(repo: Path, destination: Path) -> str:
@@ -464,11 +499,15 @@ def validate_receipt(report: dict[str, Any], schema: dict[str, Any]) -> None:
             next((row["name"] for row in distributions if row["role"]=="root"),None)==ROOT_NAME,
             m["dependency_distribution_count_excluding_root"]==roles.count("direct")+roles.count("transitive"),
             report["source"]["root_wheel_artifact_size_bytes"]==m["root_wheel_artifact_size_bytes"],
-            closure["lock_sha256"]==report["source"]["lock_sha256"], report["source"]["git_tree"]==EXPECTED_SUBJECT_TREE,
+            closure["lock_sha256"]==report["source"]["lock_sha256"], report["source"]["lock_sha256"]==EXPECTED_SUBJECT_LOCK_SHA256,
+            report["source"]["git_tree"]==EXPECTED_SUBJECT_TREE,
             len(names)==len(set(names)), names==sorted(names),
             report["environment"]["system"]==report["measured_axis"], os_consistent,
             report["environment"]["uv"]=={"version":EXPECTED_UV_VERSION,"sha256":EXPECTED_UV_SHA256},
-            report["environment"]["build_python"]==report["environment"]["python"],
+            all(report["environment"]["build_python"][field]==report["environment"]["python"][field]
+                for field in ("version","implementation",*NATIVE_IDENTITY_FIELDS)),
+            report["environment"]["machine"]==report["environment"]["python"]["machine"],
+            report["environment"]["python"]["system"]=={"macos":"Darwin","linux":"Linux","windows":"Windows"}[system],
             report["environment"]["build_backend"]=={"name":"hatchling","version":HATCHLING_VERSION},
             report["collector"]["tool_export_sha256"]!=closure["export_sha256"],
             report["collector"]["tool_lock_sha256"]!=report["source"]["lock_sha256"],
@@ -535,9 +574,11 @@ def collect(repo: Path, output: Path, repeats: int, expected_commit: str) -> dic
             assert_subject_unchanged(repo,expected_commit,subject,f"before {kind} install")
             python=install_environment(repo,temp/f"{kind}-venv",requirements,wheel,uv)
             assert_subject_unchanged(repo,expected_commit,subject,f"after {kind} install")
+            target_python=python_identity(python,repo,"<target-venv-python>")
+            require_native_python_identity(build_env["python"],target_python)
+            if py_info is None: py_info=target_python
+            elif target_python != py_info: raise RuntimeError("fresh CLI/MCP environments have different Python identities")
             inventories.append(inventory(python,repo))
-            if py_info is None:
-                py_info=json.loads(run([str(python),"-c","import json,platform;print(json.dumps({'version':platform.python_version(),'implementation':platform.python_implementation()}))"],cwd=repo).stdout)
             if kind=="cli": samples[kind]=[cli_sample(executable(python.parent.parent,"tree-sitter-analyzer"),fixture) for _ in range(repeats+1)]
             else:
                 results=[mcp_sample(executable(python.parent.parent,"tree-sitter-analyzer-mcp"),fixture) for _ in range(repeats+1)]
