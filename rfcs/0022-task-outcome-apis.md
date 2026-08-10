@@ -75,7 +75,15 @@ task-computed hash are never freshness evidence.
 ### P0.2 Frozen workspace/staged diff snapshot
 
 V1 accepts only `workspace` and `staged`. They map respectively to
-`edit.impact(mode="diff", ...)` and `edit.impact(mode="staged", ...)`. Phase 0
+`edit.impact(mode="diff", ...)` and `edit.impact(mode="staged", ...)`. Explicit
+snapshot capture is POSIX-only in Phase 0: safely binding the root-to-leaf path
+and Git-index identities requires `openat`/`O_NOFOLLOW`. Native Windows cannot
+provide that binding for ancestor reparse points, so both inputs fail closed with
+`DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED` before Git or file capture. A `ctypes`
+handle or check-then-open fallback is forbidden because it would reintroduce
+TOCTOU traversal. This restriction does not affect legacy staged change-impact
+when `capture_diff_snapshot` is false; that existing Windows route remains
+supported. Phase 0
 `scope_paths` are literal repository-relative paths only: a leading `:` (Git
 magic/pathspec syntax) fails before capture with the stable
 `DIFF_SNAPSHOT_UNSUPPORTED_SCOPE` envelope; the runtime never consults live Git

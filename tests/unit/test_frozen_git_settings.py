@@ -483,3 +483,16 @@ def test_git_exec_guard_rejects_unsafe_invocation(argv: list[str]) -> None:
     from tree_sitter_analyzer import git_exec_guard
 
     assert git_exec_guard.main(argv) == 2
+
+
+def test_private_copy_failures_have_stable_accounting(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.write_bytes(b"x")
+    destination = tmp_path / "taken"
+    destination.touch()
+    rolled = []
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPTURE_ERROR$"):
+        materialization.copy_private(
+            str(source), str(destination), lambda *a: None, lambda *a: rolled.append(a)
+        )
+    assert rolled == [(1, 1)]

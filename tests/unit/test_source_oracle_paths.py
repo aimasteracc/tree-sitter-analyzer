@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import tree_sitter_analyzer.source_oracle as oracle
+import tree_sitter_analyzer.source_oracle_git as oracle_git
 from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST
 
 
@@ -61,6 +62,28 @@ def test_safe_workspace_path_rejects_unsupported_platform(monkeypatch) -> None:
         lambda: oracle.safe_workspace_path(
             ".", "a", deadline=time.monotonic() + 1, limit=1
         ),
+        "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED",
+    )
+
+
+def test_windows_staged_capture_fails_closed_before_git_or_file_open(
+    monkeypatch,
+) -> None:
+    # PR #1252 review thread 3123: RFC-0022 explicit capture is POSIX-only.
+    monkeypatch.setattr(oracle_git, "_supports_nofollow", lambda: False)
+    monkeypatch.setattr(
+        oracle_git,
+        "canonical_root",
+        lambda root: (_ for _ in ()).throw(AssertionError("file opened")),
+    )
+    monkeypatch.setattr(
+        oracle_git,
+        "git_output",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("Git opened")),
+    )
+
+    _error(
+        lambda: oracle_git.oracle_generation(".", mode="staged"),
         "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED",
     )
 

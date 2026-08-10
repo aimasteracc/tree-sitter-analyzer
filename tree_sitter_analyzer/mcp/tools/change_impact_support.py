@@ -221,7 +221,9 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": False,
             "description": (
                 "RFC-0022 P0.2: atomically freeze workspace/staged patch and bytes. "
-                "Explicit opt-in only; CLI, facade, and legacy direct calls remain compatible."
+                "Explicit opt-in and POSIX-only; Windows fails closed with "
+                "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED. Legacy staged change-impact "
+                "without capture remains Windows-supported."
             ),
         },
         "compact_only": {

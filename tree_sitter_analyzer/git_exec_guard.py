@@ -23,9 +23,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         import resource
 
-        _soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
-        bounded = min(limit, hard) if hard != resource.RLIM_INFINITY else limit
-        resource.setrlimit(resource.RLIMIT_FSIZE, (bounded, hard))
+        soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+        bounds = [limit]
+        if hard != resource.RLIM_INFINITY:
+            bounds.append(hard)
+        if soft != resource.RLIM_INFINITY:
+            bounds.append(soft)
+        resource.setrlimit(resource.RLIMIT_FSIZE, (min(bounds), hard))
         os.execvp(command[0], command)  # nosec B606
     except (OSError, ValueError):
         return 126

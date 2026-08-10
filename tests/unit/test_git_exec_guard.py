@@ -14,7 +14,9 @@ import pytest
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
 import tree_sitter_analyzer.frozen_git_index as frozen_index
 import tree_sitter_analyzer.git_subprocess as bounded
+import tree_sitter_analyzer.private_temp_materialization as materialization
 import tree_sitter_analyzer.secure_temp as secure_temp
+import tree_sitter_analyzer.temp_cleanup as temp_cleanup
 from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST
 from tree_sitter_analyzer.source_oracle import SourceOracleError
 
@@ -112,16 +114,21 @@ def test_git_exec_guard_rejects_invalid_limit() -> None:
     assert git_exec_guard.main(["--fsize", "bad", "--", "git", "status"]) == 2
 
 
-@pytest.mark.parametrize(("hard", "expected"), [(100, 50), (-1, 50)])
-def test_exec_guard_sets_bounded_rlimit(monkeypatch, hard: int, expected: int) -> None:
-    # PR #1252 review thread 4867: only the single-threaded guard sets RLIMIT.
+@pytest.mark.parametrize(
+    ("soft", "hard", "requested", "expected"),
+    [(75, 100, 50, 50), (25, 100, 50, 25), (25, -1, 50, 25), (-1, -1, 50, 50)],
+)
+def test_exec_guard_sets_bounded_rlimit(
+    monkeypatch, soft: int, hard: int, requested: int, expected: int
+) -> None:
+    # PR #1252 review threads 4867/3108: never raise an inherited finite soft limit.
     from tree_sitter_analyzer import git_exec_guard
 
     calls: list[tuple[int, tuple[int, int]]] = []
     resource = types.SimpleNamespace(
         RLIMIT_FSIZE=1,
         RLIM_INFINITY=-1,
-        getrlimit=lambda kind: (75, hard),
+        getrlimit=lambda kind: (soft, hard),
         setrlimit=lambda kind, value: calls.append((kind, value)),
     )
     monkeypatch.setitem(sys.modules, "resource", resource)
@@ -129,7 +136,7 @@ def test_exec_guard_sets_bounded_rlimit(monkeypatch, hard: int, expected: int) -
         git_exec_guard.os, "execvp", lambda *args: (_ for _ in ()).throw(OSError())
     )
 
-    result = git_exec_guard.main(["--fsize", "50", "--", "git", "status"])
+    result = git_exec_guard.main(["--fsize", str(requested), "--", "git", "status"])
 
     assert result == 126
     assert calls == [(1, (expected, hard))]
@@ -302,35 +309,42 @@ def test_empty_order_candidate_guards_are_platform_independent(
         bounded._empty_order_file(str(project))
 
 
-def test_order_file_close_cleanup_failure_preserves_stable_error(
+def test_order_file_cleanup_retries_windows_held_delete(
     tmp_path: Path, monkeypatch
 ) -> None:
+    # PR #1252 review thread 3114: close first, then retry a transient held delete.
     target = tmp_path / "order"
     target.touch()
-    unlinks: list[str] = []
-    monkeypatch.setattr(bounded, "_empty_order_file", lambda root: (123, str(target)))
+    descriptor = os.open(target, os.O_RDONLY)
+    attempts = 0
+    real_unlink = os.unlink
+
+    def held_then_release(path: str) -> None:
+        nonlocal attempts
+        attempts += 1
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+        if attempts < 3:
+            raise PermissionError("held by Windows scanner")
+        real_unlink(path)
+
+    monkeypatch.setattr(bounded, "_IS_WINDOWS", True)
     monkeypatch.setattr(
-        bounded.os,
-        "close",
-        lambda descriptor: (_ for _ in ()).throw(RuntimeError("hostile close")),
+        bounded, "_empty_order_file", lambda root: (descriptor, str(target))
     )
+    monkeypatch.setattr(
+        bounded, "_run_git_bounded_with_order_file", lambda *a, **k: b"ok"
+    )
+    monkeypatch.setattr(temp_cleanup, "_UNLINK", held_then_release)
+    monkeypatch.setattr(temp_cleanup, "_SLEEP", lambda delay: None)
 
-    def fail_unlink(path: str) -> None:
-        unlinks.append(path)
-        raise PermissionError("held")
-
-    monkeypatch.setattr(bounded.os, "unlink", fail_unlink)
-    with pytest.raises(
-        snapshots.SourceOracleError, match="^DIFF_SNAPSHOT_CAPTURE_ERROR$"
-    ):
-        bounded.run_git_bounded(".", [], deadline=1e20, limit=1)
-
-    assert unlinks == [str(target)]
+    assert bounded.run_git_bounded(".", [], deadline=1e20, limit=1) == b"ok"
+    assert attempts == 3
+    assert target.exists() is False
 
 
-@pytest.mark.parametrize("cleanup", ["missing", "held"])
-def test_order_file_final_cleanup_has_stable_semantics(
-    tmp_path: Path, monkeypatch, cleanup: str
+def test_order_file_cleanup_persistent_failure_is_stable(
+    tmp_path: Path, monkeypatch
 ) -> None:
     target = tmp_path / "order"
     target.touch()
@@ -339,28 +353,17 @@ def test_order_file_final_cleanup_has_stable_semantics(
         bounded, "_empty_order_file", lambda root: (descriptor, str(target))
     )
     monkeypatch.setattr(
-        bounded, "_run_git_bounded_with_order_file", lambda *args, **kwargs: b"ok"
+        bounded, "_run_git_bounded_with_order_file", lambda *a, **k: b"ok"
     )
-    if cleanup == "missing":
-        monkeypatch.setattr(
-            bounded.os,
-            "unlink",
-            lambda path: (_ for _ in ()).throw(FileNotFoundError("gone")),
-        )
-    else:
-        monkeypatch.setattr(
-            bounded.os,
-            "unlink",
-            lambda path: (_ for _ in ()).throw(PermissionError("held")),
-        )
+    monkeypatch.setattr(
+        temp_cleanup,
+        "_UNLINK",
+        lambda path: (_ for _ in ()).throw(PermissionError("held")),
+    )
+    monkeypatch.setattr(temp_cleanup, "_SLEEP", lambda delay: None)
 
-    if cleanup == "missing":
-        assert bounded.run_git_bounded(".", [], deadline=1e20, limit=1) == b"ok"
-    else:
-        with pytest.raises(
-            snapshots.SourceOracleError, match="^DIFF_SNAPSHOT_CAPTURE_ERROR$"
-        ):
-            bounded.run_git_bounded(".", [], deadline=1e20, limit=1)
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CLEANUP_FAILED$"):
+        bounded.run_git_bounded(".", [], deadline=1e20, limit=1)
 
 
 @pytest.mark.parametrize(
@@ -470,5 +473,23 @@ def test_nonzero_windows_taskkill_falls_back_to_process_kill(monkeypatch) -> Non
     monkeypatch.setattr(bounded, "_TASKKILL", lambda *a, **k: completed)
 
     bounded._kill_group(process)
-
     assert process.kills == 1
+
+
+def test_private_write_failure_cleans_and_rolls_back(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from unittest.mock import mock_open
+
+    target = tmp_path / "partial"
+    rolled = []
+    opened = mock_open()
+    opened.return_value.write.return_value = 0
+    monkeypatch.setattr("builtins.open", opened)
+    monkeypatch.setattr(materialization, "set_private_mode", lambda *a: None)
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPTURE_ERROR$"):
+        materialization.write_private(
+            str(target), b"x", lambda *a: None, lambda *a: rolled.append(a)
+        )
+    assert rolled == [(1, 1)]
+    assert target.exists() is False

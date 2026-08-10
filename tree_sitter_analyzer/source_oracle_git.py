@@ -276,9 +276,9 @@ def oracle_generation(
     manifest: dict[str, WorkspaceManifestEntry] | None = None,
     epoch_out: list[GitEpoch] | None = None,
 ) -> tuple[str, RootIdentity]:
-    root, identity = canonical_root(project_root)
     if not _supports_nofollow():
         raise SourceOracleError("DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
+    root, identity = canonical_root(project_root)
     end = deadline if deadline is not None else time.monotonic() + 35.0
     digest = hashlib.sha256()
     _frame(digest, b"domain", _FRAME_DOMAIN)

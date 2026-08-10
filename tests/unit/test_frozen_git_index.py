@@ -9,6 +9,7 @@ import pytest
 
 import tree_sitter_analyzer.diff_snapshot_epoch as epoch_module
 import tree_sitter_analyzer.frozen_git_index as frozen_index
+import tree_sitter_analyzer.private_temp_materialization as materialization
 import tree_sitter_analyzer.source_oracle_git as oracle
 from tree_sitter_analyzer.frozen_git_index import (
     parse_stage_zero_entries,
@@ -472,3 +473,15 @@ def test_reconstructed_index_translates_private_temp_failure(
     with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPTURE_ERROR$"):
         with frozen_index.reconstructed_index_file(str(tmp_path), {}, deadline=1e20):
             pass
+
+
+def test_private_copy_missing_source_never_reserves(tmp_path: Path) -> None:
+    reserved = []
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPTURE_ERROR$"):
+        materialization.copy_private(
+            str(tmp_path / "missing"),
+            str(tmp_path / "out"),
+            lambda *a: reserved.append(a),
+            lambda *a: None,
+        )
+    assert reserved == []

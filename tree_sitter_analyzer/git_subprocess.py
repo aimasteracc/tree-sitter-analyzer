@@ -14,6 +14,7 @@ from typing import BinaryIO
 
 from .secure_temp import create_private_temp
 from .source_oracle import SourceOracleError, _remaining
+from .temp_cleanup import cleanup_path
 
 PopenFactory = Callable[..., subprocess.Popen[bytes]]
 _IS_WINDOWS = os.name == "nt"
@@ -275,14 +276,10 @@ def run_git_bounded(
     """Run Git with external diff ordering neutralized by an empty private file."""
     descriptor, order_file = _empty_order_file(root)
     try:
-        os.close(descriptor)
-    except Exception as exc:
         try:
-            os.unlink(order_file)
-        except OSError:
-            pass
-        raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
-    try:
+            os.close(descriptor)
+        except Exception as exc:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
         return _run_git_bounded_with_order_file(
             root,
             args,
@@ -295,9 +292,4 @@ def run_git_bounded(
             order_file=order_file,
         )
     finally:
-        try:
-            os.unlink(order_file)
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
+        cleanup_path(order_file)
