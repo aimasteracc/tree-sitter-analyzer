@@ -3,16 +3,25 @@
 from __future__ import annotations
 
 import base64
-import os
 
 from .source_oracle import SourceOracleError, normalize_repo_path
 
 _PREFIX = "git-path-b64:"
 
 
+def path_to_raw(path: str) -> bytes:
+    """Encode one internal Git path independently of the host filesystem codec."""
+    return path.encode("utf-8", "surrogateescape")
+
+
+def raw_to_path(raw: bytes) -> str:
+    """Decode raw Git path bytes into the normalized internal representation."""
+    return normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
+
+
 def path_to_wire(path: str) -> str:
     """Return a UTF-8-safe, unambiguous representation of an internal Git path."""
-    raw = os.fsencode(path)
+    raw = path_to_raw(path)
     try:
         literal = raw.decode("utf-8", "strict")
     except UnicodeDecodeError:
@@ -40,10 +49,9 @@ def path_from_wire(value: str) -> str:
         raw = base64.b64decode(
             payload + "=" * (-len(payload) % 4), altchars=b"-_", validate=True
         )
-        decoded = os.fsdecode(raw)
     except (ValueError, UnicodeError) as exc:
         raise SourceOracleError("DIFF_SNAPSHOT_INVALID_PATH") from exc
-    path = normalize_repo_path(decoded)
+    path = raw_to_path(raw)
     if path_to_wire(path) != value:
         raise SourceOracleError("DIFF_SNAPSHOT_INVALID_PATH")
     return path
@@ -51,4 +59,4 @@ def path_from_wire(value: str) -> str:
 
 def path_storage(path: str) -> int:
     """Charge both retained raw bytes and their public wire representation."""
-    return len(os.fsencode(path)) + len(path_to_wire(path).encode("utf-8")) + 2
+    return len(path_to_raw(path)) + len(path_to_wire(path).encode("utf-8")) + 2

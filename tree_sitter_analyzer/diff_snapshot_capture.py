@@ -7,13 +7,12 @@ from dataclasses import dataclass, field, replace
 
 from .diff_snapshot_epoch import FrozenGitEnvironment
 from .frozen_git_index import invalidate_index_stat_cache
-from .git_path_codec import path_to_wire
+from .git_path_codec import path_to_raw, path_to_wire, raw_to_path
 from .source_oracle import (
     SafePath,
     SourceOracleError,
     WorkspaceManifestEntry,
     git_output,
-    normalize_repo_path,
     safe_workspace_path,
 )
 from .source_oracle_git import GitEpoch, _head_entries
@@ -40,13 +39,13 @@ class ChangedFile:
 
     @property
     def raw_path(self) -> bytes:
-        return self._raw_path if self._raw_path is not None else os.fsencode(self.path)
+        return self._raw_path if self._raw_path is not None else path_to_raw(self.path)
 
     @property
     def raw_old_path(self) -> bytes | None:
         if self._raw_old_path is not None:
             return self._raw_old_path
-        return os.fsencode(self.old_path) if self.old_path is not None else None
+        return path_to_raw(self.old_path) if self.old_path is not None else None
 
     def to_dict(self) -> dict[str, object]:
         value: dict[str, object] = {
@@ -82,14 +81,14 @@ class FrozenFile:
 
 
 def _decode_path(raw: bytes) -> str:
-    return normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
+    return raw_to_path(raw)
 
 
 def _row_sort_key(row: tuple[str, bytes | None, bytes]) -> tuple[bytes, bytes, bytes]:
     """Order records by normalized raw destination, then status and source."""
     status, old, path = row
-    normalized_path = os.fsencode(_decode_path(path))
-    normalized_old = os.fsencode(_decode_path(old)) if old is not None else b""
+    normalized_path = path_to_raw(_decode_path(path))
+    normalized_old = path_to_raw(_decode_path(old)) if old is not None else b""
     return normalized_path, status.encode("ascii"), normalized_old
 
 
@@ -194,7 +193,7 @@ def _rows(
                 path = _decode_path(item)
                 if path not in known:
                     result.append(("A", None, path, False))
-    return sorted(result, key=lambda row: os.fsencode(row[2]))
+    return sorted(result, key=lambda row: path_to_raw(row[2]))
 
 
 def _tracked_binary_paths(

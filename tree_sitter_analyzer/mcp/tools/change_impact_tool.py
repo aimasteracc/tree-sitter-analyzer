@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Change-impact MCP tool bound to frozen source epochs."""
 
-import os
 from typing import Any
 
-from ...git_path_codec import path_from_wire, path_to_wire
+from ...git_path_codec import path_from_wire, path_to_raw, path_to_wire
 from ...pr_url import (
     check_gh_available,
     fetch_pr_changed_files,
@@ -46,7 +45,7 @@ _scope_matches_raw = scope_matches_raw
 
 def _scope_matches(scope: str, path: str) -> bool:
     """Compatibility wrapper using lossless filesystem-byte identities."""
-    return scope_matches_raw(os.fsencode(scope), os.fsencode(path))
+    return scope_matches_raw(path_to_raw(scope), path_to_raw(path))
 
 
 class ChangeImpactTool(BaseMCPTool):

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
-from ...git_path_codec import path_from_wire, path_to_wire
+from ...git_path_codec import path_from_wire, path_to_raw, path_to_wire
 from .change_impact_support import _snapshot_records
 from .utils.change_impact_git import _raw_path_is_excluded
 from .utils.change_impact_response import (
@@ -35,9 +34,9 @@ def build_frozen_scope_result(
     if not frozen_files:
         frozen_files = {
             str(record["path"]): (
-                os.fsencode(path_from_wire(str(record["path"]))),
+                path_to_raw(path_from_wire(str(record["path"]))),
                 (
-                    os.fsencode(path_from_wire(str(record["old_path"])))
+                    path_to_raw(path_from_wire(str(record["old_path"])))
                     if record.get("old_path")
                     else None
                 ),
@@ -57,7 +56,7 @@ def build_frozen_scope_result(
         for record in records
         if str(record["path"]) in visible_paths
     ]
-    scope_raw = [os.fsencode(scope) for scope in scope_paths]
+    scope_raw = [path_to_raw(scope) for scope in scope_paths]
     identities = {
         identity
         for public_path, pair in frozen_files.items()
@@ -80,7 +79,7 @@ def build_frozen_scope_result(
     inventory_raw = getattr(consumer.snapshot, "_inventory_raw_paths", ())
     if not inventory_raw:
         inventory_raw = tuple(
-            os.fsencode(path) for path in consumer.snapshot.inventory_paths
+            path_to_raw(path) for path in consumer.snapshot.inventory_paths
         )
     scope_identities = {
         raw for raw in inventory_raw if not _raw_path_is_excluded(raw)

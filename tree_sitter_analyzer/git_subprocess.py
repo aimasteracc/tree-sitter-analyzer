@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import signal
-import stat
 import subprocess  # nosec B404
 import sys
 import tempfile
@@ -13,12 +12,23 @@ import time
 from collections.abc import Callable
 from typing import BinaryIO
 
+from .secure_temp import create_private_temp
 from .source_oracle import SourceOracleError, _remaining
 
 PopenFactory = Callable[..., subprocess.Popen[bytes]]
 _IS_WINDOWS = os.name == "nt"
 _TASKKILL = subprocess.run
 _REAP_TIMEOUT_SECONDS = 5.0
+
+
+def _windows_creation_flags() -> int:
+    """Return the explicit process-group flag without importing Windows-only APIs."""
+    return getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+
+
+def _exec_guard_path() -> str:
+    """Return the module-local file-size guard command path."""
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "git_exec_guard.py"))
 
 
 def _os_kill_process_group(pid: int, sig: int) -> None:
@@ -34,9 +44,7 @@ _KILL_PROCESS_GROUP = _os_kill_process_group
 
 def _group_options() -> dict[str, object]:
     if _IS_WINDOWS:
-        return {
-            "creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
-        }
+        return {"creationflags": _windows_creation_flags()}
     return {"start_new_session": True}
 
 
@@ -132,9 +140,7 @@ def _run_git_bounded_with_order_file(
         if file_size_limit < 0:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
         if not _IS_WINDOWS:
-            guard = os.path.abspath(
-                os.path.join(os.path.dirname(__file__), "git_exec_guard.py")
-            )
+            guard = _exec_guard_path()
             command = [
                 sys.executable,
                 guard,
@@ -222,13 +228,18 @@ def _run_git_bounded_with_order_file(
             _join_threads_bounded(threads)
 
 
+def _order_file_candidates() -> list[str]:
+    """Return host-appropriate external temporary parent candidates."""
+    candidates = [tempfile.gettempdir()]
+    if not _IS_WINDOWS:
+        candidates.extend(("/var/tmp", "/tmp"))  # nosec B108
+    return candidates
+
+
 def _empty_order_file(root: str) -> tuple[int, str]:
     """Create a validated portable empty order file outside the project."""
     real_root = os.path.realpath(root)
-    candidates = [tempfile.gettempdir()]
-    if os.name != "nt":
-        candidates.extend(("/var/tmp", "/tmp"))  # nosec B108
-    for candidate in candidates:
+    for candidate in _order_file_candidates():
         real_parent = os.path.realpath(candidate)
         try:
             inside = os.path.commonpath((real_root, real_parent)) == real_root
@@ -239,15 +250,13 @@ def _empty_order_file(root: str) -> tuple[int, str]:
         if not os.access(real_parent, os.W_OK | os.X_OK):
             continue
         try:
-            descriptor, path = tempfile.mkstemp(
-                prefix="tsa-empty-order-", dir=real_parent
+            return create_private_temp(
+                prefix="tsa-empty-order-",
+                directory=real_parent,
+                mkstemp=tempfile.mkstemp,
+                unlink=os.unlink,
             )
-            os.fchmod(descriptor, 0o600)
-            info = os.lstat(path)
-            if not stat.S_ISREG(info.st_mode) or info.st_size != 0:
-                raise OSError("invalid empty order file")
-            return descriptor, path
-        except OSError:
+        except Exception:
             continue
     raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
 
@@ -265,7 +274,14 @@ def run_git_bounded(
 ) -> bytes:
     """Run Git with external diff ordering neutralized by an empty private file."""
     descriptor, order_file = _empty_order_file(root)
-    os.close(descriptor)
+    try:
+        os.close(descriptor)
+    except Exception as exc:
+        try:
+            os.unlink(order_file)
+        except OSError:
+            pass
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
     try:
         return _run_git_bounded_with_order_file(
             root,

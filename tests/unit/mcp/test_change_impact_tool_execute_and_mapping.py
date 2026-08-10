@@ -2406,7 +2406,7 @@ def test_strict_snapshot_filters_non_utf8_cache_child_before_wire(
     from tree_sitter_analyzer import diff_snapshot_registry as registry
 
     raw_path = b".ast-cache/\xff.db"
-    path = os.fsdecode(raw_path)
+    path = raw_path.decode("utf-8", "surrogateescape")
     install_fake_snapshot_materializer(
         monkeypatch,
         tmp_path,
@@ -2421,6 +2421,11 @@ def test_strict_snapshot_filters_non_utf8_cache_child_before_wire(
             )
         ],
         inventory_paths=[path],
+    )
+    monkeypatch.setattr(
+        os,
+        "fsencode",
+        lambda value: (_ for _ in ()).throw(AssertionError("host filesystem codec")),
     )
     result = asyncio.run(
         tool_module.ChangeImpactTool(str(tmp_path)).execute(

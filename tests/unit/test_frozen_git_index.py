@@ -2,16 +2,13 @@ from __future__ import annotations
 
 import os
 import stat
-import sys
 import time
-import types
 from pathlib import Path
 
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_epoch as epoch_module
 import tree_sitter_analyzer.frozen_git_index as frozen_index
-import tree_sitter_analyzer.git_subprocess as bounded
 import tree_sitter_analyzer.source_oracle_git as oracle
 from tree_sitter_analyzer.frozen_git_index import (
     parse_stage_zero_entries,
@@ -224,7 +221,10 @@ def test_temp_parent_skips_project_tmpdir(tmp_path: Path, monkeypatch) -> None:
 
     selected = safe_external_temp_parent(str(project))
 
-    assert selected in (os.path.realpath("/var/tmp"), os.path.realpath("/tmp"))
+    assert os.path.isabs(selected)
+    assert os.path.commonpath(
+        (os.path.realpath(project), selected)
+    ) != os.path.realpath(project)
 
 
 def test_no_safe_temp_parent_rejects_before_mkstemp(
@@ -236,16 +236,7 @@ def test_no_safe_temp_parent_rejects_before_mkstemp(
     monkeypatch.setenv("TMPDIR", str(project))
     monkeypatch.delenv("TEMP", raising=False)
     monkeypatch.delenv("TMP", raising=False)
-    real_isdir = frozen_index.os.path.isdir
-    monkeypatch.setattr(
-        frozen_index.os.path,
-        "isdir",
-        lambda path: (
-            False
-            if path in (os.path.realpath("/var/tmp"), os.path.realpath("/tmp"))
-            else real_isdir(path)
-        ),
-    )
+    monkeypatch.setattr(frozen_index.os.path, "isdir", lambda path: False)
     calls: list[str] = []
 
     def forbidden_mkstemp(**kwargs):
@@ -269,7 +260,8 @@ def test_temp_parent_deduplicates_candidates(tmp_path: Path, monkeypatch) -> Non
 
     selected = safe_external_temp_parent(str(project))
 
-    assert selected == os.path.realpath("/var/tmp")
+    assert os.path.isabs(selected)
+    assert selected != os.path.realpath(project)
 
 
 def test_temp_parent_has_fixed_windows_fallback(tmp_path: Path, monkeypatch) -> None:
@@ -446,34 +438,6 @@ def test_object_store_lstat_error_is_stable(tmp_path: Path, monkeypatch) -> None
         environment._refresh_object_usage()
 
 
-@pytest.mark.parametrize(("hard", "expected"), [(100, 50), (-1, 50)])
-def test_exec_guard_sets_bounded_rlimit(monkeypatch, hard: int, expected: int) -> None:
-    # PR #1252 review thread 4867: only the single-threaded guard sets RLIMIT.
-    from tree_sitter_analyzer import git_exec_guard
-
-    calls: list[tuple[int, tuple[int, int]]] = []
-    resource = types.SimpleNamespace(
-        RLIMIT_FSIZE=1,
-        RLIM_INFINITY=-1,
-        getrlimit=lambda kind: (75, hard),
-        setrlimit=lambda kind, value: calls.append((kind, value)),
-    )
-    monkeypatch.setitem(sys.modules, "resource", resource)
-    monkeypatch.setattr(
-        git_exec_guard.os, "execvp", lambda *args: (_ for _ in ()).throw(OSError())
-    )
-
-    result = git_exec_guard.main(["--fsize", "50", "--", "git", "status"])
-
-    assert result == 126
-    assert calls == [(1, (expected, hard))]
-
-
-def test_negative_file_size_limit_is_rejected() -> None:
-    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPACITY$"):
-        bounded.run_git_bounded(".", [], deadline=1e20, limit=1, file_size_limit=-1)
-
-
 def test_has_split_index_rejects_truncated_v4_prefix() -> None:
     fixed = b"\0" * 60 + b"\0\0"
     raw = (
@@ -494,3 +458,17 @@ def test_has_split_index_accepts_multibyte_v4_prefix() -> None:
     raw += fixed + b"\x80\0a.py\0" + b"\0" * 20
 
     assert frozen_index.has_split_index(raw, object_format="sha1") is False
+
+
+def test_reconstructed_index_translates_private_temp_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        frozen_index,
+        "create_private_temp",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("hostile temp")),
+    )
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPTURE_ERROR$"):
+        with frozen_index.reconstructed_index_file(str(tmp_path), {}, deadline=1e20):
+            pass

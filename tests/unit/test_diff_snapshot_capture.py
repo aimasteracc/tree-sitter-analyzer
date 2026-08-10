@@ -9,7 +9,10 @@ import pytest
 import tree_sitter_analyzer.diff_snapshot_capture as capture
 import tree_sitter_analyzer.diff_snapshot_epoch as epoch
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
-from tests.unit._diff_snapshot_support import make_repo
+from tests.unit._diff_snapshot_support import (
+    install_fake_snapshot_materializer,
+    make_repo,
+)
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -55,9 +58,9 @@ def test_create_rejects_payload_larger_than_reservation(
 def test_create_rejects_generation_change_after_impact(
     tmp_path: Path, monkeypatch
 ) -> None:
-    root = _repo(tmp_path)
+    root = tmp_path / "project"
+    identity = install_fake_snapshot_materializer(monkeypatch, root)
     registry = snapshots.DiffSnapshotRegistry()
-    identity = snapshots.RootIdentity(str(root), 1, 2)
     generations = iter([("before", identity), ("after", identity)])
     monkeypatch.setattr(
         snapshots, "canonical_root", lambda value: (str(root), identity)
@@ -75,12 +78,12 @@ def test_create_rejects_generation_change_after_impact(
 def test_create_rejects_capture_that_exhausts_lifetime(
     tmp_path: Path, monkeypatch
 ) -> None:
-    root = _repo(tmp_path)
+    root = tmp_path / "project"
+    identity = install_fake_snapshot_materializer(monkeypatch, root)
     times = iter(
         [0.0, 0.0, snapshots.HARD_LIFETIME_SECONDS, snapshots.HARD_LIFETIME_SECONDS]
     )
     registry = snapshots.DiffSnapshotRegistry(clock=lambda: next(times))
-    identity = snapshots.RootIdentity(str(root), 1, 2)
     monkeypatch.setattr(
         snapshots, "canonical_root", lambda value: (str(root), identity)
     )

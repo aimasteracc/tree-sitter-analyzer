@@ -10,6 +10,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
 from .git_subprocess import run_git_bounded
+from .secure_temp import create_private_temp
 from .source_oracle import SourceOracleError
 from .temp_cleanup import cleanup_path
 
@@ -77,10 +78,17 @@ def private_index_file(
 ) -> Iterator[str]:
     """Materialize exact index bytes outside ``root`` with mode 0600."""
     temp_parent = safe_external_temp_parent(root)
-    descriptor, path = mkstemp(prefix="tsa-index-", dir=temp_parent)
+    try:
+        descriptor, path = create_private_temp(
+            prefix="tsa-index-",
+            directory=temp_parent,
+            mkstemp=mkstemp,
+            unlink=unlink,
+        )
+    except Exception as exc:
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
     try:
         with os.fdopen(descriptor, "wb") as stream:
-            os.fchmod(stream.fileno(), 0o600)
             stream.write(index_bytes)
         real_root = os.path.realpath(root)
         try:
@@ -105,9 +113,14 @@ def reconstructed_index_file(
 ) -> Iterator[str]:
     """Build a plain private index from captured stage-zero identities."""
     temp_parent = safe_external_temp_parent(root)
-    descriptor, path = tempfile.mkstemp(
-        prefix="tsa-reconstructed-index-", dir=temp_parent
-    )
+    try:
+        descriptor, path = create_private_temp(
+            prefix="tsa-reconstructed-index-",
+            directory=temp_parent,
+            mkstemp=tempfile.mkstemp,
+        )
+    except Exception as exc:
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
     os.close(descriptor)
     cleanup_path(path)
     env = {

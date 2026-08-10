@@ -6,8 +6,6 @@ import base64
 import hashlib
 import hmac
 import inspect
-import json
-import os
 import re
 import secrets
 import threading
@@ -15,10 +13,14 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
-from .diff_snapshot_capture import FrozenFile, _capture_payload
+from .diff_snapshot_capture import _capture_payload
 from .diff_snapshot_leases import FrozenDiffSnapshot, SnapshotConsumer
-from .diff_snapshot_paths import epoch_inventory, path_collection_storage
-from .git_path_codec import path_from_wire, path_to_wire
+from .diff_snapshot_paths import (
+    epoch_inventory,
+    path_collection_storage,
+    record_storage,
+)
+from .git_path_codec import path_from_wire, path_to_raw, path_to_wire
 from .source_oracle import (
     RootIdentity as RootIdentity,
 )
@@ -40,18 +42,6 @@ MAX_SCOPE_BYTES = 1024 * 1024
 _PROCESS_LEASE_KEY = secrets.token_bytes(32)
 _SNAPSHOT_ID_PATTERN = re.compile(r"ds_[A-Za-z0-9_-]{32}", re.ASCII)
 _ROUTE_LEASE_PATTERN = re.compile(r"dl_[A-Za-z0-9_-]{43}", re.ASCII)
-
-
-def _record_storage(files: tuple[FrozenFile, ...]) -> int:
-    """Charge the deterministic serialized changed-record metadata."""
-    return sum(
-        len(
-            json.dumps(
-                item.record.to_dict(), sort_keys=True, separators=(",", ":")
-            ).encode("utf-8")
-        )
-        for item in files
-    )
 
 
 @dataclass
@@ -111,7 +101,7 @@ class DiffSnapshotRegistry:
             normalized_input = {path_from_wire(path) for path in assessed_scope_paths}
         except SourceOracleError as exc:
             return self._error(str(exc))
-        if any(len(os.fsencode(path)) > MAX_PATH_BYTES for path in normalized_input):
+        if any(len(path_to_raw(path)) > MAX_PATH_BYTES for path in normalized_input):
             return self._error("DIFF_SNAPSHOT_CAPACITY")
         if path_collection_storage(normalized_input) > MAX_SCOPE_BYTES:
             return self._error("DIFF_SNAPSHOT_CAPACITY")
@@ -203,7 +193,7 @@ class DiffSnapshotRegistry:
                 )
                 + path_collection_storage(paths)
                 + path_collection_storage(inventory_paths)
-                + _record_storage(files)
+                + record_storage(files)
             )
             if size > ceiling:
                 raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
@@ -217,11 +207,11 @@ class DiffSnapshotRegistry:
                 patch,
                 files,
                 inventory_paths,
-                tuple(sorted(paths, key=os.fsencode)),
+                tuple(sorted(paths, key=path_to_raw)),
                 started,
                 size,
-                tuple(sorted(os.fsencode(path) for path in inventory_paths)),
-                tuple(sorted(os.fsencode(path) for path in paths)),
+                tuple(sorted(path_to_raw(path) for path in inventory_paths)),
+                tuple(sorted(path_to_raw(path) for path in paths)),
             )
             with self._lock:
                 self._reservations.pop(reservation, None)
@@ -322,11 +312,11 @@ class DiffSnapshotRegistry:
             return "DIFF_SNAPSHOT_INVALID_PATH"
         try:
             normalized = tuple(
-                sorted({path_from_wire(path) for path in paths}, key=os.fsencode)
+                sorted({path_from_wire(path) for path in paths}, key=path_to_raw)
             )
         except SourceOracleError as exc:
             return str(exc)
-        if any(len(os.fsencode(path)) > MAX_PATH_BYTES for path in normalized):
+        if any(len(path_to_raw(path)) > MAX_PATH_BYTES for path in normalized):
             return "DIFF_SNAPSHOT_CAPACITY"
         if path_collection_storage(normalized) > MAX_SCOPE_BYTES:
             return "DIFF_SNAPSHOT_CAPACITY"
@@ -365,7 +355,7 @@ class DiffSnapshotRegistry:
                 state.snapshot,
                 assessed_scope_paths=normalized,
                 _assessed_scope_raw_paths=tuple(
-                    os.fsencode(path) for path in normalized
+                    path_to_raw(path) for path in normalized
                 ),
                 materialized_bytes=state.snapshot.materialized_bytes + delta,
             )

@@ -6,10 +6,8 @@ import hashlib
 import os
 import subprocess  # nosec B404
 import tempfile
-import threading
 import time
-from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any
 
 from .frozen_git_index import (
     frozen_index_entries,
@@ -40,9 +38,11 @@ from .source_oracle import (
     safe_workspace_path,
     stable_descriptor_chain,
 )
+from .source_oracle_consistency import (
+    capture_consistent as capture_consistent,
+)
+from .source_oracle_consistency import source_generation as source_generation
 
-_LOCK = threading.RLock()
-_T = TypeVar("_T")
 _FRAME_DOMAIN = b"tsa-source-generation-v5"
 _MAX_INVENTORY_BYTES = 16 * 1024 * 1024
 _MAX_WORKTREE_PATHS = 200_000
@@ -479,19 +479,3 @@ def oracle_generation(
     )
     _frame(digest, b"patch", hashlib.sha256(patch).digest())
     return "sg_" + digest.hexdigest(), identity
-
-
-def source_generation(project_root: str | None, mode: str = "diff") -> str:
-    with _LOCK:
-        return oracle_generation(project_root, mode)[0]
-
-
-def capture_consistent(
-    project_root: str | None, capture: Callable[[], _T]
-) -> tuple[str | None, _T]:
-    """Compatibility helper; ctime-inclusive generations reject ordinary ABA writes."""
-    with _LOCK:
-        before, _ = oracle_generation(project_root)
-        value = capture()
-        after, _ = oracle_generation(project_root)
-    return (before if before == after else None), value

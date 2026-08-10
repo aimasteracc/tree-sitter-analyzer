@@ -20,6 +20,7 @@ from .frozen_git_settings import (
     serialize_config,
 )
 from .git_subprocess import run_git_bounded
+from .secure_temp import set_private_mode
 from .source_oracle import (
     SafePath,
     SourceOracleError,
@@ -200,7 +201,7 @@ class FrozenGitEnvironment:
     def _write_private(self, path: str, data: bytes) -> None:
         try:
             with open(path, "xb") as stream:
-                os.fchmod(stream.fileno(), 0o600)
+                set_private_mode(stream.fileno(), path)
                 stream.write(data)
         except OSError as exc:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc

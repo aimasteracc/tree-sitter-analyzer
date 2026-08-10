@@ -1,19 +1,23 @@
 from __future__ import annotations
 
-import os
-
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
 
 
 def test_wire_codec_round_trips_non_utf8_path() -> None:
-    from tree_sitter_analyzer.git_path_codec import path_from_wire, path_to_wire
+    from tree_sitter_analyzer.git_path_codec import (
+        path_from_wire,
+        path_to_raw,
+        path_to_wire,
+        raw_to_path,
+    )
 
-    path = os.fsdecode(b"bad-\xff.py")
+    path = b"bad-\xff.py".decode("utf-8", "surrogateescape")
     token = path_to_wire(path)
 
     assert (token.startswith("git-path-b64:"), path_from_wire(token)) == (True, path)
+    assert (path_to_raw(path), raw_to_path(b"bad-\xff.py")) == (b"bad-\xff.py", path)
 
 
 def test_wire_codec_escapes_reserved_literal_prefix() -> None:

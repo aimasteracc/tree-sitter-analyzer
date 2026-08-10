@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import os
 import threading
 from dataclasses import dataclass
 from typing import Any
 
 from .diff_snapshot_capture import FrozenFile
-from .git_path_codec import path_from_wire
+from .git_path_codec import path_from_wire, path_to_raw
 from .source_oracle import RootIdentity, SourceOracleError
 
 
@@ -32,7 +31,7 @@ class FrozenDiffSnapshot:
             normalized = path_from_wire(path)
         except SourceOracleError:
             return None
-        raw = os.fsencode(normalized)
+        raw = path_to_raw(normalized)
         return next((item for item in self.files if item.record.raw_path == raw), None)
 
 
