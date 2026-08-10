@@ -84,7 +84,7 @@ Reading the tables:
 | `classify` | `diff_snapshot_id`, `file_path`, `hunk_cap`, `include_ast_nodes`, `language`, `mode`, `new_ref`, `new_source`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--semantic-classify` |
 | `constraints` | `output_format`, `path_filter`, `severity_min` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-constraints` |
 | `guard` | `modification_type`*, `symbol`*, `file_path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--modification-guard` |
-| `impact` | `agent_summary_only`, `capture_diff_snapshot`, `compact_only`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
+| `impact` | `agent_summary_only`, `capture_diff_snapshot`, `compact_only`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` — `capture_diff_snapshot` is an explicit boolean producer available only to same-process POSIX consumers | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
 | `pr` | `include_call_graph`, `mode`, `output_format`, `pr_url` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pr-review` |
 | `refactor` | `file_path`*, `include_extractions`, `include_skeleton`, `language`, `max_suggestions`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--refactor` |
 | `release_snapshot` | `diff_snapshot_id`*, `route_lease_id`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |

@@ -166,3 +166,51 @@ def test_timer_start_callback_race_does_not_double_charge_rollback(
         "error_code": "DIFF_SNAPSHOT_CAPTURE_ERROR",
     }
     assert registry.stats() == (0, 0)
+
+
+def test_timer_start_and_cancel_failure_still_rolls_back_snapshot(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3751341035: rollback survives cancel failure too.
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+
+    class Timer:
+        daemon = False
+
+        def __init__(self, _delay, _callback) -> None:
+            pass
+
+        def start(self) -> None:
+            raise RuntimeError("start failed")
+
+        def cancel(self) -> None:
+            raise RuntimeError("cancel failed")
+
+    registry = snapshots.DiffSnapshotRegistry(timer_factory=Timer)
+
+    assert registry.create(str(tmp_path), "diff", []) == {
+        "success": False,
+        "error_code": "DIFF_SNAPSHOT_CAPTURE_ERROR",
+    }
+    assert registry.stats() == (0, 0)
+
+
+def test_validate_publish_rejects_pin_released_during_oracle(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252: final validation rechecks the pin after the bounded oracle.
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(tmp_path), "diff", [])
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(tmp_path))
+    assert error is None
+    assert consumer is not None
+    snapshot = consumer.snapshot
+
+    def release_during_oracle(_root, _mode, *, deadline=None):
+        consumer.release()
+        return snapshot.source_generation, snapshot.root_identity
+
+    monkeypatch.setattr(snapshots, "oracle_generation", release_during_oracle)
+
+    assert registry.validate_publish(consumer) == "DIFF_SNAPSHOT_EXPIRED"

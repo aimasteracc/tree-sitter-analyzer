@@ -277,7 +277,7 @@ class FrozenGitEnvironment:
         file_size_limit: int | None = None,
     ) -> bytes:
         return run_git_bounded(
-            self.root,
+            self.worktree_path,
             args,
             deadline=self.deadline,
             limit=limit,

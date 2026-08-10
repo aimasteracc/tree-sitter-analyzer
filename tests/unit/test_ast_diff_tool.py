@@ -811,7 +811,7 @@ async def test_strict_snapshot_final_publish_errors_preserve_toon(
     assert response["error_code"] == expected_error
     assert response["format"] == "toon"
     assert isinstance(response["toon_content"], str)
-    assert events == [("format", False)] * 17 + [
+    assert events == [("format", False)] * 22 + [
         ("validate", False),
         ("release", True),
     ]

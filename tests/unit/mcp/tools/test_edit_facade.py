@@ -154,6 +154,23 @@ def test_impact_action_description_documents_mode_param() -> None:
     assert "mode (diff|staged|branch|pr" in _EDIT_DESCRIPTION
 
 
+def test_impact_snapshot_producer_is_publicly_discoverable() -> None:
+    # PR #1252 review thread 3751415929: schema clients must find the producer.
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    properties = build_edit_facade(None).get_tool_definition()["inputSchema"][
+        "properties"
+    ]
+
+    assert properties["capture_diff_snapshot"] == {
+        "type": "boolean",
+        "description": (
+            "Explicitly produce a frozen diff ID for same-process consumers; "
+            "supported only on POSIX."
+        ),
+    }
+
+
 def test_edit_facade_all_actions_present() -> None:
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 

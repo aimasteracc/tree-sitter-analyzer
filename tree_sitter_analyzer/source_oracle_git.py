@@ -370,7 +370,10 @@ def oracle_generation(
     filter_paths = tuple(sorted(dirty | untracked))
     if filter_paths:
         reject_frozen_filters(root, index_bytes, filter_paths, end, object_format)
-    settings_inventory = tuple(sorted(tracked_set | untracked))
+    # Attribute lookup for staged deletions and rename sources still walks the
+    # old-side path.  Preserve those HEAD-only ancestors in the shadow settings
+    # inventory even though the paths no longer exist in the frozen index.
+    settings_inventory = tuple(sorted(tracked_set | set(head_entries) | untracked))
     frozen_settings = capture_settings(root, settings_inventory, end, git_output)
     settings_epoch = capture_source_epoch(
         root,

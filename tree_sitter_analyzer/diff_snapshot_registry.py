@@ -320,7 +320,6 @@ class DiffSnapshotRegistry:
     def bind_assessed_scope(
         self, consumer: SnapshotConsumer, paths: list[str]
     ) -> str | None:
-        """Bind validated analysis paths to the pinned immutable epoch."""
         try:
             normalized = normalize_bounded_paths(
                 paths,
@@ -332,7 +331,8 @@ class DiffSnapshotRegistry:
             return str(exc)
         with self._lock:
             self._sweep()
-            state = self._states.get(consumer.snapshot.snapshot_id)
+            snapshot = consumer._snapshot
+            state = self._states.get(snapshot.snapshot_id) if snapshot else None
             if (
                 state is None
                 or consumer._released
@@ -370,15 +370,15 @@ class DiffSnapshotRegistry:
                 materialized_bytes=state.snapshot.materialized_bytes + delta,
             )
             state.snapshot = updated
-            consumer.snapshot = updated
+            consumer._snapshot = updated
             self._charged_bytes += delta
         return None
 
     def validate_publish(self, consumer: SnapshotConsumer) -> str | None:
-        """Atomically reject a stale/unleased snapshot immediately before publish."""
         with self._lock:
             self._sweep()
-            state = self._states.get(consumer.snapshot.snapshot_id)
+            snapshot = consumer._snapshot
+            state = self._states.get(snapshot.snapshot_id) if snapshot else None
             remaining = (
                 HARD_LIFETIME_SECONDS
                 - (self._clock() - state.snapshot.created_monotonic)
@@ -390,22 +390,23 @@ class DiffSnapshotRegistry:
                     state.expired = True
                     state.lease_open = False
                 return "DIFF_SNAPSHOT_EXPIRED"
+            assert snapshot is not None
         try:
             oracle_params = inspect.signature(oracle_generation).parameters
             if "deadline" in oracle_params:
                 generation, identity = oracle_generation(
-                    consumer.snapshot.root_identity.realpath,
-                    consumer.snapshot.mode,
+                    snapshot.root_identity.realpath,
+                    snapshot.mode,
                     deadline=time.monotonic() + remaining,
                 )
             else:  # compatibility for injected platform seams
                 generation, identity = oracle_generation(
-                    consumer.snapshot.root_identity.realpath, consumer.snapshot.mode
+                    snapshot.root_identity.realpath, snapshot.mode
                 )
         except SourceOracleError as exc:
             return str(exc)
         with self._lock:
-            state = self._states.get(consumer.snapshot.snapshot_id)
+            state = self._states.get(snapshot.snapshot_id)
             if (
                 state is None
                 or consumer._released
@@ -424,12 +425,12 @@ class DiffSnapshotRegistry:
                 state.lease_open = False
                 return "DIFF_SNAPSHOT_EXPIRED"
             if (
-                state.snapshot.root_identity != consumer.snapshot.root_identity
+                state.snapshot.root_identity != snapshot.root_identity
                 or identity != state.snapshot.root_identity
             ):
                 return "DIFF_SNAPSHOT_ROOT_MISMATCH"
             if (
-                state.snapshot.source_generation != consumer.snapshot.source_generation
+                state.snapshot.source_generation != snapshot.source_generation
                 or generation != state.snapshot.source_generation
             ):
                 return "DIFF_SNAPSHOT_SOURCE_CHANGED"
@@ -448,7 +449,6 @@ class DiffSnapshotRegistry:
                 self._erase(sid)
 
     def release_route_lease(self, sid: str, lease: str) -> str | None:
-        """Close an owned route lease; repeating the exact token pair is idempotent."""
         lengths_valid = len(sid) == 35 and len(lease) == 46
         ids_valid = _SNAPSHOT_ID_PATTERN.fullmatch(
             sid

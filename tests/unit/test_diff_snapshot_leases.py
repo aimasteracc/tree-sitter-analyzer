@@ -79,10 +79,11 @@ def test_release_rejects_pin_underflow(tmp_path, monkeypatch) -> None:
     assert registry.close_lease(
         str(result["diff_snapshot_id"]), str(result["route_lease_id"])
     )
+    snapshot_id = consumer.snapshot.snapshot_id
     consumer.release()
 
     with pytest.raises(RuntimeError, match="DIFF_SNAPSHOT_PIN_INVALID"):
-        registry._release(consumer.snapshot.snapshot_id, consumer._pin, consumer._owner)
+        registry._release(snapshot_id, consumer._pin, consumer._owner)
 
 
 def test_close_lease_rejects_wrong_lease(tmp_path, monkeypatch) -> None:
@@ -118,3 +119,62 @@ def test_capability_is_process_wide_across_registry_instances() -> None:
     second = registry_module.DiffSnapshotRegistry()
 
     assert second.release_route_lease(snapshot_id, lease) is None
+
+
+def test_final_release_clears_consumer_payload_reference(tmp_path, monkeypatch) -> None:
+    # PR #1252 review thread 3751415934: erased bytes cannot remain consumer-owned.
+    registry, result = _created(tmp_path, monkeypatch)
+    consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(tmp_path))
+    assert error is None
+    assert consumer is not None
+    assert registry.close_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+    consumer.release()
+
+    assert consumer._snapshot is None
+    with pytest.raises(RuntimeError, match="^DIFF_SNAPSHOT_RELEASED$"):
+        _ = consumer.snapshot
+
+
+def test_active_pin_keeps_snapshot_capacity_charged(tmp_path, monkeypatch) -> None:
+    # PR #1252 review thread 3751415934: only the final pin permits byte erasure.
+    registry, result = _created(tmp_path, monkeypatch)
+    first, first_error = registry.acquire(
+        str(result["diff_snapshot_id"]), str(tmp_path)
+    )
+    second, second_error = registry.acquire(
+        str(result["diff_snapshot_id"]), str(tmp_path)
+    )
+    assert (first_error, second_error) == (None, None)
+    assert first is not None and second is not None
+    charged = registry._charged_bytes
+    assert registry.close_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+    first.release()
+
+    assert registry._charged_bytes == charged
+    assert second.snapshot.normalized_patch == b""
+    second.release()
+    assert registry._charged_bytes == 0
+
+
+def test_release_failure_still_clears_consumer_reference(tmp_path, monkeypatch) -> None:
+    # PR #1252 review thread 3751415934: release cleanup is unconditional.
+    registry, result = _created(tmp_path, monkeypatch)
+    consumer, error = registry.acquire(str(result["diff_snapshot_id"]), str(tmp_path))
+    assert error is None
+    assert consumer is not None
+    monkeypatch.setattr(
+        registry,
+        "_release",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("release failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="^release failed$"):
+        consumer.release()
+
+    assert consumer._snapshot is None

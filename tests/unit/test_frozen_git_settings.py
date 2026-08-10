@@ -433,3 +433,24 @@ def test_private_copy_failures_have_stable_accounting(tmp_path: Path) -> None:
             str(source), str(destination), lambda *a: None, lambda *a: rolled.append(a)
         )
     assert rolled == [(1, 1)]
+
+
+def test_shadow_git_commands_run_from_shadow_worktree(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3751341011: cwd cannot expose live old-side attributes.
+    environment = epoch_module.FrozenGitEnvironment(
+        str(tmp_path), _epoch(), time.monotonic() + 5
+    )
+    environment.worktree_path = str(tmp_path / "shadow-worktree")
+    observed: list[str] = []
+
+    def spy(cwd, _args, **_kwargs):
+        observed.append(cwd)
+        return b""
+
+    monkeypatch.setattr(epoch_module, "run_git_bounded", spy)
+
+    environment.run(["status"])
+
+    assert observed == [environment.worktree_path]

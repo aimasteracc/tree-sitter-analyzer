@@ -65,7 +65,8 @@ _EDIT_DESCRIPTION = (
     "- action=impact — post-edit dependency blast-radius scan combining git diff + "
     "dependency graph: affected files, must-run tests, risk verdict (SAFE/REVIEW/WARN). "
     "Call after every non-trivial edit. Params: mode (diff|staged|branch|pr, "
-    "default: diff), scope_paths, output_format.\n"
+    "default: diff), scope_paths, output_format, capture_diff_snapshot (boolean; "
+    "explicit opt-in, same-process POSIX producer only).\n"
     "- action=refactor — refactoring-opportunity analysis for a source file: extract "
     "candidates, complexity hotspots, skeleton. Params: file_path, language, "
     "max_suggestions, include_extractions, include_skeleton, output_format.\n"
@@ -198,6 +199,13 @@ def build_edit_facade(project_root: str | None = None) -> FacadeTool:
         # so facade/inner never drift. Never added to required[] (runtime-
         # resolved param convention, locked #397 family).
         extra_public_params={
+            "capture_diff_snapshot": {
+                "type": "boolean",
+                "description": (
+                    "Explicitly produce a frozen diff ID for same-process consumers; "
+                    "supported only on POSIX."
+                ),
+            },
             "diff_snapshot_id": {
                 "type": "string",
                 "description": "RFC-0022 frozen diff ID for classify/ast_diff/release_snapshot.",

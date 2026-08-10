@@ -43,11 +43,18 @@ class SnapshotConsumer:
 
     def __init__(self, registry: Any, snapshot: FrozenDiffSnapshot, pin: str) -> None:
         self._registry = registry
-        self.snapshot = snapshot
+        self._snapshot: FrozenDiffSnapshot | None = snapshot
         self._pin = pin
         self._owner = threading.get_ident()
         self._released = False
         self._lock = threading.Lock()
+
+    @property
+    def snapshot(self) -> FrozenDiffSnapshot:
+        snapshot = self._snapshot
+        if snapshot is None:
+            raise RuntimeError("DIFF_SNAPSHOT_RELEASED")
+        return snapshot
 
     def release(self) -> None:
         with self._lock:
@@ -55,8 +62,15 @@ class SnapshotConsumer:
                 return
             if threading.get_ident() != self._owner:
                 raise RuntimeError("DIFF_SNAPSHOT_WRONG_THREAD")
-            self._registry._release(self.snapshot.snapshot_id, self._pin, self._owner)
-            self._released = True
+            snapshot = self._snapshot
+            assert snapshot is not None
+            try:
+                self._registry._release(snapshot.snapshot_id, self._pin, self._owner)
+            finally:
+                # A released consumer must not retain immutable payload bytes after
+                # the registry's final pin erases its capacity charge.
+                self._snapshot = None
+                self._released = True
 
     def __enter__(self) -> FrozenDiffSnapshot:
         return self.snapshot

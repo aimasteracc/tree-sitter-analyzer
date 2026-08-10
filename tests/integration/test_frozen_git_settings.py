@@ -126,3 +126,44 @@ def test_external_diff_order_file_content_is_not_snapshot_input(tmp_path: Path) 
         second["source_generation"],
         second["changed_records"],
     )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_staged_deletion_freezes_ignored_old_side_attributes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3751341011: HEAD-only paths and shadow cwd are frozen.
+    root = _repo(tmp_path)
+    nested = root / "nested"
+    nested.mkdir()
+    deleted = nested / "old.txt"
+    attributes = nested / ".gitattributes"
+    deleted.write_text("old side\n")
+    (root / ".gitignore").write_text("nested/.gitattributes\n")
+    _git(root, "add", ".gitignore", "nested/old.txt")
+    _git(root, "commit", "-m", "nested baseline")
+    _git(root, "rm", "nested/old.txt")
+    nested.mkdir()
+    attributes.write_text("old.txt binary\n")
+    original_verify = epoch_module.FrozenGitEnvironment.verify_source_epoch
+    original_exit = epoch_module.FrozenGitEnvironment.__exit__
+
+    def mutate_after_verify(environment) -> None:
+        original_verify(environment)
+        attributes.write_text("old.txt -binary\n")
+
+    def restore_on_exit(environment, *args) -> None:
+        attributes.write_text("old.txt binary\n")
+        original_exit(environment, *args)
+
+    monkeypatch.setattr(
+        epoch_module.FrozenGitEnvironment, "verify_source_epoch", mutate_after_verify
+    )
+    monkeypatch.setattr(epoch_module.FrozenGitEnvironment, "__exit__", restore_on_exit)
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "staged", [])
+
+    assert result == {
+        "success": False,
+        "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
+    }
