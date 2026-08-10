@@ -429,37 +429,37 @@ def test_oracle_generation_never_reads_or_runs_child_git_for_dirty_gitlink(
     assert top_level_calls.count(("rev-parse", "--verify", "HEAD")) == 1
 
 
-def test_frame_workspace_path_propagates_filtered_oid_failure(
+def test_frame_workspace_path_retains_raw_regular_bytes(
     tmp_path: Path, monkeypatch
 ) -> None:
-    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
+    # PR #1252 review thread 3751628111: live attributes are not consulted.
+    metadata = (b"1,2,33188,0,0,0",)
     monkeypatch.setattr(
         oracle,
         "safe_workspace_path",
-        lambda *args, **kwargs: core_oracle.SafePath(
-            b"data", (b"1,2,33188,0,0,0",), "file"
-        ),
+        lambda *args, **kwargs: core_oracle.SafePath(b"data", metadata, "file"),
     )
-    monkeypatch.setattr(
-        oracle,
-        "git_filtered_oid",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            oracle.SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        ),
+    manifest = {}
+
+    charged = oracle._frame_workspace_path(
+        SimpleNamespace(update=lambda value: None),
+        str(tmp_path),
+        b"tracked.py",
+        deadline=time.monotonic() + 1,
+        content_budget=10,
+        content_required=True,
+        index_entry=b"100644 blob-id 0",
+        head_entry=b"100644 blob blob-id",
+        manifest=manifest,
     )
 
-    _error(
-        lambda: oracle._frame_workspace_path(
-            SimpleNamespace(update=lambda value: None),
-            str(tmp_path),
-            b"tracked.py",
-            deadline=time.monotonic() + 1,
-            content_budget=10,
-            content_required=True,
-            index_entry=b"100644 blob-id 0",
-            head_entry=b"100644 blob blob-id",
-        ),
-        "DIFF_SNAPSHOT_GIT_ERROR",
+    assert (charged, manifest) == (
+        4,
+        {
+            "tracked.py": core_oracle.WorkspaceManifestEntry(
+                (b"1,2,33188",), raw_bytes=b"data"
+            )
+        },
     )
 
 

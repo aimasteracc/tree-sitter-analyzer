@@ -469,7 +469,7 @@ def test_core_filemode_false_sanitizes_non_file_index_mode(tmp_path: Path) -> No
 
     result = frozen.apply_workspace(
         {b"a.py": SafePath(b"x", (b"1,2,33188,0,0,0",), "file")},
-        {"a.py": WorkspaceManifestEntry((), oid)},
+        {"a.py": WorkspaceManifestEntry((), raw_bytes=b"x")},
     )
 
     assert result == {b"a.py": b"100644 " + oid + b" 0"}

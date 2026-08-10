@@ -454,3 +454,25 @@ def test_shadow_git_commands_run_from_shadow_worktree(
     environment.run(["status"])
 
     assert observed == [environment.worktree_path]
+
+
+def test_frozen_settings_storage_charges_optional_core_attributes() -> None:
+    # PR #1252 thread 3751628120: all retained setting bytes share the ceiling.
+    frozen = _frozen_settings(
+        core_attributes_path=b"/core",
+        core_attributes=_setting_file(b"/core", "file", b"x"),
+    )
+
+    assert settings.frozen_settings_storage(frozen) == 77
+
+
+def test_frozen_settings_rejects_exhausted_ceiling_before_git() -> None:
+    # PR #1252 thread 3751628120: fail before settings output allocation.
+    calls = []
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPACITY$"):
+        settings.capture_frozen_git_settings(
+            ".", (), 1e20, lambda *args, **kwargs: calls.append(True), byte_ceiling=0
+        )
+
+    assert calls == []

@@ -38,6 +38,7 @@ class FrozenSettingFile:
     path: bytes
     kind: str
     data: bytes | None
+    descriptor_chain: tuple[bytes, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,8 @@ def _record_file(digest: Any, label: bytes, item: FrozenSettingFile) -> None:
     _frame(digest, label + b"-kind", item.kind.encode("ascii"))
     if item.data is not None:
         _frame(digest, label + b"-bytes", item.data)
+    for descriptor in item.descriptor_chain:
+        _frame(digest, label + b"-descriptor", descriptor)
 
 
 def settings_fingerprint(
@@ -146,6 +149,27 @@ def settings_fingerprint(
     return digest.digest()
 
 
+def frozen_settings_storage(settings: FrozenGitSettings) -> int:
+    """Return exact retained byte storage for one frozen settings inventory."""
+    config_bytes = sum(
+        len(entry.key) + len(entry.value or b"") for entry in settings.config_entries
+    )
+    files = (settings.info_attributes, *settings.worktree_attributes)
+    if settings.core_attributes is not None:
+        files = (settings.core_attributes, *files)
+    return (
+        config_bytes
+        + len(settings.core_attributes_path or b"")
+        + len(settings.object_directory)
+        + sum(
+            len(item.path)
+            + len(item.data or b"")
+            + sum(len(value) for value in item.descriptor_chain)
+            for item in files
+        )
+    )
+
+
 def _strip_line(raw: bytes) -> bytes:
     if raw.endswith(b"\r\n"):
         return raw[:-2]
@@ -163,7 +187,12 @@ def _read_absolute(path: str, deadline: float, remaining: int) -> FrozenSettingF
     safe = _safe_absolute_regular(
         path, deadline=deadline, limit=remaining, allow_missing=True
     )
-    return FrozenSettingFile(os.fsencode(os.path.abspath(path)), safe.kind, safe.data)
+    return FrozenSettingFile(
+        os.fsencode(os.path.abspath(path)),
+        safe.kind,
+        safe.data,
+        tuple(safe.metadata[-1:]),
+    )
 
 
 def reject_active_filters(raw: bytes, paths: tuple[bytes, ...]) -> None:
@@ -238,13 +267,18 @@ def capture_frozen_git_settings(
     inventory: tuple[bytes, ...],
     deadline: float,
     git_output: Callable[..., bytes],
+    *,
+    byte_ceiling: int = _MAX_SETTINGS_BYTES,
 ) -> FrozenGitSettings:
     """Boundedly capture effective config and every attribute source."""
+    ceiling = min(_MAX_SETTINGS_BYTES, byte_ceiling)
+    if ceiling <= 0:
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     raw_config = git_output(
         root,
         ["config", "-z", "--list", "--show-origin", "--includes"],
         deadline=deadline,
-        limit=_MAX_SETTINGS_BYTES,
+        limit=ceiling,
     )
     entries = parse_effective_config(raw_config)
     core_path_raw = _strip_line(
@@ -284,7 +318,7 @@ def capture_frozen_git_settings(
     framed_paths = (
         len(core_path or b"") + len(os.fsencode(info_path)) + len(object_path)
     )
-    remaining = _MAX_SETTINGS_BYTES - len(raw_config) - framed_paths
+    remaining = ceiling - len(raw_config) - framed_paths
     if remaining < 0:
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     core_file = (
@@ -322,7 +356,7 @@ def capture_frozen_git_settings(
         )
         if safe.kind not in ("file", "symlink", "missing"):
             raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
-        item = FrozenSettingFile(raw, safe.kind, safe.data)
+        item = FrozenSettingFile(raw, safe.kind, safe.data, tuple(safe.metadata[-1:]))
         remaining -= len(item.data or b"")
         if remaining < 0:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")

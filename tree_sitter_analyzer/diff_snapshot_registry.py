@@ -1,4 +1,5 @@
 """Bounded process-local immutable diff snapshot registry (RFC-0022)."""
+# fmt: off
 # ruff: noqa: I001
 
 from __future__ import annotations
@@ -100,7 +101,6 @@ class DiffSnapshotRegistry:
 
     def _route_lease(self, snapshot_id: str) -> str:
         return route_lease(self._lease_key, snapshot_id)
-
     def create(
         self, project_root: str | None, mode: str, assessed_scope_paths: list[str]
     ) -> dict[str, object]:
@@ -136,22 +136,31 @@ class DiffSnapshotRegistry:
             root, identity = canonical_root(project_root)
             pre_manifest: dict[str, WorkspaceManifestEntry] = {}
             epochs: list[GitEpoch] = []
-            oracle_params = inspect.signature(oracle_generation).parameters
+            oracle_call: Callable[..., tuple[str, RootIdentity]] = oracle_generation
+            oracle_params = inspect.signature(oracle_call).parameters
+            oracle_budget = (
+                {"byte_ceiling": ceiling} if "byte_ceiling" in oracle_params else {}
+            )
             if "epoch_out" in oracle_params:
-                before, before_identity = oracle_generation(
+                before, before_identity = oracle_call(
                     root,
                     mode,
                     deadline=deadline,
                     manifest=pre_manifest,
                     epoch_out=epochs,
+                    **oracle_budget,
                 )
             elif "manifest" in oracle_params:
-                before, before_identity = oracle_generation(
-                    root, mode, deadline=deadline, manifest=pre_manifest
+                before, before_identity = oracle_call(
+                    root,
+                    mode,
+                    deadline=deadline,
+                    manifest=pre_manifest,
+                    **oracle_budget,
                 )
             else:
-                before, before_identity = oracle_generation(
-                    root, mode, deadline=deadline
+                before, before_identity = oracle_call(
+                    root, mode, deadline=deadline, **oracle_budget
                 )
             if before_identity != identity:
                 raise SourceOracleError("DIFF_SNAPSHOT_ROOT_MISMATCH")
@@ -185,8 +194,12 @@ class DiffSnapshotRegistry:
                     root, mode, deadline, ceiling - inventory_size
                 )
             post_manifest: dict[str, WorkspaceManifestEntry] = {}
-            after, after_identity = oracle_generation(
-                root, mode, deadline=deadline, manifest=post_manifest
+            after, after_identity = oracle_call(
+                root,
+                mode,
+                deadline=deadline,
+                manifest=post_manifest,
+                **oracle_budget,
             )
             if (
                 before != after
@@ -260,7 +273,6 @@ class DiffSnapshotRegistry:
             with self._lock:
                 self._reservations.pop(reservation, None)
             return snapshot_error("DIFF_SNAPSHOT_CAPTURE_ERROR")
-
     def acquire(
         self, snapshot_id: str, project_root: str | None
     ) -> tuple[SnapshotConsumer | None, str | None]:
@@ -316,7 +328,6 @@ class DiffSnapshotRegistry:
                 consumer.release()
                 return None, "DIFF_SNAPSHOT_SOURCE_CHANGED"
         return consumer, None
-
     def bind_assessed_scope(
         self, consumer: SnapshotConsumer, paths: list[str]
     ) -> str | None:
@@ -373,7 +384,6 @@ class DiffSnapshotRegistry:
             consumer._snapshot = updated
             self._charged_bytes += delta
         return None
-
     def validate_publish(self, consumer: SnapshotConsumer) -> str | None:
         with self._lock:
             self._sweep()
@@ -435,9 +445,7 @@ class DiffSnapshotRegistry:
             ):
                 return "DIFF_SNAPSHOT_SOURCE_CHANGED"
         return None
-
     verify = validate_publish
-
     def _release(self, sid: str, pin: str, owner: int) -> None:
         with self._lock:
             self._sweep()
@@ -447,7 +455,6 @@ class DiffSnapshotRegistry:
             del state.pins[pin]
             if not state.pins and (state.expired or not state.lease_open):
                 self._erase(sid)
-
     def release_route_lease(self, sid: str, lease: str) -> str | None:
         lengths_valid = len(sid) == 35 and len(lease) == 46
         ids_valid = _SNAPSHOT_ID_PATTERN.fullmatch(
@@ -469,10 +476,8 @@ class DiffSnapshotRegistry:
             if not state.pins:
                 self._erase(sid)
             return None
-
     def close_lease(self, sid: str, lease: str) -> bool:
         return self.release_route_lease(sid, lease) is None
-
     def reset(self) -> None:
         with self._lock:
             if any(state.pins for state in self._states.values()):
@@ -481,19 +486,13 @@ class DiffSnapshotRegistry:
             self._states.clear()
             self._reservations.clear()
             self._charged_bytes = 0
-
     def stats(self) -> tuple[int, int]:
         with self._lock:
             self._sweep()
             return len(self._states), self._charged_bytes
-
-
 REGISTRY = DiffSnapshotRegistry()
-
-
 def close_route_lease(diff_snapshot_id: str, route_lease_id: str) -> bool:
     return REGISTRY.close_lease(diff_snapshot_id, route_lease_id)
-
-
 def reset_registry() -> None:
     REGISTRY.reset()
+# fmt: on

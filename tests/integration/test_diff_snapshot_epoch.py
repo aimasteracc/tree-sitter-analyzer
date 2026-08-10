@@ -299,3 +299,37 @@ def test_payload_rejects_missing_pre_manifest_binding(tmp_path: Path) -> None:
             expected_manifest={},
             epoch=epochs[0],
         )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_transient_live_filter_never_executes_and_changes_source(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3751628111: hashing must use frozen attributes.
+    root = _repo(tmp_path)
+    attributes = root / ".gitattributes"
+    attributes.write_text("# frozen inactive attributes\n")
+    _git(root, "add", ".gitattributes")
+    _git(root, "commit", "-m", "attributes")
+    sentinel = root.parent / "filter-executed"
+    script = root.parent / "evil-clean.sh"
+    script.write_text(f"touch {sentinel}; cat\n")
+    _git(root, "config", "filter.evil.clean", f"sh {script}")
+    (root / "old.py").write_text("value = 2\n")
+    original_enter = capture.FrozenGitEnvironment.__enter__
+
+    def flip_attributes(environment):
+        attributes.write_text("*.py filter=evil\n")
+        entered = original_enter(environment)
+        attributes.write_text("# frozen inactive attributes\n")
+        return entered
+
+    monkeypatch.setattr(capture.FrozenGitEnvironment, "__enter__", flip_attributes)
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert result == {
+        "success": False,
+        "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
+    }
+    assert sentinel.exists() is False

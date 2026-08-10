@@ -69,10 +69,11 @@ class SafePath:
 
 @dataclass(frozen=True)
 class WorkspaceManifestEntry:
-    """Pre-capture descriptor identity and Git-cleaned blob identity."""
+    """Immutable pre-capture identity and bounded regular-file evidence."""
 
     descriptor_chain: tuple[bytes, ...]
     filtered_oid: bytes | None = None
+    raw_bytes: bytes | None = None
 
 
 def canonical_root(project_root: str | None) -> tuple[str, RootIdentity]:
@@ -336,6 +337,7 @@ def oracle_generation(
     deadline: float | None = None,
     manifest: dict[str, WorkspaceManifestEntry] | None = None,
     epoch_out: list[Any] | None = None,
+    byte_ceiling: int = 64 * 1024 * 1024,
 ) -> tuple[str, RootIdentity]:
     from .source_oracle_git import oracle_generation as generate
 
@@ -345,6 +347,7 @@ def oracle_generation(
         deadline=deadline,
         manifest=manifest,
         epoch_out=epoch_out,
+        byte_ceiling=byte_ceiling,
     )
 
 

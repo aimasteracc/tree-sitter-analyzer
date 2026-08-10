@@ -18,24 +18,6 @@ GitOutput = Callable[..., bytes]
 BoundedGit = Callable[..., bytes]
 
 
-def git_filtered_oid(root: str, raw: bytes, data: bytes, *, deadline: float) -> bytes:
-    """Return Git's cleaned blob identity for exact raw repository path bytes."""
-    oid = run_git_bounded(
-        root,
-        ["hash-object", "--path=" + os.fsdecode(raw), "--stdin"],
-        deadline=deadline,
-        limit=4096,
-        input_=data,
-    ).strip()
-    try:
-        int(oid, 16)
-    except ValueError as exc:
-        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc
-    if len(oid) not in (40, 64):
-        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-    return oid
-
-
 def safe_external_temp_parent(root: str) -> str:
     """Select an existing writable temporary parent outside the project."""
     real_root = os.path.realpath(root)

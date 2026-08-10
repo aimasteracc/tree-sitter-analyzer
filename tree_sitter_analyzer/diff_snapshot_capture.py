@@ -1,4 +1,5 @@
 """Atomic Git patch capture and immutable file materialization."""
+# fmt: off
 
 from __future__ import annotations
 
@@ -233,7 +234,6 @@ def _tracked_binary_paths(
             result.add(_decode_path(path))
     return result
 
-
 def _binary_paths(git: FrozenGitEnvironment, base: bytes, limit: int) -> set[bytes]:
     raw = git.run(
         [
@@ -271,16 +271,12 @@ def _binary_paths(git: FrozenGitEnvironment, base: bytes, limit: int) -> set[byt
         if fields[0] == fields[1] == b"-":
             binary.add(path)
     return binary
-
-
 def _blob(
     git: FrozenGitEnvironment, oid: str | None, kind: str, limit: int
 ) -> bytes | None:
     if oid is None or kind == "gitlink":
         return None
     return git.run(["cat-file", "blob", oid], limit=limit)
-
-
 def _safe_mode(safe_kind: str, metadata: tuple[bytes, ...]) -> tuple[str | None, str]:
     if safe_kind == "missing":
         return None, "missing"
@@ -293,8 +289,6 @@ def _safe_mode(safe_kind: str, metadata: tuple[bytes, ...]) -> tuple[str | None,
     except (IndexError, ValueError) as exc:
         raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH") from exc
     return ("100755" if bits & 0o111 else "100644"), "file"
-
-
 def _capture_payload(
     root: str,
     mode: str,
@@ -327,7 +321,6 @@ def _capture_payload(
         remaining -= accounted_temporary
         if remaining < 0:  # pragma: no cover - environment enforces this first
             raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
-
         def reserve_temporary_growth() -> None:
             nonlocal remaining, accounted_temporary
             current_temporary = getattr(git, "temporary_bytes", 0)
@@ -340,7 +333,6 @@ def _capture_payload(
             # The environment's absolute limit permits only the shared budget
             # still unconsumed by payload materialization.
             git.storage_byte_limit = current_temporary + remaining
-
         reserve_temporary_growth()
         verify_epoch = getattr(git, "verify_source_epoch", None)
         if verify_epoch is not None:
@@ -375,13 +367,22 @@ def _capture_payload(
                     )
                 if safe.data is not None:
                     remaining -= len(safe.data)
+                if safe.kind == "file":
+                    raw_changed = manifest_entry.raw_bytes != safe.data
+                    if raw_changed:  # pragma: no cover - descriptor fails first
+                        raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+                    safe = SafePath(
+                        manifest_entry.raw_bytes,
+                        safe.metadata,
+                        safe.kind,
+                    )
                 safe_paths[raw] = safe
             reserve_temporary_growth()
-            workspace_entries = git.apply_workspace(safe_paths, expected_manifest or {})
+            filtered_manifest = dict(expected_manifest or {})
+            workspace_entries = git.apply_workspace(safe_paths, filtered_manifest)
             reserve_temporary_growth()
         else:
             workspace_entries = {}
-
         diff_options = [
             "diff",
             "--cached",
@@ -417,12 +418,10 @@ def _capture_payload(
             # row, but the unsupported dirty identity must never be dropped.
             for raw in sorted(dict(frozen.workspace_gitlinks)):
                 rows.append(("M", None, raw))
-
         # Git may be configured to emit any order.  The public records use one
         # internal raw-path order in both workspace and staged modes; status
         # and rename source provide deterministic ties.
         rows.sort(key=_row_sort_key)
-
         files: list[FrozenFile] = []
         dirty_gitlinks = set(dict(frozen.workspace_gitlinks)) & set(frozen.dirty_paths)
         for status, old_raw, raw in rows:
@@ -496,3 +495,4 @@ def _capture_payload(
                 )
             )
     return patch, tuple(files)
+# fmt: on

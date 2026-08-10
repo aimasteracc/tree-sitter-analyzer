@@ -1,4 +1,5 @@
 """Git inventory and source-generation helpers for the source oracle."""
+# fmt: off
 
 from __future__ import annotations
 
@@ -12,12 +13,16 @@ from typing import Any
 from .frozen_git_index import (
     frozen_index_entries,
     frozen_index_output,
-    git_filtered_oid,
     has_split_index,
     invalidate_index_stat_cache,
     reject_frozen_filters,
 )
-from .frozen_git_settings import capture_frozen_git_settings as capture_settings
+from .frozen_git_settings import (
+    capture_frozen_git_settings as capture_settings,
+)
+from .frozen_git_settings import (
+    frozen_settings_storage,
+)
 from .git_subprocess import run_git_bounded
 from .source_epoch import (
     _EMPTY_TREE_SHA1,
@@ -25,7 +30,6 @@ from .source_epoch import (
     GitEpoch,
     capture_source_epoch,
     core_bool,
-    raw_blob_oid,
 )
 from .source_oracle import (
     RootIdentity,
@@ -47,22 +51,17 @@ _FRAME_DOMAIN = b"tsa-source-generation-v5"
 _MAX_INVENTORY_BYTES = 16 * 1024 * 1024
 _MAX_WORKTREE_PATHS = 200_000
 _MAX_WORKTREE_CONTENT_BYTES = 64 * 1024 * 1024
+_MAX_INDEX_BYTES = 64 * 1024 * 1024
 _frozen_index_output = frozen_index_output
-
-
 def git_output(root: str, args: list[str], *, deadline: float, limit: int) -> bytes:
     """Run Git fail-closed with a shared deadline and bounded retained output."""
     return run_git_bounded(
         root, args, deadline=deadline, limit=limit, popen=subprocess.Popen
     )
-
-
 def _strip_one_record_terminator(value: bytes) -> bytes:
     if value.endswith(b"\r\n"):
         return value[:-2]
     return value[:-1] if value.endswith(b"\n") else value
-
-
 def _object_format(root: str, *, deadline: float) -> str:
     value = git_output(
         root, ["rev-parse", "--show-object-format"], deadline=deadline, limit=64
@@ -70,12 +69,8 @@ def _object_format(root: str, *, deadline: float) -> str:
     if value not in (b"sha1", b"sha256"):
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
     return value.decode("ascii")
-
-
 def _core_filemode(root: str, *, deadline: float) -> bool:
     return core_bool(root, "core.filemode", deadline, git_output)
-
-
 def _head_identity(
     root: str, *, deadline: float, object_format: str | None = None
 ) -> bytes:
@@ -92,21 +87,24 @@ def _head_identity(
             raise head_error from symbolic_error
         fmt = object_format or _object_format(root, deadline=deadline)
         return _EMPTY_TREE_SHA256 if fmt == "sha256" else _EMPTY_TREE_SHA1
-
-
 def _frame(digest: Any, label: bytes, value: bytes) -> None:
     update = digest.update
     update(len(label).to_bytes(4, "big") + label)
     update(len(value).to_bytes(8, "big") + value)
-
-
 def _index_entries(
-    root: str, *, deadline: float, index_bytes: bytes | None = None
+    root: str,
+    *,
+    deadline: float,
+    index_bytes: bytes | None = None,
+    byte_ceiling: int = _MAX_INVENTORY_BYTES,
 ) -> dict[bytes, bytes]:
+    temporary_bytes = len(index_bytes or b"")
+    if temporary_bytes > byte_ceiling:  # pragma: no cover - caller preflights
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     return frozen_index_entries(
         root,
         deadline=deadline,
-        max_inventory_bytes=_MAX_INVENTORY_BYTES,
+        max_inventory_bytes=min(_MAX_INVENTORY_BYTES, byte_ceiling - temporary_bytes),
         max_paths=_MAX_WORKTREE_PATHS,
         index_bytes=index_bytes,
         git_output_fn=git_output,
@@ -115,8 +113,6 @@ def _index_entries(
         mkstemp=tempfile.mkstemp,
         unlink=os.unlink,
     )
-
-
 def _head_entries(
     root: str, *, deadline: float, head: bytes = b"HEAD"
 ) -> dict[bytes, bytes]:
@@ -147,8 +143,6 @@ def _head_entries(
     if len(entries) > _MAX_WORKTREE_PATHS:
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     return entries
-
-
 def _tracked_paths(root: str, *, deadline: float) -> list[bytes]:
     """List every tracked worktree path with exact bounded ``git ls-files -z``."""
     raw = git_output(
@@ -158,13 +152,10 @@ def _tracked_paths(root: str, *, deadline: float) -> list[bytes]:
     if len(paths) > _MAX_WORKTREE_PATHS or len(paths) != len(set(paths)):
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     return paths
-
-
 def capture_inventory(
     root: str, mode: str, *, deadline: float, limit: int
 ) -> tuple[str, ...]:
     """Capture the bounded scope-existence inventory inside an oracle epoch.
-
     Staged analysis is scoped to stage-zero index identities. Workspace analysis
     additionally includes Git's bounded untracked inventory. Callers must bracket
     this read with equal source generations and retain this tuple, never re-read
@@ -197,8 +188,6 @@ def capture_inventory(
             raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
         normalized.append(path)
     return tuple(normalized)
-
-
 def _frame_workspace_path(
     digest: Any,
     root: str,
@@ -236,20 +225,16 @@ def _frame_workspace_path(
     )
     _frame(digest, b"worktree-path", raw)
     descriptor_chain = stable_descriptor_chain(safe.metadata)
-    filtered_oid: bytes | None = None
     index_mode = index_entry.split(b" ", 1)[0] if index_entry else None
     emulated_symlink = (
         not core_symlinks and safe.kind == "file" and index_mode == b"120000"
     )
-    if safe.kind == "file" and content_required and not is_gitlink:
-        filtered_oid = (
-            raw_blob_oid(safe.data or b"", object_format)
-            if emulated_symlink
-            else git_filtered_oid(root, raw, safe.data or b"", deadline=deadline)
-        )
-        _frame(digest, b"worktree-filtered-oid", filtered_oid)
+    # Never ask live-repository Git to clean these bytes.  Retain the bounded
+    # raw regular-file evidence until the captured settings have been
+    # materialized in a private FrozenGitEnvironment.
+    raw_bytes = safe.data if safe.kind == "file" and content_required else None
     if manifest is not None:
-        manifest[path] = WorkspaceManifestEntry(descriptor_chain, filtered_oid)
+        manifest[path] = WorkspaceManifestEntry(descriptor_chain, None, raw_bytes)
     leaf_metadata = safe.metadata[-1:] if safe.kind != "missing" else ()
     ancestor_metadata = (
         safe.metadata[:-1] if safe.kind != "missing" else safe.metadata[:-1]
@@ -277,8 +262,6 @@ def _frame_workspace_path(
         _frame(digest, b"worktree-content", hashlib.sha256(data).digest())
         return len(data)
     return 0
-
-
 def oracle_generation(
     project_root: str | None,
     mode: str = "diff",
@@ -286,6 +269,7 @@ def oracle_generation(
     deadline: float | None = None,
     manifest: dict[str, WorkspaceManifestEntry] | None = None,
     epoch_out: list[GitEpoch] | None = None,
+    byte_ceiling: int = 64 * 1024 * 1024,
 ) -> tuple[str, RootIdentity]:
     if not _supports_nofollow():
         raise SourceOracleError("DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
@@ -295,9 +279,7 @@ def oracle_generation(
     _frame(digest, b"domain", _FRAME_DOMAIN)
     _frame(digest, b"root", os.fsencode(identity.realpath))
     _frame(digest, b"root-stat", f"{identity.device},{identity.inode}".encode())
-    top_level = git_output(
-        root, ["rev-parse", "--show-toplevel"], deadline=end, limit=64 * 1024
-    )
+    top_level = git_output(root, ["rev-parse", "--show-toplevel"], deadline=end, limit=64 * 1024)
     top_level = _strip_one_record_terminator(top_level)
     try:
         top_root, top_identity = canonical_root(os.fsdecode(top_level))
@@ -313,9 +295,7 @@ def oracle_generation(
     _frame(digest, b"core-filemode", b"true" if core_filemode else b"false")
     _frame(digest, b"core-symlinks", b"true" if core_symlinks else b"false")
     _frame(digest, b"HEAD", head)
-    git_dir = git_output(
-        root, ["rev-parse", "--git-dir"], deadline=end, limit=64 * 1024
-    )
+    git_dir = git_output(root, ["rev-parse", "--git-dir"], deadline=end, limit=64 * 1024)
     git_dir = _strip_one_record_terminator(git_dir)
     decoded_git_dir = os.fsdecode(git_dir)
     index_path = (
@@ -324,19 +304,38 @@ def oracle_generation(
         else os.path.join(root, decoded_git_dir, "index")
     )
     # Missing is an empty index for born and unborn HEADs, and is framed exactly.
+    if byte_ceiling <= 0:  # pragma: no cover - registry rejects first
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     safe_index = _safe_absolute_regular(
-        index_path, deadline=end, limit=64 * 1024 * 1024, allow_missing=True
+        index_path,
+        deadline=end,
+        limit=min(_MAX_INDEX_BYTES, byte_ceiling),
+        allow_missing=True,
     )
     for descriptor in stable_descriptor_chain(safe_index.metadata):
         _frame(digest, b"index-descriptor-identity", descriptor)
     _frame(digest, b"index-state", safe_index.kind.encode("ascii"))
     index_bytes = safe_index.data or b""
+    remaining_bytes = byte_ceiling - len(index_bytes)
+    if remaining_bytes < 0:  # pragma: no cover - bounded reader enforces first
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     _frame(digest, b"index-content", hashlib.sha256(index_bytes).digest())
     if index_bytes and has_split_index(index_bytes, object_format=object_format):
         raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_INDEX")
-    index_entries = _index_entries(root, deadline=end, index_bytes=index_bytes)
+    index_entries = _index_entries(
+        root,
+        deadline=end,
+        index_bytes=index_bytes,
+        byte_ceiling=remaining_bytes,
+    )
     tracked = list(index_entries)
     head_entries = _head_entries(root, deadline=end, head=head)
+    filter_candidates = tuple(sorted(index_entries))
+    if filter_candidates:
+        reject_frozen_filters(root, index_bytes, filter_candidates, end, object_format)
+    refresh_temporary = 2 * len(index_bytes)
+    if refresh_temporary > remaining_bytes:  # pragma: no cover - index gate
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     dirty_raw = _frozen_index_output(
         root,
         index_bytes,
@@ -349,32 +348,48 @@ def oracle_generation(
             "--ignore-submodules=none",
         ],
         deadline=end,
-        limit=_MAX_INVENTORY_BYTES,
+        limit=min(_MAX_INVENTORY_BYTES, remaining_bytes - refresh_temporary),
         refresh=True,
         object_format=object_format,
     )
+    if (  # pragma: no cover - bounded output enforces first
+        len(index_bytes) > remaining_bytes - len(dirty_raw)
+    ):
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     untracked_raw = _frozen_index_output(
         root,
         index_bytes,
         ["ls-files", "--others", "--exclude-standard", "-z"],
         deadline=end,
-        limit=_MAX_INVENTORY_BYTES,
+        limit=min(
+            _MAX_INVENTORY_BYTES,
+            remaining_bytes - len(dirty_raw) - len(index_bytes),
+        ),
     )
     dirty = {path for path in dirty_raw.split(b"\0") if path}
     untracked = {path for path in untracked_raw.split(b"\0") if path}
+    remaining_bytes -= len(dirty_raw) + len(untracked_raw)
+    if remaining_bytes < 0:  # pragma: no cover - bounded outputs enforce first
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     if len(dirty | untracked) > _MAX_WORKTREE_PATHS:
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     tracked_set = set(tracked)
     if not dirty <= tracked_set or untracked & tracked_set:
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-    filter_paths = tuple(sorted(dirty | untracked))
-    if filter_paths:
-        reject_frozen_filters(root, index_bytes, filter_paths, end, object_format)
     # Attribute lookup for staged deletions and rename sources still walks the
     # old-side path.  Preserve those HEAD-only ancestors in the shadow settings
     # inventory even though the paths no longer exist in the frozen index.
     settings_inventory = tuple(sorted(tracked_set | set(head_entries) | untracked))
-    frozen_settings = capture_settings(root, settings_inventory, end, git_output)
+    frozen_settings = capture_settings(
+        root,
+        settings_inventory,
+        end,
+        git_output,
+        byte_ceiling=remaining_bytes,
+    )
+    remaining_bytes -= frozen_settings_storage(frozen_settings)
+    if remaining_bytes <= 0:  # pragma: no cover - settings bound first
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     settings_epoch = capture_source_epoch(
         root,
         index_bytes,
@@ -382,6 +397,7 @@ def oracle_generation(
         deadline=end,
         object_format=object_format,
         frozen_output=_frozen_index_output,
+        byte_ceiling=remaining_bytes,
     )
     _frame(digest, b"attributes", settings_epoch.attribute_fingerprint)
     _frame(digest, b"config", settings_epoch.config_hash)
@@ -414,10 +430,10 @@ def oracle_generation(
                 index_bytes=index_bytes,
                 source_epoch=settings_epoch,
                 git_settings=frozen_settings,
+                settings_paths=settings_inventory,
             )
         )
-
-    remaining_content = _MAX_WORKTREE_CONTENT_BYTES
+    remaining_content = min(_MAX_WORKTREE_CONTENT_BYTES, remaining_bytes)
     for raw in sorted(tracked, key=os.fsencode):
         charge = _frame_workspace_path(
             digest,
@@ -448,7 +464,6 @@ def oracle_generation(
             manifest=manifest,
         )
         remaining_content -= charge
-
     diff_args = ["diff", "--cached"] if mode == "staged" else ["diff-files"]
     diff_args += [
         "--binary",
@@ -480,3 +495,4 @@ def oracle_generation(
     )
     _frame(digest, b"patch", hashlib.sha256(patch).digest())
     return "sg_" + digest.hexdigest(), identity
+# fmt: on

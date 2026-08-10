@@ -46,6 +46,7 @@ class GitEpoch:
     index_bytes: bytes = b""
     source_epoch: SourceEpoch | None = None
     git_settings: FrozenGitSettings | None = None
+    settings_paths: tuple[bytes, ...] = ()
 
     def index_map(self) -> dict[bytes, bytes]:
         return dict(self.index_entries)
@@ -76,16 +77,6 @@ def core_bool(
     raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
 
 
-def raw_blob_oid(data: bytes, object_format: str) -> bytes:
-    framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
-    digest = (
-        hashlib.sha256(framed)
-        if object_format == "sha256"
-        else hashlib.sha1(framed, usedforsecurity=False)
-    )
-    return digest.hexdigest().encode("ascii")
-
-
 def capture_source_epoch(
     root: str,
     index_bytes: bytes,
@@ -94,10 +85,13 @@ def capture_source_epoch(
     deadline: float,
     object_format: str,
     frozen_output: Callable[..., bytes] = frozen_index_output,
+    byte_ceiling: int = _MAX_SETTINGS_BYTES,
 ) -> SourceEpoch:
     """Hash exact bounded attributes and config without retaining config values."""
     path_input = b"".join(path + b"\0" for path in paths)
-    if len(path_input) > _MAX_SETTINGS_PATH_BYTES:
+    temporary_bytes = len(index_bytes)
+    available = min(_MAX_SETTINGS_BYTES, byte_ceiling) - temporary_bytes
+    if len(path_input) > min(_MAX_SETTINGS_PATH_BYTES, available):
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     extra_env = {"GIT_ATTR_NOSYSTEM": "1"}
     attributes = frozen_output(
@@ -105,17 +99,20 @@ def capture_source_epoch(
         index_bytes,
         ["check-attr", "-z", "--all", "--stdin"],
         deadline=deadline,
-        limit=_MAX_SETTINGS_BYTES,
+        limit=available - len(path_input),
         object_format=object_format,
         input_=path_input,
         extra_env=extra_env,
     )
+    config_available = available - len(attributes)
+    if config_available <= 0:  # pragma: no cover - output bound enforces first
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     config = frozen_output(
         root,
         index_bytes,
         ["config", "--null", "--list", "--show-origin", "--includes"],
         deadline=deadline,
-        limit=_MAX_SETTINGS_BYTES,
+        limit=config_available,
         object_format=object_format,
         extra_env=extra_env,
     )

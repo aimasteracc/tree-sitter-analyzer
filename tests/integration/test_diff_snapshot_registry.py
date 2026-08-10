@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+import tree_sitter_analyzer.source_oracle_git as oracle
 from tests.unit._diff_snapshot_support import (
     POSIX_SNAPSHOT_TEST,
     install_fake_snapshot_materializer,
@@ -429,3 +430,43 @@ def test_dirty_gitlink_preserves_index_evidence_without_reading_hostile_leaf(
             "unsupported_kind": "dirty_gitlink",
         }
     ]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_remaining_ceiling_bounds_index_before_frozen_materialization(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3751628120: existing charge bounds oracle reads.
+    root = _repo(tmp_path)
+    for number in range(80):
+        (root / f"entry-{number}.txt").write_text(str(number))
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    index_path = root / ".git" / "index"
+    assert index_path.stat().st_size == 6590
+    calls: list[int] = []
+    original_read = oracle._safe_absolute_regular
+
+    def bounded_read(path, *, deadline, limit, allow_missing=False):
+        if path == str(index_path):
+            calls.append(limit)
+        return original_read(
+            path, deadline=deadline, limit=limit, allow_missing=allow_missing
+        )
+
+    materializations: list[bool] = []
+    monkeypatch.setattr(oracle, "_safe_absolute_regular", bounded_read)
+    monkeypatch.setattr(
+        oracle,
+        "_index_entries",
+        lambda *args, **kwargs: materializations.append(True),
+    )
+    registry = snapshots.DiffSnapshotRegistry()
+    registry._charged_bytes = snapshots.MAX_MATERIALIZED_BYTES - 1024
+
+    result = registry.create(str(root), "diff", [])
+
+    assert (result, calls, materializations) == (
+        {"success": False, "error_code": "DIFF_SNAPSHOT_CAPACITY"},
+        [1024],
+        [],
+    )

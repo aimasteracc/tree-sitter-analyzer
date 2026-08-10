@@ -1,4 +1,5 @@
 """Temporary Git plumbing for payloads bound to a captured source epoch."""
+# fmt: off
 
 from __future__ import annotations
 
@@ -8,6 +9,7 @@ import stat
 import tempfile
 import threading
 from collections.abc import Mapping
+from dataclasses import replace
 
 from .frozen_git_index import safe_external_temp_parent
 from .frozen_git_settings import (
@@ -211,10 +213,8 @@ class FrozenGitEnvironment:
             raise
         except OSError as exc:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
-
     def _write_private(self, path: str, data: bytes) -> None:
         write_private(path, data, self._reserve_temporary, self._rollback_temporary)
-
     def _copy_private(self, source: str, destination: str) -> None:
         copy_private(
             source,
@@ -222,7 +222,6 @@ class FrozenGitEnvironment:
             self._reserve_temporary,
             self._rollback_temporary,
         )
-
     def _materialize_regular(self, item: object, destination: str) -> None:
         kind = getattr(item, "kind", None)
         data = getattr(item, "data", None)
@@ -231,13 +230,11 @@ class FrozenGitEnvironment:
         if kind != "file" or not isinstance(data, bytes):
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
         self._write_private(destination, data)
-
     def __exit__(self, *_: object) -> None:
         directory = self._directory
         self._directory = None
         if directory is not None:
             cleanup_path(directory, directory=True)
-
     def _env(self) -> dict[str, str]:
         env = {
             key: value
@@ -267,7 +264,6 @@ class FrozenGitEnvironment:
                 }
             )
         return env
-
     def run(
         self,
         args: list[str],
@@ -285,7 +281,6 @@ class FrozenGitEnvironment:
             input_=input_,
             file_size_limit=file_size_limit,
         )
-
     def verify_source_epoch(self) -> None:
         """Recompute the pre-oracle fingerprints inside the isolated shadow."""
         expected = self.epoch.source_epoch
@@ -294,7 +289,7 @@ class FrozenGitEnvironment:
             return
         if not isinstance(settings, FrozenGitSettings):
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        paths = tuple(
+        paths = self.epoch.settings_paths or tuple(
             sorted(set(self.epoch.tracked_paths) | set(self.epoch.untracked_paths))
         )
         path_input = b"".join(path + b"\0" for path in paths)
@@ -339,7 +334,6 @@ class FrozenGitEnvironment:
             or config_fingerprint(restored) != expected.config_hash
         ):
             raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
-
     def _refresh_object_usage(self) -> None:
         directory = self.object_directory
         if directory is None:
@@ -365,7 +359,6 @@ class FrozenGitEnvironment:
             or self.temporary_files > self.storage_file_limit
         ):
             raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
-
     def _refresh_all_usage(self) -> None:
         directory = self._directory
         if directory is None:
@@ -388,11 +381,10 @@ class FrozenGitEnvironment:
         self.temporary_files = files
         if total > self.storage_byte_limit or files > self.storage_file_limit:
             raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
-
     def apply_workspace(
         self,
         paths: Mapping[bytes, SafePath],
-        manifest: Mapping[str, WorkspaceManifestEntry] | None = None,
+        manifest: dict[str, WorkspaceManifestEntry] | None = None,
     ) -> dict[bytes, bytes]:
         """Clone the base index, then write Git-cleaned frozen leaves."""
         if self._directory is None:
@@ -481,9 +473,15 @@ class FrozenGitEnvironment:
             if not oid:
                 raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
             if safe.kind == "file":
-                expected = (manifest or {}).get(os.fsdecode(raw))
-                if expected is None or expected.filtered_oid != oid:
+                path = os.fsdecode(raw)
+                expected = (manifest or {}).get(path)
+                if expected is None or expected.raw_bytes != safe.data:
                     raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+                if manifest is not None:  # pragma: no branch - production mapping
+                    # Keep the published frozen evidence immutable.  The
+                    # cleaned identity belongs only to this private manifest
+                    # copy and to the reconstructed index below.
+                    manifest[path] = replace(expected, filtered_oid=oid)
             self.run(
                 [
                     "update-index",
@@ -497,3 +495,4 @@ class FrozenGitEnvironment:
             result[raw] = mode + b" " + oid + b" 0"
         self._refresh_all_usage()
         return result
+# fmt: on

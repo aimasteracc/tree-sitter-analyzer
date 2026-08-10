@@ -287,17 +287,6 @@ def test_temp_parent_has_external_windows_fallback(tmp_path: Path, monkeypatch) 
     ) != os.path.realpath(project)
 
 
-@pytest.mark.parametrize("oid", [b"not-hex", b"a" * 39])
-def test_git_filtered_oid_rejects_invalid_git_output(monkeypatch, oid: bytes) -> None:
-    # PR #1252 review thread PRRT_kwDOPVL-OM6XzR-s.
-    monkeypatch.setattr(frozen_index, "run_git_bounded", lambda *args, **kwargs: oid)
-
-    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_GIT_ERROR$"):
-        frozen_index.git_filtered_oid(
-            ".", b"sample.txt", b"data", deadline=time.monotonic() + 1
-        )
-
-
 def test_reconstructed_index_writes_valid_stage_zero_payload(
     tmp_path: Path, monkeypatch
 ) -> None:
