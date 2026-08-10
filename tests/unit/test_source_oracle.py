@@ -1,8 +1,17 @@
 import os
+import subprocess
+from pathlib import Path
 
 import pytest
 
 import tree_sitter_analyzer.source_oracle as oracle
+import tree_sitter_analyzer.source_oracle_git as git_oracle
+from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST
+from tree_sitter_analyzer.source_oracle_budget import (
+    container_storage,
+    entry_map_storage,
+    parse_head_entries,
+)
 
 
 def _error(call, code: str) -> None:
@@ -73,3 +82,90 @@ def test_capture_inventory_delegates_to_git_helper(monkeypatch) -> None:
     )
 
     assert oracle.capture_inventory(".", "diff", deadline=1e20, limit=1) == ("a.py",)
+
+
+def test_head_parser_stops_when_retained_dict_exhausts_budget() -> None:
+    raw = b"100644 blob a\ta\x00100644 blob b\tb\0"
+    ceiling = len(raw) + entry_map_storage({b"a": b"100644 blob a"})
+    checks: list[float] = []
+
+    _error(
+        lambda: parse_head_entries(
+            raw,
+            deadline=7.0,
+            byte_ceiling=ceiling,
+            max_paths=2,
+            remaining_fn=lambda deadline: checks.append(deadline) or 1.0,
+        ),
+        "DIFF_SNAPSHOT_CAPACITY",
+    )
+    assert checks == [7.0, 7.0]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_staged_deletions_exhaust_head_budget_before_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3752075938.
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    for number in range(200):
+        (tmp_path / f"tracked-{number:03}.txt").write_text("x")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "head",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(["git", "rm", "--cached", "-qr", "."], cwd=tmp_path, check=True)
+    ceiling = 2048
+    index_size = (tmp_path / ".git" / "index").stat().st_size
+    expected_limit = (
+        ceiling - index_size - entry_map_storage({}) - container_storage([])
+    )
+    limits: list[int] = []
+    settings_calls: list[tuple[object, ...]] = []
+    real_output = git_oracle.git_output
+
+    def output(root, args, **kwargs):
+        if args[0] == "ls-tree":
+            limits.append(kwargs["limit"])
+        return real_output(root, args, **kwargs)
+
+    monkeypatch.setattr(git_oracle, "git_output", output)
+    monkeypatch.setattr(
+        git_oracle,
+        "capture_settings",
+        lambda *args, **kwargs: settings_calls.append(args),
+    )
+    _error(
+        lambda: git_oracle.oracle_generation(
+            str(tmp_path), "staged", byte_ceiling=ceiling
+        ),
+        "DIFF_SNAPSHOT_CAPACITY",
+    )
+    assert limits == [expected_limit]
+    assert settings_calls == []
+
+
+def test_byte_ledger_rejects_unavailable_temporary_storage() -> None:
+    from tree_sitter_analyzer.source_oracle_budget import ByteLedger
+
+    ledger = ByteLedger(3)
+    ledger.require_available(3)
+    _error(lambda: ledger.require_available(4), "DIFF_SNAPSHOT_CAPACITY")
+
+
+def test_head_entries_rejects_empty_remaining_budget() -> None:
+    _error(
+        lambda: git_oracle._head_entries(".", deadline=1.0, byte_ceiling=0),
+        "DIFF_SNAPSHOT_CAPACITY",
+    )

@@ -35,12 +35,20 @@ from .source_oracle import (
     RootIdentity,
     SourceOracleError,
     WorkspaceManifestEntry,
+    _remaining,
     _safe_absolute_regular,
     _supports_nofollow,
     canonical_root,
     normalize_repo_path,
     safe_workspace_path,
     stable_descriptor_chain,
+)
+from .source_oracle_budget import (
+    ByteLedger,
+    container_storage,
+    entry_map_storage,
+    parse_head_entries,
+    path_set_storage,
 )
 from .source_oracle_consistency import (
     capture_consistent as capture_consistent,
@@ -98,13 +106,10 @@ def _index_entries(
     index_bytes: bytes | None = None,
     byte_ceiling: int = _MAX_INVENTORY_BYTES,
 ) -> dict[bytes, bytes]:
-    temporary_bytes = len(index_bytes or b"")
-    if temporary_bytes > byte_ceiling:  # pragma: no cover - caller preflights
-        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     return frozen_index_entries(
         root,
         deadline=deadline,
-        max_inventory_bytes=min(_MAX_INVENTORY_BYTES, byte_ceiling - temporary_bytes),
+        max_inventory_bytes=min(_MAX_INVENTORY_BYTES, byte_ceiling),
         max_paths=_MAX_WORKTREE_PATHS,
         index_bytes=index_bytes,
         git_output_fn=git_output,
@@ -114,35 +119,22 @@ def _index_entries(
         unlink=os.unlink,
     )
 def _head_entries(
-    root: str, *, deadline: float, head: bytes = b"HEAD"
+    root: str, *, deadline: float, head: bytes = b"HEAD",
+    byte_ceiling: int = _MAX_INVENTORY_BYTES,
 ) -> dict[bytes, bytes]:
     if head in (_EMPTY_TREE_SHA1, _EMPTY_TREE_SHA256):
         return {}
-    raw = git_output(
-        root,
-        ["ls-tree", "-rz", "--full-tree", os.fsdecode(head)],
-        deadline=deadline,
-        limit=_MAX_INVENTORY_BYTES,
-    )
-    entries: dict[bytes, bytes] = {}
-    for row in raw.split(b"\0"):
-        if not row:
-            continue
-        header, separator, path = row.partition(b"\t")
-        fields = header.split(b" ")
-        if not separator or not path or len(fields) != 3:
-            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        try:
-            int(fields[0], 8)
-            int(fields[2], 16)
-        except ValueError as exc:
-            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR") from exc
-        if fields[1] not in (b"blob", b"commit") or path in entries:
-            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        entries[path] = header
-    if len(entries) > _MAX_WORKTREE_PATHS:
+    limit = min(_MAX_INVENTORY_BYTES, byte_ceiling)
+    if limit <= 0:
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
-    return entries
+    raw = git_output(
+        root, ["ls-tree", "-rz", "--full-tree", os.fsdecode(head)],
+        deadline=deadline, limit=limit,
+    )
+    return parse_head_entries(
+        raw, deadline=deadline, byte_ceiling=byte_ceiling,
+        max_paths=_MAX_WORKTREE_PATHS, remaining_fn=_remaining,
+    )
 def _tracked_paths(root: str, *, deadline: float) -> list[bytes]:
     """List every tracked worktree path with exact bounded ``git ls-files -z``."""
     raw = git_output(
@@ -306,102 +298,83 @@ def oracle_generation(
     # Missing is an empty index for born and unborn HEADs, and is framed exactly.
     if byte_ceiling <= 0:  # pragma: no cover - registry rejects first
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+    ledger = ByteLedger(byte_ceiling)
     safe_index = _safe_absolute_regular(
-        index_path,
-        deadline=end,
-        limit=min(_MAX_INDEX_BYTES, byte_ceiling),
+        index_path, deadline=end, limit=min(_MAX_INDEX_BYTES, ledger.remaining),
         allow_missing=True,
     )
     for descriptor in stable_descriptor_chain(safe_index.metadata):
         _frame(digest, b"index-descriptor-identity", descriptor)
     _frame(digest, b"index-state", safe_index.kind.encode("ascii"))
     index_bytes = safe_index.data or b""
-    remaining_bytes = byte_ceiling - len(index_bytes)
-    if remaining_bytes < 0:  # pragma: no cover - bounded reader enforces first
-        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+    ledger.charge(len(index_bytes))
     _frame(digest, b"index-content", hashlib.sha256(index_bytes).digest())
     if index_bytes and has_split_index(index_bytes, object_format=object_format):
         raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_INDEX")
     index_entries = _index_entries(
-        root,
-        deadline=end,
-        index_bytes=index_bytes,
-        byte_ceiling=remaining_bytes,
+        root, deadline=end, index_bytes=index_bytes, byte_ceiling=ledger.remaining,
     )
+    ledger.charge(entry_map_storage(index_entries))
     tracked = list(index_entries)
-    head_entries = _head_entries(root, deadline=end, head=head)
+    ledger.charge(container_storage(tracked))
+    head_entries = _head_entries(
+        root, deadline=end, head=head, byte_ceiling=ledger.remaining,
+    )
+    ledger.charge(entry_map_storage(head_entries))
     filter_candidates = tuple(sorted(index_entries))
+    ledger.require_available(container_storage(filter_candidates))
     if filter_candidates:
         reject_frozen_filters(root, index_bytes, filter_candidates, end, object_format)
+    filter_candidates = ()
     dirty_raw = b""
     untracked_raw = b""
     if mode == "diff":
         refresh_temporary = 2 * len(index_bytes)
-        if refresh_temporary > remaining_bytes:  # pragma: no cover - index gate
-            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+        ledger.require_available(refresh_temporary)
         dirty_raw = _frozen_index_output(
-            root,
-            index_bytes,
-            [
-                "diff-files",
-                "--name-only",
-                "-z",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--ignore-submodules=none",
-            ],
+            root, index_bytes,
+            ["diff-files", "--name-only", "-z", "--no-ext-diff",
+             "--no-textconv", "--ignore-submodules=none"],
             deadline=end,
-            limit=min(_MAX_INVENTORY_BYTES, remaining_bytes - refresh_temporary),
-            refresh=True,
-            object_format=object_format,
+            limit=min(_MAX_INVENTORY_BYTES, ledger.remaining - refresh_temporary),
+            refresh=True, object_format=object_format,
         )
-        if (  # pragma: no cover - bounded output enforces first
-            len(index_bytes) > remaining_bytes - len(dirty_raw)
-        ):
-            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+        ledger.require_available(len(dirty_raw) + len(index_bytes))
         untracked_raw = _frozen_index_output(
-            root,
-            index_bytes,
-            ["ls-files", "--others", "--exclude-standard", "-z"],
+            root, index_bytes, ["ls-files", "--others", "--exclude-standard", "-z"],
             deadline=end,
-            limit=min(
-                _MAX_INVENTORY_BYTES,
-                remaining_bytes - len(dirty_raw) - len(index_bytes),
-            ),
+            limit=min(_MAX_INVENTORY_BYTES,
+                      ledger.remaining - len(dirty_raw) - len(index_bytes)),
         )
     dirty = {path for path in dirty_raw.split(b"\0") if path}
     untracked = {path for path in untracked_raw.split(b"\0") if path}
-    remaining_bytes -= len(dirty_raw) + len(untracked_raw)
-    if remaining_bytes < 0:  # pragma: no cover - bounded outputs enforce first
-        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+    retained_paths = path_set_storage(dirty) + path_set_storage(untracked)
+    ledger.require_available(len(dirty_raw) + len(untracked_raw) + retained_paths)
+    ledger.charge(retained_paths)
+    dirty_raw = untracked_raw = b""
     if len(dirty | untracked) > _MAX_WORKTREE_PATHS:
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     tracked_set = set(tracked)
+    ledger.charge(container_storage(tracked_set))
     if not dirty <= tracked_set or untracked & tracked_set:
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
     # Preserve HEAD-only deletion/rename paths in the exact settings inventory.
     settings_inventory = tuple(sorted(
         tracked_set | set(head_entries) | (untracked if mode == "diff" else set())
     ))
+    ledger.charge(container_storage(settings_inventory))
     frozen_settings = capture_settings(
-        root,
-        settings_inventory,
-        end,
-        git_output,
-        byte_ceiling=remaining_bytes,
+        root, settings_inventory, end, git_output, byte_ceiling=ledger.remaining,
     )
-    remaining_bytes -= frozen_settings_storage(frozen_settings)
-    if remaining_bytes <= 0:  # pragma: no cover - settings bound first
+    ledger.charge(frozen_settings_storage(frozen_settings))
+    if ledger.remaining <= 0:  # pragma: no cover - settings bound first
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     settings_epoch = capture_source_epoch(
-        root,
-        index_bytes,
-        settings_inventory,
-        deadline=end,
-        object_format=object_format,
-        frozen_output=_frozen_index_output,
-        byte_ceiling=remaining_bytes,
+        root, index_bytes, settings_inventory, deadline=end,
+        object_format=object_format, frozen_output=_frozen_index_output,
+        byte_ceiling=ledger.remaining,
     )
+    ledger.charge(64)
     _frame(digest, b"attributes", settings_epoch.attribute_fingerprint)
     _frame(digest, b"config", settings_epoch.config_hash)
     _frame(digest, b"git-settings", frozen_settings.fingerprint)
@@ -433,7 +406,8 @@ def oracle_generation(
                 settings_inventory=settings_inventory,
             )
         )
-    remaining_content = min(_MAX_WORKTREE_CONTENT_BYTES, remaining_bytes)
+    remaining_content = min(_MAX_WORKTREE_CONTENT_BYTES, ledger.remaining)
+    initial_content = remaining_content
     for raw in sorted(tracked, key=os.fsencode) if mode == "diff" else ():
         charge = _frame_workspace_path(
             digest,
@@ -464,6 +438,7 @@ def oracle_generation(
             manifest=manifest,
         )
         remaining_content -= charge
+    ledger.charge(initial_content - remaining_content)
     diff_args = ["diff", "--cached"] if mode == "staged" else ["diff-files"]
     diff_args += [
         "--binary",
@@ -485,12 +460,14 @@ def oracle_generation(
         patch_index = invalidate_index_stat_cache(
             index_bytes, object_format=object_format, assume_valid=True
         )
+    patch_temporary = len(patch_index) if patch_index is not index_bytes else 0
+    ledger.require_available(patch_temporary + 1)
     patch = _frozen_index_output(
         root,
         patch_index,
         diff_args,
         deadline=end,
-        limit=64 * 1024 * 1024,
+        limit=min(64 * 1024 * 1024, ledger.remaining - patch_temporary),
         refresh=mode == "diff",
         object_format=object_format,
     )

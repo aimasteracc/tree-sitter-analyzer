@@ -115,6 +115,23 @@ def test_head_entries_rejects_bounded_path_count(monkeypatch) -> None:
     )
 
 
+def test_head_entries_bounds_subprocess_by_cumulative_remaining(monkeypatch) -> None:
+    observed: list[int] = []
+
+    def output(*args, **kwargs):
+        observed.append(kwargs["limit"])
+        raise oracle.SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+
+    monkeypatch.setattr(oracle, "git_output", output)
+    _error(
+        lambda: oracle._head_entries(
+            ".", deadline=time.monotonic() + 1, byte_ceiling=37
+        ),
+        "DIFF_SNAPSHOT_CAPACITY",
+    )
+    assert observed == [37]
+
+
 def _stub_oracle_inventory(
     tmp_path: Path,
     monkeypatch,
