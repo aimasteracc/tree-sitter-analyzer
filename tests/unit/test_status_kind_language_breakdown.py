@@ -360,111 +360,95 @@ class TestASTCacheToolStatsBreakdowns:
 
 
 class TestCodeGraphStatusBreakdowns:
-    """Verify codegraph_status exposes the new breakdown keys."""
+    @staticmethod
+    async def _status(tmp_path: Any, stats: dict[str, Any]) -> dict[str, Any]:
+        from tree_sitter_analyzer.index_snapshot import IndexSnapshot
+        from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
+            CodeGraphStatusTool,
+        )
+
+        snapshot = IndexSnapshot(
+            "idxsnap_test",
+            "sha256:source",
+            "sha256:index",
+            "idxsrc-v2:test",
+            "complete",
+            None,
+            str(tmp_path.resolve()),
+            int(stats["total_files"]),
+        )
+        echoed = {
+            **stats,
+            "snapshot_id": snapshot.snapshot_id,
+            "source_fingerprint": snapshot.source_fingerprint,
+            "index_fingerprint": snapshot.index_fingerprint,
+            "source_generation": snapshot.source_generation,
+        }
+        with (
+            patch(
+                "tree_sitter_analyzer.index_snapshot.read_existing_snapshot",
+                return_value=snapshot,
+            ),
+            patch(
+                "tree_sitter_analyzer.index_snapshot.read_snapshot_stats",
+                return_value=echoed,
+            ),
+        ):
+            return await CodeGraphStatusTool(str(tmp_path)).execute(
+                {"output_format": "json"}
+            )
 
     @pytest.mark.asyncio
     async def test_codegraph_status_surfaces_symbols_by_kind(
         self, tmp_path: Any
     ) -> None:
-        from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
-            CodeGraphStatusTool,
+        result = await self._status(
+            tmp_path,
+            {
+                "total_files": 5,
+                "total_symbols": 10,
+                "total_edges": 20,
+                "symbols_by_kind": {"class": 4, "function": 6},
+                "symbols_by_language": {"python": 8, "javascript": 2},
+                "edges_by_kind": {"calls": 20},
+                "fts5_available": True,
+            },
         )
-
-        cache_dir = tmp_path / ".ast-cache"
-        cache_dir.mkdir()
-        (cache_dir / "index.db").write_bytes(b"fake-sqlite")
-
-        tool = CodeGraphStatusTool(str(tmp_path))
-        mock_cache = MagicMock()
-        mock_cache.get_stats.return_value = {
-            "total_files": 5,
-            "total_symbols": 10,
-            "fts5_available": True,
-            "schema_version": 3,
-            "symbols_by_kind": {"class": 4, "function": 6},
-            "symbols_by_language": {"python": 8, "javascript": 2},
-            "edges_by_kind": {"calls": 20},
-        }
-        mock_cache.get_cross_file_stats.return_value = {"total": 20}
-
-        with patch(
-            "tree_sitter_analyzer.ast_cache.ASTCache",
-            return_value=mock_cache,
-        ):
-            result = await tool.execute({"output_format": "json", "include_lag": False})
-
         assert result["verdict"] == "INFO"
-        assert "symbols_by_kind" in result, (
-            "codegraph_status must surface symbols_by_kind"
-        )
         assert result["symbols_by_kind"] == {"class": 4, "function": 6}
 
     @pytest.mark.asyncio
     async def test_codegraph_status_surfaces_symbols_by_language(
         self, tmp_path: Any
     ) -> None:
-        from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
-            CodeGraphStatusTool,
-        )
-
-        cache_dir = tmp_path / ".ast-cache"
-        cache_dir.mkdir()
-        (cache_dir / "index.db").write_bytes(b"fake-sqlite")
-
-        tool = CodeGraphStatusTool(str(tmp_path))
-        mock_cache = MagicMock()
-        mock_cache.get_stats.return_value = {
-            "total_files": 5,
-            "total_symbols": 10,
-            "fts5_available": True,
-            "schema_version": 3,
-            "symbols_by_kind": {"class": 4, "function": 6},
-            "symbols_by_language": {"python": 8, "go": 2},
-            "edges_by_kind": {},
-        }
-        mock_cache.get_cross_file_stats.return_value = {"total": 0}
-
-        with patch(
-            "tree_sitter_analyzer.ast_cache.ASTCache",
-            return_value=mock_cache,
-        ):
-            result = await tool.execute({"output_format": "json", "include_lag": False})
-
-        assert "symbols_by_language" in result, (
-            "codegraph_status must surface symbols_by_language"
+        result = await self._status(
+            tmp_path,
+            {
+                "total_files": 5,
+                "total_symbols": 10,
+                "total_edges": 0,
+                "symbols_by_kind": {},
+                "symbols_by_language": {"python": 8, "go": 2},
+                "edges_by_kind": {},
+                "fts5_available": True,
+            },
         )
         assert result["symbols_by_language"] == {"python": 8, "go": 2}
 
     @pytest.mark.asyncio
     async def test_codegraph_status_surfaces_edges_by_kind(self, tmp_path: Any) -> None:
-        from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
-            CodeGraphStatusTool,
+        result = await self._status(
+            tmp_path,
+            {
+                "total_files": 5,
+                "total_symbols": 10,
+                "total_edges": 20,
+                "symbols_by_kind": {},
+                "symbols_by_language": {},
+                "edges_by_kind": {"calls": 15, "imports": 5},
+                "fts5_available": True,
+            },
         )
-
-        cache_dir = tmp_path / ".ast-cache"
-        cache_dir.mkdir()
-        (cache_dir / "index.db").write_bytes(b"fake-sqlite")
-
-        tool = CodeGraphStatusTool(str(tmp_path))
-        mock_cache = MagicMock()
-        mock_cache.get_stats.return_value = {
-            "total_files": 5,
-            "total_symbols": 10,
-            "fts5_available": True,
-            "schema_version": 3,
-            "symbols_by_kind": {},
-            "symbols_by_language": {},
-            "edges_by_kind": {"calls": 15, "imports": 5},
-        }
-        mock_cache.get_cross_file_stats.return_value = {"total": 20}
-
-        with patch(
-            "tree_sitter_analyzer.ast_cache.ASTCache",
-            return_value=mock_cache,
-        ):
-            result = await tool.execute({"output_format": "json", "include_lag": False})
-
-        assert "edges_by_kind" in result, "codegraph_status must surface edges_by_kind"
         assert result["edges_by_kind"] == {"calls": 15, "imports": 5}
 
 

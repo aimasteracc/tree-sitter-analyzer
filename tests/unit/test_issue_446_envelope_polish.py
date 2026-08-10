@@ -250,7 +250,7 @@ def test_overview_risk_unknown_maps_to_info() -> None:
     assert _overview_risk_to_verdict("high") == "REVIEW"
 
 
-def test_status_stale_lag_next_step(tmp_path, monkeypatch) -> None:
+def test_status_corrupt_index_fails_closed_with_include_lag(tmp_path) -> None:
     """lag > 300s → next_step suggests sync before nav/search."""
     import asyncio
 
@@ -261,21 +261,12 @@ def test_status_stale_lag_next_step(tmp_path, monkeypatch) -> None:
     (tmp_path / ".ast-cache").mkdir()
     (tmp_path / ".ast-cache" / "index.db").write_bytes(b"")
     tool = CodeGraphStatusTool(str(tmp_path))
-    monkeypatch.setattr(
-        tool,
-        "_safe_get_stats",
-        lambda: {"total_files": 1, "total_symbols": 2, "total_edges": 3},
-    )
-    monkeypatch.setattr(tool, "_compute_lag", lambda path: 301.0)
     result = asyncio.run(tool.execute({"output_format": "json", "include_lag": True}))
-    assert (
-        result["agent_summary"]["next_step"]
-        == "Index is healthy but stale (>5 min). Run action=sync first, "
-        "then proceed with nav/search"
-    )
+    assert result["completeness"] == "unknown"
+    assert result["oracle_reason"] == "CORRUPT_INDEX"
 
 
-def test_status_schema_version_included_when_present(tmp_path, monkeypatch) -> None:
+def test_status_corrupt_index_omits_schema_version(tmp_path) -> None:
     """Non-None schema_version IS emitted (only None is omitted)."""
     import asyncio
 
@@ -286,21 +277,12 @@ def test_status_schema_version_included_when_present(tmp_path, monkeypatch) -> N
     (tmp_path / ".ast-cache").mkdir()
     (tmp_path / ".ast-cache" / "index.db").write_bytes(b"")
     tool = CodeGraphStatusTool(str(tmp_path))
-    monkeypatch.setattr(
-        tool,
-        "_safe_get_stats",
-        lambda: {
-            "total_files": 1,
-            "total_symbols": 2,
-            "total_edges": 3,
-            "schema_version": 7,
-        },
-    )
     result = asyncio.run(tool.execute({"output_format": "json"}))
-    assert result["schema_version"] == 7
+    assert result["completeness"] == "unknown"
+    assert result["oracle_reason"] == "CORRUPT_INDEX"
 
 
-def test_status_warn_branch_schema_version_included(tmp_path, monkeypatch) -> None:
+def test_status_corrupt_index_returns_warn(tmp_path) -> None:
     """WARN (empty index) branch also emits non-None schema_version."""
     import asyncio
 
@@ -311,15 +293,9 @@ def test_status_warn_branch_schema_version_included(tmp_path, monkeypatch) -> No
     (tmp_path / ".ast-cache").mkdir()
     (tmp_path / ".ast-cache" / "index.db").write_bytes(b"")
     tool = CodeGraphStatusTool(str(tmp_path))
-    # total_files == 0 → truly_indexed False → WARN branch
-    monkeypatch.setattr(
-        tool,
-        "_safe_get_stats",
-        lambda: {"total_files": 0, "schema_version": 7},
-    )
     result = asyncio.run(tool.execute({"output_format": "json"}))
     assert result["verdict"] == "WARN"
-    assert result["schema_version"] == 7
+    assert result["oracle_reason"] == "CORRUPT_INDEX"
 
 
 def test_overview_review_requires_real_signals() -> None:

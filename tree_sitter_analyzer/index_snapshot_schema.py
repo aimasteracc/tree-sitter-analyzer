@@ -5,7 +5,11 @@ from __future__ import annotations
 import hashlib
 import os
 import sqlite3
+import struct
+import time
 from typing import Any
+
+from .index_source_snapshot import inventory_fingerprint, recorded_source_rows
 
 SNAPSHOT_SCHEMA_VERSION = 13
 SCHEMA_V13_INDEX_SNAPSHOT = """
@@ -18,50 +22,25 @@ CREATE TABLE IF NOT EXISTS ast_index_snapshot_manifest (
     manifest_version INTEGER NOT NULL
 );
 """
-_SOURCE_COLUMNS = ("file_path", "content_hash", "language", "extractor_version")
-_INDEX_TABLE_EXCLUDES = {
-    "ast_schema_version": frozenset({"applied_at"}),
-    "ast_index": frozenset({"indexed_at", "mtime_ns"}),
-    "ast_symbol_activation": frozenset({"computed_at"}),
-    "ast_constraint_violations": frozenset({"detected_at"}),
-}
-_INDEX_TABLES = (
-    "ast_schema_version",
-    "ast_index",
-    "ast_symbol_rows",
-    "ast_imports",
-    "edges",
-    "ast_symbol_activation",
-    "ast_constraint_violations",
+_CONTROL_TABLES = frozenset(
+    {"ast_index_snapshot_manifest", "ast_build_state", "sqlite_sequence"}
 )
 _REQUIRED_COLUMNS = {
     "ast_index": frozenset(
-        (*_SOURCE_COLUMNS, "symbols_json", "imports_json", "structure_json")
+        {
+            "file_path",
+            "content_hash",
+            "language",
+            "symbols_json",
+            "imports_json",
+            "structure_json",
+        }
     ),
     "ast_symbol_rows": frozenset(
         {"name", "kind", "file_path", "language", "line", "end_line"}
     ),
     "ast_imports": frozenset({"file_path", "language", "module_path", "local_name"}),
-    "edges": frozenset(
-        {
-            "source_node_id",
-            "target_node_id",
-            "kind",
-            "line",
-            "provenance",
-            "metadata",
-            "caller_name",
-            "callee_name",
-            "file_path",
-            "caller_line",
-            "callee_full",
-            "callee_line",
-            "language",
-            "callee_resolution",
-            "callee_resolved_file",
-            "callee_symbol_id",
-        }
-    ),
+    "edges": frozenset({"source_node_id", "target_node_id", "kind", "file_path"}),
     "ast_index_snapshot_manifest": frozenset(
         {
             "canonical_root",
@@ -72,6 +51,9 @@ _REQUIRED_COLUMNS = {
         }
     ),
 }
+_FINGERPRINT_DEADLINE_SECONDS = 5.0
+_FINGERPRINT_ROW_BUDGET = 2_000_000
+_FINGERPRINT_BYTE_BUDGET = 512 * 1024 * 1024
 
 
 def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:
@@ -87,7 +69,7 @@ def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:
 
 
 def stamp_full_index_manifest(conn: sqlite3.Connection, project_root: str) -> None:
-    """Atomically certify the exact canonical rows produced by a full index."""
+    """Atomically certify canonical graph rows and the recorded source inventory."""
     root = os.path.realpath(os.path.abspath(project_root))
     source = source_fingerprint(conn, root)
     index = index_fingerprint(conn, root)
@@ -107,7 +89,7 @@ def validate_snapshot_schema(conn: sqlite3.Connection) -> None:
         int(row[0]) for row in conn.execute("SELECT version FROM ast_schema_version")
     }
     if SNAPSHOT_SCHEMA_VERSION not in versions or any(
-        version > SNAPSHOT_SCHEMA_VERSION for version in versions
+        v > SNAPSHOT_SCHEMA_VERSION for v in versions
     ):
         raise ValueError("INCOMPATIBLE_SCHEMA")
     tables = {
@@ -122,44 +104,75 @@ def validate_snapshot_schema(conn: sqlite3.Connection) -> None:
             raise ValueError("INCOMPATIBLE_SCHEMA")
 
 
-def _feed(hasher: Any, values: tuple[Any, ...]) -> None:
-    for value in values:
-        raw = ("<null>" if value is None else str(value)).encode(
-            "utf-8", "surrogatepass"
-        )
-        hasher.update(len(raw).to_bytes(8, "big"))
-        hasher.update(raw)
-
-
 def source_fingerprint(conn: sqlite3.Connection, _root: str) -> str:
-    """Hash only index-owned source inventory and recorded content hashes."""
-    hasher = hashlib.sha256(b"tsa-index-source-v1\0")
-    sql = "SELECT " + ", ".join(_SOURCE_COLUMNS) + " FROM ast_index ORDER BY file_path"
-    for row in conn.execute(sql):
-        _feed(hasher, tuple(row))
-    return "sha256:" + hasher.hexdigest()
+    """Hash the cache-recorded path/content/language inventory."""
+    return inventory_fingerprint(recorded_source_rows(conn))
 
 
 def index_fingerprint(conn: sqlite3.Connection, root: str) -> str:
-    hasher = hashlib.sha256(b"tsa-index-rows-v1\0")
-    _feed(hasher, (root,))
-    tables = {
-        str(row[0])
-        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    }
-    for table in _INDEX_TABLES:
-        if table not in tables:
-            continue
-        excluded = _INDEX_TABLE_EXCLUDES.get(table, frozenset({"id"}))
-        columns = [
-            str(row[1])
-            for row in conn.execute(f'PRAGMA table_info("{table}")')
-            if str(row[1]) not in excluded and str(row[1]) != "id"
-        ]
-        if not columns:
-            continue
-        quoted = ", ".join(f'"{column}"' for column in columns)
-        _feed(hasher, (table, *columns))
-        for row in conn.execute(f'SELECT {quoted} FROM "{table}" ORDER BY {quoted}'):
-            _feed(hasher, tuple(row))
-    return "sha256:" + hasher.hexdigest()
+    """Hash every query-visible SQLite table schema and typed row."""
+    deadline = time.monotonic() + _FINGERPRINT_DEADLINE_SECONDS
+    digest = hashlib.sha256(b"tsa-index-sqlite-v2\0")
+    _frame(digest, b"root", root.encode("utf-8", "surrogatepass"))
+    inventory = [
+        (str(row[0]), str(row[1] or ""))
+        for row in conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name"
+        )
+        if str(row[0]) not in _CONTROL_TABLES
+    ]
+    rows_seen = bytes_seen = 0
+    for table, schema in inventory:
+        _check_deadline(deadline)
+        _frame(digest, b"table", table.encode("utf-8", "surrogatepass"))
+        _frame(digest, b"schema", schema.encode("utf-8", "surrogatepass"))
+        columns = tuple(
+            str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')
+        )
+        _frame(digest, b"columns", _typed(columns))
+        encoded_rows: list[bytes] = []
+        for row in conn.execute(f'SELECT * FROM "{table}"'):
+            encoded = _typed(tuple(row))
+            rows_seen += 1
+            bytes_seen += len(encoded)
+            if (
+                rows_seen > _FINGERPRINT_ROW_BUDGET
+                or bytes_seen > _FINGERPRINT_BYTE_BUDGET
+            ):
+                raise RuntimeError("INDEX_FINGERPRINT_BUDGET")
+            _check_deadline(deadline)
+            encoded_rows.append(encoded)
+        for encoded in sorted(encoded_rows):
+            _frame(digest, b"row", encoded)
+    return "sha256:" + digest.hexdigest()
+
+
+def _typed(values: tuple[Any, ...]) -> bytes:
+    result = bytearray()
+    for value in values:
+        if value is None:
+            tag, raw = b"n", b""
+        elif isinstance(value, bytes):
+            tag, raw = b"b", value
+        elif isinstance(value, int):
+            tag, raw = b"i", str(value).encode("ascii")
+        elif isinstance(value, float):
+            tag, raw = b"f", struct.pack(">d", value)
+        else:
+            tag, raw = b"t", str(value).encode("utf-8", "surrogatepass")
+        result.extend(tag)
+        result.extend(len(raw).to_bytes(8, "big"))
+        result.extend(raw)
+    return bytes(result)
+
+
+def _frame(digest: Any, label: bytes, raw: bytes) -> None:
+    digest.update(len(label).to_bytes(4, "big"))
+    digest.update(label)
+    digest.update(len(raw).to_bytes(8, "big"))
+    digest.update(raw)
+
+
+def _check_deadline(deadline: float) -> None:
+    if time.monotonic() > deadline:
+        raise RuntimeError("INDEX_FINGERPRINT_DEADLINE")

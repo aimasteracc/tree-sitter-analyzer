@@ -262,9 +262,9 @@ async def test_status_warns_when_rebuilding_with_partial_index(tmp_path: Path) -
     tool = CodeGraphStatusTool(str(tmp_path))
     result = await tool.execute({"output_format": "json", "include_lag": False})
 
-    assert result["index_rebuilding"] is True
+    assert result["completeness"] == "unknown"
+    assert result["oracle_reason"] == "CONCURRENT_WRITER"
     assert result["verdict"] == "WARN"
-    assert "rebuild" in result["agent_summary"]["next_step"].lower()
 
 
 @pytest.mark.asyncio
@@ -286,8 +286,6 @@ async def test_status_distinguishes_rebuild_from_missing_index(tmp_path: Path) -
     tool = CodeGraphStatusTool(str(tmp_path))
     result = await tool.execute({"output_format": "json", "include_lag": False})
 
-    assert result["index_rebuilding"] is True
+    assert result["completeness"] == "unknown"
+    assert result["oracle_reason"] == "CONCURRENT_WRITER"
     assert result["verdict"] == "WARN"
-    hint = result["agent_summary"]["next_step"].lower()
-    assert "rebuild in progress" in hint
-    assert "missing or empty" not in hint

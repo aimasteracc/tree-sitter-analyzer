@@ -332,8 +332,6 @@ class CodeGraphFullIndexTool(BaseMCPTool):
 
         elapsed = round(time.monotonic() - t_start, 3)
 
-        stats = self._collect_final_stats()
-
         # #860: propagate phase-level errors to top-level verdict so callers
         # don't receive "success: True / verdict: INFO" when a DB flush failed.
         any_phase_error = any(
@@ -350,6 +348,11 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             or not snapshot_report["phase_totals_reconciled"]
         )
         top_verdict = "WARN" if any_phase_error or snapshot_warning else "INFO"
+        stats = self._collect_final_stats(
+            stamp_manifest=(
+                top_verdict == "INFO" and not candidate_snapshot.truncated_by_max_files
+            )
+        )
 
         result: dict[str, Any] = {
             "success": True,
@@ -600,12 +603,16 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         finally:
             _safe_close_cache(cache)
 
-    def _collect_final_stats(self) -> dict[str, Any]:
+    def _collect_final_stats(self, *, stamp_manifest: bool = False) -> dict[str, Any]:
         cache: Any | None = None
         try:
             from ...ast_cache import ASTCache
 
             cache = ASTCache(self.project_root or ".")
+            if stamp_manifest:
+                from ...index_snapshot_schema import stamp_full_index_manifest
+
+                stamp_full_index_manifest(cache.get_conn(), self.project_root or ".")
             stats = cache.get_stats()
             return {
                 "total_files": stats.get("total_files", 0),

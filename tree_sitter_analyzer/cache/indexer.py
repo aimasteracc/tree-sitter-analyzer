@@ -808,12 +808,14 @@ def _update_authoritative_manifest(
 ) -> None:
     """Certify only an exact, successful full-index inventory."""
     conn = cache._get_conn()
+    selected_paths = (
+        {entry.rel_path for entry in candidate_snapshot.selected_entries}
+        if candidate_snapshot is not None
+        else set()
+    )
     exact_paths = bool(
         candidate_snapshot is not None
-        and candidate_snapshot.selected > 0
         and candidate_snapshot.limited == 0
-        and candidate_snapshot.excluded == 0
-        and candidate_snapshot.skipped == 0
         and candidate_snapshot.errors == 0
         and stats.get("errors", 0) == 0
         and stats.get("changed_during_run", 0) == 0
@@ -821,7 +823,7 @@ def _update_authoritative_manifest(
             str(row["file_path"]).replace("\\", "/")
             for row in conn.execute("SELECT file_path FROM ast_index")
         }
-        == candidate_snapshot.present_paths
+        == selected_paths
     )
     if exact_paths:
         from ..index_snapshot_schema import stamp_full_index_manifest
