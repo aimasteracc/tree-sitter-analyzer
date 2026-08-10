@@ -169,3 +169,38 @@ def test_head_entries_rejects_empty_remaining_budget() -> None:
         lambda: git_oracle._head_entries(".", deadline=1.0, byte_ceiling=0),
         "DIFF_SNAPSHOT_CAPACITY",
     )
+
+
+def test_head_inventory_rejects_raw_buffer_above_ceiling() -> None:
+    with pytest.raises(oracle.SourceOracleError, match="DIFF_SNAPSHOT_CAPACITY"):
+        parse_head_entries(
+            b"x",
+            deadline=1.0,
+            byte_ceiling=0,
+            max_paths=1,
+            remaining_fn=lambda _deadline: 1.0,
+        )
+
+
+def test_head_inventory_accepts_final_unterminated_record() -> None:
+    raw = b"100644 blob " + (b"a" * 40) + b"\tfile.py"
+    parsed = parse_head_entries(
+        raw,
+        deadline=1.0,
+        byte_ceiling=4096,
+        max_paths=1,
+        remaining_fn=lambda _deadline: 1.0,
+    )
+    assert parsed == {b"file.py": b"100644 blob " + (b"a" * 40)}
+
+
+def test_head_inventory_ignores_empty_records() -> None:
+    raw = b"\0" + b"100644 blob " + (b"b" * 40) + b"\tfile.py\0"
+    parsed = parse_head_entries(
+        raw,
+        deadline=1.0,
+        byte_ceiling=4096,
+        max_paths=1,
+        remaining_fn=lambda _deadline: 1.0,
+    )
+    assert list(parsed) == [b"file.py"]
