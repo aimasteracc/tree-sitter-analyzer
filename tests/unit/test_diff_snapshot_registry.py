@@ -43,10 +43,11 @@ def test_capacity_is_stable_error_and_close_releases_charge(
     assert registry.stats() == (0, 0)
 
 
-@POSIX_SNAPSHOT_TEST
-def test_expiry_retains_active_consumer_bytes_until_release(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
-    (root / "old.py").write_text("value = 2\n")
+def test_expiry_retains_active_consumer_bytes_until_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path
+    install_fake_snapshot_materializer(monkeypatch, root)
     now = [10.0]
     registry = snapshots.DiffSnapshotRegistry(clock=lambda: now[0])
     result = registry.create(str(root), "diff", [])
