@@ -75,13 +75,18 @@ def capture_current_source_snapshot(project_root: str) -> CurrentSourceSnapshot:
         metadata.get((path, language)) == marker.split("|", 1)[0]
         for path, marker, language in first
     )
-    same_paths = {(r[0], r[2]) for r in first} == {(r[0], r[2]) for r in second}
+    first_scope = [(r[0], r[2]) for r in first]
+    second_scope = [(r[0], r[2]) for r in second]
+    unique_scope = len(first_scope) == len(set(first_scope)) and len(
+        second_scope
+    ) == len(set(second_scope))
+    same_paths = set(first_scope) == set(second_scope)
     rows = tuple(
         (path, marker.split("|", 1)[1], language) for path, marker, language in first
     )
     fingerprint = inventory_fingerprint(rows)
     generation = "idxsrc-v2:" + fingerprint.removeprefix("sha256:")
-    if unsafe or unsafe_second or not stable or not same_paths:
+    if unsafe or unsafe_second or not stable or not same_paths or not unique_scope:
         return CurrentSourceSnapshot(
             rows, fingerprint, generation, "unsafe", "SOURCE_SCOPE_UNSAFE"
         )

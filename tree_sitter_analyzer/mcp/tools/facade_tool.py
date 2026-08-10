@@ -133,6 +133,10 @@ class FacadeTool(BaseMCPTool):
         additionalProperties but was undiscoverable to schema-reading
         agents). Use sparingly — one high-value param, never a per-inner
         union (the Wave D token diet stands). Never added to ``required``.
+    action_scoped_params:
+        Optional mapping from a public parameter to the facade actions where it
+        is meaningful. Calls supplying that parameter to another action fail
+        explicitly instead of silently dropping it during inner projection.
     """
 
     def __init__(
@@ -145,6 +149,7 @@ class FacadeTool(BaseMCPTool):
         annotations: dict[str, Any] | None = None,
         project_root: str | None = None,
         extra_public_params: dict[str, dict[str, Any]] | None = None,
+        action_scoped_params: dict[str, frozenset[str]] | None = None,
     ) -> None:
         self.facade_name = facade_name
         self.action_map: dict[str, BaseMCPTool] = dict(action_map)
@@ -158,6 +163,7 @@ class FacadeTool(BaseMCPTool):
         self._extra_public_params: dict[str, dict[str, Any]] = dict(
             extra_public_params or {}
         )
+        self._action_scoped_params = dict(action_scoped_params or {})
         # BaseMCPTool.__init__ wires security/path resolver + fires
         # _on_project_root_changed (which forwards to inner instances).
         super().__init__(project_root)
@@ -341,6 +347,13 @@ class FacadeTool(BaseMCPTool):
         action = arguments.get("action")
         if not action or not isinstance(action, str):
             return self._action_error("missing required parameter 'action'")
+
+        for parameter, allowed_actions in self._action_scoped_params.items():
+            if parameter in arguments and action not in allowed_actions:
+                allowed = ", ".join(sorted(allowed_actions))
+                return self._action_error(
+                    f"parameter {parameter!r} applies only to action(s): {allowed}"
+                )
 
         # Bespoke routes (F5) take precedence and bypass schema projection.
         if action in self.bespoke_map:

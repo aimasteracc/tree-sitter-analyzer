@@ -108,6 +108,15 @@ def build_index_facade(project_root: str | None = None) -> FacadeTool:
         description=_INDEX_DESCRIPTION,
         annotations=_INDEX_ANNOTATIONS,
         project_root=project_root,
+        extra_public_params={
+            "access_mode": {
+                "type": "string",
+                "enum": ["read_existing"],
+                "default": "read_existing",
+                "description": "Status-only read mode; never creates or migrates an index.",
+            }
+        },
+        action_scoped_params={"access_mode": frozenset({"status"})},
     )
     # No bespoke inners to register: every action routes via action_map,
     # so G3 rebind propagation is fully automatic.

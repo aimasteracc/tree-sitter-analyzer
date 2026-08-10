@@ -338,3 +338,43 @@ class TestAuthoritativeSnapshotOracle:
 
         assert result["completeness"] == "unknown"
         assert result["oracle_reason"] == "SNAPSHOT_READ_FAILED"
+
+    def test_collect_final_stats_can_stamp_exact_manifest(self, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        source = tmp_path / "sample.py"
+        source.write_text("x = 1\n")
+        cache = ASTCache(str(tmp_path))
+        cache.index_file(str(source))
+        cache.close()
+
+        result = CodeGraphFullIndexTool(str(tmp_path))._collect_final_stats(
+            stamp_manifest=True
+        )
+
+        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        count = conn.execute(
+            "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+        ).fetchone()[0]
+        conn.close()
+        assert (result["total_files"], count) == (1, 1)
+
+    def test_collect_final_stats_without_stamp_leaves_manifest_empty(self, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        cache = ASTCache(str(tmp_path))
+        cache.close()
+        result = CodeGraphFullIndexTool(str(tmp_path))._collect_final_stats()
+
+        conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+        count = conn.execute(
+            "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+        ).fetchone()[0]
+        conn.close()
+        assert (result["total_files"], count) == (0, 0)

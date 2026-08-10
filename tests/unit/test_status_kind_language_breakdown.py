@@ -472,6 +472,18 @@ class TestCLIMCPParity:
             "--codegraph-status must remain registered in _EXTENDED_SPECS"
         )
 
+    def test_status_cli_projects_read_existing_access_mode(self) -> None:
+        from tree_sitter_analyzer.cli.commands.mcp_commands._builders import (
+            _build_codegraph_status_tool_args,
+        )
+
+        projected = _build_codegraph_status_tool_args(object(), "json")
+        assert projected == {
+            "include_lag": True,
+            "access_mode": "read_existing",
+            "output_format": "json",
+        }
+
     def test_get_stats_breakdown_keys_superset_check(self) -> None:
         """get_stats() must include the three breakdown keys (integration check)."""
         rows = [
