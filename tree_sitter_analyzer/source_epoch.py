@@ -5,9 +5,14 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .frozen_git_index import frozen_index_output
+from .frozen_git_settings import config_fingerprint, parse_effective_config
 from .source_oracle import SourceOracleError
+
+if TYPE_CHECKING:
+    from .frozen_git_settings import FrozenGitSettings
 
 _MAX_SETTINGS_BYTES = 16 * 1024 * 1024
 _MAX_SETTINGS_PATH_BYTES = 16 * 1024 * 1024
@@ -40,6 +45,7 @@ class GitEpoch:
     core_symlinks: bool = True
     index_bytes: bytes = b""
     source_epoch: SourceEpoch | None = None
+    git_settings: FrozenGitSettings | None = None
 
     def index_map(self) -> dict[bytes, bytes]:
         return dict(self.index_entries)
@@ -54,7 +60,6 @@ class GitEpoch:
 def core_bool(
     root: str,
     name: str,
-    *,
     deadline: float,
     git_output: Callable[..., bytes],
 ) -> bool:
@@ -115,5 +120,5 @@ def capture_source_epoch(
         extra_env=extra_env,
     )
     attribute_digest = hashlib.sha256(b"tsa-attributes-v1\0" + attributes).digest()
-    config_digest = hashlib.sha256(b"tsa-config-v1\0" + config).digest()
+    config_digest = config_fingerprint(parse_effective_config(config))
     return SourceEpoch(attribute_digest, config_digest)

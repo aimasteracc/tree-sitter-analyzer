@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import stat
@@ -9,19 +10,22 @@ import tempfile
 from collections.abc import Mapping
 
 from .frozen_git_index import safe_external_temp_parent
+from .frozen_git_settings import (
+    ConfigEntry,
+    FrozenGitSettings,
+    FrozenSettingFile,
+    config_fingerprint,
+    parse_effective_config,
+    serialize_config,
+)
 from .git_subprocess import run_git_bounded
-from .source_epoch import capture_source_epoch
 from .source_oracle import (
     SafePath,
     SourceOracleError,
     WorkspaceManifestEntry,
     _remaining,
 )
-from .source_oracle_git import (
-    GitEpoch,
-    _strip_one_record_terminator,
-    git_output,
-)
+from .source_oracle_git import GitEpoch
 from .temp_cleanup import cleanup_path
 
 
@@ -69,12 +73,34 @@ class FrozenGitEnvironment:
         self._directory: str | None = None
         self.index_path = ""
         self.object_directory: str | None = None
+        self.git_dir = ""
+        self.worktree_path = ""
+        self._materialized_config: tuple[ConfigEntry, ...] = ()
+        self._base_temporary_bytes = 0
+        self._base_temporary_files = 0
         self.storage_byte_limit = storage_byte_limit
         self.storage_file_limit = storage_file_limit
         self.temporary_bytes = 0
         self.temporary_files = 0
 
+    def _settings(self) -> FrozenGitSettings:
+        settings = self.epoch.git_settings
+        if isinstance(settings, FrozenGitSettings):
+            return settings
+        # Compatibility for direct unit construction; production epochs always
+        # carry settings captured by the first source-oracle pass.
+        entries = (
+            ConfigEntry(b"core.repositoryformatversion", b"0"),
+            ConfigEntry(b"core.bare", b"false"),
+        )
+        info = FrozenSettingFile(b"info/attributes", "missing", None)
+        objects = os.fsencode(
+            os.path.abspath(os.path.join(self.root, ".git", "objects"))
+        )
+        return FrozenGitSettings(entries, None, None, info, (), objects, b"")
+
     def __enter__(self) -> FrozenGitEnvironment:
+        settings = self._settings()
         temp_parent = safe_external_temp_parent(self.root)
         self._directory = tempfile.mkdtemp(prefix="tsa-frozen-git-", dir=temp_parent)
         try:
@@ -90,23 +116,103 @@ class FrozenGitEnvironment:
             if inside_project:
                 raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
             os.chmod(self._directory, 0o700)
+            self.git_dir = os.path.join(self._directory, "git-dir")
+            self.worktree_path = os.path.join(self._directory, "worktree")
+            self.object_directory = os.path.join(self.git_dir, "objects")
+            for path in (
+                self.git_dir,
+                self.worktree_path,
+                self.object_directory,
+                os.path.join(self.git_dir, "info"),
+                os.path.join(self.git_dir, "refs"),
+            ):
+                os.mkdir(path, 0o700)
+                self._account_temporary(0, 1)
             self.index_path = os.path.join(self._directory, "index")
-            self.object_directory = os.path.join(self._directory, "objects")
-            os.mkdir(self.object_directory, 0o700)
+            core_shadow = os.path.join(self.git_dir, "frozen-core-attributes")
+            config, materialized = serialize_config(
+                settings.config_entries,
+                os.fsencode(core_shadow) if settings.core_attributes_path else None,
+            )
+            self._materialized_config = materialized
+            self._write_private(os.path.join(self.git_dir, "config"), config)
+            self._write_private(
+                os.path.join(self.git_dir, "HEAD"), b"ref: refs/heads/frozen\n"
+            )
+            if settings.core_attributes is not None:
+                self._materialize_regular(settings.core_attributes, core_shadow)
+            self._materialize_regular(
+                settings.info_attributes,
+                os.path.join(self.git_dir, "info", "attributes"),
+            )
+            for item in settings.worktree_attributes:
+                destination = os.path.join(self.worktree_path, os.fsdecode(item.path))
+                if item.kind == "file":
+                    self._ensure_worktree_parent(destination)
+                    self._write_private(destination, item.data or b"")
+                elif item.kind not in ("missing", "symlink"):
+                    raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
             for _path, header in self.epoch.index_entries:
                 if header.split(b" ")[-1] != b"0":
                     raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
             if self.epoch.index_bytes:
-                with open(self.index_path, "xb") as stream:
-                    os.fchmod(stream.fileno(), 0o600)
-                    stream.write(self.epoch.index_bytes)
+                self._write_private(self.index_path, self.epoch.index_bytes)
             else:
                 self.run(["read-tree", "--empty"], limit=4096)
                 os.chmod(self.index_path, 0o600)
+                self._account_temporary(os.lstat(self.index_path).st_size, 1)
             return self
         except Exception:
             self.__exit__()
             raise
+
+    def _account_temporary(self, size: int, files: int) -> None:
+        self._base_temporary_bytes += size
+        self._base_temporary_files += files
+        self.temporary_bytes = self._base_temporary_bytes
+        self.temporary_files = self._base_temporary_files
+        if (
+            self.temporary_bytes > self.storage_byte_limit
+            or self.temporary_files > self.storage_file_limit
+        ):
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+
+    def _ensure_worktree_parent(self, destination: str) -> None:
+        parent = os.path.dirname(destination)
+        try:
+            if os.path.commonpath((self.worktree_path, parent)) != self.worktree_path:
+                raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
+            relative = os.path.relpath(parent, self.worktree_path)
+            current = self.worktree_path
+            for part in () if relative == "." else relative.split(os.sep):
+                current = os.path.join(current, part)
+                try:
+                    os.mkdir(current, 0o700)
+                except FileExistsError:
+                    continue
+                self._account_temporary(0, 1)
+        except SourceOracleError:
+            raise
+        except OSError as exc:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
+
+    def _write_private(self, path: str, data: bytes) -> None:
+        try:
+            with open(path, "xb") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(data)
+        except OSError as exc:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
+        self._account_temporary(len(data), 1)
+
+    def _materialize_regular(self, item: object, destination: str) -> None:
+        kind = getattr(item, "kind", None)
+        data = getattr(item, "data", None)
+        if kind == "missing":
+            return
+        if kind != "file" or not isinstance(data, bytes):
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        self._write_private(destination, data)
 
     def __exit__(self, *_: object) -> None:
         directory = self._directory
@@ -120,20 +226,27 @@ class FrozenGitEnvironment:
             for key, value in os.environ.items()
             if not key.upper().startswith("GIT_")
         }
-        env["GIT_OPTIONAL_LOCKS"] = "0"
-        env["GIT_ATTR_NOSYSTEM"] = "1"
-        env["GIT_INDEX_FILE"] = self.index_path
+        env.update(
+            {
+                "GIT_OPTIONAL_LOCKS": "0",
+                "GIT_ATTR_NOSYSTEM": "1",
+                "GIT_INDEX_FILE": self.index_path,
+            }
+        )
         if self.object_directory is not None:
-            env["GIT_OBJECT_DIRECTORY"] = self.object_directory
-            objects = git_output(
-                self.root,
-                ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
-                deadline=self.deadline,
-                limit=64 * 1024,
-            )
-            objects = _strip_one_record_terminator(objects)
-            env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = _quote_alternate_object_directory(
-                objects
+            settings = self._settings()
+            env.update(
+                {
+                    "GIT_CONFIG_NOSYSTEM": "1",
+                    "GIT_CONFIG_GLOBAL": os.devnull,
+                    "GIT_CONFIG_SYSTEM": os.devnull,
+                    "GIT_DIR": self.git_dir,
+                    "GIT_WORK_TREE": self.worktree_path,
+                    "GIT_OBJECT_DIRECTORY": self.object_directory,
+                    "GIT_ALTERNATE_OBJECT_DIRECTORIES": (
+                        _quote_alternate_object_directory(settings.object_directory)
+                    ),
+                }
             )
         return env
 
@@ -156,26 +269,78 @@ class FrozenGitEnvironment:
         )
 
     def verify_source_epoch(self) -> None:
-        """Reject transient config/attribute changes before hashes or diffs run."""
+        """Recompute the pre-oracle fingerprints inside the isolated shadow."""
         expected = self.epoch.source_epoch
+        settings = self.epoch.git_settings
         if expected is None:
             return
-        current = capture_source_epoch(
-            self.root,
-            self.epoch.index_bytes,
-            tuple(
-                sorted(set(self.epoch.tracked_paths) | set(self.epoch.untracked_paths))
-            ),
-            deadline=self.deadline,
-            object_format=self.epoch.object_format,
+        if not isinstance(settings, FrozenGitSettings):
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        paths = tuple(
+            sorted(set(self.epoch.tracked_paths) | set(self.epoch.untracked_paths))
         )
-        if current != expected:
+        path_input = b"".join(path + b"\0" for path in paths)
+        if len(path_input) > 16 * 1024 * 1024:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+        attributes = self.run(
+            ["check-attr", "-z", "--all", "--stdin"],
+            limit=16 * 1024 * 1024,
+            input_=path_input,
+        )
+        attribute_hash = hashlib.sha256(b"tsa-attributes-v1\0" + attributes).digest()
+        raw_config = self.run(
+            ["config", "--null", "--list", "--show-origin", "--includes"],
+            limit=16 * 1024 * 1024,
+        )
+        actual = parse_effective_config(raw_config)
+        if actual != self._materialized_config:
+            raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+        restored: list[ConfigEntry] = []
+        for actual_entry, captured_entry in zip(
+            actual, settings.config_entries, strict=True
+        ):
+            value = (
+                captured_entry.value
+                if actual_entry.key.lower() == b"core.attributesfile"
+                else actual_entry.value
+            )
+            restored.append(ConfigEntry(actual_entry.key, value))
+        if (
+            attribute_hash != expected.attribute_fingerprint
+            or config_fingerprint(restored) != expected.config_hash
+        ):
             raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
 
     def _refresh_object_usage(self) -> None:
         directory = self.object_directory
         if directory is None:
             return
+        total = 0
+        files = 0
+        try:
+            for base, dirs, names in os.walk(directory, followlinks=False):
+                for name in dirs + names:
+                    info = _lstat(os.path.join(base, name))
+                    if stat.S_ISLNK(info.st_mode):
+                        raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_TEMP")
+                    files += 1
+                    total += info.st_size
+        except SourceOracleError:
+            raise
+        except OSError as exc:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR") from exc
+        self.temporary_bytes = self._base_temporary_bytes + total
+        self.temporary_files = self._base_temporary_files + files
+        if (
+            self.temporary_bytes > self.storage_byte_limit
+            or self.temporary_files > self.storage_file_limit
+        ):
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+
+    def _refresh_all_usage(self) -> None:
+        directory = self._directory
+        if directory is None:
+            raise SourceOracleError("DIFF_SNAPSHOT_CAPTURE_ERROR")
         total = 0
         files = 0
         try:
@@ -206,6 +371,7 @@ class FrozenGitEnvironment:
         workspace_index = os.path.join(self._directory, "workspace-index")
         shutil.copyfile(self.index_path, workspace_index)
         os.chmod(workspace_index, 0o600)
+        self._account_temporary(os.lstat(workspace_index).st_size, 1)
         self.index_path = workspace_index
         result: dict[bytes, bytes] = {}
         for raw, safe in paths.items():
@@ -289,4 +455,5 @@ class FrozenGitEnvironment:
                 ]
             )
             result[raw] = mode + b" " + oid + b" 0"
+        self._refresh_all_usage()
         return result

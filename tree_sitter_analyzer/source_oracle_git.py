@@ -18,6 +18,7 @@ from .frozen_git_index import (
     has_split_index,
     invalidate_index_stat_cache,
 )
+from .frozen_git_settings import capture_frozen_git_settings as capture_settings
 from .git_subprocess import run_git_bounded
 from .source_epoch import (
     _EMPTY_TREE_SHA1,
@@ -71,7 +72,7 @@ def _object_format(root: str, *, deadline: float) -> str:
 
 
 def _core_filemode(root: str, *, deadline: float) -> bool:
-    return core_bool(root, "core.filemode", deadline=deadline, git_output=git_output)
+    return core_bool(root, "core.filemode", deadline, git_output)
 
 
 def _head_identity(
@@ -278,7 +279,6 @@ def oracle_generation(
     manifest: dict[str, WorkspaceManifestEntry] | None = None,
     epoch_out: list[GitEpoch] | None = None,
 ) -> tuple[str, RootIdentity]:
-    """Return a domain-framed generation and the exact canonical root identity."""
     root, identity = canonical_root(project_root)
     if not _supports_nofollow():
         raise SourceOracleError("DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
@@ -299,9 +299,7 @@ def oracle_generation(
         raise SourceOracleError("DIFF_SNAPSHOT_ROOT_MISMATCH")
     object_format = _object_format(root, deadline=end)
     core_filemode = _core_filemode(root, deadline=end)
-    core_symlinks = core_bool(
-        root, "core.symlinks", deadline=end, git_output=git_output
-    )
+    core_symlinks = core_bool(root, "core.symlinks", end, git_output)
     head = _head_identity(root, deadline=end, object_format=object_format)
     _frame(digest, b"object-format", object_format.encode("ascii"))
     _frame(digest, b"core-filemode", b"true" if core_filemode else b"false")
@@ -329,8 +327,6 @@ def oracle_generation(
     index_bytes = safe_index.data or b""
     _frame(digest, b"index-content", hashlib.sha256(index_bytes).digest())
     if index_bytes and has_split_index(index_bytes, object_format=object_format):
-        # A split index refers to a sibling sharedindex.<hash>. Freezing only the
-        # link file would either fail or tempt Git to consult mutable live state.
         raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_INDEX")
     index_entries = _index_entries(root, deadline=end, index_bytes=index_bytes)
     tracked = list(index_entries)
@@ -365,16 +361,19 @@ def oracle_generation(
     tracked_set = set(tracked)
     if not dirty <= tracked_set or untracked & tracked_set:
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    settings_inventory = tuple(sorted(tracked_set | untracked))
+    frozen_settings = capture_settings(root, settings_inventory, end, git_output)
     settings_epoch = capture_source_epoch(
         root,
         index_bytes,
-        tuple(sorted(tracked_set | untracked)),
+        settings_inventory,
         deadline=end,
         object_format=object_format,
         frozen_output=_frozen_index_output,
     )
     _frame(digest, b"attributes", settings_epoch.attribute_fingerprint)
     _frame(digest, b"config", settings_epoch.config_hash)
+    _frame(digest, b"git-settings", frozen_settings.fingerprint)
     workspace_gitlinks: dict[bytes, bytes] = {}
     for raw in sorted(dirty) if mode == "diff" else ():
         entry = index_entries[raw]
@@ -418,6 +417,7 @@ def oracle_generation(
                 core_symlinks=core_symlinks,
                 index_bytes=index_bytes,
                 source_epoch=settings_epoch,
+                git_settings=frozen_settings,
             )
         )
 

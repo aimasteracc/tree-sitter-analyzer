@@ -402,6 +402,9 @@ class SemanticClassifyTool(BaseMCPTool):
                         },
                         output_format,
                     )
+                response["diff_snapshot_id"] = consumer.snapshot.snapshot_id
+                response["source_generation"] = consumer.snapshot.source_generation
+                formatted = apply_toon_format_to_response(response, output_format)
             return formatted
         finally:
             if consumer is not None:

@@ -653,6 +653,35 @@ def test_snapshot_consumer_uses_frozen_utf8_bytes(
 
 
 @pytest.mark.parametrize("tool_type", [ASTDiffTool, SemanticClassifyTool])
+@pytest.mark.parametrize("output_format", ["json", "toon"])
+@POSIX_SNAPSHOT_TEST
+def test_snapshot_consumer_echoes_exact_frozen_identity(
+    tmp_path: Path, tool_type, output_format: str
+) -> None:
+    # PR #1252 review thread 3748730795: consumers must not infer identity.
+    root = make_repo(tmp_path)
+    (root / "old.py").write_text("value = 2\n")
+    created = snapshots.REGISTRY.create(str(root), "diff", [])
+    response = asyncio.run(
+        tool_type(str(root)).execute(
+            {
+                "diff_snapshot_id": created["diff_snapshot_id"],
+                "file_path": "old.py",
+                "output_format": output_format,
+            }
+        )
+    )
+    assert response["diff_snapshot_id"] == created["diff_snapshot_id"]
+    assert response["source_generation"] == created["source_generation"]
+    assert (
+        snapshots.REGISTRY.close_lease(
+            str(created["diff_snapshot_id"]), str(created["route_lease_id"])
+        )
+        is True
+    )
+
+
+@pytest.mark.parametrize("tool_type", [ASTDiffTool, SemanticClassifyTool])
 @POSIX_SNAPSHOT_TEST
 def test_snapshot_consumer_rejects_binary_content(tmp_path: Path, tool_type) -> None:
     root = make_repo(tmp_path)

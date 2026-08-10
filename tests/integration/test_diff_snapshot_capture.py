@@ -412,64 +412,64 @@ def test_core_filemode_false_preserves_tracked_index_mode(tmp_path: Path) -> Non
 
 
 @POSIX_SNAPSHOT_TEST
-def test_payload_only_info_attributes_change_is_rejected(
+def test_payload_ignores_live_info_attributes_after_shadow_verification(
     tmp_path: Path, monkeypatch
 ) -> None:
-    # PR #1252 review thread 5941: payload conversions bind exact attributes.
+    # PR #1252 review thread 3748730781: payloads use frozen attributes.
     root = _repo(tmp_path)
     (root / "old.py").write_text("value = 2\n")
     info_attributes = root / ".git" / "info" / "attributes"
-    original_capture = snapshots._capture_payload
+    original_verify = epoch_module.FrozenGitEnvironment.verify_source_epoch
+    original_exit = epoch_module.FrozenGitEnvironment.__exit__
 
-    def mutate_attributes(
-        root_path, mode, deadline, ceiling, expected_manifest=None, epoch=None
-    ):
-        info_attributes.write_text("old.py -text\n")
-        try:
-            return original_capture(
-                root_path, mode, deadline, ceiling, expected_manifest, epoch
-            )
-        finally:
-            info_attributes.unlink()
+    def mutate_after_verify(environment) -> None:
+        original_verify(environment)
+        info_attributes.write_text("old.py binary\n")
 
-    monkeypatch.setattr(snapshots, "_capture_payload", mutate_attributes)
+    def restore_on_exit(environment, *args) -> None:
+        info_attributes.unlink(missing_ok=True)
+        original_exit(environment, *args)
+
+    monkeypatch.setattr(
+        epoch_module.FrozenGitEnvironment, "verify_source_epoch", mutate_after_verify
+    )
+    monkeypatch.setattr(epoch_module.FrozenGitEnvironment, "__exit__", restore_on_exit)
     result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
 
-    assert result == {
-        "success": False,
-        "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
-    }
+    assert result["success"] is True
+    assert result["changed_records"][0]["binary"] is False
 
 
 @POSIX_SNAPSHOT_TEST
-def test_payload_only_git_config_change_is_rejected(
+def test_payload_ignores_live_config_after_shadow_verification(
     tmp_path: Path, monkeypatch
 ) -> None:
-    # PR #1252 review thread 5941: payload conversions bind exact config.
+    # PR #1252 review thread 3748730781: payloads use frozen config.
     root = _repo(tmp_path)
     (root / "old.py").write_text("value = 2\n")
+    hostile_attributes = tmp_path.parent / "hostile.attributes"
+    hostile_attributes.write_text("old.py binary\n")
     config_path = root / ".git" / "config"
     original_config = config_path.read_bytes()
-    original_capture = snapshots._capture_payload
+    original_verify = epoch_module.FrozenGitEnvironment.verify_source_epoch
+    original_exit = epoch_module.FrozenGitEnvironment.__exit__
 
-    def mutate_config(
-        root_path, mode, deadline, ceiling, expected_manifest=None, epoch=None
-    ):
-        _git(root, "config", "diff.renames", "false")
-        try:
-            return original_capture(
-                root_path, mode, deadline, ceiling, expected_manifest, epoch
-            )
-        finally:
-            config_path.write_bytes(original_config)
+    def mutate_after_verify(environment) -> None:
+        original_verify(environment)
+        _git(root, "config", "core.attributesFile", str(hostile_attributes))
 
-    monkeypatch.setattr(snapshots, "_capture_payload", mutate_config)
+    def restore_on_exit(environment, *args) -> None:
+        config_path.write_bytes(original_config)
+        original_exit(environment, *args)
+
+    monkeypatch.setattr(
+        epoch_module.FrozenGitEnvironment, "verify_source_epoch", mutate_after_verify
+    )
+    monkeypatch.setattr(epoch_module.FrozenGitEnvironment, "__exit__", restore_on_exit)
     result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
 
-    assert result == {
-        "success": False,
-        "error_code": "DIFF_SNAPSHOT_SOURCE_CHANGED",
-    }
+    assert result["success"] is True
+    assert result["changed_records"][0]["binary"] is False
 
 
 @POSIX_SNAPSHOT_TEST
