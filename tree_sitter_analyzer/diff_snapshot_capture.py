@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .diff_snapshot_epoch import FrozenGitEnvironment
+from .frozen_git_index import invalidate_index_stat_cache
 from .git_path_codec import path_to_wire
 from .source_oracle import (
     SafePath,
@@ -299,6 +300,15 @@ def _capture_payload(
     if epoch is None:
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
     frozen = epoch
+    if mode == "staged" and epoch.index_bytes:
+        frozen = replace(
+            epoch,
+            index_bytes=invalidate_index_stat_cache(
+                epoch.index_bytes,
+                object_format=epoch.object_format,
+                assume_valid=True,
+            ),
+        )
     remaining = ceiling
     index_entries = frozen.index_map()
     head_entries = _head_entries(root, deadline=deadline, head=frozen.head)
@@ -389,9 +399,20 @@ def _capture_payload(
                 if safe.kind == "directory" and raw not in workspace_entries:
                     new_mode, new_kind, new_oid, new = None, "missing", None, None
                 else:
-                    if safe.kind == "file" and not frozen.core_filemode:
+                    workspace_entry = workspace_entries.get(raw)
+                    emulated_symlink = (
+                        safe.kind == "file"
+                        and not frozen.core_symlinks
+                        and workspace_entry is not None
+                        and workspace_entry.startswith(b"120000 ")
+                    )
+                    if (
+                        safe.kind == "file"
+                        and workspace_entry is not None
+                        and (not frozen.core_filemode or emulated_symlink)
+                    ):
                         new_mode, _temporary_oid, new_kind = _entry_parts(
-                            workspace_entries[raw]
+                            workspace_entry
                         )
                     else:
                         new_mode, new_kind = _safe_mode(safe.kind, safe.metadata)

@@ -16,6 +16,7 @@ from .frozen_git_index import (
     frozen_index_output,
     git_filtered_oid,
     has_split_index,
+    invalidate_index_stat_cache,
 )
 from .git_subprocess import run_git_bounded
 from .source_epoch import (
@@ -23,6 +24,8 @@ from .source_epoch import (
     _EMPTY_TREE_SHA256,
     GitEpoch,
     capture_source_epoch,
+    core_bool,
+    raw_blob_oid,
 )
 from .source_oracle import (
     RootIdentity,
@@ -68,17 +71,7 @@ def _object_format(root: str, *, deadline: float) -> str:
 
 
 def _core_filemode(root: str, *, deadline: float) -> bool:
-    value = git_output(
-        root,
-        ["config", "--bool", "--default", "true", "core.filemode"],
-        deadline=deadline,
-        limit=16,
-    ).strip()
-    if value in (b"", b"true"):
-        return True
-    if value == b"false":
-        return False
-    raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    return core_bool(root, "core.filemode", deadline=deadline, git_output=git_output)
 
 
 def _head_identity(
@@ -217,6 +210,8 @@ def _frame_workspace_path(
     content_required: bool,
     index_entry: bytes | None,
     head_entry: bytes | None,
+    core_symlinks: bool = True,
+    object_format: str = "sha1",
     manifest: dict[str, WorkspaceManifestEntry] | None = None,
 ) -> int:
     """Frame one no-follow worktree leaf and return its content charge."""
@@ -233,8 +228,16 @@ def _frame_workspace_path(
     _frame(digest, b"worktree-path", raw)
     descriptor_chain = stable_descriptor_chain(safe.metadata)
     filtered_oid: bytes | None = None
+    index_mode = index_entry.split(b" ", 1)[0] if index_entry else None
+    emulated_symlink = (
+        not core_symlinks and safe.kind == "file" and index_mode == b"120000"
+    )
     if safe.kind == "file" and content_required and not is_gitlink:
-        filtered_oid = git_filtered_oid(root, raw, safe.data or b"", deadline=deadline)
+        filtered_oid = (
+            raw_blob_oid(safe.data or b"", object_format)
+            if emulated_symlink
+            else git_filtered_oid(root, raw, safe.data or b"", deadline=deadline)
+        )
         _frame(digest, b"worktree-filtered-oid", filtered_oid)
     if manifest is not None:
         manifest[path] = WorkspaceManifestEntry(descriptor_chain, filtered_oid)
@@ -255,7 +258,8 @@ def _frame_workspace_path(
             b"worktree-stat",
             b",".join((fields[2], fields[0], fields[1], *fields[3:])),
         )
-        _frame(digest, b"worktree-kind", safe.kind.encode("ascii"))
+        effective_kind = "symlink" if emulated_symlink else safe.kind
+        _frame(digest, b"worktree-kind", effective_kind.encode("ascii"))
     if index_entry is not None:
         _frame(digest, b"index-blob", index_entry)
     _frame(digest, b"HEAD-blob", head_entry or b"missing")
@@ -295,9 +299,13 @@ def oracle_generation(
         raise SourceOracleError("DIFF_SNAPSHOT_ROOT_MISMATCH")
     object_format = _object_format(root, deadline=end)
     core_filemode = _core_filemode(root, deadline=end)
+    core_symlinks = core_bool(
+        root, "core.symlinks", deadline=end, git_output=git_output
+    )
     head = _head_identity(root, deadline=end, object_format=object_format)
     _frame(digest, b"object-format", object_format.encode("ascii"))
     _frame(digest, b"core-filemode", b"true" if core_filemode else b"false")
+    _frame(digest, b"core-symlinks", b"true" if core_symlinks else b"false")
     _frame(digest, b"HEAD", head)
     git_dir = git_output(
         root, ["rev-parse", "--git-dir"], deadline=end, limit=64 * 1024
@@ -407,6 +415,7 @@ def oracle_generation(
                 untracked_paths=tuple(sorted(untracked)),
                 workspace_gitlinks=tuple(sorted(workspace_gitlinks.items())),
                 core_filemode=core_filemode,
+                core_symlinks=core_symlinks,
                 index_bytes=index_bytes,
                 source_epoch=settings_epoch,
             )
@@ -423,6 +432,8 @@ def oracle_generation(
             content_required=mode == "diff" and raw in dirty,
             index_entry=index_entries[raw],
             head_entry=head_entries.get(raw),
+            core_symlinks=core_symlinks,
+            object_format=object_format,
             manifest=manifest,
         )
         remaining_content -= charge
@@ -436,6 +447,8 @@ def oracle_generation(
             content_required=mode == "diff",
             index_entry=None,
             head_entry=None,
+            core_symlinks=core_symlinks,
+            object_format=object_format,
             manifest=manifest,
         )
         remaining_content -= charge
@@ -452,9 +465,14 @@ def oracle_generation(
     ]
     if mode == "staged":
         diff_args.append(os.fsdecode(head))
+    patch_index = index_bytes
+    if mode == "staged" and index_bytes:
+        patch_index = invalidate_index_stat_cache(
+            index_bytes, object_format=object_format, assume_valid=True
+        )
     patch = _frozen_index_output(
         root,
-        index_bytes,
+        patch_index,
         diff_args,
         deadline=end,
         limit=64 * 1024 * 1024,

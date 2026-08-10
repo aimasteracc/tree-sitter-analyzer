@@ -16,11 +16,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
 from .diff_snapshot_capture import FrozenFile, _capture_payload
-from .diff_snapshot_leases import SnapshotConsumer
+from .diff_snapshot_leases import FrozenDiffSnapshot, SnapshotConsumer
 from .diff_snapshot_paths import epoch_inventory, path_collection_storage
 from .git_path_codec import path_from_wire, path_to_wire
 from .source_oracle import (
-    RootIdentity,
+    RootIdentity as RootIdentity,
+)
+from .source_oracle import (
     SourceOracleError,
     WorkspaceManifestEntry,
     canonical_root,
@@ -40,10 +42,6 @@ _SNAPSHOT_ID_PATTERN = re.compile(r"ds_[A-Za-z0-9_-]{32}", re.ASCII)
 _ROUTE_LEASE_PATTERN = re.compile(r"dl_[A-Za-z0-9_-]{43}", re.ASCII)
 
 
-def _path_storage(paths: tuple[str, ...] | list[str] | set[str]) -> int:
-    return path_collection_storage(paths)
-
-
 def _record_storage(files: tuple[FrozenFile, ...]) -> int:
     """Charge the deterministic serialized changed-record metadata."""
     return sum(
@@ -54,30 +52,6 @@ def _record_storage(files: tuple[FrozenFile, ...]) -> int:
         )
         for item in files
     )
-
-
-@dataclass(frozen=True)
-class FrozenDiffSnapshot:
-    snapshot_id: str
-    source_generation: str
-    root_identity: RootIdentity
-    mode: str
-    normalized_patch: bytes
-    files: tuple[FrozenFile, ...]
-    inventory_paths: tuple[str, ...]
-    assessed_scope_paths: tuple[str, ...]
-    created_monotonic: float
-    materialized_bytes: int
-    _inventory_raw_paths: tuple[bytes, ...] = ()
-    _assessed_scope_raw_paths: tuple[bytes, ...] = ()
-
-    def file(self, path: str) -> FrozenFile | None:
-        try:
-            normalized = path_from_wire(path)
-        except SourceOracleError:
-            return None
-        raw = os.fsencode(normalized)
-        return next((item for item in self.files if item.record.raw_path == raw), None)
 
 
 @dataclass
@@ -139,7 +113,7 @@ class DiffSnapshotRegistry:
             return self._error(str(exc))
         if any(len(os.fsencode(path)) > MAX_PATH_BYTES for path in normalized_input):
             return self._error("DIFF_SNAPSHOT_CAPACITY")
-        if _path_storage(normalized_input) > MAX_SCOPE_BYTES:
+        if path_collection_storage(normalized_input) > MAX_SCOPE_BYTES:
             return self._error("DIFF_SNAPSHOT_CAPACITY")
         started = self._clock()
         deadline = time.monotonic() + HARD_LIFETIME_SECONDS
@@ -186,7 +160,7 @@ class DiffSnapshotRegistry:
                 if epoch is not None
                 else capture_inventory(root, mode, deadline=deadline, limit=ceiling)
             )
-            inventory_size = _path_storage(inventory_paths)
+            inventory_size = path_collection_storage(inventory_paths)
             capture_params = inspect.signature(_capture_payload).parameters
             if "epoch" in capture_params and epoch is not None:
                 patch, files = _capture_payload(
@@ -227,8 +201,8 @@ class DiffSnapshotRegistry:
                     len(item.old_bytes or b"") + len(item.new_bytes or b"")
                     for item in files
                 )
-                + _path_storage(paths)
-                + _path_storage(inventory_paths)
+                + path_collection_storage(paths)
+                + path_collection_storage(inventory_paths)
                 + _record_storage(files)
             )
             if size > ceiling:
@@ -300,19 +274,42 @@ class DiffSnapshotRegistry:
             owner = threading.get_ident()
             state.pins[pin] = owner
             consumer = SnapshotConsumer(self, state.snapshot, pin)
+            remaining = (
+                state.snapshot.created_monotonic + HARD_LIFETIME_SECONDS - self._clock()
+            )
+            if remaining <= 0:
+                consumer.release()
+                return None, "DIFF_SNAPSHOT_EXPIRED"
         try:
             generation, current_identity = oracle_generation(
-                identity.realpath, consumer.snapshot.mode
+                identity.realpath,
+                consumer.snapshot.mode,
+                deadline=time.monotonic() + remaining,
             )
         except SourceOracleError as exc:
             consumer.release()
             return None, str(exc)
-        if (
-            current_identity != identity
-            or generation != consumer.snapshot.source_generation
-        ):
-            consumer.release()
-            return None, "DIFF_SNAPSHOT_SOURCE_CHANGED"
+        with self._lock:
+            self._sweep()
+            current = self._states.get(snapshot_id)
+            remaining = (
+                state.snapshot.created_monotonic + HARD_LIFETIME_SECONDS - self._clock()
+            )
+            if (
+                current is not state
+                or state.expired
+                or not state.lease_open
+                or state.pins.get(pin) != owner
+                or remaining <= 0
+            ):
+                consumer.release()
+                return None, "DIFF_SNAPSHOT_EXPIRED"
+            if (
+                current_identity != identity
+                or generation != consumer.snapshot.source_generation
+            ):
+                consumer.release()
+                return None, "DIFF_SNAPSHOT_SOURCE_CHANGED"
         return consumer, None
 
     def bind_assessed_scope(
@@ -331,7 +328,7 @@ class DiffSnapshotRegistry:
             return str(exc)
         if any(len(os.fsencode(path)) > MAX_PATH_BYTES for path in normalized):
             return "DIFF_SNAPSHOT_CAPACITY"
-        if _path_storage(normalized) > MAX_SCOPE_BYTES:
+        if path_collection_storage(normalized) > MAX_SCOPE_BYTES:
             return "DIFF_SNAPSHOT_CAPACITY"
         with self._lock:
             self._sweep()
@@ -355,8 +352,10 @@ class DiffSnapshotRegistry:
                 state.expired = True
                 state.lease_open = False
                 return "DIFF_SNAPSHOT_EXPIRED"
-            old_paths_size = _path_storage(state.snapshot.assessed_scope_paths)
-            delta = _path_storage(normalized) - old_paths_size
+            old_paths_size = path_collection_storage(
+                state.snapshot.assessed_scope_paths
+            )
+            delta = path_collection_storage(normalized) - old_paths_size
             if (
                 self._charged_bytes + sum(self._reservations.values()) + delta
                 > MAX_MATERIALIZED_BYTES

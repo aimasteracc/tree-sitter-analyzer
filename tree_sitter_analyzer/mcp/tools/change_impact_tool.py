@@ -13,6 +13,7 @@ from ...pr_url import (
 )
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool, mirror_summary_line
+from .change_impact_frozen import build_frozen_scope_result, scope_matches_raw
 from .change_impact_support import (
     _JOURNAL_VERDICT_RANK as _JOURNAL_VERDICT_RANK,
 )
@@ -24,14 +25,12 @@ from .change_impact_support import (
     _pr_gh_unavailable_envelope,
     _pr_invalid_url_envelope,
     _scope_paths_invalid,
-    _snapshot_records,
 )
 from .utils.change_impact_analysis import (
     ChangeImpactRequest,
     _build_change_impact_result,
 )
 from .utils.change_impact_git import (
-    _filter_excluded_paths,
     _get_changed_files,
     _get_diff_stat,
 )
@@ -42,16 +41,12 @@ from .utils.change_impact_response import (
     build_no_changes_result,
 )
 
-
-def _scope_matches_raw(scope: bytes, path: bytes) -> bool:
-    """Match raw Git identities before any wire encoding."""
-    prefix = scope.rstrip(b"/")
-    return prefix == b"." or path == prefix or path.startswith(prefix + b"/")
+_scope_matches_raw = scope_matches_raw
 
 
 def _scope_matches(scope: str, path: str) -> bool:
     """Compatibility wrapper using lossless filesystem-byte identities."""
-    return _scope_matches_raw(os.fsencode(scope), os.fsencode(path))
+    return scope_matches_raw(os.fsencode(scope), os.fsencode(path))
 
 
 class ChangeImpactTool(BaseMCPTool):
@@ -349,110 +344,9 @@ class ChangeImpactTool(BaseMCPTool):
         """
         from ...diff_snapshot_registry import REGISTRY
 
-        records = _snapshot_records(frozen)
-        workspace_changed_files = _filter_excluded_paths(
-            [str(record["path"]) for record in records]
+        result, records, changed_files, assessed = build_frozen_scope_result(
+            frozen, consumer, mode, scope_paths, scope_mode
         )
-        visible_paths = set(workspace_changed_files)
-        frozen_files = {
-            path_to_wire(item.record.path): (
-                item.record.raw_path,
-                item.record.raw_old_path,
-            )
-            for item in getattr(consumer.snapshot, "files", ())
-        }
-        if not frozen_files:
-            frozen_files = {
-                str(record["path"]): (
-                    os.fsencode(path_from_wire(str(record["path"]))),
-                    (
-                        os.fsencode(path_from_wire(str(record["old_path"])))
-                        if record.get("old_path")
-                        else None
-                    ),
-                )
-                for record in records
-            }
-        scope_raw = [os.fsencode(scope) for scope in scope_paths]
-        record_identities_raw = {
-            identity
-            for public_path, identities in frozen_files.items()
-            if public_path in visible_paths
-            for identity in identities
-            if identity is not None
-        }
-        changed_files = workspace_changed_files
-        if scope_raw:
-            changed_files = [
-                public_path
-                for public_path, (raw_path, raw_old_path) in frozen_files.items()
-                if public_path in visible_paths
-                and any(
-                    _scope_matches_raw(scope, raw_path)
-                    or (
-                        raw_old_path is not None
-                        and _scope_matches_raw(scope, raw_old_path)
-                    )
-                    for scope in scope_raw
-                )
-            ]
-        # Existence and prefix checks stay on raw Git identities. Encoding is
-        # exclusively a response-boundary concern.
-        inventory_raw = getattr(consumer.snapshot, "_inventory_raw_paths", ())
-        if not inventory_raw:
-            inventory_raw = tuple(
-                os.fsencode(path) for path in consumer.snapshot.inventory_paths
-            )
-        scope_identities_raw = set(inventory_raw).union(record_identities_raw)
-        invalid_scope = [
-            path_to_wire(scope)
-            for scope, raw_scope in zip(scope_paths, scope_raw, strict=True)
-            if not any(
-                _scope_matches_raw(raw_scope, identity)
-                for identity in scope_identities_raw
-            )
-        ]
-        public_scope_paths = [path_to_wire(path) for path in scope_paths]
-        if changed_files:
-            result: dict[str, Any] = {
-                "success": True,
-                "mode": mode,
-                "changed_files": changed_files,
-                "changed_count": len(changed_files),
-                "diff_stat": f"{len(changed_files)} frozen file(s) changed",
-                "affected_files": [],
-                "affected_files_unknown": True,
-                "tests_to_run": [],
-                "tests_to_run_unknown": True,
-                "verdict": "REVIEW",
-                "risk_level": "unknown",
-                "summary": (
-                    f"{len(changed_files)} frozen file(s) changed; "
-                    "affected files and tests are unknown without live analysis"
-                ),
-                "agent_summary": {
-                    "verdict": "REVIEW",
-                    "changed_files": changed_files,
-                    "affected_files": [],
-                    "affected_files_unknown": True,
-                    "tests_to_run": [],
-                    "tests_to_run_unknown": True,
-                },
-            }
-        else:
-            result = build_no_changes_result(mode, public_scope_paths)
-        result["scope_paths"] = public_scope_paths
-        result["scope_filtered"] = bool(scope_paths)
-        result = attach_queue_ledger(
-            result,
-            mode=mode,
-            scope_paths=public_scope_paths,
-            scoped_changed_files=changed_files,
-            workspace_changed_files=workspace_changed_files,
-            scope_mode=scope_mode,
-        )
-        result = apply_scope_validation(result, invalid_scope)
-        assessed = sorted(set(workspace_changed_files).union(public_scope_paths))
         error = REGISTRY.bind_assessed_scope(consumer, assessed)
         frozen["assessed_scope_paths"] = [
             path_to_wire(path) for path in consumer.snapshot.assessed_scope_paths

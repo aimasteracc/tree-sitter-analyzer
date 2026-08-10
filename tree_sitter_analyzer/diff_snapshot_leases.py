@@ -2,11 +2,38 @@
 
 from __future__ import annotations
 
+import os
 import threading
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import Any
 
-if TYPE_CHECKING:
-    from .diff_snapshot_registry import FrozenDiffSnapshot
+from .diff_snapshot_capture import FrozenFile
+from .git_path_codec import path_from_wire
+from .source_oracle import RootIdentity, SourceOracleError
+
+
+@dataclass(frozen=True)
+class FrozenDiffSnapshot:
+    snapshot_id: str
+    source_generation: str
+    root_identity: RootIdentity
+    mode: str
+    normalized_patch: bytes
+    files: tuple[FrozenFile, ...]
+    inventory_paths: tuple[str, ...]
+    assessed_scope_paths: tuple[str, ...]
+    created_monotonic: float
+    materialized_bytes: int
+    _inventory_raw_paths: tuple[bytes, ...] = ()
+    _assessed_scope_raw_paths: tuple[bytes, ...] = ()
+
+    def file(self, path: str) -> FrozenFile | None:
+        try:
+            normalized = path_from_wire(path)
+        except SourceOracleError:
+            return None
+        raw = os.fsencode(normalized)
+        return next((item for item in self.files if item.record.raw_path == raw), None)
 
 
 class SnapshotConsumer:

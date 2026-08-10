@@ -823,3 +823,27 @@ async def test_snapshot_consumer_rejects_each_unavailable_side(
     )
 
     assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT"
+
+
+@pytest.mark.parametrize("tool_type", [ASTDiffTool, SemanticClassifyTool])
+@pytest.mark.parametrize("status", ["R", "C"])
+@pytest.mark.asyncio
+async def test_snapshot_consumer_rejects_rename_and_copy_status(
+    tool_type, status: str, monkeypatch
+) -> None:
+    # PR #1252 review thread 3748575979.
+    from types import SimpleNamespace
+
+    frozen = SimpleNamespace(
+        record=SimpleNamespace(path="x.py", status=status, binary=False),
+        old_bytes=b"value = 1\n",
+        new_bytes=b"value = 2\n",
+    )
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(file=lambda path: frozen), release=lambda: None
+    )
+    monkeypatch.setattr(snapshots.REGISTRY, "acquire", lambda *a: (consumer, None))
+    result = await tool_type(".").execute(
+        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
+    )
+    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT"

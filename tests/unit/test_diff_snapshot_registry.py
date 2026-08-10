@@ -232,7 +232,7 @@ def test_acquire_rejects_generation_drift(tmp_path: Path, monkeypatch) -> None:
     root, registry, result = _created(tmp_path, monkeypatch)
     identity = next(iter(registry._states.values())).snapshot.root_identity
     monkeypatch.setattr(
-        snapshots, "oracle_generation", lambda *a: ("different", identity)
+        snapshots, "oracle_generation", lambda *a, **k: ("different", identity)
     )
     assert registry.acquire(str(result["diff_snapshot_id"]), str(root)) == (
         None,

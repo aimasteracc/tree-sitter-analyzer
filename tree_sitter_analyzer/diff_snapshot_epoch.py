@@ -240,11 +240,17 @@ class FrozenGitEnvironment:
                 continue
             if safe.kind not in ("file", "symlink") or safe.data is None:
                 raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
-            if safe.kind == "symlink":
+            existing = self.epoch.index_map().get(raw)
+            existing_mode = existing.split(b" ", 1)[0] if existing is not None else None
+            emulated_symlink = (
+                not self.epoch.core_symlinks
+                and safe.kind == "file"
+                and existing_mode == b"120000"
+            )
+            if safe.kind == "symlink" or emulated_symlink:
                 mode = b"120000"
             elif not self.epoch.core_filemode:
-                existing = self.epoch.index_map().get(raw)
-                mode = existing.split(b" ", 1)[0] if existing is not None else b"100644"
+                mode = existing_mode or b"100644"
                 if mode not in (b"100644", b"100755"):
                     mode = b"100644"
             else:
@@ -254,7 +260,7 @@ class FrozenGitEnvironment:
                     raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH") from exc
                 mode = b"100755" if stat_mode & 0o111 else b"100644"
             hash_args = ["hash-object", "-w", "--stdin"]
-            if safe.kind == "file":
+            if safe.kind == "file" and not emulated_symlink:
                 # ``--path`` applies core.autocrlf, eol, and clean filters using
                 # the exact raw repository path.  argv execution is shell-free.
                 hash_args.insert(2, "--path=" + os.fsdecode(raw))

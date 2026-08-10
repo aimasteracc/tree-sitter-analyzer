@@ -141,8 +141,10 @@ def reconstructed_index_file(
         cleanup_path(path)
 
 
-def invalidate_index_stat_cache(index_bytes: bytes, *, object_format: str) -> bytes:
-    """Derive a discovery index that forces content checks but retains flags."""
+def invalidate_index_stat_cache(
+    index_bytes: bytes, *, object_format: str, assume_valid: bool = False
+) -> bytes:
+    """Derive an index with forced checks, or frozen assume-valid entries."""
     hash_size = 32 if object_format == "sha256" else 20
     version = int.from_bytes(index_bytes[4:8], "big")
     count = int.from_bytes(index_bytes[8:12], "big")
@@ -154,11 +156,16 @@ def invalidate_index_stat_cache(index_bytes: bytes, *, object_format: str) -> by
         start = offset
         if offset + flags_offset + 2 > content_end:
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-        result[offset : offset + 24] = b"\0" * 24
-        result[offset + 28 : offset + 40] = b"\0" * 12
         flags = int.from_bytes(
             index_bytes[offset + flags_offset : offset + flags_offset + 2], "big"
         )
+        if assume_valid:
+            result[offset + flags_offset : offset + flags_offset + 2] = (
+                flags | 0x8000
+            ).to_bytes(2, "big")
+        else:
+            result[offset : offset + 24] = b"\0" * 24
+            result[offset + 28 : offset + 40] = b"\0" * 12
         offset += flags_offset + 2 + (2 if flags & 0x4000 else 0)
         if version == 4:
             while offset < content_end and index_bytes[offset] & 0x80:

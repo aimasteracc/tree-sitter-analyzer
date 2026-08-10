@@ -278,6 +278,7 @@ class ASTDiffTool(BaseMCPTool):
                     or not getattr(
                         frozen.record, "new_available", frozen.new_bytes is not None
                     )
+                    or getattr(frozen.record, "status", None) in ("R", "C")
                     or getattr(frozen.record, "unsupported_kind", None) is not None
                     or frozen.record.binary
                     or any(

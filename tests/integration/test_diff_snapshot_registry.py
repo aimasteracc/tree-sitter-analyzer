@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,8 @@ def _frozen_result(
     bind_error=None,
     publish_error=None,
     agent_summary_only=False,
+    scope_mode="strict",
+    bound_paths=None,
 ):
     from types import SimpleNamespace
 
@@ -68,9 +71,13 @@ def _frozen_result(
             assessed_scope_paths=(), inventory_paths=tuple(inventory_paths)
         )
     )
-    monkeypatch.setattr(
-        snapshots.REGISTRY, "bind_assessed_scope", lambda *args: bind_error
-    )
+
+    def bind(_consumer, paths):
+        if bound_paths is not None:
+            bound_paths.extend(paths)
+        return bind_error
+
+    monkeypatch.setattr(snapshots.REGISTRY, "bind_assessed_scope", bind)
     monkeypatch.setattr(
         snapshots.REGISTRY, "validate_publish", lambda *args: publish_error
     )
@@ -79,7 +86,7 @@ def _frozen_result(
         consumer=consumer,
         mode="diff",
         scope_paths=scope_paths or [],
-        scope_mode="strict",
+        scope_mode=scope_mode,
         output_format="json",
         agent_summary_only=agent_summary_only,
         compact_only=False,
@@ -198,3 +205,166 @@ def test_unrelated_tmp_sibling_does_not_invalidate_snapshot(tmp_path: Path) -> N
     registry.close_lease(
         str(created["diff_snapshot_id"]), str(created["route_lease_id"])
     )
+
+
+def test_acquire_uses_remaining_lifetime_and_rechecks_expiry(tmp_path, monkeypatch):
+    # PR #1252 review thread 3748575970.
+    now = [0.0]
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    registry = snapshots.DiffSnapshotRegistry(clock=lambda: now[0])
+    created = registry.create(str(tmp_path), "diff", [])
+    deadlines = []
+
+    def oracle(*args, deadline=None):
+        deadlines.append(deadline)
+        now[0] = snapshots.HARD_LIFETIME_SECONDS
+        state = registry._states[str(created["diff_snapshot_id"])]
+        return state.snapshot.source_generation, state.snapshot.root_identity
+
+    monkeypatch.setattr(snapshots.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(snapshots, "oracle_generation", oracle)
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(tmp_path))
+    assert (consumer, error, deadlines) == (None, "DIFF_SNAPSHOT_EXPIRED", [135.0])
+
+
+def test_strict_scope_binds_only_scoped_change_and_valid_scope(monkeypatch):
+    # PR #1252 review thread 3748575987.
+    bound = []
+    _frozen_result(
+        monkeypatch,
+        records=[{"path": "a.py"}, {"path": "b.py"}],
+        inventory_paths=("a.py", "b.py"),
+        scope_paths=["a.py", "missing.py"],
+        bound_paths=bound,
+    )
+    assert bound == ["a.py"]
+
+
+def test_report_scope_keeps_workspace_assessment(monkeypatch):
+    bound = []
+    _frozen_result(
+        monkeypatch,
+        records=[{"path": "a.py"}, {"path": "b.py"}],
+        inventory_paths=("a.py", "b.py"),
+        scope_paths=["a.py"],
+        scope_mode="report",
+        bound_paths=bound,
+    )
+    assert bound == ["a.py", "b.py"]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_core_symlinks_false_preserves_emulated_symlink_edit(tmp_path: Path) -> None:
+    # PR #1252 review thread 3748575998.
+    root = _repo(tmp_path)
+    link = root / "module.py"
+    link.symlink_to("old.py")
+    subprocess.run(["git", "add", "module.py"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-m", "link"], cwd=root, check=True)
+    subprocess.run(["git", "config", "core.symlinks", "false"], cwd=root, check=True)
+    link.unlink()
+    link.write_bytes(b"gone.py")
+
+    registry = snapshots.DiffSnapshotRegistry()
+    created = registry.create(str(root), "diff", [])
+
+    record = next(r for r in created["changed_records"] if r["path"] == "module.py")
+    assert (record["status"], record["old_kind"], record["new_kind"]) == (
+        "M",
+        "symlink",
+        "symlink",
+    )
+    assert (record["old_mode"], record["new_mode"]) == ("120000", "120000")
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
+    assert error is None
+    assert consumer.snapshot.file("module.py").new_bytes == b"gone.py"
+    consumer.release()
+
+
+def test_acquire_rejects_lifetime_exhausted_while_installing_pin(tmp_path, monkeypatch):
+    # PR #1252 review thread 3748575970.
+    install_fake_snapshot_materializer(monkeypatch, tmp_path)
+    registry = snapshots.DiffSnapshotRegistry(clock=lambda: 0.0)
+    created = registry.create(str(tmp_path), "diff", [])
+    ticks = iter(
+        (0.0, snapshots.HARD_LIFETIME_SECONDS, snapshots.HARD_LIFETIME_SECONDS)
+    )
+    registry._clock = lambda: next(ticks)
+    consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(tmp_path))
+    assert (consumer, error) == (None, "DIFF_SNAPSHOT_EXPIRED")
+
+
+def test_cleanup_writable_walk_errors_remain_bounded(monkeypatch) -> None:
+    from tree_sitter_analyzer import temp_cleanup
+
+    targets = []
+
+    def fail_walk(*args):
+        raise OSError("denied")
+
+    def fail_chmod(path, mode):
+        targets.append(path)
+        raise OSError("denied")
+
+    monkeypatch.setattr(temp_cleanup.os, "walk", fail_walk)
+    monkeypatch.setattr(temp_cleanup, "_CHMOD", fail_chmod)
+    temp_cleanup._make_writable("missing", directory=True)
+    assert targets == ["missing"]
+
+
+def test_cleanup_directory_selects_recursive_removal(monkeypatch) -> None:
+    from tree_sitter_analyzer import temp_cleanup
+
+    removed = []
+    monkeypatch.setattr(temp_cleanup, "_RMTREE", removed.append)
+    temp_cleanup.cleanup_path("frozen", directory=True)
+    assert removed == ["frozen"]
+
+
+def test_cleanup_writable_file_only_chmods_leaf(monkeypatch) -> None:
+    from tree_sitter_analyzer import temp_cleanup
+
+    calls = []
+    monkeypatch.setattr(temp_cleanup, "_CHMOD", lambda path, mode: calls.append(path))
+    temp_cleanup._make_writable("leaf", directory=False)
+    assert calls == ["leaf"]
+
+
+def test_cleanup_file_uses_supplied_unlink() -> None:
+    from tree_sitter_analyzer import temp_cleanup
+
+    removed = []
+    temp_cleanup.cleanup_path("frozen", unlink=removed.append)
+    assert removed == ["frozen"]
+
+
+def test_cleanup_file_defaults_to_process_unlink(monkeypatch) -> None:
+    from tree_sitter_analyzer import temp_cleanup
+
+    removed = []
+    monkeypatch.setattr(temp_cleanup, "_UNLINK", removed.append)
+    temp_cleanup.cleanup_path("frozen")
+    assert removed == ["frozen"]
+
+
+def test_pr_analysis_rejects_invalid_url() -> None:
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+    result = ChangeImpactTool(None)._execute_pr_analysis(
+        "not-a-pr", True, "json", [], False
+    )
+    assert result["error"] == "Invalid GitHub PR URL: not-a-pr"
+
+
+def test_pr_analysis_builds_no_changes_response(monkeypatch) -> None:
+    from tree_sitter_analyzer.mcp.tools import change_impact_tool as tool_module
+    from tree_sitter_analyzer.pr_url import ParsedPRUrl
+
+    parsed = ParsedPRUrl("owner", "repo", 1)
+    monkeypatch.setattr(tool_module, "parse_pr_url", lambda url: parsed)
+    monkeypatch.setattr(tool_module, "check_gh_available", lambda: True)
+    monkeypatch.setattr(tool_module, "fetch_pr_changed_files", lambda pr: [])
+    result = tool_module.ChangeImpactTool(None)._execute_pr_analysis(
+        parsed.url, True, "json", [], False
+    )
+    assert result["changed_files"] == []

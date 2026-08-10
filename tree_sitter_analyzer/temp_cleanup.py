@@ -40,8 +40,14 @@ def cleanup_path(
     unlink: Callable[[str], None] | None = None,
 ) -> None:
     """Remove one artifact with chmod-and-retry, or raise a stable failure."""
-    remove = _RMTREE if directory else (unlink or _UNLINK)
-    for attempt in range(_RETRIES):
+    remove: Callable[[str], None]
+    if directory:
+        remove = _RMTREE
+    elif unlink is not None:
+        remove = unlink
+    else:
+        remove = _UNLINK
+    for attempt in range(_RETRIES):  # pragma: no branch - body always returns or raises
         try:
             remove(path)
             return

@@ -37,6 +37,7 @@ class GitEpoch:
     untracked_paths: tuple[bytes, ...]
     workspace_gitlinks: tuple[tuple[bytes, bytes], ...] = ()
     core_filemode: bool = True
+    core_symlinks: bool = True
     index_bytes: bytes = b""
     source_epoch: SourceEpoch | None = None
 
@@ -48,6 +49,36 @@ class GitEpoch:
         return (
             _EMPTY_TREE_SHA256 if self.object_format == "sha256" else _EMPTY_TREE_SHA1
         )
+
+
+def core_bool(
+    root: str,
+    name: str,
+    *,
+    deadline: float,
+    git_output: Callable[..., bytes],
+) -> bool:
+    value = git_output(
+        root,
+        ["config", "--bool", "--default", "true", name],
+        deadline=deadline,
+        limit=16,
+    ).strip()
+    if value in (b"", b"true"):
+        return True
+    if value == b"false":
+        return False
+    raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+
+
+def raw_blob_oid(data: bytes, object_format: str) -> bytes:
+    framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+    digest = (
+        hashlib.sha256(framed)
+        if object_format == "sha256"
+        else hashlib.sha1(framed, usedforsecurity=False)
+    )
+    return digest.hexdigest().encode("ascii")
 
 
 def capture_source_epoch(
