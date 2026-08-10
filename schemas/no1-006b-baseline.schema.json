@@ -59,7 +59,7 @@
         "source_archive_sha256": {"const":"52fc24594778d798257412e0137b096b0c1670d6a376a9d9714f5a49dfbe706c"},
         "root_wheel_filename": {"type":"string","pattern":"^[^/]+\\.whl$","maxLength":200},
         "root_wheel_sha256": {"const":"c1cb3520542fd14dad60ddec55dfac6afbdaa424e7a4a39d875be1801d98f9e8"},
-        "root_wheel_artifact_size_bytes": {"type":"integer","minimum":1}
+        "root_wheel_artifact_size_bytes": {"const":2209032}
       }
     },
     "dependency_closure": {
@@ -152,7 +152,7 @@
         "mcp_startup"
       ],
       "properties": {
-        "root_wheel_artifact_size_bytes": {"type":"integer","minimum":1},
+        "root_wheel_artifact_size_bytes": {"const":2209032},
         "network_transfer_bytes": {
           "type": "object",
           "additionalProperties": false,

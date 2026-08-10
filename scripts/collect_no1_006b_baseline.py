@@ -27,6 +27,7 @@ EXPECTED_SUBJECT_LOCK_SHA256 = "516430f61ddff1d9a4436409822d7b12aa6d6c9cc0a7b6fc
 EXPECTED_SUBJECT_ARCHIVE_SHA256 = "52fc24594778d798257412e0137b096b0c1670d6a376a9d9714f5a49dfbe706c"
 EXPECTED_SUBJECT_EXPORT_SHA256 = "33b03a373e2ebeafa44a792d14121f081c1af36870e2d97198a9f6432653b6bb"
 EXPECTED_ROOT_WHEEL_SHA256 = "c1cb3520542fd14dad60ddec55dfac6afbdaa424e7a4a39d875be1801d98f9e8"
+EXPECTED_ROOT_WHEEL_SIZE_BYTES = 2_209_032
 ROOT_NAME = "tree-sitter-analyzer"
 TOOL_GROUP = "no1-006b-collector-tool"
 HATCHLING_VERSION = "1.31.0"
@@ -411,6 +412,8 @@ def validate_receipt(report: dict[str, Any], schema: dict[str, Any]) -> None:
             report["source"]["git_tree"]==EXPECTED_SUBJECT_TREE,
             report["source"]["source_archive_sha256"]==EXPECTED_SUBJECT_ARCHIVE_SHA256,
             report["source"]["root_wheel_sha256"]==EXPECTED_ROOT_WHEEL_SHA256,
+            report["source"]["root_wheel_artifact_size_bytes"]==EXPECTED_ROOT_WHEEL_SIZE_BYTES,
+            m["root_wheel_artifact_size_bytes"]==EXPECTED_ROOT_WHEEL_SIZE_BYTES,
             closure["export_sha256"]==EXPECTED_SUBJECT_EXPORT_SHA256,
             len(names)==len(set(names)), names==sorted(names),
             report["environment"]["system"]==report["measured_axis"], os_consistent,

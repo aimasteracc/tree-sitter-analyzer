@@ -84,7 +84,9 @@ def test_historical_root_wheel_matches_exact_receipt(tmp_path: Path) -> None:
     subprocess.run(["git","-c","tar.umask=000","archive","--format=tar",collector.EXPECTED_SUBJECT_COMMIT,"-o",str(archive)],cwd=REPO,env=collector.clean_env(),check=True)
     collector.extract_frozen_snapshot(archive,snapshot,maximum_files=collector.MAX_FILES,maximum_bytes=collector.MAX_SOURCE_ARCHIVE_BYTES)
     wheel=collector.build_root_wheel(snapshot,dist,pinned_mac_build_uv())
-    assert collector.sha256(wheel) == collector.EXPECTED_ROOT_WHEEL_SHA256 == baseline()["source"]["root_wheel_sha256"]
+    report=baseline()
+    assert collector.sha256(wheel) == collector.EXPECTED_ROOT_WHEEL_SHA256 == report["source"]["root_wheel_sha256"]
+    assert wheel.stat().st_size == collector.EXPECTED_ROOT_WHEEL_SIZE_BYTES == report["source"]["root_wheel_artifact_size_bytes"] == report["measurements"]["root_wheel_artifact_size_bytes"]
 
 
 @pytest.mark.skipif(pinned_mac_uv() is None,reason="tracked: PR #1250 historical export requires the pinned macOS uv environment")
@@ -110,6 +112,17 @@ def test_schema_rejects_root_wheel_digest_mutation() -> None:
 def test_custom_validator_rejects_root_wheel_digest_with_weakened_schema() -> None:
     weakened=copy.deepcopy(schema()); weakened["properties"]["source"]["properties"]["root_wheel_sha256"]={"type":"string"}
     with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(mutated(("source","root_wheel_sha256"),"0"*64),weakened)
+
+@pytest.mark.parametrize("section",["source","measurements"])
+def test_schema_rejects_root_wheel_size_mutation(section: str) -> None:
+    with pytest.raises(ValidationError): collector.validate_receipt(mutated((section,"root_wheel_artifact_size_bytes"),1),schema())
+
+def test_custom_validator_rejects_matching_root_wheel_size_mutation_with_weakened_schema() -> None:
+    weakened=copy.deepcopy(schema())
+    for section in ("source","measurements"): weakened["properties"][section]["properties"]["root_wheel_artifact_size_bytes"]={"type":"integer"}
+    report=mutated(("source","root_wheel_artifact_size_bytes"),1)
+    report["measurements"]["root_wheel_artifact_size_bytes"]=1; report["canonical_payload_sha256"]=collector.canonical_hash(report)
+    with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,weakened)
 
 def test_schema_rejects_subject_tree_mutation() -> None:
     report=mutated(("source","git_tree"),"0"*40)
@@ -222,9 +235,10 @@ def test_validator_rejects_matching_arbitrary_locks_with_weakened_schema() -> No
     report["dependency_closure"]["lock_sha256"]="a"*64; report["canonical_payload_sha256"]=collector.canonical_hash(report)
     with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,weakened)
 
-def test_validator_rejects_artifact_size_mismatch() -> None:
+def test_validator_rejects_artifact_size_mismatch_with_weakened_schema() -> None:
+    weakened=copy.deepcopy(schema()); weakened["properties"]["measurements"]["properties"]["root_wheel_artifact_size_bytes"]={"type":"integer"}
     report=mutated(("measurements","root_wheel_artifact_size_bytes"),1)
-    with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,schema())
+    with pytest.raises(ValueError,match="cross-field"): collector.validate_receipt(report,weakened)
 
 def test_validator_rejects_stale_canonical_hash() -> None:
     report=copy.deepcopy(baseline()); report["repeats"]=4
@@ -489,11 +503,24 @@ def test_verified_uv_rejects_digest_mismatch(monkeypatch: pytest.MonkeyPatch, tm
     monkeypatch.setattr(collector,"run",lambda *args,**kwargs: subprocess.CompletedProcess([],0,(collector.EXPECTED_UV_VERSION+"\n").encode(),b""))
     with pytest.raises(RuntimeError,match="identity mismatch"): collector.verified_uv()
 
-def test_secrets_baseline_preserves_origin_develop_result_signatures() -> None:
+def assert_secrets_baseline_preserves_reviewed_base(repo: Path) -> None:
     # PR #1250: rescanning additions must be a union, never delete accepted historical findings.
-    base=json.loads(subprocess.run(["git","show","origin/develop:.secrets.baseline"],cwd=REPO,check=True,capture_output=True).stdout)
-    current=json.loads((REPO/".secrets.baseline").read_text())
+    subprocess.run(["git","merge-base","--is-ancestor",collector.EXPECTED_SUBJECT_COMMIT,"HEAD"],cwd=repo,check=True)
+    reviewed=json.loads(subprocess.run(["git","show",f"{collector.EXPECTED_SUBJECT_COMMIT}:.secrets.baseline"],cwd=repo,check=True,capture_output=True).stdout)
+    current=json.loads((repo/".secrets.baseline").read_text())
     def signatures(data: dict) -> set: return {(filename,row["type"],row["hashed_secret"]) for filename,rows in data["results"].items() for row in rows}
-    assert signatures(base).issubset(signatures(current))
+    assert signatures(reviewed).issubset(signatures(current))
+
+
+def test_secrets_baseline_preserves_reviewed_base_result_signatures() -> None:
+    assert_secrets_baseline_preserves_reviewed_base(REPO)
+
+
+def test_secrets_baseline_union_contract_works_in_fresh_clone_without_remote(tmp_path: Path) -> None:
+    clone=tmp_path/"clone"
+    subprocess.run(["git","clone","--no-local","--quiet",str(REPO),str(clone)],check=True)
+    subprocess.run(["git","remote","remove","origin"],cwd=clone,check=True)
+    assert subprocess.run(["git","remote"],cwd=clone,check=True,capture_output=True,text=True).stdout == ""
+    assert_secrets_baseline_preserves_reviewed_base(clone)
 
 # fmt: on
