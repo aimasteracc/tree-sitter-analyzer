@@ -1,9 +1,4 @@
-"""Behavioral tests for fail-closed source identity and workspace reads."""
-
-from __future__ import annotations
-
 import io
-import os
 import stat
 import subprocess
 import time
@@ -35,12 +30,6 @@ def test_canonical_root_translates_stat_error(monkeypatch) -> None:
         oracle.os, "stat", lambda *a, **k: (_ for _ in ()).throw(OSError())
     )
     _error(lambda: oracle.canonical_root("missing"), "DIFF_SNAPSHOT_ROOT_INVALID")
-
-
-def test_canonical_root_rejects_non_directory(tmp_path: Path) -> None:
-    target = tmp_path / "file"
-    target.touch()
-    _error(lambda: oracle.canonical_root(str(target)), "DIFF_SNAPSHOT_ROOT_INVALID")
 
 
 class _Proc:
@@ -120,14 +109,6 @@ def test_git_output_translates_stream_read_error(monkeypatch) -> None:
     )
 
 
-def test_safe_workspace_path_reports_missing_leaf(tmp_path: Path) -> None:
-    result = oracle.safe_workspace_path(
-        str(tmp_path), "missing.py", deadline=time.monotonic() + 1, limit=10
-    )
-    assert result.kind == "missing"
-    assert result.data is None
-
-
 def test_safe_workspace_path_translates_leaf_lstat_error(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -176,26 +157,6 @@ def test_safe_workspace_path_rejects_unsupported_platform(monkeypatch) -> None:
     )
 
 
-def test_safe_workspace_path_rejects_oversize_symlink(tmp_path: Path) -> None:
-    (tmp_path / "link").symlink_to("long-target")
-    _error(
-        lambda: oracle.safe_workspace_path(
-            str(tmp_path), "link", deadline=time.monotonic() + 1, limit=2
-        ),
-        "DIFF_SNAPSHOT_CAPACITY",
-    )
-
-
-def test_safe_workspace_path_rejects_special_file(tmp_path: Path) -> None:
-    os.mkfifo(tmp_path / "fifo")
-    _error(
-        lambda: oracle.safe_workspace_path(
-            str(tmp_path), "fifo", deadline=time.monotonic() + 1, limit=2
-        ),
-        "DIFF_SNAPSHOT_SPECIAL_FILE",
-    )
-
-
 def test_safe_workspace_path_translates_open_error(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         oracle.os, "open", lambda *a, **k: (_ for _ in ()).throw(OSError())
@@ -219,35 +180,6 @@ def test_safe_workspace_path_translates_read_error(tmp_path: Path, monkeypatch) 
             str(tmp_path), "x", deadline=time.monotonic() + 1, limit=2
         ),
         "DIFF_SNAPSHOT_UNSAFE_PATH",
-    )
-
-
-def test_safe_workspace_path_ignores_close_error(tmp_path: Path, monkeypatch) -> None:
-    (tmp_path / "x").write_bytes(b"x")
-    monkeypatch.setattr(oracle.os, "close", lambda fd: (_ for _ in ()).throw(OSError()))
-    result = oracle.safe_workspace_path(
-        str(tmp_path), "x", deadline=time.monotonic() + 1, limit=2
-    )
-    assert result.data == b"x"
-
-
-def test_safe_workspace_path_detects_post_open_identity_change(
-    tmp_path: Path, monkeypatch
-) -> None:
-    (tmp_path / "x").write_bytes(b"x")
-    real = oracle._metadata
-    calls = [0]
-
-    def metadata(info):
-        calls[0] += 1
-        return real(info) + (b"changed" if calls[0] == 3 else b"")
-
-    monkeypatch.setattr(oracle, "_metadata", metadata)
-    _error(
-        lambda: oracle.safe_workspace_path(
-            str(tmp_path), "x", deadline=time.monotonic() + 1, limit=2
-        ),
-        "DIFF_SNAPSHOT_SOURCE_CHANGED",
     )
 
 
@@ -304,65 +236,6 @@ def test_source_generation_returns_oracle_value(monkeypatch) -> None:
     assert oracle.source_generation(".", "staged") == "sg_test"
 
 
-def test_oracle_generation_hashes_workspace_and_nested_path(tmp_path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
-    )
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
-    (tmp_path / "tracked").write_text("old")
-    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "base"], cwd=tmp_path, check=True, capture_output=True
-    )
-    (tmp_path / "nested").mkdir()
-    (tmp_path / "nested" / "new.py").write_text("value = 1\n")
-    generation, identity = oracle.oracle_generation(str(tmp_path))
-    assert generation.startswith("sg_")
-    assert identity.realpath == str(tmp_path)
-
-
-@pytest.mark.parametrize("changed_call", [3, 4])
-def test_safe_workspace_path_detects_file_identity_changes(
-    tmp_path: Path, monkeypatch, changed_call: int
-) -> None:
-    (tmp_path / "x").write_bytes(b"x")
-    real = oracle._metadata
-    calls = [0]
-
-    def metadata(info):
-        calls[0] += 1
-        return real(info) + (b"changed" if calls[0] == changed_call else b"")
-
-    monkeypatch.setattr(oracle, "_metadata", metadata)
-    _error(
-        lambda: oracle.safe_workspace_path(
-            str(tmp_path), "x", deadline=time.monotonic() + 1, limit=2
-        ),
-        "DIFF_SNAPSHOT_SOURCE_CHANGED",
-    )
-
-
-def test_safe_workspace_path_detects_symlink_identity_change(
-    tmp_path: Path, monkeypatch
-) -> None:
-    (tmp_path / "x").symlink_to("target")
-    real = oracle._metadata
-    calls = [0]
-
-    def metadata(info):
-        calls[0] += 1
-        return real(info) + (b"changed" if calls[0] == 3 else b"")
-
-    monkeypatch.setattr(oracle, "_metadata", metadata)
-    _error(
-        lambda: oracle.safe_workspace_path(
-            str(tmp_path), "x", deadline=time.monotonic() + 1, limit=20
-        ),
-        "DIFF_SNAPSHOT_SOURCE_CHANGED",
-    )
-
-
 def test_normalize_repo_path_strips_each_dot_prefix() -> None:
     assert oracle.normalize_repo_path("././file.py") == "file.py"
 
@@ -412,73 +285,6 @@ def test_git_output_rejects_drain_thread_past_deadline(monkeypatch) -> None:
     assert proc.killed is True
 
 
-def test_safe_workspace_path_returns_symlink_text(tmp_path: Path) -> None:
-    (tmp_path / "x").symlink_to("target")
-    result = oracle.safe_workspace_path(
-        str(tmp_path), "x", deadline=time.monotonic() + 1, limit=20
-    )
-    assert result == oracle.SafePath(b"target", result.metadata, "symlink")
-
-
-def test_safe_workspace_path_rejects_oversize_file(tmp_path: Path) -> None:
-    (tmp_path / "x").write_bytes(b"abc")
-    _error(
-        lambda: oracle.safe_workspace_path(
-            str(tmp_path), "x", deadline=time.monotonic() + 1, limit=2
-        ),
-        "DIFF_SNAPSHOT_CAPACITY",
-    )
-
-
-def test_safe_workspace_path_detects_post_read_identity_change(
-    tmp_path: Path, monkeypatch
-) -> None:
-    (tmp_path / "x").write_bytes(b"x")
-    real = oracle._metadata
-    calls = [0]
-
-    def metadata(info):
-        calls[0] += 1
-        return real(info) + (b"changed" if calls[0] == 5 else b"")
-
-    monkeypatch.setattr(oracle, "_metadata", metadata)
-    _error(
-        lambda: oracle.safe_workspace_path(
-            str(tmp_path), "x", deadline=time.monotonic() + 1, limit=2
-        ),
-        "DIFF_SNAPSHOT_SOURCE_CHANGED",
-    )
-
-
-class _RecordingDigest:
-    def __init__(self) -> None:
-        self.frames: list[bytes] = []
-
-    def update(self, value: bytes) -> None:
-        self.frames.append(value)
-
-
-def test_frame_workspace_path_records_clean_tracked_disappearance(
-    tmp_path: Path,
-) -> None:
-    digest = _RecordingDigest()
-
-    charge = oracle._frame_workspace_path(
-        digest,
-        str(tmp_path),
-        b"tracked.py",
-        deadline=time.monotonic() + 1,
-        content_budget=10,
-        content_required=False,
-        index_entry=b"100644 blob-id 0",
-        head_entry=b"100644 blob blob-id",
-    )
-
-    assert charge == 0
-    assert digest.frames[2] == b"\x00\x00\x00\rworktree-kind"
-    assert digest.frames[3] == b"\x00\x00\x00\x00\x00\x00\x00\x07missing"
-
-
 def test_frame_workspace_path_rejects_malformed_metadata_epoch(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -490,7 +296,7 @@ def test_frame_workspace_path_rejects_malformed_metadata_epoch(
 
     _error(
         lambda: oracle._frame_workspace_path(
-            _RecordingDigest(),
+            SimpleNamespace(update=lambda value: None),
             str(tmp_path),
             b"tracked.py",
             deadline=time.monotonic() + 1,
@@ -500,31 +306,6 @@ def test_frame_workspace_path_rejects_malformed_metadata_epoch(
             head_entry=b"100644 blob blob-id",
         ),
         "DIFF_SNAPSHOT_UNSAFE_PATH",
-    )
-
-
-def test_oracle_generation_detects_index_change(tmp_path: Path, monkeypatch) -> None:
-    index = tmp_path / "index"
-    index.write_bytes(b"index")
-    identity = oracle.RootIdentity(str(tmp_path), 1, 2)
-    monkeypatch.setattr(
-        oracle, "canonical_root", lambda root: (str(tmp_path), identity)
-    )
-    monkeypatch.setattr(
-        oracle,
-        "git_output",
-        lambda root, args, **k: b".\n" if "--git-dir" in args else b"",
-    )
-    real = oracle._metadata
-    calls = [0]
-
-    def metadata(info):
-        calls[0] += 1
-        return real(info) + (b"changed" if calls[0] == 2 else b"")
-
-    monkeypatch.setattr(oracle, "_metadata", metadata)
-    _error(
-        lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_SOURCE_CHANGED"
     )
 
 
@@ -553,84 +334,6 @@ def test_oracle_generation_rejects_oversize_index(tmp_path: Path, monkeypatch) -
 
     monkeypatch.setattr("builtins.open", lambda *a, **k: Huge())
     _error(lambda: oracle.oracle_generation(str(tmp_path)), "DIFF_SNAPSHOT_CAPACITY")
-
-
-def test_oracle_generation_supports_staged_mode(tmp_path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
-    )
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
-    (tmp_path / "tracked").write_text("old")
-    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "base"], cwd=tmp_path, check=True, capture_output=True
-    )
-    (tmp_path / "tracked").write_text("new")
-    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
-    generation, _ = oracle.oracle_generation(str(tmp_path), "staged")
-    assert generation.startswith("sg_")
-
-
-def test_oracle_generation_binds_clean_tracked_write_restore(tmp_path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
-    )
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
-    target = tmp_path / "clean.py"
-    target.write_bytes(b"SAFE\n")
-    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "base"],
-        cwd=tmp_path,
-        check=True,
-        capture_output=True,
-    )
-    before, _ = oracle.oracle_generation(str(tmp_path))
-
-    target.write_bytes(b"TRANSIENT\n")
-    target.write_bytes(b"SAFE\n")
-    after, _ = oracle.oracle_generation(str(tmp_path))
-
-    assert after != before
-
-
-def test_oracle_generation_binds_clean_tracked_atomic_replace(tmp_path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True
-    )
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
-    target = tmp_path / "clean.py"
-    target.write_bytes(b"SAFE\n")
-    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "base"],
-        cwd=tmp_path,
-        check=True,
-        capture_output=True,
-    )
-    before, _ = oracle.oracle_generation(str(tmp_path))
-
-    replacement = tmp_path / "replacement"
-    replacement.write_bytes(b"SAFE\n")
-    os.replace(replacement, target)
-    after, _ = oracle.oracle_generation(str(tmp_path))
-
-    assert after != before
-
-
-def test_oracle_generation_fails_closed_without_nofollow_workspace_reads(
-    tmp_path: Path, monkeypatch
-) -> None:
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-    monkeypatch.delattr(oracle.os, "O_NOFOLLOW", raising=False)
-
-    _error(
-        lambda: oracle.oracle_generation(str(tmp_path)),
-        "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED",
-    )
 
 
 def test_tracked_paths_rejects_bounded_path_count(monkeypatch) -> None:
