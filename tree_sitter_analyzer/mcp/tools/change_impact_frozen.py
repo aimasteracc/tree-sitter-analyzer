@@ -74,23 +74,25 @@ def build_frozen_scope_result(
         for identity in (raw_path, raw_old_path)
         if identity is not None and not _raw_path_is_excluded(identity)
     }
-    changed_files = workspace_changed
+    scoped_entries = visible_entries
     if scope_raw:
-        changed_files = list(
-            dict.fromkeys(
-                side
-                for _record, raw_path, raw_old_path in visible_entries
-                if any(
-                    scope_matches_raw(scope, raw_path)
-                    or (
-                        raw_old_path is not None
-                        and scope_matches_raw(scope, raw_old_path)
-                    )
-                    for scope in scope_raw
-                )
-                for side in visible_sides(raw_path, raw_old_path)
+        scoped_entries = [
+            entry
+            for entry in visible_entries
+            if any(
+                scope_matches_raw(scope, entry[1])
+                or (entry[2] is not None and scope_matches_raw(scope, entry[2]))
+                for scope in scope_raw
             )
+        ]
+    records = [record for record, _raw, _old in scoped_entries]
+    changed_files = list(
+        dict.fromkeys(
+            side
+            for _record, raw_path, raw_old_path in scoped_entries
+            for side in visible_sides(raw_path, raw_old_path)
         )
+    )
     inventory_raw = getattr(consumer.snapshot, "_inventory_raw_paths", ())
     if not inventory_raw:
         inventory_raw = tuple(

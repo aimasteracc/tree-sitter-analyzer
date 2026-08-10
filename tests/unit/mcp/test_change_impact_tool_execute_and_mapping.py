@@ -2535,3 +2535,53 @@ def test_frozen_snapshot_rejects_git_magic_scope_with_toon() -> None:
 def test_scope_matches_compatibility_wrapper_uses_filesystem_bytes() -> None:
     # PR #1252 zero-gate 2026-07-02: wrapper keeps raw prefix semantics.
     assert tool_module._scope_matches("src", "src/main.py") is True
+
+
+def test_strict_scope_rename_into_cache_keeps_visible_source_record(
+    tmp_path, monkeypatch
+) -> None:
+    # PR #1252 review thread 3751175562.
+    import subprocess
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    install_fake_snapshot_materializer(
+        monkeypatch,
+        tmp_path,
+        records=[
+            ChangedFile(
+                ".ast-cache/new.py",
+                "R",
+                True,
+                True,
+                False,
+                old_path="old.py",
+            )
+        ],
+        inventory_paths=[".ast-cache/new.py"],
+    )
+    _strict_capture_repo(tmp_path, {"old.py": "x = 1\n"})
+    (tmp_path / ".ast-cache").mkdir()
+    subprocess.run(
+        ["git", "mv", "old.py", ".ast-cache/new.py"], cwd=tmp_path, check=True
+    )
+    result = asyncio.run(
+        tool_module.ChangeImpactTool(str(tmp_path)).execute(
+            {
+                "capture_diff_snapshot": True,
+                "mode": "staged",
+                "scope_paths": ["old.py"],
+                "scope_mode": "strict",
+                "output_format": "json",
+            }
+        )
+    )
+
+    assert result["changed_files"] == ["old.py"]
+    assert [
+        (record["status"], record["old_path"], record["path"])
+        for record in result["changed_records"]
+    ] == [("R", "old.py", ".ast-cache/new.py")]
+    registry.close_route_lease(
+        str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -187,6 +188,51 @@ def reject_active_filters(raw: bytes, paths: tuple[bytes, ...]) -> None:
             raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_FILTER")
 
 
+def _check_deadline(deadline: float) -> None:
+    if deadline - time.monotonic() <= 0:
+        raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT")
+
+
+def _attribute_candidates(
+    inventory: tuple[bytes, ...],
+    deadline: float,
+    *,
+    file_budget: int,
+    byte_budget: int,
+) -> list[bytes]:
+    """Build the ancestor attribute set without exceeding capture budgets."""
+    attribute_paths: set[bytes] = set()
+    path_bytes = 0
+
+    def add(raw: bytes) -> None:
+        nonlocal path_bytes
+        _check_deadline(deadline)
+        if raw not in attribute_paths:
+            if (
+                len(attribute_paths) >= file_budget
+                or len(raw) > byte_budget - path_bytes
+            ):
+                raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+            attribute_paths.add(raw)
+            path_bytes += len(raw)
+        _check_deadline(deadline)
+
+    add(b".gitattributes")
+    for raw in inventory:
+        _check_deadline(deadline)
+        path = normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
+        parts = os.fsencode(path).split(b"/")
+        _check_deadline(deadline)
+        for depth in range(1, len(parts)):
+            _check_deadline(deadline)
+            add(b"/".join((*parts[:depth], b".gitattributes")))
+            _check_deadline(deadline)
+    _check_deadline(deadline)
+    ordered = sorted(attribute_paths)
+    _check_deadline(deadline)
+    return ordered
+
+
 def capture_frozen_git_settings(
     root: str,
     inventory: tuple[bytes, ...],
@@ -258,16 +304,13 @@ def capture_frozen_git_settings(
     # target path, including attribute files hidden by ignore rules.  Derive
     # this finite candidate set from the already bounded index/worktree target
     # inventory; never walk the workspace to discover settings.
-    attribute_paths = {b".gitattributes"}
-    for raw in inventory:
-        path = normalize_repo_path(raw.decode("utf-8", "surrogateescape"))
-        parts = os.fsencode(path).split(b"/")
-        for depth in range(1, len(parts)):
-            attribute_paths.add(b"/".join((*parts[:depth], b".gitattributes")))
-    ordered_attribute_paths = sorted(attribute_paths)
-    setting_file_count = len(ordered_attribute_paths) + 1 + int(core_file is not None)
-    if setting_file_count > _MAX_SETTINGS_FILES:
-        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
+    reserved_files = 1 + int(core_file is not None)
+    ordered_attribute_paths = _attribute_candidates(
+        inventory,
+        deadline,
+        file_budget=_MAX_SETTINGS_FILES - reserved_files,
+        byte_budget=remaining,
+    )
     worktree_files: list[FrozenSettingFile] = []
     for raw in ordered_attribute_paths:
         remaining -= len(raw)

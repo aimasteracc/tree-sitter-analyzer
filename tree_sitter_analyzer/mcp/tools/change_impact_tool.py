@@ -363,10 +363,7 @@ class ChangeImpactTool(BaseMCPTool):
                 compact_only=compact_only,
             )
         response_frozen = dict(frozen)
-        selected = set(changed_files)
-        response_frozen["changed_records"] = [
-            record for record in records if str(record["path"]) in selected
-        ]
+        response_frozen["changed_records"] = records
         result = self._attach_diff_snapshot(result, mode, True, frozen=response_frozen)
         if agent_summary_only:
             snapshot_surface: dict[str, Any] = {

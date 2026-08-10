@@ -496,3 +496,58 @@ def test_private_copy_failures_have_stable_accounting(tmp_path: Path) -> None:
             str(source), str(destination), lambda *a: None, lambda *a: rolled.append(a)
         )
     assert rolled == [(1, 1)]
+
+
+def test_attribute_candidates_stop_hostile_deep_inventory_at_file_budget(
+    monkeypatch,
+) -> None:
+    # PR #1252 review thread 3751175565.
+    normalized = 0
+    original = settings.normalize_repo_path
+
+    def count_normalize(path: str) -> str:
+        nonlocal normalized
+        normalized += 1
+        return original(path)
+
+    monkeypatch.setattr(settings, "normalize_repo_path", count_normalize)
+    inventory = tuple(
+        f"unique-{index}/a/b/c/d/e/file.py".encode() for index in range(10_000)
+    )
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_CAPACITY$"):
+        settings._attribute_candidates(
+            inventory, 1e20, file_budget=3, byte_budget=settings._MAX_SETTINGS_BYTES
+        )
+
+    assert normalized == 1
+
+
+def test_attribute_candidates_stop_hostile_inventory_at_deadline(monkeypatch) -> None:
+    # PR #1252 review thread 3751175565.
+    clock_calls = 0
+    normalized = 0
+    original = settings.normalize_repo_path
+
+    def hostile_clock() -> float:
+        nonlocal clock_calls
+        clock_calls += 1
+        return 0.0 if clock_calls < 8 else 2.0
+
+    def count_normalize(path: str) -> str:
+        nonlocal normalized
+        normalized += 1
+        return original(path)
+
+    monkeypatch.setattr(settings.time, "monotonic", hostile_clock)
+    monkeypatch.setattr(settings, "normalize_repo_path", count_normalize)
+    inventory = tuple(
+        f"unique-{index}/a/b/c/d/e/file.py".encode() for index in range(10_000)
+    )
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_TIMEOUT$"):
+        settings._attribute_candidates(
+            inventory, 1.0, file_budget=20_000, byte_budget=10_000_000
+        )
+
+    assert (clock_calls, normalized) == (8, 1)
