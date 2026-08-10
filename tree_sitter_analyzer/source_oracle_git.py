@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from .frozen_git_index import frozen_index_entries
+from .frozen_git_index import frozen_index_entries, reconstructed_index_file
 from .git_subprocess import run_git_bounded
 from .source_oracle import (
     RootIdentity,
@@ -48,6 +48,7 @@ class GitEpoch:
     dirty_paths: tuple[bytes, ...]
     untracked_paths: tuple[bytes, ...]
     workspace_gitlinks: tuple[tuple[bytes, bytes], ...] = ()
+    core_filemode: bool = True
 
     def index_map(self) -> dict[bytes, bytes]:
         return dict(self.index_entries)
@@ -81,6 +82,40 @@ def _object_format(root: str, *, deadline: float) -> str:
     if value not in (b"sha1", b"sha256"):
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
     return value.decode("ascii")
+
+
+def _core_filemode(root: str, *, deadline: float) -> bool:
+    value = git_output(
+        root,
+        ["config", "--bool", "--default", "true", "core.filemode"],
+        deadline=deadline,
+        limit=16,
+    ).strip()
+    if value in (b"", b"true"):
+        # ``--default true`` makes empty output unreachable for real Git; keep
+        # the empty case for injected Git seams that predate this frozen input.
+        return True
+    if value == b"false":
+        return False
+    raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+
+
+def _frozen_index_output(
+    root: str,
+    entries: dict[bytes, bytes],
+    args: list[str],
+    *,
+    deadline: float,
+    limit: int,
+) -> bytes:
+    with reconstructed_index_file(root, entries, deadline=deadline) as index_path:
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.upper().startswith("GIT_")
+        }
+        env.update({"GIT_INDEX_FILE": index_path, "GIT_OPTIONAL_LOCKS": "0"})
+        return run_git_bounded(root, args, deadline=deadline, limit=limit, env=env)
 
 
 def _head_identity(
@@ -230,7 +265,7 @@ def _frame_workspace_path(
         deadline=deadline,
         limit=content_budget,
         read_regular=content_required and not is_gitlink,
-        allow_directory=is_gitlink,
+        allow_directory=True,
     )
     _frame(digest, b"worktree-path", raw)
     if manifest is not None:
@@ -293,8 +328,10 @@ def oracle_generation(
     if top_root != root or top_identity != identity:
         raise SourceOracleError("DIFF_SNAPSHOT_ROOT_MISMATCH")
     object_format = _object_format(root, deadline=end)
+    core_filemode = _core_filemode(root, deadline=end)
     head = _head_identity(root, deadline=end, object_format=object_format)
     _frame(digest, b"object-format", object_format.encode("ascii"))
+    _frame(digest, b"core-filemode", b"true" if core_filemode else b"false")
     _frame(digest, b"HEAD", head)
     git_dir = git_output(
         root, ["rev-parse", "--git-dir"], deadline=end, limit=64 * 1024
@@ -323,8 +360,9 @@ def oracle_generation(
     index_entries = _index_entries(root, deadline=end, index_bytes=index_bytes)
     tracked = list(index_entries)
     head_entries = _head_entries(root, deadline=end, head=head)
-    dirty_raw = git_output(
+    dirty_raw = _frozen_index_output(
         root,
+        index_entries,
         [
             "diff-files",
             "--name-only",
@@ -336,8 +374,9 @@ def oracle_generation(
         deadline=end,
         limit=_MAX_INVENTORY_BYTES,
     )
-    untracked_raw = git_output(
+    untracked_raw = _frozen_index_output(
         root,
+        index_entries,
         ["ls-files", "--others", "--exclude-standard", "-z"],
         deadline=end,
         limit=_MAX_INVENTORY_BYTES,
@@ -376,6 +415,8 @@ def oracle_generation(
         if len(oid) != len(head):
             raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
         workspace_gitlinks[raw] = b"160000 " + oid + b" 0"
+        # Bind dirty-only gitlinks independently of their HEAD OID.
+        _frame(digest, b"worktree-gitlink-dirty", raw)
         _frame(digest, b"worktree-gitlink-head", raw + b"\0" + oid)
     if epoch_out is not None:
         epoch_out.append(
@@ -387,6 +428,7 @@ def oracle_generation(
                 dirty_paths=tuple(sorted(dirty)),
                 untracked_paths=tuple(sorted(untracked)),
                 workspace_gitlinks=tuple(sorted(workspace_gitlinks.items())),
+                core_filemode=core_filemode,
             )
         )
 
@@ -426,7 +468,15 @@ def oracle_generation(
         "--no-textconv",
         "--ignore-submodules=none",
     ]
-    patch = git_output(root, diff_args, deadline=end, limit=64 * 1024 * 1024)
+    if mode == "staged":
+        diff_args.append(os.fsdecode(head))
+    patch = _frozen_index_output(
+        root,
+        index_entries,
+        diff_args,
+        deadline=end,
+        limit=64 * 1024 * 1024,
+    )
     _frame(digest, b"patch", hashlib.sha256(patch).digest())
     return "sg_" + digest.hexdigest(), identity
 

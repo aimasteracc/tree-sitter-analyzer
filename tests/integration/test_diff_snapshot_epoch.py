@@ -244,3 +244,47 @@ def test_dirty_gitlink_ignores_configured_submodule_suppression(tmp_path: Path) 
     result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
 
     assert [record["path"] for record in result["changed_records"]] == ["vendor"]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_dirty_gitlink_same_oid_remains_explicitly_unsupported(tmp_path: Path) -> None:
+    # PR #1252 zero-gate 2026-07-02: dirty-only gitlinks cannot disappear.
+    child = _repo(tmp_path / "child")
+    root = _repo(tmp_path / "parent")
+    _git(
+        root,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child),
+        "vendor",
+    )
+    _git(root, "commit", "-am", "add submodule")
+    (root / "vendor" / "untracked.py").write_text("dirty = True\n")
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    oid = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root / "vendor",
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert result["changed_records"] == [
+        {
+            "path": "vendor",
+            "status": "M",
+            "old_available": True,
+            "new_available": True,
+            "binary": False,
+            "patch_available": False,
+            "old_kind": "gitlink",
+            "new_kind": "gitlink",
+            "old_mode": "160000",
+            "new_mode": "160000",
+            "old_oid": oid,
+            "unsupported_kind": "dirty_gitlink",
+        }
+    ]

@@ -267,7 +267,11 @@ def test_non_utf8_path_is_wire_safe_and_round_trips(tmp_path: Path) -> None:
     consumer, error = registry.acquire(str(created["diff_snapshot_id"]), str(root))
     assert error is None
     assert consumer is not None
-    assert consumer.snapshot.file(token).new_bytes == b"value = 1\n"
+    frozen_file = consumer.snapshot.file(token)
+    assert frozen_file.new_bytes == b"value = 1\n"
+    assert frozen_file.record.raw_path == raw
+    assert raw in consumer.snapshot._inventory_raw_paths
+    assert "\udcff" not in json.dumps(frozen_file.record.to_dict())
     consumer.release()
     assert (
         registry.close_lease(
@@ -355,3 +359,50 @@ def test_frozen_numstat_parses_binary_rename_destination() -> None:
 
 def test_safe_mode_reports_symlink() -> None:
     assert capture._safe_mode("symlink", ()) == ("120000", "symlink")
+
+
+@POSIX_SNAPSHOT_TEST
+def test_diff_excludes_changes_already_staged(tmp_path: Path) -> None:
+    # PR #1252 zero-gate 2026-07-02: diff is frozen index to worktree.
+    root = _repo(tmp_path)
+    (root / "old.py").write_text("staged = True\n")
+    _git(root, "add", "old.py")
+    (root / "gone.py").write_text("unstaged = True\n")
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert [record["path"] for record in result["changed_records"]] == ["gone.py"]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_tracked_file_replaced_by_directory_is_deletion(tmp_path: Path) -> None:
+    # PR #1252 zero-gate 2026-07-02: a non-gitlink directory is not special.
+    root = _repo(tmp_path)
+    (root / "old.py").unlink()
+    (root / "old.py").mkdir()
+    (root / "old.py" / "child.py").write_text("child = True\n")
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert [
+        (record["path"], record["status"]) for record in result["changed_records"]
+    ] == [
+        ("old.py", "D"),
+        ("old.py/child.py", "A"),
+    ]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_core_filemode_false_preserves_tracked_index_mode(tmp_path: Path) -> None:
+    # PR #1252 zero-gate 2026-07-02: false ignores execute-bit lstat drift.
+    root = _repo(tmp_path)
+    target = root / "old.py"
+    target.chmod(0o755)
+    _git(root, "add", "old.py")
+    _git(root, "config", "core.filemode", "false")
+    target.write_text("changed = True\n")
+    target.chmod(0o644)
+
+    result = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert result["changed_records"][0]["new_mode"] == "100755"

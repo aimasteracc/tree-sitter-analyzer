@@ -228,26 +228,6 @@ def test_release_rejects_wrong_thread_owner(tmp_path: Path, monkeypatch) -> None
     consumer.release()
 
 
-def test_release_rejects_pin_underflow(tmp_path: Path, monkeypatch) -> None:
-    root, registry, result = _created(tmp_path, monkeypatch)
-    consumer, _ = registry.acquire(str(result["diff_snapshot_id"]), str(root))
-    assert consumer is not None
-    assert (
-        registry.close_lease(
-            str(result["diff_snapshot_id"]), str(result["route_lease_id"])
-        )
-        is True
-    )
-    consumer.release()
-    with pytest.raises(RuntimeError, match="DIFF_SNAPSHOT_PIN_INVALID"):
-        registry._release(consumer.snapshot.snapshot_id, consumer._pin, consumer._owner)
-
-
-def test_close_lease_rejects_wrong_lease(tmp_path: Path, monkeypatch) -> None:
-    _, registry, result = _created(tmp_path, monkeypatch)
-    assert registry.close_lease(str(result["diff_snapshot_id"]), "wrong") is False
-
-
 def test_acquire_rejects_generation_drift(tmp_path: Path, monkeypatch) -> None:
     root, registry, result = _created(tmp_path, monkeypatch)
     identity = next(iter(registry._states.values())).snapshot.root_identity
@@ -397,11 +377,6 @@ def test_bind_assessed_scope_replaces_scope_for_single_pin(tmp_path: Path) -> No
     consumer.release()
 
 
-def test_release_route_lease_reports_unknown_snapshot() -> None:
-    registry = snapshots.DiffSnapshotRegistry()
-    assert registry.release_route_lease("missing", "lease") == "DIFF_SNAPSHOT_EXPIRED"
-
-
 def test_validate_publish_bounds_oracle_by_remaining_lifetime(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -489,30 +464,3 @@ def test_validate_publish_rejects_erased_snapshot_before_oracle(
     registry.reset()
 
     assert registry.validate_publish(consumer) == "DIFF_SNAPSHOT_EXPIRED"
-
-
-def test_closed_lease_idempotency_history_has_fixed_horizon() -> None:
-    registry = snapshots.DiffSnapshotRegistry(clock=lambda: 0.0)
-    lease = "lease"
-    for index in range(10_000):
-        sid = f"snapshot-{index}"
-        snapshot = type(
-            "Snapshot", (), {"created_monotonic": 0.0, "materialized_bytes": 0}
-        )()
-        registry._states[sid] = snapshots._State(snapshot, lease)
-        assert registry.release_route_lease(sid, lease) is None
-
-    assert len(registry._closed_leases) == snapshots.MAX_CLOSED_LEASES
-    assert registry.release_route_lease("snapshot-0", lease) == "DIFF_SNAPSHOT_EXPIRED"
-    assert registry.release_route_lease("snapshot-9999", lease) is None
-
-
-def test_sweep_hard_evicts_preexisting_closed_lease_overflow() -> None:
-    registry = snapshots.DiffSnapshotRegistry(clock=lambda: 0.0)
-    for index in range(snapshots.MAX_CLOSED_LEASES + 1):
-        registry._closed_leases[f"snapshot-{index}"] = ("lease", 0.0)
-
-    registry.stats()
-
-    assert len(registry._closed_leases) == snapshots.MAX_CLOSED_LEASES
-    assert "snapshot-0" not in registry._closed_leases

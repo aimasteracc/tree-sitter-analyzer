@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import inspect
 import json
 import os
@@ -12,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
 from .diff_snapshot_capture import FrozenFile, _capture_payload
-from .diff_snapshot_leases import ClosedLeaseTombstones, SnapshotConsumer
+from .diff_snapshot_leases import SnapshotConsumer
 from .diff_snapshot_paths import epoch_inventory, path_collection_storage
 from .git_path_codec import path_from_wire, path_to_wire
 from .source_oracle import (
@@ -25,12 +28,12 @@ from .source_oracle import (
 from .source_oracle_git import GitEpoch
 
 MAX_SNAPSHOTS = 16
-MAX_CLOSED_LEASES = 4 * MAX_SNAPSHOTS
 MAX_MATERIALIZED_BYTES = 64 * 1024 * 1024
 HARD_LIFETIME_SECONDS = 35.0
 MAX_SCOPE_PATHS = 4096
 MAX_PATH_BYTES = 4096
 MAX_SCOPE_BYTES = 1024 * 1024
+_PROCESS_LEASE_KEY = secrets.token_bytes(32)
 
 
 def _path_storage(paths: tuple[str, ...] | list[str] | set[str]) -> int:
@@ -61,21 +64,21 @@ class FrozenDiffSnapshot:
     assessed_scope_paths: tuple[str, ...]
     created_monotonic: float
     materialized_bytes: int
+    _inventory_raw_paths: tuple[bytes, ...] = ()
+    _assessed_scope_raw_paths: tuple[bytes, ...] = ()
 
     def file(self, path: str) -> FrozenFile | None:
         try:
             normalized = path_from_wire(path)
         except SourceOracleError:
             return None
-        return next(
-            (item for item in self.files if item.record.path == normalized), None
-        )
+        raw = os.fsencode(normalized)
+        return next((item for item in self.files if item.record.raw_path == raw), None)
 
 
 @dataclass
 class _State:
     snapshot: FrozenDiffSnapshot
-    route_lease_id: str
     lease_open: bool = True
     expired: bool = False
     pins: dict[str, int] = field(default_factory=dict)
@@ -87,16 +90,13 @@ class DiffSnapshotRegistry:
         self._lock = threading.RLock()
         self._states: dict[str, _State] = {}
         self._reservations: dict[str, int] = {}
-        self._closed_leases = ClosedLeaseTombstones(
-            capacity=MAX_CLOSED_LEASES,
-            lifetime_seconds=HARD_LIFETIME_SECONDS,
-            clock=clock,
-        )
+        # One fixed process-local capability key gives unbounded exact-pair
+        # close idempotency without retaining attacker-controlled tombstones.
+        self._lease_key = _PROCESS_LEASE_KEY
         self._charged_bytes = 0
 
     def _sweep(self) -> None:
         now = self._clock()
-        self._closed_leases.sweep(now=now)
         for sid, state in list(self._states.items()):
             if now - state.snapshot.created_monotonic >= HARD_LIFETIME_SECONDS:
                 state.expired = True
@@ -112,6 +112,13 @@ class DiffSnapshotRegistry:
     @staticmethod
     def _error(code: str) -> dict[str, object]:
         return {"success": False, "error_code": code}
+
+    def _route_lease(self, snapshot_id: str) -> str:
+        digest = hmac.new(
+            self._lease_key, snapshot_id.encode("ascii"), hashlib.sha256
+        ).digest()
+        token = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+        return "dl_" + token
 
     def create(
         self, project_root: str | None, mode: str, assessed_scope_paths: list[str]
@@ -216,7 +223,7 @@ class DiffSnapshotRegistry:
             if size > ceiling:
                 raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
             sid = "ds_" + secrets.token_urlsafe(24)
-            lease = "dl_" + secrets.token_urlsafe(24)
+            lease = self._route_lease(sid)
             snapshot = FrozenDiffSnapshot(
                 sid,
                 before,
@@ -228,13 +235,22 @@ class DiffSnapshotRegistry:
                 tuple(sorted(paths, key=os.fsencode)),
                 started,
                 size,
+                tuple(sorted(os.fsencode(path) for path in inventory_paths)),
+                tuple(sorted(os.fsencode(path) for path in paths)),
             )
             with self._lock:
                 self._reservations.pop(reservation, None)
                 self._sweep()
                 if self._clock() - started >= HARD_LIFETIME_SECONDS:
                     return self._error("DIFF_SNAPSHOT_TIMEOUT")
-                self._states[sid] = _State(snapshot, lease)
+                # Re-check the global bound at commit time: concurrent captures
+                # may still own conservative reservations.
+                if (
+                    self._charged_bytes + sum(self._reservations.values()) + size
+                    > MAX_MATERIALIZED_BYTES
+                ):
+                    return self._error("DIFF_SNAPSHOT_CAPACITY")
+                self._states[sid] = _State(snapshot)
                 self._charged_bytes += size
             return {
                 "success": True,
@@ -330,11 +346,17 @@ class DiffSnapshotRegistry:
                 return "DIFF_SNAPSHOT_EXPIRED"
             old_paths_size = _path_storage(state.snapshot.assessed_scope_paths)
             delta = _path_storage(normalized) - old_paths_size
-            if self._charged_bytes + delta > MAX_MATERIALIZED_BYTES:
+            if (
+                self._charged_bytes + sum(self._reservations.values()) + delta
+                > MAX_MATERIALIZED_BYTES
+            ):
                 return "DIFF_SNAPSHOT_CAPACITY"
             updated = replace(
                 state.snapshot,
                 assessed_scope_paths=normalized,
+                _assessed_scope_raw_paths=tuple(
+                    os.fsencode(path) for path in normalized
+                ),
                 materialized_bytes=state.snapshot.materialized_bytes + delta,
             )
             state.snapshot = updated
@@ -420,17 +442,16 @@ class DiffSnapshotRegistry:
         """Close an owned route lease; repeating the exact token pair is idempotent."""
         with self._lock:
             self._sweep()
-            closed, error = self._closed_leases.check(sid, lease)
-            if closed:
-                return error
-            state = self._states.get(sid)
-            if state is None:
-                return "DIFF_SNAPSHOT_EXPIRED"
-            if state.route_lease_id != lease:
+            expected = self._route_lease(sid)
+            if not hmac.compare_digest(expected, lease):
                 return "DIFF_SNAPSHOT_LEASE_MISMATCH"
+            state = self._states.get(sid)
+            # A valid capability remains idempotent after expiry/erasure without
+            # any per-snapshot retained state.
+            if state is None:
+                return None
             state.lease_open = False
             state.expired = True
-            self._closed_leases.remember(sid, lease)
             if not state.pins:
                 self._erase(sid)
             return None
@@ -444,7 +465,6 @@ class DiffSnapshotRegistry:
                 raise RuntimeError("DIFF_SNAPSHOT_CONSUMERS_ACTIVE")
             self._states.clear()
             self._reservations.clear()
-            self._closed_leases.clear()
             self._charged_bytes = 0
 
     def stats(self) -> tuple[int, int]:

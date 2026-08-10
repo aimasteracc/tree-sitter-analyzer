@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Change-impact MCP tool bound to frozen source epochs."""
 
+import os
 from typing import Any
 
-from ...git_path_codec import path_to_wire
+from ...git_path_codec import path_from_wire, path_to_wire
 from ...pr_url import (
     check_gh_available,
     fetch_pr_changed_files,
@@ -42,10 +43,15 @@ from .utils.change_impact_response import (
 )
 
 
+def _scope_matches_raw(scope: bytes, path: bytes) -> bool:
+    """Match raw Git identities before any wire encoding."""
+    prefix = scope.rstrip(b"/")
+    return prefix == b"." or path == prefix or path.startswith(prefix + b"/")
+
+
 def _scope_matches(scope: str, path: str) -> bool:
-    """Match one normalized Git scope against a repository-relative identity."""
-    prefix = scope.rstrip("/")
-    return prefix == "." or path == prefix or path.startswith(prefix + "/")
+    """Compatibility wrapper using lossless filesystem-byte identities."""
+    return _scope_matches_raw(os.fsencode(scope), os.fsencode(path))
 
 
 class ChangeImpactTool(BaseMCPTool):
@@ -183,12 +189,10 @@ class ChangeImpactTool(BaseMCPTool):
             if any(str(path).startswith(":") for path in scope_paths):
                 return snapshot_error("DIFF_SNAPSHOT_UNSUPPORTED_SCOPE")
             from ...diff_snapshot_registry import REGISTRY
-            from ...source_oracle import SourceOracleError, normalize_repo_path
+            from ...source_oracle import SourceOracleError
 
             try:
-                normalized_scope = [
-                    normalize_repo_path(str(path)) for path in scope_paths
-                ]
+                normalized_scope = [path_from_wire(str(path)) for path in scope_paths]
             except SourceOracleError as exc:
                 return snapshot_error(str(exc))
             scope_paths = normalized_scope
@@ -350,37 +354,65 @@ class ChangeImpactTool(BaseMCPTool):
             [str(record["path"]) for record in records]
         )
         visible_paths = set(workspace_changed_files)
-        record_identities = {
-            str(record[key])
-            for record in records
-            if str(record["path"]) in visible_paths
-            for key in ("path", "old_path")
-            if record.get(key)
+        frozen_files = {
+            path_to_wire(item.record.path): (
+                item.record.raw_path,
+                item.record.raw_old_path,
+            )
+            for item in getattr(consumer.snapshot, "files", ())
+        }
+        if not frozen_files:
+            frozen_files = {
+                str(record["path"]): (
+                    os.fsencode(path_from_wire(str(record["path"]))),
+                    (
+                        os.fsencode(path_from_wire(str(record["old_path"])))
+                        if record.get("old_path")
+                        else None
+                    ),
+                )
+                for record in records
+            }
+        scope_raw = [os.fsencode(scope) for scope in scope_paths]
+        record_identities_raw = {
+            identity
+            for public_path, identities in frozen_files.items()
+            if public_path in visible_paths
+            for identity in identities
+            if identity is not None
         }
         changed_files = workspace_changed_files
-        if scope_paths:
+        if scope_raw:
             changed_files = [
-                str(record["path"])
-                for record in records
-                if str(record["path"]) in visible_paths
+                public_path
+                for public_path, (raw_path, raw_old_path) in frozen_files.items()
+                if public_path in visible_paths
                 and any(
-                    _scope_matches(scope, str(record.get("old_path") or ""))
-                    or _scope_matches(scope, str(record["path"]))
-                    for scope in scope_paths
+                    _scope_matches_raw(scope, raw_path)
+                    or (
+                        raw_old_path is not None
+                        and _scope_matches_raw(scope, raw_old_path)
+                    )
+                    for scope in scope_raw
                 )
             ]
-        # Scope existence is an identity question, not a changed-record
-        # question. Use only the immutable inventory captured inside the source
-        # oracle epoch; a clean file or directory prefix is still valid.
-        inventory_paths = tuple(
-            path_to_wire(path) for path in consumer.snapshot.inventory_paths
-        )
-        scope_identities = set(inventory_paths).union(record_identities)
+        # Existence and prefix checks stay on raw Git identities. Encoding is
+        # exclusively a response-boundary concern.
+        inventory_raw = getattr(consumer.snapshot, "_inventory_raw_paths", ())
+        if not inventory_raw:
+            inventory_raw = tuple(
+                os.fsencode(path) for path in consumer.snapshot.inventory_paths
+            )
+        scope_identities_raw = set(inventory_raw).union(record_identities_raw)
         invalid_scope = [
-            scope
-            for scope in scope_paths
-            if not any(_scope_matches(scope, path) for path in scope_identities)
+            path_to_wire(scope)
+            for scope, raw_scope in zip(scope_paths, scope_raw, strict=True)
+            if not any(
+                _scope_matches_raw(raw_scope, identity)
+                for identity in scope_identities_raw
+            )
         ]
+        public_scope_paths = [path_to_wire(path) for path in scope_paths]
         if changed_files:
             result: dict[str, Any] = {
                 "success": True,
@@ -408,19 +440,19 @@ class ChangeImpactTool(BaseMCPTool):
                 },
             }
         else:
-            result = build_no_changes_result(mode, scope_paths)
-        result["scope_paths"] = scope_paths
+            result = build_no_changes_result(mode, public_scope_paths)
+        result["scope_paths"] = public_scope_paths
         result["scope_filtered"] = bool(scope_paths)
         result = attach_queue_ledger(
             result,
             mode=mode,
-            scope_paths=scope_paths,
+            scope_paths=public_scope_paths,
             scoped_changed_files=changed_files,
             workspace_changed_files=workspace_changed_files,
             scope_mode=scope_mode,
         )
         result = apply_scope_validation(result, invalid_scope)
-        assessed = sorted(set(workspace_changed_files).union(scope_paths))
+        assessed = sorted(set(workspace_changed_files).union(public_scope_paths))
         error = REGISTRY.bind_assessed_scope(consumer, assessed)
         frozen["assessed_scope_paths"] = [
             path_to_wire(path) for path in consumer.snapshot.assessed_scope_paths

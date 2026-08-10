@@ -271,11 +271,15 @@ class ASTDiffTool(BaseMCPTool):
                     or _language_from_ext(frozen.record.path)
                     or ""
                 )
-                if frozen.record.binary or any(
-                    kind not in ("file", "missing")
-                    for kind in (
-                        getattr(frozen.record, "old_kind", "file"),
-                        getattr(frozen.record, "new_kind", "file"),
+                if (
+                    getattr(frozen.record, "unsupported_kind", None) is not None
+                    or frozen.record.binary
+                    or any(
+                        kind not in ("file", "missing")
+                        for kind in (
+                            getattr(frozen.record, "old_kind", "file"),
+                            getattr(frozen.record, "new_kind", "file"),
+                        )
                     )
                 ):
                     return apply_toon_format_to_response(

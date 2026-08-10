@@ -21,6 +21,28 @@ from .source_oracle_git import (
 )
 
 
+def _quote_alternate_object_directory(raw: bytes) -> str:
+    """Encode one alternate as one Git C-quoted list element."""
+    escaped = bytearray(b'"')
+    for value in raw:
+        if value == 0x22:
+            escaped.extend(b'\\"')
+        elif value == 0x5C:
+            escaped.extend(b"\\\\")
+        elif value == 0x0A:
+            escaped.extend(b"\\n")
+        elif value == 0x0D:
+            escaped.extend(b"\\r")
+        elif value == 0x09:
+            escaped.extend(b"\\t")
+        elif 0x20 <= value < 0x7F:
+            escaped.append(value)
+        else:
+            escaped.extend(f"\\{value:03o}".encode("ascii"))
+    escaped.extend(b'"')
+    return escaped.decode("ascii")
+
+
 class FrozenGitEnvironment:
     """Normal temporary index/object store; never writes inside the project."""
 
@@ -94,7 +116,9 @@ class FrozenGitEnvironment:
                 limit=64 * 1024,
             )
             objects = _strip_one_record_terminator(objects)
-            env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = os.fsdecode(objects)
+            env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = _quote_alternate_object_directory(
+                objects
+            )
         return env
 
     def run(
@@ -129,8 +153,16 @@ class FrozenGitEnvironment:
                 continue
             if safe.kind == "directory":
                 entry = dict(self.epoch.workspace_gitlinks).get(raw)
-                if entry is None or not entry.startswith(b"160000 "):
-                    raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
+                if entry is None:
+                    original = self.epoch.index_map().get(raw)
+                    if original is None or original.startswith(b"160000 "):
+                        raise SourceOracleError("DIFF_SNAPSHOT_SPECIAL_FILE")
+                    # A tracked regular leaf replaced by a directory is a
+                    # deletion; its untracked descendants remain separate.
+                    self.run(["update-index", "--force-remove", "--", os.fsdecode(raw)])
+                    continue
+                if not entry.startswith(b"160000 "):
+                    raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
                 mode, oid, _stage = entry.split(b" ")
                 self.run(
                     [
@@ -155,6 +187,11 @@ class FrozenGitEnvironment:
                 raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
             if safe.kind == "symlink":
                 mode = b"120000"
+            elif not self.epoch.core_filemode:
+                existing = self.epoch.index_map().get(raw)
+                mode = existing.split(b" ", 1)[0] if existing is not None else b"100644"
+                if mode not in (b"100644", b"100755"):
+                    mode = b"100644"
             else:
                 try:
                     stat_mode = int(safe.metadata[-1].split(b",")[2])

@@ -46,6 +46,51 @@ def private_index_file(
             pass
 
 
+@contextmanager
+def reconstructed_index_file(
+    root: str,
+    entries: dict[bytes, bytes],
+    *,
+    deadline: float,
+) -> Iterator[str]:
+    """Build a plain private index from captured stage-zero identities."""
+    descriptor, path = tempfile.mkstemp(prefix="tsa-reconstructed-index-")
+    os.close(descriptor)
+    os.unlink(path)
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith("GIT_")
+    }
+    env.update({"GIT_INDEX_FILE": path, "GIT_OPTIONAL_LOCKS": "0"})
+    try:
+        run_git_bounded(
+            root, ["read-tree", "--empty"], deadline=deadline, limit=4096, env=env
+        )
+        payload = bytearray()
+        for raw_path, header in sorted(entries.items()):
+            mode, oid, stage = header.split(b" ")
+            if stage != b"0":
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+            payload.extend(mode + b" " + oid + b"\t" + raw_path + b"\0")
+        if payload:
+            run_git_bounded(
+                root,
+                ["update-index", "-z", "--index-info"],
+                deadline=deadline,
+                limit=4096,
+                env=env,
+                input_=bytes(payload),
+            )
+        os.chmod(path, 0o600)
+        yield path
+    finally:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+
+
 def parse_stage_zero_entries(raw: bytes, *, max_paths: int) -> dict[bytes, bytes]:
     """Parse a bounded ``git ls-files --stage -z`` response."""
     entries: dict[bytes, bytes] = {}

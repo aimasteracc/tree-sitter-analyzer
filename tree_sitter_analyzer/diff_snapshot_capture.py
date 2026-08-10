@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .diff_snapshot_epoch import FrozenGitEnvironment
 from .git_path_codec import path_to_wire
@@ -32,6 +32,19 @@ class ChangedFile:
     new_mode: str | None = None
     old_oid: str | None = None
     new_oid: str | None = None
+    unsupported_kind: str | None = None
+    _raw_path: bytes | None = field(default=None, repr=False, compare=False)
+    _raw_old_path: bytes | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def raw_path(self) -> bytes:
+        return self._raw_path if self._raw_path is not None else os.fsencode(self.path)
+
+    @property
+    def raw_old_path(self) -> bytes | None:
+        if self._raw_old_path is not None:
+            return self._raw_old_path
+        return os.fsencode(self.old_path) if self.old_path is not None else None
 
     def to_dict(self) -> dict[str, object]:
         value: dict[str, object] = {
@@ -46,7 +59,13 @@ class ChangedFile:
         }
         if self.old_path is not None:
             value["old_path"] = path_to_wire(self.old_path)
-        for key in ("old_mode", "new_mode", "old_oid", "new_oid"):
+        for key in (
+            "old_mode",
+            "new_mode",
+            "old_oid",
+            "new_oid",
+            "unsupported_kind",
+        ):
             item = getattr(self, key)
             if item is not None:
                 value[key] = item
@@ -269,30 +288,34 @@ def _capture_payload(
     expected_manifest: dict[str, tuple[bytes, ...]] | None = None,
     epoch: GitEpoch | None = None,
 ) -> tuple[bytes, tuple[FrozenFile, ...]]:
-    """Capture using only the exact pre-oracle index/HEAD and safe leaf reads."""
+    """Capture frozen index→worktree or frozen HEAD→index payloads."""
     if epoch is None:
         raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
     frozen = epoch
     remaining = ceiling
+    index_entries = frozen.index_map()
     head_entries = _head_entries(root, deadline=deadline, head=frozen.head)
     safe_paths: dict[bytes, SafePath] = {}
     with FrozenGitEnvironment(root, frozen, deadline) as git:
+        # The workspace comparison base must be the captured index, not HEAD.
+        base = frozen.head
+        old_entries = head_entries
         if mode == "diff":
-            staged = _frozen_rows(git, frozen.head, min(8 * 1024 * 1024, remaining))
+            base = git.run(["write-tree"], limit=4096).strip()
+            if not base:
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+            old_entries = index_entries
             raw_paths = set(frozen.dirty_paths) | set(frozen.untracked_paths)
-            raw_paths.update(path for _, _, path in staged)
-            # Capture every workspace-side leaf before hashing or mutating index two.
             for raw in sorted(raw_paths):
                 path = _decode_path(raw)
-                entry = frozen.index_map().get(raw)
-                is_gitlink = bool(entry and entry.startswith(b"160000 "))
                 safe = safe_workspace_path(
                     root,
                     path,
                     deadline=deadline,
                     limit=remaining,
                     expected_chain=(expected_manifest or {}).get(path),
-                    allow_directory=is_gitlink,
+                    # Regular tracked leaves may have been replaced by dirs.
+                    allow_directory=True,
                 )
                 if safe.data is not None:
                     remaining -= len(safe.data)
@@ -300,34 +323,43 @@ def _capture_payload(
             workspace_entries = git.apply_workspace(safe_paths)
         else:
             workspace_entries = {}
-        patch = git.run(
-            [
-                "diff",
-                "--cached",
-                "--binary",
-                "--full-index",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--ignore-submodules=none",
-                os.fsdecode(frozen.head),
-            ],
-            limit=remaining,
-        )
+
+        diff_options = [
+            "diff",
+            "--cached",
+            "--binary",
+            "--full-index",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--ignore-submodules=none",
+            os.fsdecode(base),
+        ]
+        patch = git.run(diff_options, limit=remaining)
         remaining -= len(patch)
-        rows = _frozen_rows(git, frozen.head, min(8 * 1024 * 1024, remaining))
-        binaries = _binary_paths(git, frozen.head, min(8 * 1024 * 1024, remaining))
-        final_entries = frozen.index_map()
+        rows = _frozen_rows(git, base, min(8 * 1024 * 1024, remaining))
+        patch_row_paths = {row[2] for row in rows}
+        binaries = _binary_paths(git, base, min(8 * 1024 * 1024, remaining))
+        final_entries = dict(index_entries)
         if mode == "diff":
             for raw, safe in safe_paths.items():
-                if safe.kind == "missing":
+                if safe.kind in ("missing", "directory") and not (
+                    safe.kind == "directory" and raw in workspace_entries
+                ):
                     final_entries.pop(raw, None)
                 else:
-                    # Every accepted non-missing leaf is materialized or fail-closed.
                     final_entries[raw] = workspace_entries[raw]
+            # A dirty submodule can retain the same HEAD OID. Git then emits no
+            # row, but the unsupported dirty identity must never be dropped.
+            for raw in sorted(dict(frozen.workspace_gitlinks)):
+                if raw in frozen.dirty_paths and raw not in patch_row_paths:
+                    rows.append(("M", None, raw))
+            rows.sort(key=lambda row: row[2])
+
         files: list[FrozenFile] = []
+        dirty_gitlinks = set(dict(frozen.workspace_gitlinks)) & set(frozen.dirty_paths)
         for status, old_raw, raw in rows:
             lookup = old_raw or raw
-            old_entry = head_entries.get(lookup)
+            old_entry = old_entries.get(lookup)
             new_entry = final_entries.get(raw)
             old_mode, old_oid, old_kind = _entry_parts(old_entry)
             new_mode, new_oid, new_kind = _entry_parts(new_entry)
@@ -337,13 +369,22 @@ def _capture_payload(
             remaining -= len(new or b"")
             if mode == "diff" and raw in safe_paths:
                 safe = safe_paths[raw]
-                new_mode, new_kind = _safe_mode(safe.kind, safe.metadata)
-                # Temporary object identity is an implementation detail, not a repository OID.
-                new_oid = None
-                if safe.kind == "missing":
-                    new = None
+                if safe.kind == "directory" and raw not in workspace_entries:
+                    new_mode, new_kind, new_oid, new = None, "missing", None, None
+                else:
+                    if safe.kind == "file" and not frozen.core_filemode:
+                        new_mode, _temporary_oid, new_kind = _entry_parts(
+                            workspace_entries[raw]
+                        )
+                    else:
+                        new_mode, new_kind = _safe_mode(safe.kind, safe.metadata)
+                    # Temporary object identity is not a repository attestation.
+                    new_oid = None
+                    if safe.kind == "missing":
+                        new = None
             path = _decode_path(raw)
             old_path = _decode_path(old_raw) if old_raw is not None else None
+            unsupported = "dirty_gitlink" if raw in dirty_gitlinks else None
             files.append(
                 FrozenFile(
                     ChangedFile(
@@ -353,12 +394,16 @@ def _capture_payload(
                         new_available=new is not None or new_kind == "gitlink",
                         binary=raw in binaries,
                         old_path=old_path,
+                        patch_available=unsupported is None and raw in patch_row_paths,
                         old_kind=old_kind,
                         new_kind=new_kind,
                         old_mode=old_mode,
                         new_mode=new_mode,
                         old_oid=old_oid,
                         new_oid=new_oid,
+                        unsupported_kind=unsupported,
+                        _raw_path=raw,
+                        _raw_old_path=old_raw,
                     ),
                     old,
                     new,

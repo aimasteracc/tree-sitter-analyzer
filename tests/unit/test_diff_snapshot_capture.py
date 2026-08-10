@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+import tree_sitter_analyzer.diff_snapshot_capture as capture
+import tree_sitter_analyzer.diff_snapshot_epoch as epoch
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
 from tests.unit._diff_snapshot_support import make_repo
 
@@ -359,3 +361,56 @@ def test_frozen_environment_accepts_empty_index(tmp_path: Path) -> None:
 
     with frozen:
         assert Path(frozen.index_path).is_file()
+
+
+def test_alternate_object_directory_is_one_c_quoted_list_entry() -> None:
+    # PR #1252 zero-gate 2026-07-02: separators and controls stay quoted.
+    expected = '"/tmp/objects:one;two' + "\\\\" + '\\"line\\nnext\\r\\t\\377"'
+
+    assert (
+        epoch._quote_alternate_object_directory(
+            b'/tmp/objects:one;two\\"line\nnext\r\t\xff'
+        )
+        == expected
+    )
+
+
+def test_changed_file_prefers_explicit_raw_old_path() -> None:
+    record = capture.ChangedFile(
+        "new.py", "R", True, True, False, "old.py", _raw_old_path=b"old-\xff.py"
+    )
+
+    assert record.raw_old_path == b"old-\xff.py"
+
+
+def test_payload_rejects_empty_frozen_index_tree(monkeypatch) -> None:
+    class Git:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def run(self, *args, **kwargs):
+            return b""
+
+    monkeypatch.setattr(capture, "FrozenGitEnvironment", lambda *args: Git())
+    monkeypatch.setattr(capture, "_head_entries", lambda *args, **kwargs: {})
+
+    with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        capture._capture_payload(".", "diff", 1e20, 1024, epoch=_epoch())
+
+
+def test_frozen_workspace_rejects_malformed_gitlink_binding(tmp_path: Path) -> None:
+    from tree_sitter_analyzer.diff_snapshot_epoch import FrozenGitEnvironment
+    from tree_sitter_analyzer.source_oracle import SafePath
+
+    frozen = FrozenGitEnvironment(
+        str(tmp_path), _epoch(workspace_gitlinks=((b"vendor", b"bad"),)), 1e20
+    )
+    frozen._directory = str(tmp_path)
+    frozen.index_path = str(tmp_path / "index")
+    Path(frozen.index_path).write_bytes(b"")
+
+    with pytest.raises(snapshots.SourceOracleError, match="DIFF_SNAPSHOT_GIT_ERROR"):
+        frozen.apply_workspace({b"vendor": SafePath(None, (), "directory")})

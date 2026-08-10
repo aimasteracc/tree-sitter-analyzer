@@ -339,3 +339,21 @@ def test_git_output_wrapper_delegates(monkeypatch) -> None:
         oracle_git, "git_output", lambda root, args, **kwargs: b"frozen"
     )
     assert oracle.git_output(".", ["status"], deadline=1e20, limit=10) == b"frozen"
+
+
+@POSIX_SNAPSHOT_TEST
+def test_safe_workspace_path_can_bind_regular_metadata_without_content(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "metadata-only.py"
+    target.write_text("secret content\n")
+
+    safe = oracle.safe_workspace_path(
+        str(tmp_path),
+        "metadata-only.py",
+        deadline=time.monotonic() + 1,
+        limit=0,
+        read_regular=False,
+    )
+
+    assert (safe.kind, safe.data) == ("file", None)
