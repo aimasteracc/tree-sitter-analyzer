@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess  # nosec B404
 import tempfile
@@ -145,6 +146,71 @@ def reconstructed_index_file(
             pass
 
 
+def invalidate_index_stat_cache(index_bytes: bytes, *, object_format: str) -> bytes:
+    """Derive a discovery index that forces content checks but retains flags."""
+    hash_size = 32 if object_format == "sha256" else 20
+    version = int.from_bytes(index_bytes[4:8], "big")
+    count = int.from_bytes(index_bytes[8:12], "big")
+    content_end = len(index_bytes) - hash_size
+    result = bytearray(index_bytes)
+    offset = 12
+    flags_offset = 40 + hash_size
+    for _ in range(count):
+        start = offset
+        if offset + flags_offset + 2 > content_end:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        result[offset : offset + 24] = b"\0" * 24
+        result[offset + 28 : offset + 40] = b"\0" * 12
+        flags = int.from_bytes(
+            index_bytes[offset + flags_offset : offset + flags_offset + 2], "big"
+        )
+        offset += flags_offset + 2 + (2 if flags & 0x4000 else 0)
+        if version == 4:
+            while offset < content_end and index_bytes[offset] & 0x80:
+                offset += 1
+            offset += 1
+        terminator = index_bytes.find(b"\0", offset, content_end)
+        if terminator < 0:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        offset = terminator + 1
+        if version in (2, 3):
+            offset = start + ((offset - start + 7) & ~7)
+    digest = hashlib.sha256 if object_format == "sha256" else hashlib.sha1
+    result[-hash_size:] = digest(result[:-hash_size]).digest()
+    return bytes(result)
+
+
+def frozen_index_output(
+    root: str,
+    index_bytes: bytes,
+    args: list[str],
+    *,
+    deadline: float,
+    limit: int,
+    refresh: bool = False,
+    object_format: str = "sha1",
+) -> bytes:
+    """Run Git against an external mode-0600 byte-for-byte index snapshot."""
+    materialized = (
+        invalidate_index_stat_cache(index_bytes, object_format=object_format)
+        if refresh and index_bytes
+        else index_bytes
+    )
+    context = (
+        private_index_file(root, materialized)
+        if index_bytes
+        else reconstructed_index_file(root, {}, deadline=deadline)
+    )
+    with context as index_path:
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.upper().startswith("GIT_")
+        }
+        env.update({"GIT_INDEX_FILE": index_path, "GIT_OPTIONAL_LOCKS": "0"})
+        return run_git_bounded(root, args, deadline=deadline, limit=limit, env=env)
+
+
 def parse_stage_zero_entries(raw: bytes, *, max_paths: int) -> dict[bytes, bytes]:
     """Parse a bounded ``git ls-files --stage -z`` response."""
     entries: dict[bytes, bytes] = {}
@@ -166,6 +232,60 @@ def parse_stage_zero_entries(raw: bytes, *, max_paths: int) -> dict[bytes, bytes
     if len(entries) > max_paths:
         raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY")
     return entries
+
+
+def has_split_index(index_bytes: bytes, *, object_format: str) -> bool:
+    """Return whether an exact Git index contains the split-index ``link`` extension."""
+    hash_size = 32 if object_format == "sha256" else 20
+    if len(index_bytes) < 12 + hash_size or index_bytes[:4] != b"DIRC":
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    version = int.from_bytes(index_bytes[4:8], "big")
+    if version not in (2, 3, 4):
+        raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_INDEX")
+    count = int.from_bytes(index_bytes[8:12], "big")
+    offset = 12
+    flags_offset = 40 + hash_size
+    content_end = len(index_bytes) - hash_size
+    for _ in range(count):
+        start = offset
+        if offset + flags_offset + 2 > content_end:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        flags = int.from_bytes(
+            index_bytes[offset + flags_offset : offset + flags_offset + 2], "big"
+        )
+        offset += flags_offset + 2
+        if flags & 0x4000:
+            if version < 3 or offset + 2 > content_end:
+                raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+            offset += 2
+        if version == 4:
+            while True:
+                if offset >= content_end:
+                    raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+                value = index_bytes[offset]
+                offset += 1
+                if not value & 0x80:
+                    break
+        terminator = index_bytes.find(b"\0", offset, content_end)
+        if terminator < 0:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        offset = terminator + 1
+        if version in (2, 3):
+            offset = start + ((offset - start + 7) & ~7)
+    while offset < content_end:
+        if offset + 8 > content_end:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        signature = index_bytes[offset : offset + 4]
+        size = int.from_bytes(index_bytes[offset + 4 : offset + 8], "big")
+        offset += 8
+        if size > content_end - offset:
+            raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+        if signature == b"link":
+            return True
+        offset += size
+    if offset != content_end:
+        raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
+    return False
 
 
 def frozen_index_entries(

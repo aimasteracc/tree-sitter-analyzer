@@ -8,6 +8,7 @@ import hmac
 import inspect
 import json
 import os
+import re
 import secrets
 import threading
 import time
@@ -35,6 +36,8 @@ MAX_SCOPE_PATHS = 4096
 MAX_PATH_BYTES = 4096
 MAX_SCOPE_BYTES = 1024 * 1024
 _PROCESS_LEASE_KEY = secrets.token_bytes(32)
+_SNAPSHOT_ID_PATTERN = re.compile(r"ds_[A-Za-z0-9_-]{32}", re.ASCII)
+_ROUTE_LEASE_PATTERN = re.compile(r"dl_[A-Za-z0-9_-]{43}", re.ASCII)
 
 
 def _path_storage(paths: tuple[str, ...] | list[str] | set[str]) -> int:
@@ -448,14 +451,18 @@ class DiffSnapshotRegistry:
 
     def release_route_lease(self, sid: str, lease: str) -> str | None:
         """Close an owned route lease; repeating the exact token pair is idempotent."""
+        lengths_valid = len(sid) == 35 and len(lease) == 46
+        ids_valid = _SNAPSHOT_ID_PATTERN.fullmatch(
+            sid
+        ) and _ROUTE_LEASE_PATTERN.fullmatch(lease)
+        if not lengths_valid or not ids_valid:
+            return "DIFF_SNAPSHOT_LEASE_MISMATCH"
         with self._lock:
             self._sweep()
             expected = self._route_lease(sid)
             if not hmac.compare_digest(expected, lease):
                 return "DIFF_SNAPSHOT_LEASE_MISMATCH"
             state = self._states.get(sid)
-            # A valid capability remains idempotent after expiry/erasure without
-            # any per-snapshot retained state.
             if state is None:
                 return None
             state.lease_open = False

@@ -429,3 +429,76 @@ def test_payload_rejects_missing_pre_manifest_binding(tmp_path: Path) -> None:
             expected_manifest={},
             epoch=epochs[0],
         )
+
+
+@POSIX_SNAPSHOT_TEST
+def test_sparse_skip_worktree_missing_path_is_not_a_deletion(tmp_path: Path) -> None:
+    # PR #1252 review thread 3748259944.
+    root = _repo(tmp_path)
+    (root / "kept.py").write_text("value = 1\n")
+    _git(root, "add", "kept.py")
+    _git(root, "commit", "-m", "sparse baseline")
+    _git(root, "update-index", "--skip-worktree", "kept.py")
+    (root / "kept.py").unlink()
+
+    created = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert created["success"] is True
+    assert created["changed_records"] == []
+
+
+@POSIX_SNAPSHOT_TEST
+def test_assume_unchanged_edit_matches_git_diff_omission(tmp_path: Path) -> None:
+    # PR #1252 review thread 3748259944.
+    root = _repo(tmp_path)
+    (root / "quiet.py").write_text("value = 1\n")
+    _git(root, "add", "quiet.py")
+    _git(root, "commit", "-m", "assume baseline")
+    _git(root, "update-index", "--assume-unchanged", "quiet.py")
+    (root / "quiet.py").write_text("value = 2\n")
+
+    expected = subprocess.run(
+        ["git", "diff", "--name-only"], cwd=root, check=True, capture_output=True
+    ).stdout
+    created = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert expected == b""
+    assert created["success"] is True
+    assert created["changed_records"] == []
+
+
+@POSIX_SNAPSHOT_TEST
+def test_intent_to_add_semantics_match_git_diff(tmp_path: Path) -> None:
+    # PR #1252 review thread 3748259944.
+    root = _repo(tmp_path)
+    (root / "intent.py").write_text("value = 1\n")
+    _git(root, "add", "--intent-to-add", "intent.py")
+    expected = subprocess.run(
+        ["git", "diff", "--name-only", "-z"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    ).stdout
+
+    created = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert expected == b"intent.py\0"
+    assert created["success"] is True
+    assert [item["path"] for item in created["changed_records"]] == ["intent.py"]
+
+
+@POSIX_SNAPSHOT_TEST
+def test_split_index_is_rejected_without_live_shared_index(tmp_path: Path) -> None:
+    # PR #1252 review thread 3748259944.
+    root = _repo(tmp_path)
+    (root / "tracked.py").write_text("value = 1\n")
+    _git(root, "add", "tracked.py")
+    _git(root, "commit", "-m", "split baseline")
+    _git(root, "update-index", "--split-index")
+
+    created = snapshots.DiffSnapshotRegistry().create(str(root), "diff", [])
+
+    assert created == {
+        "success": False,
+        "error_code": "DIFF_SNAPSHOT_UNSUPPORTED_INDEX",
+    }

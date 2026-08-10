@@ -464,3 +464,33 @@ def test_validate_publish_rejects_erased_snapshot_before_oracle(
     registry.reset()
 
     assert registry.validate_publish(consumer) == "DIFF_SNAPSHOT_EXPIRED"
+
+
+@pytest.mark.parametrize(
+    ("snapshot_id", "route_lease_id"),
+    [
+        ("ds_é" + "a" * 31, "dl_" + "a" * 43),
+        ("ds_" + "a" * 32, "dl_é" + "a" * 42),
+        ("bad_" + "a" * 31, "dl_" + "a" * 43),
+        ("ds_" + "a" * 100_000, "dl_" + "a" * 43),
+    ],
+)
+def test_release_rejects_malformed_capabilities_without_raising(
+    snapshot_id: str, route_lease_id: str
+) -> None:
+    # PR #1252 review thread 3748259955.
+    registry = snapshots.DiffSnapshotRegistry()
+
+    result = registry.release_route_lease(snapshot_id, route_lease_id)
+
+    assert result == "DIFF_SNAPSHOT_LEASE_MISMATCH"
+
+
+def test_release_rejects_well_formed_but_wrong_capability() -> None:
+    # PR #1252 review thread 3748259955.
+    registry = snapshots.DiffSnapshotRegistry()
+    snapshot_id = "ds_" + "a" * 32
+
+    result = registry.release_route_lease(snapshot_id, "dl_" + "a" * 43)
+
+    assert result == "DIFF_SNAPSHOT_LEASE_MISMATCH"

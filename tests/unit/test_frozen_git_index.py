@@ -292,3 +292,55 @@ def test_git_filtered_oid_rejects_invalid_git_output(monkeypatch, oid: bytes) ->
         frozen_index.git_filtered_oid(
             ".", b"sample.txt", b"data", deadline=time.monotonic() + 1
         )
+
+
+def test_reconstructed_index_writes_valid_stage_zero_payload(
+    tmp_path: Path, monkeypatch
+) -> None:
+    calls: list[tuple[list[str], bytes | None]] = []
+
+    def record(*args, **kwargs):
+        Path(kwargs["env"]["GIT_INDEX_FILE"]).touch()
+        calls.append((args[1], kwargs.get("input_")))
+        return b""
+
+    monkeypatch.setattr(frozen_index, "run_git_bounded", record)
+    entry = b"100644 " + b"a" * 40 + b" 0"
+
+    with frozen_index.reconstructed_index_file(
+        str(tmp_path), {b"a.py": entry}, deadline=1e20
+    ):
+        pass
+
+    assert calls[1] == (
+        ["update-index", "-z", "--index-info"],
+        b"100644 " + b"a" * 40 + b"\ta.py\0",
+    )
+
+
+@pytest.mark.parametrize("prefix", [b"\0", b"\x80\0"])
+def test_invalidate_index_stat_cache_supports_v4_prefix_encoding(prefix: bytes) -> None:
+    fixed = b"\1" * 40 + b"\2" * 20 + b"\0\0"
+    raw = b"DIRC" + (4).to_bytes(4, "big") + (1).to_bytes(4, "big")
+    raw += fixed + prefix + b"a.py\0" + b"\0" * 20
+
+    result = frozen_index.invalidate_index_stat_cache(raw, object_format="sha1")
+
+    assert result[12:36] == b"\0" * 24
+    assert result[40:52] == b"\0" * 12
+
+
+def test_invalidate_index_stat_cache_rejects_truncated_entry() -> None:
+    raw = b"DIRC" + (2).to_bytes(4, "big") + (1).to_bytes(4, "big") + b"\0" * 20
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_GIT_ERROR$"):
+        frozen_index.invalidate_index_stat_cache(raw, object_format="sha1")
+
+
+def test_invalidate_index_stat_cache_rejects_missing_path_terminator() -> None:
+    fixed = b"\0" * 40 + b"a" * 20 + b"\0\0"
+    raw = b"DIRC" + (2).to_bytes(4, "big") + (1).to_bytes(4, "big")
+    raw += fixed + b"a.py" + b"\1" * 20
+
+    with pytest.raises(SourceOracleError, match="^DIFF_SNAPSHOT_GIT_ERROR$"):
+        frozen_index.invalidate_index_stat_cache(raw, object_format="sha1")

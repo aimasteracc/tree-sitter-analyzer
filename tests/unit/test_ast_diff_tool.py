@@ -793,3 +793,33 @@ def test_ast_diff_execute_rejects_unreachable_unknown_mode() -> None:
         pytest.raises(ValueError, match="Unknown mode: unknown"),
     ):
         asyncio.run(tool.execute({"output_format": "json"}))
+
+
+@pytest.mark.parametrize("tool_type", [ASTDiffTool, SemanticClassifyTool])
+@pytest.mark.parametrize("unavailable_side", ["old_available", "new_available"])
+@pytest.mark.asyncio
+async def test_snapshot_consumer_rejects_each_unavailable_side(
+    tool_type, unavailable_side: str, monkeypatch
+) -> None:
+    # PR #1252 review thread 3748259951.
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer import diff_snapshot_registry as registry
+
+    availability = {"old_available": True, "new_available": True}
+    availability[unavailable_side] = False
+    frozen = SimpleNamespace(
+        record=SimpleNamespace(path="x.py", binary=False, **availability),
+        old_bytes=b"value = 1\n",
+        new_bytes=b"value = 2\n",
+    )
+    consumer = SimpleNamespace(
+        snapshot=SimpleNamespace(file=lambda path: frozen), release=lambda: None
+    )
+    monkeypatch.setattr(registry.REGISTRY, "acquire", lambda *a: (consumer, None))
+
+    result = await tool_type(".").execute(
+        {"diff_snapshot_id": "ds", "file_path": "x.py", "output_format": "json"}
+    )
+
+    assert result["error_code"] == "DIFF_SNAPSHOT_UNSUPPORTED_CONTENT"

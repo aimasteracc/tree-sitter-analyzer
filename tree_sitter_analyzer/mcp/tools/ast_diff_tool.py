@@ -272,7 +272,13 @@ class ASTDiffTool(BaseMCPTool):
                     or ""
                 )
                 if (
-                    getattr(frozen.record, "unsupported_kind", None) is not None
+                    not getattr(
+                        frozen.record, "old_available", frozen.old_bytes is not None
+                    )
+                    or not getattr(
+                        frozen.record, "new_available", frozen.new_bytes is not None
+                    )
+                    or getattr(frozen.record, "unsupported_kind", None) is not None
                     or frozen.record.binary
                     or any(
                         kind not in ("file", "missing")

@@ -79,16 +79,16 @@ class FrozenGitEnvironment:
                 limit=4096,
                 input_=b"",
             )
-            self.run(["read-tree", "--empty"], limit=4096)
-            os.chmod(self.index_path, 0o600)
-            payload = bytearray()
-            for path, header in self.epoch.index_entries:
-                mode, oid, stage = header.split(b" ")
-                if stage != b"0":
+            for _path, header in self.epoch.index_entries:
+                if header.split(b" ")[-1] != b"0":
                     raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-                payload.extend(mode + b" " + oid + b"\t" + path + b"\0")
-            if payload:
-                self.run(["update-index", "-z", "--index-info"], input_=bytes(payload))
+            if self.epoch.index_bytes:
+                with open(self.index_path, "xb") as stream:
+                    os.fchmod(stream.fileno(), 0o600)
+                    stream.write(self.epoch.index_bytes)
+            else:
+                self.run(["read-tree", "--empty"], limit=4096)
+                os.chmod(self.index_path, 0o600)
             return self
         except Exception:
             self.__exit__()

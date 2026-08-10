@@ -14,8 +14,9 @@ from typing import Any, TypeVar
 
 from .frozen_git_index import (
     frozen_index_entries,
+    frozen_index_output,
     git_filtered_oid,
-    reconstructed_index_file,
+    has_split_index,
 )
 from .git_subprocess import run_git_bounded
 from .source_oracle import (
@@ -36,6 +37,7 @@ _FRAME_DOMAIN = b"tsa-source-generation-v3"
 _MAX_INVENTORY_BYTES = 16 * 1024 * 1024
 _MAX_WORKTREE_PATHS = 200_000
 _MAX_WORKTREE_CONTENT_BYTES = 64 * 1024 * 1024
+_frozen_index_output = frozen_index_output
 _EMPTY_TREE_SHA1 = (
     b"4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # pragma: allowlist secret
 )
@@ -54,6 +56,7 @@ class GitEpoch:
     untracked_paths: tuple[bytes, ...]
     workspace_gitlinks: tuple[tuple[bytes, bytes], ...] = ()
     core_filemode: bool = True
+    index_bytes: bytes = b""
 
     def index_map(self) -> dict[bytes, bytes]:
         return dict(self.index_entries)
@@ -99,24 +102,6 @@ def _core_filemode(root: str, *, deadline: float) -> bool:
     if value == b"false":
         return False
     raise SourceOracleError("DIFF_SNAPSHOT_GIT_ERROR")
-
-
-def _frozen_index_output(
-    root: str,
-    entries: dict[bytes, bytes],
-    args: list[str],
-    *,
-    deadline: float,
-    limit: int,
-) -> bytes:
-    with reconstructed_index_file(root, entries, deadline=deadline) as index_path:
-        env = {
-            key: value
-            for key, value in os.environ.items()
-            if not key.upper().startswith("GIT_")
-        }
-        env.update({"GIT_INDEX_FILE": index_path, "GIT_OPTIONAL_LOCKS": "0"})
-        return run_git_bounded(root, args, deadline=deadline, limit=limit, env=env)
 
 
 def _head_identity(
@@ -358,12 +343,16 @@ def oracle_generation(
     _frame(digest, b"index-kind", safe_index.kind.encode("ascii"))
     index_bytes = safe_index.data or b""
     _frame(digest, b"index-content", hashlib.sha256(index_bytes).digest())
+    if index_bytes and has_split_index(index_bytes, object_format=object_format):
+        # A split index refers to a sibling sharedindex.<hash>. Freezing only the
+        # link file would either fail or tempt Git to consult mutable live state.
+        raise SourceOracleError("DIFF_SNAPSHOT_UNSUPPORTED_INDEX")
     index_entries = _index_entries(root, deadline=end, index_bytes=index_bytes)
     tracked = list(index_entries)
     head_entries = _head_entries(root, deadline=end, head=head)
     dirty_raw = _frozen_index_output(
         root,
-        index_entries,
+        index_bytes,
         [
             "diff-files",
             "--name-only",
@@ -374,10 +363,12 @@ def oracle_generation(
         ],
         deadline=end,
         limit=_MAX_INVENTORY_BYTES,
+        refresh=True,
+        object_format=object_format,
     )
     untracked_raw = _frozen_index_output(
         root,
-        index_entries,
+        index_bytes,
         ["ls-files", "--others", "--exclude-standard", "-z"],
         deadline=end,
         limit=_MAX_INVENTORY_BYTES,
@@ -429,6 +420,7 @@ def oracle_generation(
                 untracked_paths=tuple(sorted(untracked)),
                 workspace_gitlinks=tuple(sorted(workspace_gitlinks.items())),
                 core_filemode=core_filemode,
+                index_bytes=index_bytes,
             )
         )
 
@@ -472,10 +464,12 @@ def oracle_generation(
         diff_args.append(os.fsdecode(head))
     patch = _frozen_index_output(
         root,
-        index_entries,
+        index_bytes,
         diff_args,
         deadline=end,
         limit=64 * 1024 * 1024,
+        refresh=mode == "diff",
+        object_format=object_format,
     )
     _frame(digest, b"patch", hashlib.sha256(patch).digest())
     return "sg_" + digest.hexdigest(), identity

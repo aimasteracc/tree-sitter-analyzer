@@ -161,7 +161,12 @@ def safe_workspace_path(
         descriptors.append(current)
         metadata.append(_metadata(os.fstat(current)))
         for component in parts[:-1]:
-            current = _open(component, flags_dir, dir_fd=current)
+            try:
+                current = _open(component, flags_dir, dir_fd=current)
+            except FileNotFoundError:
+                missing_metadata = metadata + [b"missing"]
+                validate_chain(missing_metadata)
+                return SafePath(None, tuple(missing_metadata), "missing")
             descriptors.append(current)
             metadata.append(_metadata(os.fstat(current)))
         parent = current

@@ -9,8 +9,9 @@ from pathlib import Path
 
 import pytest
 
+import tree_sitter_analyzer.diff_snapshot_registry as snapshots
 import tree_sitter_analyzer.source_oracle as oracle
-from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST
+from tests.unit._diff_snapshot_support import POSIX_SNAPSHOT_TEST, make_repo
 
 
 def _error(call, code: str) -> None:
@@ -414,3 +415,34 @@ def test_regular_leaf_fifo_swap_fails_closed_in_process(
         )
 
     _error(read_raced_leaf, expected)
+
+
+@POSIX_SNAPSHOT_TEST
+def test_removed_tracked_directory_frames_nested_paths_as_missing(
+    tmp_path: Path,
+) -> None:
+    # PR #1252 review thread 3748259963.
+    root = make_repo(tmp_path)
+    nested = root / "gone" / "nested.py"
+    nested.parent.mkdir()
+    nested.write_text("value = 1\n")
+    subprocess.run(
+        ["git", "add", "gone/nested.py"], cwd=root, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "directory baseline"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    import shutil
+
+    shutil.rmtree(root / "gone")
+    registry = snapshots.DiffSnapshotRegistry()
+
+    created = registry.create(str(root), "diff", [])
+
+    assert created["success"] is True
+    assert [(item["path"], item["status"]) for item in created["changed_records"]] == [
+        ("gone/nested.py", "D")
+    ]

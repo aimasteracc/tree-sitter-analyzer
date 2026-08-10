@@ -126,7 +126,7 @@ def _stub_oracle_inventory(
 ) -> None:
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
-    (git_dir / "index").write_bytes(b"index")
+    (git_dir / "index").write_bytes(b"DIRC" + (2).to_bytes(4, "big") + b"\0" * 24)
     identity = oracle.RootIdentity(str(tmp_path), 1, 2)
     monkeypatch.setattr(
         oracle, "canonical_root", lambda root: (str(tmp_path), identity)
@@ -477,3 +477,7 @@ def test_frame_workspace_path_propagates_filtered_oid_failure(
         ),
         "DIFF_SNAPSHOT_GIT_ERROR",
     )
+
+
+def test_strip_one_record_terminator_handles_crlf() -> None:
+    assert oracle._strip_one_record_terminator(b"value\r\n") == b"value"

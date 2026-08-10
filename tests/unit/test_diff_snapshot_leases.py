@@ -30,8 +30,9 @@ def test_release_route_lease_rejects_unknown_snapshot_without_capability() -> No
 def test_valid_closed_capability_is_unboundedly_idempotent() -> None:
     registry = registry_module.DiffSnapshotRegistry(clock=lambda: 0.0)
     pairs = [
-        (f"snapshot-{index}", registry._route_lease(f"snapshot-{index}"))
+        (sid, registry._route_lease(sid))
         for index in range(10_000)
+        if (sid := f"ds_{index:032d}")
     ]
 
     assert all(registry.release_route_lease(*pair) is None for pair in pairs)
@@ -41,11 +42,12 @@ def test_valid_closed_capability_is_unboundedly_idempotent() -> None:
 
 def test_reset_keeps_process_capability_key_stable() -> None:
     registry = registry_module.DiffSnapshotRegistry(clock=lambda: 0.0)
-    lease = registry._route_lease("snapshot")
+    snapshot_id = "ds_" + "a" * 32
+    lease = registry._route_lease(snapshot_id)
 
     registry.reset()
 
-    assert registry.release_route_lease("snapshot", lease) is None
+    assert registry.release_route_lease(snapshot_id, lease) is None
 
 
 def test_scope_bind_charges_concurrent_reservations(tmp_path, monkeypatch) -> None:
@@ -110,8 +112,9 @@ def test_create_commit_accounts_for_other_reservations(tmp_path, monkeypatch) ->
 
 def test_capability_is_process_wide_across_registry_instances() -> None:
     first = registry_module.DiffSnapshotRegistry()
-    lease = first._route_lease("snapshot")
+    snapshot_id = "ds_" + "a" * 32
+    lease = first._route_lease(snapshot_id)
 
     second = registry_module.DiffSnapshotRegistry()
 
-    assert second.release_route_lease("snapshot", lease) is None
+    assert second.release_route_lease(snapshot_id, lease) is None
