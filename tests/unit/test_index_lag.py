@@ -86,3 +86,31 @@ def test_non_posix_lag_is_unavailable(tmp_path, monkeypatch):
         lag.compute_qualitative_lag(str(tmp_path), str(tmp_path / "index.db")),
         lag._newest_source_mtime(str(tmp_path)),
     ) == (None, None)
+
+
+def test_lag_scan_stops_at_deadline(tmp_path, monkeypatch):
+    # PR #1253: lag traversal obeys its wall-clock budget before reading entries.
+    import tree_sitter_analyzer.index_lag as lag
+
+    expired = 10.0 + lag._LAG_DEADLINE_SECONDS + 1.0
+    ticks = [10.0, expired]
+    monkeypatch.setattr(
+        lag.time, "monotonic", lambda: ticks.pop(0) if ticks else expired
+    )
+
+    assert lag._newest_source_mtime(str(tmp_path)) is None
+
+
+def test_lag_scan_suppresses_descriptor_cleanup_error(tmp_path, monkeypatch):
+    # PR #1253: cleanup failure cannot turn unavailable lag into a hard failure.
+    import tree_sitter_analyzer.index_lag as lag
+
+    monkeypatch.setattr(lag.os, "open", lambda *_args, **_kwargs: 7)
+    monkeypatch.setattr(lag.os, "scandir", lambda _fd: iter(()))
+    monkeypatch.setattr(
+        lag.os,
+        "close",
+        lambda _fd: (_ for _ in ()).throw(OSError("already closed")),
+    )
+
+    assert lag._newest_source_mtime(str(tmp_path)) is None

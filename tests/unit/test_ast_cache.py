@@ -2506,3 +2506,26 @@ def test_project_edge_write_failure_rolls_back_batch(tmp_path, monkeypatch):
     complete = cache.call_graph_built()
     cache.close()
     assert (indexed, complete) == (0, False)
+
+
+def test_cached_graph_refresh_propagates_edge_write_failure(monkeypatch):
+    # PR #1253: cached primary rows cannot hide a failed graph refresh.
+    from tree_sitter_analyzer._ast_cache_index_mixin import _refresh_cached_graph_row
+    from tree_sitter_analyzer.cache import write
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT 'app.py' AS file_path, 'python' AS language, "
+        "'{}' AS symbols_json, '[]' AS imports_json"
+    ).fetchone()
+    monkeypatch.setattr(
+        write, "write_graph_edges_for_file", lambda *_args, **_kwargs: False
+    )
+
+    try:
+        refreshed = _refresh_cached_graph_row(conn, row)
+    finally:
+        conn.close()
+
+    assert refreshed is False

@@ -1,14 +1,13 @@
 """Incrementally reconcile source files with the persistent AST cache."""
 
 import fnmatch
-import hashlib
 import logging
 import os
 import sqlite3
-from dataclasses import dataclass, field
 from typing import Any
 
 from .ast_cache import _EXT_TO_LANG, _walk_source_files
+from .incremental_sync_support import SyncResult, file_changed, get_changes
 from .index_source_snapshot import (
     SourceScopeDescriptor,
     make_source_scope_descriptor,
@@ -23,48 +22,7 @@ from .indexing_snapshot import (
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class SyncResult:
-    """Result of an incremental sync operation."""
-
-    scanned: int = 0
-    new_files: int = 0
-    updated_files: int = 0
-    deleted_files: int = 0
-    unchanged_files: int = 0
-    errors: int = 0
-    processed: int = 0
-    changed_during_run: int = 0
-    changed_during_run_files: list[str] = field(default_factory=list)
-    truncated_by_max_files: bool = False
-    synapse_resolved: int = 0
-    details: list[dict[str, Any]] = field(default_factory=list)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "mode_used": "incremental",
-            "scanned": self.scanned,
-            "new_files": self.new_files,
-            "updated_files": self.updated_files,
-            "deleted_files": self.deleted_files,
-            "unchanged_files": self.unchanged_files,
-            "errors": self.errors,
-            "processed": self.processed,
-            "changed_during_run": self.changed_during_run,
-            "changed_during_run_files": self.changed_during_run_files,
-            "truncated_by_max_files": self.truncated_by_max_files,
-            "synapse_resolved": self.synapse_resolved,
-            "details": self.details,
-        }
-
-
-def _file_content_hash(path: str) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
+_DISAPPEARED_REASON = "file disappeared after candidate snapshot"
 
 
 class IncrementalSync:
@@ -110,8 +68,13 @@ class IncrementalSync:
             from .cache.callgraph_state import clear_call_graph_built_strict
 
             clear_call_graph_built_strict(conn)
+        disappeared_paths = {
+            path for path, reason in changed_files if reason == _DISAPPEARED_REASON
+        }
         for rel_path, reason in sorted(changed_files):
             self._cache.invalidate(os.path.join(self._cache.project_root, rel_path))
+            if reason == _DISAPPEARED_REASON:
+                continue
             detail = {
                 "file": rel_path,
                 "considered": "skipped",
@@ -134,7 +97,10 @@ class IncrementalSync:
             selected_paths = {
                 entry.rel_path for entry in candidate_snapshot.selected_entries
             }
-            deleted_paths = set(indexed_rows) - selected_paths
+            # ``indexed_rows`` is the pre-invalidation DB snapshot. Unioning
+            # disappeared selected paths preserves deletion accounting even
+            # though invalidate() above may already have removed their rows.
+            deleted_paths = (set(indexed_rows) - selected_paths) | disappeared_paths
             self._invalidate_deleted_files(deleted_paths, result, callback)
         elif candidate_snapshot is None and not truncated:
             deleted_paths = set(indexed_rows) - present_paths
@@ -179,16 +145,20 @@ class IncrementalSync:
                     "unchanged": "unchanged_files",
                 }[action_by_file[rel_path]]
                 setattr(result, counter_name, getattr(result, counter_name) - 1)
-                detail = {
-                    "file": rel_path,
-                    "considered": "skipped",
-                    "action": "skipped",
-                    "status": "skipped",
-                    "reason": reason,
-                }
-                result.details.append(detail)
-                if callback:
-                    callback(detail)
+                if reason == _DISAPPEARED_REASON:
+                    disappeared_paths.add(rel_path)
+                    self._invalidate_deleted_files({rel_path}, result, callback)
+                else:
+                    detail = {
+                        "file": rel_path,
+                        "considered": "skipped",
+                        "action": "skipped",
+                        "status": "skipped",
+                        "reason": reason,
+                    }
+                    result.details.append(detail)
+                    if callback:
+                        callback(detail)
             result.changed_during_run_files = sorted(
                 known_changed | {path for path, _reason in late_changes}
             )
@@ -237,7 +207,10 @@ class IncrementalSync:
         if (
             not result.truncated_by_max_files
             and result.errors == 0
-            and result.changed_during_run == 0
+            and (
+                result.changed_during_run == 0
+                or set(result.changed_during_run_files) == disappeared_paths
+            )
             and backfill_complete
             and snapshot_scope_complete
             and indexed_paths == certified_paths
@@ -415,15 +388,8 @@ class IncrementalSync:
         indexed_info: dict[str, Any],
         rel_path: str,
     ) -> bool:
-        if disk_info["file_size"] != indexed_info["file_size"]:
-            return True
-        if disk_info["mtime_ns"] != indexed_info["mtime_ns"]:
-            try:
-                current_hash = _file_content_hash(disk_info["abs_path"])
-                return current_hash != indexed_info["content_hash"]
-            except OSError:
-                return True
-        return False
+        del rel_path
+        return file_changed(disk_info, indexed_info)
 
     def _index_new_file(
         self,
@@ -527,50 +493,5 @@ class IncrementalSync:
         return detail
 
     def get_changes(self) -> dict[str, list[str]]:
-        """
-        Quick scan that returns lists of changed file paths without re-indexing.
-
-        Returns dict with keys: 'new', 'modified', 'deleted' — each a list of
-        relative file paths.
-        """
-        conn = self._cache.get_conn()
-        indexed_rows = {
-            row["file_path"]: {
-                "content_hash": row["content_hash"],
-                "mtime_ns": row["mtime_ns"],
-                "file_size": row["file_size"],
-            }
-            for row in conn.execute(
-                "SELECT file_path, content_hash, mtime_ns, file_size FROM ast_index"
-            ).fetchall()
-        }
-
-        disk_files: dict[str, dict[str, Any]] = {}
-        for abs_path in _walk_source_files(self._cache.project_root):
-            rel = os.path.relpath(abs_path, self._cache.project_root)
-            if os.name == "nt":
-                rel = rel.replace("\\", "/")
-            try:
-                stat = os.stat(abs_path)
-                disk_files[rel] = {
-                    "abs_path": abs_path,
-                    "mtime_ns": int(stat.st_mtime_ns),
-                    "file_size": stat.st_size,
-                }
-            except OSError:
-                continue
-
-        indexed_set = set(indexed_rows.keys())
-        disk_set = set(disk_files.keys())
-
-        changes: dict[str, list[str]] = {
-            "new": sorted(disk_set - indexed_set),
-            "deleted": sorted(indexed_set - disk_set),
-            "modified": [],
-        }
-
-        for rel in sorted(indexed_set & disk_set):
-            if self._file_changed(disk_files[rel], indexed_rows[rel], rel):
-                changes["modified"].append(rel)
-
-        return changes
+        """Return live new, modified, and deleted paths without re-indexing."""
+        return get_changes(self._cache, self._file_changed, _walk_source_files)

@@ -988,13 +988,12 @@ def test_incremental_sync_reports_preexisting_snapshot_change_to_callback(tmp_pa
 
     assert result.changed_during_run == 1
     assert result.processed == 0
+    assert result.deleted_files == 1
     assert callback_details == [
         {
             "file": "app.py",
-            "considered": "skipped",
-            "action": "skipped",
-            "status": "skipped",
-            "reason": "file disappeared after candidate snapshot",
+            "considered": "deleted",
+            "action": "deleted",
         }
     ]
 
@@ -1084,24 +1083,53 @@ def test_candidate_snapshot_prunes_cached_row_outside_selected_scope(tmp_path):
     assert (result.deleted_files, remaining) == (1, None)
 
 
-def test_preexisting_snapshot_deletion_invalidates_cached_row(tmp_path):
+def test_preexisting_snapshot_deletion_runs_backfills_and_restores_marker(tmp_path):
+    # PR #1253 review 3755143808: an unlinked selected path is a deletion.
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     cache = ASTCache(str(tmp_path))
     cache.index_file(str(path))
     snapshot = _snapshot(tmp_path, path)
     path.unlink()
+    callback_details: list[dict] = []
 
     try:
-        IncrementalSync(cache).sync(
-            max_files=10,
-            candidate_snapshot=snapshot,
-        )
+        with (
+            patch.object(
+                cache,
+                "_run_synapse_backfill",
+                return_value={"resolved": 0, "errors": 0},
+            ) as synapse_backfill,
+            patch.object(
+                cache,
+                "_run_unresolved_refs_backfill",
+                return_value={"resolved": 0, "errors": 0},
+            ) as refs_backfill,
+        ):
+            result = IncrementalSync(cache).sync(
+                max_files=10,
+                candidate_snapshot=snapshot,
+                callback=callback_details.append,
+            )
         cached = cache.lookup(str(path))
+        graph_built = cache.call_graph_built()
     finally:
         cache.close()
 
-    assert cached is None
+    expected_detail = {
+        "file": "app.py",
+        "considered": "deleted",
+        "action": "deleted",
+    }
+    assert (
+        result.deleted_files,
+        result.details,
+        callback_details,
+        synapse_backfill.call_count,
+        refs_backfill.call_count,
+        cached,
+        graph_built,
+    ) == (1, [expected_detail], [expected_detail], 1, 1, None, True)
 
 
 def test_preexisting_snapshot_mutation_removes_ladybug_mirror(tmp_path):
@@ -1266,14 +1294,13 @@ def test_late_disappearance_reclassifies_index_error_as_snapshot_change(tmp_path
 
     assert result.errors == 0
     assert result.new_files == 0
+    assert result.deleted_files == 1
     assert result.changed_during_run_files == ["app.py"]
     assert result.details == [
         {
             "file": "app.py",
-            "considered": "skipped",
-            "action": "skipped",
-            "status": "skipped",
-            "reason": "file disappeared after candidate snapshot",
+            "considered": "deleted",
+            "action": "deleted",
         }
     ]
 
@@ -1409,14 +1436,14 @@ def test_file_changed_fails_closed_when_rehash_becomes_unreadable(
     tmp_path, monkeypatch
 ):
     # PR #1253: a metadata change plus read failure cannot be treated as cached.
-    import tree_sitter_analyzer.incremental_sync as sync_module
+    import tree_sitter_analyzer.incremental_sync_support as sync_support
     from tree_sitter_analyzer.incremental_sync import IncrementalSync
 
     source = tmp_path / "sample.py"
     source.write_text("x = 1\n")
     monkeypatch.setattr(
-        sync_module,
-        "_file_content_hash",
+        sync_support,
+        "file_content_hash",
         lambda _path: (_ for _ in ()).throw(PermissionError()),
     )
     changed = IncrementalSync(object())._file_changed(
