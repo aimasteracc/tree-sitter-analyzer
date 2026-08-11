@@ -228,13 +228,16 @@ class IncrementalSync:
         snapshot_scope_complete = bool(
             disk_files if candidate_snapshot is None else candidate_snapshot.selected
         ) and (candidate_snapshot is None or candidate_snapshot.errors == 0)
+        certified_paths = (
+            set(disk_files) if candidate_snapshot is not None else present_paths
+        )
         if (
             not result.truncated_by_max_files
             and result.errors == 0
             and result.changed_during_run == 0
             and backfill_complete
             and snapshot_scope_complete
-            and indexed_paths == present_paths
+            and indexed_paths == certified_paths
         ):
             from .cache.callgraph_state import mark_call_graph_built
 

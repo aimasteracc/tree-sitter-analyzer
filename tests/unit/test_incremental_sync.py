@@ -1382,3 +1382,31 @@ def test_file_changed_fails_closed_when_rehash_becomes_unreadable(
     )
 
     assert changed is True
+
+
+def test_transactional_deleted_scope_failure_rolls_back(monkeypatch):
+    # PR #1253: a failed stale-row deletion cannot commit a partial prune.
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.cache.write as cache_write
+    from tree_sitter_analyzer.incremental_sync import IncrementalSync, SyncResult
+
+    conn = sqlite3.connect(":memory:")
+    cache = SimpleNamespace(
+        get_conn=lambda: conn,
+        fts5_available=False,
+    )
+    monkeypatch.setattr(
+        cache_write,
+        "discard_file_rows",
+        lambda *_args: (_ for _ in ()).throw(sqlite3.OperationalError("delete failed")),
+    )
+
+    with pytest.raises(sqlite3.OperationalError, match="delete failed"):
+        IncrementalSync(cache)._invalidate_deleted_files(
+            {"stale.py"}, SyncResult(), None
+        )
+    transaction_open = conn.in_transaction
+    conn.close()
+
+    assert transaction_open is False

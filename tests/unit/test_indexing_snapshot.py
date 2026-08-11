@@ -11,6 +11,7 @@ from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.indexer import walk_and_partition
 from tree_sitter_analyzer.indexing_snapshot import (
     IndexCandidateSnapshot,
+    IndexFileFingerprint,
     IndexSnapshotEntry,
     build_index_candidate_snapshot,
     changed_since_snapshot,
@@ -557,3 +558,65 @@ def test_supported_symlink_is_candidate_error_and_never_selected(tmp_path):
         snapshot.entries[0].decision,
         snapshot.entries[0].reason,
     ) == (0, 1, "error", "supported source is symlinked or non-regular")
+
+
+def test_validate_selected_symlink_is_rejected(tmp_path):
+    # PR #1253: forged selected symlink candidates cannot reach certification.
+    from tree_sitter_analyzer.indexing_snapshot import validate_index_candidate_snapshot
+
+    target = tmp_path / "target.py"
+    target.write_text("x = 1")
+    linked = tmp_path / "linked.py"
+    try:
+        linked.symlink_to(target)
+    except OSError:
+        pytest.skip("GH-1253: symlink creation unavailable")
+    changed_fingerprint = (
+        build_index_candidate_snapshot(
+            str(tmp_path),
+            max_files=1,
+            exclude_patterns=frozenset(),
+            walk_fn=lambda _root: [str(target)],
+            language_fn=_python_language,
+        )
+        .selected_entries[0]
+        .fingerprint
+    )
+    entry = IndexSnapshotEntry(
+        str(linked),
+        "linked.py",
+        "python",
+        "selected",
+        fingerprint=changed_fingerprint,
+    )
+    snapshot = IndexCandidateSnapshot(
+        str(tmp_path), 1, (entry,), frozenset({"linked.py"}), 1, 1, 0, 0, 0, 0
+    )
+    assert changed_fingerprint == IndexFileFingerprint.from_stat(target.stat())
+    with pytest.raises(ValueError, match="symlinked or non-regular"):
+        validate_index_candidate_snapshot(str(tmp_path), 1, snapshot)
+
+
+def test_validate_selected_stat_error_is_rejected(tmp_path, monkeypatch):
+    # PR #1253: unreadable selected candidates fail validation explicitly.
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+
+    source = tmp_path / "sample.py"
+    source.write_text("x = 1")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=1,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: [str(source)],
+        language_fn=_python_language,
+    )
+    original_stat = snapshot_module.os.stat
+
+    def denied(path, *args, **kwargs):
+        if os.fspath(path) == str(source) and kwargs.get("follow_symlinks") is False:
+            raise PermissionError
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(snapshot_module.os, "stat", denied)
+    with pytest.raises(ValueError, match="selected candidate is unreadable"):
+        snapshot_module.validate_index_candidate_snapshot(str(tmp_path), 1, snapshot)

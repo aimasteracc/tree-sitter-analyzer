@@ -903,7 +903,13 @@ async def test_incremental_scope_change_prunes_newly_excluded_rows(tmp_path):
             .execute("SELECT COUNT(*) FROM edges WHERE file_path = 'drop.py'")
             .fetchone()[0]
         )
+        graph_built = cache.call_graph_built()
     finally:
         cache.close()
 
-    assert (second["success"], paths, graph_rows) == (True, {"keep.py"}, 0)
+    assert (second["success"], paths, graph_rows, graph_built) == (
+        True,
+        {"keep.py"},
+        0,
+        True,
+    )
