@@ -446,7 +446,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS ast_symbols_fts
         kind,
         file_path,
         language,
-        content='',
+        content='ast_symbol_rows',
+        content_rowid='id',
         tokenize='porter unicode61'
     );
 """
@@ -686,6 +687,25 @@ def clear_activation_for_file(conn: sqlite3.Connection, rel_path: str) -> None:
         pass
 
 
+def _ensure_exact_fts_schema(conn: sqlite3.Connection) -> None:
+    """Upgrade legacy contentless FTS5 to an externally verifiable table."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='ast_symbols_fts'"
+    ).fetchone()
+    if (
+        row is not None
+        and isinstance(row[0], str)
+        and ("content='ast_symbol_rows'" in row[0] and "content_rowid='id'" in row[0])
+    ):
+        return
+    conn.execute("DROP TABLE IF EXISTS ast_symbols_fts")
+    conn.executescript(SCHEMA_V2_FTS)
+    conn.execute(
+        "INSERT INTO ast_symbols_fts(rowid, name, kind, file_path, language) "
+        "SELECT id, name, kind, file_path, language FROM ast_symbol_rows"
+    )
+
+
 def init_db(
     conn: sqlite3.Connection,
     fts5_available: bool | None,
@@ -694,9 +714,8 @@ def init_db(
 ) -> bool:
     """Apply schema DDL and migrations. Returns updated fts5_available flag."""
     conn.executescript(SCHEMA_V1)
-    # Ordinary symbol storage is valid and useful even when SQLite lacks FTS5.
-    # Keep table creation plus legacy projection backfill in one rollback unit.
-    ensure_symbol_rows_backfilled(conn)
+    # Establish the ordinary table before the externally backed FTS schema.
+    conn.executescript(SCHEMA_SYMBOL_ROWS)
     conn.executescript(SCHEMA_VERSIONS_DDL)
     conn.commit()
     if fts5_available is None:
@@ -704,6 +723,7 @@ def init_db(
     if fts5_available:
         try:
             conn.executescript(SCHEMA_V2_FTS)
+            _ensure_exact_fts_schema(conn)
             conn.commit()
         except sqlite3.OperationalError:
             fts5_available = False
@@ -711,6 +731,9 @@ def init_db(
     for version, migration_fn in migrations:
         if version not in applied:
             migration_fn(conn, record_schema_version)
+    # Migration exact-state fast paths must include FTS whenever this runtime
+    # supports it; FTS-less SQLite keeps the ordinary-only projection legal.
+    ensure_symbol_rows_backfilled(conn, require_fts=bool(fts5_available))
     apply_large_repo_indexes(conn)
     conn.commit()
     return bool(fts5_available)

@@ -1777,3 +1777,45 @@ def test_get_changes_ignores_disappeared_walk_entry(tmp_path):
     finally:
         cache.close()
     assert changes == {"new": [], "modified": [], "deleted": []}
+
+
+def test_truncated_unchanged_snapshot_clears_global_certification(tmp_path):
+    # PR #1253 thread 3759606798: a cached prefix cannot retain global evidence.
+    from tree_sitter_analyzer.cache.callgraph_state import mark_call_graph_built
+
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_text("a = 1\n")
+    second.write_text("b = 2\n")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=1,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(first), str(second)),
+        language_fn=_python_language,
+    )
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(first))
+    conn = cache.get_conn()
+    mark_call_graph_built(conn)
+    conn.execute(
+        "INSERT INTO ast_index_snapshot_manifest VALUES (1, ?, ?, ?, 1, '{}', 2)",
+        (os.path.realpath(tmp_path), "sha256:" + "1" * 64, "sha256:" + "2" * 64),
+    )
+    conn.commit()
+
+    result = IncrementalSync(cache).sync(max_files=1, candidate_snapshot=snapshot)
+    evidence = conn.execute(
+        "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
+    ).fetchone()[0]
+    graph_built = cache.call_graph_built()
+    cache.close()
+
+    assert (
+        result.unchanged_files,
+        result.new_files,
+        result.truncated_by_max_files,
+        result.to_dict()["completeness"],
+        evidence,
+        graph_built,
+    ) == (1, 0, True, "incomplete", 0, False)

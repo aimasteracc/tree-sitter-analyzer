@@ -52,10 +52,16 @@ def walk_candidate_entries(
     )
     scanners: list[tuple[Any, int, str]] = []
     root_fd: int | None = None
+    root_identity: tuple[int, int, int] | None = None
     try:
         try:
             root_fd = os.open(project_root, directory_flags)
-            os.fstat(root_fd)  # bind discovery to this directory identity
+            root_info = os.fstat(root_fd)
+            root_identity = (
+                getattr(root_info, "st_dev", 0),
+                getattr(root_info, "st_ino", 0),
+                getattr(root_info, "st_mode", 0),
+            )
             scanners.append((os.scandir(root_fd), root_fd, ""))
             root_fd = None  # the scanner frame owns it now
         except OSError as exc:
@@ -122,6 +128,26 @@ def walk_candidate_entries(
                     os.close(child_fd)
                 raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
             scanners.append((child_scanner, child_fd, rel_path))
+        # Enumeration through the pinned descriptor is authoritative only while
+        # the caller-visible pathname still names that exact directory.  A
+        # rename/replacement must not let an old empty root certify a new tree.
+        try:
+            reopened_fd = os.open(project_root, directory_flags)
+        except OSError as exc:
+            raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
+        try:
+            reopened = os.fstat(reopened_fd)
+            reopened_identity = (
+                getattr(reopened, "st_dev", 0),
+                getattr(reopened, "st_ino", 0),
+                getattr(reopened, "st_mode", 0),
+            )
+            if reopened_identity != root_identity:
+                raise OSError("candidate root identity changed during enumeration")
+        except OSError as exc:
+            raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
+        finally:
+            os.close(reopened_fd)
     finally:
         if root_fd is not None:
             os.close(root_fd)

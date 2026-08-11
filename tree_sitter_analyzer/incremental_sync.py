@@ -65,10 +65,6 @@ class IncrementalSync:
         result.changed_during_run = len(changed_files)
         result.changed_during_run_files = sorted(path for path, _ in changed_files)
         result.truncated_by_max_files = truncated
-        if candidate_snapshot is not None and candidate_snapshot.errors:
-            from .cache.callgraph_state import clear_call_graph_built_strict
-
-            clear_call_graph_built_strict(conn)
         disappeared_paths = {
             path for path, reason in changed_files if reason == _DISAPPEARED_REASON
         }
@@ -171,6 +167,19 @@ class IncrementalSync:
             return bool(late_changes)
 
         invalidate_snapshot_changes()
+        result.scope_complete = bool(
+            not result.truncated_by_max_files
+            and result.changed_during_run == 0
+            and (candidate_snapshot is None or candidate_snapshot.errors == 0)
+        )
+        if not result.scope_complete:
+            # Incomplete enumeration invalidates global certification even when
+            # the selected prefix is unchanged.  Clear it before consulting the
+            # call-graph marker so a certified SQL fast path cannot survive.
+            from .cache.callgraph_state import clear_call_graph_built_strict
+
+            clear_call_graph_built_strict(conn)
+            conn.execute("DELETE FROM ast_index_snapshot_manifest")
         try:
             conn.commit()
         except Exception as exc:  # pragma: no cover - DB commit failure is rare

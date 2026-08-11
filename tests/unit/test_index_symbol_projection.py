@@ -447,3 +447,54 @@ def test_symbol_projection_rejects_malformed_symbol_scalar() -> None:
     )
 
     assert symbol_projection_is_exact(conn) is False
+
+
+def test_missing_fts_row_forces_full_projection_reindex(tmp_path):
+    # PR #1253 thread 3759606810: removed FTS evidence cannot retain an exact stamp.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    source = tmp_path / "app.py"
+    source.write_text("def target():\n    return 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    conn = cache.get_conn()
+    row = conn.execute(
+        "SELECT id, name, kind, file_path, language FROM ast_symbol_rows"
+    ).fetchone()
+    conn.execute(
+        "INSERT INTO ast_symbols_fts"
+        "(ast_symbols_fts, rowid, name, kind, file_path, language) "
+        "VALUES('delete', ?, ?, ?, ?, ?)",
+        tuple(row),
+    )
+    conn.commit()
+
+    before = symbol_projection_is_exact(conn, require_fts=True)
+    stats = cache.index_project()
+    after = symbol_projection_is_exact(conn, require_fts=True)
+    cache.close()
+
+    assert (before, stats["indexed"], stats["cached"], after) == (False, 1, 0, True)
+
+
+def test_extra_fts_rowid_rejects_exact_projection(tmp_path):
+    # PR #1253 thread 3759606810: an FTS-only rowid is stale projection evidence.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    source = tmp_path / "app.py"
+    source.write_text("def target():\n    return 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    conn = cache.get_conn()
+    conn.execute(
+        "INSERT INTO ast_symbols_fts(rowid, name, kind, file_path, language) "
+        "VALUES(999, 'stale', 'function', 'gone.py', 'python')"
+    )
+    conn.commit()
+
+    result = symbol_projection_is_exact(conn, require_fts=True)
+    cache.close()
+
+    assert result is False

@@ -14,7 +14,12 @@ import os
 import sqlite3
 from typing import Any
 
-from ..index_symbol_projection import upsert_symbol_projection_state
+from ..index_symbol_projection import (
+    delete_fts_rows as _delete_fts_rows,
+)
+from ..index_symbol_projection import (
+    upsert_symbol_projection_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +86,7 @@ def discard_file_rows(
 ) -> bool:
     """Remove one file generation without committing the current transaction."""
     if fts5_available:
-        conn.execute(
-            "DELETE FROM ast_symbols_fts WHERE file_path = ?",
-            (rel_path,),
-        )
+        _delete_fts_rows(conn, rel_path)
     _delete_file_rows_if_table_present(conn, "ast_symbol_rows", rel_path)
     _delete_file_rows_if_table_present(conn, "ast_symbol_projection_state", rel_path)
     for table in ("ast_imports", "ast_symbol_activation"):
@@ -139,10 +141,10 @@ def write_fts5_symbols(
     """Replace ordinary symbol rows and, when available, their FTS projection."""
     if _table_exists(conn, "edges"):
         _reset_incoming_edge_resolutions(conn, rel_path)
+    if fts5_available:
+        _delete_fts_rows(conn, rel_path)
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
     _clear_symbol_resolver_context()
-    if fts5_available:
-        conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
     sym_list = symbols.get("symbols", [])
     if not sym_list:
         upsert_symbol_projection_state(conn, rel_path)
@@ -194,10 +196,10 @@ def write_fts5_symbols_from_tuples(
     """Insert ordinary worker symbol rows and optional FTS projection."""
     if _table_exists(conn, "edges"):
         _reset_incoming_edge_resolutions(conn, rel_path)
+    if fts5_available:
+        _delete_fts_rows(conn, rel_path)
     conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel_path,))
     _clear_symbol_resolver_context()
-    if fts5_available:
-        conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
     if not symbol_rows:
         upsert_symbol_projection_state(conn, rel_path)
         return []

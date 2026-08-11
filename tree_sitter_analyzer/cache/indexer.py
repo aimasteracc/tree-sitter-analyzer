@@ -841,7 +841,9 @@ def run_index_project(
                     _mark_call_graph_built(conn)
                 raise
         conn = cache._get_conn()
-        projection_repair = not symbol_projection_is_exact(conn)
+        projection_repair = not symbol_projection_is_exact(
+            conn, require_fts=cache.fts5_available
+        )
         if projection_repair and not rebuild_signaled:
             # Repair rewrites ordinary rows in committed batches just like a full
             # rebuild. Publish incomplete evidence before the first batch so no
@@ -970,7 +972,9 @@ def run_index_project(
             conn.commit()
             from ..index_snapshot_symbols import ensure_symbol_rows_backfilled
 
-            if not ensure_symbol_rows_backfilled(conn):
+            if not ensure_symbol_rows_backfilled(
+                conn, require_fts=cache.fts5_available
+            ):
                 stats["backfill_errors"] = stats.get("backfill_errors", 0) + 1
         if stats["changed_during_run"] > 0:
             _clear_call_graph_built(conn)

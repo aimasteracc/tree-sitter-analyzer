@@ -24,6 +24,7 @@ class SyncResult:
     changed_during_run: int = 0
     changed_during_run_files: list[str] = field(default_factory=list)
     truncated_by_max_files: bool = False
+    scope_complete: bool = True
     synapse_resolved: int = 0
     details: list[dict[str, Any]] = field(default_factory=list)
 
@@ -41,6 +42,7 @@ class SyncResult:
             "changed_during_run": self.changed_during_run,
             "changed_during_run_files": self.changed_during_run_files,
             "truncated_by_max_files": self.truncated_by_max_files,
+            "completeness": "complete" if self.scope_complete else "incomplete",
             "synapse_resolved": self.synapse_resolved,
             "details": self.details,
         }

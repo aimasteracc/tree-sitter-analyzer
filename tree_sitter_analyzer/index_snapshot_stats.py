@@ -13,7 +13,10 @@ from .index_snapshot_symbols import (
     ordinary_edge_counts,
     ordinary_symbol_counts,
 )
-from .index_symbol_projection import symbol_projection_is_exact
+from .index_symbol_projection import (
+    sqlite_compile_supports_fts5,
+    symbol_projection_is_exact,
+)
 
 
 def collect_snapshot_stats(
@@ -37,10 +40,19 @@ def collect_snapshot_stats(
         page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
         page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
         free_pages = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
-        fts5_available = {"ast_symbols_fts", "ast_symbol_rows"}.issubset(tables)
-        if has_ordinary_symbol_projection(conn, tables) and symbol_projection_is_exact(
-            conn, deadline=deadline
-        ):
+        fts5_supported = sqlite_compile_supports_fts5(conn)
+        fts5_available = bool(
+            fts5_supported is True
+            and {"ast_symbols_fts", "ast_symbol_rows"}.issubset(tables)
+        )
+        projection_exact = bool(
+            fts5_supported is not None
+            and has_ordinary_symbol_projection(conn, tables)
+            and symbol_projection_is_exact(
+                conn, deadline=deadline, require_fts=fts5_supported
+            )
+        )
+        if projection_exact:
             total_symbols, symbols_by_kind, symbols_by_language = (
                 ordinary_symbol_counts(conn, deadline=deadline)
             )

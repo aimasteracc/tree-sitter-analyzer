@@ -28,6 +28,7 @@ def ensure_symbol_rows_backfilled(
     marker_key: str,
     marker_value: str,
     exact_validator: Callable[..., bool],
+    require_fts: bool,
 ) -> bool:
     """Certify legacy rows without ever replacing a non-empty projection.
 
@@ -112,7 +113,11 @@ def ensure_symbol_rows_backfilled(
             else None
         )
         if marker is not None and exact_validator(
-            conn, max_symbols, deadline=deadline, install_progress=False
+            conn,
+            max_symbols,
+            deadline=deadline,
+            install_progress=False,
+            require_fts=require_fts,
         ):
             conn.execute("RELEASE ast_symbol_rows_upgrade")
             savepoint_started = False
@@ -330,7 +335,11 @@ def ensure_symbol_rows_backfilled(
             (marker_key, marker_value),
         )
         if not exact_validator(
-            conn, max_symbols, deadline=deadline, install_progress=False
+            conn,
+            max_symbols,
+            deadline=deadline,
+            install_progress=False,
+            require_fts=require_fts,
         ):
             raise sqlite3.OperationalError("LEGACY_SYMBOL_PROJECTION_INVALID")
         conn.execute("RELEASE ast_symbol_rows_upgrade")

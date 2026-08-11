@@ -311,3 +311,110 @@ def test_module_exports_exact_focused_surface() -> None:
         "ordinary_edge_counts",
         "ordinary_symbol_counts",
     ]
+
+
+def test_compile_fts_detection_fails_closed_on_database_error():
+    # PR #1253 thread 3759606810: read-only capability detection is fail-closed.
+    from tree_sitter_analyzer.index_symbol_projection import (
+        sqlite_compile_supports_fts5,
+    )
+
+    class Broken:
+        def execute(self, _query):
+            raise sqlite3.OperationalError("denied")
+
+    assert sqlite_compile_supports_fts5(Broken()) is None  # type: ignore[arg-type]
+
+
+def test_compile_fts_detection_rejects_malformed_scalar():
+    # PR #1253 thread 3759606810: compile support requires an exact SQLite integer.
+    from tree_sitter_analyzer.index_symbol_projection import (
+        sqlite_compile_supports_fts5,
+    )
+
+    class Cursor:
+        def fetchone(self):
+            return ("1",)
+
+    class Malformed:
+        def execute(self, _query):
+            return Cursor()
+
+    assert sqlite_compile_supports_fts5(Malformed()) is None  # type: ignore[arg-type]
+
+
+def test_required_fts_rejects_missing_table(tmp_path):
+    # PR #1253 thread 3759606810: supported runtimes require the FTS projection.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    cache = ASTCache(str(tmp_path))
+    conn = cache.get_conn()
+    conn.execute("DROP TABLE ast_symbols_fts")
+    result = symbol_projection_is_exact(conn, require_fts=True)
+    cache.close()
+
+    assert result is False
+
+
+def test_required_fts_rejects_same_count_wrong_rowid(tmp_path):
+    # PR #1253 thread 3759606810: equal counts cannot hide missing/stale rowids.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    source = tmp_path / "app.py"
+    source.write_text("def target():\n    return 1\n")
+    cache = ASTCache(str(tmp_path))
+    cache.index_file(str(source))
+    conn = cache.get_conn()
+    rowid = conn.execute("SELECT id FROM ast_symbol_rows").fetchone()[0]
+    conn.execute("UPDATE ast_symbols_fts_docsize SET id=999 WHERE id=?", (rowid,))
+    conn.commit()
+    result = symbol_projection_is_exact(conn, require_fts=True)
+    cache.close()
+
+    assert result is False
+
+
+def test_external_fts_delete_propagates_noncorruption_failure():
+    # PR #1253 thread 3759606810: only known missing-row corruption is repairable.
+    from tree_sitter_analyzer.index_symbol_projection import delete_fts_rows
+
+    class Cursor:
+        def __init__(self, row=None):
+            self.row = row
+
+        def fetchone(self):
+            return self.row
+
+        def fetchall(self):
+            return [(1, "x", "function", "a.py", "python")]
+
+    class Broken:
+        def execute(self, query, _params=()):
+            if query.startswith("SELECT sql"):
+                return Cursor(("content='ast_symbol_rows'",))
+            if query.startswith("SELECT id"):
+                return Cursor()
+            raise sqlite3.OperationalError("disk full")
+
+    with pytest.raises(sqlite3.OperationalError, match="disk full"):
+        delete_fts_rows(Broken(), "a.py")  # type: ignore[arg-type]
+
+
+def test_required_fts_rejects_legacy_contentless_schema(tmp_path):
+    # PR #1253 thread 3759606810: payload exactness requires external content.
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
+
+    cache = ASTCache(str(tmp_path))
+    conn = cache.get_conn()
+    conn.execute("DROP TABLE ast_symbols_fts")
+    conn.execute(
+        "CREATE VIRTUAL TABLE ast_symbols_fts USING fts5("
+        "name, kind, file_path, language, content='')"
+    )
+    result = symbol_projection_is_exact(conn, require_fts=True)
+    cache.close()
+
+    assert result is False

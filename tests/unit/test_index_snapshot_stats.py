@@ -62,9 +62,13 @@ async def test_manifest_type_confusion_maps_to_stable_unknown(tmp_path):
 def test_snapshot_stats_uses_ordinary_symbol_rows_without_fts(monkeypatch):
     # PR #1253 review threads 3755591655/59: ordinary rows are independent of FTS.
     import tree_sitter_analyzer.index_snapshot as owner
+    import tree_sitter_analyzer.index_snapshot_stats as stats_owner
     import tree_sitter_analyzer.index_snapshot_symbols as symbols_owner
 
     conn = sqlite3.connect(":memory:")
+    monkeypatch.setattr(
+        stats_owner, "sqlite_compile_supports_fts5", lambda _conn: False
+    )
     conn.execute(
         "CREATE TABLE ast_index(file_path TEXT, symbols_json TEXT, language TEXT, "
         "content_hash TEXT)"

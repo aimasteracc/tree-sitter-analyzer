@@ -292,7 +292,9 @@ _LEGACY_SYMBOL_MIGRATION_MARKER = "symbol_rows_projection_v1"
 _LEGACY_SYMBOL_MIGRATION_MARKER_VALUE = "complete"
 
 
-def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> bool:
+def ensure_symbol_rows_backfilled(
+    conn: sqlite3.Connection, *, require_fts: bool = False
+) -> bool:
     """Create or non-destructively certify the ordinary symbol projection."""
     from .index_symbol_migration import ensure_symbol_rows_backfilled as migrate
 
@@ -307,4 +309,5 @@ def ensure_symbol_rows_backfilled(conn: sqlite3.Connection) -> bool:
         marker_key=_LEGACY_SYMBOL_MIGRATION_MARKER,
         marker_value=_LEGACY_SYMBOL_MIGRATION_MARKER_VALUE,
         exact_validator=_symbol_projection_is_exact,
+        require_fts=require_fts,
     )

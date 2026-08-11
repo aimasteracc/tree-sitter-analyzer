@@ -19,6 +19,17 @@ def projection_schema_columns(conn: sqlite3.Connection, table: str) -> tuple[str
     return tuple(str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})"))
 
 
+def sqlite_compile_supports_fts5(conn: sqlite3.Connection) -> bool | None:
+    """Read the connection's compile capability without probing or writing."""
+    try:
+        row = conn.execute("SELECT sqlite_compileoption_used('ENABLE_FTS5')").fetchone()
+    except sqlite3.DatabaseError:
+        return None
+    if row is None or len(row) != 1 or type(row[0]) is not int or row[0] not in (0, 1):
+        return None
+    return bool(row[0])
+
+
 def index_content_hash_sql(conn: sqlite3.Connection) -> str:
     """Return the generation expression, supporting pre-hash test fixtures."""
     try:
@@ -38,6 +49,43 @@ def delete_projection_state_if_present(conn: sqlite3.Connection, rel_path: str) 
         )
     except sqlite3.OperationalError as exc:
         if "no such table" not in str(exc).lower():
+            raise
+
+
+def delete_fts_rows(
+    conn: sqlite3.Connection,
+    rel_path: str,
+) -> None:
+    """Delete one externally backed FTS generation using its old payload."""
+    schema = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='ast_symbols_fts'"
+    ).fetchone()
+    externally_backed = bool(
+        schema is not None
+        and isinstance(schema[0], str)
+        and "content='ast_symbol_rows'" in schema[0]
+    )
+    if not externally_backed:
+        conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel_path,))
+        return
+    old_rows = conn.execute(
+        "SELECT id, name, kind, file_path, language FROM ast_symbol_rows "
+        "WHERE file_path = ? ORDER BY id",
+        (rel_path,),
+    ).fetchall()
+    try:
+        for row in old_rows:
+            conn.execute(
+                "INSERT INTO ast_symbols_fts"
+                "(ast_symbols_fts, rowid, name, kind, file_path, language) "
+                "VALUES('delete', ?, ?, ?, ?, ?)",
+                tuple(row),
+            )
+    except sqlite3.DatabaseError as exc:
+        # A missing/corrupt FTS row is precisely what projection repair is
+        # replacing.  Ordinary rows remain authoritative and the full repair
+        # rebuilds FTS from them before certification.
+        if "malformed" not in str(exc).lower():
             raise
 
 
@@ -112,8 +160,9 @@ def symbol_projection_is_exact(
     *,
     deadline: float | None = None,
     install_progress: bool = True,
+    require_fts: bool = False,
 ) -> bool:
-    """Boundedly verify generation, count, and complete ordinary-row payload."""
+    """Boundedly verify ordinary rows and, when required, the exact FTS projection."""
     expires_at = (
         time.monotonic() + _PROJECTION_SECONDS if deadline is None else deadline
     )
@@ -138,6 +187,21 @@ def symbol_projection_is_exact(
         row_columns = set(projection_schema_columns(conn, "ast_symbol_rows"))
         state_columns = projection_schema_columns(conn, "ast_symbol_projection_state")
         metadata_columns = projection_schema_columns(conn, "ast_cache_metadata")
+        if require_fts:
+            fts_columns = projection_schema_columns(conn, "ast_symbols_fts")
+            if fts_columns != ("name", "kind", "file_path", "language"):
+                return False
+            fts_schema = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' "
+                "AND name='ast_symbols_fts'"
+            ).fetchone()
+            if (
+                fts_schema is None
+                or type(fts_schema[0]) is not str
+                or "content='ast_symbol_rows'" not in fts_schema[0]
+                or "content_rowid='id'" not in fts_schema[0]
+            ):
+                return False
         if not {
             "id",
             "file_path",
@@ -186,6 +250,32 @@ def symbol_projection_is_exact(
         )
         if any(conn.execute(query).fetchone() is not None for query in checks):
             return False
+        if require_fts:
+            count_row = conn.execute(
+                "SELECT (SELECT COUNT(*) FROM ast_symbol_rows), "
+                "(SELECT COUNT(*) FROM ast_symbols_fts_docsize)"
+            ).fetchone()
+            if (
+                count_row is None
+                or any(type(value) is not int for value in count_row)
+                or count_row[0] != count_row[1]
+                or count_row[0] > max_symbols
+            ):
+                return False
+            fts_checks = (
+                "SELECT 1 FROM ast_symbol_rows AS rows LEFT JOIN "
+                "ast_symbols_fts_docsize AS docs ON docs.id=rows.id "
+                "WHERE docs.id IS NULL LIMIT 1",
+                "SELECT 1 FROM ast_symbols_fts_docsize AS docs LEFT JOIN "
+                "ast_symbol_rows AS rows ON rows.id=docs.id "
+                "WHERE rows.id IS NULL LIMIT 1",
+                "SELECT 1 FROM ast_symbols_fts AS f JOIN ast_symbol_rows AS rows "
+                "ON rows.id=f.rowid WHERE f.name IS NOT rows.name "
+                "OR f.kind IS NOT rows.kind OR f.file_path IS NOT rows.file_path "
+                "OR f.language IS NOT rows.language LIMIT 1",
+            )
+            if any(conn.execute(query).fetchone() is not None for query in fts_checks):
+                return False
         states = conn.execute(
             "SELECT file_path, symbol_count, projection_digest "
             "FROM ast_symbol_projection_state ORDER BY file_path"

@@ -496,4 +496,65 @@ def test_posix_excluded_directory_is_not_opened(monkeypatch, tmp_path):
             str(tmp_path), **{**_DEFAULTS, "excluded_dir_names": frozenset({"vendor"})}
         )
     )
-    assert (values, opened) == ([], [str(tmp_path)])
+    assert (values, opened) == ([], [str(tmp_path), str(tmp_path)])
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_posix_empty_root_replacement_is_discovery_error(monkeypatch, tmp_path):
+    # PR #1253 thread 3759606788: an exhausted old root cannot certify its replacement.
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    root = tmp_path / "project"
+    root.mkdir()
+    original = tmp_path / "old-project"
+    real_scandir = walker.os.scandir
+    swapped = False
+
+    class SwapOnFirstRead:
+        def __init__(self, scanner):
+            self.scanner = scanner
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            nonlocal swapped
+            if not swapped:
+                swapped = True
+                root.rename(original)
+                root.mkdir()
+                (root / "new.py").write_text("value = 2\n")
+                (root / ".ast-cache").mkdir()
+                (root / ".ast-cache" / "index.db").write_bytes(b"new")
+            return next(self.scanner)
+
+        def close(self):
+            self.scanner.close()
+
+    monkeypatch.setattr(
+        walker.os, "scandir", lambda fd: SwapOnFirstRead(real_scandir(fd))
+    )
+
+    with pytest.raises(CandidateDiscoveryError, match="INDEX_CANDIDATE"):
+        list(walk_candidate_entries(str(root), **_DEFAULTS))
+
+
+@pytest.mark.skipif(os.name != "posix", reason="GH-1253")
+def test_posix_missing_root_at_final_reopen_is_discovery_error(monkeypatch, tmp_path):
+    # PR #1253 thread 3759606788: disappearance at final pathname check is typed.
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    real_open = walker.os.open
+    opens = 0
+
+    def disappear_on_reopen(path, flags, *args, **kwargs):
+        nonlocal opens
+        opens += 1
+        if opens == 2:
+            raise FileNotFoundError(path)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(walker.os, "open", disappear_on_reopen)
+
+    with pytest.raises(CandidateDiscoveryError, match="INDEX_CANDIDATE"):
+        list(walk_candidate_entries(str(tmp_path), **_DEFAULTS))
